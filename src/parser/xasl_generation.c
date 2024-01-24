@@ -13569,12 +13569,7 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 	  assert (PT_IS_QUERY (non_recursive_part) || PT_IS_VALUE_NODE (non_recursive_part));
 
 	  /* checking false-query by constant folding */
-	  if (non_recursive_part->type_enum == PT_TYPE_NULL)
-	    {
-	      break;
-	    }
-
-	  if (PT_IS_VALUE_NODE (non_recursive_part))
+	  if (PT_IS_VALUE_NODE (non_recursive_part) && non_recursive_part->type_enum != PT_TYPE_NULL)
 	    {
 	      info->xasl = pt_append_xasl (xasl, info->xasl);
 	      break;
