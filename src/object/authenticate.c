@@ -62,6 +62,7 @@
 #include "db.h"
 #include "trigger_manager.h"
 #include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "environment_variable.h"
 #include "execute_schema.h"
 #include "jsp_cl.h"

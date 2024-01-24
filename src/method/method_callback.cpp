@@ -749,6 +749,7 @@ exit:
     if (dot_cnt == 2) // with owner name
       {
 	split_str (name, prev, cur, owner_name);
+	owner_name += ".";
       }
 
     split_str (name, prev, cur, class_name);

@@ -43,8 +43,8 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.9.1")
 
     // Unix Domain Socket
-    implementation("com.kohlschutter.junixsocket:junixsocket-core:2.6.2")
-    implementation("com.kohlschutter.junixsocket:junixsocket-server:2.6.2")
+    implementation("com.kohlschutter.junixsocket:junixsocket-core:2.8.3")
+    implementation("com.kohlschutter.junixsocket:junixsocket-server:2.8.3")
 
     // ANTLR
     antlr("org.antlr:antlr4:4.9.3")

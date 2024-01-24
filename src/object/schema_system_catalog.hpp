@@ -18,7 +18,7 @@
 
 
 /*
- * schema_system_class.h - External definitions for the schema manager
+ * schema_system_catalog.hpp - Declare Main APIs for system catalog modules
  */
 
 #ifndef _SCHEMA_SYSTEM_CATALOG_HPP_
@@ -28,6 +28,21 @@
 
 #include "porting.h"
 
+extern EXPORT_IMPORT void catcls_init (void);
+extern EXPORT_IMPORT int catcls_install (void);
+
+// test class_name is of system (class/vclass)s for legacy routine
 extern EXPORT_IMPORT bool sm_check_system_class_by_name (const std::string_view class_name);
+
+extern EXPORT_IMPORT bool sm_is_system_class (const std::string_view name);
+extern EXPORT_IMPORT bool sm_is_system_vclass (const std::string_view name);
+
+#if defined (CS_MODE) || defined (SA_MODE)
+struct db_object;
+
+extern EXPORT_IMPORT int catcls_add_data_type (struct db_object *class_mop);
+extern EXPORT_IMPORT int catcls_add_charsets (struct db_object *class_mop);
+extern EXPORT_IMPORT int catcls_add_collations (struct db_object *class_mop);
+#endif
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_HPP_ */
