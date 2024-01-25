@@ -63,8 +63,8 @@ static void sq_free_key (sq_key * key);
 static void sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc);
 static sq_val *sq_make_val (xasl_node * xasl, DB_VALUE * result);
 static void sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp);
-static void sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest);
-static void sq_add_val_to_list (DB_VALUE * dbv, VAL_LIST * list);
+static int sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest);
+static int sq_add_val_to_list (DB_VALUE * dbv, VAL_LIST * list);
 static void sq_free_val (sq_val * val);
 
 int
@@ -184,9 +184,10 @@ sq_cmp_func (const void *key1, const void *key2)
   return 1;
 }
 
-static void
+static int
 sq_add_val_to_list (DB_VALUE * dbv, VAL_LIST * list)
 {
+  int cnt = 0;
   QPROC_DB_VALUE_LIST p;
   if (!list->valp)
     {
@@ -208,45 +209,48 @@ sq_add_val_to_list (DB_VALUE * dbv, VAL_LIST * list)
   p->val = db_value_copy (dbv);
   p->next = NULL;
   list->val_cnt++;
-
+  cnt++;
+  return cnt;
 }
 
-static void
+static int
 sq_regu_var_handler (regu_variable_node * p, VAL_LIST * dest)
 {
+  int cnt = 0;
   if (!p)
     {
-      return;
+      return 0;
     }
   if (p->type == TYPE_CONSTANT)
     {
-      sq_add_val_to_list (p->value.dbvalptr, dest);
+      cnt += sq_add_val_to_list (p->value.dbvalptr, dest);
     }
   else if (p->type == TYPE_DBVAL)
     {
-      sq_add_val_to_list (&p->value.dbval, dest);
+      cnt += sq_add_val_to_list (&p->value.dbval, dest);
     }
   else if (p->type == TYPE_INARITH)
     {
-      sq_regu_var_handler (p->value.arithptr->leftptr, dest);
-      sq_regu_var_handler (p->value.arithptr->rightptr, dest);
+      cnt += sq_regu_var_handler (p->value.arithptr->leftptr, dest);
+      cnt += sq_regu_var_handler (p->value.arithptr->rightptr, dest);
     }
+  return cnt;
 }
 
-static void
+static int
 sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest)
 {
-
+  int cnt = 0;
   if (!src)
     {
-      return;
+      return 0;
     }
 
   if (src->type == T_PRED)
     {
-      sq_add_term_to_list (src->pe.m_pred.lhs, dest);
-      sq_add_term_to_list (src->pe.m_pred.rhs, dest);
-      return;
+      cnt += sq_add_term_to_list (src->pe.m_pred.lhs, dest);
+      cnt += sq_add_term_to_list (src->pe.m_pred.rhs, dest);
+      return cnt;
     }
 
   if (src->type == T_EVAL_TERM)
@@ -254,12 +258,13 @@ sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest)
       if (src->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
 	{
 	  COMP_EVAL_TERM t = src->pe.m_eval_term.et.et_comp;
-	  sq_regu_var_handler (t.lhs, dest);
-	  sq_regu_var_handler (t.rhs, dest);
+	  cnt += sq_regu_var_handler (t.lhs, dest);
+	  cnt += sq_regu_var_handler (t.rhs, dest);
 	}
 
 
     }
+  return cnt;
 
 }
 
@@ -298,11 +303,29 @@ sq_make_key (xasl_node * xasl)
   for (p = xasl->spec_list; p; p = p->next)
     {
       /* key */
-      sq_add_term_to_list (p->where_key, keyp->key_list);
+      cnt += sq_add_term_to_list (p->where_key, keyp->key_list);
       /* pred */
-      sq_add_term_to_list (p->where_pred, keyp->pred_list);
+      cnt += sq_add_term_to_list (p->where_pred, keyp->pred_list);
       /* range */
-      sq_add_term_to_list (p->where_range, keyp->range_list);
+      cnt += sq_add_term_to_list (p->where_range, keyp->range_list);
+    }
+  if (xasl->scan_ptr)
+    {
+      for (p = xasl->scan_ptr->spec_list; p; p = p->next)
+	{
+	  /* key */
+	  cnt += sq_add_term_to_list (p->where_key, keyp->key_list);
+	  /* pred */
+	  cnt += sq_add_term_to_list (p->where_pred, keyp->pred_list);
+	  /* range */
+	  cnt += sq_add_term_to_list (p->where_range, keyp->range_list);
+	}
+    }
+
+  if (cnt == 0)
+    {
+      sq_free_key (keyp);
+      return NULL;
     }
 
   return keyp;
