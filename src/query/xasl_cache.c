@@ -176,6 +176,7 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
   /* using mutex? */
   LF_EM_NOT_USING_MUTEX,
 
+  0,
   xcache_entry_alloc,
   xcache_entry_free,
   xcache_entry_init,

@@ -583,6 +583,7 @@ LF_ENTRY_DESCRIPTOR obj_lock_entry_desc = {
   0,				/* does not have a key, not used in a hash table */
   0,				/* does not have a mutex, protected by resource mutex */
   LF_EM_NOT_USING_MUTEX,
+  prm_get_integer_value (PRM_ID_LK_ESCALATION_AT),
   lock_alloc_entry,
   lock_dealloc_entry,
   lock_init_entry,
@@ -611,6 +612,7 @@ LF_ENTRY_DESCRIPTOR lk_Obj_lock_res_desc = {
   offsetof (LK_RES, key),
   offsetof (LK_RES, res_mutex),
   LF_EM_USING_MUTEX,
+  prm_get_integer_value (PRM_ID_LK_ESCALATION_AT),
   lock_alloc_resource,
   lock_dealloc_resource,
   lock_init_resource,

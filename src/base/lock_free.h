@@ -80,6 +80,9 @@ struct lf_entry_descriptor
   /* does entry have mutex */
   int using_mutex;
 
+  /* maximum alloc cnt */
+  int max_alloc_cnt;
+
   /* allocation callback */
   LF_ENTRY_ALLOC_FUNC f_alloc;
 
@@ -106,7 +109,7 @@ struct lf_entry_descriptor
   LF_ENTRY_DUPLICATE_KEY_HANDLER f_duplicate;
 };
 
-#define LF_ENTRY_DESCRIPTOR_INITIALIZER { 0, 0, 0, 0, 0, 0, NULL, NULL, NULL, \
+#define LF_ENTRY_DESCRIPTOR_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, NULL, NULL, NULL, \
 					  NULL, NULL, NULL, NULL, NULL}
 
 /*

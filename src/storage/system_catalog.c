@@ -212,6 +212,7 @@ static LF_ENTRY_DESCRIPTOR catalog_entry_Descriptor = {
   /* using mutex? */
   LF_EM_NOT_USING_MUTEX,
 
+  0,
   catalog_entry_alloc,
   catalog_entry_free,
   catalog_entry_init,

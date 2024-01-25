@@ -181,6 +181,7 @@ static LF_ENTRY_DESCRIPTOR qfile_sort_list_entry_desc = {
   0,				/* does not have a key, not used in a hash table */
   0,				/* does not have a mutex */
   LF_EM_NOT_USING_MUTEX,
+  0,
   qfile_alloc_sort_list,
   qfile_dealloc_sort_list,
   NULL,

@@ -161,6 +161,7 @@ static LF_ENTRY_DESCRIPTOR session_state_Descriptor = {
 
   LF_EM_USING_MUTEX,
 
+  0,
   session_state_alloc,
   session_state_free,
   session_state_init,
