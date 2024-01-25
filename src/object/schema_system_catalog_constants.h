@@ -18,7 +18,7 @@
 
 
 /*
- * schema_system_catalog_constants.h - declare systen catalog name constants
+ * schema_system_catalog_constants.h - declare system catalog name constants
  */
 
 #ifndef _SCHEMA_SYSTEM_CATALOG_CONSTANTS_H_

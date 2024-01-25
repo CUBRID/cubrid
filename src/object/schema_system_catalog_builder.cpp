@@ -38,7 +38,6 @@ namespace cubschema
 	return nullptr;
       }
 
-    // class_mop
     MOP class_mop = nullptr;
     if (sm_is_system_class (name))
       {

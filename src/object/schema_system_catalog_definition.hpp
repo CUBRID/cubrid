@@ -32,7 +32,6 @@
 
 namespace cubschema
 {
-  using nullable_string = std::optional<std::string>;
 
   enum class attribute_kind
   {
@@ -54,7 +53,7 @@ namespace cubschema
     std::string type;
     default_value_init_type dvalue_func;
 
-    attribute (const std::string &n, const std::string &t); // attribute_kind::COLUMN
+    attribute (const std::string &name, const std::string &type); // attribute_kind::COLUMN
     attribute (const std::string &name, const std::string &type, default_value_init_type dval_f); // attribute_kind::COLUMN
     attribute (const attribute_kind kind, const std::string &name);
     attribute (const attribute_kind kind, const std::string &name, const std::string &type);
