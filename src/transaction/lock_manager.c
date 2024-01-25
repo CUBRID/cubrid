@@ -583,7 +583,7 @@ LF_ENTRY_DESCRIPTOR obj_lock_entry_desc = {
   0,				/* does not have a key, not used in a hash table */
   0,				/* does not have a mutex, protected by resource mutex */
   LF_EM_NOT_USING_MUTEX,
-  prm_get_integer_value (PRM_ID_LK_ESCALATION_AT),
+  0,
   lock_alloc_entry,
   lock_dealloc_entry,
   lock_init_entry,
@@ -612,7 +612,7 @@ LF_ENTRY_DESCRIPTOR lk_Obj_lock_res_desc = {
   offsetof (LK_RES, key),
   offsetof (LK_RES, res_mutex),
   LF_EM_USING_MUTEX,
-  prm_get_integer_value (PRM_ID_LK_ESCALATION_AT),
+  0,
   lock_alloc_resource,
   lock_dealloc_resource,
   lock_init_resource,
@@ -1115,6 +1115,7 @@ lock_initialize_object_hash_table (void)
 
   const int block_count = 2;
   const int block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_RES_RATIO) / block_count, 1);
+  lk_Obj_lock_res_desc.max_alloc_cnt = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
 
   /* initialize object hash table */
   lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size, block_size, block_count,
@@ -1142,6 +1143,8 @@ lock_initialize_object_lock_entry_list (void)
   /* initialize the entry freelist */
   block_count = 1;
   block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_ENTRY_RATIO), 1);
+  obj_lock_entry_desc.max_alloc_cnt = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
+
   ret = lf_freelist_init (&lk_Gl.obj_free_entry_list, block_count, block_size, &obj_lock_entry_desc, &obj_lock_ent_Ts);
   if (ret != NO_ERROR)
     {
