@@ -3872,7 +3872,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 
-      if (regu_var->xasl)
+      if (regu_var->xasl && !regu_var->xasl->aptr_list && !regu_var->xasl->dptr_list)
 	{
 	  if (sq_get (thread_p, regu_var->xasl, &regu_var->value.dbvalptr))
 	    {

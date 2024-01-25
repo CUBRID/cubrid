@@ -50,7 +50,6 @@ typedef struct _sq_key
 
 typedef struct _sq_val
 {
-  //VAL_LIST *single_tuple;
   DB_VALUE *dbval;
 } sq_val;
 
@@ -213,6 +212,28 @@ sq_add_val_to_list (DB_VALUE * dbv, VAL_LIST * list)
 }
 
 static void
+sq_regu_var_handler (regu_variable_node * p, VAL_LIST * dest)
+{
+  if (!p)
+    {
+      return;
+    }
+  if (p->type == TYPE_CONSTANT)
+    {
+      sq_add_val_to_list (p->value.dbvalptr, dest);
+    }
+  else if (p->type == TYPE_DBVAL)
+    {
+      sq_add_val_to_list (&p->value.dbval, dest);
+    }
+  else if (p->type == TYPE_INARITH)
+    {
+      sq_regu_var_handler (p->value.arithptr->leftptr, dest);
+      sq_regu_var_handler (p->value.arithptr->rightptr, dest);
+    }
+}
+
+static void
 sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest)
 {
 
@@ -221,27 +242,22 @@ sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest)
       return;
     }
 
-  if (src->type == T_EVAL_TERM && src->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
+  if (src->type == T_PRED)
     {
-      COMP_EVAL_TERM t = src->pe.m_eval_term.et.et_comp;
+      sq_add_term_to_list (src->pe.m_pred.lhs, dest);
+      sq_add_term_to_list (src->pe.m_pred.rhs, dest);
+      return;
+    }
 
-      if (t.lhs && t.lhs->type == TYPE_CONSTANT)
+  if (src->type == T_EVAL_TERM)
+    {
+      if (src->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
 	{
-	  sq_add_val_to_list (t.lhs->value.dbvalptr, dest);
-	}
-      else if (t.lhs && t.lhs->type == TYPE_DBVAL)
-	{
-	  sq_add_val_to_list (&t.lhs->value.dbval, dest);
+	  COMP_EVAL_TERM t = src->pe.m_eval_term.et.et_comp;
+	  sq_regu_var_handler (t.lhs, dest);
+	  sq_regu_var_handler (t.rhs, dest);
 	}
 
-      if (t.rhs && t.rhs->type == TYPE_CONSTANT)
-	{
-	  sq_add_val_to_list (t.rhs->value.dbvalptr, dest);
-	}
-      else if (t.rhs && t.rhs->type == TYPE_DBVAL)
-	{
-	  sq_add_val_to_list (&t.rhs->value.dbval, dest);
-	}
 
     }
 
@@ -253,6 +269,14 @@ sq_make_key (xasl_node * xasl)
   sq_key *keyp;
   ACCESS_SPEC_TYPE *p;
   int cnt;
+
+  p = xasl->spec_list;
+
+  if (p && !p->where_key && !p->where_pred && !p->where_range)
+    {
+      /* this should be modified later, no conditions -> not caching? */
+      return NULL;
+    }
 
   keyp = (sq_key *) malloc (sizeof (sq_key));
   memset (keyp, 0, sizeof (sq_key));
@@ -412,7 +436,6 @@ sq_make_val (xasl_node * xasl, DB_VALUE * result)
   sq_val *val;
   val = (sq_val *) malloc (sizeof (sq_val));
   val->dbval = db_value_copy (result);
-  //sq_copy_val_list (xasl->single_tuple, &(val->single_tuple), true);
 
   return val;
 }
@@ -421,7 +444,6 @@ static void
 sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp)
 {
 
-  //sq_copy_val_list (val->single_tuple, &(xasl->single_tuple), false);
 
   if (*retp)
     {
@@ -471,6 +493,12 @@ sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, DB_VALUE * result)
 
 
   sq_key *key = sq_make_key (xasl);
+
+  if (key == NULL)
+    {
+      return ER_FAILED;
+    }
+
   sq_val *val = sq_make_val (xasl, result);
 
   ret = mht_put_if_not_exists (sq_cache->hashtable, key, val);
@@ -489,14 +517,20 @@ bool
 sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, DB_VALUE ** retp)
 {
   sq_cache *sq_cache = &sq_cache_by_thread[thread_p->index % 100];
+  sq_key *key;
+  sq_val *ret;
 
   if (sq_cache->enabled == false)
     {
       sq_cache_initialize (thread_p);
     }
 
-  sq_key *key = sq_make_key (xasl);
-  sq_val *ret;
+  key = sq_make_key (xasl);
+
+  if (key == NULL)
+    {
+      return false;
+    }
 
   ret = (sq_val *) mht_get (sq_cache->hashtable, key);
 
