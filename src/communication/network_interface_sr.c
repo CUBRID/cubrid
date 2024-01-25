@@ -225,6 +225,7 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
 				   TRAN_STATE * tran_state, bool * should_conn_reset)
 {
   int error_code, all_error_code, i;
+  int num_query_ids = n_query_ids;
 
   assert (tran_state != NULL && should_conn_reset != NULL && end_query_allowed != NULL);
 
@@ -236,7 +237,7 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
 	{
 	  _er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: active transaction.\n");
 	}
-      return;
+      num_query_ids--;
     }
 
   /* We commit/abort transaction, after ending queries. */
@@ -244,7 +245,7 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
   if ((*tran_state != TRAN_UNACTIVE_ABORTED) && (*tran_state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS))
     {
       /* If not already aborted, ends the queries. */
-      for (i = 0; i < n_query_ids; i++)
+      for (i = 0; i < num_query_ids; i++)
 	{
 	  if (p_end_queries[i] > 0)
 	    {
