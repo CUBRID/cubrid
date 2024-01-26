@@ -56,7 +56,6 @@ namespace cubschema
 	assert (false);
       }
 
-    assert (er_errid () == NO_ERROR);
     return class_mop;
   }
 
