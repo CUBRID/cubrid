@@ -18017,6 +18017,11 @@ error:
       free_and_init (*oid_listp);
     }
 
+  if (*lock_listp)
+    {
+      free_and_init (*lock_listp);
+    }
+
   if (*tcard_listp)
     {
       free_and_init (*tcard_listp);
