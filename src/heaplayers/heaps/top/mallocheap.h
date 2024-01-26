@@ -55,7 +55,7 @@ throw ();
 	 inline void *malloc (size_t sz)
 	 {
 #ifdef SERVER_MODE
-	   if (is_mem_tracked)
+	   if (mmon_is_mem_tracked ())
 	     {
 	       void *p =::malloc (sz + MMON_ALLOC_META_SIZE);
 	       if (p != NULL)
@@ -76,7 +76,7 @@ throw ();
 	 inline void free (void *ptr)
 	 {
 #ifdef SERVER_MODE
-	   if (is_mem_tracked)
+	   if (mmon_is_mem_tracked ())
 	     {
 	       mmon_sub_stat ((char *) ptr);
 	     }

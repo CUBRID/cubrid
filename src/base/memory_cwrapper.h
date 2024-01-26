@@ -51,16 +51,12 @@ get_alloc_size (void *ptr)
 inline void
 cub_free (void *ptr)
 {
-  char *p = (char *) ptr;
-
-  if (is_mem_tracked && ptr != NULL)
+  if (mmon_is_mem_tracked () && ptr != NULL)
     {
-      mmon_sub_stat (p);
-      assert (malloc_usable_size (p) != 0);
+      mmon_sub_stat ((char *) ptr);
+      assert (malloc_usable_size (ptr) != 0);
     }
-  // XXX: for debug / it will be deleted when the last phase
-  //fprintf(stdout, "cub_free called\n");
-  free (p);
+  free (ptr);
 }
 
 inline void *
@@ -68,12 +64,11 @@ cub_alloc (size_t size, const char *file, const int line)
 {
   void *p = NULL;
 
-  if (is_mem_tracked)
+  if (mmon_is_mem_tracked ())
     {
       p = malloc (size + MMON_ALLOC_META_SIZE);
       if (p != NULL)
 	{
-	  memset (p, 0, size + MMON_ALLOC_META_SIZE);
 	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
 	}
     }
@@ -90,12 +85,11 @@ cub_calloc (size_t num, size_t size, const char *file, const int line)
 {
   void *p = NULL;
 
-  if (is_mem_tracked)
+  if (mmon_is_mem_tracked ())
     {
       p = malloc (num * size + MMON_ALLOC_META_SIZE);
       if (p != NULL)
 	{
-	  memset (p, 0, num * size + MMON_ALLOC_META_SIZE);
 	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
 	}
     }
@@ -112,19 +106,15 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 {
   void *p = NULL;
 
-  if (is_mem_tracked)
+  if (mmon_is_mem_tracked ())
     {
       p = malloc (size + MMON_ALLOC_META_SIZE);
       if (p != NULL)
 	{
-	  memset (p, 0, size + MMON_ALLOC_META_SIZE);
 	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
 
 	  if (ptr != NULL)
 	    {
-              //fprintf (stderr, "[cub_realloc] ptr = %p, get_alloc_size(ptr) = %lu, p = %p, malloc_usable_size(p) = %lu, size = %lu\n",
-              //                  ptr, get_alloc_size (ptr), p, malloc_usable_size(p), size + MMON_ALLOC_META_SIZE);
-              //fflush (stderr);
 	      memcpy (p, ptr, get_alloc_size (ptr));
 	      cub_free (ptr);
 	    }

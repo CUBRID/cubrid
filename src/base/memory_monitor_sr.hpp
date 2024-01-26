@@ -56,20 +56,16 @@ namespace cubmem
       int generate_checksum (int tag_id, uint64_t size);
 
     private:
-      std::unordered_map<std::string, std::string> m_tag_name_map; // file nmae <-> tag name
       std::unordered_map<std::string, int> m_tag_map; // tag name <-> tag id
       std::unordered_map<int, std::atomic<uint64_t>> m_stat_map; // tag id <-> memory usage
-      mutable std::mutex m_tag_name_map_mutex;
       mutable std::mutex m_tag_map_mutex;
-      mutable std::mutex m_checksum_mutex;
       std::string m_server_name;
       std::atomic<uint64_t> m_total_mem_usage;
       int m_meta_alloc_count;
   };
 } //namespace cubmem
 
-extern bool is_mem_tracked;
-
+bool mmon_is_mem_tracked ();
 int mmon_initialize (const char *server_name);
 void mmon_finalize ();
 size_t mmon_get_alloc_size (char *ptr);

@@ -26,8 +26,8 @@
 #include <cstring>
 #include <sstream>
 #include <algorithm>
-#include <openssl/md5.h>
 
+#include "openssl/md5.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "memory_monitor_sr.hpp"
@@ -55,9 +55,6 @@ namespace cubmem
     : m_server_name {server_name}
   {
     m_total_mem_usage = 0;
-    m_tag_name_map.reserve (1000);
-    m_tag_map.reserve (1000);
-    m_stat_map.reserve (1000);
     m_meta_alloc_count = 0;
   }
 
@@ -84,42 +81,18 @@ namespace cubmem
 
   std::string memory_monitor::make_tag_name (const char *file, const int line)
   {
-    // TODO: for windows, delimiter should change "/" to "\\"
     std::string filecopy (file);
-    std::string fileline = filecopy + ':' + std::to_string (line);
-
-    std::lock_guard<std::mutex> lock(m_tag_name_map_mutex);
-    if (filecopy[0] == '/') // absolute path
-      {
-        auto search = m_tag_name_map.find (fileline);
-        if (search != m_tag_name_map.end ())
-          {
-            return search->second;
-          }
-      }
-
     std::string ret;
-    std::istringstream iss(filecopy);
-    std::string token;
-    while (std::getline (iss, token, '/'))
+
+    // Find the last occurrence of "src" in the path
+    size_t pos = filecopy.rfind ("src");
+
+    if (pos != std::string::npos)
       {
-        if (token == "src")
-          {
-            std::getline (iss, ret);
-            break;
-          }
+        filecopy = filecopy.substr (pos);
       }
 
-    if (ret.empty ())
-      {
-        ret = filecopy;
-      }
-    ret += ':' + std::to_string (line);
-
-      {
-        std::pair <std::string, std::string> entry (fileline, ret);
-        m_tag_name_map.insert (entry);
-      }
+    ret = filecopy + ':' + std::to_string (line);
     return ret;
   }
 
@@ -132,11 +105,8 @@ namespace cubmem
     memset (input, 0, sizeof (input));
     memset (digest, 0, sizeof (digest));
     sprintf (input, "%d%lu", tag_id, size);
-    {
-      std::lock_guard<std::mutex> lock (m_checksum_mutex);
-      (void) MD5 (reinterpret_cast<const unsigned char *>(input), strlen (input), digest);
-      memcpy (&ret, digest, sizeof (int));
-    }
+    (void) MD5 (reinterpret_cast<const unsigned char *> (input), strlen (input), digest);
+    memcpy (&ret, digest, sizeof (int));
     return ret;
   }
 
@@ -188,20 +158,23 @@ namespace cubmem
 	return;
       }
 
-    meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
-
-    memcpy (&metainfo, meta_ptr, sizeof (MMON_METAINFO));
-
-    if (metainfo.checksum == generate_checksum (metainfo.tag_id, metainfo.size))
+    if (alloc_size > MMON_ALLOC_META_SIZE)
       {
-	assert ((metainfo.tag_id >= 0 && metainfo.tag_id <= m_stat_map.size()));
-	assert (m_stat_map[metainfo.tag_id] >= metainfo.size);
+        meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
 
-	m_total_mem_usage -= metainfo.size;
-	m_stat_map[metainfo.tag_id] -= metainfo.size;
+        memcpy (&metainfo, meta_ptr, sizeof (MMON_METAINFO));
 
-	memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
-	m_meta_alloc_count--;
+        if (metainfo.checksum == generate_checksum (metainfo.tag_id, metainfo.size))
+          {
+            assert ((metainfo.tag_id >= 0 && metainfo.tag_id <= m_stat_map.size()));
+            assert (m_stat_map[metainfo.tag_id] >= metainfo.size);
+
+            m_total_mem_usage -= metainfo.size;
+            m_stat_map[metainfo.tag_id] -= metainfo.size;
+
+            memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
+            m_meta_alloc_count--;
+          }
       }
   }
 
@@ -262,6 +235,11 @@ namespace cubmem
 
 using namespace cubmem;
 
+bool mmon_is_mem_tracked ()
+{
+  return (mmon_Gl != nullptr);
+}
+
 int mmon_initialize (const char *server_name)
 {
   int error = NO_ERROR;
@@ -279,27 +257,25 @@ int mmon_initialize (const char *server_name)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  return error;
 	}
-      is_mem_tracked = true;
     }
   return error;
 }
 
 void mmon_finalize ()
 {
-  if (mmon_Gl != nullptr)
+  if (mmon_is_mem_tracked ())
     {
 #if !defined (NDEBUG)
       mmon_Gl->finalize_dump ();
 #endif
       delete mmon_Gl;
       mmon_Gl = nullptr;
-      is_mem_tracked = false;
     }
 }
 
 size_t mmon_get_alloc_size (char *ptr)
 {
-  if (mmon_Gl != nullptr)
+  if (mmon_is_mem_tracked ())
     {
       return mmon_Gl->get_alloc_size (ptr);
     }
@@ -309,7 +285,7 @@ size_t mmon_get_alloc_size (char *ptr)
 
 void mmon_add_stat (char *ptr, size_t size, const char *file, const int line)
 {
-  if (mmon_Gl != nullptr)
+  if (mmon_is_mem_tracked ())
     {
       mmon_Gl->add_stat (ptr, size, file, line);
     }
@@ -318,7 +294,7 @@ void mmon_add_stat (char *ptr, size_t size, const char *file, const int line)
 
 void mmon_sub_stat (char *ptr)
 {
-  if (mmon_Gl != nullptr)
+  if (mmon_is_mem_tracked ())
     {
       mmon_Gl->sub_stat (ptr);
     }
@@ -326,7 +302,7 @@ void mmon_sub_stat (char *ptr)
 
 void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
 {
-  if (mmon_Gl != nullptr)
+  if (mmon_is_mem_tracked ())
     {
       mmon_Gl->aggregate_server_info (server_info);
     }

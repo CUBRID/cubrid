@@ -24,23 +24,17 @@
 #define _MEMORY_CPPWRAPPER_HPP_
 
 #include "memory_cwrapper.h"
-// XXX: for test
-#include <stdio.h>
 
 #ifdef SERVER_MODE
 inline void *operator new (size_t size, const char *file, const int line)
 {
   void *p = cub_alloc (size, file, line);
-  // XXX: for debug / it will be deleted when the last phase
-  //fprintf (stdout, "overloaded new: %s\n", file);
   return p;
 }
 
 inline void *operator new[] (size_t size, const char *file, const int line)
 {
   void *p = cub_alloc (size, file, line);
-  // XXX: for debug / it will be deleted when the last phase
-  //fprintf (stdout, "overloaded new[]: %s\n", file);
   return p;
 }
 
