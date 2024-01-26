@@ -6564,50 +6564,6 @@ sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
 }
 
 /*
- * xs_send_method_call_info_to_client -
- *
- * return:
- *
- *   list_id(in):
- *   method_sig_list(in):
- *
- * NOTE:
- */
-int
-xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, qfile_list_id * list_id, method_sig_list * methsg_list)
-{
-  int length = 0;
-  char *databuf;
-  char *ptr;
-  unsigned int rid;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  rid = css_get_comm_request_id (thread_p);
-  length = or_listid_length ((void *) list_id);
-  length += or_method_sig_list_length ((void *) methsg_list);
-  ptr = or_pack_int (reply, (int) METHOD_CALL);
-  ptr = or_pack_int (ptr, length);
-
-#if !defined(NDEBUG)
-  /* suppress valgrind UMW error */
-  memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
-#endif
-
-  databuf = (char *) db_private_alloc (thread_p, length);
-  if (databuf == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  ptr = or_pack_listid (databuf, (void *) list_id);
-  ptr = or_pack_method_sig_list (ptr, (void *) methsg_list);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), databuf, length);
-  db_private_free_and_init (thread_p, databuf);
-  return NO_ERROR;
-}
-
-/*
  * xs_receive_data_from_client -
  *
  * return:
