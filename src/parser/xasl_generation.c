@@ -18114,6 +18114,7 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * seria
   *nump = o_num;
   *sizep = o_size;
   *oid_listp = o_list;
+  *lock_listp = lck_list;
   *tcard_listp = t_list;
 
   return o_num;
