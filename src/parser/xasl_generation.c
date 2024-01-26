@@ -57,7 +57,7 @@
 #include "porting.h"
 #include "execute_statement.h"
 #include "query_graph.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "query_planner.h"
 #include "semantic_check.h"
 #include "query_dump.h"
