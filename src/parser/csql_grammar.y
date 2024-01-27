@@ -3620,7 +3620,6 @@ alter_stmt
 			if (node)
 			  {
 				node->info.alter_user.user_name = $3;
-				
 			  }
 
 			$$ = node;
@@ -4140,7 +4139,6 @@ alter_clause_alter_user
 			  {
 				node->info.alter_user.alter_user_type = PT_ADD_GROUPS_OR_MEMBERS;
 				node->info.alter_user.groups = $2;
-				
 			  }
 
 			$$ = node;
@@ -4157,7 +4155,6 @@ alter_clause_alter_user
 			  {
 				node->info.alter_user.alter_user_type = PT_ADD_GROUPS_OR_MEMBERS;
 				node->info.alter_user.members = $2;
-				
 			  }
 
 			$$ = node;
@@ -4174,7 +4171,6 @@ alter_clause_alter_user
 			  {
 				node->info.alter_user.alter_user_type = PT_DROP_GROUPS_OR_MEMBERS;
 				node->info.alter_user.groups = $2;
-				
 			  }
 
 			$$ = node;
