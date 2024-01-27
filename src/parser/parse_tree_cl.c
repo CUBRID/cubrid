@@ -3454,6 +3454,10 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "public";
     case PT_SYNONYM:
       return "synonym";
+    case PT_ADD_GROUPS_OR_MEMBERS:
+      return "add groups or members";
+    case PT_DROP_GROUPS_OR_MEMBERS:
+      return "drop groups or members";
     default:
       return "MISC_TYPE: type unknown";
     }
@@ -6434,12 +6438,24 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r1);
     }
 
+  if (p->info.alter_user.alter_user_type == PT_ADD_GROUPS_OR_MEMBERS)
+    {
+      b = pt_append_nulstring (parser, b, " add ");
+      b = pt_append_nulstring (parser, b, pt_show_misc_type (p->info.alter_user.alter_user_type));
+    }
+  else if (p->info.alter_user.alter_user_type == PT_DROP_GROUPS_OR_MEMBERS)
+    {
+      b = pt_append_nulstring (parser, b, " drop ");
+      b = pt_append_nulstring (parser, b, pt_show_misc_type (p->info.alter_user.alter_user_type));
+    }
+
   if (p->info.alter_user.groups != NULL)
     {
       r1 = pt_print_bytes (parser, p->info.alter_user.groups);
       b = pt_append_nulstring (parser, b, " groups ");
       b = pt_append_varchar (parser, b, r1);
     }
+
   if (p->info.alter_user.members != NULL)
     {
       r1 = pt_print_bytes (parser, p->info.alter_user.members);

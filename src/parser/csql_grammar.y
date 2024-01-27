@@ -647,6 +647,7 @@ int g_original_buffer_len;
 %type <node> transaction_stmt
 %type <node> alter_stmt
 %type <node> alter_clause_list
+%type <node> alter_clause_alter_user
 %type <node> rename_stmt
 %type <node> rename_class_list
 %type <node> rename_class_pair
@@ -3608,21 +3609,18 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER			/* 1 */
-	  USER			/* 2 */
-	  identifier	        /* 3 */
-	  ADD			/* 4 */
-	  opt_groups	        /* 5 */
-	  opt_members	    	/* 6 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier ADD opt_groups opt_members);
+	| ALTER				/* 1 */
+	  USER				/* 2 */
+	  identifier	        	/* 3 */
+	  alter_clause_alter_user  	/* 4 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier alter_clause_alter_user);
 
-			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
+			PT_NODE *node = $4;
 
 			if (node)
 			  {
 				node->info.alter_user.user_name = $3;
-				node->info.alter_user.groups = $5;
-				node->info.alter_user.members = $6;
+				
 			  }
 
 			$$ = node;
@@ -4126,6 +4124,77 @@ alter_clause_list
 		{{ DBG_TRACE_GRAMMAR(alter_clause_list, | alter_clause_for_alter_list);
 
 			$$ = parser_get_alter_node ();
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+alter_clause_alter_user
+	: ADD		/* 1 */
+	  opt_groups	/* 2 */
+		{{ DBG_TRACE_GRAMMAR(alter_clause_alter_user, | ADD opt_groups);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
+
+			if (node)
+			  {
+				node->info.alter_user.alter_user_type = PT_ADD_GROUPS_OR_MEMBERS;
+				node->info.alter_user.groups = $2;
+				
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ADD		/* 1 */
+	  opt_members	/* 2 */
+		{{ DBG_TRACE_GRAMMAR(alter_clause_alter_user, | ADD opt_members);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
+
+			if (node)
+			  {
+				node->info.alter_user.alter_user_type = PT_ADD_GROUPS_OR_MEMBERS;
+				node->info.alter_user.members = $2;
+				
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| DROP		/* 1 */
+	  opt_groups	/* 2 */
+		{{ DBG_TRACE_GRAMMAR(alter_clause_alter_user, | DROP opt_groups);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
+
+			if (node)
+			  {
+				node->info.alter_user.alter_user_type = PT_DROP_GROUPS_OR_MEMBERS;
+				node->info.alter_user.groups = $2;
+				
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| DROP		/* 1 */
+	  opt_members	/* 2 */
+		{{ DBG_TRACE_GRAMMAR(alter_clause_alter_user, | DROP opt_members);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
+
+			if (node)
+			  {
+				node->info.alter_user.alter_user_type = PT_DROP_GROUPS_OR_MEMBERS;
+				node->info.alter_user.members = $2;
+				
+			  }
+
+			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}

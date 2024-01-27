@@ -2278,7 +2278,14 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	  else
 	    {
-	      error = db_add_member (group, user);
+	      if(statement->info.alter_user.alter_user_type == PT_ADD_GROUPS_OR_MEMBERS)
+	      {
+	      	error = db_add_member (group, user);
+	      }
+	      else if(statement->info.alter_user.alter_user_type == PT_DROP_GROUPS_OR_MEMBERS)
+	      {
+		error = db_drop_member (group, user);
+	      }
 	    }
 
 	  if (error != NO_ERROR)
@@ -2308,7 +2315,14 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	  else
 	    {
-	      error = db_add_member (user, member);
+	      if(statement->info.alter_user.alter_user_type == PT_ADD_GROUPS_OR_MEMBERS)
+	      	{
+	      	  error = db_add_member (user, member);
+		}
+	      else if (statement->info.alter_user.alter_user_type == PT_DROP_GROUPS_OR_MEMBERS)
+		{
+		  error = db_drop_member (user, member);
+		}
 	    }
 
 	  if (error != NO_ERROR)

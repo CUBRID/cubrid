@@ -1323,7 +1323,11 @@ typedef enum
 
   PT_PRIVATE,
   PT_PUBLIC,
-  PT_SYNONYM
+  PT_SYNONYM,
+  
+  PT_ADD_GROUPS_OR_MEMBERS,		/* alter user type */
+  PT_DROP_GROUPS_OR_MEMBERS
+
     // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
@@ -2016,6 +2020,7 @@ struct pt_alter_user_info
   PT_NODE *user_name;		/* PT_NAME */
   PT_NODE *password;		/* PT_VALUE (string) */
   PT_NODE *comment;		/* PT_VALUE */
+  PT_MISC_TYPE alter_user_type;	/* PT_ADD_GROUPS_OR_MEMBERS, PT_DROP_GROUPS_OR_MEMBERS */
   PT_NODE *groups;		/* PT_NAME list */
   PT_NODE *members;		/* PT_NAME list */
 };
