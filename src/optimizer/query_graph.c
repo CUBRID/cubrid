@@ -2195,20 +2195,14 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		  lhs_indexable = true;
 		}
 	    }
-	  else if (pt_is_multi_col_term (lhs_expr))
+	  else if (pt_is_multi_col_term (lhs_expr) && lhs_expr->flag.is_paren)
 	    {
-	      /* multi column case (attr,attr,...) is indexable for RANGE, EQ operation */
+	      /* multi column case (attr,attr,...) is indexable for RANGE operation */
 	      func_arg = lhs_expr->info.function.arg_list;
 	      op_type = pt_expr->info.expr.op;
 
 	      switch (op_type)
 		{
-		case PT_EQ:
-		  if (!PT_IS_CONST (rhs_expr) || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
-		    {
-		      lhs_indexable = false;
-		    }
-		  break;
 		case PT_RANGE:
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 		    {
@@ -2249,7 +2243,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 			}
 		      segs++;
 		    }
-		  if (!is_find_local_name)
+		  if (!is_find_local_name || segs <= 1)
 		    {
 		      lhs_indexable = false;
 		    }
@@ -5015,6 +5009,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
   cum_statsp->key_type = NULL;
   cum_statsp->pkeys_size = 0;
   cum_statsp->pkeys = NULL;
+  attr_infop->ndv = 0;
 
   /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
   for (i = 0; i < n; class_info_entryp++, i++)
@@ -5194,6 +5189,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
       cum_statsp->key_type = NULL;
       cum_statsp->pkeys_size = 0;
       cum_statsp->pkeys = NULL;
+      attr_infop->ndv = 0;
 
       return attr_infop;
     }
@@ -5207,6 +5203,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   cum_statsp->key_type = NULL;
   cum_statsp->pkeys_size = 0;
   cum_statsp->pkeys = NULL;
+  attr_infop->ndv = 0;
 
   /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
   for (i = 0; i < n; class_info_entryp++, i++)
@@ -5250,6 +5247,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	  cum_statsp->is_indexed = false;
 	  continue;
 	}
+
+      /* set Number of Distinct Values */
+      attr_infop->ndv += attr_statsp->ndv;
 
       if (cum_statsp->valid_limits == false)
 	{
@@ -5838,7 +5838,8 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   assert (query->node_type == PT_SELECT);
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
       || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA) || query->flag.is_system_generated_stmt
-      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
+      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT)
+      || (query->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN))
     {
       env->plan_dump_enabled = false;
     }
@@ -6992,21 +6993,9 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_
     {
       return 0;			/* disable loose index scan */
     }
-  else if ((tree->info.query.q.select.hint & PT_HINT_INDEX_LS) && (QO_NODE_HINT (nodep) & PT_HINT_INDEX_LS))
-    {				/* enable loose index scan */
-      if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
-	  || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
-	{			/* skip scan is disabled */
-	  ;			/* go ahead */
-	}
-      else
-	{			/* skip scan is enabled */
-	  return 0;
-	}
-    }
-  else
+  else if (!(tree->info.query.q.select.hint & PT_HINT_INDEX_LS) || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_LS))
     {
-      return 0;			/* no hint */
+      return 0;			/* disable loose index scan */
     }
 
   if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_DISABLE_LOOSE_SCAN))
@@ -7112,8 +7101,8 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
     }
 
   /* check hint */
-  if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
-      || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
+  if ((tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS)
+      || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS) || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
     {
       return false;
     }
@@ -7510,16 +7499,16 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
 	      index_entryp->cover_segments = qo_is_coverage_index (env, nodep, index_entryp);
 
-	      index_entryp->is_iss_candidate = qo_is_iss_index (env, nodep, index_entryp);
+	      index_entryp->ils_prefix_len = qo_get_ils_prefix_length (env, nodep, index_entryp);
 
-	      /* disable loose scan if skip scan is possible */
-	      if (index_entryp->is_iss_candidate == true)
+	      /* disable skip scan if loose scan is possible */
+	      if (index_entryp->ils_prefix_len > 0)
 		{
-		  index_entryp->ils_prefix_len = 0;
+		  index_entryp->is_iss_candidate = false;
 		}
 	      else
 		{
-		  index_entryp->ils_prefix_len = qo_get_ils_prefix_length (env, nodep, index_entryp);
+		  index_entryp->is_iss_candidate = qo_is_iss_index (env, nodep, index_entryp);
 		}
 
 	      index_entryp->statistics_attribute_name = NULL;
@@ -7651,7 +7640,8 @@ qo_discover_indexes (QO_ENV * env)
 	   * sequential scan is needed).
 	   */
 	  if (!PT_IS_SPEC_FLAG_SET (QO_NODE_ENTITY_SPEC (nodep),
-				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
+				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN |
+				     PT_SPEC_FLAG_SAMPLING_SCAN)))
 	    {
 	      qo_find_node_indexes (env, nodep);
 	      if (0 < QO_NODE_INFO_N (nodep) && QO_NODE_INDEXES (nodep) != NULL)
@@ -9052,7 +9042,7 @@ qo_term_dump (QO_TERM * term, FILE * f)
     {
       fprintf (f, " (ord %d)", QO_TERM_PRED_ORDER (term));
     }
-  fprintf (f, " (sel %g)", QO_TERM_SELECTIVITY (term));
+  fprintf (f, " (sel %G)", QO_TERM_SELECTIVITY (term));
 
   if (QO_TERM_RANK (term) > 1)
     {

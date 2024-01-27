@@ -2187,13 +2187,13 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 
   /* replace rownum of select-list to orderby_num */
   statement->info.query.q.select.list =
-    pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 0, false);
+    pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 2, false);
 
   /* replace rownum of where to orderby_num */
   where = statement->info.query.q.select.where;
   if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY) && statement->info.query.order_by)
     {
-      where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 0, false);
+      where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 2, false);
 
       /* move prev orderby_for to orderby_for */
       prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
@@ -4151,7 +4151,11 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
 	  /* wrapped cast should be pushed and it will be removed while rewriting the dblink query */
 	  if (term->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_CAST_WRAP))
 	    {
-	      return true;
+	      /* it needs to check if the argument is pushable */
+	      if (mq_is_dblink_pushable_term (parser, term->info.expr.arg1))
+		{
+		  return true;
+		}
 	    }
 
 	  /* other expression like built-in and stored function and etc. */

@@ -53,8 +53,8 @@ namespace cubmethod
 
     // init runtime context
     session_get_method_runtime_context (thread_p, m_rctx);
+    session_get_session_id (thread_p, &m_sid);
 
-    m_sid = thread_p->conn_entry->session_id;
     m_tid = logtb_find_current_tranid (thread_p);
 
     method_sig_node *sig = sig_list.method_sig;

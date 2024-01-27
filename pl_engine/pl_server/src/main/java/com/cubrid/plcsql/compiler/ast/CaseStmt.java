@@ -43,6 +43,12 @@ public class CaseStmt extends AstNode {
     public final Expr val;
     public final NodeList<Stmt> stmts;
 
+    public String opExtension = "";
+
+    public void setOpExtension(String ext) {
+        opExtension = ext;
+    }
+
     public CaseStmt(ParserRuleContext ctx, Expr val, NodeList<Stmt> stmts) {
         super(ctx);
 

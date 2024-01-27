@@ -20,14 +20,14 @@
  * limitations under the License.
  */
 
-parser grammar PcsParser;
+parser grammar PlcParser;
 
 @header {
 package com.cubrid.plcsql.compiler.antlrgen;
 }
 
 options {
-    tokenVocab=PcsLexer;
+    tokenVocab=PlcLexer;
 }
 
 sql_script
@@ -35,7 +35,7 @@ sql_script
     ;
 
 create_routine
-    : CREATE (OR_REPLACE)? routine_definition
+    : CREATE (OR_REPLACE)? routine_definition (COMMENT CHAR_STRING)?
     ;
 
 routine_definition
@@ -119,7 +119,7 @@ statement
     ;
 
 execute_immediate
-    : EXECUTE IMMEDIATE dyn_sql (into_clause? using_clause? | using_clause into_clause)
+    : EXECUTE IMMEDIATE dyn_sql (into_clause? restricted_using_clause? | restricted_using_clause into_clause)
     ;
 
 dyn_sql
@@ -155,12 +155,12 @@ else_part
     ;
 
 loop_statement
-    : label_declaration? LOOP seq_of_statements END LOOP                        # stmt_basic_loop
-    | label_declaration? WHILE expression LOOP seq_of_statements END LOOP       # stmt_while_loop
-    | label_declaration? FOR iterator LOOP seq_of_statements END LOOP           # stmt_for_iter_loop
-    | label_declaration? FOR for_cursor LOOP seq_of_statements END LOOP         # stmt_for_cursor_loop
-    | label_declaration? FOR for_static_sql LOOP seq_of_statements END LOOP     # stmt_for_static_sql_loop
-    | label_declaration? FOR for_dynamic_sql LOOP seq_of_statements END LOOP    # stmt_for_dynamic_sql_loop
+    : label_declaration? LOOP seq_of_statements END LOOP label_name?                       # stmt_basic_loop
+    | label_declaration? WHILE expression LOOP seq_of_statements END LOOP label_name?      # stmt_while_loop
+    | label_declaration? FOR iterator LOOP seq_of_statements END LOOP label_name?          # stmt_for_iter_loop
+    | label_declaration? FOR for_cursor LOOP seq_of_statements END LOOP label_name?        # stmt_for_cursor_loop
+    | label_declaration? FOR for_static_sql LOOP seq_of_statements END LOOP label_name?    # stmt_for_static_sql_loop
+    | label_declaration? FOR for_dynamic_sql LOOP seq_of_statements END LOOP label_name?   # stmt_for_dynamic_sql_loop
     ;
 
  // actually far more complicated according to the Spec.
@@ -262,7 +262,6 @@ fetch_statement
 
 open_for_statement
     : OPEN identifier FOR static_sql
-    //| OPEN identifier FOR dyn_sql using_clause?   TODO
     ;
 
 transaction_control_statement
@@ -311,7 +310,7 @@ in_expression
 
 like_expression
     : is_null_expression                                                                # like_expression_prime
-    | like_expression NOT? LIKE pattern=quoted_string (ESCAPE escape=quoted_string)?    # like_exp
+    | like_expression NOT? LIKE pattern=concatenation (ESCAPE escape=quoted_string)?    # like_exp
     ;
 
 is_null_expression
@@ -322,7 +321,8 @@ is_null_expression
 concatenation
     : unary_expression                                          # concatenation_prime
     | concatenation ('*' | '/' | DIV | MOD) concatenation       # mult_exp
-    | concatenation ('+' | '-' | '||') concatenation            # add_exp
+    | concatenation ('+' | '-' ) concatenation                  # add_exp
+    | concatenation '||' concatenation                          # str_concat_exp
     | concatenation ('<<' | '>>') concatenation                 # bit_shift_exp
     | concatenation ('&') concatenation                         # bit_and_exp
     | concatenation ('^') concatenation                         # bit_xor_exp
@@ -349,7 +349,7 @@ atom
     ;
 
 function_call
-    : identifier function_argument
+    : function_name function_argument
     ;
 
 relational_operator
@@ -413,7 +413,7 @@ err_msg
     ;
 
 simple_case_statement
-    : CASE expression simple_case_statement_when_part+  case_statement_else_part? END CASE
+    : CASE expression simple_case_statement_when_part+  case_statement_else_part? END CASE label_name?
     ;
 
 simple_case_statement_when_part
@@ -421,7 +421,7 @@ simple_case_statement_when_part
     ;
 
 searched_case_statement
-    : CASE searched_case_statement_when_part+ case_statement_else_part? END CASE
+    : CASE searched_case_statement_when_part+ case_statement_else_part? END CASE label_name?
     ;
 
 searched_case_statement_when_part
@@ -434,14 +434,6 @@ case_statement_else_part
 
 restricted_using_clause
     : USING restricted_using_element (',' restricted_using_element)*
-    ;
-
-using_clause
-    : USING using_element (',' using_element)*
-    ;
-
-using_element
-    : (IN OUT? | OUT | INOUT)? expression
     ;
 
 restricted_using_element
@@ -478,7 +470,7 @@ record_name
     ;
 
 table_name
-    : identifier
+    : (identifier '.')? identifier
     ;
 
 column_name
@@ -501,6 +493,7 @@ type_spec
 native_datatype
     : numeric_type
     | char_type
+    | varchar_type
     | simple_type
     ;
 
@@ -509,12 +502,16 @@ numeric_type
     ;
 
 char_type
-    : (CHAR | CHARACTER | VARCHAR | CHAR VARYING | CHARACTER VARYING) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
+    : (CHAR | CHARACTER) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
+    ;
+
+varchar_type
+    : (VARCHAR | CHAR VARYING | CHARACTER VARYING) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
+    | STRING
     ;
 
 simple_type
     : BOOLEAN
-    | STRING
     | SHORT | SMALLINT
     | INT | INTEGER
     | BIGINT
@@ -553,13 +550,12 @@ quoted_string
     ;
 
 identifier
-    : regular_id
+    : REGULAR_ID
     | DELIMITED_ID
     ;
 
-  // REGULAR_ID + intersection of {lexer words} and {built-in function names}
-regular_id
-    : REGULAR_ID
+function_name
+    : identifier
     | DATE
     | DEFAULT
     | IF

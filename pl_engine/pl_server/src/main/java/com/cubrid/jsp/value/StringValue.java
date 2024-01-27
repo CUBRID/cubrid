@@ -36,8 +36,13 @@ import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZonedDateTime;
 
 public class StringValue extends Value {
+
     private String value;
 
     public StringValue(String value) {
@@ -148,34 +153,44 @@ public class StringValue extends Value {
     }
 
     public Date toDate() throws TypeMismatchException {
-        try {
-            return Date.valueOf(value);
-        } catch (IllegalArgumentException e) {
-            throw new TypeMismatchException(e.getMessage());
+        LocalDate lDate = DateTimeParser.DateLiteral.parse(value);
+        if (lDate == null) {
+            throw new TypeMismatchException("invalid DATE string: " + value);
+        } else if (lDate.equals(DateTimeParser.nullDate)) {
+            return new Date(0 - 1900, 0 - 1, 0); // 0000-00-00
+        } else {
+            return Date.valueOf(lDate);
         }
     }
 
     public Time toTime() throws TypeMismatchException {
-        try {
-            return Time.valueOf(value);
-        } catch (IllegalArgumentException e) {
-            throw new TypeMismatchException(e.getMessage());
+        LocalTime lTime = DateTimeParser.TimeLiteral.parse(value);
+        if (lTime == null) {
+            throw new TypeMismatchException("invalid TIME string: " + value);
+        } else {
+            return Time.valueOf(lTime);
         }
     }
 
     public Timestamp toTimestamp() throws TypeMismatchException {
-        try {
-            return Timestamp.valueOf(value);
-        } catch (IllegalArgumentException e) {
-            throw new TypeMismatchException(e.getMessage());
+        ZonedDateTime lTimestamp = DateTimeParser.TimestampLiteral.parse(value);
+        if (lTimestamp == null) {
+            throw new TypeMismatchException("invalid TIMESTAMP string: " + value);
+        } else if (lTimestamp.equals(DateTimeParser.nullDatetimeUTC)) {
+            return new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0); // 0000-00-00 00:00:00
+        } else {
+            return Timestamp.valueOf(lTimestamp.toLocalDateTime());
         }
     }
 
     public Timestamp toDatetime() throws TypeMismatchException {
-        try {
-            return Timestamp.valueOf(value);
-        } catch (IllegalArgumentException e) {
-            throw new TypeMismatchException(e.getMessage());
+        LocalDateTime lDatetime = DateTimeParser.DatetimeLiteral.parse(value);
+        if (lDatetime == null) {
+            throw new TypeMismatchException("invalid DATETIME string: " + value);
+        } else if (lDatetime.equals(DateTimeParser.nullDatetime)) {
+            return new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0); // 0000-00-00 00:00:00.000
+        } else {
+            return Timestamp.valueOf(lDatetime);
         }
     }
 

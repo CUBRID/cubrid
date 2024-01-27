@@ -20,7 +20,7 @@
  * limitations under the License.
  */
 
-lexer grammar PcsLexer;
+lexer grammar PlcLexer;
 
 @header {
 package com.cubrid.plcsql.compiler.antlrgen;
@@ -32,6 +32,7 @@ private boolean checkFirstLParen = false;   // to detect that it is actually not
 }
 
 // keywords that starts Static SQL
+// INSERT, REPLACE, TRAUNCATE: also a built-in function
 WITH:                         W I T H           { staticSqlParenMatch++; mode(STATIC_SQL); };
 SELECT:                       S E L E C T       { staticSqlParenMatch++; mode(STATIC_SQL); };
 INSERT:                       I N S E R T       { staticSqlParenMatch++; checkFirstLParen = true; mode(STATIC_SQL); };
@@ -54,13 +55,16 @@ CASE:                         C A S E ;
 CHARACTER:                    C H A R A C T E R ;
 CHAR:                         C H A R ;
 CLOSE:                        C L O S E ;
+COMMENT:                      C O M M E N T ;
 COMMIT:                       C O M M I T ;
 CONSTANT:                     C O N S T A N T ;
 CONTINUE:                     C O N T I N U E ;
-CREATE:                       C R E A T E;
+CREATE:                       C R E A T E ;
 CURSOR:                       C U R S O R ;
 DATE:                         D A T E ;
 DATETIME:                     D A T E T I M E ;
+DATETIMELTZ:                  D A T E T I M E L T Z ;
+DATETIMETZ:                   D A T E T I M E T Z ;
 DBMS_OUTPUT:                  D B M S '_' O U T P U T ;
 DEC:                          D E C ;
 DECIMAL:                      D E C I M A L ;
@@ -83,22 +87,24 @@ FUNCTION:                     F U N C T I O N ;
 IF:                           I F ;
 IMMEDIATE:                    I M M E D I A T E ;
 IN:                           I N ;
-INOUT:                        I N O U T;
+INOUT:                        I N O U T ;
 INTEGER:                      I N T E G E R ;
 INT:                          I N T ;
 INTO:                         I N T O ;
 IS:                           I S ;
 LANGUAGE:                     L A N G U A G E ;
 LIKE:                         L I K E ;
+LIST:                         L I S T ;
 LOOP:                         L O O P ;
 MOD:                          ( M O D | '%' ) ;
+MULTISET:                     M U L T I S E T ;
 NOT:                          N O T ;
 NULL_:                        N U L L ;
 NUMERIC:                      N U M E R I C ;
 OF:                           O F ;
 OPEN:                         O P E N ;
 OR_REPLACE:                   O R SPACE+ R E P L A C E ;
-OR:                           O R;
+OR:                           O R ;
 OUT:                          O U T ;
 PERCENT_FOUND:                '%' SPACE* F O U N D ;
 PERCENT_ISOPEN:               '%' SPACE* I S O P E N ;
@@ -115,15 +121,25 @@ REAL:                         R E A L ;
 RETURN:                       R E T U R N ;
 REVERSE:                      R E V E R S E ;
 ROLLBACK:                     R O L L B A C K ;
+SEQUENCE:                     S E Q U E N C E ;
+SET:                          S E T ;
+SETEQ:                        S E T E Q ;
+SETNEQ:                       S E T N E Q ;
 SHORT:                        S H O R T ;
 SMALLINT:                     S M A L L I N T ;
 SQL:                          S Q L ;
 SQLCODE:                      S Q L C O D E ;
 SQLERRM:                      S Q L E R R M ;
 STRING:                       S T R I N G ;
+SUBSET:                       S U B S E T ;
+SUBSETEQ:                     S U B S E T E Q ;
+SUPERSET:                     S U P E R S E T ;
+SUPERSETEQ:                   S U P E R S E T E Q ;
 SYS_REFCURSOR:                S Y S '_' R E F C U R S O R ;
 THEN:                         T H E N ;
 TIMESTAMP:                    T I M E S T A M P ;
+TIMESTAMPLTZ:                 T I M E S T A M P L T Z ;
+TIMESTAMPTZ:                  T I M E S T A M P T Z ;
 TIME:                         T I M E ;
 TRUE:                         T R U E ;
 USING:                        U S I N G ;
@@ -137,10 +153,12 @@ VARYING:                      V A R Y I N G ;
 PERIOD2:  '..';
 PERIOD:   '.';
 
-FLOATING_POINT_NUM: BASIC_UINT? '.' [0-9]+ ([eE] ('+'|'-')? BASIC_UINT)? [fF]?;
-UNSIGNED_INTEGER:    BASIC_UINT ([eE] ('+'|'-')? BASIC_UINT)?;
+// NOTE: a literal with 'e/E' notation is deemed to be a DOUBLE type numeric literal in CUBRID even when
+//       it does not have a floating point
+FLOATING_POINT_NUM: FPNUM_W_POINT | FPNUM_WO_POINT;
+UNSIGNED_INTEGER:   BASIC_UINT;
 
-DELIMITED_ID: ('"' | '[' | '`') REGULAR_ID ('"' | ']' | '`') ;
+DELIMITED_ID: ('"' REGULAR_ID '"') | ('[' REGULAR_ID ']') | ('`' REGULAR_ID '`') ;
 CHAR_STRING: '\''  (~('\'' | '\r' | '\n') | '\'' '\'' | NEWLINE)* '\'';
 
 NULL_SAFE_EQUALS_OP:          '<=>';
@@ -198,8 +216,12 @@ SPACES: [ \t\r\n]+ -> channel(HIDDEN);
 mode STATIC_SQL;
 // ************************
 
+SS_SINGLE_LINE_COMMENT:    '--' ~('\r' | '\n')* NEWLINE_EOF                 -> channel(HIDDEN);
+SS_SINGLE_LINE_COMMENT2:   '//' ~('\r' | '\n')* NEWLINE_EOF                 -> channel(HIDDEN);
+SS_MULTI_LINE_COMMENT:     '/*' .*? '*/'                                    -> channel(HIDDEN);
+
 SS_SEMICOLON :  ';' {
-        setType(PcsParser.SEMICOLON);
+        setType(PlcParser.SEMICOLON);
         staticSqlParenMatch = -1;
         checkFirstLParen = false;
         mode(DEFAULT_MODE);
@@ -210,13 +232,13 @@ SS_STR :        '\''  (~('\'' | '\r' | '\n') | '\'' '\'' | NEWLINE)* '\'' {
 SS_WS :         [ \t\r\n]+ ;
 SS_LPAREN :     '(' {
         if (checkFirstLParen) {
-            setType(PcsParser.LPAREN);
+            setType(PlcParser.LPAREN);
             staticSqlParenMatch = -1;
             checkFirstLParen = false;
             mode(DEFAULT_MODE);
         } else {
             staticSqlParenMatch++;
-            setType(PcsParser.SS_NON_STR);
+            setType(PlcParser.SS_NON_STR);
         }
     };
 SS_RPAREN :     ')' {
@@ -224,9 +246,9 @@ SS_RPAREN :     ')' {
         staticSqlParenMatch--;
         if (staticSqlParenMatch == -1) {
             mode(DEFAULT_MODE);
-            setType(PcsParser.RPAREN);
+            setType(PlcParser.RPAREN);
         } else {
-            setType(PcsParser.SS_NON_STR);
+            setType(PlcParser.SS_NON_STR);
         }
     };
 SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ {
@@ -237,6 +259,8 @@ SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ {
 // Fragment rules
 // ************************
 
+fragment FPNUM_W_POINT  : (BASIC_UINT? '.' [0-9]+ | BASIC_UINT '.') ([eE] ('+'|'-')? BASIC_UINT)? [fF]?;
+fragment FPNUM_WO_POINT : BASIC_UINT [eE] ('+'|'-')? BASIC_UINT [fF]?;
 fragment BASIC_UINT     : '0'|[1-9][0-9]*;
 fragment NEWLINE_EOF    : NEWLINE | EOF;
 fragment SIMPLE_LETTER  : [A-Za-z] | [\uAC00-\uD7A3];   // English letters and Korean letters

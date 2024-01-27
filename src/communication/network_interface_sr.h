@@ -121,7 +121,6 @@ extern void sboot_find_last_temp (THREAD_ENTRY * thread_p, unsigned int rid, cha
 extern void sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sqst_update_all_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -151,8 +150,7 @@ extern void smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid, c
 extern void smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern int xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
-					       method_sig_list * methsg_list);
+
 extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize);
 extern int xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout);
 

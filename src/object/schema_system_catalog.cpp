@@ -22,7 +22,7 @@
 #include "dbtype_function.h"
 #include "identifier_store.hpp"
 #include "oid.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 
 using namespace cubbase;
 

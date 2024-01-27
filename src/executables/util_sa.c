@@ -58,7 +58,6 @@
 #include "locale_support.h"
 #include "tz_support.h"
 #include "tz_compile.h"
-#include "boot_cl.h"
 #include "tsc_timer.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -69,6 +68,7 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"
 #include "log_volids.hpp"
+#include "schema_system_catalog.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4289,7 +4289,7 @@ synccoll_force (void)
       return status;
     }
 
-  if (boot_add_collations (class_mop) != NO_ERROR)
+  if (catcls_add_collations (class_mop) != NO_ERROR)
     {
       status = EXIT_FAILURE;
     }

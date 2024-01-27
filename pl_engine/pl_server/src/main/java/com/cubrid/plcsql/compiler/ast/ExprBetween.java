@@ -44,6 +44,12 @@ public class ExprBetween extends Expr {
     public final Expr lowerBound;
     public final Expr upperBound;
 
+    public String opExtension = "";
+
+    public void setOpExtension(String ext) {
+        opExtension = ext;
+    }
+
     public ExprBetween(ParserRuleContext ctx, Expr target, Expr lowerBound, Expr upperBound) {
         super(ctx);
 

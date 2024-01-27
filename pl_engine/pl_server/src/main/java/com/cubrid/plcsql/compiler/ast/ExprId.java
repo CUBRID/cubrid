@@ -59,16 +59,16 @@ public class ExprId extends Expr {
         if (decl instanceof DeclParamOut) {
             return String.format("%s[0]", name);
         } else if (decl instanceof DeclParamIn) {
-            return String.format("%s", name);
+            return name;
         } else if (decl instanceof DeclForIter) {
-            return String.format("%s_i%d", name, decl.scope().level);
+            return String.format("%s_i%d[0]", name, decl.scope().level);
         } else if (decl instanceof DeclForRecord) {
             return String.format("%s_r%d", name, decl.scope().level);
         } else if (decl instanceof DeclConst || decl instanceof DeclCursor) {
             if (prefixDeclBlock) {
                 return String.format("%s.%s", decl.scope().block, name);
             } else {
-                return String.format("%s", name);
+                return name;
             }
         } else if (decl instanceof DeclVar) {
             if (prefixDeclBlock) {
@@ -82,15 +82,14 @@ public class ExprId extends Expr {
         }
     }
 
-    // TODO: coercion?
     public String javaCodeForOutParam() {
         if (decl instanceof DeclParamOut) {
-            return String.format("%s", name);
+            return name;
         } else if (decl instanceof DeclVar) {
             if (prefixDeclBlock) {
                 return String.format("%s.%s", decl.scope().block, name);
             } else {
-                return String.format("%s", name);
+                return name;
             }
         } else {
             assert false;

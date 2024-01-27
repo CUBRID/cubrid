@@ -46,7 +46,11 @@ elseif(CPACK_GENERATOR STREQUAL "RPM")
   set(CPACK_RPM_USER_FILELIST
     "%config(noreplace) /opt/cubrid/conf"
     "%dir /opt/cubrid/databases"
-    )
+    "%attr(750,root,root) /etc/init.d/cubrid"
+    "%attr(750,root,root) /etc/init.d/cubrid-ha"
+    "%attr(644,cubrid,root) /etc/profile.d/cubrid.csh"
+    "%attr(644,cubrid,root) /etc/profile.d/cubrid.sh"
+  )
   set(CPACK_RPM_PACKAGE_AUTOREQ " no")
 endif()
 

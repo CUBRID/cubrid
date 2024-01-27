@@ -40,6 +40,16 @@ import org.antlr.v4.runtime.tree.ParseTree;
 
 public class Misc {
 
+    public static class Pair<X, Y> {
+        public X e1;
+        public Y e2;
+
+        public Pair(X e1, Y e2) {
+            this.e1 = e1;
+            this.e2 = e2;
+        }
+    }
+
     public static final int[] UNKNOWN_LINE_COLUMN = new int[] {-1, -1};
     public static final String INDENT = "  "; // two spaces
     public static final int INDENT_SIZE = INDENT.length();
@@ -149,31 +159,17 @@ public class Misc {
         return nonTerminal.toLowerCase();
     }
 
-    public static String peelId(String id) {
-        assert id != null;
-
-        int len = id.length();
-        if (len >= 2) {
-
-            if (id.startsWith("\"") && id.endsWith("\"")
-                    || id.startsWith("[") && id.endsWith("]")
-                    || id.startsWith("`") && id.endsWith("`")) {
-
-                return id.substring(1, len - 1);
-            }
-        }
-
-        return id;
-    }
-
     public static String getIndent(int indentLevel) {
         if (indentLevel < 10) {
             return smallIndents[indentLevel];
         } else {
-            String ret = bigIndents.get(indentLevel);
-            if (ret == null) {
-                ret = makeIndent(indentLevel);
-                bigIndents.put(indentLevel, ret);
+            String ret;
+            synchronized (bigIndents) {
+                ret = bigIndents.get(indentLevel);
+                if (ret == null) {
+                    ret = makeIndent(indentLevel);
+                    bigIndents.put(indentLevel, ret);
+                }
             }
             return ret;
         }
@@ -189,6 +185,23 @@ public class Misc {
                 makeIndent(5), makeIndent(6), makeIndent(7), makeIndent(8), makeIndent(9)
             };
     private static final Map<Integer, String> bigIndents = new HashMap<Integer, String>();
+
+    private static String peelId(String id) {
+        assert id != null;
+
+        int len = id.length();
+        if (len >= 2) {
+
+            if (id.startsWith("\"") && id.endsWith("\"")
+                    || id.startsWith("[") && id.endsWith("]")
+                    || id.startsWith("`") && id.endsWith("`")) {
+
+                return id.substring(1, len - 1);
+            }
+        }
+
+        return id;
+    }
 
     private static String makeIndent(int indentLevel) {
         StringBuffer sbuf = new StringBuffer();

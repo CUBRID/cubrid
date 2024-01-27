@@ -111,6 +111,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/hide_password.cpp
   ${BASE_DIR}/get_clock_freq.c
   ${BASE_DIR}/perf.cpp
   ${BASE_DIR}/perf_monitor.c
@@ -267,6 +268,10 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_system_catalog.cpp
+  ${OBJECT_DIR}/schema_system_catalog_builder.cpp
+  ${OBJECT_DIR}/schema_system_catalog_definition.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install_query_spec.cpp
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c

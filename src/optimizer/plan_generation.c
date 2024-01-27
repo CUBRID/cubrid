@@ -3975,6 +3975,21 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	  return NO_ERROR;
 	}
 
+
+      if (bitset_is_empty (&(termp->segments)))
+	{
+	  /*
+	   * We decided not to support MRO (Multiple Row Optimization) if the return value
+	   * of the bitset_is_empty() function is checked and found to be true. 
+	   * This is related to the CBRD-24914 issue, which involves a core dump occurring
+	   * when term->pt_expr is converted to PT_VALUE resulting in an always true/false condition.
+	   * Therefore, in the process of reducing the equality term, some parts of the 
+	   * always true condition have been removed. In cases of an always false condition 
+	   * or an always true condition that has not been removed, this implementation does not support MRO optimization.
+	   */
+	  return NO_ERROR;	/* give up */
+	}
+
       for (s = bitset_iterate (&(termp->segments), &iter_s); s != -1; s = bitset_next_member (&iter_s))
 	{
 	  bool found = false;

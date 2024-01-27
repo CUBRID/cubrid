@@ -81,6 +81,10 @@ public class TimestampValue extends Value {
         return timestamp;
     }
 
+    public Object toObject() throws TypeMismatchException {
+        return timestamp;
+    }
+
     public Object toDefault() throws TypeMismatchException {
         return toTimestamp();
     }

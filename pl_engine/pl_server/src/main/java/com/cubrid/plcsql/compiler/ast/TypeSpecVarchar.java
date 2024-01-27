@@ -28,58 +28,41 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.antlrgen.PcsLexer;
-import org.antlr.v4.runtime.CharStream;
-import org.antlr.v4.runtime.Token;
+import java.util.HashMap;
+import java.util.Map;
 
-public class PcsLexerEx extends PcsLexer {
-    private boolean collect = true;
-    private boolean putSpace = false;
-    private StringBuffer sbuf = new StringBuffer();
+public class TypeSpecVarchar extends TypeSpecSimple {
 
-    public PcsLexerEx(CharStream input) {
-        super(input);
-    }
+    public static final int MAX_LEN = 1073741823;
 
-    @Override
-    public Token emit() {
-        Token ret = super.emit();
+    // NOTE: no accept() method. inherit it from the parent TypeSpecSimple
 
-        // collect token texts until IS or AS is seen
-        if (collect) {
-            switch (ret.getType()) {
-                case IS:
-                case AS:
-                    collect = false;
-                    break;
-                case SPACES:
-                    if (putSpace) {
-                        sbuf.append(' ');
-                        putSpace = false;
-                    }
-                    break;
-                case SINGLE_LINE_COMMENT:
-                case SINGLE_LINE_COMMENT2:
-                case MULTI_LINE_COMMENT:
-                    break;
-                default:
-                    sbuf.append(ret.getText().toUpperCase());
-                    putSpace = true;
-            }
+    public final int length;
+
+    public static synchronized TypeSpecVarchar getInstance(int length) {
+
+        assert length <= MAX_LEN && length >= 1;
+
+        TypeSpecVarchar ret = instances.get(length);
+        if (ret == null) {
+            String typicalValueStr = String.format("cast(? as varchar(%d))", length);
+            ret = new TypeSpecVarchar(typicalValueStr, length);
+            instances.put(length, ret);
         }
 
         return ret;
     }
 
-    public String getCreateSqlTemplate() {
+    // ---------------------------------------------------------------------------
+    // Private
+    // ---------------------------------------------------------------------------
 
-        String s = sbuf.toString().trim();
-        if (s.length() > 0) {
-            return s + " AS LANGUAGE JAVA NAME '%s';";
-        } else {
-            return null;
-        }
+    private static final Map<Integer, TypeSpecVarchar> instances = new HashMap<>();
+
+    private TypeSpecVarchar(String typicalValueStr, int length) {
+        super("String", "java.lang.String", IDX_STRING, typicalValueStr);
+        this.length = length;
     }
 }

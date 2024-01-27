@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Database "%1$s" è sconosciuto, o la "databases.txt" file non è accessibile.
 117 Percorso assoluto per il database è troppo lungo. La lunghezza cumulata del path "%1$s" più il "%2$s" nome è %3$d, la lunghezza combinata deve essere inferiore a %4$d.
 118 Impossibile localizzare directory di lavoro corrente.
-119 Impossibile trovare ("%1$s") in "%2$s". Controlla i permessi del file o se c'è il nome host.
+119 Impossibile trovare il nome host ("%1$s") in "%2$s". Controlla i permessi del file o se c'è il nome host.
 120 Il numero massimo di volumi (%1$d) è stato superato.
 121 Cercando di rimuovere un volume "%1$s" permanente dal database.
 122 Impossibile accedere al catalogo di messaggi di sistema.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Impossibile stabilire una pipe per il server master.
 348 è necessario specificare un servizio o un identificatore di porta.
 349 Servizio sconosciuto per TCP: %1$s.
-350 Impossibile trovare ("%1$s") in "%2$s". Controlla i permessi del file o se c'è il nome host.
+350 Impossibile trovare il nome host ("%1$s") in "%2$s". Controlla i permessi del file o se c'è il nome host.
 351 Impossibile creare un socket TCP.
 352 tcp_open: non è possibile ottenere una porta TCP riservata.
 353 Impossibile stabilire una connessione al server master sul host "%1$s".
@@ -683,8 +683,8 @@ $ LOADDB
 613 Nella classe "%3$s", componente locale "%1$s" non può servire come un sostituto di alias per classe "%2$s". I domini sono incompatibili.
 614 Numero di archivi attivi di log è stato superato per il numero massimo desiderato di %1$d.
 615 Impossibile stabilire un contatto con l'interfaccia Winsock. Errore di Winsock: %1$d.
-616 Impossibile determinare il nome del computer utilizzando l'interfaccia Winsock. Errore di Winsock: %1$d.
-617 Impossibile determinare l'ID della macchina utilizzando l'interfaccia Winsock. Ci deve essere una voce nella tabella dei nomi di host per questa macchina. Errore di Winsock: %1$d.
+616 Impossibile trovare il nome host ("%1$s") in "%2$s". Controlla i permessi del file o se è presente il nome host.
+617 Impossibile trovare il nome host ("%1$s") in "%2$s". Controlla i permessi del file o se è presente il nome host.
 618 Attributo non è aggiornabile.
 619 Codeset di origine è male
 620 Codeset di destinazione è male
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 Il caricamento dell'indice è stato interrotto dopo un errore.
 1244 Aggiornamento degli attributi shared dai file oggetto non è supportato in modalità CS.
 1245 Aggiornamento degli attributi di classe dai file oggetto non è supportato in modalità CS.
-1246 Impossibile ottenere l'indirizzo e il nome canonico per ("%1$s") in "%2$s". Verifica l'autorizzazione del file o se è presente il nome host.
+1246 Impossibile ottenere l'indirizzo e il nome canonico per il nome host ("%1$s") in "%2$s". Verifica l'autorizzazione del file o se è presente il nome host.
 1247 Il tempo (%1$s) deve essere specificato dopo il tempo (%2$s) del backup specificato.
 1248 File chiave non valido: %1$s
 1249 Impossibile trovare la chiave (indice: %1$d).
@@ -1441,9 +1441,12 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1355 Il file "%1$s" non è stato trovato.
 1356 Non c'è alcun suggerimento nella query DBLink o il tipo di istruzione non è corretto. %1$s
 1357 La conversione della stringa SQL in una stringa ampia non è riuscita.
+1358 Il numero di righe interessate è sconosciuto.
 
-1358 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1359 Ultimo errore
+1359 Java VM crashed: %1$s
+1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+
+1361 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
@@ -1928,6 +1931,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
+317 Identifiers cannot be in a LIMIT clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.

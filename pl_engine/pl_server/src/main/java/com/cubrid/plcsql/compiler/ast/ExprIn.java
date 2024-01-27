@@ -43,6 +43,12 @@ public class ExprIn extends Expr {
     public final Expr target;
     public final NodeList<Expr> inElements;
 
+    public String opExtension = "";
+
+    public void setOpExtension(String ext) {
+        opExtension = ext;
+    }
+
     public ExprIn(ParserRuleContext ctx, Expr target, NodeList<Expr> inElements) {
         super(ctx);
 

@@ -196,6 +196,7 @@ static void pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -9317,6 +9318,127 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   /* old_synonym_obj != NULL && new_synonym_obj == NULL && er_errid () == ER_LC_UNKNOWN_CLASSNAME */
 }
 
+static bool
+pt_is_undefined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
+{
+  if (data_type && data_type->node_type == PT_DATA_TYPE && data_type->type_enum == PT_TYPE_OBJECT)
+    {
+      PT_NODE *name = data_type->info.data_type.entity;
+      if (name && name->node_type == PT_NAME)
+	{
+	  if (!db_find_class (name->info.name.original))
+	    {
+	      PT_ERRORmf (parser, data_type, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED,
+			  name->info.name.original);
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+static bool
+pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM type_enum, PT_NODE * data_type)
+{
+  switch (type_enum)
+    {
+
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+    case PT_TYPE_BIGINT:
+    case PT_TYPE_NUMERIC:
+    case PT_TYPE_FLOAT:
+    case PT_TYPE_DOUBLE:
+    case PT_TYPE_CHAR:
+    case PT_TYPE_VARCHAR:
+    case PT_TYPE_DATE:
+    case PT_TYPE_TIME:
+    case PT_TYPE_DATETIME:
+    case PT_TYPE_TIMESTAMP:
+    case PT_TYPE_RESULTSET:
+      return true;
+
+    case PT_TYPE_OBJECT:
+      return !pt_is_undefined_class (parser, data_type);
+
+    case PT_TYPE_SET:
+    case PT_TYPE_MULTISET:
+    case PT_TYPE_SEQUENCE:
+      {
+	PT_NODE *dt;
+	for (dt = data_type; dt; dt = dt->next)
+	  {
+	    if (pt_is_undefined_class (parser, dt))
+	      {
+		return false;
+	      }
+	  }
+      }
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+static const char *
+pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
+{
+
+  if (type_enum == PT_TYPE_OBJECT)
+    {
+      if (data_type && data_type->node_type == PT_DATA_TYPE)
+	{
+	  PT_NODE *dt_name = data_type->info.data_type.entity;
+	  if (dt_name && dt_name->node_type == PT_NAME)
+	    {
+	      return dt_name->info.name.original;
+	    }
+	}
+    }
+
+  return pt_show_type_enum (type_enum);
+}
+
+/*
+ * pt_check_create_stored_procedure () - do semantic checks on the create procedure/function statement
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *param;
+
+  for (param = node->info.sp.param_list; param; param = param->next)
+    {
+      if (!pt_is_type_supported_by_sp (parser, param->type_enum, param->data_type))
+	{
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERRORmf (parser, param, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_ARG_TYPE),
+			  pt_get_type_name (param->type_enum, param->data_type));
+	    }
+	  return;
+	}
+    }
+
+  if (node->info.sp.type == PT_SP_FUNCTION)
+    {
+      if (!pt_is_type_supported_by_sp (parser, node->info.sp.ret_type, node->info.sp.ret_data_type))
+	{
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_RETURN_TYPE),
+			  pt_get_type_name (node->info.sp.ret_type, node->info.sp.ret_data_type));
+	    }
+	  return;
+	}
+    }
+}
+
 /*
  * pt_check_drop () - do semantic checks on the drop statement
  *   return:  none
@@ -11464,7 +11586,7 @@ pt_check_and_replace_hostvar (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 }
 
 /*
- * pt_check_with_clause () -  
+ * pt_check_with_clause () -
  *   do semantic checks on "create entity" has "with clause"
  *   this function is called from pt_check_create_entity only
  *   so, not needed to check NULL for node
@@ -11893,6 +12015,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
     case PT_RENAME_SYNONYM:
       pt_check_rename_synonym (parser, node);
+      break;
+
+    case PT_CREATE_STORED_PROCEDURE:
+      pt_check_create_stored_procedure (parser, node);
       break;
 
     default:
@@ -13844,6 +13970,9 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
       return 1;
     }
 
+  CAST_POINTER_TO_NODE (p);
+  CAST_POINTER_TO_NODE (q);
+
   /* check node types are same */
   if (p->node_type != q->node_type)
     {
@@ -13853,16 +13982,20 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
   n = p->node_type;
   switch (n)
     {
-      /* 
+      /*
        * if a name, the original and resolved fields must match
        *
        * In order to distinguish User Schema, the original, resolved name may contain a user name
        * with a dot(.) as a separator. It is not necessary to attach a user name to its own table,
        * but the user name currently connected internally is attached. So, when comparing original and resolved names,
-       * we need to compare names after dot(.). 
-       * 
+       * we need to compare names after dot(.).
+       *
        */
     case PT_NAME:
+      if (p->info.name.spec_id != q->info.name.spec_id)
+	{
+	  return 1;
+	}
       if (pt_user_specified_name_compare (p->info.name.original, q->info.name.original))
 	{
 	  return 1;
@@ -13871,11 +14004,7 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	{
 	  return 1;
 	}
-      if (p->info.name.spec_id != q->info.name.spec_id)
-	{
-	  return 1;
-	}
-      break;
+      break;			/* PT_NAME */
 
       /* EXPR must be X.Y.Z. */
     case PT_DOT_:
@@ -13902,7 +14031,52 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	  return 1;
 	}
 
-      break;
+      break;			/* PT_DOT_ */
+
+    case PT_EXPR:
+      {
+	if (p->info.expr.op != q->info.expr.op)
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_path_eq (parser, p->info.expr.arg1, q->info.expr.arg1))
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_path_eq (parser, p->info.expr.arg2, q->info.expr.arg2))
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_path_eq (parser, p->info.expr.arg3, q->info.expr.arg3))
+	  {
+	    return 1;
+	  }
+      }
+      break;			/* PT_EXPR */
+
+    case PT_VALUE:
+      {
+	const char *p_str = NULL;
+	const char *q_str = NULL;
+	unsigned int save_custom;
+
+	save_custom = parser->custom_print;	/* save */
+	parser->custom_print |= PT_CONVERT_RANGE;
+
+	p_str = parser_print_tree (parser, p);
+	q_str = parser_print_tree (parser, q);
+
+	parser->custom_print = save_custom;	/* restore */
+
+	if (pt_str_compare (p_str, q_str, CASE_INSENSITIVE))
+	  {
+	    return 1;
+	  }
+      }
+      break;			/* PT_VALUE */
 
     default:
       PT_ERRORmf (parser, p, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_NAN_PATH,
@@ -13946,15 +14120,39 @@ pt_check_class_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
     {
       /* if a name, the resolved (class name) fields must match */
     case PT_NAME:
-      if (pt_str_compare (p->info.name.resolved, q->info.name.resolved, CASE_INSENSITIVE))
-	{
-	  return 1;
-	}
       if (p->info.name.spec_id != q->info.name.spec_id)
 	{
 	  return 1;
 	}
-      break;
+      if (pt_str_compare (p->info.name.resolved, q->info.name.resolved, CASE_INSENSITIVE))
+	{
+	  return 1;
+	}
+      break;			/* PT_NAME */
+
+    case PT_EXPR:
+      {
+	if (p->info.expr.op != q->info.expr.op)
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_class_eq (parser, p->info.expr.arg1, q->info.expr.arg1))
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_class_eq (parser, p->info.expr.arg2, q->info.expr.arg2))
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_class_eq (parser, p->info.expr.arg3, q->info.expr.arg3))
+	  {
+	    return 1;
+	  }
+      }
+      break;			/* PT_EXPR */
 
     default:
       PT_ERRORmf (parser, p, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_NAN_PATH,

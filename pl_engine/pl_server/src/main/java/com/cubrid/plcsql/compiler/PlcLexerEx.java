@@ -28,28 +28,58 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import com.cubrid.plcsql.compiler.antlrgen.PlcLexer;
+import org.antlr.v4.runtime.CharStream;
+import org.antlr.v4.runtime.Token;
 
-public class TypeSpecNumeric extends TypeSpec {
+public class PlcLexerEx extends PlcLexer {
+    private boolean collect = true;
+    private boolean putSpace = false;
+    private StringBuffer sbuf = new StringBuffer();
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitTypeSpecNumeric(this);
-    }
-
-    public final int precision;
-    public final int scale;
-
-    public TypeSpecNumeric(int precision, int scale) {
-        super("BigDecimal");
-        this.precision = precision;
-        this.scale = scale;
+    public PlcLexerEx(CharStream input) {
+        super(input);
     }
 
     @Override
-    public String toJavaSignature() {
-        return "java.math.BigDecimal";
+    public Token emit() {
+        Token ret = super.emit();
+
+        // collect token texts until IS or AS is seen
+        if (collect) {
+            switch (ret.getType()) {
+                case IS:
+                case AS:
+                    collect = false;
+                    break;
+                case SPACES:
+                    if (putSpace) {
+                        sbuf.append(' ');
+                        putSpace = false;
+                    }
+                    break;
+                case SINGLE_LINE_COMMENT:
+                case SINGLE_LINE_COMMENT2:
+                case MULTI_LINE_COMMENT:
+                    break;
+                default:
+                    sbuf.append(ret.getText().toUpperCase());
+                    putSpace = true;
+            }
+        }
+
+        return ret;
+    }
+
+    public String getCreateSqlTemplate() {
+
+        String s = sbuf.toString().trim();
+        if (s.length() > 0) {
+            return s + " AS LANGUAGE JAVA NAME '%s';";
+        } else {
+            return null;
+        }
     }
 }

@@ -726,6 +726,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	  break;
 	case PT_HINT_SELECT_RECORD_INFO:
 	case PT_HINT_SELECT_PAGE_INFO:
+	case PT_HINT_SAMPLING_SCAN:
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);

@@ -256,7 +256,7 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 
 	if (jvm_path)
 	  {
-	    err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' envirnment variable: ");
+	    err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' environment variable: ");
 	    err_msgs.append ("\n\t\t");
 	    err_msgs.append (jvm_path);
 
@@ -511,13 +511,13 @@ jsp_start_server (const char *db_name, const char *path, int port)
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
   JavaVMOption *options;
-  int vm_n_options = 3;
+  int vm_n_default_options = 2;
+  int vm_n_ext_options = 0;
   char classpath[PATH_MAX + 32] = { 0 };
   char logging_prop[PATH_MAX + 32] = { 0 };
   char option_debug[70];
   char debug_flag[] = "-Xdebug";
   char debug_jdwp[] = "-agentlib:jdwp=transport=dt_socket,server=y,address=%d,suspend=n";
-  char disable_sig_handle[] = "-Xrs";
   const char *envroot;
   const char *uds_path;
   char jsp_file_path[PATH_MAX];
@@ -552,42 +552,40 @@ jsp_start_server (const char *db_name, const char *path, int port)
     debug_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_DEBUG);
     if (debug_port != -1)
       {
-	vm_n_options += 2;	/* set debug flag and debugging port */
+	vm_n_default_options += 2;	/* set debug flag and debugging port */
       }
 
     jvm_opt_sysprm = (char *) prm_get_string_value (PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS);
   // *INDENT-OFF*
   std::vector <std::string> opts = jsp_tokenize_jvm_options (jvm_opt_sysprm);
   // *INDENT-ON*
-    vm_n_options += (int) opts.size ();
-    options = new JavaVMOption[vm_n_options];
+    vm_n_ext_options += (int) opts.size ();
+    options = new JavaVMOption[vm_n_default_options + vm_n_ext_options];
     if (options == NULL)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	goto error;
       }
 
-    int idx = 3;
+    int ext_idx = vm_n_default_options;
     options[0].optionString = classpath;
     options[1].optionString = logging_prop;
-    options[2].optionString = disable_sig_handle;
     if (debug_port != -1)
       {
-	idx += 2;
 	snprintf (option_debug, sizeof (option_debug) - 1, debug_jdwp, debug_port);
-	options[3].optionString = debug_flag;
-	options[4].optionString = option_debug;
+	options[2].optionString = debug_flag;
+	options[3].optionString = option_debug;
       }
 
     for (auto it = opts.begin (); it != opts.end (); ++it)
       {
       // *INDENT-OFF*
-      options[idx++].optionString = const_cast <char*> (it->c_str ());
+      options[ext_idx++].optionString = const_cast <char*> (it->c_str ());
       // *INDENT-ON*
       }
 
     vm_arguments.version = JNI_VERSION_1_6;
-    vm_arguments.nOptions = vm_n_options;
+    vm_arguments.nOptions = vm_n_default_options + vm_n_ext_options;
     vm_arguments.options = options;
     vm_arguments.ignoreUnrecognized = JNI_TRUE;
 

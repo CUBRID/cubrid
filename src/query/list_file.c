@@ -198,9 +198,6 @@ static int qfile_Max_tuple_page_size;
 
 static int qfile_get_sort_list_size (SORT_LIST * sort_list);
 static int qfile_compare_tuple_values (QFILE_TUPLE tplp1, QFILE_TUPLE tplp2, TP_DOMAIN * domain, int *cmp);
-#if defined (CUBRID_DEBUG)
-static void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE tpl);
-#endif
 static void qfile_initialize_page_header (PAGE_PTR page_p);
 static void qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p,
 						   int free_page);
@@ -987,7 +984,7 @@ qfile_locate_tuple_next_value (OR_BUF * iterator, OR_BUF * buf, QFILE_TUPLE_VALU
   return or_advance (iterator, QFILE_TUPLE_VALUE_HEADER_SIZE + value_size);
 }
 
-#if defined (CUBRID_DEBUG)
+#if !defined(NDEBUG)
 /*
  * qfile_print_tuple () - Prints the tuple content associated with the type list
  *   return: none
@@ -997,7 +994,7 @@ qfile_locate_tuple_next_value (OR_BUF * iterator, OR_BUF * buf, QFILE_TUPLE_VALU
  *       Each tuple value header is aligned with MAX_ALIGNMENT,
  *       Each tuple value is aligned with MAX_ALIGNMENT
  */
-static void
+void
 qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 {
   DB_VALUE dbval;
@@ -1022,7 +1019,7 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 	{
 	  pr_type_p = type_list_p->domp[i]->type;
 	  or_init (&buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
-	  (*(pr_type_p->readval)) (&buf, &dbval, type_list_p->domp[i], -1, true, NULL, 0);
+	  pr_type_p->data_readval (&buf, &dbval, type_list_p->domp[i], -1, true, NULL, 0);
 
 	  db_fprint_value (stdout, &dbval);
 	  if (pr_is_set_type (pr_type_p->id))
@@ -3094,7 +3091,7 @@ qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tuple_record_p, int tuple_size)
   return NO_ERROR;
 }
 
-#if defined (CUBRID_DEBUG)
+#if !defined(NDEBUG)
 /*
  * qfile_print_list () - Dump the content of the list file to the standard output
  *   return: none
@@ -3746,7 +3743,7 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
 {
   int prorated_pages, sort_key_size, sort_key_overhead;
 
-  prorated_pages = (int) list_id_p->page_cnt;
+  prorated_pages = (int) MAX (list_id_p->page_cnt, 1);
   if (key_info_p->use_original == 1)
     {
       /* P_sort_key */

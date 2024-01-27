@@ -39,7 +39,7 @@
 #include "boot_sr.h"
 #include "log_impl.h"
 #include "btree.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "message_catalog.h"
 #include "error_manager.h"
 #include "system_parameter.h"

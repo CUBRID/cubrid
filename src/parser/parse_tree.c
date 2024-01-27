@@ -37,6 +37,7 @@
 #include "parser.h"
 #include "jansson.h"
 #include "memory_alloc.h"
+#include "hide_password.h"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -1182,6 +1183,8 @@ parser_create_parser (void)
       return NULL;
     }
 
+  INIT_HIDE_PASSWORD_INFO (&parser->hide_pwd_info);
+
 #if !defined (SERVER_MODE)
   parser_init_func_vectors ();
 #endif /* !SERVER_MODE */
@@ -1224,6 +1227,7 @@ parser_create_parser (void)
   parser->flag.has_internal_error = 0;
   parser->max_print_len = 0;
   parser->flag.is_auto_commit = 0;
+  parser->flag.is_parsing_static_sql = 0;
 
   parser->external_into_label = NULL;
   parser->external_into_label_cnt = 0;
@@ -1246,6 +1250,8 @@ parser_free_parser (PARSER_CONTEXT * parser)
   int i;
 
   assert (parser != NULL);
+
+  QUIT_HIDE_PASSWORD_INFO (&parser->hide_pwd_info);
 
   /* free remote dblink cols */
   pt_free_dblink_remote_cols (parser);

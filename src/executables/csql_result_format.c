@@ -33,6 +33,8 @@
 #include "language_support.h"
 #include "string_opfunc.h"
 #include "unicode_support.h"
+#include "string_buffer.hpp"
+#include "db_value_printer.hpp"
 
 #include "dbtype.h"
 
@@ -279,7 +281,7 @@ static char *object_to_string (DB_OBJECT * object, int format);
 static char *numeric_to_string (DB_VALUE * value, bool commas);
 static char *bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string);
 static char *set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries,
-			    bool plain_string, CSQL_OUTPUT_TYPE output_type, char column_encolser);
+			    const CSQL_ARGUMENT * csql_arg);
 static char *duplicate_string (const char *string);
 static int get_object_print_format (void);
 
@@ -981,8 +983,8 @@ bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
  *   column_enclosure(in): column enclosure for query output
  */
 static char *
-set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries, bool plain_string,
-	       CSQL_OUTPUT_TYPE output_type, char column_enclosure)
+set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries,
+	       const CSQL_ARGUMENT * csql_arg)
 {
   int cardinality, total_string_length, i;
   char **string_array;
@@ -1045,7 +1047,7 @@ set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max
 	{
 	  goto finalize;
 	}
-      string_array[i] = csql_db_value_as_string (&element, NULL, plain_string, output_type, column_enclosure);
+      string_array[i] = csql_db_value_as_string (&element, NULL, csql_arg);
       db_value_clear (&element);
       if (string_array[i] == NULL)
 	{
@@ -1394,20 +1396,37 @@ conv_double_to_string (char *double_str, int *length)
  *   column_enclosure(in): column enclosure for query output
  */
 char *
-csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_OUTPUT_TYPE output_type,
-			 char column_enclosure)
+csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * csql_arg)
 {
   char *result = NULL;
   char *json_body = NULL;
   int len = 0;
-  char string_delimiter =
-    (output_type != CSQL_UNKNOWN_OUTPUT) ? column_enclosure : default_string_profile.string_delimiter;
-  bool change_single_quote = (output_type != CSQL_UNKNOWN_OUTPUT && column_enclosure == '\'');
-
   char double_format = default_double_profile.format;
   bool trailingzeros = true;
 
+  bool plain_string = csql_arg->plain_output;
+  char column_enclosure = csql_arg->column_enclosure;
+
   static bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+  char string_delimiter = csql_arg->column_enclosure;
+  bool change_single_quote = (bool) (csql_arg->column_enclosure == '\'');
+
+  CSQL_OUTPUT_TYPE output_type;
+
+  if (csql_arg->query_output == true)
+    {
+      output_type = CSQL_QUERY_OUTPUT;
+    }
+  else if (csql_arg->loaddb_output == true)
+    {
+      output_type = CSQL_LOADDB_OUTPUT;
+    }
+  else
+    {
+      output_type = CSQL_UNKNOWN_OUTPUT;
+      string_delimiter = default_string_profile.string_delimiter;
+      change_single_quote = false;
+    }
 
   /* oracle compatible */
   if (oracle_compat_number)
@@ -1532,7 +1551,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	      }
 	  }
 
-	result = string_to_string (str, string_delimiter, '\0', bytes_size, &len, plain_string, change_single_quote);
+	result =
+	  string_to_string (str, string_delimiter, '\0', bytes_size, &len, csql_arg->plain_output, change_single_quote);
 
 	if (decomposed != NULL)
 	  {
@@ -1638,7 +1658,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
     case DB_TYPE_SEQUENCE:
       result =
 	set_to_string (value, default_set_profile.begin_notation, default_set_profile.end_notation,
-		       default_set_profile.max_entries, plain_string, output_type, column_enclosure);
+		       default_set_profile.max_entries, csql_arg);
       if (result)
 	{
 	  len = strlen (result);
@@ -1937,6 +1957,27 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	  }
       }
       break;
+
+    case DB_TYPE_MIDXKEY:
+      {
+	if (csql_arg->midxkey_print)
+	  {
+	    string_buffer sb;
+
+	    sb.clear ();
+	    db_sprint_value (value, sb);
+
+	    /*  Make sure it has the same format as the result of using cast().
+	     *  '{1, 'abc'}'  or  '{1, ''abc''}'  (depends on change_single_quote)
+	     */
+	    result =
+	      string_to_string (sb.get_buffer (), string_delimiter, '\0', sb.len (), &len, plain_string,
+				change_single_quote);
+	    sb.clear ();
+	    break;		/* escape switch */
+	  }
+      }
+      [[fallthrough]];
 
     default:
       {

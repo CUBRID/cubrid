@@ -34,7 +34,6 @@ import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.ColumnInfo;
-import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.protocol.GlobalSemanticsRequest;
 import com.cubrid.jsp.protocol.GlobalSemanticsResponse;
 import com.cubrid.jsp.protocol.Header;
@@ -45,7 +44,6 @@ import com.cubrid.jsp.protocol.SqlSemanticsResponse;
 import com.cubrid.jsp.protocol.UnPackableObject;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.List;
 
 public class ServerAPI {

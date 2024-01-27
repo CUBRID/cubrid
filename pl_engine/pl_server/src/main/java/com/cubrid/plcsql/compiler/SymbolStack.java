@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler;
 
-import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
+import static com.cubrid.plcsql.compiler.antlrgen.PlcParser.*;
 
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.ast.*;
@@ -75,33 +75,34 @@ public class SymbolStack {
                     // System.out.println("temp: " + m.getName());
 
                     Operator opAnnot = m.getAnnotation(Operator.class);
-                    assert opAnnot != null;
+                    if (opAnnot != null) {
 
-                    // parameter types
-                    Class[] paramTypes = m.getParameterTypes();
-                    NodeList<DeclParam> params = new NodeList<>();
+                        // parameter types
+                        Class[] paramTypes = m.getParameterTypes();
+                        NodeList<DeclParam> params = new NodeList<>();
 
-                    int i = 0;
-                    for (Class pt : paramTypes) {
-                        String typeName = pt.getTypeName();
-                        // System.out.println("  " + typeName);
-                        TypeSpec paramType = TypeSpec.ofJavaName(typeName);
-                        assert paramType != null;
+                        int i = 0;
+                        for (Class pt : paramTypes) {
+                            String typeName = pt.getTypeName();
+                            // System.out.println("  " + typeName);
+                            TypeSpec paramType = TypeSpec.ofJavaName(typeName);
+                            assert paramType != null;
 
-                        DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
-                        params.addNode(p);
-                        i++;
+                            DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
+                            params.addNode(p);
+                            i++;
+                        }
+
+                        // return type
+                        String typeName = m.getReturnType().getTypeName();
+                        // System.out.println("  =>" + typeName);
+                        TypeSpec retType = TypeSpec.ofJavaName(typeName);
+                        assert retType != null;
+
+                        // add op
+                        DeclFunc op = new DeclFunc(null, name, params, retType);
+                        putOperator(name, op, opAnnot.coercionScheme());
                     }
-
-                    // return type
-                    String typeName = m.getReturnType().getTypeName();
-                    // System.out.println("  =>" + typeName);
-                    TypeSpec retType = TypeSpec.ofJavaName(typeName);
-                    assert retType != null;
-
-                    // add op
-                    DeclFunc op = new DeclFunc(null, name, params, retType);
-                    putOperator(name, op, opAnnot.coercionScheme());
                 }
             }
         }
@@ -132,7 +133,7 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamOut(
-                                                null, "line", TypeSpecSimple.STRING, false))
+                                                null, "line", TypeSpecSimple.STRING_ANY, false))
                                 .addNode(
                                         new DeclParamOut(
                                                 null, "status", TypeSpecSimple.INT, true)));
@@ -148,7 +149,7 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT_LINE",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
+                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING_ANY)));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
 
         // put
@@ -157,7 +158,7 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
+                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING_ANY)));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
     }
 
@@ -554,7 +555,18 @@ public class SymbolStack {
     // ----------------------------------------
     //
 
+    void putDeclLabel(String name, DeclLabel decl) {
+        if (getDeclLabel(name) != null) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(decl.ctx), // s061
+                    "label " + name + " has already been declared");
+        }
+
+        putDeclTo(currSymbolTable, name, decl);
+    }
+
     <D extends Decl> void putDecl(String name, D decl) {
+        assert !(decl instanceof DeclLabel);
         putDeclTo(currSymbolTable, name, decl);
     }
 
@@ -564,11 +576,8 @@ public class SymbolStack {
         Map<String, D> map = symbolTable.<D>map((Class<D>) decl.getClass());
         assert map != null;
         if (map == symbolTable.labels) {
-            if (map.containsKey(name)) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(decl.ctx), // s061
-                        "label " + name + " has already been declared in the same scope");
-            }
+            // currently, a symbol table is always pushed right before putting a label
+            assert !map.containsKey(name);
         } else {
             if (symbolTable.ids.containsKey(name)
                     || symbolTable.procs.containsKey(name)

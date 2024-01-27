@@ -131,6 +131,8 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
 
   {"connect", S_CMD_CONNECT, CMD_EMPTY_FLAG},
 
+  {"midxkey", S_CMD_MIDXKEY, CMD_EMPTY_FLAG},	/* This is NOT displayed as a result of the ";help" command. */
+
   {"server-output", S_CMD_SERVER_OUTPUT, CMD_CHECK_CONNECT}
 };
 
@@ -677,7 +679,7 @@ csql_help_info (const char *command, int aucommit_flag)
       && (!strcasecmp (tok, "schema") || !strcasecmp (tok, "trigger") || !strcasecmp (tok, "deferred")
 	  || !strcasecmp (tok, "workspace") || !strcasecmp (tok, "lock") || !strcasecmp (tok, "stats")
 	  || !strcasecmp (tok, "logstat") || !strcasecmp (tok, "csstat") || !strcasecmp (tok, "plan")
-	  || !strcasecmp (tok, "qcache") || !strcasecmp (tok, "trantable")))
+	  || !strcasecmp (tok, "qcache") || !strcasecmp (tok, "trantable") || !strcasecmp (tok, "ndv")))
     {
       int result;
 

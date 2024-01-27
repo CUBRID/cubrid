@@ -31,12 +31,14 @@
 package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
-import com.cubrid.plcsql.compiler.DateTimeParser;
 import com.cubrid.plcsql.compiler.annotation.Operator;
+import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
 import java.sql.*;
 import java.sql.Date;
@@ -52,10 +54,60 @@ import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
+
+    public static String checkStrLength(boolean isChar, int length, String val) {
+
+        if (val == null) {
+            return null;
+        }
+
+        assert length >= 1;
+
+        if (val.length() > length) {
+            throw new VALUE_ERROR("string does not fit in the target type's length");
+        }
+
+        if (isChar) {
+            int d = length - val.length();
+            if (d > 0) {
+
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < d; i++) {
+                    sb.append(" ");
+                }
+                val = val + sb.toString();
+            }
+        }
+
+        return val;
+    }
+
+    public static BigDecimal checkPrecision(int prec, short scale, BigDecimal val) {
+
+        if (val == null) {
+            return null;
+        }
+
+        // ParseTreeConverter.visitNumeric_type() guarantees the following assertions
+        assert prec >= 1 && prec <= 38;
+        assert scale >= 0 && scale <= prec;
+
+        if (val.scale() != scale) {
+            val = val.setScale(scale, RoundingMode.HALF_UP);
+        }
+
+        if (val.precision() > prec) {
+            throw new VALUE_ERROR(
+                    "numeric value does not fit in the target type's precision and scale");
+        }
+
+        return val;
+    }
 
     // -------------------------------------------------------------------------------
     // To provide line and column numbers for run-time exceptions
@@ -115,7 +167,7 @@ public class SpLib {
             boolean isBegin = (s.charAt(0) == '(');
             assert isBegin || (s.charAt(0) == ')');
             if (isBegin) {
-                // beginning marker of the form '(<java-line>,<pcs-line>,<pcs-column>'
+                // beginning marker of the form '(<java-line>,<plc-line>,<plc-column>'
                 stackHeight++;
                 String[] split2 = s.substring(1).split(",");
                 assert split2.length == 3;
@@ -155,11 +207,12 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     // -------------------------------------------------------------------------------
 
-    public static Object invokeBuiltinFunc(Connection conn, String name, Object... args) {
+    public static Object invokeBuiltinFunc(
+            Connection conn, String name, int resultTypeCode, Object... args) {
 
         int argsLen = args.length;
         String hostVars = getHostVarsStr(argsLen);
-        String query = String.format("select %s(%s) from dual", name, hostVars);
+        String query = String.format("select %s%s from dual", name, hostVars);
         try {
             PreparedStatement pstmt = conn.prepareStatement(query);
             for (int i = 0; i < argsLen; i++) {
@@ -167,7 +220,46 @@ public class SpLib {
             }
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
-                Object ret = rs.getObject(1);
+                Object ret;
+                switch (resultTypeCode) {
+                    case TypeSpecSimple.IDX_NULL:
+                    case TypeSpecSimple.IDX_OBJECT:
+                        ret = rs.getObject(1);
+                        break;
+                    case TypeSpecSimple.IDX_STRING:
+                        ret = rs.getString(1);
+                        break;
+                    case TypeSpecSimple.IDX_SHORT:
+                        ret = rs.getShort(1);
+                        break;
+                    case TypeSpecSimple.IDX_INT:
+                        ret = rs.getInt(1);
+                        break;
+                    case TypeSpecSimple.IDX_BIGINT:
+                        ret = rs.getLong(1);
+                        break;
+                    case TypeSpecSimple.IDX_NUMERIC:
+                        ret = rs.getBigDecimal(1);
+                        break;
+                    case TypeSpecSimple.IDX_FLOAT:
+                        ret = rs.getFloat(1);
+                        break;
+                    case TypeSpecSimple.IDX_DOUBLE:
+                        ret = rs.getDouble(1);
+                        break;
+                    case TypeSpecSimple.IDX_DATE:
+                        ret = rs.getDate(1);
+                        break;
+                    case TypeSpecSimple.IDX_TIME:
+                        ret = rs.getTime(1);
+                        break;
+                    case TypeSpecSimple.IDX_DATETIME:
+                    case TypeSpecSimple.IDX_TIMESTAMP:
+                        ret = rs.getTimestamp(1);
+                        break;
+                    default:
+                        throw new PROGRAM_ERROR(); // unreachable
+                }
                 assert !rs.next(); // it must have only one record
 
                 Statement stmt = rs.getStatement();
@@ -612,6 +704,17 @@ public class SpLib {
         return commonOpEq(l, r);
     }
 
+    public static Boolean opEqChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.equals(r);
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(BigDecimal l, BigDecimal r) {
         return commonOpEq(l, r);
@@ -664,6 +767,16 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opEqTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return l.equals(r);
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Object l, Object r) {
         if (l == null || r == null) {
@@ -683,6 +796,19 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(String l, String r) {
         return commonOpNullSafeEq(l, r);
+    }
+
+    public static Boolean opNullSafeEqChar(String l, String r) {
+        if (l == null) {
+            return (r == null);
+        } else if (r == null) {
+            return false;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.equals(r);
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -737,6 +863,26 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opNullSafeEqTimestamp(Timestamp l, Timestamp r) {
+        if (l == null) {
+            if (r == null) {
+                return true;
+            } else {
+                assert r.getNanos() == 0;
+                return false;
+            }
+        } else {
+            assert l.getNanos() == 0;
+
+            if (r == null) {
+                return false;
+            } else {
+                assert r.getNanos() == 0;
+                return l.equals(r);
+            }
+        }
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(Object l, Object r) {
         if (l == null) {
@@ -759,6 +905,17 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(String l, String r) {
         return commonOpNeq(l, r);
+    }
+
+    public static Boolean opNeqChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return !l.equals(r);
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -813,6 +970,16 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opNeqTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return !l.equals(r);
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(Object l, Object r) {
         if (l == null || r == null) {
@@ -833,6 +1000,17 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(String l, String r) {
         return commonOpLe(l, r);
+    }
+
+    public static Boolean opLeChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) <= 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -887,6 +1065,16 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opLeTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return l.compareTo(r) <= 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Object l, Object r) {
         if (l == null || r == null) {
@@ -905,6 +1093,17 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(String l, String r) {
         return commonOpGe(l, r);
+    }
+
+    public static Boolean opGeChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) >= 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -959,6 +1158,16 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opGeTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return l.compareTo(r) >= 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Object l, Object r) {
         if (l == null || r == null) {
@@ -977,6 +1186,17 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(String l, String r) {
         return commonOpLt(l, r);
+    }
+
+    public static Boolean opLtChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) < 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1031,6 +1251,16 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opLtTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return l.compareTo(r) < 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Object l, Object r) {
         if (l == null || r == null) {
@@ -1050,6 +1280,17 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(String l, String r) {
         return commonOpGt(l, r);
+    }
+
+    public static Boolean opGtChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) > 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1104,6 +1345,16 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opGtTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return l.compareTo(r) > 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Object l, Object r) {
         if (l == null || r == null) {
@@ -1128,6 +1379,18 @@ public class SpLib {
         if (o == null || lower == null || upper == null) {
             return null;
         }
+        return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
+    }
+
+    public static Boolean opBetweenChar(String o, String lower, String upper) {
+        if (o == null || lower == null || upper == null) {
+            return null;
+        }
+
+        o = rtrim(o);
+        lower = rtrim(lower);
+        upper = rtrim(upper);
+
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
@@ -1210,6 +1473,17 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opBetweenTimestamp(Timestamp o, Timestamp lower, Timestamp upper) {
+        if (o == null || lower == null || upper == null) {
+            return null;
+        }
+        assert o.getNanos() == 0;
+        assert lower.getNanos() == 0;
+        assert upper.getNanos() == 0;
+
+        return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Object o, Object lower, Object upper) {
         if (o == null || lower == null || upper == null) {
@@ -1230,6 +1504,28 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(String o, String... arr) {
         return commonOpIn(o, (Object[]) arr);
+    }
+
+    public static Boolean opInChar(String o, String... arr) {
+        assert arr != null; // guaranteed by the syntax
+
+        if (o == null) {
+            return null;
+        }
+        o = rtrim(o);
+
+        boolean nullFound = false;
+        for (String p : arr) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                p = rtrim(p);
+                if (o.equals(p)) {
+                    return true;
+                }
+            }
+        }
+        return nullFound ? null : false;
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
@@ -1284,6 +1580,27 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opInTimestamp(Timestamp o, Timestamp... arr) {
+        assert arr != null; // guaranteed by the syntax
+        if (o == null) {
+            return null;
+        }
+        assert o.getNanos() == 0;
+
+        boolean nullFound = false;
+        for (Timestamp p : arr) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                assert p.getNanos() == 0;
+                if (o.equals(p)) {
+                    return true;
+                }
+            }
+        }
+        return nullFound ? null : false;
+    }
+
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(Object o, Object... arr) {
         assert arr != null; // guaranteed by the syntax
@@ -1333,7 +1650,23 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l.multiply(r);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision = p1 + p2 + 1;
+        int scale = s1 + s2;
+
+        BigDecimal ret =
+                l.multiply(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1403,7 +1736,27 @@ public class SpLib {
         if (r.equals(BigDecimal.ZERO)) {
             throw new ZERO_DIVIDE();
         }
-        return l.divide(r, BigDecimal.ROUND_HALF_UP);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision = (p1 - s1) + s2 + Math.max(9, Math.max(s1, s2));
+        int scale = Math.max(9, Math.max(s1, s2));
+        if (maxPrecision > 38) {
+            scale = Math.min(9, scale - (maxPrecision - 38));
+            maxPrecision = 38;
+        }
+
+        BigDecimal ret =
+                l.divide(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1553,7 +1906,23 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l.add(r);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision = Math.max(p1 - s1, p2 - s2) + Math.max(s1, s2) + 1;
+        int scale = Math.max(s1, s2);
+
+        BigDecimal ret =
+                l.add(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1618,15 +1987,28 @@ public class SpLib {
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
-    public static Timestamp opAdd(Long l, Timestamp r) {
-        return opAdd(r, l);
-    }
-
-    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static ZonedDateTime opAdd(ZonedDateTime l, Long r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+
+    public static Timestamp opAddTimestamp(Timestamp l, Long r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        if (l.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+        assert l.getNanos() == 0;
+
+        LocalDateTime lldt = l.toLocalDateTime();
+        return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.SECONDS));
+    }
+
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Timestamp opAdd(Long l, Timestamp r) {
+        return opAdd(r, l);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1634,6 +2016,10 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+
+    public static Timestamp opAddTimestamp(Long l, Timestamp r) {
+        return opAddTimestamp(r, l);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1675,7 +2061,26 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l.subtract(r);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision =
+                Math.max(p1 - s1, p2 - s2)
+                        + Math.max(s1, s2)
+                        + 1; // +1: consider subtracting a minus value
+        int scale = Math.max(s1, s2);
+
+        BigDecimal ret =
+                l.subtract(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1739,6 +2144,21 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Long opSubtractTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        if (l.equals(NULL_DATETIME) || r.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        LocalDateTime lldt = l.toLocalDateTime();
+        LocalDateTime rldt = r.toLocalDateTime();
+        return rldt.until(lldt, ChronoUnit.SECONDS);
+    }
+
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Time opSubtract(Time l, Long r) {
         if (l == null || r == null) {
@@ -1779,6 +2199,19 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+
+    public static Timestamp opSubtractTimestamp(Timestamp l, Long r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        if (l.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+        assert l.getNanos() == 0;
+
+        LocalDateTime lldt = l.toLocalDateTime();
+        return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.SECONDS));
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1971,9 +2404,11 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+
         if (e.equals(NULL_TIMESTAMP)) {
             return NULL_DATETIME;
         }
+        assert e.getNanos() == 0;
 
         return new Timestamp(
                 e.getYear(),
@@ -1989,9 +2424,11 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+
         if (e.equals(NULL_TIMESTAMP)) {
             return NULL_DATE;
         }
+        assert e.getNanos() == 0;
 
         return new Date(e.getYear(), e.getMonth(), e.getDate());
     }
@@ -2000,6 +2437,7 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        assert e.getNanos() == 0;
 
         return new Time(e.getHours(), e.getMinutes(), e.getSeconds());
     }
@@ -2008,11 +2446,13 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+
         if (e.equals(NULL_TIMESTAMP)) {
             // must be calculated everytime because the AM/PM indicator can change according to the
             // locale change
             return String.format("00:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
         }
+        assert e.getNanos() == 0;
 
         return TIMESTAMP_FORMAT.format(e);
     }
@@ -2417,7 +2857,7 @@ public class SpLib {
         }
 
         if (dt.equals(DateTimeParser.nullDatetime)) {
-            return new Timestamp(-1900, -1, 0, 0, 0, 0, 0);
+            return NULL_DATETIME;
         } else {
             return new Timestamp(
                     dt.getYear() - 1900,
@@ -2474,7 +2914,7 @@ public class SpLib {
         }
 
         if (zdt.equals(DateTimeParser.nullDatetimeUTC)) {
-            return new Timestamp(-1900, -1, 0, 0, 0, 0, 0);
+            return NULL_TIMESTAMP;
         } else {
             assert zdt.getNano() == 0;
             return new Timestamp(
@@ -2566,7 +3006,6 @@ public class SpLib {
         }
 
         BigDecimal bd = strToBigDecimal(e);
-        ;
         return Long.valueOf(bigDecimalToLong(bd));
     }
 
@@ -2599,7 +3038,7 @@ public class SpLib {
             return (Date) e;
         } else if (e instanceof Timestamp) {
             // e is DATETIME or TIMESTAMP
-            return convTimestampToDate((Timestamp) e);
+            return convDatetimeToDate((Timestamp) e);
         }
 
         throw new VALUE_ERROR("not compatible with DATE");
@@ -2626,7 +3065,7 @@ public class SpLib {
             return (Time) e;
         } else if (e instanceof Timestamp) {
             // e is DATETIME or TIMESTAMP
-            return convTimestampToTime((Timestamp) e);
+            return convDatetimeToTime((Timestamp) e);
         }
 
         throw new VALUE_ERROR("not compatible with TIME");
@@ -2732,11 +3171,10 @@ public class SpLib {
             return convDateToString((Date) e);
         } else if (e instanceof Time) {
             return convTimeToString((Time) e);
-            /*
-            } else if (e instanceof Timestamp) {
-                // e is DATETIME or TIMESTAMP. impossible to figure out for now
-                // TODO: match different Java types to DATETIME and TIMESTAMP, respectively
-            */
+        } else if (e instanceof Timestamp) {
+            // e is DATETIME or TIMESTAMP. impossible to figure out for now
+            // TODO: match different Java types to DATETIME and TIMESTAMP, respectively
+            throw new PROGRAM_ERROR("ambiguous run-time type: TIMESTAMP or DATETIME");
         }
 
         throw new VALUE_ERROR("not compatible with STRING");
@@ -2872,15 +3310,30 @@ public class SpLib {
     private static final Float FLOAT_ZERO = Float.valueOf(0.0f);
     private static final Double DOUBLE_ZERO = Double.valueOf(0.0);
 
-    private static final DateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy");
-    private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a");
+    // TODO: update the locale with the value got from the server
+    private static final DateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy", Locale.US);
+    private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a", Locale.US);
     private static final DateFormat DATETIME_FORMAT =
-            new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy");
+            new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy", Locale.US);
     private static final DateFormat TIMESTAMP_FORMAT =
-            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
+            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy", Locale.US);
 
-    private static final DateFormat AM_PM = new SimpleDateFormat("a");
+    private static final DateFormat AM_PM = new SimpleDateFormat("a", Locale.US);
     private static final Date ZERO_DATE = new Date(0L);
+
+    private static String rtrim(String s) {
+        assert s != null;
+
+        char[] cArr = s.toCharArray();
+        int i, len = cArr.length;
+        for (i = len - 1; i >= 0; i--) {
+            if (cArr[i] != ' ') {
+                break;
+            }
+        }
+
+        return new String(cArr, 0, i + 1);
+    }
 
     private static Boolean commonOpEq(Object l, Object r) {
         if (l == null || r == null) {
@@ -3089,7 +3542,7 @@ public class SpLib {
         try {
             return new BigDecimal(s);
         } catch (NumberFormatException e) {
-            throw new VALUE_ERROR("not in a NUMERIC format");
+            throw new VALUE_ERROR("not in a number form");
         }
     }
 
@@ -3123,6 +3576,7 @@ public class SpLib {
             } else if (r instanceof Time) {
                 // not applicable
             } else if (r instanceof Timestamp) {
+                // not applicable
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3159,7 +3613,8 @@ public class SpLib {
                 lConv = convStringToTime((String) l);
                 rConv = (Time) r;
             } else if (r instanceof Timestamp) {
-                lConv = convStringToTimestamp((String) l);
+                // compare as DATETIMEs
+                lConv = convStringToDatetime((String) l);
                 rConv = (Timestamp) r;
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
@@ -3195,11 +3650,10 @@ public class SpLib {
             } else if (r instanceof Time) {
                 lConv = convShortToTime((Short) l);
                 rConv = (Time) r;
-            } else if (r
-                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
-                // CoercionScheme
+            } else if (r instanceof Timestamp) {
+                // compare as TIMESTAMPs
                 lConv = convShortToTimestamp((Short) l);
-                rConv = (Timestamp) r;
+                rConv = convDatetimeToTimestamp((Timestamp) r);
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3234,11 +3688,10 @@ public class SpLib {
             } else if (r instanceof Time) {
                 lConv = convIntToTime((Integer) l);
                 rConv = (Time) r;
-            } else if (r
-                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
-                // CoercionScheme
+            } else if (r instanceof Timestamp) {
+                // compare as TIMESTAMPs
                 lConv = convIntToTimestamp((Integer) l);
-                rConv = (Timestamp) r;
+                rConv = convDatetimeToTimestamp((Timestamp) r);
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3273,11 +3726,10 @@ public class SpLib {
             } else if (r instanceof Time) {
                 lConv = convBigintToTime((Long) l);
                 rConv = (Time) r;
-            } else if (r
-                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
-                // CoercionScheme
+            } else if (r instanceof Timestamp) {
+                // compare as TIMESTAMPs
                 lConv = convBigintToTimestamp((Long) l);
-                rConv = (Timestamp) r;
+                rConv = convDatetimeToTimestamp((Timestamp) r);
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3412,7 +3864,9 @@ public class SpLib {
             } else if (r instanceof Time) {
                 // not applicable
             } else if (r instanceof Timestamp) {
-                // not applicable
+                // compare as DATETIMEs
+                lConv = convDateToDatetime((Date) l);
+                rConv = (Timestamp) r;
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3456,15 +3910,18 @@ public class SpLib {
                 // not applicable
             } else if (r instanceof String) {
                 lConv = (Timestamp) l;
-                rConv = convStringToTimestamp((String) r);
+                rConv = convStringToDatetime((String) r);
             } else if (r instanceof Short) {
-                lConv = (Timestamp) l;
+                // l must be a TIMESTAMP
+                lConv = convDatetimeToTimestamp((Timestamp) l);
                 rConv = convShortToTimestamp((Short) r);
             } else if (r instanceof Integer) {
-                lConv = (Timestamp) l;
+                // l must be a TIMESTAMP
+                lConv = convDatetimeToTimestamp((Timestamp) l);
                 rConv = convIntToTimestamp((Integer) r);
             } else if (r instanceof Long) {
-                lConv = (Timestamp) l;
+                // l must be a TIMESTAMP
+                lConv = convDatetimeToTimestamp((Timestamp) l);
                 rConv = convBigintToTimestamp((Long) r);
             } else if (r instanceof BigDecimal) {
                 // not applicable
@@ -3474,10 +3931,11 @@ public class SpLib {
                 // not applicable
             } else if (r instanceof Date) {
                 lConv = (Timestamp) l;
-                rConv = convDateToTimestamp((Date) r);
+                rConv = convDateToDatetime((Date) r);
             } else if (r instanceof Time) {
                 // not applicable
             } else if (r instanceof Timestamp) {
+                // compare as DATETIMEs
                 lConv = (Timestamp) l;
                 rConv = (Timestamp) r;
             } else {
@@ -3499,9 +3957,13 @@ public class SpLib {
     }
 
     private static String getHostVarsStr(int len) {
-        String[] arr = new String[len];
-        Arrays.fill(arr, "?");
-        return String.join(", ", arr);
+        if (len == 0) {
+            return "";
+        } else {
+            String[] arr = new String[len];
+            Arrays.fill(arr, "?");
+            return "(" + String.join(", ", arr) + ")";
+        }
     }
 
     private static final Date NULL_DATE = new Date(0 - 1900, 0 - 1, 0);
