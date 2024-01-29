@@ -2,11 +2,6 @@ defaults: &defaults
   working_directory: /home
   docker:
     - image: cubridci/cubridci:develop
-    
-oraclelinux: &oraclelinux
-  working_directory: /home
-  docker:
-    - image: cubridci/cubridci:ol7.8 
 
 test_defaults: &test_defaults
   steps:
@@ -20,8 +15,16 @@ test_defaults: &test_defaults
         command: |
           ulimit -c 1
           /entrypoint.sh checkout
-          circleci tests glob cubrid-testcases/$TEST_SUITE/_* | circleci tests split | tee tc.list
-          find cubrid-testcases/$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+          glob_path="cubrid-testcases/$TEST_SUITE/_*"
+          if [ $TEST_SUITE = "plcsql" ]; then
+            glob_path=cubrid-testcases/$TEST_SUITE/_05_plcsql
+          elif [ $TEST_SUITE = "sql" ]; then
+            rm -rf cubrid-testcases/$TEST_SUITE/_05_plcsql
+          else
+            ;
+          fi
+          circleci tests glob $glob_path | circleci tests split | tee tc.list
+          find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
           /entrypoint.sh test
     - run:
         name: Collect Logs
@@ -84,10 +87,17 @@ jobs:
     parallelism: 8
     <<: *test_defaults
 
+  test_plsql:
+    <<: *defaults
+    environment:
+      TEST_SUITE: plcsql
+    resource_class: medium
+    <<: *test_defaults
+
   build-windows:
     machine:
       image: 'windows-server-2019-vs2019:2022.08.1'
-      resource_class: windows.large
+      resource_class: windows.medium
       shell: powershell.exe -ExecutionPolicy Bypass
     environment:
       - CMAKE_GENERATOR: "Visual Studio 16 2019"
@@ -126,6 +136,9 @@ workflows:
           requires:
             - build
       - test_sql:
+          requires:
+            - build
+      - test_plsql:
           requires:
             - build
 
