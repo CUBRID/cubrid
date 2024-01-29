@@ -8526,17 +8526,17 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   fprintf (outfp, "Object Lock Table:\n");
   fprintf (outfp, "\tCurrent number of objects which are locked    = %d\n", num_locked);
   fprintf (outfp, "\tCurrent number of objects which are allocated = %d\n", num_resource_alloc);
-  if (size_alloc < 1024)
+  if (size_alloc < ONE_K)
     {
       fprintf (outfp, "\tCurrent size of objects which are allocated = %d\n\n", size_alloc);
     }
-  else if (size_alloc >= 1024 && size_alloc < 1048576)
+  else if (size_alloc >= ONE_K && size_alloc < ONE_M)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %dK\n\n", size_alloc / 1024);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %dK\n\n", size_alloc / ONE_K);
     }
   else
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %dM\n\n", size_alloc / 1024 / 1024);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %dM\n\n", size_alloc / ONE_M);
     }
 
   // *INDENT-OFF*
