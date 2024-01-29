@@ -44,7 +44,7 @@
 #include "jsp_cl.h"
 #include "execute_schema.h"
 #include "schema_manager.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "execute_statement.h"
 #include "show_meta.h"
 #include "network_interface_cl.h"
