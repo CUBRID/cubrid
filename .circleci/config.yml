@@ -27,7 +27,7 @@ test_defaults: &test_defaults
             rm -rf cubrid-testcases/$TEST_SUITE/_05_plcsql
           fi
           circleci tests glob $glob_path | circleci tests split | tee tc.list
-          find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+          find cubrid-testcases/$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
           /entrypoint.sh test
     - run:
         name: Collect Logs
