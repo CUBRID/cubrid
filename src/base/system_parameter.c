@@ -737,7 +737,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
 
-#define PRM_NAME_MEMORY_MONITORING "memory_monitoring"
+#define PRM_NAME_MEMORY_MONITORING "enable_memory_monitoring"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
