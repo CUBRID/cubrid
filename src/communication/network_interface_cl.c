@@ -3895,8 +3895,7 @@ lock_dump (FILE * outfp, int is_contention)
 
   request = OR_ALIGNED_BUF_START (a_request);
 
-  ptr = request;
-  ptr = or_pack_int (ptr, is_contention);
+  (void) or_pack_int (request, is_contention);
 
   req_error =
     net_client_request_recv_stream (NET_SERVER_LK_DUMP, request, OR_ALIGNED_BUF_SIZE (a_request), NULL, 0, NULL, 0,
