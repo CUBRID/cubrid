@@ -41,7 +41,7 @@ namespace cubmem
 
     if (pos != std::string::npos)
       {
-        filecopy = filecopy.substr (pos);
+	filecopy = filecopy.substr (pos);
       }
 
     ret = filecopy + ':' + std::to_string (line);
