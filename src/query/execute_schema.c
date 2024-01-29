@@ -46,6 +46,7 @@
 #include "semantic_check.h"
 #include "xasl_generation.h"
 #include "memory_alloc.h"
+#include "schema_system_catalog_constants.h"
 #include "transform.h"
 #include "set_object.h"
 #include "object_accessor.h"

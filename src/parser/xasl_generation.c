@@ -57,7 +57,7 @@
 #include "porting.h"
 #include "execute_statement.h"
 #include "query_graph.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "query_planner.h"
 #include "semantic_check.h"
 #include "query_dump.h"
@@ -1168,7 +1168,7 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
 
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
     {
-      PT_NODE *ordered, *use_nl, *use_idx, *index_ss, *index_ls, *use_merge;
+      PT_NODE *leading, *use_nl, *use_idx, *index_ss, *index_ls, *use_merge;
       PT_HINT_ENUM hint;
       const char *alias_print;
 
@@ -1176,8 +1176,8 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
       hint = select_node->info.query.q.select.hint;
       select_node->info.query.q.select.hint = PT_HINT_NONE;
 
-      ordered = select_node->info.query.q.select.ordered;
-      select_node->info.query.q.select.ordered = NULL;
+      leading = select_node->info.query.q.select.leading;
+      select_node->info.query.q.select.leading = NULL;
 
       use_nl = select_node->info.query.q.select.use_nl;
       select_node->info.query.q.select.use_nl = NULL;
@@ -1202,7 +1202,7 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
 
       /* restore hint information */
       select_node->info.query.q.select.hint = hint;
-      select_node->info.query.q.select.ordered = ordered;
+      select_node->info.query.q.select.leading = leading;
       select_node->info.query.q.select.use_nl = use_nl;
       select_node->info.query.q.select.use_idx = use_idx;
       select_node->info.query.q.select.index_ss = index_ss;
@@ -17400,10 +17400,10 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
       /* init hint */
       select_node->info.query.q.select.hint = PT_HINT_NONE;
-      if (select_node->info.query.q.select.ordered)
+      if (select_node->info.query.q.select.leading)
 	{
-	  parser_free_tree (parser, select_node->info.query.q.select.ordered);
-	  select_node->info.query.q.select.ordered = NULL;
+	  parser_free_tree (parser, select_node->info.query.q.select.leading);
+	  select_node->info.query.q.select.leading = NULL;
 	}
       if (select_node->info.query.q.select.use_nl)
 	{
@@ -19450,15 +19450,16 @@ pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * predicate, PT_NODE *
  * Note :
  * The hints that are copied from delete/update statement to SELECT statement
  * are: ORDERED, USE_DESC_IDX, NO_COVERING_INDEX, NO_DESC_IDX, USE_NL, USE_IDX,
- *	USE_MERGE, NO_MULTI_RANGE_OPT, RECOMPILE.
+ *	USE_MERGE, NO_MULTI_RANGE_OPT, RECOMPILE, LEADING.
  */
 int
 pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * select_stmt)
 {
   int err = NO_ERROR;
-  int hint_flags =
+  PT_HINT_ENUM hint_flags =
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
-    PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT;
+    PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
+    PT_HINT_LEADING;
   PT_NODE *arg = NULL;
 
   switch (node->node_type)
@@ -19478,15 +19479,15 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   select_stmt->info.query.q.select.hint = (PT_HINT_ENUM) (select_stmt->info.query.q.select.hint | hint_flags);
   select_stmt->flag.recompile = node->flag.recompile;
 
-  if (hint_flags & PT_HINT_ORDERED)
+  if (hint_flags & PT_HINT_LEADING)
     {
       switch (node->node_type)
 	{
 	case PT_DELETE:
-	  arg = node->info.delete_.ordered_hint;
+	  arg = node->info.delete_.leading_hint;
 	  break;
 	case PT_UPDATE:
-	  arg = node->info.update.ordered_hint;
+	  arg = node->info.update.leading_hint;
 	  break;
 	default:
 	  break;
@@ -19499,7 +19500,7 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 	      goto exit_on_error;
 	    }
 	}
-      select_stmt->info.query.q.select.ordered = arg;
+      select_stmt->info.query.q.select.leading = arg;
     }
 
   if (hint_flags & PT_HINT_USE_NL)
