@@ -1162,6 +1162,7 @@ sm_define_view_stored_procedure_spec (void)
   sprintf (stmt,
 	"SELECT "
 	  "[sp].[sp_name] AS [sp_name], "
+          "[sp].[pkg_name] AS [pkg_name], "
 	  "CASE [sp].[sp_type] WHEN 1 THEN 'PROCEDURE' ELSE 'FUNCTION' END AS [sp_type], "
 	  "CASE [sp].[return_type] "
 	    "WHEN 0 THEN 'void' "
@@ -1170,13 +1171,15 @@ sm_define_view_stored_procedure_spec (void)
 	    "ELSE (SELECT [t].[type_name] FROM [%s] AS [t] WHERE [sp].[return_type] = [t].[type_id]) "
 	    "END AS [return_type], "
 	  "[sp].[arg_count] AS [arg_count], "
-	  "CASE [sp].[lang] WHEN 1 THEN 'JAVA' ELSE '' END AS [lang], "
+	  "CASE [sp].[lang] WHEN 0 THEN 'PLCSQL' WHEN 1 THEN 'JAVA' ELSE 'UNKNOWN' END AS [lang], "
 	  "[sp].[target] AS [target], "
 	  "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
 	  "[sp].[comment] AS [comment] "
 	"FROM "
 	  /* CT_STORED_PROC_NAME */
-	  "[%s] AS [sp]",
+	  "[%s] AS [sp] "
+        "WHERE "
+          "[sp].[is_system_generated] = 0",
 	CT_DATATYPE_NAME,
 	CT_STORED_PROC_NAME);
   // *INDENT-ON*
@@ -1193,6 +1196,7 @@ sm_define_view_stored_procedure_arguments_spec (void)
   sprintf (stmt,
 	"SELECT "
 	  "[sp].[sp_name] AS [sp_name], "
+          "[sp].[pkg_name] AS [pkg_name], "
 	  "[sp].[index_of] AS [index_of], "
 	  "[sp].[arg_name] AS [arg_name], "
 	  "CASE [sp].[data_type] "
@@ -1205,6 +1209,7 @@ sm_define_view_stored_procedure_arguments_spec (void)
 	"FROM "
 	  /* CT_STORED_PROC_ARGS_NAME */
 	  "[%s] AS [sp] "
+        "WHERE [sp].[is_system_generated] = 0 "
 	"ORDER BY " /* Is it possible to remove ORDER BY? */
 	  "[sp].[sp_name], "
 	  "[sp].[index_of]",
