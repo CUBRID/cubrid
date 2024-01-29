@@ -8456,7 +8456,8 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   int old_wait_msecs = 0;	/* Old transaction lock wait */
   int tran_index;
   LK_RES *res_ptr;
-  int num_locked, num_entry_alloc, num_resource_alloc, size_alloc;
+  int num_locked, num_entry_alloc, num_resource_alloc;
+  UINT64 size_alloc;
   float lock_timeout_sec;
   char lock_timeout_string[64];
 
@@ -8520,7 +8521,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   num_locked = (int) lk_Gl.m_obj_hash_table.get_element_count ();
   num_resource_alloc = (int) lk_Gl.m_obj_hash_table.get_alloc_element_count ();
   num_entry_alloc = (int) lk_Gl.obj_free_entry_list.alloc_cnt;
-  size_alloc = (num_entry_alloc * sizeof (LK_ENTRY)) + (num_resource_alloc * sizeof (LK_RES));
+  size_alloc = ((UINT64) num_entry_alloc * sizeof (LK_ENTRY)) + ((UINT64) num_resource_alloc * sizeof (LK_RES));
 
   /* dump object lock table */
   fprintf (outfp, "Object Lock Table:\n");
