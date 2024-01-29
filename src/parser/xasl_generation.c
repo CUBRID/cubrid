@@ -12750,9 +12750,20 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 	  PT_NODE *non_recursive_part = node->info.cte.non_recursive_part;
 	  // non_recursive_part can become PT_VALUE during constant folding
 	  assert (PT_IS_QUERY (non_recursive_part) || PT_IS_VALUE_NODE (non_recursive_part));
+
+	  /*
+	     We need to check a false-query and a select-null query by constant folding.
+	     A false-query and a select-null query are distinguished as follows.
+	     false-query's node_type is PT_VALUE and type_enum is PT_TYPE_NULL.
+	     In select-null query, node_type is PT_SELECT and type_enum is PT_TYPE_NULL.
+	     false-query is not necessary to append xasl because it's not a query.
+	   */
 	  if (PT_IS_VALUE_NODE (non_recursive_part))
 	    {
-	      info->xasl = pt_append_xasl (xasl, info->xasl);
+	      if (non_recursive_part->type_enum != PT_TYPE_NULL)
+		{
+		  info->xasl = pt_append_xasl (xasl, info->xasl);
+		}
 	      break;
 	    }
 
