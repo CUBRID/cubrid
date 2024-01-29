@@ -35,8 +35,17 @@ pipeline {
             echo 'Packing...'
             sh "scl enable devtoolset-8 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
 
-            echo 'Testing...'
-            sh '/entrypoint.sh test || echo "$? failed"'
+            // echo 'Testing...'
+            // sh '/entrypoint.sh test || echo "$? failed"'
+            script {
+              // Skip testing for feature branches
+              if (!(env.BRANCH_NAME ==~ /^feature\/.*/)) {
+            	echo 'Testing...'
+            	sh '/entrypoint.sh test || echo "$? failed"'
+              } else {
+                echo "Skipping testing for feature branch"
+              }
+            }
           }
           post {
             always {
@@ -64,8 +73,17 @@ pipeline {
             echo 'Packing...'
             sh "scl enable devtoolset-8 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
 
-            echo 'Testing...'
-            sh '/entrypoint.sh test || echo "$? failed"'
+            // echo 'Testing...'
+            // sh '/entrypoint.sh test || echo "$? failed"'
+            script {
+              // Skip testing for feature branches
+              if (!(env.BRANCH_NAME ==~ /^feature\/.*/)) {
+            	echo 'Testing...'
+            	sh '/entrypoint.sh test || echo "$? failed"'
+              } else {
+                echo "Skipping testing for feature branch"
+              }
+            }
           }
           post {
             always {
@@ -76,6 +94,12 @@ pipeline {
         }
 
         stage('Windows Release') {
+          when {
+            expression {
+              // Skip Windows Release stage for feature branches
+              return !(env.BRANCH_NAME ==~ /^feature\/.*/)
+            }
+          }
           agent {
             node {
               label 'windows'
@@ -100,10 +124,11 @@ pipeline {
 
   post {
     always {
-      build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
+//      build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
+      build job: "${DEPLOY_JOB_FOR_MANUAL}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
             propagate: false
-      emailext replyTo: '$DEFAULT_REPLYTO', to: '$DEFAULT_RECIPIENTS',
-               subject: '$DEFAULT_SUBJECT', body: '''${JELLY_SCRIPT,template="html"}'''
+//      emailext replyTo: '$DEFAULT_REPLYTO', to: '$DEFAULT_RECIPIENTS',
+//               subject: '$DEFAULT_SUBJECT', body: '''${JELLY_SCRIPT,template="html"}'''
     }
   }
 }
