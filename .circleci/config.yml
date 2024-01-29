@@ -17,12 +17,14 @@ test_defaults: &test_defaults
           ulimit -c 1
           /entrypoint.sh checkout
           glob_path="cubrid-testcases/$TEST_SUITE/_*"
-          if [ $TEST_SUITE = "plcsql" ]; then
+          if [ $TEST_SUITE = "plcsql" ] 
+          then
             glob_path=cubrid-testcases/$TEST_SUITE/_05_plcsql
-          elif [ $TEST_SUITE = "sql" ]; then
+          elif [ $TEST_SUITE = "sql" ] 
+          then
             rm -rf cubrid-testcases/$TEST_SUITE/_05_plcsql
           else
-            ;
+            
           fi
           circleci tests glob $glob_path | circleci tests split | tee tc.list
           find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
