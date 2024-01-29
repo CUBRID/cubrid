@@ -19,7 +19,7 @@ test_defaults: &test_defaults
           glob_path="cubrid-testcases/$TEST_SUITE/_*"
           if [ $TEST_SUITE = "plcsql" ] 
           then
-            glob_path=cubrid-testcases/$TEST_SUITE/_05_plcsql
+            glob_path=cubrid-testcases/sql/_05_plcsql
           elif [ $TEST_SUITE = "sql" ] 
           then
             rm -rf cubrid-testcases/$TEST_SUITE/_05_plcsql
