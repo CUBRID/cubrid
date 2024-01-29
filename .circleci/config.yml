@@ -145,6 +145,6 @@ workflows:
           requires:
             - build
 
-      - build-windows
+      - build-windows:
           requires:
             - build
