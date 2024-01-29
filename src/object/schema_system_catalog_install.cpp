@@ -835,6 +835,8 @@ namespace cubschema
       {"arg_count", "integer"},
       {"args", format_sequence (CT_STORED_PROC_ARGS_NAME)},
       {"lang", "integer"},
+      {"pkg_name", format_varchar (255)},
+      {"is_system_generated", "integer"},
       {"target", format_varchar (4096)},
       {"owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (1024)}
@@ -865,7 +867,9 @@ namespace cubschema
 		   // columns
     {
       {"sp_name", format_varchar (255)},
+      {"pkg_name", format_varchar (255)},
       {"index_of", "integer"},
+      {"is_system_generated", "integer"},
       {"arg_name", format_varchar (255)},
       {"data_type", "integer"},
       {"mode", "integer"},
@@ -1765,6 +1769,7 @@ namespace cubschema
 		   // columns
     {
       {"sp_name", "varchar(255)"},
+      {"pkg_name", "varchar (255)"},
       {"sp_type", "varchar(16)"},
       {"return_type", "varchar(16)"},
       {"arg_count", "integer"},
@@ -1802,6 +1807,7 @@ namespace cubschema
 		   // columns
     {
       {"sp_name", "varchar(255)"},
+      {"pkg_name", "varchar (255)"},
       {"index_of", "integer"},
       {"arg_name", "varchar(255)"},
       {"data_type", "varchar(16)"},
