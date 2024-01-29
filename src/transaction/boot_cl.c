@@ -565,11 +565,11 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 		  sm_mark_system_classes ();
 		  error_code = tran_commit (false);
 		}
-	    }
 
-	  if (error_code == NO_ERROR)
-	    {
-	      error_code = sp_builtin_install ();
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = sp_builtin_install ();
+		}
 	    }
 	}
     }
