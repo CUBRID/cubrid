@@ -17,29 +17,13 @@
  */
 
 /*
- * memory_monitor_sr.hpp - Declaration of APIs and structures, classes
- *                         for memory monitoring module
+ * memory_monitor_common.hpp - Declaration of structures which is using
+ *                             both server and client
  */
 
-#ifndef _MEMORY_MONITOR_SR_HPP_
-#define _MEMORY_MONITOR_SR_HPP_
+#ifndef _MEMORY_MONITOR_COMMON_HPP_
+#define _MEMORY_MONITOR_COMMON_HPP_
 
-#include <string>
+#define MMON_MAX_SERVER_NAME_LENGTH 255
 
-namespace cubmem
-{
-  class memory_monitor
-  {
-    public:
-      memory_monitor (const char *server_name);
-      ~memory_monitor () {}
-
-    private:
-      static std::string make_tag_name (const char *file, const int line);
-
-    private:
-      std::string m_server_name;
-  };
-} //namespace cubmem
-
-#endif // _MEMORY_MONITOR_SR_HPP_
+#endif // _MEMORY_MONITOR_COMMON_HPP_

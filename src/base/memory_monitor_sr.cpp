@@ -36,6 +36,8 @@ namespace cubmem
     std::string filecopy (file);
     std::string ret;
 
+    ret.reserve (MMON_MAX_SERVER_NAME_LENGTH);
+
     // Find the last occurrence of "src" in the path
     size_t pos = filecopy.rfind ("src");
 
@@ -45,19 +47,5 @@ namespace cubmem
       }
 
     ret = filecopy + ':' + std::to_string (line);
-    return ret;
-  }
-
-  int memory_monitor::generate_checksum (int tag_id, uint64_t size)
-  {
-    char input[32]; // INT_MAX digits 10 +  ULLONG_MAX digits 20
-    unsigned char digest[MD5_DIGEST_LENGTH];
-    int ret;
-
-    memset (input, 0, sizeof (input));
-    memset (digest, 0, sizeof (digest));
-    sprintf (input, "%d%lu", tag_id, size);
-    (void) MD5 (reinterpret_cast<const unsigned char *> (input), strlen (input), digest);
-    memcpy (&ret, digest, sizeof (int));
     return ret;
   }
