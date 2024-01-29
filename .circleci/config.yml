@@ -19,6 +19,8 @@ test_defaults: &test_defaults
           glob_path="cubrid-testcases/$TEST_SUITE/_*"
           if [ $TEST_SUITE = "plcsql" ] 
           then
+            # Hack way to run plcsql test without modifying CUBRID CI docker
+            TEST_SUITE="sql"
             glob_path=cubrid-testcases/sql/_05_plcsql
           elif [ $TEST_SUITE = "sql" ] 
           then
