@@ -1212,7 +1212,7 @@ sm_define_view_stored_procedure_arguments_spec (void)
         "WHERE [sp].[is_system_generated] = 0 "
 	"ORDER BY " /* Is it possible to remove ORDER BY? */
 	  "[sp].[sp_name], "
-	  "[sp].[index_of] ",
+	  "[sp].[index_of]",
 	CT_DATATYPE_NAME,
 	CT_STORED_PROC_ARGS_NAME);
   // *INDENT-ON*
