@@ -22,8 +22,8 @@
 
 #include <cstring>
 #include <algorithm>
+#include <cassert>
 
-#include "openssl/md5.h"
 #include "memory_monitor_sr.hpp"
 
 namespace cubmem
@@ -34,18 +34,24 @@ namespace cubmem
   std::string memory_monitor::make_tag_name (const char *file, const int line)
   {
     std::string filecopy (file);
+    std::string target ("/src/");
     std::string ret;
 
     ret.reserve (MMON_MAX_SERVER_NAME_LENGTH);
 
     // Find the last occurrence of "src" in the path
-    size_t pos = filecopy.rfind ("src");
+    size_t pos = filecopy.rfind (target);
+#if !defined (NDEBUG)
+    size_t lpos = filecopy.find (target);
+    assert (pos == lpos);
+#endif // NDEBUG
 
     if (pos != std::string::npos)
       {
-	filecopy = filecopy.substr (pos);
+	filecopy = filecopy.substr (pos + target.length ());
       }
 
     ret = filecopy + ':' + std::to_string (line);
     return ret;
   }
+}

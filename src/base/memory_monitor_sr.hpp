@@ -26,6 +26,8 @@
 
 #include <string>
 
+#include "memory_monitor_common.hpp"
+
 namespace cubmem
 {
   class memory_monitor
