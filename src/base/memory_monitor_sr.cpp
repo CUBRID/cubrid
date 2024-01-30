@@ -25,7 +25,6 @@
 #include <cstring>
 #include <algorithm>
 
-#include "openssl/md5.h"
 #include "memory_monitor_sr.hpp"
 
 #ifndef HAVE_USR_INCLUDE_MALLOC_H
