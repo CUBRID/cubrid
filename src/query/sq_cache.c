@@ -273,7 +273,7 @@ sq_make_key (xasl_node * xasl)
 {
   sq_key *keyp;
   ACCESS_SPEC_TYPE *p;
-  int cnt;
+  int cnt = 0;
 
   p = xasl->spec_list;
 
