@@ -3836,8 +3836,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
        * we don't actually allow empty logical system operation because it might hide a logic flaw. however, there are
        * unusual cases when a logical operation does not really require logging (see RVPGBUF_FLUSH_PAGE). if you create
        * such a case, you should add a dummy log record to trick this assert. */
-      assert (log_No_logging || (!LSA_ISNULL (&tdes->tail_lsa)
-				 && LSA_GT (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes))));
+      assert (!LSA_ISNULL (&tdes->tail_lsa) && LSA_GT (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes)));
 
       /* now that we have access to tdes, we can do some updates on log record and sanity checks */
       if (log_record->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
