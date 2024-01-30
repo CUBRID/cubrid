@@ -7454,6 +7454,21 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	    }
 	}			/* if (qualified) */
 
+      if (xasl->curr_spec->s_id.mvcc_select_lock_needed && !qualified)
+	    {
+	      /* did not pass the evaluation - unlock object (join pred X) */
+	      LOCK lock_mode = X_LOCK;
+	      SCAN_ID *scan_id = &xasl->curr_spec->s_id;
+	      if (scan_id->type == S_HEAP_SCAN)
+		{
+		  lock_unlock_object_donot_move_to_non2pl (thread_p, &scan_id->s.hsid.curr_oid, &scan_id->s.hsid.cls_oid, lock_mode);
+		}
+	      else if (scan_id->type == S_INDX_SCAN)
+		{
+		  lock_unlock_object_donot_move_to_non2pl (thread_p, scan_id->s.isid.curr_oidp, &scan_id->s.hsid.cls_oid, lock_mode);
+		}
+	    }
+
     }
   while (1);
 
@@ -8249,6 +8264,20 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		}
 	    }
 
+	  if (xasl->curr_spec->s_id.mvcc_select_lock_needed && !qualified)
+	    {
+	      /* did not pass the evaluation - unlock object */
+	      LOCK lock_mode = X_LOCK;
+	      SCAN_ID *scan_id = &xasl->curr_spec->s_id;
+	      if (scan_id->type == S_HEAP_SCAN)
+		{
+		  lock_unlock_object_donot_move_to_non2pl (thread_p, &scan_id->s.hsid.curr_oid, &scan_id->s.hsid.cls_oid, lock_mode);
+		}
+	      else if (scan_id->type == S_INDX_SCAN)
+		{
+		  lock_unlock_object_donot_move_to_non2pl (thread_p, scan_id->s.isid.curr_oidp, &scan_id->s.hsid.cls_oid, lock_mode);
+		}
+	    }
 	  qexec_clear_all_lists (thread_p, xasl);
 	}
 
