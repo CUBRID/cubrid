@@ -28,9 +28,9 @@
 
 #if !defined(WINDOWS)
 #include <dlfcn.h>
+#include <execinfo.h>
 #endif
 #include <string.h>
-#include <execinfo.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
