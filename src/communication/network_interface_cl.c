@@ -7159,7 +7159,6 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	}
 
       request_len += OR_INT_SIZE + OR_PTR_SIZE * net_Deferred_end_queries_count;
-      net_Deferred_end_queries_count = 0;
     }
 
   /* Add message in log in case of autocommit transactions. It helps to trace query execution. */
@@ -7223,6 +7222,10 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
       if (IS_QUERY_EXECUTE_WITH_COMMIT (flag))
 	{
 	  ptr = or_unpack_int (ptr, &end_query_result);
+	  if (end_query_result == NO_ERROR)
+	    {
+	      net_Deferred_end_queries_count = 0;
+	    }
 	  ptr = or_unpack_int (ptr, &tran_state);
 	  ptr = or_unpack_int (ptr, &should_conn_reset);
 
