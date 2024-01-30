@@ -20,18 +20,58 @@
  * memory_monitor_sr.cpp - Implementation of memory monitor module
  */
 
+#include <malloc.h>
+#include <cassert>
 #include <cstring>
 #include <algorithm>
-#include <cassert>
 
+#include "openssl/md5.h"
 #include "memory_monitor_sr.hpp"
+
+#ifndef HAVE_USR_INCLUDE_MALLOC_H
+#define HAVE_USR_INCLUDE_MALLOC_H
+#endif
+
+typedef struct mmon_metainfo
+{
+  uint64_t size;
+  int tag_id;
+  int magic_number;
+} MMON_METAINFO;
 
 namespace cubmem
 {
-  memory_monitor::memory_monitor (const char *server_name)
-    : m_server_name {server_name} {}
+  memory_monitor *mmon_Gl = nullptr;
 
-  static std::string memory_monitor::make_tag_name (const char *file, const int line)
+  memory_monitor::memory_monitor (const char *server_name)
+    : m_server_name {server_name}
+  {
+    std::string magic_string ("MMON");
+    memcpy (&magic, magic_string.c_str (), sizeof (int));
+  }
+
+  size_t memory_monitor::get_alloc_size (char *ptr)
+  {
+    size_t ret;
+    size_t alloc_size = malloc_usable_size (ptr);
+    char *meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
+    MMON_METAINFO metainfo;
+
+    memcpy (&metainfo, meta_ptr, MMON_ALLOC_META_SIZE);
+
+    if (metainfo.magic_number == magic)
+      {
+	ret = (size_t) metainfo.size - MMON_ALLOC_META_SIZE;
+      }
+    else
+      {
+	ret = alloc_size;
+      }
+
+    return ret;
+  }
+
+  std::string memory_monitor::make_tag_name (const char *file, const int line)
   {
     std::string filecopy (file);
     std::string target ("/src/");
@@ -50,4 +90,21 @@ namespace cubmem
 
     return filecopy + ':' + std::to_string (line);
   }
+}
+
+using namespace cubmem;
+
+bool mmon_is_mem_tracked ()
+{
+  return (mmon_Gl != nullptr);
+}
+
+size_t mmon_get_alloc_size (char *ptr)
+{
+  if (mmon_is_mem_tracked ())
+    {
+      return mmon_Gl->get_alloc_size (ptr);
+    }
+  // unreachable
+  return 0;
 }
