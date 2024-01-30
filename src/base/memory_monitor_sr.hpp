@@ -34,6 +34,12 @@ namespace cubmem
       memory_monitor (const char *server_name);
       ~memory_monitor () {}
 
+      memory_monitor (const memory_monitor &) = delete;
+      memory_monitor (memory_monitor &&) = delete;
+
+      memory_monitor &operator = (const memory_monitor &) = delete;
+      memory_monitor &operator = (memory_monitor &&) = delete;
+
     private:
       static std::string make_tag_name (const char *file, const int line);
 
