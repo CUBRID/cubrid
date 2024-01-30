@@ -88,15 +88,15 @@ pipeline {
         }
 
         stage('Windows Release') {
-          agent {
-            node {
-              label 'windows'
-            }
-          }
           when {
             expression {
               // Skip Windows Release stage for feature branches
               return !(env.BRANCH_NAME ==~ /^feature\/.*/)
+            }
+          }
+          agent {
+            node {
+              label 'windows'
             }
           }
           steps {
