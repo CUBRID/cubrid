@@ -7222,6 +7222,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
       if (IS_QUERY_EXECUTE_WITH_COMMIT (flag))
 	{
 	  ptr = or_unpack_int (ptr, &end_query_result);
+	  /* If all net_Deferred_end_queries are closed on the server, the value of end_query_result is NO_ERROR. */
 	  if (end_query_result == NO_ERROR)
 	    {
 	      net_Deferred_end_queries_count = 0;
