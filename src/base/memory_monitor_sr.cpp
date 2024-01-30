@@ -31,7 +31,7 @@ namespace cubmem
   memory_monitor::memory_monitor (const char *server_name)
     : m_server_name {server_name} {}
 
-  std::string memory_monitor::make_tag_name (const char *file, const int line)
+  static std::string memory_monitor::make_tag_name (const char *file, const int line)
   {
     std::string filecopy (file);
     std::string target ("/src/");
