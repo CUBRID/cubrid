@@ -383,9 +383,18 @@ logddl_set_stmt_type (int stmt_type, PT_NODE * statement)
 
   if (logddl_is_ddl_type (stmt_type, statement) == true)
     {
-      is_executed_ddl_for_trans = true;
       is_executed_ddl_for_csql = true;
+      is_executed_ddl_for_trans = true;
 
+      if (stmt_type == PT_METHOD_CALL)
+	{
+	  PT_METHOD_CALL_INFO *call = &statement->info.method_call;
+	  if ((call->call_or_expr == PT_IS_CALL_STMT)
+	      && (strcasecmp (call->method_name->info.name.original, "login") == 0))
+	    {
+	      return true;
+	    }
+	}
       ddl_audit_handle.ddl_stmt_cnt++;
       return true;
     }
@@ -1347,9 +1356,9 @@ logddl_is_ddl_type (int node_type, PT_NODE * node)
 	  PT_METHOD_CALL_INFO *call = &node->info.method_call;
 	  if (call->call_or_expr == PT_IS_CALL_STMT)
 	    {
-	      if ((strcasecmp (call->method_name->info.name.original, "set_password") == 0)
-		  || (strcasecmp (call->method_name->info.name.original, "login") == 0)
-		  || (strcasecmp (call->method_name->info.name.original, "add_user") == 0))
+	      if ((strcasecmp (call->method_name->info.name.original, "add_user") == 0)
+		  || (strcasecmp (call->method_name->info.name.original, "set_password") == 0)
+		  || (strcasecmp (call->method_name->info.name.original, "login") == 0))
 		{
 		  has_password_type = true;
 		  return true;
@@ -1400,7 +1409,7 @@ logddl_get_app_name (T_APP_NAME app_name)
 }
 
 void
-logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
+logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, PARSER_CONTEXT * parser)
 {
   if (ddl_logging_enabled == false)
     {
@@ -1426,15 +1435,24 @@ logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, HIDE_PWD_IN
 	}
       else if (statement->sql_user_text && statement->sql_user_text_len > 0)
 	{
-	  HIDE_PWD_INFO t_hide_pwd_info;
+	  if (parser->original_buffer == NULL || parser->original_buffer[0] == '\0')
+	    {
+	      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len, NULL);
+	    }
+	  else
+	    {
+	      HIDE_PWD_INFO t_hide_pwd_info;
+	      HIDE_PWD_INFO_PTR hide_pwd_info_ptr = &parser->hide_pwd_info;
+	      //const char* sql_base_ptr = parser->original_buffer;
+	      int start = (int) (statement->sql_user_text - parser->original_buffer);
 
-	  INIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
-	  password_remake_offset_for_one_query (&t_hide_pwd_info, hide_pwd_info_ptr,
-						statement->buffer_pos - statement->sql_user_text_len,
-						statement->buffer_pos);
+	      INIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
+	      password_remake_offset_for_one_query (&t_hide_pwd_info, hide_pwd_info_ptr, start,	/* statement->buffer_pos - statement->sql_user_text_len, */
+						    start + statement->sql_user_text_len /*statement->buffer_pos */ );
 
-	  logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len, &t_hide_pwd_info);
-	  QUIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
+	      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len, &t_hide_pwd_info);
+	      QUIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
+	    }
 	}
     }
 }
