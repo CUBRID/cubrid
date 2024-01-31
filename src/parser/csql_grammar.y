@@ -641,6 +641,7 @@ static char *g_plcsql_text;
 %type <number> opt_access_modifier
 %type <number> deduplicate_key_mod_level
 %type <number> opt_index_with_clause_no_online
+%type <number> opt_authid
 /*}}}*/
 
 /* define rule type (node) */
@@ -1100,6 +1101,7 @@ static char *g_plcsql_text;
 %token ATTACH
 %token ATTRIBUTE
 %token AVG
+%token AUTHID
 %token BEFORE
 %token BEGIN_
 %token BETWEEN
@@ -1115,6 +1117,7 @@ static char *g_plcsql_text;
 %token BREADTH
 %token BY
 %token CALL
+%token CALLER
 %token CASCADE
 %token CASCADED
 %token CASE
@@ -1168,6 +1171,7 @@ static char *g_plcsql_text;
 %token DEALLOCATE
 %token DECLARE
 %token DEFAULT
+%token DEFINER
 %token ON_UPDATE
 %token DEFERRABLE
 %token DEFERRED
@@ -3032,8 +3036,9 @@ create_stmt
                   expecting_pl_lang_spec = 1;
 		}
 	  identifier opt_sp_param_list		        /* 5, 6 */
-	  is_or_as pl_language_spec		        /* 7, 8 */
-	  opt_comment_spec				/* 9 */
+          opt_authid                                    /* 7 */
+	  is_or_as pl_language_spec		        /* 8, 9 */
+	  opt_comment_spec				/* 10 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace PROCEDURE~);
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3042,11 +3047,12 @@ create_stmt
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_PROCEDURE;
+                            node->info.sp.auth_id = $7;
 			    node->info.sp.param_list = $6;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
 			    node->info.sp.ret_data_type = NULL;
-			    node->info.sp.body = $8;
-			    node->info.sp.comment = $9;
+			    node->info.sp.body = $9;
+			    node->info.sp.comment = $10;
 			  }
 
 			$$ = node;
@@ -3063,9 +3069,10 @@ create_stmt
                         expecting_pl_lang_spec = 1;
 		}
 	  identifier opt_sp_param_list	                /* 5, 6 */
-	  RETURN sp_return_type		                /* 7, 8 */
-	  is_or_as pl_language_spec		        /* 9, 10 */
-	  opt_comment_spec				/* 11 */
+          opt_authid                                    /* 7 */
+	  RETURN sp_return_type		                /* 8, 9 */
+	  is_or_as pl_language_spec		        /* 10, 11 */
+	  opt_comment_spec				/* 12 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace FUNCTION~);
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3074,11 +3081,12 @@ create_stmt
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_FUNCTION;
+                            node->info.sp.auth_id = $7;
 			    node->info.sp.param_list = $6;
-			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
-			    node->info.sp.ret_data_type = CONTAINER_AT_1($8);
-			    node->info.sp.body = $10;
-			    node->info.sp.comment = $11;
+			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($9));
+			    node->info.sp.ret_data_type = CONTAINER_AT_1($9);
+			    node->info.sp.body = $11;
+			    node->info.sp.comment = $12;
 			  }
 
 			$$ = node;
@@ -12473,6 +12481,19 @@ sp_return_type
 			$$ = ctn;
 
                 DBG_PRINT}}
+        ;
+
+opt_authid
+        : /* empty */
+          {{ $$ = PT_AUTHID_OWNER }}
+        | AUTHID DEFINER
+          {{ $$ = PT_AUTHID_OWNER }}
+        | AUTHID OWNER
+          {{ $$ = PT_AUTHID_OWNER }}
+        | AUTHID CALLER
+          {{ $$ = PT_AUTHID_CALLER }}
+        | AUTHID CURRENT_USER
+          {{ $$ = PT_AUTHID_CALLER }}
         ;
 
 is_or_as
