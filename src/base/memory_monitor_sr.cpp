@@ -49,18 +49,23 @@ namespace cubmem
     memcpy (&magic, magic_string.c_str (), sizeof (int));
   }
 
-  size_t memory_monitor::get_alloc_size (char *ptr)
+  size_t memory_monitor::get_alloc_size (const char *ptr)
   {
     size_t ret;
-    size_t alloc_size = malloc_usable_size (ptr);
-    char *meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
-    MMON_METAINFO metainfo;
+    size_t alloc_size = malloc_usable_size ((void *)ptr);
+    const char *meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
 
-    memcpy (&metainfo, meta_ptr, MMON_ALLOC_META_SIZE);
-
-    if (metainfo.magic_number == magic)
+    if (alloc_size < MMON_ALLOC_META_SIZE)
       {
-	ret = (size_t) metainfo.size - MMON_ALLOC_META_SIZE;
+	return alloc_size;
+      }
+
+    assert (meta_ptr > ptr);
+    const MMON_METAINFO *metainfo = (const MMON_METAINFO *) meta_ptr;
+
+    if (metainfo->magic_number == magic)
+      {
+	ret = (size_t) metainfo->size - MMON_ALLOC_META_SIZE;
       }
     else
       {

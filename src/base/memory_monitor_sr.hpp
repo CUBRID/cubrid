@@ -48,7 +48,7 @@ namespace cubmem
       memory_monitor &operator = (memory_monitor &&) = delete;
 
     public:
-      size_t get_alloc_size (char *ptr);
+      size_t get_alloc_size (const char *ptr);
 
     private:
       static std::string make_tag_name (const char *file, const int line);
