@@ -55,7 +55,7 @@ namespace cubmem
 
     private:
       std::string m_server_name;
-      int magic;
+      int m_magic_number;
   };
 } //namespace cubmem
 

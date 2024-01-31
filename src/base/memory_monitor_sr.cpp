@@ -31,31 +31,31 @@
 #define HAVE_USR_INCLUDE_MALLOC_H
 #endif
 
-typedef struct mmon_metainfo
+typedef struct mmon_metainfo MMON_METAINFO;
+struct mmon_metainfo
 {
-  uint64_t size;
+  uint64_t alloc_size;
   int tag_id;
   int magic_number;
-} MMON_METAINFO;
+};
 
 namespace cubmem
 {
+  static const std::string magic_string ("MMON");
   memory_monitor *mmon_Gl = nullptr;
 
   memory_monitor::memory_monitor (const char *server_name)
     : m_server_name {server_name}
   {
-    std::string magic_string ("MMON");
-    memcpy (&magic, magic_string.c_str (), sizeof (int));
+    memcpy (&m_magic_number, magic_string.c_str (), sizeof (int));
   }
 
   size_t memory_monitor::get_alloc_size (const char *ptr)
   {
-    size_t ret;
     size_t alloc_size = malloc_usable_size ((void *)ptr);
     const char *meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
 
-    if (alloc_size < MMON_ALLOC_META_SIZE)
+    if (alloc_size <= MMON_ALLOC_META_SIZE)
       {
 	return alloc_size;
       }
@@ -63,16 +63,12 @@ namespace cubmem
     assert (meta_ptr > ptr);
     const MMON_METAINFO *metainfo = (const MMON_METAINFO *) meta_ptr;
 
-    if (metainfo->magic_number == magic)
+    if (metainfo->magic_number == m_magic_number)
       {
-	ret = (size_t) metainfo->size - MMON_ALLOC_META_SIZE;
-      }
-    else
-      {
-	ret = alloc_size;
+	alloc_size = (size_t) metainfo->alloc_size - MMON_ALLOC_META_SIZE;
       }
 
-    return ret;
+    return alloc_size;
   }
 
   std::string memory_monitor::make_tag_name (const char *file, const int line)
