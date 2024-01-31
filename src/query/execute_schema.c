@@ -2278,14 +2278,21 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	  else
 	    {
-	      if(statement->info.alter_user.alter_user_type == PT_ADD_GROUPS_OR_MEMBERS)
-	      {
-	      	error = db_add_member (group, user);
-	      }
-	      else if(statement->info.alter_user.alter_user_type == PT_DROP_GROUPS_OR_MEMBERS)
-	      {
-		error = db_drop_member (group, user);
-	      }
+	      if(statement->info.alter_user.alter_user_type == PT_ADD_GROUPS_OR_MEMBERS
+	         && (ws_is_same_object (group, Au_user) || au_is_dba_group_member (Au_user)))
+	        {
+	      	  error = db_add_member (group, user);
+	        }
+	      else if(statement->info.alter_user.alter_user_type == PT_DROP_GROUPS_OR_MEMBERS
+	              && (ws_is_same_object (group, Au_user) || au_is_dba_group_member (Au_user)))
+	        {
+		  error = db_drop_member (group, user);
+	        }
+	      else
+	        {
+		  error = ER_AU_NOT_OWNER;
+	          er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	        }
 	    }
 
 	  if (error != NO_ERROR)
@@ -2315,14 +2322,21 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	  else
 	    {
-	      if(statement->info.alter_user.alter_user_type == PT_ADD_GROUPS_OR_MEMBERS)
+	      if(statement->info.alter_user.alter_user_type == PT_ADD_GROUPS_OR_MEMBERS
+	         && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
 	      	{
 	      	  error = db_add_member (user, member);
 		}
-	      else if (statement->info.alter_user.alter_user_type == PT_DROP_GROUPS_OR_MEMBERS)
+	      else if (statement->info.alter_user.alter_user_type == PT_DROP_GROUPS_OR_MEMBERS
+	               && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
 		{
 		  error = db_drop_member (user, member);
 		}
+	      else
+	        {
+		  error = ER_AU_NOT_OWNER;
+	          er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	        }
 	    }
 
 	  if (error != NO_ERROR)
