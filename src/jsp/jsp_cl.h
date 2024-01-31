@@ -34,24 +34,31 @@
 
 #include "parse_tree.h"
 
+#ifdef  __cplusplus
+#include <vector>
+#include <string>
+#endif
+
 #define SP_CLASS_NAME           "_db_stored_procedure"
 #define SP_ARG_CLASS_NAME       "_db_stored_procedure_args"
 
-#define SP_ATTR_NAME            "sp_name"
-#define SP_ATTR_SP_TYPE         "sp_type"
-#define SP_ATTR_RETURN_TYPE     "return_type"
-#define SP_ATTR_ARGS            "args"
-#define SP_ATTR_ARG_COUNT       "arg_count"
-#define SP_ATTR_LANG            "lang"
-#define SP_ATTR_TARGET          "target"
-#define SP_ATTR_OWNER           "owner"
-#define SP_ATTR_COMMENT         "comment"
+#define SP_ATTR_NAME                    "sp_name"
+#define SP_ATTR_SP_TYPE                 "sp_type"
+#define SP_ATTR_RETURN_TYPE             "return_type"
+#define SP_ATTR_ARGS                    "args"
+#define SP_ATTR_ARG_COUNT               "arg_count"
+#define SP_ATTR_LANG                    "lang"
+#define SP_ATTR_PKG                     "pkg_name"
+#define SP_ATTR_IS_SYSTEM_GENERATED     "is_system_generated"
+#define SP_ATTR_TARGET                  "target"
+#define SP_ATTR_OWNER                   "owner"
+#define SP_ATTR_COMMENT                 "comment"
 
-#define SP_ATTR_ARG_NAME        "arg_name"
-#define SP_ATTR_INDEX_OF_NAME   "index_of"
-#define SP_ATTR_DATA_TYPE       "data_type"
-#define SP_ATTR_MODE            "mode"
-#define SP_ATTR_ARG_COMMENT     "comment"
+#define SP_ATTR_ARG_NAME                "arg_name"
+#define SP_ATTR_INDEX_OF_NAME           "index_of"
+#define SP_ATTR_DATA_TYPE               "data_type"
+#define SP_ATTR_MODE                    "mode"
+#define SP_ATTR_ARG_COMMENT             "comment"
 
 typedef enum
 {
