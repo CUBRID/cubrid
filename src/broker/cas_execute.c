@@ -1170,7 +1170,7 @@ prepare_error:
 #endif /* CAS_FOR_CGW */
 
 int
-ux_end_tran (int tran_type, bool reset_con_status)
+ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 {
   int err_code = 0;
 
@@ -1262,6 +1262,11 @@ ux_end_tran (int tran_type, bool reset_con_status)
     }
   err_code = 0;
 #endif
+
+  if (ddl_audit_log && tran_type != CCI_TRAN_COMMIT)
+    {
+      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ABORT);
+    }
 
   return err_code;
 }
@@ -10957,14 +10962,14 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(server)" : "(local)");
-      err_code = ux_end_tran (CCI_TRAN_COMMIT, true);
+      err_code = ux_end_tran (CCI_TRAN_COMMIT, true, true);
       cas_log_write (0, false, "auto_commit %d", err_code);
       logddl_set_msg ("auto_commit %d", err_code);
     }
   else if (req_info->need_auto_commit == TRAN_AUTOROLLBACK)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_aborted ()? "(local)" : "(server)");
-      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, true);
+      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, true, true);
       cas_log_write (0, false, "auto_rollback %d", err_code);
       logddl_set_msg ("auto_rollback %d", err_code);
     }
