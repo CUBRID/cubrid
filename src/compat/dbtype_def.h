@@ -732,24 +732,6 @@ extern "C"
     DB_TYPE_LAST = DB_TYPE_JSON
   } DB_TYPE;
 
-  #define DB_IS_PARAMETERIZED_TYPE(v) ((v) == DB_TYPE_NUMERIC || \
-    (v) == DB_TYPE_CHAR || (v) == DB_TYPE_STRING || \
-    (v) == DB_TYPE_BIT || (v) == DB_TYPE_VARBIT || \
-    (v) == DB_TYPE_VARNCHAR || (v) == DB_TYPE_NCHAR || \
-    (v) == DB_TYPE_ENUMERATION)
-
-  #define DB_IS_STRING_TYPE(v) ((v) == DB_TYPE_CHAR || (v) == DB_TYPE_STRING || \
-    (v) == DB_TYPE_BIT || (v) == DB_TYPE_VARBIT || \
-    (v) == DB_TYPE_VARNCHAR || (v) == DB_TYPE_NCHAR)
-
-  /* data type (DB_DOMAIN) is required */
-  #define DB_IS_COMPLEX_TYPE(t) ((DB_IS_PARAMETERIZED_TYPE(t)) || \
-          ((t) == DB_TYPE_MONETARY)  || \
-	  ((t) == DB_TYPE_OBJECT)    || \
-	  ((t) == DB_TYPE_SET)       || \
-	  ((t) == DB_TYPE_MULTISET)  || \
-	  ((t) == DB_TYPE_SEQUENCE))
-
   /* Domain information stored in DB_VALUE structures. */
   typedef union db_domain_info DB_DOMAIN_INFO;
   union db_domain_info
