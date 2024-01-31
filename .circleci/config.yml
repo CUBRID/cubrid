@@ -2,11 +2,6 @@ defaults: &defaults
   working_directory: /home
   docker:
     - image: cubridci/cubridci:develop
-    
-oraclelinux: &oraclelinux
-  working_directory: /home
-  docker:
-    - image: cubridci/cubridci:ol7.8 
 
 test_defaults: &test_defaults
   steps:
@@ -17,10 +12,21 @@ test_defaults: &test_defaults
         shell: /bin/bash
         environment:
           _JAVA_OPTIONS: -Xmx1g
+          BRANCH_TESTCASES: feature/plcsql
         command: |
           ulimit -c 1
           /entrypoint.sh checkout
-          circleci tests glob cubrid-testcases/$TEST_SUITE/_* | circleci tests split | tee tc.list
+          glob_path="cubrid-testcases/$TEST_SUITE/_*"
+          if [ $TEST_SUITE = "plcsql" ] 
+          then
+            # Hack way to run plcsql test without modifying CUBRID CI docker
+            TEST_SUITE="sql"
+            glob_path=cubrid-testcases/sql/_05_plcsql
+          elif [ $TEST_SUITE = "sql" ] 
+          then
+            rm -rf cubrid-testcases/$TEST_SUITE/_05_plcsql
+          fi
+          circleci tests glob $glob_path | circleci tests split | tee tc.list
           find cubrid-testcases/$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
           /entrypoint.sh test
     - run:
@@ -84,25 +90,17 @@ jobs:
     parallelism: 8
     <<: *test_defaults
 
-  test_medium_ol:
-    <<: *oraclelinux
+  test_plcsql:
+    <<: *defaults
     environment:
-      TEST_SUITE: medium
+      TEST_SUITE: plcsql
     resource_class: medium
-    <<: *test_defaults
-
-  test_sql_ol:
-    <<: *oraclelinux
-    environment:
-      TEST_SUITE: sql
-    resource_class: medium
-    parallelism: 8
     <<: *test_defaults
 
   build-windows:
     machine:
       image: 'windows-server-2019-vs2019:2022.08.1'
-      resource_class: windows.large
+      resource_class: windows.medium
       shell: powershell.exe -ExecutionPolicy Bypass
     environment:
       - CMAKE_GENERATOR: "Visual Studio 16 2019"
@@ -143,11 +141,10 @@ workflows:
       - test_sql:
           requires:
             - build
+      - test_plcsql:
+          requires:
+            - build
 
-      - test_medium_ol:
+      - build-windows:
           requires:
             - build
-      - test_sql_ol:
-          requires:
-            - build
-      - build-windows

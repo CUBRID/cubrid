@@ -1445,8 +1445,9 @@ $ LOADDB
 
 1359 Java VM crashed: %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1361 Dropping system generated stored procedure is not allowed.
 
-1361 Letzter Fehler
+1362 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

@@ -286,9 +286,10 @@ set(OBJECT_HEADERS
 )
 
 set(JSP_SOURCES
-  ${JSP_DIR}/jsp_cl.c
+  ${JSP_DIR}/jsp_cl.cpp
   ${JSP_DIR}/jsp_comm.c
   ${JSP_DIR}/jsp_file.c
+  ${JSP_DIR}/sp_catalog.cpp
   )
 
 set(METHOD_SOURCES
