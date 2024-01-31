@@ -2497,7 +2497,7 @@ struct pt_grant_info
 {
   PT_NODE *auth_cmd_list;	/* PT_AUTH_CMD(list) */
   PT_NODE *user_list;		/* PT_NAME */
-  PT_NODE *spec_list;		/* PT_SPEC or PT_NAME */
+  PT_NODE *spec_list;		/* PT_SPEC (class) or PT_NAME (procedure) */
   PT_MISC_TYPE grant_option;	/* = PT_GRANT_OPTION or PT_NO_GRANT_OPTION */
 };
 
