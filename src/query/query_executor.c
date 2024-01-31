@@ -7457,6 +7457,11 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 
       if (xasl->curr_spec->s_id.mvcc_select_lock_needed && !qualified)
 	{
+	  /*
+	   * FIXME : it is temporary solution that logic to release the lock is added on here to simplify implementation.
+	   * need to change the location where the lock is generated from scan_next_index_lookup_heap(), scan_next_heap_scan() to here.
+	   */
+
 	  /* did not pass the evaluation - unlock object */
 	  LOCK lock_mode = X_LOCK;
 	  SCAN_ID *scan_id = &xasl->curr_spec->s_id;
@@ -8279,6 +8284,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (xasl->curr_spec->s_id.mvcc_select_lock_needed && !qualified)
 	    {
+	      /*
+	       * FIXME : it is temporary solution that logic to release the lock is added on here to simplify implementation.
+	       * need to change the location where the lock is generated from scan_next_index_lookup_heap(), scan_next_heap_scan() to here.
+	       */
+
 	      /* did not pass the evaluation - unlock object */
 	      LOCK lock_mode = X_LOCK;
 	      SCAN_ID *scan_id = &xasl->curr_spec->s_id;
