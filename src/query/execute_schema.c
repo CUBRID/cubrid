@@ -59,6 +59,7 @@
 #include "xasl_to_stream.h"
 #include "parser_support.h"
 #include "dbtype.h"
+#include "jsp_cl.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1791,12 +1792,14 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  if (auth->info.auth_cmd.auth_cmd == PT_PRIV_PROCEDURE || auth->info.auth_cmd.auth_cmd == PT_PRIV_FUNCTION)
+	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV
+	      || auth->info.auth_cmd.auth_cmd == PT_EXECUTE_FUNCTION_PRIV)
 	    {
 	      // NOTE: db_auth is always DB_AUTH_EXECUTE
 	      assert (db_auth == DB_AUTH_EXECUTE);
 
-	      for (PT_NODE * procs = node->info.grant.spec_list; procs != NULL; procs = procs->next)
+	      PT_NODE *p_list = spec_list;
+	      for (PT_NODE * procs = p_list->info.grant.spec_list; procs != NULL; procs = procs->next)
 		{
 		  // [TODO] Resovle user schema name, built-in package name
 		  const char *proc_name = procs->info.name.original;
