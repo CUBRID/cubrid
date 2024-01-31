@@ -383,8 +383,8 @@ logddl_set_stmt_type (int stmt_type, PT_NODE * statement)
 
   if (logddl_is_ddl_type (stmt_type, statement) == true)
     {
-      is_executed_ddl_for_csql = true;
       is_executed_ddl_for_trans = true;
+      is_executed_ddl_for_csql = true;
 
       if (stmt_type == PT_METHOD_CALL)
 	{
@@ -1443,13 +1443,11 @@ logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, PARSER_CONT
 	    {
 	      HIDE_PWD_INFO t_hide_pwd_info;
 	      HIDE_PWD_INFO_PTR hide_pwd_info_ptr = &parser->hide_pwd_info;
-	      //const char* sql_base_ptr = parser->original_buffer;
 	      int start = (int) (statement->sql_user_text - parser->original_buffer);
 
 	      INIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
-	      password_remake_offset_for_one_query (&t_hide_pwd_info, hide_pwd_info_ptr, start,	/* statement->buffer_pos - statement->sql_user_text_len, */
-						    start + statement->sql_user_text_len /*statement->buffer_pos */ );
-
+	      password_remake_offset_for_one_query (&t_hide_pwd_info, hide_pwd_info_ptr, start,
+						    start + statement->sql_user_text_len);
 	      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len, &t_hide_pwd_info);
 	      QUIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
 	    }
