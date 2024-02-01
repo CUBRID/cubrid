@@ -36,11 +36,11 @@ pipeline {
             sh "scl enable devtoolset-8 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
 
             script {
-              if (!(env.BRANCH_NAME ==~ /^feature\/.*/)) {
+              if (env.BRANCH_NAME ==~ /^feature\/.*/) {
+                echo 'Skip testing for feature branch'
+              } else {
             	echo 'Testing...'
             	sh '/entrypoint.sh test || echo "$? failed"'
-              } else {
-                echo 'Skip testing for feature branch'
               }
             }
           }
@@ -71,11 +71,11 @@ pipeline {
             sh "scl enable devtoolset-8 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
 
             script {
-              if (!(env.BRANCH_NAME ==~ /^feature\/.*/)) {
+              if (env.BRANCH_NAME ==~ /^feature\/.*/) {
+                echo 'Skip testing for feature branch'
+              } else {
             	echo 'Testing...'
             	sh '/entrypoint.sh test || echo "$? failed"'
-              } else {
-                echo 'Skip testing for feature branch'
               }
             }
           }
@@ -119,11 +119,11 @@ pipeline {
   post {
     always {
       script {
-        if (!(env.BRANCH_NAME ==~ /^feature\/.*/)) {
-          build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
+        if (env.BRANCH_NAME ==~ /^feature\/.*/) {
+          build job: "${DEPLOY_JOB_FOR_MANUAL}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
                 propagate: false
         } else {
-          build job: "${DEPLOY_JOB_FOR_MANUAL}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
+          build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
                 propagate: false
         }
       }
