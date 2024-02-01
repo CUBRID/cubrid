@@ -48,7 +48,7 @@ namespace cubmem
       memory_monitor &operator = (memory_monitor &&) = delete;
 
     public:
-      size_t get_alloc_size (const char *ptr);
+      size_t get_allocated_size (const char *ptr);
 
     private:
       static std::string make_tag_name (const char *file, const int line);
@@ -59,6 +59,6 @@ namespace cubmem
   };
 } //namespace cubmem
 
-bool mmon_is_mem_tracked ();
-size_t mmon_get_alloc_size (char *ptr);
+bool mmon_is_mem_traced ();
+size_t mmon_get_allocated_size (char *ptr);
 #endif // _MEMORY_MONITOR_SR_HPP_

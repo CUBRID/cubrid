@@ -34,7 +34,7 @@
 typedef struct mmon_metainfo MMON_METAINFO;
 struct mmon_metainfo
 {
-  uint64_t alloc_size;
+  uint64_t allocated_size;
   int tag_id;
   int magic_number;
 };
@@ -50,14 +50,14 @@ namespace cubmem
     memcpy (&m_magic_number, magic_string.c_str (), sizeof (int));
   }
 
-  size_t memory_monitor::get_alloc_size (const char *ptr)
+  size_t memory_monitor::get_allocated_size (const char *ptr)
   {
-    size_t alloc_size = malloc_usable_size ((void *)ptr);
-    const char *meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
+    size_t allocated_size = malloc_usable_size ((void *)ptr);
+    const char *meta_ptr = ptr + allocated_size - MMON_ALLOC_META_SIZE;
 
-    if (alloc_size <= MMON_ALLOC_META_SIZE)
+    if (allocated_size <= MMON_ALLOC_META_SIZE)
       {
-	return alloc_size;
+	return allocated_size;
       }
 
     assert (meta_ptr > ptr);
@@ -65,10 +65,10 @@ namespace cubmem
 
     if (metainfo->magic_number == m_magic_number)
       {
-	alloc_size = (size_t) metainfo->alloc_size - MMON_ALLOC_META_SIZE;
+	allocated_size = (size_t) metainfo->allocated_size - MMON_ALLOC_META_SIZE;
       }
 
-    return alloc_size;
+    return allocated_size;
   }
 
   std::string memory_monitor::make_tag_name (const char *file, const int line)
@@ -94,16 +94,16 @@ namespace cubmem
 
 using namespace cubmem;
 
-bool mmon_is_mem_tracked ()
+bool mmon_is_mem_traced ()
 {
   return (mmon_Gl != nullptr);
 }
 
-size_t mmon_get_alloc_size (char *ptr)
+size_t mmon_get_allocated_size (char *ptr)
 {
-  if (mmon_is_mem_tracked ())
+  if (mmon_is_mem_traced ())
     {
-      return mmon_Gl->get_alloc_size (ptr);
+      return mmon_Gl->get_allocated_size (ptr);
     }
   // unreachable
   return 0;
