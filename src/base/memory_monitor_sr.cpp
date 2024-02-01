@@ -47,20 +47,20 @@ namespace cubmem
   memory_monitor::memory_monitor (const char *server_name)
     : m_server_name {server_name}
   {
-    memcpy (&m_magic_number, magic_string.c_str (), sizeof (int));
+    memcpy (&m_magic_number, magic_string.c_str (), sizeof (this->m_magic_number));
   }
 
   size_t memory_monitor::get_allocated_size (const char *ptr)
   {
     size_t allocated_size = malloc_usable_size ((void *)ptr);
-    const char *meta_ptr = ptr + allocated_size - MMON_ALLOC_META_SIZE;
 
     if (allocated_size <= MMON_ALLOC_META_SIZE)
       {
 	return allocated_size;
       }
 
-    assert (meta_ptr > ptr);
+    const char *meta_ptr = ptr + allocated_size - MMON_ALLOC_META_SIZE;
+
     const MMON_METAINFO *metainfo = (const MMON_METAINFO *) meta_ptr;
 
     if (metainfo->magic_number == m_magic_number)
@@ -94,17 +94,18 @@ namespace cubmem
 
 using namespace cubmem;
 
-bool mmon_is_mem_traced ()
+bool mmon_is_memory_monitor_enabled ()
 {
   return (mmon_Gl != nullptr);
 }
 
 size_t mmon_get_allocated_size (char *ptr)
 {
-  if (mmon_is_mem_traced ())
+  if (mmon_is_memory_monitor_enabled ())
     {
       return mmon_Gl->get_allocated_size (ptr);
     }
   // unreachable
+  assert (false);
   return 0;
 }

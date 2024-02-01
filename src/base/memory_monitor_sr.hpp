@@ -27,14 +27,15 @@
 #include <stdint.h>
 #include <string>
 
-// IMPORTANT!!
-// This meta size is related with allocation byte align
-// Don't adjust it freely
-// 8 byte size + 4 byte tag + 4 byte magicnumber
-#define MMON_ALLOC_META_SIZE 16
 
 namespace cubmem
 {
+  // IMPORTANT!!
+  // This meta size is related with allocation byte align
+  // Don't adjust it freely
+  // 8 byte size + 4 byte tag + 4 byte magicnumber
+  static constexpr int MMON_ALLOC_META_SIZE = 16;
+
   class memory_monitor
   {
     public:
@@ -59,6 +60,6 @@ namespace cubmem
   };
 } //namespace cubmem
 
-bool mmon_is_mem_traced ();
+bool mmon_is_memory_monitor_enabled ();
 size_t mmon_get_allocated_size (char *ptr);
 #endif // _MEMORY_MONITOR_SR_HPP_
