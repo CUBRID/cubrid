@@ -4137,7 +4137,7 @@ alter_clause_alter_user
 
 			if (node)
 			  {
-				node->info.alter_user.alter_user_type = PT_ADD_GROUPS_OR_MEMBERS;
+				node->info.alter_user.code = PT_ADD_GROUPS_OR_MEMBERS;
 				node->info.alter_user.groups = $2;
 			  }
 
@@ -4153,7 +4153,7 @@ alter_clause_alter_user
 
 			if (node)
 			  {
-				node->info.alter_user.alter_user_type = PT_ADD_GROUPS_OR_MEMBERS;
+				node->info.alter_user.code = PT_ADD_GROUPS_OR_MEMBERS;
 				node->info.alter_user.members = $2;
 			  }
 
@@ -4169,7 +4169,7 @@ alter_clause_alter_user
 
 			if (node)
 			  {
-				node->info.alter_user.alter_user_type = PT_DROP_GROUPS_OR_MEMBERS;
+				node->info.alter_user.code = PT_DROP_GROUPS_OR_MEMBERS;
 				node->info.alter_user.groups = $2;
 			  }
 
@@ -4185,7 +4185,7 @@ alter_clause_alter_user
 
 			if (node)
 			  {
-				node->info.alter_user.alter_user_type = PT_DROP_GROUPS_OR_MEMBERS;
+				node->info.alter_user.code = PT_DROP_GROUPS_OR_MEMBERS;
 				node->info.alter_user.members = $2;
 				
 			  }

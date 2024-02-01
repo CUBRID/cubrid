@@ -2193,6 +2193,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   int error = NO_ERROR;
   DB_OBJECT *user, *group, *member;
   PT_NODE *node;
+  const PT_ALTER_CODE alter_user_code = statement->info.alter_user.code;
   const char *user_name, *password, *comment;
   const char *group_name, *member_name;
   bool set_savepoint = false;
@@ -2278,12 +2279,12 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	  else
 	    {
-	      if(statement->info.alter_user.alter_user_type == PT_ADD_GROUPS_OR_MEMBERS
+	      if(alter_user_code == PT_ADD_GROUPS_OR_MEMBERS
 	         && (ws_is_same_object (group, Au_user) || au_is_dba_group_member (Au_user)))
 	        {
 	      	  error = db_add_member (group, user);
 	        }
-	      else if(statement->info.alter_user.alter_user_type == PT_DROP_GROUPS_OR_MEMBERS
+	      else if(alter_user_code == PT_DROP_GROUPS_OR_MEMBERS
 	              && (ws_is_same_object (group, Au_user) || au_is_dba_group_member (Au_user)))
 	        {
 		  error = db_drop_member (group, user);
@@ -2322,12 +2323,12 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	  else
 	    {
-	      if(statement->info.alter_user.alter_user_type == PT_ADD_GROUPS_OR_MEMBERS
+	      if(alter_user_code == PT_ADD_GROUPS_OR_MEMBERS
 	         && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
 	      	{
 	      	  error = db_add_member (user, member);
 		}
-	      else if (statement->info.alter_user.alter_user_type == PT_DROP_GROUPS_OR_MEMBERS
+	      else if (alter_user_code == PT_DROP_GROUPS_OR_MEMBERS
 	               && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
 		{
 		  error = db_drop_member (user, member);

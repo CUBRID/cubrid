@@ -1323,11 +1323,7 @@ typedef enum
 
   PT_PRIVATE,
   PT_PUBLIC,
-  PT_SYNONYM,
-  
-  PT_ADD_GROUPS_OR_MEMBERS,		/* alter user type */
-  PT_DROP_GROUPS_OR_MEMBERS
-
+  PT_SYNONYM
     // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
@@ -1444,7 +1440,9 @@ typedef enum
   PT_CHANGE_TABLE_COMMENT,
   PT_CHANGE_COLUMN_COMMENT,
   PT_CHANGE_INDEX_COMMENT,
-  PT_CHANGE_INDEX_STATUS
+  PT_CHANGE_INDEX_STATUS,
+  PT_ADD_GROUPS_OR_MEMBERS,		/* alter user type */
+  PT_DROP_GROUPS_OR_MEMBERS
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -2020,7 +2018,7 @@ struct pt_alter_user_info
   PT_NODE *user_name;		/* PT_NAME */
   PT_NODE *password;		/* PT_VALUE (string) */
   PT_NODE *comment;		/* PT_VALUE */
-  PT_MISC_TYPE alter_user_type;	/* PT_ADD_GROUPS_OR_MEMBERS, PT_DROP_GROUPS_OR_MEMBERS */
+  PT_ALTER_CODE code;	/* PT_ADD_GROUPS_OR_MEMBERS, PT_DROP_GROUPS_OR_MEMBERS */
   PT_NODE *groups;		/* PT_NAME list */
   PT_NODE *members;		/* PT_NAME list */
 };

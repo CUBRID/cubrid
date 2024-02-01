@@ -3454,10 +3454,6 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "public";
     case PT_SYNONYM:
       return "synonym";
-    case PT_ADD_GROUPS_OR_MEMBERS:
-      return "add groups or members";
-    case PT_DROP_GROUPS_OR_MEMBERS:
-      return "drop groups or members";
     default:
       return "MISC_TYPE: type unknown";
     }
@@ -4234,6 +4230,10 @@ pt_show_alter (PT_ALTER_CODE c)
       return "DROP PRIMARY KEY";
     case PT_DROP_FK_CLAUSE:
       return "DROP FOREIGN KEY";
+    case PT_ADD_GROUPS_OR_MEMBERS:
+      return "ADD GROUPS OR MEMBERS";
+    case PT_DROP_GROUPS_OR_MEMBERS:
+      return "DROP GROUPS OR MEMBERS";
     default:
       return "unknown alter code";
     }
@@ -6438,29 +6438,37 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r1);
     }
 
-  if (p->info.alter_user.alter_user_type == PT_ADD_GROUPS_OR_MEMBERS)
+  if (p->info.alter_user.code == PT_ADD_GROUPS_OR_MEMBERS)
     {
-      b = pt_append_nulstring (parser, b, " add ");
-      b = pt_append_nulstring (parser, b, pt_show_misc_type (p->info.alter_user.alter_user_type));
+	if (p->info.alter_user.groups != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter_user.groups);
+	  b = pt_append_nulstring (parser, b, " add groups ");
+	  b = pt_append_varchar (parser, b, r1);
+	}
+    
+      if (p->info.alter_user.members != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter_user.members);
+	  b = pt_append_nulstring (parser, b, " add members ");
+	  b = pt_append_varchar (parser, b, r1);
+	}
     }
-  else if (p->info.alter_user.alter_user_type == PT_DROP_GROUPS_OR_MEMBERS)
+  else if (p->info.alter_user.code == PT_DROP_GROUPS_OR_MEMBERS)
     {
-      b = pt_append_nulstring (parser, b, " drop ");
-      b = pt_append_nulstring (parser, b, pt_show_misc_type (p->info.alter_user.alter_user_type));
-    }
-
-  if (p->info.alter_user.groups != NULL)
-    {
-      r1 = pt_print_bytes (parser, p->info.alter_user.groups);
-      b = pt_append_nulstring (parser, b, " groups ");
-      b = pt_append_varchar (parser, b, r1);
-    }
-
-  if (p->info.alter_user.members != NULL)
-    {
-      r1 = pt_print_bytes (parser, p->info.alter_user.members);
-      b = pt_append_nulstring (parser, b, " members ");
-      b = pt_append_varchar (parser, b, r1);
+	if (p->info.alter_user.groups != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter_user.groups);
+	  b = pt_append_nulstring (parser, b, " drop groups ");
+	  b = pt_append_varchar (parser, b, r1);
+	}
+    
+      if (p->info.alter_user.members != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter_user.members);
+	  b = pt_append_nulstring (parser, b, " drop members ");
+	  b = pt_append_varchar (parser, b, r1);
+	}
     }
 
   return b;
