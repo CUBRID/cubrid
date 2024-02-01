@@ -8529,15 +8529,15 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   fprintf (outfp, "\tCurrent number of objects which are allocated = %d\n", num_resource_alloc);
   if (size_alloc < ONE_K)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %d\n\n", size_alloc);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %llu\n\n", size_alloc);
     }
   else if (size_alloc >= ONE_K && size_alloc < ONE_M)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %dK\n\n", size_alloc / ONE_K);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluK\n\n", size_alloc / ONE_K);
     }
   else
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %dM\n\n", size_alloc / ONE_M);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluM\n\n", size_alloc / ONE_M);
     }
 
   // *INDENT-OFF*
