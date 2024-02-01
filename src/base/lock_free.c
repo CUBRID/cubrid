@@ -894,7 +894,7 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
     }
 
   /* free entry if alloc_cnt is greater than max_alloc_cnt */
-  if (freelist->alloc_cnt > 0 && freelist->alloc_cnt > edesc->max_alloc_cnt)
+  if (edesc->max_alloc_cnt > 0 && freelist->alloc_cnt > edesc->max_alloc_cnt)
     {
       edesc->f_free (entry);
       ATOMIC_INC_32 (&freelist->alloc_cnt, -1);
