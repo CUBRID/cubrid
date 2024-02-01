@@ -12485,15 +12485,15 @@ sp_return_type
 
 opt_authid
         : /* empty */
-          {{ $$ = PT_AUTHID_OWNER }}
+          {{ $$ = PT_AUTHID_OWNER; }}
         | AUTHID DEFINER
-          {{ $$ = PT_AUTHID_OWNER }}
+          {{ $$ = PT_AUTHID_OWNER; }}
         | AUTHID OWNER
-          {{ $$ = PT_AUTHID_OWNER }}
+          {{ $$ = PT_AUTHID_OWNER; }}
         | AUTHID CALLER
-          {{ $$ = PT_AUTHID_CALLER }}
+          {{ $$ = PT_AUTHID_CALLER; }}
         | AUTHID CURRENT_USER
-          {{ $$ = PT_AUTHID_CALLER }}
+          {{ $$ = PT_AUTHID_CALLER; }}
         ;
 
 is_or_as
