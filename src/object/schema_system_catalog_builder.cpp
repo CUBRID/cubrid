@@ -18,10 +18,8 @@
 
 #include "schema_system_catalog_builder.hpp"
 
-// #include "dbi.h" /* db_create_class () */
 #include "db.h"
 #include "dbtype.h"
-// #include "dbtype_function.h" /* DB_IS_NULL () */
 #include "authenticate.h"
 #include "class_object.h" /* SM_TEMPLATE */
 #include "schema_template.h" /* smt_edit_class_mop() */
@@ -36,12 +34,10 @@ namespace cubschema
   {
     if (name.empty ())
       {
-	// should not happen
 	assert (false);
 	return nullptr;
       }
 
-    // class_mop
     MOP class_mop = nullptr;
     if (sm_is_system_class (name))
       {
@@ -60,7 +56,6 @@ namespace cubschema
 	assert (false);
       }
 
-    assert (er_errid () == NO_ERROR);
     return class_mop;
   }
 
@@ -265,6 +260,6 @@ namespace cubschema
 	  }
       }
 
-    return error_code; // NO_ERROR
+    return error_code;
   }
 }
