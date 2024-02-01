@@ -207,9 +207,9 @@ typedef struct btree_root_header BTREE_ROOT_HEADER;
 struct btree_root_header
 {
   BTREE_NODE_HEADER node;
-  long long num_oids;		/* Number of OIDs stored in the Btree */
-  long long num_nulls;		/* Number of NULLs (they aren't stored) */
-  long long num_keys;		/* Number of unique keys in the Btree */
+  INT64 num_oids;		/* Number of OIDs stored in the Btree */
+  INT64 num_nulls;		/* Number of NULLs (they aren't stored) */
+  INT64 num_keys;		/* Number of unique keys in the Btree */
   OID topclass_oid;		/* topclass oid or NULL OID(non unique index) */
   int unique_pk;		/* unique or non-unique, is primary key */
 
