@@ -385,16 +385,6 @@ logddl_set_stmt_type (int stmt_type, PT_NODE * statement)
     {
       is_executed_ddl_for_trans = true;
       is_executed_ddl_for_csql = true;
-
-      if (stmt_type == PT_METHOD_CALL)
-	{
-	  PT_METHOD_CALL_INFO *call = &statement->info.method_call;
-	  if ((call->call_or_expr == PT_IS_CALL_STMT)
-	      && (strcasecmp (call->method_name->info.name.original, "login") == 0))
-	    {
-	      return true;
-	    }
-	}
       ddl_audit_handle.ddl_stmt_cnt++;
       return true;
     }
@@ -1356,9 +1346,9 @@ logddl_is_ddl_type (int node_type, PT_NODE * node)
 	  PT_METHOD_CALL_INFO *call = &node->info.method_call;
 	  if (call->call_or_expr == PT_IS_CALL_STMT)
 	    {
-	      if ((strcasecmp (call->method_name->info.name.original, "add_user") == 0)
-		  || (strcasecmp (call->method_name->info.name.original, "set_password") == 0)
-		  || (strcasecmp (call->method_name->info.name.original, "login") == 0))
+	      if ((strcasecmp (call->method_name->info.name.original, "set_password") == 0)
+		  || (strcasecmp (call->method_name->info.name.original, "login") == 0)
+		  || (strcasecmp (call->method_name->info.name.original, "add_user") == 0))
 		{
 		  has_password_type = true;
 		  return true;
