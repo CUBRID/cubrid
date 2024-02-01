@@ -377,6 +377,14 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
+    db_make_int (&value, info.directive);
+    err = dbt_put_internal (obt_p, SP_ATTR_DIRECTIVE, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
     // args (_db_stored_procedure_args) begin
     param = set_create_sequence (0);
     if (param == NULL)
