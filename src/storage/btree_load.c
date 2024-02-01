@@ -3936,6 +3936,9 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   bool has_nulls = false;
 
   bool has_deduplicate_key_col = false;
+  int pk_column_cnt = 0;
+  DB_VALUE fk_dbvals_ary[8];
+  DB_VALUE *fk_dbvals_ptr = NULL;
   DB_VALUE new_fk_key[2];
   DB_VALUE *fk_key_ptr = &fk_key;
 
@@ -4109,27 +4112,28 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  assert (!DB_IS_NULL (&fk_key));
 	  assert (DB_VALUE_DOMAIN_TYPE (&fk_key) == DB_TYPE_MIDXKEY);
 
-	  /* { v1, OID }      ==> v1
-	   * { v1, v2 , OID } ==> { v1, v2 }
-	   */
-
 	  DB_VALUE *new_ptr = (fk_key_ptr == &(new_fk_key[0])) ? &(new_fk_key[1]) : &(new_fk_key[0]);
 
+	  if (fk_dbvals_ptr == NULL)
+	    {
+	      pk_column_cnt = fk_key.data.midxkey.ncolumns - 1;
+	      if (pk_column_cnt <= (sizeof (fk_dbvals_ary) / sizeof (DB_VALUE)))
+		{
+		  fk_dbvals_ptr = fk_dbvals_ary;
+		}
+	      else
+		{
+		  fk_dbvals_ptr = (DB_VALUE *) db_private_alloc (thread_p, pk_column_cnt * sizeof (DB_VALUE));
+		  if (fk_dbvals_ptr == NULL)
+		    {
+		      ASSERT_ERROR_AND_SET (ret);
+		      goto end;
+		    }
+		}
+	    }
+
 	  pr_clear_value (new_ptr);
-	  if (fk_key.data.midxkey.ncolumns > 2)
-	    {
-	      pr_clone_value (&fk_key, new_ptr);
-	      /* Fakes the last column(deduplicate_key_attr) as if it doesn't exist. 
-	       * To do this, reduce the number of columns.
-	       * Modify bitmap information for btree_multicol_key_is_null() function. */
-	      new_ptr->data.midxkey.ncolumns--;
-	      or_multi_set_null (new_ptr->data.midxkey.buf, new_ptr->data.midxkey.ncolumns);
-	      new_ptr->data.midxkey.domain = pk_bt_scan.btid_int.key_type;
-	    }
-	  else
-	    {
-	      pr_midxkey_get_element_nocopy (&fk_key.data.midxkey, 0, new_ptr, NULL, NULL);
-	    }
+	  btree_remake_reference_key_with_FK (pk_bt_scan.btid_int.key_type, fk_dbvals_ptr, &fk_key, new_ptr);
 
 	  if (btree_compare_key (fk_key_ptr, new_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL) == DB_EQ)
 	    {			/* Remove the added deduplicate_key_attr and it can be the same key. */
@@ -4321,6 +4325,18 @@ end:
 
   pr_clear_value (&(new_fk_key[0]));
   pr_clear_value (&(new_fk_key[1]));
+
+  if (fk_dbvals_ptr)
+    {
+      for (i = 0; i < pk_column_cnt; i++)
+	{
+	  pr_clear_value (&fk_dbvals_ptr[i]);	/* it might be alloced/copied */
+	}
+      if (fk_dbvals_ptr != fk_dbvals_ary)
+	{
+	  db_private_free (thread_p, fk_dbvals_ptr);
+	}
+    }
 
   if (clear_pcontext == true)
     {

@@ -6072,6 +6072,39 @@ clear_pos:
   return ret;
 }
 
+int
+btree_remake_reference_key_with_FK (TP_DOMAIN * pk_domain, DB_VALUE * dbvals, DB_VALUE * fk_key, DB_VALUE * new_key)
+{
+  DB_MIDXKEY midxkey;
+
+  /*  FK              ==> PK
+   *  { v1, OID }     ==> v1
+   *  { v1, v2 , OID } ==> { v1, v2 }
+   */
+  assert (fk_key->domain.general_info.type == DB_TYPE_MIDXKEY);
+  assert (dbvals != NULL);
+
+  if (fk_key->data.midxkey.ncolumns == 2)
+    {
+      return pr_midxkey_get_element_nocopy (&(fk_key->data.midxkey), 0, new_key, NULL, NULL);
+    }
+
+  for (int i = 0; i < (fk_key->data.midxkey.ncolumns - 1); i++)
+    {
+      pr_midxkey_get_element_nocopy (&(fk_key->data.midxkey), i, &dbvals[i], NULL, NULL);
+    }
+
+  /* build midxkey */
+  midxkey.buf = NULL;
+  midxkey.domain = pk_domain;
+  midxkey.ncolumns = 0;
+  midxkey.size = 0;
+  db_make_midxkey (new_key, &midxkey);
+  new_key->need_clear = true;
+
+  return pr_midxkey_add_elements (new_key, dbvals, (fk_key->data.midxkey.ncolumns - 1), pk_domain->setdomain);
+}
+
 /*
  * btree_find_foreign_key () - Find and lock any existing object in foreign key. Used to check that delete/update on
  *			       primary key is allowed.

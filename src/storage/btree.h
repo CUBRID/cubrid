@@ -665,6 +665,8 @@ extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALU
 /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 extern int btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 					     key_val_range * kv_range, bool * is_newly);
+extern int btree_remake_reference_key_with_FK (TP_DOMAIN * pk_domain, DB_VALUE * dbvals, DB_VALUE * fk_key,
+					       DB_VALUE * new_key);
 
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 
