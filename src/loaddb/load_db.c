@@ -31,7 +31,7 @@
 #include "network_interface_cl.h"
 #include "porting.h"
 #include "schema_manager.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "utility.h"
 #include "authenticate.h"
 #include "ddl_log.h"

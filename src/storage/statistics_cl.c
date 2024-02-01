@@ -450,7 +450,6 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
       goto end;
     }
 
-
   /* get class_name */
   class_name_p = db_get_class_name (class_mop);
   /* count number of the columns */
