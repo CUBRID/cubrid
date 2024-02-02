@@ -45,14 +45,17 @@ namespace cubmem
   memory_monitor *mmon_Gl = nullptr;
 
   memory_monitor::memory_monitor (const char *server_name)
-    : m_server_name {server_name}
-  {
-    memcpy (&m_magic_number, magic_string.c_str (), sizeof (this->m_magic_number));
-  }
+    : m_server_name {server_name},
+      m_magic_number {*reinterpret_cast <const int *> (magic_string.c_str())}
+  {}
 
   size_t memory_monitor::get_allocated_size (const char *ptr)
   {
+#if defined(WINDOWS)
+    size_t allocated_size = _msize ((void *)ptr);
+#else
     size_t allocated_size = malloc_usable_size ((void *)ptr);
+#endif // WINDOWS
 
     if (allocated_size <= MMON_ALLOC_META_SIZE)
       {
@@ -74,7 +77,11 @@ namespace cubmem
   std::string memory_monitor::make_tag_name (const char *file, const int line)
   {
     std::string filecopy (file);
+#if defined(WINDOWS)
+    std::string target ("\\src\\");
+#else
     std::string target ("/src/");
+#endif // WINDOWS
 
     // Find the last occurrence of "src" in the path
     size_t pos = filecopy.rfind (target);
