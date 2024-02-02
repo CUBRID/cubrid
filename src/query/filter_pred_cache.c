@@ -123,7 +123,7 @@ static LF_ENTRY_DESCRIPTOR fpcache_Entry_descriptor = {
   /* using mutex */
   LF_EM_USING_MUTEX,
 
-  0,
+  LF_ENTRY_DESCRIPTOR_MAX_ALLOC,
   fpcache_entry_alloc,
   fpcache_entry_free,
   fpcache_entry_init,
