@@ -10127,7 +10127,6 @@ fixup_self_domain (TP_DOMAIN * domain, MOP self)
   for (d = domain; d != NULL; d = d->next)
     {
       /* PR_TYPE is changeable only for transient domain. */
-      assert (d->type != tp_Type_null || !d->is_cached);
       if (d->type == tp_Type_null && !d->is_cached)
 	{
 	  d->type = tp_Type_object;

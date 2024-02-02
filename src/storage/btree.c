@@ -1042,6 +1042,9 @@ const size_t BTREE_RV_BUFFER_SIZE =
   (4 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE) + BTREE_RV_DEBUG_INFO_MAX_SIZE);
 #endif /* !NDEBUG */
 
+#if defined (NDEBUG)
+#define BTREE_RV_GET_DATA_LENGTH(rv_ptr, rv_start, rv_length)  (rv_length) = CAST_BUFLEN ((rv_ptr) - (rv_start))
+#else
 static void
 BTREE_RV_GET_DATA_LENGTH (const char *rv_ptr, const char *rv_start, int &rv_length)
 {
@@ -1050,6 +1053,7 @@ BTREE_RV_GET_DATA_LENGTH (const char *rv_ptr, const char *rv_start, int &rv_leng
   rv_length = CAST_BUFLEN (rv_ptr - rv_start);
   assert (0 <= rv_length && (size_t) rv_length <= BTREE_RV_BUFFER_SIZE);
 }
+#endif
 
 /* Debug identifiers to help with detecting recovery issues. */
 enum btree_rv_debug_id
@@ -5598,16 +5602,10 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
 
   if (unique_pk)
     {
-      root_header->num_oids = num_oids & 0xffffffff;
-      root_header->num_nulls = num_nulls & 0xffffffff;
-      root_header->num_keys = num_keys & 0xffffffff;
+      root_header->num_oids = num_oids;
+      root_header->num_nulls = num_nulls;
+      root_header->num_keys = num_keys;
       root_header->unique_pk = unique_pk;
-
-      over += root_header->_64.num_oids = num_oids >> 32;
-      over += root_header->_64.num_nulls = num_nulls >> 32;
-      over += root_header->_64.num_keys = num_keys >> 32;
-
-      root_header->_64.over = (over > 0);
 
       assert (BTREE_IS_UNIQUE (root_header->unique_pk));
       assert (BTREE_IS_PRIMARY_KEY (root_header->unique_pk) || !BTREE_IS_PRIMARY_KEY (root_header->unique_pk));
@@ -6371,16 +6369,9 @@ btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, long long *oi
 
   assert ((root_header->unique_pk & (BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY)) != 0);
 
-  *oid_cnt = (unsigned int) root_header->num_oids;
-  *null_cnt = (unsigned int) root_header->num_nulls;
-  *key_cnt = (unsigned int) root_header->num_keys;
-
-  if (root_header->_64.over)
-    {
-      *oid_cnt |= (((long long) root_header->_64.num_oids) << 32);
-      *null_cnt |= (((long long) root_header->_64.num_nulls) << 32);
-      *key_cnt |= (((long long) root_header->_64.num_keys) << 32);
-    }
+  *oid_cnt = root_header->num_oids;
+  *null_cnt = root_header->num_nulls;
+  *key_cnt = root_header->num_keys;
 
   pgbuf_unfix_and_init (thread_p, root);
 
@@ -14552,15 +14543,9 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
 	  int over = 0;
 
 	  /* update header information */
-	  root_header->num_nulls = unique_stat_info->unique_stats.num_nulls & 0xffffffff;
-	  root_header->num_oids = unique_stat_info->unique_stats.num_oids & 0xffffffff;
-	  root_header->num_keys = unique_stat_info->unique_stats.num_keys & 0xffffffff;
-
-	  over += root_header->_64.num_nulls = unique_stat_info->unique_stats.num_nulls >> 32;
-	  over += root_header->_64.num_oids = unique_stat_info->unique_stats.num_oids >> 32;
-	  over += root_header->_64.num_keys = unique_stat_info->unique_stats.num_keys >> 32;
-
-	  root_header->_64.over = (over > 0);
+	  root_header->num_nulls = unique_stat_info->unique_stats.num_nulls;
+	  root_header->num_oids = unique_stat_info->unique_stats.num_oids;
+	  root_header->num_keys = unique_stat_info->unique_stats.num_keys;
 
 	  page_lsa = pgbuf_get_lsa (root);
 	  /* update the page's LSA to the last global unique statistics change that was made at commit, only if it is
@@ -17465,13 +17450,6 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       num_oids = (unsigned int) root_header->num_oids;
       num_keys = (unsigned int) root_header->num_keys;
 
-      if (root_header->_64.over)
-	{
-	  num_nulls |= (long long) root_header->_64.num_nulls << 32;
-	  num_oids |= (long long) root_header->_64.num_oids << 32;
-	  num_keys |= (long long) root_header->_64.num_keys << 32;
-	}
-
       /* unpack the root statistics */
       datap = (char *) recv->data;
       OR_GET_BIGINT (datap, &delta);
@@ -17483,15 +17461,9 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       OR_GET_BIGINT (datap, &delta);
       num_keys += delta;
 
-      root_header->num_nulls = num_nulls & 0xffffffff;
-      root_header->num_oids = num_oids & 0xffffffff;
-      root_header->num_keys = num_keys & 0xffffffff;
-
-      over += root_header->_64.num_nulls = num_nulls >> 32;
-      over += root_header->_64.num_oids = num_oids >> 32;
-      over += root_header->_64.num_keys = num_keys >> 32;
-
-      root_header->_64.over = (over > 0);
+      root_header->num_nulls = num_nulls;
+      root_header->num_oids = num_oids;
+      root_header->num_keys = num_keys;
     }
 
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);

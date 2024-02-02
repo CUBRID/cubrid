@@ -4358,10 +4358,29 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 
   if (hint & PT_HINT_ORDERED)
     {
-      if (tree->info.query.q.select.ordered)
+      /* iterate over all nodes */
+      p_node = NULL;
+      for (i = 0; i < env->nnodes; i++)
 	{
-	  /* find last ordered node */
-	  for (arg = tree->info.query.q.select.ordered; arg->next; arg = arg->next)
+	  node = QO_ENV_NODE (env, i);
+	  if (p_node)
+	    {			/* skip out the first ordered node */
+	      bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
+	      bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
+	    }
+#if 1				/* TEMPORARY CODE: DO NOT REMOVE ME !!! */
+	  QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) | PT_HINT_ORDERED);
+#endif
+	  p_node = node;	/* save previous node */
+	}			/* for (i = ... ) */
+    }
+
+  if (!(hint & PT_HINT_ORDERED) && (hint & PT_HINT_LEADING))
+    {
+      if (tree->info.query.q.select.leading)
+	{
+	  /* find last leading node */
+	  for (arg = tree->info.query.q.select.leading; arg->next; arg = arg->next)
 	    {
 	      ;			/* nop */
 	    }
@@ -4383,12 +4402,12 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 	      spec = QO_NODE_ENTITY_SPEC (node);
 	      /* check for arg list */
 	      p_arg = NULL;
-	      for (arg = tree->info.query.q.select.ordered, j = 0; arg; arg = arg->next, j++)
+	      for (arg = tree->info.query.q.select.leading, j = 0; arg; arg = arg->next, j++)
 		{
 		  if (spec->info.spec.id == arg->info.name.spec_id)
 		    {
 		      if (p_arg)
-			{	/* skip out the first ordered spec */
+			{	/* skip out the first leading spec */
 			  /* find prev node */
 			  for (k = 0; k < env->nnodes; k++)
 			    {
@@ -4402,13 +4421,8 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 				}
 			    }
 			}
-
-#if 1				/* TEMPORARY CODE: DO NOT REMOVE ME !!! */
-		      QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) | PT_HINT_ORDERED);
-#endif
 		      break;	/* exit loop for arg traverse */
 		    }
-
 		  p_arg = arg;	/* save previous arg */
 		}
 
@@ -4418,26 +4432,6 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 		  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), last_ordered_idx);
 		}
 
-	    }			/* for (i = ... ) */
-
-	}
-      else
-	{			/* FULLY HINTED */
-	  /* iterate over all nodes */
-	  p_node = NULL;
-	  for (i = 0; i < env->nnodes; i++)
-	    {
-	      node = QO_ENV_NODE (env, i);
-	      if (p_node)
-		{		/* skip out the first ordered node */
-		  bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
-		}
-#if 1				/* TEMPORARY CODE: DO NOT REMOVE ME !!! */
-	      QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) | PT_HINT_ORDERED);
-#endif
-
-	      p_node = node;	/* save previous node */
 	    }			/* for (i = ... ) */
 	}
     }

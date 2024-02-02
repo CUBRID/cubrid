@@ -45,7 +45,8 @@
 #include "locator_sr.h"
 #include "btree.h"
 #include "btree_unique.hpp"
-#include "transform.h"		/* for CT_SERIAL_NAME */
+#include "schema_system_catalog_constants.h"	/* for CT_SERIAL_NAME */
+#include "transform.h"
 #include "serial.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -3181,11 +3182,11 @@ heap_stats_get_second_best (HEAP_HDR_STATS * heap_hdr, VPID * vpid)
   heap_hdr->estimates.head_second_best = HEAP_STATS_NEXT_BEST_INDEX (head);
 
   /* If both head and tail refer to the same index, the number of second best hints is 0. */
-  assert (heap_hdr->estimates.num_second_best != HEAP_NUM_BEST_SPACESTATS);
+  assert (heap_hdr->estimates.num_second_best < HEAP_NUM_BEST_SPACESTATS);
   assert ((heap_hdr->estimates.tail_second_best >= heap_hdr->estimates.head_second_best)
 	  ? ((heap_hdr->estimates.tail_second_best - heap_hdr->estimates.head_second_best)
 	     == heap_hdr->estimates.num_second_best)
-	  : ((10 + heap_hdr->estimates.tail_second_best - heap_hdr->estimates.head_second_best)
+	  : ((HEAP_NUM_BEST_SPACESTATS + heap_hdr->estimates.tail_second_best - heap_hdr->estimates.head_second_best)
 	     == heap_hdr->estimates.num_second_best));
 
   *vpid = heap_hdr->estimates.second_best[head];
