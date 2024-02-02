@@ -8623,7 +8623,7 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       goto abandon_stop_limit;
     }
 
-  if (pt_get_query_limit_value (QO_ENV_PARSER (env), QO_ENV_PT_TREE (env), &QO_ENV_LIMIT_VALUE (env)) != NO_ERROR)
+  if (pt_get_query_limit_value (QO_ENV_PARSER (env), QO_ENV_PT_TREE (env), &QO_ENV_LIMIT_VALUE (env), true) != NO_ERROR)
     {
       /* unusable limit */
       goto abandon_stop_limit;
