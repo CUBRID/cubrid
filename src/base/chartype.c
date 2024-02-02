@@ -28,6 +28,7 @@
 #include "chartype.h"
 
 #if defined(USE_MACRO_CHARTYPE)
+//=============================================================================
 #define CP_NONE  (CHAR_PROP_NONE)
 #define CP_SPC   (CHAR_PROP_SPACE)
 #define CP_NLCL  (CHAR_PROP_SPACE | CHAR_PROP_EOL)
@@ -330,6 +331,8 @@ char_toupper_iso8859 (int c)
 {
   return (char_islower_iso8859 ((c)) ? ((c) + ('A' - 'a')) : (c));
 }
+
+//=============================================================================
 #endif /* #if defined(USE_MACRO_CHARTYPE) */
 
 #if defined (ENABLE_UNUSED_FUNCTION)
