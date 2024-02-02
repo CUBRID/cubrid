@@ -261,11 +261,7 @@ char_iseol (int c)
 int
 char_tolower (int c)
 {
-#if defined(USE_MACRO_CHARTYPE)
-  return (int) char_lower_mapper[(u_char) c];
-#else
   return (char_isupper ((c)) ? ((c) - ('A' - 'a')) : (c));
-#endif
 }
 
 /*
@@ -276,11 +272,7 @@ char_tolower (int c)
 int
 char_toupper (int c)
 {
-#if defined(USE_MACRO_CHARTYPE)
-  return (int) char_upper_mapper[(u_char) c];
-#else
   return (char_islower ((c)) ? ((c) + ('A' - 'a')) : (c));
-#endif
 }
 
 
@@ -325,11 +317,7 @@ char_islower_iso8859 (int c)
 int
 char_tolower_iso8859 (int c)
 {
-#if defined(USE_MACRO_CHARTYPE)
-  return (int) iso8859_lower_mapper[(u_char) c];
-#else
   return (char_isupper_iso8859 ((c)) ? ((c) - ('A' - 'a')) : (c));
-#endif
 }
 
 /*
@@ -340,11 +328,7 @@ char_tolower_iso8859 (int c)
 int
 char_toupper_iso8859 (int c)
 {
-#if defined(USE_MACRO_CHARTYPE)
-  return (int) iso8859_upper_mapper[(u_char) c];
-#else
   return (char_islower_iso8859 ((c)) ? ((c) + ('A' - 'a')) : (c));
-#endif
 }
 #endif /* #if defined(USE_MACRO_CHARTYPE) */
 

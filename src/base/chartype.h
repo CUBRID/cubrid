@@ -58,22 +58,22 @@ extern "C"
   extern const unsigned char *iso8859_lower_mapper_ptr;
   extern const unsigned char *iso8859_upper_mapper_ptr;
 
-#define char_islower(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_LOWER)
-#define char_isupper(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_UPPER)
-#define char_isalpha(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_ALPHA)
-#define char_isdigit(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_DIGIT)
-#define char_isalnum(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_ALPHA_NUM)
-#define char_isspace(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_SPACE)
-#define char_iseol(c)     (char_properties_ptr[(u_char) (c)] & CHAR_PROP_EOL)
-#define char_isxdigit(c)  (char_properties_ptr[(u_char) (c)] & CHAR_PROP_HEXNUM)
+#define char_islower(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_LOWER)
+#define char_isupper(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_UPPER)
+#define char_isalpha(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_ALPHA)
+#define char_isdigit(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_DIGIT)
+#define char_isalnum(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_ALPHA_NUM)
+#define char_isspace(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_SPACE)
+#define char_iseol(c)     (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_EOL)
+#define char_isxdigit(c)  (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_HEXNUM)
 
-#define char_tolower(c)   ((int) char_lower_mapper_ptr[(u_char) (c)])
-#define char_toupper(c)   ((int) char_upper_mapper_ptr[(u_char) (c)])
+#define char_tolower(c)   ((int) char_lower_mapper_ptr[(unsigned char) (c)])
+#define char_toupper(c)   ((int) char_upper_mapper_ptr[(unsigned char) (c)])
 
-#define char_islower_iso8859(c) (char_properties_ptr[(u_char) (c)] & (CHAR_PROP_LOWER|CHAR_PROP_ISO8859_LOWER))
-#define char_isupper_iso8859(c) (char_properties_ptr[(u_char) (c)] & (CHAR_PROP_UPPER|CHAR_PROP_ISO8859_UPPER))
-#define char_tolower_iso8859(c) ((int) iso8859_lower_mapper_ptr[(u_char) (c)])
-#define char_toupper_iso8859(c) ((int) iso8859_upper_mapper_ptr[(u_char) (c)])
+#define char_islower_iso8859(c) (char_properties_ptr[(unsigned char) (c)] & (CHAR_PROP_LOWER|CHAR_PROP_ISO8859_LOWER))
+#define char_isupper_iso8859(c) (char_properties_ptr[(unsigned char) (c)] & (CHAR_PROP_UPPER|CHAR_PROP_ISO8859_UPPER))
+#define char_tolower_iso8859(c) ((int) iso8859_lower_mapper_ptr[(unsigned char) (c)])
+#define char_toupper_iso8859(c) ((int) iso8859_upper_mapper_ptr[(unsigned char) (c)])
 
   inline int char_tolower_func (int c)
   {
