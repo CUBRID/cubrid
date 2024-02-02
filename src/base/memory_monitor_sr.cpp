@@ -41,12 +41,11 @@ struct mmon_metainfo
 
 namespace cubmem
 {
-  static const std::string magic_string ("MMON");
   memory_monitor *mmon_Gl = nullptr;
 
   memory_monitor::memory_monitor (const char *server_name)
     : m_server_name {server_name},
-      m_magic_number {*reinterpret_cast <const int *> (magic_string.c_str())}
+      m_magic_number {*reinterpret_cast <const int *> ("MMON")}
   {}
 
   size_t memory_monitor::get_allocated_size (const char *ptr)
