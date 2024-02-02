@@ -61,15 +61,15 @@ extern int lo_count;
 #define PRINT_IDENTIFIER_WITH_QUOTE(s) "\"", (s), "\""
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
-#define PRINT_OWNER_NAME(owner, print, out_owner, out_len) \
+#define PRINT_OWNER_NAME(owner, print, output_owner, out_len) \
 do \
   { \
   size_t total_len = strlen (owner) + 4; \
   assert (strlen ((owner)) < STATIC_CAST (int, out_len)); \
   if (print) \
-      snprintf (out_owner, total_len, "%s%s%s%s", PRINT_IDENTIFIER (owner), "."); \
+      snprintf (output_owner, total_len, "%s%s%s%s", PRINT_IDENTIFIER (owner), "."); \
   else \
-    strcpy(out_owner, ""); \
+    strcpy(output_owner, ""); \
   } \
 while (0)
 
