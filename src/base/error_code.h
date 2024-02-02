@@ -1731,7 +1731,14 @@
 #define ER_SQL_ERROR_LOG_TRACE                      -1353
 #define ER_SQL_ERROR_LOG_MSG_TRACE                  -1354
 
-#define ER_LAST_ERROR                               -1355
+#define ER_RESERVED_1                               -1355
+#define ER_RESERVED_2                               -1356
+#define ER_RESERVED_3                               -1357
+#define ER_RESERVED_4                               -1358
+
+#define ER_SP_SERVER_CRASHED                        -1359
+
+#define ER_LAST_ERROR                               -1360
 
 /*
  * CAUTION!

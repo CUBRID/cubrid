@@ -1438,7 +1438,13 @@ $ LOADDB
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 最后一个错误.
+1355 Reserved error 1
+1356 Reserved error 2
+1357 Reserved error 3
+1358 Reserved error 4
+
+1359 Java VM crashed: %1$s
+1360 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
