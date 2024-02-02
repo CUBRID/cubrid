@@ -42,29 +42,47 @@ extern "C"
 #define CHAR_PROP_UPPER       (0x01)	/* uppercase.  */
 #define CHAR_PROP_LOWER       (0x02)	/* lowercase.  */
 #define CHAR_PROP_DIGIT       (0x04)	/* Numeric.    */
-#define CHAR_PROP_SPACE       (0x08)	/* space, Tab, newline, carriage return   */
+#define CHAR_PROP_SPACE       (0x08)	/* space, \t \n \r \f \v */
 #define CHAR_PROP_HEXNUM      (0x10)	/* 0~9, a~f, A~F  */
 #define CHAR_PROP_EOL         (0x20)	/* \r \n  */
 #define CHAR_PROP_ISO8859_UPPER (0x40)
 #define CHAR_PROP_ISO8859_LOWER (0x80)
 
 #define CHAR_PROP_ALPHA       (CHAR_PROP_UPPER | CHAR_PROP_LOWER)	/* Alphabetic.  */
-#define CHAR_PROP_ALPHA_NUM   (CHAR_PROP_ALPHA | CHAR_PROP_DIGIT)
+#define CHAR_PROP_ALPHA_NUM   (CHAR_PROP_ALPHA | CHAR_PROP_DIGIT)	/* Alpha-Numeric */
 
   typedef unsigned char char_type_prop;
   extern const char_type_prop *char_properties_ptr;
+  extern const unsigned char *char_lower_mapper_ptr;
+  extern const unsigned char *char_upper_mapper_ptr;
+  extern const unsigned char *iso8859_lower_mapper_ptr;
+  extern const unsigned char *iso8859_upper_mapper_ptr;
 
-#define char_islower(c)   (char_properties_ptr[(u_char) c] & CHAR_PROP_LOWER)
-#define char_isupper(c)   (char_properties_ptr[(u_char) c] & CHAR_PROP_UPPER)
-#define char_isalpha(c)   (char_properties_ptr[(u_char) c] & CHAR_PROP_ALPHA)
-#define char_isdigit(c)   (char_properties_ptr[(u_char) c] & CHAR_PROP_DIGIT)
-#define char_isalnum(c)   (char_properties_ptr[(u_char) c] & CHAR_PROP_ALPHA_NUM)
-#define char_isspace(c)   (char_properties_ptr[(u_char) c] & CHAR_PROP_SPACE)
-#define char_iseol(c)     (char_properties_ptr[(u_char) c] & CHAR_PROP_EOL)
-#define char_isxdigit(c)  (char_properties_ptr[(u_char) c] & CHAR_PROP_HEXNUM)
+#define char_islower(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_LOWER)
+#define char_isupper(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_UPPER)
+#define char_isalpha(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_ALPHA)
+#define char_isdigit(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_DIGIT)
+#define char_isalnum(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_ALPHA_NUM)
+#define char_isspace(c)   (char_properties_ptr[(u_char) (c)] & CHAR_PROP_SPACE)
+#define char_iseol(c)     (char_properties_ptr[(u_char) (c)] & CHAR_PROP_EOL)
+#define char_isxdigit(c)  (char_properties_ptr[(u_char) (c)] & CHAR_PROP_HEXNUM)
 
-#define char_islower_iso8859(c) (char_properties_ptr[(u_char) c] & (CHAR_PROP_LOWER|CHAR_PROP_ISO8859_LOWER))
-#define char_isupper_iso8859(c) (char_properties_ptr[(u_char) c] & (CHAR_PROP_UPPER|CHAR_PROP_ISO8859_UPPER))
+#define char_tolower(c)   ((int) char_lower_mapper_ptr[(u_char) (c)])
+#define char_toupper(c)   ((int) char_upper_mapper_ptr[(u_char) (c)])
+
+#define char_islower_iso8859(c) (char_properties_ptr[(u_char) (c)] & (CHAR_PROP_LOWER|CHAR_PROP_ISO8859_LOWER))
+#define char_isupper_iso8859(c) (char_properties_ptr[(u_char) (c)] & (CHAR_PROP_UPPER|CHAR_PROP_ISO8859_UPPER))
+#define char_tolower_iso8859(c) ((int) iso8859_lower_mapper_ptr[(u_char) (c)])
+#define char_toupper_iso8859(c) ((int) iso8859_upper_mapper_ptr[(u_char) (c)])
+
+  inline int char_tolower_func (int c)
+  {
+    return (int) char_tolower (c);
+  }
+  inline int char_toupper_func (int c)
+  {
+    return (int) char_toupper (c);
+  }
 //=============================================================================
 #else				/* #if defined(USE_MACRO_CHARTYPE) */
 //=============================================================================
@@ -76,19 +94,22 @@ extern "C"
   extern int char_isspace (int c);
   extern int char_iseol (int c);
   extern int char_isxdigit (int c);
-
-  extern int char_isupper_iso8859 (int c);
-  extern int char_islower_iso8859 (int c);
-//=============================================================================
-#endif				/* #if defined(USE_MACRO_CHARTYPE) */
-#if defined (ENABLE_UNUSED_FUNCTION)
-  extern int char_isascii (int c);
-#endif
   extern int char_tolower (int c);
   extern int char_toupper (int c);
 
+  extern int char_isupper_iso8859 (int c);
+  extern int char_islower_iso8859 (int c);
   extern int char_tolower_iso8859 (int c);
   extern int char_toupper_iso8859 (int c);
+
+#define  char_tolower_func   char_tolower
+#define  char_toupper_func   char_toupper
+//=============================================================================
+#endif				/* #if defined(USE_MACRO_CHARTYPE) */
+
+#if defined (ENABLE_UNUSED_FUNCTION)
+  extern int char_isascii (int c);
+#endif
 
 #ifdef __cplusplus
 }

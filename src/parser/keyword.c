@@ -870,7 +870,7 @@ pt_find_keyword (const char *text)
       kinfo.max_len = 0;
       kinfo.cnt = sizeof (keywords) / sizeof (keywords[0]);
       memset (kinfo.start_pos, 0x00, sizeof (kinfo.start_pos));
-      kinfo.func_char_convert = char_toupper;
+      kinfo.func_char_convert = char_toupper_func;
 
       init_keyword_tables (keywords, kinfo, keyword_hash_comparator < KEYWORD_RECORD >);
 
@@ -997,7 +997,7 @@ pt_find_function_name (const char *text)
       finfo.max_len = 0;
       finfo.cnt = sizeof (functions) / sizeof (functions[0]);
       memset (finfo.start_pos, 0x00, sizeof (finfo.start_pos));
-      finfo.func_char_convert = char_tolower;
+      finfo.func_char_convert = char_tolower_func;
 
       init_keyword_tables (functions, finfo, keyword_hash_comparator < FUNCTION_MAP >);
 

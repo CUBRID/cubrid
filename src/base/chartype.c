@@ -68,6 +68,7 @@ static const unsigned char char_upper_mapper[0x100] = {
 0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF,
 0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF
 };
+const unsigned char* char_upper_mapper_ptr = char_upper_mapper;
 
 static const unsigned char char_lower_mapper[0x100] = {
 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
@@ -87,6 +88,7 @@ static const unsigned char char_lower_mapper[0x100] = {
 0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF,
 0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF 
 };
+const unsigned char* char_lower_mapper_ptr = char_lower_mapper;
 
 static const unsigned char iso8859_upper_mapper[0x100] = {
 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
@@ -106,6 +108,7 @@ static const unsigned char iso8859_upper_mapper[0x100] = {
 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
 0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xF7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xFF
 };
+const unsigned char* iso8859_upper_mapper_ptr = iso8859_upper_mapper;
 
 static const unsigned char iso8859_lower_mapper[0x100] = {
 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
@@ -125,6 +128,7 @@ static const unsigned char iso8859_lower_mapper[0x100] = {
 0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF,
 0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF
 };
+const unsigned char* iso8859_lower_mapper_ptr = iso8859_lower_mapper;
 
 
 static const char_type_prop char_properties[0x100] = {  
@@ -249,6 +253,37 @@ char_iseol (int c)
   return ((c) == '\r' || (c) == '\n');
 }
 
+/*
+ * char_tolower() - convert uppercase character to lowercase
+ *   return: lowercase character corresponding to the argument
+ *   c (in): the character to be converted
+ */
+int
+char_tolower (int c)
+{
+#if defined(USE_MACRO_CHARTYPE)
+  return (int) char_lower_mapper[(u_char) c];
+#else
+  return (char_isupper ((c)) ? ((c) - ('A' - 'a')) : (c));
+#endif
+}
+
+/*
+ * char_toupper() - convert lowercase character to uppercase
+ *   return: uppercase character corresponding to the argument
+ *   c (in): the character to be converted
+ */
+int
+char_toupper (int c)
+{
+#if defined(USE_MACRO_CHARTYPE)
+  return (int) char_upper_mapper[(u_char) c];
+#else
+  return (char_islower ((c)) ? ((c) + ('A' - 'a')) : (c));
+#endif
+}
+
+
 /* Specialized for ISO 8859-1 */
 static const int A_GRAVE_ACCENT = 192;
 static const int MULT_ISO8859 = 215;
@@ -281,51 +316,6 @@ char_islower_iso8859 (int c)
 {
   return (char_islower (c) || ((c) >= a_GRAVE_ACCENT && (c) <= SMALL_THORN && (c) != DIV_ISO8859));
 }
-#endif /* #if defined(USE_MACRO_CHARTYPE) */
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * char_isascii() - test for a US-ASCII character
- *   return: non-zero if c is a US-ASCII character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_isascii (int c)
-{
-  return ((c) >= 1 && (c) <= 127);
-}
-#endif
-
-/*
- * char_tolower() - convert uppercase character to lowercase
- *   return: lowercase character corresponding to the argument
- *   c (in): the character to be converted
- */
-int
-char_tolower (int c)
-{
-#if defined(USE_MACRO_CHARTYPE)
-  return (int) char_lower_mapper[(u_char) c];
-#else
-  return (char_isupper ((c)) ? ((c) - ('A' - 'a')) : (c));
-#endif
-}
-
-/*
- * char_toupper() - convert lowercase character to uppercase
- *   return: uppercase character corresponding to the argument
- *   c (in): the character to be converted
- */
-int
-char_toupper (int c)
-{
-#if defined(USE_MACRO_CHARTYPE)
-  return (int) char_upper_mapper[(u_char) c];
-#else
-  return (char_islower ((c)) ? ((c) + ('A' - 'a')) : (c));
-#endif
-}
 
 /*
  * char_tolower_iso8859() - convert uppercase iso-8859 character to lowercase
@@ -356,9 +346,23 @@ char_toupper_iso8859 (int c)
   return (char_islower_iso8859 ((c)) ? ((c) + ('A' - 'a')) : (c));
 #endif
 }
+#endif /* #if defined(USE_MACRO_CHARTYPE) */
 
+#if defined (ENABLE_UNUSED_FUNCTION)
+/*
+ * char_isascii() - test for a US-ASCII character
+ *   return: non-zero if c is a US-ASCII character,
+ *           0 otherwise.
+ *   c (in): the character to be tested
+ */
+int
+char_isascii (int c)
+{
+  return ((c) >= 1 && (c) <= 127);
+}
+#endif
 
-
+//=============================================================================
 #if 0
 // build mapper and prop table
 #include <stdio.h>
