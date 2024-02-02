@@ -153,6 +153,22 @@ struct xasl_state
    && ((xasl)->spec_list->pruning_type == DB_NOT_PARTITIONED_CLASS)  \
    && ((xasl)->aptr_list == NULL) && ((xasl)->scan_ptr == NULL))
 
+#define QEXEC_UNLOCK_UNQUALIFIED_OID(thread_p, xasl) \
+  do \
+    { \
+      LOCK lock_mode = X_LOCK; \
+      SCAN_ID *scan_id = &xasl->curr_spec->s_id; \
+      if (scan_id->type == S_HEAP_SCAN) \
+	{ \
+	  lock_unlock_object_donot_move_to_non2pl (thread_p, &scan_id->s.hsid.curr_oid, &scan_id->s.hsid.cls_oid, lock_mode); \
+	} \
+      else if (scan_id->type == S_INDX_SCAN) \
+	{ \
+	  lock_unlock_object_donot_move_to_non2pl (thread_p, scan_id->s.isid.curr_oidp, &scan_id->s.isid.cls_oid, lock_mode); \
+	} \
+    } \
+  while (0)
+
 #if 0
 /* Note: the following macro is used just for replacement of a repetitive
  * text in order to improve the readability.
@@ -7461,20 +7477,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	   * FIXME : it is temporary solution that logic to release the lock is added on here to simplify implementation.
 	   * need to change the location where the lock is generated from scan_next_index_lookup_heap(), scan_next_heap_scan() to here.
 	   */
-
 	  /* did not pass the evaluation - unlock object */
-	  LOCK lock_mode = X_LOCK;
-	  SCAN_ID *scan_id = &xasl->curr_spec->s_id;
-	  if (scan_id->type == S_HEAP_SCAN)
-	    {
-	      lock_unlock_object_donot_move_to_non2pl (thread_p, &scan_id->s.hsid.curr_oid, &scan_id->s.hsid.cls_oid,
-						       lock_mode);
-	    }
-	  else if (scan_id->type == S_INDX_SCAN)
-	    {
-	      lock_unlock_object_donot_move_to_non2pl (thread_p, scan_id->s.isid.curr_oidp, &scan_id->s.isid.cls_oid,
-						       lock_mode);
-	    }
+	  QEXEC_UNLOCK_UNQUALIFIED_OID (thread_p, xasl);
 	}
 
     }
@@ -8288,20 +8292,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	       * FIXME : it is temporary solution that logic to release the lock is added on here to simplify implementation.
 	       * need to change the location where the lock is generated from scan_next_index_lookup_heap(), scan_next_heap_scan() to here.
 	       */
-
 	      /* did not pass the evaluation - unlock object */
-	      LOCK lock_mode = X_LOCK;
-	      SCAN_ID *scan_id = &xasl->curr_spec->s_id;
-	      if (scan_id->type == S_HEAP_SCAN)
-		{
-		  lock_unlock_object_donot_move_to_non2pl (thread_p, &scan_id->s.hsid.curr_oid,
-							   &scan_id->s.hsid.cls_oid, lock_mode);
-		}
-	      else if (scan_id->type == S_INDX_SCAN)
-		{
-		  lock_unlock_object_donot_move_to_non2pl (thread_p, scan_id->s.isid.curr_oidp,
-							   &scan_id->s.isid.cls_oid, lock_mode);
-		}
+	      QEXEC_UNLOCK_UNQUALIFIED_OID (thread_p, xasl);
 	    }
 	  qexec_clear_all_lists (thread_p, xasl);
 	}
