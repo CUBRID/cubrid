@@ -66,9 +66,8 @@
               && ((unsigned char) ch <= (unsigned char) 0xfe) )
 #endif
 
-#define CHAR_BYTE_TO_LOWER(c) ((c) + ('a' - 'A'))
-
-#define CHAR_BYTE_TO_UPPER(c) ((c) - ('a' - 'A'))
+//#define CHAR_BYTE_TO_LOWER(c) ((c) + ('a' - 'A'))
+//#define CHAR_BYTE_TO_UPPER(c) ((c) - ('a' - 'A'))
 
 /* conversion from turkish ISO 8859-9 to UTF-8 */
 #define ISO_8859_9_FIRST_CP 0x11e
@@ -727,10 +726,7 @@ intl_tolower_iso8859 (unsigned char *s, int length)
 
   for (end = s + length; s < end; s++)
     {
-      if (char_isupper_iso8859 (*s))
-	{
-	  *s = CHAR_BYTE_TO_LOWER (*s);
-	}
+      *s = char_tolower_iso8859 (*s);
     }
 
   return char_count;
@@ -753,10 +749,7 @@ intl_toupper_iso8859 (unsigned char *s, int length)
 
   for (end = s + length; s < end; s++)
     {
-      if (char_islower_iso8859 (*s))
-	{
-	  *s = CHAR_BYTE_TO_UPPER (*s);
-	}
+      *s = char_toupper_iso8859 (*s);
     }
 
   return char_count;
@@ -3293,14 +3286,7 @@ intl_identifier_mht_1strlowerhash (const void *key, const unsigned int ht_size)
     case INTL_CODESET_ISO88591:
       for (hash = 0; *byte_p; byte_p++)
 	{
-	  if (char_isupper_iso8859 (*byte_p))
-	    {
-	      ch = char_tolower_iso8859 (*byte_p);
-	    }
-	  else
-	    {
-	      ch = char_tolower (*byte_p);
-	    }
+	  ch = char_tolower_iso8859 (*byte_p);
 	  hash = (hash << 5) - hash + ch;
 	}
       break;
