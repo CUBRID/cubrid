@@ -62,21 +62,23 @@ public class CUBRIDPacker {
     }
 
     public void packInt(int value) {
+        ensureSpace(DataUtilities.INT_BYTES * 2);
         align(DataUtilities.INT_ALIGNMENT);
-        ensureSpace(DataUtilities.INT_BYTES);
         buffer.putInt(value);
     }
 
     public void packBool(boolean value) {
-        buffer.putInt(value ? 1 : 0);
+        packInt(value ? 1 : 0);
     }
 
     public void packShort(short value) {
+        ensureSpace(DataUtilities.SHORT_BYTES * 2);
         align(DataUtilities.SHORT_ALIGNMENT);
         buffer.putShort(value);
     }
 
     public void packBigInt(long value) {
+        ensureSpace(DataUtilities.MAX_ALIGNMENT + DataUtilities.LONG_BYTES);
         align(DataUtilities.MAX_ALIGNMENT);
         buffer.putLong(value);
     }
@@ -84,12 +86,14 @@ public class CUBRIDPacker {
     public void packFloat(float value) {
         // TODO: alignment is not considered yet in cubpacking::packer
         // align(DataUtilities.FLOAT_ALIGNMENT);
+        ensureSpace(DataUtilities.FLOAT_BYTES);
         buffer.putFloat(value);
     }
 
     public void packDouble(double value) {
         // TODO: alignment is not considered yet in cubpacking::packer
         // align(DataUtilities.DOUBLE_ALIGNMENT);
+        ensureSpace(DataUtilities.DOUBLE_BYTES);
         buffer.putDouble(value);
     }
 
@@ -102,8 +106,12 @@ public class CUBRIDPacker {
     }
 
     public void packOID(SOID oid) {
+        ensureSpace(
+                DataUtilities.INT_BYTES
+                        + DataUtilities.SHORT_BYTES
+                        + DataUtilities.SHORT_BYTES
+                        + DataUtilities.INT_ALIGNMENT);
         align(DataUtilities.INT_ALIGNMENT);
-        ensureSpace(DataUtilities.INT_BYTES + DataUtilities.SHORT_BYTES + DataUtilities.SHORT_BYTES);
         packInt(oid.pageId);
         packShort(oid.slotId);
         packShort(oid.volId);
@@ -112,12 +120,17 @@ public class CUBRIDPacker {
     public void packCString(byte[] value) {
         int len = value.length;
         if (len < DataUtilities.MAX_SMALL_STRING_SIZE) {
-            ensureSpace(value.length + 1); // str + len
+            ensureSpace(value.length + 1 + DataUtilities.INT_ALIGNMENT); // str + len + align
             buffer.put((byte) len);
             buffer.put(value);
             align(DataUtilities.INT_ALIGNMENT);
         } else {
-            ensureSpace(value.length + 1 + DataUtilities.INT_BYTES); // str + LARGE_STRING_CODE + len
+            ensureSpace(
+                    value.length
+                            + 1
+                            + DataUtilities.INT_BYTES
+                            + DataUtilities.INT_ALIGNMENT
+                                    * 2); // str + LARGE_STRING_CODE + len + align
             buffer.put((byte) DataUtilities.LARGE_STRING_CODE);
 
             align(DataUtilities.INT_ALIGNMENT);
