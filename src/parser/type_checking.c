@@ -7809,12 +7809,15 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
   switch (node->node_type)
     {
     case PT_FUNCTION:
-      if (node->info.function.function_type == F_BENCHMARK)
-	{
-	  // we want to test full execution of sub-tree; don't fold it!
-	  *continue_walk = PT_LIST_WALK;
-	}
     case PT_EXPR:
+      if (node->node_type == PT_FUNCTION)
+	{
+	  if (node->info.function.function_type == F_BENCHMARK)
+	    {
+	      // we want to test full execution of sub-tree; don't fold it!
+	      *continue_walk = PT_LIST_WALK;
+	    }
+	}
       if (pt_is_dblink_related (node))
 	{
 	  parser_walk_tree (parser, node, pt_set_flag_do_not_fold_for_dblink, NULL, NULL, NULL);
@@ -17203,12 +17206,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  break;
 
 	case PT_IS_NOT_IN:
-	  if (o2->node_type == PT_VALUE && o2->info.value.is_false_where)
-	    {
-	      cmp = 1;
-	      break;
-	    }
 	case PT_NE_ALL:
+	  if (op == PT_IS_NOT_IN)
+	    {
+	      if (o2->node_type == PT_VALUE && o2->info.value.is_false_where)
+		{
+		  cmp = 1;
+		  break;
+		}
+	    }
 	  cmp = set_issome (arg1, db_get_set (arg2), PT_EQ_SOME, 1);
 	  if (cmp == 1)
 	    cmp = 0;

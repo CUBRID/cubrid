@@ -407,7 +407,8 @@ is_valid_ip (char *ip_addr)
 	  dot++;
 	}
     }
-  while (token = strtok_r (NULL, delim, &save_ptr_strtok));
+  while ((token = strtok_r (NULL, delim, &save_ptr_strtok)) != NULL);
+
   if (dot != NUM_IPADDR_DOT)
     {
       goto err_phase;

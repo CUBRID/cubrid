@@ -4184,7 +4184,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	}
     }
 
-  is_uk_new = SM_IS_CONSTRAINT_UNIQUE_FAMILY (new_cons);
+  is_uk_new = DB_IS_CONSTRAINT_UNIQUE_FAMILY (new_cons);
 
   for (cons = cons_list; cons; cons = cons->next)
     {
@@ -8171,7 +8171,7 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
 	{
 	  return SM_CREATE_NEW_INDEX;
 	}
-      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == DB_CONSTRAINT_REVERSE_INDEX)
+      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == SM_CONSTRAINT_REVERSE_INDEX)
 	{
 	  return SM_SHARE_INDEX;
 	}

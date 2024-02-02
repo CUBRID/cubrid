@@ -4566,7 +4566,7 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
 
   fprintf (fp, "==============    R O O T    P A G E   ================\n\n");
   fprintf (fp, " Key_Type: %s\n", pr_type_name (TP_DOMAIN_TYPE (key_type)));
-  fprintf (fp, " Num OIDs: %lld, Num NULLs: %lld, Num keys: %lld\n", root_header->num_oids, root_header->num_nulls,
+  fprintf (fp, " Num OIDs: %ld, Num NULLs: %ld, Num keys: %ld\n", root_header->num_oids, root_header->num_nulls,
 	   root_header->num_keys);
   fprintf (fp, " Topclass_oid: (%d %d %d)\n", root_header->topclass_oid.volid, root_header->topclass_oid.pageid,
 	   root_header->topclass_oid.slotid);
@@ -8999,7 +8999,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
 
   /* dump the capacity information */
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
-  fprintf (fp, "Total Value Count: %lld\n", cpc.tot_val_cnt);
+  fprintf (fp, "Total Value Count: %ld\n", cpc.tot_val_cnt);
   fprintf (fp, "Deduplicate Distinct Key Count: %d\n", cpc.deduplicate_dis_key_cnt);
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
   fprintf (fp, "Average Value Count Per Deduplicate Key: %d\n", cpc.avg_val_per_dedup_key);
@@ -12374,8 +12374,8 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
   assert (left_size <= left_max_size);
   assert (left_size >= left_min_size);
   assert (tot_rec - left_size <= right_max_size);
-  assert (left_size + new_fence_size <= BTREE_NODE_MAX_SPLIT_SIZE (thread_p, page_ptr));
-  assert (tot_rec - left_size + new_fence_size <= BTREE_NODE_MAX_SPLIT_SIZE (thread_p, page_ptr));
+  assert (left_size + new_fence_size <= (int) BTREE_NODE_MAX_SPLIT_SIZE (thread_p, page_ptr));
+  assert (tot_rec - left_size + new_fence_size <= (int) BTREE_NODE_MAX_SPLIT_SIZE (thread_p, page_ptr));
 
   /* Safe guard: Rules #3. */
   /* Left node will have at least one non-fence record. */

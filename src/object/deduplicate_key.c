@@ -151,7 +151,7 @@ dk_get_deduplicate_key_value (OID * rec_oid, int att_id, DB_VALUE * value)
   bool is_test_for_developer = false;
   if (is_test_for_developer)
     {
-#define OID_2_BIGINT(oidptr) (((oidptr)->volid << 48) | ((oidptr)->pageid << 16) | (oidptr)->slotid)
+#define OID_2_BIGINT(oidptr) (((int64_t)((oidptr)->volid) << 48) | ((oidptr)->pageid << 16) | (oidptr)->slotid)
       assert (CALC_MOD_VALUE_FROM_LEVEL (level) <= SHRT_MAX);
       db_make_short (value, (short) (OID_2_BIGINT (rec_oid) % CALC_MOD_VALUE_FROM_LEVEL (level)));
 

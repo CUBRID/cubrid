@@ -1128,7 +1128,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 
   fprintf (outfp, "\n");
   fprintf (outfp, "*** Vacuum Dump ***\n");
-  fprintf (outfp, "First log page ID referenced = %lld ", min_log_pageid);
+  fprintf (outfp, "First log page ID referenced = %ld ", min_log_pageid);
 
   if (logpb_is_page_in_archive (min_log_pageid))
     {

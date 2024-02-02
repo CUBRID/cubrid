@@ -3514,6 +3514,8 @@ pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query
 		    cinfo.method_found = true;
 		    break;
 		  }
+		parser_walk_leaves (parser, list, pt_check_pushable, &cinfo, NULL, NULL);
+		break;
 
 	      default:		/* do traverse */
 		parser_walk_leaves (parser, list, pt_check_pushable, &cinfo, NULL, NULL);

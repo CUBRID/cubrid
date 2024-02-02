@@ -2895,7 +2895,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	      || !classobj_check_attr_in_unique_constraint (class_->constraints, attnames, func_index_info))
 	    {
 	      dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info,
-					    nnames, SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
+					    nnames, DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
 	    }
 	}
     }
@@ -10631,13 +10631,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	case PT_TYPE_SMALLINT:
 	  break;
 
-	case PT_TYPE_NUMERIC:
-	  if (attribute->data_type->info.data_type.dec_precision == 0)
+	default:
+	  if (attribute->type_enum == PT_TYPE_NUMERIC && attribute->data_type->info.data_type.dec_precision == 0)
 	    {
 	      break;
 	    }
 
-	default:
 	  att = attribute->info.attr_def.attr_name;
 	  att_name = att->info.name.original;
 
@@ -11207,6 +11206,10 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  break;
 	case PT_CONSTRAIN_NULL:
 	  attr_chg_properties->p[P_NOT_NULL] = ATT_CHG_PROPERTY_LOST;
+	  constr_att_list = cnstr->info.constraint.un.not_null.attr;
+	  chg_prop_idx = P_NOT_NULL;
+	  save_pt_costraint = true;
+	  break;
 	case PT_CONSTRAIN_NOT_NULL:
 	  constr_att_list = cnstr->info.constraint.un.not_null.attr;
 	  chg_prop_idx = P_NOT_NULL;

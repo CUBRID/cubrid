@@ -493,7 +493,7 @@ namespace cubmethod
     fprintf (stdout, "tuple_count: %d\n", tuple_count);
     fprintf (stdout, "ins_oid (%d, %d, %d)\n", ins_oid.pageid, ins_oid.slotid, ins_oid.volid);
     fprintf (stdout, "include_oid: %d\n", include_oid);
-    fprintf (stdout, "query_id: %lld\n", query_id);
+    fprintf (stdout, "query_id: %lu\n", query_id);
   }
 
   void
