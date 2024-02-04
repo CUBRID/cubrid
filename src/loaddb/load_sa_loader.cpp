@@ -71,7 +71,7 @@
 #include "trigger_manager.h"
 #include "utility.h"
 #include "work_space.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 
 using namespace cubload;
 
