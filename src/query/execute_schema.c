@@ -10631,12 +10631,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	case PT_TYPE_SMALLINT:
 	  break;
 
-	default:
-	  if (attribute->type_enum == PT_TYPE_NUMERIC && attribute->data_type->info.data_type.dec_precision == 0)
+	case PT_TYPE_NUMERIC:
+	  if (attribute->data_type->info.data_type.dec_precision == 0)
 	    {
 	      break;
 	    }
-
+	[[fallthrough]] default:
 	  att = attribute->info.attr_def.attr_name;
 	  att_name = att->info.name.original;
 
