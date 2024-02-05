@@ -36,6 +36,7 @@
 
 #define LOGDDL_TRAN_TYPE_COMMIT             "COMMIT"
 #define LOGDDL_TRAN_TYPE_ROLLBACK           "ROLLBACK"
+#define LOGDDL_TRAN_TYPE_ABORT              "ABORT"
 
 #define DDL_LOG_BUFFER_SIZE                 (8192)
 

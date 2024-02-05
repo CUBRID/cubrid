@@ -131,7 +131,6 @@ static void logddl_set_sql_text (char *sql_text, int sql_len, HIDE_PWD_INFO_PTR 
 static bool logddl_set_stmt_type (int stmt_type, PT_NODE * statement);
 
 static bool is_executed_ddl_for_trans = false;
-static bool is_executed_ddl_for_csql = false;
 static bool has_password_type = false;
 
 void
@@ -200,7 +199,6 @@ logddl_free (bool all_free)
   if (all_free)
     {
       is_executed_ddl_for_trans = false;
-      is_executed_ddl_for_csql = false;
 
       ddl_audit_handle.auto_commit_mode = false;
       ddl_audit_handle.csql_input_type = CSQL_INPUT_TYPE_NONE;
@@ -384,8 +382,6 @@ logddl_set_stmt_type (int stmt_type, PT_NODE * statement)
   if (logddl_is_ddl_type (stmt_type, statement) == true)
     {
       is_executed_ddl_for_trans = true;
-      is_executed_ddl_for_csql = true;
-
       ddl_audit_handle.ddl_stmt_cnt++;
       return true;
     }
@@ -907,8 +903,7 @@ write_error:
       fp = NULL;
     }
 
-  is_executed_ddl_for_trans = false;
-  logddl_free (false);
+  logddl_free (true);
 }
 
 void
@@ -927,7 +922,7 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
       return;
     }
 
-  if (is_executed_ddl_for_csql == false)
+  if (is_executed_ddl_for_trans == false)
     {
       return;
     }
