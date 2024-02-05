@@ -49,6 +49,7 @@
 #include "parser.h"
 #include "porting.h"
 #include "schema_manager.h"
+#include "schema_system_catalog_constants.h"
 #include "transform.h"
 #include "parser_message.h"
 #include "system_parameter.h"

@@ -58,7 +58,7 @@
 #include "locator_cl.h"
 #include "connection_cl.h"
 #include "network_interface_cl.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "file_io.h"
 #include "memory_hash.h"
 #include "schema_manager.h"
