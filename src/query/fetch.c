@@ -3785,6 +3785,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
   REGU_VALUE_LIST *reguval_list = NULL;
   DB_TYPE head_type, cur_type;
   FUNCTION_TYPE *funcp = NULL;
+  int save_orig_sq_enabled;
 
   switch (regu_var->type)
     {
@@ -3874,21 +3875,21 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
       if (regu_var->xasl && !regu_var->xasl->aptr_list && !regu_var->xasl->dptr_list)
 	{
-	  if (sq_get (thread_p, regu_var->xasl, &regu_var->value.dbvalptr))
+	  if (sq_get (regu_var->xasl, &regu_var->value.dbvalptr))
 	    {
 	      *peek_dbval = regu_var->value.dbvalptr;
 	      break;
 	    }
-
+	  save_orig_sq_enabled = regu_var->xasl->sq_cache_enabled;
 	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+	  regu_var->xasl->sq_cache_enabled = save_orig_sq_enabled;
 	  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
 	    {
 	      goto exit_on_error;
 	    }
 	  *peek_dbval = regu_var->value.dbvalptr;
 
-	  sq_put (thread_p, regu_var->xasl, *peek_dbval);
-
+	  sq_put (regu_var->xasl, *peek_dbval);
 	}
       else
 	{

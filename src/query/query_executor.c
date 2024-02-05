@@ -14689,7 +14689,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
     }
 
   xasl->status = XASL_SUCCESS;
-
   return NO_ERROR;
 
   /*
@@ -14756,7 +14755,7 @@ exit_on_error:
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
 
   xasl->status = XASL_FAILURE;
-
+  sq_cache_destroy (xasl);
   qexec_failure_line (__LINE__, xasl_state);
   return ER_FAILED;
 }
@@ -14948,7 +14947,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
       xasl->query_in_progress = true;
       stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state, NULL);
       xasl->query_in_progress = false;
-      sq_cache_destroy (thread_p);
 
 #if defined(SERVER_MODE)
       if (thread_is_on_trace (thread_p))

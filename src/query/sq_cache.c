@@ -32,13 +32,6 @@
 
 #include "sq_cache.h"
 
-typedef struct _sq_cache
-{
-  MHT_TABLE *hashtable;
-  bool enabled;
-} sq_cache;
-
-sq_cache sq_cache_by_thread[100];
 
 typedef struct _sq_key
 {
@@ -58,27 +51,76 @@ static int sq_key_max_term = 3;
 
 static unsigned int sq_hash_func (const void *key, unsigned int ht_size);
 static int sq_cmp_func (const void *key1, const void *key2);
+static int sq_add_val_to_list (DB_VALUE * dbv, VAL_LIST * list);
+static int sq_regu_var_handler (regu_variable_node * p, VAL_LIST * dest);
+static int sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest);
 static sq_key *sq_make_key (xasl_node * xasl);
 static void sq_free_key (sq_key * key);
 static void sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc);
 static sq_val *sq_make_val (xasl_node * xasl, DB_VALUE * result);
 static void sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp);
+static void sq_free_val (sq_val * val);
 static int sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest);
 static int sq_add_val_to_list (DB_VALUE * dbv, VAL_LIST * list);
 static void sq_free_val (sq_val * val);
+static int sq_rem_func (const void *key, void *data, void *args);
+static int sq_rem_func_for_threads (const void *key, void *data, void *args);
 
 int
-sq_cache_initialize (THREAD_ENTRY * thread_p)
+sq_cache_disable (xasl_node * xasl)
 {
-  sq_cache *p = &sq_cache_by_thread[thread_p->index % 100];
-  assert (!p->enabled);
-  p->hashtable = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
-  if (!p->hashtable)
+  xasl->sq_cache_enabled = false;
+  if (xasl->next)
+    {
+      sq_cache_disable (xasl->next);
+    }
+  if (xasl->aptr_list)
+    {
+      sq_cache_disable (xasl->aptr_list);
+    }
+  if (xasl->bptr_list)
+    {
+      sq_cache_disable (xasl->bptr_list);
+    }
+  if (xasl->connect_by_ptr)
+    {
+      sq_cache_disable (xasl->connect_by_ptr);
+    }
+  if (xasl->dptr_list)
+    {
+      sq_cache_disable (xasl->dptr_list);
+    }
+  if (xasl->fptr_list)
+    {
+      sq_cache_disable (xasl->fptr_list);
+    }
+  if (xasl->scan_ptr)
+    {
+      sq_cache_disable (xasl->scan_ptr);
+    }
+
+}
+
+int
+sq_cache_initialize (xasl_node * xasl)
+{
+
+  if (xasl->sq_cache_enabled == false)
+    {
+      xasl->sq_cache_ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
+      er_log_debug (ARG_FILE_LINE, "sq_cache_initialize() : ht %p is allocated\n", xasl->sq_cache_ht);
+
+      if (!xasl->sq_cache_ht)
+	{
+	  return ER_FAILED;
+	}
+      xasl->sq_cache_enabled = true;
+      return NO_ERROR;
+    }
+  else
     {
       return ER_FAILED;
     }
-  p->enabled = true;
-  return NO_ERROR;
 }
 
 static unsigned int
@@ -380,7 +422,6 @@ sq_free_key (sq_key * keyp)
   free (keyp);
 }
 
-
 static void
 sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc)
 {
@@ -467,15 +508,16 @@ static void
 sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp)
 {
 
-
   if (*retp)
     {
+      er_log_debug (ARG_FILE_LINE, "sq_unpack_val() : val->dbval = %p, *retp = %p\n", val->dbval, *retp);
       pr_clear_value (*retp);
       db_value_clone (val->dbval, *retp);
     }
   else
     {
       *retp = db_value_copy (val->dbval);
+      er_log_debug (ARG_FILE_LINE, "sq_unpack_val() : after db_value_copy(), *retp = %p\n", val->dbval, *retp);
     }
 
   return;
@@ -490,26 +532,28 @@ sq_free_val (sq_val * val)
 }
 
 int
-sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, DB_VALUE * result)
+sq_put (xasl_node * xasl, DB_VALUE * result)
 {
-  sq_cache *sq_cache = &sq_cache_by_thread[thread_p->index % 100];
+  MHT_TABLE *sq_cache_ht;
+  sq_key *key;
+  sq_val *val;
   const void *ret;
-  if (sq_cache->enabled == false)
+  if (xasl->sq_cache_enabled == false)
     {
-      sq_cache_initialize (thread_p);
+      sq_cache_initialize (xasl);
     }
+  sq_cache_ht = xasl->sq_cache_ht;
 
-
-  sq_key *key = sq_make_key (xasl);
+  key = sq_make_key (xasl);
 
   if (key == NULL)
     {
       return ER_FAILED;
     }
 
-  sq_val *val = sq_make_val (xasl, result);
+  val = sq_make_val (xasl, result);
 
-  ret = mht_put_if_not_exists (sq_cache->hashtable, key, val);
+  ret = mht_put_if_not_exists (sq_cache_ht, key, val);
 
   if (!ret || ret != val)
     {
@@ -522,17 +566,18 @@ sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, DB_VALUE * result)
 }
 
 bool
-sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, DB_VALUE ** retp)
+sq_get (xasl_node * xasl, DB_VALUE ** retp)
 {
-  sq_cache *sq_cache = &sq_cache_by_thread[thread_p->index % 100];
+  MHT_TABLE *sq_cache_ht;
   sq_key *key;
   sq_val *ret;
 
-  if (sq_cache->enabled == false)
+  if (xasl->sq_cache_enabled == false)
     {
-      sq_cache_initialize (thread_p);
+      sq_cache_initialize (xasl);
     }
 
+  sq_cache_ht = xasl->sq_cache_ht;
   key = sq_make_key (xasl);
 
   if (key == NULL)
@@ -540,7 +585,7 @@ sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, DB_VALUE ** retp)
       return false;
     }
 
-  ret = (sq_val *) mht_get (sq_cache->hashtable, key);
+  ret = (sq_val *) mht_get (sq_cache_ht, key);
 
   if (ret == NULL)
     {
@@ -565,23 +610,58 @@ sq_rem_func (const void *key, void *data, void *args)
 }
 
 void
-sq_cache_drop_all (THREAD_ENTRY * thread_p)
+sq_cache_drop_all (xasl_node * xasl)
 {
-  sq_cache *sq_cache = &sq_cache_by_thread[thread_p->index % 100];
-  if (sq_cache->hashtable != NULL)
+  MHT_TABLE *ht;
+  if (xasl->sq_cache_enabled == true)
     {
-      mht_clear (sq_cache->hashtable, sq_rem_func, NULL);
+      ht = xasl->sq_cache_ht;
+      if (ht != NULL)
+	{
+	  mht_clear (ht, sq_rem_func, NULL);
+	}
     }
+
 }
 
 void
-sq_cache_destroy (THREAD_ENTRY * thread_p)
+sq_cache_destroy (xasl_node * xasl)
 {
-  sq_cache *sq_cache = &sq_cache_by_thread[thread_p->index % 100];
-  if (sq_cache && sq_cache->enabled && sq_cache->hashtable)
+  int err;
+  if (xasl->sq_cache_enabled == true)
     {
-      sq_cache_drop_all (thread_p);
-      mht_destroy (sq_cache->hashtable);
-      sq_cache->enabled = false;
+      sq_cache_drop_all (xasl);
+      mht_destroy (xasl->sq_cache_ht);
+      xasl->sq_cache_enabled = false;
     }
+
+  xasl->sq_cache_enabled = false;
+  /*if (xasl->next)
+     {
+     sq_cache_destroy (xasl->next);
+     }
+     if (xasl->aptr_list)
+     {
+     sq_cache_destroy (xasl->aptr_list);
+     }
+     if (xasl->bptr_list)
+     {
+     sq_cache_destroy (xasl->bptr_list);
+     }
+     if (xasl->connect_by_ptr)
+     {
+     sq_cache_destroy (xasl->connect_by_ptr);
+     }
+     if (xasl->dptr_list)
+     {
+     sq_cache_destroy (xasl->dptr_list);
+     }
+     if (xasl->fptr_list)
+     {
+     sq_cache_destroy (xasl->fptr_list);
+     }
+     if (xasl->scan_ptr)
+     {
+     sq_cache_destroy (xasl->scan_ptr);
+     } */
 }
