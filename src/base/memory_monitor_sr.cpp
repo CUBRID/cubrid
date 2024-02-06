@@ -47,7 +47,7 @@ namespace cubmem
   size_t memory_monitor::get_allocated_size (const char *ptr)
   {
 #if defined(WINDOWS)
-    size_t allocated_size = _msize ((void *)ptr);
+    size_t allocated_size = 0;
 #else
     size_t allocated_size = malloc_usable_size ((void *)ptr);
 #endif // WINDOWS
@@ -73,7 +73,7 @@ namespace cubmem
   {
     std::string filecopy (file);
 #if defined(WINDOWS)
-    std::string target ("\\src\\");
+    std::string target (""); // not supported
 #else
     std::string target ("/src/");
 #endif // WINDOWS
@@ -83,7 +83,7 @@ namespace cubmem
 #if !defined (NDEBUG)
     size_t lpos = filecopy.find (target);
     assert (pos == lpos);
-#endif // NDEBUG
+#endif // !NDEBUG
 
     if (pos != std::string::npos)
       {
@@ -117,9 +117,8 @@ namespace cubmem
       {
 	metainfo.tag_id = m_tag_map.size ();
 	// tag_id is start with 0
-	std::pair <std::string, int> tag_map_entry (tag_name, metainfo.tag_id);
-	m_tag_map.insert (tag_map_entry);
-	m_stat_map.insert (std::make_pair (metainfo.tag_id, metainfo.allocated_size));
+	m_tag_map.emplace (tag_name, metainfo.tag_id);
+	m_stat_map.emplace (metainfo.tag_id, metainfo.allocated_size);
       }
     tag_map_lock.unlock ();
 
@@ -132,18 +131,16 @@ namespace cubmem
 
   void memory_monitor::sub_stat (char *ptr)
   {
-    size_t allocated_size;
+    size_t allocated_size = 0;
 
     if (ptr == NULL)
       {
 	return;
       }
 
-#if defined(WINDOWS)
-    allocated_size = _msize ((void *)ptr);
-#else
+#if !defined(WINDOWS)
     allocated_size = malloc_usable_size ((void *)ptr);
-#endif // WINDOWS
+#endif // !WINDOWS
 
     if (allocated_size >= MMON_ALLOC_META_SIZE)
       {
