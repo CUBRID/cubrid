@@ -89,7 +89,7 @@ extern void logddl_set_commit_mode (bool mode);
 extern void logddl_write_tran_str (const char *fmt, ...);
 extern void logddl_write_end_for_csql_fileinput (const char *fmt, ...);
 
-extern void logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
+extern void logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, PARSER_CONTEXT * parser);
 extern void logddl_set_callback_stmt (int stmt_type, char *sql, int len, int err_code,
 				      HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 extern void logddl_reset_query_text ();
