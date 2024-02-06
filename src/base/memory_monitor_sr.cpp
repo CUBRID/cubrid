@@ -131,16 +131,13 @@ namespace cubmem
 
   void memory_monitor::sub_stat (char *ptr)
   {
+#if defined(WINDOWS)
     size_t allocated_size = 0;
-
-    if (ptr == NULL)
-      {
-	return;
-      }
-
-#if !defined(WINDOWS)
-    allocated_size = malloc_usable_size ((void *)ptr);
+#else
+    size_t allocated_size = malloc_usable_size ((void *)ptr);
 #endif // !WINDOWS
+
+    assert (ptr != NULL);
 
     if (allocated_size >= MMON_ALLOC_META_SIZE)
       {
