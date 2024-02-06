@@ -552,9 +552,11 @@ static int propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask);
 static int is_protected_class (MOP classmop, SM_CLASS * sm_class, DB_AUTH auth);
 static int check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type);
 static int fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fetchmode, FETCH_BY fetch_by);
-static int au_fetch_class_internal (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type, FETCH_BY fetch_by);
+static int au_fetch_class_internal (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type,
+				    FETCH_BY fetch_by);
 
-static int fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION_TYPE read_fetch_version_type);
+static int fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
+			   LC_FETCH_VERSION_TYPE read_fetch_version_type);
 static int au_perform_login (const char *name, const char *password, bool ignore_dba_privilege);
 
 static CLASS_GRANT *make_class_grant (CLASS_USER * user, int cache);
@@ -565,7 +567,7 @@ static CLASS_USER *find_or_add_user (CLASS_AUTH * auth, MOP user_obj);
 static int add_class_grant (CLASS_AUTH * auth, MOP source, MOP user, int cache);
 static int build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop);
 static void issue_grant_statement (extract_context & ctxt, print_output & output_ctx, CLASS_AUTH * auth,
-		       CLASS_GRANT * grant, int authbits);
+				   CLASS_GRANT * grant, int authbits);
 static int class_grant_loop (extract_context & ctxt, print_output & output_ctx, CLASS_AUTH * auth);
 
 static void au_print_cache (int cache, FILE * fp);
