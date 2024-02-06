@@ -1177,7 +1177,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new SyntaxError(
                     lineColumn[0],
                     lineColumn[1],
-                    "illegal keywords AUTHID for a local procedure/function");
+                    "illegal keyword AUTHID for a local procedure/function");
         }
 
         String name = Misc.getNormalizedText(ctx.identifier());
