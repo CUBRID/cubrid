@@ -5,7 +5,9 @@ EXPORTS
 ;
 	basename_r
     cfg_find_db
-    cfg_free_directory    
+    cfg_free_directory
+    char_properties_ptr
+    char_lower_mapper_ptr
     css_connect_to_master_for_info
     css_connect_to_master_timeout
     css_does_master_exist
