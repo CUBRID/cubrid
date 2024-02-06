@@ -52,6 +52,7 @@ public class Server {
     private static String spPath;
     private static String rootPath;
     private static String udsPath;
+    private static String tmpPath;
 
     private static List<String> jvmArguments = null;
 
@@ -74,6 +75,12 @@ public class Server {
         ServerSocket serverSocket = null;
         int port_number = Integer.parseInt(port);
         try {
+            tmpPath = System.getProperty("CUBRID_TMP");
+            if (tmpPath == null) {
+                tmpPath = rootPath + File.separator + "tmp";
+            }
+            System.setProperty("java.io.tmpdir", tmpPath);
+
             if (OSValidator.IS_UNIX && port_number == -1) {
                 final File socketFile = new File(udsPath);
                 if (socketFile.exists()) {
