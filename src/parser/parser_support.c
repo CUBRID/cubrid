@@ -10601,18 +10601,18 @@ pt_get_name_with_qualifier_removed (const char *name)
 const char *
 pt_get_name_without_current_user_name (const char *name)
 {
+#define MAX_NAME_LENGTH DB_MAX_IDENTIFIER_LENGTH * 3 + 2
   char *dot = NULL;
-  char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char name_copy[MAX_NAME_LENGTH] = { '\0' };
   const char *current_schema_name = NULL;
   const char *object_name = NULL;
   int error = NO_ERROR;
 
-  if (name == NULL || name[0] == '\0')
+  if (name == NULL || name[0] == '\0' || strlen (name) >= MAX_NAME_LENGTH)
     {
       return name;
     }
 
-  assert (strlen (name) < DB_MAX_IDENTIFIER_LENGTH);
   strcpy (name_copy, name);
 
   dot = strchr (name_copy, '.');
