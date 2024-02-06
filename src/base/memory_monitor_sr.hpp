@@ -24,10 +24,18 @@
 #ifndef _MEMORY_MONITOR_SR_HPP_
 #define _MEMORY_MONITOR_SR_HPP_
 
+#include <stdint.h>
 #include <string>
+
 
 namespace cubmem
 {
+  // IMPORTANT!!
+  // This meta size is related with allocation byte align
+  // Don't adjust it freely
+  // 8 byte size + 4 byte tag + 4 byte magicnumber
+  static constexpr int MMON_ALLOC_META_SIZE = 16;
+
   class memory_monitor
   {
     public:
@@ -40,12 +48,18 @@ namespace cubmem
       memory_monitor &operator = (const memory_monitor &) = delete;
       memory_monitor &operator = (memory_monitor &&) = delete;
 
+    public:
+      size_t get_allocated_size (const char *ptr);
+
     private:
       static std::string make_tag_name (const char *file, const int line);
 
     private:
       std::string m_server_name;
+      const int m_magic_number;
   };
 } //namespace cubmem
 
+bool mmon_is_memory_monitor_enabled ();
+size_t mmon_get_allocated_size (char *ptr);
 #endif // _MEMORY_MONITOR_SR_HPP_
