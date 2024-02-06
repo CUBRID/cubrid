@@ -29,7 +29,6 @@
 
 namespace cubschema
 {
-  class system_catalog_builder;
 
   struct catcls_function
   {

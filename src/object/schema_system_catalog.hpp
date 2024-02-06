@@ -31,7 +31,6 @@
 extern EXPORT_IMPORT void catcls_init (void);
 extern EXPORT_IMPORT int catcls_install (void);
 
-// test class_name is of system (class/vclass)s for legacy routine
 extern EXPORT_IMPORT bool sm_check_system_class_by_name (const std::string_view class_name);
 
 extern EXPORT_IMPORT bool sm_is_system_class (const std::string_view name);

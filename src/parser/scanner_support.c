@@ -399,12 +399,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	case PT_HINT_NONE:
 	  break;
 	case PT_HINT_ORDERED:	/* force join left-to-right */
-
-/* TEMPORARY COMMENTED CODE: DO NOT REMOVE ME !!! */
-#if 0
-	  node->info.query.q.select.ordered = hint_table[i].arg_list;
-	  hint_table[i].arg_list = NULL;
-#endif /* 0 */
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
@@ -418,6 +412,27 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
 	    }
 	  break;
+	case PT_HINT_LEADING:	/* force specific table to join left-to-right */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.leading = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	      node->info.delete_.leading_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	      node->info.update.leading_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
+
 	case PT_HINT_NO_INDEX_SS:	/* disable index skip scan */
 	  if (node->node_type == PT_SELECT)
 	    {
@@ -441,10 +456,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		}
 	    }
 	  break;
-#if 0
-	case PT_HINT_Y:	/* not used */
-	  break;
-#endif /* 0 */
 	case PT_HINT_USE_NL:	/* force nl-join */
 	  if (node->node_type == PT_SELECT)
 	    {

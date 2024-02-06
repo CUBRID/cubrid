@@ -28,7 +28,6 @@ namespace cubschema
 {
   // forward definitions
   struct system_catalog_definition;
-  struct catcls_function;
 
   class system_catalog_initializer
   {
