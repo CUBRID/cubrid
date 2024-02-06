@@ -371,11 +371,8 @@ std::stack <MOP> Au_user_stack;
  * NOTE: Need to be storing the password in an encrypted string.
  */
 static char Au_user_name[DB_MAX_USER_LENGTH + 4] = { '\0' };
-
 char Au_user_password_des_oldstyle[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
-
 char Au_user_password_sha1[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
-
 char Au_user_password_sha2_512[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
 
 /*
@@ -555,11 +552,9 @@ static int propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask);
 static int is_protected_class (MOP classmop, SM_CLASS * sm_class, DB_AUTH auth);
 static int check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type);
 static int fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fetchmode, FETCH_BY fetch_by);
-static int
-au_fetch_class_internal (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type, FETCH_BY fetch_by);
+static int au_fetch_class_internal (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type, FETCH_BY fetch_by);
 
-static int
-fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION_TYPE read_fetch_version_type);
+static int fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION_TYPE read_fetch_version_type);
 static int au_perform_login (const char *name, const char *password, bool ignore_dba_privilege);
 
 static CLASS_GRANT *make_class_grant (CLASS_USER * user, int cache);
@@ -569,8 +564,7 @@ static void free_class_users (CLASS_USER * users);
 static CLASS_USER *find_or_add_user (CLASS_AUTH * auth, MOP user_obj);
 static int add_class_grant (CLASS_AUTH * auth, MOP source, MOP user, int cache);
 static int build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop);
-static void
-issue_grant_statement (extract_context & ctxt, print_output & output_ctx, CLASS_AUTH * auth,
+static void issue_grant_statement (extract_context & ctxt, print_output & output_ctx, CLASS_AUTH * auth,
 		       CLASS_GRANT * grant, int authbits);
 static int class_grant_loop (extract_context & ctxt, print_output & output_ctx, CLASS_AUTH * auth);
 
@@ -7574,9 +7568,7 @@ au_export_users (extract_context & ctxt, print_output & output_ctx)
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   DB_VALUE user_val;
-  DB_VALUE user_group[2] = {
-    0,
-  };
+  DB_VALUE user_group[2] = { 0, };
   const char *dba_query = "select [%s] from [%s];";
   const char *user_query = "select [%s] from [%s] where name='%s';";
   const char *group_query =
