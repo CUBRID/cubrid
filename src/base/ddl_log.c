@@ -382,7 +382,6 @@ logddl_set_stmt_type (int stmt_type, PT_NODE * statement)
   if (logddl_is_ddl_type (stmt_type, statement) == true)
     {
       is_executed_ddl_for_trans = true;
-      is_executed_ddl_for_csql = true;
 
       ddl_audit_handle.ddl_stmt_cnt++;
       return true;
