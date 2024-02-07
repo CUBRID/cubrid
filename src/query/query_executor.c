@@ -2233,6 +2233,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       pg_cnt += qexec_clear_agg_orderby_const_list (thread_p, xasl, is_final);
     }
 
+  if (xasl->sq_cache_enabled == true)
+    {
+      sq_cache_destroy (thread_p, xasl);
+    }
 
   if (is_final)
     {
@@ -14755,7 +14759,6 @@ exit_on_error:
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
 
   xasl->status = XASL_FAILURE;
-  sq_cache_destroy (xasl);
   qexec_failure_line (__LINE__, xasl_state);
   return ER_FAILED;
 }

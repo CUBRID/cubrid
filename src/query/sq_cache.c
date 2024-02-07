@@ -60,9 +60,6 @@ static void sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, b
 static sq_val *sq_make_val (xasl_node * xasl, DB_VALUE * result);
 static void sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp);
 static void sq_free_val (sq_val * val);
-static int sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest);
-static int sq_add_val_to_list (DB_VALUE * dbv, VAL_LIST * list);
-static void sq_free_val (sq_val * val);
 static int sq_rem_func (const void *key, void *data, void *args);
 static int sq_rem_func_for_threads (const void *key, void *data, void *args);
 
@@ -98,13 +95,13 @@ sq_cache_disable (xasl_node * xasl)
     {
       sq_cache_disable (xasl->scan_ptr);
     }
-
+  return NO_ERROR;
 }
 
 int
 sq_cache_initialize (xasl_node * xasl)
 {
-
+  assert (xasl->sq_cache_enabled == false || xasl->sq_cache_enabled == true);
   if (xasl->sq_cache_enabled == false)
     {
       xasl->sq_cache_ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
@@ -510,14 +507,12 @@ sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp)
 
   if (*retp)
     {
-      er_log_debug (ARG_FILE_LINE, "sq_unpack_val() : val->dbval = %p, *retp = %p\n", val->dbval, *retp);
       pr_clear_value (*retp);
       db_value_clone (val->dbval, *retp);
     }
   else
     {
       *retp = db_value_copy (val->dbval);
-      er_log_debug (ARG_FILE_LINE, "sq_unpack_val() : after db_value_copy(), *retp = %p\n", val->dbval, *retp);
     }
 
   return;
@@ -538,11 +533,6 @@ sq_put (xasl_node * xasl, DB_VALUE * result)
   sq_key *key;
   sq_val *val;
   const void *ret;
-  if (xasl->sq_cache_enabled == false)
-    {
-      sq_cache_initialize (xasl);
-    }
-  sq_cache_ht = xasl->sq_cache_ht;
 
   key = sq_make_key (xasl);
 
@@ -550,6 +540,11 @@ sq_put (xasl_node * xasl, DB_VALUE * result)
     {
       return ER_FAILED;
     }
+  if (xasl->sq_cache_enabled == false)
+    {
+      sq_cache_initialize (xasl);
+    }
+  sq_cache_ht = xasl->sq_cache_ht;
 
   val = sq_make_val (xasl, result);
 
@@ -572,18 +567,19 @@ sq_get (xasl_node * xasl, DB_VALUE ** retp)
   sq_key *key;
   sq_val *ret;
 
-  if (xasl->sq_cache_enabled == false)
-    {
-      sq_cache_initialize (xasl);
-    }
-
-  sq_cache_ht = xasl->sq_cache_ht;
   key = sq_make_key (xasl);
 
   if (key == NULL)
     {
       return false;
     }
+
+  if (xasl->sq_cache_enabled == false)
+    {
+      sq_cache_initialize (xasl);
+    }
+
+  sq_cache_ht = xasl->sq_cache_ht;
 
   ret = (sq_val *) mht_get (sq_cache_ht, key);
 
@@ -625,43 +621,16 @@ sq_cache_drop_all (xasl_node * xasl)
 }
 
 void
-sq_cache_destroy (xasl_node * xasl)
+sq_cache_destroy (THREAD_ENTRY * thread_p, xasl_node * xasl)
 {
   int err;
+  assert (xasl->sq_cache_enabled == false || xasl->sq_cache_enabled == true);
   if (xasl->sq_cache_enabled == true)
     {
       sq_cache_drop_all (xasl);
       mht_destroy (xasl->sq_cache_ht);
-      xasl->sq_cache_enabled = false;
     }
 
   xasl->sq_cache_enabled = false;
-  /*if (xasl->next)
-     {
-     sq_cache_destroy (xasl->next);
-     }
-     if (xasl->aptr_list)
-     {
-     sq_cache_destroy (xasl->aptr_list);
-     }
-     if (xasl->bptr_list)
-     {
-     sq_cache_destroy (xasl->bptr_list);
-     }
-     if (xasl->connect_by_ptr)
-     {
-     sq_cache_destroy (xasl->connect_by_ptr);
-     }
-     if (xasl->dptr_list)
-     {
-     sq_cache_destroy (xasl->dptr_list);
-     }
-     if (xasl->fptr_list)
-     {
-     sq_cache_destroy (xasl->fptr_list);
-     }
-     if (xasl->scan_ptr)
-     {
-     sq_cache_destroy (xasl->scan_ptr);
-     } */
+  xasl->sq_cache_ht = NULL;
 }

@@ -3880,9 +3880,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      *peek_dbval = regu_var->value.dbvalptr;
 	      break;
 	    }
-	  save_orig_sq_enabled = regu_var->xasl->sq_cache_enabled;
 	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
-	  regu_var->xasl->sq_cache_enabled = save_orig_sq_enabled;
 	  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
 	    {
 	      goto exit_on_error;
