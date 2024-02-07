@@ -53,7 +53,7 @@ BIGINT:                       B I G I N T ;
 BOOLEAN:                      B O O L E A N ;
 BY:                           B Y ;
 CASE:                         C A S E ;
-CALLER:                       C A L L E R;
+CALLER:                       C A L L E R ;
 CHARACTER:                    C H A R A C T E R ;
 CHAR:                         C H A R ;
 CLOSE:                        C L O S E ;
