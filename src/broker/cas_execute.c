@@ -4914,7 +4914,7 @@ cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_
   char *null_type_column = q_result->null_type_column;
   int err_code;
 
-  ncols = q_result->num_column;
+  ncols = db_query_column_count (result);
   for (i = 0; i < ncols; i++)
     {
       if (sensitive_flag == TRUE && col_update_info[i].updatable == TRUE)
