@@ -5992,14 +5992,10 @@ btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE
 	    }
 	}
 
-      for (i = 0; i < key->data.midxkey.ncolumns; i++)
-	{
-	  db_make_null (&(new_key_dbvals[i]));
-	}
-
       /* copy prefix of current key into target key */
       for (i = 0; i < key->data.midxkey.ncolumns; i++)
 	{
+	  db_make_null (&(new_key_dbvals[i]));
 	  pr_midxkey_get_element_nocopy (&key->data.midxkey, i, &new_key_dbvals[i], NULL, NULL);
 	}
 
@@ -6113,13 +6109,10 @@ btree_remake_reference_key_with_FK (THREAD_ENTRY * thread_p, TP_DOMAIN * pk_doma
 	  return ER_FAILED;
 	}
     }
-  for (i = 0; i < pk_column_cnt; i++)
-    {
-      db_make_null (&(dbvals_ptr[i]));
-    }
 
   for (i = 0; i < pk_column_cnt; i++)
     {
+      db_make_null (&(dbvals_ptr[i]));
       pr_midxkey_get_element_nocopy (&(fk_key->data.midxkey), i, &dbvals_ptr[i], NULL, NULL);
     }
 
