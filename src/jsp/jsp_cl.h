@@ -41,6 +41,7 @@
 
 #define SP_CLASS_NAME           "_db_stored_procedure"
 #define SP_ARG_CLASS_NAME       "_db_stored_procedure_args"
+#define SP_CODE_CLASS_NAME      "_db_stored_procedure_code"
 
 #define SP_ATTR_NAME                    "sp_name"
 #define SP_ATTR_SP_TYPE                 "sp_type"
@@ -60,6 +61,11 @@
 #define SP_ATTR_DATA_TYPE               "data_type"
 #define SP_ATTR_MODE                    "mode"
 #define SP_ATTR_ARG_COMMENT             "comment"
+
+#define SP_ATTR_SOURCE_TYPE             "stype"
+#define SP_ATTR_SOURCE_CODE             "scode"
+#define SP_ATTR_OBJECT_TYPE             "otype"
+#define SP_ATTR_OBJECT_CODE             "ocode"
 
 typedef enum
 {

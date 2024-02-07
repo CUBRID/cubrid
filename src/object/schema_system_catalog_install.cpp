@@ -854,8 +854,6 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
@@ -888,8 +886,36 @@ namespace cubschema
 // initializer
     nullptr
 	   );
+  }
 
+  system_catalog_definition
+  system_catalog_initializer::get_stored_procedure_code ()
+  {
 
+    return system_catalog_definition (
+		   // name
+		   CT_STORED_PROC_CODE_NAME,
+		   // columns
+    {
+      {"sp_name", format_varchar (255)},
+      {"owner", AU_USER_CLASS_NAME},
+      {"stype", "integer"},
+      {"scode", format_varchar (1073741823)},
+      {"otype", "integer"},
+      {"ocode", format_varchar (1073741823)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"sp_name", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
   }
 
   system_catalog_definition
