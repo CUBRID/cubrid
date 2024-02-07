@@ -42,7 +42,10 @@ namespace cubmem
   memory_monitor::memory_monitor (const char *server_name)
     : m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")}
-  {}
+  {
+    m_total_mem_usage = 0;
+    m_meta_alloc_count = 0;
+  }
 
   size_t memory_monitor::get_allocated_size (const char *ptr)
   {
@@ -74,6 +77,7 @@ namespace cubmem
     std::string filecopy (file);
 #if defined(WINDOWS)
     std::string target (""); // not supported
+    assert (false);
 #else
     std::string target ("/src/");
 #endif // WINDOWS
@@ -154,6 +158,7 @@ namespace cubmem
 
 	    memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
 	    m_meta_alloc_count--;
+	    assert (m_meta_alloc_count >= 0);
 	  }
       }
   }

@@ -61,8 +61,8 @@ namespace cubmem
     private:
       std::string m_server_name;
       mutable std::mutex m_tag_map_mutex;
-      std::unordered_map <std::string, int> m_tag_map;              // tag name <-> tag id
-      std::unordered_map <int, std::atomic <uint64_t>> m_stat_map;  // tag id <-> memory usage
+      std::unordered_map <std::string, int> m_tag_map;              // key: tag name, value: tag id
+      std::unordered_map <int, std::atomic <uint64_t>> m_stat_map;  // key: tag id, value: memory usage
       std::atomic <uint64_t> m_total_mem_usage;
       int m_meta_alloc_count;                                       // for checking occupancy of memory used by metainfo space
       const int m_magic_number;
