@@ -51,20 +51,22 @@ namespace cubmem
       memory_monitor &operator = (memory_monitor &&) = delete;
 
     public:
-      size_t get_allocated_size (const char *ptr);
+      size_t get_allocated_size (char *ptr);
       void add_stat (char *ptr, const size_t size, const char *file, const int line);
       void sub_stat (char *ptr);
 
     private:
+      static char *get_meta_ptr (char *ptr, size_t size);
       static std::string make_tag_name (const char *file, const int line);
 
     private:
       std::string m_server_name;
       mutable std::mutex m_tag_map_mutex;
+      // Entries of m_tag_map and m_stat_map will not be deleted
       std::unordered_map <std::string, int> m_tag_map;              // key: tag name, value: tag id
       std::unordered_map <int, std::atomic <uint64_t>> m_stat_map;  // key: tag id, value: memory usage
       std::atomic <uint64_t> m_total_mem_usage;
-      int m_meta_alloc_count;                                       // for checking occupancy of memory used by metainfo space
+      std::atomic <int> m_meta_alloc_count;                         // for checking occupancy of memory used by metainfo space
       const int m_magic_number;
   };
 } //namespace cubmem
