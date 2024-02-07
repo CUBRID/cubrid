@@ -2989,7 +2989,7 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       /* if inner is seq scan, it is calculated by default card. */
       /* This prevents the worst plan if the cardinality is calculated to be less than the actual value. */
-      inner_io_cost = (guessed_result_cardinality + SSCAN_DEFULT_CARD) * inner->variable_io_cost;
+      inner_io_cost = (guessed_result_cardinality + SSCAN_DEFAULT_CARD) * inner->variable_io_cost;
     }
 
   /* outer side CPU cost of nested-loop block join */
