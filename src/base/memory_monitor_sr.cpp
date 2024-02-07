@@ -51,9 +51,10 @@ namespace cubmem
   {
 #if defined(WINDOWS)
     size_t allocated_size = 0;
+    assert (false);
 #else
     size_t allocated_size = malloc_usable_size ((void *)ptr);
-#endif // WINDOWS
+#endif // !WINDOWS
 
     if (allocated_size <= MMON_ALLOC_META_SIZE)
       {
@@ -80,7 +81,7 @@ namespace cubmem
     assert (false);
 #else
     std::string target ("/src/");
-#endif // WINDOWS
+#endif // !WINDOWS
 
     // Find the last occurrence of "src" in the path
     size_t pos = filecopy.rfind (target);
@@ -137,6 +138,7 @@ namespace cubmem
   {
 #if defined(WINDOWS)
     size_t allocated_size = 0;
+    assert (false);
 #else
     size_t allocated_size = malloc_usable_size ((void *)ptr);
 #endif // !WINDOWS
