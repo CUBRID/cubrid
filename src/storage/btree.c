@@ -5957,6 +5957,7 @@ btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE
   DB_MIDXKEY midxkey;
   TP_DOMAIN *tp_dom = NULL;
   TP_DOMAIN *setdomain_ptr = NULL;
+  DB_VALUE new_key_dbvals_ary[8];
   DB_VALUE *new_key_dbvals = NULL;
   DB_VALUE *dbvals_ptr = NULL;
   ATTR_ID last_attrid;
@@ -5980,15 +5981,26 @@ btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE
 	}
 
       assert ((num_attrs - 1) == key->data.midxkey.ncolumns);
-
-      /* allocate key buffer */
-      new_key_dbvals = (DB_VALUE *) db_private_alloc (thread_p, key->data.midxkey.ncolumns * sizeof (DB_VALUE));
-      if (new_key_dbvals == NULL)
+      if (key->data.midxkey.ncolumns <= (sizeof (new_key_dbvals_ary) / sizeof (DB_VALUE)))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  key->data.midxkey.ncolumns * sizeof (DB_VALUE));
-	  ret = ER_FAILED;
-	  goto clear_pos;
+	  new_key_dbvals = new_key_dbvals_ary;
+	}
+      else
+	{
+	  /* allocate key buffer */
+	  new_key_dbvals = (DB_VALUE *) db_private_alloc (thread_p, key->data.midxkey.ncolumns * sizeof (DB_VALUE));
+	  if (new_key_dbvals == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      key->data.midxkey.ncolumns * sizeof (DB_VALUE));
+	      ret = ER_FAILED;
+	      goto clear_pos;
+	    }
+	}
+
+      for (i = 0; i < key->data.midxkey.ncolumns; i++)
+	{
+	  db_make_null (&(new_key_dbvals[i]));
 	}
 
       /* copy prefix of current key into target key */
@@ -6055,7 +6067,10 @@ clear_pos:
 	{
 	  pr_clear_value (&new_key_dbvals[i]);	/* it might be alloced/copied */
 	}
-      db_private_free (thread_p, new_key_dbvals);
+      if (new_key_dbvals_ary != new_key_dbvals)
+	{
+	  db_private_free (thread_p, new_key_dbvals);
+	}
     }
 
   if (tp_dom)
@@ -6073,7 +6088,8 @@ clear_pos:
 }
 
 int
-btree_remake_reference_key_with_FK (TP_DOMAIN * pk_domain, DB_VALUE * dbvals, DB_VALUE * fk_key, DB_VALUE * new_key)
+btree_remake_reference_key_with_FK (THREAD_ENTRY * thread_p, TP_DOMAIN * pk_domain, DB_VALUE * fk_key,
+				    DB_VALUE * new_key)
 {
   DB_MIDXKEY midxkey;
 
@@ -6082,16 +6098,35 @@ btree_remake_reference_key_with_FK (TP_DOMAIN * pk_domain, DB_VALUE * dbvals, DB
    *  { v1, v2 , OID } ==> { v1, v2 }
    */
   assert (fk_key->domain.general_info.type == DB_TYPE_MIDXKEY);
-  assert (dbvals != NULL);
+  assert (fk_key->data.midxkey.ncolumns > 1);
 
   if (fk_key->data.midxkey.ncolumns == 2)
     {
       return pr_midxkey_get_element_nocopy (&(fk_key->data.midxkey), 0, new_key, NULL, NULL);
     }
 
-  for (int i = 0; i < (fk_key->data.midxkey.ncolumns - 1); i++)
+  int i, pk_column_cnt, ret;
+  DB_VALUE dbvals_ary[8];
+  DB_VALUE *dbvals_ptr = dbvals_ary;
+
+  pk_column_cnt = fk_key->data.midxkey.ncolumns - 1;
+  if (pk_column_cnt > (sizeof (dbvals_ary) / sizeof (DB_VALUE)))
     {
-      pr_midxkey_get_element_nocopy (&(fk_key->data.midxkey), i, &dbvals[i], NULL, NULL);
+      dbvals_ptr = (DB_VALUE *) db_private_alloc (thread_p, pk_column_cnt * sizeof (DB_VALUE));
+      if (dbvals_ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, pk_column_cnt * sizeof (DB_VALUE));
+	  return ER_FAILED;
+	}
+    }
+  for (i = 0; i < pk_column_cnt; i++)
+    {
+      db_make_null (&(dbvals_ptr[i]));
+    }
+
+  for (i = 0; i < pk_column_cnt; i++)
+    {
+      pr_midxkey_get_element_nocopy (&(fk_key->data.midxkey), i, &dbvals_ptr[i], NULL, NULL);
     }
 
   /* build midxkey */
@@ -6102,7 +6137,21 @@ btree_remake_reference_key_with_FK (TP_DOMAIN * pk_domain, DB_VALUE * dbvals, DB
   db_make_midxkey (new_key, &midxkey);
   new_key->need_clear = true;
 
-  return pr_midxkey_add_elements (new_key, dbvals, (fk_key->data.midxkey.ncolumns - 1), pk_domain->setdomain);
+  ret = pr_midxkey_add_elements (new_key, dbvals_ptr, pk_column_cnt, pk_domain->setdomain);
+
+  if (dbvals_ptr)
+    {
+      for (i = 0; i < pk_column_cnt; i++)
+	{
+	  pr_clear_value (&dbvals_ptr[i]);	/* it might be alloced/copied */
+	}
+      if (dbvals_ptr != dbvals_ary)
+	{
+	  db_private_free (thread_p, dbvals_ptr);
+	}
+    }
+
+  return ret;
 }
 
 /*
