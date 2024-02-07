@@ -67,6 +67,12 @@ namespace cubmem
       std::unordered_map <int, std::atomic <uint64_t>> m_stat_map;  // key: tag id, value: memory usage
       std::atomic <uint64_t> m_total_mem_usage;
       std::atomic <int> m_meta_alloc_count;                         // for checking occupancy of memory used by metainfo space
+      // Magic number is for checking an allocated memory which is out-of-scope of memory_monitor.
+      // It's because memory_monitor starts to manage information about heap memory allocation
+      // not "right after cubrid server starts" but "after some allocations are occurred because of
+      // memory_monitor has some dependencies to start (e.g. system parameter, error file initialize, etc..).
+      // And memory_monitor also can't manage some allocations after it is started like allocations at C++ containers(STL),
+      // and some C++ allocations occurred at header files.
       const int m_magic_number;
   };
 } //namespace cubmem
