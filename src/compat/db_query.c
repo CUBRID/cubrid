@@ -3172,7 +3172,7 @@ db_query_column_count (DB_QUERY_RESULT * result)
       num_cols++;
     }
 
-  return (num_cols);
+  return num_cols;
 }
 
 #if defined(WINDOWS) || defined (ENABLE_UNUSED_FUNCTION)
