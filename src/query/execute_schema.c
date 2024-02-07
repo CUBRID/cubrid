@@ -1819,7 +1819,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	  else
 	    {
-	      for (PT_NODE *spec = spec_list; spec != NULL; spec = spec->next)
+	      for (PT_NODE * spec = spec_list; spec != NULL; spec = spec->next)
 		{
 		  entity_list = spec->info.spec.flat_entity_list;
 		  for (entity = entity_list; entity != NULL; entity = entity->next)
