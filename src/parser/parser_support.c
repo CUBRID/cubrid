@@ -9634,13 +9634,13 @@ pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * l
 }
 
 /*
- * pt_get_query_limit () - get the limit value from a query
+ * pt_get_query_limit_from_query () - get the limit value from a query
  * return : error code or NO_ERROR
  * parser (in)	      : parser context
  * query (in)	      : query
  */
 DB_BIGINT
-pt_get_query_limit (PARSER_CONTEXT * parser, PT_NODE * query)
+pt_get_query_limit_from_query (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   DB_VALUE limit_val;
 
