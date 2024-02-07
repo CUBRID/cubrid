@@ -1750,7 +1750,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user_obj, *class_mop;
   PT_NODE *auth_cmd_list, *auth_list, *auth;
   DB_AUTH db_auth;
-  PT_NODE *spec_list, *s_list, *spec;
+  PT_NODE *spec_list;
   PT_NODE *entity_list, *entity;
   int grant_option;
   bool set_savepoint = false;
@@ -1819,8 +1819,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	  else
 	    {
-	      s_list = spec_list;
-	      for (spec = s_list; spec != NULL; spec = spec->next)
+	      for (PT_NODE *spec = spec_list; spec != NULL; spec = spec->next)
 		{
 		  entity_list = spec->info.spec.flat_entity_list;
 		  for (entity = entity_list; entity != NULL; entity = entity->next)
