@@ -66,6 +66,7 @@ extern "C"
 #define char_isspace(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_SPACE)
 #define char_iseol(c)     (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_EOL)
 #define char_isxdigit(c)  (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_HEXNUM)
+#define char_isspace2(c)  (char_isspace((c)))	// ' ', '\t', '\n', '\r
 
 #define char_tolower(c)   ((int) char_lower_mapper_ptr[(unsigned char) (c)])
 #define char_toupper(c)   ((int) char_upper_mapper_ptr[(unsigned char) (c)])
