@@ -2373,11 +2373,14 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
   int file_size;
   char *buffer;
   int buffer_size;
+  int is_contention;
   int send_size;
+  char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_unpack_int (request, &buffer_size);
+  ptr = or_unpack_int (request, &buffer_size);
+  ptr = or_unpack_int (ptr, &is_contention);
 
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
@@ -2395,7 +2398,7 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
       return;
     }
 
-  xlock_dump (thread_p, outfp);
+  xlock_dump (thread_p, outfp, is_contention);
   file_size = ftell (outfp);
 
   /*

@@ -390,6 +390,7 @@ class lf_hash_table_cpp
 
     size_t get_size () const;
     size_t get_element_count () const;
+    size_t get_alloc_element_count () const;
 
     lf_hash_table &get_hash_table ();
     lf_freelist &get_freelist ();
@@ -615,6 +616,13 @@ lf_hash_table_cpp<Key, T>::get_element_count () const
     {
       return 0;
     }
+}
+
+template <class Key, class T>
+size_t
+lf_hash_table_cpp<Key, T>::get_alloc_element_count () const
+{
+  return m_freelist.alloc_cnt;
 }
 
 template <class Key, class T>
