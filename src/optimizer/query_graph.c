@@ -1308,7 +1308,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 		  QO_NODE_NCARD (node) = (unsigned long) xasl->cardinality;
 
 		  /* check limit value */
-		  limit_val = pt_get_query_limit (env->parser, entity->info.spec.derived_table);
+		  limit_val = pt_get_query_limit_for_query (env->parser, entity->info.spec.derived_table);
 		  if (limit_val > 0 && (unsigned long) limit_val < QO_NODE_NCARD (node))
 		    {
 		      QO_NODE_NCARD (node) = (unsigned long) limit_val;
