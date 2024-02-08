@@ -820,6 +820,11 @@ struct json_t;
 #define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
 #define PT_SYNONYM_IS_DBLINKED(n)	((n)->info.synonym.is_dblinked)	/* for user.table@server */
 
+/* PT_METHOD_CALL_INFO */
+#define PT_METHOD_CALL_NAME(n)		((n)->info.method_call.method_name)
+#define PT_METHOD_CALL_AUTH_ID(n)	((n)->info.method_call.auth_id)
+#define PT_METHOD_CALL_AUTH_NAME(n)	((n)->info.method_call.auth_name)
+
 /* Check node_type of PT_NODE */
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
 #define PT_NODE_IS_NAME(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_NAME)
@@ -1326,7 +1331,10 @@ typedef enum
 
   PT_PRIVATE,
   PT_PUBLIC,
-  PT_SYNONYM
+  PT_SYNONYM,
+
+  PT_AUTHID_OWNER,
+  PT_AUTHID_CALLER
     // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
@@ -2559,6 +2567,8 @@ struct pt_method_call_info
   PT_NODE *to_return_var;	/* PT_NAME */
   PT_MISC_TYPE call_or_expr;	/* PT_IS_CALL_STMT or PT_IS_MTHD_EXPR */
   PT_MISC_TYPE method_type;	/* PT_IS_CLASS_MTHD, PT_IS_INST_MTHD, PT_SP_PROCEDURE, PT_SP_FUNCTION */
+  char *auth_name;		/* owner or current user name */
+  PT_MISC_TYPE auth_id;		/* PT_AUTHID_OWNER, PT_AUTHID_CALLER */
   UINTPTR method_id;		/* unique identifier so when copying we know if two methods are copies of the same
 				 * original method call. */
 };
@@ -3352,6 +3362,7 @@ struct pt_stored_proc_info
   PT_NODE *body;
   PT_NODE *comment;
   PT_NODE *owner;		/* for ALTER PROCEDURE/FUNCTION name OWNER TO new_owner */
+  PT_MISC_TYPE auth_id;		/* PT_AUTHID_OWNER, PT_AUTHID_CALLER */
   PT_MISC_TYPE type;
   unsigned or_replace:1;	/* OR REPLACE clause */
   PT_TYPE_ENUM ret_type;

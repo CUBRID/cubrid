@@ -40,7 +40,7 @@ create_routine
 
 routine_definition
     : (PROCEDURE | FUNCTION) identifier ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
-      (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
+      (authid_spec)? (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
     ;
 
 parameter_list
@@ -50,6 +50,11 @@ parameter_list
 parameter
     : parameter_name IN? type_spec                      # parameter_in
     | parameter_name ( IN? OUT | INOUT ) type_spec      # parameter_out
+    ;
+
+authid_spec
+    : AUTHID (DEFINER | OWNER)                          # authid_owner
+    | AUTHID (CALLER | CURRENT_USER)                    # authid_caller
     ;
 
 default_value_part
