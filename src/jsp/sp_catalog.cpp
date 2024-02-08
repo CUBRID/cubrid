@@ -60,6 +60,7 @@ static int sp_builtin_init ()
   v.lang = SP_LANG_PLCSQL;
   v.owner = Au_public_user;
   v.comment = "";
+  v.directive = 0;
 
   a.is_system_generated = true;
 
@@ -371,6 +372,14 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 
     db_make_int (&value, info.is_system_generated ? 1 : 0);
     err = dbt_put_internal (obt_p, SP_ATTR_IS_SYSTEM_GENERATED, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
+    db_make_int (&value, info.directive);
+    err = dbt_put_internal (obt_p, SP_ATTR_DIRECTIVE, &value);
     pr_clear_value (&value);
     if (err != NO_ERROR)
       {

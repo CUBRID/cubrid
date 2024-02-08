@@ -837,6 +837,7 @@ namespace cubschema
       {"lang", "integer"},
       {"pkg_name", format_varchar (255)},
       {"is_system_generated", "integer"},
+      {"directive", "integer"},
       {"target", format_varchar (4096)},
       {"owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (1024)}
@@ -1774,6 +1775,7 @@ namespace cubschema
       {"return_type", "varchar(16)"},
       {"arg_count", "integer"},
       {"lang", "varchar(16)"},
+      {"authid", "varchar(16)"},
       {"target", "varchar(4096)"},
       {"owner", "varchar(256)"},
       {"comment", "varchar(1024)"},
