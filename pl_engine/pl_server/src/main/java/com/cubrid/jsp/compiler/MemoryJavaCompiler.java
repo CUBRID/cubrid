@@ -34,7 +34,6 @@ package com.cubrid.jsp.compiler;
 import com.cubrid.jsp.Server;
 import java.nio.file.Path;
 import java.util.Arrays;
-
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -43,57 +42,58 @@ import javax.tools.ToolProvider;
 
 public class MemoryJavaCompiler {
 
-        private JavaCompiler compiler;
-        private Iterable<String> options = null;
-        private MemoryFileManager fileManager = null;
+    private JavaCompiler compiler;
+    private Iterable<String> options = null;
+    private MemoryFileManager fileManager = null;
 
-        public MemoryJavaCompiler () {
-                compiler = ToolProvider.getSystemJavaCompiler();
-                if (compiler == null) {
-                        throw new IllegalStateException(
-                                "Cannot find the system Java compiler. Check that your class path includes tools.jar");
+    public MemoryJavaCompiler() {
+        compiler = ToolProvider.getSystemJavaCompiler();
+        if (compiler == null) {
+            throw new IllegalStateException(
+                    "Cannot find the system Java compiler. Check that your class path includes tools.jar");
+        }
+
+        Path cubrid_env_root = Server.getServer().getRootPath();
+        useOptions("-classpath", cubrid_env_root + "/java/pl_server.jar");
+
+        fileManager = new MemoryFileManager(compiler.getStandardFileManager(null, null, null));
+    }
+
+    public void useOptions(String... options) {
+        this.options = Arrays.asList(options);
+    }
+
+    public void compile(SourceCode code) {
+        DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
+
+        JavaCompiler.CompilationTask task =
+                compiler.getTask(null, fileManager, collector, options, null, Arrays.asList(code));
+
+        boolean result = task.call();
+        if (!result || collector.getDiagnostics().size() > 0) {
+            String exceptionMsg = new String("Unable to compile the source");
+            boolean hasErrors = false;
+
+            for (Diagnostic<? extends JavaFileObject> d : collector.getDiagnostics()) {
+                switch (d.getKind()) {
+                    case NOTE:
+                    case MANDATORY_WARNING:
+                    case WARNING:
+                        break;
+                    case OTHER:
+                    case ERROR:
+                    default:
+                        hasErrors = true;
+                        break;
                 }
-
-                Path cubrid_env_root = Server.getServer().getRootPath();
-                useOptions ("-classpath", cubrid_env_root + "/java/pl_server.jar");
-
-                fileManager = new MemoryFileManager(compiler.getStandardFileManager(null, null, null));
+            }
+            if (hasErrors) {
+                throw new RuntimeException(exceptionMsg.toString());
+            }
         }
+    }
 
-        public void useOptions(String... options) {
-                this.options = Arrays.asList(options);
-        }
-        
-        public void compile (SourceCode code) {
-                DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
-
-                JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, collector, options, null, Arrays.asList(code));
-
-                boolean result = task.call();
-                if (!result || collector.getDiagnostics().size() > 0) {
-                        String exceptionMsg = new String("Unable to compile the source");
-			boolean hasErrors = false;
-                        
-			for (Diagnostic<? extends JavaFileObject> d : collector.getDiagnostics()) {
-				switch (d.getKind()) {
-				case NOTE:
-				case MANDATORY_WARNING:
-				case WARNING:
-					break;
-				case OTHER:
-				case ERROR:
-				default:
-					hasErrors = true;
-					break;
-				}
-			}
-			if (hasErrors) {
-				throw new RuntimeException(exceptionMsg.toString());
-			}
-                }
-        }
-
-        public MemoryFileManager getFileManager () {
-                return fileManager;
-        }
+    public MemoryFileManager getFileManager() {
+        return fileManager;
+    }
 }

@@ -41,36 +41,38 @@ import javax.tools.JavaFileObject;
 
 public class MemoryFileManager extends ForwardingJavaFileManager<JavaFileManager> {
 
-        private List<CompiledCode> codeList = new ArrayList<CompiledCode>();
+    private List<CompiledCode> codeList = new ArrayList<CompiledCode>();
 
-        public MemoryFileManager(JavaFileManager fileManager) {
-                super (fileManager);
+    public MemoryFileManager(JavaFileManager fileManager) {
+        super(fileManager);
+    }
+
+    @Override
+    public JavaFileObject getJavaFileForOutput(
+            JavaFileManager.Location location,
+            String className,
+            JavaFileObject.Kind kind,
+            FileObject sibling)
+            throws IOException {
+        try {
+            CompiledCode c = new CompiledCode(className);
+
+            // register CompiledCode in GlobalClassStore
+            codeList.add(c);
+
+            return c;
+        } catch (Exception e) {
+            throw new RuntimeException(
+                    "Error occurs while creating output class file in memory for " + className, e);
         }
+    }
 
-        @Override
-        public JavaFileObject getJavaFileForOutput(
-                JavaFileManager.Location location, String className,
-                JavaFileObject.Kind kind, FileObject sibling) throws IOException {
-                try {
-                        CompiledCode c = new CompiledCode(className);
+    @Override
+    public ClassLoader getClassLoader(JavaFileManager.Location location) {
+        return null;
+    }
 
-                        // register CompiledCode in GlobalClassStore
-                        codeList.add(c);
-                        
-                        return c;
-                } catch (Exception e) {
-                        throw new RuntimeException(
-                                        "Error occurs while creating output class file in memory for "
-                                                        + className, e);
-                }
-        }
-
-        @Override
-	public ClassLoader getClassLoader(JavaFileManager.Location location) {
-		return null;
-	}
-
-        public List<CompiledCode> getCodeList () {
-                return codeList;
-        }
+    public List<CompiledCode> getCodeList() {
+        return codeList;
+    }
 }

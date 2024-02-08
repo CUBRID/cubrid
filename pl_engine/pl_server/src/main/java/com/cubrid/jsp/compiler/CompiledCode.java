@@ -30,6 +30,7 @@
  */
 
 package com.cubrid.jsp.compiler;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -37,25 +38,25 @@ import java.net.URI;
 import javax.tools.SimpleJavaFileObject;
 
 public class CompiledCode extends SimpleJavaFileObject {
-        private String className = null;
-        private ByteArrayOutputStream baos = null;
+    private String className = null;
+    private ByteArrayOutputStream baos = null;
 
-        public CompiledCode(String className) throws java.net.URISyntaxException {
-                super(new URI(className), Kind.CLASS);
-                this.className = className;
-                this.baos = new ByteArrayOutputStream();
-        }
+    public CompiledCode(String className) throws java.net.URISyntaxException {
+        super(new URI(className), Kind.CLASS);
+        this.className = className;
+        this.baos = new ByteArrayOutputStream();
+    }
 
-        public String getClassName() {
-		return className;
-	}
+    public String getClassName() {
+        return className;
+    }
 
-        public byte[] getByteCode () {
-                return baos.toByteArray();
-        }
+    public byte[] getByteCode() {
+        return baos.toByteArray();
+    }
 
-        @Override
-        public OutputStream openOutputStream() throws IOException {
-            return baos;
-        }
+    @Override
+    public OutputStream openOutputStream() throws IOException {
+        return baos;
+    }
 }

@@ -30,31 +30,32 @@
  */
 
 package com.cubrid.jsp.compiler;
-import java.net.URI;
 
+import java.net.URI;
 import javax.tools.SimpleJavaFileObject;
 
 public class SourceCode extends SimpleJavaFileObject {
-        private String className;
-        private String code;
+    private String className;
+    private String code;
 
-	public SourceCode(String className, String code) {
-		super(URI.create("string:///" + className.replace('.', '/')
-				+ Kind.SOURCE.extension), Kind.SOURCE);
-		this.code = code;
-		this.className = className;
-	}
+    public SourceCode(String className, String code) {
+        super(
+                URI.create("string:///" + className.replace('.', '/') + Kind.SOURCE.extension),
+                Kind.SOURCE);
+        this.code = code;
+        this.className = className;
+    }
 
-	public String getClassName() {
-		return className;
-	}
+    public String getClassName() {
+        return className;
+    }
 
-	public String getCode() {
-		return code;
-	}
+    public String getCode() {
+        return code;
+    }
 
-        @Override
-        public CharSequence getCharContent(boolean ignoreEncodingErrors) {
-                return code;
-        }
+    @Override
+    public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+        return code;
+    }
 }
