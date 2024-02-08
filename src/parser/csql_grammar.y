@@ -730,6 +730,7 @@ static char *g_plcsql_text;
 %type <node> delete_stmt
 %type <node> author_cmd_list
 %type <node> authorized_cmd
+%type <node> authorized_execute_procedure_cmd
 %type <node> opt_password
 %type <node> opt_groups
 %type <node> opt_members
@@ -933,6 +934,8 @@ static char *g_plcsql_text;
 %type <node> grant_head
 %type <node> grant_cmd
 %type <node> revoke_cmd
+%type <node> grant_proc_cmd
+%type <node> revoke_proc_cmd
 %type <node> opt_from_table_spec_list
 %type <node> method_file_list
 %type <node> incr_arg_name_list__inc
@@ -8742,6 +8745,23 @@ grant_cmd
 		{ pop_msg(); }
 		{ DBG_TRACE_GRAMMAR(grant_cmd, : GRANT author_cmd_list);
                   $$ = $3; }
+
+grant_proc_cmd
+        : GRANT
+		{ push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); }
+	  authorized_execute_procedure_cmd
+		{ pop_msg(); }
+		{ DBG_TRACE_GRAMMAR(grant_proc_cmd, : GRANT authorized_execute_procedure_cmd);
+                  $$ = $3; }
+	;
+
+revoke_proc_cmd
+        : REVOKE
+		{ push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); }
+	  authorized_execute_procedure_cmd
+		{ pop_msg(); }
+		{ DBG_TRACE_GRAMMAR(revoke_proc_cmd, : REVOKE authorized_execute_procedure_cmd);
+                  $$ = $3; }
 	;
 
 grant_head
@@ -8770,6 +8790,38 @@ grant_head
 			  {
 			    node->info.grant.user_list = $2;
 			    node->info.grant.spec_list = $3;
+			    node->info.grant.auth_cmd_list = $1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+        | grant_cmd to_id_list
+		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_cmd to_id_list);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_GRANT);
+
+			if (node)
+			  {
+			    node->info.grant.user_list = $2;
+			    node->info.grant.spec_list = NULL;
+			    node->info.grant.auth_cmd_list = $1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+        | grant_proc_cmd identifier_list to_id_list
+		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_cmd to_id_list);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_GRANT);
+
+			if (node)
+			  {
+			    node->info.grant.user_list = $3;
+			    node->info.grant.spec_list = $2;
 			    node->info.grant.auth_cmd_list = $1;
 			  }
 
@@ -8837,6 +8889,20 @@ author_cmd_list
 
 		DBG_PRINT}}
 	;
+
+authorized_execute_procedure_cmd
+        : EXECUTE ON_ procedure_or_function
+                {{
+			PT_NODE *node = parser_new_node (this_parser, PT_AUTH_CMD);
+			if (node)
+			  {
+			    node->info.auth_cmd.auth_cmd = ($3 == 1) ? PT_EXECUTE_PROCEDURE_PRIV : PT_EXECUTE_FUNCTION_PRIV;
+                            node->info.auth_cmd.attr_mthd_list = NULL;
+			  }
+                        $$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT }}
+        ;
 
 authorized_cmd
 	: SELECT
@@ -8973,6 +9039,7 @@ authorized_cmd
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+
 	| EXECUTE
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | EXECUTE);
 
