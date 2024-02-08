@@ -9709,10 +9709,41 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
   const char *username;
   PT_FLAT_SPEC_INFO info;
 
-  /* Replace each Entity Spec with an Equivalent flat list */
-  info.spec_parent = NULL;
-  info.for_update = false;
-  parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
+  bool is_for_spec = true;
+  PT_NODE *auth_cmd_list = node->info.grant.auth_cmd_list;
+  while (auth_cmd_list)
+    {
+      PT_PRIV_TYPE pt_auth = auth_cmd_list->info.auth_cmd.auth_cmd;
+      if (pt_auth == PT_EXECUTE_PROCEDURE_PRIV || pt_auth == PT_EXECUTE_FUNCTION_PRIV)
+	{
+	  is_for_spec = false;
+	  break;
+	}
+
+      auth_cmd_list = auth_cmd_list->next;
+    }
+
+  if (is_for_spec == true)
+    {
+      /* Replace each Entity Spec with an Equivalent flat list */
+      info.spec_parent = NULL;
+      info.for_update = false;
+      parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
+    }
+  else
+    {
+      /* check spec_list (procedures/functions) exists */
+      for (PT_NODE * procs = node->info.grant.spec_list; procs != NULL; procs = procs->next)
+	{
+	  // [TODO] Resovle user schema name, built-in package name
+	  const char *proc_name = procs->info.name.original;
+	  if (jsp_is_exist_stored_procedure (proc_name) == false)
+	    {
+	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC, MSTCAT_SEMANTIC_SP_NOT_EXIST, proc_name);
+	      break;
+	    }
+	}
+    }
 
   /* make sure the grantees/revokees exist */
   for ((user = (node->node_type == PT_GRANT ? node->info.grant.user_list : node->info.revoke.user_list)); user;

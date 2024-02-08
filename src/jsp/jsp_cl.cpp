@@ -588,6 +588,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   // TODO: pkg_name
   sp_info.pkg_name = "";
   sp_info.is_system_generated = false;
+  sp_info.directive = 0;
 
   int param_count = 0;
   param_list = PT_NODE_SP_ARGS (statement);
@@ -957,11 +958,11 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
     }
 
   if (1 == db_get_int (&generated_val))
-  {
+    {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
       err = er_errid ();
       goto error;
-  }
+    }
 
   err = db_get (sp_mop, SP_ATTR_SP_TYPE, &sp_type_val);
   if (err != NO_ERROR)

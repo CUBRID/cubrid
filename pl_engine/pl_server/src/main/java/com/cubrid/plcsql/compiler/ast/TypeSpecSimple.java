@@ -149,7 +149,7 @@ public class TypeSpecSimple extends TypeSpec {
 
     protected TypeSpecSimple(
             String plcName, String fullJavaType, int simpleTypeIdx, String typicalValueStr) {
-        super(plcName, getJavaCode(fullJavaType), simpleTypeIdx, typicalValueStr);
+        super(null, plcName, getJavaCode(fullJavaType), simpleTypeIdx, typicalValueStr);
         this.fullJavaType = fullJavaType;
     }
 

@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class TypeSpecPercent extends TypeSpec {
 
@@ -44,8 +45,8 @@ public class TypeSpecPercent extends TypeSpec {
     public final String table;
     public final String column;
 
-    public TypeSpecPercent(String table, String column) {
-        super(null, null, -1, null);
+    public TypeSpecPercent(ParserRuleContext ctx, String table, String column) {
+        super(ctx, null, null, -1, null);
         this.table = table;
         this.column = column;
     }

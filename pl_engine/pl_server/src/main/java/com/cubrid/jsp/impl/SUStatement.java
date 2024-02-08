@@ -239,8 +239,8 @@ public class SUStatement {
         }
 
         if (bindParameter != null && !bindParameter.checkAllBinded()) {
-            // TODO: error handling
-            return;
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_NOT_BIND, null);
         }
 
         setExecuteFlags(maxRow, isSensitive);
