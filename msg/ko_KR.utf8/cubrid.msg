@@ -1937,6 +1937,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 320 '%1$s'는 Stored Procedure에서 지원하지 않는 결과 타입입니다
 321 %TYPE 타입 지정은 PL/CSQL에서만 사용 가능합니다
 322 테이블 컬럼 '%1$s.%2$s'이 정의되지 않았습니다
+323 저장 프로시저/함수 "$1$s"이(가) 존재하지 않습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
