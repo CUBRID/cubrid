@@ -349,13 +349,52 @@ char_isascii (int c)
 }
 #endif
 
+char *
+trim (char *str)
+{
+  char *p, *s;
+  int len = 0;
+
+  if (str != NULL && *str != '\0')
+    {
+      for (s = str; char_isspace2 (*s); s++)
+	{
+	  /* empty */ ;
+	}
+      if (*s == '\0')
+	{
+	  *str = '\0';
+	  return (str);
+	}
+
+      /* *s must be a non-white char */
+      for (p = s; *p != '\0'; p++)
+	{
+	  /* empty */ ;
+	}
+      for (p--; char_isspace2 (*p); p--)
+	{
+	  /* empty */ ;
+	}
+
+      len = (int) (p - s) + 1;
+      if (s != str)
+	{
+	  memmove (str, s, len);
+	}
+      str[len] = '\0';
+    }
+
+  return (str);
+}
+
 //=============================================================================
 #if 0
 // build mapper and prop table
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
-
+/*
 static const int A_GRAVE_ACCENT = 192;
 static const int MULT_ISO8859 = 215;
 static const int CAPITAL_THORN = 222;
@@ -363,104 +402,61 @@ static const int CAPITAL_THORN = 222;
 static const int a_GRAVE_ACCENT = 224;
 static const int DIV_ISO8859 = 247;
 static const int SMALL_THORN = 254;
-
-int
-main (int argc, char *argv[])
+*/
+void
+build_chartype_table (int argc, char *argv[])
 {
-
   int i, ch;
+  char *str;
 
   printf ("UPPER Map\n");
   for (i = 0; i < 256; i++)
     {
-      if (i >= 'a' && i <= 'z')
-	ch = toupper (i);
-      else
-	ch = i;
-
-      if (i % 16 == 15)
-	printf ("0x%02X,\n", (unsigned char) ch);
-      else
-	printf ("0x%02X, ", (unsigned char) ch);
+      ch = (i >= 'a' && i <= 'z') ? toupper (i) : i;
+      printf ("0x%02X%s", (unsigned char) ch, ((i % 16 == 15) ? ",\n" : ", "));
     }
   printf ("\n===============================================\n");
+
   printf ("LOWER Map\n");
   for (i = 0; i < 256; i++)
     {
-      if (i >= 'A' && i <= 'Z')
-	ch = tolower (i);
-      else
-	ch = i;
-
-      if (i % 16 == 15)
-	printf ("0x%02X,\n", (unsigned char) ch);
-      else
-	printf ("0x%02X, ", (unsigned char) ch);
+      ch = (i >= 'A' && i <= 'Z') ? tolower (i) : i;
+      printf ("0x%02X%s", (unsigned char) ch, ((i % 16 == 15) ? ",\n" : ", "));
     }
-
   printf ("\n===============================================\n");
+
   printf ("UPPER iso8859 Map\n");
   for (i = 0; i < 256; i++)
     {
-      if (i >= 'a' && i <= 'z')
-	ch = toupper (i);
-      else if (i >= a_GRAVE_ACCENT && i <= SMALL_THORN && DIV_ISO8859 != i)
-	ch = i + ('A' - 'a');
-      else
-	ch = i;
-
-      if (i % 16 == 15)
-	printf ("0x%02X,\n", (unsigned char) ch);
-      else
-	printf ("0x%02X, ", (unsigned char) ch);
+      ch = (i >= 'a' && i <= 'z')
+	? toupper (i) : ((i >= a_GRAVE_ACCENT && i <= SMALL_THORN && DIV_ISO8859 != i) ? (i + ('A' - 'a')) : i);
+      printf ("0x%02X%s", (unsigned char) ch, ((i % 16 == 15) ? ",\n" : ", "));
     }
-
   printf ("\n===============================================\n");
+
   printf ("LOWER iso8859 Map\n");
   for (i = 0; i < 256; i++)
     {
-      if (i >= 'A' && i <= 'Z')
-	ch = tolower (i);
-      else if (i >= A_GRAVE_ACCENT && i <= CAPITAL_THORN && MULT_ISO8859 != i)
-	ch = i - ('A' - 'a');
-      else
-	ch = i;
-
-      if (i % 16 == 15)
-	printf ("0x%02X,\n", (unsigned char) ch);
-      else
-	printf ("0x%02X, ", (unsigned char) ch);
+      ch = (i >= 'A' && i <= 'Z')
+	? tolower (i) : ((i >= A_GRAVE_ACCENT && i <= CAPITAL_THORN && MULT_ISO8859 != i) ? (i - ('A' - 'a')) : i);
+      printf ("0x%02X%s", (unsigned char) ch, ((i % 16 == 15) ? ",\n" : ", "));
     }
-
   printf ("\n===============================================\n");
+
+  printf ("Chartype property\n");
   for (i = 0; i < 256; i++)
     {
-      if (i == ' ' || i == '\t' || i == '\f' || i == '\v')
-	printf ("CP_SPC");
-      else if (i == '\r' || i == '\n')
-	printf ("CP_NLCL");
-      else if (i >= 'a' && i <= 'f')
-	printf ("CP_HLWR");
-      else if (i >= 'g' && i <= 'z')
-	printf ("CP_LWR");
-      else if (i >= 'A' && i <= 'F')
-	printf ("CP_HUPR");
-      else if (i >= 'G' && i <= 'Z')
-	printf ("CP_UPR");
-      else if (i >= '0' && i <= '9')
-	printf ("CP_HDGT");
-      else if (i >= a_GRAVE_ACCENT && i <= SMALL_THORN && DIV_ISO8859 != i)
-	printf ("CP_LEXT");
-      else if (i >= A_GRAVE_ACCENT && i <= CAPITAL_THORN && MULT_ISO8859 != i)
-	printf ("CP_UEXT");
-      else
-	printf ("CP_NONE");
-
-      if (i % 16 == 15)
-	printf (",\n", (unsigned char) ch);
-      else
-	printf (", ", (unsigned char) ch);
+      str = (char *) ((i == ' ' || i == '\t' || i == '\f' || i == '\v') ? "CP_SPC"
+		      : (i == '\r' || i == '\n') ? "CP_NLCL"
+		      : (i >= 'a' && i <= 'f') ? "CP_HLWR"
+		      : (i >= 'g' && i <= 'z') ? "CP_LWR"
+		      : (i >= 'A' && i <= 'F') ? "CP_HUPR"
+		      : (i >= 'G' && i <= 'Z') ? "CP_UPR"
+		      : (i >= '0' && i <= '9') ? "CP_HDGT"
+		      : (i >= a_GRAVE_ACCENT && i <= SMALL_THORN && DIV_ISO8859 != i) ? "CP_LEXT"
+		      : (i >= A_GRAVE_ACCENT && i <= CAPITAL_THORN && MULT_ISO8859 != i) ? "CP_UEXT" : "CP_NONE");
+      printf ("%s%s", str, ((i % 16 == 15) ? ",\n" : ", "));
     }
-  return 0;
 }
 #endif
+//=============================================================================

@@ -108,10 +108,11 @@ extern "C"
 //=============================================================================
 #endif				/* #if defined(USE_MACRO_CHARTYPE) */
 
+  extern char *trim (char *str);
+
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern int char_isascii (int c);
 #endif
-
 #ifdef __cplusplus
 }
 #endif
