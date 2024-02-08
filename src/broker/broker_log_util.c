@@ -39,36 +39,6 @@
 
 static bool is_bind_with_size (char *buf, int *tot_val_size, int *info_size);
 
-char *
-ut_trim (char *str)
-{
-  char *p;
-  char *s;
-
-  if (str == NULL)
-    return (str);
-
-  for (s = str; *s != '\0' && char_isspace2 (*s); s++)
-    ;
-  if (*s == '\0')
-    {
-      *str = '\0';
-      return (str);
-    }
-
-  /* *s must be a non-white char */
-  for (p = s; *p != '\0'; p++)
-    ;
-  for (p--; char_isspace2 (*p); p--)
-    ;
-  *++p = '\0';
-
-  if (s != str)
-    memmove (str, s, strlen (s) + 1);
-
-  return (str);
-}
-
 void
 ut_tolower (char *str)
 {
@@ -79,8 +49,7 @@ ut_tolower (char *str)
 
   for (p = str; *p; p++)
     {
-      if (*p >= 'A' && *p <= 'Z')
-	*p = *p - 'A' + 'a';
+      *p = char_tolower (*p);
     }
 }
 
