@@ -5583,7 +5583,7 @@ QFILE_LIST_CACHE_ENTRY *
 qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
 			       bool * result_cached)
 {
-  QFILE_LIST_CACHE_ENTRY *lent;
+  QFILE_LIST_CACHE_ENTRY *lent = NULL;
   int tran_index;
 #if defined(SERVER_MODE)
   TRAN_ISOLATION tran_isolation;

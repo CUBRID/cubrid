@@ -11518,7 +11518,7 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
       /* if the numeric's precision is 19 or more, then it can get the bigint enough */
       if (desired_domain->type->id == DB_TYPE_NUMERIC && desired_domain->precision < 19)
 	{
-	  INT64 bigint;
+	  INT64 bigint = 0;
 
 	  assert (desired_domain->precision >= 0);
 

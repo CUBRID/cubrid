@@ -3568,7 +3568,7 @@ static int
 mr_data_readval_utime (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 		       int copy_buf_len)
 {
-  DB_UTIME utm;
+  DB_UTIME utm = 0;
   int rc = NO_ERROR;
 
   if (value == NULL)
@@ -3591,7 +3591,7 @@ static int
 mr_data_readval_timestampltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 			      int copy_buf_len)
 {
-  DB_UTIME utm;
+  DB_UTIME utm = 0;
   int rc = NO_ERROR;
 
   if (value == NULL)

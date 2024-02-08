@@ -528,7 +528,7 @@ ovfp_threshold_mgr::print (THREAD_ENTRY *thread_p, FILE *outfp, const INDEX_OVFP
 	  free_and_init (index_name);
 	}
 
-      fprintf (outfp, "  %*lld", attr_lengths[2], (long long) pt->hit_cnt);
+      fprintf (outfp, "  %*ld", attr_lengths[2], pt->hit_cnt);
 
       sprintf (line_buf, "  %d (%s)", pt->read_pages[RECENT_POS], time_to_string (pt->event_time[RECENT_POS], time_buf,
 	       sizeof (time_buf)));

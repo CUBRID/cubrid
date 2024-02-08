@@ -488,7 +488,7 @@ static INI_LINE_STATUS
 ini_parse_line (char *input_line, char *section, char *key, char *value)
 {
   INI_LINE_STATUS status;
-  char line[INI_BUFSIZ + 1];
+  char line[INI_BUFSIZ + 4];
   int len;
 
   strcpy (line, ini_str_trim (input_line));
@@ -515,7 +515,7 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
       leading_char = section[0];
       if (leading_char == '@' || leading_char == '%')
 	{
-	  sprintf (section, "%c%s", leading_char, ini_str_trim (section + 1));
+	  snprintf (section, INI_BUFSIZ + 2, "%c%s", leading_char, ini_str_trim (section + 1));
 	}
 
       if (leading_char != '@')

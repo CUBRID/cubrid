@@ -183,7 +183,7 @@ print_utype_to_string (int type)
 static int
 dblink_make_cci_value (DB_VALUE * cci_value, T_CCI_U_TYPE utype, void *val, int prec, int len, int codeset)
 {
-  int error;
+  int error = NO_ERROR;
 
   switch (utype)
     {
@@ -393,7 +393,7 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
   DB_TIME time;
   T_CCI_DATE cci_date;
   T_CCI_BIT cci_bit;
-  int num_size;
+  int num_size = 0;
   char num_str[40];
 
   unsigned char type;
@@ -523,6 +523,7 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 	  break;
 	case DB_TYPE_NULL:
 	  value = NULL;
+	  a_type = CCI_A_TYPE_STR;
 	  u_type = CCI_U_TYPE_NULL;
 	  break;
 	default:

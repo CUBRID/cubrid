@@ -187,7 +187,7 @@ event_file_open (const char *path)
 static FILE *
 event_file_backup (FILE * fp, const char *path)
 {
-  char backup_file[PATH_MAX];
+  char backup_file[PATH_MAX + 10];
 
   assert (fp != NULL);
   assert (path != NULL);

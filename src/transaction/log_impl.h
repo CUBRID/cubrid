@@ -419,9 +419,9 @@ typedef enum tran_abort_reason TRAN_ABORT_REASON;
 typedef struct log_unique_stats LOG_UNIQUE_STATS;
 struct log_unique_stats
 {
-  long long num_nulls;		/* number of nulls */
-  long long num_keys;		/* number of keys */
-  long long num_oids;		/* number of oids */
+  INT64 num_nulls;		/* number of nulls */
+  INT64 num_keys;		/* number of keys */
+  INT64 num_oids;		/* number of oids */
 };
 
 typedef struct log_tran_btid_unique_stats LOG_TRAN_BTID_UNIQUE_STATS;
@@ -1220,8 +1220,8 @@ extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool 
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 extern LOG_TRAN_CLASS_COS *logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid, bool create);
-extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys,
-					   long long n_oids, long long n_nulls, bool write_to_log);
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, INT64 n_keys,
+					   INT64 n_oids, INT64 n_nulls, bool write_to_log);
 
 // *INDENT-OFF*
 extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const btree_unique_stats &ustats,
@@ -1230,8 +1230,8 @@ extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const multi_
                                            bool write_to_log);
 // *INDENT-ON*
 
-extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, long long n_keys,
-						long long n_oids, long long n_nulls);
+extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, INT64 n_keys,
+						INT64 n_oids, INT64 n_nulls);
 extern LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool create);
 extern int logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p, const char **classes,
 						   LC_PREFETCH_FLAGS * flags, int n_classes);
@@ -1240,12 +1240,12 @@ extern int logtb_find_log_records_count (int tran_index);
 
 extern int logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p);
 extern void logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p);
-extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, long long *num_oids,
-					  long long *num_nulls, long long *num_keys);
-extern int logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, long long num_oids,
-						       long long num_nulls, long long num_keys);
-extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, long long oid_delta,
-						      long long null_delta, long long key_delta, bool log);
+extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, INT64 * num_oids,
+					  INT64 * num_nulls, INT64 * num_keys);
+extern int logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, INT64 num_oids,
+						       INT64 num_nulls, INT64 num_keys);
+extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, INT64 oid_delta,
+						      INT64 null_delta, INT64 key_delta, bool log);
 extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid);
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p);
 extern int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);

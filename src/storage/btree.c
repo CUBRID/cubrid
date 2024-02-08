@@ -4566,8 +4566,8 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
 
   fprintf (fp, "==============    R O O T    P A G E   ================\n\n");
   fprintf (fp, " Key_Type: %s\n", pr_type_name (TP_DOMAIN_TYPE (key_type)));
-  fprintf (fp, " Num OIDs: %ld, Num NULLs: %ld, Num keys: %ld\n", root_header->num_oids, root_header->num_nulls,
-	   root_header->num_keys);
+  fprintf (fp, " Num OIDs: %" PRId64 ", Num NULLs: %" PRId64 ", Num keys: %" PRId64 "\n", root_header->num_oids,
+	   root_header->num_nulls, root_header->num_keys);
   fprintf (fp, " Topclass_oid: (%d %d %d)\n", root_header->topclass_oid.volid, root_header->topclass_oid.pageid,
 	   root_header->topclass_oid.slotid);
   fprintf (fp, " Unique: ");
@@ -5558,7 +5558,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
  */
 BTID *
 xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id,
-		  int unique_pk, long long num_oids, long long num_nulls, long long num_keys, int deduplicate_key_pos)
+		  int unique_pk, INT64 num_oids, INT64 num_nulls, INT64 num_keys, int deduplicate_key_pos)
 {
   BTREE_ROOT_HEADER root_header_info, *root_header = NULL;
   VPID root_vpid;
@@ -6239,7 +6239,7 @@ xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size)
 static int
 xbtree_test_unique (THREAD_ENTRY * thread_p, BTID * btid)
 {
-  long long num_oids, num_nulls, num_keys;
+  INT64 num_oids, num_nulls, num_keys;
 
   if (logtb_get_global_unique_stats (thread_p, btid, &num_oids, &num_nulls, &num_keys) != NO_ERROR)
     {
@@ -6311,8 +6311,8 @@ xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid)
  * Note: In MVCC the statistics are taken from memory structures. In non-mvcc from B-tree header
  */
 int
-btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, long long *oid_cnt, long long *null_cnt,
-				       long long *key_cnt)
+btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, INT64 * oid_cnt, INT64 * null_cnt,
+				       INT64 * key_cnt)
 {
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
 
@@ -6340,8 +6340,7 @@ btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, lon
  * the btree is not a unique btree, all the stats will be -1.
  */
 int
-btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, long long *oid_cnt, long long *null_cnt,
-			     long long *key_cnt)
+btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, INT64 * oid_cnt, INT64 * null_cnt, INT64 * key_cnt)
 {
   VPID root_vpid;
   PAGE_PTR root = NULL;
@@ -8999,7 +8998,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
 
   /* dump the capacity information */
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
-  fprintf (fp, "Total Value Count: %ld\n", cpc.tot_val_cnt);
+  fprintf (fp, "Total Value Count: %" PRId64 "\n", cpc.tot_val_cnt);
   fprintf (fp, "Deduplicate Distinct Key Count: %d\n", cpc.deduplicate_dis_key_cnt);
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
   fprintf (fp, "Average Value Count Per Deduplicate Key: %d\n", cpc.avg_val_per_dedup_key);
@@ -17385,7 +17384,7 @@ int
 btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  long long num_nulls, num_oids, num_keys;
+  INT64 num_nulls, num_oids, num_keys;
   BTID btid;
 
   assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
@@ -17430,7 +17429,7 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
   BTREE_ROOT_HEADER *root_header = NULL;
-  long long num_nulls, num_oids, num_keys;
+  INT64 num_nulls, num_oids, num_keys;
 
   if (recv->length < 3 * OR_BIGINT_SIZE)
     {
@@ -17444,7 +17443,7 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   if (root_header != NULL)
     {
       int over = 0;
-      long long delta;
+      INT64 delta;
 
       num_nulls = (unsigned int) root_header->num_nulls;
       num_oids = (unsigned int) root_header->num_oids;
@@ -21043,7 +21042,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
   char buf[256] = { 0 };
   OR_BUF or_buf;
   TP_DOMAIN *key_type;
-  long long num_oids = 0, num_nulls = 0, num_keys = 0;
+  INT64 num_oids = 0, num_nulls = 0, num_keys = 0;
   bool fetch_unique_stats = false;
   int unique_stats_idx = -1;
   RECDES recdes = RECDES_INITIALIZER;
@@ -22632,7 +22631,7 @@ int
 btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  long long num_nulls, num_oids, num_keys;
+  INT64 num_nulls, num_oids, num_keys;
   BTID btid;
 
   assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
@@ -22702,7 +22701,7 @@ int
 btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  long long num_nulls, num_oids, num_keys;
+  INT64 num_nulls, num_oids, num_keys;
   BTID btid;
 
   assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
@@ -35581,7 +35580,7 @@ btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid
 					    OID * class_oid)
 {
   int ret = NO_ERROR;
-  long long g_num_oids = 0, g_num_nulls = 0, g_num_keys = 0;
+  INT64 g_num_oids = 0, g_num_nulls = 0, g_num_keys = 0;
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
 
   if (unique_stats == NULL)

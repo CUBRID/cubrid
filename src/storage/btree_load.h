@@ -262,8 +262,8 @@ struct btree_node
 
 /* Recovery routines */
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
-extern void btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta,
-					   long long null_delta, RECDES * recdes);
+extern void btree_rv_mvcc_save_increments (const BTID * btid, INT64 key_delta, INT64 oid_delta,
+					   INT64 null_delta, RECDES * recdes);
 
 STATIC_INLINE bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value) __attribute__ ((ALWAYS_INLINE));
@@ -279,7 +279,7 @@ extern BTREE_OVERFLOW_HEADER *btree_get_overflow_header (THREAD_ENTRY * thread_p
 extern int btree_node_header_undo_log (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr);
 extern int btree_node_header_redo_log (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr);
 extern int btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
-					   long long null_delta, long long oid_delta, long long key_delta);
+					   INT64 null_delta, INT64 oid_delta, INT64 key_delta);
 
 extern int btree_get_disk_size_of_key (DB_VALUE *);
 extern TP_DOMAIN *btree_generate_prefix_domain (BTID_INT * btid);
