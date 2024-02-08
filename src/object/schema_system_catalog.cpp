@@ -80,7 +80,7 @@ namespace cubschema
     CT_TRIGGER_NAME,			// "db_trigger"
 
     /* currently, not implemented */
-    CT_RESOLUTION_NAME,		// "_db_resolution"
+    CT_RESOLUTION_NAME		// "_db_resolution"
   };
 
   static const std::vector <std::string> sm_system_vclass_names =
@@ -118,8 +118,7 @@ bool sm_check_system_class_by_name (const std::string_view name)
 {
   // TODO: bool is_enclosed = identifier_store::is_enclosed (name);
   return identifier_store::check_identifier_is_valid (name, false)
-	 && (cubschema::sm_catalog_class_names.is_exists (name)
-	     || cubschema::sm_catalog_vclass_names.is_exists (name));
+	 && (sm_is_system_class (name) || sm_is_system_vclass (name));
 }
 
 bool sm_is_system_class (const std::string_view name)

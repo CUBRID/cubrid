@@ -1421,6 +1421,9 @@ file_header_dump (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead, FILE * fp)
 STATIC_INLINE void
 file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead, FILE * fp)
 {
+  BTID btid;
+  char *index_name = NULL;
+
   switch (fhead->type)
     {
     case FILE_HEAP:
@@ -1434,20 +1437,17 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
       break;
 
     case FILE_BTREE:
-      {
-	BTID btid;
-	char *index_name = NULL;
-	btid.vfid = fhead->self;
-	btid.root_pageid = fhead->vpid_sticky_first.pageid;
+      btid.vfid = fhead->self;
+      btid.root_pageid = fhead->vpid_sticky_first.pageid;
 
-	if (heap_get_indexinfo_of_btid (thread_p, &fhead->descriptor.btree.class_oid, &btid, NULL, NULL, NULL, NULL,
-					&index_name, NULL) == NO_ERROR)
-	  {
-	    file_print_name_of_class (thread_p, fp, &fhead->descriptor.btree.class_oid);
-	    fprintf (fp, ", %s, ATTRID: %5d \n", index_name != NULL ? index_name : "*UNKNOWN-INDEX*",
-		     fhead->descriptor.btree.attr_id);
-	  }
-      }
+      if (heap_get_indexinfo_of_btid (thread_p, &fhead->descriptor.btree.class_oid, &btid, NULL, NULL, NULL, NULL,
+				      &index_name, NULL) == NO_ERROR)
+	{
+	  file_print_name_of_class (thread_p, fp, &fhead->descriptor.btree.class_oid);
+	  fprintf (fp, ", %s, ATTRID: %5d ", index_name != NULL ? index_name : "*UNKNOWN-INDEX*",
+		   fhead->descriptor.btree.attr_id);
+	}
+      fprintf (fp, "\n");
       break;
 
     case FILE_BTREE_OVERFLOW_KEY:
@@ -1469,6 +1469,7 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
     case FILE_DROPPED_FILES:
     case FILE_VACUUM_DATA:
     default:
+      fprintf (fp, "\n");
       break;
     }
 }

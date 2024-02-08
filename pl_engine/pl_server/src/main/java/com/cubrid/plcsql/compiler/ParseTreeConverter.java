@@ -158,10 +158,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " must be assignable to because it is to an OUT parameter");
                 }
 
-                TypeSpecSimple retType =
-                        DBTypeAdapter.getDeclTypeSpec(
-                                fs.retType.type, fs.retType.prec, fs.retType.scale);
-                if (retType == null) {
+                if (!DBTypeAdapter.isSupported(fs.retType.type)) {
                     String sqlType = DBTypeAdapter.getSqlTypeName(fs.retType.type);
                     throw new SemanticError( // s418
                             Misc.getLineColumnOf(node.ctx),
@@ -169,6 +166,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + sqlType
                                     + " as its return type");
                 }
+
+                TypeSpecSimple retType =
+                        DBTypeAdapter.getDeclTypeSpec(
+                                fs.retType.type, fs.retType.prec, fs.retType.scale);
                 addToImports(retType.fullJavaType);
 
                 gfc.decl = new DeclFunc(null, fs.name, paramList, retType);
@@ -180,10 +181,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             } else if (q instanceof ServerAPI.ColumnType) {
                 ServerAPI.ColumnType ct = (ServerAPI.ColumnType) q;
 
-                TypeSpecSimple ty =
-                        DBTypeAdapter.getDeclTypeSpec(
-                                ct.colType.type, ct.colType.prec, ct.colType.scale);
-                if (ty == null) {
+                if (!DBTypeAdapter.isSupported(ct.colType.type)) {
                     String sqlType = DBTypeAdapter.getSqlTypeName(ct.colType.type);
                     throw new SemanticError( // s410
                             Misc.getLineColumnOf(node.ctx),
@@ -194,6 +192,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " has an unsupported type "
                                     + sqlType);
                 }
+
+                TypeSpecSimple ty =
+                        DBTypeAdapter.getDeclTypeSpec(
+                                ct.colType.type, ct.colType.prec, ct.colType.scale);
                 addToImports(ty.fullJavaType);
 
                 assert node instanceof TypeSpecPercent;
@@ -306,7 +308,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
             String column = Misc.getNormalizedText(ctx.identifier());
 
-            TypeSpec ret = new TypeSpecPercent(table, column);
+            TypeSpec ret = new TypeSpecPercent(ctx, table, column);
             semanticQuestions.put(ret, new ServerAPI.ColumnType(table, column));
             return ret;
         }
@@ -2586,12 +2588,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         int len = params.length;
         for (int i = 0; i < len; i++) {
 
-            TypeSpecSimple paramType =
-                    DBTypeAdapter.getDeclTypeSpec(params[i].type, params[i].prec, params[i].scale);
-            if (paramType == null) {
+            if (!DBTypeAdapter.isSupported(params[i].type)) {
                 String sqlType = DBTypeAdapter.getSqlTypeName(params[i].type);
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
             }
+
+            TypeSpecSimple paramType =
+                    DBTypeAdapter.getDeclTypeSpec(params[i].type, params[i].prec, params[i].scale);
             addToImports(paramType.fullJavaType);
 
             if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) != 0) {

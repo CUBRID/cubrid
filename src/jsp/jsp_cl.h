@@ -51,6 +51,7 @@
 #define SP_ATTR_PKG                     "pkg_name"
 #define SP_ATTR_IS_SYSTEM_GENERATED     "is_system_generated"
 #define SP_ATTR_TARGET                  "target"
+#define SP_ATTR_DIRECTIVE               "directive"
 #define SP_ATTR_OWNER                   "owner"
 #define SP_ATTR_COMMENT                 "comment"
 
