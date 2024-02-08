@@ -59,6 +59,7 @@
 #include "xasl_to_stream.h"
 #include "parser_support.h"
 #include "dbtype.h"
+#include "jsp_cl.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1749,7 +1750,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user_obj, *class_mop;
   PT_NODE *auth_cmd_list, *auth_list, *auth;
   DB_AUTH db_auth;
-  PT_NODE *spec_list, *s_list, *spec;
+  PT_NODE *spec_list;
   PT_NODE *entity_list, *entity;
   int grant_option;
   bool set_savepoint = false;
@@ -1791,24 +1792,51 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  s_list = spec_list;
-	  for (spec = s_list; spec != NULL; spec = spec->next)
+	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV
+	      || auth->info.auth_cmd.auth_cmd == PT_EXECUTE_FUNCTION_PRIV)
 	    {
-	      entity_list = spec->info.spec.flat_entity_list;
-	      for (entity = entity_list; entity != NULL; entity = entity->next)
+	      // NOTE: db_auth is always DB_AUTH_EXECUTE
+	      assert (db_auth == DB_AUTH_EXECUTE);
+
+	      PT_NODE *p_list = spec_list;
+	      for (PT_NODE * procs = p_list->info.grant.spec_list; procs != NULL; procs = procs->next)
 		{
-		  class_mop = db_find_class (entity->info.name.original);
-		  if (class_mop == NULL)
+		  // [TODO] Resovle user schema name, built-in package name
+		  const char *proc_name = procs->info.name.original;
+
+		  MOP proc_mop = jsp_find_stored_procedure (proc_name);
+		  if (proc_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      goto end;
 		    }
 
-		  error = db_grant (user_obj, class_mop, db_auth, grant_option);
-		  if (error != NO_ERROR)
+		  // TODO: In CBRD-24912, GRANT/REVOKE for stored procedure is implemented, the following will be processed properly
+		  // error = db_grant_object (user_obj, proc_mop)
+		  error = NO_ERROR;	// TODO
+		}
+	    }
+	  else
+	    {
+	      for (PT_NODE * spec = spec_list; spec != NULL; spec = spec->next)
+		{
+		  entity_list = spec->info.spec.flat_entity_list;
+		  for (entity = entity_list; entity != NULL; entity = entity->next)
 		    {
-		      goto end;
+		      class_mop = db_find_class (entity->info.name.original);
+		      if (class_mop == NULL)
+			{
+			  assert (er_errid () != NO_ERROR);
+			  error = er_errid ();
+			  goto end;
+			}
+
+		      error = db_grant (user_obj, class_mop, db_auth, grant_option);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
 		    }
 		}
 	    }
