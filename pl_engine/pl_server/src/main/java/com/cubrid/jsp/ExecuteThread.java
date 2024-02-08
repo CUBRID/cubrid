@@ -321,14 +321,13 @@ public class ExecuteThread extends Thread {
         sendResult(result, procedure);
     }
 
-    private void writeJar(List<CompiledCode> compiledCodeList, Path jarPath) {
+    private void writeJar(List<CompiledCode> compiledCodeList, Path jarPath) throws IOException {
         JarArchiveOutputStream jaos = null;
         try {
             OutputStream jarStream = Files.newOutputStream(jarPath);
             jaos = new JarArchiveOutputStream(new BufferedOutputStream(jarStream));
 
-            List<CompiledCode> codeList = compiler.getFileManager().getCodeList();
-            for (CompiledCode c : codeList) {
+            for (CompiledCode c : compiledCodeList) {
                 JarArchiveEntry jae = new JarArchiveEntry(c.getClassName() + ".class");
                 jaos.putArchiveEntry(jae);
                 ByteArrayInputStream bis = new ByteArrayInputStream(c.getByteCode());
