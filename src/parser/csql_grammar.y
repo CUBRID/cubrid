@@ -22727,14 +22727,12 @@ identifier
 	| ANALYZE                {{ DBG_TRACE_GRAMMAR(identifier, | ANALYZE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ARCHIVE                {{ DBG_TRACE_GRAMMAR(identifier, | ARCHIVE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ARIA                   {{ DBG_TRACE_GRAMMAR(identifier, | ARIA               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| AUTHID                 {{ DBG_TRACE_GRAMMAR(identifier, | AUTHID             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| AUTO_INCREMENT         {{ DBG_TRACE_GRAMMAR(identifier, | AUTO_INCREMENT     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | BENCHMARK              {{ DBG_TRACE_GRAMMAR(identifier, | BENCHMARK          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| BENCHMARK              {{ DBG_TRACE_GRAMMAR(identifier, | BENCHMARK          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BIT_AND                {{ DBG_TRACE_GRAMMAR(identifier, | BIT_AND            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BIT_OR                 {{ DBG_TRACE_GRAMMAR(identifier, | BIT_OR             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BIT_XOR                {{ DBG_TRACE_GRAMMAR(identifier, | BIT_XOR            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BUFFER                 {{ DBG_TRACE_GRAMMAR(identifier, | BUFFER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CALLER                 {{ DBG_TRACE_GRAMMAR(identifier, | CALLER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CACHE                  {{ DBG_TRACE_GRAMMAR(identifier, | CACHE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CAPACITY               {{ DBG_TRACE_GRAMMAR(identifier, | CAPACITY           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CHARACTER_SET_         {{ DBG_TRACE_GRAMMAR(identifier, | CHARACTER_SET_     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22754,7 +22752,6 @@ identifier
 	| DBLINK                 {{ DBG_TRACE_GRAMMAR(identifier, | DBLINK             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBNAME                 {{ DBG_TRACE_GRAMMAR(identifier, | DBNAME             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DECREMENT              {{ DBG_TRACE_GRAMMAR(identifier, | DECREMENT          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
-	| DEFINER                {{ DBG_TRACE_GRAMMAR(identifier, | DEFINER            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
        	| DEDUPLICATE_           {{ DBG_TRACE_GRAMMAR(identifier, | DEDUPLICATE_       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 	
         | DENSE_RANK             {{ DBG_TRACE_GRAMMAR(identifier, | DENSE_RANK         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DISK_SIZE              {{ DBG_TRACE_GRAMMAR(identifier, | DISK_SIZE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
