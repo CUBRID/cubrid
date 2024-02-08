@@ -641,6 +641,7 @@ static char *g_plcsql_text;
 %type <number> opt_access_modifier
 %type <number> deduplicate_key_mod_level
 %type <number> opt_index_with_clause_no_online
+%type <number> opt_authid
 /*}}}*/
 
 /* define rule type (node) */
@@ -1494,12 +1495,14 @@ static char *g_plcsql_text;
 %token <cptr> ANALYZE
 %token <cptr> ARCHIVE
 %token <cptr> ARIA
+%token <cptr> AUTHID
 %token <cptr> AUTO_INCREMENT
 %token <cptr> BENCHMARK
 %token <cptr> BIT_AND
 %token <cptr> BIT_OR
 %token <cptr> BIT_XOR
 %token <cptr> BUFFER
+%token <cptr> CALLER
 %token <cptr> CACHE
 %token <cptr> CAPACITY
 %token <cptr> CHARACTER_SET_
@@ -1519,6 +1522,7 @@ static char *g_plcsql_text;
 %token <cptr> DBLINK
 %token <cptr> DBNAME
 %token <cptr> DECREMENT
+%token <cptr> DEFINER
 %token <cptr> DENSE_RANK
 %token <cptr> DONT_REUSE_OID
 %token <cptr> ELT
@@ -3035,8 +3039,9 @@ create_stmt
                   expecting_pl_lang_spec = 1;
 		}
 	  identifier opt_sp_param_list		        /* 5, 6 */
-	  is_or_as pl_language_spec		        /* 7, 8 */
-	  opt_comment_spec				/* 9 */
+          opt_authid                                    /* 7 */
+	  is_or_as pl_language_spec		        /* 8, 9 */
+	  opt_comment_spec				/* 10 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace PROCEDURE~);
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3045,11 +3050,12 @@ create_stmt
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_PROCEDURE;
+                            node->info.sp.auth_id = $7;
 			    node->info.sp.param_list = $6;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
 			    node->info.sp.ret_data_type = NULL;
-			    node->info.sp.body = $8;
-			    node->info.sp.comment = $9;
+			    node->info.sp.body = $9;
+			    node->info.sp.comment = $10;
 			  }
 
 			$$ = node;
@@ -3066,9 +3072,10 @@ create_stmt
                         expecting_pl_lang_spec = 1;
 		}
 	  identifier opt_sp_param_list	                /* 5, 6 */
-	  RETURN sp_return_type		                /* 7, 8 */
-	  is_or_as pl_language_spec		        /* 9, 10 */
-	  opt_comment_spec				/* 11 */
+          opt_authid                                    /* 7 */
+	  RETURN sp_return_type		                /* 8, 9 */
+	  is_or_as pl_language_spec		        /* 10, 11 */
+	  opt_comment_spec				/* 12 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace FUNCTION~);
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3077,11 +3084,12 @@ create_stmt
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_FUNCTION;
+                            node->info.sp.auth_id = $7;
 			    node->info.sp.param_list = $6;
-			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
-			    node->info.sp.ret_data_type = CONTAINER_AT_1($8);
-			    node->info.sp.body = $10;
-			    node->info.sp.comment = $11;
+			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($9));
+			    node->info.sp.ret_data_type = CONTAINER_AT_1($9);
+			    node->info.sp.body = $11;
+			    node->info.sp.comment = $12;
 			  }
 
 			$$ = node;
@@ -12590,6 +12598,19 @@ sp_return_type
 			$$ = ctn;
 
                 DBG_PRINT}}
+        ;
+
+opt_authid
+        : /* empty */
+          {{ $$ = PT_AUTHID_OWNER; }}
+        | AUTHID DEFINER
+          {{ $$ = PT_AUTHID_OWNER; }}
+        | AUTHID OWNER
+          {{ $$ = PT_AUTHID_OWNER; }}
+        | AUTHID CALLER
+          {{ $$ = PT_AUTHID_CALLER; }}
+        | AUTHID CURRENT_USER
+          {{ $$ = PT_AUTHID_CALLER; }}
         ;
 
 is_or_as
@@ -22818,12 +22839,14 @@ identifier
 	| ANALYZE                {{ DBG_TRACE_GRAMMAR(identifier, | ANALYZE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ARCHIVE                {{ DBG_TRACE_GRAMMAR(identifier, | ARCHIVE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ARIA                   {{ DBG_TRACE_GRAMMAR(identifier, | ARIA               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| AUTHID                 {{ DBG_TRACE_GRAMMAR(identifier, | AUTHID             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| AUTO_INCREMENT         {{ DBG_TRACE_GRAMMAR(identifier, | AUTO_INCREMENT     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| BENCHMARK              {{ DBG_TRACE_GRAMMAR(identifier, | BENCHMARK          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | BENCHMARK              {{ DBG_TRACE_GRAMMAR(identifier, | BENCHMARK          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BIT_AND                {{ DBG_TRACE_GRAMMAR(identifier, | BIT_AND            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BIT_OR                 {{ DBG_TRACE_GRAMMAR(identifier, | BIT_OR             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BIT_XOR                {{ DBG_TRACE_GRAMMAR(identifier, | BIT_XOR            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BUFFER                 {{ DBG_TRACE_GRAMMAR(identifier, | BUFFER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CALLER                 {{ DBG_TRACE_GRAMMAR(identifier, | CALLER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CACHE                  {{ DBG_TRACE_GRAMMAR(identifier, | CACHE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CAPACITY               {{ DBG_TRACE_GRAMMAR(identifier, | CAPACITY           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CHARACTER_SET_         {{ DBG_TRACE_GRAMMAR(identifier, | CHARACTER_SET_     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22843,6 +22866,7 @@ identifier
 	| DBLINK                 {{ DBG_TRACE_GRAMMAR(identifier, | DBLINK             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBNAME                 {{ DBG_TRACE_GRAMMAR(identifier, | DBNAME             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DECREMENT              {{ DBG_TRACE_GRAMMAR(identifier, | DECREMENT          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
+	| DEFINER                {{ DBG_TRACE_GRAMMAR(identifier, | DEFINER            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
        	| DEDUPLICATE_           {{ DBG_TRACE_GRAMMAR(identifier, | DEDUPLICATE_       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 	
         | DENSE_RANK             {{ DBG_TRACE_GRAMMAR(identifier, | DENSE_RANK         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DISK_SIZE              {{ DBG_TRACE_GRAMMAR(identifier, | DISK_SIZE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
