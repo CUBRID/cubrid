@@ -2191,11 +2191,11 @@ int
 do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   int error = NO_ERROR;
-  DB_OBJECT *user, *group, *member;
+  DB_OBJECT *user, *member;
   PT_NODE *node;
   const PT_ALTER_CODE alter_user_code = statement->info.alter_user.code;
   const char *user_name, *password, *comment;
-  const char *group_name, *member_name;
+  const char *member_name;
   bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2263,50 +2263,6 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
-  /* group */
-  node = statement->info.alter_user.groups;
-  group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-  if (group_name != NULL)
-    {
-      do
-	{
-	  group = db_find_user (group_name);
-
-	  if (group == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	    }
-	  else
-	    {
-	      if(alter_user_code == PT_ADD_GROUPS_OR_MEMBERS
-	         && (ws_is_same_object (group, Au_user) || au_is_dba_group_member (Au_user)))
-	        {
-	      	  error = db_add_member (group, user);
-	        }
-	      else if(alter_user_code == PT_DROP_GROUPS_OR_MEMBERS
-	              && (ws_is_same_object (group, Au_user) || au_is_dba_group_member (Au_user)))
-	        {
-		  error = db_drop_member (group, user);
-	        }
-	      else
-	        {
-		  error = ER_AU_NOT_OWNER;
-	          er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	        }
-	    }
-
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-
-	  node = node->next;
-	  group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-	}
-      while (group_name != NULL);
-    }
-
   /* member */
   node = statement->info.alter_user.members;
   member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
@@ -2323,12 +2279,12 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	  else
 	    {
-	      if(alter_user_code == PT_ADD_GROUPS_OR_MEMBERS
+	      if(alter_user_code == PT_ADD_MEMBERS
 	         && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
 	      	{
 	      	  error = db_add_member (user, member);
 		}
-	      else if (alter_user_code == PT_DROP_GROUPS_OR_MEMBERS
+	      else if (alter_user_code == PT_DROP_MEMBERS
 	               && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
 		{
 		  error = db_drop_member (user, member);

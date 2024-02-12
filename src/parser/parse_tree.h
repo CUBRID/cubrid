@@ -1441,8 +1441,8 @@ typedef enum
   PT_CHANGE_COLUMN_COMMENT,
   PT_CHANGE_INDEX_COMMENT,
   PT_CHANGE_INDEX_STATUS,
-  PT_ADD_GROUPS_OR_MEMBERS,		/* alter user type */
-  PT_DROP_GROUPS_OR_MEMBERS
+  PT_ADD_MEMBERS,		/* alter user type */
+  PT_DROP_MEMBERS
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -2018,8 +2018,7 @@ struct pt_alter_user_info
   PT_NODE *user_name;		/* PT_NAME */
   PT_NODE *password;		/* PT_VALUE (string) */
   PT_NODE *comment;		/* PT_VALUE */
-  PT_ALTER_CODE code;	/* PT_ADD_GROUPS_OR_MEMBERS, PT_DROP_GROUPS_OR_MEMBERS */
-  PT_NODE *groups;		/* PT_NAME list */
+  PT_ALTER_CODE code;	        /* PT_ADD_MEMBERS, PT_DROP_MEMBERS */
   PT_NODE *members;		/* PT_NAME list */
 };
 
