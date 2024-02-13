@@ -36,7 +36,7 @@ namespace cubmem
   // This meta size is related with allocation byte align
   // Don't adjust it freely
   // 8 byte size + 4 byte tag + 4 byte magicnumber
-  static constexpr int MMON_ALLOC_META_SIZE = 16;
+  static constexpr int MMON_METAINFO_SIZE = 16;
 
   class memory_monitor
   {
@@ -56,7 +56,7 @@ namespace cubmem
       void sub_stat (char *ptr);
 
     private:
-      static char *get_meta_ptr (char *ptr, size_t size);
+      static char *get_metainfo_pos (char *ptr, size_t size);
       static std::string make_tag_name (const char *file, const int line);
 
     private:

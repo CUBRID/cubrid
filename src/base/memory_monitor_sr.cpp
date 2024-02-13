@@ -71,9 +71,9 @@ namespace cubmem
     return filecopy + ':' + std::to_string (line);
   }
 
-  char *memory_monitor::get_meta_ptr (char *ptr, size_t size)
+  char *memory_monitor::get_metainfo_pos (char *ptr, size_t size)
   {
-    return ptr + size - MMON_ALLOC_META_SIZE;
+    return ptr + size - MMON_METAINFO_SIZE;
   }
 
   size_t memory_monitor::get_allocated_size (char *ptr)
@@ -85,18 +85,18 @@ namespace cubmem
     size_t allocated_size = malloc_usable_size ((void *)ptr);
 #endif // !WINDOWS
 
-    if (allocated_size <= MMON_ALLOC_META_SIZE)
+    if (allocated_size <= MMON_METAINFO_SIZE)
       {
 	return allocated_size;
       }
 
-    char *meta_ptr = get_meta_ptr (ptr, allocated_size);
+    char *meta_ptr = get_metainfo_pos (ptr, allocated_size);
 
     const MMON_METAINFO *metainfo = (const MMON_METAINFO *) meta_ptr;
 
     if (metainfo->magic_number == m_magic_number)
       {
-	allocated_size = (size_t) metainfo->allocated_size - MMON_ALLOC_META_SIZE;
+	allocated_size = (size_t) metainfo->allocated_size - MMON_METAINFO_SIZE;
       }
 
     return allocated_size;
@@ -107,7 +107,7 @@ namespace cubmem
     std::string tag_name;
     MMON_METAINFO metainfo;
 
-    // size should not be 0 because of MMON_ALLOC_META_SIZE
+    // size should not be 0 because of MMON_METAINFO_SIZE
     assert (size > 0);
 
     metainfo.allocated_size = (uint64_t) size;
@@ -132,9 +132,9 @@ namespace cubmem
     tag_map_lock.unlock ();
 
     // put meta info into the allocated chunk
-    char *meta_ptr = get_meta_ptr (ptr, metainfo.allocated_size);
+    char *meta_ptr = get_metainfo_pos (ptr, metainfo.allocated_size);
     metainfo.magic_number = m_magic_number;
-    memcpy (meta_ptr, &metainfo, MMON_ALLOC_META_SIZE);
+    memcpy (meta_ptr, &metainfo, MMON_METAINFO_SIZE);
     m_meta_alloc_count++;
   }
 
@@ -149,20 +149,21 @@ namespace cubmem
 
     assert (ptr != NULL);
 
-    if (allocated_size >= MMON_ALLOC_META_SIZE)
+    if (allocated_size >= MMON_METAINFO_SIZE)
       {
-	char *meta_ptr = get_meta_ptr (ptr, allocated_size);
+	char *meta_ptr = get_metainfo_pos (ptr, allocated_size);
 	const MMON_METAINFO *metainfo = (const MMON_METAINFO *) meta_ptr;
 
 	if (metainfo->magic_number == m_magic_number)
 	  {
-	    assert ((metainfo->tag_id >= 0 && metainfo->tag_id <= m_stat_map.size()));
+	    assert ((metainfo->tag_id >= 0 && metainfo->tag_id < m_stat_map.size()));
 	    assert (m_stat_map[metainfo->tag_id] >= metainfo->allocated_size);
+	    assert (m_total_mem_usage >= metainfo->allocated_size);
 
 	    m_total_mem_usage -= metainfo->allocated_size;
 	    m_stat_map[metainfo->tag_id] -= metainfo->allocated_size;
 
-	    memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
+	    memset (meta_ptr, 0, MMON_METAINFO_SIZE);
 	    m_meta_alloc_count--;
 	    assert (m_meta_alloc_count >= 0);
 	  }
@@ -179,27 +180,15 @@ bool mmon_is_memory_monitor_enabled ()
 
 size_t mmon_get_allocated_size (char *ptr)
 {
-  if (mmon_is_memory_monitor_enabled ())
-    {
-      return mmon_Gl->get_allocated_size (ptr);
-    }
-  // unreachable
-  assert (false);
-  return 0;
+  return mmon_Gl->get_allocated_size (ptr);
 }
 
 void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line)
 {
-  if (mmon_is_memory_monitor_enabled ())
-    {
-      mmon_Gl->add_stat (ptr, size, file, line);
-    }
+  mmon_Gl->add_stat (ptr, size, file, line);
 }
 
 void mmon_sub_stat (char *ptr)
 {
-  if (mmon_is_memory_monitor_enabled ())
-    {
-      mmon_Gl->sub_stat (ptr);
-    }
+  mmon_Gl->sub_stat (ptr);
 }
