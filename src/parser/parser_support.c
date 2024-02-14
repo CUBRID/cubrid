@@ -10787,7 +10787,6 @@ pt_get_name_without_current_user_name (const char *name)
   /* If it exceeds DB_MAX_USER_LENGTH, it is not a user-specified name. */
   if (qualifier_name_len >= DB_MAX_USER_LENGTH)
     {
-      assert (false);
       return name;
     }
 

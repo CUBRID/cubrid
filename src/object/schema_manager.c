@@ -2379,6 +2379,7 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
   if (qualifier_name_len >= SM_MAX_USER_LENGTH)
     {
       assert (false);
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
       buf[0] = '\0';
       return NULL;
     }
