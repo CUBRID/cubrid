@@ -29,6 +29,8 @@
 
 #ident "$Id$"
 
+#include <assert.h>
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -55,7 +57,7 @@ extern "C"
   extern const unsigned char *iso8859_upper_mapper_ptr;
 
 #ifndef NDEBUG
-#define CHECK_OVER_CODE_VALUE(c)  { if ((c) >= 256) return (c); }
+#define CHECK_OVER_CODE_VALUE(c)   assert((c) < 256)
 #else
 #define CHECK_OVER_CODE_VALUE(c)
 #endif
