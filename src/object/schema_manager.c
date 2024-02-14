@@ -2378,6 +2378,7 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
   /* If it exceeds SM_MAX_USER_LENGTH, it is not a user-specified name. */
   if (qualifier_name_len >= SM_MAX_USER_LENGTH)
     {
+      assert (false);
       buf[0] = '\0';
       return NULL;
     }
