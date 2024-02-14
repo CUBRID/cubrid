@@ -10128,6 +10128,16 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
       return PLAN_COMP_GT;
     }
 
+  /* check if it is an unique index and all columns are equi */
+  if (qo_is_all_unique_index_columns_are_equi_terms (a) && !qo_is_all_unique_index_columns_are_equi_terms (b))
+    {
+      return PLAN_COMP_LT;
+    }
+  else if (!qo_is_all_unique_index_columns_are_equi_terms (a) && qo_is_all_unique_index_columns_are_equi_terms (b))
+    {
+      return PLAN_COMP_GT;
+    }
+
   /* STEP 2: check by term cardinality */
 
   if (a->plan_un.scan.index_equi == b->plan_un.scan.index_equi)

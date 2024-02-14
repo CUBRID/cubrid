@@ -2010,7 +2010,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (session->statements && session->statements[num_stmts])
 	{
 	  int t_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, num_stmts + 1);
-	  logddl_check_and_set_query_text (session->statements[num_stmts], t_type, &session->parser->hide_pwd_info);
+	  logddl_check_and_set_query_text (session->statements[num_stmts], t_type, session->parser);
 	}
 
       if (stmt_id <= 0)
