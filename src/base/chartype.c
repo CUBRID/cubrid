@@ -27,8 +27,6 @@
 
 #include "chartype.h"
 
-#if defined(USE_MACRO_CHARTYPE)
-//=============================================================================
 #define CP_NONE  (CHAR_PROP_NONE)
 #define CP_SPC   (CHAR_PROP_SPACE)
 #define CP_NLCL  (CHAR_PROP_SPACE | CHAR_PROP_EOL)
@@ -51,7 +49,7 @@ static const int DIV_ISO8859 = 247;
 static const int SMALL_THORN = 254;
 
 /* *INDENT-OFF* */
-static const unsigned char char_upper_mapper[0x100] = {
+static const unsigned char char_upper_mapper[256] = {
 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
@@ -71,7 +69,7 @@ static const unsigned char char_upper_mapper[0x100] = {
 };
 const unsigned char* char_upper_mapper_ptr = char_upper_mapper;
 
-static const unsigned char char_lower_mapper[0x100] = {
+static const unsigned char char_lower_mapper[256] = {
 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
@@ -91,7 +89,7 @@ static const unsigned char char_lower_mapper[0x100] = {
 };
 const unsigned char* char_lower_mapper_ptr = char_lower_mapper;
 
-static const unsigned char iso8859_upper_mapper[0x100] = {
+static const unsigned char iso8859_upper_mapper[256] = {
 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
@@ -111,7 +109,7 @@ static const unsigned char iso8859_upper_mapper[0x100] = {
 };
 const unsigned char* iso8859_upper_mapper_ptr = iso8859_upper_mapper;
 
-static const unsigned char iso8859_lower_mapper[0x100] = {
+static const unsigned char iso8859_lower_mapper[256] = {
 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
@@ -132,17 +130,17 @@ static const unsigned char iso8859_lower_mapper[0x100] = {
 const unsigned char* iso8859_lower_mapper_ptr = iso8859_lower_mapper;
 
 
-static const char_type_prop char_properties[0x100] = {  
+static const char_type_prop char_properties[256] = {  
 //    |      0        1         2        3        4        5        6        7       8        9         A        B       C         D        E       F
 // ------------------------------------------------------------------------------------------------------------------------------------------------------
-/* 00 |*/ CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_SPC, CP_NLCL, CP_SPC, CP_SPC, CP_NLCL, CP_NONE, CP_NONE,
+/* 00 |*/ CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_SPC,  CP_NLCL, CP_SPC,  CP_SPC,  CP_NLCL, CP_NONE, CP_NONE,
 /* 10 |*/ CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE,
-/* 20 |*/ CP_SPC, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE,
+/* 20 |*/ CP_SPC,  CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE,
 /* 30 |*/ CP_HDGT, CP_HDGT, CP_HDGT, CP_HDGT, CP_HDGT, CP_HDGT, CP_HDGT, CP_HDGT, CP_HDGT, CP_HDGT, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE,
-/* 40 |*/ CP_NONE, CP_HUPR, CP_HUPR, CP_HUPR, CP_HUPR, CP_HUPR, CP_HUPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR,
-/* 50 |*/ CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_UPR, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE,
-/* 60 |*/ CP_NONE, CP_HLWR, CP_HLWR, CP_HLWR, CP_HLWR, CP_HLWR, CP_HLWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR,
-/* 70 |*/ CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_LWR, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE,
+/* 40 |*/ CP_NONE, CP_HUPR, CP_HUPR, CP_HUPR, CP_HUPR, CP_HUPR, CP_HUPR, CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,
+/* 50 |*/ CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_UPR,  CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE,
+/* 60 |*/ CP_NONE, CP_HLWR, CP_HLWR, CP_HLWR, CP_HLWR, CP_HLWR, CP_HLWR, CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,
+/* 70 |*/ CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_LWR,  CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE,
 /* 80 |*/ CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE,
 /* 90 |*/ CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE,
 /* A0 |*/ CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE, CP_NONE,
@@ -154,200 +152,6 @@ static const char_type_prop char_properties[0x100] = {
 };
 const char_type_prop *char_properties_ptr = char_properties;
 /* *INDENT-ON* */
-
-//=============================================================================
-#else /* #if defined(USE_MACRO_CHARTYPE) */
-//=============================================================================
-
-/*
- * char_islower() - test for a lower case character
- *   return: non-zero if c is a lower case character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_islower (int c)
-{
-  return ((c) >= 'a' && (c) <= 'z');
-}
-
-/*
- * char_isupper() - test for a upper case character
- *   return: non-zero if c is a upper case character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_isupper (int c)
-{
-  return ((c) >= 'A' && (c) <= 'Z');
-}
-
-/*
- * char_isalpha() - test for a alphabetic character
- *   return: non-zero if c is a alphabetic character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_isalpha (int c)
-{
-  return (char_islower ((c)) || char_isupper ((c)));
-}
-
-/* * char_isdigit() - test for a decimal digit character
- *   return: non-zero if c is a decimal digit character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_isdigit (int c)
-{
-  return ((c) >= '0' && (c) <= '9');
-}
-
-/*
- * char_isxdigit() - test for a hexa decimal digit character
- *   return: non-zero if c is a hexa decimal digit character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_isxdigit (int c)
-{
-  return (char_isdigit ((c)) || ((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F'));
-}
-
-/*
- * char_isalnum() - test for a alphanumeric character
- *   return: non-zero if c is a alphanumeric character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_isalnum (int c)
-{
-  return (char_isalpha ((c)) || char_isdigit ((c)));
-}
-
-/*
- * char_isspace() - test for a white space character
- *   return: non-zero if c is a white space character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_isspace (int c)
-{
-  return ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n' || (c) == '\f' || (c) == '\v');
-}
-
-/*
- * char_iseol() - test for a end-of-line character
- *   return: non-zero if c is a end-of-line character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_iseol (int c)
-{
-  return ((c) == '\r' || (c) == '\n');
-}
-
-/*
- * char_tolower() - convert uppercase character to lowercase
- *   return: lowercase character corresponding to the argument
- *   c (in): the character to be converted
- */
-int
-char_tolower (int c)
-{
-  return (char_isupper ((c)) ? ((c) - ('A' - 'a')) : (c));
-}
-
-/*
- * char_toupper() - convert lowercase character to uppercase
- *   return: uppercase character corresponding to the argument
- *   c (in): the character to be converted
- */
-int
-char_toupper (int c)
-{
-  return (char_islower ((c)) ? ((c) + ('A' - 'a')) : (c));
-}
-
-
-/* Specialized for ISO 8859-1 */
-static const int A_GRAVE_ACCENT = 192;
-static const int MULT_ISO8859 = 215;
-static const int CAPITAL_THORN = 222;
-
-static const int a_GRAVE_ACCENT = 224;
-static const int DIV_ISO8859 = 247;
-static const int SMALL_THORN = 254;
-
-/*
- * char_isupper_iso8859() - test for a upper case character for iso-8859
- *   return: non-zero if c is a upper case character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_isupper_iso8859 (int c)
-{
-  return (char_isupper (c) || ((c) >= A_GRAVE_ACCENT && (c) <= CAPITAL_THORN && (c) != MULT_ISO8859));
-}
-
-/*
- * char_islower_iso8859() - test for a lower case character for iso-8859
- *   return: non-zero if c is a lower case character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_islower_iso8859 (int c)
-{
-  return (char_islower (c) || ((c) >= a_GRAVE_ACCENT && (c) <= SMALL_THORN && (c) != DIV_ISO8859));
-}
-
-/*
- * char_tolower_iso8859() - convert uppercase iso-8859 character to lowercase
- *   return: lowercase character corresponding to the argument
- *   c (in): the character to be converted
- */
-int
-char_tolower_iso8859 (int c)
-{
-  return (char_isupper_iso8859 ((c)) ? ((c) - ('A' - 'a')) : (c));
-}
-
-/*
- * char_toupper_iso8859() - convert lowercase iso-8859 character to uppercase
- *   return: uppercase character corresponding to the argument
- *   c (in): the character to be converted
- */
-int
-char_toupper_iso8859 (int c)
-{
-  return (char_islower_iso8859 ((c)) ? ((c) + ('A' - 'a')) : (c));
-}
-
-//=============================================================================
-#endif /* #if defined(USE_MACRO_CHARTYPE) */
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * char_isascii() - test for a US-ASCII character
- *   return: non-zero if c is a US-ASCII character,
- *           0 otherwise.
- *   c (in): the character to be tested
- */
-int
-char_isascii (int c)
-{
-  return ((c) >= 1 && (c) <= 127);
-}
-#endif
 
 char *
 trim (char *str)

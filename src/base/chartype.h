@@ -34,10 +34,6 @@ extern "C"
 {
 #endif
 
-#define USE_MACRO_CHARTYPE	// ctshim
-
-#if defined(USE_MACRO_CHARTYPE)
-//=============================================================================
 #define CHAR_PROP_NONE        (0x00)
 #define CHAR_PROP_UPPER       (0x01)	/* uppercase.  */
 #define CHAR_PROP_LOWER       (0x02)	/* lowercase.  */
@@ -58,63 +54,89 @@ extern "C"
   extern const unsigned char *iso8859_lower_mapper_ptr;
   extern const unsigned char *iso8859_upper_mapper_ptr;
 
-#define char_islower(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_LOWER)
-#define char_isupper(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_UPPER)
-#define char_isalpha(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_ALPHA)
-#define char_isdigit(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_DIGIT)
-#define char_isalnum(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_ALPHA_NUM)
-#define char_isspace(c)   (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_SPACE)
-#define char_iseol(c)     (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_EOL)
-#define char_isxdigit(c)  (char_properties_ptr[(unsigned char) (c)] & CHAR_PROP_HEXNUM)
-#define char_isspace2(c)  (char_isspace((c)))	// ' ', '\t', '\n', '\r
+#ifndef NDEBUG
+#define CHECK_OVER_CODE_VALUE(c)  { if ((c) >= 256) return (c); }
+#else
+#define CHECK_OVER_CODE_VALUE(c)
+#endif
 
-#define char_tolower(c)   ((int) char_lower_mapper_ptr[(unsigned char) (c)])
-#define char_toupper(c)   ((int) char_upper_mapper_ptr[(unsigned char) (c)])
-
-#define char_islower_iso8859(c) (char_properties_ptr[(unsigned char) (c)] & (CHAR_PROP_LOWER|CHAR_PROP_ISO8859_LOWER))
-#define char_isupper_iso8859(c) (char_properties_ptr[(unsigned char) (c)] & (CHAR_PROP_UPPER|CHAR_PROP_ISO8859_UPPER))
-#define char_tolower_iso8859(c) ((int) iso8859_lower_mapper_ptr[(unsigned char) (c)])
-#define char_toupper_iso8859(c) ((int) iso8859_upper_mapper_ptr[(unsigned char) (c)])
-
-  inline int char_tolower_func (int c)
+  inline int char_isspace (int c)
   {
-    return (int) char_tolower (c);
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[c] & CHAR_PROP_SPACE);
   }
-  inline int char_toupper_func (int c)
+  inline int char_isupper (int c)
   {
-    return (int) char_toupper (c);
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[c] & CHAR_PROP_UPPER);
   }
-//=============================================================================
-#else				/* #if defined(USE_MACRO_CHARTYPE) */
-//=============================================================================
-  extern int char_islower (int c);
-  extern int char_isupper (int c);
-  extern int char_isalpha (int c);
-  extern int char_isdigit (int c);
-  extern int char_isalnum (int c);
-  extern int char_isspace (int c);
-  extern int char_iseol (int c);
-  extern int char_isxdigit (int c);
-  extern int char_tolower (int c);
-  extern int char_toupper (int c);
+  inline int char_tolower (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return ((int) char_lower_mapper_ptr[c]);
+  }
+  inline int char_islower (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[c] & CHAR_PROP_LOWER);
+  }
+  inline int char_isalpha (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[c] & CHAR_PROP_ALPHA);
+  }
+  inline int char_isdigit (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[c] & CHAR_PROP_DIGIT);
+  }
+  inline int char_isalnum (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[c] & CHAR_PROP_ALPHA_NUM);
+  }
+  inline int char_iseol (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[c] & CHAR_PROP_EOL);
+  }
+  inline int char_isxdigit (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[c] & CHAR_PROP_HEXNUM);
+  }
+  inline int char_toupper (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return ((int) char_upper_mapper_ptr[c]);
+  }
 
-  extern int char_isupper_iso8859 (int c);
-  extern int char_islower_iso8859 (int c);
-  extern int char_tolower_iso8859 (int c);
-  extern int char_toupper_iso8859 (int c);
+  inline int char_tolower_iso8859 (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return ((int) iso8859_lower_mapper_ptr[c]);
+  }
+  inline int char_toupper_iso8859 (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return ((int) iso8859_upper_mapper_ptr[c]);
+  }
+  inline int char_islower_iso8859 (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[c] & (CHAR_PROP_LOWER | CHAR_PROP_ISO8859_LOWER));
+  }
+  inline int char_isupper_iso8859 (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[c] & (CHAR_PROP_UPPER | CHAR_PROP_ISO8859_UPPER));
+  }
 
-#define  char_tolower_func   char_tolower
-#define  char_toupper_func   char_toupper
-//=============================================================================
-#endif				/* #if defined(USE_MACRO_CHARTYPE) */
-
+#define char_isspace2  char_isspace	// ' ', '\t', '\n', '\r
   extern char *trim (char *str);
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-  extern int char_isascii (int c);
-#endif
 #ifdef __cplusplus
 }
 #endif
 
-#endif				/* _CHARTYPE_H_ */
+#endif /* _CHARTYPE_H_ */
