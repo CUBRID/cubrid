@@ -10781,10 +10781,6 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
-  /* There must be only one dot(.) because dot(.) cannot be used in identifier names
-   * even if the exception rule is used. */
-  assert (strchr (dot + 1, '.') == NULL);
-
   /* Length of user-specified name. */
   qualifier_name_len = STATIC_CAST (int, dot - name);
 
