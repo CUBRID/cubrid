@@ -22,6 +22,11 @@
 
 #ident "$Id$"
 
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "btree.h"
 
 #include "btree_load.h"
