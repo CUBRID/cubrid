@@ -20,7 +20,10 @@
  * vacuum.c - Vacuuming system implementation.
  *
  */
-#include "inttypes.h"
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
 #include "system.h"
 #include "vacuum.h"
 
