@@ -20,6 +20,7 @@
  * vacuum.c - Vacuuming system implementation.
  *
  */
+#include "inttypes.h"
 #include "system.h"
 #include "vacuum.h"
 
