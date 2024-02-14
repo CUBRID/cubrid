@@ -191,7 +191,7 @@ extern const char *tran_get_tranlist_state_name (TRAN_STATE state);
 extern "C"
 {
 #endif
-  extern void lock_dump (FILE * outfp);
+  extern void lock_dump (FILE * outfp, int is_contention);
   extern void vacuum_dump (FILE * outfp);
 #ifdef __cplusplus
 }

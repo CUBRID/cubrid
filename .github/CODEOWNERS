@@ -38,3 +38,15 @@
 /src/transaction/ @hornetmj
 /src/win_tools/ @kisoo-han
 /src/xasl/ @beyondykk9
+
+# added directories
+/src/object @beyondykk9
+/src/connection @beyondykk9
+/src/communication @beyondykk9
+/src/executable @beyondykk9 @kisoo-han
+/src/heaplayers @beyondykk9
+/src/monitor @beyondykk9
+/src/session @beyondykk9
+/src/thread @beyondykk9
+/src/loaddb @kisoo-han
+

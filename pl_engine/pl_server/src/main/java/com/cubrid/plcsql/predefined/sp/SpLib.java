@@ -3996,7 +3996,7 @@ public class SpLib {
 
     private static String getHostVarsStr(int len) {
         if (len == 0) {
-            return "";
+            return "()";
         } else {
             String[] arr = new String[len];
             Arrays.fill(arr, "?");

@@ -188,7 +188,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   gettimeofday (&end_tran_begin, NULL);
 
-  err_code = ux_end_tran ((char) tran_type, false);
+  err_code = ux_end_tran ((char) tran_type, false, false);
 
   if ((tran_type == CCI_TRAN_ROLLBACK) && (req_info->client_version < CAS_MAKE_VER (8, 2, 0)))
     {
@@ -2119,10 +2119,6 @@ fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   cas_log_write (0, true, "con_close");
   net_buf_cp_int (net_buf, 0, NULL);
 
-  if (req_info->driver_info[DRIVER_INFO_CLIENT_TYPE] != CAS_CLIENT_SERVER_SIDE_JDBC)
-    {
-      logddl_free (true);
-    }
   return FN_CLOSE_CONN;
 }
 

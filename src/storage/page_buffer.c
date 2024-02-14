@@ -1755,28 +1755,6 @@ pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MOD
 }
 
 /*
- * below two functions are dummies for Windows build
- * (which defined at cubridsa.def)
- */
-#if defined(WINDOWS)
-#if !defined(NDEBUG)
-PAGE_PTR
-pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-		   PGBUF_LATCH_MODE request_mode, PGBUF_LATCH_CONDITION condition)
-{
-  return NULL;
-}
-#else
-PAGE_PTR
-pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
-		 PGBUF_LATCH_CONDITION condition, const char *caller_file, int caller_line)
-{
-  return NULL;
-}
-#endif
-#endif
-
-/*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
  *   vpid(in): Complete Page identifier

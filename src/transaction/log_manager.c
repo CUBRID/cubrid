@@ -1018,6 +1018,18 @@ log_set_no_logging (void)
 }
 
 /*
+ * This function is for an external interface
+ * to process statistical information of the B-tree index header.
+ * In a no logging environment, the statistical information of the B-tree index header
+ * should not depend on the updated log. This is a function to check this.
+ */
+bool
+log_is_no_logging (void)
+{
+  return log_No_logging;
+}
+
+/*
  * log_initialize - Initialize the log manager
  *
  * return: nothing
@@ -3813,7 +3825,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
     }
 
   if ((LSA_ISNULL (&tdes->tail_lsa) || LSA_LE (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes)))
-      && log_record->type == LOG_SYSOP_END_COMMIT)
+      && (log_record->type == LOG_SYSOP_END_COMMIT || log_No_logging))
     {
       /* No change. */
       assert (LSA_ISNULL (&LOG_TDES_LAST_SYSOP (tdes)->posp_lsa));

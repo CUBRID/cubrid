@@ -75,6 +75,7 @@ namespace lockfree
 
       size_t get_size () const;
       size_t get_element_count () const;
+      size_t get_alloc_element_count () const;
 
     private:
       using address_type = address_marker<T>;
@@ -455,6 +456,13 @@ namespace lockfree
   hashmap<Key, T>::get_element_count () const
   {
     return m_freelist->get_claimed_count ();
+  }
+
+  template <class Key, class T>
+  size_t
+  hashmap<Key, T>::get_alloc_element_count () const
+  {
+    return m_freelist->get_alloc_count ();
   }
 
   template <class Key, class T>

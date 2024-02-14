@@ -1895,11 +1895,6 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   root_header->node.split_info.pivot = 0.0f;
   root_header->node.split_info.index = 0;
 
-  /* the 64 bit extending should be initialized to 0 
-   * because only the 32bit count is used at this point */
-  root_header->_64.over = 0;
-  root_header->_64.num_nulls = root_header->_64.num_oids = root_header->num_keys = 0;
-
   if (load_args->btid->unique_pk)
     {
       root_header->num_nulls = n_nulls;

@@ -15,6 +15,7 @@ public class ServerConfig {
     private final String dbPath; // $CUBRID_DATABASES
 
     private final String logPath;
+    private final String tmpPath;
 
     private final String socketType; // TCP or UDS
     private final String socketInfo; // port number or socket file path
@@ -29,6 +30,10 @@ public class ServerConfig {
 
         this.logPath =
                 rootPath + File.separatorChar + LOG_DIR + File.separatorChar + name + "_java.log";
+
+        String cubridTmpEnv = System.getProperty("CUBRID_TMP");
+        this.tmpPath =
+                (cubridTmpEnv != null) ? cubridTmpEnv : this.rootPath + File.separatorChar + "tmp";
 
         this.socketInfo = socketInfo;
         this.socketType = StringUtils.isNumeric(socketInfo) ? "TCP" : "UDS";
@@ -48,6 +53,10 @@ public class ServerConfig {
 
     public String getLogPath() {
         return logPath;
+    }
+
+    public String getTmpPath() {
+        return tmpPath;
     }
 
     public String getSocketType() {

@@ -266,11 +266,13 @@ static GETOPT_LONG ua_Space_Option[] = {
 static UTIL_ARG_MAP ua_Lock_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {LOCK_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {LOCK_DISPLAY_CONTENTION_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Lock_Option[] = {
   {LOCK_OUTPUT_FILE_L, 1, 0, LOCK_OUTPUT_FILE_S},
+  {LOCK_DISPLAY_CONTENTION_L, 0, 0, LOCK_DISPLAY_CONTENTION_S},
   {0, 0, 0, 0}
 };
 

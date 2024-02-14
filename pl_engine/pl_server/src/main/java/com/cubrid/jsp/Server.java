@@ -71,6 +71,9 @@ public class Server {
         // Server's security manager should be set first
         System.setSecurityManager(new SpSecurityManager());
 
+        // initialize env
+        initailizeEnvironments(config);
+
         // initialize logger
         initializeLogger(config);
 
@@ -85,6 +88,10 @@ public class Server {
 
         // store JVM options
         getJVMArguments();
+    }
+
+    private synchronized void initailizeEnvironments(ServerConfig config) {
+        System.setProperty("java.io.tmpdir", config.getTmpPath());
     }
 
     private synchronized void initializeLogger(ServerConfig config)

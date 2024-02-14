@@ -5250,7 +5250,7 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
 	}
     }
 
-  xlock_dump (thread_p, outfile);
+  xlock_dump (thread_p, outfile, 0 /* is_contention */ );
 }
 #endif /* SERVER_MODE */
 
@@ -8441,7 +8441,7 @@ lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks)
  *              level or modify the design of the application.
  */
 void
-xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
+xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
 {
 #if !defined (SERVER_MODE)
   return;
@@ -8456,7 +8456,8 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   int old_wait_msecs = 0;	/* Old transaction lock wait */
   int tran_index;
   LK_RES *res_ptr;
-  int num_locked;
+  int num_locked, num_entry_alloc, num_resource_alloc;
+  UINT64 size_alloc;
   float lock_timeout_sec;
   char lock_timeout_string[64];
 
@@ -8518,18 +8519,37 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 
   /* compute number of lock res entries */
   num_locked = (int) lk_Gl.m_obj_hash_table.get_element_count ();
+  num_resource_alloc = (int) lk_Gl.m_obj_hash_table.get_alloc_element_count ();
+  num_entry_alloc = (int) lk_Gl.obj_free_entry_list.alloc_cnt;
+  size_alloc = ((UINT64) num_entry_alloc * sizeof (LK_ENTRY)) + ((UINT64) num_resource_alloc * sizeof (LK_RES));
 
   /* dump object lock table */
   fprintf (outfp, "Object Lock Table:\n");
   fprintf (outfp, "\tCurrent number of objects which are locked    = %d\n", num_locked);
-  fprintf (outfp, "\tMaximum number of objects which can be locked = %d\n\n", lk_Gl.max_obj_locks);
+  fprintf (outfp, "\tCurrent number of objects which are allocated = %d\n", num_resource_alloc);
+  if (size_alloc < ONE_K)
+    {
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %llu\n\n", size_alloc);
+    }
+  else if (size_alloc >= ONE_K && size_alloc < ONE_M)
+    {
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluK\n\n", size_alloc / ONE_K);
+    }
+  else
+    {
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluM\n\n", size_alloc / ONE_M);
+    }
 
   // *INDENT-OFF*
   lk_hashmap_iterator iterator { thread_p, lk_Gl.m_obj_hash_table };
   // *INDENT-ON*
   for (res_ptr = iterator.iterate (); res_ptr != NULL; res_ptr = iterator.iterate ())
     {
-      lock_dump_resource (thread_p, outfp, res_ptr);
+      if (!is_contention || (res_ptr->holder != NULL && res_ptr->holder->blocked_mode != NULL_LOCK)
+	  || res_ptr->waiter != NULL)
+	{
+	  lock_dump_resource (thread_p, outfp, res_ptr);
+	}
     }
 
   /* Reset the wait back to the way it was */

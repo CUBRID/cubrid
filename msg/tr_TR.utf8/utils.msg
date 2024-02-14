@@ -844,7 +844,8 @@ lockdb: veritabanının kilit durumunu görüntüler.\n\
 kullanım: %1$s lockdb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
-  -o, --output-file=FILE      FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n
+  -o, --output-file=FILE      FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN

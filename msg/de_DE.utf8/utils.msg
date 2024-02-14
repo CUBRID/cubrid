@@ -844,7 +844,8 @@ lockdb: Lockstatus der Datenbank anzeigen.\n\
 Anwendung: %1$s lockdb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
-  -o, --output-file=DATEI       Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n
+  -o, --output-file=DATEI       Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
