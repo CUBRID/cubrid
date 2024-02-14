@@ -4230,10 +4230,6 @@ pt_show_alter (PT_ALTER_CODE c)
       return "DROP PRIMARY KEY";
     case PT_DROP_FK_CLAUSE:
       return "DROP FOREIGN KEY";
-    case PT_ADD_MEMBERS:
-      return "ADD MEMBERS";
-    case PT_DROP_MEMBERS:
-      return "DROP MEMBERS";
     default:
       return "unknown alter code";
     }

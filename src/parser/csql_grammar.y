@@ -4152,7 +4152,6 @@ alter_user_clause
 			  {
 				node->info.alter_user.code = PT_DROP_MEMBERS;
 				node->info.alter_user.members = $2;
-				
 			  }
 
 			$$ = node;
