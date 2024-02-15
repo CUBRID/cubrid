@@ -55,6 +55,7 @@ namespace cubmem
       void add_stat (char *ptr, const size_t size, const char *file, const int line);
       void sub_stat (char *ptr);
       void aggregate_server_info (MMON_SERVER_INFO &server_info);
+      void finalize_dump ();
 
     private:
       static char *get_metainfo_pos (char *ptr, size_t size);

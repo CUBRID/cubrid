@@ -188,6 +188,43 @@ namespace cubmem
     };
     std::sort (server_info.stat_info.begin (), server_info.stat_info.end (), comp);
   }
+
+  void memory_monitor::finalize_dump ()
+  {
+    double mem_usage_ratio = 0.0;
+    FILE *outfile_fp = fopen ("finalize_dump.txt", "w+");
+    MMON_SERVER_INFO server_info;
+
+    auto MMON_CONVERT_TO_KB_SIZE = [] (uint64_t size)
+    {
+      return ((size) / 1024);
+    };
+
+    aggregate_server_info (server_info);
+
+    fprintf (outfile_fp, "====================cubrid memmon====================\n");
+    fprintf (outfile_fp, "Server Name: %s\n", server_info.server_name);
+    fprintf (outfile_fp, "Total Memory Usage(KB): %lu\n\n", MMON_CONVERT_TO_KB_SIZE (server_info.total_mem_usage));
+    fprintf (outfile_fp, "Total Metainfo Memory Usage(KB): %lu\n\n",
+	     MMON_CONVERT_TO_KB_SIZE (server_info.mmon_metainfo_mem_usage));
+    fprintf (outfile_fp, "-----------------------------------------------------\n");
+
+    fprintf (outfile_fp, "\t%-100s | %17s(%s)\n", "File Name", "Memory Usage", "Ratio");
+
+    for (const auto &s_info : server_info.stat_info)
+      {
+	if (server_info.total_mem_usage != 0)
+	  {
+	    mem_usage_ratio = s_info.second / (double) server_info.total_mem_usage;
+	    mem_usage_ratio *= 100;
+	  }
+	fprintf (outfile_fp, "\t%-100s | %17lu(%3d%%)\n",s_info.first.c_str (), MMON_CONVERT_TO_KB_SIZE (s_info.second),
+		 (int)mem_usage_ratio);
+      }
+    fprintf (outfile_fp, "-----------------------------------------------------\n");
+    fflush (outfile_fp);
+    fclose (outfile_fp);
+  }
 }
 
 using namespace cubmem;
