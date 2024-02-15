@@ -145,6 +145,8 @@ static int do_drop_synonym_internal (const char *synonym_name, const int is_publ
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
 static int do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag);
+static PT_NODE *do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
+static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
@@ -14331,6 +14333,58 @@ pt_is_allowed_result_cache ()
   return true;
 }
 
+static PT_NODE *
+do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  int query_flag = *(int *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (stmt->node_type != PT_SELECT)
+    {
+      return stmt;
+    }
+
+  if (stmt->info.query.with && pt_is_allowed_result_cache ())
+    {
+      int err;
+
+      err = do_execute_cte (parser, stmt, query_flag);
+      if (err != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return stmt;
+}
+
+static PT_NODE *
+do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (stmt->node_type != PT_SELECT)
+    {
+      return stmt;
+    }
+
+  if (stmt->info.query.with && pt_is_allowed_result_cache ())
+    {
+      int err;
+
+      PT_NODE *cte_list = stmt->info.query.with->info.with_clause.cte_definition_list;
+
+      err = do_prepare_cte (parser, cte_list);
+      if (err != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return stmt;
+}
+
 /*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
  *                       plan generation, and creating XASL as the result
@@ -14406,18 +14460,8 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
-  /* prepare cte query first */
-  if (statement->info.query.with && pt_is_allowed_result_cache ())
-    {
-      int err;
-      PT_NODE *cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
-
-      err = do_prepare_cte (parser, cte_list);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
-    }
+  /* All CTE sub-queries included in the query must be prepared first. */
+  parser_walk_tree (parser, statement, do_prepare_cte_pre, NULL, NULL, NULL);
 
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
   contextp->recompile_xasl = statement->flag.recompile;
@@ -14750,16 +14794,6 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       return er_errid ();
     }
 
-  /* execute cte query first */
-  if (statement->info.query.with && pt_is_allowed_result_cache ())
-    {
-      err = do_execute_cte (parser, statement, query_flag);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
-    }
-
   /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the host
    * variables given by users as parameter values for the query. As a result, query id and result file id
    * (QFILE_LIST_ID) will be returned. */
@@ -14953,15 +14987,8 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return er_errid ();
     }
 
-  /* execute cte query first */
-  if (statement->info.query.with && pt_is_allowed_result_cache ())
-    {
-      err = do_execute_cte (parser, statement, query_flag);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
-    }
+  /* All CTE sub-queries included in the query must be executed first. */
+  parser_walk_tree (parser, statement, do_execute_cte_pre, (void *) &query_flag, NULL, NULL);
 
   /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the host
    * variables given by users as parameter values for the query. As a result, query id and result file id
