@@ -388,13 +388,15 @@ jsp_get_owner_name (const char *name)
   MOP owner = db_get_object (&value);
   if (owner != NULL)
     {
-      err = db_get (owner, "name", &value);
+      DB_VALUE value2;
+      err = db_get (owner, "name", &value2);
       if (err == NO_ERROR)
 	{
-	  res = ws_copy_string (db_get_string (&value));
+	  res = ws_copy_string (db_get_string (&value2));
 	}
-      pr_clear_value (&value);
+      pr_clear_value (&value2);
     }
+  pr_clear_value (&value);  
 
   AU_ENABLE (save);
   return res;
