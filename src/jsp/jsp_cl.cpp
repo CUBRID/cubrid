@@ -350,7 +350,7 @@ jsp_get_sp_type (const char *name)
 
 /*
  * jsp_get_owner_name - Return Java Stored Procedure'S Owner nmae
- *   return: if fail return error code
+ *   return: if fail return MULL
  *           else return Java Stored Procedure Type
  *   name(in): java stored procedure name
  *
@@ -396,7 +396,7 @@ jsp_get_owner_name (const char *name)
 	}
       pr_clear_value (&value2);
     }
-  pr_clear_value (&value);  
+  pr_clear_value (&value);
 
   AU_ENABLE (save);
   return res;
@@ -1305,6 +1305,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	    sig->arg_info->arg_mode = (int *) db_private_alloc (NULL, (sig_num_args) * sizeof (int));
 	    if (!sig->arg_info->arg_mode)
 	      {
+		sig->arg_info->arg_mode = nullptr;
 		error = ER_OUT_OF_VIRTUAL_MEMORY;
 		goto end;
 	      }
@@ -1312,6 +1313,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	    sig->arg_info->arg_type = (int *) db_private_alloc (NULL, (sig_num_args) * sizeof (int));
 	    if (!sig->arg_info->arg_type)
 	      {
+		sig->arg_info->arg_type = nullptr;
 		error = ER_OUT_OF_VIRTUAL_MEMORY;
 		goto end;
 	      }
