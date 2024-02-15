@@ -115,7 +115,7 @@ namespace cubmem
 
     tag_name = make_tag_name (file, line);
 
-    std::unique_lock <std::mutex> tag_map_lock (m_tag_map_mutex);
+    std::unique_lock <std::mutex> map_lock (m_map_mutex);
     auto search = m_tag_map.find (tag_name);
     if (search != m_tag_map.end ())
       {
@@ -129,7 +129,7 @@ namespace cubmem
 	m_tag_map.emplace (tag_name, metainfo.tag_id);
 	m_stat_map.emplace (metainfo.tag_id, metainfo.allocated_size);
       }
-    tag_map_lock.unlock ();
+    map_lock.unlock ();
 
     // put meta info into the allocated chunk
     char *meta_ptr = get_metainfo_pos (ptr, metainfo.allocated_size);

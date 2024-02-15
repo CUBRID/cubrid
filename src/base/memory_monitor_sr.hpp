@@ -61,7 +61,7 @@ namespace cubmem
 
     private:
       std::string m_server_name;
-      mutable std::mutex m_tag_map_mutex;
+      mutable std::mutex m_map_mutex;
       // Entries of m_tag_map and m_stat_map will not be deleted
       std::unordered_map <std::string, int> m_tag_map;              // key: tag name, value: tag id
       std::unordered_map <int, std::atomic <uint64_t>> m_stat_map;  // key: tag id, value: memory usage
