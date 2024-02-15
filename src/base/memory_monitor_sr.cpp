@@ -169,6 +169,25 @@ namespace cubmem
 	  }
       }
   }
+
+  void memory_monitor::aggregate_server_info (MMON_SERVER_INFO &server_info)
+  {
+    strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
+    server_info.total_mem_usage = m_total_mem_usage.load ();
+    server_info.mmon_metainfo_mem_usage = m_meta_alloc_count * MMON_METAINFO_SIZE;
+    server_info.num_stat = m_tag_map.size ();
+
+    for (auto it = m_tag_map.begin (); it != m_tag_map.end (); ++it)
+      {
+	server_info.stat_info.emplace_back (it->first, m_stat_map[it->second].load ());
+      }
+
+    const auto &comp = [] (const auto &stat_pair1, const auto &stat_pair2)
+    {
+      return stat_pair1.second > stat_pair2.second;
+    };
+    std::sort (server_info.stat_info.begin (), server_info.stat_info.end (), comp);
+  }
 }
 
 using namespace cubmem;
@@ -191,4 +210,9 @@ void mmon_add_stat (char *ptr, const size_t size, const char *file, const int li
 void mmon_sub_stat (char *ptr)
 {
   mmon_Gl->sub_stat (ptr);
+}
+
+void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
+{
+  mmon_Gl->aggregate_server_info (server_info);
 }
