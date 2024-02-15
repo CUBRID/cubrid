@@ -8,6 +8,7 @@ pipeline {
   environment {
     OUTPUT_DIR = 'packages'
     TEST_REPORT = 'reports'
+    JUNIT_REQUIRED = true
   }
 
   stages {
@@ -38,6 +39,7 @@ pipeline {
             script {
               if (env.BRANCH_NAME ==~ /^feature\/.*/) {
                 echo 'Skip testing for feature branch'
+                JUNIT_REQUIRED = false
               } else {
             	echo 'Testing...'
             	sh '/entrypoint.sh test || echo "$? failed"'
@@ -47,7 +49,9 @@ pipeline {
           post {
             always {
               archiveArtifacts "${OUTPUT_DIR}/*"
-              junit "${TEST_REPORT}/*.xml"
+              if (env.JUNIT_REQUIRED) {
+                junit "${TEST_REPORT}/*.xml"
+              }
             }
           }
         }
@@ -73,6 +77,7 @@ pipeline {
             script {
               if (env.BRANCH_NAME ==~ /^feature\/.*/) {
                 echo 'Skip testing for feature branch'
+                JUNIT_REQUIRED = false
               } else {
             	echo 'Testing...'
             	sh '/entrypoint.sh test || echo "$? failed"'
@@ -82,7 +87,9 @@ pipeline {
           post {
             always {
               archiveArtifacts "${OUTPUT_DIR}/*"
-              junit "${TEST_REPORT}/*.xml"
+              if (env.JUNIT_REQUIRED) {
+                junit "${TEST_REPORT}/*.xml"
+              }
             }
           }
         }
