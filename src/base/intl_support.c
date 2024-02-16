@@ -66,9 +66,6 @@
               && ((unsigned char) ch <= (unsigned char) 0xfe) )
 #endif
 
-//#define CHAR_BYTE_TO_LOWER(c) ((c) + ('a' - 'A'))
-//#define CHAR_BYTE_TO_UPPER(c) ((c) - ('a' - 'A'))
-
 /* conversion from turkish ISO 8859-9 to UTF-8 */
 #define ISO_8859_9_FIRST_CP 0x11e
 #define ISO_8859_9_LAST_CP 0x15f

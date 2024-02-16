@@ -193,12 +193,18 @@ trim (char *str)
 }
 
 //=============================================================================
-#if 0
+
+#if defined(COMMENTED_CODE_FOR_REFERENCE)
+/*
+ * This area of code does not need to be active to perform its task.
+ * This code is intended to generate contents such as char_upper_mapper, iso8859_lower_mapper, char_properties, etc.
+ * If you need any changes to the contents of the above array, you can refer to build_chartype_table() to recreate it.
+ */
 // build mapper and prop table
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
-/*
+
 static const int A_GRAVE_ACCENT = 192;
 static const int MULT_ISO8859 = 215;
 static const int CAPITAL_THORN = 222;
@@ -206,7 +212,7 @@ static const int CAPITAL_THORN = 222;
 static const int a_GRAVE_ACCENT = 224;
 static const int DIV_ISO8859 = 247;
 static const int SMALL_THORN = 254;
-*/
+
 void
 build_chartype_table (int argc, char *argv[])
 {
