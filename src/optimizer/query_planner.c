@@ -6635,7 +6635,23 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   /* in given partition, collect terms connected to tail_info */
   {
     int retry_cnt, edge_cnt, path_cnt;
-    bool found_edge;
+    bool found_edge, skip_term;
+    BITSET visited_segs;
+    bitset_init (&visited_segs, planner->env);
+
+    /* set current visited terms */
+
+    /* set visited segs for eqclass */
+    for (i = bitset_iterate (visited_terms, &bi); i != -1; i = bitset_next_member (&bi))
+      {
+	term = QO_ENV_TERM (planner->env, i);
+
+	/* check eqclass */
+	if (QO_TERM_EQCLASS (term))
+	  {
+	    bitset_union (&visited_segs, &(QO_TERM_SEGS (term)));
+	  }
+      }
 
     retry_cnt = 0;		/* init */
 
@@ -6675,6 +6691,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  }
 
 	found_edge = false;	/* init */
+	skip_term = false;
 
 	if (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (tail_node)))
 	  {
@@ -6779,22 +6796,32 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		break;
 
 	      case QO_TC_JOIN:
-		/* check for idx-join */
-		if (QO_TERM_CAN_USE_INDEX (term))
+		/* check for term which is already logically evaluated. */
+		if (QO_TERM_EQCLASS (term) && bitset_subset (&visited_segs, &((QO_TERM_EQCLASS (term))->segs)))
 		  {
-		    idx_join_cnt++;
-		  }
-		bitset_add (&nl_join_terms, i);
-		/* check for m-join */
-		if (QO_TERM_IS_FLAGED (term, QO_TERM_MERGEABLE_EDGE))
-		  {
-		    bitset_add (&sm_join_terms, i);
+		    /* skip term */
+		    skip_term = true;
 		  }
 		else
-		  {		/* non-eq edge */
-		    if (IS_OUTER_JOIN_TYPE (join_type) && QO_ON_COND_TERM (term))
-		      {		/* ON clause */
-			bitset_add (&duj_terms, i);	/* need for m-join */
+		  {
+		    bitset_union (&visited_segs, &(QO_TERM_SEGS (term)));
+		    /* check for idx-join */
+		    if (QO_TERM_CAN_USE_INDEX (term))
+		      {
+			idx_join_cnt++;
+		      }
+		    bitset_add (&nl_join_terms, i);
+		    /* check for m-join */
+		    if (QO_TERM_IS_FLAGED (term, QO_TERM_MERGEABLE_EDGE))
+		      {
+			bitset_add (&sm_join_terms, i);
+		      }
+		    else
+		      {		/* non-eq edge */
+			if (IS_OUTER_JOIN_TYPE (join_type) && QO_ON_COND_TERM (term))
+			  {	/* ON clause */
+			    bitset_add (&duj_terms, i);	/* need for m-join */
+			  }
 		      }
 		  }
 		break;
@@ -6843,7 +6870,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	bitset_add (&info_terms, i);	/* add to info term */
 
 	/* skip always true dummy join term and do not evaluate */
-	if (QO_TERM_CLASS (term) != QO_TC_DUMMY_JOIN)
+	if (!skip_term && QO_TERM_CLASS (term) != QO_TC_DUMMY_JOIN)
 	  {
 	    bitset_add (&sarged_terms, i);	/* add to sarged term */
 	  }
