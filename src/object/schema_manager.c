@@ -2303,7 +2303,20 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
        */
       return sm_downcase_name (name, buf, buf_size);
     }
-  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+
+  /* If the length of the object name was not previously checked, it may exceed 222 bytes.
+   * In this case, return only the object name without raising an error. And expect that the object is not found */
+  if (strlen (name) >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
+    {
+      assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
+
+      /*
+       * e.g.   name: object_name (exceeds)
+       *      return: object_name (exceeds)
+       */
+      return sm_downcase_name (name, buf, buf_size);
+    }
+
   if (sm_check_system_class_by_name (name))
     {
       /*
@@ -3315,7 +3328,7 @@ sm_check_system_class_by_name (const char *name)
   static int count = sizeof (system_classes) / sizeof (system_classes[0]);
 
   SYSTEM_CLASS_DEF sa;
-  char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = { '\0' };
+  char downcase_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int len = 0;
   int cmp = 0;
   int i = 0;
@@ -3333,6 +3346,11 @@ sm_check_system_class_by_name (const char *name)
 
   /* The user-specified name is not a system class name. */
   if (strchr (name, '.') != NULL)
+    {
+      return false;
+    }
+
+  if (strlen (name) >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
     {
       return false;
     }
