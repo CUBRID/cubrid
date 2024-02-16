@@ -317,12 +317,20 @@ public class ExecuteThread extends Thread {
 
         StoredProcedure procedure = makeStoredProcedure(unpacker);
 
-        sendAuthCommand(0, procedure.getAuthUser());
+        pushUser(procedure.getAuthUser());
         Value result = procedure.invoke();
-        sendAuthCommand(1, "");
+        popUser();
 
         /* send results */
         sendResult(result, procedure);
+    }
+
+    private void pushUser(String user) throws Exception {
+        sendAuthCommand(0, user);
+    }
+
+    private void popUser() throws Exception {
+        sendAuthCommand(1, "");
     }
 
     private void writeJar(List<CompiledCode> compiledCodeList, Path jarPath) throws IOException {
