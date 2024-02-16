@@ -32,6 +32,9 @@
 package com.cubrid.jsp;
 
 import com.cubrid.jsp.classloader.ClassLoaderManager;
+import com.cubrid.jsp.compiler.CompiledCode;
+import com.cubrid.jsp.compiler.MemoryJavaCompiler;
+import com.cubrid.jsp.compiler.SourceCode;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.AuthInfo;
@@ -50,19 +53,23 @@ import com.cubrid.plcsql.compiler.PlcsqlCompilerMain;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
+import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
+import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
+import org.apache.commons.io.IOUtils;
 
 public class ExecuteThread extends Thread {
 
@@ -318,6 +325,31 @@ public class ExecuteThread extends Thread {
         sendResult(result, procedure);
     }
 
+    private void writeJar(List<CompiledCode> compiledCodeList, Path jarPath) throws IOException {
+        JarArchiveOutputStream jaos = null;
+        try {
+            OutputStream jarStream = Files.newOutputStream(jarPath);
+            jaos = new JarArchiveOutputStream(new BufferedOutputStream(jarStream));
+
+            for (CompiledCode c : compiledCodeList) {
+                JarArchiveEntry jae = new JarArchiveEntry(c.getClassName() + ".class");
+                jaos.putArchiveEntry(jae);
+                ByteArrayInputStream bis = new ByteArrayInputStream(c.getByteCode());
+                IOUtils.copy(bis, jaos);
+                bis.close();
+                jaos.closeArchiveEntry();
+            }
+        } catch (IOException e) {
+            throw e;
+        } finally {
+            if (jaos != null) {
+                jaos.flush();
+                jaos.finish();
+                jaos.close();
+            }
+        }
+    }
+
     private void processCompile() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
         boolean verbose = unpacker.unpackBool();
@@ -327,6 +359,8 @@ public class ExecuteThread extends Thread {
         try {
             info = PlcsqlCompilerMain.compilePLCSQL(inSource, verbose);
             if (info.errCode == 0) {
+
+                // The following writes .java file into /dynamic directory
                 Path javaFilePath =
                         ClassLoaderManager.getDynamicPath().resolve(info.className + ".java");
                 File file = javaFilePath.toFile();
@@ -334,27 +368,15 @@ public class ExecuteThread extends Thread {
                     file.delete();
                 }
                 new FileWriter(file).append(info.translated).close();
+                //
 
-                JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-                if (compiler == null) {
-                    throw new IllegalStateException(
-                            "Cannot find the system Java compiler. Check that your class path includes tools.jar");
-                }
+                MemoryJavaCompiler compiler = new MemoryJavaCompiler();
+                SourceCode sCode = new SourceCode(info.className, info.translated);
+                compiler.compile(sCode);
 
-                Path cubrid_env_root = Server.getServer().getRootPath();
-                String javacOpts[] = {
-                    "-classpath", cubrid_env_root + "/java/pl_server.jar", file.getPath()
-                };
-
-                if (compiler.run(null, null, null, javacOpts) != 0) {
-                    String command =
-                            "javac "
-                                    + javaFilePath
-                                    + " -cp "
-                                    + cubrid_env_root
-                                    + "/java/pl_server.jar";
-                    throw new RuntimeException(command);
-                }
+                Path jarPath = ClassLoaderManager.getDynamicPath().resolve(info.className + ".jar");
+                List<CompiledCode> codeList = compiler.getFileManager().getCodeList();
+                writeJar(codeList, jarPath);
             }
         } catch (Exception e) {
             info =

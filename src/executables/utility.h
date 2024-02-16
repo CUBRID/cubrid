@@ -1173,6 +1173,8 @@ typedef struct _ha_config
 /* lockdb option list */
 #define LOCK_OUTPUT_FILE_S                      'o'
 #define LOCK_OUTPUT_FILE_L                      "output-file"
+#define LOCK_DISPLAY_CONTENTION_S               'c'
+#define LOCK_DISPLAY_CONTENTION_L               "contention"
 
 /* optimizedb option list */
 #define OPTIMIZE_CLASS_NAME_S                   'n'

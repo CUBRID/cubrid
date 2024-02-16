@@ -58,6 +58,7 @@ struct sp_info
   std::vector <sp_arg_info> args;
   SP_LANG_ENUM lang;
   std::string target;
+  int directive;
   MOP owner;
   std::string comment;
 };

@@ -644,6 +644,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   // TODO: pkg_name
   sp_info.pkg_name = "";
   sp_info.is_system_generated = false;
+  sp_info.directive = 0;
 
   int param_count = 0;
   param_list = PT_NODE_SP_ARGS (statement);

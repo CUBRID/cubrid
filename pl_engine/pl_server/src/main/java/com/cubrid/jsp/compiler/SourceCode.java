@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -28,65 +29,33 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.jsp.compiler;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+import java.net.URI;
+import javax.tools.SimpleJavaFileObject;
 
-public class TypeSpecPercent extends TypeSpec {
+public class SourceCode extends SimpleJavaFileObject {
+    private String className;
+    private String code;
 
-    public TypeSpec resolvedType;
-
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitTypeSpecPercent(this);
+    public SourceCode(String className, String code) {
+        super(
+                URI.create("string:///" + className.replace('.', '/') + Kind.SOURCE.extension),
+                Kind.SOURCE);
+        this.code = code;
+        this.className = className;
     }
 
-    public final String table;
-    public final String column;
-
-    public TypeSpecPercent(ParserRuleContext ctx, String table, String column) {
-        super(ctx, null, null, -1, null);
-        this.table = table;
-        this.column = column;
+    public String getClassName() {
+        return className;
     }
 
-    @Override
-    public String toJavaSignature() {
-        if (resolvedType == null) {
-            assert false;
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.toJavaSignature();
-        }
+    public String getCode() {
+        return code;
     }
 
     @Override
-    public String javaCode() {
-        if (resolvedType == null) {
-            assert false;
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.javaCode();
-        }
-    }
-
-    @Override
-    public String toString() {
-        if (resolvedType == null) {
-            return "%UNRESOLVED";
-        } else {
-            return resolvedType.toString();
-        }
-    }
-
-    @Override
-    public String getTypicalValueStr() {
-        if (resolvedType == null) {
-            assert false;
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.getTypicalValueStr();
-        }
+    public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+        return code;
     }
 }

@@ -558,6 +558,10 @@ jsp_start_server (const char *db_name, const char *path, int port)
     jvm_opt_sysprm = (char *) prm_get_string_value (PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS);
   // *INDENT-OFF*
   std::vector <std::string> opts = jsp_tokenize_jvm_options (jvm_opt_sysprm);
+#ifndef NDEBUG
+  // enable assertions in PL Server
+  opts.insert(opts.begin(), "-ea"); // must be the first option in order not to override ones specified by the user
+#endif // !NDEBUG
   // *INDENT-ON*
     vm_n_ext_options += (int) opts.size ();
     options = new JavaVMOption[vm_n_default_options + vm_n_ext_options];

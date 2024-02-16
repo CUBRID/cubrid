@@ -71,6 +71,7 @@
 #include "optimizer.h"
 #include "network_interface_cl.h"
 #include "printer.hpp"
+#include "schema_system_catalog.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
