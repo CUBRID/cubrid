@@ -3853,15 +3853,17 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 
 	      int num_args = (*tail)->num_method_args;
 
+	      METHOD_ARG_INFO *&arg_info = (*tail)->arg_info;
+	      regu_alloc (arg_info);
 	      if (num_args > 0)
 		{
-		  (*tail)->arg_info->arg_mode = regu_int_array_alloc (num_args);
-		  (*tail)->arg_info->arg_type = regu_int_array_alloc (num_args);
+		  arg_info->arg_mode = regu_int_array_alloc (num_args);
+		  arg_info->arg_type = regu_int_array_alloc (num_args);
 		}
 	      else
 		{
-		  (*tail)->arg_info->arg_mode = nullptr;
-		  (*tail)->arg_info->arg_type = nullptr;
+		  arg_info->arg_mode = nullptr;
+		  arg_info->arg_type = nullptr;
 		}
 
 	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name);
