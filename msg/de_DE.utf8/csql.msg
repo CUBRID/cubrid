@@ -153,7 +153,7 @@ $ csql help messages
    ;PRINT                       - Befehlspuffer drucken.\n\
    ;SHELL                       - Shell rufen.\n\
    ;CD                          - aktuelles Verzeichnis ändern.\n\
-   ;EXit                        - Programm beenden.\n\
+   ;EXit (or Ctrl+d)            - Programm beenden.\n\
 \n\
    ;CLear                       - Befehlspuffer leeren.\n\
    ;EDIT   [format/fmt]         - System-Editor [nach dem Formatierer] mit dem Befehlspuffer.\n\
