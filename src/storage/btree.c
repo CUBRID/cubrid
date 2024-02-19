@@ -1186,6 +1186,14 @@ struct btree_helper
   BTREE_DELETE_HELPER delete_helper;
 };
 
+
+typedef struct fk_object_exist_arg BTREE_FK_EXIST_ARG;
+struct fk_object_exist_arg
+{
+  BTREE_SCAN *bts;
+  PAGE_PTR ovfl_page;
+};
+
 /*
  * Static functions
  */
@@ -6996,11 +7004,6 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	{
 	  pgbuf_unfix_and_init (thread_p, BTS->C_page);
 	}
-
-      if (BTS->O_page != NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, BTS->O_page);
-	}
     }				/* for (n = 0; ... ) */
 
   /* apply distributed expension */
@@ -7040,11 +7043,6 @@ end:
   if (BTS->C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, BTS->C_page);
-    }
-
-  if (BTS->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, BTS->O_page);
     }
 
   return ret;
@@ -7127,11 +7125,6 @@ end:
   if (BTS->C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, BTS->C_page);
-    }
-
-  if (BTS->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, BTS->O_page);
     }
 
   return ret;
@@ -16023,17 +16016,9 @@ btree_find_next_index_record_holding_current (THREAD_ENTRY * thread_p, BTREE_SCA
 
   /*
    * Assumptions : last accessed leaf page is fixed.
-   *    - bts->C_page != NULL
-   *    - bts->O_page : NULL or NOT NULL
+   *    - bts->C_page != NULL   
    *    - bts->P_page == NULL
    */
-
-  /* unfix the overflow page if it is fixed. */
-  if (bts->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, bts->O_page);
-      VPID_SET_NULL (&(bts->O_vpid));
-    }
 
   /* unfix the previous leaf page if it is fixed. */
   if (bts->P_page != NULL)
@@ -16746,11 +16731,6 @@ end:
       pgbuf_unfix_and_init (thread_p, bts->C_page);
     }
 
-  if (bts->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
-    }
-
   if (bts->P_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, bts->P_page);
@@ -16925,11 +16905,6 @@ end:
   if (BTS->C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, BTS->C_page);
-    }
-
-  if (BTS->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, BTS->O_page);
     }
 
   if (root_page_ptr)
@@ -25363,7 +25338,6 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  /* For each valid key */
 	  assert (bts->C_page != NULL);
 	  assert (!VPID_ISNULL (&bts->C_vpid));
-	  assert (bts->O_page == NULL);
 	  /* Do we need P_page here? */
 	  assert (bts->P_page == NULL);
 	  assert (bts->key_status == BTS_KEY_IS_VERIFIED);
@@ -25446,7 +25420,6 @@ end:
       /* No current page fixed. */
       LSA_SET_NULL (&bts->cur_leaf_lsa);
     }
-  assert (bts->O_page == NULL);
 
   if (bts->P_page != NULL)
     {
@@ -26030,15 +26003,19 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   PAGE_PTR prev_ovf_page = NULL;
   RECDES peeked_ovf_recdes;
   VPID ovf_vpid = VPID_INITIALIZER;
+  BTREE_FK_EXIST_ARG fk_arg;
 
   /* Assert expected arguments. */
   assert (bts != NULL);
   assert (bts->bts_other != NULL);
 
+  fk_arg.bts = bts;
+  fk_arg.ovfl_page = NULL;
+
   /* Search and lock one object in key. */
   error_code =
     btree_record_process_objects (thread_p, &bts->btid_int, BTREE_LEAF_NODE, &bts->key_record, bts->offset, &stop,
-				  btree_fk_object_does_exist, bts);
+				  btree_fk_object_does_exist, &fk_arg);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -26054,8 +26031,8 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   while (!VPID_ISNULL (&ovf_vpid))
     {
       /* Fix overflow page. */
-      bts->O_page = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (bts->O_page == NULL)
+      fk_arg.ovfl_page = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (fk_arg.ovfl_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  if (prev_ovf_page != NULL)
@@ -26070,23 +26047,23 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  pgbuf_unfix_and_init (thread_p, prev_ovf_page);
 	}
       /* Get overflow OID's record. */
-      if (spage_get_record (thread_p, bts->O_page, 1, &peeked_ovf_recdes, PEEK) != S_SUCCESS)
+      if (spage_get_record (thread_p, fk_arg.ovfl_page, 1, &peeked_ovf_recdes, PEEK) != S_SUCCESS)
 	{
 	  assert_release (false);
-	  pgbuf_unfix_and_init (thread_p, bts->O_page);
+	  pgbuf_unfix_and_init (thread_p, fk_arg.ovfl_page);
 	  return ER_FAILED;
 	}
       /* Call internal function on overflow record. */
       error_code =
 	btree_record_process_objects (thread_p, &bts->btid_int, BTREE_OVERFLOW_NODE, &peeked_ovf_recdes, 0, &stop,
-				      btree_fk_object_does_exist, bts);
+				      btree_fk_object_does_exist, &fk_arg);
       if (error_code != NO_ERROR)
 	{
 	  /* Error . */
 	  ASSERT_ERROR ();
-	  if (bts->O_page != NULL)
+	  if (fk_arg.ovfl_page != NULL)
 	    {
-	      pgbuf_unfix_and_init (thread_p, bts->O_page);
+	      pgbuf_unfix_and_init (thread_p, fk_arg.ovfl_page);
 	    }
 	  return error_code;
 	}
@@ -26095,27 +26072,27 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  /* Stop. */
 	  break;
 	}
-      assert (bts->O_page != NULL);
+      assert (fk_arg.ovfl_page != NULL);
 
       /* Get VPID of next overflow page */
-      error_code = btree_get_next_overflow_vpid (thread_p, bts->O_page, &ovf_vpid);
+      error_code = btree_get_next_overflow_vpid (thread_p, fk_arg.ovfl_page, &ovf_vpid);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
-	  pgbuf_unfix_and_init (thread_p, bts->O_page);
+	  pgbuf_unfix_and_init (thread_p, fk_arg.ovfl_page);
 	  return error_code;
 	}
       /* Save overflow page until next one is fixed to protect the link between them. */
-      prev_ovf_page = bts->O_page;
+      prev_ovf_page = fk_arg.ovfl_page;
     }
 
   /* Object processing stopped or ended. */
   assert (error_code == NO_ERROR);
 
   /* If overflow page is fixed, unfix it. */
-  if (bts->O_page != NULL)
+  if (fk_arg.ovfl_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->O_page);
+      pgbuf_unfix_and_init (thread_p, fk_arg.ovfl_page);
     }
   if (bts->end_scan)
     {
@@ -26158,7 +26135,8 @@ static int
 btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, char *object_ptr, OID * oid,
 			    OID * class_oid, BTREE_MVCC_INFO * mvcc_info, bool * stop, void *args)
 {
-  BTREE_SCAN *bts = (BTREE_SCAN *) args;
+  BTREE_FK_EXIST_ARG *fk_arg = (fk_object_exist_arg *) args;
+  BTREE_SCAN *bts = (BTREE_SCAN *) fk_arg->bts;
   BTREE_FIND_FK_OBJECT *find_fk_obj = NULL;
   MVCC_SATISFIES_DELETE_RESULT satisfy_delete;
   MVCC_REC_HEADER mvcc_header_for_check_delete;
@@ -26260,9 +26238,9 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   /* Must release fixed pages first. */
   bts->is_interrupted = true;
   pgbuf_unfix_and_init (thread_p, bts->C_page);
-  if (bts->O_page != NULL)
+  if (fk_arg->ovfl_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->O_page);
+      pgbuf_unfix_and_init (thread_p, fk_arg->ovfl_page);
     }
 
   /* Make sure another object was not already fixed. */

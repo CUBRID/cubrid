@@ -181,9 +181,6 @@ struct btree_scan
 
   PAGE_PTR C_page;		/* page ptr to current leaf page */
 
-  /* TO BE REMOVED - maybe */
-  PAGE_PTR O_page;		/* page ptr to overflow page */
-
   INT16 slot_id;		/* current slot identifier */
 
   /* TO BE REMOVED */
@@ -258,7 +255,6 @@ struct btree_scan
     (bts)->O_vpid.pageid = NULL_PAGEID;			\
     (bts)->P_page = NULL;				\
     (bts)->C_page = NULL;				\
-    (bts)->O_page = NULL;				\
     (bts)->slot_id = NULL_SLOTID;			\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
@@ -305,7 +301,6 @@ struct btree_scan
     (bts)->O_vpid.pageid = NULL_PAGEID;			\
     (bts)->P_page = NULL;				\
     (bts)->C_page = NULL;				\
-    (bts)->O_page = NULL;				\
     (bts)->slot_id = -1;				\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
