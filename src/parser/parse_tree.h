@@ -1379,6 +1379,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_MERGE  0x400000000ULL	/* do not merge view or in-line view */
 #define  PT_HINT_NO_ELIMINATE_JOIN  0x800000000ULL	/* do not eliminate join */
 #define  PT_HINT_SAMPLING_SCAN  0x1000000000ULL	/* SELECT sampling data instead of full data */
+#define  PT_HINT_LEADING  0x2000000000ULL	/* force specific table to join left-to-right */
 
 /* Codes for error messages */
 typedef enum
@@ -2253,7 +2254,7 @@ struct pt_delete_info
   PT_NODE *cursor_name;		/* PT_NAME */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
-  PT_NODE *ordered_hint;	/* ORDERED_HINT hint's arguments (PT_NAME list) */
+  PT_NODE *leading_hint;	/* LEADING_HINT hint's arguments (PT_NAME list) */
   PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
   PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
   PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
@@ -2886,7 +2887,7 @@ struct pt_select_info
   PT_NODE *having;		/* PT_EXPR */
   PT_NODE *using_index;		/* PT_NAME (list) */
   PT_NODE *with_increment;	/* PT_NAME (list) */
-  PT_NODE *ordered;		/* PT_NAME (list) */
+  PT_NODE *leading;		/* PT_NAME (list) */
   PT_NODE *use_nl;		/* PT_NAME (list) */
   PT_NODE *use_idx;		/* PT_NAME (list) */
   PT_NODE *index_ss;		/* PT_NAME (list) */
@@ -3062,7 +3063,7 @@ struct pt_update_info
   PT_NODE *check_where;		/* with check option predicate */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
-  PT_NODE *ordered_hint;	/* USE_NL hint's arguments (PT_NAME list) */
+  PT_NODE *leading_hint;	/* LEADING hint's arguments (PT_NAME list) */
   PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
   PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
   PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */

@@ -1755,28 +1755,6 @@ pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MOD
 }
 
 /*
- * below two functions are dummies for Windows build
- * (which defined at cubridsa.def)
- */
-#if defined(WINDOWS)
-#if !defined(NDEBUG)
-PAGE_PTR
-pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-		   PGBUF_LATCH_MODE request_mode, PGBUF_LATCH_CONDITION condition)
-{
-  return NULL;
-}
-#else
-PAGE_PTR
-pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
-		 PGBUF_LATCH_CONDITION condition, const char *caller_file, int caller_line)
-{
-  return NULL;
-}
-#endif
-#endif
-
-/*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
  *   vpid(in): Complete Page identifier
@@ -4343,25 +4321,6 @@ pgbuf_get_lsa (PAGE_PTR pgptr)
 
   CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
   return &io_pgptr->prv.lsa;
-}
-
-/*
- * pgbuf_page_has_changed () - check if page has change based on current LSA and a previous reference LSA
- *   return: page lsa
- *   pgptr(in): Pointer to page
- */
-int
-pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa)
-{
-  LOG_LSA curr_lsa;
-
-  LSA_COPY (&curr_lsa, pgbuf_get_lsa (pgptr));
-
-  if (!LSA_EQ (ref_lsa, &curr_lsa))
-    {
-      return 1;
-    }
-  return 0;
 }
 
 /*

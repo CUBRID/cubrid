@@ -1042,6 +1042,9 @@ const size_t BTREE_RV_BUFFER_SIZE =
   (4 * LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE (BTREE_OBJECT_MAX_SIZE) + BTREE_RV_DEBUG_INFO_MAX_SIZE);
 #endif /* !NDEBUG */
 
+#if defined (NDEBUG)
+#define BTREE_RV_GET_DATA_LENGTH(rv_ptr, rv_start, rv_length)  (rv_length) = CAST_BUFLEN ((rv_ptr) - (rv_start))
+#else
 static void
 BTREE_RV_GET_DATA_LENGTH (const char *rv_ptr, const char *rv_start, int &rv_length)
 {
@@ -1050,6 +1053,7 @@ BTREE_RV_GET_DATA_LENGTH (const char *rv_ptr, const char *rv_start, int &rv_leng
   rv_length = CAST_BUFLEN (rv_ptr - rv_start);
   assert (0 <= rv_length && (size_t) rv_length <= BTREE_RV_BUFFER_SIZE);
 }
+#endif
 
 /* Debug identifiers to help with detecting recovery issues. */
 enum btree_rv_debug_id
@@ -1180,6 +1184,14 @@ struct btree_helper
 {
   BTREE_INSERT_HELPER insert_helper;
   BTREE_DELETE_HELPER delete_helper;
+};
+
+
+typedef struct fk_object_exist_arg BTREE_FK_EXIST_ARG;
+struct fk_object_exist_arg
+{
+  BTREE_SCAN *bts;
+  PAGE_PTR ovfl_page;
 };
 
 /*
@@ -5598,16 +5610,10 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
 
   if (unique_pk)
     {
-      root_header->num_oids = num_oids & 0xffffffff;
-      root_header->num_nulls = num_nulls & 0xffffffff;
-      root_header->num_keys = num_keys & 0xffffffff;
+      root_header->num_oids = num_oids;
+      root_header->num_nulls = num_nulls;
+      root_header->num_keys = num_keys;
       root_header->unique_pk = unique_pk;
-
-      over += root_header->_64.num_oids = num_oids >> 32;
-      over += root_header->_64.num_nulls = num_nulls >> 32;
-      over += root_header->_64.num_keys = num_keys >> 32;
-
-      root_header->_64.over = (over > 0);
 
       assert (BTREE_IS_UNIQUE (root_header->unique_pk));
       assert (BTREE_IS_PRIMARY_KEY (root_header->unique_pk) || !BTREE_IS_PRIMARY_KEY (root_header->unique_pk));
@@ -6371,16 +6377,9 @@ btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, long long *oi
 
   assert ((root_header->unique_pk & (BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY)) != 0);
 
-  *oid_cnt = (unsigned int) root_header->num_oids;
-  *null_cnt = (unsigned int) root_header->num_nulls;
-  *key_cnt = (unsigned int) root_header->num_keys;
-
-  if (root_header->_64.over)
-    {
-      *oid_cnt |= (((long long) root_header->_64.num_oids) << 32);
-      *null_cnt |= (((long long) root_header->_64.num_nulls) << 32);
-      *key_cnt |= (((long long) root_header->_64.num_keys) << 32);
-    }
+  *oid_cnt = root_header->num_oids;
+  *null_cnt = root_header->num_nulls;
+  *key_cnt = root_header->num_keys;
 
   pgbuf_unfix_and_init (thread_p, root);
 
@@ -6930,11 +6929,6 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	{
 	  pgbuf_unfix_and_init (thread_p, BTS->C_page);
 	}
-
-      if (BTS->O_page != NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, BTS->O_page);
-	}
     }				/* for (n = 0; ... ) */
 
   /* apply distributed expension */
@@ -6974,11 +6968,6 @@ end:
   if (BTS->C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, BTS->C_page);
-    }
-
-  if (BTS->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, BTS->O_page);
     }
 
   return ret;
@@ -7061,11 +7050,6 @@ end:
   if (BTS->C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, BTS->C_page);
-    }
-
-  if (BTS->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, BTS->O_page);
     }
 
   return ret;
@@ -14552,15 +14536,9 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
 	  int over = 0;
 
 	  /* update header information */
-	  root_header->num_nulls = unique_stat_info->unique_stats.num_nulls & 0xffffffff;
-	  root_header->num_oids = unique_stat_info->unique_stats.num_oids & 0xffffffff;
-	  root_header->num_keys = unique_stat_info->unique_stats.num_keys & 0xffffffff;
-
-	  over += root_header->_64.num_nulls = unique_stat_info->unique_stats.num_nulls >> 32;
-	  over += root_header->_64.num_oids = unique_stat_info->unique_stats.num_oids >> 32;
-	  over += root_header->_64.num_keys = unique_stat_info->unique_stats.num_keys >> 32;
-
-	  root_header->_64.over = (over > 0);
+	  root_header->num_nulls = unique_stat_info->unique_stats.num_nulls;
+	  root_header->num_oids = unique_stat_info->unique_stats.num_oids;
+	  root_header->num_keys = unique_stat_info->unique_stats.num_keys;
 
 	  page_lsa = pgbuf_get_lsa (root);
 	  /* update the page's LSA to the last global unique statistics change that was made at commit, only if it is
@@ -15963,17 +15941,9 @@ btree_find_next_index_record_holding_current (THREAD_ENTRY * thread_p, BTREE_SCA
 
   /*
    * Assumptions : last accessed leaf page is fixed.
-   *    - bts->C_page != NULL
-   *    - bts->O_page : NULL or NOT NULL
+   *    - bts->C_page != NULL   
    *    - bts->P_page == NULL
    */
-
-  /* unfix the overflow page if it is fixed. */
-  if (bts->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, bts->O_page);
-      VPID_SET_NULL (&(bts->O_vpid));
-    }
 
   /* unfix the previous leaf page if it is fixed. */
   if (bts->P_page != NULL)
@@ -16686,11 +16656,6 @@ end:
       pgbuf_unfix_and_init (thread_p, bts->C_page);
     }
 
-  if (bts->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
-    }
-
   if (bts->P_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, bts->P_page);
@@ -16865,11 +16830,6 @@ end:
   if (BTS->C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, BTS->C_page);
-    }
-
-  if (BTS->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, BTS->O_page);
     }
 
   if (root_page_ptr)
@@ -17465,13 +17425,6 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       num_oids = (unsigned int) root_header->num_oids;
       num_keys = (unsigned int) root_header->num_keys;
 
-      if (root_header->_64.over)
-	{
-	  num_nulls |= (long long) root_header->_64.num_nulls << 32;
-	  num_oids |= (long long) root_header->_64.num_oids << 32;
-	  num_keys |= (long long) root_header->_64.num_keys << 32;
-	}
-
       /* unpack the root statistics */
       datap = (char *) recv->data;
       OR_GET_BIGINT (datap, &delta);
@@ -17483,15 +17436,9 @@ btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
       OR_GET_BIGINT (datap, &delta);
       num_keys += delta;
 
-      root_header->num_nulls = num_nulls & 0xffffffff;
-      root_header->num_oids = num_oids & 0xffffffff;
-      root_header->num_keys = num_keys & 0xffffffff;
-
-      over += root_header->_64.num_nulls = num_nulls >> 32;
-      over += root_header->_64.num_oids = num_oids >> 32;
-      over += root_header->_64.num_keys = num_keys >> 32;
-
-      root_header->_64.over = (over > 0);
+      root_header->num_nulls = num_nulls;
+      root_header->num_oids = num_oids;
+      root_header->num_keys = num_keys;
     }
 
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
@@ -25316,7 +25263,6 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  /* For each valid key */
 	  assert (bts->C_page != NULL);
 	  assert (!VPID_ISNULL (&bts->C_vpid));
-	  assert (bts->O_page == NULL);
 	  /* Do we need P_page here? */
 	  assert (bts->P_page == NULL);
 	  assert (bts->key_status == BTS_KEY_IS_VERIFIED);
@@ -25399,7 +25345,6 @@ end:
       /* No current page fixed. */
       LSA_SET_NULL (&bts->cur_leaf_lsa);
     }
-  assert (bts->O_page == NULL);
 
   if (bts->P_page != NULL)
     {
@@ -25983,15 +25928,19 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   PAGE_PTR prev_ovf_page = NULL;
   RECDES peeked_ovf_recdes;
   VPID ovf_vpid = VPID_INITIALIZER;
+  BTREE_FK_EXIST_ARG fk_arg;
 
   /* Assert expected arguments. */
   assert (bts != NULL);
   assert (bts->bts_other != NULL);
 
+  fk_arg.bts = bts;
+  fk_arg.ovfl_page = NULL;
+
   /* Search and lock one object in key. */
   error_code =
     btree_record_process_objects (thread_p, &bts->btid_int, BTREE_LEAF_NODE, &bts->key_record, bts->offset, &stop,
-				  btree_fk_object_does_exist, bts);
+				  btree_fk_object_does_exist, &fk_arg);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -26007,8 +25956,8 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   while (!VPID_ISNULL (&ovf_vpid))
     {
       /* Fix overflow page. */
-      bts->O_page = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (bts->O_page == NULL)
+      fk_arg.ovfl_page = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (fk_arg.ovfl_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  if (prev_ovf_page != NULL)
@@ -26023,23 +25972,23 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  pgbuf_unfix_and_init (thread_p, prev_ovf_page);
 	}
       /* Get overflow OID's record. */
-      if (spage_get_record (thread_p, bts->O_page, 1, &peeked_ovf_recdes, PEEK) != S_SUCCESS)
+      if (spage_get_record (thread_p, fk_arg.ovfl_page, 1, &peeked_ovf_recdes, PEEK) != S_SUCCESS)
 	{
 	  assert_release (false);
-	  pgbuf_unfix_and_init (thread_p, bts->O_page);
+	  pgbuf_unfix_and_init (thread_p, fk_arg.ovfl_page);
 	  return ER_FAILED;
 	}
       /* Call internal function on overflow record. */
       error_code =
 	btree_record_process_objects (thread_p, &bts->btid_int, BTREE_OVERFLOW_NODE, &peeked_ovf_recdes, 0, &stop,
-				      btree_fk_object_does_exist, bts);
+				      btree_fk_object_does_exist, &fk_arg);
       if (error_code != NO_ERROR)
 	{
 	  /* Error . */
 	  ASSERT_ERROR ();
-	  if (bts->O_page != NULL)
+	  if (fk_arg.ovfl_page != NULL)
 	    {
-	      pgbuf_unfix_and_init (thread_p, bts->O_page);
+	      pgbuf_unfix_and_init (thread_p, fk_arg.ovfl_page);
 	    }
 	  return error_code;
 	}
@@ -26048,27 +25997,27 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  /* Stop. */
 	  break;
 	}
-      assert (bts->O_page != NULL);
+      assert (fk_arg.ovfl_page != NULL);
 
       /* Get VPID of next overflow page */
-      error_code = btree_get_next_overflow_vpid (thread_p, bts->O_page, &ovf_vpid);
+      error_code = btree_get_next_overflow_vpid (thread_p, fk_arg.ovfl_page, &ovf_vpid);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
-	  pgbuf_unfix_and_init (thread_p, bts->O_page);
+	  pgbuf_unfix_and_init (thread_p, fk_arg.ovfl_page);
 	  return error_code;
 	}
       /* Save overflow page until next one is fixed to protect the link between them. */
-      prev_ovf_page = bts->O_page;
+      prev_ovf_page = fk_arg.ovfl_page;
     }
 
   /* Object processing stopped or ended. */
   assert (error_code == NO_ERROR);
 
   /* If overflow page is fixed, unfix it. */
-  if (bts->O_page != NULL)
+  if (fk_arg.ovfl_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->O_page);
+      pgbuf_unfix_and_init (thread_p, fk_arg.ovfl_page);
     }
   if (bts->end_scan)
     {
@@ -26111,7 +26060,8 @@ static int
 btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, char *object_ptr, OID * oid,
 			    OID * class_oid, BTREE_MVCC_INFO * mvcc_info, bool * stop, void *args)
 {
-  BTREE_SCAN *bts = (BTREE_SCAN *) args;
+  BTREE_FK_EXIST_ARG *fk_arg = (fk_object_exist_arg *) args;
+  BTREE_SCAN *bts = (BTREE_SCAN *) fk_arg->bts;
   BTREE_FIND_FK_OBJECT *find_fk_obj = NULL;
   MVCC_SATISFIES_DELETE_RESULT satisfy_delete;
   MVCC_REC_HEADER mvcc_header_for_check_delete;
@@ -26213,9 +26163,9 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   /* Must release fixed pages first. */
   bts->is_interrupted = true;
   pgbuf_unfix_and_init (thread_p, bts->C_page);
-  if (bts->O_page != NULL)
+  if (fk_arg->ovfl_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->O_page);
+      pgbuf_unfix_and_init (thread_p, fk_arg->ovfl_page);
     }
 
   /* Make sure another object was not already fixed. */

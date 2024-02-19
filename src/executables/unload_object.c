@@ -63,7 +63,7 @@
 #include "unloaddb.h"
 
 #include "system_parameter.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "execute_schema.h"
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
