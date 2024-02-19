@@ -2280,21 +2280,21 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	  else
 	    {
-	      if(alter_user_code == PT_ADD_MEMBERS
-	         && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
-	      	{
-	      	  error = db_add_member (user, member);
+	      if (alter_user_code == PT_ADD_MEMBERS
+		  && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
+		{
+		  error = db_add_member (user, member);
 		}
 	      else if (alter_user_code == PT_DROP_MEMBERS
-	               && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
+		       && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
 		{
 		  error = db_drop_member (user, member);
 		}
 	      else
-	        {
+		{
 		  error = ER_AU_NOT_OWNER;
-	          er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	        }
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+		}
 	    }
 
 	  if (error != NO_ERROR)
