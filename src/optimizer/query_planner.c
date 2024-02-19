@@ -6805,7 +6805,11 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		  }
 		else
 		  {
-		    bitset_union (&visited_segs, &(QO_TERM_SEGS (term)));
+		    if (QO_TERM_NOMINAL_SEG (term) && QO_TERM_EQCLASS (term))
+		      {
+			bitset_union (&visited_segs, &(QO_TERM_SEGS (term)));
+		      }
+
 		    /* check for idx-join */
 		    if (QO_TERM_CAN_USE_INDEX (term))
 		      {
