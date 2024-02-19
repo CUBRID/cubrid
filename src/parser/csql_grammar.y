@@ -647,7 +647,6 @@ int g_original_buffer_len;
 %type <node> transaction_stmt
 %type <node> alter_stmt
 %type <node> alter_clause_list
-%type <node> alter_user_clause
 %type <node> rename_stmt
 %type <node> rename_class_list
 %type <node> rename_class_pair
@@ -3586,18 +3585,74 @@ alter_stmt
 	| ALTER				/* 1 */
 	  USER				/* 2 */
 	  identifier	        	/* 3 */
-	  alter_user_clause  	        /* 4 */
+	  opt_password  	        /* 4 */
 	  opt_comment_spec              /* 5 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier alter_user_clause opt_comment_spec);
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier opt_password opt_comment_spec);
 
-			PT_NODE *node = $4;
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
 
 			if (node)
 			  {
 			    node->info.alter_user.user_name = $3;
+			    node->info.alter_user.password = $4;
 			    node->info.alter_user.comment = $5;
 			    if (node->info.alter_user.password == NULL
-				&& node->info.alter_user.comment == NULL
+				&& node->info.alter_user.comment == NULL)
+			      {
+			        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+                               MSGCAT_SYNTAX_INVALID_ALTER);
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  USER				/* 2 */
+	  identifier	        	/* 3 */
+	  ADD				/* 4 */
+	  opt_members			/* 5 */
+	  opt_comment_spec              /* 6 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier ADD opt_members opt_comment_spec);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
+
+			if (node)
+			  {
+			    node->info.alter_user.user_name = $3;
+			    node->info.alter_user.code = PT_ADD_MEMBERS;
+			    node->info.alter_user.members = $5;
+			    node->info.alter_user.comment = $6;
+			    if (node->info.alter_user.comment == NULL
+				&& node->info.alter_user.members == NULL)
+			      {
+			        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+                               MSGCAT_SYNTAX_INVALID_ALTER);
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  USER				/* 2 */
+	  identifier	        	/* 3 */
+	  DROP  	        	/* 4 */
+	  opt_members			/* 5 */
+	  opt_comment_spec              /* 6 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier DROP opt_members opt_comment_spec);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
+
+			if (node)
+			  {
+			    node->info.alter_user.user_name = $3;
+			    node->info.alter_user.code = PT_DROP_MEMBERS;
+			    node->info.alter_user.members = $5;
+			    node->info.alter_user.comment = $6;
+			    if (node->info.alter_user.comment == NULL
 				&& node->info.alter_user.members == NULL)
 			      {
 			        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
@@ -4106,55 +4161,6 @@ alter_clause_list
 		{{ DBG_TRACE_GRAMMAR(alter_clause_list, | alter_clause_for_alter_list);
 
 			$$ = parser_get_alter_node ();
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	;
-
-alter_user_clause
-	: opt_password  /* 1 */
-		{{ DBG_TRACE_GRAMMAR(alter_user_clause, | opt_password);
-
-			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
-
-			if (node)
-			  {
-				node->info.alter_user.password = $1;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ADD		/* 1 */
-	  opt_members	/* 2 */
-		{{ DBG_TRACE_GRAMMAR(alter_user_clause, | ADD opt_members);
-
-			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
-
-			if (node)
-			  {
-				node->info.alter_user.code = PT_ADD_MEMBERS;
-				node->info.alter_user.members = $2;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| DROP		/* 1 */
-	  opt_members	/* 2 */
-		{{ DBG_TRACE_GRAMMAR(alter_user_clause, | DROP opt_members);
-
-			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
-
-			if (node)
-			  {
-				node->info.alter_user.code = PT_DROP_MEMBERS;
-				node->info.alter_user.members = $2;
-			  }
-
-			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
