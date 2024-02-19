@@ -4893,7 +4893,9 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       memset ((void *) (&(isidp->multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
 
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
       btree_range_scan_free_matched_idx (&isidp->bt_scan);
+#endif
       break;
 
     case S_LIST_SCAN:
