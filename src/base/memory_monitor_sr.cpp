@@ -116,7 +116,7 @@ namespace cubmem
     stat_name = make_stat_name (file, line);
 
     std::unique_lock <std::shared_mutex> stat_map_write_lock (m_stat_map_mutex);
-    auto search = m_stat_name_map.find (stat_name);
+    const auto search = m_stat_name_map.find (stat_name);
     if (search != m_stat_name_map.end ())
       {
 	metainfo.stat_id = search->second;
