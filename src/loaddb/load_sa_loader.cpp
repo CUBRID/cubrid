@@ -6444,7 +6444,6 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 						 LOADDB_MSG_LAST_COMMITTED_LINE), lastcommit);
 		}
 	      *interrupted = true;
-	      *status = 3;
 	    }
 	  else
 	    {
@@ -6521,6 +6520,11 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 		}
 	    }
 	}
+    }
+
+  if (errors > 0)
+    {
+      *status = 3;
     }
 
   ldr_final ();
