@@ -26,7 +26,7 @@
 
 #include <atomic>
 #include <unordered_map>
-#include <mutex>
+#include <shared_mutex>
 
 #include "memory_monitor_common.hpp"
 
@@ -35,7 +35,7 @@ namespace cubmem
   // IMPORTANT!!
   // This meta size is related with allocation byte align
   // Don't adjust it freely
-  // 8 byte size + 4 byte tag + 4 byte magicnumber
+  // 8 byte size + 4 byte stat + 4 byte magicnumber
   static constexpr int MMON_METAINFO_SIZE = 16;
 
   class memory_monitor
@@ -59,14 +59,14 @@ namespace cubmem
 
     private:
       static char *get_metainfo_pos (char *ptr, size_t size);
-      static std::string make_tag_name (const char *file, const int line);
+      static std::string make_stat_name (const char *file, const int line);
 
     private:
       std::string m_server_name;
-      mutable std::mutex m_map_mutex;
-      // Entries of m_tag_map and m_stat_map will not be deleted
-      std::unordered_map <std::string, int> m_tag_map;              // key: tag name, value: tag id
-      std::unordered_map <int, std::atomic <uint64_t>> m_stat_map;  // key: tag id, value: memory usage
+      mutable std::shared_mutex m_stat_map_mutex;
+      // Entries of m_stat_name_map and m_stat_map will not be deleted
+      std::unordered_map <std::string, int> m_stat_name_map;        // key: stat name, value: stat id
+      std::unordered_map <int, std::atomic <uint64_t>> m_stat_map;  // key: stat id, value: memory usage
       std::atomic <uint64_t> m_total_mem_usage;
       std::atomic <int> m_meta_alloc_count;                         // for checking occupancy of memory used by metainfo space
       // Magic number is for checking an allocated memory which is out-of-scope of memory_monitor.

@@ -29,15 +29,15 @@
 #include <vector>
 #include <algorithm>
 
-#define MMON_MAX_SERVER_NAME_LENGTH 255
+#define MMON_MAX_SERVER_NAME_LENGTH 32
 
 typedef struct mmon_server_info MMON_SERVER_INFO;
 struct mmon_server_info
 {
   char server_name[MMON_MAX_SERVER_NAME_LENGTH];
   uint64_t total_mem_usage;
-  uint64_t mmon_metainfo_mem_usage;
+  uint64_t total_metainfo_mem_usage;
   int num_stat;
-  std::vector<std::pair<std::string, uint64_t>> stat_info;
+  std::vector<std::pair<std::string, uint64_t>> stat_info; // <stat name, memory usage>
 };
 #endif // _MEMORY_MONITOR_COMMON_HPP_

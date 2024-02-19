@@ -31,7 +31,7 @@ typedef struct mmon_metainfo MMON_METAINFO;
 struct mmon_metainfo
 {
   uint64_t allocated_size;
-  int tag_id;
+  int stat_id;
   int magic_number;
 };
 
@@ -46,7 +46,7 @@ namespace cubmem
       m_meta_alloc_count {0}
   {}
 
-  std::string memory_monitor::make_tag_name (const char *file, const int line)
+  std::string memory_monitor::make_stat_name (const char *file, const int line)
   {
     std::string filecopy (file);
 #if defined(WINDOWS)
@@ -104,7 +104,7 @@ namespace cubmem
 
   void memory_monitor::add_stat (char *ptr, const size_t size, const char *file, const int line)
   {
-    std::string tag_name;
+    std::string stat_name;
     MMON_METAINFO metainfo;
 
     // size should not be 0 because of MMON_METAINFO_SIZE
@@ -113,23 +113,23 @@ namespace cubmem
     metainfo.allocated_size = (uint64_t) size;
     m_total_mem_usage += metainfo.allocated_size;
 
-    tag_name = make_tag_name (file, line);
+    stat_name = make_stat_name (file, line);
 
-    std::unique_lock <std::mutex> map_lock (m_map_mutex);
-    auto search = m_tag_map.find (tag_name);
-    if (search != m_tag_map.end ())
+    std::unique_lock <std::shared_mutex> stat_map_write_lock (m_stat_map_mutex);
+    auto search = m_stat_name_map.find (stat_name);
+    if (search != m_stat_name_map.end ())
       {
-	metainfo.tag_id = search->second;
-	m_stat_map[metainfo.tag_id] += metainfo.allocated_size;
+	metainfo.stat_id = search->second;
+	m_stat_map[metainfo.stat_id] += metainfo.allocated_size;
       }
     else
       {
-	metainfo.tag_id = m_tag_map.size ();
-	// tag_id starts with 0
-	m_tag_map.emplace (tag_name, metainfo.tag_id);
-	m_stat_map.emplace (metainfo.tag_id, metainfo.allocated_size);
+	metainfo.stat_id = m_stat_name_map.size ();
+	// stat_id starts with 0
+	m_stat_name_map.emplace (stat_name, metainfo.stat_id);
+	m_stat_map.emplace (metainfo.stat_id, metainfo.allocated_size);
       }
-    map_lock.unlock ();
+    stat_map_write_lock.unlock ();
 
     // put meta info into the allocated chunk
     char *meta_ptr = get_metainfo_pos (ptr, metainfo.allocated_size);
@@ -156,12 +156,12 @@ namespace cubmem
 
 	if (metainfo->magic_number == m_magic_number)
 	  {
-	    assert ((metainfo->tag_id >= 0 && metainfo->tag_id < m_stat_map.size()));
-	    assert (m_stat_map[metainfo->tag_id] >= metainfo->allocated_size);
+	    assert ((metainfo->stat_id >= 0 && metainfo->stat_id < m_stat_map.size()));
+	    assert (m_stat_map[metainfo->stat_id] >= metainfo->allocated_size);
 	    assert (m_total_mem_usage >= metainfo->allocated_size);
 
 	    m_total_mem_usage -= metainfo->allocated_size;
-	    m_stat_map[metainfo->tag_id] -= metainfo->allocated_size;
+	    m_stat_map[metainfo->stat_id] -= metainfo->allocated_size;
 
 	    memset (meta_ptr, 0, MMON_METAINFO_SIZE);
 	    m_meta_alloc_count--;
@@ -174,14 +174,19 @@ namespace cubmem
   {
     strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
     server_info.total_mem_usage = m_total_mem_usage.load ();
-    server_info.mmon_metainfo_mem_usage = m_meta_alloc_count * MMON_METAINFO_SIZE;
-    server_info.num_stat = m_tag_map.size ();
+    server_info.total_metainfo_mem_usage = m_meta_alloc_count * MMON_METAINFO_SIZE;
 
-    for (auto it = m_tag_map.begin (); it != m_tag_map.end (); ++it)
+    std::shared_lock <std::shared_mutex> stat_map_read_lock (m_stat_map_mutex);
+    server_info.num_stat = m_stat_name_map.size ();
+
+    for (const auto &[stat_name, stat_id] : m_stat_name_map)
       {
-	server_info.stat_info.emplace_back (it->first, m_stat_map[it->second].load ());
+	// m_stat_map[stat_id] means memory usage
+	server_info.stat_info.emplace_back (stat_name, m_stat_map[stat_id].load ());
       }
+    stat_map_read_lock.unlock ();
 
+    // This funciton is for sorting the vector in descending order by memory usage
     const auto &comp = [] (const auto &stat_pair1, const auto &stat_pair2)
     {
       return stat_pair1.second > stat_pair2.second;
@@ -206,19 +211,19 @@ namespace cubmem
     fprintf (outfile_fp, "Server Name: %s\n", server_info.server_name);
     fprintf (outfile_fp, "Total Memory Usage(KB): %lu\n\n", MMON_CONVERT_TO_KB_SIZE (server_info.total_mem_usage));
     fprintf (outfile_fp, "Total Metainfo Memory Usage(KB): %lu\n\n",
-	     MMON_CONVERT_TO_KB_SIZE (server_info.mmon_metainfo_mem_usage));
+	     MMON_CONVERT_TO_KB_SIZE (server_info.total_metainfo_mem_usage));
     fprintf (outfile_fp, "-----------------------------------------------------\n");
 
     fprintf (outfile_fp, "\t%-100s | %17s(%s)\n", "File Name", "Memory Usage", "Ratio");
 
-    for (const auto &s_info : server_info.stat_info)
+    for (const auto &[stat_name, mem_usage] : server_info.stat_info)
       {
 	if (server_info.total_mem_usage != 0)
 	  {
-	    mem_usage_ratio = s_info.second / (double) server_info.total_mem_usage;
+	    mem_usage_ratio = mem_usage / (double) server_info.total_mem_usage;
 	    mem_usage_ratio *= 100;
 	  }
-	fprintf (outfile_fp, "\t%-100s | %17lu(%3d%%)\n",s_info.first.c_str (), MMON_CONVERT_TO_KB_SIZE (s_info.second),
+	fprintf (outfile_fp, "\t%-100s | %17lu(%3d%%)\n", stat_name.c_str (), MMON_CONVERT_TO_KB_SIZE (mem_usage),
 		 (int)mem_usage_ratio);
       }
     fprintf (outfile_fp, "-----------------------------------------------------\n");
