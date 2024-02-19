@@ -5951,7 +5951,7 @@ btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE
   DB_MIDXKEY midxkey;
   TP_DOMAIN *tp_dom = NULL;
   TP_DOMAIN *setdomain_ptr = NULL;
-  DB_VALUE new_key_dbvals_ary[8];
+  DB_VALUE new_key_dbvals_array[8];
   DB_VALUE *new_key_dbvals = NULL;
   DB_VALUE *dbvals_ptr = NULL;
   ATTR_ID last_attrid;
@@ -5975,9 +5975,9 @@ btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE
 	}
 
       assert ((num_attrs - 1) == key->data.midxkey.ncolumns);
-      if (key->data.midxkey.ncolumns <= (sizeof (new_key_dbvals_ary) / sizeof (DB_VALUE)))
+      if (key->data.midxkey.ncolumns <= (sizeof (new_key_dbvals_array) / sizeof (DB_VALUE)))
 	{
-	  new_key_dbvals = new_key_dbvals_ary;
+	  new_key_dbvals = new_key_dbvals_array;
 	}
       else
 	{
@@ -6057,7 +6057,7 @@ clear_pos:
 	{
 	  pr_clear_value (&new_key_dbvals[i]);	/* it might be alloced/copied */
 	}
-      if (new_key_dbvals_ary != new_key_dbvals)
+      if (new_key_dbvals_array != new_key_dbvals)
 	{
 	  db_private_free (thread_p, new_key_dbvals);
 	}
