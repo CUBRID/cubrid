@@ -1734,6 +1734,10 @@ static int btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE 
 static int btree_is_key_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
 				 MVCC_SNAPSHOT * mvcc_snapshot, int slot_id, bool * is_visible, DB_VALUE * key_value);
 
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+static void btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts);
+#endif
+
 /*
  *  btree_is_key_visible(): States if current key is visible or not.
  *
@@ -15750,6 +15754,9 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
     {
       bts->key_filter_storage = *filter;
       bts->key_filter = &bts->key_filter_storage;
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+      btree_range_scan_alloc_matched_idx (bts);
+#endif
     }
   else
     {
@@ -25285,36 +25292,44 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
 
 #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 void
-btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts, int *array_attr, int *array_read, int arr_size)
+btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts)
 {
   int cnt = 0;
 
   assert (bts);
-  if (bts->key_filter == NULL)
+  assert (bts->key_filter != NULL);
+
+  if (bts->attid_idxs.is_init)
     {
+      bts->key_filter->matched_attid_idx_4_keyflt = bts->attid_idxs.keyflt_attid_idx;
+      bts->key_filter->matched_attid_idx_4_readval = bts->attid_idxs.readval_attid_idx;
       return;
     }
 
-  assert (bts->key_filter->matched_attid_idx_4_keyflt == NULL);
-  assert (bts->key_filter->matched_attid_idx_4_readval == NULL);
+  assert (bts->attid_idxs.keyflt_attid_idx == NULL);
+  assert (bts->attid_idxs.readval_attid_idx == NULL);
+
+  bts->attid_idxs.is_init = true;
 
   if (bts->key_filter->scan_attrs && bts->key_filter->scan_attrs->num_attrs > 0)
     {
       cnt = bts->key_filter->scan_attrs->num_attrs;
-      if (cnt < arr_size)
+      if (cnt < (int) (sizeof (bts->attid_idxs.keyflt_attid_idx) / sizeof (bts->attid_idxs.keyflt_attid_idx[0])))
 	{
-	  bts->key_filter->matched_attid_idx_4_keyflt = array_attr;
-	  bts->key_filter->matched_attid_idx_4_keyflt[0] = -1;
+	  bts->attid_idxs.keyflt_attid_idx = bts->attid_idxs.keyflt_attid_idx;
+	  bts->attid_idxs.keyflt_attid_idx[0] = -1;
 	}
       else
 	{
-	  bts->key_filter->matched_attid_idx_4_keyflt = (int *) malloc (cnt * sizeof (int));
-	  if (bts->key_filter->matched_attid_idx_4_keyflt)
+	  bts->attid_idxs.keyflt_attid_idx = (int *) malloc (cnt * sizeof (int));
+	  if (bts->attid_idxs.keyflt_attid_idx)
 	    {
-	      bts->key_filter->matched_attid_idx_4_keyflt[0] = -1;
+	      bts->attid_idxs.keyflt_attid_idx[0] = -1;
 	    }
 	}
     }
+
+  bts->key_filter->matched_attid_idx_4_keyflt = bts->attid_idxs.keyflt_attid_idx;
 
   /*
    * Please refer to the btree_dump_curr_key() function for the processing logic below. 
@@ -25332,50 +25347,51 @@ btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts, int *array_attr, int *arra
     }
   else
     {
+      bts->key_filter->matched_attid_idx_4_readval = NULL;
       return;
     }
 
   if (cnt > 0)
     {
-      if (cnt < arr_size)
+      if (cnt < (int) (sizeof (bts->attid_idxs.readval_attid_idx) / sizeof (bts->attid_idxs.readval_attid_idx[0])))
 	{
-	  bts->key_filter->matched_attid_idx_4_readval = array_read;
-	  bts->key_filter->matched_attid_idx_4_readval[0] = -1;
+	  bts->attid_idxs.readval_attid_idx = bts->attid_idxs.readval_attid_idx;
+	  bts->attid_idxs.readval_attid_idx[0] = -1;
 	}
       else
 	{
-	  bts->key_filter->matched_attid_idx_4_readval = (int *) malloc (cnt * sizeof (int));
-	  if (bts->key_filter->matched_attid_idx_4_readval)
+	  bts->attid_idxs.readval_attid_idx = (int *) malloc (cnt * sizeof (int));
+	  if (bts->attid_idxs.readval_attid_idx)
 	    {
-	      bts->key_filter->matched_attid_idx_4_readval[0] = -1;
+	      bts->attid_idxs.readval_attid_idx[0] = -1;
 	    }
 	}
     }
+
+  bts->key_filter->matched_attid_idx_4_readval = bts->attid_idxs.readval_attid_idx;
 }
 
 void
-btree_range_scan_free_matched_idx (BTREE_SCAN * bts, int *array_attr, int *array_read)
+btree_range_scan_free_matched_idx (BTREE_SCAN * bts)
 {
   assert (bts);
-  if (bts->key_filter)
-    {
-      if (bts->key_filter->matched_attid_idx_4_keyflt)
-	{
-	  if (bts->key_filter->matched_attid_idx_4_keyflt != array_attr)
-	    {
-	      free (bts->key_filter->matched_attid_idx_4_keyflt);
-	    }
-	  bts->key_filter->matched_attid_idx_4_keyflt = NULL;
-	}
 
-      if (bts->key_filter->matched_attid_idx_4_readval)
+  if (bts->attid_idxs.keyflt_attid_idx)
+    {
+      if (bts->attid_idxs.keyflt_attid_idx != bts->attid_idxs.keyflt_attid_idx_arr)
 	{
-	  if (bts->key_filter->matched_attid_idx_4_readval != array_read)
-	    {
-	      free (bts->key_filter->matched_attid_idx_4_readval);
-	    }
-	  bts->key_filter->matched_attid_idx_4_readval = NULL;
+	  free (bts->attid_idxs.keyflt_attid_idx);
 	}
+      bts->attid_idxs.keyflt_attid_idx = NULL;
+    }
+
+  if (bts->attid_idxs.readval_attid_idx)
+    {
+      if (bts->attid_idxs.readval_attid_idx != bts->attid_idxs.keyflt_attid_idx_arr)
+	{
+	  free (bts->attid_idxs.readval_attid_idx);
+	}
+      bts->attid_idxs.readval_attid_idx = NULL;
     }
 }
 #endif
@@ -25401,12 +25417,6 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 
   PERF_UTIME_TRACKER_START (thread_p, &bts->time_track);
 
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-  int matched_attid_idx_4_keyflt_arr[32];
-  int matched_attid_idx_4_readval_arr[32];
-
-  btree_range_scan_alloc_matched_idx (bts, matched_attid_idx_4_keyflt_arr, matched_attid_idx_4_readval_arr, 32);
-#endif
   /* Reset end_scan and end_one_iteration flags. */
   bts->end_scan = false;
   bts->end_one_iteration = false;
@@ -25572,19 +25582,12 @@ end:
       assert ((*bts->key_limit_upper) >= 0);
     }
 
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-  btree_range_scan_free_matched_idx (bts, matched_attid_idx_4_keyflt_arr, matched_attid_idx_4_readval_arr);
-#endif
-
   PERF_UTIME_TRACKER_TIME (thread_p, &bts->time_track, PSTAT_BT_LEAF);
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, PSTAT_BT_RANGE_SEARCH);
 
   return error_code;
 
 exit_on_error:
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-  btree_range_scan_free_matched_idx (bts, matched_attid_idx_4_keyflt_arr, matched_attid_idx_4_readval_arr);
-#endif
   error_code = error_code != NO_ERROR ? error_code : ER_FAILED;
   goto end;
 }

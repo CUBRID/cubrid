@@ -4892,6 +4892,8 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  db_private_free_and_init (thread_p, isidp->multi_range_opt.sort_col_dom);
 	}
       memset ((void *) (&(isidp->multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
+
+      btree_range_scan_free_matched_idx (&isidp->bt_scan);
       break;
 
     case S_LIST_SCAN:

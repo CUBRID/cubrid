@@ -156,6 +156,26 @@ enum bts_key_status
 };
 typedef enum bts_key_status BTS_KEY_STATUS;
 
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+struct bts_attid_idx_info
+{
+  bool is_init;
+  int keyflt_attid_idx_arr[32];
+  int readval_attid_idx_arr[32];
+  int *keyflt_attid_idx;
+  int *readval_attid_idx;
+};
+#define BTREE_INIT_SCAN_ATTID_IDXS_INFO(bts)  do {      \
+    (bts)->attid_idxs.is_init = false;                  \
+    (bts)->attid_idxs.keyflt_attid_idx_arr[0] = -1;     \
+    (bts)->attid_idxs.readval_attid_idx_arr[0] = -1;    \
+    (bts)->attid_idxs.keyflt_attid_idx = NULL;          \
+    (bts)->attid_idxs.readval_attid_idx = NULL;         \
+} while(0)
+#else
+#define BTREE_INIT_SCAN_ATTID_IDXS_INFO(bts)
+#endif
+
 /* Btree range search scan structure */
 /* TODO: Move fields used to select visible objects only from BTREE_SCAN to
  *	 a different structure (that is pointed by bts_other).
@@ -195,6 +215,11 @@ struct btree_scan
   BTREE_KEYRANGE key_range;	/* key range information */
   FILTER_INFO *key_filter;	/* key filter information pointer */
   FILTER_INFO key_filter_storage;	/* key filter information storage */
+
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+  bts_attid_idx_info attid_idxs;
+#endif
+
 
   bool use_desc_index;		/* use descending index */
 
@@ -263,6 +288,7 @@ struct btree_scan
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
     (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
+    BTREE_INIT_SCAN_ATTID_IDXS_INFO((bts));             \
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_btid_int_valid = false;			\
@@ -870,5 +896,10 @@ extern int btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, 
 						       OID * class_oid);
 extern int btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid);
 extern bool btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid);
+
+
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+extern void btree_range_scan_free_matched_idx (BTREE_SCAN * bts);
+#endif
 
 #endif /* _BTREE_H_ */
