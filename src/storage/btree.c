@@ -25393,6 +25393,7 @@ btree_range_scan_free_matched_idx (BTREE_SCAN * bts)
 	}
       bts->attid_idxs.readval_attid_idx = NULL;
     }
+  bts->attid_idxs.is_init = false;
 }
 #endif
 
