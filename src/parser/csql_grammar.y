@@ -3594,15 +3594,15 @@ alter_stmt
 
 			if (node)
 			  {
-				node->info.alter_user.user_name = $3;
-				node->info.alter_user.comment = $5;
-				if (node->info.alter_user.password == NULL
-				    && node->info.alter_user.comment == NULL
-				    && node->info.alter_user.members == NULL)
-				 {
-				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
-		   		    MSGCAT_SYNTAX_INVALID_ALTER);
-				 }
+			    node->info.alter_user.user_name = $3;
+			    node->info.alter_user.comment = $5;
+			    if (node->info.alter_user.password == NULL
+				&& node->info.alter_user.comment == NULL
+				&& node->info.alter_user.members == NULL)
+			      {
+			        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+                               MSGCAT_SYNTAX_INVALID_ALTER);
+			      }
 			  }
 
 			$$ = node;
