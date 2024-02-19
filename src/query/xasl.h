@@ -1036,6 +1036,8 @@ struct xasl_node
 
   MHT_TABLE *sq_cache_ht;
   int sq_cache_enabled;
+  DB_BIGINT sq_cache_hit;
+  DB_BIGINT sq_cache_miss;
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */

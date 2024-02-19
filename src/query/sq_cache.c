@@ -29,13 +29,12 @@
 #include "xasl_predicate.hpp"
 #include "dbtype.h"
 
-
 #include "sq_cache.h"
 
+#define SQ_CACHE_MISS_MAX 1000
 
 typedef struct _sq_key
 {
-  xasl_node *xasl_addr;
   VAL_LIST *key_list;
   VAL_LIST *pred_list;
   VAL_LIST *range_list;
@@ -64,54 +63,20 @@ static int sq_rem_func (const void *key, void *data, void *args);
 static int sq_rem_func_for_threads (const void *key, void *data, void *args);
 
 int
-sq_cache_disable (xasl_node * xasl)
-{
-  xasl->sq_cache_enabled = false;
-  if (xasl->next)
-    {
-      sq_cache_disable (xasl->next);
-    }
-  if (xasl->aptr_list)
-    {
-      sq_cache_disable (xasl->aptr_list);
-    }
-  if (xasl->bptr_list)
-    {
-      sq_cache_disable (xasl->bptr_list);
-    }
-  if (xasl->connect_by_ptr)
-    {
-      sq_cache_disable (xasl->connect_by_ptr);
-    }
-  if (xasl->dptr_list)
-    {
-      sq_cache_disable (xasl->dptr_list);
-    }
-  if (xasl->fptr_list)
-    {
-      sq_cache_disable (xasl->fptr_list);
-    }
-  if (xasl->scan_ptr)
-    {
-      sq_cache_disable (xasl->scan_ptr);
-    }
-  return NO_ERROR;
-}
-
-int
 sq_cache_initialize (xasl_node * xasl)
 {
-  assert (xasl->sq_cache_enabled == false || xasl->sq_cache_enabled == true);
-  if (xasl->sq_cache_enabled == false)
+  assert (xasl->sq_cache_enabled == 0 || xasl->sq_cache_enabled == 1 || xasl->sq_cache_enabled == -1);
+  if (xasl->sq_cache_enabled == -1)
     {
       xasl->sq_cache_ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
-      er_log_debug (ARG_FILE_LINE, "sq_cache_initialize() : ht %p is allocated\n", xasl->sq_cache_ht);
-
+      //er_log_debug (ARG_FILE_LINE, "sq_cache_initialize() : ht %p is allocated\n", xasl->sq_cache_ht);
+      xasl->sq_cache_hit = (DB_BIGINT) 0;
+      xasl->sq_cache_miss = (DB_BIGINT) 0;
       if (!xasl->sq_cache_ht)
 	{
 	  return ER_FAILED;
 	}
-      xasl->sq_cache_enabled = true;
+      xasl->sq_cache_enabled = 1;
       return NO_ERROR;
     }
   else
@@ -131,8 +96,6 @@ sq_hash_func (const void *key, unsigned int ht_size)
   pk = (sq_key *) key;
   k = *pk;
   memset (&t, 0, sizeof (DB_VALUE));
-
-  h = mht_ptrhash ((void *) k.xasl_addr, ht_size);
 
   for (p = k.key_list->valp; p; p = p->next)
     {
@@ -157,10 +120,6 @@ sq_cmp_func (const void *key1, const void *key2)
   QPROC_DB_VALUE_LIST p1, p2;
   k1 = (sq_key *) key1;
   k2 = (sq_key *) key2;
-  if (!mht_compare_ptrs_are_equal (k1->xasl_addr, k2->xasl_addr))
-    {
-      return 0;
-    }
   if (k1->key_list->val_cnt != k2->key_list->val_cnt)
     {
       return 0;
@@ -323,8 +282,6 @@ sq_make_key (xasl_node * xasl)
     }
 
   keyp = (sq_key *) malloc (sizeof (sq_key));
-  memset (keyp, 0, sizeof (sq_key));
-  keyp->xasl_addr = xasl;
 
   keyp->key_list = (VAL_LIST *) malloc (sizeof (VAL_LIST));
   keyp->key_list->val_cnt = 0;
@@ -534,13 +491,15 @@ sq_put (xasl_node * xasl, DB_VALUE * result)
   sq_val *val;
   const void *ret;
 
+  assert (xasl->sq_cache_enabled != 0);
+
   key = sq_make_key (xasl);
 
   if (key == NULL)
     {
       return ER_FAILED;
     }
-  if (xasl->sq_cache_enabled == false)
+  if (xasl->sq_cache_enabled == -1)
     {
       sq_cache_initialize (xasl);
     }
@@ -556,7 +515,6 @@ sq_put (xasl_node * xasl, DB_VALUE * result)
       sq_free_val (val);
       return ER_FAILED;
     }
-
   return NO_ERROR;
 }
 
@@ -567,6 +525,13 @@ sq_get (xasl_node * xasl, DB_VALUE ** retp)
   sq_key *key;
   sq_val *ret;
 
+  if (xasl->sq_cache_miss >= SQ_CACHE_MISS_MAX)
+    {
+      return false;
+    }
+
+  assert (xasl->sq_cache_enabled != 0);
+
   key = sq_make_key (xasl);
 
   if (key == NULL)
@@ -574,7 +539,7 @@ sq_get (xasl_node * xasl, DB_VALUE ** retp)
       return false;
     }
 
-  if (xasl->sq_cache_enabled == false)
+  if (xasl->sq_cache_enabled == -1)
     {
       sq_cache_initialize (xasl);
     }
@@ -585,14 +550,15 @@ sq_get (xasl_node * xasl, DB_VALUE ** retp)
 
   if (ret == NULL)
     {
+      xasl->sq_cache_miss++;
       sq_free_key (key);
       return false;
     }
 
   sq_unpack_val (ret, xasl, retp);
-
   sq_free_key (key);
 
+  xasl->sq_cache_hit++;
   return true;
 }
 
@@ -609,7 +575,7 @@ void
 sq_cache_drop_all (xasl_node * xasl)
 {
   MHT_TABLE *ht;
-  if (xasl->sq_cache_enabled == true)
+  if (xasl->sq_cache_enabled == 1)
     {
       ht = xasl->sq_cache_ht;
       if (ht != NULL)
@@ -621,16 +587,18 @@ sq_cache_drop_all (xasl_node * xasl)
 }
 
 void
-sq_cache_destroy (THREAD_ENTRY * thread_p, xasl_node * xasl)
+sq_cache_destroy (xasl_node * xasl)
 {
   int err;
-  assert (xasl->sq_cache_enabled == false || xasl->sq_cache_enabled == true);
-  if (xasl->sq_cache_enabled == true)
+  assert (xasl->sq_cache_enabled == 0 || xasl->sq_cache_enabled == 1 || xasl->sq_cache_enabled == -1);
+  if (xasl->sq_cache_enabled == 1)
     {
+      er_log_debug (ARG_FILE_LINE, "destroy sq_cache at xasl %p\ncache info : \n\thit : %10ld\n\tmiss: %10ld\n", xasl,
+		    xasl->sq_cache_hit, xasl->sq_cache_miss);
       sq_cache_drop_all (xasl);
       mht_destroy (xasl->sq_cache_ht);
     }
 
-  xasl->sq_cache_enabled = false;
+  xasl->sq_cache_enabled = 0;
   xasl->sq_cache_ht = NULL;
 }

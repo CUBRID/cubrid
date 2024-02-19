@@ -1701,7 +1701,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   /* initialize xasl status */
   xasl->status = XASL_INITIALIZED;
-  xasl->sq_cache_enabled = false;
+  xasl->sq_cache_enabled = 0;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

@@ -3873,21 +3873,41 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 
-      if (regu_var->xasl && !regu_var->xasl->aptr_list && !regu_var->xasl->dptr_list)
+      if (regu_var->xasl && !regu_var->xasl->aptr_list && !regu_var->xasl->dptr_list
+	  && (regu_var->xasl->status == XASL_CLEARED || regu_var->xasl->status == XASL_INITIALIZED))
 	{
-	  if (sq_get (regu_var->xasl, &regu_var->value.dbvalptr))
+	  switch (regu_var->xasl->sq_cache_enabled)
 	    {
+	    case 0:
+	      regu_var->xasl->sq_cache_enabled = -1;
+	      EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+	      if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+		{
+		  goto exit_on_error;
+		}
 	      *peek_dbval = regu_var->value.dbvalptr;
 	      break;
-	    }
-	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
-	  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
-	    {
-	      goto exit_on_error;
-	    }
-	  *peek_dbval = regu_var->value.dbvalptr;
+	    case 1:
+	    case -1:
+	      if (sq_get (regu_var->xasl, &regu_var->value.dbvalptr))
+		{
+		  *peek_dbval = regu_var->value.dbvalptr;
+		  break;
+		}
+	      EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+	      if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+		{
+		  goto exit_on_error;
+		}
+	      *peek_dbval = regu_var->value.dbvalptr;
 
-	  sq_put (regu_var->xasl, *peek_dbval);
+	      sq_put (regu_var->xasl, *peek_dbval);
+	      break;
+
+	    default:
+	      assert (0);
+	      break;
+	    }
 	}
       else
 	{
