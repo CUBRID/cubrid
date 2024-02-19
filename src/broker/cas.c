@@ -767,7 +767,7 @@ conn_retry:
 
 	if (!is_xa_prepared ())
 	  {
-	    ux_end_tran (CCI_TRAN_ROLLBACK, false);
+	    ux_end_tran (CCI_TRAN_ROLLBACK, false, true);
 	  }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
@@ -1476,7 +1476,7 @@ cas_main (void)
 
 	    if (!is_xa_prepared ())
 	      {
-		if (ux_end_tran (CCI_TRAN_ROLLBACK, false) < 0)
+		if (ux_end_tran (CCI_TRAN_ROLLBACK, false, true) < 0)
 		  {
 		    as_info->reset_flag = TRUE;
 		  }
