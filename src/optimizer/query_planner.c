@@ -6641,13 +6641,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
     /* set current visited terms */
 
-    /* set visited segs for eqclass */
+    /* set visited segs for removing join terms already logically evaluated. */
     for (i = bitset_iterate (visited_terms, &bi); i != -1; i = bitset_next_member (&bi))
       {
 	term = QO_ENV_TERM (planner->env, i);
 
 	/* check eqclass */
-	if (QO_TERM_EQCLASS (term))
+	if (QO_TERM_CLASS (term) != QO_TC_DUMMY_JOIN && QO_TERM_NOMINAL_SEG (term) && QO_TERM_EQCLASS (term))
 	  {
 	    bitset_union (&visited_segs, &(QO_TERM_SEGS (term)));
 	  }
@@ -6797,7 +6797,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 	      case QO_TC_JOIN:
 		/* check for term which is already logically evaluated. */
-		if (QO_TERM_EQCLASS (term) && bitset_subset (&visited_segs, &((QO_TERM_EQCLASS (term))->segs)))
+		if (QO_TERM_NOMINAL_SEG (term) && QO_TERM_EQCLASS (term)
+		    && bitset_subset (&visited_segs, &((QO_TERM_EQCLASS (term))->segs)))
 		  {
 		    /* skip term */
 		    skip_term = true;
