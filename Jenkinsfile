@@ -50,10 +50,12 @@ pipeline {
             always {
               script {
                 archiveArtifacts "${OUTPUT_DIR}/*"
-                if (env.JUNIT_REQUIRED == 'true' && findFiles(glob: "${TEST_REPORT}/*.xml").length > 0) {
+                if (env.JUNIT_REQUIRED == 'true' && fileExists("${TEST_REPORT}/summary.xml")) {
                   junit "${TEST_REPORT}/*.xml"
+                } else {
+                  echo 'Skip junit for feature branch'
                 }
-              }
+              
             }
           }
         }
@@ -90,8 +92,10 @@ pipeline {
             always {
               script {
                 archiveArtifacts "${OUTPUT_DIR}/*"
-                if (env.JUNIT_REQUIRED == 'true' && findFiles(glob: "${TEST_REPORT}/*.xml").length > 0) {
+                if (env.JUNIT_REQUIRED == 'true' && fileExists("${TEST_REPORT}/summary.xml")) {
                   junit "${TEST_REPORT}/*.xml"
+                } else {
+                  echo 'Skip junit for feature branch'
                 }
               }
             }
