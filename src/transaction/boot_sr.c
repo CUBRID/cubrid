@@ -98,6 +98,7 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+#include "memory_monitor_sr.hpp"
 
 #define BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE  \
   (1250 * (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE))	/* 5 Mbytes */
@@ -2263,6 +2264,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   er_clear ();
 
   event_log_init (db_name);
+
+#if defined(SERVER_MODE)
+  if (mmon_initialize (db_name) != NO_ERROR)
+    {
+      goto error;
+    }
+#endif
 
   /* initialize allocations areas for things we need, on the client, most of this is done inside ws_init(). */
   area_init ();

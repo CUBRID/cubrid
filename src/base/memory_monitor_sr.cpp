@@ -25,6 +25,8 @@
 #include <cstring>
 #include <algorithm>
 
+#include "error_manager.h"
+#include "system_parameter.h"
 #include "memory_monitor_sr.hpp"
 
 typedef struct mmon_metainfo MMON_METAINFO;
@@ -237,6 +239,38 @@ using namespace cubmem;
 bool mmon_is_memory_monitor_enabled ()
 {
   return (mmon_Gl != nullptr);
+}
+
+int mmon_initialize (const char *server_name)
+{
+  int error = NO_ERROR;
+
+  assert (mmon_Gl == nullptr);
+  assert_release (server_name != NULL);
+
+  if (prm_get_bool_value (PRM_ID_ENABLE_MEMORY_MONITORING))
+    {
+      mmon_Gl = new (std::nothrow) memory_monitor (server_name);
+      if (mmon_Gl == nullptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (memory_monitor));
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return error;
+	}
+    }
+  return error;
+}
+
+void mmon_finalize ()
+{
+  if (mmon_is_memory_monitor_enabled ())
+    {
+#if !defined (NDEBUG)
+      mmon_Gl->finalize_dump ();
+#endif
+      delete mmon_Gl;
+      mmon_Gl = nullptr;
+    }
 }
 
 size_t mmon_get_allocated_size (char *ptr)
