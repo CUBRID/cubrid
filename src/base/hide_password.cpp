@@ -44,48 +44,21 @@
 #include "porting.h"
 #include "cas_common.h"
 #include "hide_password.h"
-//#include "parse_tree.h"
 #include "system_parameter.h"
-//#include "environment_variable.h"
-//#include "broker_config.h"
-//#include "util_func.h"
+#include "chartype.h"
 
-//extern PARSER_CONTEXT *this_parser;
 //==========================================================================
-
-static unsigned char is_space[0x100] =
-{
-  // ' '  '\t'  '\r'  '\n'  '\f'  '\v'
-  // 0x20 0x09  0x0d  0x0a  0x0c  0x0b
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-};
-
 #define SKIP_SPACE_CHARACTERS(p)                \
   do {                                          \
-        while (is_space[(unsigned char) *p])     \
+        while (char_isspace((unsigned char) *p))\
 	    {                                   \
 	      p++;                              \
 	    }                                   \
    } while(0)
 
-#define MAX_PWD_LENGTH                   (0x0FFFFFFF)
-#define SET_PWD_LENGTH(s, e)             ((e) - (s))
-#define SET_PWD_ADDINFO(comma, en_pwd)      (((comma) ? (0x01 << 30) : 0) | (((en_pwd) & 0x03) << 28))
+#define MAX_PWD_LENGTH                     (0x0FFFFFFF)
+#define SET_PWD_LENGTH(s, e)               ((e) - (s))
+#define SET_PWD_ADDINFO(comma, en_pwd)     (((comma) ? (0x01 << 30) : 0) | (((en_pwd) & 0x03) << 28))
 #define SET_PWD_LENGTH_N_ADDINFO(s, e, comma, en_pwd)  (SET_PWD_ADDINFO((comma), (en_pwd)) | SET_PWD_LENGTH((s), (e)))
 #define IS_PWD_NEED_COMMA(pwd_info_ptr)    (((pwd_info_ptr)[1] >> 30) & 0x01)
 #define IS_PWD_NEED_PASSWORD(pwd_info_ptr) ((EN_ADD_PWD_STRING)(((pwd_info_ptr)[1] >> 28) & 0x03))
@@ -223,7 +196,7 @@ hide_password::get_token (char *&in, int &len)
 	  break;
 
 	default:
-	  if (is_space[ (unsigned char) *in])
+	  if (char_isspace ((unsigned char) *in))
 	    {
 	      len = (int) (in - ps);
 	      return ps;
