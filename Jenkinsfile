@@ -100,9 +100,9 @@ pipeline {
 
         stage('Windows Release') {
           when {
-            expression {
+            not {
               // Skip Windows Release stage for feature branches
-              return !(env.BRANCH_NAME ==~ /^feature\/.*/)
+              branch 'feature/*'
             }
           }
           agent {
