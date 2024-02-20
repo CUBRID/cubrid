@@ -986,8 +986,6 @@ extern FILE *port_open_memstream (char **ptr, size_t * sizeloc);
 
 extern void port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc);
 
-extern char *trim (char *str);
-
 extern int parse_bigint (INT64 * ret_p, const char *str_p, int base);
 
 extern int str_to_int32 (int *ret_p, char **end_p, const char *str_p, int base);
