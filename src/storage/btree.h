@@ -168,7 +168,7 @@ typedef enum bts_key_status BTS_KEY_STATUS;
 #define CHECK_VERIFY_COMMON_PREFIX_PAGE_INFO
 #endif
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(CHECK_VERIFY_COMMON_PREFIX_PAGE_INFO)
+#if defined(CHECK_VERIFY_COMMON_PREFIX_PAGE_INFO)
 #define COMMON_PREFIX_PAGE_DEBUG_INFO_RESET(bts)   do {            \
             VPID_SET_NULL (&((bts)->cur_common_prefix_page_vpid)); \
             LSA_SET_NULL(&((bts)->cur_common_prefix_page_lsa));    \
@@ -211,7 +211,6 @@ struct btree_scan
   bool clear_cur_key;		/* clear flag for current key value */
 
   //---------------------------------------------------------------------------------------------   
-  /* IMPROVE_RANGE_SCAN_IN_BTREE */
 #if defined(CHECK_VERIFY_COMMON_PREFIX_PAGE_INFO)
   VPID cur_common_prefix_page_vpid;
   LOG_LSA cur_common_prefix_page_lsa;
@@ -789,10 +788,7 @@ extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERA
 				INDX_SCAN_ID * isidp, bool is_all_class_srch);
 extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func);
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
-extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key,
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-					 BTREE_SCAN * bts,
-#endif
+extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTREE_SCAN * bts,
 					 int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
 					 int func_index_col_id);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize, TP_DOMAIN * btree_domainp, int key_minmax);
