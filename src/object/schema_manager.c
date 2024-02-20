@@ -2277,13 +2277,14 @@ sm_downcase_name (const char *name, char *buf, int buf_size)
 char *
 sm_user_specified_name (const char *name, char *buf, int buf_size)
 {
-  char user_specified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  const char *current_schema_name = NULL;
   const char *dot = NULL;
+  char user_specified_name[SM_MAX_IDENTIFIER_LENGTH];
+  int user_specified_name_len;
+  const char *current_schema_name = NULL;
   int error = NO_ERROR;
 
   assert (buf != NULL);
-  assert (buf_size > 0);
+  assert (buf_size >= SM_MAX_IDENTIFIER_LENGTH);
 
   if (name == NULL || name[0] == '\0')
     {
@@ -2292,10 +2293,16 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
-  /* If the name is already a user-specified name or a system class name, do not recreate it. */
+  /* Find the ending position of the user-specified name. */
   dot = strchr (name, '.');
+
+  /* If the name is already a user-specified name or a system class name, do not recreate it. */
   if (dot != NULL)
     {
+      /* There must be only one dot(.) because dot(.) cannot be used in identifier names
+       * even if the exception rule is used. */
+      assert (strchr (dot + 1, '.') == NULL);
+
       assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
       assert (strlen (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
@@ -2305,7 +2312,20 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
        */
       return sm_downcase_name (name, buf, buf_size);
     }
-  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+
+  /* If the length of the object name was not previously checked, it may exceed 222 bytes.
+   * In this case, return only the object name without raising an error. And expect that the object is not found */
+  if (strlen (name) >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
+    {
+      assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
+
+      /*
+       * e.g.   name: object_name (exceeds)
+       *      return: object_name (exceeds)
+       */
+      return sm_downcase_name (name, buf, buf_size);
+    }
+
   if (sm_check_system_class_by_name (name))
     {
       /*
@@ -2317,14 +2337,106 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
-  assert (snprintf (NULL, 0, "%s.%s", current_schema_name, name) < buf_size);
-  assert (snprintf (NULL, 0, "%s.%s", current_schema_name, name) < SM_MAX_IDENTIFIER_LENGTH);
+  /* Calculate the length of the user-specified name in advance. */
+  user_specified_name_len = snprintf (NULL, 0, "%s.%s", current_schema_name, name);
+
+  if (user_specified_name_len >= buf_size || user_specified_name_len >= SM_MAX_IDENTIFIER_LENGTH)
+    {
+      assert (false);
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
+      return NULL;
+    }
 
   /*
    * e.g.   name: object_name
    *      return: current_user_name.object_name
    */
-  snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_schema_name, name);
+  sprintf (user_specified_name, "%s.%s", current_schema_name, name);
+  user_specified_name[user_specified_name_len] = '\0';
+
+  return sm_downcase_name (user_specified_name, buf, buf_size);
+}
+
+/*
+ * sm_user_specified_name_for_serial() - Make the name a user-specified name.
+ *   return: output buffer pointer or NULL on error
+ *   name(in): user-specified name or object name
+ *   buf(out): output buffer
+ *   buf_size(in): output buffer length
+ */
+char *
+sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
+{
+  const char *dot = NULL;
+  char user_specified_name[DB_MAX_SERIAL_NAME_LENGTH];
+  int user_specified_name_len;
+  const char *current_schema_name = NULL;
+  int error = NO_ERROR;
+
+  assert (buf != NULL);
+  assert (buf_size >= DB_MAX_SERIAL_NAME_LENGTH);
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
+      return NULL;
+    }
+
+  /* Find the ending position of the user-specified name. */
+  dot = strchr (name, '.');
+
+  /* If the name is already a user-specified name or a system class name, do not recreate it. */
+  if (dot != NULL)
+    {
+      /* There must be only one dot(.) because dot(.) cannot be used in identifier names
+       * even if the exception rule is used. */
+      assert (strchr (dot + 1, '.') == NULL);
+
+      assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
+      assert (strlen (dot + 1) < DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH);
+
+      /*
+       * e.g.   name: user_name.object_name
+       *      return: user_name.object_name
+       */
+      return sm_downcase_name (name, buf, buf_size);
+    }
+
+  /* If the length of the object name was not previously checked, it may exceed 482 bytes.
+   * In this case, return only the object name without raising an error. And expect that the object is not found */
+  if (strlen (name) >= DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH)
+    {
+      assert (strlen (name) < DB_MAX_SERIAL_NAME_LENGTH);
+
+      /*
+       * e.g.   name: object_name (exceeds)
+       *      return: object_name (exceeds)
+       */
+      return sm_downcase_name (name, buf, buf_size);
+    }
+
+  current_schema_name = sc_current_schema_name ();
+
+  /* Calculate the length of the user-specified name in advance. */
+  user_specified_name_len = snprintf (NULL, 0, "%s.%s", current_schema_name, name);
+
+  if (user_specified_name_len >= buf_size || user_specified_name_len >= SM_MAX_IDENTIFIER_LENGTH)
+    {
+      assert (false);
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
+      return NULL;
+    }
+
+  /*
+   * e.g.   name: object_name
+   *      return: current_user_name.object_name
+   */
+  sprintf (user_specified_name, "%s.%s", current_schema_name, name);
+  user_specified_name[user_specified_name_len] = '\0';
+
   return sm_downcase_name (user_specified_name, buf, buf_size);
 }
 
@@ -2339,32 +2451,51 @@ char *
 sm_qualifier_name (const char *name, char *buf, int buf_size)
 {
   const char *dot = NULL;
-  int len = 0;
+  int qualifier_name_len;
   int error = NO_ERROR;
+
+  assert (buf != NULL);
+  assert (buf_size >= SM_MAX_USER_LENGTH);
 
   if (name == NULL || name[0] == '\0')
     {
       ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
       return NULL;
     }
 
-  assert (buf != NULL);
-  assert (buf_size > 0);
+
+  /* Find the ending position of the user-specified name. */
+  dot = strchr (name, '.');
 
   /* If the name is not a user-specified name, NULL is returned. */
-  dot = strchr (name, '.');
   if (dot == NULL)
     {
+      /*
+       * e.g.           name: object_name
+       *      qualifier_name: NULL
+       */
+      buf[0] = '\0';
       return NULL;
     }
 
-  len = STATIC_CAST (int, dot - name);
+  /* There must be only one dot(.) because dot(.) cannot be used in identifier names
+   * even if the exception rule is used. */
+  assert (strchr (dot + 1, '.') == NULL);
 
-  assert (len < buf_size);
-  assert (len < SM_MAX_USER_LENGTH);
+  qualifier_name_len = STATIC_CAST (int, dot - name);
 
-  memcpy (buf, name, len);
-  buf[len] = '\0';
+  /* If it exceeds SM_MAX_USER_LENGTH, it is not a user-specified name. */
+  if (qualifier_name_len >= SM_MAX_USER_LENGTH)
+    {
+      assert (false);
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
+      return NULL;
+    }
+
+  memcpy (buf, name, qualifier_name_len);
+  buf[qualifier_name_len] = '\0';
 
   return buf;
 }
