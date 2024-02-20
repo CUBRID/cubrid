@@ -153,7 +153,8 @@ static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *
 static void pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf);
 static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_for, DB_VALUE * upper_limit,
 						bool * has_limit);
-static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val);
+static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val,
+					  bool add_offset);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class);
 static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for,
@@ -9503,7 +9504,7 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
  *  specified as LIMIT :offset, :row_count this function returns :offset + :row_count)
  */
 static int
-pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val)
+pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val, bool add_offset)
 {
   int save_set_host_var;
   TP_DOMAIN *domainp = NULL;
@@ -9572,7 +9573,14 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
 	}
 
       /* add range to current limit */
-      db_make_bigint (limit_val, db_get_bigint (limit_val) + db_get_bigint (&range));
+      if (add_offset)
+	{
+	  db_make_bigint (limit_val, db_get_bigint (limit_val) + db_get_bigint (&range));
+	}
+      else
+	{
+	  db_make_bigint (limit_val, db_get_bigint (&range));
+	}
     }
 
 cleanup:
@@ -9594,7 +9602,7 @@ cleanup:
  * limit_val (in/out) : limit value
  */
 int
-pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * limit_val)
+pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * limit_val, bool add_offset)
 {
   assert_release (limit_val != NULL);
 
@@ -9607,7 +9615,7 @@ pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * l
 
   if (query->info.query.limit)
     {
-      return pt_get_query_limit_from_limit (parser, query->info.query.limit, limit_val);
+      return pt_get_query_limit_from_limit (parser, query->info.query.limit, limit_val, add_offset);
     }
 
   if (query->info.query.orderby_for != NULL)
@@ -9623,6 +9631,35 @@ pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * l
     }
 
   return NO_ERROR;
+}
+
+/*
+ * pt_get_query_limit_from_query () - get the limit value from a query
+ * return : error code or NO_ERROR
+ * parser (in)	      : parser context
+ * query (in)	      : query
+ */
+DB_BIGINT
+pt_get_query_limit_from_query (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  DB_VALUE limit_val;
+
+  if (pt_get_query_limit_value (parser, query, &limit_val, false) != NO_ERROR)
+    {
+      /* remove error which is occured in this function */
+      if (pt_has_error (parser))
+	{
+	  pt_reset_error (parser);
+	  parser->flag.has_internal_error = 0;
+	}
+      return 0;
+    }
+  else if (DB_IS_NULL (&limit_val))
+    {
+      return 0;
+    }
+
+  return db_get_bigint (&limit_val);
 }
 
 /*
@@ -9665,7 +9702,7 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query
   save_set_host_var = parser->flag.set_host_var;
   parser->flag.set_host_var = 1;
 
-  if (pt_get_query_limit_value (parser, query, &limit_val) != NO_ERROR)
+  if (pt_get_query_limit_value (parser, query, &limit_val, true) != NO_ERROR)
     {
       goto end;
     }
@@ -10166,7 +10203,7 @@ pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser, PT_NODE * stateme
       return false;
     }
 
-  if (pt_get_query_limit_value (parser, statement, &limit_val) != NO_ERROR)
+  if (pt_get_query_limit_value (parser, statement, &limit_val, true) != NO_ERROR)
     {
       val = 0;
     }
@@ -10756,8 +10793,9 @@ pt_get_name_with_qualifier_removed (const char *name)
 const char *
 pt_get_name_without_current_user_name (const char *name)
 {
-  char *dot = NULL;
-  char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *dot = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH];
+  int qualifier_name_len;
   const char *current_schema_name = NULL;
   const char *object_name = NULL;
   int error = NO_ERROR;
@@ -10767,10 +10805,8 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
-  assert (strlen (name) < DB_MAX_IDENTIFIER_LENGTH);
-  strcpy (name_copy, name);
-
-  dot = strchr (name_copy, '.');
+  /* Find the ending position of the user-specified name. */
+  dot = strchr (name, '.');
 
   /* If the name is not a user-specified name, it is returned as is. */
   if (dot == NULL)
@@ -10782,17 +10818,28 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
+  /* Length of user-specified name. */
+  qualifier_name_len = STATIC_CAST (int, dot - name);
+
+  /* If it exceeds DB_MAX_USER_LENGTH, it is not a user-specified name. */
+  if (qualifier_name_len >= DB_MAX_USER_LENGTH)
+    {
+      return name;
+    }
+
+  /* Copy the user-specified name to the buffer for comparison with the current schema name. */
+  memcpy (qualifier_name, name, qualifier_name_len);
+  qualifier_name[qualifier_name_len] = '\0';
+
   current_schema_name = sc_current_schema_name ();
 
-  dot[0] = '\0';
-
-  if (intl_identifier_casecmp (name_copy, current_schema_name) == 0)
+  if (intl_identifier_casecmp (qualifier_name, current_schema_name) == 0)
     {
       /*
        * e.g.        name: current_schema_name.object_name
        *      object_name: object_name
        */
-      object_name = strchr (name, '.') + 1;
+      object_name = dot + 1;
     }
   else
     {
