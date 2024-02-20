@@ -50,7 +50,7 @@ pipeline {
             always {
               script {
                 archiveArtifacts "${OUTPUT_DIR}/*"
-                if (env.JUNIT_REQUIRED == 'true') {
+                if (env.JUNIT_REQUIRED == 'true' && findFiles(glob: "${TEST_REPORT}/*.xml").length > 0) {
                   junit "${TEST_REPORT}/*.xml"
                 }
               }
@@ -90,7 +90,7 @@ pipeline {
             always {
               script {
                 archiveArtifacts "${OUTPUT_DIR}/*"
-                if (env.JUNIT_REQUIRED == 'true') {
+                if (env.JUNIT_REQUIRED == 'true' && findFiles(glob: "${TEST_REPORT}/*.xml").length > 0) {
                   junit "${TEST_REPORT}/*.xml"
                 }
               }
