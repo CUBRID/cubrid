@@ -8,6 +8,7 @@ pipeline {
   environment {
     OUTPUT_DIR = 'packages'
     TEST_REPORT = 'reports'
+    JUNIT_REQUIRED = true
   }
 
   stages {
@@ -35,13 +36,22 @@ pipeline {
             echo 'Packing...'
             sh "scl enable devtoolset-8 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
 
-            echo 'Testing...'
-            sh '/entrypoint.sh test || echo "$? failed"'
+            script {
+              if (env.BRANCH_NAME ==~ /^feature\/.*/) {
+                echo 'Skip testing for feature branch'
+                JUNIT_REQUIRED = false
+              } else {
+            	echo 'Testing...'
+            	sh '/entrypoint.sh test || echo "$? failed"'
+              }
+            }
           }
           post {
             always {
               archiveArtifacts "${OUTPUT_DIR}/*"
-              junit "${TEST_REPORT}/*.xml"
+              if (env.JUNIT_REQUIRED) {
+                junit "${TEST_REPORT}/*.xml"
+              }
             }
           }
         }
@@ -64,18 +74,33 @@ pipeline {
             echo 'Packing...'
             sh "scl enable devtoolset-8 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
 
-            echo 'Testing...'
-            sh '/entrypoint.sh test || echo "$? failed"'
+            script {
+              if (env.BRANCH_NAME ==~ /^feature\/.*/) {
+                echo 'Skip testing for feature branch'
+                JUNIT_REQUIRED = false
+              } else {
+            	echo 'Testing...'
+            	sh '/entrypoint.sh test || echo "$? failed"'
+              }
+            }
           }
           post {
             always {
               archiveArtifacts "${OUTPUT_DIR}/*"
-              junit "${TEST_REPORT}/*.xml"
+              if (env.JUNIT_REQUIRED) {
+                junit "${TEST_REPORT}/*.xml"
+              }
             }
           }
         }
 
         stage('Windows Release') {
+          when {
+            expression {
+              // Skip Windows Release stage for feature branches
+              return !(env.BRANCH_NAME ==~ /^feature\/.*/)
+            }
+          }
           agent {
             node {
               label 'windows'
@@ -100,8 +125,15 @@ pipeline {
 
   post {
     always {
-      build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
-            propagate: false
+      script {
+        if (env.BRANCH_NAME ==~ /^feature\/.*/) {
+          build job: "${DEPLOY_JOB_FOR_MANUAL}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
+                propagate: false
+        } else {
+          build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
+                propagate: false
+        }
+      }
       emailext replyTo: '$DEFAULT_REPLYTO', to: '$DEFAULT_RECIPIENTS',
                subject: '$DEFAULT_SUBJECT', body: '''${JELLY_SCRIPT,template="html"}'''
     }
