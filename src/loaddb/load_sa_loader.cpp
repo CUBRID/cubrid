@@ -6522,7 +6522,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 	}
     }
 
-  if (errors > 0)
+  if (errors > 0 || *interrupted == true)
     {
       *status = 3;
     }
