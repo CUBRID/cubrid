@@ -6637,6 +6637,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     int retry_cnt, edge_cnt, path_cnt;
     bool found_edge, skip_term;
     BITSET visited_segs;
+    QO_SEGMENT *root, *seg;
     bitset_init (&visited_segs, planner->env);
 
     /* set current visited terms */
@@ -6647,9 +6648,18 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	term = QO_ENV_TERM (planner->env, i);
 
 	/* check eqclass */
-	if (QO_TERM_CLASS (term) != QO_TC_DUMMY_JOIN && QO_TERM_NOMINAL_SEG (term) && QO_TERM_EQCLASS (term))
+	if (QO_TERM_NOMINAL_SEG (term))
 	  {
-	    bitset_union (&visited_segs, &(QO_TERM_SEGS (term)));
+	    seg = QO_TERM_NOMINAL_SEG (term);
+	    /*
+	     * Find the root of the tree in which this segment resides.
+	     */
+	    for (root = seg; QO_SEG_EQ_ROOT (root); root = QO_SEG_EQ_ROOT (root))
+	      {
+		;
+	      }
+	    bitset_add (&visited_segs, QO_SEG_IDX (seg));
+	    bitset_add (&visited_segs, QO_SEG_IDX (root));
 	  }
       }
 
@@ -6805,9 +6815,18 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		  }
 		else
 		  {
-		    if (QO_TERM_NOMINAL_SEG (term) && QO_TERM_EQCLASS (term))
+		    if (QO_TERM_NOMINAL_SEG (term))
 		      {
-			bitset_union (&visited_segs, &(QO_TERM_SEGS (term)));
+			seg = QO_TERM_NOMINAL_SEG (term);
+			/*
+			 * Find the root of the tree in which this segment resides.
+			 */
+			for (root = seg; QO_SEG_EQ_ROOT (root); root = QO_SEG_EQ_ROOT (root))
+			  {
+			    ;
+			  }
+			bitset_add (&visited_segs, QO_SEG_IDX (seg));
+			bitset_add (&visited_segs, QO_SEG_IDX (root));
 		      }
 
 		    /* check for idx-join */
