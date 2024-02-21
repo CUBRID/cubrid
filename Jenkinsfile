@@ -55,7 +55,7 @@ pipeline {
                 } else {
                   echo 'Skip junit for feature branch'
                 }
-              
+              }
             }
           }
         }
