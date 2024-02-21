@@ -2257,8 +2257,8 @@ bool PRM_REPR_CACHE_LOG = false;
 static bool prm_repr_cache_log_default = false;
 static unsigned int prm_repr_cache_log_flag = 0;
 
-bool PRM_NEW_LFHASH = false;
-static bool prm_new_lfhash_default = false;
+bool PRM_NEW_LFHASH = true;
+static bool prm_new_lfhash_default = true;
 static unsigned int prm_new_lfhash_flag = 0;
 
 bool PRM_HEAP_INFO_CACHE_LOGGING = false;
