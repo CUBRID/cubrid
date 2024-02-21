@@ -8,7 +8,7 @@ pipeline {
   environment {
     OUTPUT_DIR = 'packages'
     TEST_REPORT = 'reports'
-    JUNIT_REQUIRED = true
+    JUNIT_REQUIRED = 'true'
   }
 
   stages {
@@ -39,7 +39,7 @@ pipeline {
             script {
               if (env.BRANCH_NAME ==~ /^feature\/.*/) {
                 echo 'Skip testing for feature branch'
-                JUNIT_REQUIRED = false
+                JUNIT_REQUIRED = 'false'
               } else {
             	echo 'Testing...'
             	sh '/entrypoint.sh test || echo "$? failed"'
@@ -48,10 +48,14 @@ pipeline {
           }
           post {
             always {
-              archiveArtifacts "${OUTPUT_DIR}/*"
-              if (env.JUNIT_REQUIRED) {
-                junit "${TEST_REPORT}/*.xml"
-              }
+              script {
+                archiveArtifacts "${OUTPUT_DIR}/*"
+                if (env.JUNIT_REQUIRED == 'true' && fileExists("${TEST_REPORT}/summary.xml")) {
+                  junit "${TEST_REPORT}/*.xml"
+                } else {
+                  echo 'Skip junit for feature branch'
+                }
+              
             }
           }
         }
@@ -77,7 +81,7 @@ pipeline {
             script {
               if (env.BRANCH_NAME ==~ /^feature\/.*/) {
                 echo 'Skip testing for feature branch'
-                JUNIT_REQUIRED = false
+                JUNIT_REQUIRED = 'false'
               } else {
             	echo 'Testing...'
             	sh '/entrypoint.sh test || echo "$? failed"'
@@ -86,9 +90,13 @@ pipeline {
           }
           post {
             always {
-              archiveArtifacts "${OUTPUT_DIR}/*"
-              if (env.JUNIT_REQUIRED) {
-                junit "${TEST_REPORT}/*.xml"
+              script {
+                archiveArtifacts "${OUTPUT_DIR}/*"
+                if (env.JUNIT_REQUIRED == 'true' && fileExists("${TEST_REPORT}/summary.xml")) {
+                  junit "${TEST_REPORT}/*.xml"
+                } else {
+                  echo 'Skip junit for feature branch'
+                }
               }
             }
           }
@@ -96,9 +104,9 @@ pipeline {
 
         stage('Windows Release') {
           when {
-            expression {
+            not {
               // Skip Windows Release stage for feature branches
-              return !(env.BRANCH_NAME ==~ /^feature\/.*/)
+              branch 'feature/*'
             }
           }
           agent {
