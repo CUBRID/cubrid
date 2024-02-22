@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +33,7 @@
 #include "memory_monitor_sr.hpp"
 
 inline size_t
-get_alloc_size (void *ptr)
+get_allocated_size (void *ptr)
 {
   if (ptr == NULL)
     {
@@ -112,7 +113,7 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 
 	  if (ptr != NULL)
 	    {
-	      memcpy (p, ptr, get_alloc_size (ptr));
+	      memcpy (p, ptr, get_allocated_size (ptr));
 	      cub_free (ptr);
 	    }
 	}
