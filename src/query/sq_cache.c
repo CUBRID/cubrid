@@ -20,258 +20,90 @@
  * Correlated Scalar Subquery Result Cache.
  */
 
+
 #ident "$Id$"
 
 #include <stdio.h>
 #include <string.h>
 
 #include "xasl.h"
-#include "xasl_predicate.hpp"
 #include "dbtype.h"
+#include "query_executor.h"
+#include "xasl_predicate.hpp"
+#include "regu_var.hpp"
+
+#include "heap_attrinfo.h"
+#include "object_domain.h"
+#include "query_list.h"
+#include "string_opfunc.h"
+#include "object_primitive.h"
+#include "db_function.hpp"
+
+#include "list_file.h"
+#include "db_set_function.h"
 
 #include "sq_cache.h"
 
 #define SQ_CACHE_MISS_MAX 1000
+#define SQ_CACHE_MIN_HIT_RATIO 9
+
+#define SQ_TYPE_PRED 0
+#define SQ_TYPE_REGU_VAR 1
+#define SQ_TYPE_DBVAL 2
+
+typedef union _sq_regu_value
+{
+  /* fields used by both XASL interpreter and regulator */
+  //DB_VALUE dbval;             /* for DB_VALUE values */
+  DB_VALUE *dbvalptr;		/* for constant values */
+  //ARITH_TYPE *arithptr;               /* arithmetic expression */
+  //  cubxasl::aggregate_list_node * aggptr;    /* aggregate expression */
+  //ATTR_DESCR attr_descr;      /* attribute information */
+  //QFILE_TUPLE_VALUE_POSITION pos_descr;       /* list file columns */
+  QFILE_SORTED_LIST_ID *srlist_id;	/* sorted list identifier for subquery results */
+  //int val_pos;                        /* host variable references */
+  //struct function_node *funcp;        /* function */
+  //REGU_VALUE_LIST *reguval_list;      /* for "values" query */
+  //REGU_VARIABLE_LIST regu_var_list;   /* for CUME_DIST and PERCENT_RANK */
+} sq_regu_value;
 
 typedef struct _sq_key
 {
-  VAL_LIST *key_list;
-  VAL_LIST *pred_list;
-  VAL_LIST *range_list;
+  DB_VALUE *pred_set;
 } sq_key;
 
 typedef struct _sq_val
 {
-  DB_VALUE *dbval;
+  sq_regu_value val;
+  REGU_DATATYPE t;
 } sq_val;
 
 static int sq_hm_entries = 10;
 static int sq_key_max_term = 3;
 
+
+/**************************************************************************************/
+
+static sq_key *sq_make_key (xasl_node * xasl);
+static sq_val *sq_make_val (REGU_VARIABLE * val);
+static void sq_free_key (sq_key * key);
+static void sq_free_val (sq_val * val);
+static void sq_unpack_val (sq_val * val, REGU_VARIABLE * retp);
+
 static unsigned int sq_hash_func (const void *key, unsigned int ht_size);
 static int sq_cmp_func (const void *key1, const void *key2);
-static int sq_add_val_to_list (DB_VALUE * dbv, VAL_LIST * list);
-static int sq_regu_var_handler (regu_variable_node * p, VAL_LIST * dest);
-static int sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest);
-static sq_key *sq_make_key (xasl_node * xasl);
-static void sq_free_key (sq_key * key);
-static void sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc);
-static sq_val *sq_make_val (xasl_node * xasl, DB_VALUE * result);
-static void sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp);
-static void sq_free_val (sq_val * val);
 static int sq_rem_func (const void *key, void *data, void *args);
-static int sq_rem_func_for_threads (const void *key, void *data, void *args);
 
-int
-sq_cache_initialize (xasl_node * xasl)
-{
-  assert (xasl->sq_cache_enabled == 0 || xasl->sq_cache_enabled == 1 || xasl->sq_cache_enabled == -1);
-  if (xasl->sq_cache_enabled == -1)
-    {
-      xasl->sq_cache_ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
-      //er_log_debug (ARG_FILE_LINE, "sq_cache_initialize() : ht %p is allocated\n", xasl->sq_cache_ht);
-      xasl->sq_cache_hit = (DB_BIGINT) 0;
-      xasl->sq_cache_miss = (DB_BIGINT) 0;
-      if (!xasl->sq_cache_ht)
-	{
-	  return ER_FAILED;
-	}
-      xasl->sq_cache_enabled = 1;
-      return NO_ERROR;
-    }
-  else
-    {
-      return ER_FAILED;
-    }
-}
+static int sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set);
 
-static unsigned int
-sq_hash_func (const void *key, unsigned int ht_size)
-{
-  sq_key *pk, k;
-  QPROC_DB_VALUE_LIST p;
-  int i;
-  DB_VALUE t;
-  unsigned int h = 0;
-  pk = (sq_key *) key;
-  k = *pk;
-  memset (&t, 0, sizeof (DB_VALUE));
+/**************************************************************************************/
 
-  for (p = k.key_list->valp; p; p = p->next)
-    {
-      h += mht_valhash (p->val, ht_size);
-    }
-  for (p = k.pred_list->valp; p; p = p->next)
-    {
-      h += mht_valhash (p->val, ht_size);
-    }
-  for (p = k.range_list->valp; p; p = p->next)
-    {
-      h += mht_valhash (p->val, ht_size);
-    }
-
-  return h % ht_size;
-}
-
-static int
-sq_cmp_func (const void *key1, const void *key2)
-{
-  sq_key *k1, *k2;
-  QPROC_DB_VALUE_LIST p1, p2;
-  k1 = (sq_key *) key1;
-  k2 = (sq_key *) key2;
-  if (k1->key_list->val_cnt != k2->key_list->val_cnt)
-    {
-      return 0;
-    }
-  if (k1->pred_list->val_cnt != k2->pred_list->val_cnt)
-    {
-      return 0;
-    }
-  if (k1->range_list->val_cnt != k2->range_list->val_cnt)
-    {
-      return 0;
-    }
-
-  p1 = k1->key_list->valp;
-  p2 = k2->key_list->valp;
-  for (; p1 && p2; p1 = p1->next)
-    {
-      if (!p1->val || !p2->val)
-	{
-	  return 0;
-	}
-      if (!mht_compare_dbvalues_are_equal (p1->val, p2->val))
-	{
-	  return 0;
-	}
-      p2 = p2->next;
-    }
-
-  p1 = k1->pred_list->valp;
-  p2 = k2->pred_list->valp;
-  for (; p1 && p2; p1 = p1->next)
-    {
-      if (!p1->val || !p2->val)
-	{
-	  return 0;
-	}
-      if (!mht_compare_dbvalues_are_equal (p1->val, p2->val))
-	{
-	  return 0;
-	}
-      p2 = p2->next;
-    }
-
-  p1 = k1->range_list->valp;
-  p2 = k2->range_list->valp;
-  for (; p1 && p2; p1 = p1->next)
-    {
-      if (!p1->val || !p2->val)
-	{
-	  return 0;
-	}
-      if (!mht_compare_dbvalues_are_equal (p1->val, p2->val))
-	{
-	  return 0;
-	}
-      p2 = p2->next;
-    }
-
-
-  return 1;
-}
-
-static int
-sq_add_val_to_list (DB_VALUE * dbv, VAL_LIST * list)
-{
-  int cnt = 0;
-  QPROC_DB_VALUE_LIST p;
-  if (!list->valp)
-    {
-      list->valp = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));
-      list->valp->next = NULL;
-      p = list->valp;
-    }
-  else
-    {
-      for (p = list->valp; p->next; p = p->next)
-	{
-	  ;			/* find last node in list */
-	}
-      p->next = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));
-      p = p->next;
-    }
-
-  p->dom = 0;
-  p->val = db_value_copy (dbv);
-  p->next = NULL;
-  list->val_cnt++;
-  cnt++;
-  return cnt;
-}
-
-static int
-sq_regu_var_handler (regu_variable_node * p, VAL_LIST * dest)
-{
-  int cnt = 0;
-  if (!p)
-    {
-      return 0;
-    }
-  if (p->type == TYPE_CONSTANT)
-    {
-      cnt += sq_add_val_to_list (p->value.dbvalptr, dest);
-    }
-  else if (p->type == TYPE_DBVAL)
-    {
-      cnt += sq_add_val_to_list (&p->value.dbval, dest);
-    }
-  else if (p->type == TYPE_INARITH)
-    {
-      cnt += sq_regu_var_handler (p->value.arithptr->leftptr, dest);
-      cnt += sq_regu_var_handler (p->value.arithptr->rightptr, dest);
-    }
-  return cnt;
-}
-
-static int
-sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest)
-{
-  int cnt = 0;
-  if (!src)
-    {
-      return 0;
-    }
-
-  if (src->type == T_PRED)
-    {
-      cnt += sq_add_term_to_list (src->pe.m_pred.lhs, dest);
-      cnt += sq_add_term_to_list (src->pe.m_pred.rhs, dest);
-      return cnt;
-    }
-
-  if (src->type == T_EVAL_TERM)
-    {
-      if (src->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
-	{
-	  COMP_EVAL_TERM t = src->pe.m_eval_term.et.et_comp;
-	  cnt += sq_regu_var_handler (t.lhs, dest);
-	  cnt += sq_regu_var_handler (t.rhs, dest);
-	}
-
-
-    }
-  return cnt;
-
-}
-
-static sq_key *
+sq_key *
 sq_make_key (xasl_node * xasl)
 {
   sq_key *keyp;
-  ACCESS_SPEC_TYPE *p;
   int cnt = 0;
+  ACCESS_SPEC_TYPE *p;
 
   p = xasl->spec_list;
 
@@ -282,39 +114,28 @@ sq_make_key (xasl_node * xasl)
     }
 
   keyp = (sq_key *) malloc (sizeof (sq_key));
-
-  keyp->key_list = (VAL_LIST *) malloc (sizeof (VAL_LIST));
-  keyp->key_list->val_cnt = 0;
-  keyp->key_list->valp = NULL;
-
-  keyp->pred_list = (VAL_LIST *) malloc (sizeof (VAL_LIST));
-  keyp->pred_list->val_cnt = 0;
-  keyp->pred_list->valp = NULL;
-
-  keyp->range_list = (VAL_LIST *) malloc (sizeof (VAL_LIST));
-  keyp->range_list->val_cnt = 0;
-  keyp->range_list->valp = NULL;
-
+  keyp->pred_set = db_value_create ();
+  db_make_set (keyp->pred_set, db_set_create_basic (NULL, NULL));
 
   for (p = xasl->spec_list; p; p = p->next)
     {
       /* key */
-      cnt += sq_add_term_to_list (p->where_key, keyp->key_list);
+      cnt += sq_walk_xasl_and_add_val_to_set (p->where_key, SQ_TYPE_PRED, keyp->pred_set);
       /* pred */
-      cnt += sq_add_term_to_list (p->where_pred, keyp->pred_list);
+      cnt += sq_walk_xasl_and_add_val_to_set (p->where_pred, SQ_TYPE_PRED, keyp->pred_set);
       /* range */
-      cnt += sq_add_term_to_list (p->where_range, keyp->range_list);
+      cnt += sq_walk_xasl_and_add_val_to_set (p->where_range, SQ_TYPE_PRED, keyp->pred_set);
     }
   if (xasl->scan_ptr)
     {
       for (p = xasl->scan_ptr->spec_list; p; p = p->next)
 	{
 	  /* key */
-	  cnt += sq_add_term_to_list (p->where_key, keyp->key_list);
+	  cnt += sq_walk_xasl_and_add_val_to_set (p->where_key, SQ_TYPE_PRED, keyp->pred_set);
 	  /* pred */
-	  cnt += sq_add_term_to_list (p->where_pred, keyp->pred_list);
+	  cnt += sq_walk_xasl_and_add_val_to_set (p->where_pred, SQ_TYPE_PRED, keyp->pred_set);
 	  /* range */
-	  cnt += sq_add_term_to_list (p->where_range, keyp->range_list);
+	  cnt += sq_walk_xasl_and_add_val_to_set (p->where_range, SQ_TYPE_PRED, keyp->pred_set);
 	}
     }
 
@@ -327,171 +148,248 @@ sq_make_key (xasl_node * xasl)
   return keyp;
 }
 
-static void
-sq_free_key (sq_key * keyp)
+sq_val *
+sq_make_val (REGU_VARIABLE * val)
 {
-  QPROC_DB_VALUE_LIST p, tmp;
-  if (keyp->key_list->val_cnt > 0)
-    {
-      p = keyp->key_list->valp;
-      while (p != NULL)
-	{
-	  tmp = p;
-	  p = p->next;
+  sq_val *ret;
+  ret = (sq_val *) malloc (sizeof (sq_val));
 
-	  pr_free_ext_value (tmp->val);
-	  free (tmp);
-	}
+  ret->t = val->type;
+
+  switch (ret->t)
+    {
+    case TYPE_CONSTANT:
+      ret->val.dbvalptr = db_value_copy (val->value.dbvalptr);
+      break;
+
+    case TYPE_LIST_ID:
+      ret->val.srlist_id = (QFILE_SORTED_LIST_ID *) malloc (sizeof (QFILE_SORTED_LIST_ID));
+      ret->val.srlist_id->list_id = qfile_clone_list_id (val->value.srlist_id->list_id, true);
+      ret->val.srlist_id->sorted = val->value.srlist_id->sorted;
+      break;
+
+    default:
+      assert (0);
+      break;
     }
 
-  if (keyp->pred_list->val_cnt > 0)
-    {
-      p = keyp->pred_list->valp;
-      while (p != NULL)
-	{
-	  tmp = p;
-	  p = p->next;
-
-	  pr_free_ext_value (tmp->val);
-	  free (tmp);
-	}
-    }
-
-  if (keyp->range_list->val_cnt > 0)
-    {
-      p = keyp->range_list->valp;
-      while (p != NULL)
-	{
-	  tmp = p;
-	  p = p->next;
-
-	  pr_free_ext_value (tmp->val);
-	  free (tmp);
-	}
-    }
-  free (keyp->key_list);
-  free (keyp->pred_list);
-  free (keyp->range_list);
-
-  free (keyp);
+  return ret;
 }
 
-static void
-sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc)
+void
+sq_free_key (sq_key * key)
 {
-  QPROC_DB_VALUE_LIST dblist1, dblist2;
+  pr_free_ext_value (key->pred_set);
+  free (key);
+}
 
-  if (!alloc)
+void
+sq_free_val (sq_val * v)
+{
+  switch (v->t)
     {
-      QPROC_DB_VALUE_LIST p, tmp;
-      p = (*new_val_list)->valp;
-      dblist2 = (*new_val_list)->valp;
-      (*new_val_list)->val_cnt = 0;
-      for (dblist1 = val_list_p->valp; dblist1; dblist1 = dblist1->next)
+    case TYPE_CONSTANT:
+      pr_free_ext_value (v->val.dbvalptr);
+      break;
+
+    case TYPE_LIST_ID:
+      QFILE_FREE_AND_INIT_LIST_ID (v->val.srlist_id->list_id);
+      free (v->val.srlist_id);
+      break;
+
+    default:
+      assert (0);
+      break;
+    }
+  free (v);
+}
+
+
+void
+sq_unpack_val (sq_val * v, REGU_VARIABLE * retp)
+{
+  switch (v->t)
+    {
+    case TYPE_CONSTANT:
+      if (retp->value.dbvalptr)
 	{
-	  if ((*new_val_list)->valp != dblist2)
-	    {
-	      if (!dblist2->next)
-		{
-		  dblist2->next = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));
-		  dblist2 = dblist2->next;
-		  dblist2->next = 0;
-		  dblist2->val = 0;
-		}
-	      else
-		{
-		  dblist2 = dblist2->next;
-		}
-
-	    }
-
-	  if (dblist2->val)
-	    {
-	      db_value_clone (dblist1->val, dblist2->val);
-	    }
-	  else
-	    {
-	      dblist2->val = db_value_copy (dblist1->val);
-	    }
-
-
-	  dblist2->dom = 0;
-	  (*new_val_list)->val_cnt++;
+	  pr_clear_value (retp->value.dbvalptr);
+	  db_value_clone (v->val.dbvalptr, retp->value.dbvalptr);
 	}
-    }
-  else
-    {
-      *new_val_list = (VAL_LIST *) malloc (sizeof (VAL_LIST));
-      dblist2 = NULL;
-
-      (*new_val_list)->val_cnt = 0;
-
-      for (dblist1 = val_list_p->valp; dblist1; dblist1 = dblist1->next)
+      else
 	{
-	  if (!dblist2)
-	    {
-	      (*new_val_list)->valp = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));
-	      (*new_val_list)->valp->next = 0;
-	      dblist2 = (*new_val_list)->valp;
-	    }
-	  else
-	    {
-	      dblist2->next = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));
-	      dblist2 = dblist2->next;
-	      dblist2->next = 0;
-	    }
-	  dblist2->val = db_value_copy (dblist1->val);
-	  dblist2->dom = 0;
-	  (*new_val_list)->val_cnt++;
+	  retp->value.dbvalptr = db_value_copy (v->val.dbvalptr);
 	}
+      break;
+
+    case TYPE_LIST_ID:
+
+      if (retp->value.srlist_id)
+	{
+	  qfile_copy_list_id (retp->value.srlist_id->list_id, v->val.srlist_id->list_id, true);
+	  retp->value.srlist_id->sorted = v->val.srlist_id->sorted;
+	}
+      else
+	{
+	  assert (0);
+	  retp->value.srlist_id->list_id = qfile_clone_list_id (v->val.srlist_id->list_id, true);
+	}
+      break;
+
+    default:
+      break;
     }
-  return;
 }
 
-static sq_val *
-sq_make_val (xasl_node * xasl, DB_VALUE * result)
+unsigned int
+sq_hash_func (const void *key, unsigned int ht_size)
 {
-  sq_val *val;
-  val = (sq_val *) malloc (sizeof (sq_val));
-  val->dbval = db_value_copy (result);
+  sq_key *k = (sq_key *) key;
+  int i;
+  unsigned int h = 0;
+  DB_SET *set = db_get_set (k->pred_set);
+  DB_VALUE v;
 
-  return val;
-}
-
-static void
-sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp)
-{
-
-  if (*retp)
+  for (i = 0; i < db_set_size (set); i++)
     {
-      pr_clear_value (*retp);
-      db_value_clone (val->dbval, *retp);
+      db_set_get (set, i, &v);
+      h += mht_valhash (&v, ht_size);
     }
-  else
-    {
-      *retp = db_value_copy (val->dbval);
-    }
-
-  return;
-}
-
-static void
-sq_free_val (sq_val * val)
-{
-  QPROC_DB_VALUE_LIST p, tmp;
-  pr_free_ext_value (val->dbval);
-  free (val);
+  return h % ht_size;
 }
 
 int
-sq_put (xasl_node * xasl, DB_VALUE * result)
+sq_cmp_func (const void *key1, const void *key2)
 {
-  MHT_TABLE *sq_cache_ht;
+  sq_key *k1, *k2;
+  int i, sz1, sz2;
+  DB_SET *set1, *set2;
+  DB_VALUE v1, v2;
+
+  k1 = (sq_key *) key1;
+  k2 = (sq_key *) key2;
+  set1 = db_get_set (k1->pred_set);
+  set2 = db_get_set (k2->pred_set);
+  sz1 = db_set_size (set1);
+  sz2 = db_set_size (set2);
+
+  if (sz1 != sz2)
+    {
+      return 0;
+    }
+
+  for (i = 0; i < sz1; i++)
+    {
+      db_set_get (set1, i, &v1);
+      db_set_get (set2, i, &v2);
+      if (!mht_compare_dbvalues_are_equal (&v1, &v2))
+	{
+	  return 0;
+	}
+    }
+  return 1;
+
+}
+
+int
+sq_rem_func (const void *key, void *data, void *args)
+{
+  sq_free_key ((sq_key *) key);
+  sq_free_val ((sq_val *) data);
+  return NO_ERROR;
+}
+
+int
+sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set)
+{
+  int cnt = 0;
+
+  if (!p)
+    {
+      return 0;
+    }
+
+  switch (type)
+    {
+    case SQ_TYPE_PRED:
+      if (1)
+	{
+	  PRED_EXPR *src = (PRED_EXPR *) p;
+	  if (src->type == T_PRED)
+	    {
+	      cnt += sq_walk_xasl_and_add_val_to_set (src->pe.m_pred.lhs, SQ_TYPE_PRED, pred_set);
+	      cnt += sq_walk_xasl_and_add_val_to_set (src->pe.m_pred.rhs, SQ_TYPE_PRED, pred_set);
+	    }
+	  else if (src->type == T_EVAL_TERM)
+	    {
+	      COMP_EVAL_TERM t = src->pe.m_eval_term.et.et_comp;
+	      cnt += sq_walk_xasl_and_add_val_to_set (t.lhs, SQ_TYPE_REGU_VAR, pred_set);
+	      cnt += sq_walk_xasl_and_add_val_to_set (t.rhs, SQ_TYPE_REGU_VAR, pred_set);
+	    }
+	}
+      break;
+
+    case SQ_TYPE_REGU_VAR:
+      if (1)
+	{
+	  REGU_VARIABLE *src = (REGU_VARIABLE *) p;
+	  if (src->type == TYPE_CONSTANT)
+	    {
+	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.dbvalptr, SQ_TYPE_DBVAL, pred_set);
+	    }
+	  if (src->type == TYPE_DBVAL)
+	    {
+	      cnt += sq_walk_xasl_and_add_val_to_set (&src->value.dbval, SQ_TYPE_DBVAL, pred_set);
+	    }
+	  else if (src->type == TYPE_INARITH)
+	    {
+	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.arithptr->leftptr, SQ_TYPE_REGU_VAR, pred_set);
+	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.arithptr->rightptr, SQ_TYPE_REGU_VAR, pred_set);
+	    }
+	}
+
+      break;
+
+    case SQ_TYPE_DBVAL:
+      if (1)
+	{
+	  db_set_add (db_get_set (pred_set), (DB_VALUE *) p);
+	  cnt++;
+	}
+
+      break;
+
+    default:
+      assert (0);
+      break;
+    }
+
+  return cnt;
+}
+
+
+int
+sq_cache_initialize (xasl_node * xasl)
+{
+  xasl->sq_cache_ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
+  if (!xasl->sq_cache_ht)
+    {
+      return ER_FAILED;
+    }
+  xasl->sq_cache_hit = (DB_BIGINT) 0;
+  xasl->sq_cache_miss = (DB_BIGINT) 0;
+  xasl->sq_cache_enabled = 1;
+  return NO_ERROR;
+}
+
+int
+sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
+{
   sq_key *key;
   sq_val *val;
   const void *ret;
 
-  assert (xasl->sq_cache_enabled != 0);
+  assert (xasl->sq_cache_enabled == 1);
 
   key = sq_make_key (xasl);
 
@@ -499,16 +397,9 @@ sq_put (xasl_node * xasl, DB_VALUE * result)
     {
       return ER_FAILED;
     }
-  if (xasl->sq_cache_enabled == -1)
-    {
-      sq_cache_initialize (xasl);
-    }
-  sq_cache_ht = xasl->sq_cache_ht;
 
-  val = sq_make_val (xasl, result);
-
-  ret = mht_put_if_not_exists (sq_cache_ht, key, val);
-
+  val = sq_make_val (regu_var);
+  ret = mht_put_if_not_exists (xasl->sq_cache_ht, key, val);
   if (!ret || ret != val)
     {
       sq_free_key (key);
@@ -516,38 +407,32 @@ sq_put (xasl_node * xasl, DB_VALUE * result)
       return ER_FAILED;
     }
   return NO_ERROR;
+
 }
 
 bool
-sq_get (xasl_node * xasl, DB_VALUE ** retp)
+sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
 {
-  MHT_TABLE *sq_cache_ht;
   sq_key *key;
   sq_val *ret;
 
   if (xasl->sq_cache_miss >= SQ_CACHE_MISS_MAX)
     {
-      return false;
+      if (xasl->sq_cache_hit / xasl->sq_cache_miss < SQ_CACHE_MIN_HIT_RATIO)
+	{
+	  return false;
+	}
     }
 
-  assert (xasl->sq_cache_enabled != 0);
+  assert (xasl->sq_cache_enabled == 1);
 
   key = sq_make_key (xasl);
-
   if (key == NULL)
     {
       return false;
     }
 
-  if (xasl->sq_cache_enabled == -1)
-    {
-      sq_cache_initialize (xasl);
-    }
-
-  sq_cache_ht = xasl->sq_cache_ht;
-
-  ret = (sq_val *) mht_get (sq_cache_ht, key);
-
+  ret = (sq_val *) mht_get (xasl->sq_cache_ht, key);
   if (ret == NULL)
     {
       xasl->sq_cache_miss++;
@@ -555,41 +440,28 @@ sq_get (xasl_node * xasl, DB_VALUE ** retp)
       return false;
     }
 
-  sq_unpack_val (ret, xasl, retp);
+  sq_unpack_val (ret, regu_var);
   sq_free_key (key);
 
   xasl->sq_cache_hit++;
   return true;
 }
 
-static int
-sq_rem_func (const void *key, void *data, void *args)
-{
-  sq_free_key ((sq_key *) key);
-  sq_free_val ((sq_val *) data);
-
-  return NO_ERROR;
-}
-
 void
 sq_cache_drop_all (xasl_node * xasl)
 {
-  MHT_TABLE *ht;
   if (xasl->sq_cache_enabled == 1)
     {
-      ht = xasl->sq_cache_ht;
-      if (ht != NULL)
+      if (xasl->sq_cache_ht != NULL)
 	{
-	  mht_clear (ht, sq_rem_func, NULL);
+	  mht_clear (xasl->sq_cache_ht, sq_rem_func, NULL);
 	}
     }
-
 }
 
 void
 sq_cache_destroy (xasl_node * xasl)
 {
-  int err;
   assert (xasl->sq_cache_enabled == 0 || xasl->sq_cache_enabled == 1 || xasl->sq_cache_enabled == -1);
   if (xasl->sq_cache_enabled == 1)
     {
@@ -598,7 +470,48 @@ sq_cache_destroy (xasl_node * xasl)
       sq_cache_drop_all (xasl);
       mht_destroy (xasl->sq_cache_ht);
     }
-
   xasl->sq_cache_enabled = 0;
   xasl->sq_cache_ht = NULL;
+}
+
+int
+execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd)
+{
+  if (regu_var->xasl && !regu_var->xasl->aptr_list && !regu_var->xasl->dptr_list
+      && (regu_var->xasl->status == XASL_CLEARED || regu_var->xasl->status == XASL_INITIALIZED))
+    {
+
+      if (regu_var->xasl->sq_cache_enabled == 1)
+	{
+	  if (sq_get (regu_var->xasl, regu_var))
+	    {
+	      regu_var->xasl->status = XASL_SUCCESS;
+	      return true;
+	    }
+	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+	  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+	    {
+	      return false;
+	    }
+	  sq_put (regu_var->xasl, regu_var);
+
+	  return false;
+	}
+
+      if (regu_var->xasl->sq_cache_enabled == -1)
+	{
+	  sq_cache_initialize (regu_var->xasl);
+	}
+
+      if (regu_var->xasl->sq_cache_enabled == 0)
+	{
+	  regu_var->xasl->sq_cache_enabled = -1;
+
+	}
+
+    }
+
+  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+
+  return false;
 }

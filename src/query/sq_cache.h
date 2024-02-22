@@ -26,9 +26,10 @@
 #ident "$Id$"
 
 extern int sq_cache_initialize (xasl_node * xasl);
-extern int sq_put (xasl_node * xasl, DB_VALUE * result);
-extern bool sq_get (xasl_node * xasl, DB_VALUE ** retp);
+extern int sq_put (xasl_node * xasl, REGU_VARIABLE * result);
+extern bool sq_get (xasl_node * xasl, REGU_VARIABLE * retp);
 extern void sq_cache_drop_all (xasl_node * xasl);
 extern void sq_cache_destroy (xasl_node * xasl);
+extern int execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd);
 
 #endif /* _SQ_CACHE_H_ */
