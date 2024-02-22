@@ -25993,6 +25993,7 @@ parse_one_statement (int state)
 #define INIT_PT_HINT(key, type) {key, NULL, type, 0, false}
 PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("ORDERED", PT_HINT_ORDERED),
+  INIT_PT_HINT("LEADING", PT_HINT_LEADING),
   INIT_PT_HINT("NO_INDEX_SS", PT_HINT_NO_INDEX_SS),
   INIT_PT_HINT("INDEX_SS", PT_HINT_INDEX_SS),
   INIT_PT_HINT("USE_NL", PT_HINT_USE_NL),
@@ -27893,7 +27894,7 @@ pt_check_one_stmt(char* p)
      }
 
     t++;
-    while (*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n')
+    while (char_isspace2(*t))
      {
         t++;
      }
@@ -27957,7 +27958,7 @@ pt_check_one_stmt(char* p)
           }
     }
 
-    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
+    while (char_isspace2(*p))
      {
         p++;
      }
@@ -27969,7 +27970,7 @@ static bool
 pt_ct_check_select (char* p, char *perr_msg)
 {  
    perr_msg[0] = 0x00;
-   while (*p == ' ' || *p == '(' || *p == '\t' || *p == '\r' || *p == '\n')
+   while (char_isspace2(*p) || *p == '(')
      {
         p++;
      }
@@ -27978,7 +27979,7 @@ pt_ct_check_select (char* p, char *perr_msg)
    {
         if( strncasecmp(p, "SELECT", 6) == 0 )
         {
-            if( p[6] == ' ' || p[6] == '\t' || p[6] == '\r' || p[6] == '\n' )
+            if( char_isspace2(p[6]))
               {    
                  if (pt_check_one_stmt(p + 6))
                    {

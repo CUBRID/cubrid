@@ -45,7 +45,8 @@
 #include "locator_sr.h"
 #include "btree.h"
 #include "btree_unique.hpp"
-#include "transform.h"		/* for CT_SERIAL_NAME */
+#include "schema_system_catalog_constants.h"	/* for CT_SERIAL_NAME */
+#include "transform.h"
 #include "serial.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -23812,6 +23813,7 @@ heap_initialize_hfid_table (void)
   edesc->of_key = offsetof (HEAP_HFID_TABLE_ENTRY, class_oid);
   edesc->of_mutex = 0;
   edesc->using_mutex = LF_EM_NOT_USING_MUTEX;
+  edesc->max_alloc_cnt = LF_ENTRY_DESCRIPTOR_MAX_ALLOC;
   edesc->f_alloc = heap_hfid_table_entry_alloc;
   edesc->f_free = heap_hfid_table_entry_free;
   edesc->f_init = heap_hfid_table_entry_init;

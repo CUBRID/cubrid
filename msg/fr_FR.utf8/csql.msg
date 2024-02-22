@@ -152,7 +152,7 @@ $ csql help messages
    ;PRINT                       - affiche tampon de commande.\n\
    ;SHELL                       - invoque l'interpréteur de commandes.\n\
    ;CD                          - change le répertoire courant.\n\
-   ;EXit                        - quitte le programme.\n\
+   ;EXit (or Ctrl+d)            - quitte le programme.\n\
 \n\
    ;CLear                       - efface le tampon de commande.\n\
    ;EDIT   [format/fmt]         - invoque éditeur système [après le formateur] avec le tampon de commande.\n\

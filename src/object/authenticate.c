@@ -60,6 +60,7 @@
 #include "db.h"
 #include "trigger_manager.h"
 #include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "environment_variable.h"
 #include "execute_schema.h"
 #include "jsp_cl.h"
@@ -5677,7 +5678,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
   sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
   db_ws_free_and_init (owner_name);
 
-  snprintf (serial_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, serial_name);
+  sprintf (serial_new_name, "%s.%s", downcase_owner_name, serial_name);
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
   if (serial_class_mop == NULL)
@@ -5781,7 +5782,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * serial
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  sm_user_specified_name (serial_name, user_specified_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
+  sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, user_specified_serial_name);
   if (serial_mop == NULL)
     {

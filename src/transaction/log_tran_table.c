@@ -4669,6 +4669,7 @@ logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
   edesc->of_key = offsetof (GLOBAL_UNIQUE_STATS, btid);
   edesc->of_mutex = offsetof (GLOBAL_UNIQUE_STATS, mutex);
   edesc->using_mutex = LF_EM_USING_MUTEX;
+  edesc->max_alloc_cnt = LF_ENTRY_DESCRIPTOR_MAX_ALLOC;
   edesc->f_alloc = logtb_global_unique_stat_alloc;
   edesc->f_free = logtb_global_unique_stat_free;
   edesc->f_init = logtb_global_unique_stat_init;
@@ -5042,7 +5043,7 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
        stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it))
     {
       /* reflect only if some changes were logged */
-      if (!LSA_ISNULL (&stats->last_log_lsa))
+      if (log_is_no_logging () || !LSA_ISNULL (&stats->last_log_lsa))
 	{
 	  error = btree_reflect_global_unique_statistics (thread_p, stats, false);
 	  if (error != NO_ERROR)

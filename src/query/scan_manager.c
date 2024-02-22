@@ -7724,7 +7724,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
       return ER_FAILED;
     }
 
-  error = btree_attrinfo_read_dbvalues (thread_p, key, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
+  error = btree_attrinfo_read_dbvalues (thread_p, key, NULL, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
 					iscan_id->rest_attrs.attr_cache, -1
 #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 					, NULL
