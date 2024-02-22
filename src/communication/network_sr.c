@@ -1132,7 +1132,12 @@ net_server_start (const char *server_name)
       status = -1;
       goto end;
     }
-
+#if defined(SERVER_MODE)
+  if (mmon_initialize (server_name) != NO_ERROR)
+    {
+      goto end;
+    }
+#endif
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
