@@ -188,7 +188,7 @@ namespace cubmethod
     int num_args = m_method_sig->num_method_args;
     for (int i = 0; i < num_args; i++)
       {
-	if (m_method_sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
+	if (m_method_sig->arg_info->arg_mode[i] == METHOD_ARG_MODE_IN)
 	  {
 	    continue;
 	  }
@@ -299,6 +299,9 @@ namespace cubmethod
 	break;
       case METHOD_CALLBACK_END_TRANSACTION:
 	error = callback_end_transaction (thread_ref, unpacker);
+	break;
+      case METHOD_CALLBACK_CHANGE_RIGHTS:
+	error = callback_change_auth_rights (thread_ref, unpacker);
 	break;
       default:
 	// TODO: not implemented yet, do we need error handling?
@@ -681,6 +684,32 @@ namespace cubmethod
     };
 
     error = xs_receive (&thread_ref, java_lambda);
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_change_auth_rights (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_CHANGE_RIGHTS;
+
+    int command;
+    std::string auth_name;
+
+    unpacker.unpack_all (command, auth_name);
+    error = method_send_data_to_client (&thread_ref, m_client_header, code, command, auth_name);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    auto java_lambda = [&] (const cubmem::block & b)
+    {
+      return mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), b);
+    };
+
+    error = xs_receive (&thread_ref, java_lambda);
+
     return error;
   }
 

@@ -37,6 +37,7 @@ import com.cubrid.jsp.compiler.MemoryJavaCompiler;
 import com.cubrid.jsp.compiler.SourceCode;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
+import com.cubrid.jsp.data.AuthInfo;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.CompileInfo;
@@ -315,10 +316,21 @@ public class ExecuteThread extends Thread {
         ctx.checkTranId(tid);
 
         StoredProcedure procedure = makeStoredProcedure(unpacker);
+
+        pushUser(procedure.getAuthUser());
         Value result = procedure.invoke();
+        popUser();
 
         /* send results */
         sendResult(result, procedure);
+    }
+
+    private void pushUser(String user) throws Exception {
+        sendAuthCommand(0, user);
+    }
+
+    private void popUser() throws Exception {
+        sendAuthCommand(1, "");
     }
 
     private void writeJar(List<CompiledCode> compiledCodeList, Path jarPath) throws IOException {
@@ -388,6 +400,7 @@ public class ExecuteThread extends Thread {
 
     private StoredProcedure makeStoredProcedure(CUBRIDUnpacker unpacker) throws Exception {
         String methodSig = unpacker.unpackCString();
+        String authUser = unpacker.unpackCString();
         int paramCount = unpacker.unpackInt();
 
         Value[] arguments = prepareArgs.getArgs();
@@ -408,7 +421,7 @@ public class ExecuteThread extends Thread {
         boolean transactionControl = unpacker.unpackBool();
         getCurrentContext().setTransactionControl(transactionControl);
 
-        storedProcedure = new StoredProcedure(methodSig, methodArgs, returnType);
+        storedProcedure = new StoredProcedure(methodSig, authUser, methodArgs, returnType);
         return storedProcedure;
     }
 
@@ -479,5 +492,21 @@ public class ExecuteThread extends Thread {
 
         resultBuffer = packer.getBuffer();
         writeBuffer(resultBuffer);
+    }
+
+    private void sendAuthCommand(int command, String authName) throws Exception {
+        AuthInfo info = new AuthInfo(command, authName);
+        CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(128));
+        packer.packInt(RequestCode.REQUEST_CHANGE_AUTH_RIGHTS);
+        info.pack(packer);
+        Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
+
+        ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+        CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+        /* read header, dummy */
+        Header header = new Header(unpacker);
+        ByteBuffer payload = unpacker.unpackBuffer();
+        unpacker.setBuffer(payload);
+        int responseCode = unpacker.unpackInt();
     }
 }

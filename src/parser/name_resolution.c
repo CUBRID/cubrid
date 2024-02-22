@@ -10045,6 +10045,8 @@ pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * f_node, PT_BIND_NAMES_AR
   new_node->info.method_call.arg_list = parser_copy_tree_list (parser, f_node->info.function.arg_list);
   new_node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
   new_node->info.method_call.on_call_target = NULL;
+  new_node->info.method_call.auth_name = NULL;
+  PT_METHOD_CALL_AUTH_NAME (new_node) = ws_copy_string (au_get_user_name (Au_user));	// default
 
   return new_node;
 }				/* pt_make_method_call */
@@ -10156,6 +10158,13 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
       return NULL;
     }
 
+  std::string owner_name = jsp_get_owner_name (sp_name);
+  if (owner_name.empty ())
+    {
+      PT_INTERNAL_ERROR (parser, "jsp_get_owner_name");
+      return NULL;
+    }
+
   new_node->type_enum = pt_db_to_type_enum ((DB_TYPE) return_type);
   TP_DOMAIN *d = pt_type_enum_to_db_domain (new_node->type_enum);
   d = tp_domain_cache (d);
@@ -10165,6 +10174,16 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
 
   int sp_type_misc = jsp_get_sp_type (sp_name);
   new_node->info.method_call.method_type = (PT_MISC_TYPE) sp_type_misc;
+
+  PT_METHOD_CALL_AUTH_ID (new_node) = PT_AUTHID_OWNER;	// TODO
+  if (PT_METHOD_CALL_AUTH_ID (new_node) == PT_AUTHID_OWNER)
+    {
+      PT_METHOD_CALL_AUTH_NAME (new_node) = ws_copy_string (owner_name.c_str ());
+    }
+  else
+    {
+      PT_METHOD_CALL_AUTH_NAME (new_node) = ws_copy_string (au_get_user_name (Au_user));
+    }
 
   return new_node;
 }				/* pt_resolve_stored_procedure */

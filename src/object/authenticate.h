@@ -281,6 +281,12 @@ extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, 
 extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 
 /*
+* execution rights
+*/
+extern int au_perform_push_user (MOP user);
+extern int au_perform_pop_user ();
+
+/*
  * Etc
  */
 extern int au_change_trigger_owner (MOP trigger_mop, MOP owner_mop);

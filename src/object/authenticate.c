@@ -38,6 +38,8 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include <stack>
+
 #include "porting.h"
 #include "misc_string.h"
 #include "memory_alloc.h"
@@ -296,6 +298,15 @@ MOP Au_dba_user = NULL;
 MOP Au_user = NULL;
 
 /*
+ * Au_user_stack
+ *
+ * This manages the MOP stack to track execution rights of stored procedures.
+ */
+// *INDENT-OFF*
+std::stack <MOP> Au_user_stack;
+// *INDENT-ON*
+
+/*
  * Au_user_name, Au_user_password
  *
  * Saves the registered user name and password.
@@ -366,8 +377,9 @@ static int appropriate_error (unsigned int bits, unsigned int requested);
 static int check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type);
 
 static void free_grant_list (AU_GRANT * grants);
-static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index,
-				 AU_GRANT ** return_grants);
+static int
+collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index,
+		      AU_GRANT ** return_grants);
 static void map_grant_list (AU_GRANT * grants, MOP grantor);
 static int propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask);
 
@@ -795,6 +807,76 @@ exit:
     }
 
   return error;
+}
+
+/*
+ * au_perform_push_user ()
+ */
+int
+au_perform_push_user (MOP user)
+{
+  MOP save_user = Au_user;
+  if (AU_SET_USER (user) == NO_ERROR)
+    {
+      Au_user_stack.push (save_user);
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+}
+
+/*
+ * au_perform_pop_user ()
+ */
+int
+au_perform_pop_user ()
+{
+  if (Au_user_stack.size () == 0)
+    {
+      return ER_FAILED;
+    }
+
+  if (AU_SET_USER (Au_user_stack.top ()) == NO_ERROR)
+    {
+      Au_user_stack.pop ();
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+}
+
+/*
+ * au_find_user_method - Method interface to au_find_user.
+ *   return: none
+ *   class(in):
+ *   returnval(out):
+ *   name(in):
+ */
+void
+au_find_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name)
+{
+  MOP user;
+  int error = NO_ERROR;
+
+  db_make_null (returnval);
+  if (name != NULL && IS_STRING (name) && !DB_IS_NULL (name) && db_get_string (name) != NULL)
+    {
+      user = au_find_user (db_get_string (name));
+      if (user != NULL)
+	{
+	  db_make_object (returnval, user);
+	}
+    }
+  else
+    {
+      error = ER_AU_INVALID_USER;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      db_make_error (returnval, error);
+    }
 }
 
 /*
