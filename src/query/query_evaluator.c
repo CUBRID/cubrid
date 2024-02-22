@@ -2781,7 +2781,8 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
  * Note: evaluate key filter(predicates) given as FILTER_INFO
  */
 DB_LOGICAL
-eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filterp)
+eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_VALUE * prefix_value,
+		 FILTER_INFO * filterp)
 {
   DB_MIDXKEY *midxkey;
   int i, j;
@@ -2833,6 +2834,20 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 	      return V_ERROR;
 	    }
 
+	  DB_MIDXKEY *prefix_midxkey = NULL;
+	  if (!prefix_value || prefix_size <= 0)
+	    {
+	      prefix_size = -1;
+	    }
+	  else
+	    {
+	      prefix_midxkey = db_get_midxkey (prefix_value);
+	      if (!prefix_midxkey)
+		{
+		  return V_ERROR;
+		}
+	    }
+
 	  prev_j_index = 0;
 	  prev_j_ptr = NULL;
 
@@ -2867,7 +2882,9 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 		    }
 
 		  /* get j-th element value from the midxkey */
-		  if (pr_midxkey_get_element_nocopy (midxkey, ((j < func_idx_col_id) ? j : j + 1),
+		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.         
+		  if (pr_midxkey_get_element_nocopy (((j < prefix_size) ? prefix_midxkey : midxkey),
+						     ((j < func_idx_col_id) ? j : j + 1),
 						     valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
 		    {
 		      return V_ERROR;

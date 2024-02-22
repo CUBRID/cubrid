@@ -144,7 +144,8 @@ extern DB_LOGICAL eval_pred_rlike7 (THREAD_ENTRY * thread_p, const PRED_EXPR * p
 extern PR_EVAL_FNC eval_fnc (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, DB_TYPE * single_node_type);
 extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 				    FILTER_INFO * filter);
-extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter);
+extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_VALUE * prefix_value,
+				   FILTER_INFO * filter);
 extern DB_LOGICAL update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualification);
 
 #endif /* _QUERY_EVALUATOR_H_ */
