@@ -81,10 +81,6 @@ EXPORTS
     htonl
     htoni64
     numeric_coerce_int_to_num
-    pgbuf_fix_release
-    pgbuf_fix_debug
-    pgbuf_get_vpid_ptr
-    pgbuf_set_dirty
     prm_get_master_port_id
     prm_get_bool_value
     prm_get_float_value

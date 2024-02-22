@@ -296,10 +296,7 @@ static void convert_locale_number (char *sz, const int size, const INTL_LANG src
 static int parse_tzd (const char *str, const int max_expect_len);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
-#define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
-#define ALPHABETICAL(c) (((c) >= 'A' && (c) <= 'Z') || \
-			 ((c) >= 'a' && (c) <= 'z'))
-#define DIGIT(c) ((c) >= '0' && (c) <= '9')
+#define WHITESPACE(c)   (char_isspace2((c)))
 
 /* same as characters in get_next_format */
 #define PUNCTUATIONAL(c) ((c) == '-' || (c) == '/' || (c) == ',' || (c) == '.' \
@@ -26496,8 +26493,7 @@ db_check_or_create_null_term_string (const DB_VALUE * str_val, char *pre_alloc_b
   val_buf_end = val_buf + val_size;
   if (ignore_prec_spaces)
     {
-      while (val_buf < val_buf_end
-	     && ((*val_buf) == ' ' || (*val_buf) == '\t' || (*val_buf) == '\r' || (*val_buf) == '\n'))
+      while (val_buf < val_buf_end && char_isspace2 (*val_buf))
 	{
 	  val_buf++;
 	}
@@ -26509,9 +26505,7 @@ db_check_or_create_null_term_string (const DB_VALUE * str_val, char *pre_alloc_b
     {
       val_buf_end_non_space = val_buf + val_size - 1;
 
-      while (val_buf < val_buf_end_non_space
-	     && ((*val_buf_end_non_space) == ' ' || (*val_buf_end_non_space) == '\t' || (*val_buf_end_non_space) == '\r'
-		 || (*val_buf_end_non_space) == '\n'))
+      while (val_buf < val_buf_end_non_space && char_isspace2 (*val_buf_end_non_space))
 	{
 	  val_buf_end_non_space--;
 	}
