@@ -26284,10 +26284,6 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 	  /* Interrupt range scan. It must be restarted with a new range. */
 	  bts->is_interrupted = true;
 
-	  /* Since range scan must be moved on a totally different range, it must restart by looking for the first
-	   * eligible key of the new range. Trick it to think this a new call of btree_range_scan. */
-	  bts_reset_scan (thread_p, bts);
-
 	  /* Adjust range of scan. */
 	  error_code = btree_ils_adjust_range (thread_p, bts);
 	  if (error_code != NO_ERROR)
