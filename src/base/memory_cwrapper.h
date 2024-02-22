@@ -31,10 +31,6 @@
 
 #include "memory_monitor_sr.hpp"
 
-/*#ifndef HAVE_USR_INCLUDE_MALLOC_H
-#define HAVE_USR_INCLUDE_MALLOC_H
-#endif*/
-
 inline size_t
 get_alloc_size (void *ptr)
 {
