@@ -25655,9 +25655,10 @@ btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts)
   if (bts->key_filter->scan_attrs && bts->key_filter->scan_attrs->num_attrs > 0)
     {
       cnt = bts->key_filter->scan_attrs->num_attrs;
-      if (cnt < (int) (sizeof (bts->attid_idxs.keyflt_attid_idx) / sizeof (bts->attid_idxs.keyflt_attid_idx[0])))
+      if (cnt <
+	  (int) (sizeof (bts->attid_idxs.keyflt_attid_idx_arr) / sizeof (bts->attid_idxs.keyflt_attid_idx_arr[0])))
 	{
-	  bts->attid_idxs.keyflt_attid_idx = bts->attid_idxs.keyflt_attid_idx;
+	  bts->attid_idxs.keyflt_attid_idx = bts->attid_idxs.keyflt_attid_idx_arr;
 	  bts->attid_idxs.keyflt_attid_idx[0] = -1;
 	}
       else
@@ -25694,9 +25695,10 @@ btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts)
 
   if (cnt > 0)
     {
-      if (cnt < (int) (sizeof (bts->attid_idxs.readval_attid_idx) / sizeof (bts->attid_idxs.readval_attid_idx[0])))
+      if (cnt <
+	  (int) (sizeof (bts->attid_idxs.readval_attid_idx_arr) / sizeof (bts->attid_idxs.readval_attid_idx_arr[0])))
 	{
-	  bts->attid_idxs.readval_attid_idx = bts->attid_idxs.readval_attid_idx;
+	  bts->attid_idxs.readval_attid_idx = bts->attid_idxs.readval_attid_idx_arr;
 	  bts->attid_idxs.readval_attid_idx[0] = -1;
 	}
       else
@@ -25728,7 +25730,7 @@ btree_range_scan_free_matched_idx (BTREE_SCAN * bts)
 
   if (bts->attid_idxs.readval_attid_idx)
     {
-      if (bts->attid_idxs.readval_attid_idx != bts->attid_idxs.keyflt_attid_idx_arr)
+      if (bts->attid_idxs.readval_attid_idx != bts->attid_idxs.readval_attid_idx_arr)
 	{
 	  free (bts->attid_idxs.readval_attid_idx);
 	}
