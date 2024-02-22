@@ -3823,6 +3823,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	  (sig_list->num_methods)++;
 
 	  (*tail)->method_name = (char *) node->info.method_call.method_name->info.name.original;
+	  (*tail)->auth_name = (char *) PT_METHOD_CALL_AUTH_NAME (node);
 
 	  /* num_method_args does not include the target by convention */
 	  (*tail)->num_method_args = pt_length_of_list (node->info.method_call.arg_list);
@@ -3851,8 +3852,19 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	      (*tail)->method_type = METHOD_TYPE_JAVA_SP;
 
 	      int num_args = (*tail)->num_method_args;
-	      (*tail)->arg_info.arg_mode = regu_int_array_alloc (num_args);
-	      (*tail)->arg_info.arg_type = regu_int_array_alloc (num_args);
+
+	      METHOD_ARG_INFO *&arg_info = (*tail)->arg_info;
+	      regu_alloc (arg_info);
+	      if (num_args > 0)
+		{
+		  arg_info->arg_mode = regu_int_array_alloc (num_args);
+		  arg_info->arg_type = regu_int_array_alloc (num_args);
+		}
+	      else
+		{
+		  arg_info->arg_mode = nullptr;
+		  arg_info->arg_type = nullptr;
+		}
 
 	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name);
 	      if (mop_p)
@@ -3883,12 +3895,12 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 			    {
 			      if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
 				{
-				  (*tail)->arg_info.arg_mode[i] = db_get_int (&mode);
+				  (*tail)->arg_info->arg_mode[i] = db_get_int (&mode);
 				}
 
 			      if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
 				{
-				  (*tail)->arg_info.arg_type[i] = db_get_int (&arg_type);
+				  (*tail)->arg_info->arg_type[i] = db_get_int (&arg_type);
 				}
 
 			      pr_clear_value (&mode);
@@ -3911,7 +3923,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  DB_VALUE result_type;
 		  if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type) == NO_ERROR)
 		    {
-		      (*tail)->arg_info.result_type = db_get_int (&result_type);
+		      (*tail)->arg_info->result_type = db_get_int (&result_type);
 		      pr_clear_value (&result_type);
 		    }
 		  else
