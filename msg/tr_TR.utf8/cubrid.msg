@@ -1446,8 +1446,9 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1359 Java VM crashed: %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 1361 Dropping system generated stored procedure is not allowed.
+1362 PL/CSQL Stored procedure/function does not support Invoker's rights
 
-1362 Son Hata
+1363 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1935,7 +1936,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 317 Identifiers cannot be in a LIMIT clause.
 318 Stored procedure/function "$1$s" does not exist.
 
-$set 9 MSGCAT_SET_PARSER_RUNTIME
+\$set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.
 2 İşlemin yalıtım düzeyi 1, 2, 3, 4, 5 veya 6 olması gerekir.
 3 Zaman aşımı değeri -1, 0, veya >0 olması gerekir .

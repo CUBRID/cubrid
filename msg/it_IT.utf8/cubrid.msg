@@ -1446,8 +1446,9 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1359 Java VM crashed: %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 1361 Dropping system generated stored procedure is not allowed.
+1362 PL/CSQL Stored procedure/function does not support Invoker's rights
 
-1362 Ultimo errore
+1363 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
@@ -1935,7 +1936,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 317 Identifiers cannot be in a LIMIT clause.
 318 Stored procedure/function "$1$s" does not exist.
 
-$set 9 MSGCAT_SET_PARSER_RUNTIME
+\$set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.
 2 Livello di isolamento di transazione deve essere 1, 2, 3, 4, 5 o 6.
 3 Il valore di timeout deve essere -1, 0 o >0.

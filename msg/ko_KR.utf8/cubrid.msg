@@ -1446,8 +1446,9 @@ $ LOADDB
 1359 Java VM 에 장애가 발생함. : %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 1361 시스템 생성 stored procedure를 삭제(drop)할 수 없습니다.
+1362 PL/CSQL 저장 프로시저/함수는 호출자 권한을 지원하지 않습니다
 
-1362 마지막 에러
+1363 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1935,7 +1936,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 317 식별자는 LIMIT 절 안에 있을 수 없습니다.
 318 저장 프로시저/함수 "$1$s"이(가) 존재하지 않습니다.
 
-$set 9 MSGCAT_SET_PARSER_RUNTIME
+\$set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
 2 트랜잭션 isolation 레벨은 1, 2, 3, 4, 5, 6 중에서 지정되어야 합니다.
 3 타임아웃 값은 -1, 0 또는 >0 이어야 합니다.
