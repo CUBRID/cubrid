@@ -156,7 +156,6 @@ enum bts_key_status
 };
 typedef enum bts_key_status BTS_KEY_STATUS;
 
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 struct bts_attid_idx_info
 {
   bool is_init;
@@ -172,9 +171,6 @@ struct bts_attid_idx_info
     (bts)->attid_idxs.keyflt_attid_idx = NULL;          \
     (bts)->attid_idxs.readval_attid_idx = NULL;         \
 } while(0)
-#else
-#define BTREE_INIT_SCAN_ATTID_IDXS_INFO(bts)
-#endif
 
 /* Btree range search scan structure */
 /* TODO: Move fields used to select visible objects only from BTREE_SCAN to
@@ -237,16 +233,12 @@ struct btree_scan
   bool clear_common_prefix_key;	// 
   bool is_cur_key_compressed;	/* If false, cur_key is a complete key.
 				 * Otherwise it must be combined with common_prefix_key. */
+  bts_attid_idx_info attid_idxs;
   //---------------------------------------------------------------------------------------------
 
   BTREE_KEYRANGE key_range;	/* key range information */
   FILTER_INFO *key_filter;	/* key filter information pointer */
   FILTER_INFO key_filter_storage;	/* key filter information storage */
-
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-  bts_attid_idx_info attid_idxs;
-#endif
-
 
   bool use_desc_index;		/* use descending index */
 
@@ -813,11 +805,7 @@ extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RA
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTREE_SCAN * bts,
 					 int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
-					 int func_index_col_id
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-					 , int *attr_idx_ptr
-#endif
-  );
+					 int func_index_col_id, int *attr_idx_ptr);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize, TP_DOMAIN * btree_domainp, int key_minmax);
 extern int btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_oid, const OID * class_oid,
 			    const BTID * btid, const char *bt_name, int severity, int err_id, const char *filename,
@@ -928,9 +916,6 @@ extern int btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, 
 extern int btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid);
 extern bool btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid);
 
-
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 extern void btree_range_scan_free_matched_idx (BTREE_SCAN * bts);
-#endif
 
 #endif /* _BTREE_H_ */

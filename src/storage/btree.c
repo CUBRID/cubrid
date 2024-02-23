@@ -1751,10 +1751,8 @@ static int btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE 
 static int btree_is_key_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
 				 MVCC_SNAPSHOT * mvcc_snapshot, int slot_id, bool * is_visible, DB_VALUE * key_value);
 
-
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 static void btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts);
-#endif
+
 static int btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int copy_key, BTREE_SCAN * bts);
 static void btree_make_complete_key_including_prefix (BTREE_SCAN * bts, DB_VALUE * common_prefix_key,
 						      int common_prefix_size);
@@ -15964,9 +15962,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
     {
       bts->key_filter_storage = *filter;
       bts->key_filter = &bts->key_filter_storage;
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
       btree_range_scan_alloc_matched_idx (bts);
-#endif
     }
   else
     {
@@ -16627,11 +16623,7 @@ exit_on_error:
 int
 btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTREE_SCAN * bts,
 			      int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
-			      int func_index_col_id
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-			      , int *attr_idx_ptr
-#endif
-  )
+			      int func_index_col_id, int *attr_idx_ptr)
 {
   int i, j, error = NO_ERROR;
   HEAP_ATTRVALUE *attr_value;
@@ -16677,13 +16669,10 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 
       attr_value = attr_info->values;
 
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
       bool filled_match_idx = (attr_idx_ptr && attr_idx_ptr[0] >= 0) ? true : false;
-#endif
 
       for (i = 0; i < attr_info->num_values; i++)
 	{
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 	  if (filled_match_idx)
 	    {
 	      j = attr_idx_ptr[i];
@@ -16716,17 +16705,6 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 		  attr_idx_ptr[i] = j;
 		}
 	    }
-#else // #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-	  found = false;
-	  for (j = 0; j < btree_num_att; j++)
-	    {
-	      if (attr_value->attrid == btree_att_ids[j])
-		{
-		  found = true;
-		  break;
-		}
-	    }
-#endif // #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 
 	  if (found == false)
 	    {
@@ -16740,17 +16718,6 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 	      goto error;
 	    }
 
-#if !defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-	  if (func_index_col_id != -1)
-	    {
-	      /* consider that in the midxkey resides the function result, which must be skipped if we are interested
-	       * in attributes */
-	      if (j >= func_index_col_id)
-		{
-		  j++;
-		}
-	    }
-#endif
 	  if (pr_midxkey_get_element_nocopy (((j < prefix_size) ? prefix_mkey : curr_mkey), j, &(attr_value->dbvalue),
 					     NULL, NULL) != NO_ERROR)
 	    {
@@ -16822,11 +16789,7 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * fi
   check_validate (bts);
   error = btree_attrinfo_read_dbvalues (thread_p, &(bts->cur_key), bts,
 					filter->btree_attr_ids, filter->btree_num_attrs, attr_info,
-					iscan_id->indx_cov.func_index_col_id
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-					, filter->matched_attid_idx_4_readval
-#endif
-    );
+					iscan_id->indx_cov.func_index_col_id, filter->matched_attid_idx_4_readval);
   if (error != NO_ERROR)
     {
       return error;
@@ -25631,7 +25594,6 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   return ER_FAILED;
 }
 
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 void
 btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts)
 {
@@ -25738,7 +25700,6 @@ btree_range_scan_free_matched_idx (BTREE_SCAN * bts)
     }
   bts->attid_idxs.is_init = false;
 }
-#endif
 
 /*
  * btree_range_scan () - Generic function to do a range scan on b-tree. It can scan key by key starting with first

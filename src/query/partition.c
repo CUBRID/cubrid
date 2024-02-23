@@ -3877,11 +3877,8 @@ partition_attrinfo_get_key (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext,
     }
 
   error =
-    btree_attrinfo_read_dbvalues (thread_p, curr_key, NULL, btree_attr_ids, btree_num_attr, &pcontext->attr_info, -1
-#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-				  , NULL
-#endif
-    );
+    btree_attrinfo_read_dbvalues (thread_p, curr_key, NULL, btree_attr_ids, btree_num_attr, &pcontext->attr_info, -1,
+				  NULL);
 
   if (error != NO_ERROR)
     {
