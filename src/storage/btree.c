@@ -25161,12 +25161,26 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   bts->is_cur_key_compressed = false;
 #if defined(USE_PEEK_IN_RANGE_SCAN_READ)
-  // TODO: MIDXKEY일때만 peek 로하고 단일인 경우 copy?
-  bts->is_cur_key_copied = false;
-  return btree_read_record_in_leafpage (thread_p, bts->C_page, PEEK_KEY_VALUE, bts);
-#else
-  return btree_read_record_in_leafpage (thread_p, bts->C_page, COPY_KEY_VALUE, bts);
+  /* (type == DB_TYPE_MIDXKEY || QSTR_IS_ANY_CHAR_OR_BIT (type)) */
+  switch (TP_DOMAIN_TYPE (bts->btid_int.key_type))
+    {
+    case DB_TYPE_MIDXKEY:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_NCHAR:
+      bts->is_cur_key_copied = false;
+      return btree_read_record_in_leafpage (thread_p, bts->C_page, PEEK_KEY_VALUE, bts);
+
+    default:
+      break;
+    }
+  bts->is_cur_key_copied = true;
 #endif
+
+  return btree_read_record_in_leafpage (thread_p, bts->C_page, COPY_KEY_VALUE, bts);
 }
 
 /*
