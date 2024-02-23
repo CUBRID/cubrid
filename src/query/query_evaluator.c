@@ -2856,17 +2856,33 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 	      func_idx_col_id = filterp->btree_num_attrs + 1;
 	    }
 
+	  bool filled_match_idx = (filterp->matched_attid_idx_4_keyflt && filterp->matched_attid_idx_4_keyflt[0] >= 0);
+
 	  /* for all attributes specified in the filter */
 	  for (i = 0; i < scan_attrsp->num_attrs; i++)
 	    {
-	      /* for the attribute ID array of the index key */
-	      for (j = 0; j < filterp->btree_num_attrs; j++)
+	      if (filled_match_idx)
 		{
-		  if (scan_attrsp->attr_ids[i] != filterp->btree_attr_ids[j])
+		  j = filterp->matched_attid_idx_4_keyflt[i];
+		}
+	      else
+		{
+		  /* for the attribute ID array of the index key */
+		  for (j = 0; j < filterp->btree_num_attrs; j++)
 		    {
-		      continue;
+		      if (scan_attrsp->attr_ids[i] == filterp->btree_attr_ids[j])
+			{
+			  if (filterp->matched_attid_idx_4_keyflt)
+			    {
+			      filterp->matched_attid_idx_4_keyflt[i] = j;
+			    }
+			  break;	/* immediately exit inner-loop */
+			}
 		    }
+		}
 
+	      if (j < filterp->btree_num_attrs)
+		{
 		  /* now, found the attr */
 
 		  attrvalue = heap_attrvalue_locate (scan_attrsp->attr_ids[i], scan_attrsp->attr_cache);
@@ -2912,11 +2928,8 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 		    }
 
 		  attrvalue->state = HEAP_WRITTEN_ATTRVALUE;
-
-		  break;	/* immediately exit inner-loop */
 		}
-
-	      if (j >= filterp->btree_num_attrs)
+	      else
 		{
 		  /*
 		   * the attribute exists in key filter scan cache, but it is

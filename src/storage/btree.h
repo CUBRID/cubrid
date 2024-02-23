@@ -156,6 +156,22 @@ enum bts_key_status
 };
 typedef enum bts_key_status BTS_KEY_STATUS;
 
+struct bts_attid_idx_info
+{
+  bool is_init;
+  int keyflt_attid_idx_arr[32];
+  int readval_attid_idx_arr[32];
+  int *keyflt_attid_idx;
+  int *readval_attid_idx;
+};
+#define BTREE_INIT_SCAN_ATTID_IDXS_INFO(bts)  do {      \
+    (bts)->attid_idxs.is_init = false;                  \
+    (bts)->attid_idxs.keyflt_attid_idx_arr[0] = -1;     \
+    (bts)->attid_idxs.readval_attid_idx_arr[0] = -1;    \
+    (bts)->attid_idxs.keyflt_attid_idx = NULL;          \
+    (bts)->attid_idxs.readval_attid_idx = NULL;         \
+} while(0)
+
 /* Btree range search scan structure */
 /* TODO: Move fields used to select visible objects only from BTREE_SCAN to
  *	 a different structure (that is pointed by bts_other).
@@ -217,6 +233,8 @@ struct btree_scan
   bool clear_common_prefix_key;	// 
   bool is_cur_key_compressed;	/* If false, cur_key is a complete key.
 				 * Otherwise it must be combined with common_prefix_key. */
+  bts_attid_idx_info attid_idxs;
+
 #define USE_PEEK_IN_RANGE_SCAN_READ
 #if defined(USE_PEEK_IN_RANGE_SCAN_READ)
   bool is_cur_key_copied;
@@ -291,6 +309,7 @@ struct btree_scan
     (bts)->restart_scan = 0;                    	\
     (bts)->is_cur_key_compressed = false;               \
     (bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN;  \
+    BTREE_INIT_SCAN_ATTID_IDXS_INFO((bts));             \
     btree_init_temp_key_value (&(bts)->clear_common_prefix_key, &(bts)->common_prefix_key); \
     COMMON_PREFIX_PAGE_DEBUG_INFO_RESET((bts));         \
     db_make_null (&(bts)->cur_key);			\
@@ -791,7 +810,7 @@ extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RA
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTREE_SCAN * bts,
 					 int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
-					 int func_index_col_id);
+					 int func_index_col_id, int *attr_idx_ptr);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize, TP_DOMAIN * btree_domainp, int key_minmax);
 extern int btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_oid, const OID * class_oid,
 			    const BTID * btid, const char *bt_name, int severity, int err_id, const char *filename,
@@ -901,5 +920,7 @@ extern int btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, 
 						       OID * class_oid);
 extern int btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid);
 extern bool btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid);
+
+extern void btree_range_scan_free_matched_idx (BTREE_SCAN * bts);
 
 #endif /* _BTREE_H_ */
