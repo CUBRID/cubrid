@@ -17982,6 +17982,11 @@ error:
       free_and_init (*oid_listp);
     }
 
+  if (*lock_listp)
+    {
+      free_and_init (*lock_listp);
+    }
+
   if (*tcard_listp)
     {
       free_and_init (*tcard_listp);
@@ -18125,6 +18130,7 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * seria
   *nump = o_num;
   *sizep = o_size;
   *oid_listp = o_list;
+  *lock_listp = lck_list;
   *tcard_listp = t_list;
 
   return o_num;
@@ -18133,6 +18139,11 @@ error:
   if (*oid_listp)
     {
       free_and_init (*oid_listp);
+    }
+
+  if (*lock_listp)
+    {
+      free_and_init (*lock_listp);
     }
 
   if (*tcard_listp)
