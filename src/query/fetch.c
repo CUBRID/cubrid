@@ -3874,7 +3874,6 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 
       /* execute linked query */
-      //EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
       execute_regu_variable_xasl_with_sq_cache (thread_p, regu_var, vd);
       if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
 	{

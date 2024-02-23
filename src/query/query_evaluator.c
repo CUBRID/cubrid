@@ -1843,8 +1843,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 		{
 		  /* execute linked query */
 
-		  //EXECUTE_REGU_VARIABLE_XASL (thread_p, et_comp->lhs, vd);
-		  execute_regu_variable_xasl_with_sq_cache (thread_p, et_comp->lhs, vd);
+		  EXECUTE_REGU_VARIABLE_XASL (thread_p, et_comp->lhs, vd);
 		  if (CHECK_REGU_VARIABLE_XASL_STATUS (et_comp->lhs) != XASL_SUCCESS)
 		    {
 		      result = V_ERROR;
