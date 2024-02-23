@@ -1936,7 +1936,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 317 식별자는 LIMIT 절 안에 있을 수 없습니다.
 318 저장 프로시저/함수 "$1$s"이(가) 존재하지 않습니다.
 
-\$set 9 MSGCAT_SET_PARSER_RUNTIME
+$set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
 2 트랜잭션 isolation 레벨은 1, 2, 3, 4, 5, 6 중에서 지정되어야 합니다.
 3 타임아웃 값은 -1, 0 또는 >0 이어야 합니다.

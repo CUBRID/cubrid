@@ -1936,7 +1936,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 317 Identifiers cannot be in a LIMIT clause.
 318 Stored procedure/function "$1$s" does not exist.
 
-\$set 9 MSGCAT_SET_PARSER_RUNTIME
+$set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
 2 Transaction isolation level must be 4, 5 or 6.
 3 Timeout value must be -1, 0, or >0.

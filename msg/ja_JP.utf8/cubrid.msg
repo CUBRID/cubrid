@@ -1936,7 +1936,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 317 Identifiers cannot be in a LIMIT clause.
 318 Stored procedure/function "$1$s" does not exist.
 
-\$set 9 MSGCAT_SET_PARSER_RUNTIME
+$set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。
 2 トランザクションアイソレーションレベルは1、2、3、4、5、6の中で指定されます。
 3 タイムアウトバリューは-1、0、または0より大きいバリューの中で指定されます。

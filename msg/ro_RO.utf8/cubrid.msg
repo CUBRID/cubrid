@@ -1936,7 +1936,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 317 Identifiers cannot be in a LIMIT clause.
 318 Stored procedure/function "$1$s" does not exist.
 
-\$set 9 MSGCAT_SET_PARSER_RUNTIME
+$set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.
 2 Nivelul de izolare al tranzacţiilor trebuie să fie 1, 2, 3, 4, 5 or 6.
 3 Valoarea pentru durata de expirare trebuie să fie -1, 0, or >0.
