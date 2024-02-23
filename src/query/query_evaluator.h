@@ -114,6 +114,10 @@ struct filter_info
   /* filter information */
   SCAN_PRED *scan_pred;		/* predicates of the filter */
   SCAN_ATTRS *scan_attrs;	/* attributes scanning info */
+
+  int *matched_attid_idx_4_keyflt;
+  int *matched_attid_idx_4_readval;
+
   val_list_node *val_list;	/* value list */
   VAL_DESCR *val_descr;		/* value descriptor */
 

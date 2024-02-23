@@ -3875,8 +3875,11 @@ partition_attrinfo_get_key (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext,
 	  goto cleanup;
 	}
     }
+
   error =
-    btree_attrinfo_read_dbvalues (thread_p, curr_key, NULL, btree_attr_ids, btree_num_attr, &pcontext->attr_info, -1);
+    btree_attrinfo_read_dbvalues (thread_p, curr_key, NULL, btree_attr_ids, btree_num_attr, &pcontext->attr_info, -1,
+				  NULL);
+
   if (error != NO_ERROR)
     {
       goto cleanup;

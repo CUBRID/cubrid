@@ -1751,6 +1751,8 @@ static int btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE 
 static int btree_is_key_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
 				 MVCC_SNAPSHOT * mvcc_snapshot, int slot_id, bool * is_visible, DB_VALUE * key_value);
 
+static void btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts);
+
 static int btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int copy_key, BTREE_SCAN * bts);
 static void btree_make_complete_key_including_prefix (BTREE_SCAN * bts, DB_VALUE * common_prefix_key,
 						      int common_prefix_size);
@@ -15960,6 +15962,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
     {
       bts->key_filter_storage = *filter;
       bts->key_filter = &bts->key_filter_storage;
+      btree_range_scan_alloc_matched_idx (bts);
     }
   else
     {
@@ -16620,7 +16623,7 @@ exit_on_error:
 int
 btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTREE_SCAN * bts,
 			      int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
-			      int func_index_col_id)
+			      int func_index_col_id, int *attr_idx_ptr)
 {
   int i, j, error = NO_ERROR;
   HEAP_ATTRVALUE *attr_value;
@@ -16665,15 +16668,41 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 	}
 
       attr_value = attr_info->values;
+
+      bool filled_match_idx = (attr_idx_ptr && attr_idx_ptr[0] >= 0) ? true : false;
+
       for (i = 0; i < attr_info->num_values; i++)
 	{
-	  found = false;
-	  for (j = 0; j < btree_num_att; j++)
+	  if (filled_match_idx)
 	    {
-	      if (attr_value->attrid == btree_att_ids[j])
+	      j = attr_idx_ptr[i];
+	      found = (j < btree_num_att || (j == btree_num_att && func_index_col_id != -1));
+	    }
+	  else
+	    {
+	      found = false;
+	      for (j = 0; j < btree_num_att; j++)
 		{
-		  found = true;
-		  break;
+		  if (attr_value->attrid == btree_att_ids[j])
+		    {
+		      found = true;
+		      if (func_index_col_id != -1)
+			{
+			  /* consider that in the midxkey resides the function result, which must be skipped if we are interested
+			   * in attributes */
+			  if (j >= func_index_col_id)
+			    {
+			      j++;
+			    }
+			}
+
+		      break;
+		    }
+		}
+
+	      if (attr_idx_ptr)
+		{
+		  attr_idx_ptr[i] = j;
 		}
 	    }
 
@@ -16687,16 +16716,6 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 	    {
 	      error = ER_FAILED;
 	      goto error;
-	    }
-
-	  if (func_index_col_id != -1)
-	    {
-	      /* consider that in the midxkey resides the function result, which must be skipped if we are interested
-	       * in attributes */
-	      if (j >= func_index_col_id)
-		{
-		  j++;
-		}
 	    }
 
 	  if (pr_midxkey_get_element_nocopy (((j < prefix_size) ? prefix_mkey : curr_mkey), j, &(attr_value->dbvalue),
@@ -16768,10 +16787,9 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * fi
     }
 
   check_validate (bts);
-
   error = btree_attrinfo_read_dbvalues (thread_p, &(bts->cur_key), bts,
 					filter->btree_attr_ids, filter->btree_num_attrs, attr_info,
-					iscan_id->indx_cov.func_index_col_id);
+					iscan_id->indx_cov.func_index_col_id, filter->matched_attid_idx_4_readval);
   if (error != NO_ERROR)
     {
       return error;
@@ -25574,6 +25592,113 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   /* Impossible to reach. */
   assert_release (false);
   return ER_FAILED;
+}
+
+void
+btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts)
+{
+  int cnt = 0;
+
+  assert (bts);
+  assert (bts->key_filter != NULL);
+
+  if (bts->attid_idxs.is_init)
+    {
+      bts->key_filter->matched_attid_idx_4_keyflt = bts->attid_idxs.keyflt_attid_idx;
+      bts->key_filter->matched_attid_idx_4_readval = bts->attid_idxs.readval_attid_idx;
+      return;
+    }
+
+  assert (bts->attid_idxs.keyflt_attid_idx == NULL);
+  assert (bts->attid_idxs.readval_attid_idx == NULL);
+
+  bts->attid_idxs.is_init = true;
+
+  if (bts->key_filter->scan_attrs && bts->key_filter->scan_attrs->num_attrs > 0)
+    {
+      cnt = bts->key_filter->scan_attrs->num_attrs;
+      if (cnt <
+	  (int) (sizeof (bts->attid_idxs.keyflt_attid_idx_arr) / sizeof (bts->attid_idxs.keyflt_attid_idx_arr[0])))
+	{
+	  bts->attid_idxs.keyflt_attid_idx = bts->attid_idxs.keyflt_attid_idx_arr;
+	  bts->attid_idxs.keyflt_attid_idx[0] = -1;
+	}
+      else
+	{
+	  bts->attid_idxs.keyflt_attid_idx = (int *) malloc (cnt * sizeof (int));
+	  if (bts->attid_idxs.keyflt_attid_idx)
+	    {
+	      bts->attid_idxs.keyflt_attid_idx[0] = -1;
+	    }
+	}
+    }
+
+  bts->key_filter->matched_attid_idx_4_keyflt = bts->attid_idxs.keyflt_attid_idx;
+
+  /*
+   * Please refer to the btree_dump_curr_key() function for the processing logic below. 
+   */
+  if (bts->index_scan_idp->rest_attrs.num_attrs > 0)
+    {
+      /* normal index scan or join index scan */
+      cnt = bts->index_scan_idp->rest_attrs.attr_cache->num_values;
+    }
+  else if (bts->index_scan_idp->pred_attrs.num_attrs > 0)
+    {
+      /* rest_attrs.num_attrs == 0 if index scan term is join index scan with always-true condition. example: SELECT
+       * ... FROM X inner join Y on 1 = 1; */
+      cnt = bts->index_scan_idp->pred_attrs.attr_cache->num_values;
+    }
+  else
+    {
+      bts->key_filter->matched_attid_idx_4_readval = NULL;
+      return;
+    }
+
+  if (cnt > 0)
+    {
+      if (cnt <
+	  (int) (sizeof (bts->attid_idxs.readval_attid_idx_arr) / sizeof (bts->attid_idxs.readval_attid_idx_arr[0])))
+	{
+	  bts->attid_idxs.readval_attid_idx = bts->attid_idxs.readval_attid_idx_arr;
+	  bts->attid_idxs.readval_attid_idx[0] = -1;
+	}
+      else
+	{
+	  bts->attid_idxs.readval_attid_idx = (int *) malloc (cnt * sizeof (int));
+	  if (bts->attid_idxs.readval_attid_idx)
+	    {
+	      bts->attid_idxs.readval_attid_idx[0] = -1;
+	    }
+	}
+    }
+
+  bts->key_filter->matched_attid_idx_4_readval = bts->attid_idxs.readval_attid_idx;
+}
+
+void
+btree_range_scan_free_matched_idx (BTREE_SCAN * bts)
+{
+  assert (bts);
+
+  if (bts->attid_idxs.keyflt_attid_idx)
+    {
+      if (bts->attid_idxs.keyflt_attid_idx != bts->attid_idxs.keyflt_attid_idx_arr)
+	{
+	  free (bts->attid_idxs.keyflt_attid_idx);
+	}
+      bts->attid_idxs.keyflt_attid_idx = NULL;
+    }
+
+  if (bts->attid_idxs.readval_attid_idx)
+    {
+      if (bts->attid_idxs.readval_attid_idx != bts->attid_idxs.readval_attid_idx_arr)
+	{
+	  free (bts->attid_idxs.readval_attid_idx);
+	}
+      bts->attid_idxs.readval_attid_idx = NULL;
+    }
+  bts->attid_idxs.is_init = false;
 }
 
 /*
