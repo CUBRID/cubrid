@@ -6426,13 +6426,6 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r1);
     }
 
-  if (p->info.alter_user.comment != NULL)
-    {
-      r1 = pt_print_bytes (parser, p->info.alter_user.comment);
-      b = pt_append_nulstring (parser, b, " comment ");
-      b = pt_append_varchar (parser, b, r1);
-    }
-
   if (p->info.alter_user.code == PT_ADD_MEMBERS)
     {
       if (p->info.alter_user.members != NULL)
@@ -6450,6 +6443,13 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_nulstring (parser, b, " drop members ");
 	  b = pt_append_varchar (parser, b, r1);
 	}
+    }
+
+  if (p->info.alter_user.comment != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.alter_user.comment);
+      b = pt_append_nulstring (parser, b, " comment ");
+      b = pt_append_varchar (parser, b, r1);
     }
 
   return b;

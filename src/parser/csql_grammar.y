@@ -3612,9 +3612,12 @@ alter_stmt
 	  USER				/* 2 */
 	  identifier	        	/* 3 */
 	  ADD				/* 4 */
-	  opt_members			/* 5 */
-	  opt_comment_spec              /* 6 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier ADD opt_members opt_comment_spec);
+	  MEMBERS			/* 5 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_MEMBERS); }
+	  identifier_list		/* 7 */
+		{ pop_msg(); }
+	  opt_comment_spec              /* 9 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier ADD MEMBERS identifier_list opt_comment_spec);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
 
@@ -3622,14 +3625,8 @@ alter_stmt
 			  {
 			    node->info.alter_user.user_name = $3;
 			    node->info.alter_user.code = PT_ADD_MEMBERS;
-			    node->info.alter_user.members = $5;
-			    node->info.alter_user.comment = $6;
-			    if (node->info.alter_user.comment == NULL
-				&& node->info.alter_user.members == NULL)
-			      {
-			        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
-                               MSGCAT_SYNTAX_INVALID_ALTER);
-			      }
+			    node->info.alter_user.members = $7;
+			    node->info.alter_user.comment = $9;
 			  }
 
 			$$ = node;
@@ -3640,9 +3637,12 @@ alter_stmt
 	  USER				/* 2 */
 	  identifier	        	/* 3 */
 	  DROP  	        	/* 4 */
-	  opt_members			/* 5 */
-	  opt_comment_spec              /* 6 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier DROP opt_members opt_comment_spec);
+	  MEMBERS			/* 5 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_MEMBERS); }
+	  identifier_list		/* 7 */
+		{ pop_msg(); }
+	  opt_comment_spec              /* 9 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier DROP MEMBERS identifier_list opt_comment_spec);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
 
@@ -3650,14 +3650,8 @@ alter_stmt
 			  {
 			    node->info.alter_user.user_name = $3;
 			    node->info.alter_user.code = PT_DROP_MEMBERS;
-			    node->info.alter_user.members = $5;
-			    node->info.alter_user.comment = $6;
-			    if (node->info.alter_user.comment == NULL
-				&& node->info.alter_user.members == NULL)
-			      {
-			        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
-                               MSGCAT_SYNTAX_INVALID_ALTER);
-			      }
+			    node->info.alter_user.members = $7;
+			    node->info.alter_user.comment = $9;
 			  }
 
 			$$ = node;

@@ -2250,6 +2250,71 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
+  /* member */
+  node = statement->info.alter_user.members;
+  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+  if (member_name != NULL)
+    {
+      if (alter_user_code == PT_ADD_MEMBERS && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
+	{
+	  do
+	    {
+	      member = db_find_user (member_name);
+
+	      if (member == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	      else
+		{
+		  error = db_add_member (user, member);
+		}
+
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+
+	      node = node->next;
+	      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	    }
+	  while (member_name != NULL);
+	}
+      if (alter_user_code == PT_DROP_MEMBERS && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
+	{
+	  do
+	    {
+	      member = db_find_user (member_name);
+
+	      if (member == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	      else
+		{
+		  error = db_drop_member (user, member);
+		}
+
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+
+	      node = node->next;
+	      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	    }
+	  while (member_name != NULL);
+	}
+      else
+	{
+	  error = ER_AU_NOT_OWNER;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto end;
+	}
+    }
+
   /* comment */
   node = statement->info.alter_user.comment;
   if (node != NULL)
@@ -2262,50 +2327,6 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  goto end;
 	}
-    }
-
-  /* member */
-  node = statement->info.alter_user.members;
-  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-  if (member_name != NULL)
-    {
-      do
-	{
-	  member = db_find_user (member_name);
-
-	  if (member == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	    }
-	  else
-	    {
-	      if (alter_user_code == PT_ADD_MEMBERS
-		  && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
-		{
-		  error = db_add_member (user, member);
-		}
-	      else if (alter_user_code == PT_DROP_MEMBERS
-		       && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
-		{
-		  error = db_drop_member (user, member);
-		}
-	      else
-		{
-		  error = ER_AU_NOT_OWNER;
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-		}
-	    }
-
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-
-	  node = node->next;
-	  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
-	}
-      while (member_name != NULL);
     }
 
 end:
