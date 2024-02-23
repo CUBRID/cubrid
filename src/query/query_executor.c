@@ -1207,6 +1207,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		}
 	      output_tuple = false;
 	      assert (xasl->topn_items == NULL);
+
 	    }
 
 	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_hash_eligible
@@ -1222,10 +1223,16 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
 	  if (output_tuple)
 	    {
+	      int i;
+
 	      /* generate tuple into list file page */
 	      if (qfile_generate_tuple_into_list (thread_p, xasl->list_id, T_NORMAL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
+		}
+	      for (i = 0; i < xasl->list_id->tpl_descr.f_cnt; i++)
+		{
+		  db_value_clear (xasl->list_id->tpl_descr.f_valp[i]);
 		}
 	    }
 	  break;
@@ -1371,6 +1378,11 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	{
 	  cte_cached_list_id = xasl->proc.cte.non_recursive_part->list_id;
 	}
+    }
+
+  if (xasl->cte_xasl_id)
+    {
+      cte_cached_list_id = xasl->list_id;
     }
 
   if (xasl->list_id && cte_cached_list_id == NULL)
@@ -2195,6 +2207,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   if (xasl->aptr_list)
     {
       XASL_SET_FLAG (xasl->aptr_list, decache_clone_flag);
+      if (xasl->aptr_list->cte_xasl_id)
+	{
+	  qfile_clear_list_id (xasl->aptr_list->list_id);
+	}
       pg_cnt += qexec_clear_xasl (thread_p, xasl->aptr_list, is_final);
     }
   if (xasl->bptr_list)
@@ -14111,7 +14127,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	      if (xptr2->status == XASL_CLEARED || xptr2->status == XASL_INITIALIZED)
 		{
-		  if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
+		  if (xptr2->cte_xasl_id)
+		    {
+		      if (qexec_execute_subquery_for_result_cache (thread_p, xptr2, xasl_state) != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+		  else if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 		    {
 		      if (tplrec.tpl)
 			{
@@ -15050,6 +15073,7 @@ end:
     {
       er_print_callstack (ARG_FILE_LINE, "ending query execution with qlist_count = %d\n", thread_p->m_qlist_count);
     }
+#if 1
   if (list_id && list_id->type_list.type_cnt != 0)
     {
       // one new list file
@@ -15060,6 +15084,7 @@ end:
       // no new list files
       assert (thread_p->m_qlist_count == qlist_enter_count);
     }
+#endif
 #endif // SERVER_MODE
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -15992,61 +16017,18 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
     {
       if (non_recursive_part->cte_xasl_id)
 	{
-	  int i;
-	  int host_var_count = non_recursive_part->cte_host_var_count;
-	  int *host_var_index = non_recursive_part->cte_host_var_index;
-
-	  QFILE_LIST_ID *list_id = NULL;	/* list-id of cached result */
-	  DB_VALUE *dbval_p;	/* db values' pointer for searching cached query */
-	  XASL_CACHE_ENTRY *ent = NULL;	/* xasl for cached query */
-	  QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
-
-	  xcache_find_sha1 (thread_p, &non_recursive_part->cte_xasl_id->sha1, XASL_CACHE_SEARCH_GENERIC, &ent, NULL);
-	  if (ent)
+	  if (qexec_execute_subquery_for_result_cache (thread_p, non_recursive_part, xasl_state) != NO_ERROR)
 	    {
-	      DB_VALUE_ARRAY params;
-	      bool cached_result;
-
-	      dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * host_var_count);
-	      for (i = 0; i < host_var_count; i++)
-		{
-		  db_value_clone (&xasl_state->vd.dbval_ptr[host_var_index[i]], &dbval_p[i]);
-		}
-
-	      params.size = host_var_count;
-	      params.vals = dbval_p;
-
-	      list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, ent, &params, &cached_result);
-	      if (cached_result && list_cache_entry_p)
-		{
-		  list_id = &list_cache_entry_p->list_id;
-		}
-
-	      for (i = 0; i < host_var_count; i++)
-		{
-		  pr_clear_value (&dbval_p[i]);
-		}
-
-	      xcache_unfix (thread_p, ent);
-	    }
-
-	  if (ent == NULL || list_cache_entry_p == NULL || list_id == NULL)
-	    {
-	      qexec_failure_line (__LINE__, xasl_state);
 	      GOTO_EXIT_ON_ERROR;
 	    }
-
-	  qfile_copy_list_id (non_recursive_part->list_id, list_id, false);
 	}
       else if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
 	{
-	  qexec_failure_line (__LINE__, xasl_state);
 	  GOTO_EXIT_ON_ERROR;
 	}
     }
   else
     {
-      qexec_failure_line (__LINE__, xasl_state);
       GOTO_EXIT_ON_ERROR;
     }
 
@@ -25434,4 +25416,59 @@ qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT
   /* reached end of scan, no match */
   *found = false;
   return (context->part_scan_code == S_ERROR ? ER_FAILED : NO_ERROR);
+}
+
+int
+qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  assert (xasl != NULL);
+  assert (xasl->cte_xasl_id != NULL);
+
+  int i;
+  int host_var_count = xasl->cte_host_var_count;
+  int *host_var_index = xasl->cte_host_var_index;
+
+  QFILE_LIST_ID *list_id = NULL;	/* list-id of cached result */
+  DB_VALUE *dbval_p;		/* db values' pointer for searching cached query */
+  XASL_CACHE_ENTRY *ent = NULL;	/* xasl for cached query */
+  QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
+
+  xcache_find_sha1 (thread_p, &xasl->cte_xasl_id->sha1, XASL_CACHE_SEARCH_GENERIC, &ent, NULL);
+  if (ent)
+    {
+      DB_VALUE_ARRAY params;
+      bool cached_result;
+
+      dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * host_var_count);
+      for (i = 0; i < host_var_count; i++)
+	{
+	  db_value_clone (&xasl_state->vd.dbval_ptr[host_var_index[i]], &dbval_p[i]);
+	}
+
+      params.size = host_var_count;
+      params.vals = dbval_p;
+
+      list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, ent, &params, &cached_result);
+      if (cached_result && list_cache_entry_p)
+	{
+	  list_id = &list_cache_entry_p->list_id;
+	}
+
+      for (i = 0; i < host_var_count; i++)
+	{
+	  pr_clear_value (&dbval_p[i]);
+	}
+
+      xcache_unfix (thread_p, ent);
+    }
+
+  if (ent == NULL || list_cache_entry_p == NULL || list_id == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  qfile_copy_list_id (xasl->list_id, list_id, false);
+
+
+  return NO_ERROR;
 }

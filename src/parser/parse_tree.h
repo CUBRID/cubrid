@@ -1189,6 +1189,7 @@ typedef enum
   PT_INDEX_NAME,
   PT_RESERVED,			/* reserved names for special attributes */
   PT_IS_SUBQUERY,		/* query is sub-query, not directly producing result */
+  PT_IS_SUBCACHE,		/* query is cached for sub-query */
   PT_IS_UNION_SUBQUERY,		/* in a union sub-query */
   PT_IS_UNION_QUERY,		/* query directly producing result in top level union */
   PT_IS_SET_EXPR,

@@ -514,7 +514,18 @@ struct cte_proc_node
 	      if ((_x)->status == XASL_CLEARED || (_x)->status == XASL_INITIALIZED) \
 		{ \
 		  /* execute xasl query */ \
-		  if (qexec_execute_mainblock ((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR) \
+		  if (_x->cte_xasl_id) \
+		    { \
+		      if (qexec_execute_subquery_for_result_cache ((thread_p), _x, (v)->xasl_state) != NO_ERROR) \
+			{ \
+			  (_x)->status = XASL_FAILURE; \
+			} \
+		      else \
+			{ \
+			  (_x)->status = XASL_SUCCESS; \
+			} \
+		    } \
+		  else if (qexec_execute_mainblock ((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR) \
 		    { \
 		      (_x)->status = XASL_FAILURE; \
 		    } \

@@ -14565,6 +14565,51 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   return NO_ERROR;
 }
 
+int
+do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * sub_statement)
+{
+  int error = NO_ERROR;
+  PARSER_CONTEXT sub_context;
+  int var_count;
+  XASL_NODE *xasl = (XASL_NODE *) sub_statement->info.query.xasl;
+
+  sub_context = *parser;
+  sub_context.dbval_cnt = 0;
+  sub_context.host_var_count = sub_context.auto_param_count = 0;
+
+  var_count = parser->host_var_count + parser->auto_param_count;
+
+  sub_context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
+  if (sub_context.host_variables == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  sub_context.cte_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+  if (sub_context.cte_host_var_index == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  sub_context.host_var_count = 0;
+
+  parser_walk_tree (&sub_context, sub_statement, pt_cte_host_vars_index, parser, NULL, NULL);
+
+  sub_statement->cte_host_var_count = sub_context.host_var_count;
+  sub_statement->cte_host_var_index = sub_context.cte_host_var_index;
+
+  xasl->cte_host_var_count = sub_context.host_var_count;
+  xasl->cte_host_var_index = sub_context.cte_host_var_index;
+
+  error = do_prepare_select (&sub_context, sub_statement);
+
+  xasl->cte_xasl_id = sub_statement->xasl_id;
+
+  return error;
+}
+
 /*
  * do_prepare_cte () - prepare CTE statements in WITH clause for query cache
  * return : Error code
@@ -14622,6 +14667,56 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   return error;
+}
+
+/*
+ * do_execute_subquery () - execute CTE statements in WITH clause for query cache
+ * return : Error code
+ * parser (in)	  : parser context
+ * statement (in) : statement to execute
+ * query_flag     : query flag for execution
+ */
+static int
+do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
+{
+  PT_NODE *stmt;
+  QUERY_ID query_id;
+  QFILE_LIST_ID *list_id;
+  DB_VALUE *host_variables;
+  CACHE_TIME clt_cache_time;
+  int err, i, flag = query_flag & ~EXECUTE_QUERY_WITH_COMMIT;
+
+  CACHE_TIME_RESET (&clt_cache_time);
+
+  stmt = statement;
+  if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
+    {
+      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
+      if (host_variables == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (DB_VALUE) * stmt->cte_host_var_count);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      for (i = 0; i < stmt->cte_host_var_count; i++)
+	{
+	  pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
+	}
+
+      err =
+	execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
+		       flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
+
+      free (host_variables);
+
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -14838,6 +14933,32 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   return err;
 }
 
+static PT_NODE *
+do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  int query_flag = *(int *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (stmt->node_type != PT_SELECT)
+    {
+      return stmt;
+    }
+
+  if (stmt->info.query.is_subquery == PT_IS_SUBCACHE && pt_is_allowed_result_cache ())
+    {
+      int err;
+
+      err = do_execute_subquery (parser, stmt, query_flag);
+      if (err != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return stmt;
+}
+
 /*
  * do_execute_select() - Execute the prepared SELECT statement
  *   return: Error code
@@ -14962,6 +15083,8 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return err;
 	}
     }
+
+  parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &query_flag, NULL, NULL);
 
   /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the host
    * variables given by users as parameter values for the query. As a result, query id and result file id

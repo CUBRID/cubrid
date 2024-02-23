@@ -13525,7 +13525,7 @@ static PT_NODE *
 pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   UNCORR_INFO *info = (UNCORR_INFO *) arg;
-  XASL_NODE *xasl;
+  XASL_NODE *xasl, *saved_xasl = (XASL_NODE *) node->info.query.xasl;
 
   switch (node->node_type)
     {
@@ -13546,6 +13546,11 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 
 	  if (node->info.query.correlation_level == info->level)
 	    {
+	      node->info.query.is_subquery = PT_MISC_NONE;
+	      do_prepare_subquery (parser, node);
+	      node->info.query.is_subquery = PT_IS_SUBCACHE;
+	      node->info.query.xasl = saved_xasl;
+
 	      /* order is important. we are on the way up, so putting things at the tail of the list will end up deeper
 	       * nested queries being first, which is required. */
 	      info->xasl = pt_append_xasl (info->xasl, xasl);
