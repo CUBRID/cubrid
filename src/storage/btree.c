@@ -606,6 +606,30 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
        } while(0)
 #endif
 
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+#define PEEK_KEY_TO_COPY_KEY(bts)  peek_key_to_copy_key((bts))
+static void
+peek_key_to_copy_key (BTREE_SCAN * bts)
+{
+  if (bts->is_cur_key_copied == false)
+    {
+      if (DB_IS_NULL (&bts->cur_key) == false)
+	{
+	  DB_VALUE t_key;
+	  /*db_make_null (&t_key); */
+	  pr_clone_value (&(bts->cur_key), &t_key);
+	  btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
+	  bts->cur_key = t_key;
+	  bts->clear_cur_key = true;
+	}
+
+      bts->is_cur_key_copied = true;
+    }
+}
+#else
+#define PEEK_KEY_TO_COPY_KEY(bts)
+#endif
+
 //
 // bts_reset_scan - reset b-tree scan (clear progress)
 //
@@ -4434,7 +4458,14 @@ btree_make_complete_key_including_prefix (BTREE_SCAN * bts, DB_VALUE * common_pr
       bts->cur_key = completed_key;
       bts->clear_cur_key = true;
       bts->is_cur_key_compressed = false;
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+      bts->is_cur_key_copied = true;
+#endif
     }
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+  else
+    PEEK_KEY_TO_COPY_KEY (bts);
+#endif
 }
 
 /*
@@ -4452,12 +4483,20 @@ btree_check_decompress_key (BTREE_SCAN * bts)
 	{
 	  check_validate (bts);
 	  btree_make_complete_key_including_prefix (bts, &(bts->common_prefix_key), bts->common_prefix_size);
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+	  return;
+#endif
 	}
       else
 	{
 	  assert (0);
 	}
     }
+
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+  PEEK_KEY_TO_COPY_KEY (bts);
+#endif
+
 }
 
 /*
@@ -25122,7 +25161,12 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
 
   bts->is_cur_key_compressed = false;
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+  bts->is_cur_key_copied = false;
+  return btree_read_record_in_leafpage (thread_p, bts->C_page, PEEK_KEY_VALUE, bts);
+#else
   return btree_read_record_in_leafpage (thread_p, bts->C_page, COPY_KEY_VALUE, bts);
+#endif
 }
 
 /*
