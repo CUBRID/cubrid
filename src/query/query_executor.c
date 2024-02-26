@@ -1207,7 +1207,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		}
 	      output_tuple = false;
 	      assert (xasl->topn_items == NULL);
-
 	    }
 
 	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_hash_eligible
@@ -1229,10 +1228,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      if (qfile_generate_tuple_into_list (thread_p, xasl->list_id, T_NORMAL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
-		}
-	      for (i = 0; i < xasl->list_id->tpl_descr.f_cnt; i++)
-		{
-		  db_value_clear (xasl->list_id->tpl_descr.f_valp[i]);
 		}
 	    }
 	  break;
@@ -15073,7 +15068,6 @@ end:
     {
       er_print_callstack (ARG_FILE_LINE, "ending query execution with qlist_count = %d\n", thread_p->m_qlist_count);
     }
-#if 1
   if (list_id && list_id->type_list.type_cnt != 0)
     {
       // one new list file
@@ -15084,7 +15078,6 @@ end:
       // no new list files
       assert (thread_p->m_qlist_count == qlist_enter_count);
     }
-#endif
 #endif // SERVER_MODE
 
 #if defined(ENABLE_SYSTEMTAP)

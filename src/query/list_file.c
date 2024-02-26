@@ -552,11 +552,6 @@ qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
 
   if (list_id_p->tpl_descr.f_valp)
     {
-      int i;
-      for (i = 0; i < list_id_p->tpl_descr.f_cnt; i++)
-	{
-	  db_value_clear (list_id_p->tpl_descr.f_valp[i]);
-	}
       free_and_init (list_id_p->tpl_descr.f_valp);
     }
 

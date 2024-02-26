@@ -553,25 +553,8 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
     {
       if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
-#if 0
-	  if (reg_var_p->value.xasl && reg_var_p->value.xasl->cte_xasl_id)
-	    {
-	      REGU_VARIABLE_LIST cte_reg_var_p;
-	      QFILE_TUPLE tpl = reg_var_p->value.xasl->list_id->tpl_descr.tplrec1->tpl;
-
-	      cte_reg_var_p = reg_var_p->value.xasl->outptr_list->valptrp;
-	      fetch_val_list (thread_p, cte_reg_var_p, NULL, NULL, NULL, tpl, PEEK);
-	      tuple_desc_p->f_valp[tuple_desc_p->f_cnt] = cte_reg_var_p->value.value.dbvalptr;
-	    }
-	  else
-	    {
-	      tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
-		qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
-	    }
-#else
 	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
 	    qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
-#endif
 
 	  if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
 	    {

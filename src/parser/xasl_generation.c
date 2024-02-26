@@ -13546,10 +13546,13 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 
 	  if (node->info.query.correlation_level == info->level)
 	    {
-	      node->info.query.is_subquery = PT_MISC_NONE;
-	      do_prepare_subquery (parser, node);
-	      node->info.query.is_subquery = PT_IS_SUBCACHE;
-	      node->info.query.xasl = saved_xasl;
+	      if (node->info.query.hint & PT_HINT_QUERY_CACHE)
+		{
+		  node->info.query.is_subquery = PT_MISC_NONE;
+		  do_prepare_subquery (parser, node);
+		  node->info.query.is_subquery = PT_IS_SUBCACHE;
+		  node->info.query.xasl = saved_xasl;
+		}
 
 	      /* order is important. we are on the way up, so putting things at the tail of the list will end up deeper
 	       * nested queries being first, which is required. */
