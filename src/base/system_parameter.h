@@ -34,6 +34,7 @@
 #include "error_code.h"
 #include "porting.h"
 #include "porting_inline.hpp"
+#include "chartype.h"
 
 typedef enum
 {
