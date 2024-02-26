@@ -2255,7 +2255,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
   if (member_name != NULL)
     {
-      if (alter_user_code == PT_ADD_MEMBERS && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
+      if ((ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)) && alter_user_code == PT_ADD_MEMBERS)
 	{
 	  do
 	    {
@@ -2281,7 +2281,8 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	  while (member_name != NULL);
 	}
-      if (alter_user_code == PT_DROP_MEMBERS && (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)))
+      else if ((ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user))
+	       && alter_user_code == PT_DROP_MEMBERS)
 	{
 	  do
 	    {
