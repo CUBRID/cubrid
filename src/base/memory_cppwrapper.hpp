@@ -28,14 +28,12 @@
 #ifdef SERVER_MODE
 inline void *operator new (size_t size, const char *file, const int line)
 {
-  void *p = cub_alloc (size, file, line);
-  return p;
+  return cub_alloc (size, file, line);
 }
 
 inline void *operator new[] (size_t size, const char *file, const int line)
 {
-  void *p = cub_alloc (size, file, line);
-  return p;
+  return cub_alloc (size, file, line);
 }
 
 inline void operator delete (void *ptr) noexcept

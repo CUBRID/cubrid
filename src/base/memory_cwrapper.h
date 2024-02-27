@@ -50,8 +50,8 @@ cub_free (void *ptr)
 {
   if (mmon_is_memory_monitor_enabled () && ptr != NULL)
     {
-      mmon_sub_stat ((char *) ptr);
       assert (malloc_usable_size (ptr) != 0);
+      mmon_sub_stat ((char *) ptr);
     }
   free (ptr);
 }
@@ -102,44 +102,51 @@ cub_calloc (size_t num, size_t size, const char *file, const int line)
 inline void *
 cub_realloc (void *ptr, size_t size, const char *file, const int line)
 {
-  void *p = NULL;
+  void *new_ptr = NULL;
 
   if (mmon_is_memory_monitor_enabled ())
     {
-      p = malloc (size + cubmem::MMON_METAINFO_SIZE);
-      if (p != NULL)
+      if (size == 0)
 	{
-	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
-
-	  if (ptr != NULL)
+	  cub_free (ptr);
+	}
+      else
+	{
+	  new_ptr = malloc (size + cubmem::MMON_METAINFO_SIZE);
+	  if (new_ptr != NULL)
 	    {
-	      memcpy (p, ptr, get_allocated_size (ptr));
-	      cub_free (ptr);
+	      mmon_add_stat ((char *) new_ptr, malloc_usable_size (new_ptr), file, line);
+
+	      if (ptr != NULL)
+		{
+		  size_t old_size = get_allocated_size (ptr);
+		  size_t copy_size = old_size < size ? old_size : size;
+		  memcpy (new_ptr, ptr, copy_size);
+		  cub_free (ptr);
+		}
 	    }
 	}
     }
   else
     {
-      p = realloc (ptr, size);
+      new_ptr = realloc (ptr, size);
     }
 
-  return p;
+  return new_ptr;
 }
 
 inline char *
 cub_strdup (const char *str, const char *file, const int line)
 {
   void *p = NULL;
-  char *ret = NULL;
 
   p = cub_alloc (strlen (str) + 1, file, line);
   if (p != NULL)
     {
-      ret = (char *) p;
-      memcpy (ret, str, strlen (str) + 1);
+      memcpy (p, str, strlen (str) + 1);
     }
 
-  return ret;
+  return (char *) p;
 }
 
 #define malloc(sz) cub_alloc(sz, __FILE__, __LINE__)
