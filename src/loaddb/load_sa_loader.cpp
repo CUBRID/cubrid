@@ -6208,6 +6208,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   int defaults = 0;
   int fails = 0;
   int64_t lastcommit = 0;
+  bool is_emptyfile = false;
   int ldr_init_ret = NO_ERROR;
 
   std::ifstream object_file (args->object_file);
@@ -6235,6 +6236,14 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
       ldr_register_post_commit_handler ();
     }
 
+  /* get the size of object file */
+  object_file.seekg (0, std::ios::end);
+  if (object_file.tellg() <= 0)
+    {
+      is_emptyfile = true;
+    }
+  object_file.seekg (0, std::ios::beg);
+
   /* Check if we need to perform syntax checking. */
   if (!args->load_only)
     {
@@ -6244,7 +6253,10 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 	{
 	  ldr_init_ret = ldr_Driver->get_class_installer ().install_class (args->table_name.c_str ());
 	}
-      ldr_Driver->parse (object_file);
+      if (!is_emptyfile)
+	{
+	  ldr_Driver->parse (object_file);
+	}
       ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
     }
   else
@@ -6301,7 +6313,10 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 		  ldr_Driver->get_class_installer ().install_class (args->table_name.c_str ());
 		}
 
-	      ldr_Driver->parse (object_file);
+	      if (!is_emptyfile)
+		{
+		  ldr_Driver->parse (object_file);
+		}
 	      ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
 
 	      if (errors)
@@ -6325,12 +6340,9 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 		}
 	      else
 		{
-		  if (objects || fails)
-		    {
-		      print_log_msg (1,
-				     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-						     LOADDB_MSG_INSERT_AND_FAIL_COUNT), objects, fails);
-		    }
+		  print_log_msg (1,
+				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+						 LOADDB_MSG_INSERT_AND_FAIL_COUNT), objects, fails);
 
 		  if (defaults)
 		    {
