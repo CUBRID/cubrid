@@ -143,6 +143,11 @@ sq_make_key (xasl_node * xasl)
 	}
     }
 
+  if (xasl->if_pred)
+    {
+      cnt += sq_walk_xasl_and_add_val_to_set (xasl->if_pred, SQ_TYPE_PRED, keyp->pred_set);
+    }
+
   if (cnt == 0)
     {
       sq_free_key (keyp);
@@ -164,6 +169,7 @@ sq_make_val (REGU_VARIABLE * val)
     {
     case TYPE_CONSTANT:
       ret->val.dbvalptr = db_value_copy (val->value.dbvalptr);
+      ret->val.dbvalptr->domain.general_info.is_null = 0;
       break;
 
     case TYPE_LIST_ID:
@@ -400,11 +406,6 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
   sq_val *val;
   const void *ret;
 
-  if (xasl->sq_cache_enabled == SQ_CACHE_NOT_INITIALIZED)
-    {
-      sq_cache_initialize (xasl);
-    }
-
   key = sq_make_key (xasl);
 
   if (key == NULL)
@@ -413,6 +414,12 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
     }
 
   val = sq_make_val (regu_var);
+
+  if (xasl->sq_cache_enabled == SQ_CACHE_NOT_INITIALIZED)
+    {
+      sq_cache_initialize (xasl);
+    }
+
   ret = mht_put_if_not_exists (xasl->sq_cache_ht, key, val);
   if (!ret || ret != val)
     {
