@@ -86,6 +86,9 @@
 #define PT_NODE_SP_JAVA_METHOD(node) \
   ((node)->info.sp.body->info.sp_body.decl->info.value.data_value.str->bytes)
 
+#define PT_NODE_SP_AUTHID(node) \
+  ((node)->info.sp.auth_id)
+
 #define PT_NODE_SP_COMMENT(node) \
   (((node)->info.sp.comment == NULL) ? "" : \
    (char *) (node)->info.sp.comment->info.value.data_value.str->bytes)
@@ -109,6 +112,7 @@ static bool is_prepare_call[MAX_CALL_COUNT] = { false, };
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static SP_MODE_ENUM jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static PT_MISC_TYPE jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type);
+static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid);
 
 static char *jsp_check_stored_procedure_name (const char *str);
 static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
@@ -357,7 +361,7 @@ jsp_get_sp_type (const char *name)
  * Note:
  */
 
-char *
+const char *
 jsp_get_owner_name (const char *name)
 {
   DB_OBJECT *mop_p;
@@ -623,6 +627,15 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return ER_BLOCK_DDL_STMT;
     }
 
+  // check PL/CSQL's AUTHID with CURRENT_USER
+  sp_info.directive = jsp_map_pt_to_sp_authid (PT_NODE_SP_AUTHID (statement));
+  sp_info.lang = (SP_LANG_ENUM) PT_NODE_SP_LANG (statement);
+  if (sp_info.directive == SP_DIRECTIVE_RIGHTS_CALLER && sp_info.lang == SP_LANG_PLCSQL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVOKERS_RIGHTS_NOT_SUPPORTED, 0);
+      return er_errid ();
+    }
+
   sp_info.sp_name = PT_NODE_SP_NAME (statement);
   if (sp_info.sp_name.empty ())
     {
@@ -640,22 +653,14 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       sp_info.return_type = DB_TYPE_NULL;
     }
 
-
-  // TODO: pkg_name
-  sp_info.pkg_name = "";
-  sp_info.is_system_generated = false;
-  sp_info.directive = 0;
-
+  // set rows for _db_stored_procedure_args
   int param_count = 0;
   param_list = PT_NODE_SP_ARGS (statement);
   for (p = param_list; p != NULL; p = p->next)
     {
-      SP_ARG_INFO arg_info;
+      SP_ARG_INFO arg_info (sp_info.sp_name, sp_info.pkg_name);
 
-      arg_info.sp_name = sp_info.sp_name;
-      arg_info.pkg_name = sp_info.pkg_name;
       arg_info.index_of = param_count++;
-      arg_info.is_system_generated = false;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
       arg_info.data_type = pt_type_enum_to_db (p->type_enum);
       arg_info.mode = jsp_map_pt_misc_to_sp_mode (p->info.sp_param.mode);
@@ -671,7 +676,6 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       sp_info.args.push_back (arg_info);
     }
 
-  sp_info.lang = (SP_LANG_ENUM) PT_NODE_SP_LANG (statement);
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
       std::string pl_code (statement->sql_user_text, statement->sql_user_text_len);
@@ -941,6 +945,14 @@ jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum)
     }
 }
 
+static SP_DIRECTIVE_ENUM
+jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid)
+{
+  assert (pt_authid == PT_AUTHID_OWNER || pt_authid == PT_AUTHID_CALLER);
+  return (pt_authid == PT_AUTHID_OWNER ? SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER :
+	  SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_CALLER);
+}
+
 /*
  * jsp_check_stored_procedure_name -
  *   return: java stored procedure name
@@ -1130,7 +1142,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 {
   int error = NO_ERROR;
   int save;
-  DB_VALUE method, auth, param_cnt_val, mode, arg_type, temp, result_type;
+  DB_VALUE method, auth, param_cnt_val, mode, arg_type, temp, lang_val, directive_val, result_type;
 
   int sig_num_args = pt_length_of_list (node->info.method_call.arg_list);
   std::vector < int >sig_arg_mode;
@@ -1266,10 +1278,19 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	sig->method_name[method_name_len] = 0;
 
 	// auth_name
-	const char *auth_name = jsp_get_owner_name (parsed_method_name);
+	error = db_get (mop_p, SP_ATTR_DIRECTIVE, &directive_val);
+	if (error != NO_ERROR)
+	  {
+	    goto end;
+	  }
+
+	int directive = db_get_int (&directive_val);
+
+	const char *auth_name = (directive == SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER ? jsp_get_owner_name (
+					 parsed_method_name) : au_user_name ());
 	int auth_name_len = strlen (auth_name);
 
-	sig->auth_name = (char *) db_private_alloc (NULL, auth_name_len + 1);
+	sig->auth_name = (char *) db_private_alloc (NULL, auth_name_len * sizeof (char));
 	if (!sig->auth_name)
 	  {
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;

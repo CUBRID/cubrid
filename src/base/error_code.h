@@ -1739,8 +1739,9 @@
 #define ER_SP_SERVER_CRASHED                        -1359
 #define ER_SP_COMPILE_ERROR                         -1360
 #define ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED     -1361
+#define ER_SP_INVOKERS_RIGHTS_NOT_SUPPORTED         -1362
 
-#define ER_LAST_ERROR                               -1362
+#define ER_LAST_ERROR                               -1363
 
 /*
  * CAUTION!

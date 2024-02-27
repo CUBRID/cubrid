@@ -45,8 +45,30 @@ struct sp_arg_info
   DB_TYPE data_type;
   SP_MODE_ENUM mode;
   std::string comment;
+
+  sp_arg_info (const std::string& s_name, const std::string& p_name) 
+  : sp_name {s_name}
+  , pkg_name {p_name}
+  , index_of {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
+  , is_system_generated {false}
+  , arg_name {}
+  , data_type {DB_TYPE::DB_TYPE_NULL}
+  , mode {SP_MODE_ENUM::SP_MODE_IN}
+  , comment {}
+  {}
+
+  sp_arg_info ()
+  : sp_arg_info ("", "")
+  {}
 };
 typedef sp_arg_info SP_ARG_INFO;
+
+enum sp_directive : int
+{
+  SP_DIRECTIVE_RIGHTS_OWNER = 0x00,
+  SP_DIRECTIVE_RIGHTS_CALLER = (0x01 << 0),
+};
+typedef sp_directive SP_DIRECTIVE_ENUM;
 
 struct sp_info
 {
@@ -58,9 +80,23 @@ struct sp_info
   std::vector <sp_arg_info> args;
   SP_LANG_ENUM lang;
   std::string target;
-  int directive;
+  SP_DIRECTIVE_ENUM directive;
   MOP owner;
   std::string comment;
+
+  sp_info () 
+  : sp_name {}
+  , pkg_name {}
+  , sp_type {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
+  , return_type {DB_TYPE::DB_TYPE_NULL}
+  , is_system_generated {false}
+  , args {}
+  , lang {SP_LANG_ENUM::SP_LANG_PLCSQL}
+  , target {}
+  , directive {SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER}
+  , owner {nullptr}
+  , comment {}
+  {}
 };
 typedef sp_info SP_INFO;
 // *INDENT-ON*
