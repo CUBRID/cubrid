@@ -10793,8 +10793,9 @@ pt_get_name_with_qualifier_removed (const char *name)
 const char *
 pt_get_name_without_current_user_name (const char *name)
 {
-  char *dot = NULL;
-  char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *dot = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH];
+  int qualifier_name_len;
   const char *current_schema_name = NULL;
   const char *object_name = NULL;
   int error = NO_ERROR;
@@ -10804,10 +10805,8 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
-  assert (strlen (name) < DB_MAX_IDENTIFIER_LENGTH);
-  strcpy (name_copy, name);
-
-  dot = strchr (name_copy, '.');
+  /* Find the ending position of the user-specified name. */
+  dot = strchr (name, '.');
 
   /* If the name is not a user-specified name, it is returned as is. */
   if (dot == NULL)
@@ -10819,17 +10818,28 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
+  /* Length of user-specified name. */
+  qualifier_name_len = STATIC_CAST (int, dot - name);
+
+  /* If it exceeds DB_MAX_USER_LENGTH, it is not a user-specified name. */
+  if (qualifier_name_len >= DB_MAX_USER_LENGTH)
+    {
+      return name;
+    }
+
+  /* Copy the user-specified name to the buffer for comparison with the current schema name. */
+  memcpy (qualifier_name, name, qualifier_name_len);
+  qualifier_name[qualifier_name_len] = '\0';
+
   current_schema_name = sc_current_schema_name ();
 
-  dot[0] = '\0';
-
-  if (intl_identifier_casecmp (name_copy, current_schema_name) == 0)
+  if (intl_identifier_casecmp (qualifier_name, current_schema_name) == 0)
     {
       /*
        * e.g.        name: current_schema_name.object_name
        *      object_name: object_name
        */
-      object_name = strchr (name, '.') + 1;
+      object_name = dot + 1;
     }
   else
     {
