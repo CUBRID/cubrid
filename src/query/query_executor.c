@@ -1244,7 +1244,8 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      if (xasl->aptr_list && xasl->aptr_list->cte_xasl_id && XASL_IS_FLAGED (xasl->aptr_list, XASL_LINK_TO_REGU_VARIABLE))
+	      if (xasl->aptr_list && xasl->aptr_list->cte_xasl_id
+		  && XASL_IS_FLAGED (xasl->aptr_list, XASL_LINK_TO_REGU_VARIABLE))
 		{
 		  int i;
 
