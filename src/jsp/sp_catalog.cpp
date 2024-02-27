@@ -60,7 +60,7 @@ static int sp_builtin_init ()
   v.lang = SP_LANG_PLCSQL;
   v.owner = Au_public_user;
   v.comment = "";
-  v.directive = 0;
+  v.directive = SP_DIRECTIVE_RIGHTS_OWNER;
 
   a.is_system_generated = true;
 
