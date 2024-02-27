@@ -2823,6 +2823,8 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
     {
       if (DB_VALUE_TYPE (value) == DB_TYPE_MIDXKEY)
 	{
+	  int func_idx_col_id = filterp->func_idx_col_id;
+
 	  midxkey = db_get_midxkey (value);
 
 	  if (filterp->btree_num_attrs <= 0 || !filterp->btree_attr_ids || !midxkey)
@@ -2832,6 +2834,11 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 
 	  prev_j_index = 0;
 	  prev_j_ptr = NULL;
+
+	  if (func_idx_col_id == -1)
+	    {
+	      func_idx_col_id = filterp->btree_num_attrs + 1;
+	    }
 
 	  /* for all attributes specified in the filter */
 	  for (i = 0; i < scan_attrsp->num_attrs; i++)
@@ -2858,13 +2865,9 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 		      return V_ERROR;
 		    }
 
-		  if (filterp->func_idx_col_id != -1 && j > filterp->func_idx_col_id)
-		    {
-		      j = j + 1;
-		    }
-
 		  /* get j-th element value from the midxkey */
-		  if (pr_midxkey_get_element_nocopy (midxkey, j, valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
+		  if (pr_midxkey_get_element_nocopy (midxkey, ((j < func_idx_col_id) ? j : j + 1),
+						     valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
 		    {
 		      return V_ERROR;
 		    }
