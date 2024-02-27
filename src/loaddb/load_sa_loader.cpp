@@ -6477,7 +6477,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 	      else
 		{
 		  print_log_msg (1,
-			         msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
 						 LOADDB_MSG_INSERT_AND_FAIL_COUNT), objects, fails);
 
 		  if (defaults)
