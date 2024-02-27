@@ -2255,8 +2255,16 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
   if (member_name != NULL)
     {
-      if ((ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user)) && alter_user_code == PT_ADD_MEMBERS)
+      if (!ws_is_same_object (user, Au_user) && !au_is_dba_group_member (Au_user))
 	{
+	  error = ER_AU_NOT_OWNER;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto end;
+	}
+
+      switch (alter_user_code)
+	{
+	case PT_ADD_MEMBERS:
 	  do
 	    {
 	      member = db_find_user (member_name);
@@ -2280,10 +2288,8 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
 	    }
 	  while (member_name != NULL);
-	}
-      else if ((ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user))
-	       && alter_user_code == PT_DROP_MEMBERS)
-	{
+	  break;
+	case PT_DROP_MEMBERS:
 	  do
 	    {
 	      member = db_find_user (member_name);
@@ -2307,12 +2313,12 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
 	    }
 	  while (member_name != NULL);
-	}
-      else
-	{
-	  error = ER_AU_NOT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	  goto end;
+	  break;
+	default:
+	  /* 
+	   * code shall be one of the above 2 types, otherwise it's an error. 
+	   */
+	  break;
 	}
     }
 
