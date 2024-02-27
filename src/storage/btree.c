@@ -25189,15 +25189,24 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     case DB_TYPE_VARBIT:
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
-      bts->is_cur_key_copied = false;
-      return btree_read_record_in_leafpage (thread_p, bts->C_page, PEEK_KEY_VALUE, bts);
+      {
+	int ret = btree_read_record_in_leafpage (thread_p, bts->C_page, PEEK_KEY_VALUE, bts);
+	/* Even if PEEK_KEY_VALUE is specified, in the case of compressed data,
+	 * a new buffer is created separately and stored, so it is stable even after pgbuf_unfix(). 
+	 * If need_clear is true, it means that a separate buffer has been allocated.  
+	 * And compression is only used for char, varchar, nchar, and nvarchar. 
+	 * Bit, varbit, and midxkey will return with need_clear set to false.
+	 */
+	bts->is_cur_key_copied = bts->cur_key.need_clear;
+	return ret;
+      }
 
     default:
       break;
     }
+
   bts->is_cur_key_copied = true;
 #endif
-
   return btree_read_record_in_leafpage (thread_p, bts->C_page, COPY_KEY_VALUE, bts);
 }
 
