@@ -143,11 +143,6 @@ sq_make_key (xasl_node * xasl)
 	}
     }
 
-  if (xasl->if_pred)
-    {
-      cnt += sq_walk_xasl_and_add_val_to_set (xasl->if_pred, SQ_TYPE_PRED, keyp->pred_set);
-    }
-
   if (cnt == 0)
     {
       sq_free_key (keyp);
@@ -500,8 +495,8 @@ sq_cache_destroy (xasl_node * xasl)
 int
 execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd)
 {
-  if (regu_var->xasl && !regu_var->xasl->aptr_list && !regu_var->xasl->dptr_list
-      && (regu_var->xasl->status == XASL_CLEARED || regu_var->xasl->status == XASL_INITIALIZED))
+  if (regu_var->xasl && !regu_var->xasl->aptr_list && !regu_var->xasl->dptr_list && !regu_var->xasl->if_pred &&
+      &&(regu_var->xasl->status == XASL_CLEARED || regu_var->xasl->status == XASL_INITIALIZED))
     {
 
       if (regu_var->xasl->sq_cache_enabled == SQ_CACHE_ENABLED
