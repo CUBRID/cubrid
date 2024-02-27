@@ -14693,6 +14693,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
     }
 
   xasl->status = XASL_SUCCESS;
+
   return NO_ERROR;
 
   /*
@@ -14759,6 +14760,7 @@ exit_on_error:
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
 
   xasl->status = XASL_FAILURE;
+
   qexec_failure_line (__LINE__, xasl_state);
   return ER_FAILED;
 }

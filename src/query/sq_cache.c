@@ -51,6 +51,10 @@
 #define SQ_TYPE_REGU_VAR 1
 #define SQ_TYPE_DBVAL 2
 
+#define SQ_CACHE_DISABLED 0
+#define SQ_CACHE_ENABLED 1
+#define SQ_CACHE_NOT_INITIALIZED 3
+
 typedef union _sq_regu_value
 {
   /* fields used by both XASL interpreter and regulator */
@@ -179,7 +183,9 @@ sq_make_val (REGU_VARIABLE * val)
 void
 sq_free_key (sq_key * key)
 {
+  db_value_clear (key->pred_set);
   pr_free_ext_value (key->pred_set);
+
   free (key);
 }
 
@@ -254,6 +260,7 @@ sq_hash_func (const void *key, unsigned int ht_size)
     {
       db_set_get (set, i, &v);
       h += mht_valhash (&v, ht_size);
+      pr_clear_value (&v);
     }
   return h % ht_size;
 }
@@ -284,8 +291,12 @@ sq_cmp_func (const void *key1, const void *key2)
       db_set_get (set2, i, &v2);
       if (!mht_compare_dbvalues_are_equal (&v1, &v2))
 	{
+	  pr_clear_value (&v1);
+	  pr_clear_value (&v2);
 	  return 0;
 	}
+      pr_clear_value (&v1);
+      pr_clear_value (&v2);
     }
   return 1;
 
@@ -378,7 +389,7 @@ sq_cache_initialize (xasl_node * xasl)
     }
   xasl->sq_cache_hit = (DB_BIGINT) 0;
   xasl->sq_cache_miss = (DB_BIGINT) 0;
-  xasl->sq_cache_enabled = 1;
+  xasl->sq_cache_enabled = SQ_CACHE_ENABLED;
   return NO_ERROR;
 }
 
@@ -389,7 +400,10 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
   sq_val *val;
   const void *ret;
 
-  assert (xasl->sq_cache_enabled == 1);
+  if (xasl->sq_cache_enabled == SQ_CACHE_NOT_INITIALIZED)
+    {
+      sq_cache_initialize (xasl);
+    }
 
   key = sq_make_key (xasl);
 
@@ -416,6 +430,11 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
   sq_key *key;
   sq_val *ret;
 
+  if (xasl->sq_cache_enabled != SQ_CACHE_ENABLED)
+    {
+      return false;
+    }
+
   if (xasl->sq_cache_miss >= SQ_CACHE_MISS_MAX)
     {
       if (xasl->sq_cache_hit / xasl->sq_cache_miss < SQ_CACHE_MIN_HIT_RATIO)
@@ -423,8 +442,6 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
 	  return false;
 	}
     }
-
-  assert (xasl->sq_cache_enabled == 1);
 
   key = sq_make_key (xasl);
   if (key == NULL)
@@ -450,7 +467,7 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
 void
 sq_cache_drop_all (xasl_node * xasl)
 {
-  if (xasl->sq_cache_enabled == 1)
+  if (xasl->sq_cache_enabled == SQ_CACHE_ENABLED)
     {
       if (xasl->sq_cache_ht != NULL)
 	{
@@ -462,15 +479,14 @@ sq_cache_drop_all (xasl_node * xasl)
 void
 sq_cache_destroy (xasl_node * xasl)
 {
-  assert (xasl->sq_cache_enabled == 0 || xasl->sq_cache_enabled == 1 || xasl->sq_cache_enabled == -1);
-  if (xasl->sq_cache_enabled == 1)
+  if (xasl->sq_cache_enabled == SQ_CACHE_ENABLED)
     {
       er_log_debug (ARG_FILE_LINE, "destroy sq_cache at xasl %p\ncache info : \n\thit : %10ld\n\tmiss: %10ld\n", xasl,
 		    xasl->sq_cache_hit, xasl->sq_cache_miss);
       sq_cache_drop_all (xasl);
       mht_destroy (xasl->sq_cache_ht);
     }
-  xasl->sq_cache_enabled = 0;
+  xasl->sq_cache_enabled = SQ_CACHE_DISABLED;
   xasl->sq_cache_ht = NULL;
 }
 
@@ -481,7 +497,8 @@ execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE
       && (regu_var->xasl->status == XASL_CLEARED || regu_var->xasl->status == XASL_INITIALIZED))
     {
 
-      if (regu_var->xasl->sq_cache_enabled == 1)
+      if (regu_var->xasl->sq_cache_enabled == SQ_CACHE_ENABLED
+	  || regu_var->xasl->sq_cache_enabled == SQ_CACHE_NOT_INITIALIZED)
 	{
 	  if (sq_get (regu_var->xasl, regu_var))
 	    {
@@ -498,15 +515,9 @@ execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE
 	  return false;
 	}
 
-      if (regu_var->xasl->sq_cache_enabled == -1)
+      if (regu_var->xasl->sq_cache_enabled == SQ_CACHE_DISABLED)
 	{
-	  sq_cache_initialize (regu_var->xasl);
-	}
-
-      if (regu_var->xasl->sq_cache_enabled == 0)
-	{
-	  regu_var->xasl->sq_cache_enabled = -1;
-
+	  regu_var->xasl->sq_cache_enabled = SQ_CACHE_NOT_INITIALIZED;
 	}
 
     }

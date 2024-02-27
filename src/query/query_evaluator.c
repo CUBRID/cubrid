@@ -40,7 +40,6 @@
 #include "dbtype.h"
 #include "query_executor.h"
 #include "dbtype.h"
-#include "sq_cache.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
 
@@ -1842,7 +1841,6 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	      if (et_comp->lhs->type == TYPE_LIST_ID)
 		{
 		  /* execute linked query */
-
 		  EXECUTE_REGU_VARIABLE_XASL (thread_p, et_comp->lhs, vd);
 		  if (CHECK_REGU_VARIABLE_XASL_STATUS (et_comp->lhs) != XASL_SUCCESS)
 		    {

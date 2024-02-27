@@ -3785,7 +3785,6 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
   REGU_VALUE_LIST *reguval_list = NULL;
   DB_TYPE head_type, cur_type;
   FUNCTION_TYPE *funcp = NULL;
-  int save_orig_sq_enabled;
 
   switch (regu_var->type)
     {
@@ -3880,7 +3879,6 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  goto exit_on_error;
 	}
       *peek_dbval = regu_var->value.dbvalptr;
-
       break;
 
     case TYPE_ORDERBY_NUM:
