@@ -3784,7 +3784,6 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
   REGU_VALUE_LIST *reguval_list = NULL;
   DB_TYPE head_type, cur_type;
   FUNCTION_TYPE *funcp = NULL;
-  QFILE_LIST_ID *last_list_id;
 
   switch (regu_var->type)
     {

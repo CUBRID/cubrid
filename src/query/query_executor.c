@@ -1238,12 +1238,20 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
 	  if (output_tuple)
 	    {
-	      int i;
-
 	      /* generate tuple into list file page */
 	      if (qfile_generate_tuple_into_list (thread_p, xasl->list_id, T_NORMAL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      if (xasl->aptr_list && xasl->aptr_list->cte_xasl_id && XASL_IS_FLAGED (xasl->aptr_list, XASL_LINK_TO_REGU_VARIABLE))
+		{
+		  int i;
+
+		  for (i = 0; i < xasl->list_id->tpl_descr.f_cnt; i++)
+		    {
+		      db_value_clear (xasl->list_id->tpl_descr.f_valp[i]);
+		    }
 		}
 	    }
 	  break;
