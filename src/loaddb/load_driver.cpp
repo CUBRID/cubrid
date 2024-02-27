@@ -83,10 +83,10 @@ namespace cubload
   driver::parse (std::istream &iss, int line_offset)
   {
     // If the file size is 0, no load is performed.
-    iss.seekg(0, std::ios::end);
+    iss.seekg (0, std::ios::end);
     if (iss.tellg() <= 0)
       {
-         return 0; 
+	return 0;
       }
 
     m_scanner->switch_streams (&iss);
