@@ -236,7 +236,8 @@ static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni
 static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
-static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM *term, BITSET * visited_terms, BITSET * cur_visited_terms);
+static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
+				BITSET * cur_visited_terms);
 static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
 static PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix);
 
@@ -10414,7 +10415,8 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
  *   plan (in): input index plan to be analyzed
  */
 static bool
-qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM *term, BITSET * visited_terms, BITSET * cur_visited_terms)
+qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
+		    BITSET * cur_visited_terms)
 {
   BITSET remaining_terms, connected_segs, all_visited_terms;
   BITSET_ITERATOR bi;
@@ -10440,9 +10442,9 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM *term, BITSET * v
       tmp_term = QO_ENV_TERM (env, i);
 
       if (QO_TERM_EQCLASS (tmp_term) == QO_TERM_EQCLASS (term))
-	  {
-	    bitset_add (&remaining_terms, i);
-	  }
+	{
+	  bitset_add (&remaining_terms, i);
+	}
     }
 
   /* check number of remaining terms. at least n-1 terms can be fully connected. */
@@ -10465,7 +10467,7 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM *term, BITSET * v
 	      bitset_union (&connected_segs, &(QO_TERM_SEGS (tmp_term)));
 	      bitset_remove (&remaining_terms, i);
 	    }
-        }
+	}
 
       if (prev_card == bitset_cardinality (&remaining_terms))
 	{
