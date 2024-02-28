@@ -36,6 +36,7 @@
 #include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include "memory_cppwrapper.hpp"
 
 /* Variables */
 #if !defined(SERVER_MODE)

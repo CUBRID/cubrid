@@ -62,6 +62,7 @@
 #include "heartbeat.h"
 #endif
 #include "string_buffer.hpp"
+#include "memory_cwrapper.h"
 
 #define LOGWR_THREAD_SUSPEND_TIMEOUT 	10
 

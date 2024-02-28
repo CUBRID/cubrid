@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include "memory_cppwrapper.hpp"
 
 namespace cubload
 {

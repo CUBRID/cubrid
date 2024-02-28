@@ -29,6 +29,7 @@
 #include "vacuum.h"
 
 #include <cstring>  // for std::strcpy
+#include "memory_cppwrapper.hpp"
 //
 // TODO: Create a "transaction transient" abstract interface and split this into multiple files
 //

@@ -31,6 +31,7 @@
 #endif // SERVER_MODE
 
 #include <cstring>
+#include "memory_cppwrapper.hpp"
 
 namespace cuberr
 {

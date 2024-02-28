@@ -23,6 +23,7 @@
 
 #include "error_manager.h"
 #include "locale_helper.hpp"
+#include "memory_cppwrapper.hpp"
 
 namespace cubregex
 {

@@ -34,6 +34,7 @@
 #if defined (SA_MODE)
 #include "query_method.hpp"
 #endif
+#include "memory_cppwrapper.hpp"
 
 namespace cubmethod
 {

@@ -27,6 +27,7 @@
 #include <stdexcept>
 
 #include <cstring>
+#include "memory_cppwrapper.hpp"
 
 namespace cubperf
 {

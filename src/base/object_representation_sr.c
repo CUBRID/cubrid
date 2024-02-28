@@ -39,6 +39,7 @@
 #include <new>
 #include <stdio.h>
 #include <string.h>
+#include "memory_cwrapper.h"
 
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10

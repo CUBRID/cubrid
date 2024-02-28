@@ -57,6 +57,7 @@
 #include <cinttypes>
 #include <stdlib.h>
 #include <string.h>
+#include "memory_cwrapper.h"
 
 #define BTREE_HEALTH_CHECK
 

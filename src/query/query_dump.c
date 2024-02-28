@@ -36,6 +36,7 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
+#include "memory_cwrapper.h"
 
 #define foutput stdout
 

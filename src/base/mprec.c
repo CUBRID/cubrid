@@ -86,6 +86,7 @@
 #include <string.h>
 /* #include <reent.h> */
 #include "mprec.h"
+#include "memory_cwrapper.h"
 
 /* reent.c knows this value */
 /* #define _Kmax 15 */

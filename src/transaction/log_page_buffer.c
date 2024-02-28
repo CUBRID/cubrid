@@ -105,6 +105,7 @@
 #include "crypt_opfunc.h"
 #include "object_representation.h"
 #include "flashback.h"
+#include "memory_cwrapper.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

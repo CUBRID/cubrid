@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include "memory_cppwrapper.hpp"
 
 namespace cubload
 {

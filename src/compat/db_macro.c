@@ -56,6 +56,7 @@
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #include "dbtype.h"
+#include "memory_cwrapper.h"
 
 #define DB_NUMBER_ZERO	    0
 

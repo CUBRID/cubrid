@@ -25,6 +25,7 @@
 #include "log_impl.h"
 
 #include <cstring>
+#include "memory_cppwrapper.hpp"
 
 mvcc_active_tran::mvcc_active_tran ()
   : m_bit_area (NULL)

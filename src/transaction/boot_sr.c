@@ -3330,6 +3330,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
   CUBRID_CONN_START (thread_p->conn_entry->client_id, client_credential->get_db_user ());
 #endif /* ENABLE_SYSTEMTAP */
+#include "memory_cwrapper.h"
 
   client_credential->db_user = db_user_save;
   return tran_index;
