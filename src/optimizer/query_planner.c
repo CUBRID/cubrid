@@ -236,6 +236,7 @@ static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni
 static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
+static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM *term, BITSET * visited_terms, BITSET * cur_visited_terms);
 static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
 static PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix);
 
@@ -6637,7 +6638,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     int retry_cnt, edge_cnt, path_cnt;
     bool found_edge, skip_term;
     BITSET visited_segs;
-    QO_SEGMENT *root, *seg;
     bitset_init (&visited_segs, planner->env);
 
     /* set current visited terms */
@@ -6647,19 +6647,9 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       {
 	term = QO_ENV_TERM (planner->env, i);
 
-	/* check eqclass */
 	if (QO_TERM_NOMINAL_SEG (term))
 	  {
-	    seg = QO_TERM_NOMINAL_SEG (term);
-	    /*
-	     * Find the root of the tree in which this segment resides.
-	     */
-	    for (root = seg; QO_SEG_EQ_ROOT (root); root = QO_SEG_EQ_ROOT (root))
-	      {
-		;
-	      }
-	    bitset_add (&visited_segs, QO_SEG_IDX (seg));
-	    bitset_add (&visited_segs, QO_SEG_IDX (root));
+	    bitset_union (&visited_segs, &(QO_TERM_SEGS (term)));
 	  }
       }
 
@@ -6807,28 +6797,20 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 	      case QO_TC_JOIN:
 		/* check for term which is already logically evaluated. */
-		if (QO_TERM_NOMINAL_SEG (term) && QO_TERM_EQCLASS (term)
-		    && bitset_subset (&visited_segs, &((QO_TERM_EQCLASS (term))->segs)))
+		if (QO_TERM_NOMINAL_SEG (term))
 		  {
-		    /* skip term */
-		    skip_term = true;
-		  }
-		else
-		  {
-		    if (QO_TERM_NOMINAL_SEG (term))
+		    if (qo_check_skip_term (planner->env, visited_segs, term, visited_terms, &info_terms))
 		      {
-			seg = QO_TERM_NOMINAL_SEG (term);
-			/*
-			 * Find the root of the tree in which this segment resides.
-			 */
-			for (root = seg; QO_SEG_EQ_ROOT (root); root = QO_SEG_EQ_ROOT (root))
-			  {
-			    ;
-			  }
-			bitset_add (&visited_segs, QO_SEG_IDX (seg));
-			bitset_add (&visited_segs, QO_SEG_IDX (root));
+			skip_term = true;
 		      }
+		    else
+		      {
+			bitset_union (&visited_segs, &(QO_TERM_SEGS (term)));
+		      }
+		  }
 
+		if (!skip_term)
+		  {
 		    /* check for idx-join */
 		    if (QO_TERM_CAN_USE_INDEX (term))
 		      {
@@ -10423,6 +10405,77 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
     }
 
   return orderby_skip;
+}
+
+/*
+ * qo_check_skip_term - checks whether term can be skipped.
+ *	    skip term which is already logically evaluated.
+ *   return:  true or false
+ *   plan (in): input index plan to be analyzed
+ */
+static bool
+qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM *term, BITSET * visited_terms, BITSET * cur_visited_terms)
+{
+  BITSET remaining_terms, connected_segs, all_visited_terms;
+  BITSET_ITERATOR bi;
+  QO_TERM *tmp_term;
+  int i, prev_card;
+
+  /* check unvisited segments */
+  if (!bitset_subset (&visited_segs, &((QO_TERM_EQCLASS (term))->segs)))
+    {
+      return false;
+    }
+
+  bitset_init (&remaining_terms, env);
+  bitset_init (&connected_segs, env);
+  bitset_init (&all_visited_terms, env);
+
+  /* gather terms having same eqclass */
+  bitset_union (&all_visited_terms, visited_terms);
+  bitset_union (&all_visited_terms, cur_visited_terms);
+
+  for (i = bitset_iterate (&all_visited_terms, &bi); i != -1; i = bitset_next_member (&bi))
+    {
+      tmp_term = QO_ENV_TERM (env, i);
+
+      if (QO_TERM_EQCLASS (tmp_term) == QO_TERM_EQCLASS (term))
+	  {
+	    bitset_add (&remaining_terms, i);
+	  }
+    }
+
+  /* check number of remaining terms. at least n-1 terms can be fully connected. */
+  if (bitset_cardinality (&remaining_terms) < bitset_cardinality (&((QO_TERM_EQCLASS (term))->segs)) - 1)
+    {
+      return false;
+    }
+
+  /* check whther segments of eqclass are fully connected */
+  prev_card = bitset_cardinality (&remaining_terms);
+  while (!bitset_is_empty (&remaining_terms))
+    {
+      for (i = bitset_iterate (&remaining_terms, &bi); i != -1; i = bitset_next_member (&bi))
+	{
+	  tmp_term = QO_ENV_TERM (env, i);
+
+	  if (bitset_is_empty (&connected_segs) || bitset_intersects (&connected_segs, &(QO_TERM_SEGS (tmp_term))))
+	    {
+	      /* first time or connected segs */
+	      bitset_union (&connected_segs, &(QO_TERM_SEGS (tmp_term)));
+	      bitset_remove (&remaining_terms, i);
+	    }
+        }
+
+      if (prev_card == bitset_cardinality (&remaining_terms))
+	{
+	  /* exists segs unconnected each other */
+	  return false;
+	}
+      prev_card = bitset_cardinality (&remaining_terms);
+    }
+
+  return true;
 }
 
 /*
