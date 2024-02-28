@@ -26,6 +26,10 @@
 #include "memory_cwrapper.h"
 
 #ifdef SERVER_MODE
+// TODO: The usage of operator new encompasses various additional methods beyond basic usage.
+// However, as CUBRID does not currently utilize such additional methods, they are not overloaded.
+// It has been decided that overloading will be undertaken should any issues arise from
+// the discovery of the utilization of these additional methods.
 inline void *operator new (size_t size, const char *file, const int line)
 {
   return cub_alloc (size, file, line);
