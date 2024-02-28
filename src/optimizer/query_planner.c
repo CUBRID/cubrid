@@ -10424,11 +10424,10 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
   int i, prev_card;
 
   /* check unvisited segments */
-  if (!bitset_subset (&visited_segs, &((QO_TERM_EQCLASS (term))->segs)))
+  if (!bitset_subset (&visited_segs, &(QO_TERM_SEGS (term))))
     {
       return false;
     }
-
   bitset_init (&remaining_terms, env);
   bitset_init (&connected_segs, env);
   bitset_init (&all_visited_terms, env);
@@ -10448,7 +10447,7 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
     }
 
   /* check number of remaining terms. at least n-1 terms can be fully connected. */
-  if (bitset_cardinality (&remaining_terms) < bitset_cardinality (&((QO_TERM_EQCLASS (term))->segs)) - 1)
+  if (bitset_cardinality (&remaining_terms) < bitset_cardinality (&visited_segs) - 1)
     {
       return false;
     }
@@ -10472,12 +10471,19 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
       if (prev_card == bitset_cardinality (&remaining_terms))
 	{
 	  /* exists segs unconnected each other */
-	  return false;
+	  /* return false; */
+	  break;
 	}
       prev_card = bitset_cardinality (&remaining_terms);
     }
 
-  return true;
+  if (bitset_subset (&connected_segs, &(QO_TERM_SEGS (term))))
+    {
+      /* already evaluated */
+      return true;
+    }
+
+  return false;
 }
 
 /*
