@@ -75,7 +75,7 @@ public class Server {
         ServerSocket serverSocket = null;
         int port_number = Integer.parseInt(port);
         try {
-            tmpPath = System.getProperty("CUBRID_TMP");
+            tmpPath = System.getenv("CUBRID_TMP");
             if (tmpPath == null) {
                 tmpPath = rootPath + File.separator + "tmp";
             }
