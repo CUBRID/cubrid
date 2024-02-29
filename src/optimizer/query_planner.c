@@ -6641,8 +6641,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     BITSET visited_segs;
     bitset_init (&visited_segs, planner->env);
 
-    /* set current visited terms */
-
     /* set visited segs for removing join terms already logically evaluated. */
     for (i = bitset_iterate (visited_terms, &bi); i != -1; i = bitset_next_member (&bi))
       {
@@ -10452,7 +10450,7 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
       return false;
     }
 
-  /* check whther segments of eqclass are fully connected */
+  /* check whether segments of eqclass are fully connected */
   prev_card = bitset_cardinality (&remaining_terms);
   while (!bitset_is_empty (&remaining_terms))
     {
