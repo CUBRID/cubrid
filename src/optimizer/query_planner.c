@@ -6459,6 +6459,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   BITSET sarged_terms;
   BITSET info_terms;
   BITSET pinned_subqueries;
+  BITSET visited_segs;
 
   bitset_init (&nl_join_terms, planner->env);
   bitset_init (&sm_join_terms, planner->env);
@@ -6467,7 +6468,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   bitset_init (&sarged_terms, planner->env);
   bitset_init (&info_terms, planner->env);
   bitset_init (&pinned_subqueries, planner->env);
-
+  bitset_init (&visited_segs, planner->env);
 
   if (head_node == NULL)
     {
@@ -6638,8 +6639,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   {
     int retry_cnt, edge_cnt, path_cnt;
     bool found_edge, skip_term;
-    BITSET visited_segs;
-    bitset_init (&visited_segs, planner->env);
 
     /* set visited segs for removing join terms already logically evaluated. */
     for (i = bitset_iterate (visited_terms, &bi); i != -1; i = bitset_next_member (&bi))
