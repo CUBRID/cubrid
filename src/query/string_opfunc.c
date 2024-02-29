@@ -12484,9 +12484,9 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 		  strcat (res, tzd);
 		  break;
 		case 'H':
-		  if (tzh >= 0)
+		  if ((tzh >= 0) && (tzm >= 0))
 		    {
-		      sprintf (hours_or_minutes, "%02d", tzh);
+		      sprintf (hours_or_minutes, "%c%02d", '+', tzh);
 		    }
 		  else
 		    {
@@ -12495,14 +12495,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 		  strcat (res, hours_or_minutes);
 		  break;
 		case 'M':
-		  if (tzm >= 0)
-		    {
-		      sprintf (hours_or_minutes, "%02d", tzm);
-		    }
-		  else
-		    {
-		      sprintf (hours_or_minutes, "%c%02d", '-', -tzm);
-		    }
+		  sprintf (hours_or_minutes, "%02d", (tzm >= 0) ? tzm : -tzm);
 		  strcat (res, hours_or_minutes);
 		  break;
 		}
@@ -17839,18 +17832,13 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 		}
 	      else
 		{
-		  tzh = -tzh;
-		  sprintf (&result_buf[i], "%c%02d\n", '-', tzh);
+		  sprintf (&result_buf[i], "%c%02d\n", '-', -tzh);
 		}
 	      i += 3;
 	      break;
 
 	    case DT_TZM:
-	      if (tzm < 0)
-		{
-		  tzm = -tzm;
-		}
-	      sprintf (&result_buf[i], "%02d\n", tzm);
+	      sprintf (&result_buf[i], "%02d\n", ((tzm < 0) ? -tzm : tzm));
 	      result_size--;
 	      i += 2;
 	      break;
