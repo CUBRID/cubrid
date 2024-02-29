@@ -87,7 +87,7 @@ public class Server {
             loggingThread = new LoggingThread(logFilePath);
             loggingThread.start();
 
-            tmpPath = System.getProperty("CUBRID_TMP");
+            tmpPath = System.getenv("CUBRID_TMP");
             if (tmpPath == null) {
                 tmpPath = rootPath + File.separator + "tmp";
             }
