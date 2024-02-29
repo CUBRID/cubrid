@@ -10470,8 +10470,7 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
 
       if (prev_card == bitset_cardinality (&remaining_terms))
 	{
-	  /* exists segs unconnected each other */
-	  /* return false; */
+	  /* There are no more connected terms. */
 	  break;
 	}
       prev_card = bitset_cardinality (&remaining_terms);
