@@ -12336,10 +12336,16 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 	db_time_decode (db_get_time (&tm), &h, &mi, &s);
 
 	error_status = tz_create_session_tzid_for_time (db_get_time (&tm), true, &tz_id);
-	if (tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm) == NO_ERROR)
+	if (error_status != NO_ERROR)
 	  {
-	    is_valid_tz = true;
+	    goto error;
 	  }
+	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	is_valid_tz = true;
       }
       break;
 
