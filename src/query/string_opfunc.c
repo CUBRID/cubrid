@@ -12335,15 +12335,10 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 
 	db_time_decode (db_get_time (&tm), &h, &mi, &s);
 
-	tp_time = db_type_to_db_domain (DB_TYPE_DATETIMETZ);
-	if (tp_value_cast (time_value, &tm, tp_time, false) == DOMAIN_COMPATIBLE)
+	error_status = tz_create_session_tzid_for_time (db_get_time (&tm), true, &tz_id);
+	if (tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm) == NO_ERROR)
 	  {
-	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (&tm);
-	    if (tz_explain_tz_id (&(dt_tz->tz_id), tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm) ==
-		NO_ERROR)
-	      {
-		is_valid_tz = true;
-	      }
+	    is_valid_tz = true;
 	  }
       }
       break;
