@@ -4424,7 +4424,6 @@ peek_key_to_copy_key (BTREE_SCAN * bts)
       if (DB_IS_NULL (&bts->cur_key) == false)
 	{
 	  DB_VALUE t_key;
-	  /*db_make_null (&t_key); */
 	  pr_clone_value (&(bts->cur_key), &t_key);
 	  btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
 	  bts->cur_key = t_key;
@@ -4491,7 +4490,7 @@ btree_check_decompress_key (BTREE_SCAN * bts)
 	}
       else
 	{
-	  assert (0);
+	  assert (false);
 	}
     }
 
