@@ -7190,6 +7190,7 @@ wrapup:
   bitset_delset (&sarged_terms);
   bitset_delset (&info_terms);
   bitset_delset (&pinned_subqueries);
+  bitset_delset (&visited_segs);
 }
 
 /*
@@ -10420,6 +10421,7 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
   BITSET_ITERATOR bi;
   QO_TERM *tmp_term;
   int i, prev_card;
+  bool result;
 
   /* check unvisited segments */
   if (!bitset_subset (&visited_segs, &(QO_TERM_SEGS (term))))
@@ -10447,7 +10449,8 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
   /* check number of remaining terms. at least n-1 terms can be fully connected. */
   if (bitset_cardinality (&remaining_terms) < bitset_cardinality (&visited_segs) - 1)
     {
-      return false;
+      result = false;
+      goto end;
     }
 
   /* check whether segments of eqclass are fully connected */
@@ -10477,10 +10480,19 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
   if (bitset_subset (&connected_segs, &(QO_TERM_SEGS (term))))
     {
       /* already evaluated */
-      return true;
+      result = true;
+    }
+  else
+    {
+      result = false;
     }
 
-  return false;
+end:
+  bitset_delset (&remaining_terms);
+  bitset_delset (&connected_segs);
+  bitset_delset (&all_visited_terms);
+
+  return result;
 }
 
 /*
