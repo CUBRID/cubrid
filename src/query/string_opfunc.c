@@ -12323,20 +12323,27 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
     case DB_TYPE_NCHAR:
       {
 	DB_VALUE tm;
+	TZ_ID tz_id;
 	TP_DOMAIN *tp_time = db_type_to_db_domain (DB_TYPE_TIME);
-	bool is_time = false;
 
-	if (tp_value_cast (time_value, &tm, tp_time, false) == DOMAIN_COMPATIBLE)
-	  {
-	    db_time_decode (db_get_time (&tm), &h, &mi, &s);
-	    is_time = true;
-	  }
-
-	if (is_time == false)
+	if (tp_value_cast (time_value, &tm, tp_time, false) != DOMAIN_COMPATIBLE)
 	  {
 	    error_status = ER_QSTR_INVALID_DATA_TYPE;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	    goto error;
+	  }
+
+	db_time_decode (db_get_time (&tm), &h, &mi, &s);
+
+	tp_time = db_type_to_db_domain (DB_TYPE_DATETIMETZ);
+	if (tp_value_cast (time_value, &tm, tp_time, false) == DOMAIN_COMPATIBLE)
+	  {
+	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (&tm);
+	    if (tz_explain_tz_id (&(dt_tz->tz_id), tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm) ==
+		NO_ERROR)
+	      {
+		is_valid_tz = true;
+	      }
 	  }
       }
       break;
