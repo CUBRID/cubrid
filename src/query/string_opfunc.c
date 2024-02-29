@@ -22451,7 +22451,6 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   char hours_or_minutes[4];
   int tzh = 0, tzm = 0;
   bool is_valid_tz = false;
-  bool has_tzh = false;
 
   assert (date_lang != NULL);
 
@@ -22959,7 +22958,6 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 		  strcat (res, tzd);
 		  break;
 		case 'H':
-		  has_tzh = true;
 		  if ((tzh >= 0) && (tzm >= 0))
 		    {
 		      sprintf (hours_or_minutes, "%c%02d", '+', tzh);
@@ -23073,19 +23071,19 @@ error:
  * Note:
  *    reads cnt digits until non-digit char reached
  */
-int
+static int
 parse_digits (char *s, int *nr, int cnt)
 {
-  int count = 0, len;
-  char *ch;
+  int count = 0, len = 0;
+  char *ch = s;
   /* res[64] is safe because res has a max length of cnt, which is max 4 */
   char res[64];
   const int res_count = sizeof (res) / sizeof (char);
 
-  ch = s;
-  *nr = 0;
-
-  memset (res, 0, sizeof (res));
+  if (cnt >= res_count)
+    {
+      cnt = res_count - 1;
+    }
 
   while (WHITESPACE (*ch))
     {
@@ -23094,20 +23092,19 @@ parse_digits (char *s, int *nr, int cnt)
     }
 
   /* do not support negative numbers because... they are not supported :) */
-  while (*ch != 0 && (*ch >= '0' && *ch <= '9'))
+  while (char_isdigit (*ch))
     {
-      STRCHCAT (res, *ch);
+      res[len++] = *ch;
 
       ch++;
       count++;
 
-      /* trim at cnt characters */
-      len = strlen (res);
-      if (len == cnt || len == res_count - 1)
+      if (len == cnt || len == res_count)
 	{
 	  break;
 	}
     }
+  res[len] = '\0';
 
   *nr = atol (res);
 
@@ -23206,18 +23203,19 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
-  memset (format_s, 0, sizeof (char) * (len2 + 1));
 
   /* delete all whitespace from format */
+  k = 0;
   for (i = 0; i < len2; i++)
     {
       if (!WHITESPACE (format2_s[i]))
 	{
-	  STRCHCAT (format_s, format2_s[i]);
+	  format_s[k++] = format2_s[i];
 	}
       /* '%' without format specifier */
-      else if (WHITESPACE (format2_s[i]) && i > 0 && format2_s[i - 1] == '%')
+      else if (i > 0 && format2_s[i - 1] == '%')
 	{
+	  format_s[k] = '\0';
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	    {
 	      error_status = ER_OBJ_INVALID_ARGUMENTS;
@@ -23226,6 +23224,7 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	  goto error;
 	}
     }
+  format_s[k] = '\0';
 
   if (domain == NULL)
     {
@@ -27888,7 +27887,6 @@ db_inet_ntoa (DB_VALUE * result_ip_string, const DB_VALUE * number)
   DB_TYPE number_type = DB_TYPE_UNKNOWN;
   DB_BIGINT ip_number = 0;
   char ip_string[16] = { '\0' };
-  char ip_seg_string[4] = { '\0' };
   const int ip_seg_string_cnt = 4;
   const DB_BIGINT ipmax = (DB_BIGINT) 256 * 256 * 256 * 256;
   const unsigned int ipv4_mask[] = { 0xFF000000, 0xFF0000, 0xFF00, 0xFF };
@@ -27926,20 +27924,19 @@ db_inet_ntoa (DB_VALUE * result_ip_string, const DB_VALUE * number)
       goto error;
     }
 
+  ret_string_len = 0;
   for (i = 0; i < 4; i++)
     {
-      slice = (ip_number & ipv4_mask[i]) / ipfactor[i];
-      snprintf (ip_seg_string, ip_seg_string_cnt, "%u", slice);
-      /* safe to use strcat rather than strncat */
-      strcat (ip_string, ip_seg_string);
+      slice = (unsigned int) ((ip_number & ipv4_mask[i]) / ipfactor[i]);
+      ret_string_len += snprintf (ip_string + ret_string_len, ip_seg_string_cnt, "%u", slice);
       if (i != 3)
 	{
-	  strcat (ip_string, ".");
+	  ip_string[ret_string_len++] = '.';
 	}
     }
+  ip_string[ret_string_len] = '\0';
 
   /* return string */
-  ret_string_len = strlen (ip_string);
   res_p_str = (char *) db_private_alloc (NULL, ret_string_len + 1);
   if (res_p_str == NULL)
     {
