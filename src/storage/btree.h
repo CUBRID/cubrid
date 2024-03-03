@@ -234,6 +234,11 @@ struct btree_scan
   bool is_cur_key_compressed;	/* If false, cur_key is a complete key.
 				 * Otherwise it must be combined with common_prefix_key. */
   bts_attid_idx_info attid_idxs;
+
+#define USE_PEEK_IN_RANGE_SCAN_READ
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+  bool is_cur_key_copied;
+#endif
   //---------------------------------------------------------------------------------------------
 
   BTREE_KEYRANGE key_range;	/* key range information */

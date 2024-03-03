@@ -4415,6 +4415,27 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int copy
   return NO_ERROR;
 }
 
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+static void
+peek_key_to_copy_key (BTREE_SCAN * bts)
+{
+  if (bts->is_cur_key_copied == false)
+    {
+      if (DB_IS_NULL (&bts->cur_key) == false)
+	{
+	  DB_VALUE t_key;
+	  pr_clone_value (&(bts->cur_key), &t_key);
+	  btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
+	  bts->cur_key = t_key;
+	  bts->clear_cur_key = true;
+	}
+
+      bts->is_cur_key_copied = true;
+    }
+}
+#endif
+
+
 static void
 btree_make_complete_key_including_prefix (BTREE_SCAN * bts, DB_VALUE * common_prefix_key, int common_prefix_size)
 {
@@ -4436,7 +4457,16 @@ btree_make_complete_key_including_prefix (BTREE_SCAN * bts, DB_VALUE * common_pr
       bts->cur_key = completed_key;
       bts->clear_cur_key = true;
       bts->is_cur_key_compressed = false;
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+      bts->is_cur_key_copied = true;
+#endif
     }
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+  else
+    {
+      peek_key_to_copy_key (bts);
+    }
+#endif
 }
 
 /*
@@ -4454,12 +4484,19 @@ btree_check_decompress_key (BTREE_SCAN * bts)
 	{
 	  check_validate (bts);
 	  btree_make_complete_key_including_prefix (bts, &(bts->common_prefix_key), bts->common_prefix_size);
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+	  return;
+#endif
 	}
       else
 	{
-	  assert (0);
+	  assert (false);
 	}
     }
+
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+  peek_key_to_copy_key (bts);
+#endif
 }
 
 /*
@@ -25140,6 +25177,35 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
 
   bts->is_cur_key_compressed = false;
+#if defined(USE_PEEK_IN_RANGE_SCAN_READ)
+  /* (type == DB_TYPE_MIDXKEY || QSTR_IS_ANY_CHAR_OR_BIT (type)) */
+  switch (TP_DOMAIN_TYPE (bts->btid_int.key_type))
+    {
+    case DB_TYPE_MIDXKEY:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_NCHAR:
+      {
+	int ret = btree_read_record_in_leafpage (thread_p, bts->C_page, PEEK_KEY_VALUE, bts);
+	/* Even if PEEK_KEY_VALUE is specified, in the case of compressed data,
+	 * a new buffer is created separately and stored, so it is stable even after pgbuf_unfix(). 
+	 * If need_clear is true, it means that a separate buffer has been allocated.  
+	 * And compression is only used for char, varchar, nchar, and nvarchar. 
+	 * Bit, varbit, and midxkey will return with need_clear set to false.
+	 */
+	bts->is_cur_key_copied = bts->cur_key.need_clear;
+	return ret;
+      }
+
+    default:
+      break;
+    }
+
+  bts->is_cur_key_copied = true;
+#endif
   return btree_read_record_in_leafpage (thread_p, bts->C_page, COPY_KEY_VALUE, bts);
 }
 
