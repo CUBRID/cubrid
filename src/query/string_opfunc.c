@@ -23074,13 +23074,13 @@ error:
 static int
 parse_digits (char *s, int *nr, int cnt)
 {
-  int count = 0, len = 0;
+  int len = 0;
   char *ch = s;
   /* res[64] is safe because res has a max length of cnt, which is max 4 */
   char res[64];
-  const int res_count = sizeof (res) / sizeof (char);
+  const int res_count = 64;	/* sizeof (res) / sizeof (char) */
 
-  if (cnt >= res_count)
+  if (cnt < 0 || cnt >= res_count)
     {
       cnt = res_count - 1;
     }
@@ -23088,27 +23088,23 @@ parse_digits (char *s, int *nr, int cnt)
   while (WHITESPACE (*ch))
     {
       ch++;
-      count++;
     }
 
   /* do not support negative numbers because... they are not supported :) */
   while (char_isdigit (*ch))
     {
       res[len++] = *ch;
-
       ch++;
-      count++;
 
-      if (len == cnt || len == res_count)
+      if (len == cnt)
 	{
 	  break;
 	}
     }
   res[len] = '\0';
 
-  *nr = atol (res);
-
-  return count;
+  *nr = atoi (res);
+  return (int) (ch - s);
 }
 
 /*
