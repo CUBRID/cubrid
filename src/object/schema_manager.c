@@ -560,15 +560,16 @@ sm_add_static_method (const char *name, void (*function) ())
       Static_method_table = new_;
       new_->function = function;
 
-      new_->name = (char *) malloc (strlen (name) + 1);
+      int size = strlen (name) + 1;	// include '\0'
+      new_->name = (char *) malloc (size);
       if (new_->name == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (name) + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  free (new_);
 	  return;
 	}
 
-      strcpy ((char *) new_->name, name);
+      memcpy (new_->name, name, size);
     }
 }
 
@@ -687,7 +688,7 @@ sm_count_tokens (const char *string, int *maxcharp)
       return (tokens);
     }
 
-  for (i = 0; i < (int) strlen (string); i++)
+  for (i = 0; string[i] != '\0'; i++)
     {
       if (char_isspace (string[i]))
 	{
@@ -695,7 +696,7 @@ sm_count_tokens (const char *string, int *maxcharp)
 	}
       tokens++;
 
-      for (chars = 0; i < (int) strlen (string) && !char_isspace (string[i]); i++, chars++)
+      for (chars = 0; string[i] != '\0' && !char_isspace (string[i]); i++, chars++)
 	;
       if (chars > maxchars)
 	{
@@ -1408,7 +1409,7 @@ sm_link_dynamic_methods (METHOD_LINK * links, const char **files, const char **c
   const char *file;
   HINSTANCE libhandle;
   FARPROC func;
-  int i, j;
+  int i, j, len;
 
   if (links != NULL)
     {
@@ -1417,14 +1418,15 @@ sm_link_dynamic_methods (METHOD_LINK * links, const char **files, const char **c
       for (i = 0; files[i] != NULL && error == NO_ERROR; i++)
 	{
 	  file = files[i];
+	  len = strlen (file);
 	  /* Should have a "method name too long" error but I don't want to introduce one right now.  If we have
 	   * problems with a particular DLL file, just ignore it and attempt to get the methods from the other files. */
-	  if (strlen (file) + 3 < PATH_MAX)
+	  if (len + 3 < PATH_MAX)
 	    {
 	      /* massage the file extension so that it has .dll */
 	      strcpy (filebuf, file);
 
-	      for (j = strlen (file) - 1; j > 0 && filebuf[j] != '.'; j--)
+	      for (j = len - 1; j > 0 && filebuf[j] != '.'; j--)
 		;
 
 	      if (j > 0)
@@ -1506,8 +1508,8 @@ sm_file_extension (const char *path, const char *ext)
 {
   DB_C_INT plen, elen;
 
-  plen = strlen (path);
-  elen = strlen (ext);
+  plen = (DB_C_INT) strlen (path);
+  elen = (DB_C_INT) strlen (ext);
 
   return (plen > elen) && (strcmp (&(path[plen - elen]), ext) == 0);
 }
@@ -3512,21 +3514,21 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
       if (keyattr)
 	{
 	  const char *p = NULL;
+	  int copy_len;
 
-	  keyattr[0] = 0;
 	  if (DB_IS_NULL (&attrname) || (p = db_get_string (&attrname)) == NULL)
 	    {
+	      keyattr[0] = 0;
 	      goto partition_failed;
 	    }
-	  strncpy (keyattr, p, DB_MAX_IDENTIFIER_LENGTH);
-	  if (strlen (p) < DB_MAX_IDENTIFIER_LENGTH)
+
+	  copy_len = (int) strlen (p);
+	  if (copy_len > DB_MAX_IDENTIFIER_LENGTH)
 	    {
-	      keyattr[strlen (p)] = 0;
+	      copy_len = DB_MAX_IDENTIFIER_LENGTH;
 	    }
-	  else
-	    {
-	      keyattr[DB_MAX_IDENTIFIER_LENGTH] = 0;
-	    }
+	  memcpy (keyattr, p, copy_len);
+	  keyattr[copy_len] = '\0';
 	}
 
       if (partitions)
