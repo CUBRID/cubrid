@@ -14334,9 +14334,9 @@ pt_is_allowed_result_cache ()
 }
 
 static PT_NODE *
-do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
-  int query_flag = *(int *) arg;
+  int err;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -14345,41 +14345,18 @@ do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *con
       return stmt;
     }
 
-  if (stmt->info.query.with && pt_is_allowed_result_cache ())
+  if (stmt->info.query.with)
     {
-      int err;
-
-      err = do_execute_cte (parser, stmt, query_flag);
-      if (err != NO_ERROR)
-	{
-	  *continue_walk = PT_STOP_WALK;
-	}
-    }
-
-  return stmt;
-}
-
-static PT_NODE *
-do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
-{
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (stmt->node_type != PT_SELECT)
-    {
-      return stmt;
-    }
-
-  if (stmt->info.query.with && pt_is_allowed_result_cache ())
-    {
-      int err;
-
       PT_NODE *cte_list = stmt->info.query.with->info.with_clause.cte_definition_list;
 
       err = do_prepare_cte (parser, cte_list);
-      if (err != NO_ERROR)
-	{
-	  *continue_walk = PT_STOP_WALK;
-	}
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if ((stmt->info.query.hint & PT_HINT_QUERY_CACHE) && stmt->info.query.is_subquery == PT_IS_SUBQUERY)
+    {
+      stmt->info.query.flag.prepare_only = 1;
+      err = do_prepare_subquery (parser, stmt);
+      *continue_walk = PT_STOP_WALK;
     }
 
   return stmt;
@@ -14460,8 +14437,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
-  /* All CTE sub-queries included in the query must be prepared first. */
-  parser_walk_tree (parser, statement, do_prepare_cte_pre, NULL, NULL, NULL);
+  //bool need_subquery_prepare = true;
 
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
   contextp->recompile_xasl = statement->flag.recompile;
@@ -14496,9 +14472,22 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	    }
 	}
+
+      if (statement->info.query.flag.prepare_only)
+	{
+	  statement->xasl_id = stream.xasl_id;
+	  return err;
+	}
     }
+
   if (stream.xasl_id == NULL && err == NO_ERROR)
     {
+      /*
+         main query is not cached yet, then the subquery is not necessary to prepare
+         because the main query will call do_prepare_subuqery at set_aptr_list
+       */
+      //need_subquery_prepare = false;
+
       /* cache not found; make XASL from the parse tree including query optimization and plan generation */
 
       /* mark the beginning of another level of xasl packing */
@@ -14580,6 +14569,12 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
    * do_execute_select() */
   statement->xasl_id = stream.xasl_id;
 
+  /* All CTE and result-cached subqueries included in the query must be prepared first. */
+  if (pt_is_allowed_result_cache ())
+    {
+      parser_walk_tree (parser, statement, do_prepare_subquery_pre, NULL, NULL, NULL);
+    }
+
   return err;
 }				/* do_prepare_select() */
 
@@ -14620,6 +14615,9 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * sub_statement)
   sub_context = *parser;
   sub_context.dbval_cnt = 0;
   sub_context.host_var_count = sub_context.auto_param_count = 0;
+  sub_context.flag.is_subquery_cached = 1;
+
+  sub_statement->info.query.flag.subquery_cached = 1;
 
   var_count = parser->host_var_count + parser->auto_param_count;
 
@@ -14644,12 +14642,16 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * sub_statement)
   sub_statement->cte_host_var_count = sub_context.host_var_count;
   sub_statement->cte_host_var_index = sub_context.cte_host_var_index;
 
-  xasl->cte_host_var_count = sub_context.host_var_count;
-  xasl->cte_host_var_index = sub_context.cte_host_var_index;
-
   error = do_prepare_select (&sub_context, sub_statement);
 
-  xasl->cte_xasl_id = sub_statement->xasl_id;
+  if (xasl)
+    {
+      xasl->cte_host_var_count = sub_context.host_var_count;
+      xasl->cte_host_var_index = sub_context.cte_host_var_index;
+      xasl->cte_xasl_id = sub_statement->xasl_id;
+
+      sub_statement->info.query.xasl = xasl;
+    }
 
   return error;
 }
@@ -14971,6 +14973,7 @@ static PT_NODE *
 do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int query_flag = *(int *) arg;
+  int err;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -14979,15 +14982,15 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       return stmt;
     }
 
-  if (stmt->info.query.is_subquery == PT_IS_SUBCACHE && pt_is_allowed_result_cache ())
+  if (stmt->info.query.with)
     {
-      int err;
-
+      err = do_execute_cte (parser, stmt, query_flag);
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if ((stmt->info.query.hint & PT_HINT_QUERY_CACHE) && stmt->xasl_id && stmt->info.query.flag.subquery_cached)
+    {
       err = do_execute_subquery (parser, stmt, query_flag);
-      if (err != NO_ERROR)
-	{
-	  *continue_walk = PT_STOP_WALK;
-	}
+      *continue_walk = PT_STOP_WALK;
     }
 
   return stmt;
@@ -15108,10 +15111,11 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return er_errid ();
     }
 
-  /* All CTE sub-queries included in the query must be executed first. */
-  parser_walk_tree (parser, statement, do_execute_cte_pre, (void *) &query_flag, NULL, NULL);
-
-  parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &query_flag, NULL, NULL);
+  /* All CTE and result-cached subqueries included in the query must be executed first. */
+  if (pt_is_allowed_result_cache ())
+    {
+      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &query_flag, NULL, NULL);
+    }
 
   /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the host
    * variables given by users as parameter values for the query. As a result, query id and result file id

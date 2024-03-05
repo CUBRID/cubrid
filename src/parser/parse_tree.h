@@ -609,7 +609,7 @@ struct json_t;
     do {                                                        \
         unsigned int save_custom;                               \
                                                                 \
-        if (!(p) || !(n) || (n->alias_print))                   \
+        if (!(p) || !(n) || (!(p)->flag.is_subquery_cached && n->alias_print))                   \
           break;                                                \
         save_custom = (p)->custom_print;                        \
         (p)->custom_print |= (c);                               \
@@ -2957,6 +2957,8 @@ struct pt_query_info
     unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
+    unsigned prepare_only:1;	/* require prepare only for aleady cached subquery */
+    unsigned subquery_cached:1;	/* subquery is cached */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
@@ -3950,6 +3952,7 @@ struct parser_context
     unsigned return_generated_keys:1;
     unsigned is_system_generated_stmt:1;
     unsigned is_auto_commit:1;	/* set to true, if auto commit. */
+    unsigned is_subquery_cached:1;	/* print query without parenthesises for cached subquery */
   } flag;
 };
 
