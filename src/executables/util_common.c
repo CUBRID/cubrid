@@ -538,7 +538,6 @@ util_is_localhost (char *host)
  *
  * @return true if hostname_a is same as hostname_b
  */
-
 bool
 are_hostnames_equal (const char *hostname_a, const char *hostname_b)
 {
