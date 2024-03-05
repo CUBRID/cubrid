@@ -30,10 +30,6 @@
 
 #include "memory_monitor_common.hpp"
 
-#ifndef HAVE_USR_INCLUDE_MALLOC_H
-#define HAVE_USR_INCLUDE_MALLOC_H
-#endif
-
 namespace cubmem
 {
   // IMPORTANT!!
