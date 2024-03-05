@@ -22422,18 +22422,22 @@ int
 db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_VALUE * date_lang, DB_VALUE * result,
 		const TP_DOMAIN * domain)
 {
-  DB_DATETIME *dt_p;
-  DB_DATE db_date, *d_p;
+  DB_DATE db_date;
   DB_TIME db_time;
   DB_TIMESTAMP *ts_p;
+  DB_DATETIME *dt_p;
+  DB_DATE *d_p;
+
   DB_TYPE res_type, format_type;
   const char *format_s = NULL, *strend = NULL;
   char *res, *res2;
   int format_s_len;
   int error_status = NO_ERROR, len;
-  int y, m, d, h, mi, s, ms;
-  int days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
   char format_specifiers[256][64];
+
+  int year, month, day, h, mi, s, ms;
+  int days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+
   int i, j;
   int dow, dow2;
   INTL_LANG date_lang_id;
@@ -22450,7 +22454,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 
   assert (date_lang != NULL);
 
-  y = m = d = h = mi = s = ms = 0;
+  year = month = day = h = mi = s = ms = 0;
   tzr[0] = '\0';
   tzd[0] = '\0';
   memset (hours_or_minutes, 0, sizeof (hours_or_minutes));
@@ -22509,7 +22513,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 	  {
 	    return error_status;
 	  }
-	db_datetime_decode (dt_p, &m, &d, &y, &h, &mi, &s, &ms);
+	db_datetime_decode (dt_p, &month, &day, &year, &h, &mi, &s, &ms);
 
 	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
 	if (error_status != NO_ERROR)
@@ -22522,7 +22526,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 
     case DB_TYPE_DATE:
       d_p = db_get_date (date_value);
-      db_date_decode (d_p, &m, &d, &y);
+      db_date_decode (d_p, &month, &day, &year);
       break;
 
     case DB_TYPE_TIMESTAMP:
@@ -22537,7 +22541,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 
 	(void) db_timestamp_decode_ses (ts_p, &db_date, &db_time);
 	db_time_decode (&db_time, &h, &mi, &s);
-	db_date_decode (&db_date, &m, &d, &y);
+	db_date_decode (&db_date, &month, &day, &year);
 
 	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
 	if (error_status != NO_ERROR)
@@ -22558,7 +22562,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 	  {
 	    return error_status;
 	  }
-	db_datetime_decode (&dt_local, &m, &d, &y, &h, &mi, &s, &ms);
+	db_datetime_decode (&dt_local, &month, &day, &year, &h, &mi, &s, &ms);
 
 	error_status = tz_explain_tz_id (&dt_tz->tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
 	if (error_status != NO_ERROR)
@@ -22592,7 +22596,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 	  {
 	    return error_status;
 	  }
-	db_datetime_decode (&dt_local, &m, &d, &y, &h, &mi, &s, &ms);
+	db_datetime_decode (&dt_local, &month, &day, &year, &h, &mi, &s, &ms);
 	is_valid_tz = true;
       }
       break;
@@ -22610,7 +22614,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 	    return error_status;
 	  }
 
-	db_date_decode (&date, &m, &d, &y);
+	db_date_decode (&date, &month, &day, &year);
 	db_time_decode (&time, &h, &mi, &s);
 
 	error_status = tz_explain_tz_id (&tsmp_tz->tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
@@ -22648,7 +22652,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 	    return error_status;
 	  }
 
-	db_date_decode (&date, &m, &d, &y);
+	db_date_decode (&date, &month, &day, &year);
 	db_time_decode (&time, &h, &mi, &s);
 	is_valid_tz = true;
       }
@@ -22670,7 +22674,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 	    goto error;
 	  }
 
-	db_datetime_decode (db_get_datetime (&dt), &m, &d, &y, &h, &mi, &s, &ms);
+	db_datetime_decode (db_get_datetime (&dt), &month, &day, &year, &h, &mi, &s, &ms);
 
 	if (tp_value_cast (date_value, &dt, tp_datetimetz, false) == DOMAIN_COMPATIBLE)
 	  {
@@ -22692,35 +22696,35 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
     }
 
   /* 2. Compute the value for each format specifier */
-  days[2] += LEAP (y);
-  dow = db_get_day_of_week (y, m, d);
+  days[2] += LEAP (year);
+  dow = db_get_day_of_week (year, month, day);
 
   /* %a Abbreviated weekday name (Sun..Sat) */
   strcpy (format_specifiers['a'], lld->day_short_name[dow]);
 
   /* %b Abbreviated m name (Jan..Dec) */
-  if (m > 0)
+  if (month > 0)
     {
-      strcpy (format_specifiers['b'], lld->month_short_name[m - 1]);
+      strcpy (format_specifiers['b'], lld->month_short_name[month - 1]);
     }
 
   /* %c Month, numeric (0..12) - actually (1..12) */
-  sprintf (format_specifiers['c'], "%d", m);
+  sprintf (format_specifiers['c'], "%d", month);
 
   /* %D Day of the m with English suffix (0th, 1st, 2nd, 3rd,...) */
-  sprintf (format_specifiers['D'], "%d", d);
+  sprintf (format_specifiers['D'], "%d", day);
   /* 11-19 are special */
   if (date_lang_id == INTL_LANG_ENGLISH)
     {
-      if (d % 10 == 1 && d / 10 != 1)
+      if (day % 10 == 1 && day / 10 != 1)
 	{
 	  strcat (format_specifiers['D'], "st");
 	}
-      else if (d % 10 == 2 && d / 10 != 1)
+      else if (day % 10 == 2 && day / 10 != 1)
 	{
 	  strcat (format_specifiers['D'], "nd");
 	}
-      else if (d % 10 == 3 && d / 10 != 1)
+      else if (day % 10 == 3 && day / 10 != 1)
 	{
 	  strcat (format_specifiers['D'], "rd");
 	}
@@ -22731,10 +22735,10 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
     }
 
   /* %d Day of the m, numeric (00..31) */
-  sprintf (format_specifiers['d'], "%02d", d);
+  sprintf (format_specifiers['d'], "%02d", day);
 
   /* %e Day of the m, numeric (0..31) - actually (1..31) */
-  sprintf (format_specifiers['e'], "%d", d);
+  sprintf (format_specifiers['e'], "%d", day);
 
   /* %f Milliseconds (000..999) */
   sprintf (format_specifiers['f'], "%03d", ms);
@@ -22752,7 +22756,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   sprintf (format_specifiers['i'], "%02d", mi);
 
   /* %j Day of y (001..366) */
-  for (j = d, i = 1; i < m; i++)
+  for (j = day, i = 1; i < month; i++)
     {
       j += days[i];
     }
@@ -22765,13 +22769,13 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   sprintf (format_specifiers['l'], "%d", (h % 12 == 0) ? 12 : (h % 12));
 
   /* %M Month name (January..December) */
-  if (m > 0)
+  if (month > 0)
     {
-      strcpy (format_specifiers['M'], lld->month_name[m - 1]);
+      strcpy (format_specifiers['M'], lld->month_name[month - 1]);
     }
 
   /* %m Month, numeric (00..12) */
-  sprintf (format_specifiers['m'], "%02d", m);
+  sprintf (format_specifiers['m'], "%02d", month);
 
   /* %p AM or PM */
   strcpy (format_specifiers['p'], (h > 11) ? lld->am_pm[PM_NAME] : lld->am_pm[AM_NAME]);
@@ -22793,11 +22797,11 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   /* %V Week (01..53), where Sunday is the first d of the week; used with %X */
   /* %X Year for the week where Sunday is the first day of the week, numeric, four digits; used with %V */
 
-  dow2 = db_get_day_of_week (y, 1, 1);
+  dow2 = db_get_day_of_week (year, 1, 1);
 
   ld_fw = 7 - dow2;
 
-  for (days_counter = d, i = 1; i < m; i++)
+  for (days_counter = day, i = 1; i < month; i++)
     {
       days_counter += days[i];
     }
@@ -22813,13 +22817,13 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
     }
 
   tu = tv = weeks;
-  tx = y;
+  tx = year;
   if (tv == 0)
     {
-      dow2 = db_get_day_of_week (y - 1, 1, 1);
-      days_counter = 365 + LEAP (y - 1) - (dow2 == 0 ? 0 : 7 - dow2);
+      dow2 = db_get_day_of_week (year - 1, 1, 1);
+      days_counter = 365 + LEAP (year - 1) - (dow2 == 0 ? 0 : 7 - dow2);
       tv = days_counter / 7 + (days_counter % 7 ? 1 : 0);
-      tx = y - 1;
+      tx = year - 1;
     }
 
   sprintf (format_specifiers['U'], "%02d", tu);
@@ -22830,12 +22834,12 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   /* %v Week (01..53), where Monday is the first d of the week; used with %x */
   /* %x Year for the week, where Monday is the first day of the week, numeric, four digits; used with %v */
 
-  dow2 = db_get_day_of_week (y, 1, 1);
+  dow2 = db_get_day_of_week (year, 1, 1);
   weeks = dow2 >= 1 && dow2 <= 4 ? 1 : 0;
 
   ld_fw = dow2 == 0 ? 1 : 7 - dow2 + 1;
 
-  for (days_counter = d, i = 1; i < m; i++)
+  for (days_counter = day, i = 1; i < month; i++)
     {
       days_counter += days[i];
     }
@@ -22848,23 +22852,23 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 
   tu = weeks;
   tv = weeks;
-  tx = y;
+  tx = year;
   if (tv == 0)
     {
-      dow2 = db_get_day_of_week (y - 1, 1, 1);
+      dow2 = db_get_day_of_week (year - 1, 1, 1);
       weeks = dow2 >= 1 && dow2 <= 4 ? 1 : 0;
       ld_fw = dow2 == 0 ? 1 : 7 - dow2 + 1;
-      days_counter = 365 + LEAP (y - 1) - ld_fw;
+      days_counter = 365 + LEAP (year - 1) - ld_fw;
       tv = weeks + days_counter / 7 + (days_counter % 7 ? 1 : 0);
-      tx = y - 1;
+      tx = year - 1;
     }
   else if (tv == 53)
     {
-      dow2 = db_get_day_of_week (y + 1, 1, 1);
+      dow2 = db_get_day_of_week (year + 1, 1, 1);
       if (dow2 >= 1 && dow2 <= 4)
 	{
 	  tv = 1;
-	  tx = y + 1;
+	  tx = year + 1;
 	}
     }
 
@@ -22879,10 +22883,10 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   sprintf (format_specifiers['w'], "%d", dow);
 
   /* %Y Year, numeric, four digits */
-  sprintf (format_specifiers['Y'], "%04d", y);
+  sprintf (format_specifiers['Y'], "%04d", year);
 
   /* %y Year, numeric (two digits) */
-  sprintf (format_specifiers['y'], "%02d", y % 100);
+  sprintf (format_specifiers['y'], "%02d", year % 100);
 
   /* 3. Generate the output according to the format and the values */
   format_type = DB_VALUE_DOMAIN_TYPE (format);
@@ -22899,7 +22903,8 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
     default:
       /* we should not get a nonstring format */
       assert (false);
-      return ER_FAILED;
+      error_status = ER_FAILED;
+      goto error;
     }
 
   len = 1024;
@@ -22913,6 +22918,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 
   ch = *format_s;
   strend = format_s + format_s_len;
+
   while (format_s < strend)
     {
       format_s++;
@@ -22932,6 +22938,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 
 	      continue;
 	    }
+
 	  if (ch == 'T' && format_s + 2 < strend && *(format_s + 1) == 'Z'
 	      && (*(format_s + 2) == 'R' || *(format_s + 2) == 'D' || *(format_s + 2) == 'H' || *(format_s + 2) == 'M'))
 	    {
@@ -22965,14 +22972,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 		  strcat (res, hours_or_minutes);
 		  break;
 		case 'M':
-		  if (tzm >= 0)
-		    {
-		      sprintf (hours_or_minutes, "%02d", tzm);
-		    }
-		  else
-		    {
-		      sprintf (hours_or_minutes, "%02d", -tzm);
-		    }
+		  sprintf (hours_or_minutes, "%02d", (tzm >= 0) ? tzm : -tzm);
 		  strcat (res, hours_or_minutes);
 		  break;
 		}
@@ -23031,7 +23031,6 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   /* 4. */
 
   db_make_string (result, res);
-
   db_string_put_cs_and_collation (result, codeset, res_collation);
 
   result->need_clear = true;
