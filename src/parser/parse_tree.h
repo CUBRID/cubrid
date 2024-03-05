@@ -2174,6 +2174,7 @@ struct pt_serial_info
   PT_NODE *max_val;		/* PT_VALUE */
   PT_NODE *min_val;		/* PT_VALUE */
   PT_NODE *cached_num_val;	/* PT_VALUE */
+  PT_NODE *owner_name;		/* PT_NAME */
   PT_NODE *comment;		/* PT_VALUE */
   int cyclic;
   int no_max;

@@ -2318,6 +2318,10 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE abs_inc_val, range_val;
   int cached_num;
   int ret_msg_id = 0;
+
+  PT_NODE *serial_owner = NULL;
+  const char *serial_owner_name = NULL;
+  DB_VALUE serial_name_val, returnval, serial_owner_val;
   const char *comment = NULL;
 
   int new_inc_val_flag = 0, new_cyclic;
@@ -2347,6 +2351,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&class_name_val);
   db_make_null (&abs_inc_val);
   db_make_null (&range_val);
+  db_make_null (&serial_name_val);
+  db_make_null (&returnval);
+  db_make_null (&serial_owner_val);
   OID_SET_NULL (&serial_obj_id);
 
   /*
@@ -2846,6 +2853,27 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
       pr_clear_value (&value);
+    }
+
+  /* owner to */
+  serial_owner = statement->info.serial.owner_name;
+  if (serial_owner != NULL)
+    {
+      serial_owner_name = serial_owner->info.name.original;
+
+      db_make_string (&serial_name_val, (char *) PT_NODE_SR_NAME (statement));
+      db_make_string (&serial_owner_val, serial_owner_name);
+
+      au_change_serial_owner_method (serial_class, &returnval, &serial_name_val, &serial_owner_val);
+
+      pr_clear_value (&serial_name_val);
+      pr_clear_value (&serial_owner_val);
+
+      if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
+	{
+	  error = db_get_error (&returnval);
+	  goto end;
+	}
     }
 
   /* comment */

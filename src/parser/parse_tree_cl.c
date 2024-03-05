@@ -8138,6 +8138,13 @@ pt_print_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " nocache ");
     }
 
+  if (p->info.serial.owner_name != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.serial.owner_name);
+      q = pt_append_nulstring (parser, q, " owner to ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
   if (p->info.serial.comment != NULL)
     {
       r1 = pt_print_bytes (parser, p->info.serial.comment);
@@ -8252,6 +8259,7 @@ pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.serial.increment_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.min_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.max_val, arg);
+  PT_APPLY_WALK (parser, p->info.serial.owner_name, arg);
   return p;
 }
 
