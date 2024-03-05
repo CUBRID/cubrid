@@ -545,7 +545,7 @@ are_hostnames_equal (const char *hostname_a, const char *hostname_b)
   const char *a;
   const char *b;
 
-  for (a = hostname_a, b = hostname_b; *a && *b && (toupper (*a) == toupper (*b)); ++a, ++b)
+  for (a = hostname_a, b = hostname_b; *a && *b && (*a == *b); ++a, ++b)
     ;
 
   if (*a == '\0' && *b != '\0')
@@ -558,7 +558,7 @@ are_hostnames_equal (const char *hostname_a, const char *hostname_b)
     }
   else
     {
-      return toupper (*a) == toupper (*b);
+      return *a == *b;
     }
 }
 
