@@ -18038,25 +18038,22 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
   assert (cs != NULL);
 
   /* Remove 'trailing zero' source string */
-  for (i = 0; i < strlen (cs); i++)
+  for (i = 0; cs[i] != '\0'; i++)
     {
       if (cs[i] == fraction_symbol)
 	{
-	  i = strlen (cs);
+	  i += strlen (cs + i);
 	  i--;
 	  while (cs[i] == '0')
 	    {
 	      i--;
 	    }
-	  if (cs[i] == fraction_symbol)
-	    {
-	      cs[i] = '\0';
-	    }
-	  else
+	  if (cs[i] != fraction_symbol)
 	    {
 	      i++;
-	      cs[i] = '\0';
 	    }
+
+	  cs[i] = '\0';
 	  break;
 	}
     }
@@ -19239,13 +19236,11 @@ roundoff (const INTL_LANG lang, char *src_string, int flag, int *cipher, char *f
 	{			/* if decimal format */
 	  i = 0;
 
-	  while (i < strlen (src_string))
+	  while (src_string[i] != '\0')
 	    {
 	      src_string[i] = '#';
 	      i++;
 	    }
-
-	  src_string[i] = '\0';
 	}
       else
 	{			/* if scientific format */
@@ -19257,25 +19252,21 @@ roundoff (const INTL_LANG lang, char *src_string, int flag, int *cipher, char *f
 	      res++;
 	    }
 
-	  while (i < strlen (res))
+	  i = 0;
+	  if (res[i] != '\0')
 	    {
-	      if (i == 0)
+	      res[i++] = '1';
+	      if (res[i] != '\0')
 		{
-		  res[i] = '1';
+		  res[i++] = fraction_symbol;
+		  while (res[i] != '\0')
+		    {
+		      res[i++] = '0';
+		    }
 		}
-	      else if (i == 1)
-		{
-		  res[i] = fraction_symbol;
-		}
-	      else
-		{
-		  res[i] = '0';
-		}
-	      i++;
 	    }
 
 	  (*cipher)++;
-	  res[i] = '\0';
 	}
     }
 
