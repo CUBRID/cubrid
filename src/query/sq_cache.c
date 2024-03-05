@@ -17,7 +17,7 @@
  */
 
 /*
- * Correlated Scalar Subquery Result Cache.
+ * sq_cache.c - Correlated Scalar Subquery Result Cache.
  */
 
 
@@ -31,13 +31,6 @@
 #include "query_executor.h"
 #include "xasl_predicate.hpp"
 #include "regu_var.hpp"
-
-#include "heap_attrinfo.h"
-#include "object_domain.h"
-#include "query_list.h"
-#include "string_opfunc.h"
-#include "object_primitive.h"
-#include "db_function.hpp"
 
 #include "list_file.h"
 #include "db_set_function.h"
@@ -59,17 +52,8 @@
 typedef union _sq_regu_value
 {
   /* fields used by both XASL interpreter and regulator */
-  //DB_VALUE dbval;             /* for DB_VALUE values */
   DB_VALUE *dbvalptr;		/* for constant values */
-  //ARITH_TYPE *arithptr;               /* arithmetic expression */
-  //  cubxasl::aggregate_list_node * aggptr;    /* aggregate expression */
-  //ATTR_DESCR attr_descr;      /* attribute information */
-  //QFILE_TUPLE_VALUE_POSITION pos_descr;       /* list file columns */
   QFILE_SORTED_LIST_ID *srlist_id;	/* sorted list identifier for subquery results */
-  //int val_pos;                        /* host variable references */
-  //struct function_node *funcp;        /* function */
-  //REGU_VALUE_LIST *reguval_list;      /* for "values" query */
-  //REGU_VARIABLE_LIST regu_var_list;   /* for CUME_DIST and PERCENT_RANK */
 } sq_regu_value;
 
 typedef struct _sq_key
@@ -84,10 +68,10 @@ typedef struct _sq_val
 } sq_val;
 
 static int sq_hm_entries = 10;
-static int sq_key_max_term = 3;
-
 
 /**************************************************************************************/
+
+/* Static functions for sq_cache hash table. */
 
 static sq_key *sq_make_key (xasl_node * xasl);
 static sq_val *sq_make_val (REGU_VARIABLE * val);
@@ -104,6 +88,16 @@ static int sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_s
 
 /**************************************************************************************/
 
+/*
+ * sq_make_key () - Creates a key for the scalar subquery cache.
+ *   return: Pointer to a newly allocated sq_key structure, or NULL if no constant predicate is present.
+ *   xasl(in): The XASL node of the scalar subquery.
+ *
+ * This function generates a key for caching the results of a scalar subquery. It checks the provided XASL node
+ * for predicates (where_key, where_pred, where_range) and creates a set (pred_set) to represent the key.
+ * If no predicates are found or the set cannot be populated, NULL is returned. Otherwise, a pointer to the
+ * newly created sq_key structure is returned.
+ */
 sq_key *
 sq_make_key (xasl_node * xasl)
 {
@@ -115,7 +109,7 @@ sq_make_key (xasl_node * xasl)
 
   if (p && !p->where_key && !p->where_pred && !p->where_range)
     {
-      /* this should be modified later, no conditions -> not caching? */
+      /* if there's no predicate in xasl, not caching */
       return NULL;
     }
 
@@ -134,6 +128,15 @@ sq_make_key (xasl_node * xasl)
   return keyp;
 }
 
+/*
+ * sq_make_val () - Creates a value structure for the scalar subquery cache.
+ *   return: Pointer to a newly created sq_val structure.
+ *   val(in): The REGU_VARIABLE for which to create the sq_val structure.
+ *
+ * Allocates and initializes a new sq_val structure based on the given REGU_VARIABLE. The function handles
+ * different types of REGU_VARIABLE (e.g., TYPE_CONSTANT, TYPE_LIST_ID) appropriately by copying or cloning
+ * the necessary data. It returns a pointer to the newly allocated and initialized sq_val structure.
+ */
 sq_val *
 sq_make_val (REGU_VARIABLE * val)
 {
@@ -162,6 +165,13 @@ sq_make_val (REGU_VARIABLE * val)
   return ret;
 }
 
+/*
+ * sq_free_key () - Frees the memory allocated for a sq_key structure.
+ *   key(in): The sq_key structure to be freed.
+ *
+ * This function releases the memory allocated for the pred_set within the sq_key structure and then
+ * frees the sq_key structure itself.
+ */
 void
 sq_free_key (sq_key * key)
 {
@@ -171,6 +181,13 @@ sq_free_key (sq_key * key)
   free (key);
 }
 
+/*
+ * sq_free_val () - Frees the memory allocated for a sq_val structure.
+ *   v(in): The sq_val structure to be freed.
+ *
+ * Depending on the type of the value in the sq_val structure (e.g., TYPE_CONSTANT, TYPE_LIST_ID),
+ * this function frees the associated resources and then the sq_val structure itself.
+ */
 void
 sq_free_val (sq_val * v)
 {
@@ -192,7 +209,15 @@ sq_free_val (sq_val * v)
   free (v);
 }
 
-
+/*
+ * sq_unpack_val () - Unpacks the value from a sq_val structure into a REGU_VARIABLE.
+ *   v(in): The sq_val structure containing the value to be unpacked.
+ *   retp(out): The REGU_VARIABLE to store the unpacked value.
+ *
+ * Based on the type of the value in the sq_val structure, this function unpacks the value and stores
+ * it in the provided REGU_VARIABLE. The function handles different types appropriately, such as copying
+ * DB_VALUE or cloning a LIST_ID.
+ */
 void
 sq_unpack_val (sq_val * v, REGU_VARIABLE * retp)
 {
@@ -229,6 +254,15 @@ sq_unpack_val (sq_val * v, REGU_VARIABLE * retp)
     }
 }
 
+/*
+ * sq_hash_func () - Hash function for the scalar subquery cache keys.
+ *   return: The hash value.
+ *   key(in): The key to be hashed.
+ *   ht_size(in): The size of the hash table.
+ *   
+ * Generates a hash value for the given key by hashing the elements of the pred_set within the sq_key structure.
+ * The hash value is then modulated by the size of the hash table to ensure it falls within valid bounds.
+ */
 unsigned int
 sq_hash_func (const void *key, unsigned int ht_size)
 {
@@ -247,6 +281,15 @@ sq_hash_func (const void *key, unsigned int ht_size)
   return h % ht_size;
 }
 
+/*
+ * sq_cmp_func () - Comparison function for scalar subquery cache keys.
+ *   return: 1 if the keys are equal, 0 otherwise.
+ *   key1(in): The first key to compare.
+ *   key2(in): The second key to compare.
+ *
+ * Compares two sq_key structures to determine if they are equal. The comparison is based on the elements
+ * of the pred_set within each key. The function returns 1 if the keys are considered equal, otherwise 0.
+ */
 int
 sq_cmp_func (const void *key1, const void *key2)
 {
@@ -284,6 +327,16 @@ sq_cmp_func (const void *key1, const void *key2)
 
 }
 
+/*
+ * sq_rem_func () - Function to remove an entry from the scalar subquery cache.
+ *   return: NO_ERROR on success.
+ *   key(in): The key of the entry to remove.
+ *   data(in): The data associated with the key.
+ *   args(in): Additional arguments (unused).
+ *
+ * This function is called when an entry is removed from the scalar subquery cache. It frees the resources
+ * allocated for the key and the data (sq_val structure) using sq_free_key and sq_free_val functions.
+ */
 int
 sq_rem_func (const void *key, void *data, void *args)
 {
@@ -292,6 +345,14 @@ sq_rem_func (const void *key, void *data, void *args)
   return NO_ERROR;
 }
 
+/*
+ * sq_walk_xasl_check_not_caching () - Checks if a XASL should not be cached.
+ *   return: True if the XASL should not be cached, False otherwise.
+ *   xasl(in): The XASL node to check.
+ *
+ * Recursively checks a XASL node and its children to determine if any conditions exist that would prevent
+ * caching its results. Conditions include the presence of if_pred, after_join_pred, or dptr_list in the XASL node.
+ */
 int
 sq_walk_xasl_check_not_caching (xasl_node * xasl)
 {
@@ -327,6 +388,18 @@ sq_walk_xasl_check_not_caching (xasl_node * xasl)
   return ret;
 }
 
+/*
+ * sq_walk_xasl_and_add_val_to_set () - Recursively walks through a XASL tree and adds values to a DB_VALUE set.
+ *   return: The count of values added to the set.
+ *   p(in): Pointer to the current component (XASL node, predicate expression, or regu variable, or DB_VALUE) being processed.
+ *   type(in): The type of the component being processed, indicating whether it's a XASL node, predicate expression, regu variable, or a DB_VALUE.
+ *   pred_set(in/out): The DB_VALUE set to which values are being added.
+ *
+ * This function recursively processes a XASL tree, including its access spec list, predicate expressions, and regu variables.
+ * For each node or expression that contains a constant value or a DB value, that value is added to the specified DB_VALUE set.
+ * The function uses the type parameter to determine the appropriate processing method for the current component.
+ * The count of values added to the set is returned.
+ */
 int
 sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set)
 {
@@ -432,7 +505,15 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set)
   return cnt;
 }
 
-
+/*
+ * sq_cache_initialize () - Initializes the cache for a given XASL node.
+ *   return: NO_ERROR if successful, ER_FAILED otherwise.
+ *   xasl(in/out): The XASL node for which the cache is being initialized.
+ *
+ * This function creates a hash table for caching the results of the XASL node. It sets up initial values for cache hit and miss
+ * counters and marks the cache as initialized. The function returns NO_ERROR upon successful initialization, or ER_FAILED if the
+ * hash table could not be created.
+ */
 int
 sq_cache_initialize (xasl_node * xasl)
 {
@@ -447,6 +528,17 @@ sq_cache_initialize (xasl_node * xasl)
   return NO_ERROR;
 }
 
+/*
+ * sq_put () - Puts a value into the cache for a given XASL node.
+ *   return: NO_ERROR if the value is successfully cached, ER_FAILED otherwise.
+ *   xasl(in): The XASL node for which the value is being cached.
+ *   regu_var(in): The regu variable containing the value to be cached.
+ *
+ * This function attempts to cache the result of a regu variable associated with a given XASL node. It generates a key based on
+ * the XASL node's structure and creates a cache entry if such a key does not already exist in the cache. The function returns
+ * NO_ERROR if the value is successfully cached, or ER_FAILED if the key could not be generated or the value could not be added
+ * to the cache.
+ */
 int
 sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
 {
@@ -480,6 +572,16 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
 
 }
 
+/*
+ * sq_get () - Retrieves a value from the cache for a given XASL node.
+ *   return: True if a cached value is found and retrieved, False otherwise.
+ *   xasl(in): The XASL node for which a cached value is being retrieved.
+ *   regu_var(in/out): The regu variable where the retrieved value will be stored.
+ *
+ * This function attempts to retrieve a value from the cache for a given XASL node. It generates a key based on the XASL node's
+ * structure and looks up the cache for a matching value. If a cached value is found, it is unpacked into the specified regu
+ * variable, and the function returns True. Otherwise, the function updates cache miss counters and returns False.
+ */
 bool
 sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
 {
@@ -488,6 +590,11 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
 
   if (xasl->sq_cache_miss >= SQ_CACHE_MISS_MAX)
     {
+      /* This conditional check acts as a mechanism to prevent the cache from being 
+         overwhelmed by unsuccessful lookups. If the cache miss count exceeds a predefined 
+         maximum, it evaluates the hit-to-miss ratio to decide whether continuing caching 
+         is beneficial. This approach optimizes cache usage and performance by dynamically 
+         adapting to the effectiveness of the cache. */
       if (xasl->sq_cache_hit / xasl->sq_cache_miss < SQ_CACHE_MIN_HIT_RATIO)
 	{
 	  return false;
@@ -520,6 +627,13 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
   return true;
 }
 
+/*
+ * sq_cache_drop_all () - Clears all cache entries for a given XASL node.
+ *   xasl(in): The XASL node for which all cache entries will be cleared.
+ *
+ * This function clears all cache entries associated with a given XASL node. It does so by iterating over the hash table and
+ * freeing all keys and values. This function is typically called when resetting or destroying the cache for a XASL node.
+ */
 void
 sq_cache_drop_all (xasl_node * xasl)
 {
@@ -532,6 +646,14 @@ sq_cache_drop_all (xasl_node * xasl)
     }
 }
 
+/*
+ * sq_cache_destroy () - Destroys the cache for a given XASL node.
+ *   xasl(in): The XASL node for which the cache is being destroyed.
+ *
+ * This function destroys the cache associated with a given XASL node. It clears all cache entries and then destroys the hash
+ * table itself. It also resets cache-related flags and counters for the XASL node. This function is called when a XASL node is
+ * no longer needed or before it is deallocated.
+ */
 void
 sq_cache_destroy (xasl_node * xasl)
 {
@@ -546,6 +668,18 @@ sq_cache_destroy (xasl_node * xasl)
   xasl->sq_cache_ht = NULL;
 }
 
+/*
+ * execute_regu_variable_xasl_with_sq_cache () - Executes a regu variable XASL with support for scalar subquery result caching.
+ *   return: False if execution should proceed after caching logic, True otherwise.
+ *   thread_p(in): Thread context.
+ *   regu_var(in): The regu variable to be executed.
+ *   vd(in): Value descriptor for parameter values.
+ *
+ * This function attempts to execute a regu variable's XASL with caching logic for scalar subquery results. It checks if the
+ * XASL node associated with the regu variable is eligible for caching and either retrieves the cached result or executes the
+ * XASL and caches the result if appropriate. This function aims to improve performance by avoiding redundant executions of
+ * scalar subqueries.
+ */
 int
 execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd)
 {

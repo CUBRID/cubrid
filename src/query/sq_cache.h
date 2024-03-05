@@ -17,7 +17,7 @@
  */
 
 /*
- * Correlated Scalar Subquery Result Cache.
+ * sq_cache.h - Correlated Scalar Subquery Result Cache.
  */
 
 #ifndef _SQ_CACHE_H_
