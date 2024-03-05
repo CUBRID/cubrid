@@ -2249,7 +2249,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       pg_cnt += qexec_clear_agg_orderby_const_list (thread_p, xasl, is_final);
     }
 
-  if (xasl->sq_cache_enabled == 1)
+  if (xasl->sq_cache_flag != 0)
     {
       sq_cache_destroy (xasl);
     }

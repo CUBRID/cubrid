@@ -242,7 +242,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->class_oid_list = NULL;
   xasl->class_locks = NULL;
   xasl->tcard_list = NULL;
-  xasl->sq_cache_enabled = 0;
+  xasl->sq_cache_flag = 0;
 
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
@@ -1701,7 +1701,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   /* initialize xasl status */
   xasl->status = XASL_INITIALIZED;
-  xasl->sq_cache_enabled = 0;
+  xasl->sq_cache_flag = 0;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

@@ -1035,7 +1035,7 @@ struct xasl_node
   int *cte_host_var_index;
 
   MHT_TABLE *sq_cache_ht;
-  int sq_cache_enabled;
+  int sq_cache_flag;
   DB_BIGINT sq_cache_hit;
   DB_BIGINT sq_cache_miss;
 
