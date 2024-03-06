@@ -27,8 +27,18 @@
 #ifdef SERVER_MODE
 #include <string.h>
 #include <stdlib.h>
-#include <malloc.h>
 #include <assert.h>
+#if defined(__SVR4)
+extern "C" size_t malloc_usable_size (void *);
+#elif defined(__APPLE__)
+#include <malloc/malloc.h>
+#elif defined(__linux__)
+#include <malloc.h>
+#else
+extern "C" size_t
+malloc_usable_size (void *)
+throw ();
+#endif
 
 #include "memory_monitor_sr.hpp"
 
@@ -36,8 +46,7 @@
 #define HAVE_USR_INCLUDE_MALLOC_H
 #endif
 
-inline size_t
-get_allocated_size (void *ptr)
+     inline size_t get_allocated_size (void *ptr)
 {
   if (ptr == NULL)
     {

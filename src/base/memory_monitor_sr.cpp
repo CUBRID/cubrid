@@ -20,14 +20,29 @@
  * memory_monitor_sr.cpp - Implementation of memory monitor module
  */
 
-#include <malloc.h>
 #include <cassert>
 #include <cstring>
 #include <algorithm>
 
+#if defined(__SVR4)
+extern "C" size_t malloc_usable_size (void *);
+#elif defined(__APPLE__)
+#include <malloc/malloc.h>
+#elif defined(__linux__)
+#include <malloc.h>
+#else
+extern "C" size_t
+malloc_usable_size (void *)
+throw ();
+#endif
+
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "memory_monitor_sr.hpp"
+
+#ifndef HAVE_USR_INCLUDE_MALLOC_H
+#define HAVE_USR_INCLUDE_MALLOC_H
+#endif
 
 typedef struct mmon_metainfo MMON_METAINFO;
 struct mmon_metainfo
