@@ -33,8 +33,16 @@
 extern "C" size_t malloc_usable_size (void *);
 #elif defined(__APPLE__)
 #include <malloc/malloc.h>
+
+#ifndef HAVE_USR_INCLUDE_MALLOC_H
+#define HAVE_USR_INCLUDE_MALLOC_H
+#endif
 #elif defined(__linux__)
 #include <malloc.h>
+
+#ifndef HAVE_USR_INCLUDE_MALLOC_H
+#define HAVE_USR_INCLUDE_MALLOC_H
+#endif
 #else
 extern "C" size_t
 malloc_usable_size (void *)
@@ -43,11 +51,8 @@ throw ();
 
 #include "memory_monitor_sr.hpp"
 
-/*#ifndef HAVE_USR_INCLUDE_MALLOC_H
-#define HAVE_USR_INCLUDE_MALLOC_H
-#endif*/
-
-     inline size_t get_allocated_size (void *ptr)
+inline size_t
+get_allocated_size (void *ptr)
 {
   if (ptr == NULL)
     {
