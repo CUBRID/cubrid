@@ -39,7 +39,7 @@ extern "C" size_t malloc_usable_size (void *);
 #define HAVE_USR_INCLUDE_MALLOC_H
 #endif
 #else
-extern "C" size_t malloc_usable_size (void *) throw ();
+//extern "C" size_t malloc_usable_size (void *) throw ();
 #endif
 
 #include "error_manager.h"

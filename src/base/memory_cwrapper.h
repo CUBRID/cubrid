@@ -49,7 +49,7 @@ extern "C" size_t malloc_usable_size (void *);
 #endif
 #else
 // *INDENT-OFF*
-extern "C" size_t malloc_usable_size (void *) throw ();
+//extern "C" size_t malloc_usable_size (void *) throw ();
 // *INDENT-ON*
 #endif
 
@@ -87,7 +87,9 @@ cub_alloc (size_t size, const char *file, const int line)
       p = malloc (size + cubmem::MMON_METAINFO_SIZE);
       if (p != NULL)
 	{
+#if !defined(WINDOWS)
 	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
+#endif
 	}
     }
   else
@@ -109,7 +111,9 @@ cub_calloc (size_t num, size_t size, const char *file, const int line)
       if (p != NULL)
 	{
 	  memset (p, 0, num * size + cubmem::MMON_METAINFO_SIZE);
+#if !defined(WINDOWS)
 	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
+#endif
 	}
     }
   else
@@ -136,7 +140,9 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 	  new_ptr = malloc (size + cubmem::MMON_METAINFO_SIZE);
 	  if (new_ptr != NULL)
 	    {
+#if !defined(WINDOWS)
 	      mmon_add_stat ((char *) new_ptr, malloc_usable_size (new_ptr), file, line);
+#endif
 	      if (ptr != NULL)
 		{
 		  size_t old_size = get_allocated_size (ptr);
