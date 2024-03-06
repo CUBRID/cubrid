@@ -40,9 +40,9 @@ throw ();
 #include "system_parameter.h"
 #include "memory_monitor_sr.hpp"
 
-#ifndef HAVE_USR_INCLUDE_MALLOC_H
+/*#ifndef HAVE_USR_INCLUDE_MALLOC_H
 #define HAVE_USR_INCLUDE_MALLOC_H
-#endif
+#endif*/
 
 typedef struct mmon_metainfo MMON_METAINFO;
 struct mmon_metainfo

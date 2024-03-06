@@ -28,6 +28,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+
 #if defined(__SVR4)
 extern "C" size_t malloc_usable_size (void *);
 #elif defined(__APPLE__)
@@ -42,9 +43,9 @@ throw ();
 
 #include "memory_monitor_sr.hpp"
 
-#ifndef HAVE_USR_INCLUDE_MALLOC_H
+/*#ifndef HAVE_USR_INCLUDE_MALLOC_H
 #define HAVE_USR_INCLUDE_MALLOC_H
-#endif
+#endif*/
 
      inline size_t get_allocated_size (void *ptr)
 {
@@ -63,9 +64,7 @@ cub_free (void *ptr)
 {
   if (mmon_is_memory_monitor_enabled () && ptr != NULL)
     {
-#if !defined(WINDOWS)
       assert (malloc_usable_size (ptr) != 0);
-#endif
       mmon_sub_stat ((char *) ptr);
     }
   free (ptr);
@@ -81,9 +80,7 @@ cub_alloc (size_t size, const char *file, const int line)
       p = malloc (size + cubmem::MMON_METAINFO_SIZE);
       if (p != NULL)
 	{
-#if !defined(WINDOWS)
 	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
-#endif // !WINDOWS
 	}
     }
   else
@@ -105,9 +102,7 @@ cub_calloc (size_t num, size_t size, const char *file, const int line)
       if (p != NULL)
 	{
 	  memset (p, 0, num * size + cubmem::MMON_METAINFO_SIZE);
-#if !defined(WINDOWS)
 	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
-#endif // !WINDOWS
 	}
     }
   else
@@ -134,9 +129,7 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 	  new_ptr = malloc (size + cubmem::MMON_METAINFO_SIZE);
 	  if (new_ptr != NULL)
 	    {
-#if !defined(WINDOWS)
 	      mmon_add_stat ((char *) new_ptr, malloc_usable_size (new_ptr), file, line);
-#endif // !WINDOWS
 	      if (ptr != NULL)
 		{
 		  size_t old_size = get_allocated_size (ptr);
