@@ -38,6 +38,7 @@ extern "C" size_t malloc_usable_size (void *);
 #ifndef HAVE_USR_INCLUDE_MALLOC_H
 #define HAVE_USR_INCLUDE_MALLOC_H
 #endif
+#endif
 
 #include "error_manager.h"
 #include "system_parameter.h"
