@@ -144,9 +144,9 @@ static int do_drop_synonym_internal (const char *synonym_name, const int is_publ
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
 static int do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
-static int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag);
-static PT_NODE *do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
-static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
+static int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
+static PT_NODE *do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
+static PT_NODE *do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
@@ -14336,7 +14336,7 @@ pt_is_allowed_result_cache ()
 static PT_NODE *
 do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
-  int err;
+  int err, *res = (int *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -14350,12 +14350,19 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       PT_NODE *cte_list = stmt->info.query.with->info.with_clause.cte_definition_list;
 
       err = do_prepare_cte (parser, cte_list);
+      if (err != NO_ERROR)
+	{
+	  *res = err;
+	}
       *continue_walk = PT_STOP_WALK;
     }
   else if ((stmt->info.query.hint & PT_HINT_QUERY_CACHE) && stmt->info.query.is_subquery == PT_IS_SUBQUERY)
     {
       stmt->info.query.flag.prepare_only = 1;
       err = do_prepare_subquery (parser, stmt);
+      {
+	*res = err;
+      }
       *continue_walk = PT_STOP_WALK;
     }
 
@@ -14570,9 +14577,9 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   statement->xasl_id = stream.xasl_id;
 
   /* All CTE and result-cached subqueries included in the query must be prepared first. */
-  if (pt_is_allowed_result_cache ())
+  if (err == NO_ERROR && pt_is_allowed_result_cache ())
     {
-      parser_walk_tree (parser, statement, do_prepare_subquery_pre, NULL, NULL, NULL);
+      parser_walk_tree (parser, statement, do_prepare_subquery_pre, &(void *) err, NULL, NULL);
     }
 
   return err;
@@ -14723,14 +14730,14 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
  * query_flag     : query flag for execution
  */
 static int
-do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
+do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_NODE *stmt;
   QUERY_ID query_id;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables;
   CACHE_TIME clt_cache_time;
-  int err, i, flag = query_flag & ~EXECUTE_QUERY_WITH_COMMIT;
+  int err, i, flag = RESULT_CACHE_REQUIRED;
 
   CACHE_TIME_RESET (&clt_cache_time);
 
@@ -14752,7 +14759,7 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement, int query_fla
 
       err =
 	execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
-		       flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
+		       flag, &clt_cache_time, &stmt->cache_time);
 
       free (host_variables);
 
@@ -14773,7 +14780,7 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement, int query_fla
  * query_flag     : query flag for execution
  */
 static int
-do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
+do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_NODE *stmt;
   PT_NODE *cte_list;
@@ -14781,7 +14788,7 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables;
   CACHE_TIME clt_cache_time;
-  int err, i, flag = query_flag & ~EXECUTE_QUERY_WITH_COMMIT;
+  int err, i, flag = RESULT_CACHE_REQUIRED;
 
   assert (statement && statement->info.query.with);
 
@@ -14809,7 +14816,7 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
 
 	  err =
 	    execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
-			   flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
+			   flag, &clt_cache_time, &stmt->cache_time);
 
 	  free (host_variables);
 
@@ -14972,8 +14979,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 static PT_NODE *
 do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
-  int query_flag = *(int *) arg;
-  int err;
+  int err, *res = (int *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -14984,12 +14990,20 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 
   if (stmt->info.query.with)
     {
-      err = do_execute_cte (parser, stmt, query_flag);
+      err = do_execute_cte (parser, stmt);
+      if (err != NO_ERROR)
+	{
+	  *res = err;
+	}
       *continue_walk = PT_STOP_WALK;
     }
   else if ((stmt->info.query.hint & PT_HINT_QUERY_CACHE) && stmt->xasl_id && stmt->info.query.flag.subquery_cached)
     {
-      err = do_execute_subquery (parser, stmt, query_flag);
+      err = do_execute_subquery (parser, stmt);
+      if (err != NO_ERROR)
+	{
+	  *res = err;
+	}
       *continue_walk = PT_STOP_WALK;
     }
 
@@ -15112,9 +15126,14 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* All CTE and result-cached subqueries included in the query must be executed first. */
-  if (pt_is_allowed_result_cache ())
+  if (err == NO_ERROR && pt_is_allowed_result_cache ())
     {
-      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &query_flag, NULL, NULL);
+      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &err, NULL, NULL);
+      if (err < NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
     }
 
   /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the host
