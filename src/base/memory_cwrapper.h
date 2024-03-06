@@ -29,8 +29,12 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "memory_monitor_sr.hpp"
+
 #if defined(__SVR4)
+// *INDENT-OFF*
 extern "C" size_t malloc_usable_size (void *);
+// *INDENT-ON*
 #elif defined(__APPLE__)
 #include <malloc/malloc.h>
 
@@ -44,14 +48,13 @@ extern "C" size_t malloc_usable_size (void *);
 #define HAVE_USR_INCLUDE_MALLOC_H
 #endif
 #else
-extern "C" size_t
-malloc_usable_size (void *)
-throw ();
+// *INDENT-OFF*
+extern "C" size_t malloc_usable_size (void *) throw ();
+// *INDENT-ON*
 #endif
 
-#include "memory_monitor_sr.hpp"
-
-     inline size_t get_allocated_size (void *ptr)
+inline size_t
+get_allocated_size (void *ptr)
 {
   if (ptr == NULL)
     {
