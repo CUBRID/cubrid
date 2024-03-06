@@ -51,8 +51,7 @@ throw ();
 
 #include "memory_monitor_sr.hpp"
 
-inline size_t
-get_allocated_size (void *ptr)
+     inline size_t get_allocated_size (void *ptr)
 {
   if (ptr == NULL)
     {
