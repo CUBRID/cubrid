@@ -47,11 +47,6 @@ extern "C" size_t malloc_usable_size (void *);
 #ifndef HAVE_USR_INCLUDE_MALLOC_H
 #define HAVE_USR_INCLUDE_MALLOC_H
 #endif
-#else
-// *INDENT-OFF*
-//extern "C" size_t malloc_usable_size (void *) throw ();
-// *INDENT-ON*
-#endif
 
 inline size_t
 get_allocated_size (void *ptr)
