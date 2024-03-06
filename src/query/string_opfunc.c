@@ -12058,22 +12058,22 @@ db_get_time_item (const DB_VALUE * src_date, const int item_type, DB_VALUE * res
  *  milliseconds. Other specifiers produce a NULL value or 0.
  */
 int
-db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VALUE * date_lang, DB_VALUE * result,
+db_time_format (const DB_VALUE * time_value, const DB_VALUE * format, const DB_VALUE * date_lang, DB_VALUE * result,
 		const TP_DOMAIN * domain)
 {
-  DB_TIME db_time, *t_p;
+  DB_DATE db_date;
+  DB_DATE *date_ptr = &db_date;
+  DB_TIME db_time;
   DB_TIMESTAMP *ts_p;
   DB_DATETIME *dt_p;
-  DB_DATE db_date;
+
   DB_TYPE res_type, format_type;
-  const char *format_s, *strend;
+  const char *format_s = NULL, *strend = NULL;
   char *res, *res2;
   int format_s_len;
   int error_status = NO_ERROR, len;
-  int h, mi, s, ms, year, month, day;
   char format_specifiers[256][64];
-  int is_date, is_datetime, is_timestamp, is_time;
-  char och = -1, ch;
+  int h, mi, s, ms, year, month, day;
   INTL_LANG date_lang_id;
   const LANG_LOCALE_DATA *lld;
   bool dummy;
@@ -12083,12 +12083,12 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
   char hours_or_minutes[4];
   int tzh = 0, tzm = 0;
   bool is_valid_tz = false;
-  DB_VALUE new_time_value;
-  const DB_VALUE *time_value = src_value;
-  const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
-  TP_DOMAIN_STATUS status;
+  char och = -1, ch;
 
-  is_date = is_datetime = is_timestamp = is_time = 0;
+
+  const DB_VALUE *value_ptr = time_value;
+  DB_VALUE new_time_value;
+  assert (date_lang != NULL);	// xxxxx
   h = mi = s = ms = 0;
   tzr[0] = '\0';
   tzd[0] = '\0';
@@ -12100,7 +12100,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 
   db_make_null (&new_time_value);
 
-  if (time_value == NULL || format == NULL || DB_IS_NULL (time_value) || DB_IS_NULL (format))
+  if (value_ptr == NULL || format == NULL || DB_IS_NULL (value_ptr) || DB_IS_NULL (format))
     {
       db_make_null (result);
       goto error;
@@ -12128,21 +12128,21 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
       goto error;
     }
 
-  res_type = DB_VALUE_DOMAIN_TYPE (time_value);
+  res_type = DB_VALUE_DOMAIN_TYPE (value_ptr);
 
   if ((res_type == DB_TYPE_DATE) || !(TP_IS_DATE_OR_TIME_TYPE (res_type) || TP_IS_CHAR_TYPE (res_type)))
     {
-      status = tp_value_auto_cast (time_value, &new_time_value, new_domain);
+      const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
+      TP_DOMAIN_STATUS status = tp_value_auto_cast (value_ptr, &new_time_value, new_domain);
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  error_status = ER_QSTR_INVALID_DATA_TYPE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto error;
 	}
-      time_value = &new_time_value;
+      value_ptr = &new_time_value;
+      res_type = DB_VALUE_DOMAIN_TYPE (value_ptr);
     }
-
-  res_type = DB_VALUE_DOMAIN_TYPE (time_value);
 
   /* 1. Get date values */
   switch (res_type)
@@ -12151,14 +12151,14 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
       {
 	TZ_ID tz_id;
 
-	ts_p = db_get_timestamp (time_value);
+	ts_p = db_get_timestamp (value_ptr);
 	error_status = tz_create_session_tzid_for_timestamp (ts_p, &tz_id);
 	if (error_status != NO_ERROR)
 	  {
 	    goto error;
 	  }
 
-	(void) db_timestamp_decode_ses (ts_p, &db_date, &db_time);
+	(void) db_timestamp_decode_ses (ts_p, date_ptr, &db_time);
 	db_time_decode (&db_time, &h, &mi, &s);
 
 	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
@@ -12173,17 +12173,15 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
     case DB_TYPE_TIMESTAMPTZ:
       {
 	DB_TIMESTAMPTZ *tsmp_tz;
-	DB_DATE date;
-	DB_TIME time;
 
-	tsmp_tz = db_get_timestamptz (time_value);
-	error_status = db_timestamp_decode_w_tz_id (&tsmp_tz->timestamp, &tsmp_tz->tz_id, &date, &time);
+	tsmp_tz = db_get_timestamptz (value_ptr);
+	error_status = db_timestamp_decode_w_tz_id (&tsmp_tz->timestamp, &tsmp_tz->tz_id, date_ptr, &db_time);
 	if (error_status != NO_ERROR)
 	  {
 	    goto error;
 	  }
 
-	db_time_decode (&time, &h, &mi, &s);
+	db_time_decode (&db_time, &h, &mi, &s);
 	error_status = tz_explain_tz_id (&tsmp_tz->tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
 	if (error_status != NO_ERROR)
 	  {
@@ -12196,24 +12194,22 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
     case DB_TYPE_TIMESTAMPLTZ:
       {
 	DB_TIMESTAMP *tsmp;
-	DB_DATE date;
-	DB_TIME time;
 	TZ_ID tz_id;
 
-	tsmp = db_get_timestamp (time_value);
+	tsmp = db_get_timestamp (value_ptr);
 	error_status = tz_create_session_tzid_for_timestamp (tsmp, &tz_id);
 
 	if (error_status != NO_ERROR)
 	  {
 	    goto error;
 	  }
-	error_status = db_timestamp_decode_w_tz_id (tsmp, &tz_id, &date, &time);
+	error_status = db_timestamp_decode_w_tz_id (tsmp, &tz_id, date_ptr, &db_time);
 	if (error_status != NO_ERROR)
 	  {
 	    goto error;
 	  }
 
-	db_time_decode (&time, &h, &mi, &s);
+	db_time_decode (&db_time, &h, &mi, &s);
 	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
 	if (error_status != NO_ERROR)
 	  {
@@ -12227,13 +12223,14 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
       {
 	TZ_ID tz_id;
 
-	dt_p = db_get_datetime (time_value);
+	dt_p = db_get_datetime (value_ptr);
 	error_status = tz_create_session_tzid_for_datetime (dt_p, true, &tz_id);
 	if (error_status != NO_ERROR)
 	  {
 	    goto error;
 	  }
 	db_datetime_decode (dt_p, &month, &day, &year, &h, &mi, &s, &ms);
+
 	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
 	if (error_status != NO_ERROR)
 	  {
@@ -12248,7 +12245,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 	DB_DATETIME dt_local;
 	DB_DATETIMETZ *dt_tz;
 
-	dt_tz = db_get_datetimetz (time_value);
+	dt_tz = db_get_datetimetz (value_ptr);
 	error_status = tz_utc_datetimetz_to_local (&dt_tz->datetime, &dt_tz->tz_id, &dt_local);
 	if (error_status != NO_ERROR)
 	  {
@@ -12270,7 +12267,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 	DB_DATETIME *dt, dt_local;
 	TZ_ID tz_id;
 
-	dt = db_get_datetime (time_value);
+	dt = db_get_datetime (value_ptr);
 	error_status = tz_create_session_tzid_for_datetime (dt, true, &tz_id);
 	if (error_status != NO_ERROR)
 	  {
@@ -12289,17 +12286,19 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 	  {
 	    goto error;
 	  }
-
 	is_valid_tz = true;
       }
       break;
 
 
+    case DB_TYPE_DATE:
+      assert (false);		// ctshim
+      break;
+
     case DB_TYPE_TIME:
       {
 	TZ_ID tz_id;
-
-	t_p = db_get_time (time_value);
+	DB_TIME *t_p = db_get_time (value_ptr);
 
 	error_status = tz_create_session_tzid_for_time (t_p, true, &tz_id);
 	if (error_status != NO_ERROR)
@@ -12317,7 +12316,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
       }
       break;
 
-    case DB_TYPE_STRING:
+    case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
@@ -12326,7 +12325,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 	TZ_ID tz_id;
 	TP_DOMAIN *tp_time = db_type_to_db_domain (DB_TYPE_TIME);
 
-	if (tp_value_cast (time_value, &tm, tp_time, false) != DOMAIN_COMPATIBLE)
+	if (tp_value_cast (value_ptr, &tm, tp_time, false) != DOMAIN_COMPATIBLE)
 	  {
 	    error_status = ER_QSTR_INVALID_DATA_TYPE;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -12358,6 +12357,11 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
   pr_clear_value (&new_time_value);
 
   /* 2. Compute the value for each format specifier */
+  assert (mi >= 0);
+  assert (s >= 0);
+  assert (ms >= 0);
+  assert (h >= 0);
+#if 0				/* time_format */
   if (mi < 0)
     {
       mi = -mi;
@@ -12370,11 +12374,14 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
     {
       ms = -ms;
     }
+#endif /* time_format */
 
   /* %f Milliseconds (000..999) */
   sprintf (format_specifiers['f'], "%03d", ms);
 
   /* %H Hour (00..23) */
+  sprintf (format_specifiers['H'], "%02d", h);
+#if 0				/* time_format */
   if (h < 0)
     {
       sprintf (format_specifiers['H'], "-%02d", -h);
@@ -12387,6 +12394,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
     {
       h = -h;
     }
+#endif /* time_format */
 
   /* %h Hour (01..12) */
   sprintf (format_specifiers['h'], "%02d", (h % 12 == 0) ? 12 : (h % 12));
@@ -12440,7 +12448,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 
   len = 1024;
   res = (char *) db_private_alloc (NULL, len);
-  if (!res)
+  if (res == NULL)
     {
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
@@ -12536,7 +12544,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 	{
 	  /* realloc - copy temporary in res2 */
 	  res2 = (char *) db_private_alloc (NULL, len);
-	  if (!res2)
+	  if (res2 == NULL)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error;
@@ -12547,7 +12555,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 
 	  len += 1024;
 	  res = (char *) db_private_alloc (NULL, len);
-	  if (!res)
+	  if (res == NULL)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error;
@@ -12583,6 +12591,8 @@ error:
 
   return error_status;
 }
+
+
 
 /*
  * db_timestamp() -
@@ -22402,300 +22412,20 @@ db_date_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VA
   return db_date_add_sub_interval_expr (result, date, expr, unit, 0);
 }
 
-/*
- * db_date_format ()
- *
- * Arguments:
- *         date_value: source date
- *         format: string with format specifiers
- *	   result: output string
- *	   domain: domain of result
- *
- * Returns: int
- *
- * Errors:
- *
- * Note:
- *    formats the date according to a specified format
- */
-int
-db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_VALUE * date_lang, DB_VALUE * result,
-		const TP_DOMAIN * domain)
+
+static void
+fill_ymd_format_specifiers (int year, int month, int day, INTL_LANG date_lang_id, const LANG_LOCALE_DATA * lld,
+			    char format_specifiers[256][64])
 {
-  DB_DATE db_date;
-  DB_TIME db_time;
-  DB_TIMESTAMP *ts_p;
-  DB_DATETIME *dt_p;
-  DB_DATE *d_p;
-
-  DB_TYPE res_type, format_type;
-  const char *format_s = NULL, *strend = NULL;
-  char *res, *res2;
-  int format_s_len;
-  int error_status = NO_ERROR, len;
-  char format_specifiers[256][64];
-
-  int year, month, day, h, mi, s, ms;
-  int days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
 
   int i, j;
   int dow, dow2;
-  INTL_LANG date_lang_id;
+
   int tu, tv, tx, weeks, ld_fw, days_counter;
-  char och = -1, ch;
-  const LANG_LOCALE_DATA *lld;
-  bool dummy;
-  INTL_CODESET codeset;
-  int res_collation;
-  char tzr[TZR_SIZE + 1], tzd[TZ_DS_STRING_SIZE + 1];
-  char hours_or_minutes[4];
-  int tzh = 0, tzm = 0;
-  bool is_valid_tz = false;
+  int days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
 
-  assert (date_lang != NULL);
+  //char format_specifiers[256][64];
 
-  year = month = day = h = mi = s = ms = 0;
-  tzr[0] = '\0';
-  tzd[0] = '\0';
-  memset (hours_or_minutes, 0, sizeof (hours_or_minutes));
-  memset (format_specifiers, 0, sizeof (format_specifiers));
-
-  res = NULL;
-  res2 = NULL;
-
-  if (date_value == NULL || format == NULL || DB_IS_NULL (date_value) || DB_IS_NULL (format))
-    {
-      db_make_null (result);
-      goto error;
-    }
-
-  if (!is_char_string (format))
-    {
-      error_status = ER_QSTR_INVALID_DATA_TYPE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      return error_status;
-    }
-
-  assert (DB_VALUE_TYPE (date_lang) == DB_TYPE_INTEGER);
-  date_lang_id = lang_get_lang_id_from_flag (db_get_int (date_lang), &dummy, &dummy);
-  if (domain != NULL && domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
-    {
-      codeset = TP_DOMAIN_CODESET (domain);
-      res_collation = TP_DOMAIN_COLLATION (domain);
-    }
-  else
-    {
-      codeset = db_get_string_codeset (format);
-      res_collation = db_get_string_collation (format);
-    }
-
-  lld = lang_get_specific_locale (date_lang_id, codeset);
-  if (lld == NULL)
-    {
-      error_status = ER_LANG_CODESET_NOT_AVAILABLE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, lang_get_lang_name_from_id (date_lang_id),
-	      lang_charset_name (codeset));
-      return error_status;
-    }
-
-  res_type = DB_VALUE_DOMAIN_TYPE (date_value);
-
-  /* 1. Get date values */
-  switch (res_type)
-    {
-    case DB_TYPE_DATETIME:
-      {
-	TZ_ID tz_id;
-
-	dt_p = db_get_datetime (date_value);
-	error_status = tz_create_session_tzid_for_datetime (dt_p, true, &tz_id);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-	db_datetime_decode (dt_p, &month, &day, &year, &h, &mi, &s, &ms);
-
-	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-	is_valid_tz = true;
-      }
-      break;
-
-    case DB_TYPE_DATE:
-      d_p = db_get_date (date_value);
-      db_date_decode (d_p, &month, &day, &year);
-      break;
-
-    case DB_TYPE_TIMESTAMP:
-      {
-	TZ_ID tz_id;
-	ts_p = db_get_timestamp (date_value);
-	error_status = tz_create_session_tzid_for_timestamp (ts_p, &tz_id);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-
-	(void) db_timestamp_decode_ses (ts_p, &db_date, &db_time);
-	db_time_decode (&db_time, &h, &mi, &s);
-	db_date_decode (&db_date, &month, &day, &year);
-
-	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-	is_valid_tz = true;
-      }
-      break;
-
-    case DB_TYPE_DATETIMETZ:
-      {
-	DB_DATETIME dt_local;
-	DB_DATETIMETZ *dt_tz;
-	dt_tz = db_get_datetimetz (date_value);
-	error_status = tz_utc_datetimetz_to_local (&dt_tz->datetime, &dt_tz->tz_id, &dt_local);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-	db_datetime_decode (&dt_local, &month, &day, &year, &h, &mi, &s, &ms);
-
-	error_status = tz_explain_tz_id (&dt_tz->tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-	is_valid_tz = true;
-      }
-      break;
-
-    case DB_TYPE_DATETIMELTZ:
-      {
-	DB_DATETIME *dt, dt_local;
-	TZ_ID tz_id;
-
-	dt = db_get_datetime (date_value);
-	error_status = tz_create_session_tzid_for_datetime (dt, true, &tz_id);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-
-	error_status = tz_utc_datetimetz_to_local (dt, &tz_id, &dt_local);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-
-	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-	db_datetime_decode (&dt_local, &month, &day, &year, &h, &mi, &s, &ms);
-	is_valid_tz = true;
-      }
-      break;
-
-    case DB_TYPE_TIMESTAMPTZ:
-      {
-	DB_TIMESTAMPTZ *tsmp_tz;
-	DB_DATE date;
-	DB_TIME time;
-
-	tsmp_tz = db_get_timestamptz (date_value);
-	error_status = db_timestamp_decode_w_tz_id (&tsmp_tz->timestamp, &tsmp_tz->tz_id, &date, &time);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-
-	db_date_decode (&date, &month, &day, &year);
-	db_time_decode (&time, &h, &mi, &s);
-
-	error_status = tz_explain_tz_id (&tsmp_tz->tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-	is_valid_tz = true;
-      }
-      break;
-
-    case DB_TYPE_TIMESTAMPLTZ:
-      {
-	DB_TIMESTAMP *tsmp;
-	DB_DATE date;
-	DB_TIME time;
-	TZ_ID tz_id;
-
-	tsmp = db_get_timestamp (date_value);
-	error_status = tz_create_session_tzid_for_timestamp (tsmp, &tz_id);
-
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-	error_status = db_timestamp_decode_w_tz_id (tsmp, &tz_id, &date, &time);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-
-	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
-	if (error_status != NO_ERROR)
-	  {
-	    return error_status;
-	  }
-
-	db_date_decode (&date, &month, &day, &year);
-	db_time_decode (&time, &h, &mi, &s);
-	is_valid_tz = true;
-      }
-      break;
-
-    case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
-      {
-	DB_VALUE dt;
-	TP_DOMAIN *tp_datetime = db_type_to_db_domain (DB_TYPE_DATETIME);
-	TP_DOMAIN *tp_datetimetz = db_type_to_db_domain (DB_TYPE_DATETIMETZ);
-
-	if (tp_value_cast (date_value, &dt, tp_datetime, false) != DOMAIN_COMPATIBLE)
-	  {
-	    error_status = ER_QSTR_INVALID_DATA_TYPE;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	    goto error;
-	  }
-
-	db_datetime_decode (db_get_datetime (&dt), &month, &day, &year, &h, &mi, &s, &ms);
-
-	if (tp_value_cast (date_value, &dt, tp_datetimetz, false) == DOMAIN_COMPATIBLE)
-	  {
-	    DB_DATETIMETZ dt_tz;
-
-	    dt_tz = *db_get_datetimetz (&dt);
-	    if (tz_explain_tz_id (&dt_tz.tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm) == NO_ERROR)
-	      {
-		is_valid_tz = true;
-	      }
-	  }
-	break;
-      }
-
-    default:
-      error_status = ER_QSTR_INVALID_DATA_TYPE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      goto error;
-    }
-
-  /* 2. Compute the value for each format specifier */
   days[2] += LEAP (year);
   dow = db_get_day_of_week (year, month, day);
 
@@ -22716,21 +22446,27 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   /* 11-19 are special */
   if (date_lang_id == INTL_LANG_ENGLISH)
     {
-      if (day % 10 == 1 && day / 10 != 1)
+      if (day / 10 == 1)
 	{
-	  strcat (format_specifiers['D'], "st");
-	}
-      else if (day % 10 == 2 && day / 10 != 1)
-	{
-	  strcat (format_specifiers['D'], "nd");
-	}
-      else if (day % 10 == 3 && day / 10 != 1)
-	{
-	  strcat (format_specifiers['D'], "rd");
+	  strcat (format_specifiers['D'], "th");
 	}
       else
 	{
-	  strcat (format_specifiers['D'], "th");
+	  switch (day % 10)
+	    {
+	    case 1:
+	      strcat (format_specifiers['D'], "st");
+	      break;
+	    case 2:
+	      strcat (format_specifiers['D'], "nd");
+	      break;
+	    case 3:
+	      strcat (format_specifiers['D'], "rd");
+	      break;
+	    default:
+	      strcat (format_specifiers['D'], "th");
+	      break;
+	    }
 	}
     }
 
@@ -22740,33 +22476,13 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   /* %e Day of the m, numeric (0..31) - actually (1..31) */
   sprintf (format_specifiers['e'], "%d", day);
 
-  /* %f Milliseconds (000..999) */
-  sprintf (format_specifiers['f'], "%03d", ms);
-
-  /* %H Hour (00..23) */
-  sprintf (format_specifiers['H'], "%02d", h);
-
-  /* %h Hour (01..12) */
-  sprintf (format_specifiers['h'], "%02d", (h % 12 == 0) ? 12 : (h % 12));
-
-  /* %I Hour (01..12) */
-  sprintf (format_specifiers['I'], "%02d", (h % 12 == 0) ? 12 : (h % 12));
-
-  /* %i Minutes, numeric (00..59) */
-  sprintf (format_specifiers['i'], "%02d", mi);
-
-  /* %j Day of y (001..366) */
+  /* %j Day of year (001..366) */
   for (j = day, i = 1; i < month; i++)
     {
       j += days[i];
     }
   sprintf (format_specifiers['j'], "%03d", j);
 
-  /* %k Hour (0..23) */
-  sprintf (format_specifiers['k'], "%d", h);
-
-  /* %l Hour (1..12) */
-  sprintf (format_specifiers['l'], "%d", (h % 12 == 0) ? 12 : (h % 12));
 
   /* %M Month name (January..December) */
   if (month > 0)
@@ -22777,23 +22493,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   /* %m Month, numeric (00..12) */
   sprintf (format_specifiers['m'], "%02d", month);
 
-  /* %p AM or PM */
-  strcpy (format_specifiers['p'], (h > 11) ? lld->am_pm[PM_NAME] : lld->am_pm[AM_NAME]);
-
-  /* %r Time, 12-hour (hh:mm:ss followed by AM or PM) */
-  sprintf (format_specifiers['r'], "%02d:%02d:%02d %s", (h % 12 == 0) ? 12 : (h % 12), mi, s,
-	   (h > 11) ? lld->am_pm[PM_NAME] : lld->am_pm[AM_NAME]);
-
-  /* %S Seconds (00..59) */
-  sprintf (format_specifiers['S'], "%02d", s);
-
-  /* %s Seconds (00..59) */
-  sprintf (format_specifiers['s'], "%02d", s);
-
-  /* %T Time, 24-hour (hh:mm:ss) */
-  sprintf (format_specifiers['T'], "%02d:%02d:%02d", h, mi, s);
-
-  /* %U Week (00..53), where Sunday is the first d of the week */
+/* %U Week (00..53), where Sunday is the first d of the week */
   /* %V Week (01..53), where Sunday is the first d of the week; used with %X */
   /* %X Year for the week where Sunday is the first day of the week, numeric, four digits; used with %V */
 
@@ -22887,6 +22587,341 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 
   /* %y Year, numeric (two digits) */
   sprintf (format_specifiers['y'], "%02d", year % 100);
+}
+
+/*
+ * db_date_format ()
+ *
+ * Arguments:
+ *         date_value: source date
+ *         format: string with format specifiers
+ *	   result: output string
+ *	   domain: domain of result
+ *
+ * Returns: int
+ *
+ * Errors:
+ *
+ * Note:
+ *    formats the date according to a specified format
+ */
+int
+db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_VALUE * date_lang, DB_VALUE * result,
+		const TP_DOMAIN * domain)
+{
+  DB_DATE db_date;
+  DB_DATE *date_ptr = &db_date;
+  DB_TIME db_time;
+  DB_TIMESTAMP *ts_p;
+  DB_DATETIME *dt_p;
+
+  DB_TYPE res_type, format_type;
+  const char *format_s = NULL, *strend = NULL;
+  char *res, *res2;
+  int format_s_len;
+  int error_status = NO_ERROR, len;
+  char format_specifiers[256][64];
+  int h, mi, s, ms, year, month, day;
+  INTL_LANG date_lang_id;
+  const LANG_LOCALE_DATA *lld;
+  bool dummy;
+  INTL_CODESET codeset;
+  int res_collation;
+  char tzr[TZR_SIZE + 1], tzd[TZ_DS_STRING_SIZE + 1];
+  char hours_or_minutes[4];
+  int tzh = 0, tzm = 0;
+  bool is_valid_tz = false;
+  char och = -1, ch;
+
+  const DB_VALUE *value_ptr = date_value;
+  assert (date_lang != NULL);
+
+  year = month = day = 0;
+  h = mi = s = ms = 0;
+  tzr[0] = '\0';
+  tzd[0] = '\0';
+  memset (hours_or_minutes, 0, sizeof (hours_or_minutes));
+  memset (format_specifiers, 0, sizeof (format_specifiers));
+
+  res = NULL;
+  res2 = NULL;
+
+  if (value_ptr == NULL || format == NULL || DB_IS_NULL (value_ptr) || DB_IS_NULL (format))
+    {
+      db_make_null (result);
+      goto error;
+    }
+
+  if (!is_char_string (format))
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  assert (DB_VALUE_TYPE (date_lang) == DB_TYPE_INTEGER);
+  date_lang_id = lang_get_lang_id_from_flag (db_get_int (date_lang), &dummy, &dummy);
+  if (domain != NULL && domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
+    {
+      codeset = TP_DOMAIN_CODESET (domain);
+      res_collation = TP_DOMAIN_COLLATION (domain);
+    }
+  else
+    {
+      codeset = db_get_string_codeset (format);
+      res_collation = db_get_string_collation (format);
+    }
+
+  lld = lang_get_specific_locale (date_lang_id, codeset);
+  if (lld == NULL)
+    {
+      error_status = ER_LANG_CODESET_NOT_AVAILABLE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, lang_get_lang_name_from_id (date_lang_id),
+	      lang_charset_name (codeset));
+      goto error;
+    }
+
+  res_type = DB_VALUE_DOMAIN_TYPE (value_ptr);
+
+  /* 1. Get date values */
+  switch (res_type)
+    {
+    case DB_TYPE_TIMESTAMP:
+      {
+	TZ_ID tz_id;
+
+	ts_p = db_get_timestamp (value_ptr);
+	error_status = tz_create_session_tzid_for_timestamp (ts_p, &tz_id);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+
+	(void) db_timestamp_decode_ses (ts_p, date_ptr, &db_time);
+	db_time_decode (&db_time, &h, &mi, &s);
+	db_date_decode (date_ptr, &month, &day, &year);
+
+	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	is_valid_tz = true;
+      }
+      break;
+
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	DB_TIMESTAMPTZ *tsmp_tz;
+
+	tsmp_tz = db_get_timestamptz (value_ptr);
+	error_status = db_timestamp_decode_w_tz_id (&tsmp_tz->timestamp, &tsmp_tz->tz_id, date_ptr, &db_time);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+
+	db_time_decode (&db_time, &h, &mi, &s);
+	db_date_decode (date_ptr, &month, &day, &year);
+	error_status = tz_explain_tz_id (&tsmp_tz->tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	is_valid_tz = true;
+      }
+      break;
+
+    case DB_TYPE_TIMESTAMPLTZ:
+      {
+	DB_TIMESTAMP *tsmp;
+	TZ_ID tz_id;
+
+	tsmp = db_get_timestamp (value_ptr);
+	error_status = tz_create_session_tzid_for_timestamp (tsmp, &tz_id);
+
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	error_status = db_timestamp_decode_w_tz_id (tsmp, &tz_id, date_ptr, &db_time);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+
+	db_time_decode (&db_time, &h, &mi, &s);
+	db_date_decode (date_ptr, &month, &day, &year);
+	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	is_valid_tz = true;
+      }
+      break;
+
+    case DB_TYPE_DATETIME:
+      {
+	TZ_ID tz_id;
+
+	dt_p = db_get_datetime (value_ptr);
+	error_status = tz_create_session_tzid_for_datetime (dt_p, true, &tz_id);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	db_datetime_decode (dt_p, &month, &day, &year, &h, &mi, &s, &ms);
+
+	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	is_valid_tz = true;
+      }
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+      {
+	DB_DATETIME dt_local;
+	DB_DATETIMETZ *dt_tz;
+
+	dt_tz = db_get_datetimetz (value_ptr);
+	error_status = tz_utc_datetimetz_to_local (&dt_tz->datetime, &dt_tz->tz_id, &dt_local);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	db_datetime_decode (&dt_local, &month, &day, &year, &h, &mi, &s, &ms);
+
+	error_status = tz_explain_tz_id (&dt_tz->tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	is_valid_tz = true;
+      }
+      break;
+
+    case DB_TYPE_DATETIMELTZ:
+      {
+	DB_DATETIME *dt, dt_local;
+	TZ_ID tz_id;
+
+	dt = db_get_datetime (value_ptr);
+	error_status = tz_create_session_tzid_for_datetime (dt, true, &tz_id);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+
+	error_status = tz_utc_datetimetz_to_local (dt, &tz_id, &dt_local);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	db_datetime_decode (&dt_local, &month, &day, &year, &h, &mi, &s, &ms);
+
+	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	is_valid_tz = true;
+      }
+      break;
+
+
+    case DB_TYPE_DATE:
+      {
+	DB_DATE *d_p = db_get_date (value_ptr);
+	db_date_decode (d_p, &month, &day, &year);
+      }
+      break;
+
+      //case DB_TYPE_TIME:
+      //  assert (false);         // ctshim
+      //  break;
+
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_NCHAR:
+      {
+	DB_VALUE dt;
+	TP_DOMAIN *tp_datetime = db_type_to_db_domain (DB_TYPE_DATETIME);
+	TP_DOMAIN *tp_datetimetz = db_type_to_db_domain (DB_TYPE_DATETIMETZ);
+
+	if (tp_value_cast (value_ptr, &dt, tp_datetime, false) != DOMAIN_COMPATIBLE)
+	  {
+	    error_status = ER_QSTR_INVALID_DATA_TYPE;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    goto error;
+	  }
+
+	db_datetime_decode (db_get_datetime (&dt), &month, &day, &year, &h, &mi, &s, &ms);
+
+	if (tp_value_cast (value_ptr, &dt, tp_datetimetz, false) == DOMAIN_COMPATIBLE)
+	  {
+	    DB_DATETIMETZ dt_tz;
+
+	    dt_tz = *db_get_datetimetz (&dt);
+	    if (tz_explain_tz_id (&dt_tz.tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm) == NO_ERROR)
+	      {
+		is_valid_tz = true;
+	      }
+	  }
+	break;
+      }
+
+    default:
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
+    }
+
+  /* 2. Compute the value for each format specifier */
+
+
+  /* %f Milliseconds (000..999) */
+  sprintf (format_specifiers['f'], "%03d", ms);
+
+  /* %H Hour (00..23) */
+  sprintf (format_specifiers['H'], "%02d", h);
+
+  /* %h Hour (01..12) */
+  sprintf (format_specifiers['h'], "%02d", (h % 12 == 0) ? 12 : (h % 12));
+
+  /* %I Hour (01..12) */
+  sprintf (format_specifiers['I'], "%02d", (h % 12 == 0) ? 12 : (h % 12));
+
+  /* %i Minutes, numeric (00..59) */
+  sprintf (format_specifiers['i'], "%02d", mi);
+
+  /* %k Hour (0..23) */
+  sprintf (format_specifiers['k'], "%d", h);
+
+  /* %l Hour (1..12) */
+  sprintf (format_specifiers['l'], "%d", (h % 12 == 0) ? 12 : (h % 12));
+
+  /* %p AM or PM */
+  strcpy (format_specifiers['p'], (h > 11) ? lld->am_pm[PM_NAME] : lld->am_pm[AM_NAME]);
+
+  /* %r Time, 12-hour (hh:mm:ss followed by AM or PM) */
+  sprintf (format_specifiers['r'], "%02d:%02d:%02d %s", (h % 12 == 0) ? 12 : (h % 12), mi, s,
+	   (h > 11) ? lld->am_pm[PM_NAME] : lld->am_pm[AM_NAME]);
+
+  /* %S Seconds (00..59) */
+  sprintf (format_specifiers['S'], "%02d", s);
+
+  /* %s Seconds (00..59) */
+  sprintf (format_specifiers['s'], "%02d", s);
+
+  /* %T Time, 24-hour (hh:mm:ss) */
+  sprintf (format_specifiers['T'], "%02d:%02d:%02d", h, mi, s);
+
+  fill_ymd_format_specifiers (year, month, day, date_lang_id, lld, format_specifiers);	//======
 
   /* 3. Generate the output according to the format and the values */
   format_type = DB_VALUE_DOMAIN_TYPE (format);
