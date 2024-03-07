@@ -475,20 +475,13 @@ namespace cubmethod
     int pos;
     int fetch_count;
     int fetch_flag;
+    fetch_info info;
 
     unpacker.unpack_all (qid, pos, fetch_count, fetch_flag);
 
     /* find query cursor */
-    fetch_info info;
     query_cursor *cursor = m_group->get_cursor (qid);
-    if (cursor == nullptr)
-      {
-	assert (false);
-	error = mcon_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
-					ARG_FILE_LINE);
-	return error;
-      }
-    else
+    if (cursor != nullptr)
       {
 	if (cursor->get_is_opened () == false)
 	  {
