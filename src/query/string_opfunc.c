@@ -22453,7 +22453,8 @@ fn_date_time_step3 (DATE_TIME_INFO * dtzi, bool is_valid_tz, const DB_VALUE * fo
 {
   DB_TYPE res_type, format_type;
   const char *format_s = NULL, *strend = NULL;
-  char *res;
+  char *res = NULL;
+  char *res2 = NULL;
   int format_s_len, len;
   int error_status = NO_ERROR;
 
@@ -22535,7 +22536,7 @@ fn_date_time_step3 (DATE_TIME_INFO * dtzi, bool is_valid_tz, const DB_VALUE * fo
 		    }
 		  er_clear ();
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		  return error_status;
+		  goto error;
 		}
 	      switch (*(format_s + 2))
 		{
@@ -22592,7 +22593,8 @@ fn_date_time_step3 (DATE_TIME_INFO * dtzi, bool is_valid_tz, const DB_VALUE * fo
 	  char *res2 = (char *) db_private_alloc (NULL, len);
 	  if (res2 == NULL)
 	    {
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
 	    }
 	  memset (res2, 0, len);
 	  strcpy (res2, res);
@@ -22603,7 +22605,8 @@ fn_date_time_step3 (DATE_TIME_INFO * dtzi, bool is_valid_tz, const DB_VALUE * fo
 	  if (res == NULL)
 	    {
 	      db_private_free_and_init (NULL, res2);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
 	    }
 	  memset (res, 0, len);
 	  strcpy (res, res2);
@@ -22614,7 +22617,20 @@ fn_date_time_step3 (DATE_TIME_INFO * dtzi, bool is_valid_tz, const DB_VALUE * fo
   *res_ptr = res;
 
   return error_status;
+
+error:
+  if (res != NULL)
+    {
+      db_private_free_and_init (NULL, res);
+    }
+  if (res2 != NULL)
+    {
+      db_private_free_and_init (NULL, res2);
+    }
+  return error_status;
 }
+
+
 
 /*
  * db_date_format ()
