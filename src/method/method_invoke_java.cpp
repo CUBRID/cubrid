@@ -481,39 +481,44 @@ namespace cubmethod
 
     /* find query cursor */
     query_cursor *cursor = m_group->get_cursor (qid);
-    if (cursor != nullptr)
+    if (cursor == nullptr)
       {
-	if (cursor->get_is_opened () == false)
+	assert (false);
+	error = mcon_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+					ARG_FILE_LINE);
+	return error;
+      }
+
+    if (cursor->get_is_opened () == false)
+      {
+	cursor->open ();
+      }
+
+    int i = 0;
+    SCAN_CODE s_code = S_SUCCESS;
+    while (s_code == S_SUCCESS)
+      {
+	s_code = cursor->next_row ();
+	if (s_code == S_END || i > cursor->get_fetch_count ())
 	  {
-	    cursor->open ();
+	    break;
 	  }
 
-	int i = 0;
-	SCAN_CODE s_code = S_SUCCESS;
-	while (s_code == S_SUCCESS)
+	int tuple_index = cursor->get_current_index ();
+	std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
+
+	if (cursor->get_is_oid_included())
 	  {
-	    s_code = cursor->next_row ();
-	    if (s_code == S_END || i > cursor->get_fetch_count ())
-	      {
-		break;
-	      }
-
-	    int tuple_index = cursor->get_current_index ();
-	    std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
-
-	    if (cursor->get_is_oid_included())
-	      {
-		/* FIXME!!: For more optimized way, refactoring method_query_cursor is needed */
-		OID *oid = cursor->get_current_oid ();
-		std::vector<DB_VALUE> sub_vector = {tuple_values.begin() + 1, tuple_values.end ()};
-		info.tuples.emplace_back (tuple_index, sub_vector, *oid);
-	      }
-	    else
-	      {
-		info.tuples.emplace_back (tuple_index, tuple_values);
-	      }
-	    i++;
+	    /* FIXME!!: For more optimized way, refactoring method_query_cursor is needed */
+	    OID *oid = cursor->get_current_oid ();
+	    std::vector<DB_VALUE> sub_vector = {tuple_values.begin() + 1, tuple_values.end ()};
+	    info.tuples.emplace_back (tuple_index, sub_vector, *oid);
 	  }
+	else
+	  {
+	    info.tuples.emplace_back (tuple_index, tuple_values);
+	  }
+	i++;
       }
 
     error = mcon_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_SUCCESS, info);
