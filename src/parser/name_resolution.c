@@ -941,9 +941,6 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
       /* If pt_name in group by/ having, maybe it's alias. We will try to resolve it later. */
       if (!is_pt_name_in_group_having (in_node))
 	{
-	  /* it may be a naked parameter or a path expression anchored by a naked parameter. Try and resolve it as
-	   * such. */
-	  node = pt_bind_parameter_path (parser, in_node);
 
 	  if (node == NULL && parser->flag.is_parsing_static_sql == 1)
 	    {
@@ -951,6 +948,12 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	      pt_reset_error (parser);
 
 	      node = pt_parameterize_for_static_sql (parser, in_node);
+	    }
+	  else			// in case of compiling static SQL, do not resolve with variable defined in runtime
+	    {
+	      /* it may be a naked parameter or a path expression anchored by a naked parameter. Try and resolve it as
+	       * such. */
+	      node = pt_bind_parameter_path (parser, in_node);
 	    }
 
 	  if (node == NULL && !pt_has_error (parser))
