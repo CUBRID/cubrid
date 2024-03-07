@@ -514,7 +514,7 @@ struct cte_proc_node
 	      if ((_x)->status == XASL_CLEARED || (_x)->status == XASL_INITIALIZED) \
 		{ \
 		  /* execute xasl query */ \
-		  if (_x->cte_xasl_id) \
+		  if (_x->sub_xasl_id) \
 		    { \
 		      if (qexec_execute_subquery_for_result_cache ((thread_p), _x, (v)->xasl_state) != NO_ERROR) \
 			{ \
@@ -1041,9 +1041,9 @@ struct xasl_node
 				 * DELETE in the generated SELECT statement) */
   int mvcc_reev_extra_cls_cnt;	/* number of extra OID - CLASS_OID pairs added to the select list in case of
 				 * UPDATE/DELETE in MVCC */
-  XASL_ID *cte_xasl_id;		/* for CTE's query cache */
-  int cte_host_var_count;
-  int *cte_host_var_index;
+  XASL_ID *sub_xasl_id;		/* for cached subquery */
+  int sub_host_var_count;	/* for subquery's host variable count */
+  int *sub_host_var_index;	/* for subquery's host variable index */
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */

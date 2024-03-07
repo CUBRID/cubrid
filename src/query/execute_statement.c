@@ -14295,7 +14295,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 }
 
 static PT_NODE *
-pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PARSER_CONTEXT *query = (PARSER_CONTEXT *) arg;
 
@@ -14305,7 +14305,7 @@ pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	{
 	  pr_clone_value (&query->host_variables[node->info.host_var.index],
 			  &parser->host_variables[parser->host_var_count]);
-	  parser->cte_host_var_index[parser->host_var_count] = node->info.host_var.index;
+	  parser->sub_host_var_index[parser->host_var_count] = node->info.host_var.index;
 	  node->info.host_var.index = parser->host_var_count;
 	  parser->dbval_cnt++;
 	}
@@ -14615,8 +14615,8 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * sub_statement)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  sub_context.cte_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
-  if (sub_context.cte_host_var_index == NULL)
+  sub_context.sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+  if (sub_context.sub_host_var_index == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -14624,18 +14624,18 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * sub_statement)
 
   sub_context.host_var_count = 0;
 
-  parser_walk_tree (&sub_context, sub_statement, pt_cte_host_vars_index, parser, NULL, NULL);
+  parser_walk_tree (&sub_context, sub_statement, pt_sub_host_vars_index, parser, NULL, NULL);
 
-  sub_statement->cte_host_var_count = sub_context.host_var_count;
-  sub_statement->cte_host_var_index = sub_context.cte_host_var_index;
+  sub_statement->sub_host_var_count = sub_context.host_var_count;
+  sub_statement->sub_host_var_index = sub_context.sub_host_var_index;
 
   error = do_prepare_select (&sub_context, sub_statement);
 
   if (xasl)
     {
-      xasl->cte_host_var_count = sub_context.host_var_count;
-      xasl->cte_host_var_index = sub_context.cte_host_var_index;
-      xasl->cte_xasl_id = sub_statement->xasl_id;
+      xasl->sub_host_var_count = sub_context.host_var_count;
+      xasl->sub_host_var_index = sub_context.sub_host_var_index;
+      xasl->sub_xasl_id = sub_statement->xasl_id;
 
       sub_statement->info.query.xasl = xasl;
     }
@@ -14677,8 +14677,8 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
-	  cte_context.cte_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
-	  if (cte_context.cte_host_var_index == NULL)
+	  cte_context.sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+	  if (cte_context.sub_host_var_index == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -14686,10 +14686,10 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  cte_context.host_var_count = 0;
 
-	  parser_walk_tree (&cte_context, cte_statement, pt_cte_host_vars_index, parser, NULL, NULL);
+	  parser_walk_tree (&cte_context, cte_statement, pt_sub_host_vars_index, parser, NULL, NULL);
 
-	  cte_statement->cte_host_var_count = cte_context.host_var_count;
-	  cte_statement->cte_host_var_index = cte_context.cte_host_var_index;
+	  cte_statement->sub_host_var_count = cte_context.host_var_count;
+	  cte_statement->sub_host_var_index = cte_context.sub_host_var_index;
 
 	  error = do_prepare_select (&cte_context, cte_statement);
 	  if (error != NO_ERROR)
@@ -14724,21 +14724,21 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   stmt = statement;
   if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
-      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
+      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->sub_host_var_count);
       if (host_variables == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  sizeof (DB_VALUE) * stmt->cte_host_var_count);
+		  sizeof (DB_VALUE) * stmt->sub_host_var_count);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      for (i = 0; i < stmt->cte_host_var_count; i++)
+      for (i = 0; i < stmt->sub_host_var_count; i++)
 	{
-	  pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
+	  pr_clone_value (&parser->host_variables[stmt->sub_host_var_index[i]], &host_variables[i]);
 	}
 
       err =
-	execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
+	execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id,
 		       flag, &clt_cache_time, &stmt->cache_time);
 
       free (host_variables);
@@ -14781,21 +14781,21 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
       stmt = cte_list->info.cte.non_recursive_part;
       if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
 	{
-	  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
+	  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->sub_host_var_count);
 	  if (host_variables == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (DB_VALUE) * stmt->cte_host_var_count);
+		      sizeof (DB_VALUE) * stmt->sub_host_var_count);
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
-	  for (i = 0; i < stmt->cte_host_var_count; i++)
+	  for (i = 0; i < stmt->sub_host_var_count; i++)
 	    {
-	      pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
+	      pr_clone_value (&parser->host_variables[stmt->sub_host_var_index[i]], &host_variables[i]);
 	    }
 
 	  err =
-	    execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
+	    execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id,
 			   flag, &clt_cache_time, &stmt->cache_time);
 
 	  free (host_variables);

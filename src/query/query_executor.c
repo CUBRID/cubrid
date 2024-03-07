@@ -1244,7 +1244,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      if (xasl->aptr_list && xasl->aptr_list->cte_xasl_id
+	      if (xasl->aptr_list && xasl->aptr_list->sub_xasl_id
 		  && XASL_IS_FLAGED (xasl->aptr_list, XASL_LINK_TO_REGU_VARIABLE))
 		{
 		  int i;
@@ -1394,13 +1394,13 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 
   if (xasl->type == CTE_PROC)
     {
-      if (xasl->proc.cte.non_recursive_part && xasl->proc.cte.non_recursive_part->cte_xasl_id)
+      if (xasl->proc.cte.non_recursive_part && xasl->proc.cte.non_recursive_part->sub_xasl_id)
 	{
 	  cte_cached_list_id = xasl->proc.cte.non_recursive_part->list_id;
 	}
     }
 
-  if (xasl->cte_xasl_id)
+  if (xasl->sub_xasl_id)
     {
       cte_cached_list_id = xasl->list_id;
     }
@@ -2227,7 +2227,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   if (xasl->aptr_list)
     {
       XASL_SET_FLAG (xasl->aptr_list, decache_clone_flag);
-      if (xasl->aptr_list->cte_xasl_id)
+      if (xasl->aptr_list->sub_xasl_id)
 	{
 	  qfile_clear_list_id (xasl->aptr_list->list_id);
 	}
@@ -14169,7 +14169,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	      if (xptr2->status == XASL_CLEARED || xptr2->status == XASL_INITIALIZED)
 		{
-		  if (xptr2->cte_xasl_id)
+		  if (xptr2->sub_xasl_id)
 		    {
 		      if (qexec_execute_subquery_for_result_cache (thread_p, xptr2, xasl_state) != NO_ERROR)
 			{
@@ -16055,7 +16055,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
   /* first the non recursive part from the CTE shall be executed */
   if (non_recursive_part->status == XASL_CLEARED || non_recursive_part->status == XASL_INITIALIZED)
     {
-      if (non_recursive_part->cte_xasl_id)
+      if (non_recursive_part->sub_xasl_id)
 	{
 	  if (qexec_execute_subquery_for_result_cache (thread_p, non_recursive_part, xasl_state) != NO_ERROR)
 	    {
@@ -25462,18 +25462,18 @@ int
 qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {
   assert (xasl != NULL);
-  assert (xasl->cte_xasl_id != NULL);
+  assert (xasl->sub_xasl_id != NULL);
 
   int i;
-  int host_var_count = xasl->cte_host_var_count;
-  int *host_var_index = xasl->cte_host_var_index;
+  int host_var_count = xasl->sub_host_var_count;
+  int *host_var_index = xasl->sub_host_var_index;
 
   QFILE_LIST_ID *list_id = NULL;	/* list-id of cached result */
   DB_VALUE *dbval_p;		/* db values' pointer for searching cached query */
   XASL_CACHE_ENTRY *ent = NULL;	/* xasl for cached query */
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
 
-  xcache_find_sha1 (thread_p, &xasl->cte_xasl_id->sha1, XASL_CACHE_SEARCH_GENERIC, &ent, NULL);
+  xcache_find_sha1 (thread_p, &xasl->sub_xasl_id->sha1, XASL_CACHE_SEARCH_GENERIC, &ent, NULL);
   if (ent)
     {
       DB_VALUE_ARRAY params;

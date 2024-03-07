@@ -17296,9 +17296,9 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   /* checking false query */
   if (non_recursive_part_xasl)
     {
-      non_recursive_part_xasl->cte_xasl_id = non_recursive_part->xasl_id;
-      non_recursive_part_xasl->cte_host_var_count = non_recursive_part->cte_host_var_count;
-      non_recursive_part_xasl->cte_host_var_index = non_recursive_part->cte_host_var_index;
+      non_recursive_part_xasl->sub_xasl_id = non_recursive_part->xasl_id;
+      non_recursive_part_xasl->sub_host_var_count = non_recursive_part->sub_host_var_count;
+      non_recursive_part_xasl->sub_host_var_index = non_recursive_part->sub_host_var_index;
     }
 
   if (recursive_part)

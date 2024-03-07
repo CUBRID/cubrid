@@ -1323,8 +1323,7 @@ typedef enum
 
   PT_PRIVATE,
   PT_PUBLIC,
-  PT_SYNONYM,
-  PT_IS_SUBCACHE		/* query is cached for sub-query */
+  PT_SYNONYM
     // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
@@ -2965,7 +2964,7 @@ struct pt_query_info
   PT_NODE *qcache_hint;		/* enable/disable query cache */
   PT_NODE *limit;		/* PT_VALUE (list) limit clause parameter(s) */
   void *xasl;			/* xasl proc pointer */
-  XASL_ID *cte_xasl_id;		/* xasl_id for CTE query */
+  XASL_ID *sub_xasl_id;		/* xasl_id for cached subquery */
   UINTPTR id;			/* query unique id # */
   PT_HINT_ENUM hint;		/* hint flag */
   bool is_order_dependent;	/* true if query is order dependent */
@@ -3759,8 +3758,8 @@ struct parser_node
   PARSER_VARCHAR *expr_before_const_folding;	/* text before constant folding (used by value, host var nodes) */
   PT_TYPE_ENUM type_enum;	/* type enumeration tag PT_TYPE_??? */
   CACHE_TIME cache_time;	/* client or server cache time */
-  int cte_host_var_count;	/* CTE host variable count */
-  int *cte_host_var_index;	/* CTE host variable index in non_recursive CTE node */
+  int sub_host_var_count;	/* subquery's host variable count */
+  int *sub_host_var_index;	/* subquery's host variable index */
 
   struct
   {
@@ -3888,7 +3887,7 @@ struct parser_context
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
   int dbval_cnt;		/* to be assigned to XASL */
-  int *cte_host_var_index;	/* CTE host variable index in non_recursive CTE node */
+  int *sub_host_var_index;	/* subquery's host variable index */
   int line, column;		/* current input line and column */
 
   void *etc;			/* application context */
