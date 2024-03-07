@@ -22340,6 +22340,7 @@ fn_date_time_step1 (DB_TYPE res_type, const DB_VALUE * value_ptr, bool * is_vali
 		DB_DATETIMETZ dt_tz;
 
 		dt_tz = *db_get_datetimetz (&dt);
+		dtzi->tz_id = dt_tz.tz_id;
 		*is_valid_tz = true;
 	      }
 	  }
