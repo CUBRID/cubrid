@@ -1349,7 +1349,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_USE_NL  0x10ULL	/* force nl-join */
 #define  PT_HINT_USE_IDX  0x20ULL	/* force idx-join */
 #define  PT_HINT_USE_MERGE  0x40ULL	/* force m-join */
-#define  PT_HINT_USE_HASH  0x80ULL	/* not used */
+#define  PT_HINT_USE_HASH  0x80ULL	/* force hash-join */
 #define  PT_HINT_RECOMPILE  0x0100ULL	/* recompile */
 #define  PT_HINT_LK_TIMEOUT  0x0200ULL	/* lock_timeout */
 #define  PT_HINT_NO_LOGGING  0x0400ULL	/* no_logging */
@@ -1368,8 +1368,8 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_SORT_LIMIT  0x800000ULL
 #define  PT_HINT_NO_HASH_AGGREGATE  0x1000000ULL	/* no hash aggregate evaluation */
 #define  PT_HINT_SKIP_UPDATE_NULL  0x2000000ULL
-#define  PT_HINT_NO_INDEX_LS  0x4000000ULL	/* enable loose index scan */
-#define  PT_HINT_INDEX_LS  0x8000000ULL	/* disable loose index scan */
+#define  PT_HINT_NO_INDEX_LS  0x4000000ULL	/* disable loose index scan */
+#define  PT_HINT_INDEX_LS  0x8000000ULL	/* enable loose index scan */
 #define  PT_HINT_NO_SUPPLEMENTAL_LOG  0x10000000ULL	/* Used in DML (only for update delete currently) to avoid adding DML supplemental logs that may be duplicated by DDL */
 #define  PT_HINT_SELECT_RECORD_INFO  0x20000000ULL	/* SELECT record info from tuple header instead of data */
 #define  PT_HINT_SELECT_PAGE_INFO  0x40000000ULL	/* SELECT page header information from heap file instead of record data */
@@ -1379,6 +1379,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_MERGE  0x400000000ULL	/* do not merge view or in-line view */
 #define  PT_HINT_NO_ELIMINATE_JOIN  0x800000000ULL	/* do not eliminate join */
 #define  PT_HINT_SAMPLING_SCAN  0x1000000000ULL	/* SELECT sampling data instead of full data */
+#define  PT_HINT_NO_USE_HASH  0x2000000000ULL	/* disable hash-join */
 
 /* Codes for error messages */
 typedef enum
@@ -2253,6 +2254,7 @@ struct pt_delete_info
   PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
   PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
   PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
+  PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
   PT_HINT_ENUM hint;		/* hint flag */
@@ -2888,6 +2890,7 @@ struct pt_select_info
   PT_NODE *index_ss;		/* PT_NAME (list) */
   PT_NODE *index_ls;		/* PT_NAME (list) */
   PT_NODE *use_merge;		/* PT_NAME (list) */
+  PT_NODE *use_hash;		/* PT_NAME (list) */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_NODE *jdbc_life_time;	/* jdbc cache life time */
   struct qo_summary *qo_summary;
@@ -3062,6 +3065,7 @@ struct pt_update_info
   PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
   PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
   PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
+  PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */

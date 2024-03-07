@@ -505,10 +505,40 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      hint_table[i].arg_list = NULL;
 	    }
 	  break;
-#if 0
-	case PT_HINT_USE_HASH:	/* not used */
+	case PT_HINT_NO_USE_HASH:	/* disable hash-join */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	    }
 	  break;
-#endif /* 0 */
+	case PT_HINT_USE_HASH:	/* force hash-join */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.use_hash = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	      node->info.delete_.use_hash_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	      node->info.update.use_hash_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
 	case PT_HINT_RECOMPILE:	/* recompile */
 	  node->flag.recompile = 1;
 	  break;

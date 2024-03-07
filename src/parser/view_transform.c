@@ -4830,6 +4830,9 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
   derived->info.query.q.select.use_merge = agg_sel->info.query.q.select.use_merge;
   agg_sel->info.query.q.select.use_merge = NULL;
 
+  derived->info.query.q.select.use_hash = agg_sel->info.query.q.select.use_hash;
+  agg_sel->info.query.q.select.use_hash = NULL;
+
   derived->info.query.q.select.from = agg_sel->info.query.q.select.from;
   agg_sel->info.query.q.select.from = NULL;
 
@@ -13768,6 +13771,10 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
       dest_query->info.query.q.select.use_merge =
 	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_merge),
 			    dest_query->info.query.q.select.use_merge);
+
+      dest_query->info.query.q.select.use_hash =
+	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_hash),
+			    dest_query->info.query.q.select.use_hash);
     }
 
   /* merge USING INDEX clause of vclass spec */

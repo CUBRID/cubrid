@@ -7657,7 +7657,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_HINT_ENUM hint;
   PT_NODE **ordered = NULL, **use_nl = NULL, **use_idx = NULL;
-  PT_NODE **use_merge = NULL, **index_ss = NULL, **index_ls = NULL;
+  PT_NODE **use_merge = NULL, **use_hash = NULL, **index_ss = NULL, **index_ls = NULL;
   PT_NODE *spec_list = NULL;
 
   switch (node->node_type)
@@ -7670,6 +7670,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       index_ss = &node->info.query.q.select.index_ss;
       index_ls = &node->info.query.q.select.index_ls;
       use_merge = &node->info.query.q.select.use_merge;
+      use_hash = &node->info.query.q.select.use_hash;
       spec_list = node->info.query.q.select.from;
       break;
     case PT_DELETE:
@@ -7678,6 +7679,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       use_nl = &node->info.delete_.use_nl_hint;
       use_idx = &node->info.delete_.use_idx_hint;
       use_merge = &node->info.delete_.use_merge_hint;
+      use_hash = &node->info.delete_.use_hash_hint;
       spec_list = node->info.delete_.spec;
       break;
     case PT_UPDATE:
@@ -7686,6 +7688,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       use_nl = &node->info.update.use_nl_hint;
       use_idx = &node->info.update.use_idx_hint;
       use_merge = &node->info.update.use_merge_hint;
+      use_hash = &node->info.update.use_hash_hint;
       spec_list = node->info.update.spec;
       break;
     default:
@@ -7766,11 +7769,13 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-#if 0
   if (hint & PT_HINT_USE_HASH)
-    {				/* not used */
+    {
+      if (pt_resolve_hint_args (parser, use_hash, spec_list, REQUIRE_ALL_MATCH) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
     }
-#endif /* 0 */
 
   return NO_ERROR;
 exit_on_error:
@@ -7801,6 +7806,10 @@ exit_on_error:
     {
       parser_free_tree (parser, *use_merge);
     }
+  if (*use_hash != NULL)
+    {
+      parser_free_tree (parser, *use_hash);
+    }
 
   switch (node->node_type)
     {
@@ -7811,18 +7820,21 @@ exit_on_error:
       node->info.query.q.select.index_ss = NULL;
       node->info.query.q.select.index_ls = NULL;
       node->info.query.q.select.use_merge = NULL;
+      node->info.query.q.select.use_hash = NULL;
       break;
     case PT_DELETE:
       node->info.delete_.ordered_hint = NULL;
       node->info.delete_.use_nl_hint = NULL;
       node->info.delete_.use_idx_hint = NULL;
       node->info.delete_.use_merge_hint = NULL;
+      node->info.delete_.use_hash_hint = NULL;
       break;
     case PT_UPDATE:
       node->info.update.ordered_hint = NULL;
       node->info.update.use_nl_hint = NULL;
       node->info.update.use_idx_hint = NULL;
       node->info.update.use_merge_hint = NULL;
+      node->info.delete_.use_hash_hint = NULL;
       break;
     default:
       break;

@@ -1168,7 +1168,7 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
 
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
     {
-      PT_NODE *ordered, *use_nl, *use_idx, *index_ss, *index_ls, *use_merge;
+      PT_NODE *ordered, *use_nl, *use_idx, *index_ss, *index_ls, *use_merge, *use_hash;
       PT_HINT_ENUM hint;
       const char *alias_print;
 
@@ -1194,6 +1194,9 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
       use_merge = select_node->info.query.q.select.use_merge;
       select_node->info.query.q.select.use_merge = NULL;
 
+      use_hash = select_node->info.query.q.select.use_hash;
+      select_node->info.query.q.select.use_hash = NULL;
+
       alias_print = select_node->alias_print;
       select_node->alias_print = NULL;
 
@@ -1208,6 +1211,7 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
       select_node->info.query.q.select.index_ss = index_ss;
       select_node->info.query.q.select.index_ls = index_ls;
       select_node->info.query.q.select.use_merge = use_merge;
+      select_node->info.query.q.select.use_hash = use_hash;
 
       select_node->alias_print = alias_print;
     }
@@ -14534,6 +14538,48 @@ ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * 
 }
 
 
+XASL_NODE *
+ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * right, JOIN_TYPE join_type)
+{
+  XASL_NODE *xasl;
+
+  assert (parser != NULL);
+
+  if (left == NULL || right == NULL)
+    {
+      return NULL;
+    }
+
+  xasl = regu_xasl_node_alloc (HASHJOIN_PROC);
+
+  if (!xasl)
+    {
+      PT_NODE dummy;
+
+      memset (&dummy, 0, sizeof (dummy));
+      PT_ERROR (parser, &dummy,
+		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+      return NULL;
+    }
+
+  xasl->proc.hashjoin.outer_xasl = left;
+  xasl->proc.hashjoin.inner_xasl = right;
+
+  if (join_type == JOIN_RIGHT)
+    {
+      right->next = left;
+      xasl->aptr_list = right;
+    }
+  else
+    {
+      left->next = right;
+      xasl->aptr_list = left;
+    }
+
+  return xasl;
+}
+
+
 /*
  * ptqo_single_orderby () - Make a SORT_LIST that will sort the given column
  * 	according to the type of the given name
@@ -17430,6 +17476,11 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	  parser_free_tree (parser, select_node->info.query.q.select.use_merge);
 	  select_node->info.query.q.select.use_merge = NULL;
 	}
+      if (select_node->info.query.q.select.use_hash)
+	{
+	  parser_free_tree (parser, select_node->info.query.q.select.use_hash);
+	  select_node->info.query.q.select.use_hash = NULL;
+	}
 
       select_node->alias_print = NULL;
 
@@ -19458,7 +19509,8 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   int err = NO_ERROR;
   int hint_flags =
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
-    PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT;
+    PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
+    PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH;
   PT_NODE *arg = NULL;
 
   switch (node->node_type)
@@ -19572,6 +19624,30 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 	    }
 	}
       select_stmt->info.query.q.select.use_merge = arg;
+    }
+
+  if (hint_flags & PT_HINT_USE_HASH)
+    {
+      switch (node->node_type)
+	{
+	case PT_DELETE:
+	  arg = node->info.delete_.use_hash_hint;
+	  break;
+	case PT_UPDATE:
+	  arg = node->info.update.use_hash_hint;
+	  break;
+	default:
+	  break;
+	}
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      select_stmt->info.query.q.select.use_hash = arg;
     }
 
   return NO_ERROR;
