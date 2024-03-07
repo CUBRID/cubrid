@@ -14318,21 +14318,6 @@ pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   return node;
 }
 
-static bool
-pt_is_allowed_result_cache ()
-{
-  int is_list_cache_disabled =
-    ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
-     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
-
-  if (is_list_cache_disabled)
-    {
-      return false;
-    }
-
-  return true;
-}
-
 static PT_NODE *
 do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
@@ -14358,7 +14343,6 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
     }
   else if ((stmt->info.query.hint & PT_HINT_QUERY_CACHE) && stmt->info.query.is_subquery == PT_IS_SUBQUERY)
     {
-      stmt->info.query.flag.prepare_only = 1;
       err = do_prepare_subquery (parser, stmt);
       {
 	*res = err;
@@ -14444,8 +14428,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
-  //bool need_subquery_prepare = true;
-
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
   contextp->recompile_xasl = statement->flag.recompile;
   if (statement->flag.recompile == 0)
@@ -14480,7 +14462,12 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (statement->info.query.flag.prepare_only)
+      /*
+       * we need to check whether it is a subquery of the plan cached main query.
+       * the subquery of the plan cache main query will already be set to info.query.xasl.
+       * if the info.query.xasl is NULL, the subquery is not necessary to generate XASL
+       */
+      if (statement->info.query.flag.subquery_cached && statement->info.query.xasl == NULL)
 	{
 	  statement->xasl_id = stream.xasl_id;
 	  return err;
@@ -14489,12 +14476,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (stream.xasl_id == NULL && err == NO_ERROR)
     {
-      /*
-         main query is not cached yet, then the subquery is not necessary to prepare
-         because the main query will call do_prepare_subuqery at set_aptr_list
-       */
-      //need_subquery_prepare = false;
-
       /* cache not found; make XASL from the parse tree including query optimization and plan generation */
 
       /* mark the beginning of another level of xasl packing */
@@ -14579,7 +14560,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* All CTE and result-cached subqueries included in the query must be prepared first. */
   if (err == NO_ERROR && pt_is_allowed_result_cache ())
     {
-      parser_walk_tree (parser, statement, do_prepare_subquery_pre, &(void *) err, NULL, NULL);
+      parser_walk_tree (parser, statement, do_prepare_subquery_pre, (void *) &err, NULL, NULL);
     }
 
   return err;
@@ -14622,7 +14603,6 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * sub_statement)
   sub_context = *parser;
   sub_context.dbval_cnt = 0;
   sub_context.host_var_count = sub_context.auto_param_count = 0;
-  sub_context.flag.is_subquery_cached = 1;
 
   sub_statement->info.query.flag.subquery_cached = 1;
 

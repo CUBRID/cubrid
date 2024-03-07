@@ -209,4 +209,5 @@ extern int pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * cl
 					 PT_NODE ** default_expr_attrs);
 extern int pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE * from);
 extern XASL_NODE *pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred);
+extern bool pt_is_allowed_result_cache (void);
 #endif /* _XASL_GENERATION_H_ */

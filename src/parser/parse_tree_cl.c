@@ -14016,7 +14016,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       || (p->info.query.is_subquery == PT_IS_UNION_SUBQUERY && p->info.query.order_by)
       || (p->info.query.is_subquery == PT_IS_UNION_QUERY && p->info.query.order_by))
     {
-      if (!parser->flag.is_subquery_cached)
+      if (!p->info.query.flag.subquery_cached)
 	{
 	  set_paren = true;
 	}
