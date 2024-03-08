@@ -523,7 +523,14 @@ namespace cubmethod
 
     if (qres && qres->type == T_SELECT)
       {
-	result_info.query_id = qres->res.s.query_id;
+	if (qresult.tuple_count > 0)
+	  {
+	    result_info.query_id = qres->res.s.query_id;
+	  }
+	else
+	  {
+	    result_info.query_id = NULL_QUERY_ID; // initialized value
+	  }
       }
     return error;
   }
