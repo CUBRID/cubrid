@@ -32,7 +32,7 @@
 #include "porting.h"
 #include "error_code.h"
 #include "environment_variable.h"
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 /* available root directory symbols; NULL terminated array */
 static const char envvar_Prefix_name[] = "CUBRID";

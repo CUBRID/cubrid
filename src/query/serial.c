@@ -40,7 +40,7 @@
 #include "slotted_page.h"
 #include "dbtype.h"
 #include "xasl_cache.h"
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

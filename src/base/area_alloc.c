@@ -43,7 +43,7 @@
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #endif /* !defined (SERVER_MODE) */
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 #if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)

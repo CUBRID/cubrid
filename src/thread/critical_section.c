@@ -41,7 +41,7 @@
 
 #include <stdio.h>
 #include <assert.h>
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 // belongs to cubsync
 using namespace cubsync;

@@ -35,7 +35,7 @@
 #include "xasl.h"
 #include "xasl_predicate.hpp"
 #include "xasl_unpack_info.hpp"
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 typedef enum match_status
 {

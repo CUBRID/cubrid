@@ -69,7 +69,7 @@
 #include "xasl.h"
 
 #include <array>
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 extern LOCK_COMPATIBILITY lock_Comp[12][12];
 

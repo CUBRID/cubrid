@@ -24,7 +24,7 @@
 #include "xserver_interface.h"
 #include "thread_manager.hpp"
 #include "method_error.hpp"
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

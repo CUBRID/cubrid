@@ -27,7 +27,7 @@
 #include "intl_support.h"
 
 #include <fstream>
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 ///////////////////// Function declarations /////////////////////
 namespace cubload

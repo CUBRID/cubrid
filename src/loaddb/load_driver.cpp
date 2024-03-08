@@ -23,7 +23,7 @@
 #include "load_driver.hpp"
 
 #include <cassert>
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubload
 {

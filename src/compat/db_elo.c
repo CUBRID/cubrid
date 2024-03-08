@@ -32,7 +32,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "dbtype.h"
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 /*
  * db_elo.c - DB_API for ELO layer

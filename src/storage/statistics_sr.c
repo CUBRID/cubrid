@@ -38,7 +38,7 @@
 #include "object_representation.h"
 #include "thread_entry.hpp"
 #include "system_parameter.h"
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 #define SQUARE(n) ((n)*(n))
 

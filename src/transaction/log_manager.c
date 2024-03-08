@@ -94,7 +94,7 @@
 #include "dbtype.h"
 #include "cnv.h"
 #include "flashback.h"
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 

@@ -57,7 +57,7 @@
 #ifndef NDEBUG
 #include "db_value_printer.hpp"
 #endif
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args

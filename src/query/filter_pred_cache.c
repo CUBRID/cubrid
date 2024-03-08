@@ -34,7 +34,7 @@
 #include "xasl_unpack_info.hpp"
 
 #include <algorithm>
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent

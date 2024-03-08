@@ -29,7 +29,7 @@
 #include "thread_manager.hpp"
 
 #include <cassert>
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 // help debugging oldest active by following all changes
 struct oldest_active_event

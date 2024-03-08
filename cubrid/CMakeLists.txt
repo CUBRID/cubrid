@@ -152,7 +152,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/lockfree_transaction_system.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_cwrapper.h
-  ${BASE_DIR}/memory_cppwrapper.hpp
+  ${BASE_DIR}/memory_wrapper.hpp
   ${BASE_DIR}/memory_monitor_common.hpp
   ${BASE_DIR}/memory_monitor_sr.hpp
   ${BASE_DIR}/memory_reference_store.hpp

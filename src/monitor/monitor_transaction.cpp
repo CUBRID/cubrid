@@ -26,7 +26,7 @@
 #include "system_parameter.h"
 
 #include <cassert>
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubmonitor
 {

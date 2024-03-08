@@ -25,7 +25,7 @@
 #include "porting_inline.hpp"
 #include "system.h"
 #include "heaplayers.h"
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 #undef malloc
 #undef free

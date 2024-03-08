@@ -45,7 +45,7 @@
 #include "query_list.h"
 #include "set_object.h"
 #include "access_spec.hpp"
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

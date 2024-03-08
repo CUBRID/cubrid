@@ -97,7 +97,7 @@ static int rv;
 #if !defined (SERVER_MODE)
 #include "network_interface_cl.h"
 #endif /* !defined (SERVER_MODE) */
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001

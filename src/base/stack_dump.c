@@ -37,7 +37,7 @@
 #include <sys/elf.h>
 
 #include "stack_dump.h"
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 #define FRAME_PTR_REGISTER      EBP
 #define TR_ARG_MAX              6

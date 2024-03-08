@@ -88,7 +88,7 @@
 #include "log_manager.h"
 #include "crypt_opfunc.h"
 #include "flashback.h"
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */

@@ -36,7 +36,7 @@
 #include "customheaps.h"
 #include "error_manager.h"
 #include "system_parameter.h"
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 /* -------------------------------------------------------------------------- */
 /* DL MALLOC ADAPTATION AND MODIFICATION LAYER */

@@ -25,7 +25,7 @@
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "xasl_predicate.hpp"
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 using namespace cubxasl;    // it should belong to cubxasl namespace
 

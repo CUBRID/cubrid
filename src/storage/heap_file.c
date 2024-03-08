@@ -74,7 +74,7 @@
 #include "tde.h"
 
 #include <set>
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

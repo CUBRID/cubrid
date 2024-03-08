@@ -45,7 +45,7 @@
 #else
 #include "tcp.h"
 #endif
-#include "memory_cwrapper.h"
+#include "memory_wrapper.hpp"
 
 typedef enum
 {

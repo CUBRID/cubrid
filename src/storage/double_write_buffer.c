@@ -38,7 +38,7 @@
 #include "boot_sr.h"
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 
 #define DWB_SLOTS_HASH_SIZE		    1000

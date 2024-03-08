@@ -29,7 +29,7 @@
 #include "xserver_interface.h"
 
 #include <sstream>
-#include "memory_cppwrapper.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubload
 {
