@@ -60,14 +60,17 @@ import java.sql.Timestamp;
 
 public class StoredProcedure {
     private String signature;
+    private String authUser;
     private Value[] args;
     private int returnType;
     private TargetMethod target;
 
     private Object[] cachedResolved;
 
-    public StoredProcedure(String signature, Value[] args, int returnType) throws Exception {
+    public StoredProcedure(String signature, String authUser, Value[] args, int returnType)
+            throws Exception {
         this.signature = signature;
+        this.authUser = authUser;
         this.args = args;
         this.returnType = returnType;
         this.target =
@@ -384,5 +387,9 @@ public class StoredProcedure {
 
     public TargetMethod getTarget() {
         return target;
+    }
+
+    public String getAuthUser() {
+        return authUser;
     }
 }

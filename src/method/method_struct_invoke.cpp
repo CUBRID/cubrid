@@ -200,20 +200,24 @@ namespace cubmethod
     , tran_id (tid)
   {
     signature.assign (sig->method_name);
+    auth.assign (sig->auth_name);
     num_args = sig->num_method_args;
-
-    arg_pos.resize (num_args);
-    arg_mode.resize (num_args);
-    arg_type.resize (num_args);
-
-    for (int i = 0; i < num_args; i++)
+    if (num_args > 0)
       {
-	arg_pos[i] = sig->method_arg_pos[i];
-	arg_mode[i] = sig->arg_info.arg_mode[i];
-	arg_type[i] = sig->arg_info.arg_type[i];
+	arg_pos.resize (num_args);
+	arg_mode.resize (num_args);
+	arg_type.resize (num_args);
+
+	for (int i = 0; i < num_args; i++)
+	  {
+	    arg_pos[i] = sig->method_arg_pos[i];
+	    arg_mode[i] = sig->arg_info->arg_mode[i];
+	    arg_type[i] = sig->arg_info->arg_type[i];
+	  }
+
+	result_type = sig->arg_info->result_type;
       }
 
-    result_type = sig->arg_info.result_type;
     transaction_control = tc;
   }
 
@@ -223,6 +227,7 @@ namespace cubmethod
     serializator.pack_bigint (group_id);
     serializator.pack_int (tran_id);
     serializator.pack_string (signature);
+    serializator.pack_string (auth);
     serializator.pack_int (num_args);
 
     for (int i = 0; i < num_args; i++)
@@ -249,6 +254,7 @@ namespace cubmethod
     size_t size = serializator.get_packed_bigint_size (start_offset); // group_id
     size += serializator.get_packed_int_size (size); // tran_id
     size += serializator.get_packed_string_size (signature, size); // signature
+    size += serializator.get_packed_string_size (auth, size); // auth
     size += serializator.get_packed_int_size (size); // num_args
 
     for (int i = 0; i < num_args; i++)

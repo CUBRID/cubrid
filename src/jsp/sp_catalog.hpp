@@ -36,12 +36,14 @@
 
 enum sp_source_code_type
 {
+  SPSC_UNKNOWN = -1,
   SPSC_PLCSQL,
   SPSC_JAVA
 };
 
 enum sp_object_code_type
 {
+  SPOC_UNKNOWN = -1,
   SPOC_JAVA_CLASS,
   SPOC_JAVA_JAR
 };
@@ -57,19 +59,56 @@ struct sp_arg_info
   DB_TYPE data_type;
   SP_MODE_ENUM mode;
   std::string comment;
+
+  sp_arg_info (const std::string& s_name, const std::string& p_name) 
+  : sp_name {s_name}
+  , pkg_name {p_name}
+  , index_of {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
+  , is_system_generated {false}
+  , arg_name {}
+  , data_type {DB_TYPE::DB_TYPE_NULL}
+  , mode {SP_MODE_ENUM::SP_MODE_IN}
+  , comment {}
+  {}
+
+  sp_arg_info ()
+  : sp_arg_info ("", "")
+  {}
 };
 typedef sp_arg_info SP_ARG_INFO;
 
 struct sp_code_info
 {
-  std::string sp_name;
+  std::string name;
+  std::string creation_time;
   MOP owner;
+  bool is_static;
+  bool is_system_generated;
   int stype;
   std::string scode;
   int otype;
   std::string ocode;
+
+  sp_code_info (const std::string& s_name, const std::string& p_name) 
+  : name {}
+  , creation_time {}
+  , owner {nullptr}
+  , is_static {false}
+  , is_system_generated {false}
+  , stype {SPSC_UNKNOWN}
+  , scode {}
+  , otype {SPOC_UNKNOWN}
+  , ocode {}
+  {}
 };
 typedef sp_code_info SP_CODE_INFO;
+
+enum sp_directive : int
+{
+  SP_DIRECTIVE_RIGHTS_OWNER = 0x00,
+  SP_DIRECTIVE_RIGHTS_CALLER = (0x01 << 0),
+};
+typedef sp_directive SP_DIRECTIVE_ENUM;
 
 struct sp_info
 {
@@ -81,9 +120,23 @@ struct sp_info
   std::vector <sp_arg_info> args;
   SP_LANG_ENUM lang;
   std::string target;
-  int directive;
+  SP_DIRECTIVE_ENUM directive;
   MOP owner;
   std::string comment;
+
+  sp_info () 
+  : sp_name {}
+  , pkg_name {}
+  , sp_type {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
+  , return_type {DB_TYPE::DB_TYPE_NULL}
+  , is_system_generated {false}
+  , args {}
+  , lang {SP_LANG_ENUM::SP_LANG_PLCSQL}
+  , target {}
+  , directive {SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER}
+  , owner {nullptr}
+  , comment {}
+  {}
 };
 typedef sp_info SP_INFO;
 // *INDENT-ON*

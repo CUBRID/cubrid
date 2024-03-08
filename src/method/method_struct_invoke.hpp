@@ -111,6 +111,7 @@ namespace cubmethod
     int tran_id;
 
     std::string signature;
+    std::string auth;
     int num_args;
     std::vector<int> arg_pos;
     std::vector<int> arg_mode;

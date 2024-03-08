@@ -48,6 +48,12 @@ enum METHOD_TYPE
   METHOD_TYPE_JAVA_SP
 };
 
+enum METHOD_AUTH
+{
+  METHOD_AUTH_OWNER = 0,
+  METHOD_AUTH_INVOKER = 1
+};
+
 enum METHOD_REQUEST
 {
   METHOD_REQUEST_ARG_PREPARE = 0x40,
@@ -103,6 +109,9 @@ enum METHOD_CALLBACK_RESPONSE
   // COMPILE
   METHOD_CALLBACK_GET_SQL_SEMANTICS = 100,
   METHOD_CALLBACK_GET_GLOBAL_SEMANTICS = 101,
+
+  // AUTH
+  METHOD_CALLBACK_CHANGE_RIGHTS = 200
 };
 
 enum METHOD_ARG_MODE
@@ -128,15 +137,13 @@ struct method_sig_node
   /* method signature */
   METHOD_SIG *next;
   char *method_name;		/* method name */
+  char *auth_name;              /* auth name (owner or caller) */
   METHOD_TYPE method_type;	/* instance or class method */
   int num_method_args;		/* number of arguments */
   int *method_arg_pos;		/* arg position in list file */
 
-  union
-  {
-    char *class_name;		/* class name for the class method */
-    METHOD_ARG_INFO arg_info;  /* argument info for javasp's server-side calling */
-  };
+  char *class_name;		/* class name for the class method */
+  METHOD_ARG_INFO *arg_info;    /* argument info */
 
   void pack (cubpacking::packer &serializator) const;
   void unpack (cubpacking::unpacker &deserializator);

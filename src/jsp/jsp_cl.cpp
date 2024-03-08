@@ -86,6 +86,9 @@
 #define PT_NODE_SP_JAVA_METHOD(node) \
   ((node)->info.sp.body->info.sp_body.decl->info.value.data_value.str->bytes)
 
+#define PT_NODE_SP_AUTHID(node) \
+  ((node)->info.sp.auth_id)
+
 #define PT_NODE_SP_COMMENT(node) \
   (((node)->info.sp.comment == NULL) ? "" : \
    (char *) (node)->info.sp.comment->info.value.data_value.str->bytes)
@@ -109,6 +112,7 @@ static bool is_prepare_call[MAX_CALL_COUNT] = { false, };
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static SP_MODE_ENUM jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static PT_MISC_TYPE jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type);
+static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid);
 
 static char *jsp_check_stored_procedure_name (const char *str);
 static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
@@ -348,6 +352,62 @@ jsp_get_sp_type (const char *name)
   return jsp_map_sp_type_to_pt_misc ((SP_TYPE_ENUM) db_get_int (&sp_type_val));
 }
 
+/*
+ * jsp_get_owner_name - Return Java Stored Procedure'S Owner nmae
+ *   return: if fail return MULL
+ *           else return Java Stored Procedure Type
+ *   name(in): java stored procedure name
+ *
+ * Note:
+ */
+
+const char *
+jsp_get_owner_name (const char *name)
+{
+  DB_OBJECT *mop_p;
+  DB_VALUE value;
+  int err;
+  int save;
+  char *res = NULL;
+
+  AU_DISABLE (save);
+
+  mop_p = jsp_find_stored_procedure (name);
+  if (mop_p == NULL)
+    {
+      AU_ENABLE (save);
+
+      assert (er_errid () != NO_ERROR);
+      return NULL;
+    }
+
+  /* check type */
+  err = db_get (mop_p, SP_ATTR_OWNER, &value);
+  if (err != NO_ERROR)
+    {
+      AU_ENABLE (save);
+      return NULL;
+    }
+
+  MOP owner = db_get_object (&value);
+  if (owner != NULL)
+    {
+      DB_VALUE value2;
+      err = db_get (owner, "name", &value2);
+      if (err == NO_ERROR)
+	{
+	  res = ws_copy_string (db_get_string (&value2));
+	}
+      pr_clear_value (&value2);
+    }
+  pr_clear_value (&value);
+
+  AU_ENABLE (save);
+  return res;
+}
+
+
+
 static PT_MISC_TYPE
 jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type)
 {
@@ -567,6 +627,15 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return ER_BLOCK_DDL_STMT;
     }
 
+  // check PL/CSQL's AUTHID with CURRENT_USER
+  sp_info.directive = jsp_map_pt_to_sp_authid (PT_NODE_SP_AUTHID (statement));
+  sp_info.lang = (SP_LANG_ENUM) PT_NODE_SP_LANG (statement);
+  if (sp_info.directive == SP_DIRECTIVE_RIGHTS_CALLER && sp_info.lang == SP_LANG_PLCSQL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVOKERS_RIGHTS_NOT_SUPPORTED, 0);
+      return er_errid ();
+    }
+
   sp_info.sp_name = PT_NODE_SP_NAME (statement);
   if (sp_info.sp_name.empty ())
     {
@@ -584,22 +653,14 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       sp_info.return_type = DB_TYPE_NULL;
     }
 
-
-  // TODO: pkg_name
-  sp_info.pkg_name = "";
-  sp_info.is_system_generated = false;
-  sp_info.directive = 0;
-
+  // set rows for _db_stored_procedure_args
   int param_count = 0;
   param_list = PT_NODE_SP_ARGS (statement);
   for (p = param_list; p != NULL; p = p->next)
     {
-      SP_ARG_INFO arg_info;
+      SP_ARG_INFO arg_info (sp_info.sp_name, sp_info.pkg_name);
 
-      arg_info.sp_name = sp_info.sp_name;
-      arg_info.pkg_name = sp_info.pkg_name;
       arg_info.index_of = param_count++;
-      arg_info.is_system_generated = false;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
       arg_info.data_type = pt_type_enum_to_db (p->type_enum);
       arg_info.mode = jsp_map_pt_misc_to_sp_mode (p->info.sp_param.mode);
@@ -615,7 +676,6 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       sp_info.args.push_back (arg_info);
     }
 
-  sp_info.lang = (SP_LANG_ENUM) PT_NODE_SP_LANG (statement);
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
       std::string pl_code (statement->sql_user_text, statement->sql_user_text_len);
@@ -885,6 +945,14 @@ jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum)
     }
 }
 
+static SP_DIRECTIVE_ENUM
+jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid)
+{
+  assert (pt_authid == PT_AUTHID_OWNER || pt_authid == PT_AUTHID_CALLER);
+  return (pt_authid == PT_AUTHID_OWNER ? SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER :
+	  SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_CALLER);
+}
+
 /*
  * jsp_check_stored_procedure_name -
  *   return: java stored procedure name
@@ -1074,7 +1142,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 {
   int error = NO_ERROR;
   int save;
-  DB_VALUE method, param_cnt_val, mode, arg_type, temp, result_type;
+  DB_VALUE method, auth, param_cnt_val, mode, arg_type, temp, lang_val, directive_val, result_type;
 
   int sig_num_args = pt_length_of_list (node->info.method_call.arg_list);
   std::vector < int >sig_arg_mode;
@@ -1084,6 +1152,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
   METHOD_SIG *sig = nullptr;
 
   db_make_null (&method);
+  db_make_null (&auth);
   db_make_null (&param_cnt_val);
   db_make_null (&mode);
   db_make_null (&arg_type);
@@ -1194,6 +1263,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	sig->num_method_args = sig_num_args;
 	sig->method_type = METHOD_TYPE_JAVA_SP;
 
+	// method_name
 	const char *method_name = db_get_string (&method);
 	int method_name_len = db_get_string_size (&method);
 
@@ -1207,6 +1277,28 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	memcpy (sig->method_name, method_name, method_name_len);
 	sig->method_name[method_name_len] = 0;
 
+	// auth_name
+	error = db_get (mop_p, SP_ATTR_DIRECTIVE, &directive_val);
+	if (error != NO_ERROR)
+	  {
+	    goto end;
+	  }
+
+	int directive = db_get_int (&directive_val);
+
+	const char *auth_name = (directive == SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER ? jsp_get_owner_name (
+					 parsed_method_name) : au_user_name ());
+	int auth_name_len = strlen (auth_name);
+
+	sig->auth_name = (char *) db_private_alloc (NULL, auth_name_len * sizeof (char));
+	if (!sig->auth_name)
+	  {
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
+	  }
+
+	memcpy (sig->auth_name, auth_name, auth_name_len);
+	sig->auth_name[auth_name_len] = 0;
 
 	sig->method_arg_pos = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
 	if (!sig->method_arg_pos)
@@ -1220,28 +1312,47 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	    sig->method_arg_pos[i] = i;
 	  }
 
+	sig->class_name = nullptr;
 
-	sig->arg_info.arg_mode = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
-	if (!sig->arg_info.arg_mode)
+
+	sig->arg_info = (METHOD_ARG_INFO *) db_private_alloc (NULL, sizeof (METHOD_ARG_INFO));
+	if (!sig->arg_info)
 	  {
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
 
-	sig->arg_info.arg_type = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
-	if (!sig->arg_info.arg_type)
+	if (sig_num_args > 0)
 	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
+	    sig->arg_info->arg_mode = (int *) db_private_alloc (NULL, (sig_num_args) * sizeof (int));
+	    if (!sig->arg_info->arg_mode)
+	      {
+		sig->arg_info->arg_mode = nullptr;
+		error = ER_OUT_OF_VIRTUAL_MEMORY;
+		goto end;
+	      }
+
+	    sig->arg_info->arg_type = (int *) db_private_alloc (NULL, (sig_num_args) * sizeof (int));
+	    if (!sig->arg_info->arg_type)
+	      {
+		sig->arg_info->arg_type = nullptr;
+		error = ER_OUT_OF_VIRTUAL_MEMORY;
+		goto end;
+	      }
+
+	    for (int i = 0; i < sig_num_args; i++)
+	      {
+		sig->arg_info->arg_mode[i] = sig_arg_mode[i];
+		sig->arg_info->arg_type[i] = sig_arg_type[i];
+	      }
+	  }
+	else
+	  {
+	    sig->arg_info->arg_mode = nullptr;
+	    sig->arg_info->arg_type = nullptr;
 	  }
 
-	for (int i = 0; i < sig_num_args; i++)
-	  {
-	    sig->arg_info.arg_mode[i] = sig_arg_mode[i];
-	    sig->arg_info.arg_type[i] = sig_arg_type[i];
-	  }
-
-	sig->arg_info.result_type = sig_result_type;
+	sig->arg_info->result_type = sig_result_type;
 
 	sig_list.num_methods = 1;
       }
