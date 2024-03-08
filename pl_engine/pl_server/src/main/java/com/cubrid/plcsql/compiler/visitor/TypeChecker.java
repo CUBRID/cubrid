@@ -38,6 +38,7 @@ import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
+import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
@@ -50,8 +51,9 @@ import java.util.Set;
 
 public class TypeChecker extends AstVisitor<TypeSpec> {
 
-    public TypeChecker(SymbolStack symbolStack) {
+    public TypeChecker(SymbolStack symbolStack, ParseTreeConverter ptConv) {
         this.symbolStack = symbolStack;
+        this.ptConv = ptConv;
     }
 
     @Override
@@ -600,6 +602,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             TypeSpecSimple ret;
             if (DBTypeAdapter.isSupported(ci.type)) {
                 ret = DBTypeAdapter.getValueType(ci.type);
+                ptConv.addToImports(ret.fullJavaType);
             } else {
                 // Allow the other types too, which can lead to run-time type errors,
                 // but accepts some more working programs. For example,
@@ -1181,6 +1184,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     private static final TypeSpec[] TYPESPEC_ARR = new TypeSpec[0];
 
     private SymbolStack symbolStack;
+    private ParseTreeConverter ptConv;
 
     private List<TypeSpec> caseComparedTypes;
 
