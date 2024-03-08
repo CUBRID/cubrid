@@ -338,6 +338,9 @@ static int fn_date_time_step1 (DB_TYPE res_type, const DB_VALUE * value_ptr, boo
 static void fn_date_time_step2 (DATE_TIME_INFO * dtzi, const LANG_LOCALE_DATA * lld, char format_specifiers[256][64]);
 static int fn_date_time_step3 (DATE_TIME_INFO * dtzi, bool is_valid_tz, const DB_VALUE * format, char **res_ptr,
 			       char format_specifiers[256][64]);
+static int fn_date_time_step3_new (DATE_TIME_INFO * dtzi, bool is_valid_tz, const DB_VALUE * format,
+				   INTL_LANG date_lang_id, const LANG_LOCALE_DATA * lld, bool dateformat,
+				   char **res_ptr);
 /*
  *  Public Functions for Strings - Bit and Character
  */
@@ -12171,7 +12174,8 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format, const DB_V
   fn_date_time_step2 (&dtz_info, lld, format_specifiers);
 
   /* 3. Generate the output according to the format and the values */
-  error_status = fn_date_time_step3 (&dtz_info, is_valid_tz, format, &res, format_specifiers);
+  //error_status = fn_date_time_step3 (&dtz_info, is_valid_tz, format, &res, format_specifiers);
+  error_status = fn_date_time_step3_new (&dtz_info, is_valid_tz, format, date_lang_id, lld, false, &res);
 
   /* finished string */
   /* 4. */
@@ -22630,7 +22634,494 @@ error:
   return error_status;
 }
 
+static void
+fn_get_week (DATE_TIME_INFO * dtzi, bool sunday_first, int *days, int *tu, int *tv, int *tx)
+{
+  int weeks, ld_fw, days_counter;
+  int dow2 = db_get_day_of_week (dtzi->year, 1, 1);
+  int idx, i;
 
+  if (sunday_first)
+    {
+      idx = 0;
+      /* %U Week (00..53), where Sunday is the first d of the week */
+      /* %V Week (01..53), where Sunday is the first d of the week; used with %X */
+      /* %X Year for the week where Sunday is the first day of the week, numeric, four digits; used with %V */
+
+      ld_fw = 7 - dow2;
+
+      for (days_counter = dtzi->day, i = 1; i < dtzi->month; i++)
+	{
+	  days_counter += days[i];
+	}
+
+      if (days_counter <= ld_fw)
+	{
+	  weeks = dow2 == 0 ? 1 : 0;
+	}
+      else
+	{
+	  days_counter -= (dow2 == 0) ? 0 : ld_fw;
+	  weeks = days_counter / 7 + (days_counter % 7 ? 1 : 0);
+	}
+
+      tu[idx] = tv[idx] = weeks;
+      tx[idx] = dtzi->year;
+      if (tv[idx] == 0)
+	{
+	  dow2 = db_get_day_of_week (dtzi->year - 1, 1, 1);
+	  days_counter = 365 + LEAP (dtzi->year - 1) - (dow2 == 0 ? 0 : 7 - dow2);
+	  tv[idx] = days_counter / 7 + (days_counter % 7 ? 1 : 0);
+	  tx[idx] = dtzi->year - 1;
+	}
+    }
+  else
+    {
+      idx = 1;
+      /* %u Week (00..53), where Monday is the first d of the week */
+      /* %v Week (01..53), where Monday is the first d of the week; used with %x */
+      /* %x Year for the week, where Monday is the first day of the week, numeric, four digits; used with %v */
+
+      weeks = (dow2 >= 1 && dow2 <= 4) ? 1 : 0;
+      ld_fw = (dow2 == 0) ? 1 : (7 - dow2 + 1);
+
+      for (days_counter = dtzi->day, i = 1; i < dtzi->month; i++)
+	{
+	  days_counter += days[i];
+	}
+
+      if (days_counter > ld_fw)
+	{
+	  days_counter -= ld_fw;
+	  weeks += days_counter / 7 + (days_counter % 7 ? 1 : 0);
+	}
+
+      tu[idx] = weeks;
+      tv[idx] = weeks;
+      tx[idx] = dtzi->year;
+      if (tv[idx] == 0)
+	{
+	  dow2 = db_get_day_of_week (dtzi->year - 1, 1, 1);
+	  weeks = dow2 >= 1 && dow2 <= 4 ? 1 : 0;
+	  ld_fw = dow2 == 0 ? 1 : 7 - dow2 + 1;
+	  days_counter = 365 + LEAP (dtzi->year - 1) - ld_fw;
+	  tv[idx] = weeks + days_counter / 7 + (days_counter % 7 ? 1 : 0);
+	  tx[idx] = dtzi->year - 1;
+	}
+      else if (tv[idx] == 53)
+	{
+	  dow2 = db_get_day_of_week (dtzi->year + 1, 1, 1);
+	  if (dow2 >= 1 && dow2 <= 4)
+	    {
+	      tv[idx] = 1;
+	      tx[idx] = dtzi->year + 1;
+	    }
+	}
+    }
+}
+
+static int
+fn_date_time_step3_new (DATE_TIME_INFO * dtzi, bool is_valid_tz, const DB_VALUE * format, INTL_LANG date_lang_id,
+			const LANG_LOCALE_DATA * lld, bool dateformat, char **res_ptr)
+{
+  const char *format_s = NULL, *format_e = NULL;
+  char *res;
+  int alloc_size, len;
+  int error_status = NO_ERROR;
+  char tzr[TZR_SIZE + 1], tzd[TZ_DS_STRING_SIZE + 1];
+  int tzh = 0, tzm = 0;
+  int days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  int dow = -1;
+  int tu[2], tv[2], tx[2];
+  bool tflag[2];
+  bool try_tz_explain_tz_id = false;
+
+
+  tflag[0] = tflag[1] = false;
+
+  switch (DB_VALUE_DOMAIN_TYPE (format))
+    {
+    case DB_TYPE_STRING:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_NCHAR:
+      break;
+
+    default:
+      /* we should not get a nonstring format */
+      assert (false);
+      return ER_FAILED;
+    }
+
+  format_s = db_get_string (format);
+  len = db_get_string_size (format);
+  format_e = format_s + len;
+
+  alloc_size = len * 4;		// %T ==> 12:11:04, %H ==> 12
+  len = 0;
+  res = (char *) db_private_alloc (NULL, alloc_size);
+  if (res == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  days[2] += LEAP (dtzi->year);
+  while (format_s < format_e)
+    {
+      /* assume we can't add at a time mode than 36 chars: 'America/Argentina/ComodRivadavia' */
+      if ((len + 36) >= alloc_size)
+	{
+	  char *tmp;
+
+	  tmp = (char *) db_private_alloc (NULL, alloc_size + 128);
+	  if (tmp == NULL)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	  alloc_size += 128;
+	  memcpy (tmp, res, len);
+	  db_private_free_and_init (NULL, res);
+	  res = tmp;
+	}
+
+      if (format_s[0] != '%')
+	{
+	  res[len++] = *format_s++;
+	  continue;
+	}
+
+      // meet '%'
+      switch (format_s[1])
+	{
+	case '%':
+	  res[len++] = *format_s++;
+	  break;
+
+	case 'f':		// date_format, time_format
+	  len += sprintf (res + len, "%03d", dtzi->ms);
+	  break;
+
+	case 'H':		// date_format, time_format
+	  /* %H Hour (00..23) */
+	  len += sprintf (res + len, "%02d", dtzi->h);
+	  break;
+
+	case 'h':		// date_format, time_format
+	  /* %h Hour (01..12) */
+	  len += sprintf (res + len, "%02d", (dtzi->h % 12 == 0) ? 12 : (dtzi->h % 12));
+	  break;
+
+	case 'I':		// date_format, time_format
+	  /* %I Hour (01..12) */
+	  len += sprintf (res + len, "%02d", (dtzi->h % 12 == 0) ? 12 : (dtzi->h % 12));
+	  break;
+
+	case 'i':		// date_format, time_format
+	  /* %i Minutes, numeric (00..59) */
+	  len += sprintf (res + len, "%02d", dtzi->mi);
+	  break;
+
+	case 'k':		// date_format, time_format
+	  /* %k Hour (0..23) */
+	  len += sprintf (res + len, "%d", dtzi->h);
+	  break;
+
+	case 'l':		// date_format, time_format
+	  /* %l Hour (1..12) */
+	  len += sprintf (res + len, "%d", (dtzi->h % 12 == 0) ? 12 : (dtzi->h % 12));
+	  break;
+
+	case 'p':		// date_format, time_format
+	  /* %p AM or PM */
+	  len += sprintf (res + len, "%s", (dtzi->h > 11) ? lld->am_pm[PM_NAME] : lld->am_pm[AM_NAME]);
+	  break;
+
+	case 'r':		// date_format, time_format
+	  /* %r Time, 12-hour (hh:mm:ss followed by AM or PM) */
+	  len += sprintf (res + len, "%02d:%02d:%02d %s", (dtzi->h % 12 == 0) ? 12 : (dtzi->h % 12), dtzi->mi,
+			  dtzi->s, (dtzi->h > 11) ? lld->am_pm[PM_NAME] : lld->am_pm[AM_NAME]);
+	  break;
+
+	case 'S':		// date_format, time_format
+	  /* %S Seconds (00..59) */
+	  len += sprintf (res + len, "%02d", dtzi->s);
+	  break;
+
+	case 's':		// date_format, time_format
+	  /* %s Seconds (00..59) */
+	  len += sprintf (res + len, "%02d", dtzi->s);
+	  break;
+
+	case 'T':		// date_format, time_format
+	  if (format_s[2] != 'Z')
+	    {
+	      /* %T Time, 24-hour (hh:mm:ss) */
+	      len += sprintf (res + len, "%02d:%02d:%02d", dtzi->h, dtzi->mi, dtzi->s);
+	    }
+	  else
+	    {
+	      switch (format_s[3])
+		{
+		case 'R':
+		case 'D':
+		case 'H':
+		case 'M':
+		  if (is_valid_tz == false)
+		    {
+		      if ((error_status = er_errid ()) != ER_TZ_LOAD_ERROR)
+			{
+			  error_status = ER_QSTR_INVALID_DATA_TYPE;
+			}
+		      er_clear ();
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		      goto error;
+		    }
+		  else if (try_tz_explain_tz_id == false)
+		    {
+		      tzr[0] = '\0';
+		      tzd[0] = '\0';
+		      error_status = tz_explain_tz_id (&dtzi->tz_id, tzr, sizeof (tzr), tzd, sizeof (tzd), &tzh, &tzm);
+		      if (error_status != NO_ERROR)
+			{
+			  return error_status;
+			}
+		      try_tz_explain_tz_id = true;
+		    }
+
+		  if (format_s[3] == 'H')
+		    {
+		      if ((tzh >= 0) && (tzm >= 0))
+			{
+			  len += sprintf (res + len, "%c%02d", '+', tzh);
+			}
+		      else
+			{
+			  len += sprintf (res + len, "%c%02d", '-', -tzh);
+			}
+		    }
+		  else if (format_s[3] == 'M')
+		    {
+		      len += sprintf (res + len, "%02d", (tzm >= 0) ? tzm : -tzm);
+		    }
+		  else
+		    {
+		      len += sprintf (res + len, "%s", ((format_s[3] == 'R') ? tzr : tzd));
+		    }
+
+		  format_s += 2;
+		  break;
+
+		default:
+		  /* %T Time, 24-hour (hh:mm:ss) */
+		  len += sprintf (res + len, "%02d:%02d:%02d", dtzi->h, dtzi->mi, dtzi->s);
+		  break;
+		}
+	    }
+	  break;
+
+	default:
+	  if (dateformat == false)
+	    {
+	      res[len++] = format_s[1];
+	    }
+	  break;
+	}
+
+      if (dateformat == false)
+	{
+	  format_s += 2;
+	  continue;
+	}
+
+      switch (format_s[1])
+	{
+	case 'a':		// date_format
+	  if (dow == -1)
+	    {
+	      dow = db_get_day_of_week (dtzi->year, dtzi->month, dtzi->day);
+	    }
+	  /* %a Abbreviated weekday name (Sun..Sat) */
+	  len += sprintf (res + len, "%s", lld->day_short_name[dow]);
+	  break;
+
+	case 'b':		// date_format
+	  /* %b Abbreviated m name (Jan..Dec) */
+	  if (dtzi->month > 0)
+	    {
+	      len += sprintf (res + len, "%s", lld->month_short_name[dtzi->month - 1]);
+	    }
+	  break;
+
+	case 'c':		// date_format
+	  /* %c Month, numeric (0..12) - actually (1..12) */
+	  len += sprintf (res + len, "%d", dtzi->month);
+	  break;
+
+	case 'D':		// date_format
+	  /* %D Day of the m with English suffix (0th, 1st, 2nd, 3rd,...) */
+	  if (date_lang_id != INTL_LANG_ENGLISH)
+	    {
+	      len += sprintf (res + len, "%d", dtzi->day);
+	    }
+	  else if (dtzi->day / 10 == 1)
+	    {
+	      len += sprintf (res + len, "%dth", dtzi->day);
+	    }
+	  else
+	    {
+	      switch (dtzi->day % 10)
+		{
+		case 1:
+		  len += sprintf (res + len, "%dst", dtzi->day);
+		  break;
+		case 2:
+		  len += sprintf (res + len, "%dnd", dtzi->day);
+		  break;
+		case 3:
+		  len += sprintf (res + len, "%drd", dtzi->day);
+		  break;
+		default:
+		  len += sprintf (res + len, "%dth", dtzi->day);
+		  break;
+		}
+	    }
+	  break;
+
+	case 'd':		// date_format
+	  /* %d Day of the m, numeric (00..31) */
+	  len += sprintf (res + len, "%02d", dtzi->day);
+	  break;
+
+	case 'e':		// date_format
+	  /* %e Day of the m, numeric (0..31) - actually (1..31) */
+	  len += sprintf (res + len, "%d", dtzi->day);
+	  break;
+
+	case 'j':		// date_format
+	  int j, i;
+	  /* %j Day of year (001..366) */
+	  for (j = dtzi->day, i = 1; i < dtzi->month; i++)
+	    {
+	      j += days[i];
+	    }
+	  len += sprintf (res + len, "%03d", j);
+	  break;
+
+	case 'M':		// date_format
+	  /* %M Month name (January..December) */
+	  if (dtzi->month > 0)
+	    {
+	      len += sprintf (res + len, "%s", lld->month_name[dtzi->month - 1]);
+	    }
+	  break;
+
+	case 'm':		// date_format
+	  /* %m Month, numeric (00..12) */
+	  len += sprintf (res + len, "%02d", dtzi->month);
+	  break;
+
+	case 'U':		// date_format
+	  if (tflag[1] == false)
+	    {
+	      fn_get_week (dtzi, true, days, tu, tv, tx);
+	      tflag[1] = true;
+	    }
+	  len += sprintf (res + len, "%02d", tu[1]);
+	  break;
+
+	case 'u':		// date_format
+	  if (tflag[0] == false)
+	    {
+	      fn_get_week (dtzi, false, days, tu, tv, tx);
+	      tflag[1] = true;
+	    }
+	  len += sprintf (res + len, "%02d", tu[0]);
+	  break;
+
+	case 'V':		// date_format
+	  if (tflag[1] == false)
+	    {
+	      fn_get_week (dtzi, true, days, tu, tv, tx);
+	      tflag[1] = true;
+	    }
+	  len += sprintf (res + len, "%02d", tv[1]);
+	  break;
+
+	case 'v':		// date_format
+	  if (tflag[0] == false)
+	    {
+	      fn_get_week (dtzi, false, days, tu, tv, tx);
+	      tflag[1] = true;
+	    }
+	  len += sprintf (res + len, "%02d", tv[0]);
+	  break;
+
+	case 'W':		// date_format
+	  if (dow == -1)
+	    {
+	      dow = db_get_day_of_week (dtzi->year, dtzi->month, dtzi->day);
+	    }
+	  /* %W Weekday name (Sunday..Saturday) */
+	  len += sprintf (res + len, "%s", lld->day_name[dow]);
+	  break;
+
+	case 'w':		// date_format
+	  if (dow == -1)
+	    {
+	      dow = db_get_day_of_week (dtzi->year, dtzi->month, dtzi->day);
+	    }
+	  /* %w Day of the week (0=Sunday..6=Saturday) */
+	  len += sprintf (res + len, "%d", dow);
+	  break;
+
+	case 'X':		// date_format
+	  if (tflag[1] == false)
+	    {
+	      fn_get_week (dtzi, true, days, tu, tv, tx);
+	      tflag[1] = true;
+	    }
+	  len += sprintf (res + len, "%02d", tx[1]);
+	  break;
+
+	case 'x':		// date_format
+	  if (tflag[0] == false)
+	    {
+	      fn_get_week (dtzi, false, days, tu, tv, tx);
+	      tflag[1] = true;
+	    }
+	  len += sprintf (res + len, "%02d", tx[0]);
+	  break;
+
+	case 'Y':		// date_format
+	  /* %Y Year, numeric, four digits */
+	  len += sprintf (res + len, "%04d", dtzi->year);
+	  break;
+
+	case 'y':		// date_format
+	  /* %y Year, numeric (two digits) */
+	  len += sprintf (res + len, "%02d", dtzi->year % 100);
+	  break;
+
+	default:
+	  res[len++] = format_s[1];
+	  break;
+	}
+
+      format_s += 2;
+    }				// while
+
+  res[len] = '\0';
+  *res_ptr = res;
+  return error_status;
+
+error:
+  if (res != NULL)
+    {
+      db_private_free_and_init (NULL, res);
+    }
+  return error_status;
+}
 
 /*
  * db_date_format ()
@@ -22730,7 +23221,8 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   fill_ymd_format_specifiers (dtz_info.year, dtz_info.month, dtz_info.day, date_lang_id, lld, format_specifiers);	//======
 
   /* 3. Generate the output according to the format and the values */
-  error_status = fn_date_time_step3 (&dtz_info, is_valid_tz, format, &res, format_specifiers);
+  //error_status = fn_date_time_step3 (&dtz_info, is_valid_tz, format, &res, format_specifiers);
+  error_status = fn_date_time_step3_new (&dtz_info, is_valid_tz, format, date_lang_id, lld, true, &res);
 
   /* finished string */
   /* 4. */
