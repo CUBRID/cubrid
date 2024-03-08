@@ -520,7 +520,6 @@ namespace cubmethod
 	  }
 	i++;
       }
-
     error = mcon_send_data_to_java (m_group->get_socket (), METHOD_RESPONSE_SUCCESS, info);
     return error;
   }
