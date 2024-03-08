@@ -22906,7 +22906,7 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
       switch (format_s[1])
 	{
 	case '%':
-	  res[len++] = *format_s++;
+	  res[len++] = format_s[1];
 	  break;
 
 	case 'f':		// date_format, time_format
