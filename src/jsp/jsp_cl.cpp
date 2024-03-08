@@ -33,6 +33,11 @@
 
 #include <vector>
 #include <functional>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <chrono>
+#include <sstream>
 
 #include "authenticate.h"
 #include "error_manager.h"
@@ -119,6 +124,8 @@ static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
 
 static int jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node_list, method_sig_list &sig_list);
 static int *jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list);
+
+static std::string get_class_name (const std::string &target);
 
 extern bool ssl_client;
 
@@ -616,6 +623,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   int err = NO_ERROR;
   bool has_savepoint = false;
   PLCSQL_COMPILE_INFO compile_info;
+  std::string pl_code;
 
   SP_INFO sp_info;
 
@@ -678,7 +686,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
-      std::string pl_code (statement->sql_user_text, statement->sql_user_text_len);
+      pl_code.assign (statement->sql_user_text, statement->sql_user_text_len);
       err = plcsql_transfer_file (pl_code, false, compile_info);
       if (err == NO_ERROR && compile_info.err_code == NO_ERROR)
 	{
@@ -758,6 +766,32 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       goto error_exit;
     }
+
+  if (!compile_info.compiled_code.empty ())
+    {
+      auto now = std::chrono::system_clock::now();
+      auto converted_timep = std::chrono::system_clock::to_time_t (now);
+      struct tm tm;
+      std::stringstream stm;
+      stm << std::put_time (localtime_r (&converted_timep, &tm), "%Y%m%d%H%M%S");
+
+      SP_CODE_INFO code_info;
+
+      code_info.name = get_class_name (sp_info.target);
+      code_info.creation_time = stm.str ();
+      code_info.stype = 0;
+      code_info.scode = pl_code;
+      code_info.otype = 0;
+      code_info.ocode = compile_info.compiled_code;
+      code_info.owner = Au_user; // current user
+
+      err = sp_add_stored_procedure_code (code_info);
+      if (err != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
   return NO_ERROR;
 
 error_exit:
@@ -1420,4 +1454,14 @@ jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list)
     }
 
   return arg_list;
+}
+
+static std::string
+get_class_name (const std::string &target)
+{
+  auto pos = target.find_last_of ('(');
+  std::string name_part = target.substr (0, pos);
+
+  pos = name_part.find_last_of ('.');
+  return name_part.substr (0, pos);
 }

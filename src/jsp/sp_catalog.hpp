@@ -89,7 +89,7 @@ struct sp_code_info
   int otype;
   std::string ocode;
 
-  sp_code_info (const std::string& s_name, const std::string& p_name) 
+  sp_code_info () 
   : name {}
   , creation_time {}
   , owner {nullptr}

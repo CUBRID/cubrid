@@ -679,8 +679,40 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
-  db_make_string (&value, info.sp_name.data ());
-  err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
+  db_make_string (&value, info.name.data ());
+  err = dbt_put_internal (obt_p, SP_ATTR_CLS_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_string (&value, info.creation_time.data ());
+  err = dbt_put_internal (obt_p, SP_ATTR_CREATION_TIME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_object (&value, info.owner);
+  err = dbt_put_internal (obt_p, SP_ATTR_OWNER, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_int (&value, info.is_static ? 1 : 0);
+  err = dbt_put_internal (obt_p, SP_ATTR_IS_STATIC, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_int (&value, info.is_system_generated ? 1 : 0);
+  err = dbt_put_internal (obt_p, SP_ATTR_IS_SYSTEM_GENERATED, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -695,7 +727,8 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
-  db_make_string (&value, info.scode.data ());
+  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.scode.data (), info.scode.length (), INTL_CODESET_UTF8,
+		   LANG_COLL_UTF8_BINARY);
   err = dbt_put_internal (obt_p, SP_ATTR_SOURCE_CODE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -712,7 +745,8 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
-  db_make_string (&value, info.ocode.data ());
+  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.ocode.data (), info.ocode.length (), INTL_CODESET_UTF8,
+		   LANG_COLL_UTF8_BINARY);
   err = dbt_put_internal (obt_p, SP_ATTR_OBJECT_CODE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)

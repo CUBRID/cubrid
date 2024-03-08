@@ -897,8 +897,11 @@ namespace cubschema
 		   CT_STORED_PROC_CODE_NAME,
 		   // columns
     {
-      {"sp_name", format_varchar (255)},
+      {"name", format_varchar (65535)}, // java's name limit
+      {"creation_time", format_varchar (16)},
       {"owner", AU_USER_CLASS_NAME},
+      {"is_static", "integer"},
+      {"is_system_generated", "integer"},
       {"stype", "integer"},
       {"scode", format_varchar (1073741823)},
       {"otype", "integer"},

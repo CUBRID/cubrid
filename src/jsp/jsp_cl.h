@@ -62,6 +62,10 @@
 #define SP_ATTR_MODE                    "mode"
 #define SP_ATTR_ARG_COMMENT             "comment"
 
+#define SP_ATTR_CLS_NAME                "name"
+#define SP_ATTR_CREATION_TIME           "creation_time"
+#define SP_ATTR_IS_STATIC               "is_static"
+#define SP_ATTR_SOURCE_TYPE             "stype"
 #define SP_ATTR_SOURCE_TYPE             "stype"
 #define SP_ATTR_SOURCE_CODE             "scode"
 #define SP_ATTR_OBJECT_TYPE             "otype"
