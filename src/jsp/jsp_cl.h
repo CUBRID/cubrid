@@ -99,6 +99,7 @@ extern const char *jsp_get_owner_name (const char *name);
 extern int jsp_get_return_type (const char *name);
 extern int jsp_get_sp_type (const char *name);
 extern MOP jsp_find_stored_procedure (const char *name);
+extern MOP jsp_find_stored_procedure_code (const char *name);
 
 extern void jsp_set_prepare_call (void);
 extern void jsp_unset_prepare_call (void);
