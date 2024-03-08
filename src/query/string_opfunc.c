@@ -22843,7 +22843,7 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
 {
   const char *format_s = NULL, *format_e = NULL;
   char *res;
-  int alloc_size, len, len_bk;
+  int alloc_size, len;
   int error_status = NO_ERROR;
   char tzr[TZR_SIZE + 1], tzd[TZ_DS_STRING_SIZE + 1];
   int tzh = 0, tzm = 0;
@@ -22851,6 +22851,7 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
   int dow = -1;
   int tu[2], tv[2], tx[2];
   bool tinit[2];
+  bool is_write;
   bool try_tz_explain_tz_id = false;
 
   tinit[0] = tinit[1] = false;
@@ -22902,7 +22903,7 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
 	}
 
       // meet '%'
-      len_bk = len;
+      is_write = true;
       switch (format_s[1])
 	{
 	case '%':
@@ -23036,11 +23037,14 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
 	  if (dateformat == false)
 	    {
 	      res[len++] = format_s[1];
+	      break;
 	    }
+
+	  is_write = false;
 	  break;
 	}
 
-      if (dateformat == false || len_bk != len)
+      if (dateformat == false || is_write)
 	{
 	  format_s += 2;
 	  continue;
