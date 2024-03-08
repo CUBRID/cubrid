@@ -1728,7 +1728,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   /**** 1. MAIN QUERY CHECK ****/
   /*****************************/
   /* NO_MERGE hint check */
-  if (subquery->info.query.q.select.hint & PT_HINT_NO_MERGE)
+  if (subquery->info.query.q.select.hint & (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE))
     {
       return NON_PUSHABLE;
     }
@@ -1925,7 +1925,7 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
   CHECK_PUSHABLE_INFO cpi;
 
   /* NO_MERGE hint check */
-  if (subquery->info.query.q.select.hint & PT_HINT_NO_MERGE)
+  if (subquery->info.query.q.select.hint & (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE))
     {
       return NON_PUSHABLE;
     }

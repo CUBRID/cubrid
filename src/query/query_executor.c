@@ -25509,6 +25509,5 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
 
   qfile_copy_list_id (xasl->list_id, list_id, false);
 
-
   return NO_ERROR;
 }
