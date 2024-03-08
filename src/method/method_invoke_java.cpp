@@ -475,7 +475,6 @@ namespace cubmethod
     int pos;
     int fetch_count;
     int fetch_flag;
-    fetch_info info;
 
     unpacker.unpack_all (qid, pos, fetch_count, fetch_flag);
 
@@ -494,6 +493,7 @@ namespace cubmethod
 	cursor->open ();
       }
 
+    fetch_info info;
     int i = 0;
     SCAN_CODE s_code = S_SUCCESS;
     while (s_code == S_SUCCESS)
