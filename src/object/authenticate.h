@@ -236,6 +236,7 @@ extern int au_check_user (void);
 extern char *au_get_user_name (MOP obj);
 extern bool au_is_dba_group_member (MOP user);
 extern bool au_is_user_group_member (MOP group_user, MOP user);
+extern int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
 extern void au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * serial_val, DB_VALUE * owner_val);
 
 /* debugging functions */
