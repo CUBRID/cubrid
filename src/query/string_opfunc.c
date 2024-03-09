@@ -22841,7 +22841,7 @@ static int
 put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG date_lang_id,
 		    const LANG_LOCALE_DATA * lld, bool dateformat, char **res_ptr)
 {
-  const char *format_s = NULL;
+  const char *format_s = NULL, *format_e = NULL;
   char *res;
   int alloc_size, len;
   int error_status = NO_ERROR;
@@ -22863,6 +22863,7 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
 
   format_s = db_get_string (format);
   //len = db_get_string_size (format);
+  format_e = format_s + db_get_string_size (format);
 
   /* TODO:
    * Memory wastage must be prevented.
@@ -22879,7 +22880,7 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
     }
 
   days[2] += LEAP (dtzi->year);
-  while (*format_s)
+  while (format_s < format_e)
     {
       /* assume we can't add at a time mode than 36 chars: 'America/Argentina/ComodRivadavia' */
       if ((len + 36) >= alloc_size)
