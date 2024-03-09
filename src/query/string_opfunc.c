@@ -22841,7 +22841,7 @@ static int
 put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG date_lang_id,
 		    const LANG_LOCALE_DATA * lld, bool dateformat, char **res_ptr)
 {
-  const char *format_s = NULL, *format_e = NULL;
+  const char *format_s = NULL;
   char *res;
   int alloc_size, len;
   int error_status = NO_ERROR;
@@ -22851,7 +22851,7 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
   int dow = -1;
   int tu[2], tv[2], tx[2];
   bool tinit[2];
-  bool is_write;
+  bool is_matched;
   bool try_tz_explain_tz_id = false;
 
   tinit[0] = tinit[1] = false;
@@ -22862,12 +22862,14 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
   assert (dtzi->h >= 0);
 
   format_s = db_get_string (format);
-  len = db_get_string_size (format);
-  format_e = format_s + len;
+  //len = db_get_string_size (format);
 
-  // TODO: use db_private_realloc(thrd, ptr, size)
+  /* TODO:
+   * Memory wastage must be prevented.
+   *    1) You can calculate the required memory by reviewing the format in advance.
+   *    2) After allocating it large enough, you can resize it at the end.(use db_private_realloc(thrd, ptr, size))
+   */
 
-  //alloc_size = len * 4;               // %T ==> 12:11:04, %H ==> 12  
   alloc_size = 128;
   len = 0;
   res = (char *) db_private_alloc (NULL, alloc_size);
@@ -22877,7 +22879,7 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
     }
 
   days[2] += LEAP (dtzi->year);
-  while (format_s < format_e)
+  while (*format_s)
     {
       /* assume we can't add at a time mode than 36 chars: 'America/Argentina/ComodRivadavia' */
       if ((len + 36) >= alloc_size)
@@ -22903,69 +22905,59 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
 	}
 
       // meet '%'
-      is_write = true;
+      is_matched = true;
       switch (format_s[1])
 	{
 	case '%':
 	  res[len++] = format_s[1];
 	  break;
 
-	case 'f':		// date_format, time_format
+	case 'f':		/* %f Milliseconds (000..999) */
 	  len += sprintf (res + len, "%03d", dtzi->ms);
 	  break;
 
-	case 'H':		// date_format, time_format
-	  /* %H Hour (00..23) */
+	case 'H':		/* %H Hour (00..23) */
 	  len += sprintf (res + len, "%02d", dtzi->h);
 	  break;
 
-	case 'h':		// date_format, time_format
-	  /* %h Hour (01..12) */
+	case 'h':		/* %h Hour (01..12) */
 	  len += sprintf (res + len, "%02d", (dtzi->h % 12 == 0) ? 12 : (dtzi->h % 12));
 	  break;
 
-	case 'I':		// date_format, time_format
-	  /* %I Hour (01..12) */
+	case 'I':		/* %I Hour (01..12) */
 	  len += sprintf (res + len, "%02d", (dtzi->h % 12 == 0) ? 12 : (dtzi->h % 12));
 	  break;
 
-	case 'i':		// date_format, time_format
-	  /* %i Minutes, numeric (00..59) */
+	case 'i':		/* %i Minutes, numeric (00..59) */
 	  len += sprintf (res + len, "%02d", dtzi->mi);
 	  break;
 
-	case 'k':		// date_format, time_format
-	  /* %k Hour (0..23) */
+	case 'k':		/* %k Hour (0..23) */
 	  len += sprintf (res + len, "%d", dtzi->h);
 	  break;
 
-	case 'l':		// date_format, time_format
-	  /* %l Hour (1..12) */
+	case 'l':		/* %l Hour (1..12) */
 	  len += sprintf (res + len, "%d", (dtzi->h % 12 == 0) ? 12 : (dtzi->h % 12));
 	  break;
 
-	case 'p':		// date_format, time_format
-	  /* %p AM or PM */
+	case 'p':		/* %p AM or PM */
 	  len += sprintf (res + len, "%s", (dtzi->h > 11) ? lld->am_pm[PM_NAME] : lld->am_pm[AM_NAME]);
 	  break;
 
-	case 'r':		// date_format, time_format
-	  /* %r Time, 12-hour (hh:mm:ss followed by AM or PM) */
+	case 'r':		/* %r Time, 12-hour (hh:mm:ss followed by AM or PM) */
 	  len += sprintf (res + len, "%02d:%02d:%02d %s", (dtzi->h % 12 == 0) ? 12 : (dtzi->h % 12), dtzi->mi,
 			  dtzi->s, (dtzi->h > 11) ? lld->am_pm[PM_NAME] : lld->am_pm[AM_NAME]);
 	  break;
 
-	case 'S':		// date_format, time_format
-	  /* %S Seconds (00..59) */
+	case 'S':		/* %S Seconds (00..59) */
 	  len += sprintf (res + len, "%02d", dtzi->s);
 	  break;
 
-	case 's':		// date_format, time_format
-	  /* %s Seconds (00..59) */
+	case 's':		/* %s Seconds (00..59) */
 	  len += sprintf (res + len, "%02d", dtzi->s);
 	  break;
 
-	case 'T':		// date_format, time_format
+	case 'T':		/* %T Time, 24-hour (hh:mm:ss) or TZR/TZD/TZH/TZM */
 	  if (format_s[2] != 'Z')
 	    {
 	      /* %T Time, 24-hour (hh:mm:ss) */
@@ -23025,8 +23017,7 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
 		  format_s += 2;
 		  break;
 
-		default:
-		  /* %T Time, 24-hour (hh:mm:ss) */
+		default:	/* %T Time, 24-hour (hh:mm:ss) */
 		  len += sprintf (res + len, "%02d:%02d:%02d", dtzi->h, dtzi->mi, dtzi->s);
 		  break;
 		}
@@ -23036,15 +23027,16 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
 	default:
 	  if (dateformat == false)
 	    {
+	      /* ignore '%' */
 	      res[len++] = format_s[1];
 	      break;
 	    }
 
-	  is_write = false;
+	  is_matched = false;
 	  break;
 	}
 
-      if (dateformat == false || is_write)
+      if (dateformat == false || is_matched)
 	{
 	  format_s += 2;
 	  continue;
@@ -23052,30 +23044,26 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
 
       switch (format_s[1])
 	{
-	case 'a':		// date_format
+	case 'a':		/* %a Abbreviated weekday name (Sun..Sat) */
 	  if (dow == -1)
 	    {
 	      dow = db_get_day_of_week (dtzi->year, dtzi->month, dtzi->day);
 	    }
-	  /* %a Abbreviated weekday name (Sun..Sat) */
 	  len += sprintf (res + len, "%s", lld->day_short_name[dow]);
 	  break;
 
-	case 'b':		// date_format
-	  /* %b Abbreviated m name (Jan..Dec) */
+	case 'b':		/* %b Abbreviated m name (Jan..Dec) */
 	  if (dtzi->month > 0)
 	    {
 	      len += sprintf (res + len, "%s", lld->month_short_name[dtzi->month - 1]);
 	    }
 	  break;
 
-	case 'c':		// date_format
-	  /* %c Month, numeric (0..12) - actually (1..12) */
+	case 'c':		/* %c Month, numeric (0..12) - actually (1..12) */
 	  len += sprintf (res + len, "%d", dtzi->month);
 	  break;
 
-	case 'D':		// date_format
-	  /* %D Day of the m with English suffix (0th, 1st, 2nd, 3rd,...) */
+	case 'D':		/* %D Day of the m with English suffix (0th, 1st, 2nd, 3rd,...) */
 	  if (date_lang_id != INTL_LANG_ENGLISH)
 	    {
 	      len += sprintf (res + len, "%d", dtzi->day);
@@ -23104,19 +23092,16 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
 	    }
 	  break;
 
-	case 'd':		// date_format
-	  /* %d Day of the m, numeric (00..31) */
+	case 'd':		/* %d Day of the m, numeric (00..31) */
 	  len += sprintf (res + len, "%02d", dtzi->day);
 	  break;
 
-	case 'e':		// date_format
-	  /* %e Day of the m, numeric (0..31) - actually (1..31) */
+	case 'e':		/* %e Day of the m, numeric (0..31) - actually (1..31) */
 	  len += sprintf (res + len, "%d", dtzi->day);
 	  break;
 
-	case 'j':		// date_format
+	case 'j':		/* %j Day of year (001..366) */
 	  int j, i;
-	  /* %j Day of year (001..366) */
 	  for (j = dtzi->day, i = 1; i < dtzi->month; i++)
 	    {
 	      j += days[i];
@@ -23124,78 +23109,72 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
 	  len += sprintf (res + len, "%03d", j);
 	  break;
 
-	case 'M':		// date_format
-	  /* %M Month name (January..December) */
+	case 'M':		/* %M Month name (January..December) */
 	  if (dtzi->month > 0)
 	    {
 	      len += sprintf (res + len, "%s", lld->month_name[dtzi->month - 1]);
 	    }
 	  break;
 
-	case 'm':		// date_format
-	  /* %m Month, numeric (00..12) */
+	case 'm':		/* %m Month, numeric (00..12) */
 	  len += sprintf (res + len, "%02d", dtzi->month);
 	  break;
 
-	case 'U':		// date_format
+	case 'U':		/* %U Week (00..53), where Sunday is the first day of the week */
 	  get_week_info (dtzi, true, days, tu, tv, tx, tinit);
 	  len += sprintf (res + len, "%02d", tu[1]);
 	  break;
 
-	case 'u':		// date_format
+	case 'u':		/* %u Week (00..53), where Monday is the first day of the week */
 	  get_week_info (dtzi, false, days, tu, tv, tx, tinit);
 	  len += sprintf (res + len, "%02d", tu[0]);
 	  break;
 
-	case 'V':		// date_format
+	case 'V':		/* %V Week (01..53), where Sunday is the first day of the week; used with %X */
 	  get_week_info (dtzi, true, days, tu, tv, tx, tinit);
 	  len += sprintf (res + len, "%02d", tv[1]);
 	  break;
 
-	case 'v':		// date_format
+	case 'v':		/* %v Week (01..53), where Monday is the first day of the week; used with %x */
 	  get_week_info (dtzi, false, days, tu, tv, tx, tinit);
 	  len += sprintf (res + len, "%02d", tv[0]);
 	  break;
 
-	case 'W':		// date_format
+	case 'W':		/* %W Weekday name (Sunday..Saturday) */
 	  if (dow == -1)
 	    {
 	      dow = db_get_day_of_week (dtzi->year, dtzi->month, dtzi->day);
 	    }
-	  /* %W Weekday name (Sunday..Saturday) */
 	  len += sprintf (res + len, "%s", lld->day_name[dow]);
 	  break;
 
-	case 'w':		// date_format
+	case 'w':		/* %w Day of the week (0=Sunday..6=Saturday) */
 	  if (dow == -1)
 	    {
 	      dow = db_get_day_of_week (dtzi->year, dtzi->month, dtzi->day);
 	    }
-	  /* %w Day of the week (0=Sunday..6=Saturday) */
 	  len += sprintf (res + len, "%d", dow);
 	  break;
 
-	case 'X':		// date_format
+	case 'X':		/* %X Year for the week where Sunday is the first day of the week, numeric, four digits; used with %V */
 	  get_week_info (dtzi, true, days, tu, tv, tx, tinit);
-	  len += sprintf (res + len, "%02d", tx[1]);
+	  len += sprintf (res + len, "%04d", tx[1]);
 	  break;
 
-	case 'x':		// date_format
+	case 'x':		/* %x Year for the week, where Monday is the first day of the week, numeric, four digits; used with %v */
 	  get_week_info (dtzi, false, days, tu, tv, tx, tinit);
-	  len += sprintf (res + len, "%02d", tx[0]);
+	  len += sprintf (res + len, "%04d", tx[0]);
 	  break;
 
-	case 'Y':		// date_format
-	  /* %Y Year, numeric, four digits */
+	case 'Y':		/* %Y Year, numeric, four digits */
 	  len += sprintf (res + len, "%04d", dtzi->year);
 	  break;
 
-	case 'y':		// date_format
-	  /* %y Year, numeric (two digits) */
+	case 'y':		/* %y Year, numeric (two digits) */
 	  len += sprintf (res + len, "%02d", dtzi->year % 100);
 	  break;
 
-	default:
+	default:		/* ignore '%' */
 	  res[len++] = format_s[1];
 	  break;
 	}
