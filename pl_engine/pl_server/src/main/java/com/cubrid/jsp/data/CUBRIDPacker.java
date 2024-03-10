@@ -116,8 +116,14 @@ public class CUBRIDPacker {
         packShort(oid.volId);
     }
 
+    private static final byte[] dummy = {0};
+
     public void packCString(byte[] value) {
+        if (value == null) {
+            value = dummy;
+        }
         int len = value.length;
+
         if (len < DataUtilities.MAX_SMALL_STRING_SIZE) {
             ensureSpace(value.length + 1 + DataUtilities.INT_ALIGNMENT); // str + len + align
             buffer.put((byte) len);
