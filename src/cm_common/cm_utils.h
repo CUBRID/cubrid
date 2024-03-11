@@ -24,6 +24,9 @@
 #define _CM_UTILS_H_
 
 #include "cm_dep.h"
+#include "chartype.h"
+
+#define ut_trim  trim
 
 typedef enum
 {
@@ -37,7 +40,6 @@ char *time_to_str (time_t t, const char *fmt, char *buf, int type);
 
 int uStringEqual (const char *str1, const char *str2);
 int string_tokenize (char *str, char *tok[], int num_tok);
-char *ut_trim (char *str);
 
 int make_version_info (char *cli_ver, int *major_ver, int *minor_ver);
 

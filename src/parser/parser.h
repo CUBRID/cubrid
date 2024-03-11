@@ -651,7 +651,8 @@ extern "C"
 
   extern PT_NODE *pt_find_node_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_find_op_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-  extern int pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * limit_val);
+  extern int pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * limit_val, bool add_offset);
+  extern DB_BIGINT pt_get_query_limit_from_query (PARSER_CONTEXT * parser, PT_NODE * query);
   extern bool pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query, bool * mro_candidate,
 						      bool * cannot_eval);
 

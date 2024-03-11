@@ -1332,7 +1332,7 @@ util_get_table_list_from_file (char *fname, dynamic_array * darray)
   while (1)
     {
       c = fgetc (fp);
-      if (c == ' ' || c == '\t' || c == ',' || c == '\n' || c == EOF)
+      if (char_isspace2 (c) || c == ',' || c == EOF)
 	{
 	  if (p != 0)
 	    {

@@ -136,6 +136,7 @@ static LF_ENTRY_DESCRIPTOR spage_Saving_entry_descriptor = {
   /* using mutex? */
   LF_EM_USING_MUTEX,
 
+  LF_ENTRY_DESCRIPTOR_MAX_ALLOC,
   /* function callbacks */
   spage_save_head_alloc,
   spage_save_head_free,

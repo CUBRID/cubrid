@@ -152,7 +152,7 @@ $ csql help messages
    ;PRINT                       - print command buffer.\n\
    ;SHELL                       - invoke shell.\n\
    ;CD                          - change current working directory.\n\
-   ;EXit                        - exit program.\n\
+   ;EXit (or Ctrl+d)            - exit program.\n\
 \n\
    ;CLear                       - clear command buffer.\n\
    ;EDIT   [format/fmt]         - invoke system editor [after formatter] with command buffer.\n\

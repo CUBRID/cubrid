@@ -152,7 +152,7 @@ $ csql help messages
    ;PRINT                       - afişează buffer-ul de comenzi.\n\
    ;SHELL                       - invocă shell-ul.\n\
    ;CD                          - schimbă directorul curent de lucru.\n\
-   ;EXit                        - închide aplicaţia.\n\
+   ;EXit (or Ctrl+d)            - închide aplicaţia.\n\
 \n\
    ;CLear                       - goleşte buffer-ul de comenzi.\n\
    ;EDIT   [format/fmt]         - invocă editorul de sistem [după formatator] cu bufferul de comandă.\n\

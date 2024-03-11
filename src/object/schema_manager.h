@@ -218,6 +218,7 @@ extern bool sm_has_indexes (MOBJ class_);
 /* Interpreter support functions */
 extern char *sm_downcase_name (const char *name, char *buf, int buf_size);
 extern char *sm_user_specified_name (const char *name, char *buf, int buf_size);
+extern char *sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size);
 extern char *sm_qualifier_name (const char *name, char *buf, int buf_size);
 extern const char *sm_remove_qualifier_name (const char *name);
 extern MOP sm_find_class (const char *name);

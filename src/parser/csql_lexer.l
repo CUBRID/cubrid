@@ -67,8 +67,7 @@ int str_identifier = '\0';
  */
 #define YY_USER_ACTION  {yybuffer_pos += csql_yyget_leng (); csql_yylloc.buffer_pos = yybuffer_pos;}
 
-#define IS_BLANK_CHAR(c) \
-                    ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
+#define IS_BLANK_CHAR(c)    (char_isspace2((c)))
 
 int g_msg[1024];
 int msg_ptr;

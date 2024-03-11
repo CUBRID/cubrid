@@ -152,7 +152,7 @@ $ csql help messages
    ;PRINT                       - 打印命令缓冲区.\n\
    ;SHELL                       - 调用shell.\n\
    ;CD                          - 改变当前工作目录.\n\
-   ;EXit                        - 退出程序.\n\
+   ;EXit (or Ctrl+d)            - 退出程序.\n\
 \n\
    ;CLear                       - 清理命令缓冲区.\n\
    ;EDIT   [format/fmt]         - 使用命令缓冲区调用系统编辑器 [在格式化程序之后].\n\

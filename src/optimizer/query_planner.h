@@ -216,6 +216,9 @@ struct qo_plan
 				    } while(0)
 
 #define NPLANS		4	/* Maximum number of plans to keep in a PlanVec */
+#define QO_PLAN_HAS_LIMIT(plan) (plan && plan->info && plan->info->env && \
+				  !DB_IS_NULL (&QO_ENV_LIMIT_VALUE (plan->info->env)) && \
+                                  db_get_bigint (&QO_ENV_LIMIT_VALUE (plan->info->env)) > 0)
 
 typedef struct qo_planvec QO_PLANVEC;
 struct qo_planvec

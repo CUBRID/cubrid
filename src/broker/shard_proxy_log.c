@@ -330,7 +330,7 @@ proxy_access_log (struct timeval *start_time, int client_ip_addr, const char *db
 
   for (p = clt_appl; *p; p++)
     {
-      if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+      if (char_isspace2 (*p))
 	*p = '_';
     }
 

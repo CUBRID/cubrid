@@ -39,12 +39,9 @@
 #include "memory_alloc.h"
 #include "misc_string.h"
 
-#define IS_WHITE_CHAR(c) \
-                    ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\0')
-#define IS_WHITE_SPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
+#define IS_WHITE_SPACE(c) (char_isspace2((c)))
 
-#define IS_HINT_ON_TABLE(h) \
-  		((h) & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
+#define IS_HINT_ON_TABLE(h)  ((h) & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
 
 int parser_input_host_index = 0;
 int parser_statement_OK = 0;
@@ -1020,7 +1017,6 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 	    }
 	}
 
-      // IS_WHITE_SPACE (*in)
       if (*in == '(')
 	{
 	  /* illegal hint expression */

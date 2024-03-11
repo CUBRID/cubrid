@@ -151,7 +151,7 @@ $ csql help messages
    ;PRINT                       - 명령어 버퍼 내용을 프린트.\n\
    ;SHELL                       - 쉘 수행.\n\
    ;CD                          - 현재 작업 디렉터리 변경.\n\
-   ;EXit                        - 종료.\n\
+   ;EXit (or Ctrl+d)            - 종료.\n\
 \n\
    ;CLear                       - 명령어 버퍼 내용을 지움.\n\
    ;EDIT   [format/fmt]         - 명령어 버퍼 [포맷 후] 편집.\n\

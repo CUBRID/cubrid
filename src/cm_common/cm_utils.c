@@ -550,7 +550,7 @@ ut_trim (char *str)
   if (str == NULL)
     return (str);
 
-  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'); s++)
+  for (s = str; *s != '\0' && char_isspace2 (*s); s++)
     ;
   if (*s == '\0')
     {
@@ -561,7 +561,7 @@ ut_trim (char *str)
   /* *s must be a non-white char */
   for (p = s; *p != '\0'; p++)
     ;
-  for (p--; *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'; p--)
+  for (p--; char_isspace2 (*p); p--)
     ;
   *++p = '\0';
 
