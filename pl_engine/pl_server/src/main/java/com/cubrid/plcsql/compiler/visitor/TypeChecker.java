@@ -628,7 +628,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         } else {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s230
-                    "typing function " + node.name + " call failed: " + ss.errMsg);
+                    "function "
+                            + node.name
+                            + " is undefined or given wrong number or types of arguments");
         }
     }
 
