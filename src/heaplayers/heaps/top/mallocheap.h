@@ -27,9 +27,9 @@ extern "C" size_t malloc_usable_size (void *);
 #elif defined(__linux__)
 #include <malloc.h>
 #else
-extern "C" size_t
-malloc_usable_size (void *)
-throw ();
+// *INDENT-OFF*
+extern "C" size_t malloc_usable_size (void *) throw ();
+// *INDENT-ON*
 #endif
 
 /**
@@ -42,67 +42,67 @@ throw ();
 #include "memory_monitor_sr.hpp"
 #endif /* SERVER_MODE */
 
-     namespace HL
-     {
+namespace HL
+{
 
-       class MallocHeap
-       {
-       public:
+  class MallocHeap
+  {
+  public:
 
-	 enum
-	 { Alignment = MallocInfo::Alignment };
+    enum
+    { Alignment = MallocInfo::Alignment };
 
-	 inline void *malloc (size_t sz)
-	 {
+    inline void *malloc (size_t sz)
+    {
 #ifdef SERVER_MODE
-	   if (mmon_is_memory_monitor_enabled ())
-	     {
-	       void *p =::malloc (sz + cubmem::MMON_METAINFO_SIZE);
-	       if (p != NULL)
-		 {
-		   mmon_add_stat ((char *) p, sz + cubmem::MMON_METAINFO_SIZE, __FILE__, __LINE__);
-		 }
-	       return p;
-	     }
-	   else
-	     {
+      if (mmon_is_memory_monitor_enabled ())
+	{
+	  void *p =::malloc (sz + cubmem::MMON_METAINFO_SIZE);
+	  if (p != NULL)
+	    {
+	      mmon_add_stat ((char *) p, sz + cubmem::MMON_METAINFO_SIZE, __FILE__, __LINE__);
+	    }
+	  return p;
+	}
+      else
+	{
 #endif
-	       return::malloc (sz);
+	  return::malloc (sz);
 #ifdef SERVER_MODE
-	     }
+	}
 #endif
-	 }
+    }
 
-	 inline void free (void *ptr)
-	 {
+    inline void free (void *ptr)
+    {
 #ifdef SERVER_MODE
-	   if (mmon_is_memory_monitor_enabled ())
-	     {
-	       mmon_sub_stat ((char *) ptr);
-	     }
+      if (mmon_is_memory_monitor_enabled ())
+	{
+	  mmon_sub_stat ((char *) ptr);
+	}
 #endif
-	   ::free (ptr);
-	 }
+      ::free (ptr);
+    }
 
 #if defined(_MSC_VER)
-	 inline size_t getSize (void *ptr)
-	 {
-	   return::_msize (ptr);
-	 }
+    inline size_t getSize (void *ptr)
+    {
+      return::_msize (ptr);
+    }
 #elif defined(__APPLE__)
-	 inline size_t getSize (void *ptr)
-	 {
-	   return::malloc_size (ptr);
-	 }
+    inline size_t getSize (void *ptr)
+    {
+      return::malloc_size (ptr);
+    }
 #elif defined(__GNUC__) && !defined(__SVR4)
-	 inline size_t getSize (void *ptr)
-	 {
-	   return::malloc_usable_size (ptr);
-	 }
+    inline size_t getSize (void *ptr)
+    {
+      return::malloc_usable_size (ptr);
+    }
 #endif
 
-       };
+  };
 
-     }
+}
 
 #endif
