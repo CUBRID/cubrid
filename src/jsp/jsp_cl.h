@@ -41,6 +41,7 @@
 
 #define SP_CLASS_NAME           "_db_stored_procedure"
 #define SP_ARG_CLASS_NAME       "_db_stored_procedure_args"
+#define SP_CODE_CLASS_NAME      "_db_stored_procedure_code"
 
 #define SP_ATTR_NAME                    "sp_name"
 #define SP_ATTR_SP_TYPE                 "sp_type"
@@ -60,6 +61,15 @@
 #define SP_ATTR_DATA_TYPE               "data_type"
 #define SP_ATTR_MODE                    "mode"
 #define SP_ATTR_ARG_COMMENT             "comment"
+
+#define SP_ATTR_CLS_NAME                "name"
+#define SP_ATTR_CREATION_TIME           "creation_time"
+#define SP_ATTR_IS_STATIC               "is_static"
+#define SP_ATTR_SOURCE_TYPE             "stype"
+#define SP_ATTR_SOURCE_TYPE             "stype"
+#define SP_ATTR_SOURCE_CODE             "scode"
+#define SP_ATTR_OBJECT_TYPE             "otype"
+#define SP_ATTR_OBJECT_CODE             "ocode"
 
 typedef enum
 {
@@ -93,6 +103,7 @@ extern const char *jsp_get_owner_name (const char *name);
 extern int jsp_get_return_type (const char *name);
 extern int jsp_get_sp_type (const char *name);
 extern MOP jsp_find_stored_procedure (const char *name);
+extern MOP jsp_find_stored_procedure_code (const char *name);
 
 extern void jsp_set_prepare_call (void);
 extern void jsp_unset_prepare_call (void);

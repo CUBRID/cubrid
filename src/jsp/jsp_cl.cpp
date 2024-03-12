@@ -33,6 +33,11 @@
 
 #include <vector>
 #include <functional>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <chrono>
+#include <sstream>
 
 #include "authenticate.h"
 #include "error_manager.h"
@@ -116,9 +121,12 @@ static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid);
 
 static char *jsp_check_stored_procedure_name (const char *str);
 static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
+static int drop_stored_procedure_code (const char *name);
 
 static int jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node_list, method_sig_list &sig_list);
 static int *jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list);
+
+static std::string get_class_name (const std::string &target);
 
 extern bool ssl_client;
 
@@ -169,6 +177,36 @@ jsp_find_stored_procedure (const char *name)
  *
  * Note:
  */
+
+MOP
+jsp_find_stored_procedure_code (const char *name)
+{
+  MOP mop = NULL;
+  DB_VALUE value;
+  int save;
+
+  if (!name)
+    {
+      return NULL;
+    }
+
+  AU_DISABLE (save);
+
+  db_make_string (&value, name);
+  mop = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_ATTR_CLS_NAME, &value);
+
+  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+    {
+      er_clear ();
+
+      // TODO: error
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_EXIST, 1, name);
+    }
+
+  AU_ENABLE (save);
+
+  return mop;
+}
 
 int
 jsp_is_exist_stored_procedure (const char *name)
@@ -608,7 +646,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 int
 jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  const char *decl, *comment = NULL;
+  const char *decl = NULL, *comment = NULL;
 
   PT_NODE *param_list, *p;
   PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
@@ -616,6 +654,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   int err = NO_ERROR;
   bool has_savepoint = false;
   PLCSQL_COMPILE_INFO compile_info;
+  std::string pl_code;
 
   SP_INFO sp_info;
 
@@ -678,7 +717,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
-      std::string pl_code (statement->sql_user_text, statement->sql_user_text_len);
+      pl_code.assign (statement->sql_user_text, statement->sql_user_text_len);
       err = plcsql_transfer_file (pl_code, false, compile_info);
       if (err == NO_ERROR && compile_info.err_code == NO_ERROR)
 	{
@@ -758,6 +797,32 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       goto error_exit;
     }
+
+  if (!compile_info.compiled_code.empty ())
+    {
+      auto now = std::chrono::system_clock::now();
+      auto converted_timep = std::chrono::system_clock::to_time_t (now);
+      struct tm tm;
+      std::stringstream stm;
+      stm << std::put_time (localtime_r (&converted_timep, &tm), "%Y%m%d%H%M%S");
+
+      SP_CODE_INFO code_info;
+
+      code_info.name = get_class_name (sp_info.target);
+      code_info.creation_time = stm.str ();
+      code_info.stype = 0;
+      code_info.scode = pl_code;
+      code_info.otype = 0;
+      code_info.ocode = compile_info.compiled_code;
+      code_info.owner = Au_user; // current user
+
+      err = sp_add_stored_procedure_code (code_info);
+      if (err != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
   return NO_ERROR;
 
 error_exit:
@@ -986,8 +1051,11 @@ static int
 drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 {
   MOP sp_mop, arg_mop, owner;
-  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, temp;
+  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, target_val, lang_val, generated_val, temp;
+  SP_LANG_ENUM lang_type;
   SP_TYPE_ENUM real_type;
+  std::string class_name;
+  const char *target;
   DB_SET *arg_set_p;
   int save, i, arg_cnt;
   int err;
@@ -1048,6 +1116,32 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
       goto error;
     }
 
+  // delete _db_stored_procedure_code
+  err = db_get (sp_mop, SP_ATTR_LANG, &lang_val);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  lang_type = (SP_LANG_ENUM) db_get_int (&lang_val);
+  if (lang_type == SP_LANG_PLCSQL)
+    {
+      err = db_get (sp_mop, SP_ATTR_TARGET, &target_val);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      target = db_get_string (&target_val);
+      class_name = get_class_name (target);
+
+      err = drop_stored_procedure_code (class_name.c_str ());
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   err = db_get (sp_mop, SP_ATTR_ARG_COUNT, &arg_cnt_val);
   if (err != NO_ERROR)
     {
@@ -1082,6 +1176,72 @@ error:
   AU_ENABLE (save);
 
   pr_clear_value (&args_val);
+  pr_clear_value (&owner_val);
+
+  return err;
+}
+
+/*
+ * drop_stored_procedure_code -
+ *   return: Error code
+ *   name(in): jsp name
+ *
+ * Note:
+ */
+
+static int
+drop_stored_procedure_code (const char *name)
+{
+  MOP code_mop, owner;
+  DB_VALUE owner_val, generated_val;
+  int save;
+  int err;
+
+  AU_DISABLE (save);
+
+  db_make_null (&owner_val);
+
+  code_mop = jsp_find_stored_procedure_code (name);
+  if (code_mop == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      goto error;
+    }
+
+  err = db_get (code_mop, SP_ATTR_OWNER, &owner_val);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+  owner = db_get_object (&owner_val);
+
+  if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_PRIVILEGES, 0);
+      err = er_errid ();
+      goto error;
+    }
+
+  err = db_get (code_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (!DB_IS_NULL (&generated_val) && 1 == db_get_int (&generated_val))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
+      err = er_errid ();
+      goto error;
+    }
+
+  // TODO: If a unreloadable SP is deleted, mark a flag in PL server to block calling the deleted SP
+  err = obj_delete (code_mop);
+
+error:
+  AU_ENABLE (save);
+
   pr_clear_value (&owner_val);
 
   return err;
@@ -1420,4 +1580,14 @@ jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list)
     }
 
   return arg_list;
+}
+
+static std::string
+get_class_name (const std::string &target)
+{
+  auto pos = target.find_last_of ('(');
+  std::string name_part = target.substr (0, pos);
+
+  pos = name_part.find_last_of ('.');
+  return name_part.substr (0, pos);
 }
