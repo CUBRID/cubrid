@@ -26553,21 +26553,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  return NULL;
 	}
 
-      if (c == 2)
-	{
-	  PT_NODE *node = args->next;
-	  if (node->node_type != PT_VALUE ||
-	      (node->type_enum != PT_TYPE_CHAR &&
-	       node->type_enum != PT_TYPE_VARCHAR &&
-	       node->type_enum != PT_TYPE_NCHAR &&
-	       node->type_enum != PT_TYPE_VARNCHAR))
-	    {
-	      push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
-	      csql_yyerror_explicit (10, 10);
-	      return NULL;
-	    }
-	}
-
       a1 = args;
       if (a1)
 	a2 = a1->next;
