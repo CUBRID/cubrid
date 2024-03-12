@@ -14835,7 +14835,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       goto error;
     }
 
-  query_str_len = strlen (filter_index_info->pred_string) + strlen (class_name) + 9 /* strlen("SELECT * ") */  +
+  query_str_len = strlen (filter_index_info->pred_string) + strlen (class_name) + 9 /* strlen("SELECT 1 ") */  +
     6 /* strlen(" FROM ") */  +
     2 /* [] */  +
     7 /* strlen(" WHERE " */  +
@@ -14846,7 +14846,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_str_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  snprintf (query_str, query_str_len, "SELECT * FROM [%s] WHERE %s", class_name, filter_index_info->pred_string);
+  snprintf (query_str, query_str_len, "SELECT 1 FROM [%s] WHERE %s", class_name, filter_index_info->pred_string);
   stmt = parser_parse_string_use_sys_charset (parser, query_str);
   if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
     {
