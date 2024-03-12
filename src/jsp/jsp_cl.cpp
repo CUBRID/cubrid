@@ -639,7 +639,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 int
 jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  const char *decl, *comment = NULL;
+  const char *decl = NULL, *comment = NULL;
 
   PT_NODE *param_list, *p;
   PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
@@ -1149,10 +1149,9 @@ error:
 }
 
 /*
- * drop_stored_procedure -
+ * drop_stored_procedure_code -
  *   return: Error code
  *   name(in): jsp name
- *   expected_type(in):
  *
  * Note:
  */
