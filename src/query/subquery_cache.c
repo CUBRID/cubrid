@@ -17,7 +17,7 @@
  */
 
 /*
- * sq_cache.c - Correlated Scalar Subquery Result Cache.
+ * subquery_cache.c - Correlated Scalar Subquery Result Cache.
  */
 
 
@@ -35,7 +35,7 @@
 #include "list_file.h"
 #include "db_set_function.h"
 
-#include "sq_cache.h"
+#include "subquery_cache.h"
 
 #define SQ_CACHE_MISS_MAX 1000
 #define SQ_CACHE_MIN_HIT_RATIO 9
@@ -67,7 +67,7 @@ typedef struct _sq_val
   REGU_DATATYPE t;
 } sq_val;
 
-static int sq_hm_entries = 10;
+static int sq_hm_entries = SQ_CACHE_MISS_MAX;
 
 /**************************************************************************************/
 
@@ -358,16 +358,21 @@ sq_walk_xasl_check_not_caching (xasl_node * xasl)
 {
   xasl_node *scan_ptr, *aptr;
   int ret;
+  sq_key *key;
 
   if (xasl->if_pred || xasl->after_join_pred || xasl->dptr_list)
     {
       return true;
     }
 
-  if (sq_make_key (xasl) == NULL)
+  key = sq_make_key (xasl);
+
+  if (key == NULL)
     {
       return true;
     }
+
+  sq_free_key (key);
 
   ret = 0;
   if (xasl->scan_ptr)

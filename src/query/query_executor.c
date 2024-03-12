@@ -80,7 +80,7 @@
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
-#include "sq_cache.h"
+#include "subquery_cache.h"
 
 #include <vector>
 

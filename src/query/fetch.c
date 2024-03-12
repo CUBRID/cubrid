@@ -53,7 +53,7 @@
 #include "xasl_predicate.hpp"
 #include "query_executor.h"
 #include "thread_entry.hpp"
-#include "sq_cache.h"
+#include "subquery_cache.h"
 
 #include "dbtype.h"
 

@@ -17,11 +17,11 @@
  */
 
 /*
- * sq_cache.h - Correlated Scalar Subquery Result Cache.
+ * subquery_cache.h - Correlated Scalar Subquery Result Cache.
  */
 
-#ifndef _SQ_CACHE_H_
-#define _SQ_CACHE_H_
+#ifndef _SUBQUERY_CACHE_H_
+#define _SUBQUERY_CACHE_H_
 
 #ident "$Id$"
 
@@ -32,4 +32,4 @@ extern void sq_cache_drop_all (xasl_node * xasl);
 extern void sq_cache_destroy (xasl_node * xasl);
 extern int execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd);
 
-#endif /* _SQ_CACHE_H_ */
+#endif /* _SUBQUERY_CACHE_H_ */
