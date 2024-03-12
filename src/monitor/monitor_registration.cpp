@@ -24,6 +24,7 @@
 
 #include <string>
 #include <vector>
+#include "memory_wrapper.hpp"
 
 namespace cubmonitor
 {

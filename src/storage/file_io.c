@@ -119,6 +119,7 @@
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 #endif // SERVER_MODE
+#include "memory_wrapper.hpp"
 
 /************************************************************************/
 /* TODO: why is this in client module?                                  */

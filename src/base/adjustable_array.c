@@ -34,6 +34,7 @@
 
 #include "porting.h"
 #include "adjustable_array.h"
+#include "memory_wrapper.hpp"
 
 /*
  * adj_ar_concat_strings() - concatenate the specified strings

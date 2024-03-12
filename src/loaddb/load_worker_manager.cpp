@@ -32,6 +32,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <set>
+#include "memory_wrapper.hpp"
 
 namespace cubload
 {

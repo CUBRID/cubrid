@@ -82,6 +82,7 @@
 #include "xasl_predicate.hpp"
 
 #include <vector>
+#include "memory_wrapper.hpp"
 
 // XASL_STATE
 typedef struct xasl_state XASL_STATE;

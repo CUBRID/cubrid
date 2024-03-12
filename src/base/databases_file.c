@@ -55,6 +55,7 @@
 #include "misc_string.h"
 #include "wintcp.h"
 #endif /* WINDOWS */
+#include "memory_wrapper.hpp"
 
 
 /* conservative upper bound of a line in databases.txt */

@@ -28,6 +28,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "vacuum.h"
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 static LOG_ZIP *log_zip_undo = NULL;

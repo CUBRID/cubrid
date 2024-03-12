@@ -21,6 +21,7 @@
 #include "memory_alloc.h"
 
 #include <cassert>
+#include "memory_wrapper.hpp"
 
 namespace lockfree
 {

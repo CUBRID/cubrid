@@ -47,6 +47,7 @@
 #include "thread_manager.hpp"	// for thread_sleep
 #include "xasl.h"
 #include "xasl_cache.h"
+#include "memory_wrapper.hpp"
 
 /* TODO */
 #if !defined (SERVER_MODE)

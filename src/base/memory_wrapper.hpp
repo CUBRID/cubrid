@@ -17,13 +17,24 @@
  */
 
 /*
- * memory_cppwrapper.hpp - Overloading operator new, delete
+ * memory_wrapper.hpp - Overloading operator new, delete with all wrapping allocation functions
  */
 
-#ifndef _MEMORY_CPPWRAPPER_HPP_
-#define _MEMORY_CPPWRAPPER_HPP_
+#ifndef _MEMORY_WRAPPER_HPP_
+#define _MEMORY_WRAPPER_HPP_
 
 #include "memory_cwrapper.h"
+
+/* ***IMPORTANT!!***
+ * memory_wrapper.hpp has a restriction that it must locate at the end of including section
+ * because the user-defined new for overloaded format can make build error in glibc
+ * when glibc header use "placement new" or another overloaded format of new.
+ * So memory_wrapper.hpp cannot be included in header file, but memory_cwrapper.h can be included.
+ * You can include memory_cwrapper.h in a header file when the header file use allocation function.
+ *                        HEADER FILE(.h/.hpp)    |   SOURCE FILE(.c/.cpp)    |   INCLUDE LOCATION
+ * memory_cwrapper.h          CAN INCLUDE         |     CAN INCLUDE           |       ANYWHERE
+ * memory_wrapper.hpp         CANNOT INCLUDE      |     CANNOT INCLUDE        |   END OF INCLUDE
+ */
 
 #ifdef SERVER_MODE
 // TODO: The usage of operator new encompasses various additional methods beyond basic usage.
@@ -53,4 +64,4 @@ inline void operator delete (void *ptr, size_t sz) noexcept
 #define new new(__FILE__, __LINE__)
 #endif // SERVER_MODE
 
-#endif // _MEMORY_CPPWRAPPER_HPP_
+#endif // _MEMORY_WRAPPER_HPP_

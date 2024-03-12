@@ -35,6 +35,7 @@
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #include <assert.h>
+#include "memory_wrapper.hpp"
 
 #if !defined(NDEBUG)
 

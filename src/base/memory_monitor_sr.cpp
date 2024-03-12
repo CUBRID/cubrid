@@ -20,10 +20,25 @@
  * memory_monitor_sr.cpp - Implementation of memory monitor module
  */
 
-#include <malloc.h>
 #include <cassert>
 #include <cstring>
 #include <algorithm>
+
+#if defined(__SVR4)
+extern "C" size_t malloc_usable_size (void *);
+#elif defined(__APPLE__)
+#include <malloc/malloc.h>
+
+#ifndef HAVE_USR_INCLUDE_MALLOC_H
+#define HAVE_USR_INCLUDE_MALLOC_H
+#endif
+#elif defined(__linux__)
+#include <malloc.h>
+
+#ifndef HAVE_USR_INCLUDE_MALLOC_H
+#define HAVE_USR_INCLUDE_MALLOC_H
+#endif
+#endif
 
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -250,6 +265,7 @@ int mmon_initialize (const char *server_name)
 
   if (prm_get_bool_value (PRM_ID_ENABLE_MEMORY_MONITORING))
     {
+#if !defined(WINDOWS)
       mmon_Gl = new (std::nothrow) memory_monitor (server_name);
       if (mmon_Gl == nullptr)
 	{
@@ -257,6 +273,7 @@ int mmon_initialize (const char *server_name)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  return error;
 	}
+#endif // !WINDOWS
     }
   return error;
 }

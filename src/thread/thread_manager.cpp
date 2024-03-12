@@ -41,6 +41,7 @@
 #include "system_parameter.h"
 
 #include <cassert>
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {
