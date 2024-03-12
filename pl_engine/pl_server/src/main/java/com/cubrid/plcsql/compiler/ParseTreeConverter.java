@@ -65,6 +65,22 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         this.staticSqls = staticSqls;
     }
 
+    public void addToImports(String i) {
+
+        assert i != null;
+
+        if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(i)) {
+            // no need to import Cursor now
+        } else if (i.startsWith("java.lang.")
+                && i.lastIndexOf('.') == 9) { // 9:the index of the second '.'
+            // no need to import java.lang.*
+        } else if (i.startsWith("Null")) {
+            // NULL type is not a java type but an internal type for convenience in typechecking.
+        } else {
+            imports.add(i);
+        }
+    }
+
     public void askServerSemanticQuestions() {
         if (semanticQuestions.size() == 0) {
             return; // nothing to do
@@ -2362,22 +2378,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
             DeclProc ret = new DeclProc(ctx, name, paramList);
             symbolStack.putDecl(name, ret);
-        }
-    }
-
-    private void addToImports(String i) {
-
-        assert i != null;
-
-        if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(i)) {
-            // no need to import Cursor now
-        } else if (i.startsWith("java.lang.")
-                && i.lastIndexOf('.') == 9) { // 9:the index of the second '.'
-            // no need to import java.lang.*
-        } else if (i.startsWith("Null")) {
-            // NULL type is not a java type but an internal type for convenience in typechecking.
-        } else {
-            imports.add(i);
         }
     }
 
