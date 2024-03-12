@@ -2918,9 +2918,6 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  idx_info->where->info.expr.paren_type = 0;
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_CHARSET_COLLATE_FULL;
-	  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
-	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
-	  parser->custom_print |= PT_SUPPRESS_RESOLVED;
 
 	  filter_expr = pt_print_bytes ((PARSER_CONTEXT *) parser, (PT_NODE *) idx_info->where);
 	  parser->custom_print = save_custom;
@@ -14526,9 +14523,6 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * no
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CHARSET_COLLATE_FULL;
-  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
-  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
-  parser->custom_print |= PT_SUPPRESS_RESOLVED;
 
   expr_str = parser_print_tree_with_quotes (parser, expr);
   parser->custom_print = save_custom;
@@ -14906,9 +14900,6 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   where_predicate->info.expr.paren_type = 0;
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CHARSET_COLLATE_FULL;
-  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
-  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
-  parser->custom_print |= PT_SUPPRESS_RESOLVED;
 
   filter_expr = pt_print_bytes (parser, where_predicate);
   parser->custom_print = save_custom;
@@ -15088,27 +15079,6 @@ replace_names_alter_chg_attr (PARSER_CONTEXT * parser, PT_NODE * node, void *voi
 	      parser_free_tree (parser, node);
 	      node = new_node;
 	    }
-	}
-
-      *continue_walk = PT_LIST_WALK;
-    }
-  else if (PT_IS_NAME_NODE (node))
-    {
-      PT_NODE *new_node = NULL;
-      if (intl_identifier_casecmp (node->info.name.original, old_name->info.name.original) == 0)
-	{
-	  new_node = pt_name (parser, new_name);
-	}
-      else
-	{
-	  new_node = pt_name (parser, node->info.name.original);
-	}
-      if (new_node)
-	{
-	  new_node->next = node->next;
-	  node->next = NULL;
-	  parser_free_tree (parser, node);
-	  node = new_node;
 	}
     }
 
