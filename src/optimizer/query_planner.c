@@ -10416,7 +10416,7 @@ static bool
 qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
 		    BITSET * cur_visited_terms)
 {
-  BITSET remaining_terms, connected_segs, all_visited_terms;
+  BITSET remaining_terms, connected_segs, all_visited_terms, eq_visited_segs;
   BITSET_ITERATOR bi;
   QO_TERM *tmp_term;
   int i, prev_card;
@@ -10430,6 +10430,7 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
   bitset_init (&remaining_terms, env);
   bitset_init (&connected_segs, env);
   bitset_init (&all_visited_terms, env);
+  bitset_init (&eq_visited_segs, env);
 
   /* gather terms having same eqclass */
   bitset_union (&all_visited_terms, visited_terms);
@@ -10442,11 +10443,12 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
       if (QO_TERM_EQCLASS (tmp_term) == QO_TERM_EQCLASS (term))
 	{
 	  bitset_add (&remaining_terms, i);
+	  bitset_union (&eq_visited_segs, &(QO_TERM_SEGS (tmp_term)));
 	}
     }
 
   /* check number of remaining terms. at least n-1 terms can be fully connected. */
-  if (bitset_cardinality (&remaining_terms) < bitset_cardinality (&((QO_TERM_EQCLASS (term))->segs)) - 1)
+  if (bitset_cardinality (&remaining_terms) < bitset_cardinality (&eq_visited_segs) - 1)
     {
       result = false;
       goto end;
@@ -10490,6 +10492,7 @@ end:
   bitset_delset (&remaining_terms);
   bitset_delset (&connected_segs);
   bitset_delset (&all_visited_terms);
+  bitset_delset (&eq_visited_segs);
 
   return result;
 }
