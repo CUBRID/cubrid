@@ -38,6 +38,7 @@
 #include "chartype.h"
 #include "system_parameter.h"
 #include "charset_converters.h"
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

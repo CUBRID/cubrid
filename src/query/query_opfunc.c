@@ -60,6 +60,7 @@
 
 #include <chrono>
 #include <regex>
+#include "memory_wrapper.hpp"
 
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))
 #define INITIAL_OID_STACK_SIZE  1

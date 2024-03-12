@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <string>
+#include "memory_wrapper.hpp"
 
 namespace cubregex
 {

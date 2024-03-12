@@ -24,6 +24,7 @@
 #include "thread_waiter.hpp"
 
 #include "perf.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {

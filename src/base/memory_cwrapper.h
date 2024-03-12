@@ -24,13 +24,41 @@
 #ifndef _MEMORY_CWRAPPER_H_
 #define _MEMORY_CWRAPPER_H_
 
+/* ***IMPORTANT!!***
+ * memory_wrapper.hpp has a restriction that it must locate at the end of including section
+ * because the user-defined new for overloaded format can make build error in glibc
+ * when glibc header use "placement new" or another overloaded format of new.
+ * So memory_wrapper.hpp cannot be included in header file, but memory_cwrapper.h can be included.
+ * You can include memory_cwrapper.h in a header file when the header file use allocation function.
+ *                        HEADER FILE(.h/.hpp)    |   SOURCE FILE(.c/.cpp)    |   INCLUDE LOCATION
+ * memory_cwrapper.h          CAN INCLUDE         |     CAN INCLUDE           |       ANYWHERE
+ * memory_wrapper.hpp         CANNOT INCLUDE      |     CANNOT INCLUDE        |   END OF INCLUDE
+ */
+
 #ifdef SERVER_MODE
 #include <string.h>
 #include <stdlib.h>
-#include <malloc.h>
 #include <assert.h>
 
 #include "memory_monitor_sr.hpp"
+
+#if defined(__SVR4)
+// *INDENT-OFF*
+extern "C" size_t malloc_usable_size (void *);
+// *INDENT-ON*
+#elif defined(__APPLE__)
+#include <malloc/malloc.h>
+
+#ifndef HAVE_USR_INCLUDE_MALLOC_H
+#define HAVE_USR_INCLUDE_MALLOC_H
+#endif
+#elif defined(__linux__)
+#include <malloc.h>
+
+#ifndef HAVE_USR_INCLUDE_MALLOC_H
+#define HAVE_USR_INCLUDE_MALLOC_H
+#endif
+#endif
 
 inline size_t
 get_allocated_size (void *ptr)
@@ -66,7 +94,9 @@ cub_alloc (size_t size, const char *file, const int line)
       p = malloc (size + cubmem::MMON_METAINFO_SIZE);
       if (p != NULL)
 	{
+#if !defined(WINDOWS)
 	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
+#endif
 	}
     }
   else
@@ -88,7 +118,9 @@ cub_calloc (size_t num, size_t size, const char *file, const int line)
       if (p != NULL)
 	{
 	  memset (p, 0, num * size + cubmem::MMON_METAINFO_SIZE);
+#if !defined(WINDOWS)
 	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
+#endif
 	}
     }
   else
@@ -115,8 +147,9 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 	  new_ptr = malloc (size + cubmem::MMON_METAINFO_SIZE);
 	  if (new_ptr != NULL)
 	    {
+#if !defined(WINDOWS)
 	      mmon_add_stat ((char *) new_ptr, malloc_usable_size (new_ptr), file, line);
-
+#endif
 	      if (ptr != NULL)
 		{
 		  size_t old_size = get_allocated_size (ptr);

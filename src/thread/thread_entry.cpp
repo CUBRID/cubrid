@@ -42,6 +42,7 @@
 #if !defined (WINDOWS)
 #include <pthread.h>
 #endif // WINDOWS
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {

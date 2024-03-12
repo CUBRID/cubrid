@@ -25,6 +25,7 @@
 
 #include "error_code.h"
 #include "dynamic_array.h"
+#include "memory_wrapper.hpp"
 
 dynamic_array *
 da_create (int count, size_t len)

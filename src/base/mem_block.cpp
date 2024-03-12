@@ -25,6 +25,8 @@
 #include <functional>
 #include <cstring>
 
+#include "memory_wrapper.hpp"
+
 namespace cubmem
 {
   void

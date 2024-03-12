@@ -91,6 +91,7 @@
 #endif /* !WINDOWS */
 
 #include <mutex>
+#include "memory_wrapper.hpp"
 
 /*
  * Definition of error message structure. One structure is defined for each

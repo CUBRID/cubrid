@@ -24,6 +24,7 @@
 
 #include "memory_alloc.h"
 #include "regu_var.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubxasl
 {
