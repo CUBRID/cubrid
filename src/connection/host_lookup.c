@@ -104,6 +104,7 @@ static bool is_valid_ip (char *ip_addr);
 static bool is_valid_hostname (char *hostname, int str_len);
 static int load_hosts_file ();
 static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type);
+static void strcpy_ucase (char *dst, const char *src);
 
 /*
  * hostent_alloc () - Allocate memory hostent structure.
@@ -176,6 +177,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
   char addr_trans_ch_buf[IPADDR_LEN];
   struct sockaddr_in *addr_trans = NULL;
+  char hostname_u[HOSTNAME_LEN];
 
   if (hosts_conf_file_Load == LOAD_INIT)
     {
@@ -205,11 +207,13 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
     }
 
+  strcpy_ucase (hostname_u, hostname);
+
   /* Look up in the user_host_Map */
   /* The case which is looking up the IP addr and checking the hostname or IP addr in the hash map */
-  if ((lookup_type == HOSTNAME_TO_IPADDR) && (user_host_Map.find (hostname) != user_host_Map.end ()))
+  if ((lookup_type == HOSTNAME_TO_IPADDR) && (user_host_Map.find (hostname_u) != user_host_Map.end ()))
     {
-      hp = hostent_Cache[user_host_Map.find (hostname)->second];
+      hp = hostent_Cache[user_host_Map.find (hostname_u)->second];
     }
   else if ((lookup_type == IPADDR_TO_HOSTNAME) && (user_host_Map.find (addr_trans_ch_buf) != user_host_Map.end ()))
     {
@@ -324,7 +328,7 @@ load_hosts_file ()
 		}
 	      else
 		{
-		  strcpy (hostname, token);
+		  strcpy_ucase (hostname, token);
 		}
 	    }
 	}
@@ -679,4 +683,26 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 return_phase:
 
   return ret;
+}
+
+static void
+strcpy_ucase (char *dst, const char *src)
+{
+  int len, i;
+
+  if (dst == NULL || src == NULL)
+    {
+      return;
+    }
+
+  len = strlen (src) > (HOSTNAME_LEN - 1) ? (HOSTNAME_LEN - 1) : strlen (src);
+
+  for (i = 0; i < len; i++)
+    {
+      dst[i] = toupper (src[i]);
+    }
+
+  dst[i] = '\0';
+
+  return;
 }

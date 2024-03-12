@@ -12323,21 +12323,29 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
     case DB_TYPE_NCHAR:
       {
 	DB_VALUE tm;
+	TZ_ID tz_id;
 	TP_DOMAIN *tp_time = db_type_to_db_domain (DB_TYPE_TIME);
-	bool is_time = false;
 
-	if (tp_value_cast (time_value, &tm, tp_time, false) == DOMAIN_COMPATIBLE)
-	  {
-	    db_time_decode (db_get_time (&tm), &h, &mi, &s);
-	    is_time = true;
-	  }
-
-	if (is_time == false)
+	if (tp_value_cast (time_value, &tm, tp_time, false) != DOMAIN_COMPATIBLE)
 	  {
 	    error_status = ER_QSTR_INVALID_DATA_TYPE;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	    goto error;
 	  }
+
+	db_time_decode (db_get_time (&tm), &h, &mi, &s);
+
+	error_status = tz_create_session_tzid_for_time (db_get_time (&tm), true, &tz_id);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
+	if (error_status != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	is_valid_tz = true;
       }
       break;
 
@@ -12484,9 +12492,9 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 		  strcat (res, tzd);
 		  break;
 		case 'H':
-		  if (tzh >= 0)
+		  if ((tzh >= 0) && (tzm >= 0))
 		    {
-		      sprintf (hours_or_minutes, "%02d", tzh);
+		      sprintf (hours_or_minutes, "%c%02d", '+', tzh);
 		    }
 		  else
 		    {
@@ -12495,14 +12503,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 		  strcat (res, hours_or_minutes);
 		  break;
 		case 'M':
-		  if (tzm >= 0)
-		    {
-		      sprintf (hours_or_minutes, "%02d", tzm);
-		    }
-		  else
-		    {
-		      sprintf (hours_or_minutes, "%c%02d", '-', -tzm);
-		    }
+		  sprintf (hours_or_minutes, "%02d", (tzm >= 0) ? tzm : -tzm);
 		  strcat (res, hours_or_minutes);
 		  break;
 		}
@@ -17839,18 +17840,13 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 		}
 	      else
 		{
-		  tzh = -tzh;
-		  sprintf (&result_buf[i], "%c%02d\n", '-', tzh);
+		  sprintf (&result_buf[i], "%c%02d\n", '-', -tzh);
 		}
 	      i += 3;
 	      break;
 
 	    case DT_TZM:
-	      if (tzm < 0)
-		{
-		  tzm = -tzm;
-		}
-	      sprintf (&result_buf[i], "%02d\n", tzm);
+	      sprintf (&result_buf[i], "%02d\n", ((tzm < 0) ? -tzm : tzm));
 	      result_size--;
 	      i += 2;
 	      break;
@@ -18042,25 +18038,22 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
   assert (cs != NULL);
 
   /* Remove 'trailing zero' source string */
-  for (i = 0; i < strlen (cs); i++)
+  for (i = 0; cs[i] != '\0'; i++)
     {
       if (cs[i] == fraction_symbol)
 	{
-	  i = strlen (cs);
+	  i += strlen (cs + i);
 	  i--;
 	  while (cs[i] == '0')
 	    {
 	      i--;
 	    }
-	  if (cs[i] == fraction_symbol)
-	    {
-	      cs[i] = '\0';
-	    }
-	  else
+	  if (cs[i] != fraction_symbol)
 	    {
 	      i++;
-	      cs[i] = '\0';
 	    }
+
+	  cs[i] = '\0';
 	  break;
 	}
     }
@@ -19243,13 +19236,11 @@ roundoff (const INTL_LANG lang, char *src_string, int flag, int *cipher, char *f
 	{			/* if decimal format */
 	  i = 0;
 
-	  while (i < strlen (src_string))
+	  while (src_string[i] != '\0')
 	    {
 	      src_string[i] = '#';
 	      i++;
 	    }
-
-	  src_string[i] = '\0';
 	}
       else
 	{			/* if scientific format */
@@ -19261,25 +19252,21 @@ roundoff (const INTL_LANG lang, char *src_string, int flag, int *cipher, char *f
 	      res++;
 	    }
 
-	  while (i < strlen (res))
+	  i = 0;
+	  if (res[i] != '\0')
 	    {
-	      if (i == 0)
+	      res[i++] = '1';
+	      if (res[i] != '\0')
 		{
-		  res[i] = '1';
+		  res[i++] = fraction_symbol;
+		  while (res[i] != '\0')
+		    {
+		      res[i++] = '0';
+		    }
 		}
-	      else if (i == 1)
-		{
-		  res[i] = fraction_symbol;
-		}
-	      else
-		{
-		  res[i] = '0';
-		}
-	      i++;
 	    }
 
 	  (*cipher)++;
-	  res[i] = '\0';
 	}
     }
 
