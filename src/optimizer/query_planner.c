@@ -10446,7 +10446,7 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
     }
 
   /* check number of remaining terms. at least n-1 terms can be fully connected. */
-  if (bitset_cardinality (&remaining_terms) < bitset_cardinality (&visited_segs) - 1)
+  if (bitset_cardinality (&remaining_terms) < bitset_cardinality (&((QO_TERM_EQCLASS (term))->segs)) - 1)
     {
       result = false;
       goto end;
