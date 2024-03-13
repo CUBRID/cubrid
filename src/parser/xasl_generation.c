@@ -19626,6 +19626,30 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
       select_stmt->info.query.q.select.use_merge = arg;
     }
 
+  if (hint_flags & PT_HINT_NO_USE_HASH)
+    {
+      switch (node->node_type)
+	{
+	case PT_DELETE:
+	  arg = node->info.delete_.no_use_hash_hint;
+	  break;
+	case PT_UPDATE:
+	  arg = node->info.update.no_use_hash_hint;
+	  break;
+	default:
+	  break;
+	}
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      select_stmt->info.query.q.select.no_use_hash = arg;
+    }
+
   if (hint_flags & PT_HINT_USE_HASH)
     {
       switch (node->node_type)

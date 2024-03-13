@@ -180,6 +180,7 @@ typedef enum
   BUILDVALUE_PROC,
   SCAN_PROC,
   MERGELIST_PROC,
+  HASHJOIN_PROC,
   UPDATE_PROC,
   DELETE_PROC,
   INSERT_PROC,
@@ -353,6 +354,19 @@ struct buildvalue_proc_node
 
 typedef struct mergelist_proc_node MERGELIST_PROC_NODE;
 struct mergelist_proc_node
+{
+  XASL_NODE *outer_xasl;	/* xasl node containing the outer list file */
+  ACCESS_SPEC_TYPE *outer_spec_list;	/* access spec. list for outer */
+  VAL_LIST *outer_val_list;	/* output-value list for outer */
+  XASL_NODE *inner_xasl;	/* xasl node containing the inner list file */
+  ACCESS_SPEC_TYPE *inner_spec_list;	/* access spec. list for inner */
+  VAL_LIST *inner_val_list;	/* output-value list for inner */
+
+  QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
+};
+
+typedef struct hashjoin_proc_node HASHJOIN_PROC_NODE;
+struct hashjoin_proc_node
 {
   XASL_NODE *outer_xasl;	/* xasl node containing the outer list file */
   ACCESS_SPEC_TYPE *outer_spec_list;	/* access spec. list for outer */
@@ -1046,6 +1060,7 @@ struct xasl_node
     BUILDLIST_PROC_NODE buildlist;	/* BUILDLIST_PROC */
     BUILDVALUE_PROC_NODE buildvalue;	/* BUILDVALUE_PROC */
     MERGELIST_PROC_NODE mergelist;	/* MERGELIST_PROC */
+    HASHJOIN_PROC_NODE hashjoin;	/* HASHJOIN_PROC */
     UPDATE_PROC_NODE update;	/* UPDATE_PROC */
     INSERT_PROC_NODE insert;	/* INSERT_PROC */
     DELETE_PROC_NODE delete_;	/* DELETE_PROC */

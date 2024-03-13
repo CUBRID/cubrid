@@ -8098,6 +8098,7 @@ pt_split_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
       || ((delete_stmt->info.delete_.hint & PT_HINT_USE_NL) && delete_stmt->info.delete_.use_nl_hint == NULL)
       || ((delete_stmt->info.delete_.hint & PT_HINT_USE_IDX) && delete_stmt->info.delete_.use_idx_hint == NULL)
       || ((delete_stmt->info.delete_.hint & PT_HINT_USE_MERGE) && delete_stmt->info.delete_.use_merge_hint == NULL)
+      || ((delete_stmt->info.delete_.hint & PT_HINT_NO_USE_HASH) && delete_stmt->info.delete_.no_use_hash_hint == NULL)
       || ((delete_stmt->info.delete_.hint & PT_HINT_USE_HASH) && delete_stmt->info.delete_.use_hash_hint == NULL))
     {
       return NO_ERROR;

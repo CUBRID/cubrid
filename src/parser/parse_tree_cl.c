@@ -8657,12 +8657,24 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.delete_.hint & PT_HINT_NO_USE_HASH)
 	{
 	  /* disable hash-join */
-	  q = pt_append_nulstring (parser, q, "NO_USE_HASH ");
+	  q = pt_append_nulstring (parser, q, " NO_USE_HASH");
+	  if (p->info.delete_.no_use_hash_hint)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.delete_.no_use_hash_hint);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
 	}
-      else if (p->info.delete_.hint & PT_HINT_USE_HASH)
+
+      if (p->info.delete_.hint & PT_HINT_USE_HASH)
 	{
 	  /* force hash-join */
-	  q = pt_append_nulstring (parser, q, "USE_HASH");
+	  q = pt_append_nulstring (parser, q, " USE_HASH");
 	  if (p->info.delete_.use_hash_hint)
 	    {
 	      r1 = pt_print_bytes_l (parser, p->info.delete_.use_hash_hint);
@@ -14200,9 +14212,21 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_NO_USE_HASH)
 	    {
 	      /* disable hash-join */
-	      q = pt_append_nulstring (parser, q, "NO_USE_HASH ");
+	      q = pt_append_nulstring (parser, q, "NO_USE_HASH");
+	      if (p->info.query.q.select.no_use_hash)
+		{
+		  r1 = pt_print_bytes_l (parser, p->info.query.q.select.no_use_hash);
+		  q = pt_append_nulstring (parser, q, "(");
+		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, ") ");
+		}
+	      else
+		{
+		  q = pt_append_nulstring (parser, q, " ");
+		}
 	    }
-	  else if (p->info.query.q.select.hint & PT_HINT_USE_HASH)
+
+	  if (p->info.query.q.select.hint & PT_HINT_USE_HASH)
 	    {
 	      /* force hash-join */
 	      q = pt_append_nulstring (parser, q, "USE_HASH");
@@ -15418,22 +15442,34 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.update.hint & PT_HINT_NO_USE_HASH)
 	{
 	  /* disable hash-join */
-	  q = pt_append_nulstring (parser, q, "NO_USE_HASH ");
-	}
-      else if (p->info.update.hint & PT_HINT_USE_HASH)
-	{
-	  /* force hash-join */
-	  q = pt_append_nulstring (parser, q, "USE_HASH");
-	  if (p->info.update.use_hash_hint)
+	  b = pt_append_nulstring (parser, b, " NO_USE_HASH");
+	  if (p->info.update.no_use_hash_hint)
 	    {
-	      r1 = pt_print_bytes_l (parser, p->info.update.use_hash_hint);
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ") ");
+	      r1 = pt_print_bytes_l (parser, p->info.update.no_use_hash_hint);
+	      b = pt_append_nulstring (parser, b, "(");
+	      b = pt_append_varchar (parser, b, r1);
+	      b = pt_append_nulstring (parser, b, ") ");
 	    }
 	  else
 	    {
-	      q = pt_append_nulstring (parser, q, " ");
+	      b = pt_append_nulstring (parser, b, " ");
+	    }
+	}
+
+      if (p->info.update.hint & PT_HINT_USE_HASH)
+	{
+	  /* force hash-join */
+	  b = pt_append_nulstring (parser, b, " USE_HASH");
+	  if (p->info.update.use_hash_hint)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.update.use_hash_hint);
+	      b = pt_append_nulstring (parser, b, "(");
+	      b = pt_append_varchar (parser, b, r1);
+	      b = pt_append_nulstring (parser, b, ") ");
+	    }
+	  else
+	    {
+	      b = pt_append_nulstring (parser, b, " ");
 	    }
 	}
 

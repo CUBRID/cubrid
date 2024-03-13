@@ -7657,7 +7657,8 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_HINT_ENUM hint;
   PT_NODE **ordered = NULL, **use_nl = NULL, **use_idx = NULL;
-  PT_NODE **use_merge = NULL, **use_hash = NULL, **index_ss = NULL, **index_ls = NULL;
+  PT_NODE **use_merge = NULL, **index_ss = NULL, **index_ls = NULL;
+  PT_NODE **no_use_hash = NULL, **use_hash = NULL;
   PT_NODE *spec_list = NULL;
 
   switch (node->node_type)
@@ -7670,6 +7671,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       index_ss = &node->info.query.q.select.index_ss;
       index_ls = &node->info.query.q.select.index_ls;
       use_merge = &node->info.query.q.select.use_merge;
+      no_use_hash = &node->info.query.q.select.no_use_hash;
       use_hash = &node->info.query.q.select.use_hash;
       spec_list = node->info.query.q.select.from;
       break;
@@ -7679,6 +7681,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       use_nl = &node->info.delete_.use_nl_hint;
       use_idx = &node->info.delete_.use_idx_hint;
       use_merge = &node->info.delete_.use_merge_hint;
+      no_use_hash = &node->info.delete_.no_use_hash_hint;
       use_hash = &node->info.delete_.use_hash_hint;
       spec_list = node->info.delete_.spec;
       break;
@@ -7688,6 +7691,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       use_nl = &node->info.update.use_nl_hint;
       use_idx = &node->info.update.use_idx_hint;
       use_merge = &node->info.update.use_merge_hint;
+      no_use_hash = &node->info.update.no_use_hash_hint;
       use_hash = &node->info.update.use_hash_hint;
       spec_list = node->info.update.spec;
       break;
@@ -7764,6 +7768,14 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
   if (hint & PT_HINT_USE_MERGE)
     {
       if (pt_resolve_hint_args (parser, use_merge, spec_list, REQUIRE_ALL_MATCH) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  if (hint & PT_HINT_NO_USE_HASH)
+    {
+      if (pt_resolve_hint_args (parser, no_use_hash, spec_list, REQUIRE_ALL_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}

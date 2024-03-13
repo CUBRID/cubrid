@@ -6434,6 +6434,101 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 
   return NO_ERROR;
 
+
+static int
+qexec_hash_join_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  QFILE_LIST_ID *list_id = NULL;
+  ACCESS_SPEC_TYPE *outer_spec = NULL;	/* prove */
+  ACCESS_SPEC_TYPE *inner_spec = NULL;	/* build */
+  QFILE_LIST_MERGE_INFO *merge_infop = &(xasl->proc.hashjoin.ls_merge);
+  XASL_NODE *outer_xasl, *inner_xasl;
+  int ls_flag = 0;
+
+  outer_xasl = xasl->proc.hashjoin.outer_xasl;
+  inner_xasl = xasl->proc.hashjoin.inner_xasl;
+
+  /* open the empty list file if not already open */
+
+  if (outer_xasl->list_id->type_list.type_cnt == 0)
+    {
+      /* start main block iterations */
+      if (qexec_start_mainblock_iterations (thread_p, outer_xasl, xasl_state) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+    }
+  if (inner_xasl->list_id->type_list.type_cnt == 0)
+    {
+      /* start main block iterations */
+      if (qexec_start_mainblock_iterations (thread_p, inner_xasl, xasl_state) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+    }
+
+  /* If HASHJOIN_PROC does not have 'order by' (xasl->orderby_list), then the list file to be open at here will be the
+   * last one. Otherwise, the last list file will be open at qexec_orderby_distinct(). (Note that only one that can
+   * have 'group by' is BUILDLIST_PROC type.) And, the top most XASL is the other condition for the list file to be the
+   * last result file. */
+
+  QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
+  if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
+      && (xasl->orderby_list == NULL || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)) && xasl->option != Q_DISTINCT)
+    {
+      QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
+    }
+
+  if (merge_infop->join_type == JOIN_INNER)
+    {
+      /* call hash join routine */
+      list_id = qexec_hash_join (thread_p, outer_xasl->list_id, inner_xasl->list_id, merge_infop, ls_flag);
+    }
+#if 0
+  else
+    {
+      outer_spec = xasl->proc.hashjoin.outer_spec_list;
+      inner_spec = xasl->proc.hashjoin.inner_spec_list;
+
+      assert (xasl->scan_op_type == S_SELECT);
+      if (qexec_open_scan (thread_p, outer_spec, xasl->proc.hashjoin.outer_val_list, &xasl_state->vd, false,
+			   outer_spec->fixed_scan, outer_spec->grouped_scan, true, &outer_spec->s_id,
+			   xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      if (qexec_open_scan (thread_p, inner_spec, xasl->proc.hashjoin.inner_val_list, &xasl_state->vd, false,
+			   inner_spec->fixed_scan, inner_spec->grouped_scan, true, &inner_spec->s_id,
+			   xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      /* call hash outer join routine */
+      list_id =
+	qexec_hash_join_outer (thread_p, &outer_spec->s_id, &inner_spec->s_id, merge_infop,
+			       xasl->after_join_pred, xasl_state, ls_flag);
+
+      qexec_close_scan (thread_p, outer_spec);
+      outer_spec = NULL;
+
+      qexec_close_scan (thread_p, inner_spec);
+      inner_spec = NULL;
+    }
+#endif
+
+  if (list_id == NULL)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  /* make this the resultant list file */
+  qfile_copy_list_id (xasl->list_id, list_id, true);
+  QFILE_FREE_AND_INIT_LIST_ID (list_id);
+
+  return NO_ERROR;
+
 exit_on_error:
 
   if (outer_spec)
@@ -13166,6 +13261,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xas
       }
 
     case MERGELIST_PROC:
+    case HASHJOIN_PROC:
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:	/* start SET block iterations */
@@ -13440,6 +13536,13 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 	}
       break;
 
+    case HASHJOIN_PROC:
+      if (qexec_hash_join_listfiles (thread_p, xasl, xasl_state) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      break;
+
     case BUILDVALUE_PROC:	/* end BUILDVALUE_PROC iterations */
       status = qexec_end_buildvalueblock_iterations (thread_p, xasl, xasl_state, tplrec);
       break;
@@ -13557,6 +13660,7 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     case OBJFETCH_PROC:
     case SCAN_PROC:
     case MERGELIST_PROC:
+    case HASHJOIN_PROC:
     case UPDATE_PROC:
     case DELETE_PROC:
     case INSERT_PROC:
@@ -14072,6 +14176,17 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	      outer_xasl = xptr->proc.mergelist.outer_xasl;
 	      inner_xasl = xptr->proc.mergelist.inner_xasl;
+	    }
+	  else if (xptr->type == HASHJOIN_PROC)
+	    {
+	      merge_infop = &(xptr->proc.hashjoin.ls_merge);
+
+	      outer_xasl = xptr->proc.hashjoin.outer_xasl;
+	      inner_xasl = xptr->proc.hashjoin.inner_xasl;
+	    }
+	  else
+	    {
+	      /* nothing to do */
 	    }
 
 	  for (xptr2 = xptr->aptr_list; xptr2; xptr2 = xptr2->next)

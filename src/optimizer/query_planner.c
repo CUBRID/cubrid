@@ -183,6 +183,8 @@ static int qo_examine_nl_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSE
 			       BITSET *, int, BITSET *);
 static int qo_examine_merge_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
 				  BITSET *);
+static int qo_examine_hash_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
+				 BITSET *);
 static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
 static int qo_examine_follow (QO_INFO *, QO_TERM *, QO_INFO *, BITSET *, BITSET *);
 static void qo_compute_projected_segs (QO_PLANNER *, BITSET *, BITSET *, BITSET *);
@@ -325,6 +327,17 @@ static QO_PLAN_VTBL qo_merge_join_plan_vtbl = {
   qo_mjoin_cost,
   qo_join_info,
   "Merge join"
+};
+
+static QO_PLAN_VTBL qo_hash_join_plan_vtbl = {
+  "hash-join",
+  qo_join_fprint,
+  qo_join_walk,
+  qo_join_free,
+  qo_mjoin_cost,		/* TO DO - add qo_hjoin_cost */
+  qo_mjoin_cost,		/* TO DO - add qo_hjoin_cost */
+  qo_join_info,
+  "Hash join"
 };
 
 static QO_PLAN_VTBL qo_follow_plan_vtbl = {
@@ -2637,8 +2650,8 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
       break;
 
     case QO_JOINMETHOD_MERGE_JOIN:
-
       plan->vtbl = &qo_merge_join_plan_vtbl;
+
 #if 0
       /* Don't do this anymore; it relies on symmetry, which definitely doesn't apply anymore with the advent of outer
        * joins.
@@ -2676,6 +2689,11 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 	  inner = qo_sort_new (inner, inner->order, SORT_TEMP);
 	}
 
+      break;
+
+    case QO_JOINMETHOD_HASH_JOIN:
+      plan->vtbl = &qo_hash_join_plan_vtbl;
+      plan->order = QO_UNORDERED;
       break;
     }
 
@@ -5572,6 +5590,15 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
       /* join hint: force merge-join; skip idx-join */
       goto exit;
     }
+  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+    {
+      /* join hint: force hash-join; skip idx-join */
+      goto exit;
+    }
+  else
+    {
+      /* fall through */
+    }
 
   /* check whether we can build a nested loop join with a correlated index scan. That is, is the inner term a scan of a
    * single node, and can this join term be used as an index with respect to that node? If so, we can build a special
@@ -5657,8 +5684,17 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	    }
 	  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
 	    {
-	      /* join hint: force idx-join or merge-join; skip nl-join */
+	      /* join hint: force idx-join, merge-join; skip nl-join */
 	      goto exit;
+	    }
+	  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+	    {
+	      /* join hint: force hash-join; skip nl-join */
+	      goto exit;
+	    }
+	  else
+	    {
+	      /* fall through */
 	    }
 	}
 
@@ -5683,8 +5719,17 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	}
       else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
 	{
-	  /* join hint: force idx-join or merge-join; skip nl-join */
+	  /* join hint: force idx-join, merge-join; skip nl-join */
 	  goto exit;
+	}
+      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+	{
+	  /* join hint: force hash-join; skip nl-join */
+	  goto exit;
+	}
+      else
+	{
+	  /* fall through */
 	}
 
       outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
@@ -5823,17 +5868,26 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
 
   if (QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
     {
-      /* join hint: force m-join; */
+      /* join hint: force m-join */
     }
   else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX))
     {
-      /* join hint: force nl-join, idx-join; */
+      /* join hint: force nl-join, idx-join; skip m-join */
+      goto exit;
+    }
+  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+    {
+      /* join hint: force hash-join; skip m-join */
       goto exit;
     }
   else if (!prm_get_bool_value (PRM_ID_OPTIMIZER_ENABLE_MERGE_JOIN))
     {
       /* optimizer prm: keep out m-join; */
       goto exit;
+    }
+  else
+    {
+      /* fall through */
     }
 
   outer_plan = qo_find_best_plan_on_info (outer, order, 1.0);
@@ -5885,6 +5939,78 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
   n =
     qo_check_plan_on_info (info,
 			   qo_join_new (info, join_type, QO_JOINMETHOD_MERGE_JOIN, outer_plan, inner_plan,
+					sm_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
+					&empty_terms));
+
+exit:
+
+  return n;
+}
+
+/*
+ * qo_examine_hash_join () -
+ *   return:
+ *   info(in):
+ *   join_type(in):
+ *   outer(in):
+ *   inner(in):
+ *   sm_join_terms(in):
+ *   duj_terms(in):
+ *   afj_terms(in):
+ *   sarged_terms(in):
+ *   pinned_subqueries(in):
+ */
+static int
+qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * sm_join_terms,
+		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
+{
+  int n = 0;
+  QO_PLAN *outer_plan, *inner_plan;
+  QO_NODE *inner_node;
+  BITSET empty_terms;
+  bitset_init (&empty_terms, info->env);
+
+  /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
+   * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work.
+   */
+  if (bitset_intersects (sarged_terms, &(info->env->fake_terms)))
+    {
+      goto exit;
+    }
+
+  /* At here, inner is single class spec */
+  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+
+  if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+    {
+      /* join hint: force hash-join */
+    }
+  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+    {
+      /* join hint: force nl-join, idx-join, m-join; skip hash-join */
+      goto exit;
+    }
+  else
+    {
+      /* default: disable hash-join */
+      goto exit;
+    }
+
+  outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
+  if (outer_plan == NULL)
+    {
+      goto exit;
+    }
+
+  inner_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
+  if (inner_plan == NULL)
+    {
+      goto exit;
+    }
+
+  n =
+    qo_check_plan_on_info (info,
+			   qo_join_new (info, join_type, QO_JOINMETHOD_HASH_JOIN, outer_plan, inner_plan,
 					sm_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
 					&empty_terms));
 
@@ -7027,6 +7153,16 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 				     &sarged_terms, &pinned_subqueries);
 	  }
 #endif /* MERGE_JOINS */
+
+#if 1				/* HASH_JOINS */
+	/* STEP 5-5: examine hash-join */
+	if (!bitset_is_empty (&sm_join_terms))
+	  {
+	    kept +=
+	      qo_examine_hash_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
+				    &sarged_terms, &pinned_subqueries);
+	  }
+#endif /* HASH_JOINS */
       }
 
     /* At this point, kept indicates the number of worthwhile plans generated by examine_joins (i.e., plans that where
@@ -7172,12 +7308,18 @@ planner_nodeset_join_cost (QO_PLANNER * planner, BITSET * nodeset)
       /* apply join cost; add to the total cost */
       total_cost += pages;
 
+      /* TO DO - Consider the priority of hints */
       if (QO_NODE_HINT (node) & (PT_HINT_USE_IDX | PT_HINT_USE_NL))
 	{
-	  /* join hint: force idx-join, nl-join; */
+	  /* join hint: force idx-join, nl-join */
+	}
+      else if (!(QO_NODE_HINT (node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (node) & PT_HINT_USE_HASH))
+	{
+	  /* join hint: force hash-join */
 	}
       else if (QO_NODE_HINT (node) & PT_HINT_USE_MERGE)
-	{			/* force m-join */
+	{
+	  /* join hint: force m-join */
 	  if (plan->plan_type == QO_PLANTYPE_SORT)
 	    {
 	      subplan = plan->plan_un.sort.subplan;
@@ -7203,6 +7345,10 @@ planner_nodeset_join_cost (QO_PLANNER * planner, BITSET * nodeset)
 	      /* do guessing: apply outer, inner cost */
 	      total_cost += pages * 2.0;
 	    }
+	}
+      else
+	{
+	  /* fall through */
 	}
     }
 

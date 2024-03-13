@@ -144,7 +144,8 @@ HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * ke
 HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
 						   REGU_VARIABLE_LIST probe_regu_list, HASH_SCAN_KEY * new_key);
 
-int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args);
+int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
+				 void *args);
 
 /* FILE HASH STRUCTURE */
 typedef struct temp_file_tuple_id TFTID;

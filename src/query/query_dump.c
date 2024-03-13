@@ -66,6 +66,7 @@ static bool qdump_print_db_value_array (DB_VALUE ** array, int cnt);
 static bool qdump_print_column (const char *title_p, int col_count, int *column_p);
 static bool qdump_print_list_merge_info (QFILE_LIST_MERGE_INFO * ptr);
 static bool qdump_print_merge_list_proc_node (MERGELIST_PROC_NODE * ptr);
+static bool qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * ptr);
 static bool qdump_print_update_proc_node (UPDATE_PROC_NODE * ptr);
 static bool qdump_print_delete_proc_node (DELETE_PROC_NODE * ptr);
 static bool qdump_print_insert_proc_node (INSERT_PROC_NODE * ptr);
@@ -151,6 +152,9 @@ qdump_print_xasl_type (XASL_NODE * xasl_p)
       break;
     case MERGELIST_PROC:
       type_string_p = "mergelist_proc";
+      break;
+    case HASHJOIN_PROC:
+      type_string_p = "hashjoin_proc";
       break;
     case UPDATE_PROC:
       type_string_p = "update_proc";
@@ -258,6 +262,46 @@ qdump_print_list_merge_info (QFILE_LIST_MERGE_INFO * merge_info_p)
  */
 static bool
 qdump_print_merge_list_proc_node (MERGELIST_PROC_NODE * node_p)
+{
+  fprintf (foutput, "[outer xasl:%p]\n", node_p->outer_xasl);
+  if (node_p->outer_spec_list)
+    {
+      fprintf (foutput, "-->outer access spec:");
+      qdump_print_access_spec (node_p->outer_spec_list);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->outer_val_list)
+    {
+      fprintf (foutput, "-->outer val_list:");
+      qdump_print_value_list (node_p->outer_val_list);
+      fprintf (foutput, "\n");
+    }
+
+  fprintf (foutput, "[inner xasl:%p]\n", node_p->inner_xasl);
+
+  if (node_p->inner_spec_list)
+    {
+      fprintf (foutput, "-->inner access spec:");
+      qdump_print_access_spec (node_p->inner_spec_list);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->inner_val_list)
+    {
+      fprintf (foutput, "-->inner val_list:");
+      qdump_print_value_list (node_p->inner_val_list);
+      fprintf (foutput, "\n");
+    }
+
+  qdump_print_list_merge_info (&node_p->ls_merge);
+  fprintf (foutput, "\n");
+
+  return true;
+}
+
+static bool
+qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * node_p)
 {
   fprintf (foutput, "[outer xasl:%p]\n", node_p->outer_xasl);
   if (node_p->outer_spec_list)
@@ -1379,7 +1423,11 @@ qdump_print_value_type_addr (REGU_VARIABLE * regu_var_p)
 static bool
 qdump_print_oid (OID * oid_p)
 {
-  fprintf (foutput, "[OID:%d,%d,%d]", oid_p->pageid, oid_p->slotid, oid_p->volid);
+  if (oid_p)
+    {
+      fprintf (foutput, "[OID:%d,%d,%d]", oid_p->pageid, oid_p->slotid, oid_p->volid);
+    }
+
   return true;
 }
 
@@ -1965,13 +2013,27 @@ qdump_check_node (XASL_NODE * xasl_p, QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUM
       break;
 
     case MERGELIST_PROC:
-      check_node1_p = qdump_find_check_node_for (xasl_p->proc.mergelist.inner_xasl, chk_nodes);
+      check_node1_p = qdump_find_check_node_for (xasl_p->proc.mergelist.outer_xasl, chk_nodes);
       if (check_node1_p)
 	{
 	  check_node1_p->referenced = 1;
 	}
 
       check_node1_p = qdump_find_check_node_for (xasl_p->proc.mergelist.inner_xasl, chk_nodes);
+      if (check_node1_p)
+	{
+	  check_node1_p->referenced = 1;
+	}
+      break;
+
+    case HASHJOIN_PROC:
+      check_node1_p = qdump_find_check_node_for (xasl_p->proc.hashjoin.outer_xasl, chk_nodes);
+      if (check_node1_p)
+	{
+	  check_node1_p->referenced = 1;
+	}
+
+      check_node1_p = qdump_find_check_node_for (xasl_p->proc.hashjoin.inner_xasl, chk_nodes);
       if (check_node1_p)
 	{
 	  check_node1_p->referenced = 1;
@@ -2618,9 +2680,15 @@ qdump_print_xasl (xasl_node * xasl_p)
       break;
 
     case MERGELIST_PROC:
-      fprintf (foutput, "inner xasl:%p\n", xasl_p->proc.mergelist.inner_xasl);
       fprintf (foutput, "outer xasl:%p\n", xasl_p->proc.mergelist.outer_xasl);
+      fprintf (foutput, "inner xasl:%p\n", xasl_p->proc.mergelist.inner_xasl);
       qdump_print_merge_list_proc_node (&xasl_p->proc.mergelist);
+      break;
+
+    case HASHJOIN_PROC:
+      fprintf (foutput, "outer xasl:%p\n", xasl_p->proc.hashjoin.outer_xasl);
+      fprintf (foutput, "inner xasl:%p\n", xasl_p->proc.hashjoin.inner_xasl);
+      qdump_print_hash_join_proc_node (&xasl_p->proc.hashjoin);
       break;
 
     case CONNECTBY_PROC:
@@ -2745,6 +2813,8 @@ qdump_xasl_type_string (XASL_NODE * xasl_p)
       return "INTERSECTION";
     case MERGELIST_PROC:
       return "MERGELIST";
+    case HASHJOIN_PROC:
+      return "HASHJOIN";
     case CONNECTBY_PROC:
       return "CONNECTBY";
     case OBJFETCH_PROC:
@@ -2951,6 +3021,17 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
       qdump_print_stats_json (xasl_p->proc.mergelist.outer_xasl, outer);
       qdump_print_stats_json (xasl_p->proc.mergelist.inner_xasl, inner);
+
+      json_object_set_new (proc, "outer", outer);
+      json_object_set_new (proc, "inner", inner);
+      break;
+
+    case HASHJOIN_PROC:
+      outer = json_object ();
+      inner = json_object ();
+
+      qdump_print_stats_json (xasl_p->proc.hashjoin.outer_xasl, outer);
+      qdump_print_stats_json (xasl_p->proc.hashjoin.inner_xasl, inner);
 
       json_object_set_new (proc, "outer", outer);
       json_object_set_new (proc, "inner", inner);
@@ -3243,6 +3324,12 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       fprintf (fp, "MERGELIST\n");
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.outer_xasl, indent);
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.inner_xasl, indent);
+      break;
+
+    case HASHJOIN_PROC:
+      fprintf (fp, "HASHJOIN\n");
+      qdump_print_stats_text (fp, xasl_p->proc.hashjoin.outer_xasl, indent);
+      qdump_print_stats_text (fp, xasl_p->proc.hashjoin.inner_xasl, indent);
       break;
 
     case MERGE_PROC:

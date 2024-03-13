@@ -2254,6 +2254,7 @@ struct pt_delete_info
   PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
   PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
   PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
+  PT_NODE *no_use_hash_hint;	/* NO_USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
@@ -2890,6 +2891,7 @@ struct pt_select_info
   PT_NODE *index_ss;		/* PT_NAME (list) */
   PT_NODE *index_ls;		/* PT_NAME (list) */
   PT_NODE *use_merge;		/* PT_NAME (list) */
+  PT_NODE *no_use_hash;		/* PT_NAME (list) */
   PT_NODE *use_hash;		/* PT_NAME (list) */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_NODE *jdbc_life_time;	/* jdbc cache life time */
@@ -3065,6 +3067,7 @@ struct pt_update_info
   PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
   PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
   PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
+  PT_NODE *no_use_hash_hint;	/* NO_USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *order_by;		/* PT_EXPR (list) */

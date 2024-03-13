@@ -177,6 +177,8 @@ extern XASL_NODE *ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * x
 extern SORT_LIST *ptqo_single_orderby (PARSER_CONTEXT * parser);
 extern XASL_NODE *ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * right,
 					   JOIN_TYPE join_type);
+extern XASL_NODE *ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * right,
+					  JOIN_TYPE join_type);
 extern void pt_set_dptr (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl, UINTPTR id);
 extern PT_NODE *pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 

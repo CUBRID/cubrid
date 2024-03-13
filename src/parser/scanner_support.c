@@ -509,14 +509,20 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.no_use_hash = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
 	    }
 	  else if (node->node_type == PT_DELETE)
 	    {
 	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	      node->info.delete_.no_use_hash_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
 	    }
 	  else if (node->node_type == PT_UPDATE)
 	    {
 	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	      node->info.update.no_use_hash_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
 	    }
 	  break;
 	case PT_HINT_USE_HASH:	/* force hash-join */

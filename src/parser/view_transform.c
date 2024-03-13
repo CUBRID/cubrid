@@ -13731,7 +13731,7 @@ mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * query_cache)
 static void
 mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_query)
 {
-  bool is_index_ss, is_index_ls;
+  bool is_index_ss, is_index_ls, is_use_hash, is_no_use_hash;
 
   if (dest_query->node_type == PT_SELECT)
     {
