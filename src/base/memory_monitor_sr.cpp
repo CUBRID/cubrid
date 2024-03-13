@@ -40,8 +40,6 @@ extern "C" size_t malloc_usable_size (void *);
 #endif
 #endif
 
-#include "error_manager.h"
-#include "system_parameter.h"
 #include "memory_monitor_sr.hpp"
 
 typedef struct mmon_metainfo MMON_METAINFO;
@@ -54,8 +52,6 @@ struct mmon_metainfo
 
 namespace cubmem
 {
-  memory_monitor *mmon_Gl = nullptr;
-
   memory_monitor::memory_monitor (const char *server_name)
     : m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")},
@@ -247,65 +243,4 @@ namespace cubmem
     fflush (outfile_fp);
     fclose (outfile_fp);
   }
-}
-
-using namespace cubmem;
-
-bool mmon_is_memory_monitor_enabled ()
-{
-  return (mmon_Gl != nullptr);
-}
-
-int mmon_initialize (const char *server_name)
-{
-  int error = NO_ERROR;
-
-  assert (mmon_Gl == nullptr);
-  assert (server_name != nullptr);
-
-  if (prm_get_bool_value (PRM_ID_ENABLE_MEMORY_MONITORING))
-    {
-#if !defined(WINDOWS)
-      mmon_Gl = new (std::nothrow) memory_monitor (server_name);
-      if (mmon_Gl == nullptr)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (memory_monitor));
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return error;
-	}
-#endif // !WINDOWS
-    }
-  return error;
-}
-
-void mmon_finalize ()
-{
-  if (mmon_is_memory_monitor_enabled ())
-    {
-#if !defined (NDEBUG)
-      mmon_Gl->finalize_dump ();
-#endif
-      delete mmon_Gl;
-      mmon_Gl = nullptr;
-    }
-}
-
-size_t mmon_get_allocated_size (char *ptr)
-{
-  return mmon_Gl->get_allocated_size (ptr);
-}
-
-void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line)
-{
-  mmon_Gl->add_stat (ptr, size, file, line);
-}
-
-void mmon_sub_stat (char *ptr)
-{
-  mmon_Gl->sub_stat (ptr);
-}
-
-void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
-{
-  mmon_Gl->aggregate_server_info (server_info);
 }
