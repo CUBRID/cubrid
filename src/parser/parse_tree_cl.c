@@ -7579,11 +7579,14 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.sp.type == PT_SP_FUNCTION)
     {
       q = pt_append_nulstring (parser, q, " return ");
-      if (p->info.sp.ret_data_type) {
-          q = pt_append_varchar(parser, q, pt_print_bytes (parser, p->info.sp.ret_data_type));
-      } else {
-          q = pt_append_nulstring (parser, q, pt_show_type_enum (p->info.sp.ret_type));
-      }
+      if (p->info.sp.ret_data_type)
+	{
+	  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.sp.ret_data_type));
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, pt_show_type_enum (p->info.sp.ret_type));
+	}
     }
 
   r3 = pt_print_bytes (parser, p->info.sp.body);
@@ -7845,11 +7848,14 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, " ");
   q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp_param.mode));
   q = pt_append_nulstring (parser, q, " ");
-  if (p->data_type) {
+  if (p->data_type)
+    {
       q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->data_type));
-  } else {
+    }
+  else
+    {
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
-  }
+    }
 
   if (p->info.sp_param.comment != NULL)
     {
