@@ -13546,7 +13546,8 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 
 	  if (node->info.query.correlation_level == info->level)
 	    {
-	      if (pt_is_allowed_result_cache () && (node->info.query.hint & PT_HINT_QUERY_CACHE))
+	      /* to check result-cache for uncorrelated subquery (aptr_list) */
+	      if ((node->info.query.hint & PT_HINT_QUERY_CACHE) && pt_is_allowed_result_cache ())
 		{
 		  do_prepare_subquery (parser, node);
 		}

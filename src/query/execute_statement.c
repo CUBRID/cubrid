@@ -14335,20 +14335,18 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       PT_NODE *cte_list = stmt->info.query.with->info.with_clause.cte_definition_list;
 
       err = do_prepare_cte (parser, cte_list);
-      if (err != NO_ERROR)
-	{
-	  *res = err;
-	}
-      *continue_walk = PT_STOP_WALK;
     }
   else if ((stmt->info.query.hint & PT_HINT_QUERY_CACHE) && stmt->info.query.is_subquery == PT_IS_SUBQUERY)
     {
       err = do_prepare_subquery (parser, stmt);
-      {
-	*res = err;
-      }
-      *continue_walk = PT_STOP_WALK;
     }
+  else
+    {
+      return stmt;
+    }
+
+  *res = err;
+  *continue_walk = PT_STOP_WALK;
 
   return stmt;
 }
@@ -14717,7 +14715,7 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables;
   CACHE_TIME clt_cache_time;
-  int err, i, flag = RESULT_CACHE_REQUIRED;
+  int err = NO_ERROR, i, flag = RESULT_CACHE_REQUIRED;
 
   CACHE_TIME_RESET (&clt_cache_time);
 
@@ -14742,14 +14740,9 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 		       flag, &clt_cache_time, &stmt->cache_time);
 
       free (host_variables);
-
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 /*
@@ -14768,7 +14761,7 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables;
   CACHE_TIME clt_cache_time;
-  int err, i, flag = RESULT_CACHE_REQUIRED;
+  int err = NO_ERROR, i, flag = RESULT_CACHE_REQUIRED;
 
   assert (statement && statement->info.query.with);
 
@@ -14776,7 +14769,7 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CACHE_TIME_RESET (&clt_cache_time);
 
-  while (cte_list)
+  while (cte_list && err == NO_ERROR)
     {
       stmt = cte_list->info.cte.non_recursive_part;
       if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
@@ -14799,16 +14792,11 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 			   flag, &clt_cache_time, &stmt->cache_time);
 
 	  free (host_variables);
-
-	  if (err != NO_ERROR)
-	    {
-	      return err;
-	    }
 	}
       cte_list = cte_list->next;
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 /*
@@ -14971,21 +14959,18 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
   if (stmt->info.query.with)
     {
       err = do_execute_cte (parser, stmt);
-      if (err != NO_ERROR)
-	{
-	  *res = err;
-	}
-      *continue_walk = PT_STOP_WALK;
     }
   else if ((stmt->info.query.hint & PT_HINT_QUERY_CACHE) && stmt->xasl_id && stmt->info.query.flag.subquery_cached)
     {
       err = do_execute_subquery (parser, stmt);
-      if (err != NO_ERROR)
-	{
-	  *res = err;
-	}
-      *continue_walk = PT_STOP_WALK;
     }
+  else
+    {
+      return stmt;
+    }
+
+  *res = err;
+  *continue_walk = PT_STOP_WALK;
 
   return stmt;
 }
