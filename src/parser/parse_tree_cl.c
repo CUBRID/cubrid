@@ -8532,6 +8532,7 @@ pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.delete_.use_nl_hint, arg);
   PT_APPLY_WALK (parser, p->info.delete_.use_idx_hint, arg);
   PT_APPLY_WALK (parser, p->info.delete_.use_merge_hint, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.no_use_hash_hint, arg);
   PT_APPLY_WALK (parser, p->info.delete_.use_hash_hint, arg);
   PT_APPLY_WALK (parser, p->info.delete_.limit, arg);
 
@@ -13932,6 +13933,7 @@ pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.query.q.select.index_ss, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.index_ls, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.use_merge, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.no_use_hash, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.use_hash, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.waitsecs_hint, arg);
   PT_APPLY_WALK (parser, p->info.query.into_list, arg);
@@ -15319,6 +15321,7 @@ pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.update.use_nl_hint, arg);
   PT_APPLY_WALK (parser, p->info.update.use_idx_hint, arg);
   PT_APPLY_WALK (parser, p->info.update.use_merge_hint, arg);
+  PT_APPLY_WALK (parser, p->info.update.no_use_hash_hint, arg);
   PT_APPLY_WALK (parser, p->info.update.use_hash_hint, arg);
   PT_APPLY_WALK (parser, p->info.update.limit, arg);
 

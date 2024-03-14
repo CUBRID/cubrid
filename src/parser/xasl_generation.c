@@ -1168,7 +1168,7 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
 
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
     {
-      PT_NODE *ordered, *use_nl, *use_idx, *index_ss, *index_ls, *use_merge, *use_hash;
+      PT_NODE *ordered, *use_nl, *use_idx, *index_ss, *index_ls, *use_merge, *no_use_hash, *use_hash;
       PT_HINT_ENUM hint;
       const char *alias_print;
 
@@ -1194,6 +1194,9 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
       use_merge = select_node->info.query.q.select.use_merge;
       select_node->info.query.q.select.use_merge = NULL;
 
+      no_use_hash = select_node->info.query.q.select.no_use_hash;
+      select_node->info.query.q.select.no_use_hash = NULL;
+
       use_hash = select_node->info.query.q.select.use_hash;
       select_node->info.query.q.select.use_hash = NULL;
 
@@ -1211,6 +1214,7 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
       select_node->info.query.q.select.index_ss = index_ss;
       select_node->info.query.q.select.index_ls = index_ls;
       select_node->info.query.q.select.use_merge = use_merge;
+      select_node->info.query.q.select.no_use_hash = no_use_hash;
       select_node->info.query.q.select.use_hash = use_hash;
 
       select_node->alias_print = alias_print;
@@ -17476,6 +17480,11 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	  parser_free_tree (parser, select_node->info.query.q.select.use_merge);
 	  select_node->info.query.q.select.use_merge = NULL;
 	}
+      if (select_node->info.query.q.select.no_use_hash)
+	{
+	  parser_free_tree (parser, select_node->info.query.q.select.no_use_hash);
+	  select_node->info.query.q.select.no_use_hash = NULL;
+	}
       if (select_node->info.query.q.select.use_hash)
 	{
 	  parser_free_tree (parser, select_node->info.query.q.select.use_hash);
@@ -19507,7 +19516,7 @@ int
 pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * select_stmt)
 {
   int err = NO_ERROR;
-  int hint_flags =
+  PT_HINT_ENUM hint_flags =
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
     PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
     PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH;

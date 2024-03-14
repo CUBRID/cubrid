@@ -7818,6 +7818,10 @@ exit_on_error:
     {
       parser_free_tree (parser, *use_merge);
     }
+  if (*no_use_hash != NULL)
+    {
+      parser_free_tree (parser, *no_use_hash);
+    }
   if (*use_hash != NULL)
     {
       parser_free_tree (parser, *use_hash);
@@ -7832,6 +7836,7 @@ exit_on_error:
       node->info.query.q.select.index_ss = NULL;
       node->info.query.q.select.index_ls = NULL;
       node->info.query.q.select.use_merge = NULL;
+      node->info.query.q.select.no_use_hash = NULL;
       node->info.query.q.select.use_hash = NULL;
       break;
     case PT_DELETE:
@@ -7839,6 +7844,7 @@ exit_on_error:
       node->info.delete_.use_nl_hint = NULL;
       node->info.delete_.use_idx_hint = NULL;
       node->info.delete_.use_merge_hint = NULL;
+      node->info.delete_.no_use_hash_hint = NULL;
       node->info.delete_.use_hash_hint = NULL;
       break;
     case PT_UPDATE:
@@ -7846,6 +7852,7 @@ exit_on_error:
       node->info.update.use_nl_hint = NULL;
       node->info.update.use_idx_hint = NULL;
       node->info.update.use_merge_hint = NULL;
+      node->info.delete_.no_use_hash_hint = NULL;
       node->info.delete_.use_hash_hint = NULL;
       break;
     default:
