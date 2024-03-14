@@ -5967,8 +5967,6 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
   QO_NODE *inner_node;
-  BITSET empty_terms;
-  bitset_init (&empty_terms, info->env);
 
   /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
    * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work.
@@ -6012,7 +6010,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
     qo_check_plan_on_info (info,
 			   qo_join_new (info, join_type, QO_JOINMETHOD_HASH_JOIN, outer_plan, inner_plan,
 					sm_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
-					&empty_terms));
+					sm_join_terms));
 
 exit:
 

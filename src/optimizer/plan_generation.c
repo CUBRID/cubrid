@@ -538,13 +538,16 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
   XASL_NODE *hashjoin = NULL;
   PARSER_CONTEXT *parser = NULL;
   QFILE_LIST_MERGE_INFO *ls_merge;
+  PT_NODE *outer_spec, *inner_spec;
   PT_NODE *outer_attr, *inner_attr;
+  PT_NODE *hash_pred;
   int i, left_epos, rght_epos, cnt, seg_idx, ncols;
   int left_nlen, left_elen, rght_nlen, rght_elen, nlen;
   SORT_LIST *order, *prev_order;
   QO_TERM *term;
   BITSET_ITERATOR bi;
   BITSET term_segs;
+  int *poslist;
 
   bitset_init (&term_segs, env);
 
@@ -699,91 +702,102 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
     }
 
   /* make outer_spec_list, outer_val_list, inner_spec_list, and inner_val_list */
+
+  /* set poslist of outer XASL node */
+  poslist = NULL;		/* init */
+  if (left_elen > 0)
+    {
+      /* proceed to name list and skip out join edge exprs */
+      for (i = 0; i < left_elen; i++)
+	{
+	  left_list = left_list->next;
+	}
+
+      poslist = (int *) malloc (left_nlen * sizeof (int));
+      if (poslist == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, left_nlen * sizeof (int));
+	  goto exit_on_error;
+	}
+
+      for (i = 0; i < left_nlen; i++)
+	{
+	  poslist[i] = i + left_elen;
+	}
+    }
+
+  /* sets xasl->spec_list and xasl->val_list */
+  hashjoin = ptqo_to_list_scan_proc (parser, hashjoin, SCAN_PROC, left, left_list, NULL, poslist);
+  /* dealloc */
+  if (poslist != NULL)
+    {
+      free_and_init (poslist);
+    }
+
+  if (hashjoin == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  hashjoin->proc.hashjoin.outer_spec_list = hashjoin->spec_list;
+  hashjoin->proc.hashjoin.outer_val_list = hashjoin->val_list;
+
+  hashjoin->spec_list = NULL;
+  hashjoin->val_list = NULL;
+
+  /* set poslist of inner XASL node */
+  poslist = NULL;		/* init */
+  if (rght_elen > 0)
+    {
+      /* proceed to name list and skip out join edge exprs */
+      for (i = 0; i < rght_elen; i++)
+	{
+	  rght_list = rght_list->next;
+	}
+
+      poslist = (int *) malloc (rght_nlen * sizeof (int));
+      if (poslist == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, rght_nlen * sizeof (int));
+	  goto exit_on_error;
+	}
+
+      for (i = 0; i < rght_nlen; i++)
+	{
+	  poslist[i] = i + rght_elen;
+	}
+    }
+
+#if 0
+  /* sets xasl->spec_list and xasl->val_list */
+  hashjoin = ptqo_to_list_scan_proc (parser, hashjoin, rght, rght_list, NULL, poslist);
+#else
+  inner_spec = QO_NODE_ENTITY_SPEC ((plan->plan_un.join.inner)->plan_un.scan.node);
+  hash_pred = make_pred_from_bitset (env, &(plan->plan_un.join.join_terms), is_always_true);
+
+  /* sets xasl->spec_list and xasl->val_list */
+  hashjoin = ptqo_to_hash_build_scan_proc (parser, hashjoin, rght, rght_list, inner_spec, NULL, hash_pred, poslist);
+#endif
+  /* dealloc */
+  if (poslist)
+    {
+      free_and_init (poslist);
+    }
+
+  if (hashjoin == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  hashjoin->proc.hashjoin.inner_spec_list = hashjoin->spec_list;
+  hashjoin->proc.hashjoin.inner_val_list = hashjoin->val_list;
+
+  hashjoin->spec_list = NULL;
+  hashjoin->val_list = NULL;
+
   if (ls_merge->join_type != JOIN_INNER)
     {
       PT_NODE *other_pred;
-      int *poslist;
-
-      /* set poslist of outer XASL node */
-      poslist = NULL;		/* init */
-      if (left_elen > 0)
-	{
-	  /* proceed to name list and skip out join edge exprs */
-	  for (i = 0; i < left_elen; i++)
-	    {
-	      left_list = left_list->next;
-	    }
-
-	  poslist = (int *) malloc (left_nlen * sizeof (int));
-	  if (poslist == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, left_nlen * sizeof (int));
-	      goto exit_on_error;
-	    }
-
-	  for (i = 0; i < left_nlen; i++)
-	    {
-	      poslist[i] = i + left_elen;
-	    }
-	}
-
-      /* sets xasl->spec_list and xasl->val_list */
-      hashjoin = ptqo_to_list_scan_proc (parser, hashjoin, SCAN_PROC, left, left_list, NULL, poslist);
-      /* dealloc */
-      if (poslist != NULL)
-	{
-	  free_and_init (poslist);
-	}
-
-      if (hashjoin == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      hashjoin->proc.mergelist.outer_spec_list = hashjoin->spec_list;
-      hashjoin->proc.mergelist.outer_val_list = hashjoin->val_list;
-
-      /* set poslist of inner XASL node */
-      poslist = NULL;		/* init */
-      if (rght_elen > 0)
-	{
-	  /* proceed to name list and skip out join edge exprs */
-	  for (i = 0; i < rght_elen; i++)
-	    {
-	      rght_list = rght_list->next;
-	    }
-
-	  poslist = (int *) malloc (rght_nlen * sizeof (int));
-	  if (poslist == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, rght_nlen * sizeof (int));
-	      goto exit_on_error;
-	    }
-
-	  for (i = 0; i < rght_nlen; i++)
-	    {
-	      poslist[i] = i + rght_elen;
-	    }
-	}
-
-      /* sets xasl->spec_list and xasl->val_list */
-      hashjoin = ptqo_to_list_scan_proc (parser, hashjoin, SCAN_PROC, rght, rght_list, NULL, poslist);
-      /* dealloc */
-      if (poslist)
-	{
-	  free_and_init (poslist);
-	}
-
-      if (hashjoin == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      hashjoin->proc.mergelist.inner_spec_list = hashjoin->spec_list;
-      hashjoin->proc.mergelist.inner_val_list = hashjoin->val_list;
-
-      hashjoin->spec_list = NULL;
-      hashjoin->val_list = NULL;
 
       /* add outer join terms */
       other_pred = make_pred_from_bitset (env, &(plan->plan_un.join.during_join_terms), is_always_true);
@@ -795,13 +809,6 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
 	  parser_free_tree (parser, other_pred);
 	}
     }
-  else
-    {
-      hashjoin->proc.mergelist.outer_spec_list = NULL;
-      hashjoin->proc.mergelist.outer_val_list = NULL;
-      hashjoin->proc.mergelist.inner_spec_list = NULL;
-      hashjoin->proc.mergelist.inner_val_list = NULL;
-    }
 
 exit_on_end:
 
@@ -812,6 +819,7 @@ exit_on_end:
 exit_on_error:
 
   hashjoin = NULL;
+
   goto exit_on_end;
 }
 
@@ -2846,7 +2854,6 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    bitset_delset (&temp_segs);
 	    bitset_delset (&left_exprs);
 	    bitset_delset (&rght_exprs);
-
 	  }
 
 	  /*

@@ -503,6 +503,20 @@ static QFILE_LIST_ID *qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID *
 					      QFILE_LIST_MERGE_INFO * merge_infop, PRED_EXPR * other_outer_join_pred,
 					      XASL_STATE * xasl_state, int ls_flag);
 static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+#if 1
+static QFILE_LIST_ID *qexec_hash_join (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp,
+				       QFILE_LIST_ID * inner_list_idp, QFILE_LIST_MERGE_INFO * merge_infop,
+				       int ls_flag);
+#else
+static QFILE_LIST_ID *qexec_hash_join (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * outer_spec,
+				       VAL_LIST * outer_val_list, ACCESS_SPEC_TYPE * inner_spec,
+				       VAL_LIST * inner_val_list, QFILE_LIST_MERGE_INFO * merge_infop,
+				       XASL_STATE * xasl_state);
+#endif
+static QFILE_LIST_ID *qexec_hash_join_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * inner_sid,
+					     QFILE_LIST_MERGE_INFO * merge_infop, PRED_EXPR * other_outer_join_pred,
+					     XASL_STATE * xasl_state, int ls_flag);
+static int qexec_hash_join_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list, VAL_DESCR * vd,
 			    bool force_select_lock, int fixed, int grouped, bool iscan_oid_order, SCAN_ID * s_id,
 			    QUERY_ID query_id, SCAN_OPERATION_TYPE scan_op_type, bool scan_immediately_stop,
@@ -6434,6 +6448,666 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 
   return NO_ERROR;
 
+exit_on_error:
+
+  if (outer_spec)
+    {
+      qexec_close_scan (thread_p, outer_spec);
+    }
+  if (inner_spec)
+    {
+      qexec_close_scan (thread_p, inner_spec);
+    }
+
+  return ER_FAILED;
+}
+
+#if 1
+static QFILE_LIST_ID *
+qexec_hash_join (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE_LIST_ID * inner_list_idp,
+		 QFILE_LIST_MERGE_INFO * merge_infop, int ls_flag)
+#else
+static QFILE_LIST_ID *
+qexec_hash_join (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * outer_spec, VAL_LIST * outer_val_list,
+		 ACCESS_SPEC_TYPE * inner_spec, VAL_LIST * inner_val_list, QFILE_LIST_MERGE_INFO * merge_infop,
+		 XASL_STATE * xasl_state)
+#endif
+{
+  /* outer -> left scan, inner -> right scan */
+
+  /* pre-defined vars: */
+  QFILE_LIST_ID *list_idp = NULL;
+  int nvals;
+
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD temp_tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD outer_tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD inner_tplrec = { NULL, 0 };
+  int *outer_indp, *inner_indp;
+  char **outer_valp = NULL, **inner_valp = NULL;
+  SCAN_CODE outer_scan = S_END, inner_scan = S_END;
+  QFILE_LIST_SCAN_ID outer_sid, inner_sid;
+
+  TP_DOMAIN **outer_domp = NULL, **inner_domp = NULL;
+  QFILE_TUPLE_VALUE_TYPE_LIST type_list;
+  int v, k, cnt, group_cnt, already_compared;
+  SCAN_DIRECTION direction;
+  QFILE_TUPLE_POSITION inner_tplpos;
+  DB_VALUE_COMPARE_RESULT val_cmp;
+
+  HASH_METHOD hash_list_scan_type;
+  mht_hls_table *hash_table;
+  HASH_SCAN_KEY *key, *temp_key;
+  HASH_SCAN_VALUE *new_value;
+  unsigned int hash_key;
+  int i, inner_count, outer_count, cmp;
+  unsigned int hash_val = 0, tmp_hash_val;
+  HENTRY_HLS_PTR curr_hash_entry;
+  HASH_SCAN_VALUE *hvalue;
+  QFILE_TUPLE tuple;
+
+  /* get merge columns count */
+  nvals = merge_infop->ls_column_cnt;
+
+  /* get indicator of merge columns */
+  outer_indp = merge_infop->ls_outer_column;
+  inner_indp = merge_infop->ls_inner_column;
+
+  /* form the typelist for the resultant list file */
+  type_list.type_cnt = merge_infop->ls_pos_cnt;
+  type_list.domp = (TP_DOMAIN **) malloc (type_list.type_cnt * sizeof (TP_DOMAIN *));
+  if (type_list.domp == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  for (k = 0; k < type_list.type_cnt; k++)
+    {
+      type_list.domp[k] = ((merge_infop->ls_outer_inner_list[k] == QFILE_OUTER_LIST)
+			   ? outer_list_idp->type_list.domp[merge_infop->ls_pos_list[k]]
+			   : inner_list_idp->type_list.domp[merge_infop->ls_pos_list[k]]);
+    }
+
+  outer_sid.status = S_CLOSED;
+  inner_sid.status = S_CLOSED;
+
+  /* open a scan on the outer(inner) list file */
+  if (qfile_open_list_scan (outer_list_idp, &outer_sid) != NO_ERROR
+      || qfile_open_list_scan (inner_list_idp, &inner_sid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  /* open the result list file; same query id with outer(inner) list file */
+  list_idp = qfile_open_list (thread_p, &type_list, NULL, outer_list_idp->query_id, ls_flag, NULL);
+  if (list_idp == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  if (outer_list_idp->tuple_cnt == 0 || inner_list_idp->tuple_cnt == 0)
+    {
+      goto exit_on_end;
+    }
+
+  /* allocate the area to store the merged tuple */
+  if (qfile_reallocate_tuple (&tplrec, DB_PAGESIZE) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  /* merge column domain info */
+  outer_domp = (TP_DOMAIN **) db_private_alloc (thread_p, nvals * sizeof (TP_DOMAIN *));
+  if (outer_domp == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  inner_domp = (TP_DOMAIN **) db_private_alloc (thread_p, nvals * sizeof (TP_DOMAIN *));
+  if (inner_domp == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  for (k = 0; k < nvals; k++)
+    {
+      outer_domp[k] = outer_list_idp->type_list.domp[merge_infop->ls_outer_column[k]];
+      inner_domp[k] = inner_list_idp->type_list.domp[merge_infop->ls_inner_column[k]];
+    }
+
+  /* merge column val pointer */
+  outer_valp = (char **) db_private_alloc (thread_p, nvals * sizeof (char *));
+  if (outer_valp == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  inner_valp = (char **) db_private_alloc (thread_p, nvals * sizeof (char *));
+  if (inner_valp == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  hash_list_scan_type = HASH_METH_IN_MEM;	/* 임시 */
+
+  hash_table = mht_create_hls ("Hash List Scan", inner_list_idp->tuple_cnt, NULL, NULL);
+  if (hash_table == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  key = qdata_alloc_hscan_key (thread_p, nvals, true);
+  temp_key = qdata_alloc_hscan_key (thread_p, nvals, true);
+
+  for (inner_count = 0; inner_count < inner_list_idp->tuple_cnt; inner_count++)
+    {
+      /* move to the next outer tuple and position tuple values (to merge columns) */
+      inner_scan = qfile_scan_list_next (thread_p, &inner_sid, &inner_tplrec, PEEK);
+      if (inner_scan == S_END)
+	{
+	  goto exit_on_end;
+	}
+      if (inner_scan == S_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      if (inner_scan != S_SUCCESS)
+	{
+	  goto exit_on_error;
+	}
+
+      for (v = 0; v < nvals; v++)
+	{
+	  inner_valp[v] = (char *) inner_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;
+	  for (k = 0; k < inner_indp[v]; k++)
+	    {
+	      inner_valp[v] += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (inner_valp[v]);
+	    }
+	}
+
+      key->val_count = 0;
+
+      for (k = 0; k < nvals; k++)
+	{
+	  OR_BUF buf;
+	  int inner_len;
+	  bool inner_is_set;
+
+	  PRIM_SET_NULL (key->values[key->val_count]);
+	  inner_len = QFILE_GET_TUPLE_VALUE_LENGTH (inner_valp[k]);
+	  or_init (&buf, (char *) (inner_valp[k] + QFILE_TUPLE_VALUE_HEADER_SIZE), inner_len);
+	  inner_is_set = pr_is_set_type (TP_DOMAIN_TYPE (inner_domp[k])) ? true : false;
+	  inner_domp[k]->type->data_readval (&buf, key->values[key->val_count], inner_domp[k], -1, inner_is_set, NULL,
+					     0);
+	  key->val_count++;
+	}
+
+      /* build hash value */
+      hash_val = 0;
+      for (i = 0; i < key->val_count; i++)
+	{
+	  tmp_hash_val = mht_get_hash_number (UINT_MAX, key->values[i]);
+	  hash_val = hash_val ^ tmp_hash_val;
+	  if (hash_val == 0)
+	    {
+	      hash_val = tmp_hash_val;
+	    }
+	}
+
+      hash_key = hash_val;
+
+      /* create new value */
+      new_value = qdata_alloc_hscan_value (thread_p, inner_tplrec.tpl);
+      if (new_value == NULL)
+	{
+	  goto exit_on_error;
+	}
+      /* add to hash table */
+      if (mht_put_hls (hash_table, (void *) &hash_key, (void *) new_value) == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  for (outer_count = 0; outer_count < outer_list_idp->tuple_cnt; outer_count++)
+    {
+      /* move to the next outer tuple and position tuple values (to merge columns) */
+      outer_scan = qfile_scan_list_next (thread_p, &outer_sid, &outer_tplrec, PEEK);
+      if (outer_scan == S_END)
+	{
+	  goto exit_on_end;
+	}
+      if (outer_scan == S_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      if (outer_scan != S_SUCCESS)
+	{
+	  goto exit_on_error;
+	}
+
+      for (v = 0; v < nvals; v++)
+	{
+	  outer_valp[v] = (char *) outer_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;
+	  for (k = 0; k < outer_indp[v]; k++)
+	    {
+	      outer_valp[v] += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (outer_valp[v]);
+	    }
+	}
+
+      key->val_count = 0;
+
+      for (k = 0; k < nvals; k++)
+	{
+	  OR_BUF buf;
+	  int outer_len;
+	  bool outer_is_set;
+
+	  PRIM_SET_NULL (key->values[key->val_count]);
+	  outer_len = QFILE_GET_TUPLE_VALUE_LENGTH (outer_valp[k]);
+	  or_init (&buf, (char *) (outer_valp[k] + QFILE_TUPLE_VALUE_HEADER_SIZE), outer_len);
+	  outer_is_set = pr_is_set_type (TP_DOMAIN_TYPE (outer_domp[k])) ? true : false;
+	  outer_domp[k]->type->data_readval (&buf, key->values[key->val_count], outer_domp[k], -1, outer_is_set, NULL,
+					     0);
+	  key->val_count++;
+	}
+
+      /* build hash value */
+      hash_val = 0;
+      for (i = 0; i < key->val_count; i++)
+	{
+	  tmp_hash_val = mht_get_hash_number (UINT_MAX, key->values[i]);
+	  hash_val = hash_val ^ tmp_hash_val;
+	  if (hash_val == 0)
+	    {
+	      hash_val = tmp_hash_val;
+	    }
+	}
+
+      hash_key = hash_val;
+
+      /* create new value */
+      new_value = qdata_alloc_hscan_value (thread_p, outer_tplrec.tpl);
+      if (new_value == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+
+      hvalue = (HASH_SCAN_VALUE *) mht_get_hls (hash_table, (void *) &hash_key, (void **) &curr_hash_entry);
+      if (hvalue == NULL)
+	{
+	  continue;
+	}
+
+      tuple = hvalue->tuple;
+
+      temp_key->val_count = 0;
+
+      for (v = 0; v < nvals; v++)
+	{
+	  OR_BUF buf;
+	  int temp_len;
+	  bool temp_is_set;
+
+	  inner_valp[v] = (char *) tuple + QFILE_TUPLE_LENGTH_SIZE;
+	  for (k = 0; k < inner_indp[v]; k++)
+	    {
+	      inner_valp[v] += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (inner_valp[v]);
+	    }
+
+	  temp_len = QFILE_GET_TUPLE_VALUE_LENGTH (tuple);
+
+	  PRIM_SET_NULL (temp_key->values[temp_key->val_count]);
+
+	  or_init (&buf, (char *) inner_valp[v] + QFILE_TUPLE_VALUE_HEADER_SIZE, temp_len);
+	  temp_is_set = pr_is_set_type (TP_DOMAIN_TYPE (inner_domp[v])) ? true : false;
+	  inner_domp[v]->type->data_readval (&buf, temp_key->values[temp_key->val_count], inner_domp[k], -1,
+					     temp_is_set, NULL, 0);
+	  temp_key->val_count++;
+	}
+
+      for (k = 0; k < nvals; k++)
+	{
+	  cmp = tp_value_compare (key->values[k], temp_key->values[k], 1, 0);
+	  if (cmp != DB_EQ)
+	    {
+	      break;
+	    }
+	}
+
+      if (cmp != DB_EQ)
+	{
+	  continue;
+	}
+
+      temp_tplrec.tpl = tuple;
+      temp_tplrec.size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple);
+      if (qexec_merge_tuple_add_list ((thread_p), list_idp, &outer_tplrec, &temp_tplrec, merge_infop, &tplrec) !=
+	  NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  /* When a list file is sorted on a column, all the NULL values appear at the beginning of the list. So, we know that
+   * all the following values in the inner/outer column are BOUND(not NULL) values. Depending on the join type, we must
+   * skip or join with a NULL opposite row, when a NULL is encountered. */
+
+#if 0
+  /* move the outer(left) scan to the first tuple */
+  while (1)
+    {
+      /* move to the next outer tuple and position tuple values (to merge columns) */
+      QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, outer, true);
+
+      for (k = 0; k < nvals; k++)
+	{
+	  if (QFILE_GET_TUPLE_VALUE_FLAG (outer_valp[k]) == V_UNBOUND)
+	    {
+	      break;
+	    }
+	}
+      if (k >= nvals)
+	{			/* not found V_UNBOUND. exit loop */
+	  break;
+	}
+    }
+
+  /* move the inner(right) scan to the first tuple */
+  while (1)
+    {
+      /* move to the next inner tuple and position tuple values (to merge columns) */
+      QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, inner, true);
+
+      for (k = 0; k < nvals; k++)
+	{
+	  if (QFILE_GET_TUPLE_VALUE_FLAG (inner_valp[k]) == V_UNBOUND)
+	    {
+	      break;
+	    }
+	}
+      if (k >= nvals)
+	{			/* not found V_UNBOUND. exit loop */
+	  break;
+	}
+
+    }
+
+  /* set the comparison function to be called */
+  direction = S_FORWARD;
+  group_cnt = 0;
+  already_compared = false;
+  val_cmp = DB_UNK;
+
+  while (1)
+    {
+      /* compare two tuple values, if they have not been compared yet */
+      if (!already_compared)
+	{
+	  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+	  if (val_cmp == DB_UNK)
+	    {			/* is error */
+	      goto exit_on_error;
+	    }
+	}
+      already_compared = false;	/* re-init */
+
+      /* value of the outer is less than value of the inner */
+      if (val_cmp == DB_LT)
+	{
+	  /* move the outer(left) scan to the next tuple and position tuple values (to merge columns) */
+	  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, outer, true);
+	  direction = S_FORWARD;
+	  group_cnt = 0;
+
+	  continue;
+	}
+
+      /* value of the outer is greater than value of the inner */
+      if (val_cmp == DB_GT)
+	{
+	  /* move the inner(right) scan to the next tuple and position tuple values (to merge columns) */
+	  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, inner, true);
+	  direction = S_FORWARD;
+	  group_cnt = 0;
+
+	  continue;
+	}
+
+      if (val_cmp != DB_EQ)
+	{			/* error ? */
+	  goto exit_on_error;
+	}
+
+      /* values of the outer and inner are equal, do a scan group processing */
+      if (direction == S_FORWARD)
+	{
+	  /* move forwards within a group */
+	  cnt = 0;
+	  /* group_cnt has the number of tuples in the group */
+	  while (1)
+	    {
+	      /* merge the fetched tuples(left and right) */
+	      QEXEC_MERGE_ADD_MERGETUPLE (thread_p, &outer_tplrec, &inner_tplrec);
+
+	      cnt++;		/* increase the counter of processed tuples */
+
+	      /* if the group is formed for the first time */
+	      if (group_cnt == 0)
+		{
+		  /* move the inner(right) scan to the next tuple and position tuple values (to merge columns) */
+		  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, inner, false /* do not exit */ );
+		  if (inner_scan == S_END)
+		    {
+		      break;
+		    }
+
+		  /* and compare */
+		  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+		  if (val_cmp != DB_EQ)
+		    {
+		      if (val_cmp == DB_UNK)
+			{	/* is error */
+			  goto exit_on_error;
+			}
+
+		      break;	/* found the bottom of the group */
+		    }
+		}
+	      else
+		{		/* group_cnt > 0 */
+		  if (cnt >= group_cnt)
+		    {
+		      break;	/* reached the bottom of the group */
+		    }
+
+		  /* move the inner(right) scan to the next tuple */
+		  QEXEC_MERGE_NEXT_SCAN (thread_p, inner, true);
+		}
+	    }			/* while (1) */
+
+	  /* move the outer to the next tuple and position tuple values */
+	  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, outer, true);
+
+	  /* if the group is formed for the first time */
+	  if (group_cnt == 0)
+	    {
+	      /* save the position of inner scan; it is the bottom of the group */
+	      qfile_save_current_scan_tuple_position (&inner_sid, &inner_tplpos);
+
+	      if (inner_scan == S_END)
+		{
+		  /* move the inner to the previous tuple and position tuple values */
+		  QEXEC_MERGE_REV_SCAN_PVALS (thread_p, inner);
+
+		  /* set group count and direction */
+		  group_cnt = cnt;
+		  direction = S_BACKWARD;
+		}
+	      else
+		{
+		  /* and compare */
+		  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+		  if (val_cmp == DB_UNK)
+		    {		/* is error */
+		      goto exit_on_error;
+		    }
+
+		  if (val_cmp == DB_LT)
+		    {
+		      /* move the inner to the previous tuple and position tuple values */
+		      QEXEC_MERGE_REV_SCAN_PVALS (thread_p, inner);
+
+		      /* and compare */
+		      val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+		      if (val_cmp == DB_UNK)
+			{	/* is error */
+			  goto exit_on_error;
+			}
+
+		      if (val_cmp == DB_EQ)
+			{
+			  /* next value is the same, so prepare for further group scan operations */
+
+			  /* set group count and direction */
+			  group_cnt = cnt;
+			  direction = S_BACKWARD;
+			}
+		      else
+			{
+			  /* move the inner to the current tuple and position tuple values */
+			  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, inner, true);
+
+			  val_cmp = DB_LT;	/* restore comparison */
+			}
+		    }
+
+		  /* comparison has already been done */
+		  already_compared = true;
+		}
+	    }
+	  else
+	    {
+	      /* set further scan direction */
+	      direction = S_BACKWARD;
+	    }
+	}
+      else
+	{			/* (direction == S_BACKWARD) */
+	  /* move backwards within a group */
+	  cnt = group_cnt;
+	  /* group_cnt has the number of tuples in the group */
+	  while (1)
+	    {
+	      /* merge the fetched tuples(left and right) */
+	      QEXEC_MERGE_ADD_MERGETUPLE (thread_p, &outer_tplrec, &inner_tplrec);
+
+	      cnt--;		/* decrease the counter of the processed tuples */
+
+	      if (cnt <= 0)
+		{
+		  break;	/* finish the group */
+		}
+
+	      /* if not yet reached the top of the group */
+	      /* move the inner(right) scan to the previous tuple */
+	      QEXEC_MERGE_PREV_SCAN (thread_p, inner);
+
+	      /* all of the inner tuples in the group have the same value at the merge column, so we don't need to
+	       * compare with the value of the outer one; just count the number of the tuples in the group */
+	    }			/* while (1) */
+
+	  /* position tuple values (to merge columns) */
+	  QEXEC_MERGE_PVALS (inner);
+
+	  /* move the outer(left) scan to the next tuple and position tuple values */
+	  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, outer, true);
+
+	  /* and compare */
+	  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+	  if (val_cmp == DB_UNK)
+	    {			/* is error */
+	      goto exit_on_error;
+	    }
+
+	  if (val_cmp != DB_EQ)
+	    {
+	      /* jump to the previously set scan position */
+	      inner_scan = qfile_jump_scan_tuple_position (thread_p, &inner_sid, &inner_tplpos, &inner_tplrec, PEEK);
+	      /* is saved position the end of scan? */
+	      if (inner_scan == S_END)
+		{
+		  goto exit_on_end;
+		}
+
+	      /* and position tuple values */
+	      QEXEC_MERGE_PVALS (inner);
+
+	      /* reset group count */
+	      group_cnt = 0;
+	    }
+	  else
+	    {
+	      /* comparison has already been done */
+	      already_compared = true;
+	    }
+
+	  /* set further scan direction */
+	  direction = S_FORWARD;
+
+	}			/* (direction == S_BACKWARD) */
+
+    }				/* while (1) */
+#endif
+
+exit_on_end:
+  free_and_init (type_list.domp);
+  qfile_close_scan (thread_p, &outer_sid);
+  qfile_close_scan (thread_p, &inner_sid);
+
+  if (tplrec.tpl)
+    {
+      db_private_free_and_init (thread_p, tplrec.tpl);
+    }
+
+  if (outer_domp)
+    {
+      db_private_free_and_init (thread_p, outer_domp);
+    }
+  if (outer_valp)
+    {
+      db_private_free_and_init (thread_p, outer_valp);
+    }
+
+  if (inner_domp)
+    {
+      db_private_free_and_init (thread_p, inner_domp);
+    }
+  if (inner_valp)
+    {
+      db_private_free_and_init (thread_p, inner_valp);
+    }
+
+  if (list_idp)
+    {
+      qfile_close_list (thread_p, list_idp);
+    }
+
+  return list_idp;
+
+exit_on_error:
+  if (list_idp)
+    {
+      qfile_close_list (thread_p, list_idp);
+      QFILE_FREE_AND_INIT_LIST_ID (list_idp);
+    }
+
+  list_idp = NULL;
+  goto exit_on_end;
+}
 
 static int
 qexec_hash_join_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
@@ -6482,7 +7156,13 @@ qexec_hash_join_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   if (merge_infop->join_type == JOIN_INNER)
     {
       /* call hash join routine */
+#if 1
       list_id = qexec_hash_join (thread_p, outer_xasl->list_id, inner_xasl->list_id, merge_infop, ls_flag);
+#else
+      list_id =
+	qexec_hash_join (thread_p, outer_spec, xasl->proc.hashjoin.outer_val_list, inner_spec,
+			 xasl->proc.hashjoin.inner_val_list, merge_infop, xasl_state);
+#endif
     }
 #if 0
   else
