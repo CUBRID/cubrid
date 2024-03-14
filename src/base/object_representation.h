@@ -2684,6 +2684,8 @@ or_get_oid (OR_BUF * buf, OID * oid)
 {
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
+  OID_SET_NULL (oid);
+
   if ((buf->ptr + OR_OID_SIZE) > buf->endptr)
     {
       return or_underflow (buf);

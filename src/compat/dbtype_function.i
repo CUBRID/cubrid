@@ -557,6 +557,7 @@ db_get_bit (const DB_VALUE * value, int *length)
 
   if (value->domain.general_info.is_null)
     {
+      *length = 0;
       return NULL;
     }
 

@@ -2895,7 +2895,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	      || !classobj_check_attr_in_unique_constraint (class_->constraints, attnames, func_index_info))
 	    {
 	      dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info,
-					    nnames, SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
+					    nnames, DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
 	    }
 	}
     }
@@ -4643,7 +4643,7 @@ do_rename_partition (MOP old_class, const char *newname)
   int newlen;
   int error;
   char new_subname[PARTITION_VARCHAR_LEN + 1], *ptr;
-  char expr[DB_MAX_PARTITION_EXPR_LENGTH] = { '\0' };
+  char expr[DB_MAX_PARTITION_EXPR_LENGTH + 1] = { '\0' };
   char *expr_ptr = NULL;
 
   if (!old_class || !newname)
@@ -10636,6 +10636,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	    {
 	      break;
 	    }
+	  [[fallthrough]];
 
 	default:
 	  att = attribute->info.attr_def.attr_name;
@@ -11207,6 +11208,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  break;
 	case PT_CONSTRAIN_NULL:
 	  attr_chg_properties->p[P_NOT_NULL] = ATT_CHG_PROPERTY_LOST;
+	  [[fallthrough]];
 	case PT_CONSTRAIN_NOT_NULL:
 	  constr_att_list = cnstr->info.constraint.un.not_null.attr;
 	  chg_prop_idx = P_NOT_NULL;

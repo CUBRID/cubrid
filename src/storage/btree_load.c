@@ -247,7 +247,7 @@ static int list_length (const BTREE_NODE * this_list);
 static void list_print (const BTREE_NODE * this_list);
 #endif /* defined(CUBRID_DEBUG) */
 static int btree_pack_root_header (RECDES * Rec, BTREE_ROOT_HEADER * header, TP_DOMAIN * key_type);
-static void btree_rv_save_root_head (long long null_delta, long long oid_delta, long long key_delta, RECDES * recdes);
+static void btree_rv_save_root_head (INT64 null_delta, INT64 oid_delta, INT64 key_delta, RECDES * recdes);
 static int btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid,
 						    PAGE_PTR * pg_ptr, INT16 * slot_id, DB_VALUE * key,
 						    bool * clear_key, bool is_desc, int *key_cnt,
@@ -495,8 +495,8 @@ btree_node_header_redo_log (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_
  *
  */
 int
-btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, long long null_delta,
-				long long oid_delta, long long key_delta)
+btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, INT64 null_delta,
+				INT64 oid_delta, INT64 key_delta)
 {
   RECDES rec, delta_rec;
   char delta_rec_buf[(3 * OR_BIGINT_SIZE) + BTREE_MAX_ALIGN];
@@ -647,7 +647,7 @@ btree_init_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OV
  * Note: This is a UTILITY routine, but not an actual recovery routine.
  */
 static void
-btree_rv_save_root_head (long long null_delta, long long oid_delta, long long key_delta, RECDES * recdes)
+btree_rv_save_root_head (INT64 null_delta, INT64 oid_delta, INT64 key_delta, RECDES * recdes)
 {
   char *datap;
 
@@ -680,8 +680,7 @@ btree_rv_save_root_head (long long null_delta, long long oid_delta, long long ke
  * Note: This is a UTILITY routine, but not an actual recovery routine.
  */
 void
-btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta, long long null_delta,
-			       RECDES * recdes)
+btree_rv_mvcc_save_increments (const BTID * btid, INT64 key_delta, INT64 oid_delta, INT64 null_delta, RECDES * recdes)
 {
   char *datap;
 
@@ -1149,8 +1148,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       pr_clear_value (&load_args->current_key);
 
       BTID_SET_NULL (btid);
-      if (xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0], unique_pk, sort_args->n_oids,
-			    sort_args->n_nulls, load_args->n_keys, btid_int.deduplicate_key_idx) == NULL)
+      if (xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0], unique_pk, (INT64) sort_args->n_oids,
+			    (INT64) sort_args->n_nulls, (INT64) load_args->n_keys,
+			    btid_int.deduplicate_key_idx) == NULL)
 	{
 	  goto error;
 	}

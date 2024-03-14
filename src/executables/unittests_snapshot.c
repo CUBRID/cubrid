@@ -120,7 +120,7 @@ logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2)
 static void
 logtb_initialize_tdes_for_mvcc_testing (LOG_TDES * tdes, int tran_index)
 {
-  memset (tdes, 0, sizeof (LOG_TDES));
+  memset ((void *) tdes, 0, sizeof (LOG_TDES));
   tdes->tran_index = tran_index;
   tdes->trid = NULL_TRANID;
 
@@ -157,7 +157,7 @@ logtb_initialize_mvcc_testing (int num_threads, THREAD_ENTRY ** thread_array)
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
-  memset (*thread_array, 0, size);
+  memset ((void *) *thread_array, 0, size);
   for (i = 0; i < num_threads; i++)
     {
       thread_p = *thread_array + i;

@@ -255,7 +255,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	  goto end;
 	}
 
-      strncpy (class_names[i], buffer, len);
+      strncpy (class_names[i], buffer, len + 1);
       class_names[i][len] = 0;
     }
 

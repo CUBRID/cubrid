@@ -162,7 +162,7 @@ char csql_Scratch_text[SCRATCH_TEXT_LEN];
 int csql_Error_code = NO_ERROR;
 
 static char csql_Prompt[100];
-static char csql_Prompt_offline[100];
+static char csql_Prompt_offline[101];
 static char csql_Name[100];
 
 /*

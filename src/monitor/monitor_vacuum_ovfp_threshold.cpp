@@ -519,24 +519,24 @@ ovfp_threshold_mgr::print (THREAD_ENTRY *thread_p, FILE *outfp, const INDEX_OVFP
       assert (class_name != NULL && index_name != NULL);
       if (class_name)
 	{
-	  fprintf (outfp, "  %-*s", MAX (attr_lengths[0], strlen (class_name)), class_name);
+	  fprintf (outfp, "  %-*s", MAX (attr_lengths[0], (int)strlen (class_name)), class_name);
 	  free_and_init (class_name);
 	}
       if (index_name)
 	{
-	  fprintf (outfp, "  %-*s", MAX (attr_lengths[1], strlen (index_name)), index_name);
+	  fprintf (outfp, "  %-*s", MAX (attr_lengths[1], (int)strlen (index_name)), index_name);
 	  free_and_init (index_name);
 	}
 
-      fprintf (outfp, "  %*lld", attr_lengths[2], (long long) pt->hit_cnt);
+      fprintf (outfp, "  %*ld", attr_lengths[2], pt->hit_cnt);
 
       sprintf (line_buf, "  %d (%s)", pt->read_pages[RECENT_POS], time_to_string (pt->event_time[RECENT_POS], time_buf,
 	       sizeof (time_buf)));
-      fprintf (outfp, "  %-*s", MAX (attr_lengths[3], strlen (line_buf)), line_buf);
+      fprintf (outfp, "  %-*s", MAX (attr_lengths[3], (int)strlen (line_buf)), line_buf);
 
       sprintf (line_buf, "  %d (%s)", pt->read_pages[MAX_POS], time_to_string (pt->event_time[MAX_POS], time_buf,
 	       sizeof (time_buf)));
-      fprintf (outfp, "  %-*s\n", MAX (attr_lengths[4], strlen (line_buf)), line_buf);
+      fprintf (outfp, "  %-*s\n", MAX (attr_lengths[4], (int)strlen (line_buf)), line_buf);
 
       pt = pt->next;
     }

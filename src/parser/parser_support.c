@@ -11654,7 +11654,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *list = NULL;		/* for insert select list */
   PT_NODE *spec, *into_spec = NULL, *upd_spec = NULL, *server;
 
-  PARSER_VARCHAR *comment, *dml;
+  PARSER_VARCHAR *comment = NULL, *dml;
 
   switch (node->node_type)
     {

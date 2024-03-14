@@ -15375,12 +15375,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
 	    if (cls_info[i]->objtype == CDC_TABLE)
 	      {
-		strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
+		strncpy (drop_stmt, drop_prefix, strlen (drop_prefix) + 1);
 		drop_copied_length = strlen (drop_prefix);
 	      }
 	    else if (cls_info[i]->objtype == CDC_VIEW)
 	      {
-		strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix));
+		strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix) + 1);
 		drop_copied_length = strlen (drop_view_prefix);
 	      }
 	    else
@@ -15390,16 +15390,16 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
 	    if (statement->info.drop.if_exists)
 	      {
-		strncpy (drop_stmt + drop_copied_length, if_exist_statement, strlen (if_exist_statement));
+		strncpy (drop_stmt + drop_copied_length, if_exist_statement, strlen (if_exist_statement) + 1);
 		drop_copied_length += strlen (if_exist_statement);
 	      }
 
-	    strncpy (drop_stmt + drop_copied_length, cls_info[i]->name, strlen (cls_info[i]->name));
+	    strncpy (drop_stmt + drop_copied_length, cls_info[i]->name, strlen (cls_info[i]->name) + 1);
 	    drop_copied_length += strlen (cls_info[i]->name);
 
 	    if (statement->info.drop.is_cascade_constraints)
 	      {
-		strncpy (drop_stmt + drop_copied_length, cascade_statement, strlen (cascade_statement));
+		strncpy (drop_stmt + drop_copied_length, cascade_statement, strlen (cascade_statement) + 1);
 		drop_copied_length += strlen (cascade_statement);
 	      }
 
@@ -15645,6 +15645,10 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	break;
       }
     case PT_REMOVE_TRIGGER:
+      {
+	ddl_type = CDC_ALTER;
+	objtype = CDC_TRIGGER;
+      }
       break;
 
     case PT_ALTER_TRIGGER:
@@ -17083,7 +17087,7 @@ int
 do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat, *spec;
+  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat = NULL, *spec;
   int has_unique = 0, has_trigger = 0, has_virt = 0, au_save;
   bool server_insert, server_update, server_op, insert_only = false;
 
@@ -17518,7 +17522,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
   INT64 result = 0;
   int error = NO_ERROR;
-  PT_NODE *flat, *spec = NULL, *values_list = NULL;
+  PT_NODE *flat = NULL, *spec = NULL, *values_list = NULL;
   const char *savepoint_name;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id = NULL;
@@ -21044,7 +21048,7 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
 {
   DB_OBJECT *server_object = NULL;
   MOP user_obj = NULL;
-  int au_save, error;
+  int au_save, error = NO_ERROR;
   DB_VALUE user_val;
 
   db_make_null (&user_val);
@@ -21237,7 +21241,7 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is
   int err, length, buf_size;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
   char confused[DBLINK_PASSWORD_CIPHER_LENGTH + 1] = { 0, };
-  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH];
+  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH * 3];
   struct timeval check_time = { 0, 0 };
   struct tm *lt;
   char empty_str[4] = { 0x00, };

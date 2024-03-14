@@ -12080,7 +12080,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
   INTL_CODESET codeset;
   int res_collation;
   char tzr[TZR_SIZE + 1], tzd[TZ_DS_STRING_SIZE + 1];
-  char hours_or_minutes[4];
+  char hours_or_minutes[32];
   int tzh = 0, tzm = 0;
   bool is_valid_tz = false;
   DB_VALUE new_time_value;
@@ -22435,7 +22435,7 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
   INTL_CODESET codeset;
   int res_collation;
   char tzr[TZR_SIZE + 1], tzd[TZ_DS_STRING_SIZE + 1];
-  char hours_or_minutes[4];
+  char hours_or_minutes[32];
   int tzh = 0, tzm = 0;
   bool is_valid_tz = false;
   bool has_tzh = false;
