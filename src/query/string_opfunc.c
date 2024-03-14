@@ -23063,42 +23063,23 @@ error:
 int
 parse_digits (char *s, int *nr, int cnt)
 {
-  int count = 0, len;
-  char *ch;
-  /* res[64] is safe because res has a max length of cnt, which is max 4 */
-  char res[64];
-  const int res_count = sizeof (res) / sizeof (char);
+  char *t = s;
+  int val = 0;
 
-  ch = s;
-  *nr = 0;
-
-  memset (res, 0, sizeof (res));
-
-  while (WHITESPACE (*ch))
+  while (WHITESPACE (*t))
     {
-      ch++;
-      count++;
+      t++;
     }
 
   /* do not support negative numbers because... they are not supported :) */
-  while (*ch != 0 && (*ch >= '0' && *ch <= '9'))
+  while (*t != 0 && char_isdigit (*t))
     {
-      STRCHCAT (res, *ch);
-
-      ch++;
-      count++;
-
-      /* trim at cnt characters */
-      len = strlen (res);
-      if (len == cnt || len == res_count - 1)
-	{
-	  break;
-	}
+      val = (val * 10) + (*t - '0');
+      t++;
     }
 
-  *nr = atol (res);
-
-  return count;
+  *nr = val;
+  return (int) (t - s);
 }
 
 /*
