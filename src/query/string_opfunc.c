@@ -23072,7 +23072,7 @@ parse_digits (char *s, int *nr, int cnt)
     }
 
   /* do not support negative numbers because... they are not supported :) */
-  while (*t != 0 && char_isdigit (*t))
+  while (*t != 0 && (cnt-- > 0) && char_isdigit (*t))
     {
       val = (val * 10) + (*t - '0');
       t++;
