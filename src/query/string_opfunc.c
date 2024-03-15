@@ -27627,7 +27627,7 @@ db_inet_ntoa (DB_VALUE * result_ip_string, const DB_VALUE * number)
     {
       slice = (unsigned int) ((ip_number & ipv4_mask[i]) / ipfactor[i]);
       ret_string_len += snprintf (ip_string + ret_string_len, ip_seg_string_cnt, "%u", slice);
-      if (i != 3)
+      if (i < 3)
 	{
 	  ip_string[ret_string_len++] = '.';
 	}
