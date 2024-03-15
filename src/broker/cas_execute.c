@@ -916,6 +916,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       goto prepare_result_set;
     }
 
+  db_init_lexer_lineno();
   session = db_open_buffer (sql_stmt);
   if (!session)
     {

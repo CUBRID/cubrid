@@ -579,6 +579,7 @@ extern "C"
   extern DB_SESSION *db_open_buffer (const char *buffer);
   extern DB_SESSION *db_open_file (FILE * file);
   extern DB_SESSION *db_open_file_name (const char *name);
+  extern void db_init_lexer_lineno();
 
   extern int db_statement_count (DB_SESSION * session);
 
