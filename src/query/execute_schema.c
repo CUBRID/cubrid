@@ -2318,6 +2318,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  /* 
 	   * code shall be one of the above 2 types, otherwise it's an error. 
 	   */
+	  assert (false);
 	  break;
 	}
     }

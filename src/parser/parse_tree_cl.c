@@ -6440,6 +6440,10 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_nulstring (parser, b, " drop members ");
 	  b = pt_append_varchar (parser, b, r1);
 	}
+      else
+	{
+	  assert (false);
+	}
     }
 
   if (p->info.alter_user.comment != NULL)
