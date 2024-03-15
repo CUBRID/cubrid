@@ -12492,9 +12492,9 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 		  strcat (res, tzd);
 		  break;
 		case 'H':
-		  if (tzh >= 0)
+		  if ((tzh >= 0) && (tzm >= 0))
 		    {
-		      sprintf (hours_or_minutes, "%02d", tzh);
+		      sprintf (hours_or_minutes, "%c%02d", '+', tzh);
 		    }
 		  else
 		    {
@@ -12503,14 +12503,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 		  strcat (res, hours_or_minutes);
 		  break;
 		case 'M':
-		  if (tzm >= 0)
-		    {
-		      sprintf (hours_or_minutes, "%02d", tzm);
-		    }
-		  else
-		    {
-		      sprintf (hours_or_minutes, "%c%02d", '-', -tzm);
-		    }
+		  sprintf (hours_or_minutes, "%02d", (tzm >= 0) ? tzm : -tzm);
 		  strcat (res, hours_or_minutes);
 		  break;
 		}
@@ -17847,18 +17840,13 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 		}
 	      else
 		{
-		  tzh = -tzh;
-		  sprintf (&result_buf[i], "%c%02d\n", '-', tzh);
+		  sprintf (&result_buf[i], "%c%02d\n", '-', -tzh);
 		}
 	      i += 3;
 	      break;
 
 	    case DT_TZM:
-	      if (tzm < 0)
-		{
-		  tzm = -tzm;
-		}
-	      sprintf (&result_buf[i], "%02d\n", tzm);
+	      sprintf (&result_buf[i], "%02d\n", ((tzm < 0) ? -tzm : tzm));
 	      result_size--;
 	      i += 2;
 	      break;
@@ -18050,25 +18038,22 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
   assert (cs != NULL);
 
   /* Remove 'trailing zero' source string */
-  for (i = 0; i < strlen (cs); i++)
+  for (i = 0; cs[i] != '\0'; i++)
     {
       if (cs[i] == fraction_symbol)
 	{
-	  i = strlen (cs);
+	  i += strlen (cs + i);
 	  i--;
 	  while (cs[i] == '0')
 	    {
 	      i--;
 	    }
-	  if (cs[i] == fraction_symbol)
-	    {
-	      cs[i] = '\0';
-	    }
-	  else
+	  if (cs[i] != fraction_symbol)
 	    {
 	      i++;
-	      cs[i] = '\0';
 	    }
+
+	  cs[i] = '\0';
 	  break;
 	}
     }
@@ -19251,13 +19236,11 @@ roundoff (const INTL_LANG lang, char *src_string, int flag, int *cipher, char *f
 	{			/* if decimal format */
 	  i = 0;
 
-	  while (i < strlen (src_string))
+	  while (src_string[i] != '\0')
 	    {
 	      src_string[i] = '#';
 	      i++;
 	    }
-
-	  src_string[i] = '\0';
 	}
       else
 	{			/* if scientific format */
@@ -19269,25 +19252,21 @@ roundoff (const INTL_LANG lang, char *src_string, int flag, int *cipher, char *f
 	      res++;
 	    }
 
-	  while (i < strlen (res))
+	  i = 0;
+	  if (res[i] != '\0')
 	    {
-	      if (i == 0)
+	      res[i++] = '1';
+	      if (res[i] != '\0')
 		{
-		  res[i] = '1';
+		  res[i++] = fraction_symbol;
+		  while (res[i] != '\0')
+		    {
+		      res[i++] = '0';
+		    }
 		}
-	      else if (i == 1)
-		{
-		  res[i] = fraction_symbol;
-		}
-	      else
-		{
-		  res[i] = '0';
-		}
-	      i++;
 	    }
 
 	  (*cipher)++;
-	  res[i] = '\0';
 	}
     }
 
