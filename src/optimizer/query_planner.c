@@ -380,6 +380,7 @@ QO_PLAN_VTBL *all_vtbls[] = {
   &qo_nl_join_plan_vtbl,
   &qo_idx_join_plan_vtbl,
   &qo_merge_join_plan_vtbl,
+  &qo_hash_join_plan_vtbl,
   &qo_follow_plan_vtbl,
   &qo_set_follow_plan_vtbl,
   &qo_worst_plan_vtbl
@@ -11213,6 +11214,14 @@ qo_plan_join_print_json (QO_PLAN * plan)
     case QO_JOINMETHOD_MERGE_JOIN:
       method = "MERGE JOIN";
       break;
+
+    case QO_JOINMETHOD_HASH_JOIN:
+      method = "HASH JOIN";
+      break;
+
+    default:
+      method = "UNKNOWN";
+      break;
     }
 
   switch (plan->plan_un.join.join_type)
@@ -11523,6 +11532,14 @@ qo_plan_join_print_text (FILE * fp, QO_PLAN * plan, int indent)
 
     case QO_JOINMETHOD_MERGE_JOIN:
       method = "MERGE JOIN";
+      break;
+
+    case QO_JOINMETHOD_HASH_JOIN:
+      method = "HASH JOIN";
+      break;
+
+    default:
+      method = "UNKNOWN";
       break;
     }
 

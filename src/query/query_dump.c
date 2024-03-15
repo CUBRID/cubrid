@@ -48,7 +48,7 @@ enum
 #define HASH_NUMBER 128
 
 #define HAVE_SUBQUERY_PROC(xasl_p) \
-  ((xasl_p)->type != MERGELIST_PROC && (xasl_p)->type != UNION_PROC \
+  ((xasl_p)->type != MERGELIST_PROC && (xasl_p)->type != HASHJOIN_PROC && (xasl_p)->type != UNION_PROC \
    && (xasl_p)->type != INTERSECTION_PROC && (xasl_p)->type != DIFFERENCE_PROC)
 
 typedef struct qdump_xasl_check_node QDUMP_XASL_CHECK_NODE;

@@ -1380,7 +1380,7 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
     }
 
   fprintf (out_fp,
-	   "HTABLE NAME = %s, SIZE = %d,\n" "NENTRIES = %d, NPREALLOC = %d, NCOLLISIONS = %d\n\n",
+	   "\nHTABLE NAME = %s, SIZE = %d," "NENTRIES = %d, NPREALLOC = %d, NCOLLISIONS = %d\n\n",
 	   ht->name, ht->size, ht->nentries, ht->nprealloc_entries, ht->ncollisions);
 
   if (print_id_opt)
@@ -1391,15 +1391,17 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
 	  if (*hvector != NULL)
 	    {
 	      fprintf (out_fp, "HASH AT %d\n", i);
+
 	      /* Go over the linked list */
 	      for (hentry = *hvector; cont == TRUE && hentry != NULL; hentry = hentry->next)
 		{
 		  cont = (*print_func) (thread_p, out_fp, hentry->data, type_list, func_args);
 		}
+
+	      fprintf (out_fp, "\n");
 	    }
 	}
     }
-  fprintf (out_fp, "\n");
 
   return (cont);
 }
