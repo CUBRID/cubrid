@@ -564,7 +564,6 @@ static void au_print_auth (MOP auth, FILE * fp);
 static void au_print_auth (MOP auth, FILE * fp);
 
 static int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
-
 /*
  * DB_ EXTENSION FUNCTIONS
  */
