@@ -275,10 +275,11 @@ db_open_file (FILE * file)
 }
 
 void
-db_init_lexer_lineno()
+db_init_lexer_lineno ()
 {
-  csql_yyset_lineno(1);
+  csql_yyset_lineno (1);
 }
+
 /*
  * db_make_session_for_one_statement_execution() -
  * return:
