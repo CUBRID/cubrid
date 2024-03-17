@@ -22776,37 +22776,23 @@ db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_V
 static int
 parse_digits (char *s, int *nr, int cnt)
 {
-  int len = 0;
-  char *ch = s;
-  /* res[64] is safe because res has a max length of cnt, which is max 4 */
-  char res[64];
-  const int res_count = 64;	/* sizeof (res) / sizeof (char) */
+  char *t = s;
+  int val = 0;
 
-  if (cnt < 0 || cnt >= res_count)
+  while (WHITESPACE (*t))
     {
-      cnt = res_count - 1;
-    }
-
-  while (WHITESPACE (*ch))
-    {
-      ch++;
+      t++;
     }
 
   /* do not support negative numbers because... they are not supported :) */
-  while (char_isdigit (*ch))
+  while (*t != 0 && (cnt-- > 0) && char_isdigit (*t))
     {
-      res[len++] = *ch;
-      ch++;
-
-      if (len == cnt)
-	{
-	  break;
-	}
+      val = (val * 10) + (*t - '0');
+      t++;
     }
-  res[len] = '\0';
 
-  *nr = atoi (res);
-  return (int) (ch - s);
+  *nr = val;
+  return (int) (t - s);
 }
 
 /*
