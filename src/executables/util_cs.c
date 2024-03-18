@@ -4571,10 +4571,16 @@ memmon (UTIL_FUNCTION_ARG * arg)
   if (outfile_name)
     {
       outfile_fp = fopen (outfile_name, "w+");
+      if (outfile_fp == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_CANNOT_OPEN_OUTPUT_FILE));
+	  goto error_exit;
+	}
     }
   else
     {
-      goto print_memmon_usage;
+      outfile_fp = stdout;
     }
 
   /* error message log file */
@@ -4595,19 +4601,21 @@ memmon (UTIL_FUNCTION_ARG * arg)
     }
 
   /* execute phase */
-  if (outfile_fp != NULL)
-    {
-      // TODO: we have to add network function
-      /*error_code = mmon_get_server_info (server_info);
-         if (error_code != NO_ERROR)
-         {
-         goto error_exit;
-         } */
+  // TODO: we have to add network function
+  /*error_code = mmon_get_server_info (server_info);
+     if (error_code != NO_ERROR)
+     {
+     goto error_exit;
+     } */
+  // TODO: for test print function. It will be removed after network functions are implemented.
+  strcpy (server_info.server_name, database_name);
+  server_info.total_mem_usage = 1024 * 3;
+  server_info.total_metainfo_mem_usage = 1024 * 1;
+  server_info.stat_info.emplace_back ("test.c:100", 1024 * 3);
 
-      mmon_print_server_info (server_info, outfile_fp);
+  mmon_print_server_info (server_info, outfile_fp);
 
-      fclose (outfile_fp);
-    }
+  fclose (outfile_fp);
 
   db_shutdown ();
 

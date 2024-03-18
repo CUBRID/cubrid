@@ -26,7 +26,5 @@
 #include <cstdio>
 #include "memory_monitor_common.hpp"
 
-#define MMON_CONVERT_TO_KB_SIZE(size) ((size) / 1024)
-
 void mmon_print_server_info (MMON_SERVER_INFO &server_info, FILE *outfile_fp);
 #endif // _MEMORY_MONITOR_CL_HPP_
