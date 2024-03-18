@@ -14336,7 +14336,8 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 
       err = do_prepare_cte (parser, cte_list);
     }
-  else if ((stmt->info.query.hint & PT_HINT_QUERY_CACHE) && stmt->info.query.is_subquery == PT_IS_SUBQUERY)
+  else if ((stmt->info.query.hint & PT_HINT_QUERY_CACHE) && stmt->info.query.is_subquery == PT_IS_SUBQUERY
+	   && stmt->info.query.correlation_level == 0)
     {
       err = do_prepare_subquery (parser, stmt);
     }
@@ -14459,17 +14460,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	    }
 	}
-
-      /*
-       * we need to check whether it is a subquery of the plan cached main query.
-       * the subquery of the plan cache main query will already be set to info.query.xasl.
-       * if the info.query.xasl is NULL, the subquery is not necessary to generate XASL
-       */
-      if (statement->info.query.flag.subquery_cached && statement->info.query.xasl == NULL)
-	{
-	  statement->xasl_id = stream.xasl_id;
-	  return err;
-	}
     }
 
   if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -14555,8 +14545,8 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
    * do_execute_select() */
   statement->xasl_id = stream.xasl_id;
 
-  /* All CTE and result-cached subqueries included in the query must be prepared first. */
-  if (err == NO_ERROR && pt_is_allowed_result_cache ())
+  /* All CTE and result-cached subqueries included in the query must be prepared first for not cached yet. */
+  if (err == NO_ERROR && pt_is_allowed_result_cache () && !statement->info.query.flag.subquery_cached)
     {
       parser_walk_tree (parser, statement, do_prepare_subquery_pre, (void *) &err, NULL, NULL);
     }
