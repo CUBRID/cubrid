@@ -563,42 +563,34 @@ public class SymbolStack {
                     "label " + name + " has already been declared");
         }
 
-        putDeclTo(currSymbolTable, name, decl);
+        decl.setScope(currSymbolTable.scope);
+        currSymbolTable.labels.put(name, decl);
     }
 
-    <D extends Decl> void putDecl(String name, D decl) {
+    void putDecl(String name, Decl decl) {
         assert !(decl instanceof DeclLabel);
         putDeclTo(currSymbolTable, name, decl);
     }
 
-    private static <D extends Decl> void putDeclTo(SymbolTable symbolTable, String name, D decl) {
+    private static void putDeclTo(SymbolTable symbolTable, String name, Decl decl) {
         assert decl != null;
 
-        Map<String, D> map = symbolTable.<D>map((Class<D>) decl.getClass());
-        assert map != null;
-        if (map == symbolTable.labels) {
-            // currently, a symbol table is always pushed right before putting a label
-            assert !map.containsKey(name);
-        } else {
-            if (symbolTable.ids.containsKey(name)
-                    || symbolTable.procs.containsKey(name)
-                    || symbolTable.funcs.containsKey(name)
-                    || symbolTable.exceptions.containsKey(name)) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(decl.ctx), // s062
-                        name + " has already been declared in the same scope");
-            }
-            if (symbolTable.scope.level == 1 && map.size() == 0) {
-                // the first symbol added to the level 1 is the top-level procedure/function being
-                // created or replaced
+        Map<String, Decl> map = symbolTable.decls;
 
-                assert map == symbolTable.procs
-                        || map == symbolTable.funcs; // top-level procedure/function
-                if (predefinedSymbols.funcs.containsKey(name)) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(decl.ctx), // s063
-                            "procedure/function cannot be created with the same name as a built-in function");
-                }
+        if (map.containsKey(name)) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(decl.ctx), // s062
+                    name + " has already been declared in the same scope");
+        }
+        if (symbolTable.scope.level == 1 && map.size() == 0) {
+            // the first symbol added to the level 1 is the top-level procedure/function being
+            // created or replaced
+
+            assert decl instanceof DeclRoutine; // top-level procedure/function
+            if (predefinedSymbols.decls.containsKey(name)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(decl.ctx), // s063
+                        "procedure/function cannot be created with the same name as a built-in function");
             }
         }
 
@@ -607,46 +599,93 @@ public class SymbolStack {
     }
 
     DeclId getDeclId(String name) {
-        return getDecl(DeclId.class, name);
+        Decl d = getDecl(name);
+        if (d instanceof DeclId) {
+            return (DeclId) d;
+        } else {
+            if (d == null) {
+                return null;
+            } else {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(d.ctx), // s071
+                        name + " is not an identifier but " + d.kind() + " in this scope");
+            }
+        }
     }
 
     DeclProc getDeclProc(String name) {
-        return getDecl(DeclProc.class, name);
-    }
-
-    DeclVar getDeclVar(String name) {
-        return getDecl(DeclVar.class, name);
+        Decl d = getDecl(name);
+        if (d instanceof DeclProc) {
+            return (DeclProc) d;
+        } else {
+            if (d == null) {
+                return null;
+            } else {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(d.ctx), // s072
+                        name + " is not a procedure but " + d.kind() + " in this scope");
+            }
+        }
     }
 
     DeclFunc getDeclFunc(String name) {
-        DeclFunc ret = getDecl(DeclFunc.class, name);
-        return ret;
+        Decl d = getDecl(name);
+        if (d instanceof DeclFunc) {
+            return (DeclFunc) d;
+        } else {
+            if (d == null) {
+                return null;
+            } else {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(d.ctx), // s073
+                        name + " is not a function but " + d.kind() + " in this scope");
+            }
+        }
     }
 
     DeclException getDeclException(String name) {
-        return getDecl(DeclException.class, name);
+        Decl d = getDecl(name);
+        if (d instanceof DeclException) {
+            return (DeclException) d;
+        } else {
+            if (d == null) {
+                return null;
+            } else {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(d.ctx), // s074
+                        name + " is not an exception but " + d.kind() + " in this scope");
+            }
+        }
     }
 
     DeclLabel getDeclLabel(String name) {
-        return getDecl(DeclLabel.class, name);
+        assert name != null;
+
+        for (SymbolTable t : symbolTableStack) {
+
+            if (t.labels.containsKey(name)) {
+                return t.labels.get(name);
+            }
+        }
+
+        return null;
     }
 
     // return DeclId or DeclFunc for an identifier expression
     Decl getDeclForIdExpr(String name) {
-        DeclId declId = getDeclId(name);
-        DeclFunc declFunc = getDeclFunc(name);
-
-        if (declFunc == null) {
-            return declId;
-        } else if (declId == null) {
-            return declFunc;
+        Decl d = getDecl(name);
+        if (d instanceof DeclId || d instanceof DeclFunc) {
+            return d;
         } else {
-            if (declId.scope().level > declFunc.scope().level) {
-                return declId;
+            if (d == null) {
+                return null;
             } else {
-                assert declId.scope().level
-                        < declFunc.scope().level; // they cannot be on the same level
-                return declFunc;
+                throw new SemanticError(
+                        Misc.getLineColumnOf(d.ctx), // s075
+                        name
+                                + " is neither an identifier nor a function but "
+                                + d.kind()
+                                + " in this scope");
             }
         }
     }
@@ -694,44 +733,21 @@ public class SymbolStack {
 
     private static class SymbolTable {
         final Scope scope;
-
-        final Map<String, DeclId> ids = new HashMap<>();
-        final Map<String, DeclProc> procs = new HashMap<>();
-        final Map<String, DeclFunc> funcs = new HashMap<>();
-        final Map<String, DeclException> exceptions = new HashMap<>();
+        final Map<String, Decl> decls = new HashMap<>();
         final Map<String, DeclLabel> labels = new HashMap<>();
 
         SymbolTable(Scope scope) {
             this.scope = scope;
         }
-
-        <D extends Decl> Map<String, D> map(Class<D> declClass) {
-            if (DeclId.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) ids;
-            } else if (DeclProc.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) procs;
-            } else if (DeclFunc.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) funcs;
-            } else if (DeclException.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) exceptions;
-            } else if (DeclLabel.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) labels;
-            } else {
-                assert false : ("unknown declaration type: " + declClass.getSimpleName());
-                return null;
-            }
-        }
     }
 
-    private <D extends Decl> D getDecl(Class<D> declClass, String name) {
+    private Decl getDecl(String name) {
         assert name != null;
 
-        int size = symbolTableStack.size();
-        for (int i = 0; i < size; i++) {
-            SymbolTable t = symbolTableStack.get(i);
-            Map<String, D> map = t.<D>map(declClass);
-            if (map.containsKey(name)) {
-                return map.get(name);
+        for (SymbolTable t : symbolTableStack) {
+
+            if (t.decls.containsKey(name)) {
+                return t.decls.get(name);
             }
         }
 
