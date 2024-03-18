@@ -69,6 +69,18 @@ namespace cubmem
     std::string target ("/src/");
 #endif // !WINDOWS
 
+    // TODO: To minimize the search cost and prevent unnecessary paths
+    //       from being included in the tag_name, we are cutting the string based on
+    //       the rightmost "/src/" found. However, in this case, when the allocation
+    //       occurs on the same 'line', "/src/test.c" and "/src/thirdparty/src/test.c"
+    //       get the same tag_name, making it impossible to distinguish memory alloc-
+    //       ations from two different files. However, such exceptional situations
+    //       are very rare, as memory allocations must occur on the same line number.
+    //       Handling these exceptions would increase the overall cost of this function.
+    //       Moreover, currently, although these exceptional situations theoretically exist,
+    //       they have not been encountered in developer tests.
+    //       Therefore, it has been decided to address them if discovered in the future.
+
     // Find the last occurrence of "src" in the path
     size_t pos = filecopy.rfind (target);
 #if !defined (NDEBUG)

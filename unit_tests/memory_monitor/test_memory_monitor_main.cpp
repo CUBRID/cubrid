@@ -21,14 +21,20 @@
 
 #include <cstdlib>
 #include <malloc.h>
+#include <thread>
 
 // hack to access the private parts of log_checkpoint_info, to verify that the members remain the same after pack/unpack
 #define private public
 #include "memory_monitor_sr.hpp"
 #undef private
 
+static const int num_threads = 100;
+
 char *test_mem_in_the_scope = NULL;
-int test_mem_in_the_scope_idx = -1;
+char *test_mem_in_the_scope_with_src = NULL;
+char **test_mem_in_the_scope_multithread = NULL;
+char *test_mem_out_of_scope = NULL;
+char *test_mem_small = NULL;
 
 using namespace cubmem;
 
@@ -98,43 +104,158 @@ TEST_CASE ("Test mmon_add_stat", "")
 {
   MMON_SERVER_INFO test_server_info;
   size_t allocated_size;
+  size_t allocated_size_2;
   int ret;
+  REQUIRE (mmon_is_memory_monitor_enabled () == false);
   mmon_initialize ("unittest");
+  REQUIRE (mmon_is_memory_monitor_enabled () == true);
 
   mmon_aggregate_server_info (test_server_info);
   ret = find_test_stat (test_server_info, "add_test.c:100");
   REQUIRE (ret == -1);
   test_server_info.stat_info.clear();
+
   test_mem_in_the_scope = (char *) malloc (32);
+  test_mem_in_the_scope_with_src = (char *) malloc (20 + MMON_METAINFO_SIZE);
   allocated_size = malloc_usable_size (test_mem_in_the_scope);
-  mmon_add_stat (test_mem_in_the_scope, allocated_size, "add_test.c", 100);
+  mmon_add_stat (test_mem_in_the_scope, allocated_size, "/src/add_test.c", 100);
+  allocated_size_2 = malloc_usable_size (test_mem_in_the_scope_with_src);
+  mmon_add_stat (test_mem_in_the_scope_with_src, allocated_size_2, "/src/something/thirdparty/src/add_test.c", 100);
+
   mmon_aggregate_server_info (test_server_info);
   ret = find_test_stat (test_server_info, "add_test.c:100");
+
   REQUIRE (ret != -1);
-  test_mem_in_the_scope_idx = ret;
-  REQUIRE (test_server_info.total_mem_usage == allocated_size);
-  REQUIRE (test_server_info.total_metainfo_mem_usage == MMON_METAINFO_SIZE);
+  REQUIRE (test_server_info.total_mem_usage == allocated_size + allocated_size_2);
+  REQUIRE (test_server_info.total_metainfo_mem_usage == MMON_METAINFO_SIZE * 2);
   REQUIRE (test_server_info.num_stat == 1);
-  REQUIRE (test_server_info.stat_info[ret].second == allocated_size);
+  REQUIRE (test_server_info.stat_info[ret].second == allocated_size + allocated_size_2);
+}
+
+TEST_CASE ("Test mmon_add_stat w/ multithreads", "")
+{
+  MMON_SERVER_INFO test_server_info;
+  std::vector <std::thread> threads;
+  size_t allocated_size[num_threads];
+  size_t total_allocated_size = 0;
+  int ret;
+
+  mmon_aggregate_server_info (test_server_info);
+  ret = find_test_stat (test_server_info, "base/add_test_multithread.c:100");
+  REQUIRE (ret == -1);
+  test_server_info.stat_info.clear();
+  test_mem_in_the_scope_multithread = (char **) malloc (sizeof (char *) * num_threads);
+  memset (test_mem_in_the_scope_multithread, 0, sizeof (char *) * num_threads);
+
+  auto alloc_mem_and_request_add_stat = [] (char *ptr, size_t size, size_t &allocated_size)
+  {
+    allocated_size = malloc_usable_size (ptr);
+    mmon_add_stat (ptr, allocated_size, "base/add_test_multithread.c", 100);
+  };
+
+  for (int i = 0; i < num_threads; i++)
+    {
+      size_t size = 10 * (i + 1) + MMON_METAINFO_SIZE;
+      test_mem_in_the_scope_multithread[i] = (char *) malloc (size);
+      threads.emplace_back (alloc_mem_and_request_add_stat, test_mem_in_the_scope_multithread[i],
+			    size, std::ref (allocated_size[i]));
+    }
+
+  for (auto &t : threads)
+    {
+      t.join ();
+    }
+
+  for (auto &size : allocated_size)
+    {
+      total_allocated_size += size;
+    }
+  mmon_aggregate_server_info (test_server_info);
+  ret = find_test_stat (test_server_info, "base/add_test_multithread.c:100");
+
+  REQUIRE (ret != -1);
+  REQUIRE (test_server_info.num_stat == 2);
+  REQUIRE (test_server_info.stat_info[ret].second == total_allocated_size);
 }
 
 TEST_CASE ("Test mmon_sub_stat", "")
 {
   MMON_SERVER_INFO test_server_info;
-  char *test_mem_small = (char *) malloc (10);
-  char *test_mem_out_of_scope = (char *) malloc (50);
   int ret;
+  size_t answer_in_the_scope = malloc_usable_size (test_mem_in_the_scope) - MMON_METAINFO_SIZE;
+  size_t answer_small;
+  size_t answer_out_of_scope;
+
+  test_mem_small = (char *) malloc (10);
+  test_mem_out_of_scope = (char *) malloc (50);
+  answer_small = malloc_usable_size (test_mem_small);
+  answer_out_of_scope = malloc_usable_size (test_mem_out_of_scope);
+
+  REQUIRE (mmon_get_allocated_size (test_mem_in_the_scope) == answer_in_the_scope);
+  REQUIRE (mmon_get_allocated_size (test_mem_small) == answer_small);
+  REQUIRE (mmon_get_allocated_size (test_mem_out_of_scope) == answer_out_of_scope);
 
   mmon_aggregate_server_info (test_server_info);
   ret = find_test_stat (test_server_info, "add_test.c:100");
-  REQUIRE (ret == test_mem_in_the_scope_idx);
+  REQUIRE (ret != -1);
   test_server_info.stat_info.clear();
+
   mmon_sub_stat (test_mem_small);
   mmon_sub_stat (test_mem_out_of_scope);
   mmon_sub_stat (test_mem_in_the_scope);
+  mmon_sub_stat (test_mem_in_the_scope_with_src);
+
+  REQUIRE (mmon_get_allocated_size (test_mem_small) == answer_small);
+  REQUIRE (mmon_get_allocated_size (test_mem_out_of_scope) == answer_out_of_scope);
+
   mmon_aggregate_server_info (test_server_info);
   ret = find_test_stat (test_server_info, "add_test.c:100");
+
   REQUIRE (ret != -1);
   REQUIRE (test_server_info.stat_info[ret].second == 0);
-  mmon_finalize();
+
+  free (test_mem_in_the_scope);
+  free (test_mem_in_the_scope_with_src);
+  free (test_mem_small);
+  free (test_mem_out_of_scope);
+}
+
+TEST_CASE ("Test mmon_sub_stat w/ multithreads", "")
+{
+  MMON_SERVER_INFO test_server_info;
+  std::vector <std::thread> threads;
+  int ret;
+
+  mmon_aggregate_server_info (test_server_info);
+  ret = find_test_stat (test_server_info, "base/add_test_multithread.c:100");
+  REQUIRE (ret != -1);
+  test_server_info.stat_info.clear();
+
+  auto request_sub_stat = [] (char *ptr)
+  {
+    mmon_sub_stat (ptr);
+  };
+
+  for (int i = 0; i < num_threads; i++)
+    {
+      threads.emplace_back (request_sub_stat, test_mem_in_the_scope_multithread[i]);
+    }
+
+  for (auto &t : threads)
+    {
+      t.join ();
+    }
+
+  mmon_aggregate_server_info (test_server_info);
+  ret = find_test_stat (test_server_info, "base/add_test_multithread.c:100");
+
+  REQUIRE (ret != -1);
+  REQUIRE (test_server_info.stat_info[ret].second == 0);
+
+  for (int i = 0; i < num_threads; i++)
+    {
+      free (test_mem_in_the_scope_multithread[i]);
+    }
+  free (test_mem_in_the_scope_multithread);
+  mmon_finalize ();
 }
