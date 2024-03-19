@@ -538,13 +538,14 @@ util_is_localhost (char *host)
  *
  * @return true if hostname_a is same as hostname_b
  */
+
 bool
 are_hostnames_equal (const char *hostname_a, const char *hostname_b)
 {
   const char *a;
   const char *b;
 
-  for (a = hostname_a, b = hostname_b; *a && *b && (*a == *b); ++a, ++b)
+  for (a = hostname_a, b = hostname_b; *a && *b && (toupper (*a) == toupper (*b)); ++a, ++b)
     ;
 
   if (*a == '\0' && *b != '\0')
@@ -557,7 +558,7 @@ are_hostnames_equal (const char *hostname_a, const char *hostname_b)
     }
   else
     {
-      return *a == *b;
+      return toupper (*a) == toupper (*b);
     }
 }
 
@@ -1332,7 +1333,7 @@ util_get_table_list_from_file (char *fname, dynamic_array * darray)
   while (1)
     {
       c = fgetc (fp);
-      if (c == ' ' || c == '\t' || c == ',' || c == '\n' || c == EOF)
+      if (char_isspace2 (c) || c == ',' || c == EOF)
 	{
 	  if (p != 0)
 	    {

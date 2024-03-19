@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Base de données "%1$s" est inconnu, ou le fichier "databases.txt" n'est pas accessible.
 117 Nom de chemin absolu pour la base de données est trop long. La longueur totale de le chemin "%1$s" et le nom "%2$s" est %3$d; la longueur combinée doit être inférieur à %4$d.
 118 Impossible de localiser le répertoire de travail courant.
-119 Impossible de trouver ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
+119 Impossible de trouver le nom d'hôte ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 120 Le nombre maximal de volumes (%1$d) a été dépassé.
 121 Tentative de supprimer "%1$s" un volume permanente de la base de données.
 122 Impossible d'accéder au catalogue de messages du système.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Impossible de créer un pipe vers le serveur maître.
 348 Doit spécifier un service ou un identificateur de port.
 349 Service inconnu pour TCP: %1$s.
-350 Impossible de trouver ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
+350 Impossible de trouver le nom d'hôte ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 351 Impossible de créer un socket TCP.
 352 tcp_open: ne peut pas obtenir un port TCP réservé.
 353 Impossible d'établir la connexion au serveur maître sur l'hôte "%1$s".
@@ -683,8 +683,8 @@ $ LOADDB
 613 Dans la classe "%3$s", composante locale "%1$s" ne peut pas servir comme un substitut d'alias pour la classe "%2$s". Les domaines sont incompatibles.
 614 Nombre des journaux actifs de transactions a été dépassé. Le nombre maximum souhaité est de %1$d.
 615 Impossible d'établir le contact avec l'interface Winsock. Erreur Winsock: %1$d.
-616 Impossible de déterminer le nom de la machine en utilisant l'interface Winsock. Erreur Winsock: %1$d.
-617 Impossible de déterminer l'id de machine en utilisant l'interface Winsock. Il doit y avoir une enregistration dans la table de nom d'hôte pour cette machine. Erreur Winsock: %1$d.
+616 Impossible de trouver le nom d'hôte ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
+617 Impossible de trouver le nom d'hôte ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 618 Attribut n'est pas modifiable.
 619 Mauvais jeux de caractères codés de source.
 620 Mauvais codeset de destination.
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 Le chargement de l'index a été abandonné après une erreur
 1244 Le chargement de mises à jour d'attributs partagés à partir de fichiers objet n'est pas pris en charge en mode CS.
 1245 Le chargement de mises à jour d'attributs de classe à partir de fichiers objets n'est pas pris en charge en mode CS.
-1246 Impossible d'obtenir l'adresse et le nom canonique de ("%1$s") dans "%2$s". Veuillez vérifier l'autorisation du fichier ou s'il existe le nom d'hôte.
+1246 Impossible d'obtenir l'adresse et le nom canonique pour le nom d'hôte ("%1$s") dans "%2$s". Veuillez vérifier l'autorisation du fichier ou s'il existe le nom d'hôte.
 1247 Le temps (%1$s) spécifié doit être postérieure à l'heure (%2$s) de la sauvegarde spécifiée.
 1248 Fichier de clé non valide: %1$s
 1249 Impossible de trouver la clé (index: %1$d).

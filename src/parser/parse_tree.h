@@ -1379,7 +1379,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_MERGE  0x400000000ULL	/* do not merge view or in-line view */
 #define  PT_HINT_NO_ELIMINATE_JOIN  0x800000000ULL	/* do not eliminate join */
 #define  PT_HINT_SAMPLING_SCAN  0x1000000000ULL	/* SELECT sampling data instead of full data */
-#define  PT_HINT_LEADING  0x2000000000ULL	/* force join order of specific table */
+#define  PT_HINT_LEADING  0x2000000000ULL	/* force specific table to join left-to-right */
 
 /* Codes for error messages */
 typedef enum
@@ -2601,6 +2601,8 @@ typedef enum
 
   /* Reserved page info names */
   RESERVED_P_CLASS_OID,
+  RESERVED_P_CUR_VOLUMEID,
+  RESERVED_P_CUR_PAGEID,
   RESERVED_P_PREV_PAGEID,
   RESERVED_P_NEXT_PAGEID,
   RESERVED_P_NUM_SLOTS,

@@ -45,7 +45,8 @@
 #include "locator_sr.h"
 #include "btree.h"
 #include "btree_unique.hpp"
-#include "transform.h"		/* for CT_SERIAL_NAME */
+#include "schema_system_catalog_constants.h"	/* for CT_SERIAL_NAME */
+#include "transform.h"
 #include "serial.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -3181,11 +3182,11 @@ heap_stats_get_second_best (HEAP_HDR_STATS * heap_hdr, VPID * vpid)
   heap_hdr->estimates.head_second_best = HEAP_STATS_NEXT_BEST_INDEX (head);
 
   /* If both head and tail refer to the same index, the number of second best hints is 0. */
-  assert (heap_hdr->estimates.num_second_best != HEAP_NUM_BEST_SPACESTATS);
+  assert (heap_hdr->estimates.num_second_best < HEAP_NUM_BEST_SPACESTATS);
   assert ((heap_hdr->estimates.tail_second_best >= heap_hdr->estimates.head_second_best)
 	  ? ((heap_hdr->estimates.tail_second_best - heap_hdr->estimates.head_second_best)
 	     == heap_hdr->estimates.num_second_best)
-	  : ((10 + heap_hdr->estimates.tail_second_best - heap_hdr->estimates.head_second_best)
+	  : ((HEAP_NUM_BEST_SPACESTATS + heap_hdr->estimates.tail_second_best - heap_hdr->estimates.head_second_best)
 	     == heap_hdr->estimates.num_second_best));
 
   *vpid = heap_hdr->estimates.second_best[head];
@@ -18568,6 +18569,9 @@ heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oid, const HFID * h
 
   db_make_oid (page_info[HEAP_PAGE_INFO_CLASS_OID], cls_oid);
 
+  db_make_int (page_info[HEAP_PAGE_INFO_CUR_VOLUME], vpid->volid);
+  db_make_int (page_info[HEAP_PAGE_INFO_CUR_PAGE], vpid->pageid);
+
   if (hfid->hpgid == vpid->pageid && hfid->vfid.volid == vpid->volid)
     {
       HEAP_HDR_STATS *hdr_stats = (HEAP_HDR_STATS *) recdes.data;
@@ -23812,6 +23816,7 @@ heap_initialize_hfid_table (void)
   edesc->of_key = offsetof (HEAP_HFID_TABLE_ENTRY, class_oid);
   edesc->of_mutex = 0;
   edesc->using_mutex = LF_EM_NOT_USING_MUTEX;
+  edesc->max_alloc_cnt = LF_ENTRY_DESCRIPTOR_MAX_ALLOC;
   edesc->f_alloc = heap_hfid_table_entry_alloc;
   edesc->f_free = heap_hfid_table_entry_free;
   edesc->f_init = heap_hfid_table_entry_init;

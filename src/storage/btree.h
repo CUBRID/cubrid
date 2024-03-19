@@ -181,9 +181,6 @@ struct btree_scan
 
   PAGE_PTR C_page;		/* page ptr to current leaf page */
 
-  /* TO BE REMOVED - maybe */
-  PAGE_PTR O_page;		/* page ptr to overflow page */
-
   INT16 slot_id;		/* current slot identifier */
 
   /* TO BE REMOVED */
@@ -258,7 +255,6 @@ struct btree_scan
     (bts)->O_vpid.pageid = NULL_PAGEID;			\
     (bts)->P_page = NULL;				\
     (bts)->C_page = NULL;				\
-    (bts)->O_page = NULL;				\
     (bts)->slot_id = NULL_SLOTID;			\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
@@ -305,7 +301,6 @@ struct btree_scan
     (bts)->O_vpid.pageid = NULL_PAGEID;			\
     (bts)->P_page = NULL;				\
     (bts)->C_page = NULL;				\
-    (bts)->O_page = NULL;				\
     (bts)->slot_id = -1;				\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
@@ -665,6 +660,8 @@ extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALU
 /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 extern int btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 					     key_val_range * kv_range, bool * is_newly);
+extern int btree_remake_reference_key_with_FK (THREAD_ENTRY * thread_p, TP_DOMAIN * pk_domain, DB_VALUE * fk_key,
+					       DB_VALUE * new_key);
 
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 

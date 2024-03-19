@@ -14088,8 +14088,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      /* force join left-to-right */
 	      q = pt_append_nulstring (parser, q, "ORDERED ");
 	    }
-
-	  if (p->info.query.q.select.hint & PT_HINT_LEADING)
+	  else if (p->info.query.q.select.hint & PT_HINT_LEADING && p->info.query.q.select.leading != NULL)
 	    {
 	      /* force join left-to-right */
 	      q = pt_append_nulstring (parser, q, "LEADING");
