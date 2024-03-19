@@ -23,13 +23,12 @@
 #include <malloc.h>
 #include <thread>
 
-// hack to access the private parts of log_checkpoint_info, to verify that the members remain the same after pack/unpack
-#define private public
 #include "memory_monitor_sr.hpp"
-#undef private
 
+// For multithread test
 static const int num_threads = 100;
 
+// Global variable for whole unit-test
 char *test_mem_in_the_scope = NULL;
 char *test_mem_in_the_scope_with_src = NULL;
 char **test_mem_in_the_scope_multithread = NULL;
@@ -38,8 +37,10 @@ char *test_mem_small = NULL;
 
 using namespace cubmem;
 
+// Global memory_monitor
 memory_monitor *test_mmon_Gl = nullptr;
 
+// Dummy APIs
 bool mmon_is_memory_monitor_enabled ()
 {
   return (test_mmon_Gl != nullptr);
@@ -83,7 +84,9 @@ void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
 {
   test_mmon_Gl->aggregate_server_info (server_info);
 }
+// Dummy APIs end
 
+// Find target stat
 int find_test_stat (MMON_SERVER_INFO &server_info, std::string target)
 {
   int cnt = 0;
@@ -100,6 +103,19 @@ int find_test_stat (MMON_SERVER_INFO &server_info, std::string target)
   return -1;
 }
 
+/* ***IMPORTANT!!***
+ * The unit tests for the 'memory_monitor' class are intertwined within one cohesive framework.
+ * Each test depends on all the previous tests. These tests can be broadly categorized into
+ * two categories: 'add' and 'sub'. When developers add new tests,
+ * they must consider the entire test suite.
+ */
+
+// Test add_stat()
+//
+// Test add_stat() with single thread when different file paths
+// that will be made same stat name are given
+//
+// Expected Result: stat name "add_test.c:100" with value "allocated_size + allocated_size_2"
 TEST_CASE ("Test mmon_add_stat", "")
 {
   MMON_SERVER_INFO test_server_info;
@@ -132,6 +148,11 @@ TEST_CASE ("Test mmon_add_stat", "")
   REQUIRE (test_server_info.stat_info[ret].second == allocated_size + allocated_size_2);
 }
 
+// Test add_stat() w/ multi threads
+//
+// Test add_stat() with multi threads when a identical file path is given
+//
+// Expected Result: stat name "add_test_multithread.c:100" with value "total_allocated_size"
 TEST_CASE ("Test mmon_add_stat w/ multithreads", "")
 {
   MMON_SERVER_INFO test_server_info;
@@ -178,6 +199,15 @@ TEST_CASE ("Test mmon_add_stat w/ multithreads", "")
   REQUIRE (test_server_info.stat_info[ret].second == total_allocated_size);
 }
 
+// Test sub_stat()
+//
+// Test sub_stat() with single thread when various pointers
+// that have been malloc-ed with different condition are given
+// It also checks functionality of get_allocated_size() before calls sub_stat()
+//
+// Expected Result:
+//      mmon_get_allocated_size() returns the value that is same as expected answer
+//      stat name "add_test.c:100" with value "0"
 TEST_CASE ("Test mmon_sub_stat", "")
 {
   MMON_SERVER_INFO test_server_info;
@@ -220,6 +250,12 @@ TEST_CASE ("Test mmon_sub_stat", "")
   free (test_mem_out_of_scope);
 }
 
+// Test sub_stat() w/ multi threads
+//
+// Test sub_stat() with multi threads when memory pointers that has been allocated in
+// "add_stat() w/ multi threads" test are given
+//
+// Expected Result: stat name "add_test_multithread.c:100" with value "0"
 TEST_CASE ("Test mmon_sub_stat w/ multithreads", "")
 {
   MMON_SERVER_INFO test_server_info;
