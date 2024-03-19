@@ -36,6 +36,7 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
+#include "subquery_cache.h"
 
 #define foutput stdout
 
@@ -3273,6 +3274,13 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
   qdump_print_stats_text (fp, xasl_p->connect_by_ptr, indent);
+
+  if (xasl_p->sq_cache_flag & SQ_CACHE_INITIALIZED_FLAG)
+    {
+      fprintf (fp, "%*c", indent, ' ');
+      fprintf (fp, "SUBQUERY_CACHE (hit: %lld, miss: %lld)\n", (long long int) xasl_p->sq_cache_hit,
+	       (long long int) xasl_p->sq_cache_miss);
+    }
 
   gstats = &xasl_p->groupby_stats;
   if (gstats->run_groupby)

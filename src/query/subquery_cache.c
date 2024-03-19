@@ -37,18 +37,6 @@
 
 #include "subquery_cache.h"
 
-#define SQ_CACHE_MISS_MAX 1000
-#define SQ_CACHE_MIN_HIT_RATIO 9
-
-#define SQ_TYPE_XASL 0
-#define SQ_TYPE_PRED 1
-#define SQ_TYPE_REGU_VAR 2
-#define SQ_TYPE_DBVAL 3
-
-#define SQ_CACHE_ENABLED_FLAG 1
-#define SQ_CACHE_INITIALIZED_FLAG 2
-#define SQ_CACHE_NOT_CACHING_CHECKED_FLAG 4
-#define SQ_CACHE_NOT_CACHING_FLAG 8
 typedef union _sq_regu_value
 {
   /* fields used by both XASL interpreter and regulator */
@@ -66,8 +54,6 @@ typedef struct _sq_val
   sq_regu_value val;
   REGU_DATATYPE t;
 } sq_val;
-
-static int sq_hm_entries = SQ_CACHE_MISS_MAX;
 
 /**************************************************************************************/
 
@@ -522,6 +508,7 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set)
 int
 sq_cache_initialize (xasl_node * xasl)
 {
+  int sq_hm_entries = 2 * SQ_CACHE_MISS_MAX;
   xasl->sq_cache_ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
   if (!xasl->sq_cache_ht)
     {
@@ -602,6 +589,12 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
          adapting to the effectiveness of the cache. */
       if (xasl->sq_cache_hit / xasl->sq_cache_miss < SQ_CACHE_MIN_HIT_RATIO)
 	{
+	  regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
+	  return false;
+	}
+      else if (xasl->sq_cache_miss > 2 * SQ_CACHE_MISS_MAX)
+	{
+	  regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
 	  return false;
 	}
     }
@@ -686,7 +679,7 @@ sq_cache_destroy (xasl_node * xasl)
  * scalar subqueries.
  */
 int
-execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd)
+execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, void *vd)
 {
   if (regu_var->xasl && !(regu_var->xasl->sq_cache_flag & SQ_CACHE_NOT_CACHING_FLAG) && (regu_var->xasl->status == XASL_CLEARED || regu_var->xasl->status == XASL_INITIALIZED))	//&& !regu_var->xasl->aptr_list && !regu_var->xasl->dptr_list && !regu_var->xasl->if_pred
     {
@@ -698,7 +691,7 @@ execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE
 	      regu_var->xasl->status = XASL_SUCCESS;
 	      return true;
 	    }
-	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, (val_descr *) vd);
 	  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
 	    {
 	      return false;
@@ -722,7 +715,7 @@ execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE
 	}
     }
 
-  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, (val_descr *) vd);
 
   return false;
 }
