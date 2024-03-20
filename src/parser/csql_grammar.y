@@ -27944,7 +27944,7 @@ pt_check_one_stmt(char* p)
      }
 
     t++;
-    while (*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n')
+    while (char_isspace2(*t))
      {
         t++;
      }
@@ -28008,7 +28008,7 @@ pt_check_one_stmt(char* p)
           }
     }
 
-    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
+    while (char_isspace2(*p))
      {
         p++;
      }
@@ -28020,7 +28020,7 @@ static bool
 pt_ct_check_select (char* p, char *perr_msg)
 {  
    perr_msg[0] = 0x00;
-   while (*p == ' ' || *p == '(' || *p == '\t' || *p == '\r' || *p == '\n')
+   while (char_isspace2(*p) || *p == '(')
      {
         p++;
      }
@@ -28029,7 +28029,7 @@ pt_ct_check_select (char* p, char *perr_msg)
    {
         if( strncasecmp(p, "SELECT", 6) == 0 )
         {
-            if( p[6] == ' ' || p[6] == '\t' || p[6] == '\r' || p[6] == '\n' )
+            if( char_isspace2(p[6]))
               {    
                  if (pt_check_one_stmt(p + 6))
                    {

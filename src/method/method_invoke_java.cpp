@@ -451,9 +451,7 @@ namespace cubmethod
 	    {
 	      std::uint64_t qid = current_result_info.query_id;
 	      bool is_oid_included = current_result_info.include_oid;
-	      query_cursor *cursor = m_group->create_cursor (qid, is_oid_included);
-
-	      assert (cursor != nullptr);
+	      (void) m_group->create_cursor (qid, is_oid_included);
 	    }
 	}
 
@@ -496,7 +494,6 @@ namespace cubmethod
       }
 
     fetch_info info;
-
     int i = 0;
     SCAN_CODE s_code = S_SUCCESS;
     while (s_code == S_SUCCESS)

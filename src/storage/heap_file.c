@@ -18569,6 +18569,9 @@ heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oid, const HFID * h
 
   db_make_oid (page_info[HEAP_PAGE_INFO_CLASS_OID], cls_oid);
 
+  db_make_int (page_info[HEAP_PAGE_INFO_CUR_VOLUME], vpid->volid);
+  db_make_int (page_info[HEAP_PAGE_INFO_CUR_PAGE], vpid->pageid);
+
   if (hfid->hpgid == vpid->pageid && hfid->vfid.volid == vpid->volid)
     {
       HEAP_HDR_STATS *hdr_stats = (HEAP_HDR_STATS *) recdes.data;
@@ -23813,6 +23816,7 @@ heap_initialize_hfid_table (void)
   edesc->of_key = offsetof (HEAP_HFID_TABLE_ENTRY, class_oid);
   edesc->of_mutex = 0;
   edesc->using_mutex = LF_EM_NOT_USING_MUTEX;
+  edesc->max_alloc_cnt = LF_ENTRY_DESCRIPTOR_MAX_ALLOC;
   edesc->f_alloc = heap_hfid_table_entry_alloc;
   edesc->f_free = heap_hfid_table_entry_free;
   edesc->f_init = heap_hfid_table_entry_init;
