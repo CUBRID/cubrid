@@ -604,17 +604,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 ret = DBTypeAdapter.getValueType(ci.type);
                 ptConv.addToImports(ret.fullJavaType);
             } else {
-                // Allow the other types too, which can lead to run-time type errors,
-                // but accepts some more working programs. For example,
-                //
-                // create or replace procedure poo(i int) as
-                // begin
-                //     for r in (execute immediate 'select * from db_collation') loop
-                //         dbms_output.put_line(nvl2(i, r.coll_id, 2.7));
-                //     end loop;
-                // end;
-
-                ret = TypeSpecSimple.OBJECT;
+                throw new SemanticError(
+                        Misc.getLineColumnOf(node.ctx), // s233
+                        String.format(
+                                "unsupported return type (code %d) of the built-in function %s",
+                                ci.type, node.name));
             }
 
             node.setResultType(ret);
@@ -1217,7 +1211,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     private String checkArgsAndConvertToTypicalValuesStr(List<Expr> args, String funcName) {
         if (args.size() == 0) {
-            return "";
+            return "()";
         }
 
         StringBuilder sb = new StringBuilder();
