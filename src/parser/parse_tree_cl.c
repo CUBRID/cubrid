@@ -18751,15 +18751,6 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r);
 	  q = pt_append_nulstring (parser, q, ".");
 	}
-      else
-	{			//ctshim
-	  char *owner_name = (char *) au_user_name ();
-	  assert (owner_name != NULL);
-	  q = pt_append_nulstring (parser, q, "[");
-	  q = pt_append_nulstring (parser, q, owner_name);
-	  q = pt_append_nulstring (parser, q, "]");
-	  q = pt_append_nulstring (parser, q, ".");
-	}
       r = pt_print_bytes (parser, p->info.dblink_table.conn);
       q = pt_append_varchar (parser, q, r);
 
