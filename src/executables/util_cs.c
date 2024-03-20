@@ -4601,17 +4601,11 @@ memmon (UTIL_FUNCTION_ARG * arg)
     }
 
   /* execute phase */
-  // TODO: we have to add network function
-  /*error_code = mmon_get_server_info (server_info);
-     if (error_code != NO_ERROR)
-     {
-     goto error_exit;
-     } */
-  // TODO: for test print function. It will be removed after network functions are implemented.
-  strcpy (server_info.server_name, database_name);
-  server_info.total_mem_usage = 1024 * 3;
-  server_info.total_metainfo_mem_usage = 1024 * 1;
-  server_info.stat_info.emplace_back ("test.c:100", 1024 * 3);
+  error_code = mmon_get_server_info (server_info);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   mmon_print_server_info (server_info, outfile_fp);
 
