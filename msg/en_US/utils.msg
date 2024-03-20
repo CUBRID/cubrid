@@ -1313,7 +1313,7 @@ valid options:\n\
                                   default: latest\n
 
 $set 59 MSGCAT_UTIL_SET_MEMMON
-1 Please set the system parameter 'enable_memory_monitoring=yes' in 'cubrid.conf' and restart the database server.\n
+1 Please set the system parameter 'enable_memory_monitoring' in 'cubrid.conf' and restart the database server.\n
 2 memmon cannot run as standalone mode.\n
 3 Fail to open output file with filename %4$s.\n
 60 \
