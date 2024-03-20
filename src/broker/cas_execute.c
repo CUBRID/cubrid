@@ -880,6 +880,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  goto prepare_error;
 	}
 
+      db_init_lexer_lineno ();
       session = db_open_buffer (tmp);
       if (!session)
 	{
@@ -1527,6 +1528,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
     {
       hm_session_free (srv_handle);
 
+      db_init_lexer_lineno ();
       session = db_open_buffer (srv_handle->sql_stmt);
       if (!session)
 	{
@@ -1850,6 +1852,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
     {
       hm_session_free (srv_handle);
 
+      db_init_lexer_lineno ();
       session = db_open_buffer (srv_handle->sql_stmt);
       if (!session)
 	{
@@ -2433,6 +2436,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       net_arg_get_str (&sql_stmt, &sql_size, argv[query_index]);
       cas_log_write_nonl (0, false, "batch %d : ", query_index + 1);
 
+      db_init_lexer_lineno ();
       session = db_open_buffer (sql_stmt);
       if (!session)
 	{
@@ -2686,6 +2690,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
       if (is_prepared == FALSE)
 	{
+	  db_init_lexer_lineno ();
 	  session = db_open_buffer (srv_handle->sql_stmt);
 	  if (!session)
 	    {
@@ -11773,6 +11778,7 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
   int stmt_id = 0;
   DB_SESSION *session = NULL;
 
+  db_init_lexer_lineno ();
   session = db_open_buffer (srv_handle->sql_stmt);
   if (!session)
     {

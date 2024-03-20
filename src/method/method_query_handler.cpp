@@ -764,6 +764,7 @@ namespace cubmethod
       {
 	g_open_buffer_control_flags |= PARSER_FOR_PLCSQL_STATIC_SQL;
       }
+    db_init_lexer_lineno();
     m_session = db_open_buffer (m_sql_stmt.c_str());
     g_open_buffer_control_flags = 0;
 
@@ -841,6 +842,7 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
+    db_init_lexer_lineno ();
     m_session = db_open_buffer (sql_stmt_copy.c_str());
     if (!m_session)
       {
