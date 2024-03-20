@@ -217,11 +217,6 @@ namespace cubmem
     FILE *outfile_fp = fopen ("finalize_dump.txt", "w+");
     MMON_SERVER_INFO server_info;
 
-    auto MMON_CONVERT_TO_KB_SIZE = [] (uint64_t size)
-    {
-      return ((size) / 1024);
-    };
-
     aggregate_server_info (server_info);
 
     fprintf (outfile_fp, "====================cubrid memmon====================\n");
