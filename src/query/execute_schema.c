@@ -2315,6 +2315,9 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  while (member_name != NULL);
 	  break;
 	default:
+	  /* 
+	   * code shall be one of the above 2 types, otherwise it's an error. 
+	   */
 	  assert (false);
 	  break;
 	}
