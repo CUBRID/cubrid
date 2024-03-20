@@ -38,10 +38,13 @@ void mmon_print_server_info (MMON_SERVER_INFO &server_info, FILE *outfile_fp)
     {
       for (const auto &stat : server_info.stat_info)
 	{
-	  mem_usage_ratio = stat.second / (double) server_info.total_mem_usage;
-	  mem_usage_ratio *= 100;
-	  fprintf (outfile_fp, "\t%-100s | %17lu KB(%3d%%)\n",stat.first.c_str (), MMON_CONVERT_TO_KB_SIZE (stat.second),
-		   (int)mem_usage_ratio);
+	  if (stat.second != 0)
+	    {
+	      mem_usage_ratio = stat.second / (double) server_info.total_mem_usage;
+	      mem_usage_ratio *= 100;
+	      fprintf (outfile_fp, "\t%-100s | %17lu KB(%3d%%)\n",stat.first.c_str (), MMON_CONVERT_TO_KB_SIZE (stat.second),
+		       (int)mem_usage_ratio);
+	    }
 	}
     }
   fprintf (outfile_fp, "-----------------------------------------------------\n");
