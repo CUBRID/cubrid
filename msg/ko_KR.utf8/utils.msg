@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -1298,3 +1299,14 @@ flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니�
                                 기본값: 플래시백을 위한 SQL 문만 출력\n\
     --oldest                    시작 시간부터 종료 시간까지 수행된 SQL문에 대하여 시간 순으로 플래시백을 수행합니다;\n\
                                 기본값: 최근에 수행된 SQL문부터 역순으로 플래시백을 수행합니다.\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 'cubrid.conf'에서 시스템 파라미터 'enable_memory_monitoring'을 설정하고 데이터베이스 서버를 재시작하세요.\n
+2 memmon은 독립 모드에서 실행할 수 없습니다.\n
+3 파일 이름이 %1$s인 출력 파일을 열 수 없습니다.\n
+60 \
+memmon: 데이터베이스 서버의 메모리 사용량 정보를 제공합니다.\n\
+사용법: %1$s memmon [옵션] 데이터베이스 이름\n\
+\n\
+유효한 옵션:\n\
+    -o, --output-file=FILE    결과를 FILE에 출력합니다\n

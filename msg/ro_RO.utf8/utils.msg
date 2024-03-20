@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Lungime sau caracter invalid '%1$c' în numele bazei de date '%2$s'\n
@@ -1339,3 +1340,14 @@ opțiuni valide:\n\
                                   pentru flashback; implicit: scoate numai instrucțiuni SQL pentru flashback\n\
     --oldest                      flashback-ul este efectuat în ordine cronologică pentru instrucțiunile SQL executate de la ora de\n\
                                   început până la ora de sfârșit; implicit: cel mai recent\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 Vă rugăm să setați parametrul de sistem 'enable_memory_monitoring' în 'cubrid.conf' și să reporniți serverul de baze de date.\n
+2 memmon nu poate rula în modul autonom.\n
+3 Eșec la deschiderea fișierului de ieșire cu numele %1$s.\n
+60 \
+memmon: Furnizează informații despre utilizarea memoriei a unui server de baze de date.\n\
+utilizare: %1$s memmon [OPȚIUNE] nume-bază-de-date\n\
+\n\
+opțiuni valide:\n\
+    -o, --output-file=FILE    rezultatele de ieșire în FILE\n
