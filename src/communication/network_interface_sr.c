@@ -11176,6 +11176,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   MMON_SERVER_INFO server_info;
 
   mmon_aggregate_server_info (server_info);
+  server_info.num_stat = 0;
 
   // Size of server name
   size += or_packed_string_length (server_info.server_name, NULL);
@@ -11192,14 +11193,18 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   // Size of stat name and memory usage
   // *INDENT-OFF*
-  for (const auto &s_info : server_info.stat_info)
+  for (const auto &[stat_name, mem_usage] : server_info.stat_info)
     {
-      // Size of filename
-      size += or_packed_string_length (s_info.first.c_str (), NULL);
-      size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
+      if (mem_usage != 0)
+        {
+          // Size of stat name
+          size += or_packed_string_length (stat_name.c_str (), NULL);
+          size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
 
-      // Size of memory usage
-      size += OR_INT64_SIZE;
+          // Size of memory usage
+          size += OR_INT64_SIZE;
+          server_info.num_stat++;
+        }
     }
   // *INDENT-ON*
 
@@ -11221,10 +11226,13 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       ptr = or_pack_int (ptr, server_info.num_stat);
 
       // *INDENT-OFF*
-      for (const auto &s_info : server_info.stat_info)
+      for (const auto &[stat_name, mem_usage] : server_info.stat_info)
         {
-          ptr = or_pack_string (ptr, s_info.first.c_str ());
-          ptr = or_pack_int64 (ptr, s_info.second);
+          if (mem_usage != 0)
+            {
+              ptr = or_pack_string (ptr, stat_name.c_str ());
+              ptr = or_pack_int64 (ptr, mem_usage);
+            }
         }
       // *INDENT-ON*
       assert (size == (int) (ptr - buffer));

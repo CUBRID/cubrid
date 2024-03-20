@@ -10987,11 +10987,11 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
 
       // *INDENT-OFF*
       // unpack memory usage entry info
-      for (auto &s_info : server_info.stat_info)
+      for (auto &[stat_name, mem_usage] : server_info.stat_info)
         {
           ptr = or_unpack_string_nocopy (ptr, &temp_str);
-          s_info.first = temp_str;
-          ptr = or_unpack_int64 (ptr, (int64_t *) &(s_info.second));
+          stat_name = temp_str;
+          ptr = or_unpack_int64 (ptr, (int64_t *) &(mem_usage));
         }
       // *INDENT-ON*
     }
