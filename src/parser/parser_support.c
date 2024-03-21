@@ -7375,7 +7375,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
  *    SELECT * FROM
  *      (SELECT IF( VC.vclass_name = '',
  *                  (SELECT COUNT(*) FROM <view_name> LIMIT 1),
- *                  LOWER(VC.owner_name) + VC.vclass_name )
+ *                  LOWER(VC.owner_name) + '.' + VC.vclass_name )
  *                AS VIEW,
  *              IF( VC.comment IS NULL or VC.comment = '',
  *                  VC.vclass_def,
@@ -7408,6 +7408,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   char lower_view_name[DB_MAX_IDENTIFIER_LENGTH];
   char owner_name[DB_MAX_USER_LENGTH];
   char upper_owner_name[DB_MAX_USER_LENGTH];
+  bool is_system_class_or_vclass = false;
 
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
@@ -7430,27 +7431,38 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   sm_qualifier_name (lower_view_name, owner_name, DB_MAX_USER_LENGTH);
   intl_identifier_upper (owner_name, upper_owner_name);
 
+  if (sm_check_system_class_by_name (lower_view_name) == true)
+    {
+      is_system_class_or_vclass = true;
+    }
+
   /* ------ SELECT list ------- */
   {
     /* View name : IF( VC.vclass_name = '',
      *                 (SELECT COUNT(*) FROM <view_name> LIMIT 1),
-     *                 LOWER(VC.owner_name) + VC.vclass_name )
+     *                 LOWER(VC.owner_name) + '.' + VC.vclass_name )
      *               AS View
      */
     PT_NODE *if_true_node = NULL;
     PT_NODE *if_false_node = NULL;
     PT_NODE *pred = NULL;
     PT_NODE *view_field = NULL;
-    PT_NODE *lhs = NULL, *rhs = NULL;
-    PT_NODE *concat_sep = NULL;
+    PT_NODE *concat_arg = NULL, *concat_sep = NULL;
+    PT_NODE *qualifier = NULL;
 
     if_true_node = pt_make_dummy_query_check_table (parser, lower_view_name);
-    lhs = pt_make_dotted_identifier (parser, "VC.owner_name");
-    lhs = parser_make_expression (parser, PT_LOWER, lhs, NULL, NULL);
-    concat_sep = pt_make_string_value (parser, ".");
-    rhs = pt_make_dotted_identifier (parser, "VC.vclass_name");
-    if_false_node = parser_make_expression (parser, PT_CONCAT, lhs, concat_sep, NULL);
-    if_false_node = parser_make_expression (parser, PT_CONCAT, if_false_node, rhs, NULL);
+    if_false_node = pt_make_dotted_identifier (parser, "VC.vclass_name");
+
+    /* LOWER(VC.owner_name) + '.' + VC.vclass_name */
+    if (!is_system_class_or_vclass)
+      {
+	concat_arg = pt_make_dotted_identifier (parser, "VC.owner_name");
+	concat_arg = parser_make_expression (parser, PT_LOWER, concat_arg, NULL, NULL);
+	concat_sep = pt_make_string_value (parser, ".");
+	qualifier = parser_make_expression (parser, PT_CONCAT, concat_arg, concat_sep, NULL);
+	if_false_node = parser_make_expression (parser, PT_CONCAT, qualifier, if_false_node, NULL);
+      }
+
     pred = pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", "");
 
     view_field = pt_make_if_with_expressions (parser, pred, if_true_node, if_false_node, "VIEW");
@@ -7494,11 +7506,14 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
     where_item1 =
       pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", sm_remove_qualifier_name (lower_view_name));
 
-    /* VC.owner_name = <upper_owner_name> */
-    where_item2 = pt_make_pred_name_string_val (parser, PT_EQ, "VC.owner_name", upper_owner_name);
+    if (!is_system_class_or_vclass)
+      {
+	/* VC.owner_name = <upper_owner_name> */
+	where_item2 = pt_make_pred_name_string_val (parser, PT_EQ, "VC.owner_name", upper_owner_name);
 
-    /* where_item1: where_item1 AND where_item2 */
-    where_item1 = parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
+	/* where_item1: where_item1 AND where_item2 */
+	where_item1 = parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
+      }
 
     /* WHERE list should be empty */
     assert (node->info.query.q.select.where == NULL);
