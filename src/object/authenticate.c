@@ -157,36 +157,10 @@ const int AU_TYPE_SET_LEN[] = {
 #define IS_STRING(n)    DB_IS_STRING (n)
 
 /* Macro to determine if a name is system catalog class */
-#define IS_CATALOG_CLASS(name) \
-        (strcmp(name, CT_CLASS_NAME) == 0 || \
-         strcmp(name, CT_ATTRIBUTE_NAME) == 0 || \
-         strcmp(name, CT_DOMAIN_NAME) == 0 || \
-         strcmp(name, CT_METHOD_NAME) == 0 || \
-         strcmp(name, CT_METHSIG_NAME) == 0 || \
-         strcmp(name, CT_METHARG_NAME) == 0 || \
-         strcmp(name, CT_METHFILE_NAME) == 0 || \
-         strcmp(name, CT_QUERYSPEC_NAME) == 0 || \
-         strcmp(name, CT_RESOLUTION_NAME) ==0 || \
-         strcmp(name, CT_INDEX_NAME) == 0 || \
-         strcmp(name, CT_INDEXKEY_NAME) == 0 || \
-         strcmp(name, CT_CLASSAUTH_NAME) == 0 || \
-         strcmp(name, CT_DATATYPE_NAME) == 0 || \
-         strcmp(name, CT_STORED_PROC_NAME) == 0 || \
-         strcmp(name, CT_STORED_PROC_ARGS_NAME) == 0 || \
-         strcmp(name, CT_PARTITION_NAME) == 0 || \
-         strcmp(name, CT_SERIAL_NAME) == 0 || \
-         strcmp(name, CT_USER_NAME) == 0 || \
-         strcmp(name, CT_COLLATION_NAME) == 0 || \
-         strcmp(name, CT_HA_APPLY_INFO_NAME) == 0 || \
-         strcmp(name, CT_TRIGGER_NAME) == 0 || \
-         strcmp(name, CT_ROOT_NAME) == 0 || \
-         strcmp(name, CT_PASSWORD_NAME) == 0 || \
-         strcmp(name, CT_AUTHORIZATION_NAME) == 0 || \
-         strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
-	 strcmp(name, CT_CHARSET_NAME) == 0 || \
-         strcmp(name, CT_DB_SERVER_NAME) == 0 || \
-	 strcmp(name, CT_SYNONYM_NAME) == 0 || \
-	 strcmp(name, CT_DUAL_NAME) == 0)
+
+// *INDENT-OFF*
+#define IS_CATALOG_CLASS(name) sm_is_system_class (std::string_view (name))
+// *INDENT-ON*
 
 enum fetch_by
 {
