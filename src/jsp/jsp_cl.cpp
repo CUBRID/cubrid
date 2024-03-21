@@ -350,46 +350,6 @@ jsp_get_return_type (const char *name)
 }
 
 /*
- * jsp_get_owner - Return Java Stored Procedure Owner
- *   return: if fail return error code
- *           else return Java Stored Procedure Owner's MOP
- *   name(in): java stored procedure name
- *
- * Note:
- */
-
-MOP
-jsp_get_owner (const char *name)
-{
-  DB_OBJECT *mop_p;
-  DB_VALUE owner;
-
-  int err;
-  int save;
-
-  AU_DISABLE (save);
-
-  mop_p = jsp_find_stored_procedure (name);
-  if (mop_p == NULL)
-    {
-      AU_ENABLE (save);
-
-      assert (er_errid () != NO_ERROR);
-      return NULL;
-    }
-
-  err = db_get (mop_p, SP_ATTR_OWNER, &owner);
-  if (err != NO_ERROR)
-    {
-      AU_ENABLE (save);
-      return NULL;
-    }
-
-  AU_ENABLE (save);
-  return db_get_object (&owner);
-}
-
-/*
  * jsp_get_sp_type - Return Java Stored Procedure Type
  *   return: if fail return error code
  *           else return Java Stored Procedure Type
@@ -1038,11 +998,11 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
     }
 
   if (1 == db_get_int (&generated_val))
-    {
+  {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
       err = er_errid ();
       goto error;
-    }
+  }
 
   err = db_get (sp_mop, SP_ATTR_SP_TYPE, &sp_type_val);
   if (err != NO_ERROR)
