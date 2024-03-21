@@ -3866,7 +3866,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  arg_info->arg_type = nullptr;
 		}
 
-	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name);
+	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name, DB_AUTH_EXECUTE);
 	      if (mop_p)
 		{
 		  /* java stored procedure signature */
