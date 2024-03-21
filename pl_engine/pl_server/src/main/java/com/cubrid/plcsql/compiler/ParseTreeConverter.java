@@ -882,6 +882,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return ret;
         } else {
             if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
+                if (SymbolStack.noParenBuiltInFunc.indexOf(name) >= 0) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s071
+                            name + " must be used without parentheses");
+                }
+
                 connectionRequired = true;
                 addToImports("java.sql.*");
                 return new ExprBuiltinFuncCall(ctx, name, args);

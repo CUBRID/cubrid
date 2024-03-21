@@ -1211,7 +1211,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     private String checkArgsAndConvertToTypicalValuesStr(List<Expr> args, String funcName) {
         if (args.size() == 0) {
-            return "()";
+            if (SymbolStack.noParenBuiltInFunc.indexOf(funcName) >= 0) {
+                return "";
+            } else {
+                return "()";
+            }
         }
 
         StringBuilder sb = new StringBuilder();
