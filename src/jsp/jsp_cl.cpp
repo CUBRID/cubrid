@@ -119,7 +119,7 @@ static int *jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list)
 extern bool ssl_client;
 
 static int
-check_execute_authorization (MOP sp_obj, AU_TYPE au_type)
+check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 {
   int error = ER_FAILED;
   MOP owner_mop = NULL;
@@ -138,8 +138,9 @@ check_execute_authorization (MOP sp_obj, AU_TYPE au_type)
 	  owner_mop = db_get_object (&owner);
 	  if (!ws_is_same_object (owner_mop, Au_user))
 	    {
-	      error = (au_type == AU_EXECUTE) ? ER_AU_EXECUTE_FAILURE : ER_AU_SELECT_FAILURE;
+	      error = (au_type == DB_AUTH_EXECUTE) ? ER_AU_EXECUTE_FAILURE : ER_AU_SELECT_FAILURE;
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	      return error;
 	    }
 
 	  error = NO_ERROR;
@@ -181,12 +182,13 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
       er_clear ();
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_EXIST, 1, name);
+      err = ER_SP_NOT_EXIST;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, name);
     }
 
-  if (purpose != DB_AUTH_NONE && check_execute_authorization (mop, purpose) != NO_ERROR)
+  if (purpose != DB_AUTH_NONE)
     {
-      goto end;
+      err = check_execute_authorization (mop, purpose);
     }
 
 end:
