@@ -43,6 +43,7 @@
 #include "databases_file.h"
 #include "object_fetch.h"
 #include "extract_schema.hpp"
+#include "schema_system_catalog_constants.h"
 
 
 class print_output;
@@ -50,15 +51,14 @@ class print_output;
 /*
  * Authorization Class Names
  */
+#define AU_ROOT_CLASS_NAME      CT_ROOT_NAME
+#define AU_OLD_ROOT_CLASS_NAME  CT_AUTHORIZATIONS_NAME
+#define AU_USER_CLASS_NAME      CT_USER_NAME
+#define AU_PASSWORD_CLASS_NAME  CT_PASSWORD_NAME
+#define AU_AUTH_CLASS_NAME      CT_AUTHORIZATION_NAME
 
-extern const char *AU_ROOT_CLASS_NAME;
-extern const char *AU_OLD_ROOT_CLASS_NAME;
-extern const char *AU_USER_CLASS_NAME;
-extern const char *AU_PASSWORD_CLASS_NAME;
-extern const char *AU_AUTH_CLASS_NAME;
-extern const char *AU_GRANT_CLASS_NAME;
-extern const char *AU_PUBLIC_USER_NAME;
-extern const char *AU_DBA_USER_NAME;
+#define AU_PUBLIC_USER_NAME     "PUBLIC"
+#define AU_DBA_USER_NAME        "DBA"
 
 /*
  * Authorization Types
@@ -74,6 +74,26 @@ extern const char *AU_DBA_USER_NAME;
 #define AU_ALTER        DB_AUTH_ALTER
 #define AU_INDEX        DB_AUTH_INDEX
 #define AU_EXECUTE      DB_AUTH_EXECUTE
+
+enum AU_OBJECT
+{
+  AU_OBJECT_CLASS,		/* TABLE, VIEW (_db_class) */
+  AU_OBJECT_TRIGGER,		/* TRIGGER (_db_trigger) */
+  AU_OBJECT_SERIAL,		/* SERIAL (db_serial) */
+  AU_OBJECT_SERVER,		/* SERVER (db_server) */
+  AU_OBJECT_SYNONYM,		/* SYNONYM (_db_synonym) */
+  AU_OBJECT_PROCEDURE		/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
+};
+
+const char *AU_OBJECT_CLASS_NAME[] = {
+  CT_CLASS_NAME,		/* AU_OBJECT_CLASS */
+  CT_TRIGGER_NAME,		/* AU_OBJECT_TRIGGER */
+  CT_SERIAL_NAME,		/* AU_OBJECT_SERIAL */
+  CT_DB_SERVER_NAME,		/* AU_OBJECT_SERVER */
+  CT_SYNONYM_NAME,		/* AU_OBJECT_SYNONYM */
+  CT_STORED_PROC_NAME,		/* AU_OBJECT_PROCEDURE */
+  NULL
+};
 
 /*
  * Mask to extract only the authorization bits from a cache.  This can also
