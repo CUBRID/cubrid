@@ -482,6 +482,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 assert found > 0;
                 node.setType(ret);
                 node.setColIndex(found);
+                ptConv.addToImports(ret.fullJavaType());
             }
         } else {
             // this record is for a dynamic SQL
