@@ -85,15 +85,7 @@ enum AU_OBJECT
   AU_OBJECT_PROCEDURE		/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
 };
 
-const char *AU_OBJECT_CLASS_NAME[] = {
-  CT_CLASS_NAME,		/* AU_OBJECT_CLASS */
-  CT_TRIGGER_NAME,		/* AU_OBJECT_TRIGGER */
-  CT_SERIAL_NAME,		/* AU_OBJECT_SERIAL */
-  CT_DB_SERVER_NAME,		/* AU_OBJECT_SERVER */
-  CT_SYNONYM_NAME,		/* AU_OBJECT_SYNONYM */
-  CT_STORED_PROC_NAME,		/* AU_OBJECT_PROCEDURE */
-  NULL
-};
+extern const char *AU_OBJECT_CLASS_NAME[];
 
 /*
  * Mask to extract only the authorization bits from a cache.  This can also
@@ -199,6 +191,7 @@ extern MOP Au_public_user;
 extern char Au_user_password[AU_MAX_PASSWORD_BUF + 4];
 extern int Au_disable;
 
+extern MOP Au_user_class;
 
 extern void au_init (void);
 extern void au_final (void);
