@@ -25,7 +25,7 @@
 #include "memory_monitor_sr.hpp"
 
 // For multithread test
-static const int num_threads = 100;
+constexpr int num_threads = 100;
 
 // Global variable for whole unit-test
 char *test_mem_in_the_scope = NULL;
