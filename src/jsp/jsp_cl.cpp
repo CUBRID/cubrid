@@ -967,7 +967,7 @@ static int
 drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 {
   MOP sp_mop, arg_mop, owner;
-  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, temp;
+  DB_VALUE sp_type_val, arg_cnt_val, args_val, generated_val, temp;
   SP_TYPE_ENUM real_type;
   DB_SET *arg_set_p;
   int save, i, arg_cnt;
@@ -976,26 +976,15 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   AU_DISABLE (save);
 
   db_make_null (&args_val);
-  db_make_null (&owner_val);
 
   sp_mop = jsp_find_stored_procedure (name, DB_AUTH_SELECT);
   if (sp_mop == NULL)
     {
+      if (er_errid () == ER_AU_SELECT_FAILURE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_PRIVILEGES, 0);
+	}
       assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      goto error;
-    }
-
-  err = db_get (sp_mop, SP_ATTR_OWNER, &owner_val);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-  owner = db_get_object (&owner_val);
-
-  if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_PRIVILEGES, 0);
       err = er_errid ();
       goto error;
     }
@@ -1063,7 +1052,6 @@ error:
   AU_ENABLE (save);
 
   pr_clear_value (&args_val);
-  pr_clear_value (&owner_val);
 
   return err;
 }
