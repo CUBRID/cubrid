@@ -118,6 +118,31 @@ static int *jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list)
 
 extern bool ssl_client;
 
+static int
+check_execute_authorization (MOP sp_obj)
+{
+  int error = ER_FAILED;
+  MOP owner_mop = NULL;
+  DB_VALUE owner;
+
+  error = db_get (sp_obj, SP_ATTR_OWNER, &owner);
+  if (error == NO_ERROR)
+    {
+      // check sp's owner is current user
+      owner_mop = db_get_object (&owner);
+      if (owner_mop != Au_user)
+	{
+	  error = ER_AU_EXECUTE_FAILURE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+
+
+      error = NO_ERROR;
+    }
+
+  return error;
+}
+
 /*
  * jsp_find_stored_procedure
  *   return: MOP
@@ -129,10 +154,11 @@ extern bool ssl_client;
 MOP
 jsp_find_stored_procedure (const char *name)
 {
-  MOP mop = NULL;
+  MOP mop = NULL, owner_mop = NULL;
   DB_VALUE value;
-  int save;
-  char *checked_name;
+
+  int save, err = NO_ERROR;
+  char *checked_name = NULL;
 
   if (!name)
     {
@@ -151,7 +177,22 @@ jsp_find_stored_procedure (const char *name)
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_EXIST, 1, name);
     }
 
-  free_and_init (checked_name);
+  if (check_execute_authorization (mop) != NO_ERROR)
+    {
+      goto end;
+    }
+
+end:
+  if (checked_name)
+    {
+      free_and_init (checked_name);
+    }
+
+  if (err != NO_ERROR)
+    {
+      mop = NULL;
+    }
+
   AU_ENABLE (save);
 
   return mop;
@@ -322,6 +363,7 @@ jsp_get_owner (const char *name)
 {
   DB_OBJECT *mop_p;
   DB_VALUE owner;
+
   int err;
   int save;
 
