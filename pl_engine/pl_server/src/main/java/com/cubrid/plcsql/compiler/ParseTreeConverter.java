@@ -263,7 +263,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     throw new SemanticError(
                             Misc.getLineColumnOf(pc), // s064
                             "type "
-                                    + dp.typeSpec.plcName
+                                    + dp.typeSpec.plcName()
                                     + " cannot be used as a paramter type of stored procedures");
                 }
                 ret.addNode(dp);
@@ -2363,7 +2363,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.type_spec()), // s065
                             "type "
-                                    + retType.plcName
+                                    + retType.plcName()
                                     + " cannot be used as a return type of stored functions");
                 }
             }

@@ -66,7 +66,7 @@ public class ExprField extends Expr {
             //
             assert type != null;
             return String.format(
-                    "(%s) getFieldWithIndex(%s, %d)", type.javaCode, record.javaCode(), colIndex);
+                    "(%s) getFieldWithIndex(%s, %d)", type.javaCode(), record.javaCode(), colIndex);
         } else {
 
             // record is for a Dynamic SQL

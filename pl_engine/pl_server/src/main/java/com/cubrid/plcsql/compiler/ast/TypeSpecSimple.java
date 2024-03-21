@@ -36,6 +36,12 @@ import java.util.Map;
 
 public class TypeSpecSimple extends TypeSpec {
 
+    public final String plcName;
+    public final String fullJavaType;
+    public final String javaCode;
+    public final int simpleTypeIdx;
+    public final String typicalValueStr; // used to type builtin function calls
+
     // types used only by the typechecker
     public static final int IDX_CURSOR = 0;
     public static final int IDX_NULL = 1;
@@ -59,11 +65,63 @@ public class TypeSpecSimple extends TypeSpec {
     public static final int COUNT_OF_IDX = 16;
 
     @Override
+    public String plcName() {
+        return plcName;
+    }
+
+    @Override
+    public String fullJavaType() {
+        return fullJavaType;
+    }
+
+    @Override
+    public String javaCode() {
+        return javaCode;
+    }
+
+    @Override
+    public int simpleTypeIdx() {
+        return simpleTypeIdx;
+    }
+
+    @Override
+    public String typicalValueStr() {
+        return typicalValueStr;
+    }
+
+    @Override
+    public String toJavaSignature() {
+        return fullJavaType;
+    }
+
+    @Override
+    public boolean isNumber() {
+        return simpleTypeIdx == IDX_SHORT
+                || simpleTypeIdx == IDX_INT
+                || simpleTypeIdx == IDX_BIGINT
+                || simpleTypeIdx == IDX_NUMERIC
+                || simpleTypeIdx == IDX_FLOAT
+                || simpleTypeIdx == IDX_DOUBLE;
+    }
+
+    @Override
+    public boolean isString() {
+        return simpleTypeIdx == IDX_STRING;
+    }
+
+    @Override
+    public boolean isDateTime() {
+        return simpleTypeIdx == IDX_DATE
+                || simpleTypeIdx == IDX_TIME
+                || simpleTypeIdx == IDX_DATETIME
+                || simpleTypeIdx == IDX_TIMESTAMP;
+    }
+
+
+    @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitTypeSpecSimple(this);
     }
-
-    public final String fullJavaType;
 
     public static boolean isUserType(TypeSpecSimple ty) {
         return (ty.simpleTypeIdx >= IDX_BOOLEAN);
@@ -73,11 +131,6 @@ public class TypeSpecSimple extends TypeSpec {
         TypeSpecSimple ret = javaNameToSpec.get(javaType);
         assert ret != null : "wrong Java type " + javaType;
         return ret;
-    }
-
-    @Override
-    public String toJavaSignature() {
-        return fullJavaType;
     }
 
     // the following two are not actual Java types but only for internal type checking
@@ -123,49 +176,18 @@ public class TypeSpecSimple extends TypeSpec {
                     IDX_SYS_REFCURSOR,
                     null);
 
-    public boolean isNumber() {
-        return simpleTypeIdx == IDX_SHORT
-                || simpleTypeIdx == IDX_INT
-                || simpleTypeIdx == IDX_BIGINT
-                || simpleTypeIdx == IDX_NUMERIC
-                || simpleTypeIdx == IDX_FLOAT
-                || simpleTypeIdx == IDX_DOUBLE;
-    }
-
-    public boolean isString() {
-        return simpleTypeIdx == IDX_STRING;
-    }
-
-    public boolean isDateTime() {
-        return simpleTypeIdx == IDX_DATE
-                || simpleTypeIdx == IDX_TIME
-                || simpleTypeIdx == IDX_DATETIME
-                || simpleTypeIdx == IDX_TIMESTAMP;
-    }
-
     // ------------------------------------------------------------------
     // Private
     // ------------------------------------------------------------------
 
     protected TypeSpecSimple(
             String plcName, String fullJavaType, int simpleTypeIdx, String typicalValueStr) {
-        super(null, plcName, getJavaCode(fullJavaType), simpleTypeIdx, typicalValueStr);
+        super(null);
+        this.plcName = plcName;
         this.fullJavaType = fullJavaType;
-    }
-
-    private static String getJavaCode(String fullJavaType) {
-
-        // internal types
-        if (fullJavaType.equals("Null")) {
-            return "Object";
-        } else if (fullJavaType.equals("Cursor")) {
-            return "%ERROR%";
-        }
-
-        // normal types
-        String[] split = fullJavaType.split("\\.");
-        assert split.length > 2;
-        return split[split.length - 1];
+        this.javaCode = getJavaCode(fullJavaType);
+        this.simpleTypeIdx = simpleTypeIdx;
+        this.typicalValueStr = typicalValueStr;
     }
 
     private static final Map<String, TypeSpecSimple> javaNameToSpec = new HashMap<>();
@@ -192,5 +214,20 @@ public class TypeSpecSimple extends TypeSpec {
 
         register(DATETIME);
         register(SYS_REFCURSOR);
+    }
+
+    private static String getJavaCode(String fullJavaType) {
+
+        // internal types
+        if (fullJavaType.equals("Null")) {
+            return "Object";
+        } else if (fullJavaType.equals("Cursor")) {
+            return "%ERROR%";
+        }
+
+        // normal types
+        String[] split = fullJavaType.split("\\.");
+        assert split.length > 2;
+        return split[split.length - 1];
     }
 }
