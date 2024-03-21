@@ -104,20 +104,25 @@ extern bool catcls_Enable;
 #define MSGCAT_AUTH_AUTH_TITLE          15
 #define MSGCAT_AUTH_USER_DIRECT_GROUPS  16
 
-/*
- * Authorization Class Names
- */
-const char *AU_ROOT_CLASS_NAME = "db_root";
-const char *AU_OLD_ROOT_CLASS_NAME = "db_authorizations";
+const char *AU_TYPE_SET[] = {
+  "SELECT",			/* DB_AUTH_SELECT */
+  "INSERT",			/* DB_AUTH_INSERT */
+  "UPDATE",			/* DB_AUTH_UPDATE */
+  "DELETE",			/* DB_AUTH_DELETE */
+  "ALTER",			/* DB_AUTH_ALTER */
+  "INDEX",			/* DB_AUTH_INDEX */
+  "EXECUTE"			/* DB_AUTH_EXECUTE */
+};
 
-const char *AU_USER_CLASS_NAME = "db_user";
-const char *AU_PASSWORD_CLASS_NAME = "db_password";
-const char *AU_AUTH_CLASS_NAME = "db_authorization";
-const char *AU_GRANT_CLASS_NAME = "db_grant";
-
-const char *AU_PUBLIC_USER_NAME = "PUBLIC";
-const char *AU_DBA_USER_NAME = "DBA";
-
+const int AU_TYPE_SET_LEN[] = {
+  strlen ("SELECT"),		/* DB_AUTH_SELECT */
+  strlen ("INSERT"),		/* DB_AUTH_INSERT */
+  strlen ("UPDATE"),		/* DB_AUTH_UPDATE */
+  strlen ("DELETE"),		/* DB_AUTH_DELETE */
+  strlen ("ALTER"),		/* DB_AUTH_ALTER */
+  strlen ("INDEX"),		/* DB_AUTH_INDEX */
+  strlen ("EXECUTE")		/* DB_AUTH_EXECUTE */
+};
 
 /*
  * Grant set structure
@@ -1587,7 +1592,6 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
   DB_VALUE value, class_name_val;
   DB_AUTH type;
   int i;
-  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "INDEX", "EXECUTE" };
 
   if (au_obj == NULL)
     {
@@ -1636,7 +1640,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       ;
     }
 
-  db_make_varchar (&value, 7, type_set[i], strlen (type_set[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&value, 7, AU_TYPE_SET[i], AU_TYPE_SET_LEN[i], LANG_SYS_CODESET, LANG_SYS_COLLATION);
   obj_set (au_obj, "auth_type", &value);
 
   db_make_int (&value, (int) grant_option);
@@ -1679,7 +1683,6 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   STATEMENT_ID stmt_id;
-  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "INDEX", "EXECUTE" };
 
   for (i = 0; i < COUNT_FOR_VARIABLES; i++)
     {
@@ -1728,7 +1731,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
     {
       ;
     }
-  db_make_string (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
+  db_make_string (&val[INDEX_FOR_AUTH_TYPE], AU_TYPE_SET[i]);
 
   session = db_open_buffer (sql_query);
   if (session == NULL)
@@ -3505,13 +3508,6 @@ au_drop_user (MOP user)
   DB_SET *new_groups, *direct_groups;
   int g, gcard, i;
   DB_VALUE name;
-  static const char *class_name[] = {
-    /*
-     * drop user command can be called only by DBA group,
-     * so we can use query for _db_class directly
-     */
-    "_db_class", "db_trigger", "db_serial", "_db_server", "_db_synonym", "_db_stored_procedure", NULL
-  };
   char query_buf[1024];
 
   AU_DISABLE (save);
@@ -3540,9 +3536,9 @@ au_drop_user (MOP user)
     }
 
   /* check if user owns class/vclass/trigger/serial/synonym */
-  for (i = 0; class_name[i] != NULL; i++)
+  for (i = 0; AU_OBJECT_CLASS_NAME[i] != NULL; i++)
     {
-      sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", class_name[i]);
+      sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", AU_OBJECT_CLASS_NAME[i]);
       session = db_open_buffer (query_buf);
       if (session == NULL)
 	{
