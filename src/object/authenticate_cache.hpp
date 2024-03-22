@@ -70,12 +70,14 @@ struct au_user_cache
 
 extern int Au_cache_index;
 
-void init_caches (void);
-void flush_caches (void);
+extern void init_caches (void);
+extern void flush_caches (void);
 
-AU_CLASS_CACHE *au_install_class_cache (SM_CLASS *sm_class);
-int au_find_user_cache_index (DB_OBJECT *user, int *index, int check_it);
-void reset_cache_for_user_and_class (SM_CLASS *sm_class);
-void remove_user_cache_references (MOP user);
+extern AU_CLASS_CACHE *au_install_class_cache (SM_CLASS *sm_class);
+extern int au_find_user_cache_index (DB_OBJECT *user, int *index, int check_it);
+extern void reset_cache_for_user_and_class (SM_CLASS *sm_class);
+extern void remove_user_cache_references (MOP user);
+
+extern unsigned int get_cache_bits (SM_CLASS *sm_class);
 
 #endif // _AUTHENTICATE_CACHE_HPP_

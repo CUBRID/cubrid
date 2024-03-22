@@ -203,6 +203,23 @@ au_free_authorization_cache (void *cache)
     }
 }
 
+unsigned int
+get_cache_bits (SM_CLASS *sm_class)
+{
+  AU_CLASS_CACHE *cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
+  if (sm_class->auth_cache == NULL)
+    {
+      cache = au_install_class_cache (sm_class);
+      if (cache == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+    }
+
+  return cache->data[Au_cache_index];
+}
+
 /*
  * au_extend_class_caches - This extends the all existing class caches so they
  *                          can contain an additional element.
