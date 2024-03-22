@@ -122,6 +122,39 @@ static int *jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list)
 
 extern bool ssl_client;
 
+static int
+check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
+{
+  int error = ER_FAILED;
+  MOP owner_mop = NULL;
+  DB_VALUE owner;
+
+  if (au_is_dba_group_member (Au_user))
+    {
+      error = NO_ERROR;
+    }
+  else
+    {
+      error = db_get (sp_obj, SP_ATTR_OWNER, &owner);
+      if (error == NO_ERROR)
+	{
+	  // check sp's owner is current user
+	  owner_mop = db_get_object (&owner);
+	  if (!ws_is_same_object (owner_mop, Au_user))
+	    {
+	      error = (au_type == DB_AUTH_EXECUTE) ? ER_AU_EXECUTE_FAILURE : ER_AU_SELECT_FAILURE;
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	      return error;
+	    }
+
+	  error = NO_ERROR;
+	}
+    }
+
+
+  return error;
+}
+
 /*
  * jsp_find_stored_procedure
  *   return: MOP
@@ -131,12 +164,13 @@ extern bool ssl_client;
  */
 
 MOP
-jsp_find_stored_procedure (const char *name)
+jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
 {
-  MOP mop = NULL;
+  MOP mop = NULL, owner_mop = NULL;
   DB_VALUE value;
-  int save;
-  char *checked_name;
+
+  int save, err = NO_ERROR;
+  char *checked_name = NULL;
 
   if (!name)
     {
@@ -152,10 +186,26 @@ jsp_find_stored_procedure (const char *name)
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
       er_clear ();
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_EXIST, 1, name);
+      err = ER_SP_NOT_EXIST;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, name);
     }
 
-  free_and_init (checked_name);
+  if (purpose != DB_AUTH_NONE)
+    {
+      err = check_execute_authorization (mop, purpose);
+    }
+
+end:
+  if (checked_name)
+    {
+      free_and_init (checked_name);
+    }
+
+  if (err != NO_ERROR)
+    {
+      mop = NULL;
+    }
+
   AU_ENABLE (save);
 
   return mop;
@@ -175,7 +225,7 @@ jsp_is_exist_stored_procedure (const char *name)
 {
   MOP mop = NULL;
 
-  mop = jsp_find_stored_procedure (name);
+  mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
   er_clear ();
 
   return mop != NULL;
@@ -292,7 +342,7 @@ jsp_get_return_type (const char *name)
 
   AU_DISABLE (save);
 
-  mop_p = jsp_find_stored_procedure (name);
+  mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
   if (mop_p == NULL)
     {
       AU_ENABLE (save);
@@ -331,7 +381,7 @@ jsp_get_sp_type (const char *name)
 
   AU_DISABLE (save);
 
-  mop_p = jsp_find_stored_procedure (name);
+  mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
   if (mop_p == NULL)
     {
       AU_ENABLE (save);
@@ -877,7 +927,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
 
   /* existence of sp */
-  sp_mop = jsp_find_stored_procedure (name_str);
+  sp_mop = jsp_find_stored_procedure (name_str, DB_AUTH_SELECT);
   if (sp_mop == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -1032,7 +1082,7 @@ static int
 drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 {
   MOP sp_mop, arg_mop, owner;
-  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, temp;
+  DB_VALUE sp_type_val, arg_cnt_val, args_val, generated_val, temp;
   SP_TYPE_ENUM real_type;
   DB_SET *arg_set_p;
   int save, i, arg_cnt;
@@ -1041,26 +1091,15 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   AU_DISABLE (save);
 
   db_make_null (&args_val);
-  db_make_null (&owner_val);
 
-  sp_mop = jsp_find_stored_procedure (name);
+  sp_mop = jsp_find_stored_procedure (name, DB_AUTH_SELECT);
   if (sp_mop == NULL)
     {
+      if (er_errid () == ER_AU_SELECT_FAILURE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_PRIVILEGES, 0);
+	}
       assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      goto error;
-    }
-
-  err = db_get (sp_mop, SP_ATTR_OWNER, &owner_val);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-  owner = db_get_object (&owner_val);
-
-  if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_PRIVILEGES, 0);
       err = er_errid ();
       goto error;
     }
@@ -1128,7 +1167,6 @@ error:
   AU_ENABLE (save);
 
   pr_clear_value (&args_val);
-  pr_clear_value (&owner_val);
 
   return err;
 }
@@ -1207,7 +1245,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 
   {
     char *parsed_method_name = (char *) node->info.method_call.method_name->info.name.original;
-    DB_OBJECT *mop_p = jsp_find_stored_procedure (parsed_method_name);
+    DB_OBJECT *mop_p = jsp_find_stored_procedure (parsed_method_name, DB_AUTH_EXECUTE);
     AU_DISABLE (save);
     if (mop_p)
       {
