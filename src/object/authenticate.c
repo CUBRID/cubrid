@@ -3888,7 +3888,7 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
-      cache_bits = cache->data[Au_cache_index];
+      cache_bits = get_cache_bits (sm_class);
     }
 
   /* build the complete bit mask */
@@ -5904,7 +5904,7 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
 	      error = update_cache (classobj, sm_class, cache);
 	      if (error == NO_ERROR)
 		{
-		  bits = cache->data[Au_cache_index];
+		  bits = get_cache_bits (sm_class);
 		  if ((bits & type) != type)
 		    {
 		      error = appropriate_error (bits, type);
@@ -8741,7 +8741,7 @@ au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
 	  error = update_cache (mop, class_, cache);
 	  if (error == NO_ERROR)
 	    {
-	      bits = cache->data[Au_cache_index];
+	      bits = get_cache_bits (class_);
 	    }
 	}
       *auth = bits;
