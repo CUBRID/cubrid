@@ -31,6 +31,8 @@
 #include "query_executor.h"
 #include "xasl_predicate.hpp"
 #include "regu_var.hpp"
+#include "object_representation.h"
+#include "system_parameter.h"
 
 #include "list_file.h"
 #include "db_set_function.h"
@@ -70,7 +72,7 @@ static int sq_cmp_func (const void *key1, const void *key2);
 static int sq_rem_func (const void *key, void *data, void *args);
 
 static int sq_walk_xasl_check_not_caching (xasl_node * xasl);
-static int sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set);
+static int sq_walk_xasl_and_add_val_to_set (void *p, int type, sq_key * pred_set);
 
 /**************************************************************************************/
 
@@ -103,7 +105,7 @@ sq_make_key (xasl_node * xasl)
   keyp->pred_set = db_value_create ();
   db_make_set (keyp->pred_set, db_set_create_basic (NULL, NULL));
 
-  cnt = sq_walk_xasl_and_add_val_to_set ((void *) xasl, SQ_TYPE_XASL, keyp->pred_set);
+  cnt = sq_walk_xasl_and_add_val_to_set ((void *) xasl, SQ_TYPE_XASL, keyp);
 
   if (cnt == 0)
     {
@@ -392,7 +394,7 @@ sq_walk_xasl_check_not_caching (xasl_node * xasl)
  * The count of values added to the set is returned.
  */
 int
-sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set)
+sq_walk_xasl_and_add_val_to_set (void *p, int type, sq_key * key)
 {
   int cnt = 0;
 
@@ -414,18 +416,18 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set)
 	  for (p = xasl->spec_list; p; p = p->next)
 	    {
 	      /* key */
-	      cnt += sq_walk_xasl_and_add_val_to_set (p->where_key, SQ_TYPE_PRED, pred_set);
+	      cnt += sq_walk_xasl_and_add_val_to_set (p->where_key, SQ_TYPE_PRED, key);
 	      /* pred */
-	      cnt += sq_walk_xasl_and_add_val_to_set (p->where_pred, SQ_TYPE_PRED, pred_set);
+	      cnt += sq_walk_xasl_and_add_val_to_set (p->where_pred, SQ_TYPE_PRED, key);
 	      /* range */
-	      cnt += sq_walk_xasl_and_add_val_to_set (p->where_range, SQ_TYPE_PRED, pred_set);
+	      cnt += sq_walk_xasl_and_add_val_to_set (p->where_range, SQ_TYPE_PRED, key);
 	    }
 
 	  if (xasl->scan_ptr)
 	    {
 	      for (scan_ptr = xasl->scan_ptr; scan_ptr != NULL; scan_ptr = scan_ptr->next)
 		{
-		  cnt += sq_walk_xasl_and_add_val_to_set (scan_ptr, SQ_TYPE_XASL, pred_set);
+		  cnt += sq_walk_xasl_and_add_val_to_set (scan_ptr, SQ_TYPE_XASL, key);
 		}
 	    }
 
@@ -433,7 +435,7 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set)
 	    {
 	      for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
 		{
-		  cnt += sq_walk_xasl_and_add_val_to_set (aptr, SQ_TYPE_XASL, pred_set);
+		  cnt += sq_walk_xasl_and_add_val_to_set (aptr, SQ_TYPE_XASL, key);
 		}
 	    }
 
@@ -446,14 +448,14 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set)
 	  PRED_EXPR *src = (PRED_EXPR *) p;
 	  if (src->type == T_PRED)
 	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (src->pe.m_pred.lhs, SQ_TYPE_PRED, pred_set);
-	      cnt += sq_walk_xasl_and_add_val_to_set (src->pe.m_pred.rhs, SQ_TYPE_PRED, pred_set);
+	      cnt += sq_walk_xasl_and_add_val_to_set (src->pe.m_pred.lhs, SQ_TYPE_PRED, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (src->pe.m_pred.rhs, SQ_TYPE_PRED, key);
 	    }
 	  else if (src->type == T_EVAL_TERM)
 	    {
 	      COMP_EVAL_TERM t = src->pe.m_eval_term.et.et_comp;
-	      cnt += sq_walk_xasl_and_add_val_to_set (t.lhs, SQ_TYPE_REGU_VAR, pred_set);
-	      cnt += sq_walk_xasl_and_add_val_to_set (t.rhs, SQ_TYPE_REGU_VAR, pred_set);
+	      cnt += sq_walk_xasl_and_add_val_to_set (t.lhs, SQ_TYPE_REGU_VAR, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (t.rhs, SQ_TYPE_REGU_VAR, key);
 	    }
 	}
       break;
@@ -464,16 +466,16 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set)
 	  REGU_VARIABLE *src = (REGU_VARIABLE *) p;
 	  if (src->type == TYPE_CONSTANT)
 	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.dbvalptr, SQ_TYPE_DBVAL, pred_set);
+	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.dbvalptr, SQ_TYPE_DBVAL, key);
 	    }
 	  if (src->type == TYPE_DBVAL)
 	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (&src->value.dbval, SQ_TYPE_DBVAL, pred_set);
+	      cnt += sq_walk_xasl_and_add_val_to_set (&src->value.dbval, SQ_TYPE_DBVAL, key);
 	    }
 	  else if (src->type == TYPE_INARITH)
 	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.arithptr->leftptr, SQ_TYPE_REGU_VAR, pred_set);
-	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.arithptr->rightptr, SQ_TYPE_REGU_VAR, pred_set);
+	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.arithptr->leftptr, SQ_TYPE_REGU_VAR, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.arithptr->rightptr, SQ_TYPE_REGU_VAR, key);
 	    }
 	}
 
@@ -482,7 +484,7 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, DB_VALUE * pred_set)
     case SQ_TYPE_DBVAL:
       if (1)
 	{
-	  db_set_add (db_get_set (pred_set), (DB_VALUE *) p);
+	  db_set_add (db_get_set (key->pred_set), (DB_VALUE *) p);
 	  cnt++;
 	}
 
@@ -514,8 +516,10 @@ sq_cache_initialize (xasl_node * xasl)
     {
       return ER_FAILED;
     }
-  xasl->sq_cache_hit = (DB_BIGINT) 0;
-  xasl->sq_cache_miss = (DB_BIGINT) 0;
+  xasl->sq_cache_hit = (size_t) 0;
+  xasl->sq_cache_miss = (size_t) 0;
+  xasl->sq_cache_size = (size_t) 0;
+  xasl->sq_cache_size_max = (size_t) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
   xasl->sq_cache_flag |= SQ_CACHE_INITIALIZED_FLAG;
   return NO_ERROR;
 }
@@ -537,6 +541,7 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
   sq_key *key;
   sq_val *val;
   const void *ret;
+  size_t new_entry_size = 0;
 
   key = sq_make_key (xasl);
 
@@ -553,7 +558,30 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
       sq_cache_initialize (xasl);
     }
 
+  new_entry_size += (size_t) or_db_value_size (key->pred_set) + sizeof (sq_key);
+
+  switch (val->t)
+    {
+    case TYPE_CONSTANT:
+      new_entry_size += (size_t) or_db_value_size (val->val.dbvalptr) + sizeof (sq_val);
+      break;
+
+    default:
+      break;
+    }
+
+  if (xasl->sq_cache_size_max < xasl->sq_cache_size + new_entry_size)
+    {
+      regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
+      sq_free_key (key);
+      sq_free_val (val);
+      return ER_FAILED;
+    }
+
   ret = mht_put_if_not_exists (xasl->sq_cache_ht, key, val);
+
+  xasl->sq_cache_size += new_entry_size;
+
   if (!ret || ret != val)
     {
       sq_free_key (key);
@@ -580,22 +608,20 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
   sq_key *key;
   sq_val *ret;
 
-  if (xasl->sq_cache_miss >= SQ_CACHE_MISS_MAX)
+  if (xasl->sq_cache_flag & SQ_CACHE_INITIALIZED_FLAG)
     {
       /* This conditional check acts as a mechanism to prevent the cache from being 
          overwhelmed by unsuccessful lookups. If the cache miss count exceeds a predefined 
          maximum, it evaluates the hit-to-miss ratio to decide whether continuing caching 
          is beneficial. This approach optimizes cache usage and performance by dynamically 
          adapting to the effectiveness of the cache. */
-      if (xasl->sq_cache_hit / xasl->sq_cache_miss < SQ_CACHE_MIN_HIT_RATIO)
+      if (xasl->sq_cache_miss > SQ_CACHE_MISS_MAX)
 	{
-	  regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
-	  return false;
-	}
-      else if (xasl->sq_cache_miss > 2 * SQ_CACHE_MISS_MAX)
-	{
-	  regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
-	  return false;
+	  if (xasl->sq_cache_hit / xasl->sq_cache_miss < SQ_CACHE_MIN_HIT_RATIO)
+	    {
+	      regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
+	      return false;
+	    }
 	}
     }
 
@@ -657,8 +683,9 @@ sq_cache_destroy (xasl_node * xasl)
 {
   if (xasl->sq_cache_flag & SQ_CACHE_INITIALIZED_FLAG)
     {
-      er_log_debug (ARG_FILE_LINE, "destroy sq_cache at xasl %p\ncache info : \n\thit : %10ld\n\tmiss: %10ld\n", xasl,
-		    xasl->sq_cache_hit, xasl->sq_cache_miss);
+      er_log_debug (ARG_FILE_LINE,
+		    "destroy sq_cache at xasl %p\ncache info : \n\thit : %10lu\n\tmiss: %10lu\n\tsize: %10lu Bytes\n",
+		    xasl, xasl->sq_cache_hit, xasl->sq_cache_miss, xasl->sq_cache_size);
       sq_cache_drop_all (xasl);
       mht_destroy (xasl->sq_cache_ht);
     }
@@ -681,7 +708,8 @@ sq_cache_destroy (xasl_node * xasl)
 int
 execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, void *vd)
 {
-  if (regu_var->xasl && !(regu_var->xasl->sq_cache_flag & SQ_CACHE_NOT_CACHING_FLAG) && (regu_var->xasl->status == XASL_CLEARED || regu_var->xasl->status == XASL_INITIALIZED))	//&& !regu_var->xasl->aptr_list && !regu_var->xasl->dptr_list && !regu_var->xasl->if_pred
+  if (regu_var->xasl && !(regu_var->xasl->sq_cache_flag & SQ_CACHE_NOT_CACHING_FLAG)
+      && (regu_var->xasl->status == XASL_CLEARED || regu_var->xasl->status == XASL_INITIALIZED))
     {
 
       if (regu_var->xasl->sq_cache_flag & SQ_CACHE_ENABLED_FLAG)

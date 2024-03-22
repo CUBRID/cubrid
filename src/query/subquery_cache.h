@@ -33,16 +33,16 @@ extern void sq_cache_destroy (xasl_node * xasl);
 extern int execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, void *vd);
 
 #define SQ_CACHE_MISS_MAX 1000
-#define SQ_CACHE_MIN_HIT_RATIO 9
+#define SQ_CACHE_MIN_HIT_RATIO 9	/* it means 90% */
 
 #define SQ_TYPE_XASL 0
 #define SQ_TYPE_PRED 1
 #define SQ_TYPE_REGU_VAR 2
 #define SQ_TYPE_DBVAL 3
 
-#define SQ_CACHE_ENABLED_FLAG 1
-#define SQ_CACHE_INITIALIZED_FLAG 2
-#define SQ_CACHE_NOT_CACHING_CHECKED_FLAG 4
-#define SQ_CACHE_NOT_CACHING_FLAG 8
+#define SQ_CACHE_ENABLED_FLAG 0x1
+#define SQ_CACHE_INITIALIZED_FLAG 0x2
+#define SQ_CACHE_NOT_CACHING_CHECKED_FLAG 0x4
+#define SQ_CACHE_NOT_CACHING_FLAG 0x8
 
 #endif /* _SUBQUERY_CACHE_H_ */

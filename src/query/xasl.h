@@ -1036,8 +1036,10 @@ struct xasl_node
 
   MHT_TABLE *sq_cache_ht;
   int sq_cache_flag;
-  DB_BIGINT sq_cache_hit;
-  DB_BIGINT sq_cache_miss;
+  size_t sq_cache_hit;
+  size_t sq_cache_miss;
+  size_t sq_cache_size;
+  size_t sq_cache_size_max;
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
