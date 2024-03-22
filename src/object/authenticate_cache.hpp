@@ -78,6 +78,6 @@ extern int au_find_user_cache_index (DB_OBJECT *user, int *index, int check_it);
 extern void reset_cache_for_user_and_class (SM_CLASS *sm_class);
 extern void remove_user_cache_references (MOP user);
 
-extern unsigned int get_cache_bits (SM_CLASS *sm_class);
+extern unsigned int *get_cache_bits (SM_CLASS *sm_class);
 
 #endif // _AUTHENTICATE_CACHE_HPP_

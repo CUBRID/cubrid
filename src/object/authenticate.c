@@ -3578,8 +3578,8 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
   int i, save, card;
   DB_VALUE value;
   MOP group, auth;
-  unsigned int *bits;
   bool is_member = false;
+  unsigned int *bits = NULL;
   bool need_pop_er_stack = false;
 
   /*
@@ -3592,7 +3592,7 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
 
   need_pop_er_stack = true;
 
-  bits = &cache->data[Au_cache_index];
+  bits = get_cache_bits (sm_class);
 
   /* initialize the cache bits */
   *bits = AU_NO_AUTHORIZATION;
@@ -3610,7 +3610,6 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
   if (is_member)
     {
       *bits = AU_FULL_AUTHORIZATION;
-
       goto end;
     }
 
@@ -3625,7 +3624,6 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
     {
       /* might want to allow grant/revoke on self */
       *bits = AU_FULL_AUTHORIZATION;
-
       goto end;
     }
 
@@ -3869,7 +3867,7 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
 {
   int error = NO_ERROR;
   AU_CLASS_CACHE *cache;
-  unsigned int cache_bits;
+  unsigned int *cache_bits;
   unsigned int mask;
 
   /*
@@ -3880,7 +3878,12 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
     return NO_ERROR;
 
   cache_bits = get_cache_bits (sm_class);
-  if (cache_bits == AU_CACHE_INVALID)
+  if (cache_bits == NULL)
+    {
+      return er_errid ();
+    }
+
+  if (*cache_bits == AU_CACHE_INVALID)
     {
       cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
       if (update_cache (classop, sm_class, cache))
@@ -3893,9 +3896,9 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
 
   /* build the complete bit mask */
   mask = type | (type << AU_GRANT_SHIFT);
-  if ((cache_bits & mask) != mask)
+  if ((*cache_bits & mask) != mask)
     {
-      error = appropriate_error (cache_bits, mask);
+      error = appropriate_error (*cache_bits, mask);
       if (error)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5872,7 +5875,7 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
 {
   int error = NO_ERROR;
   AU_CLASS_CACHE *cache;
-  unsigned int bits;
+  unsigned int *bits;
 
   /*
    * Callers generally check Au_disable already to avoid the function call.
@@ -5896,25 +5899,30 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
   else
     {
       bits = get_cache_bits (sm_class);
-      if ((bits & type) != type)
+      if (bits == NULL)
 	{
-	  if (bits == AU_CACHE_INVALID)
+	  return er_errid ();
+	}
+
+      if ((*bits & type) != type)
+	{
+	  if (*bits == AU_CACHE_INVALID)
 	    {
 	      /* update the cache and try again */
 	      error = update_cache (classobj, sm_class, cache);
 	      if (error == NO_ERROR)
 		{
 		  bits = get_cache_bits (sm_class);
-		  if ((bits & type) != type)
+		  if ((*bits & type) != type)
 		    {
-		      error = appropriate_error (bits, type);
+		      error = appropriate_error (*bits, type);
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 		    }
 		}
 	    }
 	  else
 	    {
-	      error = appropriate_error (bits, type);
+	      error = appropriate_error (*bits, type);
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 	}
@@ -8723,7 +8731,7 @@ au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
 {
   SM_CLASS *class_;
   AU_CLASS_CACHE *cache;
-  unsigned int bits = 0;
+  unsigned int *bits = NULL;
   int error = NO_ERROR;
 
   if (!Au_disable)
@@ -8736,7 +8744,12 @@ au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
       class_ = (SM_CLASS *) mop->object;
 
       bits = get_cache_bits (class_);
-      if (bits == AU_CACHE_INVALID)
+      if (bits == NULL)
+	{
+	  return er_errid ();
+	}
+
+      if (*bits == AU_CACHE_INVALID)
 	{
 	  error = update_cache (mop, class_, cache);
 	  if (error == NO_ERROR)
@@ -8744,7 +8757,7 @@ au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
 	      bits = get_cache_bits (class_);
 	    }
 	}
-      *auth = bits;
+      *auth = *bits;
     }
 
   return error;
