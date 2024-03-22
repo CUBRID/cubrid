@@ -159,7 +159,7 @@ TEST_CASE ("Test mmon_add_stat", "")
 //
 // Test add_stat() with single thread when different file paths
 // that will be made same stat name are given (abnormal case)
-// There is a potential issue scenario that can't distinguish different allocation. (TODO)
+// There is a potential issue scenario that can't distinguish different allocation. (TODO in memory_monitor::make_stat_name ())
 // However, since such behavior is currently allowed,
 // it is necessary to test whether such behavior also returns the expected results.
 //
