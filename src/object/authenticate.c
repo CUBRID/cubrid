@@ -3879,20 +3879,10 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
   if (Au_cache_index < 0)
     return NO_ERROR;
 
-  cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
-  if (sm_class->auth_cache == NULL)
-    {
-      cache = au_install_class_cache (sm_class);
-      if (cache == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-    }
-  cache_bits = cache->data[Au_cache_index];
-
+  cache_bits = get_cache_bits (sm_class);
   if (cache_bits == AU_CACHE_INVALID)
     {
+      cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
       if (update_cache (classop, sm_class, cache))
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -5905,18 +5895,7 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
     }
   else
     {
-      cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
-      if (cache == NULL)
-	{
-	  cache = au_install_class_cache (sm_class);
-	  if (cache == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-	}
-      bits = cache->data[Au_cache_index];
-
+      bits = get_cache_bits (sm_class);
       if ((bits & type) != type)
 	{
 	  if (bits == AU_CACHE_INVALID)
@@ -8756,18 +8735,7 @@ au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
 
       class_ = (SM_CLASS *) mop->object;
 
-      cache = (AU_CLASS_CACHE *) class_->auth_cache;
-      if (cache == NULL)
-	{
-	  cache = au_install_class_cache (class_);
-	  if (cache == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-	}
-
-      bits = cache->data[Au_cache_index];
+      bits = get_cache_bits (class_);
       if (bits == AU_CACHE_INVALID)
 	{
 	  error = update_cache (mop, class_, cache);
