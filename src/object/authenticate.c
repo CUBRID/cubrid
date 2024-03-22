@@ -3874,8 +3874,10 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
    * this potentially can be called during initialization when we don't
    * actually have any users yet.  If so, assume its ok
    */
-  if (Au_cache_index < 0)
-    return NO_ERROR;
+  if (au_get_cache_index ())
+    {
+      return NO_ERROR;
+    }
 
   cache_bits = get_cache_bits (sm_class);
   if (cache_bits == NULL)
@@ -6510,7 +6512,7 @@ au_set_user (MOP newuser)
 	{
 
 	  Au_user = newuser;
-	  Au_cache_index = index;
+	  au_set_cache_index (index);
 
 	  /*
 	   * it is important that we don't call sm_bump_local_schema_version() here
@@ -8593,7 +8595,7 @@ au_install (void)
       goto exit_on_error;
     }
   Au_user = Au_dba_user;
-  Au_cache_index = index;
+  au_set_cache_index (index);
 
   AU_SET_USER (Au_dba_user);
 

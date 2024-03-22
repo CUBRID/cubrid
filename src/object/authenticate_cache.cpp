@@ -496,3 +496,13 @@ flush_caches (void)
   /* clear the associated globals */
   init_caches ();
 }
+
+void au_set_cache_index (int idx)
+{
+  Au_cache_index = idx;
+}
+
+int au_get_cache_index()
+{
+  return Au_cache_index;
+}

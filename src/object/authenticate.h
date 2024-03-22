@@ -264,6 +264,8 @@ extern void au_link_static_methods (void);
 extern int au_export_users (extract_context & ctxt, print_output & output_ctx);
 extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_mop);
 
+extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
+
 /*
  * Etc
  */
