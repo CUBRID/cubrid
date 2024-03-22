@@ -220,6 +220,7 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_INDEX_NAME, system_catalog_initializer::get_index ());
   ADD_TABLE_DEFINITION (CT_INDEXKEY_NAME, system_catalog_initializer::get_index_key ());
   ADD_TABLE_DEFINITION (CT_CLASSAUTH_NAME, system_catalog_initializer::get_class_authorization ());
+  // ADD_TABLE_DEFINITION (CT_CLASSAUTH_NAME, system_catalog_initializer::get_object_authorization ());
   ADD_TABLE_DEFINITION (CT_PARTITION_NAME, system_catalog_initializer::get_partition());
   ADD_TABLE_DEFINITION (CT_DATATYPE_NAME, system_catalog_initializer::get_data_type());
   ADD_TABLE_DEFINITION (CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure());
@@ -741,7 +742,8 @@ namespace cubschema
     {
       {"grantor", AU_USER_CLASS_NAME},
       {"grantee", AU_USER_CLASS_NAME},
-      {"class_of", CT_CLASS_NAME},
+      {"object_type", "integer"},
+      {"class_of", "object"},
       {"auth_type", format_varchar (7)},
       {"is_grantable", "integer"}
     },
@@ -757,8 +759,35 @@ namespace cubschema
 // initializer
     nullptr
 	   );
+  }
 
-
+  system_catalog_definition
+  system_catalog_initializer::get_object_authorization ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_OBJECTAUTH_NAME,
+		   // columns
+    {
+      {"grantor", AU_USER_CLASS_NAME},
+      {"grantee", AU_USER_CLASS_NAME},
+      {"object_type", "integer"},
+      {"object_of", "object"},
+      {"auth_type", format_varchar (7)},
+      {"is_grantable", "integer"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"grantee", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
   }
 
   system_catalog_definition

@@ -438,17 +438,26 @@ static DB_METHOD_LINK au_static_links[] = {
   {NULL, NULL}
 };
 
+static int au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
+static int au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type bool grant_option);
+
+static int au_revoke_class (MOP user, MOP class_mop, DB_AUTH type);
+static int au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type);
+
 
 static int au_get_set (MOP obj, const char *attname, DB_SET ** set);
 static int au_get_object (MOP obj, const char *attname, MOP * mop_ptr);
 static int au_set_get_obj (DB_SET * set, int index, MOP * obj);
 
 static MOP au_make_user (const char *name);
-static int au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, bool grant_option);
-static MOP au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type);
-static int au_insert_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option);
-static int au_update_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option);
-static int au_delete_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type);
+static int au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_OBJECT_TYPE obj_type,
+			    DB_AUTH auth_type, bool grant_option);
+static MOP au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_OBJECT_TYPE obj_type, DB_AUTH auth_type);
+static int au_insert_new_auth (MOP grantor, MOP user, MOP class_mop, DB_OBJECT_TYPE obj_type, DB_AUTH auth_type,
+			       int grant_option);
+static int au_update_new_auth (MOP grantor, MOP user, MOP class_mop, DB_OBJECT_TYPE obj_type, DB_AUTH auth_type,
+			       int grant_option);
+static int au_delete_new_auth (MOP grantor, MOP user, MOP class_mop, DB_OBJECT_TYPE obj_type, DB_AUTH auth_type);
 static int au_propagate_del_new_auth (AU_GRANT * glist, DB_AUTH mask);
 
 static int check_user_name (const char *name);
@@ -1099,11 +1108,12 @@ memory_error:
  *   grant_option(in):
  */
 static int
-au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, bool grant_option)
+au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP obj_mop, DB_OBJECT_TYPE obj_type, DB_AUTH auth_type,
+		 bool grant_option)
 {
   int error = NO_ERROR;
   MOP au_class, db_class = NULL, db_class_inst = NULL;
-  DB_VALUE value, class_name_val;
+  DB_VALUE value, name_val;
   DB_AUTH type;
   int i;
 
@@ -1130,23 +1140,41 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
   db_make_object (&value, user);
   obj_set (au_obj, "grantee", &value);
 
-  db_class = sm_find_class (CT_CLASS_NAME);
-  if (db_class == NULL)
+  if (obj_type == DB_OBJECT_CLASS)
     {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      db_class = sm_find_class (CT_CLASS_NAME);
+      if (db_class == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+
+      db_make_string (&name_val, sm_get_ch_name (obj_mop));
+      db_class_inst = obj_find_unique (db_class, "unique_name", &name_val, AU_FETCH_READ);
+      if (db_class_inst == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  pr_clear_value (&name_val);
+	  return er_errid ();
+	}
+    }
+  else
+    {
+      // TODO: CBRD-24912
+      db_make_string (&name_val, jsp_get_name (obj_mop));
+      db_class_inst = jsp_find_stored_procedure (db_get_string (&name_val));
+      if (db_class_inst == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  pr_clear_value (&name_val);
+	  return er_errid ();
+	}
     }
 
-  db_make_string (&class_name_val, sm_get_ch_name (class_mop));
-  db_class_inst = obj_find_unique (db_class, "unique_name", &class_name_val, AU_FETCH_READ);
-  if (db_class_inst == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      pr_clear_value (&class_name_val);
-      return er_errid ();
-    }
+  db_make_int (&value, (int) obj_type);
+  obj_set (au_obj, "object_type", &value);
 
-  db_make_object (&value, db_class_inst);
+  db_make_object (&value, obj_mop);
   obj_set (au_obj, "class_of", &value);
 
   for (type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++)
@@ -1160,7 +1188,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
   db_make_int (&value, (int) grant_option);
   obj_set (au_obj, "is_grantable", &value);
 
-  pr_clear_value (&class_name_val);
+  pr_clear_value (&name_val);
   return NO_ERROR;
 }
 
@@ -1169,25 +1197,26 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
  *   return:
  *   grantor(in):
  *   user(in):
- *   class_mop(in):
+ *   obj_mop(in):
  *   auth_type(in):
  */
 static MOP
-au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
+au_get_new_auth (MOP grantor, MOP user, MOP obj_mop, DB_OBJECT_TYPE obj_type, DB_AUTH auth_type)
 {
   int error = NO_ERROR, save, i;
   DB_AUTH type;
   MOP ret_obj = NULL;
-  const char *class_name;
+  const char *name;
   const char *sql_query =
     "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
-    " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?"
-    " AND [au].[class_of].[unique_name] = ? AND [au].[auth_type] = ?";
+    " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?" " AND %s = ? AND [au].[auth_type] = ?";
+  char sql_query_by_obj_type[256];
+
   enum
   {
     INDEX_FOR_GRANTEE_NAME = 0,
     INDEX_FOR_GRANTOR_NAME = 1,
-    INDEX_FOR_CLASS_NAME = 2,
+    INDEX_FOR_OBJECT_NAME = 2,
     INDEX_FOR_AUTH_TYPE = 3,
     /* Total count for the above */
     COUNT_FOR_VARIABLES
@@ -1233,13 +1262,29 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
       goto exit;
     }
 
-  class_name = db_get_class_name (class_mop);
-  if (class_name == NULL)
+  if (obj_type == DB_OBJECT_CLASS)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
-      goto exit;
+      sprintf (sql_query_by_obj_type, sql_query, "[au].[class_of].[unique_name]");
+      name = db_get_class_name (obj_mop);
+      if (name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
+	  goto exit;
+	}
+      db_make_string (&val[INDEX_FOR_OBJECT_NAME], name);
     }
-  db_make_string (&val[INDEX_FOR_CLASS_NAME], class_name);
+  else
+    {
+      // TODO: only procedure, add more objects
+      sprintf (sql_query_by_obj_type, sql_query, "[au].[class_of].[sp_name]");
+      name = jsp_get_name (obj_mop);
+      if (name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
+	  goto exit;
+	}
+      db_make_string (&val[INDEX_FOR_OBJECT_NAME], name);
+    }
 
   for (type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++)
     {
@@ -1247,7 +1292,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
     }
   db_make_string (&val[INDEX_FOR_AUTH_TYPE], AU_TYPE_SET[i]);
 
-  session = db_open_buffer (sql_query);
+  session = db_open_buffer (sql_query_by_obj_type);
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -1338,7 +1383,7 @@ exit:
  *   grant_option(in):
  */
 static int
-au_insert_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option)
+au_insert_new_auth (MOP grantor, MOP user, MOP class_mop, DB_OBJECT_TYPE obj_type, DB_AUTH auth_type, int grant_option)
 {
   int index;
   int error = NO_ERROR;
@@ -1348,7 +1393,8 @@ au_insert_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int
       if (auth_type & index)
 	{
 	  error =
-	    au_set_new_auth (NULL, grantor, user, class_mop, (DB_AUTH) index, ((grant_option & index) ? true : false));
+	    au_set_new_auth (NULL, grantor, user, class_mop, obj_type, (DB_AUTH) index,
+			     ((grant_option & index) ? true : false));
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -1369,17 +1415,23 @@ au_insert_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int
  *   grant_option(in):
  */
 static int
-au_update_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option)
+au_update_new_auth (MOP grantor, MOP user, MOP class_mop, DB_OBJECT_TYPE obj_type, DB_AUTH auth_type, int grant_option)
 {
   MOP au_obj;
   int index;
   int error = NO_ERROR;
 
+  if (obj_type != DB_OBJECT_CLASS)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
   for (index = DB_AUTH_EXECUTE; index; index >>= 1)
     {
       if (auth_type & index)
 	{
-	  au_obj = au_get_new_auth (grantor, user, class_mop, (DB_AUTH) index);
+	  au_obj = au_get_new_auth (grantor, user, class_mop, obj_type, (DB_AUTH) index);
 	  if (au_obj == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -1393,7 +1445,7 @@ au_update_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int
 	    }
 
 	  error =
-	    au_set_new_auth (au_obj, grantor, user, class_mop, (DB_AUTH) index,
+	    au_set_new_auth (au_obj, grantor, user, class_mop, obj_type, (DB_AUTH) index,
 			     ((grant_option & index) ? true : false));
 	  if (error != NO_ERROR)
 	    {
@@ -1414,17 +1466,23 @@ au_update_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int
  *   auth_type(in):
  */
 static int
-au_delete_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
+au_delete_new_auth (MOP grantor, MOP user, MOP class_mop, DB_OBJECT_TYPE obj_type, DB_AUTH auth_type)
 {
   MOP au_obj;
   int index;
   int error = NO_ERROR;
 
+  if (obj_type != DB_OBJECT_CLASS)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
   for (index = DB_AUTH_EXECUTE; index; index >>= 1)
     {
       if (auth_type & index)
 	{
-	  au_obj = au_get_new_auth (grantor, user, class_mop, (DB_AUTH) index);
+	  au_obj = au_get_new_auth (grantor, user, class_mop, obj_type, (DB_AUTH) index);
 	  if (au_obj == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -1484,8 +1542,10 @@ au_propagate_del_new_auth (AU_GRANT * glist, DB_AUTH mask)
 	      break;
 	    }
 
+	  // TODO: CBRD-24912
 	  error =
-	    au_delete_new_auth (g->grantor, g->user, db_get_object (&class_), (DB_AUTH) (db_get_int (&type) & ~mask));
+	    au_delete_new_auth (g->grantor, g->user, db_get_object (&class_), DB_OBJECT_CLASS,
+				(DB_AUTH) (db_get_int (&type) & ~mask));
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -1577,7 +1637,8 @@ au_force_write_new_auth (void)
 	  auth = (DB_AUTH) db_get_int (&auth_val);
 
 	  error =
-	    au_insert_new_auth (grantor, grantee, class_, (DB_AUTH) (auth & AU_TYPE_MASK), (auth & AU_GRANT_MASK));
+	    au_insert_new_auth (grantor, grantee, class_, DB_OBJECT_CLASS, (DB_AUTH) (auth & AU_TYPE_MASK),
+				(auth & AU_GRANT_MASK));
 	  if (error != NO_ERROR)
 	    {
 	      goto end;
@@ -3995,11 +4056,79 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
 
 
 /*
- * GRANT OPERATION
+ * GRANT and REVOKE OPERATION
  */
-
 /*
  * au_grant - This is the primary interface function for granting authorization
+ *            on database objects.
+ *   return: error code
+ *   obj_type(in): database object type to be granted
+ *   user(in): user receiving the grant
+ *   class_mop(in): class being authorized
+ *   type(in): type of authorization
+ *   grant_option(in): non-zero if grant option is also being given
+ */
+int
+au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
+{
+  int error = NO_ERROR;
+  switch (obj_type)
+    {
+    case DB_OBJECT_CLASS:
+      error = au_grant_class (user, class_mop, type, grant_option);
+      break;
+
+    case DB_OBJECT_PROCEDURE:
+      error = au_grant_procedure (user, class_mop, type, grant_option);
+      break;
+    default:
+      error = ER_FAILED;
+      assert (false);
+      break;
+    }
+  return error;
+}
+
+/*
+ * au_revoke - This is the primary interface function for
+ *             revoking authorization
+ *   return: error code
+ *   obj_type(in): database object type to be revoked
+ *   user(in): user being revoked
+ *   class_mop(in): class being revoked
+ *   type(in): type of authorization being revoked
+ *
+ * Note: The authorization of the given type on the given database object is removed
+ *       from the authorization info stored with the given user.  If this
+ *       user has the grant option for this type and has granted authorization
+ *       to other users, the revoke will be recursively propagated to all
+ *       affected users.
+ *
+ * TODO : LP64
+ */
+int
+au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
+{
+  int error = NO_ERROR;
+  switch (obj_type)
+    {
+    case DB_OBJECT_CLASS:
+      error = au_revoke_class (user, obj_mop, type);
+      break;
+
+    case DB_OBJECT_PROCEDURE:
+      error = au_revoke_procedure (user, obj_mop, type);
+      break;
+    default:
+      error = ER_FAILED;
+      assert (false);
+      break;
+    }
+  return error;
+}
+
+/*
+ * au_grant_class - This is the primary interface function for granting authorization
  *            on classes.
  *   return: error code
  *   user(in): user receiving the grant
@@ -4007,8 +4136,8 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
  *   type(in): type of authorization
  *   grant_option(in): non-zero if grant option is also being given
  */
-int
-au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
+static int
+au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 {
   int error = NO_ERROR;
   MOP auth;
@@ -4036,7 +4165,7 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
       savepoint_grant = 1;
       for (i = 0; sub_partitions[i]; i++)
 	{
-	  error = au_grant (user, sub_partitions[i], type, grant_option);
+	  error = au_grant_class (user, sub_partitions[i], type, grant_option);
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -4114,14 +4243,14 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 		  if (ins_bits)
 		    {
 		      error =
-			au_insert_new_auth (Au_user, user, class_mop, ins_bits,
+			au_insert_new_auth (Au_user, user, class_mop, DB_OBJECT_CLASS, ins_bits,
 					    (grant_option) ? ins_bits : DB_AUTH_NONE);
 		    }
 		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
 		  if ((error == NO_ERROR) && upd_bits)
 		    {
 		      error =
-			au_update_new_auth (Au_user, user, class_mop, upd_bits,
+			au_update_new_auth (Au_user, user, class_mop, DB_OBJECT_CLASS, upd_bits,
 					    (grant_option) ? upd_bits : DB_AUTH_NONE);
 		    }
 		}
@@ -4176,10 +4305,342 @@ fail_end:
   return (error);
 }
 
+static int
+au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
+{
+  int error = NO_ERROR;
+  DB_VALUE value;
+  MOP auth;
+  DB_SET *grants;
+  int current, save = 0, gindex;
+
+  assert (type == AU_EXECUTE);
+
+  AU_DISABLE (save);
+  if (ws_is_same_object (user, Au_user))
+    {
+      /*
+       * Treat grant to self condition as a success only. Although this
+       * statement is a no-op, it is not an indication of no-success.
+       * The "privileges" are indeed already granted to self.
+       * Note: Revoke from self is an error, because this cannot be done.
+       */
+    }
+  else
+    {
+      MOP sp_owner = jsp_get_owner (obj_mop);
+      if (ws_is_same_object (sp_owner, user))
+	{
+	  error = ER_AU_CANT_GRANT_OWNER;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      else
+	{
+	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
+	    {
+	      error = ER_AU_ACCESS_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
+	    }
+	  /* lock authorization for write & mark dirty */
+	  else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
+	    {
+	      error = ER_AU_CANT_UPDATE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
+	    {
+	      gindex = find_grant_entry (grants, obj_mop, Au_user);
+	      if (gindex == -1)
+		{
+		  current = AU_NO_AUTHORIZATION;
+		}
+	      else
+		{
+		  /* already granted, get current cache */
+		  error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
+		  if (error != NO_ERROR)
+		    {
+		      set_free (grants);
+		      AU_ENABLE (save);
+		      return (error);
+		    }
+		  current = db_get_int (&value);
+		}
+
+#if defined(SA_MODE)
+	      if (catcls_Enable == true)
+#endif /* SA_MODE */
+		{
+		  DB_AUTH ins_bits, upd_bits;
+
+		  ins_bits = (DB_AUTH) ((~current & AU_TYPE_MASK) & (int) type);
+		  if (ins_bits)
+		    {
+		      error =
+			au_insert_new_auth (Au_user, user, obj_mop, DB_OBJECT_PROCEDURE, AU_EXECUTE, DB_AUTH_NONE);
+		    }
+
+		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
+		  if ((error == NO_ERROR) && upd_bits)
+		    {
+		      error =
+			au_update_new_auth (Au_user, user, obj_mop, DB_OBJECT_PROCEDURE, AU_EXECUTE, DB_AUTH_NONE);
+		    }
+		}
+
+	      db_make_int (&value, current);
+	      if (gindex == -1)
+		{
+		  /* There is no grant entry, add a new one. */
+		  gindex = add_grant_entry (grants, obj_mop, Au_user);
+		}
+	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
+	      set_free (grants);
+
+	      /* Fail to insert/update, never change the grant entry set. */
+	      if (error != NO_ERROR)
+		{
+		  set_free (grants);
+		  goto end;
+		}
+
+	      /*
+	       * clear the cache for this user/class pair to make sure we
+	       * recalculate it the next time it is referenced
+	       */
+	      // reset_cache_for_user_and_class (classobj);
+
+	      /*
+	       * Make sure any cached parse trees are rebuild.  This proabably
+	       * isn't necessary for GRANT, only REVOKE.
+	       */
+	      sm_bump_local_schema_version ();
+	    }
+	}
+    }
+
+end:
+  AU_ENABLE (save);
+  return (error);
+}
 
 /*
  * REVOKE OPERATION
  */
+
+/*
+ * au_revoke_class - This is the primary interface function for
+ *             revoking authorization
+ *   return: error code
+ *   user(in): user being revoked
+ *   class_mop(in): class being revoked
+ *   type(in): type of authorization being revoked
+ *
+ * Note: The authorization of the given type on the given class is removed
+ *       from the authorization info stored with the given user.  If this
+ *       user has the grant option for this type and has granted authorization
+ *       to other users, the revoke will be recursively propagated to all
+ *       affected users.
+ *
+ * TODO : LP64
+ */
+static int
+au_revoke_class (MOP user, MOP class_mop, DB_AUTH type)
+{
+  int error;
+  MOP auth;
+  DB_SET *grants = NULL;
+  DB_VALUE cache_element;
+  int current, mask, save = 0, gindex;
+  AU_GRANT *grant_list;
+  SM_CLASS *classobj;
+  int is_partition = DB_NOT_PARTITIONED_CLASS, i = 0, savepoint_revoke = 0;
+  MOP *sub_partitions = NULL;
+
+  error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (is_partition == DB_PARTITIONED_CLASS)
+    {
+      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
+      if (error != NO_ERROR)
+	{
+	  goto fail_end;
+	}
+      savepoint_revoke = 1;
+
+      for (i = 0; sub_partitions[i]; i++)
+	{
+	  error = au_revoke_class (user, sub_partitions[i], type);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+
+      free_and_init (sub_partitions);
+      if (error != NO_ERROR)
+	{
+	  goto fail_end;
+	}
+    }
+
+  AU_DISABLE (save);
+  if (ws_is_same_object (user, Au_user))
+    {
+      error = ER_AU_CANT_REVOKE_SELF;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto fail_end;
+    }
+
+  error = au_fetch_class_force (class_mop, &classobj, AU_FETCH_READ);
+  if (error == NO_ERROR)
+    {
+      if (ws_is_same_object (classobj->owner, user))
+	{
+	  error = ER_AU_CANT_REVOKE_OWNER;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto fail_end;
+	}
+
+      error = check_grant_option (class_mop, classobj, type);
+      if (error != NO_ERROR)
+	{
+	  goto fail_end;
+	}
+
+      if (au_get_object (user, "authorization", &auth) != NO_ERROR)
+	{
+	  error = ER_AU_ACCESS_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
+	  goto fail_end;
+	}
+      else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
+	{
+	  error = ER_AU_CANT_UPDATE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto fail_end;
+	}
+      else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
+	{
+	  gindex = find_grant_entry (grants, class_mop, Au_user);
+	  if (gindex == -1)
+	    {
+	      error = ER_AU_GRANT_NOT_FOUND;
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	      goto fail_end;
+	    }
+	  else
+	    {
+	      /* get current cache bits */
+	      error = set_get_element (grants, gindex + 2, &cache_element);
+	      if (error != NO_ERROR)
+		{
+		  set_free (grants);
+		  if (sub_partitions)
+		    {
+		      free_and_init (sub_partitions);
+		    }
+		  AU_ENABLE (save);
+		  return (error);
+		}
+	      current = db_get_int (&cache_element);
+
+	      /*
+	       * If all the bits are set, assume we wan't to
+	       * revoke everything previously granted, makes it a bit
+	       * easier but muddies the semantics too much ?
+	       */
+	      if (type == DB_AUTH_ALL)
+		{
+		  type = (DB_AUTH) (current & AU_TYPE_MASK);
+		}
+
+	      /*
+	       * this test could be more sophisticated, right now,
+	       * if there are any valid grants that fit in
+	       * the specified bit mask, the operation will proceed,
+	       * we could make sure that every bit in the supplied
+	       * mask is also present in the cache and if not abort
+	       * the whole thing
+	       */
+
+	      if ((current & (int) type) == 0)
+		{
+		  error = ER_AU_GRANT_NOT_FOUND;
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+		}
+	      else if ((error = collect_class_grants (class_mop, type, auth, gindex, &grant_list)) == NO_ERROR)
+		{
+
+		  /* calculate the mask to turn off the grant */
+		  mask = (int) ~(type | (type << AU_GRANT_SHIFT));
+
+		  /* propagate the revoke to the affected classes */
+		  if ((error = propagate_revoke (grant_list, classobj->owner, (DB_AUTH) mask)) == NO_ERROR)
+		    {
+
+		      /*
+		       * finally, update the local grant for the
+		       * original object
+		       */
+		      current &= mask;
+		      if (current)
+			{
+			  db_make_int (&cache_element, current);
+			  set_put_element (grants, gindex + 2, &cache_element);
+			}
+		      else
+			{
+			  /* no remaining grants, remove it from the grant set */
+			  drop_grant_entry (grants, gindex);
+			}
+		      /*
+		       * clear the cache for this user/class pair
+		       * to make sure we recalculate it the next time
+		       * it is referenced
+		       */
+		      reset_cache_for_user_and_class (classobj);
+
+#if defined(SA_MODE)
+		      if (catcls_Enable == true)
+#endif /* SA_MODE */
+			// TODO: CBRD-24912
+			error = au_delete_new_auth (Au_user, user, class_mop, DB_OBJECT_CLASS, type);
+
+		      /*
+		       * Make sure that we don't keep any parse trees
+		       * around that rely on obsolete authorization.
+		       * This may not be necessary.
+		       */
+		      sm_bump_local_schema_version ();
+		    }
+		  free_grant_list (grant_list);
+		}
+	    }
+	}
+    }
+
+fail_end:
+  if (grants != NULL)
+    {
+      set_free (grants);
+    }
+  if (savepoint_revoke && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
+    }
+  if (sub_partitions)
+    {
+      free_and_init (sub_partitions);
+    }
+  AU_ENABLE (save);
+  return (error);
+}
+
 
 /*
  * free_grant_list - Frees a list of temporary grant flattening structures.
@@ -4512,218 +4973,6 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 	}
     }
 
-  return (error);
-}
-
-/*
- * au_revoke - This is the primary interface function for
- *             revoking authorization
- *   return: error code
- *   user(in): user being revoked
- *   class_mop(in): class being revoked
- *   type(in): type of authorization being revoked
- *
- * Note: The authorization of the given type on the given class is removed
- *       from the authorization info stored with the given user.  If this
- *       user has the grant option for this type and has granted authorization
- *       to other users, the revoke will be recursively propagated to all
- *       affected users.
- *
- * TODO : LP64
- */
-int
-au_revoke (MOP user, MOP class_mop, DB_AUTH type)
-{
-  int error;
-  MOP auth;
-  DB_SET *grants = NULL;
-  DB_VALUE cache_element;
-  int current, mask, save = 0, gindex;
-  AU_GRANT *grant_list;
-  SM_CLASS *classobj;
-  int is_partition = DB_NOT_PARTITIONED_CLASS, i = 0, savepoint_revoke = 0;
-  MOP *sub_partitions = NULL;
-
-  error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (is_partition == DB_PARTITIONED_CLASS)
-    {
-      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
-      if (error != NO_ERROR)
-	{
-	  goto fail_end;
-	}
-      savepoint_revoke = 1;
-
-      for (i = 0; sub_partitions[i]; i++)
-	{
-	  error = au_revoke (user, sub_partitions[i], type);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
-
-      free_and_init (sub_partitions);
-      if (error != NO_ERROR)
-	{
-	  goto fail_end;
-	}
-    }
-
-  AU_DISABLE (save);
-  if (ws_is_same_object (user, Au_user))
-    {
-      error = ER_AU_CANT_REVOKE_SELF;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto fail_end;
-    }
-
-  error = au_fetch_class_force (class_mop, &classobj, AU_FETCH_READ);
-  if (error == NO_ERROR)
-    {
-      if (ws_is_same_object (classobj->owner, user))
-	{
-	  error = ER_AU_CANT_REVOKE_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	  goto fail_end;
-	}
-
-      error = check_grant_option (class_mop, classobj, type);
-      if (error != NO_ERROR)
-	{
-	  goto fail_end;
-	}
-
-      if (au_get_object (user, "authorization", &auth) != NO_ERROR)
-	{
-	  error = ER_AU_ACCESS_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
-	  goto fail_end;
-	}
-      else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
-	{
-	  error = ER_AU_CANT_UPDATE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  goto fail_end;
-	}
-      else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
-	{
-	  gindex = find_grant_entry (grants, class_mop, Au_user);
-	  if (gindex == -1)
-	    {
-	      error = ER_AU_GRANT_NOT_FOUND;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	      goto fail_end;
-	    }
-	  else
-	    {
-	      /* get current cache bits */
-	      error = set_get_element (grants, gindex + 2, &cache_element);
-	      if (error != NO_ERROR)
-		{
-		  set_free (grants);
-		  if (sub_partitions)
-		    {
-		      free_and_init (sub_partitions);
-		    }
-		  AU_ENABLE (save);
-		  return (error);
-		}
-	      current = db_get_int (&cache_element);
-
-	      /*
-	       * If all the bits are set, assume we wan't to
-	       * revoke everything previously granted, makes it a bit
-	       * easier but muddies the semantics too much ?
-	       */
-	      if (type == DB_AUTH_ALL)
-		{
-		  type = (DB_AUTH) (current & AU_TYPE_MASK);
-		}
-
-	      /*
-	       * this test could be more sophisticated, right now,
-	       * if there are any valid grants that fit in
-	       * the specified bit mask, the operation will proceed,
-	       * we could make sure that every bit in the supplied
-	       * mask is also present in the cache and if not abort
-	       * the whole thing
-	       */
-
-	      if ((current & (int) type) == 0)
-		{
-		  error = ER_AU_GRANT_NOT_FOUND;
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-		}
-	      else if ((error = collect_class_grants (class_mop, type, auth, gindex, &grant_list)) == NO_ERROR)
-		{
-
-		  /* calculate the mask to turn off the grant */
-		  mask = (int) ~(type | (type << AU_GRANT_SHIFT));
-
-		  /* propagate the revoke to the affected classes */
-		  if ((error = propagate_revoke (grant_list, classobj->owner, (DB_AUTH) mask)) == NO_ERROR)
-		    {
-
-		      /*
-		       * finally, update the local grant for the
-		       * original object
-		       */
-		      current &= mask;
-		      if (current)
-			{
-			  db_make_int (&cache_element, current);
-			  set_put_element (grants, gindex + 2, &cache_element);
-			}
-		      else
-			{
-			  /* no remaining grants, remove it from the grant set */
-			  drop_grant_entry (grants, gindex);
-			}
-		      /*
-		       * clear the cache for this user/class pair
-		       * to make sure we recalculate it the next time
-		       * it is referenced
-		       */
-		      reset_cache_for_user_and_class (classobj);
-
-#if defined(SA_MODE)
-		      if (catcls_Enable == true)
-#endif /* SA_MODE */
-			error = au_delete_new_auth (Au_user, user, class_mop, type);
-
-		      /*
-		       * Make sure that we don't keep any parse trees
-		       * around that rely on obsolete authorization.
-		       * This may not be necessary.
-		       */
-		      sm_bump_local_schema_version ();
-		    }
-		  free_grant_list (grant_list);
-		}
-	    }
-	}
-    }
-
-fail_end:
-  if (grants != NULL)
-    {
-      set_free (grants);
-    }
-  if (savepoint_revoke && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
-    {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
-    }
-  if (sub_partitions)
-    {
-      free_and_init (sub_partitions);
-    }
-  AU_ENABLE (save);
   return (error);
 }
 
@@ -5709,7 +5958,7 @@ au_add_method_check_authorization (void)
   smt_assign_argument_domain (def, "check_authorization", true, NULL, 2, "integer", (DB_DOMAIN *) 0);
   sm_update_class (def, NULL);
 
-  au_grant (Au_public_user, auth, AU_EXECUTE, false);
+  au_grant (DB_OBJECT_CLASS, Au_public_user, auth, AU_EXECUTE, false);
 
   AU_ENABLE (save);
   return NO_ERROR;
@@ -8784,11 +9033,11 @@ au_install (void)
    * grant browser access to the authorization objects
    * note that the password class cannot be read by anyone except the DBA
    */
-  au_grant (Au_public_user, root, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (Au_public_user, old, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (Au_public_user, user, AU_SELECT, false);
-  au_grant (Au_public_user, user, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (Au_public_user, auth, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS,Au_public_user, root, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS,Au_public_user, old, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS,Au_public_user, user, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS,Au_public_user, user, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS,Au_public_user, auth, AU_SELECT, false);
 
   au_add_method_check_authorization ();
 

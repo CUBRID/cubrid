@@ -1820,18 +1820,44 @@ db_set_user_comment (DB_OBJECT * user, const char *comment)
  *
  */
 int
-db_grant (MOP user, MOP class_, AU_TYPE auth, int grant_option)
+db_grant (MOP user, MOP obj_, AU_TYPE auth, int grant_option)
 {
-  int retval;
+  int retval = NO_ERROR;
+  DB_OBJECT_TYPE object_type;
 
   CHECK_CONNECT_ERROR ();
-  CHECK_2ARGS_ERROR (user, class_);
+  CHECK_2ARGS_ERROR (user, obj_);
   CHECK_MODIFICATION_ERROR ();
 
-  retval = do_check_partitioned_class (class_, CHECK_PARTITION_SUBS, NULL);
+  assert (obj_->class_mop != NULL);
+
+  MOBJ class_mop = (MOBJ) obj_->class_mop->object;
+  OID *mop = WS_OID (obj_->class_mop);
+  if (mop == WS_OID (sm_Root_class_mop))
+    {
+      // table, view
+      object_type = DB_OBJECT_CLASS;
+      retval = do_check_partitioned_class (obj_, CHECK_PARTITION_SUBS, NULL);
+    }
+  else
+    {
+      // database object types except (v)class
+      MOP sp_class_mop = sm_find_class (CT_STORED_PROC_NAME);
+      if (sp_class_mop && mop == WS_OID (sp_class_mop))
+	{
+	  object_type = DB_OBJECT_PROCEDURE;
+	}
+      else
+	{
+	  // unsupproted database object type for now
+	  assert (false);
+	  retval = ER_FAILED;
+	}
+    }
+
   if (!retval)
     {
-      retval = au_grant (user, class_, auth, (bool) grant_option);
+      retval = au_grant (object_type, user, obj_, auth, (bool) grant_option);
     }
 
   return (retval);

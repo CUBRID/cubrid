@@ -352,6 +352,52 @@ jsp_get_sp_type (const char *name)
   return jsp_map_sp_type_to_pt_misc ((SP_TYPE_ENUM) db_get_int (&sp_type_val));
 }
 
+MOP
+jsp_get_owner (MOP mop_p)
+{
+  int save;
+  DB_VALUE value;
+
+  AU_DISABLE (save);
+
+  /* check type */
+  int err = db_get (mop_p, SP_ATTR_OWNER, &value);
+  if (err != NO_ERROR)
+    {
+      AU_ENABLE (save);
+      return NULL;
+    }
+
+  MOP owner = db_get_object (&value);
+
+  AU_ENABLE (save);
+  return owner;
+}
+
+const char *
+jsp_get_name (MOP mop_p)
+{
+  int save;
+  DB_VALUE value;
+  char *res = NULL;
+
+  AU_DISABLE (save);
+
+  /* check type */
+  int err = db_get (mop_p, SP_ATTR_NAME, &value);
+  if (err != NO_ERROR)
+    {
+      AU_ENABLE (save);
+      return NULL;
+    }
+
+  res = ws_copy_string (db_get_string (&value));
+  pr_clear_value (&value);
+
+  AU_ENABLE (save);
+  return res;
+}
+
 /*
  * jsp_get_owner_name - Return Java Stored Procedure'S Owner nmae
  *   return: if fail return MULL

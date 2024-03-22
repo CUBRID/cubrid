@@ -220,8 +220,8 @@ extern char *au_user_name_dup (void);
 extern bool au_has_user_name (void);
 
 /* grant/revoke */
-extern int au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
-extern int au_revoke (MOP user, MOP class_mop, DB_AUTH type);
+extern int au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP obj, DB_AUTH auth_type, bool grant_option);
+extern int au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj, DB_AUTH auth_type);
 
 extern int au_delete_auth_of_dropping_table (const char *class_name);
 

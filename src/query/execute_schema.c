@@ -1799,7 +1799,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      assert (db_auth == DB_AUTH_EXECUTE);
 
 	      PT_NODE *p_list = spec_list;
-	      for (PT_NODE * procs = p_list->info.grant.spec_list; procs != NULL; procs = procs->next)
+	      for (PT_NODE * procs = p_list; procs != NULL; procs = procs->next)
 		{
 		  // [TODO] Resovle user schema name, built-in package name
 		  const char *proc_name = procs->info.name.original;
@@ -1813,8 +1813,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    }
 
 		  // TODO: In CBRD-24912, GRANT/REVOKE for stored procedure is implemented, the following will be processed properly
-		  // error = db_grant_object (user_obj, proc_mop)
-		  error = NO_ERROR;	// TODO
+		  error = db_grant (user_obj, proc_mop, db_auth, grant_option);
 		}
 	    }
 	  else
