@@ -256,11 +256,6 @@ extern void au_dump (void);
 extern void au_dump_to_file (FILE * fp);
 extern void au_dump_user (MOP user, FILE * fp);
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/* used by test code, should be changed to au_dump . . . */
-extern void au_print_class_auth (MOP class_mop);
-#endif
-
 /* called only at initialization time to get the static methods linked */
 extern void au_link_static_methods (void);
 
