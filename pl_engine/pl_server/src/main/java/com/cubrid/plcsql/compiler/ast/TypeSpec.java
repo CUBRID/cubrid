@@ -34,16 +34,23 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class TypeSpec extends AstNode {
 
-    abstract public String plcName();
-    abstract public String fullJavaType();
-    abstract public String javaCode();
-    abstract public int simpleTypeIdx();
-    abstract public String typicalValueStr(); // used to type builtin function calls
+    public abstract String plcName();
 
-    abstract public String toJavaSignature();
-    abstract public boolean isNumber();
-    abstract public boolean isString();
-    abstract public boolean isDateTime();
+    public abstract String fullJavaType();
+
+    public abstract String javaCode();
+
+    public abstract int simpleTypeIdx();
+
+    public abstract String typicalValueStr(); // used to type builtin function calls
+
+    public abstract String toJavaSignature();
+
+    public abstract boolean isNumber();
+
+    public abstract boolean isString();
+
+    public abstract boolean isDateTime();
 
     public TypeSpec(ParserRuleContext ctx) {
         super(ctx);

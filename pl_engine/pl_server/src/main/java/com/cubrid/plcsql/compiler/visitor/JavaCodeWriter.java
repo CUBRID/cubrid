@@ -2483,7 +2483,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 assert cRev != null; // by earlier check
                 String outVal =
                         String.format(
-                                "(%s) stmt.getObject(%d)", param.typeSpec.javaCode(), i + argOffset);
+                                "(%s) stmt.getObject(%d)",
+                                param.typeSpec.javaCode(), i + argOffset);
                 updateOutArgs.add(String.format("o%d[0] = %s;", i, cRev.javaCode(outVal)));
 
                 DeclId declId = id.decl;
