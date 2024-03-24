@@ -439,7 +439,7 @@ static DB_METHOD_LINK au_static_links[] = {
 };
 
 static int au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
-static int au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type bool grant_option);
+static int au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option);
 
 static int au_revoke_class (MOP user, MOP class_mop, DB_AUTH type);
 static int au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type);
@@ -1162,7 +1162,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP obj_mop, DB_OBJECT_TYPE 
     {
       // TODO: CBRD-24912
       db_make_string (&name_val, jsp_get_name (obj_mop));
-      db_class_inst = jsp_find_stored_procedure (db_get_string (&name_val));
+      db_class_inst = jsp_find_stored_procedure (db_get_string (&name_val), DB_AUTH_NONE);
       if (db_class_inst == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -1658,30 +1658,44 @@ end:
 }
 
 /*
- * au_delete_auth_of_dropping_table - delete _db_auth records refers to the given table.
+ * au_delete_auth_of_dropping_database_object - delete _db_auth records refers to the given database object.
  *   return: error code
- *   class_name(in): the class name to be dropped
+ *   obj_type(in): the object type
+ *   name(in): the object name to be dropped
  */
 int
-au_delete_auth_of_dropping_table (const char *class_name)
+au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char *name)
 {
   int error = NO_ERROR, save;
-  const char *sql_query =
-    "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[class_of] IN" " (SELECT [cl] FROM " CT_CLASS_NAME
-    " [cl] WHERE [unique_name] = ?);";
+  const char *sql_query = "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[class_of] IN (%s);";
   DB_VALUE val;
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   int stmt_id;
+  char obj_fetch_query[256];
 
   db_make_null (&val);
 
   /* Disable the checking for internal authorization object access */
   AU_DISABLE (save);
 
-  assert (class_name != NULL);
+  assert (name != NULL);
 
-  session = db_open_buffer_local (sql_query);
+  switch (obj_type)
+    {
+    case DB_OBJECT_CLASS:
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PROCEDURE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [sp_name] = ?");
+      break;
+    default:
+      assert (false);
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  session = db_open_buffer_local (obj_fetch_query);
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -1701,7 +1715,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
       goto release;
     }
 
-  db_make_string (&val, class_name);
+  db_make_string (&val, name);
   error = db_push_values (session, 1, &val);
   if (error != NO_ERROR)
     {
@@ -4107,7 +4121,7 @@ au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, bool g
  * TODO : LP64
  */
 int
-au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
+au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type)
 {
   int error = NO_ERROR;
   switch (obj_type)
@@ -4641,6 +4655,13 @@ fail_end:
   return (error);
 }
 
+static int
+au_revoke_procedure (MOP user, MOP class_mop, DB_AUTH type)
+{
+  int error = NO_ERROR;
+
+  return error;
+}
 
 /*
  * free_grant_list - Frees a list of temporary grant flattening structures.
@@ -9033,11 +9054,11 @@ au_install (void)
    * grant browser access to the authorization objects
    * note that the password class cannot be read by anyone except the DBA
    */
-  au_grant (DB_OBJECT_CLASS,Au_public_user, root, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS,Au_public_user, old, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS,Au_public_user, user, AU_SELECT, false);
-  au_grant (DB_OBJECT_CLASS,Au_public_user, user, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS,Au_public_user, auth, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS, Au_public_user, root, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, Au_public_user, old, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, Au_public_user, user, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS, Au_public_user, user, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, Au_public_user, auth, AU_SELECT, false);
 
   au_add_method_check_authorization ();
 

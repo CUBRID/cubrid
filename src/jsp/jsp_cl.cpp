@@ -468,7 +468,7 @@ jsp_get_owner_name (const char *name)
 
   AU_DISABLE (save);
 
-  mop_p = jsp_find_stored_procedure (name);
+  mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
   if (mop_p == NULL)
     {
       AU_ENABLE (save);
@@ -1159,6 +1159,13 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	{
 	  goto error;
 	}
+    }
+
+  /* now delete _db_auth tuples refers to the table */
+  err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PROCEDURE, name);
+  if (err != NO_ERROR)
+    {
+      goto error;
     }
 
   err = obj_delete (sp_mop);

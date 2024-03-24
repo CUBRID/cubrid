@@ -1804,7 +1804,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  // [TODO] Resovle user schema name, built-in package name
 		  const char *proc_name = procs->info.name.original;
 
-		  MOP proc_mop = jsp_find_stored_procedure (proc_name);
+		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
 		  if (proc_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);

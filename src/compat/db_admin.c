@@ -1873,18 +1873,44 @@ db_grant (MOP user, MOP obj_, AU_TYPE auth, int grant_option)
  *
  */
 int
-db_revoke (MOP user, MOP class_mop, AU_TYPE auth)
+db_revoke (MOP user, MOP obj_mop, AU_TYPE auth)
 {
   int retval;
+  DB_OBJECT_TYPE object_type;
 
   CHECK_CONNECT_ERROR ();
-  CHECK_2ARGS_ERROR (user, class_mop);
+  CHECK_2ARGS_ERROR (user, obj_mop);
   CHECK_MODIFICATION_ERROR ();
 
-  retval = do_check_partitioned_class (class_mop, CHECK_PARTITION_SUBS, NULL);
+  assert (obj_mop->class_mop != NULL);
+
+  MOBJ class_mop = (MOBJ) obj_mop->class_mop->object;
+  OID *mop = WS_OID (obj_mop->class_mop);
+  if (mop == WS_OID (sm_Root_class_mop))
+    {
+      // table, view
+      object_type = DB_OBJECT_CLASS;
+      retval = do_check_partitioned_class (obj_mop, CHECK_PARTITION_SUBS, NULL);
+    }
+  else
+    {
+      // database object types except (v)class
+      MOP sp_class_mop = sm_find_class (CT_STORED_PROC_NAME);
+      if (sp_class_mop && mop == WS_OID (sp_class_mop))
+	{
+	  object_type = DB_OBJECT_PROCEDURE;
+	}
+      else
+	{
+	  // unsupproted database object type for now
+	  assert (false);
+	  retval = ER_FAILED;
+	}
+    }
+
   if (!retval)
     {
-      retval = au_revoke (user, class_mop, auth);
+      retval = au_revoke (object_type, user, obj_mop, auth);
     }
 
   return (retval);

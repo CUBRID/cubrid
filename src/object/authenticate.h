@@ -223,7 +223,7 @@ extern bool au_has_user_name (void);
 extern int au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP obj, DB_AUTH auth_type, bool grant_option);
 extern int au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj, DB_AUTH auth_type);
 
-extern int au_delete_auth_of_dropping_table (const char *class_name);
+extern int au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char *name);
 
 /* class & instance accessors */
 extern int au_fetch_class (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type);
