@@ -1015,6 +1015,7 @@ static char *g_plcsql_text;
 %type <node> dblink_column_definition
 
 %type <node> pl_language_spec
+%type <node> opt_sp_default_value
 
 /*}}}*/
 
@@ -12720,6 +12721,7 @@ sp_param_def
 	: identifier
 	  opt_sp_in_out
 	  data_type
+          opt_sp_default_value
 	  opt_comment_spec
 		{{ DBG_TRACE_GRAMMAR(sp_param_def, : identifier opt_sp_in_out data_type opt_comment_spec); 
 
@@ -12731,7 +12733,8 @@ sp_param_def
 			    node->data_type = CONTAINER_AT_1 ($3);
 			    node->info.sp_param.name = $1;
 			    node->info.sp_param.mode = $2;
-			    node->info.sp_param.comment = $4;
+                            node->info.sp_param.default_value = $4;
+			    node->info.sp_param.comment = $5;
 			  }
 
 			$$ = node;
@@ -12775,6 +12778,24 @@ opt_sp_in_out
 
 		DBG_PRINT}}
 	;
+
+opt_sp_default_value
+        : /* empty */
+		{{
+			$$ = NULL;
+		DBG_PRINT}}
+	| DEFAULT
+          expression_
+		{{
+                        assert (false);
+			$$ = NULL;
+		DBG_PRINT}}
+	| VAR_ASSIGN
+          expression_
+		{{
+			assert (false);
+			$$ = NULL;
+		DBG_PRINT}}
 
 esql_query_stmt
 	: 	{ parser_select_level++; }
