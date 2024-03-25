@@ -48,8 +48,8 @@ parameter_list
     ;
 
 parameter
-    : parameter_name IN? type_spec                      # parameter_in
-    | parameter_name ( IN? OUT | INOUT ) type_spec      # parameter_out
+    : parameter_name IN? type_spec default_value_part                      # parameter_in
+    | parameter_name ( IN? OUT | INOUT ) type_spec default_value_part      # parameter_out
     ;
 
 authid_spec
