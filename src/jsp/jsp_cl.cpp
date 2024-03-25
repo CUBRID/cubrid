@@ -664,6 +664,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
       arg_info.data_type = pt_type_enum_to_db (p->type_enum);
       arg_info.mode = jsp_map_pt_misc_to_sp_mode (p->info.sp_param.mode);
+
+      // default value
+      // coerciable is already checked in semantic_check
+      PT_NODE *default_value = p->info.data_default.default_value;
+      pt_evaluate_tree (parser, default_value, &arg_info.default_value, 1);
+
       arg_info.comment = (char *) PT_NODE_SP_ARG_COMMENT (p);
 
       // check # of args constraint

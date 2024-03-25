@@ -44,6 +44,7 @@ struct sp_arg_info
   std::string arg_name;
   DB_TYPE data_type;
   SP_MODE_ENUM mode;
+  DB_VALUE default_value;
   std::string comment;
 
   sp_arg_info (const std::string& s_name, const std::string& p_name) 
@@ -54,8 +55,11 @@ struct sp_arg_info
   , arg_name {}
   , data_type {DB_TYPE::DB_TYPE_NULL}
   , mode {SP_MODE_ENUM::SP_MODE_IN}
+  , default_value {}
   , comment {}
-  {}
+  {
+        db_make_null (&default_value);
+  }
 
   sp_arg_info ()
   : sp_arg_info ("", "")

@@ -874,6 +874,7 @@ namespace cubschema
       {"arg_name", format_varchar (255)},
       {"data_type", "integer"},
       {"mode", "integer"},
+      {"default_value", format_varchar (255)}, // TODO: CBRD-25261
       {"comment", format_varchar (1024)},
     },
 // constraints
