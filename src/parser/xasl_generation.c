@@ -13546,6 +13546,12 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 
 	  if (node->info.query.correlation_level == info->level)
 	    {
+	      /* to check result-cache for uncorrelated subquery (aptr_list) */
+	      if ((node->info.query.hint & PT_HINT_QUERY_CACHE) && pt_is_allowed_result_cache ())
+		{
+		  do_prepare_subquery (parser, node);
+		}
+
 	      /* order is important. we are on the way up, so putting things at the tail of the list will end up deeper
 	       * nested queries being first, which is required. */
 	      info->xasl = pt_append_xasl (info->xasl, xasl);
@@ -17291,9 +17297,9 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   /* checking false query */
   if (non_recursive_part_xasl)
     {
-      non_recursive_part_xasl->cte_xasl_id = non_recursive_part->xasl_id;
-      non_recursive_part_xasl->cte_host_var_count = non_recursive_part->cte_host_var_count;
-      non_recursive_part_xasl->cte_host_var_index = non_recursive_part->cte_host_var_index;
+      non_recursive_part_xasl->sub_xasl_id = non_recursive_part->xasl_id;
+      non_recursive_part_xasl->sub_host_var_count = non_recursive_part->sub_host_var_count;
+      non_recursive_part_xasl->sub_host_var_index = non_recursive_part->sub_host_var_index;
     }
 
   if (recursive_part)
@@ -27185,4 +27191,19 @@ pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred)
     }
 
   return xasl;
+}
+
+bool
+pt_is_allowed_result_cache (void)
+{
+  int is_list_cache_disabled =
+    ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
+     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
+
+  if (is_list_cache_disabled)
+    {
+      return false;
+    }
+
+  return true;
 }
