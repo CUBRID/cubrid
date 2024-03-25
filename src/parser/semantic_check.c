@@ -9411,8 +9411,10 @@ static void
 pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   int error = NO_ERROR;
-  PT_NODE *param;
-  PT_NODE *default_value_node;
+  PT_NODE *param = NULL;
+  PT_NODE *default_value_node = NULL;
+  PT_NODE *default_value = NULL;
+  PT_NODE *initial_def_val = NULL;
 
   int param_count = 0;
   bool has_default_value = false;
@@ -9426,9 +9428,10 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_ERRORmf (parser, param, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_ARG_TYPE),
 			  pt_get_type_name (param->type_enum, param->data_type));
 	    }
-	  return;
+	  goto end;
 	}
 
+      /* check trailing arguments */
       if (param->info.sp_param.default_value != NULL)
 	{
 	  has_default_value = true;
@@ -9437,40 +9440,36 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	    pt_check_data_default (parser, param->info.sp_param.default_value);
 	  assert (default_value_node != NULL && default_value_node->info.data_default.shared == PT_DEFAULT);
 
-	  if (default_value_node->info.data_default.default_expr_type == DB_DEFAULT_NONE)
+	  default_value = default_value_node->info.data_default.default_value;
+	  initial_def_val = parser_copy_tree (parser, default_value);
+	  if (initial_def_val == NULL)
 	    {
-	      PT_NODE *default_value = default_value_node->info.data_default.default_value;
-	      PT_NODE *initial_def_val = parser_copy_tree (parser, default_value);
-	      if (initial_def_val == NULL)
-		{
-		  error = ER_OUT_OF_VIRTUAL_MEMORY;
-		  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
-		  return;
-		}
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+	      goto end;
+	    }
 
-	      error =
-		pt_coerce_value_for_default_value (parser, default_value, default_value, param->type_enum,
-						   param->data_type,
-						   default_value_node->info.data_default.default_expr_type);
-	      if (error != NO_ERROR)
+	  if (default_value_node->info.data_default.default_expr_type != DB_DEFAULT_NONE)
+	    {
+	      default_value = pt_semantic_type (parser, default_value, NULL);
+	      if (pt_has_error (parser) || default_value == NULL)
 		{
-		  if (error == ER_IT_DATA_OVERFLOW)
-		    {
-		      PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
-				   MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO, pt_short_print (parser, initial_def_val),
-				   pt_short_print (parser, param->data_type));
-		    }
-		  else
-		    {
-		      PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-				   pt_short_print (parser, initial_def_val), pt_short_print (parser, param->data_type));
-		    }
-		  return;
+		  // TODO: CBRD-25261 - check correct error handling
+		  goto end;
 		}
 	    }
-	  else
+
+	  error =
+	    pt_coerce_value_for_default_value (parser, default_value, default_value, param->type_enum,
+					       param->data_type,
+					       default_value_node->info.data_default.default_expr_type);
+	  if (error != NO_ERROR)
 	    {
-	      assert (false);
+	      error =
+		(error == ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO;
+	      PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, error,
+			   pt_short_print (parser, initial_def_val), pt_short_print (parser, param->data_type));
+	      goto end;
 	    }
 	}
       else
@@ -9479,6 +9478,7 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      // TODO: CBRD-25261: handling proper error
 	      assert (false);
+	      goto end;
 	    }
 	}
     }
@@ -9492,9 +9492,17 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_ERRORmf (parser, node, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_RETURN_TYPE),
 			  pt_get_type_name (node->info.sp.ret_type, node->info.sp.ret_data_type));
 	    }
-	  return;
+	  goto end;
 	}
     }
+
+end:
+  if (initial_def_val)
+    {
+      parser_free_node (parser, initial_def_val);
+    }
+
+  return;
 }
 
 /*
