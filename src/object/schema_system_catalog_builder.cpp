@@ -179,7 +179,7 @@ namespace cubschema
 
     for (const grant &g : auth.grants)
       {
-	error_code = au_grant (g.target_user, class_mop, g.auth, g.with_grant_option);
+	error_code = au_grant (DB_OBJECT_CLASS,g.target_user, class_mop, g.auth, g.with_grant_option);
 	if (error_code != NO_ERROR)
 	  {
 	    assert (false);
@@ -253,7 +253,7 @@ namespace cubschema
     for (const grant &g : auth.grants)
       {
 	assert (g.target_user != nullptr);
-	error_code = au_grant (g.target_user, class_mop, g.auth, g.with_grant_option);
+	error_code = au_grant (DB_OBJECT_CLASS,g.target_user, class_mop, g.auth, g.with_grant_option);
 	if (error_code != NO_ERROR)
 	  {
 	    return error_code;

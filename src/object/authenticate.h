@@ -43,6 +43,7 @@
 #include "databases_file.h"
 #include "object_fetch.h"
 #include "extract_schema.hpp"
+#include "schema_system_catalog_constants.h"
 
 
 class print_output;
@@ -50,15 +51,14 @@ class print_output;
 /*
  * Authorization Class Names
  */
+#define AU_ROOT_CLASS_NAME      CT_ROOT_NAME
+#define AU_OLD_ROOT_CLASS_NAME  CT_AUTHORIZATIONS_NAME
+#define AU_USER_CLASS_NAME      CT_USER_NAME
+#define AU_PASSWORD_CLASS_NAME  CT_PASSWORD_NAME
+#define AU_AUTH_CLASS_NAME      CT_AUTHORIZATION_NAME
 
-extern const char *AU_ROOT_CLASS_NAME;
-extern const char *AU_OLD_ROOT_CLASS_NAME;
-extern const char *AU_USER_CLASS_NAME;
-extern const char *AU_PASSWORD_CLASS_NAME;
-extern const char *AU_AUTH_CLASS_NAME;
-extern const char *AU_GRANT_CLASS_NAME;
-extern const char *AU_PUBLIC_USER_NAME;
-extern const char *AU_DBA_USER_NAME;
+#define AU_PUBLIC_USER_NAME     "PUBLIC"
+#define AU_DBA_USER_NAME        "DBA"
 
 /*
  * Authorization Types
@@ -74,6 +74,18 @@ extern const char *AU_DBA_USER_NAME;
 #define AU_ALTER        DB_AUTH_ALTER
 #define AU_INDEX        DB_AUTH_INDEX
 #define AU_EXECUTE      DB_AUTH_EXECUTE
+
+enum AU_OBJECT
+{
+  AU_OBJECT_CLASS,		/* TABLE, VIEW (_db_class) */
+  AU_OBJECT_TRIGGER,		/* TRIGGER (_db_trigger) */
+  AU_OBJECT_SERIAL,		/* SERIAL (db_serial) */
+  AU_OBJECT_SERVER,		/* SERVER (db_server) */
+  AU_OBJECT_SYNONYM,		/* SYNONYM (_db_synonym) */
+  AU_OBJECT_PROCEDURE		/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
+};
+
+extern const char *AU_OBJECT_CLASS_NAME[];
 
 /*
  * Mask to extract only the authorization bits from a cache.  This can also
@@ -179,6 +191,7 @@ extern MOP Au_public_user;
 extern char Au_user_password[AU_MAX_PASSWORD_BUF + 4];
 extern int Au_disable;
 
+extern MOP Au_user_class;
 
 extern void au_init (void);
 extern void au_final (void);
@@ -207,10 +220,10 @@ extern char *au_user_name_dup (void);
 extern bool au_has_user_name (void);
 
 /* grant/revoke */
-extern int au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
-extern int au_revoke (MOP user, MOP class_mop, DB_AUTH type);
+extern int au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP obj, DB_AUTH auth_type, bool grant_option);
+extern int au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj, DB_AUTH auth_type);
 
-extern int au_delete_auth_of_dropping_table (const char *class_name);
+extern int au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char *name);
 
 /* class & instance accessors */
 extern int au_fetch_class (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type);

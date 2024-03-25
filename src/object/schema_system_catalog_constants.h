@@ -37,6 +37,7 @@
 #define CT_INDEX_NAME              "_db_index"
 #define CT_INDEXKEY_NAME           "_db_index_key"
 #define CT_CLASSAUTH_NAME          "_db_auth"
+#define CT_OBJECTAUTH_NAME         "_db_auth_object"
 #define CT_DATATYPE_NAME           "_db_data_type"
 #define CT_STORED_PROC_NAME        "_db_stored_procedure"
 #define CT_STORED_PROC_ARGS_NAME   "_db_stored_procedure_args"

@@ -44,6 +44,7 @@ namespace cubschema
       static system_catalog_definition get_index ();
       static system_catalog_definition get_index_key ();
       static system_catalog_definition get_class_authorization ();
+      static system_catalog_definition get_object_authorization ();
       static system_catalog_definition get_partition ();
       static system_catalog_definition get_data_type ();
       static system_catalog_definition get_stored_procedure ();
