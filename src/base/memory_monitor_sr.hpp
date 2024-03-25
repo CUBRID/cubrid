@@ -79,11 +79,11 @@ namespace cubmem
   };
 } //namespace cubmem
 
-bool mmon_is_memory_monitor_enabled ();
-int mmon_initialize (const char *server_name);
-void mmon_finalize ();
-size_t mmon_get_allocated_size (char *ptr);
-void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line);
-void mmon_sub_stat (char *ptr);
-void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info);
+extern bool mmon_is_memory_monitor_enabled ();
+extern int mmon_initialize (const char *server_name);
+extern void mmon_finalize ();
+extern size_t mmon_get_allocated_size (char *ptr);
+extern void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line);
+extern void mmon_sub_stat (char *ptr);
+extern void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info);
 #endif // _MEMORY_MONITOR_SR_HPP_
