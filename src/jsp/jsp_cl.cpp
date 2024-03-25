@@ -1193,7 +1193,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	  }
 
 	int param_cnt = db_get_int (&param_cnt_val);
-	if (sig_num_args != param_cnt)
+	if (sig_num_args > param_cnt)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, param_cnt, sig_num_args);
 	    error = er_errid ();
