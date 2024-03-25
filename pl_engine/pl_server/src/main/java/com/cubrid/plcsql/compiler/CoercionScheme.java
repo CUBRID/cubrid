@@ -360,9 +360,6 @@ public enum CoercionScheme {
     static {
         compOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NULL;
 
-        compOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_OBJECT] =
-                TypeSpecSimple.OBJECT;
-
         compOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] =
                 TypeSpecSimple.OBJECT;
         compOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_OBJECT] =
@@ -508,10 +505,9 @@ public enum CoercionScheme {
     static {
         arithOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NULL;
 
-        arithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_OBJECT] =
-                TypeSpecSimple.OBJECT;
-
         arithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.OBJECT;
+        arithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_OBJECT] =
                 TypeSpecSimple.OBJECT;
 
         arithOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] =
@@ -631,10 +627,9 @@ public enum CoercionScheme {
         intArithOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] =
                 TypeSpecSimple.NULL;
 
-        intArithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_OBJECT] =
-                TypeSpecSimple.OBJECT;
-
         intArithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.OBJECT;
+        intArithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_OBJECT] =
                 TypeSpecSimple.OBJECT;
 
         intArithOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] =
