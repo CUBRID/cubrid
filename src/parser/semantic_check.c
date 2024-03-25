@@ -9484,7 +9484,7 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  if (has_default_value)
 	    {
-	      // TODO: CBRD-25261: handling proper error
+	      // TODO: CBRD-25261: handling proper error for non-trailing arguments
 	      assert (false);
 	      goto end;
 	    }

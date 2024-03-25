@@ -667,8 +667,15 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
       // default value
       // coerciable is already checked in semantic_check
-      PT_NODE *default_value = p->info.data_default.default_value;
-      pt_evaluate_tree (parser, default_value, &arg_info.default_value, 1);
+      PT_NODE *default_value = p->info.sp_param.default_value;
+      if (default_value)
+	{
+	  pt_evaluate_tree (parser, default_value->info.data_default.default_value, &arg_info.default_value, 1);
+	}
+      else
+	{
+	  db_make_null (&arg_info.default_value);
+	}
 
       arg_info.comment = (char *) PT_NODE_SP_ARG_COMMENT (p);
 

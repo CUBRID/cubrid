@@ -57,9 +57,7 @@ struct sp_arg_info
   , mode {SP_MODE_ENUM::SP_MODE_IN}
   , default_value {}
   , comment {}
-  {
-        db_make_null (&default_value);
-  }
+  {}
 
   sp_arg_info ()
   : sp_arg_info ("", "")
