@@ -12787,14 +12787,26 @@ opt_sp_default_value
 	| DEFAULT
           expression_
 		{{
-                        assert (false);
-			$$ = NULL;
+                        PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
+			if (node)
+			  {
+			    node->info.data_default.default_value = $2;
+			    node->info.data_default.shared = PT_DEFAULT;
+			    PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
+			  }
+			$$ = node;
 		DBG_PRINT}}
 	| VAR_ASSIGN
           expression_
 		{{
-			assert (false);
-			$$ = NULL;
+                        PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
+			if (node)
+			  {
+			    node->info.data_default.default_value = $2;
+			    node->info.data_default.shared = PT_DEFAULT;
+			    PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
+			  }
+			$$ = node;
 		DBG_PRINT}}
 
 esql_query_stmt

@@ -3392,8 +3392,9 @@ struct pt_execute_info
 
 struct pt_stored_proc_param_info
 {
-  PT_NODE *name;
+  PT_NODE *name;		/* PT_NAME */
   PT_MISC_TYPE mode;
+  PT_NODE *default_value;	/* PT_DATA_DEFAULT */
   PT_NODE *comment;
 };
 
