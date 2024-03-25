@@ -34,6 +34,7 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
+import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
@@ -228,7 +229,13 @@ public class SpLib {
         assert args != null;
 
         int argsLen = args.length;
-        String hostVars = getHostVarsStr(argsLen);
+        String hostVars;
+        if (SymbolStack.noParenBuiltInFunc.indexOf(name) >= 0) {
+            assert argsLen == 0;
+            hostVars = "";
+        } else {
+            hostVars = getHostVarsStr(argsLen);
+        }
         String query = String.format("select %s%s from dual", name, hostVars);
         try {
             PreparedStatement pstmt = conn.prepareStatement(query);

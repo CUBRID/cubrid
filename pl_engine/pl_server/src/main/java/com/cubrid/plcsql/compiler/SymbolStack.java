@@ -45,6 +45,17 @@ import java.util.stream.Collectors;
 
 public class SymbolStack {
 
+    public static final List<String> noParenBuiltInFunc =
+            Arrays.asList(
+                    "SYS_DATE",
+                    "SYS_DATETIME",
+                    "SYS_TIME",
+                    "SYS_TIMESTAMP",
+                    "SYSDATE",
+                    "SYSDATETIME",
+                    "SYSTIME",
+                    "SYSTIMESTAMP");
+
     public static final int LEVEL_PREDEFINED = 0;
     public static final int LEVEL_MAIN = 1;
 
