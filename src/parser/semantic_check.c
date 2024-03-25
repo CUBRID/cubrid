@@ -9449,6 +9449,14 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	      goto end;
 	    }
 
+	  // check omode
+	  if (param->info.sp_param.mode == PT_OUTPUT)
+	    {
+	      // TODO: CBRD-25261: handling proper error
+	      assert (false);
+	      goto end;
+	    }
+
 	  if (default_value_node->info.data_default.default_expr_type != DB_DEFAULT_NONE)
 	    {
 	      default_value = pt_semantic_type (parser, default_value, NULL);
