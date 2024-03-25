@@ -2434,9 +2434,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             if (param instanceof DeclParamOut) {
                 ExprId id = (ExprId) args.nodes.get(i);
                 DeclIdTyped declId = (DeclIdTyped) id.decl;
-                sbuf.append(String.format("%s[] o%d", declId.typeSpec().javaCode, i));
+                sbuf.append(String.format("%s[] o%d", declId.typeSpec().javaCode(), i));
             } else {
-                sbuf.append(String.format("%s o%d", param.typeSpec.javaCode, i));
+                sbuf.append(String.format("%s o%d", param.typeSpec.javaCode(), i));
             }
         }
 
@@ -2483,7 +2483,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 assert cRev != null; // by earlier check
                 String outVal =
                         String.format(
-                                "(%s) stmt.getObject(%d)", param.typeSpec.javaCode, i + argOffset);
+                                "(%s) stmt.getObject(%d)",
+                                param.typeSpec.javaCode(), i + argOffset);
                 updateOutArgs.add(String.format("o%d[0] = %s;", i, cRev.javaCode(outVal)));
 
                 DeclId declId = id.decl;
@@ -2537,7 +2538,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 if (c instanceof Coercion.Identity) {
                     argsToLocal.append("o" + i);
                 } else {
-                    String paramType = param.typeSpec.javaCode;
+                    String paramType = param.typeSpec.javaCode();
                     allocCoercedOutArgs.add(
                             String.format(
                                     "%s[] p%d = new %s[] { %s };",

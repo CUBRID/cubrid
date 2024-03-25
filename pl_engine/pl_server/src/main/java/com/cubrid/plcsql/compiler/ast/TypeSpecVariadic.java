@@ -37,17 +37,59 @@ public class TypeSpecVariadic extends TypeSpec {
     public final TypeSpecSimple elem;
 
     @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        assert false
-                : "unreachable"; // cannot be a part of an AST: only in a symbol table for CUBRID
-        // predefined functions
+    public String plcName() {
+        return elem.plcName() + "[]";
+    }
+
+    @Override
+    public String fullJavaType() {
+        throw new RuntimeException("unreachable");
+    }
+
+    @Override
+    public String javaCode() {
+        throw new RuntimeException("unreachable");
+    }
+
+    @Override
+    public int simpleTypeIdx() {
+        throw new RuntimeException("unreachable");
+    }
+
+    @Override
+    public String typicalValueStr() {
         throw new RuntimeException("unreachable");
     }
 
     @Override
     public String toJavaSignature() {
-        assert false : "unreachable"; // cannot be a parameter or return type of a stored procedure
         throw new RuntimeException("unreachable");
+    }
+
+    @Override
+    public boolean isNumber() {
+        return false;
+    }
+
+    @Override
+    public boolean isString() {
+        return false;
+    }
+
+    @Override
+    public boolean isDateTime() {
+        return false;
+    }
+
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        // cannot be a part of an AST: only in a symbol table for CUBRID predefined functions
+        throw new RuntimeException("unreachable");
+    }
+
+    public TypeSpecVariadic(TypeSpecSimple elem) {
+        super(null);
+        this.elem = elem;
     }
 
     @Override
@@ -55,26 +97,11 @@ public class TypeSpecVariadic extends TypeSpec {
         if (o == null || this.getClass() != o.getClass()) {
             return false;
         }
-        return this.elem.equals(((TypeSpecVariadic) o).elem);
+        return this.elem == ((TypeSpecVariadic) o).elem;
     }
 
     @Override
     public int hashCode() {
         return elem.hashCode() + 31;
-    }
-
-    @Override
-    public String toString() {
-        return elem + "[]";
-    }
-
-    @Override
-    public String getTypicalValueStr() {
-        return null;
-    }
-
-    public TypeSpecVariadic(TypeSpecSimple elem) {
-        super(null, null, null, -1, null);
-        this.elem = elem;
     }
 }

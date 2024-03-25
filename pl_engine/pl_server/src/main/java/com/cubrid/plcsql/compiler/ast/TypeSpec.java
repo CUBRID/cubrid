@@ -34,23 +34,26 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class TypeSpec extends AstNode {
 
-    public final String plcName;
-    public final String javaCode;
-    public final int simpleTypeIdx;
-    public final String typicalValueStr; // used to type builtin function calls
+    public abstract String plcName();
 
-    public TypeSpec(
-            ParserRuleContext ctx,
-            String plcName,
-            String javaCode,
-            int simpleTypeIdx,
-            String typicalValueStr) {
+    public abstract String fullJavaType();
 
+    public abstract String javaCode();
+
+    public abstract int simpleTypeIdx();
+
+    public abstract String typicalValueStr(); // used to type builtin function calls
+
+    public abstract String toJavaSignature();
+
+    public abstract boolean isNumber();
+
+    public abstract boolean isString();
+
+    public abstract boolean isDateTime();
+
+    public TypeSpec(ParserRuleContext ctx) {
         super(ctx);
-        this.plcName = plcName;
-        this.javaCode = javaCode;
-        this.simpleTypeIdx = simpleTypeIdx;
-        this.typicalValueStr = typicalValueStr;
     }
 
     public static TypeSpec ofJavaName(String javaType) {
@@ -69,36 +72,12 @@ public abstract class TypeSpec extends AstNode {
 
     @Override
     public String toString() {
-        return plcName;
+        return plcName();
     }
 
     @Override
     public boolean equals(Object that) {
         return this == that; // Actually, this is the same as equals of Object class.
         // I just want to be explicit.
-    }
-
-    public String javaCode() {
-        assert javaCode != null;
-        return javaCode;
-    }
-
-    public abstract String toJavaSignature();
-
-    public String getTypicalValueStr() {
-        return typicalValueStr;
-    }
-
-    // overriden by TypeSpecSimple
-    public boolean isNumber() {
-        return false;
-    }
-
-    public boolean isString() {
-        return false;
-    }
-
-    public boolean isDateTime() {
-        return false;
     }
 }

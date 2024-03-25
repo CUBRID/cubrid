@@ -482,6 +482,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 assert found > 0;
                 node.setType(ret);
                 node.setColIndex(found);
+                ptConv.addToImports(ret.fullJavaType());
             }
         } else {
             // this record is for a dynamic SQL
@@ -902,7 +903,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         // type of sql must be STRING
         TypeSpec sqlType = visit(node.sql);
-        if (sqlType.simpleTypeIdx != TypeSpecSimple.IDX_STRING) {
+        if (sqlType.simpleTypeIdx() != TypeSpecSimple.IDX_STRING) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.sql.ctx), // s221
                     "SQL in the EXECUTE IMMEDIATE statement must be of a string type");
@@ -936,7 +937,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                             "into-variable "
                                     + intoVar.name
                                     + " has an incompatible type "
-                                    + tyIntoVar.plcName);
+                                    + tyIntoVar.plcName());
                 } else {
                     coercions.add(c);
                 }
@@ -1036,7 +1037,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitStmtForExecImmeLoop(StmtForExecImmeLoop node) {
 
         TypeSpec sqlType = visit(node.sql);
-        if (sqlType.simpleTypeIdx != TypeSpecSimple.IDX_STRING) {
+        if (sqlType.simpleTypeIdx() != TypeSpecSimple.IDX_STRING) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.sql.ctx), // s225
                     "SQL in EXECUTE IMMEDIATE statements must be of a string type");
@@ -1125,7 +1126,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         }
 
         ty = visit(node.errMsg);
-        if (ty.simpleTypeIdx != TypeSpecSimple.IDX_STRING) {
+        if (ty.simpleTypeIdx() != TypeSpecSimple.IDX_STRING) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.errMsg.ctx), // s218
                     "error messages must be a string");
@@ -1222,7 +1223,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             Expr arg = args.get(i);
             TypeSpec argType = visit(arg);
 
-            String typicalValueStr = argType.getTypicalValueStr();
+            String typicalValueStr = argType.typicalValueStr();
             if (typicalValueStr == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(arg.ctx), // s229
@@ -1256,14 +1257,14 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                         Misc.getLineColumnOf(arg.ctx), // s214
                         String.format(
                                 "argument %d to the call of %s has an incompatible type %s",
-                                i + 1, Misc.detachPkgName(decl.name), argType.plcName));
+                                i + 1, Misc.detachPkgName(decl.name), argType.plcName()));
             } else {
                 if (declParam instanceof DeclParamOut && c.getReversion() == null) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(arg.ctx), // s232
                             String.format(
                                     "OUT/INOUT parameter %d has a type %s which is incompatible with the argument type %s",
-                                    i + 1, paramType.plcName, argType.plcName));
+                                    i + 1, paramType.plcName(), argType.plcName()));
                 }
 
                 arg.setCoercion(c);

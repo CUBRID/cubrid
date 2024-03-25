@@ -733,9 +733,9 @@ public enum CoercionScheme {
     private static TypeSpec getCommonTypeInner(
             TypeSpec lType, TypeSpec rType, TypeSpec[][]... table) {
 
-        int lTypeIdx = lType.simpleTypeIdx;
+        int lTypeIdx = lType.simpleTypeIdx();
         assert lTypeIdx >= 0 && lTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
-        int rTypeIdx = rType.simpleTypeIdx;
+        int rTypeIdx = rType.simpleTypeIdx();
         assert rTypeIdx >= 0 && rTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
 
         int row, col;
