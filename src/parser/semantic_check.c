@@ -9410,7 +9410,12 @@ pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 static void
 pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 {
+  int error = NO_ERROR;
   PT_NODE *param;
+  PT_NODE *default_value_node;
+
+  int param_count = 0;
+  bool has_default_value = false;
 
   for (param = node->info.sp.param_list; param; param = param->next)
     {
@@ -9422,6 +9427,59 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 			  pt_get_type_name (param->type_enum, param->data_type));
 	    }
 	  return;
+	}
+
+      if (param->info.sp_param.default_value != NULL)
+	{
+	  has_default_value = true;
+	  // check default value
+	  default_value_node = param->info.sp_param.default_value =
+	    pt_check_data_default (parser, param->info.sp_param.default_value);
+	  assert (default_value_node != NULL && default_value_node->info.data_default.shared == PT_DEFAULT);
+
+	  if (default_value_node->info.data_default.default_expr_type == DB_DEFAULT_NONE)
+	    {
+	      PT_NODE *default_value = default_value_node->info.data_default.default_value;
+	      PT_NODE *initial_def_val = parser_copy_tree (parser, default_value);
+	      if (initial_def_val == NULL)
+		{
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+		  return;
+		}
+
+	      error =
+		pt_coerce_value_for_default_value (parser, default_value, default_value, param->type_enum,
+						   param->data_type,
+						   default_value_node->info.data_default.default_expr_type);
+	      if (error != NO_ERROR)
+		{
+		  if (error == ER_IT_DATA_OVERFLOW)
+		    {
+		      PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+				   MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO, pt_short_print (parser, initial_def_val),
+				   pt_short_print (parser, param->data_type));
+		    }
+		  else
+		    {
+		      PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+				   pt_short_print (parser, initial_def_val), pt_short_print (parser, param->data_type));
+		    }
+		  return;
+		}
+	    }
+	  else
+	    {
+	      assert (false);
+	    }
+	}
+      else
+	{
+	  if (has_default_value)
+	    {
+	      // TODO: CBRD-25261: handling proper error
+	      assert (false);
+	    }
 	}
     }
 
