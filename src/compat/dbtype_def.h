@@ -488,12 +488,12 @@ extern "C"
 
   typedef enum
   {
-        DB_OBJECT_CLASS,		/* TABLE, VIEW (_db_class) */
-        DB_OBJECT_TRIGGER,		/* TRIGGER (_db_trigger) */
-        DB_OBJECT_SERIAL,		/* SERIAL (db_serial) */
-        DB_OBJECT_SERVER,		/* SERVER (db_server) */
-        DB_OBJECT_SYNONYM,		/* SYNONYM (_db_synonym) */
-        DB_OBJECT_PROCEDURE		/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
+    DB_OBJECT_CLASS,		/* TABLE, VIEW (_db_class) */
+    DB_OBJECT_TRIGGER,		/* TRIGGER (_db_trigger) */
+    DB_OBJECT_SERIAL,		/* SERIAL (db_serial) */
+    DB_OBJECT_SERVER,		/* SERVER (db_server) */
+    DB_OBJECT_SYNONYM,		/* SYNONYM (_db_synonym) */
+    DB_OBJECT_PROCEDURE		/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
   } DB_OBJECT_TYPE;
 
   /* session state id */

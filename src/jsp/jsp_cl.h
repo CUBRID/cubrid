@@ -95,7 +95,7 @@ extern int jsp_get_sp_type (const char *name);
 extern MOP jsp_find_stored_procedure (const char *name, DB_AUTH purpose);
 
 extern MOP jsp_get_owner (MOP mop_p);
-const char* jsp_get_name (MOP mop_p);
+const char *jsp_get_name (MOP mop_p);
 
 extern void jsp_set_prepare_call (void);
 extern void jsp_unset_prepare_call (void);
