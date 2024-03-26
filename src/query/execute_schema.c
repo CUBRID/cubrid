@@ -2192,9 +2192,11 @@ int
 do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   int error = NO_ERROR;
-  DB_OBJECT *user;
+  DB_OBJECT *user, *member;
   PT_NODE *node;
+  const PT_ALTER_CODE alter_user_code = statement->info.alter_user.code;
   const char *user_name, *password, *comment;
+  const char *member_name;
   bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2245,6 +2247,79 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       if (error != NO_ERROR)
 	{
 	  goto end;
+	}
+    }
+
+  /* member */
+  node = statement->info.alter_user.members;
+  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+  if (member_name != NULL)
+    {
+      if (!ws_is_same_object (user, Au_user) && !au_is_dba_group_member (Au_user))
+	{
+	  error = ER_AU_NOT_OWNER;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto end;
+	}
+
+      switch (alter_user_code)
+	{
+	case PT_ADD_MEMBERS:
+	  do
+	    {
+	      member = db_find_user (member_name);
+
+	      if (member == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	      else
+		{
+		  error = db_add_member (user, member);
+		}
+
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+
+	      node = node->next;
+	      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	    }
+	  while (member_name != NULL);
+	  break;
+	case PT_DROP_MEMBERS:
+	  do
+	    {
+	      member = db_find_user (member_name);
+
+	      if (member == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	      else
+		{
+		  error = db_drop_member (user, member);
+		}
+
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+
+	      node = node->next;
+	      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	    }
+	  while (member_name != NULL);
+	  break;
+	default:
+	  /* 
+	   * code shall be one of the above 2 types, otherwise it's an error. 
+	   */
+	  assert (false);
+	  break;
 	}
     }
 
