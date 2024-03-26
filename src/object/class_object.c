@@ -6043,7 +6043,7 @@ classobj_representation_size (SM_REPRESENTATION * rep)
  */
 
 SM_QUERY_SPEC *
-classobj_make_query_spec (const char *specification)
+classobj_make_query_spec (const char *specification, const char *spec_query)
 {
   SM_QUERY_SPEC *query_spec;
 
@@ -6064,6 +6064,15 @@ classobj_make_query_spec (const char *specification)
 	{
 	  db_ws_free (query_spec);
 	  query_spec = NULL;
+	  return query_spec;
+	}
+
+      query_spec->spec_query = ws_copy_string (spec_query);
+      if (query_spec->spec_query == NULL)
+	{
+	  db_ws_free (query_spec);
+	  query_spec = NULL;
+	  return query_spec;
 	}
     }
 
@@ -6084,7 +6093,7 @@ classobj_copy_query_spec_list (SM_QUERY_SPEC * query_spec)
   first = last = NULL;
   for (p = query_spec; p != NULL; p = p->next)
     {
-      new_ = classobj_make_query_spec (p->specification);
+      new_ = classobj_make_query_spec (p->specification, p->spec_query);
       if (new_ == NULL)
 	{
 	  goto memory_error;
@@ -6120,6 +6129,7 @@ classobj_free_query_spec (SM_QUERY_SPEC * query_spec)
       if (query_spec->specification != NULL)
 	{
 	  ws_free_string (query_spec->specification);
+	  ws_free_string (query_spec->spec_query);
 	}
       db_ws_free (query_spec);
     }
@@ -6139,6 +6149,7 @@ classobj_query_spec_size (SM_QUERY_SPEC * query_spec)
 
   size = sizeof (SM_QUERY_SPEC);
   size += strlen (query_spec->specification) + 1;
+  size += strlen (query_spec->spec_query) + 1;
 
   return (size);
 }

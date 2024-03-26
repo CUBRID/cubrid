@@ -455,10 +455,10 @@ extern "C"
   extern int dbt_drop_resolution (DB_CTMPL * def, DB_OBJECT * super, const char *name);
   extern int dbt_drop_class_resolution (DB_CTMPL * def, DB_OBJECT * super, const char *name);
 
-  extern int dbt_add_query_spec (DB_CTMPL * def, const char *query);
+  extern int dbt_add_query_spec (DB_CTMPL * def, const char *query, const char *org_query);
   extern int dbt_drop_query_spec (DB_CTMPL * def, const int query_no);
   extern int dbt_reset_query_spec (DB_CTMPL * def);
-  extern int dbt_change_query_spec (DB_CTMPL * def, const char *new_query, const int query_no);
+  extern int dbt_change_query_spec (DB_CTMPL * def, const char *new_query, const char *org_query, const int query_no);
   extern int dbt_set_object_id (DB_CTMPL * def, DB_NAMELIST * id_list);
   extern int dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name, const char **attnames,
 				  const char *ref_class, const char **ref_attrs, int del_action, int upd_action,
@@ -502,7 +502,7 @@ extern "C"
 /* SQL/M API function*/
   extern char *db_get_vclass_ldb_name (DB_OBJECT * op);
 
-  extern int db_add_query_spec (DB_OBJECT * vclass, const char *query);
+  extern int db_add_query_spec (DB_OBJECT * vclass, const char *query, const char *org_query);
   extern int db_drop_query_spec (DB_OBJECT * vclass, const int query_no);
   extern DB_NAMELIST *db_get_object_id (DB_OBJECT * vclass);
 
@@ -518,9 +518,10 @@ extern "C"
   extern DB_QUERY_SPEC *db_get_query_specs (DB_OBJECT * obj);
   extern DB_QUERY_SPEC *db_query_spec_next (DB_QUERY_SPEC * query_spec);
   extern const char *db_query_spec_string (DB_QUERY_SPEC * query_spec);
-  extern int db_change_query_spec (DB_OBJECT * vclass, const char *new_query, const int query_no);
+  extern int db_change_query_spec (DB_OBJECT * vclass, const char *new_query, const char *org_query,
+				   const int query_no);
   extern int db_validate (DB_OBJECT * vclass);
-  extern int db_validate_query_spec (DB_OBJECT * vclass, const char *query_spec);
+  extern int db_validate_query_spec (DB_OBJECT * vclass, const char *query_spec, const char *org_query);
   extern int db_is_real_instance (DB_OBJECT * obj);
   extern DB_OBJECT *db_real_instance (DB_OBJECT * obj);
   extern int db_instance_equal (DB_OBJECT * obj1, DB_OBJECT * obj2);

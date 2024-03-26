@@ -1041,7 +1041,7 @@ extern SM_REPRESENTATION *classobj_make_representation (void);
 extern void classobj_free_representation (SM_REPRESENTATION * rep);
 
 /* Query_spec */
-extern SM_QUERY_SPEC *classobj_make_query_spec (const char *);
+extern SM_QUERY_SPEC *classobj_make_query_spec (const char *, const char *);
 extern SM_QUERY_SPEC *classobj_copy_query_spec_list (SM_QUERY_SPEC *);
 extern void classobj_free_query_spec (SM_QUERY_SPEC *);
 

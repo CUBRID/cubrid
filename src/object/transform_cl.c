@@ -2841,7 +2841,7 @@ disk_to_query_spec (OR_BUF * buf)
     }
   else
     {
-      statement = classobj_make_query_spec (NULL);
+      statement = classobj_make_query_spec (NULL, NULL);
       if (statement == NULL)
 	{
 	  or_abort (buf);

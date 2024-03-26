@@ -225,7 +225,7 @@ namespace cubschema
 	    error_code = db_add_attribute (class_mop, name, type, NULL);
 	    break;
 	  case attribute_kind::QUERY_SPEC:
-	    error_code = db_add_query_spec (class_mop, name);
+	    error_code = db_add_query_spec (class_mop, name, name);
 	    break;
 	  default:
 	    error_code = ER_FAILED;

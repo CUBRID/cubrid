@@ -514,7 +514,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       parser->custom_print |= PT_CHARSET_COLLATE_FULL;
       new_query = parser_print_tree_with_quotes (parser, alter->info.alter.alter_clause.query.query);
       parser->custom_print = save_custom;
-      error = dbt_change_query_spec (ctemplate, new_query, query_no);
+      error = dbt_change_query_spec (ctemplate, new_query, new_query, query_no);
       if (error != NO_ERROR)
 	{
 	  break;
@@ -8334,7 +8334,7 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const
 
   query = parser_print_tree_with_quotes (parser, queries);
   parser->custom_print = save_custom;
-  error = dbt_add_query_spec (ctemplate, query);
+  error = dbt_add_query_spec (ctemplate, query, query);
 
   return (error);
 }
