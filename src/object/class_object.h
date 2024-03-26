@@ -689,6 +689,7 @@ struct sm_query_spec
   struct sm_query_spec *next;
 
   const char *specification;
+  const char *spec_query;
 };
 
 /* Partition information */

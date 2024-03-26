@@ -637,7 +637,8 @@ namespace cubschema
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
-      {"spec", format_varchar (1073741823)}
+      {"spec", format_varchar (1073741823)},
+      {"spec_org", format_varchar (1073741823)}
     },
 // constraints
     {
@@ -1301,6 +1302,7 @@ namespace cubschema
       {"vclass_name", "varchar(255)"},
       {"owner_name", "varchar(255)"},
       {"vclass_def", "varchar(1073741823)"},
+      {"vclass_org", "varchar(1073741823)"},
       {"comment", "varchar(2048)"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_vclass_spec ()}

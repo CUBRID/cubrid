@@ -2780,10 +2780,14 @@ query_spec_to_disk (OR_BUF * buf, SM_QUERY_SPEC * query_spec)
   offset += string_disk_size (query_spec->specification);
 
   or_put_offset (buf, offset);
+  offset += string_disk_size (query_spec->spec_query);
+
+  or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
   put_string (buf, query_spec->specification);
+  put_string (buf, query_spec->spec_query);
 
   if (start + offset != buf->ptr)
     {
@@ -2811,6 +2815,7 @@ query_spec_size (SM_QUERY_SPEC * statement)
 
   size = tf_Metaclass_query_spec.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_query_spec.mc_n_variable);
   size += string_disk_size (statement->specification);
+  size += string_disk_size (statement->spec_query);
 
   return (size);
 }
@@ -2844,6 +2849,7 @@ disk_to_query_spec (OR_BUF * buf)
       else
 	{
 	  statement->specification = get_string (buf, vars[ORC_QUERY_SPEC_SPEC_INDEX].length);
+	  statement->spec_query = get_string (buf, vars[ORC_QUERY_SPEC_QUERY_INDEX].length);
 	}
 
       free_var_table (vars);

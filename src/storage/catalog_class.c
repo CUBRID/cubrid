@@ -2224,6 +2224,11 @@ catcls_get_or_value_from_query_spec (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR
   tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_QUERY_SPEC_SPEC_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_SPEC_LENGTH);
 
+  /* spec_query */
+  attr_val_p = &attrs[2].value;
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_QUERY_SPEC_QUERY_INDEX].length, true, NULL, 0);
+  db_string_truncate (attr_val_p, DB_MAX_SPEC_LENGTH);
+
   if (vars)
     {
       free_and_init (vars);
