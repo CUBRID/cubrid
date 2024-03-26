@@ -6068,12 +6068,6 @@ classobj_make_query_spec (const char *specification, const char *spec_query)
 	}
 
       query_spec->spec_query = ws_copy_string (spec_query);
-      if (query_spec->spec_query == NULL)
-	{
-	  db_ws_free (query_spec);
-	  query_spec = NULL;
-	  return query_spec;
-	}
     }
 
   return (query_spec);
