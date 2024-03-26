@@ -42,7 +42,7 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 
-public class DBType {
+public class DBType {   // see src/compat/dbtype_def.h
     public static final int DB_NULL = 0;
     public static final int DB_INT = 1;
     public static final int DB_FLOAT = 2;
