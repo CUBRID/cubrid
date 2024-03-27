@@ -875,6 +875,7 @@ namespace cubschema
       {"data_type", "integer"},
       {"mode", "integer"},
       {"default_value", format_varchar (255)}, // TODO: CBRD-25261
+      {"is_optional", "integer"}, // default_value is used only when is_optional is 1
       {"comment", format_varchar (1024)},
     },
 // constraints
