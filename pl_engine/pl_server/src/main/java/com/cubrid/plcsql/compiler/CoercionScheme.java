@@ -507,6 +507,8 @@ public enum CoercionScheme {
 
         arithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] =
                 TypeSpecSimple.OBJECT;
+        arithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.OBJECT;
 
         arithOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] =
                 TypeSpecSimple.DOUBLE;
@@ -626,6 +628,8 @@ public enum CoercionScheme {
                 TypeSpecSimple.NULL;
 
         intArithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.OBJECT;
+        intArithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_OBJECT] =
                 TypeSpecSimple.OBJECT;
 
         intArithOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] =
