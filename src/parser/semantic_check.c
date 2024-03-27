@@ -9450,7 +9450,7 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 
 	  // check omode
-	  if (param->info.sp_param.mode != PT_INPUT)
+	  if (param->info.sp_param.mode != PT_INPUT && param->info.sp_param.mode != PT_NOPUT)
 	    {
 	      // TODO: CBRD-25261: handling proper error
 	      assert (false);
