@@ -12480,37 +12480,32 @@ is_or_as
 	| AS
 	;
 
+opt_lang_plcsql
+        : /* empty */
+        | LANGUAGE PLCSQL
+        ;
+
 pl_language_spec
-	: plcsql_text
-		{{ DBG_TRACE_GRAMMAR(pl_language_spec, : );
+	: opt_lang_plcsql plcsql_text opt_identifier
+		{{ DBG_TRACE_GRAMMAR(pl_language_spec, : opt_lang_plcsql plcsql_text);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_SP_BODY);
 
 			if (node)
 			  {
+                            int len;
+
                             assert(g_plcsql_text != NULL);
 
-			    node->info.sp_body.lang = SP_LANG_PLCSQL;
-			    node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(g_plcsql_text, $1);
-			    node->info.sp_body.direct = 1;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| LANGUAGE PLCSQL	/* 1, 2 */
-	  plcsql_text 	/* 3 */
-		{{ DBG_TRACE_GRAMMAR(pl_language_spec, | LANGAUGE PLCSQL );
-
-			PT_NODE *node = parser_new_node (this_parser, PT_SP_BODY);
-
-			if (node)
-			  {
-                            assert(g_plcsql_text != NULL);
+                            if ($3) {
+                                len = $2 + strlen($3->info.name.original);
+                                parser_free_tree(this_parser, $3);
+                            } else {
+                                len = $2;
+                            }
 
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
-			    node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(g_plcsql_text, $3);
+			    node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(g_plcsql_text, len);
 			    node->info.sp_body.direct = 1;
 			  }
 

@@ -1667,7 +1667,7 @@ _[uU][tT][fF]8[']		{
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[iI][fF]             |
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[cC][aA][sS][eE]     |
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[lL][oO][oO][pP]     |
-<PLCSQL_TEXT>[eE][nN][dD]                               { begin_token(yytext);
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]*                     { begin_token(yytext);
                                                                 plcsql_begin_end_balance--;
                                                                 if (plcsql_begin_end_balance < 0) {
                                                                         // syntax error.
