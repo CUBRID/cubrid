@@ -902,6 +902,7 @@ enum
 enum
 {
   ORC_QUERY_SPEC_SPEC_INDEX = 0,
+  ORC_QUERY_SPEC_QUERY_INDEX = 1,
 
   /* add a new one above */
 

@@ -4007,13 +4007,13 @@ smt_delete_class_resolution (SM_TEMPLATE * template_, MOP super_class, const cha
  */
 
 int
-smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
+smt_add_query_spec (SM_TEMPLATE * template_, const char *specification, const char *spec_query)
 {
   int error = NO_ERROR;
   SM_QUERY_SPEC *query_spec;
   SM_CLASS_TYPE ct;
 
-  query_spec = classobj_make_query_spec (specification);
+  query_spec = classobj_make_query_spec (specification, spec_query);
 
   if (query_spec == NULL)
     {
@@ -4154,7 +4154,7 @@ sm_get_class_type (SM_CLASS * class_)
  */
 
 int
-smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
+smt_change_query_spec (SM_TEMPLATE * def, const char *query, const char *org_query, const int index)
 {
   int error = NO_ERROR;
   SM_QUERY_SPEC *file, *prev, *found;
@@ -4183,7 +4183,7 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
     {
       if (prev == NULL)
 	{
-	  def->query_spec = classobj_make_query_spec (query);
+	  def->query_spec = classobj_make_query_spec (query, org_query);
 	  if (def->query_spec == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -4193,7 +4193,7 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
 	}
       else
 	{
-	  prev->next = classobj_make_query_spec (query);
+	  prev->next = classobj_make_query_spec (query, org_query);
 	  if (prev->next == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);

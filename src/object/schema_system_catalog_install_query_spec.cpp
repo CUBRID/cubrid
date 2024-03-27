@@ -209,6 +209,7 @@ sm_define_view_vclass_spec (void)
 	  "[q].[class_of].[class_name] AS [vclass_name], "
 	  "CAST ([q].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[q].[spec] AS [vclass_def], "
+	  "[q].[spec_org] AS [vclass_org], "
 	  "[c].[comment] AS [comment] "
 	"FROM "
 	  /* CT_QUERYSPEC_NAME */

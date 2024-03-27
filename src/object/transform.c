@@ -225,6 +225,7 @@ META_CLASS tf_Metaclass_class = { META_CLASS_NAME, {META_PAGE_CLASS, 0, META_VOL
 /* QUERY_SPEC */
 static META_ATTRIBUTE query_spec_atts[] = {
   {"specification", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
+  {"spec_query", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
 META_CLASS tf_Metaclass_query_spec = { META_QUERY_SPEC_NAME, {META_PAGE_QUERY_SPEC, 0, META_VOLUME}, 0, 0, 0,
@@ -371,7 +372,8 @@ static CT_ATTR ct_methfile_atts[] = {
 
 static CT_ATTR ct_queryspec_atts[] = {
   {"class_of", NULL_ATTRID, DB_TYPE_OBJECT},
-  {"spec", NULL_ATTRID, DB_TYPE_VARCHAR}
+  {"spec", NULL_ATTRID, DB_TYPE_VARCHAR},
+  {"spec_org", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
 static CT_ATTR ct_resolution_atts[] = {
