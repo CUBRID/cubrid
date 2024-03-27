@@ -2415,8 +2415,8 @@ static int prm_vacuum_ovfp_check_threshold_upper = INT_MAX;
 static int prm_vacuum_ovfp_check_threshold_lower = 2;
 static unsigned int prm_vacuum_ovfp_check_threshold_flag = 0;
 
-UINT64 PRM_MAX_SUBQUERY_CACHE_SIZE = 0;	/* 0 */
-static UINT64 prm_max_subquery_cache_size_default = 0;	/* 0 */
+UINT64 PRM_MAX_SUBQUERY_CACHE_SIZE = 2 * 1024 * 1024;	/* 2 MB */
+static UINT64 prm_max_subquery_cache_size_default = 2 * 1024 * 1024;	/* 2 MB */
 static UINT64 prm_max_subquery_cache_size_lower = 0;	/* 0 */
 static UINT64 prm_max_subquery_cache_size_upper = 16 * 1024 * 1024;	/* 16 MB */
 static unsigned int prm_max_subquery_cache_size_flag = 0;
