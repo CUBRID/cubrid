@@ -25830,7 +25830,7 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
       if (date_lang)
 	{
 	  date_lang->type_enum = PT_TYPE_INTEGER;
-	  else if ((arg3->type_enum == PT_TYPE_CHAR || arg3->type_enum == PT_TYPE_NCHAR) && arg3->info.value.data_value.str != NULL)
+	  if ((arg3->type_enum == PT_TYPE_CHAR || arg3->type_enum == PT_TYPE_NCHAR) && arg3->info.value.data_value.str != NULL)
 	    {
 	      int flag = 0;
 	      lang_str = (char *) arg3->info.value.data_value.str->bytes;
