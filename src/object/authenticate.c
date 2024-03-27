@@ -3593,6 +3593,11 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
   need_pop_er_stack = true;
 
   bits = get_cache_bits (sm_class);
+  if (bits == NULL)
+    {
+      assert (false);
+      return er_errid ();
+    }
 
   /* initialize the cache bits */
   *bits = AU_NO_AUTHORIZATION;
@@ -3894,6 +3899,11 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
 	  return er_errid ();
 	}
       cache_bits = get_cache_bits (sm_class);
+      if (cache_bits == NULL)
+	{
+	  assert (false);
+	  return er_errid ();
+	}
     }
 
   /* build the complete bit mask */
@@ -5903,6 +5913,7 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
       bits = get_cache_bits (sm_class);
       if (bits == NULL)
 	{
+	  assert (false);
 	  return er_errid ();
 	}
 
@@ -5915,6 +5926,10 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
 	      if (error == NO_ERROR)
 		{
 		  bits = get_cache_bits (sm_class);
+		  if (bits == NULL)
+		    {
+		      return er_errid ();
+		    }
 		  if ((*bits & type) != type)
 		    {
 		      error = appropriate_error (*bits, type);
