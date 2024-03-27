@@ -67,9 +67,9 @@ method_sig_node::method_sig_node (method_sig_node &&obj)
 
       obj.arg_info->arg_mode = nullptr;
       obj.arg_info->arg_type = nullptr;
-      obj.arg_info = nullptr;
       obj.arg_info->default_value = nullptr;
       obj.arg_info->default_value_size = nullptr;
+      obj.arg_info = nullptr;
     }
 }
 
