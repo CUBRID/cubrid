@@ -207,12 +207,17 @@ namespace cubmethod
 	arg_pos.resize (num_args);
 	arg_mode.resize (num_args);
 	arg_type.resize (num_args);
+	arg_default.resize (num_args);
 
 	for (int i = 0; i < num_args; i++)
 	  {
 	    arg_pos[i] = sig->method_arg_pos[i];
 	    arg_mode[i] = sig->arg_info->arg_mode[i];
 	    arg_type[i] = sig->arg_info->arg_type[i];
+	    if (sig->arg_info->default_value_size[i] > 0)
+	      {
+		arg_default[i].assign (sig->arg_info->default_value[i], sig->arg_info->default_value_size[i]);
+	      }
 	  }
 
 	result_type = sig->arg_info->result_type;
@@ -235,6 +240,7 @@ namespace cubmethod
 	serializator.pack_int (arg_pos[i]);
 	serializator.pack_int (arg_mode[i]);
 	serializator.pack_int (arg_type[i]);
+	serializator.pack_string (arg_default[i]);
       }
 
     serializator.pack_int (result_type);
@@ -262,6 +268,7 @@ namespace cubmethod
 	size += serializator.get_packed_int_size (size); // arg_pos
 	size += serializator.get_packed_int_size (size); // arg_mode
 	size += serializator.get_packed_int_size (size); // arg_type
+	size += serializator.get_packed_string_size (arg_default[i], size); // arg_default
       }
 
     size += serializator.get_packed_int_size (size); // return_type

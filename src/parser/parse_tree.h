@@ -3367,7 +3367,6 @@ struct pt_stored_proc_info
   unsigned or_replace:1;	/* OR REPLACE clause */
   PT_TYPE_ENUM ret_type;
   PT_NODE *ret_data_type;
-
 };
 
 struct pt_prepare_info
@@ -3392,8 +3391,9 @@ struct pt_execute_info
 
 struct pt_stored_proc_param_info
 {
-  PT_NODE *name;
-  PT_MISC_TYPE mode;
+  PT_NODE *name;		/* PT_NAME */
+  PT_MISC_TYPE mode;		/* PT_INPUT, PT_OUTPUT, PT_INPUTOUTPUT */
+  PT_NODE *default_value;	/* PT_DATA_DEFAULT */
   PT_NODE *comment;
 };
 
