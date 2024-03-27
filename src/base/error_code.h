@@ -1623,8 +1623,14 @@
 #define ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE -1263
 #define ER_SQL_ERROR_LOG_TRACE                      -1264
 #define ER_SQL_ERROR_LOG_MSG_TRACE                  -1265
+#define ER_LOG_RECOVERY_ANALYSIS_STARTED            -1296
+#define ER_LOG_RECOVERY_REDO_STARTED                -1297
+#define ER_LOG_RECOVERY_UNDO_STARTED                -1298
+#define ER_LOG_RECOVERY_PHASE_FINISHING_UP          -1299
+#define ER_LOG_RECOVERY_PHASE_FINISHED              -1300
 
-#define ER_LAST_ERROR                               -1266
+
+#define ER_LAST_ERROR                               -1301
 
 /*
  * CAUTION!

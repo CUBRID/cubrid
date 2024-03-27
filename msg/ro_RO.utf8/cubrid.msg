@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Crearea unui fişier de chei de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
 1126 Crearea unei pagini noi de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
 1127 Ştergerea unei pagini goale de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
-1128 Restaurarea logului a început. Numărul de înregistrări din log ce trebuie aplicate: %1$lld. Pagina de log: %2$lld ~ %3$lld.
+1128 Restaurarea logului a început.
 1129 Restaurarea logului s-a finalizat.
 1130 Tranzacţia a fost abandonată deoarece numărul de lock-uri asociate tranzacţiei depăşeşte %1$d.
 1131 Eroare internă: Pagina %1$d din volumul "%2$s" ar putea fi coruptă.\n%3$s
@@ -1335,7 +1335,12 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1264 Internal CAS error : %1$d 
 1265 Internal CAS error : %1$d, %2$s
 
-1266 Ultima eroare
+1296 Recuperarea logului: Faza de analiză este pornită.
+1297 Recuperarea jurnalului: Faza redo este pornită. Jurnal Pagini la Redo: %1$lld, înregistrări jurnal la redo: %2$lld.
+1298 Recuperarea jurnalului: Faza de anulare este pornită. Jurnal Pagini pentru a anula: %1$lld, tranzacții pentru a anula: %2$d.
+1299 Recuperarea jurnalului: %1$S este terminat.
+1300 Recuperarea jurnalului: %1$S este terminată.
+1301 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

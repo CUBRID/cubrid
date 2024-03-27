@@ -1059,7 +1059,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
   if (logtb_is_system_worker_tranid (trid))
     {
       // *INDENT-OFF*
-      return log_system_tdes::rv_get_or_alloc_tdes (trid);
+      return log_system_tdes::rv_get_or_alloc_tdes (trid, *log_lsa);
       // *INDENT-ON*
     }
 
@@ -4159,31 +4159,15 @@ logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p)
 }
 
 /*
- * log_find_unilaterally_largest_undo_lsa - find maximum lsa address to undo
- *
- * return:
- *
- * Note: Find the maximum log sequence address to undo during the undo
- *              crash recovery phase.
+ * logtb_rv_read_only_map_undo_tdes - map func to all tdes to abort in the UNOO recovery phase.
  */
 void
-log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa)
+logtb_rv_read_only_map_undo_tdes (THREAD_ENTRY * thread_p, const std::function < void (const log_tdes &) > map_func)
 {
-  // *INDENT-OFF*
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
 
   TR_TABLE_CS_ENTER_READ_MODE (thread_p);
-
-  LSA_SET_NULL (&max_undo_lsa);
-
-  auto max_undo_lsa_func = [&] (log_tdes & tdes)
-    {
-      if (LSA_LT (&max_undo_lsa, &tdes.undo_nxlsa))
-        {
-          max_undo_lsa = tdes.undo_nxlsa;
-        }
-    };
 
   /* Check active transactions. */
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
@@ -4194,15 +4178,16 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_u
 	  if (tdes != NULL && tdes->trid != NULL_TRANID
 	      && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED))
 	    {
-	      max_undo_lsa_func (*tdes);
+	      map_func (*tdes);
 	    }
 	}
     }
   /* Check system worker transactions. */
-  log_system_tdes::map_all_tdes (max_undo_lsa_func);
+  // *INDENT-OFF*
+  log_system_tdes::map_all_tdes (map_func);
+  // *INDENT-ON*
 
   TR_TABLE_CS_EXIT (thread_p);
-  // *INDENT-ON*
 }
 
 /*

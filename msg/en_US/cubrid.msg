@@ -1195,7 +1195,7 @@ $ LOADDB
 1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Delete an empty overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 Log recovery is started.
 1129 Log recovery is finished.
 1130 Transaction is aborted because transaction lock counts exceeds %1$d.
 1131 Internal error: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
@@ -1334,7 +1334,12 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1263 It fails to TDE-encrypt the log page (pageid: %1$lld). It won't be tried to encrypt this page any longer.
 1264 Internal CAS error : %1$d 
 1265 Internal CAS error : %1$d, %2$s
-1266 Last Error
+1296 Log recovery: ANALYSIS Phase is started.
+1297 Log recovery: REDO Phase is started. Log pages to redo: %1$lld, Log records to redo: %2$lld.
+1298 Log recovery: UNDO Phase is started. Log pages to undo: %1$lld, transactions to undo: %2$d.
+1299 Log recovery: %1$s Phase is being finished up.
+1300 Log recovery: %1$s Phase is finished.
+1301 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
