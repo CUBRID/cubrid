@@ -60,6 +60,7 @@
 #define SP_ATTR_DATA_TYPE               "data_type"
 #define SP_ATTR_MODE                    "mode"
 #define SP_ATTR_DEFAULT_VALUE           "default_value"
+#define SP_ATTR_IS_OPTIONAL             "is_optional"
 #define SP_ATTR_ARG_COMMENT             "comment"
 
 typedef enum
