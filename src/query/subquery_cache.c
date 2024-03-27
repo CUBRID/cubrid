@@ -615,7 +615,7 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
          maximum, it evaluates the hit-to-miss ratio to decide whether continuing caching 
          is beneficial. This approach optimizes cache usage and performance by dynamically 
          adapting to the effectiveness of the cache. */
-      if (xasl->sq_cache_miss > SQ_CACHE_MISS_MAX)
+      if (xasl->sq_cache_miss >= SQ_CACHE_MISS_MAX)
 	{
 	  if (xasl->sq_cache_hit / xasl->sq_cache_miss < SQ_CACHE_MIN_HIT_RATIO)
 	    {
