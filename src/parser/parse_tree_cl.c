@@ -9420,15 +9420,11 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      if (PT_SPEC_CTE_POINTER (p) != NULL)
 		{
 		  r1 = pt_print_bytes (parser, p->info.spec.cte_name);
-		  r1 = pt_append_bytes (parser, r1, " ", 1);
-		  r1 = pt_append_varchar (parser, r1, pt_print_bytes (parser, p->info.spec.range_var));
-		}
-	      else
-		{
-		  r1 = pt_print_bytes (parser, p->info.spec.range_var);
-		  q = pt_append_nulstring (parser, q, " ");
 		  q = pt_append_varchar (parser, q, r1);
 		}
+	      r1 = pt_print_bytes (parser, p->info.spec.range_var);
+	      q = pt_append_nulstring (parser, q, " ");
+	      q = pt_append_varchar (parser, q, r1);
 	    }
 	}
       parser->custom_print = save_custom;
