@@ -69,6 +69,8 @@
 #include "optimizer.h"
 #include "network_interface_cl.h"
 #include "printer.hpp"
+#include "schema_system_catalog.hpp"
+#include "authenticate_cache.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -101,20 +103,25 @@ extern bool catcls_Enable;
 #define MSGCAT_AUTH_AUTH_TITLE          15
 #define MSGCAT_AUTH_USER_DIRECT_GROUPS  16
 
-/*
- * Authorization Class Names
- */
-const char *AU_ROOT_CLASS_NAME = "db_root";
-const char *AU_OLD_ROOT_CLASS_NAME = "db_authorizations";
+const char *AU_TYPE_SET[] = {
+  "SELECT",			/* DB_AUTH_SELECT */
+  "INSERT",			/* DB_AUTH_INSERT */
+  "UPDATE",			/* DB_AUTH_UPDATE */
+  "DELETE",			/* DB_AUTH_DELETE */
+  "ALTER",			/* DB_AUTH_ALTER */
+  "INDEX",			/* DB_AUTH_INDEX */
+  "EXECUTE"			/* DB_AUTH_EXECUTE */
+};
 
-const char *AU_USER_CLASS_NAME = "db_user";
-const char *AU_PASSWORD_CLASS_NAME = "db_password";
-const char *AU_AUTH_CLASS_NAME = "db_authorization";
-const char *AU_GRANT_CLASS_NAME = "db_grant";
-
-const char *AU_PUBLIC_USER_NAME = "PUBLIC";
-const char *AU_DBA_USER_NAME = "DBA";
-
+const int AU_TYPE_SET_LEN[] = {
+  strlen ("SELECT"),		/* DB_AUTH_SELECT */
+  strlen ("INSERT"),		/* DB_AUTH_INSERT */
+  strlen ("UPDATE"),		/* DB_AUTH_UPDATE */
+  strlen ("DELETE"),		/* DB_AUTH_DELETE */
+  strlen ("ALTER"),		/* DB_AUTH_ALTER */
+  strlen ("INDEX"),		/* DB_AUTH_INDEX */
+  strlen ("EXECUTE")		/* DB_AUTH_EXECUTE */
+};
 
 /*
  * Grant set structure
@@ -150,36 +157,10 @@ const char *AU_DBA_USER_NAME = "DBA";
 #define IS_STRING(n)    DB_IS_STRING (n)
 
 /* Macro to determine if a name is system catalog class */
-#define IS_CATALOG_CLASS(name) \
-        (strcmp(name, CT_CLASS_NAME) == 0 || \
-         strcmp(name, CT_ATTRIBUTE_NAME) == 0 || \
-         strcmp(name, CT_DOMAIN_NAME) == 0 || \
-         strcmp(name, CT_METHOD_NAME) == 0 || \
-         strcmp(name, CT_METHSIG_NAME) == 0 || \
-         strcmp(name, CT_METHARG_NAME) == 0 || \
-         strcmp(name, CT_METHFILE_NAME) == 0 || \
-         strcmp(name, CT_QUERYSPEC_NAME) == 0 || \
-         strcmp(name, CT_RESOLUTION_NAME) ==0 || \
-         strcmp(name, CT_INDEX_NAME) == 0 || \
-         strcmp(name, CT_INDEXKEY_NAME) == 0 || \
-         strcmp(name, CT_CLASSAUTH_NAME) == 0 || \
-         strcmp(name, CT_DATATYPE_NAME) == 0 || \
-         strcmp(name, CT_STORED_PROC_NAME) == 0 || \
-         strcmp(name, CT_STORED_PROC_ARGS_NAME) == 0 || \
-         strcmp(name, CT_PARTITION_NAME) == 0 || \
-         strcmp(name, CT_SERIAL_NAME) == 0 || \
-         strcmp(name, CT_USER_NAME) == 0 || \
-         strcmp(name, CT_COLLATION_NAME) == 0 || \
-         strcmp(name, CT_HA_APPLY_INFO_NAME) == 0 || \
-         strcmp(name, CT_TRIGGER_NAME) == 0 || \
-         strcmp(name, CT_ROOT_NAME) == 0 || \
-         strcmp(name, CT_PASSWORD_NAME) == 0 || \
-         strcmp(name, CT_AUTHORIZATION_NAME) == 0 || \
-         strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
-	 strcmp(name, CT_CHARSET_NAME) == 0 || \
-         strcmp(name, CT_DB_SERVER_NAME) == 0 || \
-	 strcmp(name, CT_SYNONYM_NAME) == 0 || \
-	 strcmp(name, CT_DUAL_NAME) == 0)
+
+// *INDENT-OFF*
+#define IS_CATALOG_CLASS(name) sm_is_system_class (std::string_view (name))
+// *INDENT-ON*
 
 enum fetch_by
 {
@@ -212,43 +193,19 @@ struct au_grant
 };
 
 /*
- * AU_CLASS_CACHE
+ * AU_OBJECT_CLASS_NAME
  *
- * This structure is attached to classes and provides a cache of
- * the authorization bits.  Once authorization is calculated by examining
- * the group/grant hierarchy, the combined vector of bits is stored
- * in the cache for faster access.
- * In releases prior to 2.0, this was a single vector of bits for the
- * active user.  With the introduction of views, it became necessary
- * to relatively quickly perform a "setuid" operation to switch
- * authorization contexts within methods accessed through a view.
- * Because of this, the cache has been extended to be a variable length
- * array of entries, indexed by a user identifier.
+ * This is list of class names that CUBRID manages as database objects
+ * Their existence is checked when dropping an user
  */
-typedef struct au_class_cache AU_CLASS_CACHE;
-struct au_class_cache
-{
-  struct au_class_cache *next;
-
-  SM_CLASS *class_;
-  unsigned int data[1];
-};
-
-/*
- * AU_USER_CACHE
- *
- * This is used to maintain a list of the users that have been
- * registered into the authorization caches.  Each time a "setuid" is
- * performed, the requested user is added to the caches if it is
- * not already present.
- */
-typedef struct au_user_cache AU_USER_CACHE;
-struct au_user_cache
-{
-  struct au_user_cache *next;
-
-  DB_OBJECT *user;
-  int index;
+const char *AU_OBJECT_CLASS_NAME[] = {
+  CT_CLASS_NAME,		/* AU_OBJECT_CLASS */
+  CT_TRIGGER_NAME,		/* AU_OBJECT_TRIGGER */
+  CT_SERIAL_NAME,		/* AU_OBJECT_SERIAL */
+  CT_DB_SERVER_NAME,		/* AU_OBJECT_SERVER */
+  CT_SYNONYM_NAME,		/* AU_OBJECT_SYNONYM */
+  CT_STORED_PROC_NAME,		/* AU_OBJECT_PROCEDURE */
+  NULL
 };
 
 /*
@@ -378,50 +335,8 @@ char Au_user_password_sha2_512[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
  */
 static DB_OBJECT *Au_authorizations_class;
 static DB_OBJECT *Au_authorization_class;
-static DB_OBJECT *Au_user_class;
+DB_OBJECT *Au_user_class;
 static DB_OBJECT *Au_password_class;
-
-/*
- * Au_user_cache
- *
- * The list of cached users.
- */
-static AU_USER_CACHE *Au_user_cache = NULL;
-
-/*
- * Au_class_caches
- *
- * A list of all allocated class caches.  These are maintained on a list
- * so that we can get to all of them easily when they need to be
- * altered.
- */
-static AU_CLASS_CACHE *Au_class_caches = NULL;
-
-/*
- * Au_cache_depth
- *
- * These maintain information about the structure of the class caches.
- * Au_cache_depth has largest current index.
- * Au_cache_max has the total size of the allocated arrays.
- * Au_cache_increment has the growth count when the array needs to be
- * extended.
- * The caches are usually allocated larger than actually necessary so
- * we can avoid reallocating all of them when a new user is added.
- * Probably not that big a deal.
- */
-static int Au_cache_depth = 0;
-static int Au_cache_max = 0;
-static int Au_cache_increment = 4;
-
-/*
- * Au_cache_index
- *
- * This is the current index into the class authorization caches.
- * It will be maintained in parallel with the current user.
- * Each user is assigned a particular index, when the user changes,
- * Au_cache_index is changed as well.
- */
-static int Au_cache_index = -1;
 
 static const char *auth_type_name[] = {
   "select", "insert", "update", "delete", "alter", "index", "execute"
@@ -490,18 +405,6 @@ static DB_METHOD_LINK au_static_links[] = {
 static int au_get_set (MOP obj, const char *attname, DB_SET ** set);
 static int au_get_object (MOP obj, const char *attname, MOP * mop_ptr);
 static int au_set_get_obj (DB_SET * set, int index, MOP * obj);
-static AU_CLASS_CACHE *au_make_class_cache (int depth);
-static void au_free_class_cache (AU_CLASS_CACHE * cache);
-static AU_CLASS_CACHE *au_install_class_cache (SM_CLASS * sm_class);
-
-static int au_extend_class_caches (int *index);
-static int au_find_user_cache_index (DB_OBJECT * user, int *index, int check_it);
-static void free_user_cache (AU_USER_CACHE * u);
-static void reset_cache_for_user_and_class (SM_CLASS * sm_class);
-
-static void remove_user_cache_references (MOP user);
-static void init_caches (void);
-static void flush_caches (void);
 
 static MOP au_make_user (const char *name);
 static int au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, bool grant_option);
@@ -527,7 +430,7 @@ static int add_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor);
 static void drop_grant_entry (DB_SET * grants, int index);
 static int get_grants (MOP auth, DB_SET ** grant_ptr, int filter);
 static int apply_grants (MOP auth, MOP class_mop, unsigned int *bits);
-static int update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache);
+static int update_cache (MOP classop, SM_CLASS * sm_class);
 static int appropriate_error (unsigned int bits, unsigned int requested);
 static int check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type);
 
@@ -696,415 +599,6 @@ au_set_get_obj (DB_SET * set, int index, MOP * obj)
 
   return error;
 }
-
-
-/*
- * AUTHORIZATION CACHES
- */
-
-/*
- * au_make_class_cache - Allocates and initializes a new class cache
- *    return: new cache structure
- *    depth(in): number of elements to include in the cache
- */
-static AU_CLASS_CACHE *
-au_make_class_cache (int depth)
-{
-  AU_CLASS_CACHE *new_class_cache = NULL;
-  int i;
-  size_t size;
-
-  if (depth <= 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-    }
-  else
-    {
-      size = sizeof (AU_CLASS_CACHE) + ((depth - 1) * sizeof (unsigned int));
-      new_class_cache = (AU_CLASS_CACHE *) malloc (size);
-      if (new_class_cache == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return NULL;
-	}
-
-      new_class_cache->next = NULL;
-      new_class_cache->class_ = NULL;
-      for (i = 0; i < depth; i++)
-	{
-	  new_class_cache->data[i] = AU_CACHE_INVALID;
-	}
-    }
-
-  return new_class_cache;
-}
-
-/*
- * au_free_class_cache - Frees a class cache
- *    return: none
- *    cache(in): cache to free
- */
-static void
-au_free_class_cache (AU_CLASS_CACHE * cache)
-{
-  if (cache != NULL)
-    {
-      free_and_init (cache);
-    }
-}
-
-/*
- * au_install_class_cache - This allocates a new class cache and attaches
- *                          it to a class.
- *   return: new class cache
- *   class(in): class structure to get the new cache
- *
- * Note: Once a cache/class association has been made, we also put the
- *       cache on the global cache list so we can maintain it consistently.
- */
-static AU_CLASS_CACHE *
-au_install_class_cache (SM_CLASS * sm_class)
-{
-  AU_CLASS_CACHE *new_class_cache;
-
-  new_class_cache = au_make_class_cache (Au_cache_max);
-  if (new_class_cache != NULL)
-    {
-      new_class_cache->next = Au_class_caches;
-      Au_class_caches = new_class_cache;
-      new_class_cache->class_ = sm_class;
-      sm_class->auth_cache = new_class_cache;
-    }
-
-  return new_class_cache;
-}
-
-/*
- * au_free_authorization_cache -  This removes a class cache from the global
- *                                cache list, detaches it from the class
- *                                and frees it.
- *   return: none
- *   cache(in): class cache
- */
-void
-au_free_authorization_cache (void *cache)
-{
-  AU_CLASS_CACHE *c, *prev;
-
-  if (cache != NULL)
-    {
-      for (c = Au_class_caches, prev = NULL; c != NULL && c != cache; c = c->next)
-	{
-	  prev = c;
-	}
-      if (c != NULL)
-	{
-	  if (prev == NULL)
-	    {
-	      Au_class_caches = c->next;
-	    }
-	  else
-	    {
-	      prev->next = c->next;
-	    }
-	}
-      au_free_class_cache ((AU_CLASS_CACHE *) cache);
-    }
-}
-
-/*
- * au_extend_class_caches - This extends the all existing class caches so they
- *                          can contain an additional element.
- *   return: error code
- *   index(out): next available index
- *
- * Note: If we have already preallocated some extra elements it will use one
- *       and avoid reallocating all the caches. If we have no extra elements,
- *       we grow all the caches by a certain amount.
- */
-static int
-au_extend_class_caches (int *index)
-{
-  int error = NO_ERROR;
-  AU_CLASS_CACHE *c, *new_list, *new_entry, *next;
-  int new_max, i;
-
-  if (Au_cache_depth < Au_cache_max)
-    {
-      *index = Au_cache_depth;
-      Au_cache_depth++;
-    }
-  else
-    {
-      new_list = NULL;
-      new_max = Au_cache_max + Au_cache_increment;
-
-      for (c = Au_class_caches; c != NULL && !error; c = c->next)
-	{
-	  new_entry = au_make_class_cache (new_max);
-	  if (new_entry == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	    }
-	  else
-	    {
-	      for (i = 0; i < Au_cache_depth; i++)
-		{
-		  new_entry->data[i] = c->data[i];
-		}
-	      new_entry->class_ = c->class_;
-	      new_entry->next = new_list;
-	      new_list = new_entry;
-	    }
-	}
-
-      if (!error)
-	{
-	  for (c = Au_class_caches, next = NULL; c != NULL; c = next)
-	    {
-	      next = c->next;
-	      c->class_->auth_cache = NULL;
-	      au_free_class_cache (c);
-	    }
-	  for (c = new_list; c != NULL; c = c->next)
-	    {
-	      c->class_->auth_cache = c;
-	    }
-
-	  Au_class_caches = new_list;
-	  Au_cache_max = new_max;
-	  *index = Au_cache_depth;
-	  Au_cache_depth++;
-	}
-    }
-
-  return error;
-}
-
-/*
- * au_find_user_cache_index - This determines the cache index for the given
- *                            user.
- *   return: error code
- *   user(in): user object
- *   index(out): returned user index
- *   check_it(in):
- *
- * Note: If the user has never been added to the authorization cache,
- *       we reserve a new index for the user.  Reserving the user index may
- *       result in growing all the existing class caches.
- *       This is the primary work function for AU_SET_USER() and it should
- *       be fast.
- */
-static int
-au_find_user_cache_index (DB_OBJECT * user, int *index, int check_it)
-{
-  int error = NO_ERROR;
-  AU_USER_CACHE *u, *new_user_cache;
-  DB_OBJECT *class_mop;
-
-  for (u = Au_user_cache; u != NULL && !ws_is_same_object (u->user, user); u = u->next)
-    ;
-
-  if (u != NULL)
-    {
-      *index = u->index;
-    }
-  else
-    {
-      /*
-       * User wasn't in the cache, add it and extend the existing class
-       * caches.  First do a little sanity check just to make sure this
-       * is a user object.
-       */
-      if (check_it)
-	{
-	  class_mop = sm_get_class (user);
-	  if (class_mop == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-	  else if (class_mop != Au_user_class)
-	    {
-	      error = ER_AU_CORRUPTED;	/* need a better error */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      return er_errid ();
-	    }
-	}
-
-      new_user_cache = (AU_USER_CACHE *) malloc (sizeof (AU_USER_CACHE));
-      if (new_user_cache != NULL)
-	{
-	  if ((error = au_extend_class_caches (index)))
-	    {
-	      free_and_init (new_user_cache);
-	    }
-	  else
-	    {
-	      new_user_cache->next = Au_user_cache;
-	      Au_user_cache = new_user_cache;
-	      new_user_cache->user = user;
-	      new_user_cache->index = *index;
-	    }
-	}
-    }
-
-  return error;
-}
-
-/*
- * free_user_cache - Frees a user cache. Make sure to clear the MOP pointer.
- *   returns: none
- *   u(in): user cache
- */
-static void
-free_user_cache (AU_USER_CACHE * u)
-{
-  if (u != NULL)
-    {
-      u->user = NULL;		/* clear GC roots */
-      free_and_init (u);
-    }
-}
-
-
-/*
- * reset_cache_for_user_and_class - This is called whenever a grant or revoke
- *                                  operation is performed. It resets the
- *                                  caches only for a particular
- *                                  user/class pair
- *   return : none
- *   class(in): class structure
- *
- * Note: This was originally written so that only the authorization
- *       cache for the given user was cleared.  This does not work however
- *       if we're changing authorization for a group and there are members
- *       of that group already cached.
- *       We could be smart and try to invalidate the caches of all
- *       members of this user but instead just go ahead and invalidate
- *       everyone's cache for this class.  This isn't optimal but doesn't really
- *       matter that much.  grant/revoke don't happen very often.
- */
-static void
-reset_cache_for_user_and_class (SM_CLASS * sm_class)
-{
-  AU_USER_CACHE *u;
-  AU_CLASS_CACHE *c;
-
-  for (c = Au_class_caches; c != NULL && c->class_ != sm_class; c = c->next);
-  if (c != NULL)
-    {
-      /*
-       * invalide every user's cache for this class_, could be more
-       * selective and do only the given user and its members
-       */
-      for (u = Au_user_cache; u != NULL; u = u->next)
-	{
-	  c->data[u->index] = AU_CACHE_INVALID;
-	}
-    }
-}
-
-/*
- * au_reset_authorization_caches - This is called by ws_clear_all_hints()
- *                                 and ws_abort_mops() on transaction
- *                                 boundaries.
- *   return: none
- *
- * Note: We reset all the authorization caches at this point.
- *       This sets all of the authorization entries in a cache to be invalid.
- *       Normally this is done when the authorization for this
- *       class changes in some way.  The next time the cache is used, it
- *       will force the recomputation of the authorization bits.
- *       We should try to be smarter and flush the caches only when we know
- *       that the authorization catalogs have changed in some way.
- */
-
-void
-au_reset_authorization_caches (void)
-{
-  AU_CLASS_CACHE *c;
-  int i;
-
-  for (c = Au_class_caches; c != NULL; c = c->next)
-    {
-      for (i = 0; i < Au_cache_depth; i++)
-	{
-	  c->data[i] = AU_CACHE_INVALID;
-	}
-    }
-}
-
-/*
- * remove_user_cache_reference - This is called when a user object is deleted.
- *   return: none
- *   user(in): user object
- *
- * Note: If there is an authorization cache entry for this user, we NULL
- *       the user pointer so it will no longer be used.  We could to in
- *       and restructure all the caches to remove the deleted user but user
- *       deletion isn't that common.  Just leave an unused entry in the
- *       cache array.
- */
-static void
-remove_user_cache_references (MOP user)
-{
-  AU_USER_CACHE *u;
-
-  for (u = Au_user_cache; u != NULL; u = u->next)
-    {
-      if (ws_is_same_object (u->user, user))
-	{
-	  u->user = NULL;
-	}
-    }
-}
-
-/*
- * init_caches - Called during au_init().  Initialize all of the cache
- *               related global variables.
- *   return: none
- */
-static void
-init_caches (void)
-{
-  Au_user_cache = NULL;
-  Au_class_caches = NULL;
-  Au_cache_depth = 0;
-  Au_cache_max = 0;
-  Au_cache_increment = 4;
-  Au_cache_index = -1;
-}
-
-/*
- * flush_caches - Called during au_final(). Free the authorization cache
- *                structures and initialize the global variables
- *                to their default state.
- *   return : none
- */
-static void
-flush_caches (void)
-{
-  AU_USER_CACHE *u, *nextu;
-  AU_CLASS_CACHE *c, *nextc;
-
-  for (c = Au_class_caches, nextc = NULL; c != NULL; c = nextc)
-    {
-      nextc = c->next;
-      c->class_->auth_cache = NULL;
-      au_free_class_cache (c);
-    }
-  for (u = Au_user_cache, nextu = NULL; u != NULL; u = nextu)
-    {
-      nextu = u->next;
-      free_user_cache (u);
-    }
-
-  /* clear the associated globals */
-  init_caches ();
-}
-
 
 /*
  * COMPARISON
@@ -1534,7 +1028,6 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
   DB_VALUE value, class_name_val;
   DB_AUTH type;
   int i;
-  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "INDEX", "EXECUTE" };
 
   if (au_obj == NULL)
     {
@@ -1583,7 +1076,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       ;
     }
 
-  db_make_varchar (&value, 7, type_set[i], strlen (type_set[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&value, 7, AU_TYPE_SET[i], AU_TYPE_SET_LEN[i], LANG_SYS_CODESET, LANG_SYS_COLLATION);
   obj_set (au_obj, "auth_type", &value);
 
   db_make_int (&value, (int) grant_option);
@@ -1626,7 +1119,6 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   STATEMENT_ID stmt_id;
-  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "INDEX", "EXECUTE" };
 
   for (i = 0; i < COUNT_FOR_VARIABLES; i++)
     {
@@ -1675,7 +1167,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
     {
       ;
     }
-  db_make_string (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
+  db_make_string (&val[INDEX_FOR_AUTH_TYPE], AU_TYPE_SET[i]);
 
   session = db_open_buffer (sql_query);
   if (session == NULL)
@@ -3452,13 +2944,6 @@ au_drop_user (MOP user)
   DB_SET *new_groups, *direct_groups;
   int g, gcard, i;
   DB_VALUE name;
-  static const char *class_name[] = {
-    /*
-     * drop user command can be called only by DBA group,
-     * so we can use query for _db_class directly
-     */
-    "_db_class", "db_trigger", "db_serial", "_db_server", "_db_synonym", "_db_stored_procedure", NULL
-  };
   char query_buf[1024];
 
   AU_DISABLE (save);
@@ -3487,9 +2972,9 @@ au_drop_user (MOP user)
     }
 
   /* check if user owns class/vclass/trigger/serial/synonym */
-  for (i = 0; class_name[i] != NULL; i++)
+  for (i = 0; AU_OBJECT_CLASS_NAME[i] != NULL; i++)
     {
-      sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", class_name[i]);
+      sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", AU_OBJECT_CLASS_NAME[i]);
       session = db_open_buffer (query_buf);
       if (session == NULL)
 	{
@@ -4086,15 +3571,15 @@ apply_grants (MOP auth, MOP class_mop, unsigned int *bits)
  *   cache(in):
  */
 static int
-update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
+update_cache (MOP classop, SM_CLASS * sm_class)
 {
   int error = NO_ERROR;
   DB_SET *groups = NULL;
   int i, save, card;
   DB_VALUE value;
   MOP group, auth;
-  unsigned int *bits;
   bool is_member = false;
+  unsigned int *bits = NULL;
   bool need_pop_er_stack = false;
 
   /*
@@ -4107,7 +3592,12 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
 
   need_pop_er_stack = true;
 
-  bits = &cache->data[Au_cache_index];
+  bits = get_cache_bits (sm_class);
+  if (bits == NULL)
+    {
+      assert (false);
+      return er_errid ();
+    }
 
   /* initialize the cache bits */
   *bits = AU_NO_AUTHORIZATION;
@@ -4125,7 +3615,6 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
   if (is_member)
     {
       *bits = AU_FULL_AUTHORIZATION;
-
       goto end;
     }
 
@@ -4140,7 +3629,6 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
     {
       /* might want to allow grant/revoke on self */
       *bits = AU_FULL_AUTHORIZATION;
-
       goto end;
     }
 
@@ -4383,44 +3871,44 @@ static int
 check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
 {
   int error = NO_ERROR;
-  AU_CLASS_CACHE *cache;
-  unsigned int cache_bits;
+  unsigned int *cache_bits;
   unsigned int mask;
 
   /*
    * this potentially can be called during initialization when we don't
    * actually have any users yet.  If so, assume its ok
    */
-  if (Au_cache_index < 0)
-    return NO_ERROR;
-
-  cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
-  if (sm_class->auth_cache == NULL)
+  if (au_get_cache_index () < 0)
     {
-      cache = au_install_class_cache (sm_class);
-      if (cache == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
+      return NO_ERROR;
     }
-  cache_bits = cache->data[Au_cache_index];
 
-  if (cache_bits == AU_CACHE_INVALID)
+  cache_bits = get_cache_bits (sm_class);
+  if (cache_bits == NULL)
     {
-      if (update_cache (classop, sm_class, cache))
+      return er_errid ();
+    }
+
+  if (*cache_bits == AU_CACHE_INVALID)
+    {
+      if (update_cache (classop, sm_class))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
-      cache_bits = cache->data[Au_cache_index];
+      cache_bits = get_cache_bits (sm_class);
+      if (cache_bits == NULL)
+	{
+	  assert (false);
+	  return er_errid ();
+	}
     }
 
   /* build the complete bit mask */
   mask = type | (type << AU_GRANT_SHIFT);
-  if ((cache_bits & mask) != mask)
+  if ((*cache_bits & mask) != mask)
     {
-      error = appropriate_error (cache_bits, mask);
+      error = appropriate_error (*cache_bits, mask);
       if (error)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -6396,8 +5884,7 @@ static int
 check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
 {
   int error = NO_ERROR;
-  AU_CLASS_CACHE *cache;
-  unsigned int bits;
+  unsigned int *bits;
 
   /*
    * Callers generally check Au_disable already to avoid the function call.
@@ -6420,37 +5907,36 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
     }
   else
     {
-      cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
-      if (cache == NULL)
+      bits = get_cache_bits (sm_class);
+      if (bits == NULL)
 	{
-	  cache = au_install_class_cache (sm_class);
-	  if (cache == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
+	  assert (false);
+	  return er_errid ();
 	}
-      bits = cache->data[Au_cache_index];
 
-      if ((bits & type) != type)
+      if ((*bits & type) != type)
 	{
-	  if (bits == AU_CACHE_INVALID)
+	  if (*bits == AU_CACHE_INVALID)
 	    {
 	      /* update the cache and try again */
-	      error = update_cache (classobj, sm_class, cache);
+	      error = update_cache (classobj, sm_class);
 	      if (error == NO_ERROR)
 		{
-		  bits = cache->data[Au_cache_index];
-		  if ((bits & type) != type)
+		  bits = get_cache_bits (sm_class);
+		  if (bits == NULL)
 		    {
-		      error = appropriate_error (bits, type);
+		      return er_errid ();
+		    }
+		  if ((*bits & type) != type)
+		    {
+		      error = appropriate_error (*bits, type);
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 		    }
 		}
 	    }
 	  else
 	    {
-	      error = appropriate_error (bits, type);
+	      error = appropriate_error (*bits, type);
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 	}
@@ -7038,7 +6524,7 @@ au_set_user (MOP newuser)
 	{
 
 	  Au_user = newuser;
-	  Au_cache_index = index;
+	  au_set_cache_index (index);
 
 	  /*
 	   * it is important that we don't call sm_bump_local_schema_version() here
@@ -8720,85 +8206,6 @@ au_dump_user (MOP user, FILE * fp)
    */
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * au_print_class_auth() - Dumps authorization information for
- *                         a particular class.
- *   return: none
- *   class(in): class object
- *
- * Note: Used by the test program, should pass in a file pointer here !
- *       The db_root class used to have a user attribute which was a set
- *       containing the object-id for all users.  The users attribute has been
- *       eliminated for performance reasons.  A query on the db_user class is
- *       new used to find all users.
- */
-void
-au_print_class_auth (MOP class_mop)
-{
-  MOP user;
-  DB_SET *grants;
-  int j, title, gsize;
-  DB_VALUE element, value;
-  char *query;
-  DB_QUERY_RESULT *query_result;
-  DB_QUERY_ERROR query_error;
-  int error;
-  DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
-
-  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2);
-
-  if (query)
-    {
-      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
-
-      error = db_compile_and_execute_local (query, &query_result, &query_error);
-      /* error is row count if not negative. */
-      if (error > 0)
-	{
-	  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-	    {
-	      if (db_query_get_tuple_value (query_result, 0, &user_val) == NO_ERROR)
-		{
-		  user = db_get_object (&user_val);
-		  title = 0;
-		  obj_get (user, "authorization", &value);
-		  get_grants (db_get_object (&value), &grants, 1);
-		  gsize = set_size (grants);
-		  for (j = 0; j < gsize; j += GRANT_ENTRY_LENGTH)
-		    {
-		      set_get_element (grants, GRANT_ENTRY_CLASS (j), &element);
-		      if (db_get_object (&element) == class_mop)
-			{
-			  if (!title)
-			    {
-			      obj_get (user, "name", &value);
-			      if (db_get_string (&value) != NULL)
-				{
-				  fprintf (stdout,
-					   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION,
-							   MSGCAT_AUTH_USER_NAME2), db_get_string (&value));
-				}
-			      pr_clear_value (&value);
-			      title = 1;
-			    }
-			  au_print_grant_entry (grants, j, stdout);
-			}
-		    }
-		  set_free (grants);
-		}
-	    }
-	}
-      if (error >= 0)
-	{
-	  db_query_end (query_result);
-	}
-      free_and_init (query);
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * au_dump_to_file() - Dump all authorization information including
  *                     user/group hierarchy.
@@ -9200,7 +8607,7 @@ au_install (void)
       goto exit_on_error;
     }
   Au_user = Au_dba_user;
-  Au_cache_index = index;
+  au_set_cache_index (index);
 
   AU_SET_USER (Au_dba_user);
 
@@ -9337,8 +8744,7 @@ int
 au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
 {
   SM_CLASS *class_;
-  AU_CLASS_CACHE *cache;
-  unsigned int bits = 0;
+  unsigned int *bits = NULL;
   int error = NO_ERROR;
 
   if (!Au_disable)
@@ -9350,27 +8756,21 @@ au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
 
       class_ = (SM_CLASS *) mop->object;
 
-      cache = (AU_CLASS_CACHE *) class_->auth_cache;
-      if (cache == NULL)
+      bits = get_cache_bits (class_);
+      if (bits == NULL)
 	{
-	  cache = au_install_class_cache (class_);
-	  if (cache == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
+	  return er_errid ();
 	}
 
-      bits = cache->data[Au_cache_index];
-      if (bits == AU_CACHE_INVALID)
+      if (*bits == AU_CACHE_INVALID)
 	{
-	  error = update_cache (mop, class_, cache);
+	  error = update_cache (mop, class_);
 	  if (error == NO_ERROR)
 	    {
-	      bits = cache->data[Au_cache_index];
+	      bits = get_cache_bits (class_);
 	    }
 	}
-      *auth = bits;
+      *auth = *bits;
     }
 
   return error;
