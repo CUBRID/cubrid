@@ -1320,8 +1320,9 @@ $ LOADDB
 1298 Log recovery: UNDO 단계가 시작되었습니다. undo할 로그 페이지 수: %1$lld, undo할 트랜잭션 수: %2$d.
 1299 Log recovery: %1$s 단계를 마무리 중입니다.
 1300 Log recovery: %1$s 단계가 끝났습니다.
+1301 Log recovery: %1$s 진행도: (%2$lld/%3$lld), %4$.2f 퍼센트, 경과 시간: %5$.2f (s), 추정 남은 시간: %6$.2f (s).
 
-1301 마지막 에러
+1302 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
