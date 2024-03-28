@@ -1340,7 +1340,8 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1298 Registro de registro: se inicia la fase de deshacer. Páginas de registro para deshacer: %1$lld, transacciones para deshacer: %2$d.
 1299 Registro de registro: %1$s fase se está acabando.
 1300 Registro de registro: %1$s fase se termina.
-1301 Ultimo error
+1301 Registro de registro: %1$s progreso: (%2$lld/%3$lld), %4$.2f por ciento, tiempo transcurrido: %5$.2f (s), tiempo resistente estimado: %6$.2f (s).
+1302 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

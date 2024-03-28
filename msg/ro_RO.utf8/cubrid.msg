@@ -1340,7 +1340,8 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1298 Recuperarea jurnalului: Faza de anulare este pornită. Jurnal Pagini pentru a anula: %1$lld, tranzacții pentru a anula: %2$d.
 1299 Recuperarea jurnalului: %1$S este terminat.
 1300 Recuperarea jurnalului: %1$S este terminată.
-1301 Ultima eroare
+1301 Recuperare jurnal: %1$s progres: (%2$lld/%3$lld), %4$.2f procent, timp scurs: %5$.2f (s), timp rămas estimat: %6$.2f (s).
+1302 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

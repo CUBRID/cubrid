@@ -1340,7 +1340,8 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1298 Ricupero della Log: è iniziata la fase UNDO. Pagine di log da annullare: %1$lld, transazioni da annullare: %2$d.
 1299 Ricostituzione di log: fase di recupero del %1$s è in corso di completamento.
 1300 Ricupero di log: fase di recupero del %1$s è terminata.
-1301 Ultimo errore
+1301 Recupero log: %1$s progresso: (%2$lld/%3$lld), %4$.2f percento, tempo trascorso: %5$.2f (s), tempo rimanente stimato: %6$.2f (s).
+1302 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

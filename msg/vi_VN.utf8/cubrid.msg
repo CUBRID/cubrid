@@ -1340,7 +1340,8 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1298 Log recovery: UNDO Phase is started. Log pages to undo: %1$lld, transactions to undo: %2$d.
 1299 Log recovery: %1$s Phase is being finished up.
 1300 Log recovery: %1$s Phase is finished.
-1301 Last Error
+1301 Log recovery: %1$s progress: (%2$lld/%3$lld), %4$.2f percent, elapsed time: %5$.2f (s), estimated remaining time: %6$.2f (s).
+1302 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

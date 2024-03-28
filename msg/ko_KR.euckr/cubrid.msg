@@ -1334,8 +1334,14 @@ $ LOADDB
 1263 로그 페이지 (pageid: %1$lld) 암호화에 실패했습니다. 해당 페이지는 더 이상 암호화되지 않습니다.
 1264 CAS 내부 에러 : %1$d 
 1265 CAS 내부 에러 : %1$d, %2$s
+1296 Log recovery: ANALYSIS 단계가 시작되었습니다.
+1297 Log recovery: REDO 단계가 시작되었습니다. redo할 로그 페이지 수: %1$lld, redo할 로그 레코드 수: %2$lld.
+1298 Log recovery: UNDO 단계가 시작되었습니다. undo할 로그 페이지 수: %1$lld, undo할 트랜잭션 수: %2$d.
+1299 Log recovery: %1$s 단계를 마무리 중입니다.
+1300 Log recovery: %1$s 단계가 끝났습니다.
+1301 Log recovery: %1$s 진행도: (%2$lld/%3$lld), %4$.2f 퍼센트, 경과 시간: %5$.2f (s), 추정 남은 시간: %6$.2f (s).
 
-1266 마지막 에러
+1302 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
