@@ -13211,6 +13211,7 @@ pt_apply_name (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.name.path_correlation, arg);
   PT_APPLY_WALK (parser, p->info.name.default_value, arg);
+  PT_APPLY_WALK (parser, p->info.name.constant_value, arg);
   PT_APPLY_WALK (parser, p->info.name.indx_key_limit, arg);
   return p;
 }
