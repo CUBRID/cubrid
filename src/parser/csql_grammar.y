@@ -85,6 +85,10 @@ extern int msg_ptr;
 extern int yybuffer_pos;
 extern int is_dblink_query_string;
 
+/* the stream_buffer and stream_ptr is used to extract query spec of a view in loaddb */
+extern char *stream_buffer;
+extern int stream_ptr;
+
 #if defined(SA_MODE)
      /*
      ** DBG_TRACE_LEVEL is specified by referring to the following.
@@ -462,10 +466,10 @@ static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * n
 void _push_msg (int code, int line);
 void pop_msg (void);
 
+char *g_view_string; /* for extracting view's query spec */
 char *g_query_string;
 int g_query_string_len;
 int g_original_buffer_len;
-
 
 /*
  * The behavior of location propagation when a rule is matched must
