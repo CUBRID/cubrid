@@ -1034,6 +1034,13 @@ struct xasl_node
   int cte_host_var_count;
   int *cte_host_var_index;
 
+  MHT_TABLE *sq_cache_ht;
+  int sq_cache_flag;
+  size_t sq_cache_hit;
+  size_t sq_cache_miss;
+  size_t sq_cache_size;
+  size_t sq_cache_size_max;
+
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
   LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite locking for queries which obtain candidate
