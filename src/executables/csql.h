@@ -243,7 +243,11 @@ extern "C"
     S_CMD_SINGLELINE,
 
     S_CMD_CONNECT,
-    S_CMD_MIDXKEY
+
+    S_CMD_MIDXKEY,
+
+/* cmd PL/CSQL stuffs */
+    S_CMD_SERVER_OUTPUT
   } SESSION_CMD;
 
 /* iq_ function return status */
@@ -289,6 +293,7 @@ extern "C"
     char column_delimiter;
     char column_enclosure;
     bool loaddb_output;
+    bool pl_server_output;
 #if defined(CSQL_NO_LONGGING)
     bool no_logging;
 #endif				/* CSQL_NO_LONGGING */

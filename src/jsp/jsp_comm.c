@@ -132,12 +132,9 @@ jsp_disconnect_server (SOCKET & sockfd)
 int
 jsp_writen (SOCKET fd, const void *vptr, int n)
 {
-  int nleft;
   int nwritten;
-  const char *ptr;
-
-  ptr = (const char *) vptr;
-  nleft = n;
+  int nleft = n;
+  const char *ptr = (const char *) vptr;
 
   while (nleft > 0)
     {
@@ -186,6 +183,12 @@ jsp_readn (SOCKET fd, void *vptr, int n)
 {
   const static int PING_TIMEOUT = 5000;
   return css_readn (fd, (char *) vptr, n, PING_TIMEOUT);
+}
+
+int
+jsp_readn_with_timeout (SOCKET fd, void *vptr, int n, int timeout)
+{
+  return css_readn (fd, (char *) vptr, n, timeout);
 }
 
 int

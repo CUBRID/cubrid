@@ -130,7 +130,10 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"singleline", S_CMD_SINGLELINE, CMD_EMPTY_FLAG},
 
   {"connect", S_CMD_CONNECT, CMD_EMPTY_FLAG},
-  {"midxkey", S_CMD_MIDXKEY, CMD_EMPTY_FLAG}	/* This is NOT displayed as a result of the ";help" command. */
+
+  {"midxkey", S_CMD_MIDXKEY, CMD_EMPTY_FLAG},	/* This is NOT displayed as a result of the ";help" command. */
+
+  {"server-output", S_CMD_SERVER_OUTPUT, CMD_CHECK_CONNECT}
 };
 
 /*

@@ -914,7 +914,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              クラスファイルがもう存在したらオーバーライトする。; デフォルト: オーバーライトしない\n
+  -y, --overwrite              クラスファイルがもう存在したらオーバーライトする。; デフォルト: オーバーライトしない\n\
+  -p, --package                Javaパッケージ名、指定されていない場合は空\n\
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 出力ファイル「%1$s」が開けません。\n

@@ -74,6 +74,11 @@ namespace cubmethod
     void dump ();
   };
 
+  struct host_variable_info : public cubpacking::packable_object
+  {
+
+  };
+
   struct prepare_info : public cubpacking::packable_object
   {
     prepare_info ();

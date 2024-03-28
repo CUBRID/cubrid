@@ -1444,8 +1444,9 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1358 Le nombre de lignes affectées est inconnu.
 
 1359 Java VM crashed: %1$s
+1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
-1360 Dernière erreur
+1361 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1507,8 +1508,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 31 instruction non valide: create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 instruction non valide: create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 instruction non valide: create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 instruction non valide: create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 instruction non valide: create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+34 instruction non valide: create procedure\n  CREATE [OR REPLACE] PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {procedure_source|procedure_spec}
+35 instruction non valide: create function\n  CREATE [OR REPLACE] FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {function_source|function_spec}
 36 instruction non valide: groups\n  groups spec: GROUPS identifier {, identifier}*
 37 instruction non valide: members\n  member spec: MEMBERS identifier {, identifier}*
 38 instruction non valide: password\n  password spec: PASSWORD 'STRING'
@@ -1930,6 +1931,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
+317 Identifiers cannot be in a LIMIT clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

@@ -258,6 +258,7 @@ EXPORTS
     db_need_reconnect
     db_object
     db_objlist_free
+    db_init_lexer_lineno
     db_open_buffer
     db_ping_server
     db_push_values

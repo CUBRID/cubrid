@@ -42,8 +42,8 @@ namespace cubmethod
   int method_invoke_builtin::invoke (cubthread::entry *thread_p, std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
     int error = NO_ERROR;
-    cubmethod::header header (METHOD_REQUEST_INVOKE /* default */, m_group->get_id());
-    cubmethod::invoke_builtin arg (m_method_sig);
+    cubmethod::header header (m_group->get_session_id(), METHOD_REQUEST_INVOKE /* default */, 0);
+    cubmethod::invoke_builtin arg (m_group->get_id (), m_method_sig);
     error = method_send_data_to_client (thread_p, header, arg);
     return error;
   }

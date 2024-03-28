@@ -43,7 +43,7 @@
 #endif
 
 #if defined (WINDOWS)
-#ifdef _EXPORTING
+#ifdef CUBRID_EXPORTING
 #define EXPORT_IMPORT    __declspec(dllexport)
 #else
 #define EXPORT_IMPORT    __declspec(dllimport)

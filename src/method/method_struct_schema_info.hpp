@@ -56,6 +56,20 @@ namespace cubmethod
     SCH_LAST = SCH_CROSS_REFERENCE
   };
 
+  struct schema_info_request : public cubpacking::packable_object
+  {
+    int type;
+    std::string arg1;
+    std::string arg2;
+    int flag;
+
+    schema_info_request ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+  };
+
   struct schema_info : public cubpacking::packable_object
   {
     int schema_type;
