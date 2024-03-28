@@ -1194,7 +1194,7 @@ $ LOADDB
 1125 Taşma anahtar dosyası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Yeni bir taşma sayfası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Boş bir taşma sayfayı sil. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Oturum kurtarma başlatılır. Uygulanacak günlük kayıt sayısı: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 Oturum kurtarma başlatılır.
 1129 Oturum kurtarma bitti.
 1130 İşlem kilit sayıları %1$d aştığı için işlem iptal edilir.
 1131 Dahili hata: Sayfa %1$d hacmi "%2$s"de bozulabilir.\n%3$s
@@ -1315,8 +1315,13 @@ $ LOADDB
 1246 Adres ve ad bilgisi alınırken hata oluştu. Kod: %1$d, mesaj: %2$s.
 1247 Internal CAS error : %1$d 
 1248 Internal CAS error : %1$d, %2$s
+1296 Günlük kurtarma: ANALİZ Aşaması başlatıldı.
+1297 Günlük kurtarma: REDO Aşaması başlatıldı. Yeniden yapılacak günlük sayfaları: %1$lld, Yeniden yapılacak günlük kayıtları: %2$lld.
+1298 Günlük kurtarma: GERİ AL Aşaması başlatıldı. Geri alınacak günlük sayfaları: %1$lld, geri alınacak işlemler: %2$d.
+1299 Günlük kurtarma: %1$s Aşama tamamlanıyor.
+1300 Günlük kurtarma: %1$s Aşama tamamlandı.
 
-1249 Son Hata
+1301 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

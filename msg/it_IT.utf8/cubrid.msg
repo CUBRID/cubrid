@@ -1194,7 +1194,7 @@ $ LOADDB
 1125 Creare il file chiave di overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. chiave: %5$s%6$s.
 1126 Creare una nuova pagina di overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. chiave: %5$s%6$s.
 1127 Eliminare una pagina di overflow vuota. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Recupero log è avviato. Il numero di record del log da applicare: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 Recupero log è avviato.
 1129 Recupero log è finito.
 1130 Transazione viene interrotta perché numero di lock counts supera il valore %1$d.
 1131 Errore interno: La pagina %1$d di volume "%2$s" potrebbe essere danneggiata.\n%3$s
@@ -1315,8 +1315,13 @@ $ LOADDB
 1246 Errore durante il recupero delle informazioni sull'indirizzo e sul nome. Codice : %1$d, Messaggio : %2$s.
 1247 Internal CAS error : %1$d 
 1248 Internal CAS error : %1$d, %2$s
+1296 Ricupero della scheda: è iniziata la fase ANALYSIS.
+1297 Ricostituzione della scheda: è iniziata la fase REDO. Pagine di log per ripetere: %1$lld, registrazioni di log per ripetere: %2$lld.
+1298 Ricupero della Log: è iniziata la fase UNDO. Pagine di log da annullare: %1$lld, transazioni da annullare: %2$d.
+1299 Ricostituzione di log: fase di recupero del %1$s è in corso di completamento.
+1300 Ricupero di log: fase di recupero del %1$s è terminata.
 
-1249 Ultimo errore
+1301 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

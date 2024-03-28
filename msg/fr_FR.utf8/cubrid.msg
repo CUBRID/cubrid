@@ -1194,7 +1194,7 @@ $ LOADDB
 1125 Création du fichier de clé de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
 1126 Création d'une nouvelle page de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
 1127 Suppression d'une page de débordement vide. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
-1128 Reprise du journal est démarré. Le nombre d'enregistrements de journal à appliquer: %1$lld. Page du jurnal: %2$lld ~ %3$lld.
+1128 Reprise du journal est démarré.
 1129 Reprise du journal est finie.
 1130 Transaction est abandonnée parce que nombre de verrous de la transaction dépasse %1$d.
 1131 Erreur interne: La page %1$d du volume "%2$s" peut être corrompue.\n%3$s
@@ -1315,8 +1315,13 @@ $ LOADDB
 1246 Erreur lors de l'obtention de l'adresse et du nom. Code : %1$d, message : %2$s.
 1247 Internal CAS error : %1$d 
 1248 Internal CAS error : %1$d, %2$s
+1296 Récupération des billes : la phase d'ANALYSE commence.
+1297 Récupération des logs : la phase REDO est lancée. Pages de log à refaire : %1$lld, enregistrements de log à refaire : %2$lld.
+1298 Récupération des logs : la phase de la DEOD est lancée. Pages de journal à défaire : %1$lld, transactions à défaire : %2$d.
+1299 Récupération des logs : %1$s La phase est en cours d'achèvement.
+1300 Récupération des billes : %1$s La phase est terminée.
 
-1249 Dernière erreur
+1301 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
