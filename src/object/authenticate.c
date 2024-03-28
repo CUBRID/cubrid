@@ -430,7 +430,7 @@ static int add_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor);
 static void drop_grant_entry (DB_SET * grants, int index);
 static int get_grants (MOP auth, DB_SET ** grant_ptr, int filter);
 static int apply_grants (MOP auth, MOP class_mop, unsigned int *bits);
-static int update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache);
+static int update_cache (MOP classop, SM_CLASS * sm_class);
 static int appropriate_error (unsigned int bits, unsigned int requested);
 static int check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type);
 
@@ -3571,7 +3571,7 @@ apply_grants (MOP auth, MOP class_mop, unsigned int *bits)
  *   cache(in):
  */
 static int
-update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
+update_cache (MOP classop, SM_CLASS * sm_class)
 {
   int error = NO_ERROR;
   DB_SET *groups = NULL;
@@ -3871,7 +3871,6 @@ static int
 check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
 {
   int error = NO_ERROR;
-  AU_CLASS_CACHE *cache;
   unsigned int *cache_bits;
   unsigned int mask;
 
@@ -3892,8 +3891,7 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
 
   if (*cache_bits == AU_CACHE_INVALID)
     {
-      cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
-      if (update_cache (classop, sm_class, cache))
+      if (update_cache (classop, sm_class))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -5886,7 +5884,6 @@ static int
 check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
 {
   int error = NO_ERROR;
-  AU_CLASS_CACHE *cache;
   unsigned int *bits;
 
   /*
@@ -5922,7 +5919,7 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
 	  if (*bits == AU_CACHE_INVALID)
 	    {
 	      /* update the cache and try again */
-	      error = update_cache (classobj, sm_class, cache);
+	      error = update_cache (classobj, sm_class);
 	      if (error == NO_ERROR)
 		{
 		  bits = get_cache_bits (sm_class);
@@ -8747,7 +8744,6 @@ int
 au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
 {
   SM_CLASS *class_;
-  AU_CLASS_CACHE *cache;
   unsigned int *bits = NULL;
   int error = NO_ERROR;
 
@@ -8768,7 +8764,7 @@ au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
 
       if (*bits == AU_CACHE_INVALID)
 	{
-	  error = update_cache (mop, class_, cache);
+	  error = update_cache (mop, class_);
 	  if (error == NO_ERROR)
 	    {
 	      bits = get_cache_bits (class_);
