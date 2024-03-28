@@ -698,6 +698,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
 
+#define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2373,6 +2375,12 @@ static unsigned int prm_first_log_pageid_flag = 0;
 bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
 static bool prm_statdump_force_add_int_max_default = false;
 static unsigned int prm_statdump_force_add_int_max_flag = 0;
+
+int PRM_RECOVERY_PROGRESS_LOGGING_INTERVAL = 0;
+static int prm_recovery_progress_logging_interval_default = 0;
+static int prm_recovery_progress_logging_interval_lower = 0;
+static int prm_recovery_progress_logging_interval_upper = 3600;
+static unsigned int prm_recovery_progress_logging_interval_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6112,7 +6120,19 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_ping_timeout_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_recovery_progress_logging_interval_flag,
+   (void *) &prm_recovery_progress_logging_interval_default,
+   (void *) &PRM_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   (void *) &prm_recovery_progress_logging_interval_upper,
+   (void *) &prm_recovery_progress_logging_interval_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

@@ -228,7 +228,7 @@ log_system_tdes::rv_get_tdes (TRANID trid)
 }
 
 log_tdes *
-log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
+log_system_tdes::rv_get_or_alloc_tdes (TRANID trid, const LOG_LSA &log_lsa)
 {
   log_tdes *tdes = rv_get_tdes (trid);
   if (tdes == NULL)
@@ -236,6 +236,7 @@ log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
       log_tdes *tdes = systdes_create_tdes ();
       tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
       tdes->trid = trid;
+      tdes->head_lsa = log_lsa;
       systb_System_tdes[trid] = tdes;
       return tdes;
     }
