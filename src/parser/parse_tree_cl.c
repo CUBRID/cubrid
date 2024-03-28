@@ -9417,7 +9417,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  if (!insert_with_use_sbr)
 	    {
-	      if (p->info.spec.cte_pointer != NULL)
+	      if (PT_SPEC_CTE_POINTER (p) != NULL)
 		{
 		  r1 = pt_print_bytes (parser, p->info.spec.cte_name);
 		  r1 = pt_append_bytes (parser, r1, " ", 1);
