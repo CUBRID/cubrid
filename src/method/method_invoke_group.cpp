@@ -358,6 +358,12 @@ namespace cubmethod
   query_cursor *
   method_invoke_group::create_cursor (QUERY_ID query_id, bool oid_included)
   {
+    if (query_id == NULL_QUERY_ID || query_id >= SHRT_MAX)
+      {
+	// false query e.g) SELECT * FROM db_class WHERE 0 <> 0
+	return nullptr;
+      }
+
     m_cursor_set.insert (query_id);
     return m_rctx->create_cursor (m_thread_p, query_id, oid_included);
   }

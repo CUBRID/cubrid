@@ -3604,11 +3604,11 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ALTER
-	  USER
-	  identifier
-	  opt_password
-	  opt_comment_spec
+	| ALTER				/* 1 */
+	  USER				/* 2 */
+	  identifier	        	/* 3 */
+	  opt_password  	        /* 4 */
+	  opt_comment_spec              /* 5 */
 		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier opt_password opt_comment_spec);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
@@ -3619,11 +3619,61 @@ alter_stmt
 			    node->info.alter_user.password = $4;
 			    node->info.alter_user.comment = $5;
 			    if (node->info.alter_user.password == NULL
-			        && node->info.alter_user.comment == NULL)
+				&& node->info.alter_user.comment == NULL)
 			      {
 			        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
                                MSGCAT_SYNTAX_INVALID_ALTER);
 			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  USER				/* 2 */
+	  identifier	        	/* 3 */
+	  ADD				/* 4 */
+	  MEMBERS			/* 5 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_MEMBERS); }
+	  identifier_list		/* 7 */
+		{ pop_msg(); }
+	  opt_comment_spec              /* 9 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier ADD MEMBERS identifier_list opt_comment_spec);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
+
+			if (node)
+			  {
+			    node->info.alter_user.user_name = $3;
+			    node->info.alter_user.code = PT_ADD_MEMBERS;
+			    node->info.alter_user.members = $7;
+			    node->info.alter_user.comment = $9;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  USER				/* 2 */
+	  identifier	        	/* 3 */
+	  DROP  	        	/* 4 */
+	  MEMBERS			/* 5 */
+		{ push_msg(MSGCAT_SYNTAX_INVALID_MEMBERS); }
+	  identifier_list		/* 7 */
+		{ pop_msg(); }
+	  opt_comment_spec              /* 9 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier DROP MEMBERS identifier_list opt_comment_spec);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
+
+			if (node)
+			  {
+			    node->info.alter_user.user_name = $3;
+			    node->info.alter_user.code = PT_DROP_MEMBERS;
+			    node->info.alter_user.members = $7;
+			    node->info.alter_user.comment = $9;
 			  }
 
 			$$ = node;

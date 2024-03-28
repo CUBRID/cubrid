@@ -203,7 +203,7 @@ static void emit_primary_key_def (extract_context & ctxt, print_output & output_
 static void emit_primary_and_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_,
 					 const char *class_type);
 static void emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_);
-static void emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_);
+static int emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_);
 static void emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * domains);
 static int emit_autoincrement_def (print_output & output_ctx, DB_ATTRIBUTE * attribute);
 static void emit_method_def (extract_context & ctxt, print_output & output_ctx, DB_METHOD * method,
@@ -245,6 +245,8 @@ static int create_filename_schema_info (const char *output_dirname, const char *
 static void str_tolower (char *str);
 
 static bool is_builtin_package_function (const char *sp_name);
+static PARSER_VARCHAR *do_recreate_where_clause_or_function_attr (PARSER_CONTEXT ** parser, const char *class_name,
+								  DB_CONSTRAINT * constraint, bool where_clause);
 
 /*
  * CLASS DEPENDENCY ORDERING
@@ -1426,13 +1428,17 @@ emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * cl
 	      DB_OBJLIST * vclass_list_has_using_index)
 {
   DB_OBJLIST *cl;
+  int err_count = 0;
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
       /* if its some sort of vclass then it can't have indexes */
       if (db_is_vclass (cl->op) <= 0)
 	{
-	  emit_index_def (ctxt, output_ctx, cl->op);
+	  if (emit_index_def (ctxt, output_ctx, cl->op) != NO_ERROR)
+	    {
+	      err_count++;
+	    }
 	}
     }
 
@@ -1441,7 +1447,7 @@ emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * cl
       emit_query_specs_has_using_index (ctxt, output_ctx, vclass_list_has_using_index);
     }
 
-  return 0;
+  return err_count;
 }
 
 /*
@@ -3296,10 +3302,10 @@ emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_O
 
 /*
  * emit_index_def - emit the index constraint definitions for this class
- *    return: void
+ *    return: 
  *    class(in): the class to emit the indexes for
  */
-static void
+static int
 emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_)
 {
   DB_CONSTRAINT *constraint_list, *constraint;
@@ -3316,10 +3322,15 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
   char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 
+  PARSER_CONTEXT *parser = NULL;
+  PARSER_VARCHAR *res_vstr = NULL;
+  int error = NO_ERROR;
+  bool is_fail = false;
+
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
     {
-      return;
+      return error;
     }
 
   cls_name = db_get_class_name (class_);
@@ -3437,6 +3448,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	    }
 	}
 
+      is_fail = false;
       k = 0;
       for (att = atts; k < n_attrs; att++)
 	{
@@ -3448,7 +3460,18 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 		    {
 		      output_ctx (", ");
 		    }
-		  output_ctx ("%s", constraint->func_index_info->expr_str);
+
+		  res_vstr = do_recreate_where_clause_or_function_attr (&parser, cls_name, constraint, false);
+		  if (res_vstr)
+		    {
+		      output_ctx ("%s", res_vstr->bytes);
+		    }
+		  else
+		    {
+		      output_ctx ("%s", constraint->func_index_info->expr_str);
+		      error = ER_FAILED;
+		      is_fail = true;
+		    }
 		  if (constraint->func_index_info->fi_domain->is_desc)
 		    {
 		      output_ctx ("%s", " DESC");
@@ -3492,7 +3515,18 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	{
 	  if (constraint->filter_predicate->pred_string)
 	    {
-	      output_ctx (") where %s", constraint->filter_predicate->pred_string);
+
+	      res_vstr = do_recreate_where_clause_or_function_attr (&parser, cls_name, constraint, true);
+	      if (res_vstr)
+		{
+		  output_ctx (") where %s", res_vstr->bytes);
+		}
+	      else
+		{
+		  output_ctx (") where %s", constraint->filter_predicate->pred_string);
+		  error = ER_FAILED;
+		  is_fail = true;
+		}
 	    }
 	}
       else
@@ -3536,8 +3570,23 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	  help_print_describe_comment (output_ctx, constraint->comment);
 	}
 
-      output_ctx (";\n");
+      if (is_fail == false)
+	{
+	  output_ctx (";\n");
+	}
+      else
+	{
+	  output_ctx (";%s\n", (parser ? "    /* Failure: Could be an error(Column name may be incorrect) */ "
+				: "    /* Notice: Could be an error */ "));
+	}
     }
+
+  if (parser)
+    {
+      parser_free_parser (parser);
+    }
+
+  return error;
 }
 
 
@@ -5691,4 +5740,104 @@ str_tolower (char *str)
       if (*p >= 'A' && *p <= 'Z')
 	*p = *p - 'A' + 'a';
     }
+}
+
+static PARSER_VARCHAR *
+do_recreate_where_clause_or_function_attr (PARSER_CONTEXT ** parser, const char *class_name, DB_CONSTRAINT * constraint,
+					   bool where_clause)
+{
+  PT_NODE **stmt;
+  PT_NODE *expr;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  PARSER_VARCHAR *res = NULL;
+  char qry_buf[4096];
+  char *query_str = qry_buf;
+  size_t query_str_len = 0;
+  char *in_str;
+  unsigned int save_custom;
+
+  assert (parser != NULL);
+  if (*parser == NULL)
+    {
+      *parser = parser_create_parser ();
+      if (*parser == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  assert (class_name != NULL);
+  if (where_clause)
+    {
+      in_str = constraint->filter_predicate->pred_string;
+      // SELECT 1 FROM [<class_name>] WHERE <in_str>  
+      query_str_len = strlen (in_str) + strlen (class_name) + 26;
+    }
+  else
+    {
+      in_str = constraint->func_index_info->expr_str;
+      // SELECT <in_str>  FROM [<class_name>]
+      query_str_len = strlen (in_str) + strlen (class_name) + 16;
+    }
+
+  if (query_str_len > sizeof (qry_buf))
+    {
+      query_str = (char *) malloc (query_str_len);
+      if (query_str == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_str_len);
+	  parser_free_parser (*parser);
+	  *parser = NULL;
+	  return NULL;
+	}
+    }
+
+  if (where_clause)
+    {
+      snprintf (query_str, query_str_len, "SELECT 1 FROM [%s] WHERE %s", class_name, in_str);
+    }
+  else
+    {
+      snprintf (query_str, query_str_len, "SELECT %s FROM [%s]", in_str, class_name);
+    }
+
+  stmt = parser_parse_string_use_sys_charset (*parser, query_str);
+  if (stmt == NULL || *stmt == NULL || pt_has_error (*parser))
+    {
+      goto error_exit;
+    }
+
+  expr = where_clause ? (*stmt)->info.query.q.select.where : (*stmt)->info.query.q.select.list;
+
+  *stmt = pt_resolve_names (*parser, *stmt, &sc_info);
+  if (*stmt == NULL || pt_has_error (*parser))
+    {
+      goto error_exit;
+    }
+
+  *stmt = pt_semantic_type (*parser, *stmt, &sc_info);
+  if (*stmt == NULL || pt_has_error (*parser))
+    {
+      goto error_exit;
+    }
+
+  /* make sure paren_type is 0 so parenthesis are not printed */
+  expr->info.expr.paren_type = 0;
+
+  save_custom = (*parser)->custom_print;
+  (*parser)->custom_print |= PT_CHARSET_COLLATE_FULL;
+  (*parser)->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+  (*parser)->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+  (*parser)->custom_print |= PT_SUPPRESS_RESOLVED;
+
+  res = pt_print_bytes (*parser, expr);
+  (*parser)->custom_print = save_custom;
+
+error_exit:
+  if (query_str != qry_buf)
+    {
+      free (query_str);
+    }
+
+  return res;
 }
