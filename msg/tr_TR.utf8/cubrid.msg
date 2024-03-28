@@ -1320,8 +1320,9 @@ $ LOADDB
 1298 Günlük kurtarma: GERİ AL Aşaması başlatıldı. Geri alınacak günlük sayfaları: %1$lld, geri alınacak işlemler: %2$d.
 1299 Günlük kurtarma: %1$s Aşama tamamlanıyor.
 1300 Günlük kurtarma: %1$s Aşama tamamlandı.
+1301 Günlük kurtarma: %1$s ilerleme: (%2$lld/%3$lld), %4$.2f, geçen süre: %5$.2f (s), tahmini kalan süre: %6$.2f (s).
 
-1301 Son Hata
+1302 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

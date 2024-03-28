@@ -1611,9 +1611,10 @@
 #define ER_LOG_RECOVERY_UNDO_STARTED                -1298
 #define ER_LOG_RECOVERY_PHASE_FINISHING_UP          -1299
 #define ER_LOG_RECOVERY_PHASE_FINISHED              -1300
+#define ER_LOG_RECOVERY_PROGRESS                    -1301
 
 
-#define ER_LAST_ERROR                               -1301
+#define ER_LAST_ERROR                               -1302
 
 /*
  * CAUTION!
