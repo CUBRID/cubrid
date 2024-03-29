@@ -43,6 +43,7 @@
 #include "databases_file.h"
 #include "object_fetch.h"
 #include "extract_schema.hpp"
+#include "schema_system_catalog_constants.h"
 
 
 class print_output;
@@ -50,15 +51,14 @@ class print_output;
 /*
  * Authorization Class Names
  */
+#define AU_ROOT_CLASS_NAME      CT_ROOT_NAME
+#define AU_OLD_ROOT_CLASS_NAME  CT_AUTHORIZATIONS_NAME
+#define AU_USER_CLASS_NAME      CT_USER_NAME
+#define AU_PASSWORD_CLASS_NAME  CT_PASSWORD_NAME
+#define AU_AUTH_CLASS_NAME      CT_AUTHORIZATION_NAME
 
-extern const char *AU_ROOT_CLASS_NAME;
-extern const char *AU_OLD_ROOT_CLASS_NAME;
-extern const char *AU_USER_CLASS_NAME;
-extern const char *AU_PASSWORD_CLASS_NAME;
-extern const char *AU_AUTH_CLASS_NAME;
-extern const char *AU_GRANT_CLASS_NAME;
-extern const char *AU_PUBLIC_USER_NAME;
-extern const char *AU_DBA_USER_NAME;
+#define AU_PUBLIC_USER_NAME     "PUBLIC"
+#define AU_DBA_USER_NAME        "DBA"
 
 /*
  * Authorization Types
@@ -74,6 +74,18 @@ extern const char *AU_DBA_USER_NAME;
 #define AU_ALTER        DB_AUTH_ALTER
 #define AU_INDEX        DB_AUTH_INDEX
 #define AU_EXECUTE      DB_AUTH_EXECUTE
+
+enum AU_OBJECT
+{
+  AU_OBJECT_CLASS,		/* TABLE, VIEW (_db_class) */
+  AU_OBJECT_TRIGGER,		/* TRIGGER (_db_trigger) */
+  AU_OBJECT_SERIAL,		/* SERIAL (db_serial) */
+  AU_OBJECT_SERVER,		/* SERVER (db_server) */
+  AU_OBJECT_SYNONYM,		/* SYNONYM (_db_synonym) */
+  AU_OBJECT_PROCEDURE		/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
+};
+
+extern const char *AU_OBJECT_CLASS_NAME[];
 
 /*
  * Mask to extract only the authorization bits from a cache.  This can also
@@ -179,6 +191,7 @@ extern MOP Au_public_user;
 extern char Au_user_password[AU_MAX_PASSWORD_BUF + 4];
 extern int Au_disable;
 
+extern MOP Au_user_class;
 
 extern void au_init (void);
 extern void au_final (void);
@@ -242,11 +255,6 @@ extern void au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VA
 extern void au_dump (void);
 extern void au_dump_to_file (FILE * fp);
 extern void au_dump_user (MOP user, FILE * fp);
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/* used by test code, should be changed to au_dump . . . */
-extern void au_print_class_auth (MOP class_mop);
-#endif
 
 /* called only at initialization time to get the static methods linked */
 extern void au_link_static_methods (void);
