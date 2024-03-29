@@ -44,6 +44,7 @@
 #include "object_fetch.h"
 #include "extract_schema.hpp"
 #include "schema_system_catalog_constants.h"
+#include "set_object.h"
 
 
 class print_output;
@@ -269,6 +270,10 @@ extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 /*
  * Etc
  */
+
+extern int au_get_set (MOP obj, const char *attname, DB_SET ** set);
+extern int au_get_object (MOP obj, const char *attname, MOP * mop_ptr);
+extern int au_set_get_obj (DB_SET * set, int index, MOP * obj);
 
 extern void au_find_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name);
 extern void au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VALUE * password);

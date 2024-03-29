@@ -49,7 +49,6 @@
 #include "class_object.h"
 #include "schema_manager.h"
 #include "authenticate.h"
-#include "set_object.h"
 #include "object_accessor.h"
 #include "encryption.h"
 #include "crypt_opfunc.h"
@@ -71,6 +70,7 @@
 #include "printer.hpp"
 #include "schema_system_catalog.hpp"
 #include "authenticate_cache.hpp"
+#include "authenticate_grant.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -103,45 +103,6 @@ extern bool catcls_Enable;
 #define MSGCAT_AUTH_AUTH_TITLE          15
 #define MSGCAT_AUTH_USER_DIRECT_GROUPS  16
 
-const char *AU_TYPE_SET[] = {
-  "SELECT",			/* DB_AUTH_SELECT */
-  "INSERT",			/* DB_AUTH_INSERT */
-  "UPDATE",			/* DB_AUTH_UPDATE */
-  "DELETE",			/* DB_AUTH_DELETE */
-  "ALTER",			/* DB_AUTH_ALTER */
-  "INDEX",			/* DB_AUTH_INDEX */
-  "EXECUTE"			/* DB_AUTH_EXECUTE */
-};
-
-const int AU_TYPE_SET_LEN[] = {
-  strlen ("SELECT"),		/* DB_AUTH_SELECT */
-  strlen ("INSERT"),		/* DB_AUTH_INSERT */
-  strlen ("UPDATE"),		/* DB_AUTH_UPDATE */
-  strlen ("DELETE"),		/* DB_AUTH_DELETE */
-  strlen ("ALTER"),		/* DB_AUTH_ALTER */
-  strlen ("INDEX"),		/* DB_AUTH_INDEX */
-  strlen ("EXECUTE")		/* DB_AUTH_EXECUTE */
-};
-
-/*
- * Grant set structure
- *
- * Note :
- *    Grant information is stored packed in a sequence.  These
- *    macros define the length of the "elements" of the sequence and the
- *    offsets to particular fields in each element.  Previously, grants
- *    were stored in their own object but that lead to serious performance
- *    problems as we tried to load each grant object from the server.
- *    This way, grants are stored in the set directly with the authorization
- *    object so only one fetch is required.
- *
- */
-
-#define GRANT_ENTRY_LENGTH 		3
-#define GRANT_ENTRY_CLASS(index) 	(index )
-#define GRANT_ENTRY_SOURCE(index) 	((index) + 1)
-#define GRANT_ENTRY_CACHE(index) 	((index) + 2)
-
 #define PASSWORD_ENCRYPTION_SEED        "U9a$y1@zw~a0%"
 #define ENCODE_PREFIX_DEFAULT           (char)0
 #define ENCODE_PREFIX_DES               (char)1
@@ -169,28 +130,6 @@ enum fetch_by
   BY_CLASS_MOP			/* fetch a class by the class mop */
 };
 typedef enum fetch_by FETCH_BY;
-
-/*
- * AU_GRANT
- *
- * This is an internal structure used to calculate the recursive
- * effects of a revoke operation.
- */
-typedef struct au_grant AU_GRANT;
-struct au_grant
-{
-  struct au_grant *next;
-
-  MOP auth_object;
-  MOP user;
-  MOP grantor;
-
-  DB_SET *grants;
-  int grant_index;
-
-  int grant_option;
-  int legal;
-};
 
 /*
  * AU_OBJECT_CLASS_NAME
@@ -401,18 +340,7 @@ static DB_METHOD_LINK au_static_links[] = {
   {NULL, NULL}
 };
 
-
-static int au_get_set (MOP obj, const char *attname, DB_SET ** set);
-static int au_get_object (MOP obj, const char *attname, MOP * mop_ptr);
-static int au_set_get_obj (DB_SET * set, int index, MOP * obj);
-
 static MOP au_make_user (const char *name);
-static int au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, bool grant_option);
-static MOP au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type);
-static int au_insert_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option);
-static int au_update_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option);
-static int au_delete_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type);
-static int au_propagate_del_new_auth (AU_GRANT * glist, DB_AUTH mask);
 
 static int check_user_name (const char *name);
 static void encrypt_password (const char *pass, int add_prefix, char *dest);
@@ -424,21 +352,6 @@ static int au_set_password_internal (MOP user, const char *password, int encode,
 static int au_add_direct_groups (DB_SET * new_groups, DB_VALUE * value);
 static int au_compute_groups (MOP member, const char *name);
 static int au_add_member_internal (MOP group, MOP member, int new_user);
-
-static int find_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor);
-static int add_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor);
-static void drop_grant_entry (DB_SET * grants, int index);
-static int get_grants (MOP auth, DB_SET ** grant_ptr, int filter);
-static int apply_grants (MOP auth, MOP class_mop, unsigned int *bits);
-static int update_cache (MOP classop, SM_CLASS * sm_class);
-static int appropriate_error (unsigned int bits, unsigned int requested);
-static int check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type);
-
-static void free_grant_list (AU_GRANT * grants);
-static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index,
-				 AU_GRANT ** return_grants);
-static void map_grant_list (AU_GRANT * grants, MOP grantor);
-static int propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask);
 
 static int is_protected_class (MOP classmop, SM_CLASS * sm_class, DB_AUTH auth);
 static int check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type);
@@ -478,7 +391,7 @@ static int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_
  *   attname(in):
  *   set(in):
  */
-static int
+int
 au_get_set (MOP obj, const char *attname, DB_SET ** set)
 {
   int error = NO_ERROR;
@@ -533,7 +446,7 @@ au_get_set (MOP obj, const char *attname, DB_SET ** set)
  *   attname(in):
  *   mop_ptr(in):
  */
-static int
+int
 au_get_object (MOP obj, const char *attname, MOP * mop_ptr)
 {
   int error = NO_ERROR;
@@ -569,7 +482,7 @@ au_get_object (MOP obj, const char *attname, MOP * mop_ptr)
  *   index(in):
  *   obj(out):
  */
-static int
+int
 au_set_get_obj (DB_SET * set, int index, MOP * obj)
 {
   int error = NO_ERROR;
@@ -868,36 +781,6 @@ exit:
 }
 
 /*
- * au_find_user_method - Method interface to au_find_user.
- *   return: none
- *   class(in):
- *   returnval(out):
- *   name(in):
- */
-void
-au_find_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name)
-{
-  MOP user;
-  int error = NO_ERROR;
-
-  db_make_null (returnval);
-  if (name != NULL && IS_STRING (name) && !DB_IS_NULL (name) && db_get_string (name) != NULL)
-    {
-      user = au_find_user (db_get_string (name));
-      if (user != NULL)
-	{
-	  db_make_object (returnval, user);
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_USER;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-      db_make_error (returnval, error);
-    }
-}
-
-/*
  * au_make_user -  Create a new user object. Convert the name to upper case
  *                 so that au_find_user can use a query.
  *   return: new user object
@@ -1010,606 +893,6 @@ memory_error:
   return NULL;
 }
 
-/*
- * au_set_new_auth -
- *   return: error code
- *   au_obj(in):
- *   grantor(in):
- *   user(in):
- *   class(in):
- *   auth_type(in):
- *   grant_option(in):
- */
-static int
-au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, bool grant_option)
-{
-  int error = NO_ERROR;
-  MOP au_class, db_class = NULL, db_class_inst = NULL;
-  DB_VALUE value, class_name_val;
-  DB_AUTH type;
-  int i;
-
-  if (au_obj == NULL)
-    {
-      au_class = sm_find_class (CT_CLASSAUTH_NAME);
-      if (au_class == NULL)
-	{
-	  error = ER_AU_MISSING_CLASS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, CT_CLASSAUTH_NAME);
-	  return error;
-	}
-      au_obj = db_create_internal (au_class);
-      if (au_obj == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-    }
-
-  db_make_object (&value, grantor);
-  obj_set (au_obj, "grantor", &value);
-
-  db_make_object (&value, user);
-  obj_set (au_obj, "grantee", &value);
-
-  db_class = sm_find_class (CT_CLASS_NAME);
-  if (db_class == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  db_make_string (&class_name_val, sm_get_ch_name (class_mop));
-  db_class_inst = obj_find_unique (db_class, "unique_name", &class_name_val, AU_FETCH_READ);
-  if (db_class_inst == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      pr_clear_value (&class_name_val);
-      return er_errid ();
-    }
-
-  db_make_object (&value, db_class_inst);
-  obj_set (au_obj, "class_of", &value);
-
-  for (type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++)
-    {
-      ;
-    }
-
-  db_make_varchar (&value, 7, AU_TYPE_SET[i], AU_TYPE_SET_LEN[i], LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  obj_set (au_obj, "auth_type", &value);
-
-  db_make_int (&value, (int) grant_option);
-  obj_set (au_obj, "is_grantable", &value);
-
-  pr_clear_value (&class_name_val);
-  return NO_ERROR;
-}
-
-/*
- * au_get_new_auth -
- *   return:
- *   grantor(in):
- *   user(in):
- *   class_mop(in):
- *   auth_type(in):
- */
-static MOP
-au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
-{
-  int error = NO_ERROR, save, i;
-  DB_AUTH type;
-  MOP ret_obj = NULL;
-  const char *class_name;
-  const char *sql_query =
-    "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
-    " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?"
-    " AND [au].[class_of].[unique_name] = ? AND [au].[auth_type] = ?";
-  enum
-  {
-    INDEX_FOR_GRANTEE_NAME = 0,
-    INDEX_FOR_GRANTOR_NAME = 1,
-    INDEX_FOR_CLASS_NAME = 2,
-    INDEX_FOR_AUTH_TYPE = 3,
-    /* Total count for the above */
-    COUNT_FOR_VARIABLES
-  };
-  DB_VALUE val[COUNT_FOR_VARIABLES];
-  DB_VALUE grant_value;
-  DB_QUERY_RESULT *result = NULL;
-  DB_SESSION *session = NULL;
-  STATEMENT_ID stmt_id;
-
-  for (i = 0; i < COUNT_FOR_VARIABLES; i++)
-    {
-      db_make_null (&val[i]);
-    }
-
-  db_make_null (&grant_value);
-
-  /* Disable the checking for internal authorization object access */
-  AU_DISABLE (save);
-
-  /* Prepare DB_VALUEs for host variables */
-  error = obj_get (user, "name", &val[INDEX_FOR_GRANTEE_NAME]);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-  else if (!IS_STRING (&val[INDEX_FOR_GRANTEE_NAME]) || DB_IS_NULL (&val[INDEX_FOR_GRANTEE_NAME])
-	   || db_get_string (&val[INDEX_FOR_GRANTEE_NAME]) == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_OR_INVALID_USER, 0);
-      goto exit;
-    }
-
-  error = obj_get (grantor, "name", &val[INDEX_FOR_GRANTOR_NAME]);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-  else if (!IS_STRING (&val[INDEX_FOR_GRANTOR_NAME]) || DB_IS_NULL (&val[INDEX_FOR_GRANTOR_NAME])
-	   || db_get_string (&val[INDEX_FOR_GRANTOR_NAME]) == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_OR_INVALID_USER, 0);
-      goto exit;
-    }
-
-  class_name = db_get_class_name (class_mop);
-  if (class_name == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
-      goto exit;
-    }
-  db_make_string (&val[INDEX_FOR_CLASS_NAME], class_name);
-
-  for (type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++)
-    {
-      ;
-    }
-  db_make_string (&val[INDEX_FOR_AUTH_TYPE], AU_TYPE_SET[i]);
-
-  session = db_open_buffer (sql_query);
-  if (session == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto release;
-    }
-
-  error = db_push_values (session, COUNT_FOR_VARIABLES, val);
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto release;
-    }
-
-  stmt_id = db_compile_statement (session);
-  if (stmt_id != 1)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto release;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &result);
-
-  /* The error value is row count if it's not negative value. */
-  if (error == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      goto release;
-    }
-  else if (error < 0)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto release;
-    }
-
-  error = NO_ERROR;
-
-  if (db_query_first_tuple (result) == DB_CURSOR_SUCCESS)
-    {
-      if (db_query_get_tuple_value (result, 0, &grant_value) == NO_ERROR)
-	{
-	  ret_obj = NULL;
-	  if (!DB_IS_NULL (&grant_value))
-	    {
-	      ret_obj = db_get_object (&grant_value);
-	    }
-	}
-
-      assert (db_query_next_tuple (result) == DB_CURSOR_END);
-    }
-
-  assert (ret_obj != NULL);
-
-release:
-  if (result != NULL)
-    {
-      db_query_end (result);
-    }
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
-
-exit:
-  AU_ENABLE (save);
-
-  db_value_clear (&grant_value);
-
-  for (i = 0; i < COUNT_FOR_VARIABLES; i++)
-    {
-      db_value_clear (&val[i]);
-    }
-
-  if (ret_obj == NULL && er_errid () == NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-    }
-
-  return (ret_obj);
-}
-
-/*
- * au_insert_new_auth -
- *   return: error code
- *   grantor(in):
- *   user(in):
- *   class_mop(in):
- *   auth_type(in):
- *   grant_option(in):
- */
-static int
-au_insert_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option)
-{
-  int index;
-  int error = NO_ERROR;
-
-  for (index = DB_AUTH_EXECUTE; index; index >>= 1)
-    {
-      if (auth_type & index)
-	{
-	  error =
-	    au_set_new_auth (NULL, grantor, user, class_mop, (DB_AUTH) index, ((grant_option & index) ? true : false));
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
-    }
-
-  return error;
-}
-
-/*
- * au_update_new_auth -
- *   return: error code
- *   grantor(in):
- *   user(in):
- *   class_mop(in):
- *   auth_type(in):
- *   grant_option(in):
- */
-static int
-au_update_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option)
-{
-  MOP au_obj;
-  int index;
-  int error = NO_ERROR;
-
-  for (index = DB_AUTH_EXECUTE; index; index >>= 1)
-    {
-      if (auth_type & index)
-	{
-	  au_obj = au_get_new_auth (grantor, user, class_mop, (DB_AUTH) index);
-	  if (au_obj == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-
-	  error = obj_inst_lock (au_obj, 1);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-
-	  error =
-	    au_set_new_auth (au_obj, grantor, user, class_mop, (DB_AUTH) index,
-			     ((grant_option & index) ? true : false));
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	}
-    }
-
-  return error;
-}
-
-/*
- * au_delete_new_auth -
- *   return: error code
- *   grantor(in):
- *   user(in):
- *   class_mop(in):
- *   auth_type(in):
- */
-static int
-au_delete_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
-{
-  MOP au_obj;
-  int index;
-  int error = NO_ERROR;
-
-  for (index = DB_AUTH_EXECUTE; index; index >>= 1)
-    {
-      if (auth_type & index)
-	{
-	  au_obj = au_get_new_auth (grantor, user, class_mop, (DB_AUTH) index);
-	  if (au_obj == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-
-	  error = obj_inst_lock (au_obj, 1);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-
-	  error = obj_delete (au_obj);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	}
-    }
-
-  return error;
-}
-
-/*
- * au_propagate_del_new_auth -
- *   return: error code
- *   glist(in):
- *   mask(in):
- */
-static int
-au_propagate_del_new_auth (AU_GRANT * glist, DB_AUTH mask)
-{
-  AU_GRANT *g;
-  DB_SET *grants;
-  DB_VALUE class_, type;
-  int error = NO_ERROR;
-
-  for (g = glist; g != NULL; g = g->next)
-    {
-      if (!g->legal)
-	{
-	  error = get_grants (g->auth_object, &grants, 0);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-
-	  error = set_get_element (grants, GRANT_ENTRY_CLASS (g->grant_index), &class_);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-
-	  error = set_get_element (grants, GRANT_ENTRY_CACHE (g->grant_index), &type);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-
-	  error =
-	    au_delete_new_auth (g->grantor, g->user, db_get_object (&class_), (DB_AUTH) (db_get_int (&type) & ~mask));
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
-    }
-
-  return error;
-}
-
-/*
- * au_force_write_new_auth -
- *   return: error code
- */
-int
-au_force_write_new_auth (void)
-{
-  DB_OBJLIST *list, *mop;
-  MOP au_class, au_obj;
-  DB_VALUE grants_val;
-  DB_SET *grants;
-  DB_VALUE grantor_val, grantee_val, class_val, auth_val;
-  MOP grantor, grantee, class_;
-  DB_AUTH auth;
-  int gindex, gsize;
-  int save;
-  int error = NO_ERROR;
-
-  list = NULL;
-
-  AU_DISABLE (save);
-
-  au_class = sm_find_class (AU_AUTH_CLASS_NAME);
-  if (au_class == NULL)
-    {
-      error = ER_AU_NO_AUTHORIZATION;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto end;
-    }
-
-  list = sm_fetch_all_objects (au_class, DB_FETCH_CLREAD_INSTREAD);
-  if (list == NULL)
-    {
-      error = ER_AU_NO_AUTHORIZATION;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto end;
-    }
-
-  for (mop = list; mop != NULL; mop = mop->next)
-    {
-      au_obj = mop->op;
-
-      error = obj_get (au_obj, "owner", &grantee_val);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      grantee = db_get_object (&grantee_val);
-
-      error = obj_get (au_obj, "grants", &grants_val);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      grants = db_get_set (&grants_val);
-
-      gsize = set_size (grants);
-      for (gindex = 0; gindex < gsize; gindex += GRANT_ENTRY_LENGTH)
-	{
-	  error = set_get_element (grants, GRANT_ENTRY_CLASS (gindex), &class_val);
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-	  class_ = db_get_object (&class_val);
-
-	  error = set_get_element (grants, GRANT_ENTRY_SOURCE (gindex), &grantor_val);
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-	  grantor = db_get_object (&grantor_val);
-
-	  error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &auth_val);
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-	  auth = (DB_AUTH) db_get_int (&auth_val);
-
-	  error =
-	    au_insert_new_auth (grantor, grantee, class_, (DB_AUTH) (auth & AU_TYPE_MASK), (auth & AU_GRANT_MASK));
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-	}
-    }
-
-end:
-  if (list)
-    {
-      ml_ext_free (list);
-    }
-
-  AU_ENABLE (save);
-
-  return error;
-}
-
-/*
- * au_delete_auth_of_dropping_table - delete _db_auth records refers to the given table.
- *   return: error code
- *   class_name(in): the class name to be dropped
- */
-int
-au_delete_auth_of_dropping_table (const char *class_name)
-{
-  int error = NO_ERROR, save;
-  const char *sql_query =
-    "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[class_of] IN" " (SELECT [cl] FROM " CT_CLASS_NAME
-    " [cl] WHERE [unique_name] = ?);";
-  DB_VALUE val;
-  DB_QUERY_RESULT *result = NULL;
-  DB_SESSION *session = NULL;
-  int stmt_id;
-
-  db_make_null (&val);
-
-  /* Disable the checking for internal authorization object access */
-  AU_DISABLE (save);
-
-  assert (class_name != NULL);
-
-  session = db_open_buffer_local (sql_query);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto release;
-    }
-
-  db_make_string (&val, class_name);
-  error = db_push_values (session, 1, &val);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &result);
-  if (error < 0)
-    {
-      goto release;
-    }
-
-  error = db_query_end (result);
-
-release:
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
-
-exit:
-  pr_clear_value (&val);
-
-  AU_ENABLE (save);
-
-  return error;
-}
-
-/*
- * check_user_name
- *   return: error code
- *   name(in): proposed user name
- *
- * Note: This is made void for ansi compatibility. It previously insured
- *       that identifiers which were accepted could be parsed in the
- *       language interface.
- *
- *       ANSI allows any character in an identifier. It also allows reserved
- *       words. In order to parse identifiers with non-alpha characters
- *       or that are reserved words, an escape syntax is definned with double
- *       quotes, "FROM", for example.
- */
-static int
-check_user_name (const char *name)
-{
-  return NO_ERROR;
-}
 
 /*
  * au_is_dba_group_member -  Determines if a given user is the DBA/a member
@@ -1693,6 +976,7 @@ au_is_user_group_member (MOP group_user, MOP user)
 
   return false;
 }
+
 
 /*
  * au_add_user -  Add a user object if one does not already exist.
@@ -1795,565 +1079,6 @@ au_add_user (const char *name, int *exists)
   return (user);
 }
 
-/*
- * au_add_user_method
- *   return: none
- *   class(in): class object
- *   returnval(out): return value of this method
- *   name(in):
- *   password(in):
- */
-void
-au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VALUE * password)
-{
-  int error;
-  int exists;
-  MOP user;
-  const char *tmp = NULL;
-
-  if (name != NULL && IS_STRING (name) && !DB_IS_NULL (name) && ((tmp = db_get_string (name)) != NULL))
-    {
-      if (intl_identifier_upper_string_size (tmp) >= DB_MAX_USER_LENGTH)
-	{
-	  error = ER_USER_NAME_TOO_LONG;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  db_make_error (returnval, error);
-	  return;
-	}
-      /*
-       * although au_set_password will check this, check it out here before
-       * we bother creating the user object
-       */
-      if (password != NULL && IS_STRING (password) && !DB_IS_NULL (password) && (tmp = db_get_string (password))
-	  && strlen (tmp) > AU_MAX_PASSWORD_CHARS)
-	{
-	  error = ER_AU_PASSWORD_OVERFLOW;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  db_make_error (returnval, error);
-	}
-      else
-	{
-	  user = au_add_user (db_get_string (name), &exists);
-	  if (user == NULL)
-	    {
-	      /* return the error that was set */
-	      db_make_error (returnval, er_errid ());
-	    }
-	  else if (exists)
-	    {
-	      error = ER_AU_USER_EXISTS;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, db_get_string (name));
-	      db_make_error (returnval, error);
-	    }
-	  else
-	    {
-	      if (password != NULL && IS_STRING (password) && !DB_IS_NULL (password))
-		{
-		  error = au_set_password (user, db_get_string (password));
-		  if (error != NO_ERROR)
-		    {
-		      db_make_error (returnval, error);
-		    }
-		  else
-		    {
-		      db_make_object (returnval, user);
-		    }
-		}
-	      else
-		{
-		  db_make_object (returnval, user);
-		}
-	    }
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_USER;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-      db_make_error (returnval, error);
-    }
-}
-
-/*
- * Password Encoding
- */
-
-/*
- * Password encoding is a bit kludgey to support older databases where the
- * password was stored in an unencoded format.  Since we don't want
- * to invalidate existing databases unless absolutely necessary, we
- * need a way to recognize if the password in the database is encoded or not.
- *
- * The kludge is to store encoded passwords with a special prefix character
- * that could not normally be typed as part of a password.  This will
- * be the binary char \001 or Control-A.  The prefix could be used
- * in the future to identify other encoding schemes in case we find
- * a better way to store passwords.
- *
- * If the password string has this prefix character, we can assume that it
- * has been encoded, otherwise it is assumed to be an older unencoded password.
- *
- */
-
-/*
- * encrypt_password -  Encrypts a password string using DES
- *   return: none
- *   pass(in): string to encrypt
- *   add_prefix(in): non-zero to add the prefix char
- *   dest(out): destination buffer
- */
-static void
-encrypt_password (const char *pass, int add_prefix, char *dest)
-{
-  if (pass == NULL)
-    {
-      strcpy (dest, "");
-    }
-  else
-    {
-      crypt_seed (PASSWORD_ENCRYPTION_SEED);
-      if (!add_prefix)
-	{
-	  crypt_encrypt_printable (pass, dest, AU_MAX_PASSWORD_BUF);
-	}
-      else
-	{
-	  crypt_encrypt_printable (pass, dest + 1, AU_MAX_PASSWORD_BUF);
-	  dest[0] = ENCODE_PREFIX_DES;
-	}
-    }
-}
-
-/*
- * encrypt_password_sha1 -  hashing a password string using SHA1
- *   return: none
- *   pass(in): string to encrypt
- *   add_prefix(in): non-zero to add the prefix char
- *   dest(out): destination buffer
- */
-static void
-encrypt_password_sha1 (const char *pass, int add_prefix, char *dest)
-{
-  if (pass == NULL)
-    {
-      strcpy (dest, "");
-    }
-  else
-    {
-      if (!add_prefix)
-	{
-	  crypt_encrypt_sha1_printable (pass, dest, AU_MAX_PASSWORD_BUF);
-	}
-      else
-	{
-	  crypt_encrypt_sha1_printable (pass, dest + 1, AU_MAX_PASSWORD_BUF);
-	  dest[0] = ENCODE_PREFIX_SHA1;
-	}
-    }
-}
-
-/*
- * encrypt_password_sha2_512 -  hashing a password string using SHA2 512
- *   return: none
- *   pass(in): string to encrypt
- *   dest(out): destination buffer
- */
-static void
-encrypt_password_sha2_512 (const char *pass, char *dest)
-{
-  int error_status = NO_ERROR;
-  char *result_strp = NULL;
-  int result_len = 0;
-
-  if (pass == NULL)
-    {
-      strcpy (dest, "");
-    }
-  else
-    {
-      error_status = crypt_sha_two (NULL, pass, strlen (pass), 512, &result_strp, &result_len);
-      if (error_status == NO_ERROR)
-	{
-	  assert (result_strp != NULL);
-
-	  memcpy (dest + 1, result_strp, result_len);
-	  dest[result_len + 1] = '\0';	/* null termination for match_password () */
-	  dest[0] = ENCODE_PREFIX_SHA2_512;
-
-	  db_private_free_and_init (NULL, result_strp);
-	}
-      else
-	{
-	  strcpy (dest, "");
-	}
-    }
-}
-
-/*
- * au_user_name_dup -  Returns the duplicated string of the name of the current
- *                     user. The string must be freed after use.
- *   return: user name (strdup)
- */
-char *
-au_user_name_dup (void)
-{
-  return strdup (Au_user_name);
-}
-
-/*
- * match_password -  This compares two passwords to see if they match.
- *   return: non-zero if the passwords match
- *   user(in): user supplied password
- *   database(in): stored database password
- *
- * Note: Either the user or database password can be encrypted or unencrypted.
- *       The database password will only be unencrypted if this is a very
- *       old database.  The user password will be unencrypted if we're logging
- *       in to an active session.
- */
-static bool
-match_password (const char *user, const char *database)
-{
-  char buf1[AU_MAX_PASSWORD_BUF + 4];
-  char buf2[AU_MAX_PASSWORD_BUF + 4];
-
-  if (user == NULL || database == NULL)
-    {
-      return false;
-    }
-
-  /* get both passwords into an encrypted format */
-  /* if database's password was encrypted with DES, then, user's password should be encrypted with DES, */
-  if (IS_ENCODED_DES (database))
-    {
-      /* DB: DES */
-      strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
-	{
-	  /* USER : DES */
-	  strcpy (buf1, Au_user_password_des_oldstyle);
-	}
-      else
-	{
-	  /* USER : PLAINTEXT -> DES */
-	  encrypt_password (user, 1, buf1);
-	}
-    }
-  else if (IS_ENCODED_SHA1 (database))
-    {
-      /* DB: SHA1 */
-      strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
-	{
-	  /* USER:SHA1 */
-	  strcpy (buf1, Au_user_password_sha1);
-	}
-      else
-	{
-	  /* USER:PLAINTEXT -> SHA1 */
-	  encrypt_password_sha1 (user, 1, buf1);
-	}
-    }
-  else if (IS_ENCODED_SHA2_512 (database))
-    {
-      /* DB: SHA2 */
-      strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
-	{
-	  /* USER:SHA2 */
-	  strcpy (buf1, Au_user_password_sha2_512);
-	}
-      else
-	{
-	  /* USER:PLAINTEXT -> SHA2 */
-	  encrypt_password_sha2_512 (user, buf1);
-	}
-    }
-  else
-    {
-      /* DB:PLAINTEXT -> SHA2 */
-      encrypt_password_sha2_512 (database, buf2);
-      if (IS_ENCODED_ANY (user))
-	{
-	  /* USER : SHA1 */
-	  strcpy (buf1, Au_user_password_sha1);
-	}
-      else
-	{
-	  /* USER : PLAINTEXT -> SHA1 */
-	  encrypt_password_sha1 (user, 1, buf1);
-	}
-    }
-
-  return strcmp (buf1, buf2) == 0;
-}
-
-/*
- * au_set_password_internal -  Set the password string for a user.
- *                             This should be using encrypted strings.
- *   return:error code
- *   user(in):  user object
- *   password(in): new password
- *   encode(in): flag to enable encryption of the string in the database
- *   encrypt_prefix(in): If encode flag is 0, then we assume that the given password have been encrypted. So, All I have
- *                       to do is add prefix(SHA2) to given password.
- *                       If encode flag is 1, then we should encrypt password with sha2 and add prefix (SHA2) to it.
- *                       So, I don't care what encrypt_prefix value is.
- */
-static int
-au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix)
-{
-  int error = NO_ERROR;
-  DB_VALUE value;
-  MOP pass, pclass;
-  int save, len;
-  char pbuf[AU_MAX_PASSWORD_BUF + 4];
-
-  AU_DISABLE (save);
-  if (!ws_is_same_object (Au_user, user) && !au_is_dba_group_member (Au_user))
-    {
-      error = ER_AU_UPDATE_FAILURE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-    }
-  else
-    {
-      /* convert empty password strings to NULL passwords */
-      if (password != NULL)
-	{
-	  len = strlen (password);
-	  if (len == 0)
-	    password = NULL;
-	  /*
-	   * check for large passwords, only do this
-	   * if the encode flag is on !
-	   */
-	  else if (len > AU_MAX_PASSWORD_CHARS && encode)
-	    {
-	      error = ER_AU_PASSWORD_OVERFLOW;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    }
-	}
-      if (error == NO_ERROR)
-	{
-	  if ((error = obj_get (user, "password", &value)) == NO_ERROR)
-	    {
-	      if (DB_IS_NULL (&value))
-		{
-		  pass = NULL;
-		}
-	      else
-		{
-		  pass = db_get_object (&value);
-		}
-
-	      if (pass == NULL)
-		{
-		  pclass = sm_find_class (AU_PASSWORD_CLASS_NAME);
-		  if (pclass != NULL)
-		    {
-		      pass = obj_create (pclass);
-		      if (pass != NULL)
-			{
-			  db_make_object (&value, pass);
-			  error = obj_set (user, "password", &value);
-			}
-		      else
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			}
-		    }
-		  else
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		    }
-		}
-
-	      if (error == NO_ERROR && pass != NULL)
-		{
-		  if (encode && password != NULL)
-		    {
-		      encrypt_password_sha2_512 (password, pbuf);
-		      db_make_string (&value, pbuf);
-		      error = obj_set (pass, "password", &value);
-		    }
-		  else
-		    {
-		      /*
-		       * always add the prefix, the unload process strips it out
-		       * so the password can be read by the csql interpreter
-		       */
-		      if (password == NULL)
-			{
-			  db_make_null (&value);
-			}
-		      else
-			{
-			  strcpy (pbuf + 1, password);
-			  pbuf[0] = encrypt_prefix;
-			  db_make_string (&value, pbuf);
-			}
-		      error = obj_set (pass, "password", &value);
-		    }
-		}
-	    }
-	}
-    }
-  AU_ENABLE (save);
-  return (error);
-}
-
-/*
- * au_set_password -  Set the password string for a user.
- *   return: error code
- *   user(in): user object
- *   password(in): new password
- */
-int
-au_set_password (MOP user, const char *password)
-{
-  return (au_set_password_internal (user, password, 1, ENCODE_PREFIX_SHA2_512));
-}
-
-/*
- * au_set_password_method -  Method interface for au_set_password.
- *   return: none
- *   user(in): user object
- *   returnval(out): return value of this method
- *   password(in): new password
- */
-void
-au_set_password_method (MOP user, DB_VALUE * returnval, DB_VALUE * password)
-{
-  int error;
-  const char *string = NULL;
-
-  db_make_null (returnval);
-  if (password != NULL)
-    {
-      if (IS_STRING (password) && !DB_IS_NULL (password))
-	{
-	  string = db_get_string (password);
-	}
-
-      error = au_set_password (user, string);
-      if (error != NO_ERROR)
-	{
-	  db_make_error (returnval, error);
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_PASSWORD;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-      db_make_error (returnval, error);
-    }
-}
-
-/*
- * au_set_password_encoded_method - Method interface for setting
- *                                  encoded passwords.
- *   return: none
- *   user(in): user object
- *   returnval(out): return value of this object
- *   password(in): new password
- *
- * Note: We don't check for the 8 character limit here because this is intended
- *       to be used only by the schema generated by unloaddb.  For this
- *       application, the password length was validated when it was first
- *       created.
- */
-void
-au_set_password_encoded_method (MOP user, DB_VALUE * returnval, DB_VALUE * password)
-{
-  int error;
-  const char *string = NULL;
-
-  db_make_null (returnval);
-  if (password != NULL)
-    {
-      if (IS_STRING (password))
-	{
-	  if (DB_IS_NULL (password))
-	    {
-	      string = NULL;
-	    }
-	  else
-	    {
-	      string = db_get_string (password);
-	    }
-	}
-
-      error = au_set_password_internal (user, string, 0, ENCODE_PREFIX_DES);
-      if (error != NO_ERROR)
-	{
-	  db_make_error (returnval, error);
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_PASSWORD;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-      db_make_error (returnval, error);
-    }
-}
-
-/*
- * au_set_password_encoded_sha1_method - Method interface for setting sha1/2 passwords.
- *   return: none
- *   user(in): user object
- *   returnval(out): return value of this object
- *   password(in): new password
- *
- * Note: We don't check for the 8 character limit here because this is intended
- *       to be used only by the schema generated by unloaddb.  For this
- *       application, the password length was validated when it was first
- *       created.
- */
-void
-au_set_password_encoded_sha1_method (MOP user, DB_VALUE * returnval, DB_VALUE * password)
-{
-  int error;
-  const char *string = NULL;
-
-  db_make_null (returnval);
-  if (password != NULL)
-    {
-      if (IS_STRING (password))
-	{
-	  if (DB_IS_NULL (password))
-	    {
-	      string = NULL;
-	    }
-	  else
-	    {
-	      string = db_get_string (password);
-	    }
-	}
-
-      /* in case of SHA2, prefix is not stripped */
-      if (string != NULL && IS_ENCODED_SHA2_512 (string))
-	{
-	  error = au_set_password_internal (user, string + 1 /* 1 for prefix */ , 0, ENCODE_PREFIX_SHA2_512);
-	}
-      else
-	{
-	  error = au_set_password_internal (user, string, 0, ENCODE_PREFIX_SHA1);
-	}
-
-      if (error != NO_ERROR)
-	{
-	  db_make_error (returnval, error);
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_PASSWORD;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-      db_make_error (returnval, error);
-    }
-}
 
 /*
  * au_set_user_comment() -  Set the comment string for a user.
@@ -3241,1416 +1966,699 @@ au_drop_user_method (MOP root, DB_VALUE * returnval, DB_VALUE * name)
     }
 }
 
-
 /*
- * AUTHORIZATION CACHING
- */
-
-/*
- * find_grant_entry -  This searches a sequence of grant elements looking for
- *                     a grant	from a particular user on a particular class.
- *   return: sequence index to grant entry
- *   grants(in): sequence of grant information
- *   class_mop(in): class to look for
- *   grantor(in): user who made the grant
- *
- * Note: It returns the index into the sequence where the grant information
- *       is found.  If the grant was not found it returns -1.
- */
-static int
-find_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor)
-{
-  DB_VALUE element;
-  int i, gsize, position;
-
-  position = -1;
-  gsize = set_size (grants);
-  for (i = 0; i < gsize && position == -1; i += GRANT_ENTRY_LENGTH)
-    {
-      set_get_element (grants, GRANT_ENTRY_CLASS (i), &element);
-      if (db_get_object (&element) == class_mop)
-	{
-	  set_get_element (grants, GRANT_ENTRY_SOURCE (i), &element);
-	  if (ws_is_same_object (db_get_object (&element), grantor))
-	    {
-	      position = i;
-	    }
-	}
-    }
-
-  return position;
-}
-
-/*
- * add_grant_entry - This adds a grant on a class from a particular user to
- *                   a sequence of grant elemetns.
- *                   It returns the index of the new grant element.
- *   return: sequence index to new grant entry
- *   grants(in): grant sequence to extend
- *   class_mop(in): class being granted
- *   grantor(in): user doing the granting
- */
-static int
-add_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor)
-{
-  DB_VALUE value;
-  int index;
-
-  index = set_size (grants);
-
-  db_make_object (&value, class_mop);
-  set_put_element (grants, GRANT_ENTRY_CLASS (index), &value);
-
-  db_make_object (&value, grantor);
-  set_put_element (grants, GRANT_ENTRY_SOURCE (index), &value);
-
-  db_make_int (&value, 0);
-  set_put_element (grants, GRANT_ENTRY_CACHE (index), &value);
-
-  return (index);
-}
-
-/*
- * drop_grant_entry - This removes a grant element at a particular location
- *                    and shifts all subsequent grant elements up to fill
- *                    in the empty space.
+ * au_find_user_method - Method interface to au_find_user.
  *   return: none
- *   grants(in): grant sequence
- *   index(in): index of grant element to remove
+ *   class(in):
+ *   returnval(out):
+ *   name(in):
  */
-static void
-drop_grant_entry (DB_SET * grants, int index)
+void
+au_find_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name)
 {
-  int i;
-
-  /* not particularly fast but doesn't happen very often */
-  if (set_size (grants) >= (index + GRANT_ENTRY_LENGTH))
-    {
-      for (i = 0; i < GRANT_ENTRY_LENGTH; i++)
-	{
-	  set_drop_seq_element (grants, index);
-	}
-    }
-}
-
-/*
- * get_grants -  This gets the grant set from an authorization object,
- *               VERY CAREFULLY.
- *   return: error code
- *   auth(in): authorization object
- *   grant_ptr(out): return grant set
- *   filter(in):
- *
- */
-static int
-get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
-{
+  MOP user;
   int error = NO_ERROR;
-  DB_VALUE value;
-  DB_SET *grants = NULL;
-  MOP grantor, gowner, class_;
-  int gsize, i, j, existing, cache;
-  bool need_pop_er_stack = false;
 
-  assert (grant_ptr != NULL);
-
-  *grant_ptr = NULL;
-
-  er_stack_push ();
-
-  need_pop_er_stack = true;
-
-  error = obj_get (auth, "grants", &value);
-  if (error != NO_ERROR)
+  db_make_null (returnval);
+  if (name != NULL && IS_STRING (name) && !DB_IS_NULL (name) && db_get_string (name) != NULL)
     {
-      goto end;
-    }
-
-  if (DB_VALUE_TYPE (&value) != DB_TYPE_SEQUENCE || DB_IS_NULL (&value) || db_get_set (&value) == NULL)
-    {
-      error = ER_AU_CORRUPTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-
-      goto end;
-    }
-
-  if (!filter)
-    {
-      goto end;
-    }
-
-  grants = db_get_set (&value);
-  gsize = set_size (grants);
-
-  /* there might be errors */
-  error = er_errid ();
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  for (i = 0; i < gsize; i += GRANT_ENTRY_LENGTH)
-    {
-      error = set_get_element (grants, GRANT_ENTRY_SOURCE (i), &value);
-      if (error != NO_ERROR)
+      user = au_find_user (db_get_string (name));
+      if (user != NULL)
 	{
-	  goto end;
+	  db_make_object (returnval, user);
 	}
-
-      grantor = NULL;
-      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value))
-	{
-	  grantor = db_get_object (&value);
-	  if (WS_IS_DELETED (grantor))
-	    {
-	      grantor = NULL;
-	    }
-	}
-
-      if (grantor == NULL)
-	{
-	  class_ = NULL;
-	  error = set_get_element (grants, GRANT_ENTRY_CLASS (i), &value);
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value))
-	    {
-	      class_ = db_get_object (&value);
-	      if (WS_IS_DELETED (class_))
-		{
-		  class_ = NULL;
-		}
-	    }
-
-	  if (class_ == NULL)
-	    {
-	      /* class is bad too, remove this entry */
-	      drop_grant_entry (grants, i);
-	      gsize -= GRANT_ENTRY_LENGTH;
-	    }
-	  else
-	    {
-	      /* this will at least be DBA */
-	      gowner = au_get_class_owner (class_);
-
-	      /* see if there's already an entry for this */
-	      existing = -1;
-	      for (j = 0; j < gsize && existing == -1; j += GRANT_ENTRY_LENGTH)
-		{
-		  error = set_get_element (grants, GRANT_ENTRY_SOURCE (j), &value);
-		  if (error != NO_ERROR)
-		    {
-		      goto end;
-		    }
-
-		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && ws_is_same_object (db_get_object (&value), gowner))
-		    {
-		      existing = j;
-		    }
-		}
-
-	      if (existing == -1)
-		{
-		  /*
-		   * no previous entry for the owner,
-		   * use the current one
-		   */
-		  db_make_object (&value, gowner);
-		  error = set_put_element (grants, GRANT_ENTRY_SOURCE (i), &value);
-		  if (error != NO_ERROR)
-		    {
-		      goto end;
-		    }
-		}
-	      else
-		{
-		  /*
-		   * update the previous entry with the extra bits
-		   * and delete the current entry
-		   */
-		  error = set_get_element (grants, GRANT_ENTRY_CACHE (i), &value);
-		  if (error != NO_ERROR)
-		    {
-		      goto end;
-		    }
-
-		  cache = db_get_int (&value);
-		  error = set_get_element (grants, GRANT_ENTRY_CACHE (existing), &value);
-		  if (error != NO_ERROR)
-		    {
-		      goto end;
-		    }
-
-		  db_make_int (&value, db_get_int (&value) | cache);
-		  error = set_put_element (grants, GRANT_ENTRY_CACHE (existing), &value);
-		  if (error != NO_ERROR)
-		    {
-		      goto end;
-		    }
-
-		  drop_grant_entry (grants, i);
-		  gsize -= GRANT_ENTRY_LENGTH;
-		}
-	    }
-	}
-    }
-
-end:
-
-  if (error != NO_ERROR && grants != NULL)
-    {
-      set_free (grants);
-      grants = NULL;
-    }
-
-  if (need_pop_er_stack)
-    {
-      if (error == NO_ERROR)
-	{
-	  er_stack_pop ();
-	}
-      else
-	{
-	  er_stack_pop_and_keep_error ();
-	}
-    }
-
-  *grant_ptr = grants;
-  return (error);
-}
-
-/*
- * apply_grants -  Work function for update_cache.
- *   return: error code
- *   auth(in):  authorization object
- *   class(in):  class being authorized
- *   bits(in):
- *
- * Note: Get the grant information for an authorization object and update
- *       the cache for any grants that apply to the class.
- */
-static int
-apply_grants (MOP auth, MOP class_mop, unsigned int *bits)
-{
-  int error = NO_ERROR;
-  DB_SET *grants;
-  DB_VALUE grvalue;
-  int i, gsize;
-
-  error = get_grants (auth, &grants, 1);
-  if (error == NO_ERROR)
-    {
-      gsize = set_size (grants);
-      for (i = 0; i < gsize; i += GRANT_ENTRY_LENGTH)
-	{
-	  set_get_element (grants, GRANT_ENTRY_CLASS (i), &grvalue);
-	  if (db_get_object (&grvalue) == class_mop)
-	    {
-	      set_get_element (grants, GRANT_ENTRY_CACHE (i), &grvalue);
-	      *bits |= db_get_int (&grvalue);
-	    }
-	}
-      set_free (grants);
-    }
-
-  return (error);
-}
-
-/*
- * update_cache -  This is the main function for parsing all of
- *                 the authorization information for a particular class and
- *                 caching it in the class structure.
- *                 This will be called once after each successful
- *                 read/write lock. It needs to be fast.
- *   return: error code
- *   classop(in):  class MOP to authorize
- *   sm_class(in): direct pointer to class structure
- *   cache(in):
- */
-static int
-update_cache (MOP classop, SM_CLASS * sm_class)
-{
-  int error = NO_ERROR;
-  DB_SET *groups = NULL;
-  int i, save, card;
-  DB_VALUE value;
-  MOP group, auth;
-  bool is_member = false;
-  unsigned int *bits = NULL;
-  bool need_pop_er_stack = false;
-
-  /*
-   * must disable here because we may be updating the cache of the system
-   * objects and we need to read them in order to update etc.
-   */
-  AU_DISABLE (save);
-
-  er_stack_push ();
-
-  need_pop_er_stack = true;
-
-  bits = get_cache_bits (sm_class);
-  if (bits == NULL)
-    {
-      assert (false);
-      return er_errid ();
-    }
-
-  /* initialize the cache bits */
-  *bits = AU_NO_AUTHORIZATION;
-
-  if (sm_class->owner == NULL)
-    {
-      /* This shouldn't happen - assign it to the DBA */
-      error = ER_AU_CLASS_WITH_NO_OWNER;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-
-      goto end;
-    }
-
-  is_member = au_is_dba_group_member (Au_user);
-  if (is_member)
-    {
-      *bits = AU_FULL_AUTHORIZATION;
-      goto end;
-    }
-
-  /* there might be errors */
-  error = er_errid ();
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  if (ws_is_same_object (Au_user, sm_class->owner))
-    {
-      /* might want to allow grant/revoke on self */
-      *bits = AU_FULL_AUTHORIZATION;
-      goto end;
-    }
-
-  if (au_get_set (Au_user, "groups", &groups) != NO_ERROR)
-    {
-      error = ER_AU_ACCESS_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "groups", AU_USER_CLASS_NAME);
-
-      goto end;
-    }
-
-  db_make_object (&value, sm_class->owner);
-
-  is_member = set_ismember (groups, &value);
-
-  /* there might be errors */
-  error = er_errid ();
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  if (is_member)
-    {
-      /* we're a member of the owning group */
-      *bits = AU_FULL_AUTHORIZATION;
-    }
-  else if (au_get_object (Au_user, "authorization", &auth) != NO_ERROR)
-    {
-      error = ER_AU_ACCESS_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "authorization", AU_USER_CLASS_NAME);
     }
   else
     {
-      /* apply local grants */
-      error = apply_grants (auth, classop, bits);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      /* apply grants from all groups */
-      card = set_cardinality (groups);
-
-      /* there might be errors */
-      error = er_errid ();
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      for (i = 0; i < card; i++)
-	{
-	  /* will have to handle deleted groups here ! */
-	  error = au_set_get_obj (groups, i, &group);
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-
-	  if (ws_is_same_object (group, Au_dba_user))
-	    {
-	      /* someones on the DBA member list, give them power */
-	      *bits = AU_FULL_AUTHORIZATION;
-	    }
-	  else
-	    {
-	      error = au_get_object (group, "authorization", &auth);
-	      if (error != NO_ERROR)
-		{
-		  goto end;
-		}
-
-	      error = apply_grants (auth, classop, bits);
-	      if (error != NO_ERROR)
-		{
-		  goto end;
-		}
-	    }
-	}
+      error = ER_AU_INVALID_USER;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      db_make_error (returnval, error);
     }
+}
 
-end:
+/*
+ * au_delete_auth_of_dropping_table - delete _db_auth records refers to the given table.
+ *   return: error code
+ *   class_name(in): the class name to be dropped
+ */
+int
+au_delete_auth_of_dropping_table (const char *class_name)
+{
+  int error = NO_ERROR, save;
+  const char *sql_query =
+    "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[class_of] IN" " (SELECT [cl] FROM " CT_CLASS_NAME
+    " [cl] WHERE [unique_name] = ?);";
+  DB_VALUE val;
+  DB_QUERY_RESULT *result = NULL;
+  DB_SESSION *session = NULL;
+  int stmt_id;
 
-  if (groups != NULL)
+  db_make_null (&val);
+
+  /* Disable the checking for internal authorization object access */
+  AU_DISABLE (save);
+
+  assert (class_name != NULL);
+
+  session = db_open_buffer_local (sql_query);
+  if (session == NULL)
     {
-      set_free (groups);
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
     }
 
-  if (need_pop_er_stack)
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
     {
-      if (error == NO_ERROR)
-	{
-	  er_stack_pop ();
-	}
-      else
-	{
-	  er_stack_pop_and_keep_error ();
-	}
+      goto release;
     }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
+  db_make_string (&val, class_name);
+  error = db_push_values (session, 1, &val);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, &result);
+  if (error < 0)
+    {
+      goto release;
+    }
+
+  error = db_query_end (result);
+
+release:
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+exit:
+  pr_clear_value (&val);
 
   AU_ENABLE (save);
-
-  return (error);
-}
-
-/*
- * appropriate_error -  This selects an appropriate error code to correspond
- *                      with an authorization failure of a some type
- *   return: error code
- *   bits(in): authorization type
- *   requested(in):
- * TODO : LP64
- */
-static int
-appropriate_error (unsigned int bits, unsigned int requested)
-{
-  int error;
-  unsigned int mask, atype;
-  int i;
-
-  /*
-   * Since we don't currently have a way of indicating multiple
-   * authorization failures, select the first one in the
-   * bit vector that causes problems.
-   * Order the switch statement so that its roughly in dependency order
-   * to result in better error message.  The main thing is that
-   * SELECT should be first.
-   */
-
-  error = NO_ERROR;
-  mask = 1;
-  for (i = 0; i < AU_GRANT_SHIFT && !error; i++)
-    {
-      if (requested & mask)
-	{
-	  /* we asked for this one */
-	  if ((bits & mask) == 0)
-	    {
-	      /* but it wasn't available */
-	      switch (mask)
-		{
-		case AU_SELECT:
-		  error = ER_AU_SELECT_FAILURE;
-		  break;
-		case AU_ALTER:
-		  error = ER_AU_ALTER_FAILURE;
-		  break;
-		case AU_UPDATE:
-		  error = ER_AU_UPDATE_FAILURE;
-		  break;
-		case AU_INSERT:
-		  error = ER_AU_INSERT_FAILURE;
-		  break;
-		case AU_DELETE:
-		  error = ER_AU_DELETE_FAILURE;
-		  break;
-		case AU_INDEX:
-		  error = ER_AU_INDEX_FAILURE;
-		  break;
-		case AU_EXECUTE:
-		  error = ER_AU_EXECUTE_FAILURE;
-		  break;
-		default:
-		  error = ER_AU_AUTHORIZATION_FAILURE;
-		  break;
-		}
-	    }
-	}
-      mask = mask << 1;
-    }
-
-  if (!error)
-    {
-      /* we seemed to have all the basic authorizations, check grant options */
-      mask = 1 << AU_GRANT_SHIFT;
-      for (i = 0; i < AU_GRANT_SHIFT && !error; i++)
-	{
-	  if (requested & mask)
-	    {
-	      /* we asked for this one */
-	      if ((bits & mask) == 0)
-		{
-		  /*
-		   * But it wasn't available, convert this back down to the
-		   * corresponding basic type and select an appropriate error.
-		   *
-		   * NOTE: We need to add type specific errors here !
-		   *
-		   */
-		  atype = mask >> AU_GRANT_SHIFT;
-		  switch (atype)
-		    {
-		    case AU_SELECT:
-		      error = ER_AU_NO_GRANT_OPTION;
-		      break;
-		    case AU_ALTER:
-		      error = ER_AU_NO_GRANT_OPTION;
-		      break;
-		    case AU_UPDATE:
-		      error = ER_AU_NO_GRANT_OPTION;
-		      break;
-		    case AU_INSERT:
-		      error = ER_AU_NO_GRANT_OPTION;
-		      break;
-		    case AU_DELETE:
-		      error = ER_AU_NO_GRANT_OPTION;
-		      break;
-		    case AU_INDEX:
-		      error = ER_AU_NO_GRANT_OPTION;
-		      break;
-		    case AU_EXECUTE:
-		      error = ER_AU_NO_GRANT_OPTION;
-		      break;
-		    default:
-		      error = ER_AU_NO_GRANT_OPTION;
-		      break;
-		    }
-		}
-	    }
-	  mask = mask << 1;
-	}
-    }
-
-  return (error);
-}
-
-/*
- * check_grant_option - Checks to see if a class has the grant option for
- *                      a particular authorization type.
- *                      Called by au_grant and au_revoke
- *   return: error code
- *   classop(in):  MOP of class being examined
- *   class(in): direct pointer to class structure
- *   type(in): type of authorization being checked
- *
- * TODO: LP64
- */
-static int
-check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
-{
-  int error = NO_ERROR;
-  unsigned int *cache_bits;
-  unsigned int mask;
-
-  /*
-   * this potentially can be called during initialization when we don't
-   * actually have any users yet.  If so, assume its ok
-   */
-  if (au_get_cache_index () < 0)
-    {
-      return NO_ERROR;
-    }
-
-  cache_bits = get_cache_bits (sm_class);
-  if (cache_bits == NULL)
-    {
-      return er_errid ();
-    }
-
-  if (*cache_bits == AU_CACHE_INVALID)
-    {
-      if (update_cache (classop, sm_class))
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-      cache_bits = get_cache_bits (sm_class);
-      if (cache_bits == NULL)
-	{
-	  assert (false);
-	  return er_errid ();
-	}
-    }
-
-  /* build the complete bit mask */
-  mask = type | (type << AU_GRANT_SHIFT);
-  if ((*cache_bits & mask) != mask)
-    {
-      error = appropriate_error (*cache_bits, mask);
-      if (error)
-	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-    }
 
   return error;
 }
 
-
 /*
- * GRANT OPERATION
- */
-
-/*
- * au_grant - This is the primary interface function for granting authorization
- *            on classes.
+ * check_user_name
  *   return: error code
- *   user(in): user receiving the grant
- *   class_mop(in): class being authorized
- *   type(in): type of authorization
- *   grant_option(in): non-zero if grant option is also being given
+ *   name(in): proposed user name
+ *
+ * Note: This is made void for ansi compatibility. It previously insured
+ *       that identifiers which were accepted could be parsed in the
+ *       language interface.
+ *
+ *       ANSI allows any character in an identifier. It also allows reserved
+ *       words. In order to parse identifiers with non-alpha characters
+ *       or that are reserved words, an escape syntax is definned with double
+ *       quotes, "FROM", for example.
  */
-int
-au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
+static int
+check_user_name (const char *name)
 {
-  int error = NO_ERROR;
-  MOP auth;
-  DB_SET *grants;
-  DB_VALUE value;
-  int current, save = 0, gindex;
-  SM_CLASS *classobj;
-  int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_grant = 0;
-  MOP *sub_partitions = NULL;
+  return NO_ERROR;
+}
 
-  error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
-  if (error != NO_ERROR)
+/*
+ * au_add_user_method
+ *   return: none
+ *   class(in): class object
+ *   returnval(out): return value of this method
+ *   name(in):
+ *   password(in):
+ */
+void
+au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VALUE * password)
+{
+  int error;
+  int exists;
+  MOP user;
+  const char *tmp = NULL;
+
+  if (name != NULL && IS_STRING (name) && !DB_IS_NULL (name) && ((tmp = db_get_string (name)) != NULL))
     {
-      return error;
-    }
-
-  if (is_partition == DB_PARTITIONED_CLASS)
-    {
-      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_GRANT);
-      if (error != NO_ERROR)
+      if (intl_identifier_upper_string_size (tmp) >= DB_MAX_USER_LENGTH)
 	{
-	  goto fail_end;
+	  error = ER_USER_NAME_TOO_LONG;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  db_make_error (returnval, error);
+	  return;
 	}
-
-      savepoint_grant = 1;
-      for (i = 0; sub_partitions[i]; i++)
-	{
-	  error = au_grant (user, sub_partitions[i], type, grant_option);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
-
-      free_and_init (sub_partitions);
-      if (error != NO_ERROR)
-	{
-	  goto fail_end;
-	}
-    }
-
-  AU_DISABLE (save);
-  if (ws_is_same_object (user, Au_user))
-    {
       /*
-       * Treat grant to self condition as a success only. Although this
-       * statement is a no-op, it is not an indication of no-success.
-       * The "privileges" are indeed already granted to self.
-       * Note: Revoke from self is an error, because this cannot be done.
+       * although au_set_password will check this, check it out here before
+       * we bother creating the user object
        */
-    }
-  else if ((error = au_fetch_class_force (class_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
-    {
-      if (ws_is_same_object (classobj->owner, user))
+      if (password != NULL && IS_STRING (password) && !DB_IS_NULL (password) && (tmp = db_get_string (password))
+	  && strlen (tmp) > AU_MAX_PASSWORD_CHARS)
 	{
-	  error = ER_AU_CANT_GRANT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  error = ER_AU_PASSWORD_OVERFLOW;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  db_make_error (returnval, error);
 	}
-      else if ((error = check_grant_option (class_mop, classobj, type)) == NO_ERROR)
+      else
 	{
-	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
+	  user = au_add_user (db_get_string (name), &exists);
+	  if (user == NULL)
 	    {
-	      error = ER_AU_ACCESS_ERROR;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
+	      /* return the error that was set */
+	      db_make_error (returnval, er_errid ());
 	    }
-	  /* lock authorization for write & mark dirty */
-	  else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
+	  else if (exists)
 	    {
-	      error = ER_AU_CANT_UPDATE;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      error = ER_AU_USER_EXISTS;
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, db_get_string (name));
+	      db_make_error (returnval, error);
 	    }
-	  else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
+	  else
 	    {
-	      gindex = find_grant_entry (grants, class_mop, Au_user);
-	      if (gindex == -1)
+	      if (password != NULL && IS_STRING (password) && !DB_IS_NULL (password))
 		{
-		  current = AU_NO_AUTHORIZATION;
+		  error = au_set_password (user, db_get_string (password));
+		  if (error != NO_ERROR)
+		    {
+		      db_make_error (returnval, error);
+		    }
+		  else
+		    {
+		      db_make_object (returnval, user);
+		    }
 		}
 	      else
 		{
-		  /* already granted, get current cache */
-		  error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
-		  if (error != NO_ERROR)
-		    {
-		      set_free (grants);
-		      if (sub_partitions)
-			{
-			  free_and_init (sub_partitions);
-			}
-		      AU_ENABLE (save);
-		      return (error);
-		    }
-		  current = db_get_int (&value);
+		  db_make_object (returnval, user);
 		}
-
-#if defined(SA_MODE)
-	      if (catcls_Enable == true)
-#endif /* SA_MODE */
-		{
-		  DB_AUTH ins_bits, upd_bits;
-
-		  ins_bits = (DB_AUTH) ((~current & AU_TYPE_MASK) & (int) type);
-		  if (ins_bits)
-		    {
-		      error =
-			au_insert_new_auth (Au_user, user, class_mop, ins_bits,
-					    (grant_option) ? ins_bits : DB_AUTH_NONE);
-		    }
-		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
-		  if ((error == NO_ERROR) && upd_bits)
-		    {
-		      error =
-			au_update_new_auth (Au_user, user, class_mop, upd_bits,
-					    (grant_option) ? upd_bits : DB_AUTH_NONE);
-		    }
-		}
-
-	      /* Fail to insert/update, never change the grant entry set. */
-	      if (error != NO_ERROR)
-		{
-		  set_free (grants);
-		  goto fail_end;
-		}
-
-	      current |= (int) type;
-	      if (grant_option)
-		{
-		  current |= ((int) type << AU_GRANT_SHIFT);
-		}
-
-	      db_make_int (&value, current);
-	      if (gindex == -1)
-		{
-		  /* There is no grant entry, add a new one. */
-		  gindex = add_grant_entry (grants, class_mop, Au_user);
-		}
-	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
-	      set_free (grants);
-
-	      /*
-	       * clear the cache for this user/class pair to make sure we
-	       * recalculate it the next time it is referenced
-	       */
-	      reset_cache_for_user_and_class (classobj);
-
-	      /*
-	       * Make sure any cached parse trees are rebuild.  This proabably
-	       * isn't necessary for GRANT, only REVOKE.
-	       */
-	      sm_bump_local_schema_version ();
 	    }
 	}
     }
-
-fail_end:
-  if (savepoint_grant && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+  else
     {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_GRANT);
+      error = ER_AU_INVALID_USER;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
+      db_make_error (returnval, error);
     }
-  if (sub_partitions)
+}
+
+/*
+ * Password Encoding
+ */
+
+/*
+ * Password encoding is a bit kludgey to support older databases where the
+ * password was stored in an unencoded format.  Since we don't want
+ * to invalidate existing databases unless absolutely necessary, we
+ * need a way to recognize if the password in the database is encoded or not.
+ *
+ * The kludge is to store encoded passwords with a special prefix character
+ * that could not normally be typed as part of a password.  This will
+ * be the binary char \001 or Control-A.  The prefix could be used
+ * in the future to identify other encoding schemes in case we find
+ * a better way to store passwords.
+ *
+ * If the password string has this prefix character, we can assume that it
+ * has been encoded, otherwise it is assumed to be an older unencoded password.
+ *
+ */
+
+/*
+ * encrypt_password -  Encrypts a password string using DES
+ *   return: none
+ *   pass(in): string to encrypt
+ *   add_prefix(in): non-zero to add the prefix char
+ *   dest(out): destination buffer
+ */
+static void
+encrypt_password (const char *pass, int add_prefix, char *dest)
+{
+  if (pass == NULL)
     {
-      free_and_init (sub_partitions);
+      strcpy (dest, "");
+    }
+  else
+    {
+      crypt_seed (PASSWORD_ENCRYPTION_SEED);
+      if (!add_prefix)
+	{
+	  crypt_encrypt_printable (pass, dest, AU_MAX_PASSWORD_BUF);
+	}
+      else
+	{
+	  crypt_encrypt_printable (pass, dest + 1, AU_MAX_PASSWORD_BUF);
+	  dest[0] = ENCODE_PREFIX_DES;
+	}
+    }
+}
+
+/*
+ * encrypt_password_sha1 -  hashing a password string using SHA1
+ *   return: none
+ *   pass(in): string to encrypt
+ *   add_prefix(in): non-zero to add the prefix char
+ *   dest(out): destination buffer
+ */
+static void
+encrypt_password_sha1 (const char *pass, int add_prefix, char *dest)
+{
+  if (pass == NULL)
+    {
+      strcpy (dest, "");
+    }
+  else
+    {
+      if (!add_prefix)
+	{
+	  crypt_encrypt_sha1_printable (pass, dest, AU_MAX_PASSWORD_BUF);
+	}
+      else
+	{
+	  crypt_encrypt_sha1_printable (pass, dest + 1, AU_MAX_PASSWORD_BUF);
+	  dest[0] = ENCODE_PREFIX_SHA1;
+	}
+    }
+}
+
+/*
+ * encrypt_password_sha2_512 -  hashing a password string using SHA2 512
+ *   return: none
+ *   pass(in): string to encrypt
+ *   dest(out): destination buffer
+ */
+static void
+encrypt_password_sha2_512 (const char *pass, char *dest)
+{
+  int error_status = NO_ERROR;
+  char *result_strp = NULL;
+  int result_len = 0;
+
+  if (pass == NULL)
+    {
+      strcpy (dest, "");
+    }
+  else
+    {
+      error_status = crypt_sha_two (NULL, pass, strlen (pass), 512, &result_strp, &result_len);
+      if (error_status == NO_ERROR)
+	{
+	  assert (result_strp != NULL);
+
+	  memcpy (dest + 1, result_strp, result_len);
+	  dest[result_len + 1] = '\0';	/* null termination for match_password () */
+	  dest[0] = ENCODE_PREFIX_SHA2_512;
+
+	  db_private_free_and_init (NULL, result_strp);
+	}
+      else
+	{
+	  strcpy (dest, "");
+	}
+    }
+}
+
+/*
+ * au_user_name_dup -  Returns the duplicated string of the name of the current
+ *                     user. The string must be freed after use.
+ *   return: user name (strdup)
+ */
+char *
+au_user_name_dup (void)
+{
+  return strdup (Au_user_name);
+}
+
+/*
+ * match_password -  This compares two passwords to see if they match.
+ *   return: non-zero if the passwords match
+ *   user(in): user supplied password
+ *   database(in): stored database password
+ *
+ * Note: Either the user or database password can be encrypted or unencrypted.
+ *       The database password will only be unencrypted if this is a very
+ *       old database.  The user password will be unencrypted if we're logging
+ *       in to an active session.
+ */
+static bool
+match_password (const char *user, const char *database)
+{
+  char buf1[AU_MAX_PASSWORD_BUF + 4];
+  char buf2[AU_MAX_PASSWORD_BUF + 4];
+
+  if (user == NULL || database == NULL)
+    {
+      return false;
+    }
+
+  /* get both passwords into an encrypted format */
+  /* if database's password was encrypted with DES, then, user's password should be encrypted with DES, */
+  if (IS_ENCODED_DES (database))
+    {
+      /* DB: DES */
+      strcpy (buf2, database);
+      if (IS_ENCODED_ANY (user))
+	{
+	  /* USER : DES */
+	  strcpy (buf1, Au_user_password_des_oldstyle);
+	}
+      else
+	{
+	  /* USER : PLAINTEXT -> DES */
+	  encrypt_password (user, 1, buf1);
+	}
+    }
+  else if (IS_ENCODED_SHA1 (database))
+    {
+      /* DB: SHA1 */
+      strcpy (buf2, database);
+      if (IS_ENCODED_ANY (user))
+	{
+	  /* USER:SHA1 */
+	  strcpy (buf1, Au_user_password_sha1);
+	}
+      else
+	{
+	  /* USER:PLAINTEXT -> SHA1 */
+	  encrypt_password_sha1 (user, 1, buf1);
+	}
+    }
+  else if (IS_ENCODED_SHA2_512 (database))
+    {
+      /* DB: SHA2 */
+      strcpy (buf2, database);
+      if (IS_ENCODED_ANY (user))
+	{
+	  /* USER:SHA2 */
+	  strcpy (buf1, Au_user_password_sha2_512);
+	}
+      else
+	{
+	  /* USER:PLAINTEXT -> SHA2 */
+	  encrypt_password_sha2_512 (user, buf1);
+	}
+    }
+  else
+    {
+      /* DB:PLAINTEXT -> SHA2 */
+      encrypt_password_sha2_512 (database, buf2);
+      if (IS_ENCODED_ANY (user))
+	{
+	  /* USER : SHA1 */
+	  strcpy (buf1, Au_user_password_sha1);
+	}
+      else
+	{
+	  /* USER : PLAINTEXT -> SHA1 */
+	  encrypt_password_sha1 (user, 1, buf1);
+	}
+    }
+
+  return strcmp (buf1, buf2) == 0;
+}
+
+/*
+ * au_set_password_internal -  Set the password string for a user.
+ *                             This should be using encrypted strings.
+ *   return:error code
+ *   user(in):  user object
+ *   password(in): new password
+ *   encode(in): flag to enable encryption of the string in the database
+ *   encrypt_prefix(in): If encode flag is 0, then we assume that the given password have been encrypted. So, All I have
+ *                       to do is add prefix(SHA2) to given password.
+ *                       If encode flag is 1, then we should encrypt password with sha2 and add prefix (SHA2) to it.
+ *                       So, I don't care what encrypt_prefix value is.
+ */
+static int
+au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix)
+{
+  int error = NO_ERROR;
+  DB_VALUE value;
+  MOP pass, pclass;
+  int save, len;
+  char pbuf[AU_MAX_PASSWORD_BUF + 4];
+
+  AU_DISABLE (save);
+  if (!ws_is_same_object (Au_user, user) && !au_is_dba_group_member (Au_user))
+    {
+      error = ER_AU_UPDATE_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+    }
+  else
+    {
+      /* convert empty password strings to NULL passwords */
+      if (password != NULL)
+	{
+	  len = strlen (password);
+	  if (len == 0)
+	    password = NULL;
+	  /*
+	   * check for large passwords, only do this
+	   * if the encode flag is on !
+	   */
+	  else if (len > AU_MAX_PASSWORD_CHARS && encode)
+	    {
+	      error = ER_AU_PASSWORD_OVERFLOW;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	}
+      if (error == NO_ERROR)
+	{
+	  if ((error = obj_get (user, "password", &value)) == NO_ERROR)
+	    {
+	      if (DB_IS_NULL (&value))
+		{
+		  pass = NULL;
+		}
+	      else
+		{
+		  pass = db_get_object (&value);
+		}
+
+	      if (pass == NULL)
+		{
+		  pclass = sm_find_class (AU_PASSWORD_CLASS_NAME);
+		  if (pclass != NULL)
+		    {
+		      pass = obj_create (pclass);
+		      if (pass != NULL)
+			{
+			  db_make_object (&value, pass);
+			  error = obj_set (user, "password", &value);
+			}
+		      else
+			{
+			  assert (er_errid () != NO_ERROR);
+			  error = er_errid ();
+			}
+		    }
+		  else
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      error = er_errid ();
+		    }
+		}
+
+	      if (error == NO_ERROR && pass != NULL)
+		{
+		  if (encode && password != NULL)
+		    {
+		      encrypt_password_sha2_512 (password, pbuf);
+		      db_make_string (&value, pbuf);
+		      error = obj_set (pass, "password", &value);
+		    }
+		  else
+		    {
+		      /*
+		       * always add the prefix, the unload process strips it out
+		       * so the password can be read by the csql interpreter
+		       */
+		      if (password == NULL)
+			{
+			  db_make_null (&value);
+			}
+		      else
+			{
+			  strcpy (pbuf + 1, password);
+			  pbuf[0] = encrypt_prefix;
+			  db_make_string (&value, pbuf);
+			}
+		      error = obj_set (pass, "password", &value);
+		    }
+		}
+	    }
+	}
     }
   AU_ENABLE (save);
   return (error);
 }
+
+/*
+ * au_set_password -  Set the password string for a user.
+ *   return: error code
+ *   user(in): user object
+ *   password(in): new password
+ */
+int
+au_set_password (MOP user, const char *password)
+{
+  return (au_set_password_internal (user, password, 1, ENCODE_PREFIX_SHA2_512));
+}
+
+/*
+ * au_set_password_method -  Method interface for au_set_password.
+ *   return: none
+ *   user(in): user object
+ *   returnval(out): return value of this method
+ *   password(in): new password
+ */
+void
+au_set_password_method (MOP user, DB_VALUE * returnval, DB_VALUE * password)
+{
+  int error;
+  const char *string = NULL;
+
+  db_make_null (returnval);
+  if (password != NULL)
+    {
+      if (IS_STRING (password) && !DB_IS_NULL (password))
+	{
+	  string = db_get_string (password);
+	}
+
+      error = au_set_password (user, string);
+      if (error != NO_ERROR)
+	{
+	  db_make_error (returnval, error);
+	}
+    }
+  else
+    {
+      error = ER_AU_INVALID_PASSWORD;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+      db_make_error (returnval, error);
+    }
+}
+
+/*
+ * au_set_password_encoded_method - Method interface for setting
+ *                                  encoded passwords.
+ *   return: none
+ *   user(in): user object
+ *   returnval(out): return value of this object
+ *   password(in): new password
+ *
+ * Note: We don't check for the 8 character limit here because this is intended
+ *       to be used only by the schema generated by unloaddb.  For this
+ *       application, the password length was validated when it was first
+ *       created.
+ */
+void
+au_set_password_encoded_method (MOP user, DB_VALUE * returnval, DB_VALUE * password)
+{
+  int error;
+  const char *string = NULL;
+
+  db_make_null (returnval);
+  if (password != NULL)
+    {
+      if (IS_STRING (password))
+	{
+	  if (DB_IS_NULL (password))
+	    {
+	      string = NULL;
+	    }
+	  else
+	    {
+	      string = db_get_string (password);
+	    }
+	}
+
+      error = au_set_password_internal (user, string, 0, ENCODE_PREFIX_DES);
+      if (error != NO_ERROR)
+	{
+	  db_make_error (returnval, error);
+	}
+    }
+  else
+    {
+      error = ER_AU_INVALID_PASSWORD;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+      db_make_error (returnval, error);
+    }
+}
+
+/*
+ * au_set_password_encoded_sha1_method - Method interface for setting sha1/2 passwords.
+ *   return: none
+ *   user(in): user object
+ *   returnval(out): return value of this object
+ *   password(in): new password
+ *
+ * Note: We don't check for the 8 character limit here because this is intended
+ *       to be used only by the schema generated by unloaddb.  For this
+ *       application, the password length was validated when it was first
+ *       created.
+ */
+void
+au_set_password_encoded_sha1_method (MOP user, DB_VALUE * returnval, DB_VALUE * password)
+{
+  int error;
+  const char *string = NULL;
+
+  db_make_null (returnval);
+  if (password != NULL)
+    {
+      if (IS_STRING (password))
+	{
+	  if (DB_IS_NULL (password))
+	    {
+	      string = NULL;
+	    }
+	  else
+	    {
+	      string = db_get_string (password);
+	    }
+	}
+
+      /* in case of SHA2, prefix is not stripped */
+      if (string != NULL && IS_ENCODED_SHA2_512 (string))
+	{
+	  error = au_set_password_internal (user, string + 1 /* 1 for prefix */ , 0, ENCODE_PREFIX_SHA2_512);
+	}
+      else
+	{
+	  error = au_set_password_internal (user, string, 0, ENCODE_PREFIX_SHA1);
+	}
+
+      if (error != NO_ERROR)
+	{
+	  db_make_error (returnval, error);
+	}
+    }
+  else
+    {
+      error = ER_AU_INVALID_PASSWORD;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+      db_make_error (returnval, error);
+    }
+}
+
+/*
+ * AUTHORIZATION CACHING
+ */
 
 
 /*
  * REVOKE OPERATION
  */
 
-/*
- * free_grant_list - Frees a list of temporary grant flattening structures.
- *    return: none
- *    grants(in): list of grant structures
- */
-static void
-free_grant_list (AU_GRANT * grants)
-{
-  AU_GRANT *next;
 
-  for (next = NULL; grants != NULL; grants = next)
-    {
-      next = grants->next;
-
-      /* always make sure object pointers are NULL in the freed stuff */
-      grants->auth_object = NULL;
-      grants->user = NULL;
-      grants->grantor = NULL;
-
-      db_ws_free (grants);
-    }
-}
-
-/*
- * collect_class_grants - Collects information about every grant of
- *                        a particular type made on a class.
- *   return: error code
- *   class_mop(in): class for which we're gathering all grants
- *   type(in): type of grant we're interested in
- *   revoked_auth(in): authorization object containing revoked grant
- *   revoked_grant_index(in): index of revoked grant element
- *   return_grants(in): returned list of grant structures
- *
- * Note:
- *    Since we don't keep the grants associated with the class
- *    object, we have to visit every user object and collect the grants for
- *    that class.  This could be a lot more effecient if we had a
- *    "granted to" set in the user object so we can have a more directed
- *    search.
- *    The revoked_auth & revoked_grant_index arguments identify a grant
- *    on some user that is being revoked.  When this grant is encountered
- *    it is not included in the resulting grant list.
- *    The db_root class used to have a user attribute which was a set
- *    containing the object-id for all users.  The users attribute has been
- *    eliminated for performance reasons.  A query on the db_user class is
- *    now used to find all users.
- */
-static int
-collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index, AU_GRANT ** return_grants)
-{
-  int error = NO_ERROR;
-  MOP user, auth;
-  DB_VALUE element;
-  DB_SET *grants;
-  AU_GRANT *grant_list, *new_grant;
-  int cache, j, gsize;
-  char *query;
-  size_t query_size;
-  DB_QUERY_RESULT *query_result;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
-
-  *return_grants = NULL;
-
-  query_size = strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2;
-  query = (char *) malloc (query_size);
-  if (query == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  if (error < 0)
-    /* error is row count if not negative. */
-    {
-      free_and_init (query);
-      return error;
-    }
-
-  grant_list = NULL;
-
-  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-    {
-      if (db_query_get_tuple_value (query_result, 0, &user_val) == NO_ERROR)
-	{
-	  if (DB_IS_NULL (&user_val))
-	    {
-	      user = NULL;
-	    }
-	  else
-	    {
-	      user = db_get_object (&user_val);
-	    }
-
-	  /* should remove deleted users when encountered ! */
-	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
-	    {
-	      /* If this is the "deleted object" error, ignore it */
-	      error = er_errid ();
-	      if (error == ER_HEAP_UNKNOWN_OBJECT)
-		{
-		  error = NO_ERROR;
-		}
-	      else
-		{
-		  error = ER_AU_ACCESS_ERROR;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
-		  break;
-		}
-	    }
-	  else if ((error = get_grants (auth, &grants, 1)) == NO_ERROR)
-	    {
-
-	      gsize = set_size (grants);
-	      for (j = 0; j < gsize && error == NO_ERROR; j += GRANT_ENTRY_LENGTH)
-		{
-		  /* ignore the grant entry that is being revoked */
-		  if (auth == revoked_auth && j == revoked_grant_index)
-		    continue;
-
-		  /* see if grant is for the class in question */
-		  if (set_get_element (grants, GRANT_ENTRY_CLASS (j), &element))
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		      break;
-		    }
-
-		  if (db_get_object (&element) == class_mop)
-		    {
-		      cache = AU_NO_AUTHORIZATION;
-		      if (set_get_element (grants, GRANT_ENTRY_CACHE (j), &element))
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			  break;
-			}
-
-		      cache = db_get_int (&element);
-		      if ((cache & (int) type))
-			{
-			  new_grant = (AU_GRANT *) db_ws_alloc (sizeof (AU_GRANT));
-			  if (new_grant == NULL)
-			    {
-			      assert (er_errid () != NO_ERROR);
-			      error = er_errid ();
-			      break;
-			    }
-
-			  new_grant->next = grant_list;
-			  grant_list = new_grant;
-			  new_grant->legal = 0;
-			  new_grant->auth_object = auth;
-			  new_grant->grant_index = j;
-			  new_grant->user = user;
-			  new_grant->grant_option = (((int) type << AU_GRANT_SHIFT) & cache);
-			  if (set_get_element (grants, GRANT_ENTRY_SOURCE (j), &element))
-			    {
-			      assert (er_errid () != NO_ERROR);
-			      error = er_errid ();
-			    }
-			  else
-			    {
-			      if (DB_IS_NULL (&element))
-				{
-				  new_grant->grantor = NULL;
-				}
-			      else
-				{
-				  new_grant->grantor = db_get_object (&element);
-				}
-			    }
-			}
-		    }
-		}
-	      set_free (grants);
-	    }
-	}
-    }
-
-  db_query_end (query_result);
-  free_and_init (query);
-
-  if (error != NO_ERROR && grant_list != NULL)
-    {
-      free_grant_list (grant_list);
-      grant_list = NULL;
-    }
-  *return_grants = grant_list;
-
-  return (error);
-}
-
-/*
- * map_grant_list - Work function for propagate_revoke.
- *   return: none
- *   grants(in): grant list
- *   grantor(in): owner object
- *
- * Note: Recursively maps over the elements in a grant list marking all
- *       grants that have a valid path from the owner.
- *       If we need to get fancy, this could take timestamp information
- *       into account.
- */
-static void
-map_grant_list (AU_GRANT * grants, MOP grantor)
-{
-  AU_GRANT *g;
-
-  for (g = grants; g != NULL; g = g->next)
-    {
-      if (!g->legal)
-	{
-	  if (g->grantor == grantor)
-	    {
-	      g->legal = 1;
-	      if (g->grant_option)
-		{
-		  map_grant_list (grants, g->user);
-		}
-	    }
-	}
-    }
-}
-
-/*
- * propagate_revoke - Propagates a revoke operation to all affected users.
- *   return: error code
- *   grant_list(in):  list of grant nodes
- *   owner(in): owner of the class
- *   mask(in): authorization type mask
- */
-static int
-propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
-{
-  int error = NO_ERROR;
-  DB_VALUE element;
-  DB_SET *grants;
-  AU_GRANT *g;
-  int i, length;
-
-  /* determine invalid grants */
-  map_grant_list (grant_list, owner);
-
-#if defined(SA_MODE)
-  if (catcls_Enable == true)
-#endif /* SA_MODE */
-    {
-      error = au_propagate_del_new_auth (grant_list, mask);
-      if (error != NO_ERROR)
-	return error;
-    }
-
-  /* make sure we can get locks on the affected authorization objects */
-  for (g = grant_list; g != NULL && error == NO_ERROR; g = g->next)
-    {
-      if (!g->legal)
-	{
-	  /*
-	   * lock authorization for write & mark dirty,
-	   * don't need to pin because we'll be going through the usual
-	   * set interface, this just ensures that the locks can be obtained
-	   */
-	  if (au_fetch_instance (g->auth_object, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
-	    {
-	      error = ER_AU_CANT_UPDATE;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    }
-	}
-    }
-
-  /* if the locks are available, perform the revoke */
-  if (error == NO_ERROR)
-    {
-      for (g = grant_list; g != NULL && error == NO_ERROR; g = g->next)
-	{
-	  if (!g->legal)
-	    {
-	      if ((error = obj_inst_lock (g->auth_object, 1)) == NO_ERROR
-		  && (error = get_grants (g->auth_object, &grants, 0)) == NO_ERROR)
-		{
-		  if ((error = set_get_element (grants, GRANT_ENTRY_CACHE (g->grant_index), &element)) == NO_ERROR)
-		    {
-		      db_make_int (&element, db_get_int (&element) & mask);
-		      error = set_put_element (grants, GRANT_ENTRY_CACHE (g->grant_index), &element);
-		    }
-		  /*
-		   * if cache bits are zero, we can't remove it because
-		   * there may be other entries in the grant list that
-		   * have indexes into this set -
-		   * must wait until all have been processed before
-		   * compressing the set
-		   */
-		  set_free (grants);
-		}
-	    }
-	}
-
-      /*
-       * now go back through and remove any grant entries that have no
-       * bits set
-       */
-      for (g = grant_list; g != NULL && error == NO_ERROR; g = g->next)
-	{
-	  if (!g->legal)
-	    {
-	      if ((error = obj_inst_lock (g->auth_object, 1)) == NO_ERROR
-		  && (error = get_grants (g->auth_object, &grants, 0)) == NO_ERROR)
-		{
-		  length = set_size (grants);
-		  for (i = 0; i < length; i += GRANT_ENTRY_LENGTH)
-		    {
-		      if ((error = set_get_element (grants, GRANT_ENTRY_CACHE (i), &element)) != NO_ERROR)
-			break;
-		      if (db_get_int (&element) == 0)
-			{
-			  /* remove this entry */
-			  drop_grant_entry (grants, i);
-			  /* must adjust loop termination counter */
-			  length = set_size (grants);
-			}
-		    }
-		  set_free (grants);
-		}
-	    }
-	}
-    }
-
-  return (error);
-}
-
-/*
- * au_revoke - This is the primary interface function for
- *             revoking authorization
- *   return: error code
- *   user(in): user being revoked
- *   class_mop(in): class being revoked
- *   type(in): type of authorization being revoked
- *
- * Note: The authorization of the given type on the given class is removed
- *       from the authorization info stored with the given user.  If this
- *       user has the grant option for this type and has granted authorization
- *       to other users, the revoke will be recursively propagated to all
- *       affected users.
- *
- * TODO : LP64
- */
-int
-au_revoke (MOP user, MOP class_mop, DB_AUTH type)
-{
-  int error;
-  MOP auth;
-  DB_SET *grants = NULL;
-  DB_VALUE cache_element;
-  int current, mask, save = 0, gindex;
-  AU_GRANT *grant_list;
-  SM_CLASS *classobj;
-  int is_partition = DB_NOT_PARTITIONED_CLASS, i = 0, savepoint_revoke = 0;
-  MOP *sub_partitions = NULL;
-
-  error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (is_partition == DB_PARTITIONED_CLASS)
-    {
-      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
-      if (error != NO_ERROR)
-	{
-	  goto fail_end;
-	}
-      savepoint_revoke = 1;
-
-      for (i = 0; sub_partitions[i]; i++)
-	{
-	  error = au_revoke (user, sub_partitions[i], type);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
-
-      free_and_init (sub_partitions);
-      if (error != NO_ERROR)
-	{
-	  goto fail_end;
-	}
-    }
-
-  AU_DISABLE (save);
-  if (ws_is_same_object (user, Au_user))
-    {
-      error = ER_AU_CANT_REVOKE_SELF;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto fail_end;
-    }
-
-  error = au_fetch_class_force (class_mop, &classobj, AU_FETCH_READ);
-  if (error == NO_ERROR)
-    {
-      if (ws_is_same_object (classobj->owner, user))
-	{
-	  error = ER_AU_CANT_REVOKE_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	  goto fail_end;
-	}
-
-      error = check_grant_option (class_mop, classobj, type);
-      if (error != NO_ERROR)
-	{
-	  goto fail_end;
-	}
-
-      if (au_get_object (user, "authorization", &auth) != NO_ERROR)
-	{
-	  error = ER_AU_ACCESS_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
-	  goto fail_end;
-	}
-      else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
-	{
-	  error = ER_AU_CANT_UPDATE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  goto fail_end;
-	}
-      else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
-	{
-	  gindex = find_grant_entry (grants, class_mop, Au_user);
-	  if (gindex == -1)
-	    {
-	      error = ER_AU_GRANT_NOT_FOUND;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	      goto fail_end;
-	    }
-	  else
-	    {
-	      /* get current cache bits */
-	      error = set_get_element (grants, gindex + 2, &cache_element);
-	      if (error != NO_ERROR)
-		{
-		  set_free (grants);
-		  if (sub_partitions)
-		    {
-		      free_and_init (sub_partitions);
-		    }
-		  AU_ENABLE (save);
-		  return (error);
-		}
-	      current = db_get_int (&cache_element);
-
-	      /*
-	       * If all the bits are set, assume we wan't to
-	       * revoke everything previously granted, makes it a bit
-	       * easier but muddies the semantics too much ?
-	       */
-	      if (type == DB_AUTH_ALL)
-		{
-		  type = (DB_AUTH) (current & AU_TYPE_MASK);
-		}
-
-	      /*
-	       * this test could be more sophisticated, right now,
-	       * if there are any valid grants that fit in
-	       * the specified bit mask, the operation will proceed,
-	       * we could make sure that every bit in the supplied
-	       * mask is also present in the cache and if not abort
-	       * the whole thing
-	       */
-
-	      if ((current & (int) type) == 0)
-		{
-		  error = ER_AU_GRANT_NOT_FOUND;
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-		}
-	      else if ((error = collect_class_grants (class_mop, type, auth, gindex, &grant_list)) == NO_ERROR)
-		{
-
-		  /* calculate the mask to turn off the grant */
-		  mask = (int) ~(type | (type << AU_GRANT_SHIFT));
-
-		  /* propagate the revoke to the affected classes */
-		  if ((error = propagate_revoke (grant_list, classobj->owner, (DB_AUTH) mask)) == NO_ERROR)
-		    {
-
-		      /*
-		       * finally, update the local grant for the
-		       * original object
-		       */
-		      current &= mask;
-		      if (current)
-			{
-			  db_make_int (&cache_element, current);
-			  set_put_element (grants, gindex + 2, &cache_element);
-			}
-		      else
-			{
-			  /* no remaining grants, remove it from the grant set */
-			  drop_grant_entry (grants, gindex);
-			}
-		      /*
-		       * clear the cache for this user/class pair
-		       * to make sure we recalculate it the next time
-		       * it is referenced
-		       */
-		      reset_cache_for_user_and_class (classobj);
-
-#if defined(SA_MODE)
-		      if (catcls_Enable == true)
-#endif /* SA_MODE */
-			error = au_delete_new_auth (Au_user, user, class_mop, type);
-
-		      /*
-		       * Make sure that we don't keep any parse trees
-		       * around that rely on obsolete authorization.
-		       * This may not be necessary.
-		       */
-		      sm_bump_local_schema_version ();
-		    }
-		  free_grant_list (grant_list);
-		}
-	    }
-	}
-    }
-
-fail_end:
-  if (grants != NULL)
-    {
-      set_free (grants);
-    }
-  if (savepoint_revoke && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
-    {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
-    }
-  if (sub_partitions)
-    {
-      free_and_init (sub_partitions);
-    }
-  AU_ENABLE (save);
-  return (error);
-}
 
 /*
  * MISC UTILITIES

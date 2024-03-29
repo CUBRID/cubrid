@@ -288,6 +288,8 @@ set(QUERY_HEADERS
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate.c
   ${OBJECT_DIR}/authenticate_cache.cpp
+  ${OBJECT_DIR}/authenticate_grant.cpp
+  ${OBJECT_DIR}/authenticate_user_access.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
   ${OBJECT_DIR}/deduplicate_key.c

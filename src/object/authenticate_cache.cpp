@@ -23,6 +23,8 @@
 #include "authenticate_cache.hpp"
 
 #include "authenticate.h"
+#include "authenticate_grant.hpp"
+#include "dbtype_function.h"
 #include "schema_manager.h"
 
 static AU_CLASS_CACHE *au_make_class_cache (int depth);
@@ -505,4 +507,181 @@ void au_set_cache_index (int idx)
 int au_get_cache_index()
 {
   return Au_cache_index;
+}
+
+
+/*
+ * update_cache -  This is the main function for parsing all of
+ *                 the authorization information for a particular class and
+ *                 caching it in the class structure.
+ *                 This will be called once after each successful
+ *                 read/write lock. It needs to be fast.
+ *   return: error code
+ *   classop(in):  class MOP to authorize
+ *   sm_class(in): direct pointer to class structure
+ *   cache(in):
+ */
+int
+update_cache (MOP classop, SM_CLASS *sm_class)
+{
+  int error = NO_ERROR;
+  DB_SET *groups = NULL;
+  int i, save, card;
+  DB_VALUE value;
+  MOP group, auth;
+  bool is_member = false;
+  unsigned int *bits = NULL;
+  bool need_pop_er_stack = false;
+
+  /*
+   * must disable here because we may be updating the cache of the system
+   * objects and we need to read them in order to update etc.
+   */
+  AU_DISABLE (save);
+
+  er_stack_push ();
+
+  need_pop_er_stack = true;
+
+  bits = get_cache_bits (sm_class);
+  if (bits == NULL)
+    {
+      assert (false);
+      return er_errid ();
+    }
+
+  /* initialize the cache bits */
+  *bits = AU_NO_AUTHORIZATION;
+
+  if (sm_class->owner == NULL)
+    {
+      /* This shouldn't happen - assign it to the DBA */
+      error = ER_AU_CLASS_WITH_NO_OWNER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+
+      goto end;
+    }
+
+  is_member = au_is_dba_group_member (Au_user);
+  if (is_member)
+    {
+      *bits = AU_FULL_AUTHORIZATION;
+      goto end;
+    }
+
+  /* there might be errors */
+  error = er_errid ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (ws_is_same_object (Au_user, sm_class->owner))
+    {
+      /* might want to allow grant/revoke on self */
+      *bits = AU_FULL_AUTHORIZATION;
+      goto end;
+    }
+
+  if (au_get_set (Au_user, "groups", &groups) != NO_ERROR)
+    {
+      error = ER_AU_ACCESS_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "groups", AU_USER_CLASS_NAME);
+
+      goto end;
+    }
+
+  db_make_object (&value, sm_class->owner);
+
+  is_member = set_ismember (groups, &value);
+
+  /* there might be errors */
+  error = er_errid ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (is_member)
+    {
+      /* we're a member of the owning group */
+      *bits = AU_FULL_AUTHORIZATION;
+    }
+  else if (au_get_object (Au_user, "authorization", &auth) != NO_ERROR)
+    {
+      error = ER_AU_ACCESS_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "authorization", AU_USER_CLASS_NAME);
+    }
+  else
+    {
+      /* apply local grants */
+      error = apply_grants (auth, classop, bits);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      /* apply grants from all groups */
+      card = set_cardinality (groups);
+
+      /* there might be errors */
+      error = er_errid ();
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      for (i = 0; i < card; i++)
+	{
+	  /* will have to handle deleted groups here ! */
+	  error = au_set_get_obj (groups, i, &group);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  if (ws_is_same_object (group, Au_dba_user))
+	    {
+	      /* someones on the DBA member list, give them power */
+	      *bits = AU_FULL_AUTHORIZATION;
+	    }
+	  else
+	    {
+	      error = au_get_object (group, "authorization", &auth);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+
+	      error = apply_grants (auth, classop, bits);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+	    }
+	}
+    }
+
+end:
+
+  if (groups != NULL)
+    {
+      set_free (groups);
+    }
+
+  if (need_pop_er_stack)
+    {
+      if (error == NO_ERROR)
+	{
+	  er_stack_pop ();
+	}
+      else
+	{
+	  er_stack_pop_and_keep_error ();
+	}
+    }
+
+  AU_ENABLE (save);
+
+  return (error);
 }

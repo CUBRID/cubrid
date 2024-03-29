@@ -70,6 +70,7 @@ extern int Au_cache_index;
 
 extern void init_caches (void);
 extern void flush_caches (void);
+extern int update_cache (MOP classop, SM_CLASS *sm_class);
 
 // Au_cache_index
 extern int au_get_cache_index ();
