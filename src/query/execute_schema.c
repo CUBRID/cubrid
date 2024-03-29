@@ -83,7 +83,7 @@
 #define UNIQUE_SAVEPOINT_REVOKE_USER "rEVOKEuSER"
 
 #define QUERY_MAX_SIZE	1024 * 1024
-#define MAX_FILTER_PREDICATE_STRING_LENGTH 255
+#define MAX_FILTER_PREDICATE_STRING_LENGTH (1073741823)
 #define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
 typedef enum
@@ -2993,6 +2993,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  idx_info->where->info.expr.paren_type = 0;
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_CHARSET_COLLATE_FULL;
+
 	  filter_expr = pt_print_bytes ((PARSER_CONTEXT *) parser, (PT_NODE *) idx_info->where);
 	  parser->custom_print = save_custom;
 	  if (filter_expr)
@@ -14597,6 +14598,7 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * no
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CHARSET_COLLATE_FULL;
+
   expr_str = parser_print_tree_with_quotes (parser, expr);
   parser->custom_print = save_custom;
   assert (expr_str != NULL);
@@ -14908,7 +14910,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       goto error;
     }
 
-  query_str_len = strlen (filter_index_info->pred_string) + strlen (class_name) + 9 /* strlen("SELECT * ") */  +
+  query_str_len = strlen (filter_index_info->pred_string) + strlen (class_name) + 9 /* strlen("SELECT 1 ") */  +
     6 /* strlen(" FROM ") */  +
     2 /* [] */  +
     7 /* strlen(" WHERE " */  +
@@ -14919,7 +14921,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_str_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  snprintf (query_str, query_str_len, "SELECT * FROM [%s] WHERE %s", class_name, filter_index_info->pred_string);
+  snprintf (query_str, query_str_len, "SELECT 1 FROM [%s] WHERE %s", class_name, filter_index_info->pred_string);
   stmt = parser_parse_string_use_sys_charset (parser, query_str);
   if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
     {
@@ -14973,6 +14975,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   where_predicate->info.expr.paren_type = 0;
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CHARSET_COLLATE_FULL;
+
   filter_expr = pt_print_bytes (parser, where_predicate);
   parser->custom_print = save_custom;
   if (filter_expr)
