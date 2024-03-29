@@ -143,11 +143,6 @@ static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * syn
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
-static int do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
-static int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag);
-static PT_NODE *do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
-static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
-
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
 
@@ -3491,6 +3486,9 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
 
   init_compile_context (parser);
+
+  /* All CTE sub-queries included in the query must be prepared first. */
+  parser_walk_tree (parser, statement, do_prepare_cte_pre, NULL, NULL, NULL);
 
   switch (statement->node_type)
     {
@@ -14333,7 +14331,7 @@ pt_is_allowed_result_cache ()
   return true;
 }
 
-static PT_NODE *
+PT_NODE *
 do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int query_flag = *(int *) arg;
@@ -14359,12 +14357,12 @@ do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *con
   return stmt;
 }
 
-static PT_NODE *
+PT_NODE *
 do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (stmt->node_type != PT_SELECT)
+  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
     {
       return stmt;
     }
@@ -14459,9 +14457,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       statement->flag.cannot_prepare = 1;
       return NO_ERROR;
     }
-
-  /* All CTE sub-queries included in the query must be prepared first. */
-  parser_walk_tree (parser, statement, do_prepare_cte_pre, NULL, NULL, NULL);
 
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
   contextp->recompile_xasl = statement->flag.recompile;
@@ -14615,7 +14610,7 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
  * parser (in)	  : parser context
  * statement (in) : statement to prepare
  */
-static int
+int
 do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
@@ -14626,6 +14621,11 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   for (cte_def_list = statement; cte_def_list; cte_def_list = cte_def_list->next)
     {
+      if (cte_def_list->info.cte.non_recursive_part->xasl_id)
+	{
+	  continue;
+	}
+
       if (cte_def_list->info.cte.non_recursive_part->info.query.hint & PT_HINT_QUERY_CACHE)
 	{
 	  cte_statement = cte_def_list->info.cte.non_recursive_part;
@@ -14675,7 +14675,7 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
  * statement (in) : statement to execute
  * query_flag     : query flag for execution
  */
-static int
+int
 do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
 {
   PT_NODE *stmt;
@@ -14986,9 +14986,6 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
-
-  /* All CTE sub-queries included in the query must be executed first. */
-  parser_walk_tree (parser, statement, do_execute_cte_pre, (void *) &query_flag, NULL, NULL);
 
   /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the host
    * variables given by users as parameter values for the query. As a result, query id and result file id

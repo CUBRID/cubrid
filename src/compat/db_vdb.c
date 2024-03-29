@@ -55,6 +55,7 @@
 #include "dbtype.h"
 #include "util_func.h"
 #include "xasl.h"
+#include "query_cl.h"
 
 #define BUF_SIZE 1024
 
@@ -84,7 +85,7 @@ static int values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * value
 static int set_prepare_info_into_list (DB_PREPARE_INFO * prepare_info, PT_NODE * statement);
 static PT_NODE *char_array_to_name_list (PARSER_CONTEXT * parser, char **names, int length);
 static int do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement);
-static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx);
+static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, DB_PREPARE_CTE_INFO * cte_info);
 static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list);
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
@@ -97,6 +98,7 @@ static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser, PT_NODE * st
 static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement);
+static PT_NODE *do_process_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -610,10 +612,44 @@ db_compile_statement_local (DB_SESSION * session)
     {
       /* we don't actually have the statement which will be executed and we need to get some information about it from
        * the server */
-      int err = do_get_prepared_statement_info (session, stmt_ndx);
+      DB_PREPARE_CTE_INFO cte_info;
+      int i, err = do_get_prepared_statement_info (session, stmt_ndx, &cte_info);
+
+      QUERY_ID query_id;
+      QFILE_LIST_ID *list_id;
+
       if (err != NO_ERROR)
 	{
 	  return err;
+	}
+
+      for (i = 0; i < cte_info.cte_num_query; i++)
+	{
+	  int k;
+	  DB_VALUE *host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * cte_info.cte_host_var_count[i]);
+
+	  if (host_variables == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (DB_VALUE) * cte_info.cte_host_var_count[i]);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
+	  for (k = 0; k < cte_info.cte_host_var_count[i]; k++)
+	    {
+	      pr_clone_value (&parser->host_variables[cte_info.cte_host_var_index[i][k]], &host_variables[k]);
+	    }
+
+	  err =
+	    execute_query (&cte_info.cte_xasl_id[i], &query_id, cte_info.cte_host_var_count[i], host_variables,
+			   &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
+
+	  free (host_variables);
+
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
 	}
     }
   /* prefetch and lock classes to avoid deadlock */
@@ -1755,6 +1791,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
       db_set_base_server_time (&parser->sys_datetime);
     }
 
+  /* All CTE sub-queries included in the query must be executed first. */
+  parser_walk_tree (parser, statement, do_execute_cte_pre, (void *) &statement->flag, NULL, NULL);
+
   if (statement->node_type == PT_PREPARE_STATEMENT)
     {
       err = do_process_prepare_statement (session, statement);
@@ -2295,6 +2334,68 @@ char_array_to_name_list (PARSER_CONTEXT * parser, char **names, int length)
   return list;
 }
 
+static PT_NODE *
+do_process_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  DB_PREPARE_INFO *prepare_info;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
+    {
+      return stmt;
+    }
+
+  prepare_info = (DB_PREPARE_INFO *) arg;
+  if (stmt->info.query.with)
+    {
+      int num_cte = 0;
+      PT_NODE *cte_def_list;
+      PT_NODE *cte_query;
+      PT_NODE *cte_list = stmt->info.query.with->info.with_clause.cte_definition_list;
+
+      prepare_info->cte_info.cte_num_query = 0;
+      for (cte_def_list = cte_list; cte_def_list; cte_def_list = cte_def_list->next)
+	{
+	  cte_query = cte_def_list->info.cte.non_recursive_part;
+	  if (cte_query && cte_query->xasl_id)
+	    {
+	      num_cte++;
+	    }
+	}
+
+      if (num_cte > 0)
+	{
+	  int i = 0, k;
+
+	  prepare_info->cte_info.cte_num_query = num_cte;
+	  prepare_info->cte_info.cte_xasl_id = (XASL_ID *) malloc (sizeof (XASL_ID) * num_cte);
+	  prepare_info->cte_info.cte_host_var_count = (int *) malloc (sizeof (int) * num_cte);
+	  prepare_info->cte_info.cte_host_var_index = (int **) malloc (sizeof (int *) * num_cte);
+
+	  for (cte_def_list = cte_list; cte_def_list; cte_def_list = cte_def_list->next)
+	    {
+	      cte_query = cte_def_list->info.cte.non_recursive_part;
+	      if (cte_query && cte_query->xasl_id)
+		{
+		  XASL_ID_COPY (&prepare_info->cte_info.cte_xasl_id[i], cte_query->xasl_id);
+		  prepare_info->cte_info.cte_host_var_count[i] = cte_query->cte_host_var_count;
+		  prepare_info->cte_info.cte_host_var_index[i] =
+		    (int *) malloc (sizeof (int) * cte_query->cte_host_var_count);
+		  for (k = 0; k < cte_query->cte_host_var_count; k++)
+		    {
+		      prepare_info->cte_info.cte_host_var_index[i][k] = cte_query->cte_host_var_index[k];
+		    }
+		}
+
+	      i++;
+	    }
+	}
+    }
+
+  return stmt;
+}
+
 /*
  * do_process_prepare_statement () - execute a 'PREPARE STMT FROM ...'
  *				     statement
@@ -2385,6 +2486,8 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
       prepare_info.oids_included = prepared_stmt->info.query.oids_included;
     }
 
+  parser_walk_tree (prepared_session->parser, prepared_stmt, do_process_prepare_cte_pre, &prepare_info, NULL, NULL);
+
   err = set_prepare_info_into_list (&prepare_info, prepared_stmt);
   if (err != NO_ERROR)
     {
@@ -2439,7 +2542,7 @@ cleanup:
  * stmt_idx (in) : statement index
  */
 static int
-do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
+do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, DB_PREPARE_CTE_INFO * cte_info)
 {
   const char *name = NULL;
   char *stmt_info = NULL;
@@ -2463,6 +2566,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
     }
 
   db_unpack_prepare_info (&prepare_info, stmt_info);
+  *cte_info = prepare_info.cte_info;
 
   statement->info.execute.column_count = 0;
   col = prepare_info.columns;
