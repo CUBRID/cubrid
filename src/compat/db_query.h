@@ -137,6 +137,7 @@ extern "C"
     int statement_type;
   };
 
+  /* for CTE result-cache */
   typedef struct db_prepare_cte_info DB_PREPARE_CTE_INFO;
 
   struct db_prepare_cte_info
@@ -155,7 +156,7 @@ extern "C"
     DB_QUERY_TYPE *columns;	/* columns */
     CUBRID_STMT_TYPE stmt_type;	/* statement type */
     DB_VALUE_ARRAY host_variables;	/* statement host variables */
-    DB_PREPARE_CTE_INFO cte_info;
+    DB_PREPARE_CTE_INFO cte_info;	/* for CTE result-cache */
     TP_DOMAIN **host_var_expected_domains;
     int auto_param_count;	/* number of auto parametrized values */
     int recompile;		/* statement should be recompiled */

@@ -565,7 +565,7 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 int
 db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 {
-  int i = 0;
+  int i, k, cte_num;
   char *ptr = NULL;
 
   assert (info != NULL);
@@ -600,18 +600,42 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
     }
   /* cte */
   ptr = or_unpack_int (ptr, &info->cte_info.cte_num_query);
-  if (info->cte_info.cte_num_query > 0)
-    {
-      info->cte_info.cte_xasl_id = (XASL_ID *) malloc (info->cte_info.cte_num_query * sizeof (XASL_ID));
-      info->cte_info.cte_host_var_count = (int *) malloc (info->cte_info.cte_num_query * sizeof (int));
-      info->cte_info.cte_host_var_index = (int **) malloc (info->cte_info.cte_num_query * sizeof (int *));
-      for (i = 0; i < info->cte_info.cte_num_query; i++)
-	{
-	  int k;
+  cte_num = info->cte_info.cte_num_query;
 
+  if (cte_num > 0)
+    {
+      info->cte_info.cte_xasl_id = (XASL_ID *) malloc (cte_num * sizeof (XASL_ID));
+      if (info->cte_info.cte_xasl_id == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cte_num * sizeof (XASL_ID));
+	  goto error;
+	}
+      info->cte_info.cte_host_var_count = (int *) malloc (cte_num * sizeof (int));
+      if (info->cte_info.cte_host_var_count == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cte_num * sizeof (int));
+	  goto error;
+	}
+      info->cte_info.cte_host_var_index = (int **) malloc (cte_num * sizeof (int *));
+      if (info->cte_info.cte_host_var_index == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cte_num * sizeof (int *));
+	  goto error;
+	}
+      for (i = 0; i < cte_num; i++)
+	{
+	  info->cte_info.cte_host_var_index[i] = NULL;
+	}
+      for (i = 0; i < cte_num; i++)
+	{
 	  OR_UNPACK_XASL_ID (ptr, &info->cte_info.cte_xasl_id[i]);
 	  ptr = or_unpack_int (ptr, &info->cte_info.cte_host_var_count[i]);
 	  info->cte_info.cte_host_var_index[i] = (int *) malloc (info->cte_info.cte_host_var_count[i] * sizeof (int));
+	  if (info->cte_info.cte_host_var_index[i] == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cte_num * sizeof (int));
+	      goto error;
+	    }
 	  for (k = 0; k < info->cte_info.cte_host_var_count[i]; k++)
 	    {
 	      ptr = or_unpack_int (ptr, &info->cte_info.cte_host_var_index[i][k]);
@@ -686,6 +710,28 @@ error:
 	  col = next_p;
 	}
     }
+
+  /* cte */
+  if (info->cte_info.cte_xasl_id != NULL)
+    {
+      free_and_init (info->cte_info.cte_xasl_id);
+    }
+  if (info->cte_info.cte_host_var_count != NULL)
+    {
+      free_and_init (info->cte_info.cte_host_var_count);
+    }
+  if (info->cte_info.cte_host_var_index != NULL)
+    {
+      for (i = 0; i < cte_num; i++)
+	{
+	  if (info->cte_info.cte_host_var_index[i] != NULL)
+	    {
+	      free_and_init (info->cte_info.cte_host_var_index[i]);
+	    }
+	}
+      free_and_init (info->cte_info.cte_host_var_index);
+    }
+
   if (info->host_variables.vals != NULL)
     {
       db_value_clear_array (&info->host_variables);

@@ -149,7 +149,12 @@ extern int do_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement);
+
+/* for CTE result-cache */
 extern int do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag);
+extern PT_NODE *do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
+extern PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
 extern int do_update (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -203,9 +208,4 @@ extern int do_find_class_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_serial_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_trigger_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_synonym_by_query (const char *name, char *buf, int buf_size);
-
-extern int do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
-extern int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag);
-extern PT_NODE *do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
-extern PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 #endif /* _EXECUTE_STATEMENT_H_ */
