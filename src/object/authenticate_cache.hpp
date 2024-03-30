@@ -26,6 +26,9 @@
 
 #include "class_object.h" /* SM_CLASS */
 
+/* Invalid cache is identified when the high bit is on. */
+#define AU_CACHE_INVALID        0x80000000
+
 /*
  * AU_CLASS_CACHE
  *

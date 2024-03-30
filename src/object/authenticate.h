@@ -107,11 +107,6 @@ extern const char *AU_OBJECT_CLASS_NAME[];
 
 #define AU_GRANT_SHIFT          8
 
-/* Invalid cache is identified when the high bit is on. */
-
-#define AU_CACHE_INVALID        0x80000000
-
-
 int au_disable (void);
 void au_enable (int save);
 MOP au_get_public_user (void);
