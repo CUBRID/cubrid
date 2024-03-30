@@ -49,9 +49,6 @@ static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, 
 				 AU_GRANT **return_grants);
 static int propagate_revoke (AU_GRANT *grant_list, MOP owner, DB_AUTH mask);
 
-static int au_insert_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option);
-static int au_update_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option);
-static int au_delete_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type);
 static int au_propagate_del_new_auth (AU_GRANT *glist, DB_AUTH mask);
 
 
@@ -61,6 +58,8 @@ static int au_propagate_del_new_auth (AU_GRANT *glist, DB_AUTH mask);
 static void free_grant_list (AU_GRANT *grants);
 static void map_grant_list (AU_GRANT *grants, MOP grantor);
 
+
+// static int get_grants (MOP auth, DB_SET **grant_ptr, int filter);
 static int find_grant_entry (DB_SET *grants, MOP class_mop, MOP grantor);
 static int add_grant_entry (DB_SET *grants, MOP class_mop, MOP grantor);
 static void drop_grant_entry (DB_SET *grants, int index);
@@ -179,21 +178,22 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	      if (catcls_Enable == true)
 #endif /* SA_MODE */
 		{
+		  au_auth_accessor accessor;
 		  DB_AUTH ins_bits, upd_bits;
 
 		  ins_bits = (DB_AUTH) ((~current & AU_TYPE_MASK) & (int) type);
 		  if (ins_bits)
 		    {
 		      error =
-			      au_insert_new_auth (Au_user, user, class_mop, ins_bits,
-						  (grant_option) ? ins_bits : DB_AUTH_NONE);
+			      accessor.insert_auth (Au_user, user, class_mop, ins_bits,
+						    (grant_option) ? ins_bits : DB_AUTH_NONE);
 		    }
 		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
 		  if ((error == NO_ERROR) && upd_bits)
 		    {
 		      error =
-			      au_update_new_auth (Au_user, user, class_mop, upd_bits,
-						  (grant_option) ? upd_bits : DB_AUTH_NONE);
+			      accessor.update_auth (Au_user, user, class_mop, upd_bits,
+						    (grant_option) ? upd_bits : DB_AUTH_NONE);
 		    }
 		}
 
@@ -426,9 +426,13 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 
 #if defined(SA_MODE)
 		      if (catcls_Enable == true)
+			{
 #endif /* SA_MODE */
-			error = au_delete_new_auth (Au_user, user, class_mop, type);
-
+			  au_auth_accessor accessor;
+			  error = accessor.delete_auth (Au_user, user, class_mop, type);
+#if defined(SA_MODE)
+			}
+#endif /* SA_MODE */
 		      /*
 		       * Make sure that we don't keep any parse trees
 		       * around that rely on obsolete authorization.
@@ -1315,6 +1319,7 @@ au_propagate_del_new_auth (AU_GRANT *glist, DB_AUTH mask)
   DB_VALUE class_, type;
   int error = NO_ERROR;
 
+  au_auth_accessor accessor;
   for (g = glist; g != NULL; g = g->next)
     {
       if (!g->legal)
@@ -1338,7 +1343,7 @@ au_propagate_del_new_auth (AU_GRANT *glist, DB_AUTH mask)
 	    }
 
 	  error =
-		  au_delete_new_auth (g->grantor, g->user, db_get_object (&class_), (DB_AUTH) (db_get_int (&type) & ~mask));
+		  accessor.delete_auth (g->grantor, g->user, db_get_object (&class_), (DB_AUTH) (db_get_int (&type) & ~mask));
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -1407,6 +1412,8 @@ au_force_write_new_auth (void)
       grants = db_get_set (&grants_val);
 
       gsize = set_size (grants);
+
+      au_auth_accessor accessor;
       for (gindex = 0; gindex < gsize; gindex += GRANT_ENTRY_LENGTH)
 	{
 	  error = set_get_element (grants, GRANT_ENTRY_CLASS (gindex), &class_val);
@@ -1430,8 +1437,7 @@ au_force_write_new_auth (void)
 	    }
 	  auth = (DB_AUTH) db_get_int (&auth_val);
 
-	  error =
-		  au_insert_new_auth (grantor, grantee, class_, (DB_AUTH) (auth & AU_TYPE_MASK), (auth & AU_GRANT_MASK));
+	  error = accessor.insert_auth (grantor, grantee, class_, (DB_AUTH) (auth & AU_TYPE_MASK), (auth & AU_GRANT_MASK));
 	  if (error != NO_ERROR)
 	    {
 	      goto end;

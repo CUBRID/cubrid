@@ -25,6 +25,7 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 
 #include "db.h"
 #include "dbi.h"
@@ -53,6 +54,7 @@ const int AU_TYPE_SET_LEN[] =
   strlen ("EXECUTE")		/* DB_AUTH_EXECUTE */
 };
 
+MOP au_auth_accessor::au_class_mop = nullptr;
 
 au_auth_accessor::au_auth_accessor ()
   : m_au_obj (nullptr)
@@ -61,16 +63,16 @@ au_auth_accessor::au_auth_accessor ()
 int
 au_auth_accessor::create_new_auth ()
 {
-  if (m_au_class == nullptr)
+  if (au_class_mop == nullptr)
     {
-      m_au_class = sm_find_class (CT_CLASSAUTH_NAME);
-      if (m_au_class == NULL)
+      au_class_mop = sm_find_class (CT_CLASSAUTH_NAME);
+      if (au_class_mop == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_CLASS, 1, CT_CLASSAUTH_NAME);
 	}
     }
 
-  m_au_obj = db_create_internal (m_au_class);
+  m_au_obj = db_create_internal (au_class_mop);
   if (m_au_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -133,7 +135,7 @@ au_auth_accessor::set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop
 int
 au_auth_accessor::get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
 {
-  int error = NO_ERROR, save, i;
+  int error = NO_ERROR, save, i = 0;
   DB_VALUE val[COUNT_FOR_VARIABLES];
   DB_VALUE grant_value;
   DB_QUERY_RESULT *result = NULL;
@@ -188,7 +190,12 @@ au_auth_accessor::get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH au
     }
   db_make_string (&val[INDEX_FOR_CLASS_NAME], class_name);
 
-  for (DB_AUTH type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++);
+  i = 0;
+  for (DB_AUTH type = DB_AUTH_SELECT; type != auth_type; type = (DB_AUTH) (type << 1))
+    {
+      i++;
+    }
+
   db_make_string (&val[INDEX_FOR_AUTH_TYPE], AU_TYPE_SET[i]);
 
   session = db_open_buffer (sql_query);
@@ -218,6 +225,7 @@ au_auth_accessor::get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH au
   if (error == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error = ER_GENERIC_ERROR;
       goto release;
     }
   else if (error < 0)
