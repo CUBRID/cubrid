@@ -314,7 +314,7 @@ au_get_user_name (MOP obj)
   int error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
     {
-      if (IS_STRING (&value) && !DB_IS_NULL (&value) && db_get_string (&value) != NULL)
+      if (DB_IS_STRING (&value) && !DB_IS_NULL (&value) && db_get_string (&value) != NULL)
 	{
 	  name = ws_copy_string (db_get_string (&value));
 	}
