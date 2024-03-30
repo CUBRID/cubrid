@@ -23,6 +23,7 @@
 #include "authenticate_user_access.hpp"
 
 #include "authenticate.h"
+#include "authenticate_cache.hpp"
 #include "authenticate_auth_access.hpp"
 
 #include "set_object.h"
@@ -30,11 +31,160 @@
 #include "error_manager.h"
 #include "object_accessor.h"
 #include "object_primitive.h"
+#include "network_interface_cl.h"
+#include "transaction_cl.h" /* TM_TRAN_READ_FETCH_VERSION */
 
 #include "db.h"
 #include "dbi.h"
 #include "schema_manager.h"
 #include "schema_system_catalog_constants.h"
+
+/*
+ * USER/GROUP ACCESS
+ */
+
+static MOP au_make_user (const char *name);
+static int au_add_direct_groups (DB_SET *new_groups, DB_VALUE *value);
+static int au_compute_groups (MOP member, const char *name);
+static int au_add_member_internal (MOP group, MOP member, int new_user);
+
+/*
+ * au_find_user - Find a user object by name.
+ *   return: user object
+ *   user_name(in): name
+ *
+ * Note: The db_root class used to have a users attribute which was a set
+ *       containing the object-id for all users.
+ *       The users attribute has been eliminated for performance reasons.
+ *       A query is now used to find the user.  Since the user name is not
+ *       case insensitive, it is set to upper case in the query.  This forces
+ *       user names to be set to upper case when users are added.
+ */
+MOP
+au_find_user (const char *user_name)
+{
+  MOP obj, user = NULL;
+  int save;
+  char *query;
+  DB_QUERY_RESULT *query_result;
+  DB_QUERY_ERROR query_error;
+  int error = NO_ERROR;
+  DB_VALUE user_val;
+  const char *qp1 = "select [%s] from [%s] where [name] = '%s' using index none";
+  MOP user_class;
+  char *upper_case_name;
+  size_t upper_case_name_size;
+  DB_VALUE user_name_string;
+
+  if (user_name == NULL)
+    {
+      return NULL;
+    }
+
+  {
+    /*
+     * To reduce unnecessary code execution,
+     * the current schema name can be used instead of the current user name.
+     *
+     * Returns the current user object when the user name is the same as the current schema name.
+     *
+     * Au_user_name cannot be used because it does not always store the current user name.
+     * When au_login_method () is called, Au_user_name is not changed.
+     */
+    const char *sc_name = sc_current_schema_name ();
+    if (Au_user && sc_name && sc_name[0] != '\0' && intl_identifier_casecmp (sc_name, user_name) == 0)
+      {
+	return Au_user;
+      }
+  }
+
+  /* disable checking of internal authorization object access */
+  AU_DISABLE (save);
+
+  user = NULL;
+
+  upper_case_name_size = intl_identifier_upper_string_size (user_name);
+  upper_case_name = (char *) malloc (upper_case_name_size + 1);
+  if (upper_case_name == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size);
+      return NULL;
+    }
+  intl_identifier_upper (user_name, upper_case_name);
+
+  /*
+   * first try to find the user id by index. This is faster than
+   * a query, and will not get blocked out as a server request
+   * if the query processing resources are all used up at the moment.
+   * This is primarily of importance during logging in.
+   */
+  user_class = db_find_class ("db_user");
+  if (user_class)
+    {
+      db_make_string (&user_name_string, upper_case_name);
+      user = obj_find_unique (user_class, "name", &user_name_string, AU_FETCH_READ);
+    }
+  error = er_errid ();
+
+  if (error != NO_ERROR)
+    {
+      if (error == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1, user_name);
+	}
+      goto exit;
+    }
+
+  if (error == NO_ERROR && !user)
+    {
+      /* proceed with the query version of the function */
+      query = (char *) malloc (strlen (qp1) + (2 * strlen (AU_USER_CLASS_NAME)) + strlen (upper_case_name) + 1);
+      if (query)
+	{
+	  sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME, upper_case_name);
+
+	  lang_set_parser_use_client_charset (false);
+	  error = db_compile_and_execute_local (query, &query_result, &query_error);
+	  lang_set_parser_use_client_charset (true);
+	  /* error is row count if not negative. */
+	  if (error > 0)
+	    {
+	      if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
+		{
+		  if (db_query_get_tuple_value (query_result, 0, &user_val) == NO_ERROR)
+		    {
+		      if (DB_IS_NULL (&user_val))
+			{
+			  obj = NULL;
+			}
+		      else
+			{
+			  obj = db_get_object (&user_val);
+			}
+		      if (obj)
+			{
+			  user = obj;
+			}
+		    }
+		}
+	    }
+	  if (error >= 0)
+	    {
+	      db_query_end (query_result);
+	    }
+	  free_and_init (query);
+	}
+    }
+
+exit:
+  AU_ENABLE (save);
+
+  if (upper_case_name)
+    {
+      free_and_init (upper_case_name);
+    }
+  return (user);
+}
 
 /*
  * au_find_user_to_drop - Find a user object by name for dropping.
@@ -318,6 +468,23 @@ au_is_user_group_member (MOP group_user, MOP user)
 
   return false;
 }
+
+/*
+ * TODO: return NO_ERROR in the previous implementation
+ * check_user_name
+ *   return: error code
+ *   name(in): proposed user name
+ *
+ * Note: This is made void for ansi compatibility. It previously insured
+ *       that identifiers which were accepted could be parsed in the
+ *       language interface.
+ *
+ *       ANSI allows any character in an identifier. It also allows reserved
+ *       words. In order to parse identifiers with non-alpha characters
+ *       or that are reserved words, an escape syntax is definned with double
+ *       quotes, "FROM", for example.
+ */
+#define check_user_name(name) NO_ERROR
 
 
 /*
@@ -782,7 +949,7 @@ au_add_member_method (MOP user, DB_VALUE *returnval, DB_VALUE *memval)
 	{
 	  member = db_get_object (memval);
 	}
-      else if (IS_STRING (memval) && !DB_IS_NULL (memval) && db_get_string (memval) != NULL)
+      else if (DB_IS_STRING (memval) && !DB_IS_NULL (memval) && db_get_string (memval) != NULL)
 	{
 	  member = au_find_user (db_get_string (memval));
 	  if (member == NULL)
