@@ -3609,60 +3609,6 @@ au_start (void)
  */
 
 /*
- * au_get_user_name - Shorthand function for getting name from user object.
- *                    Must remember to free the string
- *   return: user name string
- *   obj(in): user object
- */
-char *
-au_get_user_name (MOP obj)
-{
-  DB_VALUE value;
-  db_make_null (&value);
-  char *name = NULL;
-
-  {
-    MOP sc_owner;
-    const char *sc_name;
-    char upper_sc_name[DB_MAX_USER_LENGTH];
-
-    /*
-     * To reduce unnecessary code execution,
-     * the current schema name can be used instead of the current user name.
-     * 
-     * Returns the current schema name if the user object is the same as the current user object.
-     * 
-     * Au_user_name cannot be used because it does not always store the current user name.
-     * When au_login_method () is called, Au_user_name is not changed.
-     */
-    sc_owner = sc_current_schema_owner ();
-    if (sc_owner && ws_is_same_object (sc_owner, obj))
-      {
-	sc_name = sc_current_schema_name ();
-	if (sc_name && sc_name[0] != '\0')
-	  {
-	    intl_identifier_upper (sc_name, upper_sc_name);
-	    return ws_copy_string (upper_sc_name);
-	  }
-      }
-  }
-
-  int error = obj_get (obj, "name", &value);
-  if (error == NO_ERROR)
-    {
-      if (IS_STRING (&value) && !DB_IS_NULL (&value) && db_get_string (&value) != NULL)
-	{
-	  name = ws_copy_string (db_get_string (&value));
-	}
-    }
-
-  db_value_clear (&value);
-
-  return name;
-}
-
-
-/*
  * au_export_users - Generates a sequence of add_user and add_member method
  *                   calls that when evaluated, will re-create the current
  *                   user/group hierarchy.
