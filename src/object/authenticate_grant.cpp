@@ -43,14 +43,10 @@ extern bool catcls_Enable;
 #endif /* SA_MODE */
 
 static int check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type);
-
-
 static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index,
 				 AU_GRANT **return_grants);
 static int propagate_revoke (AU_GRANT *grant_list, MOP owner, DB_AUTH mask);
-
 static int au_propagate_del_new_auth (AU_GRANT *glist, DB_AUTH mask);
-
 
 /*
  * GRANT STRUCTURE OPERATION
@@ -58,8 +54,6 @@ static int au_propagate_del_new_auth (AU_GRANT *glist, DB_AUTH mask);
 static void free_grant_list (AU_GRANT *grants);
 static void map_grant_list (AU_GRANT *grants, MOP grantor);
 
-
-// static int get_grants (MOP auth, DB_SET **grant_ptr, int filter);
 static int find_grant_entry (DB_SET *grants, MOP class_mop, MOP grantor);
 static int add_grant_entry (DB_SET *grants, MOP class_mop, MOP grantor);
 static void drop_grant_entry (DB_SET *grants, int index);
