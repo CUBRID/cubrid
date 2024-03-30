@@ -20,6 +20,9 @@
  * authenticate_grant.hpp -
  */
 
+#ifndef _AUTHENTICATE_GRANT_HPP_
+#define _AUTHENTICATE_GRANT_HPP_
+
 #include "dbtype_def.h" /* MOP */
 
 /*
@@ -67,3 +70,5 @@ extern int apply_grants (MOP auth, MOP class_mop, unsigned int *bits);
 extern int get_grants (MOP auth, DB_SET **grant_ptr, int filter);
 
 extern int appropriate_error (unsigned int bits, unsigned int requested);
+
+#endif
