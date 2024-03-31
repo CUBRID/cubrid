@@ -134,6 +134,8 @@ STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
 
+STATIC_INLINE UINT64 log_cnt_pages_containing_lsa (const log_lsa * from_lsa, const log_lsa * to_lsa);
+
 /*
  * CRASH RECOVERY PROCESS
  */
@@ -728,12 +730,16 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
    * Last,   UNDO going backwards
    */
 
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 0);
+
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_ANALYSIS_STARTED, 0);
+
   log_recovery_analysis (thread_p, &rcv_lsa, &start_redolsa, &end_redo_lsa, ismedia_crash, stopat, &did_incom_recovery,
 			 &num_redo_log_records);
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 3, num_redo_log_records,
-	  start_redolsa.pageid, end_redo_lsa.pageid);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "ANALYSIS");
 
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
 
@@ -769,7 +775,13 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
 
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_REDO_STARTED, 2,
+	  log_cnt_pages_containing_lsa (&start_redolsa, &end_redo_lsa), num_redo_log_records);
+
   log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa, stopat);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "REDO");
+
   boot_reset_db_parm (thread_p);
 
   /* Undo phase */
@@ -777,7 +789,12 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
 
+  /* ER_LOG_RECOVERY_REDO_STARTED logging is inside log_recovery_undo() */
+
   log_recovery_undo (thread_p);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "UNDO");
+
   boot_reset_db_parm (thread_p);
 
   // *INDENT-OFF*
@@ -3138,6 +3155,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_diff_rec;
   bool is_mvcc_op = false;
+  TSC_TICKS info_logging_start_time, info_logging_check_time;
+  TSCTIMEVAL info_logging_elapsed_time;
+  int info_logging_interval_in_secs = 0;
+  UINT64 total_page_cnt = log_cnt_pages_containing_lsa (start_redolsa, end_redo_lsa);
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -3179,6 +3200,17 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
       return;
     }
 
+  info_logging_interval_in_secs = prm_get_integer_value (PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL);
+  if (info_logging_interval_in_secs > 0 && info_logging_interval_in_secs < 5)
+    {
+      info_logging_interval_in_secs = 5;
+    }
+  if (info_logging_interval_in_secs > 0)
+    {
+      tsc_start_time_usec (&info_logging_start_time);
+      tsc_start_time_usec (&info_logging_check_time);
+    }
+
   while (!LSA_ISNULL (&lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
@@ -3194,6 +3226,28 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
 	      return;
+	    }
+	}
+
+      /* PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL > 0 */
+      if (info_logging_interval_in_secs > 0)
+	{
+	  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_check_time);
+	  if (info_logging_elapsed_time.tv_sec >= info_logging_interval_in_secs)
+	    {
+	      UINT64 done_page_cnt = log_lsa.pageid - start_redolsa->pageid;
+
+	      double elapsed_time;
+	      double progress = double (done_page_cnt) / (total_page_cnt);
+
+	      tsc_start_time_usec (&info_logging_check_time);
+	      tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
+
+	      elapsed_time = info_logging_elapsed_time.tv_sec + (info_logging_elapsed_time.tv_usec / 1000000.0);
+
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PROGRESS, 6, "REDO",
+		      done_page_cnt, total_page_cnt, progress * 100, elapsed_time,
+		      done_page_cnt == 0 ? -1.0 : (elapsed_time / done_page_cnt) * (total_page_cnt - done_page_cnt));
 	    }
 	}
 
@@ -4102,6 +4156,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
   log_Gl.mvcc_table.reset_start_mvccid ();
 
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
+
   /* Abort all atomic system operations that were open when server crashed */
   log_recovery_abort_all_atomic_sysops (thread_p);
 
@@ -4589,7 +4645,7 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 static void
 log_recovery_undo (THREAD_ENTRY * thread_p)
 {
-  LOG_LSA max_undo_lsa;		/* LSA of log record to undo */
+  LOG_LSA max_undo_lsa = NULL_LSA;	/* LSA of log record to undo */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
   LOG_LSA log_lsa;
@@ -4609,9 +4665,16 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   int tran_index;
   int data_header_size = 0;
   LOG_ZIP *undo_unzip_ptr = NULL;
+  int cnt_trans_to_undo = 0;
+  LOG_LSA min_lsa = NULL_LSA;
+  LOG_LSA max_lsa = NULL_LSA;
   bool is_mvcc_op;
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
+  TSC_TICKS info_logging_start_time, info_logging_check_time;
+  TSCTIMEVAL info_logging_elapsed_time;
+  int info_logging_interval_in_secs = 0;
+  UINT64 total_page_cnt = 0, read_page_cnt = 0;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -4643,8 +4706,39 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
    * GO BACKWARDS, undoing records
    */
 
+  // *INDENT-OFF*
+  auto max_undo_lsa_func = [&max_undo_lsa] (const log_tdes & tdes)
+    {
+      if (LSA_LT (&max_undo_lsa, &tdes.undo_nxlsa))
+        {
+          max_undo_lsa = tdes.undo_nxlsa;
+        }
+    };
+  // *INDENT-ON*
+
   /* Find the largest LSA to undo */
-  log_find_unilaterally_largest_undo_lsa (thread_p, max_undo_lsa);
+  logtb_rv_read_only_map_undo_tdes (thread_p, max_undo_lsa_func);
+  max_lsa = max_undo_lsa;
+
+  /* Print undo recovery information */
+  // *INDENT-OFF*
+  logtb_rv_read_only_map_undo_tdes (thread_p, [&cnt_trans_to_undo] (const LOG_TDES & tdes)
+    {
+      cnt_trans_to_undo++;
+    });
+
+  logtb_rv_read_only_map_undo_tdes (thread_p, [&min_lsa] (const LOG_TDES & tdes) {
+    assert (!tdes.head_lsa.is_null());
+    if (min_lsa.is_null () || LSA_LT (&tdes.head_lsa, &min_lsa))
+      {
+        min_lsa = tdes.head_lsa;
+      }
+  });
+  // *INDENT-ON*
+
+  total_page_cnt = max_lsa.is_null ()? 0 : log_cnt_pages_containing_lsa (&min_lsa, &max_lsa);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_UNDO_STARTED, 2, total_page_cnt, cnt_trans_to_undo);
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
@@ -4653,6 +4747,17 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo");
       return;
+    }
+
+  info_logging_interval_in_secs = prm_get_integer_value (PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL);
+  if (info_logging_interval_in_secs > 0 && info_logging_interval_in_secs < 5)
+    {
+      info_logging_interval_in_secs = 5;
+    }
+  if (info_logging_interval_in_secs > 0)
+    {
+      tsc_start_time_usec (&info_logging_start_time);
+      tsc_start_time_usec (&info_logging_check_time);
     }
 
   while (!LSA_ISNULL (&max_undo_lsa))
@@ -4666,6 +4771,30 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo");
 	  return;
 	}
+
+      /* PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL != 0 */
+      if (info_logging_interval_in_secs > 0)
+	{
+	  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_check_time);
+	  if (info_logging_elapsed_time.tv_sec >= info_logging_interval_in_secs)
+	    {
+	      UINT64 done_page_cnt = max_lsa.pageid - log_lsa.pageid;
+	      double elapsed_time;
+	      double progress = double (done_page_cnt) / (total_page_cnt);
+
+	      tsc_start_time_usec (&info_logging_check_time);
+	      tsc_end_time_usec (&info_logging_elapsed_time, info_logging_start_time);
+
+	      elapsed_time = info_logging_elapsed_time.tv_sec + (info_logging_elapsed_time.tv_usec / 1000000.0);
+
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PROGRESS, 6, "UNDO",
+		      done_page_cnt, total_page_cnt, progress * 100, elapsed_time,
+		      read_page_cnt == 0 ? -1.0 : (elapsed_time / read_page_cnt) * (total_page_cnt - done_page_cnt));
+	    }
+
+	  read_page_cnt++;
+	}
+
 
       /* Check all log records in this phase */
       while (max_undo_lsa.pageid == log_lsa.pageid)
@@ -5043,11 +5172,14 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    }
 
 	  /* Find the next log record to undo */
-	  log_find_unilaterally_largest_undo_lsa (thread_p, max_undo_lsa);
+	  max_undo_lsa = NULL_LSA;
+	  logtb_rv_read_only_map_undo_tdes (thread_p, max_undo_lsa_func);
 	}
     }
 
   log_zip_free (undo_unzip_ptr);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "UNDO");
 
   /* Flush all dirty pages */
 
@@ -6565,4 +6697,17 @@ log_rv_end_simulation (THREAD_ENTRY * thread_p)
 #if defined (SA_MODE)
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 #endif // SA_MODE
+}
+
+static UINT64
+log_cnt_pages_containing_lsa (const log_lsa * from_lsa, const log_lsa * to_lsa)
+{
+  if (*to_lsa == *from_lsa)
+    {
+      return 0;
+    }
+  else
+    {
+      return to_lsa->pageid - from_lsa->pageid + 1;
+    }
 }
