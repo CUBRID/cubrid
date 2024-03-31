@@ -1194,7 +1194,7 @@ $ LOADDB
 1125 Erstellung der Überlauf Schlüsseldatei. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Erstellung einer neuen Überlaufseite. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Eine leere Überlaufseite wird gelöscht. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log-Wiederherstellung gestartet. Anzahl der anzuwendenden Log-Einträge: %1$lld. Log Seite: %2$lld ~ %3$lld.
+1128 Log-Wiederherstellung gestartet.
 1129 Log-Wiederherstellung beendet.
 1130 Transaktion wird abgebrochen, weil die Anzahl der Transaktionssperre %1$d überschreitet.
 1131 Interner Fehler: Die Seite %1$d des Volumen "%2$s" könnte beschädigt sein.\n%3$s
@@ -1315,8 +1315,14 @@ $ LOADDB
 1246 Fehler beim Abrufen der Adress- und Namensinformationen. Fehlerkode : %1$d, Meldung : %2$s.
 1247 Internal CAS error : %1$d 
 1248 Internal CAS error : %1$d, %2$s
+1296 Log-Rückgewinnung: Die ANALYSIS-Phase ist gestartet.
+1297 Log-Rückgewinnung: REDO Phase ist gestartet. Log Seiten zu wiederholen: %1$lld, Log-Aufzeichnungen zu wiederholen: %2$lld.
+1298 Log-Rückgewinnung: UNDO Phase ist gestartet. Log Seiten, die rückgängig gemacht werden sollen: %1$lld, Transaktionen, die rückgängig gemacht werden: %2$d.
+1299 Log Wiederherstellung: %1$s Phase ist fertig.
+1300 Log Wiederherstellung: %1$s Phase ist beendet.
+1301 Log Wiederherstellung: %1$s Fortschritt: (%2$lld/%3$lld), %4$.2f Prozent, verstrichene Zeit: %5$.2f (s), geschätzte Restzeit: %6$.2f (s).
 
-1249 Letzter Fehler
+1302 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
