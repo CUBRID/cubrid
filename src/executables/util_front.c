@@ -227,6 +227,7 @@ static ARG_MAP_TABLE ua_Unload_map[] = {
   {"-sa", "--" UNLOAD_SA_MODE_L},
   {"-cs", "--" UNLOAD_CS_MODE_L},
   {"-dpc", "--" UNLOAD_DATAFILE_PER_CLASS_L},
+  {"-t", "--" UNLOAD_THREAD_COUNT_L},
   {0, 0}
 };
 

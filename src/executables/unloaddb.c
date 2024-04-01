@@ -48,7 +48,12 @@ char *input_filename = NULL;
 FILE *output_file = NULL;
 TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, NULL };
 
-TEXT_OUTPUT *obj_out = &object_output;
+//TEXT_OUTPUT *obj_out = &object_output;
+TEXT_OUTPUT *g_obj_out = &object_output;
+#if defined(SUPPORT_THREAD_UNLOAD)
+int thread_count = 0;
+#endif
+
 int page_size = 4096;
 int cached_pages = 100;
 int64_t est_size = 0;
@@ -140,6 +145,21 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
   split_schema_files = utility_get_option_string_value (arg_map, UNLOAD_SPLIT_SCHEMA_FILES_S, 0);
   is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
+
+#if defined(SUPPORT_THREAD_UNLOAD)
+  thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
+  if (thread_count > 100)	// ctshim
+    thread_count = 100;
+
+  if (datafile_per_class == false)
+    {
+      fprintf (stdout, "warning: '-%s' option ('--%s') is ignored.\n", UNLOAD_THREAD_COUNT_S, UNLOAD_THREAD_COUNT_L);
+      fflush (stdout);
+
+      thread_count = 0;
+    }
+  //include_references
+#endif
 
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);

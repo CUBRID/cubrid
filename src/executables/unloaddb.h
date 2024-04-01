@@ -35,7 +35,11 @@ class print_output;
 
 extern char *database_name;
 extern char *input_filename;
-extern struct text_output *obj_out;
+//extern struct text_output *obj_out;
+extern struct text_output *g_obj_out;
+#if defined(SUPPORT_THREAD_UNLOAD)
+extern int thread_count;
+#endif
 extern int page_size;
 extern int cached_pages;
 extern int64_t est_size;

@@ -1369,6 +1369,8 @@ typedef struct _ha_config
 #define UNLOAD_AS_DBA_L                         "as-dba"
 #define UNLOAD_SKIP_INDEX_DETAIL_S              11922	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 #define UNLOAD_SKIP_INDEX_DETAIL_L              "skip-index-detail"	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+#define UNLOAD_THREAD_COUNT_S                   't'
+#define UNLOAD_THREAD_COUNT_L                   "thread-count"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

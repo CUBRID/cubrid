@@ -53,6 +53,10 @@
 #if !defined (SERVER_MODE)
 extern unsigned int db_on_server;
 HL_HEAPID private_heap_id = 0;
+
+#if defined(SUPPORT_THREAD_UNLOAD)
+extern bool is_utility_thread ();
+#endif
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
@@ -481,6 +485,19 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 
   return ptr;
 #else /* SA_MODE */
+
+#if defined(SUPPORT_THREAD_UNLOAD)
+  if (is_utility_thread ())
+    {
+      ptr = malloc (size);
+      if (ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	}
+      return ptr;
+    }
+#endif
+
   if (!db_on_server)
     {
       return db_ws_alloc (size);
@@ -612,6 +629,18 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
     {
       return db_private_alloc (thrd, size);
     }
+
+#if defined(SUPPORT_THREAD_UNLOAD)
+  if (is_utility_thread ())
+    {
+      new_ptr = realloc (ptr, size);
+      if (new_ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	}
+      return new_ptr;
+    }
+#endif
 
   if (!db_on_server)
     {
@@ -762,6 +791,14 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 
 #else /* SA_MODE */
 
+#if defined(SUPPORT_THREAD_UNLOAD)
+  if (is_utility_thread ())
+    {
+      free (ptr);
+      return;
+    }
+#endif
+
   if (!db_on_server)
     {
       db_ws_free (ptr);
@@ -780,6 +817,7 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
       if (h->magic != PRIVATE_MALLOC_HEADER_MAGIC)
 	{
 	  /* assertion point */
+	  assert (false);
 	  return;
 	}
 

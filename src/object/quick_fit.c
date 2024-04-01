@@ -33,6 +33,30 @@
 
 static HL_HEAPID ws_Heap_id = 0;
 
+#if defined(SUPPORT_THREAD_UNLOAD)
+
+#if defined(SERVER_MODE)
+#error "Not support SERVER_MODE"
+#endif
+
+pthread_t ws_Heap_Owner_id = -1;
+//db_get_client_type
+//extern int db_get_client_type (void);
+bool
+is_utility_thread ()
+{
+  if (ws_Heap_id != 0)
+    {
+      pthread_t tid = pthread_self ();
+      return (ws_Heap_Owner_id != tid);
+      //return (ws_Heap_Owner_id != pthread_self());
+    }
+
+  return false;
+}
+
+#endif // #if defined(SUPPORT_THREAD_UNLOAD)
+
 /*
  * db_create_workspace_heap () - create a lea heap
  *   return: memory heap identifier
@@ -45,6 +69,9 @@ db_create_workspace_heap (void)
   if (ws_Heap_id == 0)
     {
       ws_Heap_id = hl_register_lea_heap ();
+#if defined(SUPPORT_THREAD_UNLOAD)
+      ws_Heap_Owner_id = pthread_self ();
+#endif
     }
   return ws_Heap_id;
 }
@@ -61,6 +88,9 @@ db_destroy_workspace_heap (void)
     {
       hl_unregister_lea_heap (ws_Heap_id);
       ws_Heap_id = 0;
+#if defined(SUPPORT_THREAD_UNLOAD)
+      ws_Heap_Owner_id = -1;
+#endif
     }
 }
 
@@ -72,6 +102,13 @@ db_destroy_workspace_heap (void)
 void *
 db_ws_alloc (size_t size)
 {
+#if defined(SUPPORT_THREAD_UNLOAD)
+  if (is_utility_thread ())
+    {
+      return malloc (size);
+    }
+#endif
+
 #if defined(SA_MODE)
   void *ptr = NULL;
 
@@ -122,6 +159,13 @@ db_ws_alloc (size_t size)
 void *
 db_ws_realloc (void *ptr, size_t size)
 {
+#if defined(SUPPORT_THREAD_UNLOAD)
+  if (is_utility_thread ())
+    {
+      return (ptr) ? realloc (ptr, size) : malloc (size);
+    }
+#endif
+
 #if defined(SA_MODE)
   if (ptr == NULL)
     {
@@ -193,6 +237,18 @@ db_ws_realloc (void *ptr, size_t size)
 void
 db_ws_free (void *ptr)
 {
+#if defined(SUPPORT_THREAD_UNLOAD)
+  if (is_utility_thread ())
+    {
+      if (ptr)
+	{
+	  free (ptr);
+	}
+
+      return;
+    }
+#endif
+
 #if defined(SA_MODE)
   assert (ws_Heap_id != 0);
 

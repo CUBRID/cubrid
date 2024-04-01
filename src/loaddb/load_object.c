@@ -627,14 +627,26 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
   int i, j, offset, offset2, pad;
   char *bits, *start;
   int rc = NO_ERROR;
+#if defined(SUPPORT_THREAD_UNLOAD)
+  int zvar[32];
+#endif
 
   /* need nicer way to store these */
   if (class_->variable_count)
     {
-      vars = (int *) malloc (sizeof (int) * class_->variable_count);
-      if (vars == NULL)
+#if defined(SUPPORT_THREAD_UNLOAD)
+      if (class_->variable_count <= 32)
 	{
-	  return;
+	  vars = zvar;
+	}
+      else
+#endif
+	{
+	  vars = (int *) malloc (sizeof (int) * class_->variable_count);
+	  if (vars == NULL)
+	    {
+	      return;
+	    }
 	}
       /* get the offsets relative to the end of the header (beginning of variable table) */
       offset = or_get_offset_internal (buf, &rc, offset_size);
@@ -658,7 +670,6 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
   start = buf->ptr;
   for (i = 0; i < class_->fixed_count; i++, att = (SM_ATTRIBUTE *) att->header.next)
     {
-
       if (bits != NULL && !OR_GET_BOUND_BIT (bits, i))
 	{
 	  /* its a NULL value, skip it */
@@ -668,7 +679,11 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       else
 	{
 	  /* read the disk value into the db_value */
+#if defined(SUPPORT_THREAD_UNLOAD)
+	  att->type->data_readval (buf, &obj->values[i], att->domain, -1, false, NULL, 0);
+#else
 	  att->type->data_readval (buf, &obj->values[i], att->domain, -1, true, NULL, 0);
+#endif
 	}
     }
 
@@ -691,10 +706,17 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       for (i = class_->fixed_count, j = 0; i < class_->att_count && j < class_->variable_count;
 	   i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
+#if defined(SUPPORT_THREAD_UNLOAD)
+	  att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], false, NULL, 0);
+#else
 	  att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], true, NULL, 0);
+#endif
 	}
 
-      free_and_init (vars);
+#if defined(SUPPORT_THREAD_UNLOAD)
+      if (vars != zvar)
+#endif
+	free (vars);
     }
 }
 
@@ -746,163 +768,189 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
   SM_ATTRIBUTE **attmap = NULL;
   char *bits, *start;
   int rc = NO_ERROR;
+#if defined(SUPPORT_THREAD_UNLOAD)
+  int zvar[32];
+  vars = zvar;
+#endif
 
   oldrep = classobj_find_representation (class_, repid);
 
   if (oldrep == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1, sm_ch_name ((MOBJ) class_));
+      return;
     }
-  else
+
+  if (oldrep->variable_count)
     {
-      if (oldrep->variable_count)
+      /* need nicer way to store these */
+#if defined(SUPPORT_THREAD_UNLOAD)
+      if (class_->variable_count > 32)
+#endif
 	{
-	  /* need nicer way to store these */
 	  vars = (int *) malloc (sizeof (int) * oldrep->variable_count);
 	  if (vars == NULL)
 	    {
 	      goto abort_on_error;
 	    }
-	  /* compute the variable offsets relative to the end of the header (beginning of variable table) */
-	  offset = or_get_offset_internal (buf, &rc, offset_size);
-	  for (i = 0; i < oldrep->variable_count; i++)
-	    {
-	      offset2 = or_get_offset_internal (buf, &rc, offset_size);
-	      vars[i] = offset2 - offset;
-	      offset = offset2;
-	    }
-	  buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 	}
+      /* compute the variable offsets relative to the end of the header (beginning of variable table) */
+      offset = or_get_offset_internal (buf, &rc, offset_size);
+      for (i = 0; i < oldrep->variable_count; i++)
+	{
+	  offset2 = or_get_offset_internal (buf, &rc, offset_size);
+	  vars[i] = offset2 - offset;
+	  offset = offset2;
+	}
+      buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
+    }
 
-      /* calculate an attribute map */
-      total = oldrep->fixed_count + oldrep->variable_count;
-      attmap = (SM_ATTRIBUTE **) malloc (sizeof (SM_ATTRIBUTE *) * total);
-      if (attmap == NULL)
+  /* calculate an attribute map */
+  total = oldrep->fixed_count + oldrep->variable_count;
+  attmap = (SM_ATTRIBUTE **) malloc (sizeof (SM_ATTRIBUTE *) * total);
+  if (attmap == NULL)
+    {
+      goto abort_on_error;
+    }
+
+  memset (attmap, 0, sizeof (SM_ATTRIBUTE *) * total);
+
+  for (rat = oldrep->attributes, i = 0; rat != NULL; rat = rat->next, i++)
+    attmap[i] = find_current_attribute (class_, rat->attid);
+
+  rat = oldrep->attributes;
+
+  /* fixed */
+  start = buf->ptr;
+  for (i = 0; i < oldrep->fixed_count && rat != NULL; i++, rat = rat->next)
+    {
+      type = pr_type_from_id (rat->typeid_);
+      if (type == NULL)
 	{
 	  goto abort_on_error;
 	}
 
-      memset (attmap, 0, sizeof (SM_ATTRIBUTE *) * total);
+      if (attmap[i] == NULL)
+	{
+	  /* its gone, skip over it */
+	  type->data_readval (buf, NULL, rat->domain, -1, true, NULL, 0);
+	}
+      else
+	{
+	  /* its real, get it into the proper value */
+#if defined(SUPPORT_THREAD_UNLOAD)
+	  type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, false, NULL, 0);
+#else
+	  type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, true, NULL, 0);
+#endif
+	}
+    }
 
-      for (rat = oldrep->attributes, i = 0; rat != NULL; rat = rat->next, i++)
-	attmap[i] = find_current_attribute (class_, rat->attid);
+  fixed_size = (int) (buf->ptr - start);
+  padded_size = DB_ATT_ALIGN (fixed_size);
+  or_advance (buf, (padded_size - fixed_size));
+
+  /*
+   * sigh, we now have to process the bound bits in much the same way as the
+   * attributes above, it would be nice if these could be done in parallel
+   * but we don't have the fixed size of the old representation so we
+   * can't easily sneak the buffer pointer forward, work on this someday
+   */
+  if (bound_bit_flag && oldrep->fixed_count)
+    {
+      bits = buf->ptr;
+      bytes = OR_BOUND_BIT_BYTES (oldrep->fixed_count);
+      if ((buf->ptr + bytes) > buf->endptr)
+	{
+	  or_overflow (buf);
+	}
 
       rat = oldrep->attributes;
-
-      /* fixed */
-      start = buf->ptr;
       for (i = 0; i < oldrep->fixed_count && rat != NULL; i++, rat = rat->next)
 	{
-	  type = pr_type_from_id (rat->typeid_);
-	  if (type == NULL)
+	  if (attmap[i] != NULL)
 	    {
-	      goto abort_on_error;
-	    }
-
-	  if (attmap[i] == NULL)
-	    {
-	      /* its gone, skip over it */
-	      type->data_readval (buf, NULL, rat->domain, -1, true, NULL, 0);
-	    }
-	  else
-	    {
-	      /* its real, get it into the proper value */
-	      type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, true, NULL, 0);
-	    }
-	}
-
-      fixed_size = (int) (buf->ptr - start);
-      padded_size = DB_ATT_ALIGN (fixed_size);
-      or_advance (buf, (padded_size - fixed_size));
-
-      /*
-       * sigh, we now have to process the bound bits in much the same way as the
-       * attributes above, it would be nice if these could be done in parallel
-       * but we don't have the fixed size of the old representation so we
-       * can't easily sneak the buffer pointer forward, work on this someday
-       */
-      if (bound_bit_flag && oldrep->fixed_count)
-	{
-	  bits = buf->ptr;
-	  bytes = OR_BOUND_BIT_BYTES (oldrep->fixed_count);
-	  if ((buf->ptr + bytes) > buf->endptr)
-	    {
-	      or_overflow (buf);
-	    }
-
-	  rat = oldrep->attributes;
-	  for (i = 0; i < oldrep->fixed_count && rat != NULL; i++, rat = rat->next)
-	    {
-	      if (attmap[i] != NULL)
+	      if (!OR_GET_BOUND_BIT (bits, i))
 		{
-		  if (!OR_GET_BOUND_BIT (bits, i))
-		    {
-		      DB_VALUE *v = &obj->values[attmap[i]->storage_order];
-		      db_value_clear (v);
-		      db_value_put_null (v);
-		    }
+		  DB_VALUE *v = &obj->values[attmap[i]->storage_order];
+		  db_value_clear (v);
+		  db_value_put_null (v);
 		}
 	    }
-	  or_advance (buf, bytes);
 	}
-
-      /* variable */
-      for (i = 0; i < oldrep->variable_count && rat != NULL; i++, rat = rat->next)
-	{
-	  type = pr_type_from_id (rat->typeid_);
-	  if (type == NULL)
-	    {
-	      goto abort_on_error;
-	    }
-
-	  att_index = i + oldrep->fixed_count;
-	  if (attmap[att_index] == NULL)
-	    {
-	      /* its null, skip over it */
-	      type->data_readval (buf, NULL, rat->domain, vars[i], true, NULL, 0);
-	    }
-	  else
-	    {
-	      /* read it into the proper value */
-	      type->data_readval (buf, &obj->values[attmap[att_index]->storage_order], rat->domain, vars[i], true, NULL,
-				  0);
-	    }
-	}
-
-      /*
-       * initialize new values
-       */
-      for (i = 0, att = class_->attributes; att != NULL; i++, att = (SM_ATTRIBUTE *) att->header.next)
-	{
-	  found = NULL;
-	  for (rat = oldrep->attributes; rat != NULL && found == NULL; rat = rat->next)
-	    {
-	      if (rat->attid == att->id)
-		{
-		  found = rat;
-		}
-	    }
-	  if (found == NULL)
-	    {
-	      /*
-	       * formerly used copy_value which converted MOP values to OID
-	       * values, is this really necessary ?
-	       */
-	      pr_clone_value (&att->default_value.original_value, &obj->values[i]);
-	    }
-	}
-
-      if (attmap != NULL)
-	{
-	  free_and_init (attmap);
-	}
-      if (vars != NULL)
-	{
-	  free_and_init (vars);
-	}
-
-      obj->updated_flag = 1;
+      or_advance (buf, bytes);
     }
+
+  /* variable */
+  for (i = 0; i < oldrep->variable_count && rat != NULL; i++, rat = rat->next)
+    {
+      type = pr_type_from_id (rat->typeid_);
+      if (type == NULL)
+	{
+	  goto abort_on_error;
+	}
+
+      att_index = i + oldrep->fixed_count;
+      if (attmap[att_index] == NULL)
+	{
+	  /* its null, skip over it */
+	  type->data_readval (buf, NULL, rat->domain, vars[i], true, NULL, 0);
+	}
+      else
+	{
+	  /* read it into the proper value */
+#if defined(SUPPORT_THREAD_UNLOAD)
+	  type->data_readval (buf, &obj->values[attmap[att_index]->storage_order], rat->domain, vars[i], false, NULL,
+			      0);
+#else
+	  type->data_readval (buf, &obj->values[attmap[att_index]->storage_order], rat->domain, vars[i], true, NULL, 0);
+#endif
+	}
+    }
+
+  /*
+   * initialize new values
+   */
+  for (i = 0, att = class_->attributes; att != NULL; i++, att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      found = NULL;
+      for (rat = oldrep->attributes; rat != NULL && found == NULL; rat = rat->next)
+	{
+	  if (rat->attid == att->id)
+	    {
+	      found = rat;
+	    }
+	}
+      if (found == NULL)
+	{
+	  /*
+	   * formerly used copy_value which converted MOP values to OID
+	   * values, is this really necessary ?
+	   */
+	  pr_clone_value (&att->default_value.original_value, &obj->values[i]);
+	}
+    }
+
+  if (attmap != NULL)
+    {
+      free_and_init (attmap);
+    }
+#if defined(SUPPORT_THREAD_UNLOAD)
+  if (vars != zvar)
+    {
+      assert (vars != NULL);
+      free (vars);
+    }
+#else
+  if (vars != NULL)
+    {
+      free (vars);
+    }
+#endif
+
+
+  obj->updated_flag = 1;
+
   return;
 
 abort_on_error:
@@ -910,10 +958,19 @@ abort_on_error:
     {
       free (attmap);
     }
+#if defined(SUPPORT_THREAD_UNLOAD)
+  if (vars != zvar)
+    {
+      assert (vars != NULL);
+      free (vars);
+    }
+#else
   if (vars != NULL)
     {
       free (vars);
     }
+#endif
+
   or_abort (buf);
 }
 
@@ -976,6 +1033,23 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
 
       mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
+#if defined(SUPPORT_THREAD_UNLOAD)
+      i = OR_INT_SIZE;		/* skip chn */
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
+	{
+	  i += OR_MVCCID_SIZE;	/* skip insert id */
+	}
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
+	{
+	  i += OR_MVCCID_SIZE;	/* skip delete id */
+	}
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
+	{
+	  i += OR_MVCC_PREV_VERSION_LSA_SIZE;	/* skip prev version lsa */
+	}
+
+      or_advance (buf, i);
+#else
       /* skip chn */
       or_advance (buf, OR_INT_SIZE);
 
@@ -996,6 +1070,7 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
 	  /* skip prev version lsa */
 	  or_advance (buf, OR_MVCC_PREV_VERSION_LSA_SIZE);
 	}
+#endif
 
       bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
 
