@@ -102,7 +102,7 @@ ut_access_log (int as_index, struct timeval *start_time, char error_flag, int er
     clt_appl = (char *) "-";
   for (p = clt_appl; *p; p++)
     {
-      if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+      if (char_isspace2 (*p))
 	*p = '_';
     }
 

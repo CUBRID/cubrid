@@ -892,7 +892,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       if (session->statements && session->statements[0])
 	{
 	  int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
-	  logddl_check_and_set_query_text (session->statements[0], t_type, &session->parser->hide_pwd_info);
+	  logddl_check_and_set_query_text (session->statements[0], t_type, session->parser);
 	}
 
       if (stmt_id < 0)
@@ -943,7 +943,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
   if (session->statements && session->statements[0])
     {
       int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
-      logddl_check_and_set_query_text (session->statements[0], t_type, &session->parser->hide_pwd_info);
+      logddl_check_and_set_query_text (session->statements[0], t_type, session->parser);
     }
 
   if (stmt_id < 0)
@@ -1170,7 +1170,7 @@ prepare_error:
 #endif /* CAS_FOR_CGW */
 
 int
-ux_end_tran (int tran_type, bool reset_con_status)
+ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 {
   int err_code = 0;
 
@@ -1262,6 +1262,11 @@ ux_end_tran (int tran_type, bool reset_con_status)
     }
   err_code = 0;
 #endif
+
+  if (ddl_audit_log && tran_type != CCI_TRAN_COMMIT)
+    {
+      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ABORT);
+    }
 
   return err_code;
 }
@@ -1578,7 +1583,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       if (session->statements && session->statements[0])
 	{
 	  int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
-	  logddl_check_and_set_query_text (session->statements[0], t_type, &session->parser->hide_pwd_info);
+	  logddl_check_and_set_query_text (session->statements[0], t_type, session->parser);
 	}
 
       if (stmt_id < 0)
@@ -1910,8 +1915,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	    {
 	      int t_type =
 		(stmt_id < 0) ? session->statements[query_index]->node_type : db_get_statement_type (session, stmt_id);
-	      logddl_check_and_set_query_text (session->statements[query_index], t_type,
-					       &session->parser->hide_pwd_info);
+	      logddl_check_and_set_query_text (session->statements[query_index], t_type, session->parser);
 	    }
 
 	  if (stmt_id < 0)
@@ -2449,7 +2453,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       if (session->statements && session->statements[0])
 	{
 	  int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
-	  logddl_check_and_set_query_text (session->statements[0], t_type, &session->parser->hide_pwd_info);
+	  logddl_check_and_set_query_text (session->statements[0], t_type, session->parser);
 	}
 
       if (stmt_id < 0)
@@ -2709,7 +2713,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    {
 	      int tmp_type;
 	      tmp_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
-	      logddl_check_and_set_query_text (session->statements[0], tmp_type, &session->parser->hide_pwd_info);
+	      logddl_check_and_set_query_text (session->statements[0], tmp_type, session->parser);
 	    }
 
 	  if (stmt_id < 0)
@@ -10957,14 +10961,14 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(server)" : "(local)");
-      err_code = ux_end_tran (CCI_TRAN_COMMIT, true);
+      err_code = ux_end_tran (CCI_TRAN_COMMIT, true, false);
       cas_log_write (0, false, "auto_commit %d", err_code);
       logddl_set_msg ("auto_commit %d", err_code);
     }
   else if (req_info->need_auto_commit == TRAN_AUTOROLLBACK)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_aborted ()? "(local)" : "(server)");
-      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, true);
+      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, true, false);
       cas_log_write (0, false, "auto_rollback %d", err_code);
       logddl_set_msg ("auto_rollback %d", err_code);
     }

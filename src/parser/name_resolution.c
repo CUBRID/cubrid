@@ -44,7 +44,7 @@
 #include "jsp_cl.h"
 #include "execute_schema.h"
 #include "schema_manager.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "execute_statement.h"
 #include "show_meta.h"
 #include "network_interface_cl.h"
@@ -7656,7 +7656,7 @@ static int
 pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_HINT_ENUM hint;
-  PT_NODE **ordered = NULL, **use_nl = NULL, **use_idx = NULL;
+  PT_NODE **leading = NULL, **use_nl = NULL, **use_idx = NULL;
   PT_NODE **use_merge = NULL, **index_ss = NULL, **index_ls = NULL;
   PT_NODE **no_use_hash = NULL, **use_hash = NULL;
   PT_NODE *spec_list = NULL;
@@ -7665,7 +7665,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
     {
     case PT_SELECT:
       hint = node->info.query.q.select.hint;
-      ordered = &node->info.query.q.select.ordered;
+      leading = &node->info.query.q.select.leading;
       use_nl = &node->info.query.q.select.use_nl;
       use_idx = &node->info.query.q.select.use_idx;
       index_ss = &node->info.query.q.select.index_ss;
@@ -7677,7 +7677,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case PT_DELETE:
       hint = node->info.delete_.hint;
-      ordered = &node->info.delete_.ordered_hint;
+      leading = &node->info.delete_.leading_hint;
       use_nl = &node->info.delete_.use_nl_hint;
       use_idx = &node->info.delete_.use_idx_hint;
       use_merge = &node->info.delete_.use_merge_hint;
@@ -7687,7 +7687,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case PT_UPDATE:
       hint = node->info.update.hint;
-      ordered = &node->info.update.ordered_hint;
+      leading = &node->info.update.leading_hint;
       use_nl = &node->info.update.use_nl_hint;
       use_idx = &node->info.update.use_idx_hint;
       use_merge = &node->info.update.use_merge_hint;
@@ -7705,19 +7705,13 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       return NO_ERROR;
     }
 
-  if (hint & PT_HINT_ORDERED)
+  if (hint & PT_HINT_LEADING)
     {
-      if (pt_resolve_hint_args (parser, ordered, spec_list, REQUIRE_ALL_MATCH) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, leading, spec_list, REQUIRE_ALL_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
     }
-
-#if 0
-  if (hint & PT_HINT_Y)
-    {				/* not used */
-    }
-#endif /* 0 */
 
   if (hint & PT_HINT_USE_NL)
     {
@@ -7794,9 +7788,9 @@ exit_on_error:
 
   /* clear hint info */
   node->info.query.q.select.hint = PT_HINT_NONE;
-  if (*ordered != NULL)
+  if (*leading != NULL)
     {
-      parser_free_tree (parser, *ordered);
+      parser_free_tree (parser, *leading);
     }
   if (*use_nl != NULL)
     {
@@ -7830,7 +7824,7 @@ exit_on_error:
   switch (node->node_type)
     {
     case PT_SELECT:
-      node->info.query.q.select.ordered = NULL;
+      node->info.query.q.select.leading = NULL;
       node->info.query.q.select.use_nl = NULL;
       node->info.query.q.select.use_idx = NULL;
       node->info.query.q.select.index_ss = NULL;
@@ -7840,7 +7834,7 @@ exit_on_error:
       node->info.query.q.select.use_hash = NULL;
       break;
     case PT_DELETE:
-      node->info.delete_.ordered_hint = NULL;
+      node->info.delete_.leading_hint = NULL;
       node->info.delete_.use_nl_hint = NULL;
       node->info.delete_.use_idx_hint = NULL;
       node->info.delete_.use_merge_hint = NULL;
@@ -7848,7 +7842,7 @@ exit_on_error:
       node->info.delete_.use_hash_hint = NULL;
       break;
     case PT_UPDATE:
-      node->info.update.ordered_hint = NULL;
+      node->info.update.leading_hint = NULL;
       node->info.update.use_nl_hint = NULL;
       node->info.update.use_idx_hint = NULL;
       node->info.update.use_merge_hint = NULL;

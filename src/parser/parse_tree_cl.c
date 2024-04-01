@@ -6400,6 +6400,7 @@ pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.alter_user.user_name, arg);
   PT_APPLY_WALK (parser, p->info.alter_user.password, arg);
+  PT_APPLY_WALK (parser, p->info.alter_user.members, arg);
   return p;
 }
 
@@ -6423,6 +6424,26 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.alter_user.password);
       b = pt_append_nulstring (parser, b, " password ");
       b = pt_append_varchar (parser, b, r1);
+    }
+
+  if (p->info.alter_user.members != NULL)
+    {
+      if (p->info.alter_user.code == PT_ADD_MEMBERS)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter_user.members);
+	  b = pt_append_nulstring (parser, b, " add members ");
+	  b = pt_append_varchar (parser, b, r1);
+	}
+      else if (p->info.alter_user.code == PT_DROP_MEMBERS)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter_user.members);
+	  b = pt_append_nulstring (parser, b, " drop members ");
+	  b = pt_append_varchar (parser, b, r1);
+	}
+      else
+	{
+	  assert (false);
+	}
     }
 
   if (p->info.alter_user.comment != NULL)
@@ -8528,7 +8549,7 @@ pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.delete_.cursor_name, arg);
   PT_APPLY_WALK (parser, p->info.delete_.internal_stmts, arg);
   PT_APPLY_WALK (parser, p->info.delete_.waitsecs_hint, arg);
-  PT_APPLY_WALK (parser, p->info.delete_.ordered_hint, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.leading_hint, arg);
   PT_APPLY_WALK (parser, p->info.delete_.use_nl_hint, arg);
   PT_APPLY_WALK (parser, p->info.delete_.use_idx_hint, arg);
   PT_APPLY_WALK (parser, p->info.delete_.use_merge_hint, arg);
@@ -8590,10 +8611,16 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.delete_.hint & PT_HINT_ORDERED)
 	{
 	  /* force join left-to-right */
-	  q = pt_append_nulstring (parser, q, " ORDERED");
-	  if (p->info.delete_.ordered_hint)
+	  q = pt_append_nulstring (parser, q, " ORDERED ");
+	}
+
+      if (p->info.delete_.hint & PT_HINT_LEADING)
+	{
+	  /* force join left-to-right */
+	  q = pt_append_nulstring (parser, q, " LEADING");
+	  if (p->info.delete_.leading_hint)
 	    {
-	      r1 = pt_print_bytes_l (parser, p->info.delete_.ordered_hint);
+	      r1 = pt_print_bytes_l (parser, p->info.delete_.leading_hint);
 	      q = pt_append_nulstring (parser, q, "(");
 	      q = pt_append_varchar (parser, q, r1);
 	      q = pt_append_nulstring (parser, q, ") ");
@@ -13241,6 +13268,7 @@ pt_apply_name (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.name.path_correlation, arg);
   PT_APPLY_WALK (parser, p->info.name.default_value, arg);
+  PT_APPLY_WALK (parser, p->info.name.constant_value, arg);
   PT_APPLY_WALK (parser, p->info.name.indx_key_limit, arg);
   return p;
 }
@@ -13927,7 +13955,7 @@ pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.query.q.select.having, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.using_index, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.with_increment, arg);
-  PT_APPLY_WALK (parser, p->info.query.q.select.ordered, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.leading, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.use_nl, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.use_idx, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.index_ss, arg);
@@ -14118,10 +14146,15 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_ORDERED)
 	    {
 	      /* force join left-to-right */
-	      q = pt_append_nulstring (parser, q, "ORDERED");
-	      if (p->info.query.q.select.ordered)
+	      q = pt_append_nulstring (parser, q, "ORDERED ");
+	    }
+	  else if (p->info.query.q.select.hint & PT_HINT_LEADING && p->info.query.q.select.leading != NULL)
+	    {
+	      /* force join left-to-right */
+	      q = pt_append_nulstring (parser, q, "LEADING");
+	      if (p->info.query.q.select.leading)
 		{
-		  r1 = pt_print_bytes_l (parser, p->info.query.q.select.ordered);
+		  r1 = pt_print_bytes_l (parser, p->info.query.q.select.leading);
 		  q = pt_append_nulstring (parser, q, "(");
 		  q = pt_append_varchar (parser, q, r1);
 		  q = pt_append_nulstring (parser, q, ") ");
@@ -15317,7 +15350,7 @@ pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.update.check_where, arg);
   PT_APPLY_WALK (parser, p->info.update.internal_stmts, arg);
   PT_APPLY_WALK (parser, p->info.update.waitsecs_hint, arg);
-  PT_APPLY_WALK (parser, p->info.update.ordered_hint, arg);
+  PT_APPLY_WALK (parser, p->info.update.leading_hint, arg);
   PT_APPLY_WALK (parser, p->info.update.use_nl_hint, arg);
   PT_APPLY_WALK (parser, p->info.update.use_idx_hint, arg);
   PT_APPLY_WALK (parser, p->info.update.use_merge_hint, arg);
@@ -15377,10 +15410,16 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.update.hint & PT_HINT_ORDERED)
 	{
 	  /* force join left-to-right */
-	  b = pt_append_nulstring (parser, b, " ORDERED");
-	  if (p->info.update.ordered_hint)
+	  b = pt_append_nulstring (parser, b, " ORDERED ");
+	}
+
+      if (p->info.update.hint & PT_HINT_LEADING)
+	{
+	  /* force join left-to-right */
+	  b = pt_append_nulstring (parser, b, " LEADING");
+	  if (p->info.update.leading_hint)
 	    {
-	      r1 = pt_print_bytes_l (parser, p->info.update.ordered_hint);
+	      r1 = pt_print_bytes_l (parser, p->info.update.leading_hint);
 	      b = pt_append_nulstring (parser, b, "(");
 	      b = pt_append_varchar (parser, b, r1);
 	      b = pt_append_nulstring (parser, b, ") ");
