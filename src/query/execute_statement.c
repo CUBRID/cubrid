@@ -14347,49 +14347,12 @@ do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *con
     {
       int err;
 
-      if (stmt->xasl_id == NULL)	/* prepare first */
-	{
-	  COMPILE_CONTEXT *cte_contextp;
-	  XASL_NODE_HEADER xasl_header;
-	  XASL_STREAM stream;
-
-	  init_xasl_stream (&stream);
-
-	  stream.xasl_header = &xasl_header;
-	  cte_contextp = &parser->context;
-
-	  PT_NODE_PRINT_TO_ALIAS (parser, stmt,
-				  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS |
-				   PT_PRINT_USER));
-	  cte_contextp->sql_hash_text = (char *) stmt->alias_print;
-
-	  err =
-	    SHA1Compute ((unsigned char *) cte_contextp->sql_hash_text, (unsigned) strlen (cte_contextp->sql_hash_text),
-			 &cte_contextp->sha1);
-	  if (err != NO_ERROR)
-	    {
-	      goto err_exit;
-	    }
-
-	  err = prepare_query (cte_contextp, &stream);
-	  if (err != NO_ERROR)
-	    {
-	      goto err_exit;
-	    }
-	  stmt->xasl_id = stream.xasl_id;
-	}
-
       err = do_execute_cte (parser, stmt, query_flag);
       if (err != NO_ERROR)
 	{
-	  goto err_exit;
+	  *continue_walk = PT_STOP_WALK;
 	}
     }
-
-  return stmt;
-
-err_exit:
-  *continue_walk = PT_STOP_WALK;
 
   return stmt;
 }
