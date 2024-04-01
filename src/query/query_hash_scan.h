@@ -32,25 +32,25 @@
 #define MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p) \
   do \
     { \
-      tuple_pos.status = scan_id_p->status; \
-      tuple_pos.position = S_ON; \
-      tuple_pos.vpid = simple_pos->vpid; \
-      tuple_pos.offset = simple_pos->offset; \
-      tuple_pos.tpl = NULL; \
-      tuple_pos.tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
+      (tuple_pos).status = (scan_id_p)->status; \
+      (tuple_pos).position = S_ON; \
+      (tuple_pos).vpid = (simple_pos)->vpid; \
+      (tuple_pos).offset = (simple_pos)->offset; \
+      (tuple_pos).tpl = NULL; \
+      (tuple_pos).tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
     } \
   while (0)
 
 #define MAKE_TFTID_TO_TUPLE_POSTION(tuple_pos, tftid, scan_id_p) \
   do \
     { \
-      tuple_pos.status = scan_id_p->status; \
-      tuple_pos.position = S_ON; \
-      tuple_pos.vpid.pageid = tftid.pageid; \
-      tuple_pos.vpid.volid = tftid.volid; \
-      tuple_pos.offset = tftid.offset; \
-      tuple_pos.tpl = NULL; \
-      tuple_pos.tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
+      (tuple_pos).status = (scan_id_p)->status; \
+      (tuple_pos).position = S_ON; \
+      (tuple_pos).vpid.pageid = (tftid).pageid; \
+      (tuple_pos).vpid.volid = (tftid).volid; \
+      (tuple_pos).offset = (tftid).offset; \
+      (tuple_pos).tpl = NULL; \
+      (tuple_pos).tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
     } \
   while (0)
 

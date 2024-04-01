@@ -701,114 +701,10 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
       ls_merge->ls_pos_list[left_nlen + i] = i + rght_elen;
     }
 
-  /* make outer_spec_list, outer_val_list, inner_spec_list, and inner_val_list */
-
-  /* set poslist of outer XASL node */
-  poslist = NULL;		/* init */
-  if (left_elen > 0)
-    {
-      /* proceed to name list and skip out join edge exprs */
-      for (i = 0; i < left_elen; i++)
-	{
-	  left_list = left_list->next;
-	}
-
-      poslist = (int *) malloc (left_nlen * sizeof (int));
-      if (poslist == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, left_nlen * sizeof (int));
-	  goto exit_on_error;
-	}
-
-      for (i = 0; i < left_nlen; i++)
-	{
-	  poslist[i] = i + left_elen;
-	}
-    }
-
-  /* sets xasl->spec_list and xasl->val_list */
-  hashjoin = ptqo_to_list_scan_proc (parser, hashjoin, SCAN_PROC, left, left_list, NULL, poslist);
-  /* dealloc */
-  if (poslist != NULL)
-    {
-      free_and_init (poslist);
-    }
-
-  if (hashjoin == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  hashjoin->proc.hashjoin.outer_spec_list = hashjoin->spec_list;
-  hashjoin->proc.hashjoin.outer_val_list = hashjoin->val_list;
-
-  hashjoin->spec_list = NULL;
-  hashjoin->val_list = NULL;
-
-  /* set poslist of inner XASL node */
-  poslist = NULL;		/* init */
-  if (rght_elen > 0)
-    {
-      /* proceed to name list and skip out join edge exprs */
-      for (i = 0; i < rght_elen; i++)
-	{
-	  rght_list = rght_list->next;
-	}
-
-      poslist = (int *) malloc (rght_nlen * sizeof (int));
-      if (poslist == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, rght_nlen * sizeof (int));
-	  goto exit_on_error;
-	}
-
-      for (i = 0; i < rght_nlen; i++)
-	{
-	  poslist[i] = i + rght_elen;
-	}
-    }
-
-#if 0
-  /* sets xasl->spec_list and xasl->val_list */
-  hashjoin = ptqo_to_list_scan_proc (parser, hashjoin, rght, rght_list, NULL, poslist);
-#else
-  inner_spec = QO_NODE_ENTITY_SPEC ((plan->plan_un.join.inner)->plan_un.scan.node);
-  hash_pred = make_pred_from_bitset (env, &(plan->plan_un.join.join_terms), is_always_true);
-
-  /* sets xasl->spec_list and xasl->val_list */
-  hashjoin = ptqo_to_hash_build_scan_proc (parser, hashjoin, rght, rght_list, inner_spec, NULL, hash_pred, poslist);
-#endif
-  /* dealloc */
-  if (poslist)
-    {
-      free_and_init (poslist);
-    }
-
-  if (hashjoin == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  hashjoin->proc.hashjoin.inner_spec_list = hashjoin->spec_list;
-  hashjoin->proc.hashjoin.inner_val_list = hashjoin->val_list;
-
-  hashjoin->spec_list = NULL;
-  hashjoin->val_list = NULL;
-
-  if (ls_merge->join_type != JOIN_INNER)
-    {
-      PT_NODE *other_pred;
-
-      /* add outer join terms */
-      other_pred = make_pred_from_bitset (env, &(plan->plan_un.join.during_join_terms), is_always_true);
-      if (other_pred)
-	{
-	  hashjoin->after_join_pred = pt_to_pred_expr (parser, other_pred);
-
-	  /* free pointer node list */
-	  parser_free_tree (parser, other_pred);
-	}
-    }
+  hashjoin->proc.mergelist.outer_spec_list = NULL;
+  hashjoin->proc.mergelist.outer_val_list = NULL;
+  hashjoin->proc.mergelist.inner_spec_list = NULL;
+  hashjoin->proc.mergelist.inner_val_list = NULL;
 
 exit_on_end:
 
@@ -914,6 +810,7 @@ init_class_scan_proc (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
   /* free pointer node list */
   parser_free_tree (parser, key_pred);
   parser_free_tree (parser, access_pred);
+  /* parser_free_tree (parser, hash_pred); *//* need ? */
 
   if (xasl)
     {
