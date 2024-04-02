@@ -1945,7 +1945,7 @@ db_get_user_name (void)
 
   /* Kludge, twiddle the constness of this thing.  It probably doesn't need to be const anyway, its just a copy of the
    * attribute value. */
-  name = au_user_name ();
+  name = au_get_current_user_name ();
 
   return ((char *) name);
 }

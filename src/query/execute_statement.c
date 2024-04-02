@@ -4211,7 +4211,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return error;
 	    }
 
-	  error = au_check_authorization (class_mop, AU_ALTER);
+	  error = au_check_class_authorization (class_mop, AU_ALTER);
 	  if (error != NO_ERROR)
 	    {
 	      // set an error since only warning was set.
@@ -21387,7 +21387,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
     }
   else
     {
-      owner_name = (char *) au_user_name ();
+      owner_name = (char *) au_get_current_user_name ();
       if (!owner_name)
 	{
 	  return NULL;

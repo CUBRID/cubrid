@@ -685,3 +685,44 @@ end:
 
   return (error);
 }
+
+
+static const char *auth_type_name[] =
+{
+  "select", "insert", "update", "delete", "alter", "index", "execute"
+};
+
+/*
+ * au_print_cache() -
+ *   return: none
+ *   cache(in):
+ *   fp(in):
+ */
+void
+au_print_cache (int cache, FILE *fp)
+{
+  int i, mask, auth, option;
+
+  if (cache < 0)
+    {
+      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_INVALID_CACHE));
+    }
+  else
+    {
+      for (i = 0; i < 7; i++)
+	{
+	  mask = 1 << i;
+	  auth = cache & mask;
+	  option = cache & (mask << AU_GRANT_SHIFT);
+	  if (option)
+	    {
+	      fprintf (fp, "*");
+	    }
+	  if (auth)
+	    {
+	      fprintf (fp, "%s ", auth_type_name[i]);
+	    }
+	}
+    }
+  fprintf (fp, "\n");
+}

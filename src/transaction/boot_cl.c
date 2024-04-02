@@ -89,6 +89,8 @@
 #include "host_lookup.h"
 #include "schema_system_catalog.hpp"
 
+#include "authenticate_context.hpp"
+
 #if defined(CS_MODE)
 #include "network.h"
 #include "connection_cl.h"
@@ -414,7 +416,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   /* Get the user name */
   if (client_credential->db_user.empty ())
     {
-      char *user_name = au_user_name_dup ();
+      char *user_name = strdup (Au_user_name);
       int upper_case_name_size;
       char *upper_case_name;
 
@@ -850,7 +852,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       if (au_has_user_name ())
 	{
-	  const char *name = au_user_name ();	// while establishing a connection, never use db_get_user_name.
+	  const char *name = au_get_current_user_name ();	// while establishing a connection, never use db_get_user_name.
 	  if (name != NULL)
 	    {
 	      client_credential->db_user = name;

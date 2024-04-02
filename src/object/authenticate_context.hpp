@@ -26,13 +26,11 @@
 
 #include "dbtype_def.h"
 
-#define AU_MAX_PASSWORD_CHARS   31
-#define AU_MAX_PASSWORD_BUF     2048
-#define AU_MAX_COMMENT_CHARS    SM_MAX_COMMENT_LENGTH
+#include "authenticate_password.hpp" /* AU_MAX_PASSWORD_BUF */
 
 class authenticate_context
 {
-  private:
+  public:
     /*
      * Global MOP of the authorization root object.
      * This is cached here after the database is restarted so we don't
@@ -41,17 +39,28 @@ class authenticate_context
      */
     MOP root;
 
-    /* db_root */
-    MOP authorizations_class;
 
-    /* db_authorization */
-    MOP authorization_class;
+    MOP authorizations_class;     /* db_root */
 
-    /* db_user */
-    MOP user_class;
 
-    /* db_password */
-    MOP password_class;
+    MOP authorization_class;     /* db_authorization */
+
+
+    MOP user_class;     /* db_user */
+
+    /*
+     * Au_password_class
+     *
+     * This is a hack until we get a proper "system" authorization
+     * level.  We need to detect attempts to update or delete
+     * system classes by the DBA when there is no approved
+     * direct update mechanism.  This is the case for all the
+     * authorization classes.  The only way they can be updated is
+     * through the authorization functions or methods.
+     * To avoid searching for these classes all the time, cache
+     * them here.
+     */
+    MOP password_class; /* db_password */
 
     /*
      * Flag to disable authorization checking.  Only for well behaved
@@ -62,7 +71,7 @@ class authenticate_context
     bool disable_auth_check;
 
     /*
-    * Au_ignore_passwords
+    * ignore_passwords
     *
     * When this flag is set, the authorization system will ignore passwords
     * when logging in users.  This is intended for use only be system
@@ -107,6 +116,9 @@ class authenticate_context
      *
      * NOTE: Need to be storing the password in an encrypted string.
      */
+
+    char Au_user_password[AU_MAX_PASSWORD_BUF + 4]; // unused
+
     char user_name[DB_MAX_USER_LENGTH + 4] = { '\0' };
     char user_password_des_oldstyle[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
     char user_password_sha1[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
@@ -116,21 +128,36 @@ class authenticate_context
 
     void reset (void);
 
-  public:
-
     authenticate_context (void); // au_init ()
     ~authenticate_context (); // au_final ()
 
+    int install (void); // au_install ()
     int start (void); // au_start ()
 
-    int login (const char *name, const char *password, bool ignore_dba_privilege);
+    int login (const char *name, const char *password, bool ignore_dba_privilege); // au_login ()
 
+    int set_user (MOP newuser); // au_set_user ()
 
-    // for backward compatability
+    int set_password (MOP user, const char *password); // au_set_password ()
+    int set_password (MOP user, const char *password, int encode, char encrypt_prefix); // au_set_password ()
+
+    void disable_passwords (void); // au_disable_passwords ()
+
+    // checks
+    int check_user (void);
+    bool has_user_name (void);
+
+    // getters
+    MOP get_public_user (void);
+    MOP get_dba_user (void);
+
+    const char *get_current_user_name (void);
+
     const char *get_public_user_name (void);
     const char *get_user_class_name (void);
-};
 
-#define Au_root
+  private:
+    int perform_login (const char *name, const char *password, bool ignore_dba_privilege);
+};
 
 #endif // _AUTHENTICATE_CONTEXT_HPP_

@@ -8911,7 +8911,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    PT_NODE *current_user_val;
 		    const char *username;
 
-		    username = au_user_name ();
+		    username = au_get_current_user_name ();
 		    if (username == NULL)
 		      {
 			PT_INTERNAL_ERROR (parser, "get user name");

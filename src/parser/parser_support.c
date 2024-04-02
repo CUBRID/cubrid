@@ -7754,7 +7754,7 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
   const char *user_name = NULL;
   PT_NODE *node = NULL;
 
-  user_name = au_user_name ();
+  user_name = au_get_current_user_name ();
   if (user_name == NULL)
     {
       return NULL;

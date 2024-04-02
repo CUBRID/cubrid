@@ -268,6 +268,8 @@ catcls_install (void)
 
   using catalog_builder = cubschema::system_catalog_builder;
 
+  au_set_user (Au_dba_user); // change to dba user
+
   for (i = 0; i < num_classes; i++)
     {
       // new routine

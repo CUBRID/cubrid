@@ -45,7 +45,7 @@
 #include "extract_schema.hpp"
 #include "schema_system_catalog_constants.h"
 #include "set_object.h"
-
+#include "authenticate_context.hpp"
 
 class print_output;
 
@@ -75,6 +75,27 @@ class print_output;
 #define AU_ALTER        DB_AUTH_ALTER
 #define AU_INDEX        DB_AUTH_INDEX
 #define AU_EXECUTE      DB_AUTH_EXECUTE
+
+/*
+ * Message id in the set MSGCAT_SET_AUTHORIZATION
+ * in the message catalog MSGCAT_CATALOG_CUBRID (file cubrid.msg).
+ */
+#define MSGCAT_AUTH_INVALID_CACHE       1
+#define MSGCAT_AUTH_CLASS_NAME          2
+#define MSGCAT_AUTH_FROM_USER           3
+#define MSGCAT_AUTH_USER_TITLE          4
+#define MSGCAT_AUTH_UNDEFINED_USER      5
+#define MSGCAT_AUTH_USER_NAME           6
+#define MSGCAT_AUTH_USER_ID             7
+#define MSGCAT_AUTH_USER_MEMBERS        8
+#define MSGCAT_AUTH_USER_GROUPS         9
+#define MSGCAT_AUTH_USER_NAME2          10
+#define MSGCAT_AUTH_CURRENT_USER        11
+#define MSGCAT_AUTH_ROOT_TITLE          12
+#define MSGCAT_AUTH_ROOT_USERS          13
+#define MSGCAT_AUTH_GRANT_DUMP_ERROR    14
+#define MSGCAT_AUTH_AUTH_TITLE          15
+#define MSGCAT_AUTH_USER_DIRECT_GROUPS  16
 
 enum AU_OBJECT
 {
@@ -107,44 +128,8 @@ extern const char *AU_OBJECT_CLASS_NAME[];
 
 #define AU_GRANT_SHIFT          8
 
-int au_disable (void);
-void au_enable (int save);
-MOP au_get_public_user (void);
-MOP au_get_dba_user (void);
-
-#define AU_DISABLE(save) \
-  do \
-    { \
-      save = Au_disable; \
-      Au_disable = 1; \
-    } \
-  while (0)
-#define AU_ENABLE(save) \
-  do \
-    { \
-      Au_disable = save; \
-    } \
-  while (0)
-#define AU_SAVE_AND_ENABLE(save) \
-  do \
-    { \
-      save = Au_disable; \
-      Au_disable = 0; \
-    } \
-  while (0)
-#define AU_SAVE_AND_DISABLE(save) \
-  do \
-    { \
-      save = Au_disable; \
-      Au_disable = 1; \
-    } \
-  while (0)
-#define AU_RESTORE(save) \
-  do \
-    { \
-      Au_disable = save; \
-    } \
-  while (0)
+/* Invalid cache is identified when the high bit is on. */
+#define AU_CACHE_INVALID        0x80000000
 
 /* 
  * name is user_specified_name.
@@ -161,66 +146,138 @@ MOP au_get_dba_user (void);
 	  } \
 	while (0)
 
-#define AU_DISABLE_PASSWORDS    au_disable_passwords
-#define AU_SET_USER     au_set_user
-
 #define AU_MAX_PASSWORD_CHARS   31
 #define AU_MAX_PASSWORD_BUF     2048
 #define AU_MAX_COMMENT_CHARS    SM_MAX_COMMENT_LENGTH
 
-/* free_and_init routine */
-#define au_free_authorization_cache_and_init(cache) \
+
+extern authenticate_context *au_ctx;
+
+/* Backward compatability */
+// Instead of using global variables, use authenticate_context's member variables/functions
+
+// Variables
+#define Au_root         au_ctx->root
+#define Au_user         au_ctx->current_user
+#define Au_dba_user     au_ctx->dba_user
+#define Au_public_user  au_ctx->public_user
+#define Au_disable      au_ctx->disable_auth_check
+
+#define Au_authorizations_class au_ctx->authorizations_class
+#define Au_authorization_class  au_ctx->authorization_class
+#define Au_user_class           au_ctx->user_class
+#define Au_password_class       au_ctx->password_class
+
+#define Au_user_name            au_ctx->user_name
+
+#define Au_user_password au_ctx->user_password
+#define Au_user_password_des_oldstyle au_ctx->user_password_des_oldstyle
+#define Au_user_password_sha1 au_ctx->user_password_sha1
+#define Au_user_password_sha2_512 au_ctx->user_password_sha2_512
+
+/* Functions */
+#define au_install      au_ctx->install
+#define au_start        au_ctx->start
+
+#define au_get_public_user_name au_ctx->get_public_user_name
+#define au_get_user_class_name  au_ctx->get_user_class_name
+
+#define au_set_user     au_ctx->set_user
+#define au_set_password au_ctx->set_password
+
+#define au_disable_passwords au_ctx->disable_passwords
+
+#define au_get_current_user_name    au_ctx->get_current_user_name
+
+#define au_check_user au_ctx->check_user
+#define au_has_user_name au_ctx->has_user_name
+
+#define AU_SET_USER     au_set_user
+
+// FIXME: To migrate legacy
+// AU_DISABLE_PASSWORDS () is called in serveral places without calling au_init ()
+#define AU_DISABLE_PASSWORDS() \
   do \
     { \
-      au_free_authorization_cache ((cache)); \
-      (cache) = NULL; \
+      if (au_ctx == nullptr) \
+      { \
+        au_init (); \
+      } \
+      au_disable_passwords (); \
     } \
   while (0)
 
-/*
- * Global Variables
- */
-extern MOP Au_root;
-extern MOP Au_user;
-extern MOP Au_dba_user;
-extern MOP Au_public_user;
-extern char Au_user_password[AU_MAX_PASSWORD_BUF + 4];
-extern int Au_disable;
-
-extern MOP Au_user_class;
+#define AU_DISABLE(save) \
+  do \
+    { \
+      save = Au_disable ? 1 : 0; \
+      Au_disable = true; \
+    } \
+  while (0)
+#define AU_ENABLE(save) \
+  do \
+    { \
+      Au_disable = save; \
+    } \
+  while (0)
+#define AU_SAVE_AND_ENABLE(save) \
+  do \
+    { \
+      save = Au_disable ? 1 : 0; \
+      Au_disable = false; \
+    } \
+  while (0)
+#define AU_SAVE_AND_DISABLE(save) \
+  do \
+    { \
+      save = Au_disable ? 1 : 0; \
+      Au_disable = true; \
+    } \
+  while (0)
+#define AU_RESTORE(save) \
+  do \
+    { \
+      Au_disable = save; \
+    } \
+  while (0)
 
 extern void au_init (void);
 extern void au_final (void);
-
-extern int au_install (void);
-extern int au_force_write_new_auth (void);
-extern int au_add_method_check_authorization (void);
-extern int au_start (void);
 extern int au_login (const char *name, const char *password, bool ignore_dba_privilege);
 
-extern void au_disable_passwords (void);
-extern int au_set_user (MOP newuser);
+/*
+ * GRANT/REVOKE OPERATIONS (authenticate_grant.cpp)
+ */
+extern int au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
+extern int au_revoke (MOP user, MOP class_mop, DB_AUTH type);
+extern int au_force_write_new_auth (void);
 
-/* user/group hierarchy maintenance */
+// get authenticate info of the given class mop
+extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
+
+// delete _db_auth records refers to the given table
+extern int au_delete_auth_of_dropping_table (const char *class_name);
+//
+
+extern int au_add_method_check_authorization (void);
+
+/*
+ * USER OPERATIONS (authenticate_user_access.cpp)
+ */
 extern MOP au_find_user (const char *user_name);
 extern int au_find_user_to_drop (const char *user_name, MOP * user);
 extern MOP au_add_user (const char *name, int *exists);
+
+/* user/group hierarchy maintenance */
 extern int au_add_member (MOP group, MOP member);
 extern int au_drop_member (MOP group, MOP member);
 extern int au_drop_user (MOP user);
-extern int au_set_password (MOP user, const char *password);
 extern int au_set_user_comment (MOP user, const char *comment);
+//
 
-extern const char *au_user_name (void);
-extern char *au_user_name_dup (void);
-extern bool au_has_user_name (void);
-
-/* grant/revoke */
-extern int au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
-extern int au_revoke (MOP user, MOP class_mop, DB_AUTH type);
-
-extern int au_delete_auth_of_dropping_table (const char *class_name);
-
+/*
+ * CLASS ACCESS OPERATIONS (authenticate_class_access.cpp)
+ */
 /* class & instance accessors */
 extern int au_fetch_class (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type);
 extern int au_fetch_class_by_classmop (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type);
@@ -232,16 +289,31 @@ extern int au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, LC_FETC
 extern int au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
 				    LC_FETCH_VERSION_TYPE fetch_version_type);
 
-extern int au_check_authorization (MOP op, DB_AUTH auth);
+extern int au_check_class_authorization (MOP op, DB_AUTH auth);	// legacy name - au_check_authorization
+//
 
+/*
+ * AUTHENTICATE CACHE OPERATIONS (authenticate_cache.cpp)
+ */
 /* class cache support */
 extern void au_free_authorization_cache (void *cache);
 extern void au_reset_authorization_caches (void);
 
+/* free_and_init routine */
+#define au_free_authorization_cache_and_init(cache) \
+  do \
+    { \
+      au_free_authorization_cache ((cache)); \
+      (cache) = NULL; \
+    } \
+  while (0)
+//
+
 /* misc utilities */
 extern int au_change_owner (MOP class_mop, MOP owner_mop);
+extern int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
+
 extern MOP au_get_class_owner (MOP classmop);
-extern int au_check_user (void);
 extern char *au_get_user_name (MOP obj);
 extern bool au_is_dba_group_member (MOP user);
 extern bool au_is_user_group_member (MOP group_user, MOP user);
@@ -255,12 +327,11 @@ extern void au_dump_user (MOP user, FILE * fp);
 /* called only at initialization time to get the static methods linked */
 extern void au_link_static_methods (void);
 
-/* migration utilities */
-
+/*
+ * MIGRATION OPERATIONS (authenticate_migration.cpp)
+ */
 extern int au_export_users (extract_context & ctxt, print_output & output_ctx);
 extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_mop);
-
-extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 
 /*
  * Etc
@@ -294,9 +365,4 @@ extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VAL
 extern int au_check_serial_authorization (MOP serial_object);
 extern int au_check_server_authorization (MOP server_object);
 extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
-extern const char *au_get_public_user_name (void);
-extern const char *au_get_user_class_name (void);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern char *toupper_string (const char *name1, char *name2);
-#endif
 #endif /* _AUTHENTICATE_H_ */

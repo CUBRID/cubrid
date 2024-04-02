@@ -86,4 +86,5 @@ extern void remove_user_cache_references (MOP user);
 
 extern unsigned int *get_cache_bits (SM_CLASS *sm_class);
 
+extern void au_print_cache (int cache, FILE *fp);  // for debugging
 #endif // _AUTHENTICATE_CACHE_HPP_

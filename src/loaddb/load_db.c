@@ -1346,7 +1346,7 @@ load_has_authorization (const std::string & class_name, DB_AUTH au_type)
       return error_code;
     }
 
-  error_code = au_check_authorization (class_mop, au_type);
+  error_code = au_check_class_authorization (class_mop, au_type);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
