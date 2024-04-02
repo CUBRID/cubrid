@@ -6409,6 +6409,7 @@ pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.alter_user.user_name, arg);
   PT_APPLY_WALK (parser, p->info.alter_user.password, arg);
+  PT_APPLY_WALK (parser, p->info.alter_user.members, arg);
   return p;
 }
 
@@ -6432,6 +6433,26 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.alter_user.password);
       b = pt_append_nulstring (parser, b, " password ");
       b = pt_append_varchar (parser, b, r1);
+    }
+
+  if (p->info.alter_user.members != NULL)
+    {
+      if (p->info.alter_user.code == PT_ADD_MEMBERS)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter_user.members);
+	  b = pt_append_nulstring (parser, b, " add members ");
+	  b = pt_append_varchar (parser, b, r1);
+	}
+      else if (p->info.alter_user.code == PT_DROP_MEMBERS)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter_user.members);
+	  b = pt_append_nulstring (parser, b, " drop members ");
+	  b = pt_append_varchar (parser, b, r1);
+	}
+      else
+	{
+	  assert (false);
+	}
     }
 
   if (p->info.alter_user.comment != NULL)
@@ -9405,6 +9426,11 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  if (!insert_with_use_sbr)
 	    {
+	      if (PT_SPEC_CTE_POINTER (p) != NULL)
+		{
+		  r1 = pt_print_bytes (parser, p->info.spec.cte_name);
+		  q = pt_append_varchar (parser, q, r1);
+		}
 	      r1 = pt_print_bytes (parser, p->info.spec.range_var);
 	      q = pt_append_nulstring (parser, q, " ");
 	      q = pt_append_varchar (parser, q, r1);
@@ -13220,6 +13246,7 @@ pt_apply_name (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.name.path_correlation, arg);
   PT_APPLY_WALK (parser, p->info.name.default_value, arg);
+  PT_APPLY_WALK (parser, p->info.name.constant_value, arg);
   PT_APPLY_WALK (parser, p->info.name.indx_key_limit, arg);
   return p;
 }
