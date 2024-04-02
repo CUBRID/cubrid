@@ -86,7 +86,7 @@ extern int yybuffer_pos;
 extern int is_dblink_query_string;
 
 /* the stream_buffer and stream_ptr is used to extract query spec of a view in loaddb */
-extern char stream_buffer[];
+extern char *stream_buffer;
 extern int stream_ptr;
 
 #if defined(SA_MODE)
@@ -245,6 +245,10 @@ static PT_NODE *parser_hidden_incr_list = NULL;
 static bool is_analytic_function = false;
 
 static bool is_in_create_trigger = false;
+
+static int alloc_stream_buf_len;
+
+#define STREAM_ALLOC_SIZE 64
 
 #define PT_EMPTY INT_MAX
 
@@ -1875,6 +1879,15 @@ stmt
 			else if (stream_ptr > 0)
 			  {
 			    /* g_view_string points to an offset of stream_buf */
+			    if (stream_ptr >= alloc_stream_buf_len)
+			      {
+				char *tmp_buff;
+
+				tmp_buff = parser_alloc(this_parser, alloc_stream_buf_len + STREAM_ALLOC_SIZE);
+				memcpy(tmp_buff, stream_buffer, alloc_stream_buf_len);
+				alloc_stream_buf_len += STREAM_ALLOC_SIZE;
+				stream_buffer = tmp_buff;
+			      }
 			    stream_buffer[stream_ptr++] = 0;
 			  }
 
@@ -25987,6 +26000,9 @@ parser_main (PARSER_CONTEXT * parser)
   g_query_string = NULL;
   g_view_string = NULL;
   stream_ptr = 0;
+  stream_buffer = (char *) parser_alloc (this_parser, STREAM_ALLOC_SIZE);
+  alloc_stream_buf_len = STREAM_ALLOC_SIZE;
+
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 
@@ -26089,6 +26105,9 @@ parse_one_statement (int state)
   g_query_string = NULL;
   g_view_string = NULL;
   stream_ptr = 0;
+  stream_buffer = (char *) parser_alloc (this_parser, STREAM_ALLOC_SIZE);
+  alloc_stream_buf_len = STREAM_ALLOC_SIZE;
+
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 

@@ -1853,17 +1853,31 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    {			/* change the existing spec lists */
 	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 				sizeof (output_owner));
-
-	      output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
+	      if (!ctxt.is_dba_user)
+		{
+		  output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), i, s->spec_query);
+		}
+	      else
+		{
+		  output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
+		}
 	    }
 	  else
 	    {			/* emit the usual statements */
 	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 				sizeof (output_owner));
-
-	      output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
+	      if (!ctxt.is_dba_user)
+		{
+		  output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), s->spec_query);
+		}
+	      else
+		{
+		  output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
+		}
 	    }
 	}
     }
