@@ -3781,27 +3781,26 @@ alter_stmt
 	  opt_comment_spec		/* 7 */
 		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER SERIAL serial_name OWNER TO identifier opt_comment_spec);
 		
-		  PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERIAL);
+		        PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERIAL);
 		  
-		  if (node)
-                    {
-                      node->info.serial.serial_name = $3;
-                      node->info.serial.owner_name = $6;
-                      node->info.serial.comment = $7;
-		      node->info.serial.code = PT_CHANGE_OWNER;
-                    }
+		        if (node)
+                          {
+                            node->info.serial.serial_name = $3;
+                            node->info.serial.owner_name = $6;
+                            node->info.serial.comment = $7;
+		            node->info.serial.code = PT_CHANGE_OWNER;
+                          }
 
-                  $$ = node;
-                  PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                        $$ = node;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		  if (node->info.serial.owner_name == NULL)
-		    {
-		      if (node->info.serial.comment != NULL)
-		        {
-			  node->info.serial.code = PT_SERIAL_COMMENT;
-			}
-		    }
-
+		        if (node->info.serial.owner_name == NULL)
+		          {
+		            if (node->info.serial.comment != NULL)
+		              {
+			        node->info.serial.code = PT_SERIAL_COMMENT;
+			      }
+		          }
 		DBG_PRINT}}
 	| ALTER						/* 1 */
 		{					/* 2 */

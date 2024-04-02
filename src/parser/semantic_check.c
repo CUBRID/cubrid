@@ -9969,7 +9969,7 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* serial_name */
   name = node->info.serial.serial_name->info.name.original;
-  if (serial_class == NULL)
+  if (name == NULL)
     {
       assert (sm_check_system_class_by_name (name));
     }
