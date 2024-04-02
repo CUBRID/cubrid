@@ -40,12 +40,18 @@
 namespace fs = std::filesystem;
 
 #define JAVA_DIR                "java"
+#define JAVA_STATIC_DIR         "java_static"
+
 #if defined(WINDOWS)
 #define SEPERATOR               "\\"
 #else /* ! WINDOWS */
 #define SEPERATOR               "/"
 #endif /* !WINDOWS */
 
+static const std::string DYNAMIC_PATH = JAVA_DIR;
+static const std::string STATIC_PATH = JAVA_STATIC_DIR;
+
+static std::string Path;
 static char *Program_name = NULL;
 static char *Dbname = NULL;
 std::string Src_class;
@@ -64,13 +70,14 @@ parse_argument (int argc, char *argv[])
   struct option loadjava_option[] =
   {
     {"overwrite", 0, 0, 'y'},
+    {"jni", 0, 0, 'j'},
     {0, 0, 0, 0}
   };
 
   while (1)
     {
       int option_index = 0;
-      int option_key = getopt_long (argc, argv, "yh", loadjava_option, &option_index);
+      int option_key = getopt_long (argc, argv, "y:jh", loadjava_option, &option_index);
       if (option_key == -1)
 	{
 	  break;
@@ -81,6 +88,8 @@ parse_argument (int argc, char *argv[])
 	case 'y':
 	  Force_overwrite = true;
 	  break;
+	case 'j':
+	  Path = STATIC_PATH;
 	case 'h':
 	/* fall through */
 	default:
@@ -202,7 +211,11 @@ main (int argc, char *argv[])
   java_dir_path.assign (std::string (db->pathname));
 
   // e.g. $CUBRID/demodb/java
-  java_dir_path.append (JAVA_DIR);
+  if (Path.empty())
+    {
+      Path = DYNAMIC_PATH;
+    }
+  java_dir_path.append (Path);
 
   if (create_java_directories (java_dir_path) != NO_ERROR)
     {
