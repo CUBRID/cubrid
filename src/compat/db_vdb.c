@@ -2386,7 +2386,12 @@ do_process_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, 
 	      goto err_exit;
 	    }
 
-	  memset (prepare_info->cte_info.cte_host_var_index, 0, num_cte);
+	  /* init cte_host_var_index array */
+	  for (i = 0; i < num_cte; i++)
+	    {
+	      prepare_info->cte_info.cte_host_var_index[i] = NULL;
+	    }
+
 	  for (cte_def_list = cte_list; cte_def_list; cte_def_list = cte_def_list->next)
 	    {
 	      cte_query = cte_def_list->info.cte.non_recursive_part;
