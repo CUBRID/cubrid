@@ -3757,6 +3757,7 @@ alter_stmt
 			    node->info.serial.cached_num_val = cached_num_val;
 			    node->info.serial.no_cache = no_cache;
 			    node->info.serial.comment = comment;
+			    node->info.serial.code = PT_SERIAL_OPTION;
 			  }
 
 			$$ = node;
@@ -3764,11 +3765,12 @@ alter_stmt
 
 			if (!start_val && !increment_val && !max_val && !min_val
 			    && cyclic == 0 && no_max == 0 && no_min == 0
-			    && no_cyclic == 0 && !cached_num_val && no_cache == 0
-			    && comment == NULL)
+			    && no_cyclic == 0 && !cached_num_val && no_cache == 0)
 			  {
-			    PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
+			    if (comment != NULL)
+			      {
+			        node->info.serial.code = PT_SERIAL_COMMENT;
+			      }
 			  }
 
 		DBG_PRINT}}
@@ -3786,10 +3788,19 @@ alter_stmt
                       node->info.serial.serial_name = $3;
                       node->info.serial.owner_name = $6;
                       node->info.serial.comment = $7;
+		      node->info.serial.code = PT_CHANGE_OWNER;
                     }
 
                   $$ = node;
                   PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		  if (node->info.serial.owner_name == NULL)
+		    {
+		      if (node->info.serial.comment != NULL)
+		        {
+			  node->info.serial.code = PT_SERIAL_COMMENT;
+			}
+		    }
 
 		DBG_PRINT}}
 	| ALTER						/* 1 */

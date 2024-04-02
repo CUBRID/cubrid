@@ -2319,12 +2319,11 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int cached_num;
   int ret_msg_id = 0;
 
-  PT_NODE *serial_owner = NULL;
   const char *serial_owner_name = NULL;
   DB_VALUE serial_name_val, returnval, serial_owner_val;
   const char *comment = NULL;
 
-  bool opt_serial_option_list_flag = false;
+  const PT_ALTER_CODE alter_serial_code = statement->info.serial.code;
 
   int new_inc_val_flag = 0, new_cyclic;
   bool cur_val_change, inc_val_change, max_val_change, min_val_change, cyclic_change, cached_num_change;
@@ -2771,103 +2770,114 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  /* current_val */
-  if (cur_val_change)
+  switch (alter_serial_code)
     {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, &start_val);
-      if (error < 0)
+    case PT_SERIAL_OPTION:
+      /* current_val */
+      if (cur_val_change)
 	{
-	  goto end;
-	}
-      /* reset started flag because current_val changed */
-      db_make_int (&value, 0);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &value);
-      if (error < 0)
-	{
-	  goto end;
-	}
-      pr_clear_value (&value);
-      opt_serial_option_list_flag = true;
-    }
-
-  /* increment_val */
-  if (inc_val_change)
-    {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_INCREMENT_VAL, &new_inc_val);
-      if (error < 0)
-	{
-	  goto end;
-	}
-      opt_serial_option_list_flag = true;
-    }
-
-  /* max_val */
-  if (max_val_change)
-    {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, &new_max_val);
-      if (error < 0)
-	{
-	  goto end;
-	}
-      opt_serial_option_list_flag = true;
-    }
-
-  /* min_val */
-  if (min_val_change)
-    {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MIN_VAL, &new_min_val);
-      if (error < 0)
-	{
-	  goto end;
-	}
-      opt_serial_option_list_flag = true;
-    }
-
-  /* cyclic */
-  if (cyclic_change)
-    {
-      db_make_int (&value, new_cyclic);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CYCLIC, &value);
-      if (error < 0)
-	{
-	  goto end;
-	}
-      pr_clear_value (&value);
-      opt_serial_option_list_flag = true;
-    }
-
-  /* cached num */
-  if (cached_num_change)
-    {
-
-      /* Here we need class_name and att_name to see if this serial is auto_increment. Cause for an auto_increment
-       * serial, it is not allowed to change the cached_num for it. */
-      if (!DB_IS_NULL (&class_name_val))
-	{
-
-	  error = MSGCAT_RUNTIME_INVALID_AUTO_INCREMENT_ALTER;
-
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, name);
-
-	  goto end;
-
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, &start_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  /* reset started flag because current_val changed */
+	  db_make_int (&value, 0);
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &value);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  pr_clear_value (&value);
 	}
 
-      db_make_int (&value, cached_num);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
-      if (error < 0)
+      /* increment_val */
+      if (inc_val_change)
 	{
-	  goto end;
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_INCREMENT_VAL, &new_inc_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
 	}
-      pr_clear_value (&value);
-      opt_serial_option_list_flag = true;
-    }
 
-  /* owner to */
-  serial_owner = statement->info.serial.owner_name;
-  if (serial_owner != NULL)
-    {
-      serial_owner_name = serial_owner->info.name.original;
+      /* max_val */
+      if (max_val_change)
+	{
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, &new_max_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	}
+
+      /* min_val */
+      if (min_val_change)
+	{
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MIN_VAL, &new_min_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	}
+
+      /* cyclic */
+      if (cyclic_change)
+	{
+	  db_make_int (&value, new_cyclic);
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CYCLIC, &value);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  pr_clear_value (&value);
+	}
+
+      /* cached num */
+      if (cached_num_change)
+	{
+
+	  /* Here we need class_name and att_name to see if this serial is auto_increment. Cause for an auto_increment
+	   * serial, it is not allowed to change the cached_num for it. */
+	  if (!DB_IS_NULL (&class_name_val))
+	    {
+
+	      error = MSGCAT_RUNTIME_INVALID_AUTO_INCREMENT_ALTER;
+
+	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, name);
+
+	      goto end;
+
+	    }
+
+	  db_make_int (&value, cached_num);
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  pr_clear_value (&value);
+	}
+
+      /* comment */
+      if (statement->info.serial.comment != NULL)
+	{
+	  assert (statement->info.serial.comment->node_type == PT_VALUE);
+	  comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
+	  db_make_string (&value, comment);
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
+	  pr_clear_value (&value);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	}
+      break;
+
+    case PT_CHANGE_OWNER:
+      /* owner to */
+      assert (statement->info.serial.owner_name != NULL);
+      serial_owner_name = statement->info.serial.owner_name->info.name.original;
 
       db_make_string (&serial_name_val, (char *) PT_NODE_SR_NAME (statement));
       db_make_string (&serial_owner_val, serial_owner_name);
@@ -2882,11 +2892,24 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = db_get_error (&returnval);
 	  goto end;
 	}
-    }
 
-  /* comment */
-  if (statement->info.serial.comment != NULL)
-    {
+      /* comment */
+      if (statement->info.serial.comment != NULL)
+	{
+	  assert (statement->info.serial.comment->node_type == PT_VALUE);
+	  comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
+	  db_make_string (&value, comment);
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
+	  pr_clear_value (&value);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	}
+      break;
+
+    case PT_SERIAL_COMMENT:
+      /* comment */
       assert (statement->info.serial.comment->node_type == PT_VALUE);
       comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
       db_make_string (&value, comment);
@@ -2896,6 +2919,11 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+      break;
+
+    default:
+      assert (false);
+      break;
     }
 
   serial_object = dbt_finish_object (obj_tmpl);
@@ -2910,7 +2938,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   obj_tmpl = NULL;
 
 end:
-  if (!OID_ISNULL (&serial_obj_id) && opt_serial_option_list_flag == true)
+  if (!OID_ISNULL (&serial_obj_id) && alter_serial_code == PT_SERIAL_OPTION)
     {
       (void) serial_decache ((OID *) (&serial_obj_id));
     }

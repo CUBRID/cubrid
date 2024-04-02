@@ -34,6 +34,7 @@
 #include "memory_alloc.h"
 #include "jsp_cl.h"
 #include "execute_schema.h"
+#include "execute_statement.h"
 #include "set_object.h"
 #include "schema_manager.h"
 #include "release_string.h"
@@ -202,6 +203,7 @@ static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_update_stats (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -9929,6 +9931,122 @@ pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_check_alter_serial () - do semantic checks on the alter serial statement
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  DB_OBJECT *serial_class = NULL, *serial_object = NULL;
+  DB_IDENTIFIER serial_obj_id;
+  DB_OBJECT *owner_object = NULL;
+  PT_NODE *start_val = NULL;
+  PT_NODE *increment_val = NULL;
+  PT_NODE *max_val = NULL;
+  PT_NODE *min_val = NULL;
+  int cyclic;
+  int no_max;
+  int no_min;
+  int no_cyclic;
+  PT_NODE *cached_num_val = NULL;
+  int no_cache;
+  const char *name = NULL;
+  const char *owner_name = NULL;
+
+  OID_SET_NULL (&serial_obj_id);
+
+  assert (node->node_type == PT_ALTER_SERIAL);
+
+  /* find db_serial_class */
+  serial_class = sm_find_class (CT_SERIAL_NAME);
+  if (serial_class == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DB_SERIAL_NOT_FOUND, 0);
+      return;
+    }
+
+  /* serial_name */
+  name = node->info.serial.serial_name->info.name.original;
+  if (serial_class == NULL)
+    {
+      assert (sm_check_system_class_by_name (name));
+    }
+
+  /* Check if a serial object exists. */
+  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class, name);
+  if (serial_object == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, name);
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, name);
+      return;
+    }
+
+  assert (node->info.serial.code != NULL);
+  switch (node->info.serial.code)
+    {
+    case PT_SERIAL_OPTION:
+      start_val = node->info.serial.start_val;
+      increment_val = node->info.serial.increment_val;
+      max_val = node->info.serial.max_val;
+      min_val = node->info.serial.min_val;
+      cyclic = node->info.serial.cyclic;
+      no_max = node->info.serial.no_max;
+      no_min = node->info.serial.no_min;
+      no_cyclic = node->info.serial.no_cyclic;
+      cached_num_val = node->info.serial.cached_num_val;
+      no_cache = node->info.serial.no_cache;
+
+      if (!start_val && !increment_val && !max_val && !min_val
+	  && cyclic == 0 && no_max == 0 && no_min == 0
+	  && no_cyclic == 0 && !cached_num_val && no_cache == 0
+	  && owner_name == NULL && node->info.serial.comment == NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
+	  return;
+	}
+      break;
+
+    case PT_CHANGE_OWNER:
+      if (node->info.serial.owner_name == NULL && node->info.serial.comment == NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
+	  return;
+	}
+
+      /* serial_owner_name */
+      owner_name = node->info.serial.owner_name->info.name.original;
+      assert (owner_name != NULL && *owner_name != '\0');
+      owner_object = db_find_user (owner_name);
+      if (owner_object == NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	  return;
+	}
+
+      if (au_is_dba_group_member (Au_user) == false)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_NOT_OWNER,
+		      "change_serial_owner");
+	  return;
+	}
+      break;
+
+    case PT_SERIAL_COMMENT:
+      if (node->info.serial.comment == NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
+	  return;
+	}
+      break;
+    default:
+      assert (false);
+      break;
+    }
+}
+
+/*
  * pt_check_update_stats () - do semantic checks on the UPDATE STATISTICS statement
  *   return:  none
  *   parser(in): the parser context used to derive the statement
@@ -11858,6 +11976,8 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
       break;
 
     case PT_ALTER_SERIAL:
+      pt_check_alter_serial (parser, node);
+      break;
     case PT_ALTER_TRIGGER:
     case PT_ALTER_USER:
     case PT_CREATE_SERIAL:

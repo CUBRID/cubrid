@@ -5254,13 +5254,6 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * serial
       return;
     }
 
-  if (!au_is_dba_group_member (Au_user))
-    {
-      ERROR_SET_WARNING_1ARG (error, ER_AU_DBA_ONLY, "change_serial_owner");
-      db_make_error (return_val, error);
-      return;
-    }
-
   if (!DB_IS_STRING (serial_val) || (serial_name = db_get_string (serial_val)) == NULL)
     {
       ERROR_SET_WARNING_1ARG (error, ER_OBJ_INVALID_ARGUMENT, "");
