@@ -9453,6 +9453,11 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  if (!insert_with_use_sbr)
 	    {
+	      if (PT_SPEC_CTE_POINTER (p) != NULL)
+		{
+		  r1 = pt_print_bytes (parser, p->info.spec.cte_name);
+		  q = pt_append_varchar (parser, q, r1);
+		}
 	      r1 = pt_print_bytes (parser, p->info.spec.range_var);
 	      q = pt_append_nulstring (parser, q, " ");
 	      q = pt_append_varchar (parser, q, r1);
