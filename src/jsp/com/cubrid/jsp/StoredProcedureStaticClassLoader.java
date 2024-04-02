@@ -70,6 +70,10 @@ public class StoredProcedureStaticClassLoader extends URLClassLoader {
         }
     }
 
+    public Class<?> loadClass(String name) throws ClassNotFoundException {
+        return super.loadClass(name);
+    }
+
     private void initJar() throws IOException {
         try (Stream<Path> files = Files.list(root)) {
             files.filter((file) -> !Files.isDirectory(file) && (file.toString().endsWith(".jar")))

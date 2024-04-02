@@ -93,7 +93,7 @@ public class StoredProcedureClassLoader extends URLClassLoader {
         }
     }
 
-    public Class<?> loadClass(String name) throws ClassNotFoundException {
+    public Class<?> loadClass(String name) {
         Class<?> found = null;
         try {
             if (isModified()) {
@@ -102,12 +102,13 @@ public class StoredProcedureClassLoader extends URLClassLoader {
             } else {
                 found = super.loadClass(name);
             }
-
-            if (found == null) {
-                found = parentInstance.loadClass(name);
-            }
-        } catch (IOException e) {
+        } catch (Exception e) {
         }
+
+        if (found == null) {
+            found = parentInstance.loadClass(name);
+        }
+
         return found;
     }
 

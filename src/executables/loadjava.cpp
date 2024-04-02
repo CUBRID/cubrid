@@ -90,6 +90,7 @@ parse_argument (int argc, char *argv[])
 	  break;
 	case 'j':
 	  Path = STATIC_PATH;
+	  break;
 	case 'h':
 	/* fall through */
 	default:
