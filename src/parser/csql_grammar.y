@@ -25852,38 +25852,40 @@ parser_remove_dummy_select (PT_NODE ** ent_inout)
 static PT_NODE *
 parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 {
+  PT_NODE *date_lang = NULL;
   if (arg3 && arg_cnt == 3)
     {
       char *lang_str;
-      PT_NODE *date_lang = parser_new_node (this_parser, PT_VALUE);
+      if ((arg3->type_enum == PT_TYPE_CHAR || arg3->type_enum == PT_TYPE_NCHAR) && arg3->info.value.data_value.str != NULL)
+	{
+	  date_lang = parser_new_node (this_parser, PT_VALUE);
+          if (!date_lang)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PT_NODE));
+	      return NULL;
+	    }
+	  int flag = 0;
+	  lang_str = (char *) arg3->info.value.data_value.str->bytes;
+	  if (lang_set_flag_from_lang (lang_str, 1, 1, &flag))
+	    {
+	      PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
+	    }
+	  date_lang->info.value.data_value.i = (long) flag;
+	}
 
       if (date_lang)
 	{
 	  date_lang->type_enum = PT_TYPE_INTEGER;
-	  if (arg3->type_enum != PT_TYPE_CHAR
-	      && arg3->type_enum != PT_TYPE_NCHAR)
-	    {
-	      PT_ERROR (this_parser, arg3,
-			"argument 3 must be character string");
-	    }
-	  else if (arg3->info.value.data_value.str != NULL)
-	    {
-	      int flag = 0;
-	      lang_str = (char *) arg3->info.value.data_value.str->bytes;
-	      if (lang_set_flag_from_lang (lang_str, 1, 1, &flag))
-		{
-		  PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
-		}
-	      date_lang->info.value.data_value.i = (long) flag;
-	    }
+          parser_free_node (this_parser, arg3);
 	}
-      parser_free_node (this_parser, arg3);
-
-      return date_lang;
+      else
+        {
+          date_lang = arg3;
+        }
     }
   else
     {
-      PT_NODE *date_lang = parser_new_node (this_parser, PT_VALUE);
+      date_lang = parser_new_node (this_parser, PT_VALUE);
       if (date_lang)
 	{
 	  const char *lang_str;
@@ -25896,9 +25898,14 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 
 	  date_lang->info.value.data_value.i = (long) flag;
 	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PT_NODE));
+	  return NULL;
+	}
 
-      return date_lang;
     }
+    return date_lang;
 }
 
 static PT_NODE *
@@ -26581,21 +26588,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
 	  csql_yyerror_explicit (10, 10);
 	  return NULL;
-	}
-
-      if (c == 2)
-	{
-	  PT_NODE *node = args->next;
-	  if (node->node_type != PT_VALUE ||
-	      (node->type_enum != PT_TYPE_CHAR &&
-	       node->type_enum != PT_TYPE_VARCHAR &&
-	       node->type_enum != PT_TYPE_NCHAR &&
-	       node->type_enum != PT_TYPE_VARNCHAR))
-	    {
-	      push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
-	      csql_yyerror_explicit (10, 10);
-	      return NULL;
-	    }
 	}
 
       a1 = args;
