@@ -466,9 +466,8 @@ static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * n
 void _push_msg (int code, int line);
 void pop_msg (void);
 
-char *g_view_string; /* for extracting view's query spec */
-
 char *g_query_string;
+char *g_view_string; /* for extracting view's query spec */
 int g_query_string_len;
 int g_original_buffer_len;
 
