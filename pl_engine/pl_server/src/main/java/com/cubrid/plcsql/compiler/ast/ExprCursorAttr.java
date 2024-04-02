@@ -30,23 +30,24 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprCursorAttr extends Expr {
 
     public enum Attr {
-        ISOPEN(TypeSpecSimple.BOOLEAN, "isOpen"),
-        FOUND(TypeSpecSimple.BOOLEAN, "found"),
-        NOTFOUND(TypeSpecSimple.BOOLEAN, "notFound"),
-        ROWCOUNT(TypeSpecSimple.BIGINT, "rowCount");
+        ISOPEN(Type.BOOLEAN, "isOpen"),
+        FOUND(Type.BOOLEAN, "found"),
+        NOTFOUND(Type.BOOLEAN, "notFound"),
+        ROWCOUNT(Type.BIGINT, "rowCount");
 
-        Attr(TypeSpecSimple ty, String method) {
+        Attr(Type ty, String method) {
             this.ty = ty;
             this.method = method;
         }
 
-        public final TypeSpecSimple ty;
+        public final Type ty;
         public final String method;
     }
 

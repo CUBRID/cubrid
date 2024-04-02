@@ -30,12 +30,13 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprField extends Expr {
 
-    public void setType(TypeSpec type) {
+    public void setType(Type type) {
         this.type = type;
     }
 
@@ -66,7 +67,7 @@ public class ExprField extends Expr {
             //
             assert type != null;
             return String.format(
-                    "(%s) getFieldWithIndex(%s, %d)", type.javaCode(), record.javaCode(), colIndex);
+                    "(%s) getFieldWithIndex(%s, %d)", type.javaCode, record.javaCode(), colIndex);
         } else {
 
             // record is for a Dynamic SQL
@@ -80,6 +81,6 @@ public class ExprField extends Expr {
     // Private
     // --------------------------------------------------
 
-    private TypeSpec type;
+    private Type type;
     private int colIndex;
 }

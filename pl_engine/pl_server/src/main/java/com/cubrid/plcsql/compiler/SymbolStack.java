@@ -34,6 +34,8 @@ import static com.cubrid.plcsql.compiler.antlrgen.PlcParser.*;
 
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.type.Type;
+import com.cubrid.plcsql.compiler.type.TypeVariadic;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -96,10 +98,10 @@ public class SymbolStack {
                         for (Class pt : paramTypes) {
                             String typeName = pt.getTypeName();
                             // System.out.println("  " + typeName);
-                            TypeSpec paramType = TypeSpec.ofJavaName(typeName);
+                            Type paramType = Type.ofJavaName(typeName);
                             assert paramType != null;
 
-                            DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
+                            DeclParamIn p = new DeclParamIn(null, "p" + i, TypeSpec.getBogus(paramType));
                             params.addNode(p);
                             i++;
                         }
@@ -107,11 +109,11 @@ public class SymbolStack {
                         // return type
                         String typeName = m.getReturnType().getTypeName();
                         // System.out.println("  =>" + typeName);
-                        TypeSpec retType = TypeSpec.ofJavaName(typeName);
+                        Type retType = Type.ofJavaName(typeName);
                         assert retType != null;
 
                         // add op
-                        DeclFunc op = new DeclFunc(null, name, params, retType);
+                        DeclFunc op = new DeclFunc(null, name, params, TypeSpec.getBogus(retType));
                         putOperator(name, op, opAnnot.coercionScheme());
                     }
                 }
@@ -133,7 +135,7 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$ENABLE",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "size", TypeSpecSimple.INT)));
+                                .addNode(new DeclParamIn(null, "size", TypeSpec.getBogus(Type.INT))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
 
         // get_line
@@ -144,10 +146,10 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamOut(
-                                                null, "line", TypeSpecSimple.STRING_ANY, false))
+                                                null, "line", TypeSpec.getBogus(Type.STRING_ANY), false))
                                 .addNode(
                                         new DeclParamOut(
-                                                null, "status", TypeSpecSimple.INT, true)));
+                                                null, "status", TypeSpec.getBogus(Type.INT), true)));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
 
         // new_line
@@ -160,7 +162,7 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT_LINE",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING_ANY)));
+                                .addNode(new DeclParamIn(null, "s", TypeSpec.getBogus(Type.STRING_ANY))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
 
         // put
@@ -169,7 +171,7 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING_ANY)));
+                                .addNode(new DeclParamIn(null, "s", TypeSpec.getBogus(Type.STRING_ANY))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
     }
 
@@ -500,7 +502,7 @@ public class SymbolStack {
     }
 
     public static DeclFunc getOperator(
-            List<Coercion> outCoercions, String name, TypeSpec... argTypes) {
+            List<Coercion> outCoercions, String name, Type... argTypes) {
         return getFuncOverload(outCoercions, operators, name, argTypes);
     }
 
@@ -717,7 +719,7 @@ public class SymbolStack {
             List<Coercion> outCoercions,
             Map<String, FuncOverloads> map,
             String name,
-            TypeSpec... argTypes) {
+            Type... argTypes) {
 
         FuncOverloads overloads = map.get(name);
         if (overloads == null) {
@@ -727,8 +729,7 @@ public class SymbolStack {
         }
     }
 
-    private static void putFuncOverload(
-            Map<String, FuncOverloads> map, String name, DeclFunc df, CoercionScheme cs) {
+    private static void putFuncOverload(Map<String, FuncOverloads> map, String name, DeclFunc df, CoercionScheme cs) {
 
         FuncOverloads overloads = map.get(name);
         if (overloads == null) {
@@ -776,9 +777,9 @@ public class SymbolStack {
         }
 
         void put(DeclFunc decl) {
-            List<TypeSpec> paramTypes =
+            List<Type> paramTypes =
                     decl.paramList.nodes.stream()
-                            .map(e -> e.typeSpec())
+                            .map(e -> e.typeSpec().type)
                             .collect(Collectors.toList());
             DeclFunc old = overloads.put(paramTypes, decl);
             // system predefined operators and functions must be unique with their names and
@@ -786,19 +787,19 @@ public class SymbolStack {
             assert old == null;
         }
 
-        DeclFunc get(List<Coercion> outCoercions, List<TypeSpec> argTypes) {
+        DeclFunc get(List<Coercion> outCoercions, List<Type> argTypes) {
 
-            List<TypeSpec> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
+            List<Type> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
             if (paramTypes == null) {
                 return null; // no match
             } else {
                 assert argTypes.size() == outCoercions.size();
                 if (name.equals("opIn")) {
                     // opIn is the only operation that uses variadic parameters
-                    TypeSpec ty = paramTypes.get(0);
+                    Type ty = paramTypes.get(0);
                     paramTypes.clear();
                     paramTypes.add(ty);
-                    paramTypes.add(new TypeSpecVariadic((TypeSpecSimple) ty));
+                    paramTypes.add(TypeVariadic.getInstance(ty));
                 }
 
                 DeclFunc declFunc = overloads.get(paramTypes);
@@ -812,8 +813,7 @@ public class SymbolStack {
         //
         // ---------------------------------------------------------
 
-        private final Map<List<TypeSpec>, DeclFunc> overloads =
-                new HashMap<>(); // (arg types --> func decl) map
+        private final Map<List<Type>, DeclFunc> overloads = new HashMap<>(); // (arg types --> func decl) map
         private final CoercionScheme coercionScheme;
         private final String name;
     }

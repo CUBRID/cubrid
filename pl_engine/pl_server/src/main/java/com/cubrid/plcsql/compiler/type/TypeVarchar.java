@@ -28,29 +28,25 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.type;
 
 import java.util.HashMap;
 import java.util.Map;
 
-public class TypeSpecNumeric extends TypeSpecSimple {
+public class TypeVarchar extends Type {
 
-    // NOTE: no accept() method. inherit it from the parent TypeSpecSimple
+    public static final int MAX_LEN = 1073741823;
 
-    public final int precision;
-    public final short scale;
+    public final int length;
 
-    public static synchronized TypeSpecNumeric getInstance(int precision, short scale) {
+    public static synchronized TypeVarchar getInstance(int length) {
 
-        assert precision <= 38 && precision >= 1;
-        assert scale <= precision && scale >= 0;
+        assert length <= MAX_LEN && length >= 1;
 
-        int key = precision * 100 + scale;
-        TypeSpecNumeric ret = instances.get(key);
+        TypeVarchar ret = instances.get(length);
         if (ret == null) {
-            String typicalValueStr = String.format("cast(? as numeric(%d, %d))", precision, scale);
-            ret = new TypeSpecNumeric(typicalValueStr, precision, scale);
-            instances.put(key, ret);
+            ret = new TypeVarchar(length);
+            instances.put(length, ret);
         }
 
         return ret;
@@ -60,11 +56,18 @@ public class TypeSpecNumeric extends TypeSpecSimple {
     // Private
     // ---------------------------------------------------------------------------
 
-    private static final Map<Integer, TypeSpecNumeric> instances = new HashMap<>();
+    private static final Map<Integer, TypeVarchar> instances = new HashMap<>();
 
-    private TypeSpecNumeric(String typicalValueStr, int precision, short scale) {
-        super("Numeric", "java.math.BigDecimal", IDX_NUMERIC, typicalValueStr);
-        this.precision = precision;
-        this.scale = scale;
+    private static String getPlcName(int length) {
+        return String.format("Varchar(%d)", length);
+    }
+
+    private static String getTypicalValueStr(int length) {
+        return String.format("cast(? as varchar(%d))", length);
+    }
+
+    private TypeVarchar(int length) {
+        super(IDX_STRING, getPlcName(length), "java.lang.String", getTypicalValueStr(length));
+        this.length = length;
     }
 }

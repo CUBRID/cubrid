@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -41,9 +42,9 @@ public class ExprUint extends Expr {
     }
 
     public final String val;
-    public final TypeSpecSimple ty;
+    public final Type ty;
 
-    public ExprUint(ParserRuleContext ctx, String val, TypeSpecSimple ty) {
+    public ExprUint(ParserRuleContext ctx, String val, Type ty) {
         super(ctx);
 
         this.val = val;
@@ -51,12 +52,12 @@ public class ExprUint extends Expr {
     }
 
     public String javaCode() {
-        switch (ty.simpleTypeIdx) {
-            case TypeSpecSimple.IDX_NUMERIC:
+        switch (ty.idx) {
+            case Type.IDX_NUMERIC:
                 return "new BigDecimal(\"" + val + "\")";
-            case TypeSpecSimple.IDX_BIGINT:
+            case Type.IDX_BIGINT:
                 return "new Long(" + val + "L)";
-            case TypeSpecSimple.IDX_INT:
+            case Type.IDX_INT:
                 return "new Integer(" + val + ")";
         }
         return val;

@@ -87,7 +87,7 @@ public class Unit extends AstNode {
         if (routine.isProcedure()) {
             return ret;
         } else {
-            return (ret + " return " + routine.retType.toJavaSignature());
+            return (ret + " return " + routine.retTypeSpec.type.fullJavaType);
         }
     }
 

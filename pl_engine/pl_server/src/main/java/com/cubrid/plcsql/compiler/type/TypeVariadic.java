@@ -28,80 +28,33 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.type;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.HashMap;
+import java.util.Map;
 
-public class TypeSpecVariadic extends TypeSpec {
+public class TypeVariadic extends Type {
 
-    public final TypeSpecSimple elem;
+    public final Type elem;
 
-    @Override
-    public String plcName() {
-        return elem.plcName() + "[]";
-    }
-
-    @Override
-    public String fullJavaType() {
-        throw new RuntimeException("unreachable");
-    }
-
-    @Override
-    public String javaCode() {
-        throw new RuntimeException("unreachable");
-    }
-
-    @Override
-    public int simpleTypeIdx() {
-        throw new RuntimeException("unreachable");
-    }
-
-    @Override
-    public String typicalValueStr() {
-        throw new RuntimeException("unreachable");
-    }
-
-    @Override
-    public String toJavaSignature() {
-        throw new RuntimeException("unreachable");
-    }
-
-    @Override
-    public boolean isNumber() {
-        return false;
-    }
-
-    @Override
-    public boolean isString() {
-        return false;
-    }
-
-    @Override
-    public boolean isDateTime() {
-        return false;
-    }
-
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        // cannot be a part of an AST: only in a symbol table for CUBRID predefined functions
-        throw new RuntimeException("unreachable");
-    }
-
-    public TypeSpecVariadic(TypeSpecSimple elem) {
-        super(null);
+    private TypeVariadic(Type elem) {
+        super(Type.INVALID_IDX, null, null, null);
         this.elem = elem;
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (o == null || this.getClass() != o.getClass()) {
-            return false;
+    private static Map<Integer, TypeVariadic> instances = new HashMap<>();
+
+    static {
+        for (int i = Type.IDX_OBJECT; i < Type.BOUND_OF_IDX; i++) {
+            Type ty = Type.getTypeByIdx(i);
+            assert ty != null;
+            instances.put(i, new TypeVariadic(ty));
         }
-        return this.elem == ((TypeSpecVariadic) o).elem;
     }
 
-    @Override
-    public int hashCode() {
-        return elem.hashCode() + 31;
+    public static synchronized TypeVariadic getInstance(Type ty) {
+        TypeVariadic ret = instances.get(ty.idx);
+        assert ret != null;
+        return ret;
     }
 }

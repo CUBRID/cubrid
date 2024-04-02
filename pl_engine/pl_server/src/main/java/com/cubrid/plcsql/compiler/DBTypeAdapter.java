@@ -31,10 +31,10 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.data.DBType;
-import com.cubrid.plcsql.compiler.ast.TypeSpecChar;
-import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
-import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
-import com.cubrid.plcsql.compiler.ast.TypeSpecVarchar;
+import com.cubrid.plcsql.compiler.type.Type;
+import com.cubrid.plcsql.compiler.type.TypeChar;
+import com.cubrid.plcsql.compiler.type.TypeVarchar;
+import com.cubrid.plcsql.compiler.type.TypeNumeric;
 
 public class DBTypeAdapter {
 
@@ -59,12 +59,12 @@ public class DBTypeAdapter {
         return false;
     }
 
-    public static TypeSpecSimple getDeclTypeSpec(int dbType, int prec, short scale) {
-        return getTypeSpecSimple(dbType, true, prec, scale);
+    public static Type getDeclType(int dbType, int prec, short scale) {
+        return getType(dbType, true, prec, scale);
     }
 
-    public static TypeSpecSimple getValueType(int dbType) {
-        return getTypeSpecSimple(dbType, false, -1, (short) -1); // ignore precision and scale
+    public static Type getValueType(int dbType) {
+        return getType(dbType, false, -1, (short) -1); // ignore precision and scale
     }
 
     public static String getSqlTypeName(int dbType) {
@@ -129,7 +129,7 @@ public class DBTypeAdapter {
             case DBType.DB_DATETIMELTZ:
                 return "DATETIMELTZ";
             default:
-                return "UNKNOWN (code: " + dbType + ")";
+                return "UNKNOWN (code " + dbType + ")";
         }
     }
 
@@ -137,60 +137,59 @@ public class DBTypeAdapter {
     // Private
     // ---------------------------------------------------------
 
-    private static TypeSpecSimple getTypeSpecSimple(
-            int dbType, boolean includePrecision, int prec, short scale) {
+    private static Type getType(int dbType, boolean includePrecision, int prec, short scale) {
         switch (dbType) {
             case DBType.DB_NULL:
-                return TypeSpecSimple.NULL;
+                return Type.NULL;
             case DBType.DB_CHAR:
                 if (includePrecision) {
                     if (prec == -1) {
-                        prec = TypeSpecChar.MAX_LEN;
+                        prec = TypeChar.MAX_LEN;
                     }
-                    assert prec >= 1 && prec <= TypeSpecChar.MAX_LEN
+                    assert prec >= 1 && prec <= TypeChar.MAX_LEN
                             : ("invalid precision " + prec);
-                    return TypeSpecChar.getInstance(prec);
+                    return TypeChar.getInstance(prec);
                 } else {
-                    return TypeSpecSimple.STRING_ANY;
+                    return Type.STRING_ANY;
                 }
             case DBType.DB_STRING:
                 if (includePrecision) {
                     if (prec == -1 || prec == 0) { // 0 for STRING (by test)
-                        prec = TypeSpecVarchar.MAX_LEN;
+                        prec = TypeVarchar.MAX_LEN;
                     }
-                    assert prec >= 1 && prec <= TypeSpecVarchar.MAX_LEN
+                    assert prec >= 1 && prec <= TypeVarchar.MAX_LEN
                             : ("invalid precision " + prec);
-                    return TypeSpecVarchar.getInstance(prec);
+                    return TypeVarchar.getInstance(prec);
                 } else {
-                    return TypeSpecSimple.STRING_ANY;
+                    return Type.STRING_ANY;
                 }
             case DBType.DB_SHORT:
-                return TypeSpecSimple.SHORT;
+                return Type.SHORT;
             case DBType.DB_INT:
-                return TypeSpecSimple.INT;
+                return Type.INT;
             case DBType.DB_BIGINT:
-                return TypeSpecSimple.BIGINT;
+                return Type.BIGINT;
             case DBType.DB_NUMERIC:
                 if (includePrecision) {
                     assert prec >= 1 && prec <= 38 : ("invalid precision " + prec);
                     assert scale >= 0 && scale <= prec
-                            : ("invalid scale " + scale + " (precision " + prec + ")");
-                    return TypeSpecNumeric.getInstance(prec, scale);
+                            : ("invalid scale " + scale + " (with precision " + prec + ")");
+                    return TypeNumeric.getInstance(prec, scale);
                 } else {
-                    return TypeSpecSimple.NUMERIC_ANY;
+                    return Type.NUMERIC_ANY;
                 }
             case DBType.DB_FLOAT:
-                return TypeSpecSimple.FLOAT;
+                return Type.FLOAT;
             case DBType.DB_DOUBLE:
-                return TypeSpecSimple.DOUBLE;
+                return Type.DOUBLE;
             case DBType.DB_DATE:
-                return TypeSpecSimple.DATE;
+                return Type.DATE;
             case DBType.DB_TIME:
-                return TypeSpecSimple.TIME;
+                return Type.TIME;
             case DBType.DB_DATETIME:
-                return TypeSpecSimple.DATETIME;
+                return Type.DATETIME;
             case DBType.DB_TIMESTAMP:
-                return TypeSpecSimple.TIMESTAMP;
+                return Type.TIMESTAMP;
             default:
                 assert false : "unreachable";
                 throw new RuntimeException("unreachable");

@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.Coercion;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -39,7 +40,7 @@ public abstract class StmtSql extends Stmt {
     public final boolean dynamic;
     public final int level;
     public final Expr sql;
-    public final List<TypeSpec> columnTypeList;
+    public final List<Type> columnTypeList;
     public final List<ExprId> intoVarList;
     public final List<? extends Expr> usedExprList;
 
@@ -50,7 +51,7 @@ public abstract class StmtSql extends Stmt {
             boolean dynamic,
             int level,
             Expr sql,
-            List<TypeSpec> columnTypeList,
+            List<Type> columnTypeList,
             List<ExprId> intoVarList,
             List<? extends Expr> usedExprList) {
         super(ctx);
