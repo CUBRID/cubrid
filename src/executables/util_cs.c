@@ -4574,7 +4574,8 @@ memmon (UTIL_FUNCTION_ARG * arg)
       if (outfile_fp == NULL)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_CANNOT_OPEN_OUTPUT_FILE));
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_CANNOT_OPEN_OUTPUT_FILE),
+				 outfile_name);
 	  goto error_exit;
 	}
     }
