@@ -63,6 +63,10 @@ int str_identifier = '\0';
 #define YY_USER_ACTION  {yybuffer_pos += csql_yyget_leng (); csql_yylloc.buffer_pos = yybuffer_pos;}
 
 #define IS_BLANK_CHAR(c)    (char_isspace2((c)))
+#define MAX_QUERY_STRING_LENGTH	8192
+
+char stream_buffer[MAX_QUERY_STRING_LENGTH];
+int stream_ptr;
 
 int g_msg[1024];
 int msg_ptr;

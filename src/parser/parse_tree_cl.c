@@ -458,7 +458,12 @@ static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 extern "C"
 {
   extern char *g_query_string;
+  extern char *g_view_string;
   extern int g_query_string_len;
+
+  /* for extracting view's query spec in loaddb */
+  extern char stream_buffer[];
+  extern int stream_ptr;
 }
 /*
  * strcat_with_realloc () -
@@ -1605,6 +1610,9 @@ fgetin (PARSER_CONTEXT * p)
 
   c = fgetc (p->file);
 
+  /* a statement buffer to extract view's query spec in loaddb */
+  stream_buffer[stream_ptr++] = (char) c;
+
   if (c == EOF)
     {
       return -1;
@@ -2243,6 +2251,7 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
       pt_parser_line_col (node);
       node->sql_user_text = g_query_string;
       node->sql_user_text_len = g_query_string_len;
+      node->sql_view_text = g_view_string;
     }
   return node;
 }

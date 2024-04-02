@@ -3743,6 +3743,7 @@ struct parser_node
   int column_number;		/* the user column number originating this */
   int buffer_pos;		/* position in the parse buffer of the string originating this */
   char *sql_user_text;		/* user input sql string */
+  char *sql_view_text;		/* user input view string */
   int sql_user_text_len;	/* user input sql string length (one statement) */
 
   PT_NODE *next;		/* forward link for NULL terminated list */
