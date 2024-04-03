@@ -27,6 +27,7 @@
 #include "dbtype_function.h"
 #include "schema_manager.h"
 
+static AU_CLASS_CACHE *au_install_class_cache (SM_CLASS *sm_class);
 static AU_CLASS_CACHE *au_make_class_cache (int depth);
 static void au_free_class_cache (AU_CLASS_CACHE *cache);
 
@@ -155,7 +156,7 @@ au_free_class_cache (AU_CLASS_CACHE *cache)
  * Note: Once a cache/class association has been made, we also put the
  *       cache on the global cache list so we can maintain it consistently.
  */
-AU_CLASS_CACHE *
+static AU_CLASS_CACHE *
 au_install_class_cache (SM_CLASS *sm_class)
 {
   AU_CLASS_CACHE *new_class_cache;

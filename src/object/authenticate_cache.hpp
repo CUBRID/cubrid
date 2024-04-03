@@ -79,7 +79,6 @@ extern int update_cache (MOP classop, SM_CLASS *sm_class);
 extern int au_get_cache_index ();
 extern void au_set_cache_index (int idx);
 
-extern AU_CLASS_CACHE *au_install_class_cache (SM_CLASS *sm_class);
 extern int au_find_user_cache_index (DB_OBJECT *user, int *index, int check_it);
 extern void reset_cache_for_user_and_class (SM_CLASS *sm_class);
 extern void remove_user_cache_references (MOP user);
