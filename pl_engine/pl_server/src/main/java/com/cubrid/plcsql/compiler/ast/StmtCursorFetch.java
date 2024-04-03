@@ -30,8 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.Coercion;
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -50,10 +50,7 @@ public class StmtCursorFetch extends Stmt {
     public List<Coercion> coercions;
 
     public StmtCursorFetch(
-            ParserRuleContext ctx,
-            ExprId id,
-            List<Type> columnTypeList,
-            List<ExprId> intoVarList) {
+            ParserRuleContext ctx, ExprId id, List<Type> columnTypeList, List<ExprId> intoVarList) {
         super(ctx);
 
         this.id = id;

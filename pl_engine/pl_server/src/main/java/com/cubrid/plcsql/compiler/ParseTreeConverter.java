@@ -184,7 +184,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " as its return type");
                 }
 
-                Type retType = DBTypeAdapter.getDeclType(fs.retType.type, fs.retType.prec, fs.retType.scale);
+                Type retType =
+                        DBTypeAdapter.getDeclType(
+                                fs.retType.type, fs.retType.prec, fs.retType.scale);
                 addToImports(retType.fullJavaType);
 
                 gfc.decl = new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(retType));
@@ -208,7 +210,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + sqlType);
                 }
 
-                Type ty = DBTypeAdapter.getDeclType(ct.colType.type, ct.colType.prec, ct.colType.scale);
+                Type ty =
+                        DBTypeAdapter.getDeclType(
+                                ct.colType.type, ct.colType.prec, ct.colType.scale);
                 addToImports(ty.fullJavaType);
 
                 assert node instanceof TypeSpecPercent;
@@ -255,8 +259,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (ofTopLevel) {
             for (ParameterContext pc : ctx.parameter()) {
                 DeclParam dp = (DeclParam) visit(pc);
-                if (dp.typeSpec.type == Type.BOOLEAN
-                        || dp.typeSpec.type == Type.SYS_REFCURSOR) {
+                if (dp.typeSpec.type == Type.BOOLEAN || dp.typeSpec.type == Type.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(pc), // s064
                             "type "
@@ -2351,7 +2354,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 if (retType == Type.BOOLEAN || retType == Type.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.type_spec()), // s065
-                            "type " + retType.plcName + " cannot be used as a return type of stored functions");
+                            "type "
+                                    + retType.plcName
+                                    + " cannot be used as a return type of stored functions");
                 }
             }
             DeclFunc ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
@@ -2570,7 +2575,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
             }
 
-            Type paramType = DBTypeAdapter.getDeclType(params[i].type, params[i].prec, params[i].scale);
+            Type paramType =
+                    DBTypeAdapter.getDeclType(params[i].type, params[i].prec, params[i].scale);
             addToImports(paramType.fullJavaType);
 
             TypeSpec tySpec = TypeSpec.getBogus(paramType);

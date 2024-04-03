@@ -33,9 +33,9 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeVariadic;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class TypeSpec extends AstNode {
 
@@ -51,7 +51,8 @@ public class TypeSpec extends AstNode {
         this.type = type;
     }
 
-    private static Map<Type, TypeSpec> bogus = new HashMap<>(); // bogus TypeSpec means one with the null context
+    private static Map<Type, TypeSpec> bogus =
+            new HashMap<>(); // bogus TypeSpec means one with the null context
 
     static {
         for (int i = Type.IDX_OBJECT; i < Type.BOUND_OF_IDX; i++) {

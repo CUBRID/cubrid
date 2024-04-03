@@ -30,8 +30,8 @@
 
 package com.cubrid.plcsql.compiler.type;
 
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
 
 public class Type {
 
@@ -68,10 +68,7 @@ public class Type {
     }
 
     public boolean isDateTime() {
-        return idx == IDX_DATE
-                || idx == IDX_TIME
-                || idx == IDX_DATETIME
-                || idx == IDX_TIMESTAMP;
+        return idx == IDX_DATE || idx == IDX_TIME || idx == IDX_DATETIME || idx == IDX_TIMESTAMP;
     }
 
     protected Type(int idx, String plcName, String fullJavaType, String typicalValueStr) {
@@ -106,76 +103,39 @@ public class Type {
     public static final int BOUND_OF_IDX = IDX_SYS_REFCURSOR + 1;
 
     // the following two are not actual Java types but only for internal type checking
-    public static Type CURSOR = new Type(IDX_CURSOR,
-        "Cursor",
-        "Cursor",
-        null);
-    public static Type NULL = new Type(IDX_NULL,
-        "Null",
-        "Null",
-        "null");
+    public static Type CURSOR = new Type(IDX_CURSOR, "Cursor", "Cursor", null);
+    public static Type NULL = new Type(IDX_NULL, "Null", "Null", "null");
 
     // (1) used as an argument type of some operators in SpLib
     // (2) used as an expression type when a specific Java type cannot be given
-    public static Type OBJECT = new Type(IDX_OBJECT,
-        "Object",
-        "java.lang.Object",
-        "?");
+    public static Type OBJECT = new Type(IDX_OBJECT, "Object", "java.lang.Object", "?");
 
-    public static Type BOOLEAN = new Type(IDX_BOOLEAN,
-        "Boolean",
-        "java.lang.Boolean",
-        null);
+    public static Type BOOLEAN = new Type(IDX_BOOLEAN, "Boolean", "java.lang.Boolean", null);
     // CHAR or VARCHAR with any length
-    public static Type STRING_ANY = new Type(IDX_STRING,
-        "String",
-        "java.lang.String",
-        "cast(? as string)");
+    public static Type STRING_ANY =
+            new Type(IDX_STRING, "String", "java.lang.String", "cast(? as string)");
     // NUMERIC with any precision and scale
-    public static Type NUMERIC_ANY = new Type(IDX_NUMERIC,
-        "Numeric",
-        "java.math.BigDecimal",
-        "cast(? as numeric)");
-    public static Type SHORT = new Type(IDX_SHORT,
-        "Short",
-        "java.lang.Short",
-        "cast(? as short)");
-    public static Type INT = new Type(IDX_INT,
-        "Int",
-        "java.lang.Integer",
-        "cast(? as int)");
-    public static Type BIGINT = new Type(IDX_BIGINT,
-        "Bigint",
-        "java.lang.Long",
-        "cast(? as bigint)");
-    public static Type FLOAT = new Type(IDX_FLOAT,
-        "Float",
-        "java.lang.Float",
-        "cast(? as float)");
-    public static Type DOUBLE = new Type(IDX_DOUBLE,
-        "Double",
-        "java.lang.Double",
-        "cast(? as double)");
-    public static Type DATE = new Type(IDX_DATE,
-        "Date",
-        "java.sql.Date",
-        "cast(? as date)");
-    public static Type TIME = new Type(IDX_TIME,
-        "Time",
-        "java.sql.Time",
-        "cast(? as time)");
-    public static Type TIMESTAMP = new Type(IDX_TIMESTAMP,
-        "Timestamp",
-        "java.sql.Timestamp",
-        "cast(? as timestamp)");
-    public static Type DATETIME = new Type(IDX_DATETIME,
-        "Datetime",
-        "java.sql.Timestamp",
-        "cast(? as datetime)");
-    public static Type SYS_REFCURSOR = new Type(IDX_SYS_REFCURSOR,
-        "Sys_refcursor",
-        "com.cubrid.plcsql.predefined.sp.SpLib.Query",
-        null);
+    public static Type NUMERIC_ANY =
+            new Type(IDX_NUMERIC, "Numeric", "java.math.BigDecimal", "cast(? as numeric)");
+    public static Type SHORT = new Type(IDX_SHORT, "Short", "java.lang.Short", "cast(? as short)");
+    public static Type INT = new Type(IDX_INT, "Int", "java.lang.Integer", "cast(? as int)");
+    public static Type BIGINT =
+            new Type(IDX_BIGINT, "Bigint", "java.lang.Long", "cast(? as bigint)");
+    public static Type FLOAT = new Type(IDX_FLOAT, "Float", "java.lang.Float", "cast(? as float)");
+    public static Type DOUBLE =
+            new Type(IDX_DOUBLE, "Double", "java.lang.Double", "cast(? as double)");
+    public static Type DATE = new Type(IDX_DATE, "Date", "java.sql.Date", "cast(? as date)");
+    public static Type TIME = new Type(IDX_TIME, "Time", "java.sql.Time", "cast(? as time)");
+    public static Type TIMESTAMP =
+            new Type(IDX_TIMESTAMP, "Timestamp", "java.sql.Timestamp", "cast(? as timestamp)");
+    public static Type DATETIME =
+            new Type(IDX_DATETIME, "Datetime", "java.sql.Timestamp", "cast(? as datetime)");
+    public static Type SYS_REFCURSOR =
+            new Type(
+                    IDX_SYS_REFCURSOR,
+                    "Sys_refcursor",
+                    "com.cubrid.plcsql.predefined.sp.SpLib.Query",
+                    null);
 
     private static final Map<String, Type> javaNameToType = new HashMap<>();
     private static final Map<Integer, Type> idxToType = new HashMap<>();
@@ -200,7 +160,8 @@ public class Type {
         register(DATE);
         register(TIME);
 
-        // instead of register(TIMESTAMP), a trick is necessary because DATETIME uses the same java.time.Timestamp;
+        // instead of register(TIMESTAMP), a trick is necessary because DATETIME uses the same
+        // java.time.Timestamp;
         javaNameToType.put("java.time.ZonedDateTime", TIMESTAMP);
         idxToType.put(IDX_TIMESTAMP, TIMESTAMP);
 

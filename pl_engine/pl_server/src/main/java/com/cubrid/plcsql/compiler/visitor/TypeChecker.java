@@ -538,7 +538,8 @@ public class TypeChecker extends AstVisitor<Type> {
         int len = args.size();
 
         List<Coercion> outCoercions = new ArrayList<>();
-        DeclFunc op = symbolStack.getOperator(outCoercions, "opIn", argTypes.toArray(TYPE_ARRAY_DUMMY));
+        DeclFunc op =
+                symbolStack.getOperator(outCoercions, "opIn", argTypes.toArray(TYPE_ARRAY_DUMMY));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s212
@@ -619,8 +620,7 @@ public class TypeChecker extends AstVisitor<Type> {
             if (node.args.nodes.size() == 1
                     && ((arg0 = node.args.nodes.get(0)) instanceof ExprNull)) {
                 // cast to Object, a hint for Javac compiler. see CBRD-25168
-                arg0.setCoercion(
-                        Coercion.Cast.getInstance(Type.NULL, Type.OBJECT));
+                arg0.setCoercion(Coercion.Cast.getInstance(Type.NULL, Type.OBJECT));
             }
 
             return ret;
@@ -846,10 +846,7 @@ public class TypeChecker extends AstVisitor<Type> {
 
         int i = 0;
         for (ExprId intoVar : node.intoVarList) {
-            Type srcTy =
-                    (node.columnTypeList == null)
-                            ? Type.OBJECT
-                            : node.columnTypeList.get(i);
+            Type srcTy = (node.columnTypeList == null) ? Type.OBJECT : node.columnTypeList.get(i);
             Type dstTy = ((DeclIdTyped) intoVar.decl).typeSpec().type;
 
             Coercion c = Coercion.getCoercion(srcTy, dstTy);
@@ -1253,7 +1250,8 @@ public class TypeChecker extends AstVisitor<Type> {
             Type argType = visit(arg);
             DeclParam declParam = decl.paramList.nodes.get(i);
             Type paramType = declParam.typeSpec().type;
-            assert paramType != null; // TODO: paramType can be null if variadic parameters are introduced
+            assert paramType
+                    != null; // TODO: paramType can be null if variadic parameters are introduced
             Coercion c = Coercion.getCoercion(argType, paramType);
             if (c == null) {
                 throw new SemanticError(
@@ -1282,9 +1280,7 @@ public class TypeChecker extends AstVisitor<Type> {
         LinkedHashMap<Expr, Type> hostExprs = staticSql.hostExprs;
         for (Expr e : hostExprs.keySet()) {
             Type ty = visit(e);
-            if (ty == Type.BOOLEAN
-                    || ty == Type.CURSOR
-                    || ty == Type.SYS_REFCURSOR) {
+            if (ty == Type.BOOLEAN || ty == Type.CURSOR || ty == Type.SYS_REFCURSOR) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(e.ctx),
                         "host expressions cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");

@@ -101,7 +101,8 @@ public class SymbolStack {
                             Type paramType = Type.ofJavaName(typeName);
                             assert paramType != null;
 
-                            DeclParamIn p = new DeclParamIn(null, "p" + i, TypeSpec.getBogus(paramType));
+                            DeclParamIn p =
+                                    new DeclParamIn(null, "p" + i, TypeSpec.getBogus(paramType));
                             params.addNode(p);
                             i++;
                         }
@@ -135,7 +136,9 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$ENABLE",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "size", TypeSpec.getBogus(Type.INT))));
+                                .addNode(
+                                        new DeclParamIn(
+                                                null, "size", TypeSpec.getBogus(Type.INT))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
 
         // get_line
@@ -146,10 +149,16 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamOut(
-                                                null, "line", TypeSpec.getBogus(Type.STRING_ANY), false))
+                                                null,
+                                                "line",
+                                                TypeSpec.getBogus(Type.STRING_ANY),
+                                                false))
                                 .addNode(
                                         new DeclParamOut(
-                                                null, "status", TypeSpec.getBogus(Type.INT), true)));
+                                                null,
+                                                "status",
+                                                TypeSpec.getBogus(Type.INT),
+                                                true)));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
 
         // new_line
@@ -162,7 +171,9 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT_LINE",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "s", TypeSpec.getBogus(Type.STRING_ANY))));
+                                .addNode(
+                                        new DeclParamIn(
+                                                null, "s", TypeSpec.getBogus(Type.STRING_ANY))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
 
         // put
@@ -171,7 +182,9 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "s", TypeSpec.getBogus(Type.STRING_ANY))));
+                                .addNode(
+                                        new DeclParamIn(
+                                                null, "s", TypeSpec.getBogus(Type.STRING_ANY))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
     }
 
@@ -501,8 +514,7 @@ public class SymbolStack {
         addPredefinedExceptions();
     }
 
-    public static DeclFunc getOperator(
-            List<Coercion> outCoercions, String name, Type... argTypes) {
+    public static DeclFunc getOperator(List<Coercion> outCoercions, String name, Type... argTypes) {
         return getFuncOverload(outCoercions, operators, name, argTypes);
     }
 
@@ -729,7 +741,8 @@ public class SymbolStack {
         }
     }
 
-    private static void putFuncOverload(Map<String, FuncOverloads> map, String name, DeclFunc df, CoercionScheme cs) {
+    private static void putFuncOverload(
+            Map<String, FuncOverloads> map, String name, DeclFunc df, CoercionScheme cs) {
 
         FuncOverloads overloads = map.get(name);
         if (overloads == null) {
@@ -813,7 +826,8 @@ public class SymbolStack {
         //
         // ---------------------------------------------------------
 
-        private final Map<List<Type>, DeclFunc> overloads = new HashMap<>(); // (arg types --> func decl) map
+        private final Map<List<Type>, DeclFunc> overloads =
+                new HashMap<>(); // (arg types --> func decl) map
         private final CoercionScheme coercionScheme;
         private final String name;
     }

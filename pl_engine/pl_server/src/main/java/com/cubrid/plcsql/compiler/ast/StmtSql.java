@@ -30,8 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.Coercion;
+import com.cubrid.plcsql.compiler.type.Type;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
 

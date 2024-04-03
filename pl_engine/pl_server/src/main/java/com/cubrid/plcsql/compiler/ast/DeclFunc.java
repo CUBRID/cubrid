@@ -51,7 +51,10 @@ public class DeclFunc extends DeclRoutine {
     }
 
     public DeclFunc(
-            ParserRuleContext ctx, String name, NodeList<DeclParam> paramList, TypeSpec retTypeSpec) {
+            ParserRuleContext ctx,
+            String name,
+            NodeList<DeclParam> paramList,
+            TypeSpec retTypeSpec) {
         super(ctx, name, paramList, retTypeSpec, null, null);
     }
 

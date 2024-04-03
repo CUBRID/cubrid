@@ -44,7 +44,7 @@ public class TypeSpecPercent extends TypeSpec {
     public final String column;
 
     public TypeSpecPercent(ParserRuleContext ctx, String table, String column) {
-        super(ctx, null);   // null: unknown yet
+        super(ctx, null); // null: unknown yet
         this.table = table;
         this.column = column;
     }

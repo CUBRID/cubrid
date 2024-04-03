@@ -33,8 +33,8 @@ package com.cubrid.plcsql.compiler;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
-import com.cubrid.plcsql.compiler.type.TypeVarchar;
 import com.cubrid.plcsql.compiler.type.TypeNumeric;
+import com.cubrid.plcsql.compiler.type.TypeVarchar;
 
 public class DBTypeAdapter {
 
@@ -146,8 +146,7 @@ public class DBTypeAdapter {
                     if (prec == -1) {
                         prec = TypeChar.MAX_LEN;
                     }
-                    assert prec >= 1 && prec <= TypeChar.MAX_LEN
-                            : ("invalid precision " + prec);
+                    assert prec >= 1 && prec <= TypeChar.MAX_LEN : ("invalid precision " + prec);
                     return TypeChar.getInstance(prec);
                 } else {
                     return Type.STRING_ANY;
@@ -157,8 +156,7 @@ public class DBTypeAdapter {
                     if (prec == -1 || prec == 0) { // 0 for STRING (by test)
                         prec = TypeVarchar.MAX_LEN;
                     }
-                    assert prec >= 1 && prec <= TypeVarchar.MAX_LEN
-                            : ("invalid precision " + prec);
+                    assert prec >= 1 && prec <= TypeVarchar.MAX_LEN : ("invalid precision " + prec);
                     return TypeVarchar.getInstance(prec);
                 } else {
                     return Type.STRING_ANY;

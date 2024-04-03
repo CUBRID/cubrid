@@ -36,7 +36,8 @@ import java.util.List;
 
 public enum CoercionScheme {
     CompOp {
-        public List<Type> getCoercions(List<Coercion> outCoercions, List<Type> argTypes, String opName) {
+        public List<Type> getCoercions(
+                List<Coercion> outCoercions, List<Type> argTypes, String opName) {
             assert argTypes.size() == 2;
 
             Type commonTy = getCommonTypeInner(argTypes.get(0), argTypes.get(1), compOpCommonType);
@@ -71,7 +72,8 @@ public enum CoercionScheme {
     },
 
     NAryCompOp {
-        public List<Type> getCoercions(List<Coercion> outCoercions, List<Type> argTypes, String opName) {
+        public List<Type> getCoercions(
+                List<Coercion> outCoercions, List<Type> argTypes, String opName) {
 
             // between, in
 
@@ -186,9 +188,7 @@ public enum CoercionScheme {
                     if (rType.isDateTime()) {
 
                         if (opName.equals("opAdd")
-                                && (lType.isString()
-                                        || lType.isNumber()
-                                        || lType == Type.NULL)) {
+                                && (lType.isString() || lType.isNumber() || lType == Type.NULL)) {
 
                             // string/number + date/time
 
@@ -257,7 +257,8 @@ public enum CoercionScheme {
 
                 // mod(%), div
 
-                Type commonTy = getCommonTypeInner(argTypes.get(0), argTypes.get(1), intArithOpCommonType);
+                Type commonTy =
+                        getCommonTypeInner(argTypes.get(0), argTypes.get(1), intArithOpCommonType);
                 if (commonTy == null) {
                     return null;
                 }

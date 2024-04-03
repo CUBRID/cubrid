@@ -32,8 +32,8 @@ package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
-import com.cubrid.plcsql.compiler.type.TypeVarchar;
 import com.cubrid.plcsql.compiler.type.TypeNumeric;
+import com.cubrid.plcsql.compiler.type.TypeVarchar;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -225,34 +225,20 @@ public abstract class Coercion {
 
         static {
             // NOTE: there is no Cast coercion dst NULL
-            instances.put(
-                    Type.IDX_OBJECT, new Cast(Type.NULL, Type.OBJECT));
-            instances.put(
-                    Type.IDX_BOOLEAN, new Cast(Type.NULL, Type.BOOLEAN));
-            instances.put(
-                    Type.IDX_STRING, new Cast(Type.NULL, Type.STRING_ANY));
-            instances.put(
-                    Type.IDX_SHORT, new Cast(Type.NULL, Type.SHORT));
-            instances.put(
-                    Type.IDX_INT, new Cast(Type.NULL, Type.INT));
-            instances.put(
-                    Type.IDX_BIGINT, new Cast(Type.NULL, Type.BIGINT));
-            instances.put(
-                    Type.IDX_NUMERIC, new Cast(Type.NULL, Type.NUMERIC_ANY));
-            instances.put(
-                    Type.IDX_FLOAT, new Cast(Type.NULL, Type.FLOAT));
-            instances.put(
-                    Type.IDX_DOUBLE, new Cast(Type.NULL, Type.DOUBLE));
-            instances.put(
-                    Type.IDX_DATE, new Cast(Type.NULL, Type.DATE));
-            instances.put(
-                    Type.IDX_TIME, new Cast(Type.NULL, Type.TIME));
-            instances.put(
-                    Type.IDX_DATETIME, new Cast(Type.NULL, Type.DATETIME));
-            instances.put(
-                    Type.IDX_TIMESTAMP, new Cast(Type.NULL, Type.TIMESTAMP));
-            instances.put(
-                    Type.IDX_SYS_REFCURSOR, new Cast(Type.NULL, Type.SYS_REFCURSOR));
+            instances.put(Type.IDX_OBJECT, new Cast(Type.NULL, Type.OBJECT));
+            instances.put(Type.IDX_BOOLEAN, new Cast(Type.NULL, Type.BOOLEAN));
+            instances.put(Type.IDX_STRING, new Cast(Type.NULL, Type.STRING_ANY));
+            instances.put(Type.IDX_SHORT, new Cast(Type.NULL, Type.SHORT));
+            instances.put(Type.IDX_INT, new Cast(Type.NULL, Type.INT));
+            instances.put(Type.IDX_BIGINT, new Cast(Type.NULL, Type.BIGINT));
+            instances.put(Type.IDX_NUMERIC, new Cast(Type.NULL, Type.NUMERIC_ANY));
+            instances.put(Type.IDX_FLOAT, new Cast(Type.NULL, Type.FLOAT));
+            instances.put(Type.IDX_DOUBLE, new Cast(Type.NULL, Type.DOUBLE));
+            instances.put(Type.IDX_DATE, new Cast(Type.NULL, Type.DATE));
+            instances.put(Type.IDX_TIME, new Cast(Type.NULL, Type.TIME));
+            instances.put(Type.IDX_DATETIME, new Cast(Type.NULL, Type.DATETIME));
+            instances.put(Type.IDX_TIMESTAMP, new Cast(Type.NULL, Type.TIMESTAMP));
+            instances.put(Type.IDX_SYS_REFCURSOR, new Cast(Type.NULL, Type.SYS_REFCURSOR));
         }
 
         private Cast(Type src, Type dst) {
@@ -350,21 +336,13 @@ public abstract class Coercion {
                                 Type.IDX_STRING)));
         possibleCasts.put(
                 Type.IDX_DATE,
-                new HashSet(
-                        Arrays.asList(
-                                Type.IDX_DATETIME,
-                                Type.IDX_TIMESTAMP,
-                                Type.IDX_STRING)));
-        possibleCasts.put(
-                Type.IDX_TIME, new HashSet(Arrays.asList(Type.IDX_STRING)));
+                new HashSet(Arrays.asList(Type.IDX_DATETIME, Type.IDX_TIMESTAMP, Type.IDX_STRING)));
+        possibleCasts.put(Type.IDX_TIME, new HashSet(Arrays.asList(Type.IDX_STRING)));
         possibleCasts.put(
                 Type.IDX_TIMESTAMP,
                 new HashSet(
                         Arrays.asList(
-                                Type.IDX_DATETIME,
-                                Type.IDX_DATE,
-                                Type.IDX_TIME,
-                                Type.IDX_STRING)));
+                                Type.IDX_DATETIME, Type.IDX_DATE, Type.IDX_TIME, Type.IDX_STRING)));
         possibleCasts.put(
                 Type.IDX_DOUBLE,
                 new HashSet(
