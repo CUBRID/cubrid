@@ -40,15 +40,6 @@ import org.antlr.v4.runtime.tree.ParseTree;
 
 public class Misc {
 
-    public static String detachSubscripts(String plcName) {
-        int idx = plcName.indexOf("(");
-        if (idx > 0) {
-            return plcName.substring(0, idx);
-        } else {
-            return plcName;
-        }
-    }
-
     public static class Pair<X, Y> {
         public X e1;
         public Y e2;
