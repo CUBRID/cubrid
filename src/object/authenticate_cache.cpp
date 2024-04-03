@@ -23,9 +23,10 @@
 #include "authenticate_cache.hpp"
 
 #include "authenticate.h"
-#include "authenticate_grant.hpp"
+#include "authenticate_grant.hpp" /* apply_grants */
 #include "dbtype_function.h"
 #include "schema_manager.h"
+#include "set_object.h"
 
 static AU_CLASS_CACHE *au_install_class_cache (SM_CLASS *sm_class);
 static AU_CLASS_CACHE *au_make_class_cache (int depth);
@@ -509,7 +510,6 @@ int au_get_cache_index()
 {
   return Au_cache_index;
 }
-
 
 /*
  * update_cache -  This is the main function for parsing all of
