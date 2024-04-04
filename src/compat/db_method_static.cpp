@@ -781,6 +781,7 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
+      db_make_error (return_val, error);
       return;
     }
 
