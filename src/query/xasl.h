@@ -151,6 +151,7 @@ using PRED_EXPR = cubxasl::pred_expr;
 typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
 typedef struct xasl_stat XASL_STATS;
+typedef struct sq_stat SQ_STATS;
 
 typedef struct topn_tuple TOPN_TUPLE;
 typedef struct topn_tuples TOPN_TUPLES;
@@ -923,6 +924,15 @@ struct xasl_stat
   UINT64 fetch_time;
 };
 
+struct sq_stat
+{
+  UINT64 sq_cache_hit;
+  UINT64 sq_cache_miss;
+  UINT64 sq_cache_size;
+  UINT64 sq_cache_size_max;
+  UINT64 sq_cache_miss_max;
+};
+
 /* top-n sorting object */
 struct topn_tuples
 {
@@ -1036,11 +1046,6 @@ struct xasl_node
 
   MHT_TABLE *sq_cache_ht;
   int sq_cache_flag;
-  size_t sq_cache_hit;
-  size_t sq_cache_miss;
-  size_t sq_cache_size;
-  size_t sq_cache_size_max;
-  size_t sq_cache_miss_max;
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
@@ -1081,6 +1086,7 @@ struct xasl_node
   ORDERBY_STATS orderby_stats;
   GROUPBY_STATS groupby_stats;
   XASL_STATS xasl_stats;
+  SQ_STATS sq_stats;
 
   TOPN_TUPLES *topn_items;	/* top-n tuples for orderby limit */
 
