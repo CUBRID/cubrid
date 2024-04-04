@@ -510,16 +510,16 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, sq_key * key)
 int
 sq_cache_initialize (xasl_node * xasl)
 {
-  size_t max_subquery_cache_size = (size_t) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
+  UINT64 max_subquery_cache_size = (UINT64) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
   int sq_hm_entries = (int) max_subquery_cache_size / 2048;	// default 1024
   xasl->sq_cache_ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
   if (!xasl->sq_cache_ht)
     {
       return ER_FAILED;
     }
-  xasl->sq_stats.sq_cache_hit = (size_t) 0;
-  xasl->sq_stats.sq_cache_miss = (size_t) 0;
-  xasl->sq_stats.sq_cache_size = (size_t) 0;
+  xasl->sq_stats.sq_cache_hit = (UINT64) 0;
+  xasl->sq_stats.sq_cache_miss = (UINT64) 0;
+  xasl->sq_stats.sq_cache_size = (UINT64) 0;
   xasl->sq_stats.sq_cache_size_max = max_subquery_cache_size;
   xasl->sq_stats.sq_cache_miss_max = max_subquery_cache_size / 2048;	// default 1024
   xasl->sq_cache_flag |= SQ_CACHE_INITIALIZED_FLAG;
@@ -543,7 +543,7 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
   sq_key *key;
   sq_val *val;
   const void *ret;
-  size_t new_entry_size = 0;
+  UINT64 new_entry_size = 0;
 
   key = sq_make_key (xasl);
 
@@ -560,12 +560,12 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
       sq_cache_initialize (xasl);
     }
 
-  new_entry_size += (size_t) or_db_value_size (key->pred_set) + sizeof (sq_key);
+  new_entry_size += (UINT64) or_db_value_size (key->pred_set) + sizeof (sq_key);
 
   switch (val->t)
     {
     case TYPE_CONSTANT:
-      new_entry_size += (size_t) or_db_value_size (val->val.dbvalptr) + sizeof (sq_val);
+      new_entry_size += (UINT64) or_db_value_size (val->val.dbvalptr) + sizeof (sq_val);
       break;
 
     default:
@@ -657,25 +657,6 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
 }
 
 /*
- * sq_cache_drop_all () - Clears all cache entries for a given XASL node.
- *   xasl(in): The XASL node for which all cache entries will be cleared.
- *
- * This function clears all cache entries associated with a given XASL node. It does so by iterating over the hash table and
- * freeing all keys and values. This function is typically called when resetting or destroying the cache for a XASL node.
- */
-void
-sq_cache_drop_all (xasl_node * xasl)
-{
-  if (xasl->sq_cache_flag & SQ_CACHE_INITIALIZED_FLAG)
-    {
-      if (xasl->sq_cache_ht != NULL)
-	{
-	  mht_clear (xasl->sq_cache_ht, sq_rem_func, NULL);
-	}
-    }
-}
-
-/*
  * sq_cache_destroy () - Destroys the cache for a given XASL node.
  *   xasl(in): The XASL node for which the cache is being destroyed.
  *
@@ -691,7 +672,7 @@ sq_cache_destroy (xasl_node * xasl)
       er_log_debug (ARG_FILE_LINE,
 		    "destroy sq_cache at xasl %p\ncache info : \n\thit : %10lu\n\tmiss: %10lu\n\tsize: %10lu Bytes\n",
 		    xasl, xasl->sq_stats.sq_cache_hit, xasl->sq_stats.sq_cache_miss, xasl->sq_stats.sq_cache_size);
-      sq_cache_drop_all (xasl);
+      mht_clear (xasl->sq_cache_ht, sq_rem_func, NULL);
       mht_destroy (xasl->sq_cache_ht);
     }
   xasl->sq_cache_flag = 0;
