@@ -112,6 +112,9 @@ extern "C"
   extern int db_num_volumes (void);
   extern int db_last_volume (void);
   extern void db_print_stats (void);
+  
+  /* called only at initialization time to get the static methods linked */
+  extern void db_install_static_methods (); /* see db_method_static.cpp */
 
   extern void db_preload_classes (const char *name1, ...);
   extern void db_link_static_methods (DB_METHOD_LINK * methods);

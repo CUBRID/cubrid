@@ -132,7 +132,7 @@ void sigfpe_handler (int sig);
 static void
 install_static_methods (void)
 {
-  au_link_static_methods ();	/* Authorization classes */
+  db_install_static_methods ();	/* Authorization classes */
 }
 
 /*
