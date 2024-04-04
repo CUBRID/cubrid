@@ -425,7 +425,11 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
   OID_SET_NULL (&last_oid);
 
   /* Now start fetching all the instances */
+#if defined(SUPPORT_THREAD_UNLOAD)
+  desc_obj = make_desc_obj (class_ptr, false);
+#else
   desc_obj = make_desc_obj (class_ptr);
+#endif
   while (nobjects != nfetched)
     {
       if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid,

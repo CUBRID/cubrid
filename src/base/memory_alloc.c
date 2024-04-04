@@ -53,10 +53,6 @@
 #if !defined (SERVER_MODE)
 extern unsigned int db_on_server;
 HL_HEAPID private_heap_id = 0;
-
-#if defined(SUPPORT_THREAD_UNLOAD)
-extern bool is_utility_thread ();
-#endif
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
@@ -487,7 +483,7 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 #else /* SA_MODE */
 
 #if defined(SUPPORT_THREAD_UNLOAD)
-  if (is_utility_thread ())
+  if (db_is_utility_thread ())
     {
       ptr = malloc (size);
       if (ptr == NULL)
@@ -631,7 +627,7 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
     }
 
 #if defined(SUPPORT_THREAD_UNLOAD)
-  if (is_utility_thread ())
+  if (db_is_utility_thread ())
     {
       new_ptr = realloc (ptr, size);
       if (new_ptr == NULL)
@@ -792,7 +788,7 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 #else /* SA_MODE */
 
 #if defined(SUPPORT_THREAD_UNLOAD)
-  if (is_utility_thread ())
+  if (db_is_utility_thread ())
     {
       free (ptr);
       return;

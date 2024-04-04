@@ -84,7 +84,11 @@ static void default_clear_err_filter (void);
  *    class(in): class structure
  */
 DESC_OBJ *
+#if defined(SUPPORT_THREAD_UNLOAD)
+make_desc_obj (SM_CLASS * class_, bool is_unloaddb)
+#else
 make_desc_obj (SM_CLASS * class_)
+#endif
 {
   DESC_OBJ *obj;
   SM_ATTRIBUTE *att;
@@ -105,6 +109,9 @@ make_desc_obj (SM_CLASS * class_)
   obj->count = class_->att_count;
   obj->atts = NULL;
   obj->values = NULL;
+#if defined(SUPPORT_THREAD_UNLOAD)
+  obj->dbval_bufs = NULL;
+#endif
   if (class_->att_count)
     {
       obj->values = (DB_VALUE *) malloc (sizeof (DB_VALUE) * class_->att_count);
@@ -120,12 +127,38 @@ make_desc_obj (SM_CLASS * class_)
 	  free_and_init (obj);
 	  return NULL;
 	}
+#if defined(SUPPORT_THREAD_UNLOAD)
+      obj->dbval_bufs = (DBVAL_BUF *) malloc (sizeof (DBVAL_BUF) * class_->att_count);
+      if (obj->dbval_bufs == NULL)
+	{
+	  free_and_init (obj->values);
+	  free_and_init (obj->atts);
+	  free_and_init (obj);
+	  return NULL;
+	}
+#endif
+
       for (i = 0, att = class_->attributes; i < class_->att_count; i++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
 	  db_make_null (&obj->values[i]);
 	  obj->atts[i] = att;
+
+#if defined(SUPPORT_THREAD_UNLOAD)
+	  if (att->type->get_id () == DB_TYPE_VARCHAR)
+	    {
+	      int sz = (att->domain->precision > 4095) ? 4095 : att->domain->precision;	//ctshim
+	      obj->dbval_bufs[i].buf = (char *) malloc (sz + 1);
+	      obj->dbval_bufs[i].buf_size = (obj->dbval_bufs[i].buf == NULL) ? 0 : sz;
+	    }
+	  else
+	    {
+	      obj->dbval_bufs[i].buf = NULL;
+	      obj->dbval_bufs[i].buf_size = 0;
+	    }
+#endif
 	}
     }
+
   return obj;
 }
 
@@ -144,18 +177,33 @@ desc_free (DESC_OBJ * obj)
       return;
     }
 
+#if defined(SUPPORT_THREAD_UNLOAD)
+  if (obj->dbval_bufs != NULL)
+    {
+      for (i = 0; i < obj->count; i++)
+	{
+	  if (obj->dbval_bufs[i].buf != NULL)
+	    {
+	      free (obj->dbval_bufs[i].buf);
+	    }
+	}
+      free (obj->dbval_bufs);
+    }
+#endif
+
   if (obj->count && obj->values != NULL)
     {
       for (i = 0; i < obj->count; i++)
 	{
 	  pr_clear_value (&obj->values[i]);
 	}
-      free_and_init (obj->values);
+      free (obj->values);
     }
   if (obj->atts != NULL)
     {
-      free_and_init (obj->atts);
+      free (obj->atts);
     }
+
   free_and_init (obj);
 }
 
@@ -629,6 +677,7 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
   int rc = NO_ERROR;
 #if defined(SUPPORT_THREAD_UNLOAD)
   int zvar[32];
+  bool do_copy = (obj->dbval_bufs == NULL);	// If do_copy is false, it is called from unloaddb.
 #endif
 
   /* need nicer way to store these */
@@ -680,7 +729,14 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
 	{
 	  /* read the disk value into the db_value */
 #if defined(SUPPORT_THREAD_UNLOAD)
-	  att->type->data_readval (buf, &obj->values[i], att->domain, -1, false, NULL, 0);
+	  if (obj->dbval_bufs == NULL)
+	    {			// compactdb
+	      att->type->data_readval (buf, &obj->values[i], att->domain, -1, true, NULL, 0);
+	    }
+	  else
+	    {			// unloaddb
+	      att->type->data_readval (buf, &obj->values[i], att->domain, -1, false, NULL, 0);
+	    }
 #else
 	  att->type->data_readval (buf, &obj->values[i], att->domain, -1, true, NULL, 0);
 #endif
@@ -707,7 +763,30 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
 	   i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
 #if defined(SUPPORT_THREAD_UNLOAD)
-	  att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], false, NULL, 0);
+	  //att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], false, NULL, 0);
+
+	  if (obj->dbval_bufs == NULL)
+	    {			// compact
+	      att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], true, NULL, 0);
+	    }
+	  else
+	    {			// unloaddb
+	      if (att->type->get_id () == DB_TYPE_VARCHAR)
+		{
+		  //att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], false, NULL, 0);
+		  //att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], true, zbuf, zlen);              
+		  extern int data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size,
+						  bool copy, char *copy_buf, int copy_buf_len);
+		  //data_readval_string (buf, &obj->values[i], att->domain, vars[j], true, zbuf, zlen);
+		  //data_readval_string(buf, &obj->values[i], att->domain, vars[j], true, obj->dbval_bufs[i].buf, obj->dbval_bufs[i].buf_size);
+		  data_readval_string (buf, &obj->values[i], att->domain, vars[j], false, obj->dbval_bufs[i].buf,
+				       obj->dbval_bufs[i].buf_size);
+		}
+	      else
+		{
+		  att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], false, NULL, 0);
+		}
+	    }
 #else
 	  att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], true, NULL, 0);
 #endif
@@ -769,6 +848,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
   char *bits, *start;
   int rc = NO_ERROR;
 #if defined(SUPPORT_THREAD_UNLOAD)
+  int storage_order;
   int zvar[32];
   vars = zvar;
 #endif
@@ -839,7 +919,14 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	{
 	  /* its real, get it into the proper value */
 #if defined(SUPPORT_THREAD_UNLOAD)
-	  type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, false, NULL, 0);
+	  if (obj->dbval_bufs == NULL)
+	    {			// compactdb
+	      type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, true, NULL, 0);
+	    }
+	  else
+	    {			// unloaddb
+	      type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, false, NULL, 0);
+	    }
 #else
 	  type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, true, NULL, 0);
 #endif
@@ -900,8 +987,15 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	{
 	  /* read it into the proper value */
 #if defined(SUPPORT_THREAD_UNLOAD)
-	  type->data_readval (buf, &obj->values[attmap[att_index]->storage_order], rat->domain, vars[i], false, NULL,
-			      0);
+	  storage_order = attmap[att_index]->storage_order;
+	  if (obj->dbval_bufs == NULL)
+	    {			// compactdb
+	      type->data_readval (buf, &obj->values[storage_order], rat->domain, vars[i], true, NULL, 0);
+	    }
+	  else
+	    {			// unloaddb
+	      type->data_readval (buf, &obj->values[storage_order], rat->domain, vars[i], false, NULL, 0);
+	    }
 #else
 	  type->data_readval (buf, &obj->values[attmap[att_index]->storage_order], rat->domain, vars[i], true, NULL, 0);
 #endif

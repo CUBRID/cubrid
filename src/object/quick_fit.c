@@ -43,7 +43,7 @@ pthread_t ws_Heap_Owner_id = -1;
 //db_get_client_type
 //extern int db_get_client_type (void);
 bool
-is_utility_thread ()
+db_is_utility_thread ()
 {
   if (ws_Heap_id != 0)
     {
@@ -103,7 +103,7 @@ void *
 db_ws_alloc (size_t size)
 {
 #if defined(SUPPORT_THREAD_UNLOAD)
-  if (is_utility_thread ())
+  if (db_is_utility_thread ())
     {
       return malloc (size);
     }
@@ -160,7 +160,7 @@ void *
 db_ws_realloc (void *ptr, size_t size)
 {
 #if defined(SUPPORT_THREAD_UNLOAD)
-  if (is_utility_thread ())
+  if (db_is_utility_thread ())
     {
       return (ptr) ? realloc (ptr, size) : malloc (size);
     }
@@ -238,7 +238,7 @@ void
 db_ws_free (void *ptr)
 {
 #if defined(SUPPORT_THREAD_UNLOAD)
-  if (is_utility_thread ())
+  if (db_is_utility_thread ())
     {
       if (ptr)
 	{

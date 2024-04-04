@@ -51,6 +51,15 @@ class print_output;
  *    loader/import/export utility but could be used for other things as
  *    well.
  */
+
+#if defined(SUPPORT_THREAD_UNLOAD)
+typedef struct dbval_buf
+{
+  char *buf;
+  int buf_size;
+} DBVAL_BUF;
+#endif
+
 typedef struct desc_obj
 {
   MOP classop;
@@ -59,6 +68,9 @@ typedef struct desc_obj
   int count;
   SM_ATTRIBUTE **atts;
   DB_VALUE *values;
+#if defined(SUPPORT_THREAD_UNLOAD)
+  DBVAL_BUF *dbval_bufs;
+#endif
 } DESC_OBJ;
 
 typedef struct text_output
@@ -77,7 +89,12 @@ typedef struct text_output
 
 extern int text_print_flush (TEXT_OUTPUT * tout);
 extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...);
+#if defined(SUPPORT_THREAD_UNLOAD)
+extern DESC_OBJ *make_desc_obj (SM_CLASS * class_, bool is_unloaddb);
+#else
 extern DESC_OBJ *make_desc_obj (SM_CLASS * class_);
+#endif
+
 extern int desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag);
 extern int desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj);
 extern void desc_free (DESC_OBJ * obj);

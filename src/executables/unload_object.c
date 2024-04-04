@@ -1494,7 +1494,11 @@ unload_writer (UNLD_THR_PARAM * unld_thr_param, LC_COPYAREA * fetch_area, TEXT_O
 
   DEBUG_PRINT ("*** unload_writer(%d) ***\n", unld_thr_param->thread_idx);	//==============================================
 
+#if defined(SUPPORT_THREAD_UNLOAD)
+  desc_obj = make_desc_obj (class_ptr, true);
+#else
   desc_obj = make_desc_obj (class_ptr);
+#endif
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (fetch_area);
   obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
@@ -1978,7 +1982,11 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
   else
 #endif // #if defined(SUPPORT_THREAD_UNLOAD)
     {
+#if defined(SUPPORT_THREAD_UNLOAD)
+      desc_obj = make_desc_obj (class_ptr, true);
+#else
       desc_obj = make_desc_obj (class_ptr);
+#endif
 
       while (nobjects != nfetched)
 	{
