@@ -2400,7 +2400,10 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
 
   if (reverse_unique_flag)
     {
-      emit_reverse_unique_def (ctxt, output_ctx, class_);
+      if (split_schema_files == false)
+	{
+	  emit_reverse_unique_def (ctxt, output_ctx, class_);
+	}
     }
 
   return true;
@@ -5514,6 +5517,7 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
 {
   DB_OBJLIST *cl = NULL;
   int is_vclass = 0;
+  int reverse_unique_flag = 0;
   const char *class_type = NULL;
   const char *name = NULL;
   int is_partitioned = 0;
@@ -5543,6 +5547,16 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
 		{
 		  unique_flag = 1;
 		}
+	      else if (db_attribute_is_reverse_unique (a))
+		{
+		  reverse_unique_flag = 1;
+		}
+	    }
+
+	  if (unique_flag && reverse_unique_flag)
+	    {
+	      /* Since we already found all, no need to go further. */
+	      break;
 	    }
 	}
 
@@ -5552,7 +5566,13 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
 	  emit_unique_def (ctxt, output_ctx, cl->op, class_type);
 	}
 
+      if (reverse_unique_flag)
+	{
+	  emit_reverse_unique_def (ctxt, output_ctx, cl->op);
+	}
+
       unique_flag = 0;
+      reverse_unique_flag = 0;
     }
 
   if (er_errid () == ER_OBJ_NO_COMPONENTS)
