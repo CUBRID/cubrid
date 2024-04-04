@@ -6589,11 +6589,11 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_TRIGGER_STATUS status;
   PT_NODE *trigger_owner = NULL, *trigger_name = NULL;
   const char *trigger_owner_name = NULL, *trigger_comment = NULL;
-  DB_VALUE returnval, trigger_name_val, user_val;
   bool has_trigger_comment = false;
   TR_TRIGGER *trigger = NULL;
   int count;
   bool has_savepoint = false;
+  MOP trigger_mop = NULL, owner_mop = NULL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -6688,19 +6688,17 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  assert (trigger_name != NULL);
 
-		  db_make_null (&returnval);
-
-		  db_make_string (&trigger_name_val, trigger_name->info.name.original);
-		  db_make_string (&user_val, trigger_owner_name);
-
-		  au_change_trigger_owner_method (t->op, &returnval, &trigger_name_val, &user_val);
-
-		  pr_clear_value (&trigger_name_val);
-		  pr_clear_value (&user_val);
-
-		  if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
+		  owner_mop = au_find_user (trigger_owner_name);
+		  if (owner_mop == NULL)
 		    {
-		      error = db_get_error (&returnval);
+		      ASSERT_ERROR_AND_SET (error);
+		      break;
+		    }
+
+		  error = au_change_trigger_owner (t->op, owner_mop);
+		  if (error != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
 		      break;
 		    }
 
@@ -13999,85 +13997,6 @@ do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
       return jsp_call_stored_procedure (parser, statement);
     }
 }
-
-/*
- * These functions are provided just so we have some builtin gadgets that we can
- * use for quick and dirty method testing.  To get at them, alter your
- * favorite class like this:
- *
- * 	alter class foo
- * 		add method pickaname() string
- * 		function dbmeth_class_name;
- *
- * or
- *
- * 	alter class foo
- * 		add method pickaname(string) string
- * 		function dbmeth_print;
- *
- * After that you should be able to invoke "pickaname" on "foo" instances
- * to your heart's content.  dbmeth_class_name() will retrieve the class
- * name of the target instance and return it as a string; dbmeth_print()
- * will print the supplied value on stdout every time it is invoked.
- */
-
-/*
- * TODO: The following function names need to be fixed.
- * Renaming can affects user interface.
- */
-
-/*
- * dbmeth_class_name() -
- *   return: None
- *   self(in): Class object
- *   result(out): DB_VALUE for a class name
- *
- * Note: Position of function arguments must be kept
- *   for pre-defined function pointers(au_static_links)
- */
-void
-dbmeth_class_name (DB_OBJECT * self, DB_VALUE * result)
-{
-  const char *cname;
-
-  cname = db_get_class_name (self);
-
-  /*
-   * Make a string and clone it so that it won't become invalid if the
-   * underlying class object that gave us the string goes away.  Of
-   * course, this gives the responsibility for freeing the cloned
-   * string to someone else; is anybody accepting it?
-   */
-  db_make_string (result, cname);
-}
-
-/*
- * TODO: The functin name need to be fixed.
- * it is known system method so must fix corresponding qa first
- */
-
-/*
- * dbmeth_print() -
- *   return: None
- *   self(in): Class object
- *   result(out): NULL value
- *   msg(in): DB_VALUE for a message
- *
- * Note: Position of function arguments must be kept
- *   for pre-defined function pointers(au_static_links)
- */
-void
-dbmeth_print (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * msg)
-{
-  db_value_print (msg);
-  printf ("\n");
-  db_make_null (result);
-}
-
-
-
-
-
 
 /*
  * Function Group:
