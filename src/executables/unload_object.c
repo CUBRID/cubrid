@@ -1997,57 +1997,59 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 		{
 		  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (fetch_area);
 		  obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
-
-		  for (i = 0; i < mobjs->num_objs; ++i)
-		    {
-		      /*
-		       * Process all objects for a requested class, but
-		       * only referenced objects for a referenced class.
-		       */
-		      ++class_objects;
-		      ++total_objects;
-		      LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
-		      if ((error = desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj)) == NO_ERROR)
-			{
-			  if ((error = process_object (desc_obj, &obj->oid, referenced_class, obj_out)) != NO_ERROR)
-			    {
-			      if (!ignore_err_flag)
-				{
-				  desc_free (desc_obj);
-				  locator_free_copy_area (fetch_area);
-				  goto exit_on_error;
-				}
-			    }
-			}
-		      else
-			{
-			  if (error == ER_TF_BUFFER_UNDERFLOW)
-			    {
-			      desc_free (desc_obj);
-			      goto exit_on_error;
-			    }
-			  ++failed_objects;
-			}
-		      obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
-#if defined(WINDOWS)
-		      if (verbose_flag && (i % 10 == 0))
-			{
-			  _ftime (&timebuffer);
-			  if (start == 0)
-			    {
-			      start = timebuffer.time;
-			    }
-			  else
-			    {
-			      if ((timebuffer.time - start) > GAUGE_INTERVAL)
-				{
-				  gauge_alarm_handler (SIGALRM);
-				  start = timebuffer.time;
-				}
-			    }
-			}
+#if defined(SUPPORT_THREAD_UNLOAD)
+		  if (check_fetch_time)
 #endif
-		    }
+		    for (i = 0; i < mobjs->num_objs; ++i)
+		      {
+			/*
+			 * Process all objects for a requested class, but
+			 * only referenced objects for a referenced class.
+			 */
+			++class_objects;
+			++total_objects;
+			LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
+			if ((error = desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj)) == NO_ERROR)
+			  {
+			    if ((error = process_object (desc_obj, &obj->oid, referenced_class, obj_out)) != NO_ERROR)
+			      {
+				if (!ignore_err_flag)
+				  {
+				    desc_free (desc_obj);
+				    locator_free_copy_area (fetch_area);
+				    goto exit_on_error;
+				  }
+			      }
+			  }
+			else
+			  {
+			    if (error == ER_TF_BUFFER_UNDERFLOW)
+			      {
+				desc_free (desc_obj);
+				goto exit_on_error;
+			      }
+			    ++failed_objects;
+			  }
+			obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
+#if defined(WINDOWS)
+			if (verbose_flag && (i % 10 == 0))
+			  {
+			    _ftime (&timebuffer);
+			    if (start == 0)
+			      {
+				start = timebuffer.time;
+			      }
+			    else
+			      {
+				if ((timebuffer.time - start) > GAUGE_INTERVAL)
+				  {
+				    gauge_alarm_handler (SIGALRM);
+				    start = timebuffer.time;
+				  }
+			      }
+			  }
+#endif
+		      }
 		  locator_free_copy_area (fetch_area);
 		}
 	      else

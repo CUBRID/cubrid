@@ -52,6 +52,7 @@ TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, NULL };
 TEXT_OUTPUT *g_obj_out = &object_output;
 #if defined(SUPPORT_THREAD_UNLOAD)
 int thread_count = 0;
+bool check_fetch_time = false;	// ctshim,  test only
 #endif
 
 int page_size = 4096;
@@ -148,6 +149,13 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
 #if defined(SUPPORT_THREAD_UNLOAD)
   thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
+  if (thread_count == 999)
+    {
+      check_fetch_time = true;
+      thread_count = 0;
+      datafile_per_class = false;
+    }
+
   if (thread_count > 100)	// ctshim
     thread_count = 100;
 
