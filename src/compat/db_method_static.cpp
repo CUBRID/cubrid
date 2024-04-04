@@ -785,6 +785,14 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
       return;
     }
 
+  /* To change the owner of a system class is not allowed. */
+  if (sm_issystem (class_))
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS, "");
+      db_make_error (return_val, error);
+      return;
+    }
+
   owner_mop = au_find_user (owner_name);
   if (owner_mop == NULL)
     {
