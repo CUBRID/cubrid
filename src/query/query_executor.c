@@ -2251,7 +2251,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 
   if (xasl->sq_cache_ht != NULL)
     {
-      assert (xasl->sq_cache_flag);
       sq_cache_destroy (xasl);
     }
 

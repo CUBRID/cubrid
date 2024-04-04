@@ -496,6 +496,10 @@ struct cte_proc_node
 #define XASL_NEED_SINGLE_TUPLE_SCAN   0x8000	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	      0x10000	/* is any tde class related */
 #define XASL_SAMPLING_SCAN	      0x20000	/* is sampling scan */
+#define XASL_SQ_CACHE_ENABLED	      0x40000
+#define XASL_SQ_CACHE_INITIALIZED   0x80000
+#define XASL_SQ_CACHE_NOT_CACHING_CHECKED   0x100000
+#define XASL_SQ_CACHE_NOT_CACHING  0x200000
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -1045,7 +1049,6 @@ struct xasl_node
   int *cte_host_var_index;
 
   MHT_TABLE *sq_cache_ht;
-  int sq_cache_flag;
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */

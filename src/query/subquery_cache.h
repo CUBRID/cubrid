@@ -38,9 +38,4 @@ extern int sq_check_enable (xasl_node * xasl);
 #define SQ_TYPE_REGU_VAR 2
 #define SQ_TYPE_DBVAL 3
 
-#define SQ_CACHE_ENABLED_FLAG 0x1
-#define SQ_CACHE_INITIALIZED_FLAG 0x2
-#define SQ_CACHE_NOT_CACHING_CHECKED_FLAG 0x4
-#define SQ_CACHE_NOT_CACHING_FLAG 0x8
-
 #endif /* _SUBQUERY_CACHE_H_ */

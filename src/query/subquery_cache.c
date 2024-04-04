@@ -522,7 +522,7 @@ sq_cache_initialize (xasl_node * xasl)
   xasl->sq_stats.sq_cache_size = (UINT64) 0;
   xasl->sq_stats.sq_cache_size_max = max_subquery_cache_size;
   xasl->sq_stats.sq_cache_miss_max = max_subquery_cache_size / 2048;	// default 1024
-  xasl->sq_cache_flag |= SQ_CACHE_INITIALIZED_FLAG;
+  XASL_SET_FLAG (xasl, XASL_SQ_CACHE_INITIALIZED);
   return NO_ERROR;
 }
 
@@ -549,13 +549,13 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
 
   if (key == NULL)
     {
-      regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
+      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
       return ER_FAILED;
     }
 
   val = sq_make_val (regu_var);
 
-  if (!(xasl->sq_cache_flag & SQ_CACHE_INITIALIZED_FLAG))
+  if (!XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
     {
       sq_cache_initialize (xasl);
     }
@@ -574,7 +574,7 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
 
   if (xasl->sq_stats.sq_cache_size_max < xasl->sq_stats.sq_cache_size + new_entry_size)
     {
-      regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
+      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
       sq_free_key (key);
       sq_free_val (val);
       return ER_FAILED;
@@ -610,7 +610,7 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
   sq_key *key;
   sq_val *ret;
 
-  if (xasl->sq_cache_flag & SQ_CACHE_INITIALIZED_FLAG)
+  if (XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
     {
       /* This conditional check acts as a mechanism to prevent the cache from being 
          overwhelmed by unsuccessful lookups. If the cache miss count exceeds a predefined 
@@ -621,7 +621,7 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
 	{
 	  if (xasl->sq_stats.sq_cache_hit / xasl->sq_stats.sq_cache_miss < SQ_CACHE_MIN_HIT_RATIO)
 	    {
-	      regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
+	      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
 	      return false;
 	    }
 	}
@@ -630,10 +630,10 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
   key = sq_make_key (xasl);
   if (key == NULL)
     {
-      regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
+      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
       return false;
     }
-  if (!(xasl->sq_cache_flag & SQ_CACHE_INITIALIZED_FLAG))
+  if (!XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
     {
       sq_cache_initialize (xasl);
       xasl->sq_stats.sq_cache_miss++;
@@ -667,7 +667,7 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
 void
 sq_cache_destroy (xasl_node * xasl)
 {
-  if (xasl->sq_cache_flag & SQ_CACHE_INITIALIZED_FLAG)
+  if (XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
     {
       er_log_debug (ARG_FILE_LINE,
 		    "destroy sq_cache at xasl %p\ncache info : \n\thit : %10lu\n\tmiss: %10lu\n\tsize: %10lu Bytes\n",
@@ -675,7 +675,9 @@ sq_cache_destroy (xasl_node * xasl)
       mht_clear (xasl->sq_cache_ht, sq_rem_func, NULL);
       mht_destroy (xasl->sq_cache_ht);
     }
-  xasl->sq_cache_flag = 0;
+  XASL_CLEAR_FLAG (xasl,
+		   XASL_SQ_CACHE_ENABLED | XASL_SQ_CACHE_INITIALIZED | XASL_SQ_CACHE_NOT_CACHING |
+		   XASL_SQ_CACHE_NOT_CACHING_CHECKED);
   xasl->sq_cache_ht = NULL;
 }
 
@@ -686,8 +688,8 @@ sq_cache_destroy (xasl_node * xasl)
  * This function determines whether caching is enabled for a specified XASL node. It first checks if the node is null, 
  * if caching has been explicitly disabled, or if the node's status is neither CLEARED nor INITIALIZED, returning FALSE in 
  * any of these cases. 
- * If the SQ_CACHE_ENABLED_FLAG is already set, it returns TRUE, indicating caching is enabled. 
- * Otherwise, it sets the SQ_CACHE_ENABLED_FLAG if not already set, checks if the node should not be cached by calling 
+ * If the XASL_SQ_CACHE_ENABLED is already set, it returns TRUE, indicating caching is enabled. 
+ * Otherwise, it sets the XASL_SQ_CACHE_ENABLED if not already set, checks if the node should not be cached by calling 
  * sq_walk_xasl_check_not_caching(), and updates the flag accordingly. The function returns FALSE if caching is not enabled 
  * by the end of its execution. 
  * This ensures that the node's caching status is accurately reflected and updated based on its current state and any conditions 
@@ -696,25 +698,25 @@ sq_cache_destroy (xasl_node * xasl)
 int
 sq_check_enable (xasl_node * xasl)
 {
-  if (!(xasl) || xasl->sq_cache_flag & SQ_CACHE_NOT_CACHING_FLAG
+  if (!(xasl) || XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_NOT_CACHING)
       || !(xasl->status == XASL_CLEARED || xasl->status == XASL_INITIALIZED))
     {
       return FALSE;
     }
-  if (xasl->sq_cache_flag & SQ_CACHE_ENABLED_FLAG)
+  if (XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_ENABLED))
     {
       return TRUE;
     }
-  else if (xasl->sq_cache_flag == 0)
+  else
     {
-      xasl->sq_cache_flag |= SQ_CACHE_ENABLED_FLAG;
-      if (!(xasl->sq_cache_flag & SQ_CACHE_NOT_CACHING_CHECKED_FLAG))
+      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_ENABLED);
+      if (!XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_NOT_CACHING_CHECKED))
 	{
 	  if (sq_walk_xasl_check_not_caching (xasl))
 	    {
-	      xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
+	      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
 	    }
-	  xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_CHECKED_FLAG;
+	  XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING_CHECKED);
 	}
       return FALSE;
     }
