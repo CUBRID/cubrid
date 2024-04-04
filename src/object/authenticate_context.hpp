@@ -26,11 +26,19 @@
 
 #include "dbtype_def.h"
 
+#include "authenticate_cache.hpp"
 #include "authenticate_password.hpp" /* AU_MAX_PASSWORD_BUF */
 
 class authenticate_context
 {
   public:
+
+    // TODO: these variables should be encapsulated
+    //       However for backward compatiblity, define them as public member variables
+    // ================================================================
+    // public member variables
+    // ================================================================
+
     /*
      * Global MOP of the authorization root object.
      * This is cached here after the database is restarted so we don't
@@ -124,12 +132,18 @@ class authenticate_context
     char user_password_sha1[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
     char user_password_sha2_512[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
 
+    authenticate_cache caches;
+
     bool is_started;
 
-    void reset (void);
+    // ================================================================
+    // public member functions
+    // ================================================================
 
     authenticate_context (void); // au_init ()
     ~authenticate_context (); // au_final ()
+
+    void reset (void);
 
     int install (void); // au_install ()
     int start (void); // au_start ()
