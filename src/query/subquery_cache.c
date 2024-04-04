@@ -680,56 +680,43 @@ sq_cache_destroy (xasl_node * xasl)
 }
 
 /*
- * execute_regu_variable_xasl_with_sq_cache () - Executes a regu variable XASL with support for scalar subquery result caching.
- *   return: False if execution should proceed after caching logic, True otherwise.
- *   thread_p(in): Thread context.
- *   regu_var(in): The regu variable to be executed.
- *   vd(in): Value descriptor for parameter values.
+ * sq_check_enable () - Checks if caching is enabled for a given XASL node and updates the cache status flags accordingly.
+ *   xasl(in): The XASL node to check and update cache status for.
  *
- * This function attempts to execute a regu variable's XASL with caching logic for scalar subquery results. It checks if the
- * XASL node associated with the regu variable is eligible for caching and either retrieves the cached result or executes the
- * XASL and caches the result if appropriate. This function aims to improve performance by avoiding redundant executions of
- * scalar subqueries.
+ * This function determines whether caching is enabled for a specified XASL node. It first checks if the node is null, 
+ * if caching has been explicitly disabled, or if the node's status is neither CLEARED nor INITIALIZED, returning FALSE in 
+ * any of these cases. 
+ * If the SQ_CACHE_ENABLED_FLAG is already set, it returns TRUE, indicating caching is enabled. 
+ * Otherwise, it sets the SQ_CACHE_ENABLED_FLAG if not already set, checks if the node should not be cached by calling 
+ * sq_walk_xasl_check_not_caching(), and updates the flag accordingly. The function returns FALSE if caching is not enabled 
+ * by the end of its execution. 
+ * This ensures that the node's caching status is accurately reflected and updated based on its current state and any conditions 
+ * that might prevent caching.
  */
 int
-execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, void *vd)
+sq_check_enable (xasl_node * xasl)
 {
-  if (regu_var->xasl && !(regu_var->xasl->sq_cache_flag & SQ_CACHE_NOT_CACHING_FLAG)
-      && (regu_var->xasl->status == XASL_CLEARED || regu_var->xasl->status == XASL_INITIALIZED))
+  if (!(xasl) || xasl->sq_cache_flag & SQ_CACHE_NOT_CACHING_FLAG
+      || !(xasl->status == XASL_CLEARED || xasl->status == XASL_INITIALIZED))
     {
-
-      if (regu_var->xasl->sq_cache_flag & SQ_CACHE_ENABLED_FLAG)
-	{
-	  if (sq_get (regu_var->xasl, regu_var))
-	    {
-	      regu_var->xasl->status = XASL_SUCCESS;
-	      return true;
-	    }
-	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, (val_descr *) vd);
-	  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
-	    {
-	      return false;
-	    }
-	  sq_put (regu_var->xasl, regu_var);
-
-	  return false;
-	}
-
-      else if (regu_var->xasl->sq_cache_flag == 0)
-	{
-	  regu_var->xasl->sq_cache_flag |= SQ_CACHE_ENABLED_FLAG;
-	  if (!(regu_var->xasl->sq_cache_flag & SQ_CACHE_NOT_CACHING_CHECKED_FLAG))
-	    {
-	      if (sq_walk_xasl_check_not_caching (regu_var->xasl))
-		{
-		  regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
-		}
-	      regu_var->xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_CHECKED_FLAG;
-	    }
-	}
+      return FALSE;
     }
-
-  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, (val_descr *) vd);
-
-  return false;
+  if (xasl->sq_cache_flag & SQ_CACHE_ENABLED_FLAG)
+    {
+      return TRUE;
+    }
+  else if (xasl->sq_cache_flag == 0)
+    {
+      xasl->sq_cache_flag |= SQ_CACHE_ENABLED_FLAG;
+      if (!(xasl->sq_cache_flag & SQ_CACHE_NOT_CACHING_CHECKED_FLAG))
+	{
+	  if (sq_walk_xasl_check_not_caching (xasl))
+	    {
+	      xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_FLAG;
+	    }
+	  xasl->sq_cache_flag |= SQ_CACHE_NOT_CACHING_CHECKED_FLAG;
+	}
+      return FALSE;
+    }
+  return FALSE;
 }

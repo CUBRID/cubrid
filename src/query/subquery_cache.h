@@ -29,7 +29,7 @@ extern int sq_cache_initialize (xasl_node * xasl);
 extern int sq_put (xasl_node * xasl, REGU_VARIABLE * result);
 extern bool sq_get (xasl_node * xasl, REGU_VARIABLE * retp);
 extern void sq_cache_destroy (xasl_node * xasl);
-extern int execute_regu_variable_xasl_with_sq_cache (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, void *vd);
+extern int sq_check_enable (xasl_node * xasl);
 
 #define SQ_CACHE_MIN_HIT_RATIO 9	/* it means 90% */
 
