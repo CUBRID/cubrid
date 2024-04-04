@@ -510,7 +510,8 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, sq_key * key)
 int
 sq_cache_initialize (xasl_node * xasl)
 {
-  int sq_hm_entries = 2 * SQ_CACHE_MISS_MAX;
+  size_t max_subquery_cache_size = (size_t) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
+  int sq_hm_entries = (int) max_subquery_cache_size / 2048;	// default 1024
   xasl->sq_cache_ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
   if (!xasl->sq_cache_ht)
     {
@@ -519,7 +520,8 @@ sq_cache_initialize (xasl_node * xasl)
   xasl->sq_cache_hit = (size_t) 0;
   xasl->sq_cache_miss = (size_t) 0;
   xasl->sq_cache_size = (size_t) 0;
-  xasl->sq_cache_size_max = (size_t) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
+  xasl->sq_cache_size_max = max_subquery_cache_size;
+  xasl->sq_cache_miss_max = max_subquery_cache_size / 2048;	// default 1024
   xasl->sq_cache_flag |= SQ_CACHE_INITIALIZED_FLAG;
   return NO_ERROR;
 }
@@ -615,7 +617,7 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
          maximum, it evaluates the hit-to-miss ratio to decide whether continuing caching 
          is beneficial. This approach optimizes cache usage and performance by dynamically 
          adapting to the effectiveness of the cache. */
-      if (xasl->sq_cache_miss >= SQ_CACHE_MISS_MAX)
+      if (xasl->sq_cache_miss >= xasl->sq_cache_miss_max)
 	{
 	  if (xasl->sq_cache_hit / xasl->sq_cache_miss < SQ_CACHE_MIN_HIT_RATIO)
 	    {

@@ -1040,6 +1040,7 @@ struct xasl_node
   size_t sq_cache_miss;
   size_t sq_cache_size;
   size_t sq_cache_size_max;
+  size_t sq_cache_miss_max;
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
