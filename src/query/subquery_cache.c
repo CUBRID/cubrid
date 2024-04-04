@@ -636,6 +636,9 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
   if (!(xasl->sq_cache_flag & SQ_CACHE_INITIALIZED_FLAG))
     {
       sq_cache_initialize (xasl);
+      xasl->sq_cache_miss++;
+      sq_free_key (key);
+      return false;
     }
 
   ret = (sq_val *) mht_get (xasl->sq_cache_ht, key);
