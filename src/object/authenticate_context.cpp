@@ -24,7 +24,6 @@
 
 #include "authenticate.h"
 #include "authenticate_cache.hpp" /* init_caches */
-#include "authenticate_user_access.hpp" /* au_find_user () */
 #include "boot_cl.h" /* BOOT_IS_CLIENT_RESTARTED () */
 
 #include "db.h"
@@ -64,9 +63,9 @@ authenticate_context::reset (void)
 }
 
 authenticate_context::authenticate_context (void) // au_init ()
+  : caches {}
 {
   reset ();
-  init_caches ();
   is_started = false;
 }
 
@@ -78,7 +77,7 @@ authenticate_context::~authenticate_context ()
    * could remove the static links here but it isn't necessary and
    * we may need them again the next time we restart
    */
-  flush_caches ();
+  caches.flush ();
 }
 
 /*
@@ -484,7 +483,7 @@ authenticate_context::install (void)
     }
 
   /* establish the DBA as the current user */
-  if (au_find_user_cache_index (dba_user, &index, 0) != NO_ERROR)
+  if (caches.find_user_cache_index (dba_user, &index, 0) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -713,11 +712,11 @@ authenticate_context::set_user (MOP newuser)
 
   if (newuser != NULL && !ws_is_same_object (newuser, current_user))
     {
-      if (! (error = au_find_user_cache_index (newuser, &index, 1)))
+      if (! (error = caches.find_user_cache_index (newuser, &index, 1)))
 	{
 
 	  current_user = newuser;
-	  au_set_cache_index (index);
+	  caches.set_cache_index (index);
 
 	  /*
 	   * it is important that we don't call sm_bump_local_schema_version() here

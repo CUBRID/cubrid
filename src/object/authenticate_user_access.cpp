@@ -20,8 +20,6 @@
  * authenticate_user_access.cpp -
  */
 
-#include "authenticate_user_access.hpp"
-
 #include "authenticate.h"
 #include "authenticate_cache.hpp"
 #include "authenticate_auth_access.hpp"
@@ -983,72 +981,6 @@ au_add_member (MOP group, MOP member)
 }
 
 /*
- * au_add_member_method -  Method interface to au_add_member.
- *   return: none
- *   user(in): user object
- *   returnval(out): return value of this method
- *   memval(in):
- */
-void
-au_add_member_method (MOP user, DB_VALUE *returnval, DB_VALUE *memval)
-{
-  int error = NO_ERROR;
-  MOP member;
-
-  if (memval != NULL)
-    {
-      member = NULL;
-      if (DB_VALUE_TYPE (memval) == DB_TYPE_OBJECT && !DB_IS_NULL (memval) && db_get_object (memval) != NULL)
-	{
-	  member = db_get_object (memval);
-	}
-      else if (DB_IS_STRING (memval) && !DB_IS_NULL (memval) && db_get_string (memval) != NULL)
-	{
-	  member = au_find_user (db_get_string (memval));
-	  if (member == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	      goto error;
-	    }
-	}
-
-      if (member != NULL)
-	{
-	  if (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user))
-	    {
-	      error = au_add_member (user, member);
-	    }
-	  else
-	    {
-	      error = ER_AU_NOT_OWNER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	    }
-	}
-      else
-	{
-	  error = ER_AU_INVALID_USER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_USER;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-    }
-
-error:
-  if (error == NO_ERROR)
-    {
-      db_make_null (returnval);
-    }
-  else
-    {
-      db_make_error (returnval, error);
-    }
-}
-
-/*
  * au_drop_member - Remove a member from a group.
  *   return: error code
  *   group(in): group with member to drop
@@ -1410,7 +1342,7 @@ au_drop_user (MOP user)
   error = obj_delete (user);
   if (error == NO_ERROR)
     {
-      remove_user_cache_references (user);
+      Au_cache.remove_user_cache_references (user);
     }
 
 error:

@@ -900,7 +900,7 @@ check_authorization (MOP classobj, SM_CLASS *sm_class, DB_AUTH type)
     }
   else
     {
-      bits = get_cache_bits (sm_class);
+      bits = Au_cache.get_cache_bits (sm_class);
       if (bits == NULL)
 	{
 	  assert (false);
@@ -912,10 +912,10 @@ check_authorization (MOP classobj, SM_CLASS *sm_class, DB_AUTH type)
 	  if (*bits == AU_CACHE_INVALID)
 	    {
 	      /* update the cache and try again */
-	      error = update_cache (classobj, sm_class);
+	      error = Au_cache.update (classobj, sm_class);
 	      if (error == NO_ERROR)
 		{
-		  bits = get_cache_bits (sm_class);
+		  bits = Au_cache.get_cache_bits (sm_class);
 		  if (bits == NULL)
 		    {
 		      return er_errid ();

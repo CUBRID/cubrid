@@ -217,7 +217,7 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	       * clear the cache for this user/class pair to make sure we
 	       * recalculate it the next time it is referenced
 	       */
-	      reset_cache_for_user_and_class (classobj);
+	      Au_cache.reset_cache_for_user_and_class (classobj);
 
 	      /*
 	       * Make sure any cached parse trees are rebuild.  This proabably
@@ -416,7 +416,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 		       * to make sure we recalculate it the next time
 		       * it is referenced
 		       */
-		      reset_cache_for_user_and_class (classobj);
+		      Au_cache.reset_cache_for_user_and_class (classobj);
 
 #if defined(SA_MODE)
 		      if (catcls_Enable == true)
@@ -484,7 +484,7 @@ check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type)
       return NO_ERROR;
     }
 
-  cache_bits = get_cache_bits (sm_class);
+  cache_bits = Au_cache.get_cache_bits (sm_class);
   if (cache_bits == NULL)
     {
       return er_errid ();
@@ -492,12 +492,12 @@ check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type)
 
   if (*cache_bits == AU_CACHE_INVALID)
     {
-      if (update_cache (classop, sm_class))
+      if (Au_cache.update (classop, sm_class))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
-      cache_bits = get_cache_bits (sm_class);
+      cache_bits = Au_cache.get_cache_bits (sm_class);
       if (cache_bits == NULL)
 	{
 	  assert (false);
