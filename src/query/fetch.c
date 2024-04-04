@@ -3890,6 +3890,14 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      regu_var->xasl->status = XASL_SUCCESS;
 	    }
 	}
+      else
+	{
+	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+	  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+	    {
+	      goto exit_on_error;
+	    }
+	}
 
       *peek_dbval = regu_var->value.dbvalptr;
       break;
