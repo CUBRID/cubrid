@@ -1998,7 +1998,7 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 		  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (fetch_area);
 		  obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
 #if defined(SUPPORT_THREAD_UNLOAD)
-		  if (check_fetch_time)
+		  if (check_fetch_time == false)
 #endif
 		    for (i = 0; i < mobjs->num_objs; ++i)
 		      {
