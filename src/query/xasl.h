@@ -151,7 +151,6 @@ using PRED_EXPR = cubxasl::pred_expr;
 typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
 typedef struct xasl_stat XASL_STATS;
-typedef struct sq_stat SQ_STATS;
 
 typedef struct topn_tuple TOPN_TUPLE;
 typedef struct topn_tuples TOPN_TUPLES;
@@ -928,15 +927,6 @@ struct xasl_stat
   UINT64 fetch_time;
 };
 
-struct sq_stat
-{
-  UINT64 sq_cache_hit;
-  UINT64 sq_cache_miss;
-  UINT64 sq_cache_size;
-  UINT64 sq_cache_size_max;
-  UINT64 sq_cache_miss_max;
-};
-
 /* top-n sorting object */
 struct topn_tuples
 {
@@ -1047,9 +1037,6 @@ struct xasl_node
   XASL_ID *cte_xasl_id;		/* for CTE's query cache */
   int cte_host_var_count;
   int *cte_host_var_index;
-
-  MHT_TABLE *sq_cache_ht;
-
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
   LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite locking for queries which obtain candidate
@@ -1089,7 +1076,18 @@ struct xasl_node
   ORDERBY_STATS orderby_stats;
   GROUPBY_STATS groupby_stats;
   XASL_STATS xasl_stats;
-  SQ_STATS sq_stats;
+  struct sq_cache
+  {
+    MHT_TABLE *ht;
+    UINT64 size_max;
+    UINT64 size;
+    UINT64 miss_max;
+    struct
+    {
+      UINT64 hit;
+      UINT64 miss;
+    } stats;
+  } sq_cache;
 
   TOPN_TUPLES *topn_items;	/* top-n tuples for orderby limit */
 

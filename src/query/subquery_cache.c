@@ -512,16 +512,16 @@ sq_cache_initialize (xasl_node * xasl)
 {
   UINT64 max_subquery_cache_size = (UINT64) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
   int sq_hm_entries = (int) max_subquery_cache_size / 2048;	// default 1024
-  xasl->sq_cache_ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
-  if (!xasl->sq_cache_ht)
+  xasl->sq_cache.ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
+  if (!xasl->sq_cache.ht)
     {
       return ER_FAILED;
     }
-  xasl->sq_stats.sq_cache_hit = (UINT64) 0;
-  xasl->sq_stats.sq_cache_miss = (UINT64) 0;
-  xasl->sq_stats.sq_cache_size = (UINT64) 0;
-  xasl->sq_stats.sq_cache_size_max = max_subquery_cache_size;
-  xasl->sq_stats.sq_cache_miss_max = max_subquery_cache_size / 2048;	// default 1024
+  xasl->sq_cache.stats.hit = (UINT64) 0;
+  xasl->sq_cache.stats.miss = (UINT64) 0;
+  xasl->sq_cache.size = (UINT64) 0;
+  xasl->sq_cache.size_max = max_subquery_cache_size;
+  xasl->sq_cache.miss_max = max_subquery_cache_size / 2048;	// default 1024
   XASL_SET_FLAG (xasl, XASL_SQ_CACHE_INITIALIZED);
   return NO_ERROR;
 }
@@ -572,7 +572,7 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
       break;
     }
 
-  if (xasl->sq_stats.sq_cache_size_max < xasl->sq_stats.sq_cache_size + new_entry_size)
+  if (xasl->sq_cache.size_max < xasl->sq_cache.size + new_entry_size)
     {
       XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
       sq_free_key (key);
@@ -580,9 +580,9 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
       return ER_FAILED;
     }
 
-  ret = mht_put_if_not_exists (xasl->sq_cache_ht, key, val);
+  ret = mht_put_if_not_exists (xasl->sq_cache.ht, key, val);
 
-  xasl->sq_stats.sq_cache_size += new_entry_size;
+  xasl->sq_cache.size += new_entry_size;
 
   if (!ret || ret != val)
     {
@@ -617,9 +617,9 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
          maximum, it evaluates the hit-to-miss ratio to decide whether continuing caching 
          is beneficial. This approach optimizes cache usage and performance by dynamically 
          adapting to the effectiveness of the cache. */
-      if (xasl->sq_stats.sq_cache_miss >= xasl->sq_stats.sq_cache_miss_max)
+      if (xasl->sq_cache.stats.miss >= xasl->sq_cache.miss_max)
 	{
-	  if (xasl->sq_stats.sq_cache_hit / xasl->sq_stats.sq_cache_miss < SQ_CACHE_MIN_HIT_RATIO)
+	  if (xasl->sq_cache.stats.hit / xasl->sq_cache.stats.miss < SQ_CACHE_MIN_HIT_RATIO)
 	    {
 	      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
 	      return false;
@@ -636,15 +636,15 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
   if (!XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
     {
       sq_cache_initialize (xasl);
-      xasl->sq_stats.sq_cache_miss++;
+      xasl->sq_cache.stats.miss++;
       sq_free_key (key);
       return false;
     }
 
-  ret = (sq_val *) mht_get (xasl->sq_cache_ht, key);
+  ret = (sq_val *) mht_get (xasl->sq_cache.ht, key);
   if (ret == NULL)
     {
-      xasl->sq_stats.sq_cache_miss++;
+      xasl->sq_cache.stats.miss++;
       sq_free_key (key);
       return false;
     }
@@ -652,7 +652,7 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
   sq_unpack_val (ret, regu_var);
   sq_free_key (key);
 
-  xasl->sq_stats.sq_cache_hit++;
+  xasl->sq_cache.stats.hit++;
   return true;
 }
 
@@ -671,14 +671,14 @@ sq_cache_destroy (xasl_node * xasl)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "destroy sq_cache at xasl %p\ncache info : \n\thit : %10lu\n\tmiss: %10lu\n\tsize: %10lu Bytes\n",
-		    xasl, xasl->sq_stats.sq_cache_hit, xasl->sq_stats.sq_cache_miss, xasl->sq_stats.sq_cache_size);
-      mht_clear (xasl->sq_cache_ht, sq_rem_func, NULL);
-      mht_destroy (xasl->sq_cache_ht);
+		    xasl, xasl->sq_cache.stats.hit, xasl->sq_cache.stats.miss, xasl->sq_cache.size);
+      mht_clear (xasl->sq_cache.ht, sq_rem_func, NULL);
+      mht_destroy (xasl->sq_cache.ht);
     }
   XASL_CLEAR_FLAG (xasl,
 		   XASL_SQ_CACHE_ENABLED | XASL_SQ_CACHE_INITIALIZED | XASL_SQ_CACHE_NOT_CACHING |
 		   XASL_SQ_CACHE_NOT_CACHING_CHECKED);
-  xasl->sq_cache_ht = NULL;
+  xasl->sq_cache.ht = NULL;
 }
 
 /*
