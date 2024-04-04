@@ -5518,7 +5518,7 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
   DB_OBJLIST *cl = NULL;
   int is_vclass = 0;
   int reverse_unique_flag = 0;
-  const char *class_type = NULL;
+  const char *class_type = "CLASS";
   const char *name = NULL;
   int is_partitioned = 0;
   int unique_flag = 0;
@@ -5528,7 +5528,11 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
   for (cl = ctxt.classes; cl != NULL; cl = cl->next)
     {
       is_vclass = db_is_vclass (cl->op);
-      class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
+      if (is_vclass > 0)
+	{
+	  /* VCLASS is skipped. */
+	  continue;
+	}
 
       name = db_get_class_name (cl->op);
       if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
