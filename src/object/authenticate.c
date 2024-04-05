@@ -1594,7 +1594,7 @@ exit:
 }
 
 /*
- * au_delete_auth_of_dropping_table - delete _db_auth records refers to the given grantee user.
+ * au_delete_auth_of_dropping_user - delete _db_auth records refers to the given grantee user.
  *   return: error code
  *   user(in): the grantee user name to be dropped
  */
