@@ -14354,9 +14354,6 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 	    {
 	      *continue_walk = PT_STOP_WALK;
 	    }
-	  ((XASL_NODE *) (stmt->info.query.xasl))->sub_xasl_id = stmt->xasl_id;
-	  ((XASL_NODE *) (stmt->info.query.xasl))->sub_host_var_count = stmt->sub_host_var_count;
-	  ((XASL_NODE *) (stmt->info.query.xasl))->sub_host_var_index = stmt->sub_host_var_index;
 	}
     }
 
