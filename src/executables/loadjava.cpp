@@ -77,7 +77,7 @@ parse_argument (int argc, char *argv[])
   while (1)
     {
       int option_index = 0;
-      int option_key = getopt_long (argc, argv, "y:jh", loadjava_option, &option_index);
+      int option_key = getopt_long (argc, argv, "yjh", loadjava_option, &option_index);
       if (option_key == -1)
 	{
 	  break;
