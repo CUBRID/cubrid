@@ -2962,6 +2962,7 @@ struct pt_query_info
     unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
+    unsigned cte_query_cached:1;	/* for CTE result-cached */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */

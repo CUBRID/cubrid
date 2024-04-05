@@ -14376,6 +14376,8 @@ do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *con
 	{
 	  *continue_walk = PT_STOP_WALK;
 	}
+
+      stmt->info.query.flag.cte_query_cached = 1;
     }
 
   return stmt;
