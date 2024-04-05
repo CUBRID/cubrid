@@ -171,7 +171,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_NUMERIC:
       if (precision == DB_DEFAULT_PRECISION)
 	{
-	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  value->domain.numeric_info.precision = DB_MAX_NUMERIC_PRECISION;
 	}
       else
 	{
