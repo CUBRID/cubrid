@@ -85,7 +85,8 @@ static int values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * value
 static int set_prepare_info_into_list (DB_PREPARE_INFO * prepare_info, PT_NODE * statement);
 static PT_NODE *char_array_to_name_list (PARSER_CONTEXT * parser, char **names, int length);
 static int do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement);
-static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, DB_PREPARE_CTE_INFO * cte_info);
+static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *cte_num_query,
+					   DB_PREPARE_CTE_INFO ** cte_info);
 static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list);
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
@@ -612,8 +613,9 @@ db_compile_statement_local (DB_SESSION * session)
     {
       /* we don't actually have the statement which will be executed and we need to get some information about it from
        * the server */
-      DB_PREPARE_CTE_INFO cte_info;
-      int i, err = do_get_prepared_statement_info (session, stmt_ndx, &cte_info);
+      DB_PREPARE_CTE_INFO *cte_info;
+      int i, cte_num_query;
+      int err = do_get_prepared_statement_info (session, stmt_ndx, &cte_num_query, &cte_info);
 
       QUERY_ID query_id;
       QFILE_LIST_ID *list_id;
@@ -623,25 +625,25 @@ db_compile_statement_local (DB_SESSION * session)
 	  return err;
 	}
 
-      for (i = 0; i < cte_info.cte_num_query; i++)
+      for (i = 0; i < cte_num_query; i++)
 	{
 	  int k;
-	  DB_VALUE *host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * cte_info.cte_host_var_count[i]);
+	  DB_VALUE *host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * cte_info[i].cte_host_var_count);
 
 	  if (host_variables == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (DB_VALUE) * cte_info.cte_host_var_count[i]);
+		      sizeof (DB_VALUE) * cte_info[i].cte_host_var_count);
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
-	  for (k = 0; k < cte_info.cte_host_var_count[i]; k++)
+	  for (k = 0; k < cte_info[i].cte_host_var_count; k++)
 	    {
-	      pr_clone_value (&parser->host_variables[cte_info.cte_host_var_index[i][k]], &host_variables[k]);
+	      pr_clone_value (&parser->host_variables[cte_info[i].cte_host_var_index[k]], &host_variables[k]);
 	    }
 
 	  err =
-	    execute_query (&cte_info.cte_xasl_id[i], &query_id, cte_info.cte_host_var_count[i], host_variables,
+	    execute_query (&cte_info[i].cte_xasl_id, &query_id, cte_info[i].cte_host_var_count, host_variables,
 			   &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
 
 	  free (host_variables);
@@ -2335,86 +2337,74 @@ char_array_to_name_list (PARSER_CONTEXT * parser, char **names, int length)
 }
 
 static PT_NODE *
-do_process_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+do_process_prepare_cte_query_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
-  int i, k, num_cte = 0;
+  int i, k;
   DB_PREPARE_INFO *prepare_info;
-
-  *continue_walk = PT_CONTINUE_WALK;
 
   if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
     {
       return stmt;
     }
 
+  *continue_walk = PT_CONTINUE_WALK;
+
   prepare_info = (DB_PREPARE_INFO *) arg;
+
   if (stmt->info.query.with)
     {
       PT_NODE *cte_def_list;
       PT_NODE *cte_query;
-      PT_NODE *cte_list = stmt->info.query.with->info.with_clause.cte_definition_list;
 
-      prepare_info->cte_info.cte_num_query = 0;
-      for (cte_def_list = cte_list; cte_def_list; cte_def_list = cte_def_list->next)
+      cte_def_list = stmt->info.query.with->info.with_clause.cte_definition_list;
+      while (cte_def_list)
 	{
-	  cte_query = cte_def_list->info.cte.non_recursive_part;
-	  if (cte_query && cte_query->xasl_id)
-	    {
-	      num_cte++;
-	    }
-	}
-
-      if (num_cte > 0)
-	{
-	  prepare_info->cte_info.cte_num_query = num_cte;
-	  prepare_info->cte_info.cte_xasl_id = (XASL_ID *) malloc (sizeof (XASL_ID) * num_cte);
-	  if (prepare_info->cte_info.cte_xasl_id == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_ID) * num_cte);
-	      goto err_exit;
-	    }
-	  prepare_info->cte_info.cte_host_var_count = (int *) malloc (sizeof (int) * num_cte);
-	  if (prepare_info->cte_info.cte_host_var_count == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * num_cte);
-	      goto err_exit;
-	    }
-	  prepare_info->cte_info.cte_host_var_index = (int **) malloc (sizeof (int *) * num_cte);
-	  if (prepare_info->cte_info.cte_host_var_index == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int *) * num_cte);
-	      goto err_exit;
-	    }
-
-	  /* init cte_host_var_index array */
-	  for (i = 0; i < num_cte; i++)
-	    {
-	      prepare_info->cte_info.cte_host_var_index[i] = NULL;
-	    }
-
-	  for (cte_def_list = cte_list; cte_def_list; cte_def_list = cte_def_list->next)
+	  if (cte_def_list->info.cte.non_recursive_part->info.query.hint & PT_HINT_QUERY_CACHE)
 	    {
 	      cte_query = cte_def_list->info.cte.non_recursive_part;
-	      if (cte_query && cte_query->xasl_id)
+
+	      if (prepare_info->cte_info == NULL)
 		{
-		  XASL_ID_COPY (&prepare_info->cte_info.cte_xasl_id[i], cte_query->xasl_id);
-		  prepare_info->cte_info.cte_host_var_count[i] = cte_query->cte_host_var_count;
-		  prepare_info->cte_info.cte_host_var_index[i] =
-		    (int *) malloc (sizeof (int) * cte_query->cte_host_var_count);
-		  if (prepare_info->cte_info.cte_host_var_index[i] == NULL)
+		  prepare_info->cte_info = (DB_PREPARE_CTE_INFO *) malloc (sizeof (DB_PREPARE_CTE_INFO) * 4);
+		  if (prepare_info->cte_info == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      sizeof (int) * cte_query->cte_host_var_count);
+			      sizeof (DB_PREPARE_CTE_INFO) * 4);
 		      goto err_exit;
 		    }
-		  for (k = 0; k < cte_query->cte_host_var_count; k++)
+		}
+	      else if (prepare_info->cte_num_query % 4 == 0)	/* need to realloc cte info every 4 */
+		{
+		  prepare_info->cte_info =
+		    (DB_PREPARE_CTE_INFO *) realloc (prepare_info->cte_info, sizeof (DB_PREPARE_CTE_INFO) * 4);
+		  if (prepare_info->cte_info == NULL)
 		    {
-		      prepare_info->cte_info.cte_host_var_index[i][k] = cte_query->cte_host_var_index[k];
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      sizeof (DB_PREPARE_CTE_INFO) * 4);
+		      goto err_exit;
 		    }
 		}
 
-	      i++;
+	      i = prepare_info->cte_num_query++;
+
+	      XASL_ID_COPY (&prepare_info->cte_info[i].cte_xasl_id, cte_query->xasl_id);
+	      prepare_info->cte_info[i].cte_host_var_count = cte_query->cte_host_var_count;
+	      prepare_info->cte_info[i].cte_host_var_index =
+		(int *) malloc (sizeof (int) * cte_query->cte_host_var_count);
+	      if (prepare_info->cte_info[i].cte_host_var_index == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  sizeof (int) * cte_query->cte_host_var_count);
+		  goto err_exit;
+		}
+
+	      for (k = 0; k < cte_query->cte_host_var_count; k++)
+		{
+		  prepare_info->cte_info[i].cte_host_var_index[k] = cte_query->cte_host_var_index[k];
+		}
 	    }
+
+	  cte_def_list = cte_def_list->next;
 	}
     }
 
@@ -2423,24 +2413,13 @@ do_process_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, 
 err_exit:
   *continue_walk = PT_STOP_WALK;
 
-  if (prepare_info->cte_info.cte_xasl_id != NULL)
+  if (prepare_info->cte_info != NULL)
     {
-      free (prepare_info->cte_info.cte_xasl_id);
-    }
-  if (prepare_info->cte_info.cte_host_var_count != NULL)
-    {
-      free (prepare_info->cte_info.cte_host_var_count);
-    }
-  if (prepare_info->cte_info.cte_host_var_index != NULL)
-    {
-      for (i = 0; i < num_cte; i++)
+      if (prepare_info->cte_info[i].cte_host_var_index != NULL)
 	{
-	  if (prepare_info->cte_info.cte_host_var_index[i] != NULL)
-	    {
-	      free (prepare_info->cte_info.cte_host_var_index[i]);
-	    }
+	  free (prepare_info->cte_info[i].cte_host_var_index);
 	}
-      free (prepare_info->cte_info.cte_host_var_index);
+      free (prepare_info->cte_info);
     }
 
   return stmt;
@@ -2536,14 +2515,15 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
       prepare_info.oids_included = prepared_stmt->info.query.oids_included;
     }
 
-  parser_walk_tree (prepared_session->parser, prepared_stmt, do_process_prepare_cte_pre, &prepare_info, NULL, NULL);
-  if ((err = er_errid ()) != NO_ERROR)
+  err = set_prepare_info_into_list (&prepare_info, prepared_stmt);
+  if (err != NO_ERROR)
     {
       goto cleanup;
     }
 
-  err = set_prepare_info_into_list (&prepare_info, prepared_stmt);
-  if (err != NO_ERROR)
+  parser_walk_tree (prepared_session->parser, prepared_stmt, do_process_prepare_cte_query_pre, &prepare_info, NULL,
+		    NULL);
+  if ((err = er_errid ()) != NO_ERROR)
     {
       goto cleanup;
     }
@@ -2596,7 +2576,7 @@ cleanup:
  * stmt_idx (in) : statement index
  */
 static int
-do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, DB_PREPARE_CTE_INFO * cte_info)
+do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *cte_num_query, DB_PREPARE_CTE_INFO ** cte_info)
 {
   const char *name = NULL;
   char *stmt_info = NULL;
@@ -2620,6 +2600,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, DB_PREPARE_C
     }
 
   db_unpack_prepare_info (&prepare_info, stmt_info);
+  *cte_num_query = prepare_info.cte_num_query;
   *cte_info = prepare_info.cte_info;
 
   statement->info.execute.column_count = 0;

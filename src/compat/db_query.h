@@ -142,10 +142,9 @@ extern "C"
 
   struct db_prepare_cte_info
   {
-    int cte_num_query;
-    XASL_ID *cte_xasl_id;
-    int *cte_host_var_count;
-    int **cte_host_var_index;
+    XASL_ID cte_xasl_id;
+    int cte_host_var_count;
+    int *cte_host_var_index;
   };
 
   typedef struct db_prepare_info DB_PREPARE_INFO;
@@ -156,13 +155,15 @@ extern "C"
     DB_QUERY_TYPE *columns;	/* columns */
     CUBRID_STMT_TYPE stmt_type;	/* statement type */
     DB_VALUE_ARRAY host_variables;	/* statement host variables */
-    DB_PREPARE_CTE_INFO cte_info;	/* for CTE result-cache */
     TP_DOMAIN **host_var_expected_domains;
     int auto_param_count;	/* number of auto parametrized values */
     int recompile;		/* statement should be recompiled */
     int oids_included;
     char **into_list;		/* names of the "into" variables */
     int into_count;		/* count of elements from the into array */
+
+    int cte_num_query;		/* the number of CTE queries */
+    DB_PREPARE_CTE_INFO *cte_info;	/* CTE info for result-cache */
   };
 
   extern SM_DOMAIN *db_query_format_src_domain (DB_QUERY_TYPE * query_type);

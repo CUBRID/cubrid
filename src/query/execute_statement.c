@@ -14343,7 +14343,7 @@ do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *con
       return stmt;
     }
 
-  if (stmt->info.query.with && pt_is_allowed_result_cache ())
+  if (stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
       int err;
 
@@ -14367,13 +14367,11 @@ do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *con
       return stmt;
     }
 
-  if (stmt->info.query.with && pt_is_allowed_result_cache ())
+  if (stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
       int err;
 
-      PT_NODE *cte_list = stmt->info.query.with->info.with_clause.cte_definition_list;
-
-      err = do_prepare_cte (parser, cte_list);
+      err = do_prepare_cte (parser, stmt);
       if (err != NO_ERROR)
 	{
 	  *continue_walk = PT_STOP_WALK;
@@ -14608,62 +14606,43 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
  * do_prepare_cte () - prepare CTE statements in WITH clause for query cache
  * return : Error code
  * parser (in)	  : parser context
- * statement (in) : statement to prepare
+ * stmt (in) : statement to prepare
  */
 int
-do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   int error = NO_ERROR;
-  PT_NODE *cte_statement;
-  PT_NODE *cte_def_list;
   PARSER_CONTEXT cte_context;
   int var_count;
 
-  for (cte_def_list = statement; cte_def_list; cte_def_list = cte_def_list->next)
+  cte_context = *parser;
+  cte_context.dbval_cnt = 0;
+  cte_context.host_var_count = cte_context.auto_param_count = 0;
+
+  var_count = parser->host_var_count + parser->auto_param_count;
+
+  cte_context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
+  if (cte_context.host_variables == NULL)
     {
-      if (cte_def_list->info.cte.non_recursive_part->xasl_id)
-	{
-	  continue;
-	}
-
-      if (cte_def_list->info.cte.non_recursive_part->info.query.hint & PT_HINT_QUERY_CACHE)
-	{
-	  cte_statement = cte_def_list->info.cte.non_recursive_part;
-
-	  cte_context = *parser;
-	  cte_context.dbval_cnt = 0;
-	  cte_context.host_var_count = cte_context.auto_param_count = 0;
-
-	  var_count = parser->host_var_count + parser->auto_param_count;
-
-	  cte_context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
-	  if (cte_context.host_variables == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  cte_context.cte_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
-	  if (cte_context.cte_host_var_index == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  cte_context.host_var_count = 0;
-
-	  parser_walk_tree (&cte_context, cte_statement, pt_cte_host_vars_index, parser, NULL, NULL);
-
-	  cte_statement->cte_host_var_count = cte_context.host_var_count;
-	  cte_statement->cte_host_var_index = cte_context.cte_host_var_index;
-
-	  error = do_prepare_select (&cte_context, cte_statement);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
+  cte_context.cte_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+  if (cte_context.cte_host_var_index == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  cte_context.host_var_count = 0;
+
+  parser_walk_tree (&cte_context, stmt, pt_cte_host_vars_index, parser, NULL, NULL);
+
+  stmt->cte_host_var_count = cte_context.host_var_count;
+  stmt->cte_host_var_index = cte_context.cte_host_var_index;
+
+  error = do_prepare_select (&cte_context, stmt);
 
   return error;
 }
@@ -14672,57 +14651,38 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
  * do_execute_cte () - execute CTE statements in WITH clause for query cache
  * return : Error code
  * parser (in)	  : parser context
- * statement (in) : statement to execute
+ * stmt (in) : statement to execute
  * query_flag     : query flag for execution
  */
 int
-do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
+do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * stmt, int query_flag)
 {
-  PT_NODE *stmt;
-  PT_NODE *cte_list;
   QUERY_ID query_id;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables;
   CACHE_TIME clt_cache_time;
   int err, i, flag = query_flag & ~EXECUTE_QUERY_WITH_COMMIT;
 
-  assert (statement && statement->info.query.with);
-
-  cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
-
   CACHE_TIME_RESET (&clt_cache_time);
 
-  while (cte_list)
+  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
+  if (host_variables == NULL)
     {
-      stmt = cte_list->info.cte.non_recursive_part;
-      if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
-	{
-	  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
-	  if (host_variables == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (DB_VALUE) * stmt->cte_host_var_count);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  for (i = 0; i < stmt->cte_host_var_count; i++)
-	    {
-	      pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
-	    }
-
-	  err =
-	    execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
-			   flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
-
-	  free (host_variables);
-
-	  if (err != NO_ERROR)
-	    {
-	      return err;
-	    }
-	}
-      cte_list = cte_list->next;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (DB_VALUE) * stmt->cte_host_var_count);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
+  for (i = 0; i < stmt->cte_host_var_count; i++)
+    {
+      pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
+    }
+
+  err =
+    execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
+		   flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
+
+  free (host_variables);
 
   return NO_ERROR;
 }

@@ -421,7 +421,10 @@ db_init_prepare_info (DB_PREPARE_INFO * info)
   info->oids_included = 0;
   info->into_list = NULL;
   info->into_count = 0;
-  memset ((void *) &info->cte_info, 0, sizeof (DB_PREPARE_CTE_INFO));
+
+  /* for CTE result-cache */
+  info->cte_num_query = 0;
+  info->cte_info = NULL;
 }
 
 /*
@@ -481,16 +484,16 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 
   /* cte_num_query */
   packed_size += OR_INT_SIZE;
-  if (info->cte_info.cte_num_query > 0)
+  if (info->cte_num_query > 0)
     {
       /* cte_xasl_id */
-      packed_size += OR_XASL_ID_SIZE * info->cte_info.cte_num_query;
+      packed_size += OR_XASL_ID_SIZE * info->cte_num_query;
       /* cte_host_var_count */
-      packed_size += OR_INT_SIZE * info->cte_info.cte_num_query;
-      for (i = 0; i < info->cte_info.cte_num_query; i++)
+      packed_size += OR_INT_SIZE * info->cte_num_query;
+      for (i = 0; i < info->cte_num_query; i++)
 	{
 	  /* cte_host_var_index */
-	  packed_size += OR_INT_SIZE * info->cte_info.cte_host_var_count[i];
+	  packed_size += OR_INT_SIZE * info->cte_info[i].cte_host_var_count;
 	}
     }
 
@@ -521,19 +524,6 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
     {
       ptr = or_pack_string (ptr, info->into_list[i]);
     }
-  /* cte */
-  ptr = or_pack_int (ptr, info->cte_info.cte_num_query);
-  for (i = 0; i < info->cte_info.cte_num_query; i++)
-    {
-      int k;
-
-      OR_PACK_XASL_ID (ptr, &info->cte_info.cte_xasl_id[i]);
-      ptr = or_pack_int (ptr, info->cte_info.cte_host_var_count[i]);
-      for (k = 0; k < info->cte_info.cte_host_var_count[i]; k++)
-	{
-	  ptr = or_pack_int (ptr, info->cte_info.cte_host_var_index[i][k]);
-	}
-    }
   /* parameters */
   if (info->host_variables.size == 0)
     {
@@ -553,6 +543,20 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 	}
     }
 
+  /* cte */
+  ptr = or_pack_int (ptr, info->cte_num_query);
+  for (i = 0; i < info->cte_num_query; i++)
+    {
+      int k;
+
+      OR_PACK_XASL_ID (ptr, &(info->cte_info[i].cte_xasl_id));
+      ptr = or_pack_int (ptr, info->cte_info[i].cte_host_var_count);
+      for (k = 0; k < info->cte_info[i].cte_host_var_count; k++)
+	{
+	  ptr = or_pack_int (ptr, info->cte_info[i].cte_host_var_index[k]);
+	}
+    }
+
   return packed_size;
 }
 
@@ -565,7 +569,7 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 int
 db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 {
-  int i, k, cte_num;
+  int i, k, q, cte_num;
   char *ptr = NULL;
 
   assert (info != NULL);
@@ -596,50 +600,6 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
       for (i = 0; i < info->into_count; i++)
 	{
 	  ptr = or_unpack_string_alloc (ptr, &info->into_list[i]);
-	}
-    }
-  /* cte */
-  ptr = or_unpack_int (ptr, &info->cte_info.cte_num_query);
-  cte_num = info->cte_info.cte_num_query;
-
-  if (cte_num > 0)
-    {
-      info->cte_info.cte_xasl_id = (XASL_ID *) malloc (cte_num * sizeof (XASL_ID));
-      if (info->cte_info.cte_xasl_id == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cte_num * sizeof (XASL_ID));
-	  goto error;
-	}
-      info->cte_info.cte_host_var_count = (int *) malloc (cte_num * sizeof (int));
-      if (info->cte_info.cte_host_var_count == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cte_num * sizeof (int));
-	  goto error;
-	}
-      info->cte_info.cte_host_var_index = (int **) malloc (cte_num * sizeof (int *));
-      if (info->cte_info.cte_host_var_index == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cte_num * sizeof (int *));
-	  goto error;
-	}
-      for (i = 0; i < cte_num; i++)
-	{
-	  info->cte_info.cte_host_var_index[i] = NULL;
-	}
-      for (i = 0; i < cte_num; i++)
-	{
-	  OR_UNPACK_XASL_ID (ptr, &info->cte_info.cte_xasl_id[i]);
-	  ptr = or_unpack_int (ptr, &info->cte_info.cte_host_var_count[i]);
-	  info->cte_info.cte_host_var_index[i] = (int *) malloc (info->cte_info.cte_host_var_count[i] * sizeof (int));
-	  if (info->cte_info.cte_host_var_index[i] == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cte_num * sizeof (int));
-	      goto error;
-	    }
-	  for (k = 0; k < info->cte_info.cte_host_var_count[i]; k++)
-	    {
-	      ptr = or_unpack_int (ptr, &info->cte_info.cte_host_var_index[i][k]);
-	    }
 	}
     }
   /* unpack parameters */
@@ -673,6 +633,38 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 	  ptr = or_unpack_domain (ptr, &info->host_var_expected_domains[i], NULL);
 	}
     }
+
+  /* cte */
+  ptr = or_unpack_int (ptr, &info->cte_num_query);
+  cte_num = info->cte_num_query;
+
+  if (cte_num > 0)
+    {
+      info->cte_info = (DB_PREPARE_CTE_INFO *) malloc (cte_num * sizeof (DB_PREPARE_CTE_INFO));
+      if (info->cte_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  cte_num * sizeof (DB_PREPARE_CTE_INFO));
+	  goto error;
+	}
+      for (q = 0; q < cte_num; q++)
+	{
+	  OR_UNPACK_XASL_ID (ptr, &info->cte_info[q].cte_xasl_id);
+	  ptr = or_unpack_int (ptr, &info->cte_info[q].cte_host_var_count);
+	  info->cte_info[q].cte_host_var_index = (int *) malloc (info->cte_info[q].cte_host_var_count * sizeof (int));
+	  if (info->cte_info[q].cte_host_var_index == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      info->cte_info[q].cte_host_var_count * sizeof (int));
+	      goto error;
+	    }
+	  for (i = 0; i < info->cte_info[q].cte_host_var_count; i++)
+	    {
+	      ptr = or_unpack_int (ptr, &info->cte_info[q].cte_host_var_index[i]);
+	    }
+	}
+    }
+
   return NO_ERROR;
 
 error:
@@ -711,27 +703,6 @@ error:
 	}
     }
 
-  /* cte */
-  if (info->cte_info.cte_xasl_id != NULL)
-    {
-      free_and_init (info->cte_info.cte_xasl_id);
-    }
-  if (info->cte_info.cte_host_var_count != NULL)
-    {
-      free_and_init (info->cte_info.cte_host_var_count);
-    }
-  if (info->cte_info.cte_host_var_index != NULL)
-    {
-      for (i = 0; i < cte_num; i++)
-	{
-	  if (info->cte_info.cte_host_var_index[i] != NULL)
-	    {
-	      free_and_init (info->cte_info.cte_host_var_index[i]);
-	    }
-	}
-      free_and_init (info->cte_info.cte_host_var_index);
-    }
-
   if (info->host_variables.vals != NULL)
     {
       db_value_clear_array (&info->host_variables);
@@ -752,6 +723,20 @@ error:
 	}
       free_and_init (info->into_list);
     }
+
+  /* cte */
+  if (info->cte_info != NULL)
+    {
+      for (i = 0; i < q; i++)
+	{
+	  if (info->cte_info[i].cte_host_var_index != NULL)
+	    {
+	      free_and_init (info->cte_info[i].cte_host_var_index);
+	    }
+	}
+      free_and_init (info->cte_info);
+    }
+
   return ER_FAILED;
 }
 
