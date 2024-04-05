@@ -143,11 +143,6 @@ static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * syn
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
-static int do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
-static int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
-static PT_NODE *do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
-static PT_NODE *do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
-
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
 
@@ -3491,6 +3486,9 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
 
   init_compile_context (parser);
+
+  /* All CTE and sub-queries included in the query must be prepared first. */
+  parser_walk_tree (parser, statement, do_prepare_subquery_pre, NULL, NULL, NULL);
 
   switch (statement->node_type)
     {
@@ -14318,36 +14316,77 @@ pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   return node;
 }
 
-static PT_NODE *
-do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+static bool
+pt_is_allowed_result_cache ()
 {
-  int err, *res = (int *) arg;
+  int is_list_cache_disabled =
+    ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
+     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
+
+  if (is_list_cache_disabled)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+PT_NODE *
+do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  int query_flag = *(int *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (stmt->node_type != PT_SELECT)
+  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
     {
       return stmt;
     }
 
-  if (stmt->info.query.with)
+  if (stmt->info.query.hint & PT_HINT_QUERY_CACHE)
     {
-      PT_NODE *cte_list = stmt->info.query.with->info.with_clause.cte_definition_list;
+      if (stmt->info.query.flag.subquery_cached)
+	{
+	  int err;
 
-      err = do_prepare_cte (parser, cte_list);
+	  err = do_execute_subquery (parser, stmt, query_flag);
+	  if (err != NO_ERROR)
+	    {
+	      *continue_walk = PT_STOP_WALK;
+	    }
+	  ((XASL_NODE *) (stmt->info.query.xasl))->sub_xasl_id = stmt->xasl_id;
+	  ((XASL_NODE *) (stmt->info.query.xasl))->sub_host_var_count = stmt->sub_host_var_count;
+	  ((XASL_NODE *) (stmt->info.query.xasl))->sub_host_var_index = stmt->sub_host_var_index;
+	}
     }
-  else if ((stmt->info.query.hint & PT_HINT_QUERY_CACHE) && stmt->info.query.is_subquery == PT_IS_SUBQUERY
-	   && stmt->info.query.correlation_level == 0)
-    {
-      err = do_prepare_subquery (parser, stmt);
-    }
-  else
+
+  return stmt;
+}
+
+PT_NODE *
+do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
     {
       return stmt;
     }
 
-  *res = err;
-  *continue_walk = PT_STOP_WALK;
+  if (stmt->info.query.hint & PT_HINT_QUERY_CACHE)
+    {
+      if ((stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY || stmt->info.query.is_subquery == PT_IS_SUBQUERY)
+	  && stmt->info.query.correlation_level == 0)
+	{
+	  int err;
+
+	  err = do_prepare_subquery (parser, stmt);
+	  if (err != NO_ERROR)
+	    {
+	      *continue_walk = PT_STOP_WALK;
+	    }
+	}
+    }
 
   return stmt;
 }
@@ -14545,12 +14584,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
    * do_execute_select() */
   statement->xasl_id = stream.xasl_id;
 
-  /* All CTE and result-cached subqueries included in the query must be prepared first for not cached yet. */
-  if (err == NO_ERROR && pt_is_allowed_result_cache () && !statement->info.query.flag.subquery_cached)
-    {
-      parser_walk_tree (parser, statement, do_prepare_subquery_pre, (void *) &err, NULL, NULL);
-    }
-
   return err;
 }				/* do_prepare_select() */
 
@@ -14580,213 +14613,91 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   return NO_ERROR;
 }
 
+/*
+ * do_prepare_subquery () - prepare subquery statements for query cache
+ * return : Error code
+ * parser (in)	  : parser context
+ * stmt (in) : statement to prepare
+ */
 int
-do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * sub_statement)
+do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   int error = NO_ERROR;
-  PARSER_CONTEXT sub_context;
+  PARSER_CONTEXT context;
   int var_count;
-  XASL_NODE *xasl = (XASL_NODE *) sub_statement->info.query.xasl;
 
-  sub_context = *parser;
-  sub_context.dbval_cnt = 0;
-  sub_context.host_var_count = sub_context.auto_param_count = 0;
-
-  sub_statement->info.query.flag.subquery_cached = 1;
+  context = *parser;
+  context.dbval_cnt = 0;
+  context.host_var_count = context.auto_param_count = 0;
 
   var_count = parser->host_var_count + parser->auto_param_count;
 
-  sub_context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
-  if (sub_context.host_variables == NULL)
+  stmt->info.query.flag.subquery_cached = 1;
+
+  context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
+  if (context.host_variables == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  sub_context.sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
-  if (sub_context.sub_host_var_index == NULL)
+  context.sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+  if (context.sub_host_var_index == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  sub_context.host_var_count = 0;
+  context.host_var_count = 0;
 
-  parser_walk_tree (&sub_context, sub_statement, pt_sub_host_vars_index, parser, NULL, NULL);
+  parser_walk_tree (&context, stmt, pt_sub_host_vars_index, parser, NULL, NULL);
 
-  sub_statement->sub_host_var_count = sub_context.host_var_count;
-  sub_statement->sub_host_var_index = sub_context.sub_host_var_index;
+  stmt->sub_host_var_count = context.host_var_count;
+  stmt->sub_host_var_index = context.sub_host_var_index;
 
-  error = do_prepare_select (&sub_context, sub_statement);
-
-  if (xasl)
-    {
-      xasl->sub_host_var_count = sub_context.host_var_count;
-      xasl->sub_host_var_index = sub_context.sub_host_var_index;
-      xasl->sub_xasl_id = sub_statement->xasl_id;
-
-      sub_statement->info.query.xasl = xasl;
-    }
+  error = do_prepare_select (&context, stmt);
 
   return error;
 }
 
 /*
- * do_prepare_cte () - prepare CTE statements in WITH clause for query cache
+ * do_execute_subquery () - execute subquery statements for subquery cache
  * return : Error code
  * parser (in)	  : parser context
- * statement (in) : statement to prepare
- */
-static int
-do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  int error = NO_ERROR;
-  PT_NODE *cte_statement;
-  PT_NODE *cte_def_list;
-  PARSER_CONTEXT cte_context;
-  int var_count;
-
-  for (cte_def_list = statement; cte_def_list; cte_def_list = cte_def_list->next)
-    {
-      if (cte_def_list->info.cte.non_recursive_part->info.query.hint & PT_HINT_QUERY_CACHE)
-	{
-	  cte_statement = cte_def_list->info.cte.non_recursive_part;
-
-	  cte_context = *parser;
-	  cte_context.dbval_cnt = 0;
-	  cte_context.host_var_count = cte_context.auto_param_count = 0;
-
-	  var_count = parser->host_var_count + parser->auto_param_count;
-
-	  cte_context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
-	  if (cte_context.host_variables == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  cte_context.sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
-	  if (cte_context.sub_host_var_index == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  cte_context.host_var_count = 0;
-
-	  parser_walk_tree (&cte_context, cte_statement, pt_sub_host_vars_index, parser, NULL, NULL);
-
-	  cte_statement->sub_host_var_count = cte_context.host_var_count;
-	  cte_statement->sub_host_var_index = cte_context.sub_host_var_index;
-
-	  error = do_prepare_select (&cte_context, cte_statement);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
-    }
-
-  return error;
-}
-
-/*
- * do_execute_subquery () - execute CTE statements in WITH clause for query cache
- * return : Error code
- * parser (in)	  : parser context
- * statement (in) : statement to execute
+ * stmt (in) : statement to execute
  * query_flag     : query flag for execution
  */
-static int
-do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
+int
+do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int query_flag)
 {
-  PT_NODE *stmt;
   QUERY_ID query_id;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables;
   CACHE_TIME clt_cache_time;
-  int err = NO_ERROR, i, flag = RESULT_CACHE_REQUIRED;
+  int err, i, flag = query_flag & ~EXECUTE_QUERY_WITH_COMMIT;
 
   CACHE_TIME_RESET (&clt_cache_time);
 
-  stmt = statement;
-  if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
+  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->sub_host_var_count);
+  if (host_variables == NULL)
     {
-      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->sub_host_var_count);
-      if (host_variables == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  sizeof (DB_VALUE) * stmt->sub_host_var_count);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      for (i = 0; i < stmt->sub_host_var_count; i++)
-	{
-	  pr_clone_value (&parser->host_variables[stmt->sub_host_var_index[i]], &host_variables[i]);
-	}
-
-      err =
-	execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id,
-		       flag, &clt_cache_time, &stmt->cache_time);
-
-      free (host_variables);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (DB_VALUE) * stmt->sub_host_var_count);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  return err;
-}
-
-/*
- * do_execute_cte () - execute CTE statements in WITH clause for query cache
- * return : Error code
- * parser (in)	  : parser context
- * statement (in) : statement to execute
- * query_flag     : query flag for execution
- */
-static int
-do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  PT_NODE *stmt;
-  PT_NODE *cte_list;
-  QUERY_ID query_id;
-  QFILE_LIST_ID *list_id;
-  DB_VALUE *host_variables;
-  CACHE_TIME clt_cache_time;
-  int err = NO_ERROR, i, flag = RESULT_CACHE_REQUIRED;
-
-  assert (statement && statement->info.query.with);
-
-  cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
-
-  CACHE_TIME_RESET (&clt_cache_time);
-
-  while (cte_list && err == NO_ERROR)
+  for (i = 0; i < stmt->sub_host_var_count; i++)
     {
-      stmt = cte_list->info.cte.non_recursive_part;
-      if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
-	{
-	  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->sub_host_var_count);
-	  if (host_variables == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (DB_VALUE) * stmt->sub_host_var_count);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  for (i = 0; i < stmt->sub_host_var_count; i++)
-	    {
-	      pr_clone_value (&parser->host_variables[stmt->sub_host_var_index[i]], &host_variables[i]);
-	    }
-
-	  err =
-	    execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id,
-			   flag, &clt_cache_time, &stmt->cache_time);
-
-	  free (host_variables);
-	}
-      cte_list = cte_list->next;
+      pr_clone_value (&parser->host_variables[stmt->sub_host_var_index[i]], &host_variables[i]);
     }
 
-  return err;
+  err =
+    execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id,
+		   flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
+
+  free (host_variables);
+
+  return NO_ERROR;
 }
 
 /*
@@ -14934,37 +14845,6 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   return err;
 }
 
-static PT_NODE *
-do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
-{
-  int err, *res = (int *) arg;
-
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (stmt->node_type != PT_SELECT)
-    {
-      return stmt;
-    }
-
-  if (stmt->info.query.with)
-    {
-      err = do_execute_cte (parser, stmt);
-    }
-  else if ((stmt->info.query.hint & PT_HINT_QUERY_CACHE) && stmt->xasl_id && stmt->info.query.flag.subquery_cached)
-    {
-      err = do_execute_subquery (parser, stmt);
-    }
-  else
-    {
-      return stmt;
-    }
-
-  *res = err;
-  *continue_walk = PT_STOP_WALK;
-
-  return stmt;
-}
-
 /*
  * do_execute_select() - Execute the prepared SELECT statement
  *   return: Error code
@@ -15078,17 +14958,6 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
-    }
-
-  /* All CTE and result-cached subqueries included in the query must be executed first. */
-  if (err == NO_ERROR && pt_is_allowed_result_cache ())
-    {
-      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &err, NULL, NULL);
-      if (err < NO_ERROR)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
     }
 
   /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the host

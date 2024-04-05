@@ -148,8 +148,13 @@ extern int do_scope (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement);
-extern int do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * sub_statement);
 extern int do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement);
+
+/* for subquery result-cache */
+extern int do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag);
+extern PT_NODE *do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
+extern PT_NODE *do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
 extern int do_update (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement);

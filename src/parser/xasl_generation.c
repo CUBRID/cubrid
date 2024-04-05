@@ -13536,7 +13536,8 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
       info->level--;
       xasl = (XASL_NODE *) node->info.query.xasl;
 
-      if (xasl && pt_is_subquery (node))
+      /* subquery or cached subquery */
+      if (xasl && (pt_is_subquery (node) || node->info.query.flag.subquery_cached))
 	{
 	  if (node->info.query.correlation_level == 0)
 	    {
@@ -13546,10 +13547,14 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 
 	  if (node->info.query.correlation_level == info->level)
 	    {
-	      /* to check result-cache for uncorrelated subquery (aptr_list) */
-	      if ((node->info.query.hint & PT_HINT_QUERY_CACHE) && pt_is_allowed_result_cache ())
+	      if (node->info.query.flag.subquery_cached)
 		{
-		  do_prepare_subquery (parser, node);
+		  /* save the subquery cache info */
+		  xasl->sub_xasl_id = node->xasl_id;
+		  xasl->sub_host_var_count = node->sub_host_var_count;
+		  xasl->sub_host_var_index = node->sub_host_var_index;
+
+		  node->info.query.xasl = xasl;
 		}
 
 	      /* order is important. we are on the way up, so putting things at the tail of the list will end up deeper
@@ -27187,19 +27192,4 @@ pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred)
     }
 
   return xasl;
-}
-
-bool
-pt_is_allowed_result_cache (void)
-{
-  int is_list_cache_disabled =
-    ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
-     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
-
-  if (is_list_cache_disabled)
-    {
-      return false;
-    }
-
-  return true;
 }
