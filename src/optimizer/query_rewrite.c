@@ -3325,7 +3325,7 @@ qo_reset_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query
       curr_loc = spec->info.spec.location;
       after_loc = curr_loc - 1;
 
-      if (curr_loc <= 0 || after_loc <= 0)
+      if (curr_loc <= 0 || after_loc < 0)
 	{
 	  spec = spec->next;
 	  continue;
