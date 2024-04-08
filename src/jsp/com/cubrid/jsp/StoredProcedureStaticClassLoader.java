@@ -39,30 +39,24 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.stream.Stream;
 
-public class StoredProcedureClassLoader extends URLClassLoader {
-    private static volatile StoredProcedureClassLoader instance = null;
-    private static volatile StoredProcedureStaticClassLoader parentInstance = null;
+public class StoredProcedureStaticClassLoader extends URLClassLoader {
+    private static volatile StoredProcedureStaticClassLoader instance = null;
 
-    private static final String ROOT_PATH = Server.getSpPath() + "/java/";
+    private static final String ROOT_PATH = Server.getSpPath() + "/java_static/";
     private static final Path root = Paths.get(ROOT_PATH);
 
-    private FileTime lastModified = null;
-
     /* For singleton */
-    public static synchronized StoredProcedureClassLoader getInstance() {
+    public static synchronized StoredProcedureStaticClassLoader getInstance() {
         if (instance == null) {
-            instance = new StoredProcedureClassLoader();
+            instance = new StoredProcedureStaticClassLoader();
         }
-        parentInstance = StoredProcedureStaticClassLoader.getInstance();
 
         return instance;
     }
 
-    private StoredProcedureClassLoader() {
+    private StoredProcedureStaticClassLoader() {
         super(new URL[0]);
         init();
     }
@@ -71,10 +65,13 @@ public class StoredProcedureClassLoader extends URLClassLoader {
         try {
             addURL(root.toUri().toURL());
             initJar();
-            lastModified = getLastModifiedTime(root);
         } catch (Exception e) {
             Server.log(e);
         }
+    }
+
+    public Class<?> loadClass(String name) throws ClassNotFoundException {
+        return super.loadClass(name);
     }
 
     private void initJar() throws IOException {
@@ -91,34 +88,5 @@ public class StoredProcedureClassLoader extends URLClassLoader {
         } catch (NoSuchFileException e) {
             // ignore
         }
-    }
-
-    public Class<?> loadClass(String name) throws ClassNotFoundException {
-        Class<?> found = null;
-        try {
-            if (isModified()) {
-                instance = new StoredProcedureClassLoader();
-                found = instance.loadClass(name);
-            } else {
-                found = super.loadClass(name);
-            }
-        } catch (Exception e) {
-        }
-
-        if (found == null) {
-            found = parentInstance.loadClass(name);
-        }
-
-        return found;
-    }
-
-    private boolean isModified() throws IOException {
-        return lastModified.compareTo(getLastModifiedTime(root)) != 0;
-    }
-
-    private FileTime getLastModifiedTime(Path path) throws IOException {
-        BasicFileAttributes attr = Files.readAttributes(path, BasicFileAttributes.class);
-        FileTime lastModifiedTime = attr.lastModifiedTime();
-        return lastModifiedTime;
     }
 }
