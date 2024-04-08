@@ -520,19 +520,11 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
   precision = DB_VALUE_PRECISION (db_string1);
   /* Determine the result type */
   result_type = DB_VALUE_DOMAIN_TYPE (db_string1);
-  if (QSTR_IS_CHAR (result_type))
-    {
-      result_type = DB_TYPE_VARCHAR;
-    }
-  else if (QSTR_IS_NATIONAL_CHAR (result_type))
-    {
-      result_type = DB_TYPE_VARNCHAR;
-    }
-  else if (QSTR_IS_BIT (result_type))
+  if (QSTR_IS_BIT (result_type))
     {
       result_type = DB_TYPE_VARBIT;
     }
-  else
+  else if (!QSTR_IS_CHAR (result_type) && !QSTR_IS_NATIONAL_CHAR (result_type))
     {
       db_make_null (db_result);
 #if defined(CUBRID_DEBUG)
