@@ -913,7 +913,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              如果类存在则进行重写, 默认 不\n
+  -y, --overwrite              如果类存在则进行重写, 默认 不\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 无法打开输出文件 '%1$s'\n
