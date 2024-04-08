@@ -16070,8 +16070,12 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
 	  if (ent == NULL || list_cache_entry_p == NULL || list_id == NULL)
 	    {
-	      qexec_failure_line (__LINE__, xasl_state);
-	      GOTO_EXIT_ON_ERROR;
+	      /* re-execute CTE without resut-cache */
+	      if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
+		{
+		  qexec_failure_line (__LINE__, xasl_state);
+		  GOTO_EXIT_ON_ERROR;
+		}
 	    }
 
 	  qfile_copy_list_id (non_recursive_part->list_id, list_id, false);

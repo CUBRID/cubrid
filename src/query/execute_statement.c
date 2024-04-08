@@ -3488,7 +3488,10 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   init_compile_context (parser);
 
   /* All CTE sub-queries included in the query must be prepared first. */
-  parser_walk_tree (parser, statement, do_prepare_cte_pre, NULL, NULL, NULL);
+  if (pt_is_allowed_result_cache)
+    {
+      parser_walk_tree (parser, statement, do_prepare_cte_pre, NULL, NULL, NULL);
+    }
 
   switch (statement->node_type)
     {
@@ -14316,21 +14319,6 @@ pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   return node;
 }
 
-static bool
-pt_is_allowed_result_cache ()
-{
-  int is_list_cache_disabled =
-    ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
-     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
-
-  if (is_list_cache_disabled)
-    {
-      return false;
-    }
-
-  return true;
-}
-
 PT_NODE *
 do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
@@ -14343,7 +14331,7 @@ do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *con
       return stmt;
     }
 
-  if (stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
+  if (stmt->info.query.flag.cte_query_cached)
     {
       int err;
 
@@ -14367,17 +14355,18 @@ do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *con
       return stmt;
     }
 
-  if (stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
+  if (stmt->info.query.hint & PT_HINT_QUERY_CACHE)
     {
-      int err;
-
-      err = do_prepare_cte (parser, stmt);
-      if (err != NO_ERROR)
+      if (stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
 	{
-	  *continue_walk = PT_STOP_WALK;
-	}
+	  int err;
 
-      stmt->info.query.flag.cte_query_cached = 1;
+	  err = do_prepare_cte (parser, stmt);
+	  if (err != NO_ERROR)
+	    {
+	      *continue_walk = PT_STOP_WALK;
+	    }
+	}
     }
 
   return stmt;
@@ -14623,6 +14612,7 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   var_count = parser->host_var_count + parser->auto_param_count;
 
+  stmt->info.query.flag.cte_query_cached = 1;
   cte_context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
   if (cte_context.host_variables == NULL)
     {
@@ -21482,4 +21472,19 @@ err:
     }
 
   return server_obj;
+}
+
+bool
+pt_is_allowed_result_cache ()
+{
+  int is_list_cache_disabled =
+    ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
+     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
+
+  if (is_list_cache_disabled)
+    {
+      return false;
+    }
+
+  return true;
 }

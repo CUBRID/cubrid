@@ -99,7 +99,6 @@ static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser, PT_NODE * st
 static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement);
-static PT_NODE *do_process_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -625,6 +624,7 @@ db_compile_statement_local (DB_SESSION * session)
 	  return err;
 	}
 
+      /* execute CTE queries first */
       for (i = 0; i < cte_num_query; i++)
 	{
 	  int k;
@@ -650,7 +650,16 @@ db_compile_statement_local (DB_SESSION * session)
 
 	  if (err != NO_ERROR)
 	    {
-	      return err;
+	      if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
+		{
+		  /* set the flag to recompile from it's main query */
+		  statement->info.execute.recompile = 1;
+		  er_clearid ();
+		}
+	      else
+		{
+		  return err;
+		}
 	    }
 	}
     }
@@ -1794,7 +1803,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
 
   /* All CTE sub-queries included in the query must be executed first. */
-  parser_walk_tree (parser, statement, do_execute_cte_pre, (void *) &statement->flag, NULL, NULL);
+  if (pt_is_allowed_result_cache)
+    {
+      parser_walk_tree (parser, statement, do_execute_cte_pre, (void *) &statement->flag, NULL, NULL);
+    }
 
   if (statement->node_type == PT_PREPARE_STATEMENT)
     {
@@ -2393,8 +2405,9 @@ err_exit:
 static PT_NODE *
 do_process_prepare_cte_query_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
-  int i, k;
   DB_PREPARE_INFO *prepare_info;
+
+  *continue_walk = PT_CONTINUE_WALK;
 
   if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
     {
