@@ -77,6 +77,7 @@
 #define USER_SUFFIX           "_user"
 #define VCLASS_SUFFIX         "_vclass"
 #define VCLASS_QUERY_SPEC_SUFFIX         "_vclass_query_spec"
+#define UK_SUFFIX            "_uk"
 
 
 #define EX_ERROR_CHECK(c,d,m)                                 \
@@ -215,6 +216,7 @@ static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, D
 static int emit_stored_procedure (extract_context & ctxt, print_output & output_ctx);
 static int emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
+static void emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 			    char *output_filename_p, const size_t filename_size);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *infix,
@@ -235,6 +237,7 @@ static int extract_vclass (extract_context & ctxt);
 static int extract_vclass_query_spec (extract_context & ctxt);
 static int extract_pk (extract_context & ctxt);
 static int extract_fk (extract_context & ctxt);
+static int extract_uk (extract_context & ctxt);
 static int extract_grant (extract_context & ctxt);
 static int get_classes (extract_context & ctxt, print_output & output_ctx);
 static void filter_user_classes (DB_OBJLIST ** class_list, const char *user_name);
@@ -2389,11 +2392,7 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
 
   if (unique_flag)
     {
-      if (split_schema_files)
-	{
-	  emit_unique_def (ctxt, output_ctx, class_, class_type);
-	}
-      else
+      if (split_schema_files == false)
 	{
 	  emit_primary_and_unique_def (ctxt, output_ctx, class_, class_type);
 	}
@@ -2401,7 +2400,10 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
 
   if (reverse_unique_flag)
     {
-      emit_reverse_unique_def (ctxt, output_ctx, class_);
+      if (split_schema_files == false)
+	{
+	  emit_reverse_unique_def (ctxt, output_ctx, class_);
+	}
     }
 
   return true;
@@ -5303,6 +5305,79 @@ extract_fk (extract_context & ctxt)
 }
 
 static int
+extract_uk (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, UK_SUFFIX, output_filename, sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME, UK_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (ctxt.classes == NULL)
+    {
+      err = get_classes (ctxt, output_ctx);
+      if (err != NO_ERROR)
+	{
+	  if (output_file != NULL)
+	    {
+	      fclose (output_file);
+	      output_file = NULL;
+	      remove (output_filename);
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  emit_unique_key (ctxt, output_ctx, ctxt.classes);
+  err = (er_errid () == NO_ERROR) ? NO_ERROR : ER_FAILED;
+
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      /* file is empty (database has no grant to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
 extract_grant (extract_context & ctxt)
 {
   FILE *output_file = NULL;
@@ -5437,6 +5512,79 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
   return err;
 }
 
+static void
+emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
+{
+  DB_OBJLIST *cl = NULL;
+  int is_vclass = 0;
+  int reverse_unique_flag = 0;
+  const char *class_type = "CLASS";
+  const char *name = NULL;
+  int is_partitioned = 0;
+  int unique_flag = 0;
+  DB_ATTRIBUTE *attribute_list = NULL;
+  DB_ATTRIBUTE *a = NULL;
+
+  for (cl = ctxt.classes; cl != NULL; cl = cl->next)
+    {
+      is_vclass = db_is_vclass (cl->op);
+      if (is_vclass > 0)
+	{
+	  /* VCLASS is skipped. */
+	  continue;
+	}
+
+      name = db_get_class_name (cl->op);
+      if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
+	{
+	  continue;
+	}
+
+      attribute_list = db_get_attributes (cl->op);
+
+      /* see if we have an index or unique defined on any attribute */
+      for (a = attribute_list; a != NULL; a = db_attribute_next (a))
+	{
+	  if (db_attribute_class (a) == cl->op)
+	    {
+	      if (db_attribute_is_unique (a))
+		{
+		  unique_flag = 1;
+		}
+	      else if (db_attribute_is_reverse_unique (a))
+		{
+		  reverse_unique_flag = 1;
+		}
+	    }
+
+	  if (unique_flag && reverse_unique_flag)
+	    {
+	      /* Since we already found all, no need to go further. */
+	      break;
+	    }
+	}
+
+      if (unique_flag)
+	{
+	  output_ctx ("\n");
+	  emit_unique_def (ctxt, output_ctx, cl->op, class_type);
+	}
+
+      if (reverse_unique_flag)
+	{
+	  emit_reverse_unique_def (ctxt, output_ctx, cl->op);
+	}
+
+      unique_flag = 0;
+      reverse_unique_flag = 0;
+    }
+
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
+    }
+}
+
 static int
 extract_split_schema_files (extract_context & ctxt)
 {
@@ -5493,6 +5641,11 @@ extract_split_schema_files (extract_context & ctxt)
     }
 
   if (extract_pk (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_uk (ctxt) != NO_ERROR)
     {
       err_count++;
     }
@@ -5618,7 +5771,7 @@ create_schema_info (extract_context & ctxt)
   const char *loading_order[] =
     { "_schema_user", "_schema_class", "_schema_vclass", "_schema_server", "_schema_synonym",
     "_schema_serial", "_schema_procedure",
-    "_schema_pk", "_schema_fk", "_schema_grant", "_schema_vclass_query_spec"
+    "_schema_pk", "_schema_fk", "_schema_uk", "_schema_grant", "_schema_vclass_query_spec"
   };
 
   const size_t len = sizeof (loading_order) / sizeof (loading_order[0]);
