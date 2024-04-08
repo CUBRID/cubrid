@@ -69,6 +69,7 @@
 
 #define TEMP_SETUP_COST 5.0
 #define QO_CPU_WEIGHT   0.0025
+#define ISCAN_OID_ACCESS_OVERHEAD  20
 #define MJ_CPU_OVERHEAD_FACTOR   20
 #define ISCAN_IO_HIT_RATIO   0.5
 #define SSCAN_DEFAULT_CARD 100
@@ -1873,7 +1874,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
-  double sel, sel_limit, objects, height, leaves, opages, filter_sel;
+  double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access;
   double object_IO, index_IO;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
@@ -1995,8 +1996,8 @@ qo_iscan_cost (QO_PLAN * planp)
       filter_sel *= QO_TERM_SELECTIVITY (termp);
     }
 
-  /* number of objects to be selected */
-  objects = sel * (double) QO_NODE_NCARD (nodep);
+  /* number of leaf to be selected */
+  leaf_access = sel * (double) QO_NODE_NCARD (nodep);
   /* height of the B+tree */
   height = (double) cum_statsp->height - 1;
   if (height < 0)
@@ -2029,18 +2030,19 @@ qo_iscan_cost (QO_PLAN * planp)
   if (qo_is_index_covering_scan (planp))
     {
       object_IO = 1.0;
+      heap_access = 0;
     }
   else
     {
       object_IO = opages * sel * filter_sel;
+      heap_access = (double) QO_NODE_NCARD (nodep) * sel * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
     }
-
   object_IO = MAX (1.0, object_IO);
 
   /* index scan requires more CPU cost than sequential scan */
   planp->fixed_cpu_cost = 0.0;
   planp->fixed_io_cost = index_IO;
-  planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT;
+  planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
 }
 
@@ -8541,7 +8543,7 @@ qo_clean_planner (QO_PLANNER * planner)
  * -------------------------------------------
  * Tables joined | Tables considered at a time
  * --------------+----------------------------
- *  4..25        | 4
+ *  8..25        | 8
  * 26..37        | 3
  * 38..          | 2
  * -------------------------------------------
@@ -8619,7 +8621,7 @@ qo_search_partition_join (QO_PLANNER * planner, QO_PARTITION * partition, BITSET
     }
   else
     {
-      planner->join_unit = (nodes_cnt <= 25) ? MIN (4, nodes_cnt) : (nodes_cnt <= 37) ? 3 : 2;
+      planner->join_unit = (nodes_cnt <= 25) ? MIN (8, nodes_cnt) : (nodes_cnt <= 37) ? 3 : 2;
     }
 
   /* STEP 1: do join search with visited nodes */
@@ -9786,6 +9788,12 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
   if (info->ndv > 0)
     {
       int ndv = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;	/* need to change type to INT64 */
+
+      if (info->cum_stats.is_indexed == true)
+	{
+	  /* Choose the better NDV of the two. */
+	  return MIN (ndv, info->cum_stats.pkeys[0]);
+	}
       return ndv;
     }
 
