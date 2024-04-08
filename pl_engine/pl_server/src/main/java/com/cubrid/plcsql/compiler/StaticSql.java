@@ -32,7 +32,7 @@ package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.Expr;
 import com.cubrid.plcsql.compiler.ast.ExprId;
-import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import com.cubrid.plcsql.compiler.type.Type;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,16 +43,16 @@ public class StaticSql {
     public final ParserRuleContext ctx;
     public final int kind;
     public final String rewritten;
-    public final LinkedHashMap<Expr, TypeSpec> hostExprs; // currently, TypeSpecs are always null.
-    public final List<Misc.Pair<String, TypeSpec>> selectList;
+    public final LinkedHashMap<Expr, Type> hostExprs; // currently, Types are always null.
+    public final List<Misc.Pair<String, Type>> selectList;
     public final List<ExprId> intoVars; // can be null
 
     StaticSql(
             ParserRuleContext ctx,
             int kind,
             String rewritten,
-            LinkedHashMap<Expr, TypeSpec> hostExprs,
-            List<Misc.Pair<String, TypeSpec>> selectList,
+            LinkedHashMap<Expr, Type> hostExprs,
+            List<Misc.Pair<String, Type>> selectList,
             List<ExprId> intoVars) {
 
         this.ctx = ctx;
@@ -63,12 +63,12 @@ public class StaticSql {
         this.intoVars = intoVars;
     }
 
-    public List<TypeSpec> getColumnTypeList() {
+    public List<Type> getColumnTypeList() {
         if (selectList == null) {
             return null;
         } else {
-            List<TypeSpec> ret = new ArrayList<>();
-            for (Misc.Pair<String, TypeSpec> p : selectList) {
+            List<Type> ret = new ArrayList<>();
+            for (Misc.Pair<String, Type> p : selectList) {
                 ret.add(p.e2);
             }
             return ret;

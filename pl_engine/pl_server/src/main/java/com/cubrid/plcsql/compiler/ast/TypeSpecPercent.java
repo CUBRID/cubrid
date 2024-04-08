@@ -35,89 +35,6 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class TypeSpecPercent extends TypeSpec {
 
-    public TypeSpec resolvedType;
-
-    @Override
-    public String plcName() {
-        if (resolvedType == null) {
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.plcName();
-        }
-    }
-
-    @Override
-    public String fullJavaType() {
-        if (resolvedType == null) {
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.fullJavaType();
-        }
-    }
-
-    @Override
-    public String javaCode() {
-        if (resolvedType == null) {
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.javaCode();
-        }
-    }
-
-    @Override
-    public int simpleTypeIdx() {
-        if (resolvedType == null) {
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.simpleTypeIdx();
-        }
-    }
-
-    @Override
-    public String typicalValueStr() {
-        if (resolvedType == null) {
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.typicalValueStr();
-        }
-    }
-
-    @Override
-    public String toJavaSignature() {
-        if (resolvedType == null) {
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.toJavaSignature();
-        }
-    }
-
-    @Override
-    public boolean isNumber() {
-        if (resolvedType == null) {
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.isNumber();
-        }
-    }
-
-    @Override
-    public boolean isString() {
-        if (resolvedType == null) {
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.isString();
-        }
-    }
-
-    @Override
-    public boolean isDateTime() {
-        if (resolvedType == null) {
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.isDateTime();
-        }
-    }
-
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitTypeSpecPercent(this);
@@ -127,7 +44,7 @@ public class TypeSpecPercent extends TypeSpec {
     public final String column;
 
     public TypeSpecPercent(ParserRuleContext ctx, String table, String column) {
-        super(ctx);
+        super(ctx, null); // null: unknown yet
         this.table = table;
         this.column = column;
     }

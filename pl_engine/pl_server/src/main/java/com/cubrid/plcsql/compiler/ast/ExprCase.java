@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -44,8 +45,8 @@ public class ExprCase extends Expr {
     public final NodeList<CaseExpr> whenParts;
     public final Expr elsePart;
 
-    public TypeSpec selectorType;
-    public TypeSpec resultType;
+    public Type selectorType;
+    public Type resultType;
 
     public ExprCase(
             ParserRuleContext ctx, Expr selector, NodeList<CaseExpr> whenParts, Expr elsePart) {
@@ -56,11 +57,11 @@ public class ExprCase extends Expr {
         this.elsePart = elsePart;
     }
 
-    public void setSelectorType(TypeSpec ty) {
+    public void setSelectorType(Type ty) {
         this.selectorType = ty;
     }
 
-    public void setResultType(TypeSpec ty) {
+    public void setResultType(Type ty) {
         this.resultType = ty;
     }
 }

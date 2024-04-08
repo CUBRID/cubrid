@@ -28,28 +28,26 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.type;
 
 import java.util.HashMap;
 import java.util.Map;
 
-public class TypeSpecVarchar extends TypeSpecSimple {
+public class TypeNumeric extends Type {
 
-    public static final int MAX_LEN = 1073741823;
+    public final int precision;
+    public final short scale;
 
-    // NOTE: no accept() method. inherit it from the parent TypeSpecSimple
+    public static synchronized TypeNumeric getInstance(int precision, short scale) {
 
-    public final int length;
+        assert precision <= 38 && precision >= 1;
+        assert scale <= precision && scale >= 0;
 
-    public static synchronized TypeSpecVarchar getInstance(int length) {
-
-        assert length <= MAX_LEN && length >= 1;
-
-        TypeSpecVarchar ret = instances.get(length);
+        int key = precision * 100 + scale;
+        TypeNumeric ret = instances.get(key);
         if (ret == null) {
-            String typicalValueStr = String.format("cast(? as varchar(%d))", length);
-            ret = new TypeSpecVarchar(typicalValueStr, length);
-            instances.put(length, ret);
+            ret = new TypeNumeric(precision, scale);
+            instances.put(key, ret);
         }
 
         return ret;
@@ -59,10 +57,19 @@ public class TypeSpecVarchar extends TypeSpecSimple {
     // Private
     // ---------------------------------------------------------------------------
 
-    private static final Map<Integer, TypeSpecVarchar> instances = new HashMap<>();
+    private static final Map<Integer, TypeNumeric> instances = new HashMap<>();
 
-    private TypeSpecVarchar(String typicalValueStr, int length) {
-        super("String", "java.lang.String", IDX_STRING, typicalValueStr);
-        this.length = length;
+    private static String getPlcName(int precision, short scale) {
+        return String.format("Numeric(%d, %d)", precision, scale);
+    }
+
+    private static String getTypicalValueStr(int precision, short scale) {
+        return String.format("cast(? as numeric(%d, %d))", precision, scale);
+    }
+
+    private TypeNumeric(int precision, short scale) {
+        super(IDX_NUMERIC, getPlcName(precision, scale), "java.math.BigDecimal", getTypicalValueStr(precision, scale));
+        this.precision = precision;
+        this.scale = scale;
     }
 }
