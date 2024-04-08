@@ -3488,7 +3488,10 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   init_compile_context (parser);
 
   /* All CTE and sub-queries included in the query must be prepared first. */
-  parser_walk_tree (parser, statement, do_prepare_subquery_pre, NULL, NULL, NULL);
+  if (pt_is_allowed_result_cache ())
+    {
+      parser_walk_tree (parser, statement, do_prepare_subquery_pre, NULL, NULL, NULL);
+    }
 
   switch (statement->node_type)
     {
@@ -14316,21 +14319,6 @@ pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   return node;
 }
 
-static bool
-pt_is_allowed_result_cache ()
-{
-  int is_list_cache_disabled =
-    ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
-     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
-
-  if (is_list_cache_disabled)
-    {
-      return false;
-    }
-
-  return true;
-}
-
 PT_NODE *
 do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
@@ -14343,17 +14331,14 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       return stmt;
     }
 
-  if (stmt->info.query.hint & PT_HINT_QUERY_CACHE)
+  if (stmt->info.query.flag.subquery_cached)
     {
-      if (stmt->info.query.flag.subquery_cached)
-	{
-	  int err;
+      int err;
 
-	  err = do_execute_subquery (parser, stmt, query_flag);
-	  if (err != NO_ERROR)
-	    {
-	      *continue_walk = PT_STOP_WALK;
-	    }
+      err = do_execute_subquery (parser, stmt, query_flag);
+      if (err != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
 	}
     }
 
@@ -21497,4 +21482,19 @@ err:
     }
 
   return server_obj;
+}
+
+bool
+pt_is_allowed_result_cache ()
+{
+  int is_list_cache_disabled =
+    ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
+     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
+
+  if (is_list_cache_disabled)
+    {
+      return false;
+    }
+
+  return true;
 }

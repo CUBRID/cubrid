@@ -651,7 +651,16 @@ db_compile_statement_local (DB_SESSION * session)
 
 	  if (err != NO_ERROR)
 	    {
-	      return err;
+	      if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
+		{
+		  /* set the flag to recompile from it's main query */
+		  statement->info.execute.recompile = 1;
+		  er_clearid ();
+		}
+	      else
+		{
+		  return err;
+		}
 	    }
 	}
     }
@@ -1795,7 +1804,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
 
   /* All CTE sub-queries included in the query must be executed first. */
-  parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &statement->flag, NULL, NULL);
+  if (pt_is_allowed_result_cache ())
+    {
+      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &statement->flag, NULL, NULL);
+    }
 
   if (statement->node_type == PT_PREPARE_STATEMENT)
     {
