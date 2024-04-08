@@ -11455,6 +11455,77 @@ tp_domain_references_objects (const TP_DOMAIN * dom)
 }
 
 /*
+ * tp_value_auto_cast_with_precsion_check
+ *		 Cast a value into one of another domain like tp_value_auto_cast.
+ *      	 It checks the precision in case of casting discrete number type to numeric type
+ *    return: TP_DOMAIN_STATUS
+ *    src(in): src DB_VALUE
+ *    dest(out): dest DB_VALUE
+ *    desired_domain(in): destion domain
+ */
+TP_DOMAIN_STATUS
+tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
+{
+  TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
+
+  static INT64 max_value[19];	/* max precision of a big integer is 19 */
+  static bool init_bigint_value = false;
+
+  if (!init_bigint_value)
+    {
+      int i;
+
+      max_value[0] = 1;
+      for (i = 1; i < 19; i++)
+	{
+	  max_value[i] = max_value[i - 1] * 10;
+	}
+
+      init_bigint_value = true;
+    }
+
+  if (TP_IS_DISCRETE_NUMBER_TYPE (src->domain.general_info.type))
+    {
+      /* if the numeric's precision is 19 or more, then it can get the bigint enough */
+      if (desired_domain->type->id == DB_TYPE_NUMERIC && desired_domain->precision < 19)
+	{
+	  INT64 bigint;
+
+	  assert (desired_domain->precision >= 0);
+
+	  switch (src->domain.general_info.type)
+	    {
+	    case DB_TYPE_BIGINT:
+	      bigint = db_get_bigint (src);
+	      break;
+	    case DB_TYPE_INTEGER:
+	      bigint = db_get_int (src);
+	      break;
+	    case DB_TYPE_SHORT:
+	      bigint = db_get_short (src);
+	    default:
+	      /* never here */
+	      break;
+	    }
+
+	  if ((bigint > 0 && (bigint >= max_value[desired_domain->precision]))
+	      || ((bigint < 0) && ((-bigint) >= max_value[desired_domain->precision])))
+	    {
+	      /* can not coerce for overflow */
+	      dom_status = DOMAIN_OVERFLOW;
+	    }
+	}
+    }
+
+  if (dom_status != DOMAIN_OVERFLOW)
+    {
+      dom_status = tp_value_auto_cast (src, dest, desired_domain);
+    }
+
+  return dom_status;
+}
+
+/*
  * tp_value_auto_cast - Cast a value into one of another domain, returning an
  *			error only
  *    return: TP_DOMAIN_STATUS
