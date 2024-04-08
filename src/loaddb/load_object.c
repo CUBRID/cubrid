@@ -85,7 +85,7 @@ static void default_clear_err_filter (void);
  */
 DESC_OBJ *
 #if defined(SUPPORT_THREAD_UNLOAD)
-make_desc_obj (SM_CLASS * class_, bool is_unloaddb)
+make_desc_obj (SM_CLASS * class_, int alloc_size)
 #else
 make_desc_obj (SM_CLASS * class_)
 #endif
@@ -128,13 +128,17 @@ make_desc_obj (SM_CLASS * class_)
 	  return NULL;
 	}
 #if defined(SUPPORT_THREAD_UNLOAD)
-      obj->dbval_bufs = (DBVAL_BUF *) malloc (sizeof (DBVAL_BUF) * class_->att_count);
-      if (obj->dbval_bufs == NULL)
+      // In the case of compactdb, the analysis is not complete, so the existing operation is maintained.
+      if (alloc_size > 0)
 	{
-	  free_and_init (obj->values);
-	  free_and_init (obj->atts);
-	  free_and_init (obj);
-	  return NULL;
+	  obj->dbval_bufs = (DBVAL_BUF *) malloc (sizeof (DBVAL_BUF) * class_->att_count);
+	  if (obj->dbval_bufs == NULL)
+	    {
+	      free_and_init (obj->values);
+	      free_and_init (obj->atts);
+	      free_and_init (obj);
+	      return NULL;
+	    }
 	}
 #endif
 
@@ -144,16 +148,19 @@ make_desc_obj (SM_CLASS * class_)
 	  obj->atts[i] = att;
 
 #if defined(SUPPORT_THREAD_UNLOAD)
-	  if (att->type->get_id () == DB_TYPE_VARCHAR)
+	  if (obj->dbval_bufs)
 	    {
-	      int sz = (att->domain->precision > 4095) ? 4095 : att->domain->precision;	//ctshim
-	      obj->dbval_bufs[i].buf = (char *) malloc (sz + 1);
-	      obj->dbval_bufs[i].buf_size = (obj->dbval_bufs[i].buf == NULL) ? 0 : sz;
-	    }
-	  else
-	    {
-	      obj->dbval_bufs[i].buf = NULL;
-	      obj->dbval_bufs[i].buf_size = 0;
+	      if (att->type->get_id () == DB_TYPE_VARCHAR)
+		{
+		  int sz = (att->domain->precision > alloc_size) ? alloc_size : att->domain->precision;	//ctshim
+		  obj->dbval_bufs[i].buf = (char *) malloc (sz + 1);
+		  obj->dbval_bufs[i].buf_size = (obj->dbval_bufs[i].buf == NULL) ? 0 : sz;
+		}
+	      else
+		{
+		  obj->dbval_bufs[i].buf = NULL;
+		  obj->dbval_bufs[i].buf_size = 0;
+		}
 	    }
 #endif
 	}
@@ -490,7 +497,11 @@ int
 text_print_flush (TEXT_OUTPUT * tout)
 {
   /* flush to disk */
+#if defined(USE_LOW_IO_FUNC)
+  if (tout->count != write (tout->fd, tout->buffer, tout->count))
+#else
   if (tout->count != (int) fwrite (tout->buffer, 1, tout->count, tout->fp))
+#endif
     {
       return ER_IO_WRITE;
     }
@@ -561,6 +572,87 @@ exit_on_error:
   CHECK_EXIT_ERROR (error);
   goto exit_on_end;
 }
+
+int
+text_print_1 (TEXT_OUTPUT * tout, const char *buf, int buflen)
+{
+  int error = NO_ERROR;
+  int avail = tout->iosize - tout->count;	/* free space size */
+
+  assert (buflen >= 0);
+  assert (buf != NULL);
+
+  if (buflen < avail)
+    {				/* OK */
+      memcpy (tout->ptr, buf, buflen);
+      tout->ptr += buflen;
+      tout->count += buflen;
+
+      return NO_ERROR;
+    }
+
+  tout->ptr[0] = '\0';
+  CHECK_PRINT_ERROR (text_print_flush (tout));
+  avail = tout->iosize;
+
+  while (buflen >= avail)
+    {				/* OK */
+      memcpy (tout->ptr, buf, avail);
+      buflen -= avail;
+      buf += avail;
+      tout->ptr += avail;
+      tout->count += avail;
+      CHECK_PRINT_ERROR (text_print_flush (tout));
+    }
+
+  memcpy (tout->ptr, buf, buflen);
+  tout->ptr += buflen;
+  tout->count += buflen;
+
+exit_on_end:
+  return error;
+
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  goto exit_on_end;
+}
+
+int
+text_print_fmt (TEXT_OUTPUT * tout, char const *fmt, ...)
+{
+  int error = NO_ERROR;
+  int nbytes, size;
+  va_list ap;
+
+start:
+  size = tout->iosize - tout->count;	/* free space size */
+
+  va_start (ap, fmt);
+  nbytes = vsnprintf (tout->ptr, size, fmt, ap);
+  va_end (ap);
+
+  if (nbytes > 0)
+    {
+      if (nbytes < size)
+	{			/* OK */
+	  tout->ptr += nbytes;
+	  tout->count += nbytes;
+	}
+      else
+	{			/* need more buffer */
+	  CHECK_PRINT_ERROR (text_print_flush (tout));
+	  goto start;		/* retry */
+	}
+    }
+
+exit_on_end:
+  return error;
+
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  goto exit_on_end;
+}
+
 
 /*
  * desc_obj_to_disk - transforms the object into a disk record for eventual

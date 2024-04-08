@@ -40,6 +40,7 @@ extern struct text_output *g_obj_out;
 #if defined(SUPPORT_THREAD_UNLOAD)
 extern int thread_count;
 extern bool check_fetch_time;
+extern int varchar_alloc_size;
 #endif
 extern int page_size;
 extern int cached_pages;

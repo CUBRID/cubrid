@@ -42,17 +42,29 @@
 #include "utility.h"
 #include "util_func.h"
 
+
+#if defined(SUPPORT_THREAD_UNLOAD)
+#if 1				// time check  ctshim
+#include <sys/time.h>
+#endif
+#endif
+
 char *database_name = NULL;
 const char *output_dirname = NULL;
 char *input_filename = NULL;
 FILE *output_file = NULL;
+#if defined(USE_LOW_IO_FUNC)
+TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, INVALID_FILE_NO };
+#else
 TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, NULL };
+#endif
 
 //TEXT_OUTPUT *obj_out = &object_output;
 TEXT_OUTPUT *g_obj_out = &object_output;
 #if defined(SUPPORT_THREAD_UNLOAD)
 int thread_count = 0;
 bool check_fetch_time = false;	// ctshim,  test only
+int varchar_alloc_size = 4096;
 #endif
 
 int page_size = 4096;
@@ -148,13 +160,16 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
 #if defined(SUPPORT_THREAD_UNLOAD)
+  varchar_alloc_size = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
   thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
   if (thread_count == 999)
     {
       check_fetch_time = true;
       thread_count = 0;
+      varchar_alloc_size = 0;
       datafile_per_class = false;
     }
+  varchar_alloc_size *= 1024;	// to KB
 
   if (thread_count > 100)	// ctshim
     thread_count = 100;
@@ -384,11 +399,28 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       unload_context.exec_name = exec_name;
       unload_context.login_user = user;
       unload_context.output_prefix = output_prefix;
+#if defined(SUPPORT_THREAD_UNLOAD)
+#if 1				// time check
+      struct timeval startTime, endTime;
+      double diffTime;
 
+      gettimeofday (&startTime, NULL);
+#endif
       if (extract_objects (unload_context, output_dirname))
 	{
 	  status = 1;
 	}
+#if 1
+      gettimeofday (&endTime, NULL);
+      diffTime = (endTime.tv_sec - startTime.tv_sec) + ((double) (endTime.tv_usec - startTime.tv_usec) / 1000000);
+      printf ("Elapsed= %.6f s\n", diffTime);
+#endif
+#else
+      if (extract_objects (unload_context, output_dirname))
+	{
+	  status = 1;
+	}
+#endif
     }
   AU_RESTORE (au_save);
 

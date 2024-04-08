@@ -426,7 +426,7 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
 
   /* Now start fetching all the instances */
 #if defined(SUPPORT_THREAD_UNLOAD)
-  desc_obj = make_desc_obj (class_ptr, false);
+  desc_obj = make_desc_obj (class_ptr, -1);
 #else
   desc_obj = make_desc_obj (class_ptr);
 #endif

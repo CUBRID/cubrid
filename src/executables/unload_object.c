@@ -538,7 +538,11 @@ extractobjects_cleanup ()
       close_all_object_files (false);
       free_and_init (thr_param);
 
+#if defined(USE_LOW_IO_FUNC)
+      g_obj_out->fd = INVALID_FILE_NO;
+#else
       g_obj_out->fp = NULL;
+#endif
     }
 #endif
 
@@ -546,8 +550,13 @@ extractobjects_cleanup ()
     {
       if (g_obj_out->buffer != NULL)
 	free_and_init (g_obj_out->buffer);
+#if defined(USE_LOW_IO_FUNC)
+      if (g_obj_out->fd != INVALID_FILE_NO)
+	close (g_obj_out->fd);
+#else
       if (g_obj_out->fp != NULL)
 	fclose (g_obj_out->fp);
+#endif
     }
 
   if (obj_table != NULL)
@@ -655,8 +664,13 @@ open_object_file (TEXT_OUTPUT * obj_out, extract_context & ctxt, const char *out
 	}
     }
 
+#if defined(USE_LOW_IO_FUNC)
+  obj_out->fd = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+  if (obj_out->fd == INVALID_FILE_NO)
+#else
   obj_out->fp = fopen_ex (out_fname, "wb");
   if (obj_out->fp == NULL)
+#endif
     {
       fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
       return false;
@@ -676,12 +690,19 @@ close_all_object_files (bool close_only)
 	{
 	  free_and_init (thr_param[i].text_output.buffer);
 	}
-
+#if defined(USE_LOW_IO_FUNC)
+      if (thr_param[i].text_output.fd != INVALID_FILE_NO)
+	{
+	  close (thr_param[i].text_output.fd);
+	  thr_param[i].text_output.fd = INVALID_FILE_NO;
+	}
+#else
       if (thr_param[i].text_output.fp)
 	{
 	  fclose (thr_param[i].text_output.fp);
 	  thr_param[i].text_output.fp = NULL;
 	}
+#endif
     }
 }
 
@@ -693,9 +714,23 @@ fulsh_all_object_files (bool is_close)
 
   for (i = 0; i < thread_count; i++)
     {
+#if defined(USE_LOW_IO_FUNC)
+      if (thr_param[i].text_output.fd != INVALID_FILE_NO)
+	{
+	  if (text_print_flush (&(thr_param[i].text_output)) != NO_ERROR)
+	    {
+	      bret = false;
+	    }
+
+	  if (is_close)
+	    {
+	      close (thr_param[i].text_output.fd);
+	      thr_param[i].text_output.fd = INVALID_FILE_NO;
+	    }
+	}
+#else
       if (thr_param[i].text_output.fp)
 	{
-
 	  if (text_print_flush (&(thr_param[i].text_output)) != NO_ERROR)
 	    {
 	      bret = false;
@@ -707,6 +742,7 @@ fulsh_all_object_files (bool is_close)
 	      thr_param[i].text_output.fp = NULL;
 	    }
 	}
+#endif
     }
 
   return bret;
@@ -759,8 +795,13 @@ close_output_file ()
 	{
 	  bret = false;
 	}
+#if defined(USE_LOW_IO_FUNC)
+      close (g_obj_out->fd);
+      g_obj_out->fd = INVALID_FILE_NO;
+#else
       fclose (g_obj_out->fp);
       g_obj_out->fp = NULL;
+#endif
     }
 
   return bret;
@@ -1495,7 +1536,7 @@ unload_writer (UNLD_THR_PARAM * unld_thr_param, LC_COPYAREA * fetch_area, TEXT_O
   DEBUG_PRINT ("*** unload_writer(%d) ***\n", unld_thr_param->thread_idx);	//==============================================
 
 #if defined(SUPPORT_THREAD_UNLOAD)
-  desc_obj = make_desc_obj (class_ptr, true);
+  desc_obj = make_desc_obj (class_ptr, varchar_alloc_size);
 #else
   desc_obj = make_desc_obj (class_ptr);
 #endif
@@ -1983,7 +2024,7 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 #endif // #if defined(SUPPORT_THREAD_UNLOAD)
     {
 #if defined(SUPPORT_THREAD_UNLOAD)
-      desc_obj = make_desc_obj (class_ptr, true);
+      desc_obj = make_desc_obj (class_ptr, varchar_alloc_size);
 #else
       desc_obj = make_desc_obj (class_ptr);
 #endif
