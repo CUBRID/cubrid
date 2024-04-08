@@ -6009,7 +6009,12 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   /* At here, inner is single class spec */
   inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
 
-  if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+  if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
+    {
+      /* join hint: disable hash-join */
+      goto exit;
+    }
+  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
     {
       /* join hint: force hash-join */
     }

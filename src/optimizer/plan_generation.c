@@ -2432,9 +2432,6 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	  break;
 
 	case QO_JOINMETHOD_HASH_JOIN:
-	  /* TO DO - Remove if unnecessary */
-	  assert (inner_scans == NULL);
-
 	  /*
 	   * In this case, we have to hold on to the accumulated
 	   * predicates and subqueries, and tack them on to the scan
@@ -2724,6 +2721,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    if (xasl)
 	      {
 		xasl = init_list_scan_proc (env, xasl, hashjoin, seg_nlist, &predset, seg_pos_list);
+		xasl = add_scan_proc (env, xasl, inner_scans);
 		xasl = add_fetch_proc (env, xasl, fetches);
 		xasl = add_subqueries (env, xasl, &new_subqueries);
 	      }
@@ -3897,6 +3895,11 @@ qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_nod
     case QO_PLANTYPE_JOIN:
       /* only allow inner joins */
       if (plan->plan_un.join.join_type != JOIN_INNER)
+	{
+	  return NULL;
+	}
+
+      if (plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN)
 	{
 	  return NULL;
 	}

@@ -6485,7 +6485,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE_
   int *outer_indp, *inner_indp;
   SCAN_CODE outer_scan = S_END, inner_scan = S_END;
   QFILE_LIST_SCAN_ID outer_sid, inner_sid;
-  TP_DOMAIN **outer_domp = NULL, **inner_domp = NULL;
+  TP_DOMAIN **outer_domp = NULL, **inner_domp = NULL, **coerce_domp = NULL;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   int cnt, group_cnt, already_compared;
   SCAN_DIRECTION direction;
@@ -6495,6 +6495,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE_
 
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
   HASH_SCAN_KEY *hash_key_value;
+  DB_VALUE coerce_value;
   HASH_SCAN_KEY *found_hash_key_value;
   HASH_SCAN_VALUE *hash_value;
   QFILE_TUPLE_POSITION tuple_pos;
@@ -6503,6 +6504,9 @@ qexec_hash_join (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE_
   TFTID tftid;
   QFILE_TUPLE tuple;
   int cmp;
+  bool flag_next = false;
+  DB_TYPE vtype1, vtype2;
+  bool need_coerce_type = false;
 
   HASH_LIST_SCAN hlsid;
 
@@ -6579,10 +6583,37 @@ qexec_hash_join (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE_
       goto exit_on_error;
     }
 
+  coerce_domp = (TP_DOMAIN **) db_private_alloc (thread_p, nvals * sizeof (TP_DOMAIN *));
+  if (coerce_domp == NULL)
+    {
+      goto exit_on_error;
+    }
+
   for (i = 0; i < nvals; i++)
     {
       outer_domp[i] = outer_list_idp->type_list.domp[merge_infop->ls_outer_column[i]];
       inner_domp[i] = inner_list_idp->type_list.domp[merge_infop->ls_inner_column[i]];
+
+      vtype1 = TP_DOMAIN_TYPE (outer_domp[i]);
+      vtype2 = TP_DOMAIN_TYPE (inner_domp[i]);
+
+      if (vtype1 != vtype2)
+	{
+	  need_coerce_type = true;
+
+	  if (tp_more_general_type (vtype1, vtype2) > 0)
+	    {
+	      coerce_domp[i] = outer_domp[i];
+	    }
+	  else
+	    {
+	      coerce_domp[i] = inner_domp[i];
+	    }
+	}
+      else
+	{
+	  coerce_domp[i] = NULL;
+	}
     }
 
   if (mem_limit == 0)
@@ -6667,16 +6698,56 @@ qexec_hash_join (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE_
 	  or_advance (&buf, QFILE_TUPLE_LENGTH_SIZE);
 	  for (skip_index = 0; skip_index < inner_indp[value_index]; skip_index++)
 	    {
-	      or_advance (&buf, QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (buf.ptr));
+	      or_advance (&buf,
+			  QFILE_TUPLE_VALUE_HEADER_SIZE +
+			  ((QFILE_GET_TUPLE_VALUE_FLAG (buf.ptr) ==
+			    V_BOUND) ? QFILE_GET_TUPLE_VALUE_LENGTH (buf.ptr) : 0));
 	    }
-	  or_advance (&buf, QFILE_TUPLE_VALUE_HEADER_SIZE);
-
+	  if (QFILE_GET_TUPLE_VALUE_FLAG (buf.ptr) == V_BOUND)
+	    {
+	      or_advance (&buf, QFILE_TUPLE_VALUE_HEADER_SIZE);
+	    }
+	  else
+	    {
+	      /* next build */
+	      break;
+	    }
 	  PRIM_SET_NULL (hash_key_value->values[value_index]);
 	  is_set_type = pr_is_set_type (TP_DOMAIN_TYPE (inner_domp[value_index])) ? true : false;
-	  inner_domp[value_index]->type->data_readval (&buf, hash_key_value->values[value_index],
-						       inner_domp[value_index], -1, is_set_type, NULL, 0);
+
+	  if (need_coerce_type)
+	    {
+	      if (coerce_domp[value_index] != NULL && coerce_domp[value_index] != inner_domp[value_index])
+		{
+		  inner_domp[value_index]->type->data_readval (&buf, &coerce_value,
+							       inner_domp[value_index], -1, is_set_type, NULL, 0);
+		  if (tp_value_coerce_strict
+		      (&coerce_value, hash_key_value->values[value_index],
+		       coerce_domp[value_index]) != DOMAIN_COMPATIBLE)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype2),
+			      pr_type_name (vtype1));
+		      goto exit_on_error;
+		    }
+		}
+	      else
+		{
+		  inner_domp[value_index]->type->data_readval (&buf, hash_key_value->values[value_index],
+							       inner_domp[value_index], -1, is_set_type, NULL, 0);
+		}
+	    }
+	  else
+	    {
+	      inner_domp[value_index]->type->data_readval (&buf, hash_key_value->values[value_index],
+							   inner_domp[value_index], -1, is_set_type, NULL, 0);
+	    }
 
 	  hash_key_value->val_count++;
+	}
+      if (value_index != nvals)
+	{
+	  /* next build  */
+	  continue;
 	}
 
       hlsid.curr_hash_key = qdata_hash_scan_key (hash_key_value, UINT_MAX, hlsid.hash_list_scan_type);
@@ -6777,140 +6848,259 @@ qexec_hash_join (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE_
 	  or_advance (&buf, QFILE_TUPLE_LENGTH_SIZE);
 	  for (skip_index = 0; skip_index < outer_indp[value_index]; skip_index++)
 	    {
-	      or_advance (&buf, QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (buf.ptr));
+	      or_advance (&buf,
+			  QFILE_TUPLE_VALUE_HEADER_SIZE +
+			  ((QFILE_GET_TUPLE_VALUE_FLAG (buf.ptr) ==
+			    V_BOUND) ? QFILE_GET_TUPLE_VALUE_LENGTH (buf.ptr) : 0));
 	    }
-	  or_advance (&buf, QFILE_TUPLE_VALUE_HEADER_SIZE);
-
+	  if (QFILE_GET_TUPLE_VALUE_FLAG (buf.ptr) == V_BOUND)
+	    {
+	      or_advance (&buf, QFILE_TUPLE_VALUE_HEADER_SIZE);
+	    }
+	  else
+	    {
+	      /* next prove  */
+	      break;
+	    }
 	  PRIM_SET_NULL (hash_key_value->values[value_index]);
 	  is_set_type = pr_is_set_type (TP_DOMAIN_TYPE (outer_domp[value_index])) ? true : false;
-	  outer_domp[value_index]->type->data_readval (&buf, hash_key_value->values[value_index],
-						       outer_domp[value_index], -1, is_set_type, NULL, 0);
+
+	  if (need_coerce_type)
+	    {
+	      if (coerce_domp[value_index] != NULL && coerce_domp[value_index] != outer_domp[value_index])
+		{
+		  outer_domp[value_index]->type->data_readval (&buf, &coerce_value,
+							       outer_domp[value_index], -1, is_set_type, NULL, 0);
+		  if (tp_value_coerce_strict
+		      (&coerce_value, hash_key_value->values[value_index],
+		       coerce_domp[value_index]) != DOMAIN_COMPATIBLE)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype2),
+			      pr_type_name (vtype1));
+		      goto exit_on_error;
+		    }
+		}
+	      else
+		{
+		  outer_domp[value_index]->type->data_readval (&buf, hash_key_value->values[value_index],
+							       outer_domp[value_index], -1, is_set_type, NULL, 0);
+		}
+	    }
+	  else
+	    {
+	      outer_domp[value_index]->type->data_readval (&buf, hash_key_value->values[value_index],
+							   outer_domp[value_index], -1, is_set_type, NULL, 0);
+	    }
 
 	  hash_key_value->val_count++;
 	}
+      if (value_index != nvals)
+	{
+	  /* next prove  */
+	  continue;
+	}
 
       hlsid.curr_hash_key = qdata_hash_scan_key (hash_key_value, UINT_MAX, hlsid.hash_list_scan_type);
-
       hash_value = NULL;
 
+      /* init curr_hash_entry */
       switch (hlsid.hash_list_scan_type)
 	{
 	case HASH_METH_IN_MEM:
-	  {
-	    /* init curr_hash_entry */
-	    hlsid.memory.curr_hash_entry = NULL;
-
-	    /* get value from hash table */
-	    hash_value =
-	      (HASH_SCAN_VALUE *) mht_get_hls (hlsid.memory.hash_table, (void *) &hlsid.curr_hash_key,
-					       (void **) &hlsid.memory.curr_hash_entry);
-	    if (hash_value == NULL)
-	      {
-		/* next */
-		continue;
-	      }
-
-	    tuple = ((HASH_SCAN_VALUE *) hlsid.memory.curr_hash_entry->data)->tuple;
-	  }
-	  break;
-
 	case HASH_METH_HYBRID:
-	  {
-	    /* init curr_hash_entry */
-	    hlsid.memory.curr_hash_entry = NULL;
-
-	    /* get value from hash table */
-	    hash_value =
-	      (HASH_SCAN_VALUE *) mht_get_hls (hlsid.memory.hash_table, (void *) &hlsid.curr_hash_key,
-					       (void **) &hlsid.memory.curr_hash_entry);
-	    if (hash_value == NULL)
-	      {
-		/* next */
-		continue;
-	      }
-
-	    MAKE_TUPLE_POSTION (tuple_pos, hash_value->pos, &inner_sid);
-
-	    if (qfile_jump_scan_tuple_position (thread_p, &inner_sid, &tuple_pos, &outer_tplrec, PEEK) != S_SUCCESS)
-	      {
-		goto exit_on_error;
-	      }
-
-	    tuple = outer_tplrec.tpl;
-	  }
+	  hlsid.memory.curr_hash_entry = NULL;
 	  break;
 
 	case HASH_METH_HASH_FILE:
-	  {
-	    /* init curr_oid and get value from hash table */
-	    eh_search = fhs_search (thread_p, &hlsid, &tftid);
-	    switch (eh_search)
-	      {
-	      case EH_KEY_FOUND:
-		{
-		  MAKE_TFTID_TO_TUPLE_POSTION (tuple_pos, tftid, &inner_sid);
-		  if (qfile_jump_scan_tuple_position (thread_p, &inner_sid, &tuple_pos, &outer_tplrec, PEEK) !=
-		      S_SUCCESS)
-		    {
-		      goto exit_on_error;
-		    }
-		  tuple = outer_tplrec.tpl;
-		}
-		break;
-
-	      case EH_KEY_NOTFOUND:
-		/* next */
-		continue;
-
-	      case EH_ERROR_OCCURRED:
-	      default:
-		goto exit_on_error;
-	      }
-	  }
 	  break;
 
 	default:
 	  goto exit_on_error;
 	}
 
-      found_hash_key_value->val_count = 0;
+      flag_next = false;
+      tuple = NULL;
 
-      for (value_index = 0; value_index < nvals; value_index++)
+      do
 	{
-	  or_init (&buf, tuple, QFILE_GET_TUPLE_LENGTH (tuple));
-	  or_advance (&buf, QFILE_TUPLE_LENGTH_SIZE);
-	  for (skip_index = 0; skip_index < inner_indp[value_index]; skip_index++)
+	  switch (hlsid.hash_list_scan_type)
 	    {
-	      or_advance (&buf, QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (buf.ptr));
+	    case HASH_METH_IN_MEM:
+	      {
+		/* get value from hash table */
+		if (tuple == NULL)
+		  {
+		    hash_value =
+		      (HASH_SCAN_VALUE *) mht_get_hls (hlsid.memory.hash_table, (void *) &hlsid.curr_hash_key,
+						       (void **) &hlsid.memory.curr_hash_entry);
+		  }
+		else
+		  {
+		    hash_value =
+		      (HASH_SCAN_VALUE *) mht_get_next_hls (hlsid.memory.hash_table, (void *) &hlsid.curr_hash_key,
+							    (void **) &hlsid.memory.curr_hash_entry);
+		  }
+		if (hash_value == NULL)
+		  {
+		    /* next */
+		    flag_next = true;
+		    break;
+		  }
+
+		tuple = ((HASH_SCAN_VALUE *) hlsid.memory.curr_hash_entry->data)->tuple;
+	      }
+	      break;
+
+	    case HASH_METH_HYBRID:
+	      {
+		/* get value from hash table */
+		if (tuple == NULL)
+		  {
+		    hash_value =
+		      (HASH_SCAN_VALUE *) mht_get_hls (hlsid.memory.hash_table, (void *) &hlsid.curr_hash_key,
+						       (void **) &hlsid.memory.curr_hash_entry);
+		  }
+		else
+		  {
+		    hash_value =
+		      (HASH_SCAN_VALUE *) mht_get_next_hls (hlsid.memory.hash_table, (void *) &hlsid.curr_hash_key,
+							    (void **) &hlsid.memory.curr_hash_entry);
+		  }
+		if (hash_value == NULL)
+		  {
+		    /* next */
+		    flag_next = true;
+		    break;
+		  }
+
+		MAKE_TUPLE_POSTION (tuple_pos, hash_value->pos, &inner_sid);
+
+		if (qfile_jump_scan_tuple_position (thread_p, &inner_sid, &tuple_pos, &outer_tplrec, PEEK) != S_SUCCESS)
+		  {
+		    goto exit_on_error;
+		  }
+
+		tuple = outer_tplrec.tpl;
+	      }
+	      break;
+
+	    case HASH_METH_HASH_FILE:
+	      {
+		/* init curr_oid and get value from hash table */
+		if (tuple == NULL)
+		  {
+		    eh_search = fhs_search (thread_p, &hlsid, &tftid);
+		  }
+		else
+		  {
+		    eh_search = fhs_search_next (thread_p, &hlsid, &tftid);
+		  }
+		switch (eh_search)
+		  {
+		  case EH_KEY_FOUND:
+		    {
+		      MAKE_TFTID_TO_TUPLE_POSTION (tuple_pos, tftid, &inner_sid);
+		      if (qfile_jump_scan_tuple_position (thread_p, &inner_sid, &tuple_pos, &outer_tplrec, PEEK) !=
+			  S_SUCCESS)
+			{
+			  goto exit_on_error;
+			}
+		      tuple = outer_tplrec.tpl;
+		    }
+		    break;
+
+		  case EH_KEY_NOTFOUND:
+		    /* next */
+		    flag_next = true;
+		    break;
+
+		  case EH_ERROR_OCCURRED:
+		  default:
+		    goto exit_on_error;
+		  }
+	      }
+	      break;
+
+	    default:
+	      goto exit_on_error;
 	    }
-	  or_advance (&buf, QFILE_TUPLE_VALUE_HEADER_SIZE);
 
-	  PRIM_SET_NULL (found_hash_key_value->values[value_index]);
-	  is_set_type = pr_is_set_type (TP_DOMAIN_TYPE (inner_domp[value_index])) ? true : false;
-	  inner_domp[value_index]->type->data_readval (&buf, found_hash_key_value->values[value_index],
-						       inner_domp[value_index], -1, is_set_type, NULL, 0);
-
-	  found_hash_key_value->val_count++;
-
-	  cmp = tp_value_compare (hash_key_value->values[value_index], found_hash_key_value->values[value_index], 1, 0);
-	  if (cmp != DB_EQ)
+	  if (flag_next)
 	    {
+	      /* next prove */
 	      break;
 	    }
-	}
 
-      if (cmp != DB_EQ)
-	{
-	  continue;
-	}
+	  found_hash_key_value->val_count = 0;
 
-      temp_tplrec.tpl = tuple;
-      temp_tplrec.size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple);
-      if (qexec_merge_tuple_add_list ((thread_p), list_idp, &outer_tplrec, &temp_tplrec, merge_infop, &tplrec) !=
-	  NO_ERROR)
-	{
-	  goto exit_on_error;
+	  for (value_index = 0; value_index < nvals; value_index++)
+	    {
+	      or_init (&buf, tuple, QFILE_GET_TUPLE_LENGTH (tuple));
+	      or_advance (&buf, QFILE_TUPLE_LENGTH_SIZE);
+	      for (skip_index = 0; skip_index < inner_indp[value_index]; skip_index++)
+		{
+		  or_advance (&buf,
+			      QFILE_TUPLE_VALUE_HEADER_SIZE +
+			      ((QFILE_GET_TUPLE_VALUE_FLAG (buf.ptr) ==
+				V_BOUND) ? QFILE_GET_TUPLE_VALUE_LENGTH (buf.ptr) : 0));
+		}
+	      assert (QFILE_GET_TUPLE_VALUE_FLAG (buf.ptr) == V_BOUND);
+	      or_advance (&buf, QFILE_TUPLE_VALUE_HEADER_SIZE);
+
+	      PRIM_SET_NULL (found_hash_key_value->values[value_index]);
+	      is_set_type = pr_is_set_type (TP_DOMAIN_TYPE (inner_domp[value_index])) ? true : false;
+
+	      if (need_coerce_type)
+		{
+		  if (coerce_domp[value_index] != NULL && coerce_domp[value_index] != inner_domp[value_index])
+		    {
+		      inner_domp[value_index]->type->data_readval (&buf, &coerce_value,
+								   inner_domp[value_index], -1, is_set_type, NULL, 0);
+		      if (tp_value_coerce_strict
+			  (&coerce_value, found_hash_key_value->values[value_index],
+			   coerce_domp[value_index]) != DOMAIN_COMPATIBLE)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype2),
+				  pr_type_name (vtype1));
+			  goto exit_on_error;
+			}
+		    }
+		  else
+		    {
+		      inner_domp[value_index]->type->data_readval (&buf, found_hash_key_value->values[value_index],
+								   inner_domp[value_index], -1, is_set_type, NULL, 0);
+		    }
+		}
+	      else
+		{
+		  inner_domp[value_index]->type->data_readval (&buf, found_hash_key_value->values[value_index],
+							       inner_domp[value_index], -1, is_set_type, NULL, 0);
+		}
+
+	      found_hash_key_value->val_count++;
+
+	      cmp =
+		tp_value_compare (hash_key_value->values[value_index], found_hash_key_value->values[value_index], 0, 0);
+	      if (cmp != DB_EQ)
+		{
+		  break;
+		}
+	    }
+
+	  if (cmp != DB_EQ)
+	    {
+	      continue;
+	    }
+
+	  temp_tplrec.tpl = tuple;
+	  temp_tplrec.size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple);
+	  if (qexec_merge_tuple_add_list ((thread_p), list_idp, &outer_tplrec, &temp_tplrec, merge_infop, &tplrec) !=
+	      NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 	}
+      while (true);
     }
 
 exit_on_end:

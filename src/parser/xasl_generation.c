@@ -11572,7 +11572,7 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
        * higher, join level and not at lower table scan levels. Discard the lower limit. */
       limit_infop->lower = NULL;
     }
-  else if (QO_NODE_IS_CLASS_HIERARCHY (plan->plan_un.scan.node))
+  else if (plan->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (plan->plan_un.scan.node))
     {
       /* We cannot use the lower limit in a hierarchy */
       limit_infop->lower = NULL;
