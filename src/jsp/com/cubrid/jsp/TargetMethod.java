@@ -38,10 +38,7 @@ import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
-import java.util.stream.Collectors;
 
 public class TargetMethod {
     private String className;
@@ -215,14 +212,20 @@ public class TargetMethod {
         try {
             return c.getMethod(methodName, argsTypes);
         } catch (NoSuchMethodException e) {
-            List<String> argTypeNameList =
-                    Arrays.stream(argsTypes)
-                            .map(cl -> cl.getTypeName())
-                            .collect(Collectors.toList());
-            String[] argTypeNameArr = argTypeNameList.toArray(DUMMY_STRING_ARRAY);
+            String argsTypeNames;
+            int len = argsTypes.length;
+            if (len > 0) {
+                String[] arr = new String[len];
+                for (int i = 0; i < len; i++) {
+                    arr[i] = argsTypes[i].getTypeName();
+                }
+                argsTypeNames = String.join(", ", arr);
+            } else {
+                argsTypeNames = "";
+            }
+
             throw new NoSuchMethodException(
-                    String.format(
-                            "%s.%s(%s)", className, methodName, String.join(", ", argTypeNameArr)));
+                    String.format("%s.%s(%s)", className, methodName, argsTypeNames));
         }
     }
 
