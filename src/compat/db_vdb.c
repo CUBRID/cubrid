@@ -1803,7 +1803,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
 
   /* All CTE sub-queries included in the query must be executed first. */
-  if (pt_is_allowed_result_cache)
+  if (pt_is_allowed_result_cache ())
     {
       parser_walk_tree (parser, statement, do_execute_cte_pre, (void *) &statement->flag, NULL, NULL);
     }

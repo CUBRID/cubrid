@@ -3488,7 +3488,7 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   init_compile_context (parser);
 
   /* All CTE sub-queries included in the query must be prepared first. */
-  if (pt_is_allowed_result_cache)
+  if (pt_is_allowed_result_cache())
     {
       parser_walk_tree (parser, statement, do_prepare_cte_pre, NULL, NULL, NULL);
     }
