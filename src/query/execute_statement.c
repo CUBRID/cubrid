@@ -201,7 +201,7 @@ static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, boo
 
 static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is_external);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
-static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name);
+static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner);
 
 static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
 				      OID * reserved_oid);
@@ -20044,7 +20044,7 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   CHECK_MODIFICATION_ERROR ();
 
   drop_server = &(statement->info.drop_server);
-  server_object = server_find (drop_server->server_name, drop_server->owner_name, false);
+  server_object = server_find (drop_server->server_name, drop_server->owner_name);
   if (server_object == NULL)
     {
       error = er_errid ();
@@ -20204,7 +20204,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   sm_downcase_name ((char *) create_server->server_name->info.name.original, name_buf, SERVER_ATTR_LINK_NAME_BUF_SIZE);
   attr_val[0] = name_buf;
-  server_object = server_find (create_server->server_name, create_server->owner_name, true);
+  server_object = server_find (create_server->server_name, create_server->owner_name);
   if (server_object != NULL)
     {
       error = ER_DBLINK_SERVER_ALREADY_EXISTS;
@@ -20355,7 +20355,7 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  server_object = server_find (rename_server->old_name, rename_server->owner_name, false);
+  server_object = server_find (rename_server->old_name, rename_server->owner_name);
   if (server_object == NULL)
     {
       return er_errid ();
@@ -20397,7 +20397,7 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       pr_clear_value (&name_val);
     }
 
-  if (server_find (rename_server->new_name, owner_node, false))
+  if (server_find (rename_server->new_name, owner_node))
     {
       error = ER_DBLINK_SERVER_ALREADY_EXISTS;
     }
@@ -20464,7 +20464,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   alter = &(statement->info.alter_server);
   server_name = alter->server_name->info.name.original;
 
-  server_object = server_find (alter->server_name, alter->current_owner_name, false);
+  server_object = server_find (alter->server_name, alter->current_owner_name);
   if (server_object == NULL)
     {
       return er_errid ();
@@ -20667,7 +20667,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
 
-      if (server_find (alter->server_name, alter->owner_name, false))
+      if (server_find (alter->server_name, alter->owner_name))
 	{
 	  char buf[2048];
 	  sprintf (buf, "[%s].[%s]",
@@ -20715,7 +20715,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_name, P
   db_make_null (&user_val);
 
   cnt = 0;
-  server_object = server_find (server_name, owner_name, false);
+  server_object = server_find (server_name, owner_name);
   if (server_object == NULL)
     {
       return er_errid ();
@@ -20823,7 +20823,7 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
 
   db_make_null (&user_val);
 
-  server_object = server_find (server_nm, owner_nm, false);
+  server_object = server_find (server_nm, owner_nm);
   if (server_object == NULL)
     {
       return er_errid ();
@@ -21128,14 +21128,13 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
  *
  * return		  : Record object or NULL
  * node_server(in)	  : PT_NODE* for server name.
- * node_owner(in)         : PT_NODE* for owner name.
- * force_owner_name(in)   : Set whether to designate as the current user when node_owner is NULL
+ * node_owner(in)         : PT_NODE* for owner name. 
  * 
  * Remark: 
  *      
  */
 static MOP
-server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
+server_find (PT_NODE * node_server, PT_NODE * node_owner)
 {
   int error = NO_ERROR;
   MOP server_obj = NULL;
@@ -21160,7 +21159,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
       intl_identifier_upper (owner_name, upper_case_name);
       owner_name = upper_case_name;
     }
-  else if (force_owner_name)
+  else
     {
       owner_name = (char *) au_user_name ();
       if (!owner_name)
@@ -21169,16 +21168,10 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
 	}
     }
 
-  if (owner_name)
-    {
-      sprintf (query,
-	       "SELECT [_db_server], [owner] FROM [_db_server] WHERE [link_name] = '%s' AND [owner].[name] = '%s'",
-	       name_buf, owner_name);
-    }
-  else
-    {
-      sprintf (query, "SELECT [_db_server], [owner] FROM [_db_server] WHERE [link_name] = '%s'", name_buf);
-    }
+  assert (owner_name);
+  sprintf (query,
+	   "SELECT [_db_server], [owner] FROM [_db_server] WHERE [link_name] = '%s' AND [owner].[name] = '%s'",
+	   name_buf, owner_name);
 
   if (owner_name == upper_case_name)
     {
