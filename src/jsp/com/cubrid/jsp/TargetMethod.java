@@ -38,7 +38,10 @@ import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class TargetMethod {
     private String className;
@@ -65,12 +68,12 @@ public class TargetMethod {
         int nameStart = signature.substring(0, argStart).lastIndexOf('.') + 1;
 
         if (signature.charAt(0) == '\'') {
-            className = signature.substring(1, nameStart - 1);
+            className = signature.substring(1, nameStart - 1).trim();
         } else {
-            className = signature.substring(0, nameStart - 1);
+            className = signature.substring(0, nameStart - 1).trim();
         }
 
-        methodName = signature.substring(nameStart, argStart - 1);
+        methodName = signature.substring(nameStart, argStart - 1).trim();
         String args = signature.substring(argStart, argEnd);
         argsTypes = classesFor(args);
     }
@@ -201,14 +204,26 @@ public class TargetMethod {
         descriptorMap.put("double", "D");
     }
 
+    private static final String[] DUMMY_STRING_ARRAY = new String[0];
+
     public Method getMethod()
             throws SecurityException, NoSuchMethodException, ClassNotFoundException {
         Class<?> c = getClass(className);
         if (c == null) {
-            throw new ClassNotFoundException (className);
+            throw new ClassNotFoundException(className);
         }
-        Method m = c.getMethod(methodName, argsTypes);
-        return m;
+        try {
+            return c.getMethod(methodName, argsTypes);
+        } catch (NoSuchMethodException e) {
+            List<String> argTypeNameList =
+                    Arrays.stream(argsTypes)
+                            .map(cl -> cl.getTypeName())
+                            .collect(Collectors.toList());
+            String[] argTypeNameArr = argTypeNameList.toArray(DUMMY_STRING_ARRAY);
+            throw new NoSuchMethodException(
+                    String.format(
+                            "%s.%s(%s)", className, methodName, String.join(", ", argTypeNameArr)));
+        }
     }
 
     public Class<?>[] getArgsTypes() {
