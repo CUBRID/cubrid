@@ -256,6 +256,9 @@ static int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * nod
 static int pt_resolve_dblink_check_owner_name (PARSER_CONTEXT * parser, PT_NODE * node, char **server_owner_name);
 
 static void pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt);
+
+static PT_NODE *pt_resolve_name_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NODE * in_node);
+
 typedef struct
 {
   int norder;
@@ -815,63 +818,17 @@ pt_bind_reserved_name (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * spe
     }
   /* this is not a reserved name */
   return NULL;
+
 }
 
-/*
- * pt_bind_name_or_path_in_scope() - tries to resolve in_node using all the
- *     entity_spec_lists in scopes and returns in_node if successfully resolved
- *   return:  in_node's resolution if successful, NULL if in_node is unresolved
- *   parser(in): the parser context
- *   bind_arg(in): a list of scopes for resolving names & path expressions
- *   in_node(in): an attribute reference or path expression to be resolved
- *
- * Note :
- * Unfortunately, we can't push the check for naked parameters
- * into pt_get_resolution() because parameters that have the
- * name as an attribute of some (possibly enclosing) scope must be
- * to the attribute and not the parameter (by our convention).
- * when naked parameters are eliminated, this mickey mouse stuff
- * will go away...
- */
 static PT_NODE *
-pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NODE * in_node)
+pt_resolve_name_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NODE * in_node)
 {
   PT_NODE *prev_entity = NULL;
   PT_NODE *node = NULL;
   SCOPES *scopes = bind_arg->scopes;
   SCOPES *scope;
   int level = 0;
-  PT_NODE *temp, *entity;
-  short scope_location;
-  bool error_saved = false;
-
-  /* skip hint argument name, index name */
-  if (in_node->node_type == PT_NAME
-      && (in_node->info.name.meta_class == PT_HINT_NAME || in_node->info.name.meta_class == PT_INDEX_NAME))
-    {
-      return in_node;
-    }
-
-  /* skip resolved nodes */
-  if (pt_resolved (in_node))
-    {
-      return in_node;
-    }
-
-  if (er_errid () != NO_ERROR)
-    {
-      /*
-         in case that the dblink server is not found
-         it is meaningless to call pt_get_resoultion.
-       */
-      if (er_errid () == ER_DBLINK_SERVER_NOT_FOUND)
-	{
-	  return in_node;
-	}
-
-      er_stack_push ();
-      error_saved = true;
-    }
 
   /* resolve all name nodes and path expressions */
   if (scopes)
@@ -936,7 +893,66 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	  scope = scope->next;
 	}
     }
-  else
+
+  return node;
+}
+
+/*
+ * pt_bind_name_or_path_in_scope() - tries to resolve in_node using all the
+ *     entity_spec_lists in scopes and returns in_node if successfully resolved
+ *   return:  in_node's resolution if successful, NULL if in_node is unresolved
+ *   parser(in): the parser context
+ *   bind_arg(in): a list of scopes for resolving names & path expressions
+ *   in_node(in): an attribute reference or path expression to be resolved
+ *
+ * Note :
+ * Unfortunately, we can't push the check for naked parameters
+ * into pt_get_resolution() because parameters that have the
+ * name as an attribute of some (possibly enclosing) scope must be
+ * to the attribute and not the parameter (by our convention).
+ * when naked parameters are eliminated, this mickey mouse stuff
+ * will go away...
+ */
+static PT_NODE *
+pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NODE * in_node)
+{
+  PT_NODE *node = NULL;
+  SCOPES *scopes = bind_arg->scopes;
+  PT_NODE *temp, *entity;
+  short scope_location;
+  bool error_saved = false;
+
+  /* skip hint argument name, index name */
+  if (in_node->node_type == PT_NAME
+      && (in_node->info.name.meta_class == PT_HINT_NAME || in_node->info.name.meta_class == PT_INDEX_NAME))
+    {
+      return in_node;
+    }
+
+  /* skip resolved nodes */
+  if (pt_resolved (in_node))
+    {
+      return in_node;
+    }
+
+  if (er_errid () != NO_ERROR)
+    {
+      /*
+         in case that the dblink server is not found
+         it is meaningless to call pt_get_resoultion.
+       */
+      if (er_errid () == ER_DBLINK_SERVER_NOT_FOUND)
+	{
+	  return in_node;
+	}
+
+      er_stack_push ();
+      error_saved = true;
+    }
+
+  /* resolve all name nodes and path expressions */
+  node = pt_resolve_name_in_scope (parser, bind_arg, in_node);
+  if (!node)
     {
       /* If pt_name in group by/ having, maybe it's alias. We will try to resolve it later. */
       if (!is_pt_name_in_group_having (in_node))
@@ -3022,6 +3038,29 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       /* Do not handle ON DUPLICATE KEY UPDATE yet, we need to resolve the other nodes first. */
       save = node->info.insert.odku_assignments;
       node->info.insert.odku_assignments = NULL;
+
+      /* check attr_list */
+      if (node->info.insert.attr_list)
+	{
+	  /* make sure attributes were not bound to parameters */
+	  for (attr = node->info.insert.attr_list; attr; attr = attr->next)
+	    {
+	      node1 = pt_resolve_name_in_scope (parser, bind_arg, attr);
+	      if (node1 == NULL)
+		{
+		  PT_ERROR (parser, attr, er_msg ());
+		  goto insert_end;
+		}
+
+	      resolved_attrs = parser_append_node (node1, resolved_attrs);
+	    }
+
+	  save = node->info.insert.attr_list;
+	  node->info.insert.attr_list = resolved_attrs;
+
+	  parser_free_tree (parser, save);
+	  save = NULL;
+	}
 
       if (node->info.insert.spec->info.spec.remote_server_name == NULL)
 	{
