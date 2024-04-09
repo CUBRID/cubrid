@@ -4250,6 +4250,9 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
   int is_partition = DB_NOT_PARTITIONED_CLASS;
   bool has_savepoint = false;
 
+  assert (class_mop != NULL);
+  assert (owner_mop != NULL);
+
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
   if (error != NO_ERROR)
     {
@@ -4274,7 +4277,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 
       has_savepoint = true;
 
-      for (i = 0; sub_partitions[i]; i++)
+      for (i = 0; sub_partitions[i] != NULL; i++)
 	{
 	  error = au_change_owner (sub_partitions[i], owner_mop);
 	  if (error != NO_ERROR)
@@ -4301,6 +4304,8 @@ end:
     {
       tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
     }
+
+  return error;
 }
 
 /*
