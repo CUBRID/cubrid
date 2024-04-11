@@ -212,7 +212,7 @@ public class TargetMethod {
 	}
 
 	public Method getMethod() throws SecurityException, NoSuchMethodException,
-			NoSuchMethodException, ClassNotFoundException {
+			ClassNotFoundException {
          Class<?> c = getClass(className);
          if (c == null) {
              throw new ClassNotFoundException(className);
