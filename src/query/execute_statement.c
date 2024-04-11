@@ -2319,8 +2319,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int cached_num;
   int ret_msg_id = 0;
 
-  const char *serial_owner_name = NULL;
-  DB_VALUE serial_name_val, returnval, serial_owner_val;
+  const char *serial_name = NULL, *serial_owner_name = NULL;
+  char user_specified_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+  MOP serial_mop = NULL, owner_mop = NULL;
   const char *comment = NULL;
 
   const PT_ALTER_CODE alter_serial_code = statement->info.serial.code;
@@ -2352,9 +2353,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&class_name_val);
   db_make_null (&abs_inc_val);
   db_make_null (&range_val);
-  db_make_null (&serial_name_val);
-  db_make_null (&returnval);
-  db_make_null (&serial_owner_val);
   OID_SET_NULL (&serial_obj_id);
 
   /*
@@ -2877,19 +2875,28 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CHANGE_OWNER:
       /* owner to */
       assert (statement->info.serial.owner_name != NULL);
+      serial_name = (char *) PT_NODE_SR_NAME (statement);
       serial_owner_name = statement->info.serial.owner_name->info.name.original;
 
-      db_make_string (&serial_name_val, (char *) PT_NODE_SR_NAME (statement));
-      db_make_string (&serial_owner_val, serial_owner_name);
-
-      au_change_serial_owner_method (serial_class, &returnval, &serial_name_val, &serial_owner_val);
-
-      pr_clear_value (&serial_name_val);
-      pr_clear_value (&serial_owner_val);
-
-      if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
+      sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
+      serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, user_specified_serial_name);
+      if (serial_mop == NULL)
 	{
-	  error = db_get_error (&returnval);
+	  ERROR_SET_ERROR_1ARG (error, ER_QPROC_SERIAL_NOT_FOUND, user_specified_serial_name);
+	  goto end;
+	}
+
+      owner_mop = au_find_user (serial_owner_name);
+      if (owner_mop == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
+
+      error = au_change_serial_owner (serial_mop, owner_mop, false);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
 	  goto end;
 	}
 
