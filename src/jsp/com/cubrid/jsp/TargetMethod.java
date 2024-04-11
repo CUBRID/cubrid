@@ -201,8 +201,6 @@ public class TargetMethod {
         descriptorMap.put("double", "D");
     }
 
-    private static final String[] DUMMY_STRING_ARRAY = new String[0];
-
     public Method getMethod()
             throws SecurityException, NoSuchMethodException, ClassNotFoundException {
         Class<?> c = getClass(className);
