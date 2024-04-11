@@ -10000,8 +10000,7 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (!start_val && !increment_val && !max_val && !min_val
 	  && cyclic == 0 && no_max == 0 && no_min == 0
-	  && no_cyclic == 0 && !cached_num_val && no_cache == 0
-	  && owner_name == NULL && node->info.serial.comment == NULL)
+	  && no_cyclic == 0 && !cached_num_val && no_cache == 0 && node->info.serial.comment == NULL)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
 	  return;
