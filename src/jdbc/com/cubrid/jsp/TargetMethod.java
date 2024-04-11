@@ -71,12 +71,12 @@ public class TargetMethod {
 		int nameStart = signature.substring(0, argStart).lastIndexOf('.') + 1;
 
 		if (signature.charAt(0) == '\'') {
-			className = signature.substring(1, nameStart - 1);
+			className = signature.substring(1, nameStart - 1).trim();
 		} else {
-			className = signature.substring(0, nameStart - 1);
+			className = signature.substring(0, nameStart - 1).trim();
 		}
 		// targetClass = getClass(className);
-		methodName = signature.substring(nameStart, argStart - 1);
+		methodName = signature.substring(nameStart, argStart - 1).trim();
 		String args = signature.substring(argStart, argEnd);
 		argsTypes = classesFor(args);
 	}
@@ -212,9 +212,30 @@ public class TargetMethod {
 	}
 
 	public Method getMethod() throws SecurityException, NoSuchMethodException,
-			ClassNotFoundException {
-		return getClass(className).getMethod(methodName, argsTypes);
-		// return targetClass.getMethod(methodName, argsTypes);
+			NoSuchMethodException, ClassNotFoundException {
+         Class<?> c = getClass(className);
+         if (c == null) {
+             throw new ClassNotFoundException(className);
+         }
+         try {
+             return c.getMethod(methodName, argsTypes);
+         } catch (NoSuchMethodException e) {
+             String argsTypeNames;
+             int len = argsTypes.length;
+             if (len > 0) {
+                 String[] arr = new String[len];
+                 for (int i = 0; i < len; i++) {
+                     arr[i] = argsTypes[i].getTypeName();
+                 }
+                 argsTypeNames = String.join(", ", arr);
+             } else {
+                 argsTypeNames = "";
+             }
+
+             throw new NoSuchMethodException(
+                     String.format("%s.%s(%s)", className, methodName, argsTypeNames));
+         }
+
 	}
 
 	public Class<?>[] getArgsTypes() {
