@@ -2,11 +2,6 @@ defaults: &defaults
   working_directory: /home
   docker:
     - image: cubridci/cubridci:11.2
-    
-oraclelinux: &oraclelinux
-  working_directory: /home
-  docker:
-    - image: cubridci/cubridci:ol7.8_11.2
 
 test_defaults: &test_defaults
   steps:
@@ -84,21 +79,6 @@ jobs:
     parallelism: 8
     <<: *test_defaults
 
-  test_medium_ol:
-    <<: *oraclelinux
-    environment:
-      TEST_SUITE: medium
-    resource_class: medium
-    <<: *test_defaults
-
-  test_sql_ol:
-    <<: *oraclelinux
-    environment:
-      TEST_SUITE: sql
-    resource_class: medium
-    parallelism: 8
-    <<: *test_defaults
-
 workflows:
   version: 2
   build_test:
@@ -108,12 +88,5 @@ workflows:
           requires:
             - build
       - test_sql:
-          requires:
-            - build
-
-      - test_medium_ol:
-          requires:
-            - build
-      - test_sql_ol:
           requires:
             - build
