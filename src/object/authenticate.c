@@ -466,6 +466,8 @@ static void au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp);
 static void au_print_auth (MOP auth, FILE * fp);
 
 static int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
+static int au_delete_auth_of_dropping_user (MOP user);
+
 /*
  * DB_ EXTENSION FUNCTIONS
  */
@@ -1563,6 +1565,77 @@ au_delete_auth_of_dropping_table (const char *class_name)
     }
 
   db_make_string (&val, class_name);
+  error = db_push_values (session, 1, &val);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, &result);
+  if (error < 0)
+    {
+      goto release;
+    }
+
+  error = db_query_end (result);
+
+release:
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+exit:
+  pr_clear_value (&val);
+
+  AU_ENABLE (save);
+
+  return error;
+}
+
+/*
+ * au_delete_auth_of_dropping_user - delete _db_auth records refers to the given grantee user.
+ *   return: error code
+ *   user(in): the grantee user name to be dropped
+ */
+static int
+au_delete_auth_of_dropping_user (MOP user)
+{
+  int error = NO_ERROR, save;
+  const char *sql_query = "DELETE FROM [" CT_CLASSAUTH_NAME "] [au] WHERE [au].[grantee] = ?;";
+  DB_VALUE val;
+  DB_QUERY_RESULT *result = NULL;
+  DB_SESSION *session = NULL;
+  int stmt_id;
+
+  db_make_null (&val);
+
+  /* Disable the checking for internal authorization object access */
+  AU_DISABLE (save);
+
+  assert (user != NULL);
+
+  session = db_open_buffer_local (sql_query);
+  if (session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
+  db_make_object (&val, user);
   error = db_push_values (session, 1, &val);
   if (error != NO_ERROR)
     {
@@ -3176,6 +3249,12 @@ au_drop_user (MOP user)
 	{
 	  goto error;
 	}
+    }
+
+  error = au_delete_auth_of_dropping_user (user);
+  if (error != NO_ERROR)
+    {
+      goto error;
     }
 
   /*
