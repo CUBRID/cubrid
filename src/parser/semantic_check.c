@@ -271,6 +271,7 @@ static PT_NODE *pt_check_where (PARSER_CONTEXT * parser, PT_NODE * node);
 static int pt_check_range_partition_strict_increasing (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * part,
 						       PT_NODE * part_next, PT_NODE * column_dt);
 static int pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * value, PT_NODE * data_type);
+static int pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param);
 
 /* pt_combine_compatible_info () - combine two cinfo into cinfo1
  *   return: true if compatible, else false
@@ -9402,6 +9403,57 @@ pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 }
 
 /*
+ * pt_check_create_stored_procedure () - do semantic checks for default values of create procedure/function statement
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static int
+pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param)
+{
+  int error = NO_ERROR;
+  PT_NODE *default_value_node = NULL;
+  PT_NODE *default_value = NULL;
+  const char *default_value_print = NULL;
+
+  default_value_node = param->info.sp_param.default_value =
+    pt_check_data_default (parser, param->info.sp_param.default_value);
+  assert (default_value_node != NULL && default_value_node->info.data_default.shared == PT_DEFAULT);
+
+  default_value = default_value_node->info.data_default.default_value;
+  default_value_print = pt_short_print (parser, default_value);
+
+// check omode
+  if (param->info.sp_param.mode != PT_INPUT && param->info.sp_param.mode != PT_NOPUT)
+    {
+      error = ER_FAILED;
+      // TODO: CBRD-25261: handling proper error
+      assert (false);
+      return error;
+    }
+
+  if (default_value_node->info.data_default.default_expr_type != DB_DEFAULT_NONE)
+    {
+      error = ER_FAILED;
+    }
+  else
+    {
+      error =
+	pt_coerce_value_for_default_value (parser, default_value, default_value, param->type_enum,
+					   param->data_type, default_value_node->info.data_default.default_expr_type);
+      if (error != NO_ERROR)
+	{
+	  error =
+	    (error == ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO;
+	  PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, error,
+		       default_value_print, pt_short_print (parser, param->data_type));
+	}
+    }
+
+  return error;
+}
+
+/*
  * pt_check_create_stored_procedure () - do semantic checks on the create procedure/function statement
  *   return:  none
  *   parser(in): the parser context used to derive the statement
@@ -9436,47 +9488,9 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  has_default_value = true;
 	  // check default value
-	  default_value_node = param->info.sp_param.default_value =
-	    pt_check_data_default (parser, param->info.sp_param.default_value);
-	  assert (default_value_node != NULL && default_value_node->info.data_default.shared == PT_DEFAULT);
-
-	  default_value = default_value_node->info.data_default.default_value;
-	  initial_def_val = parser_copy_tree (parser, default_value);
-	  if (initial_def_val == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
-	      goto end;
-	    }
-
-	  // check omode
-	  if (param->info.sp_param.mode != PT_INPUT && param->info.sp_param.mode != PT_NOPUT)
-	    {
-	      // TODO: CBRD-25261: handling proper error
-	      assert (false);
-	      goto end;
-	    }
-
-	  if (default_value_node->info.data_default.default_expr_type != DB_DEFAULT_NONE)
-	    {
-	      default_value = pt_semantic_type (parser, default_value, NULL);
-	      if (pt_has_error (parser) || default_value == NULL)
-		{
-		  // TODO: CBRD-25261 - check correct error handling
-		  goto end;
-		}
-	    }
-
-	  error =
-	    pt_coerce_value_for_default_value (parser, default_value, default_value, param->type_enum,
-					       param->data_type,
-					       default_value_node->info.data_default.default_expr_type);
+	  error = pt_check_default_value_param_for_stored_procedure (parser, param);
 	  if (error != NO_ERROR)
 	    {
-	      error =
-		(error == ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO;
-	      PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, error,
-			   pt_short_print (parser, initial_def_val), pt_short_print (parser, param->data_type));
 	      goto end;
 	    }
 	}
@@ -9505,11 +9519,6 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
 end:
-  if (initial_def_val)
-    {
-      parser_free_node (parser, initial_def_val);
-    }
-
   return;
 }
 
