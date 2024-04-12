@@ -2849,7 +2849,15 @@ emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_)
 
 	      // reverse unique does not care for direction of the column.
 	    }
-	  output_ctx (");\n");
+	  output_ctx (")");
+
+	  if (constraint->comment != NULL && constraint->comment[0] != '\0')
+	    {
+	      output_ctx (" ");
+	      help_print_describe_comment (output_ctx, constraint->comment);
+	    }
+
+	  output_ctx (";\n");
 	}
     }
 }
