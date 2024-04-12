@@ -9511,10 +9511,14 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
+	  // error for non-trailing arguments
 	  if (has_default_value)
 	    {
-	      // TODO: CBRD-25261: handling proper error for non-trailing arguments
-	      assert (false);
+	      PT_ERRORmf (parser,
+			  param,
+			  MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_SP_NON_TRAILING_OPTIONAL_PARAMS,
+			  pt_short_print (parser, param->info.sp_param.name));
 	      goto end;
 	    }
 	}

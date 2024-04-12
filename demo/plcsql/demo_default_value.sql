@@ -68,9 +68,6 @@ begin
     DBMS_OUTPUT.put_line(b);
 end;
 
-CALL demo_default_value4 ('c');
-CALL demo_default_value4 ('c', 'd');
-
 -- Error) not same type
 create or replace procedure demo_default_value5 (
         a varchar, 

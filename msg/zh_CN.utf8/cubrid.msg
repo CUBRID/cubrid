@@ -1937,6 +1937,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 317 Identifiers cannot be in a LIMIT clause.
 318 Stored procedure/function "$1$s" does not exist.
 319 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
+320 Only trailing default parameter is allowed: invalid at '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
