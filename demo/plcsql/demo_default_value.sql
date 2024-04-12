@@ -90,3 +90,28 @@ begin
     DBMS_OUTPUT.put_line(a);
     DBMS_OUTPUT.put_line(b);
 end;
+
+-- Error) out param
+create or replace procedure demo_default_value7 (
+        a out varchar := 'a'
+) as
+begin
+    DBMS_OUTPUT.put_line(a);
+end;
+
+-- Error) out param
+create or replace procedure demo_default_value8 (
+        a varchar := 'a',
+        b out varchar := 'b'
+) as
+begin
+    DBMS_OUTPUT.put_line(a);
+end;
+
+-- Error) in out param
+create or replace procedure demo_default_value9 (
+        a in out varchar:= 'a'
+) as
+begin
+    DBMS_OUTPUT.put_line(a);
+end;

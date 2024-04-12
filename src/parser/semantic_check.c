@@ -9412,29 +9412,44 @@ static int
 pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param)
 {
   int error = NO_ERROR;
+  PT_NODE *node_ptr = NULL;
   PT_NODE *default_value_node = NULL;
   PT_NODE *default_value = NULL;
   const char *default_value_print = NULL;
 
   default_value_node = param->info.sp_param.default_value =
     pt_check_data_default (parser, param->info.sp_param.default_value);
+  if (pt_has_error (parser))
+    {
+      return error;
+    }
+
   assert (default_value_node != NULL && default_value_node->info.data_default.shared == PT_DEFAULT);
 
   default_value = default_value_node->info.data_default.default_value;
   default_value_print = pt_short_print (parser, default_value);
 
-// check omode
   if (param->info.sp_param.mode != PT_INPUT && param->info.sp_param.mode != PT_NOPUT)
     {
-      error = ER_FAILED;
-      // TODO: CBRD-25261: handling proper error
-      assert (false);
+      PT_ERRORmf (parser,
+		  param,
+		  MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_SP_OUT_DEFAULT_ARG_NOT_ALLOWED, pt_short_print (parser, param->info.sp_param.name));
       return error;
     }
 
   if (default_value_node->info.data_default.default_expr_type != DB_DEFAULT_NONE)
     {
-      error = ER_FAILED;
+      node_ptr = NULL;
+      parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
+      if (node_ptr != NULL)
+	{
+	  PT_ERRORmf (parser,
+		      node_ptr,
+		      MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+		      fcode_get_lowercase_name (node_ptr->info.function.function_type));
+	}
     }
   else
     {
