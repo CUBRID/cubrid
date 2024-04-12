@@ -1937,7 +1937,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
-317 DBA and members of DBA group can perform %1$s.
+317 Only DBA and DBA group members can perform %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
