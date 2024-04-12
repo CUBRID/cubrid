@@ -3288,9 +3288,17 @@ emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_O
 
 	      // reverse unique does not care for direction of the column.
 	    }
-	  output_ctx (");\n");
+
+	  output_ctx (")");
+
+	  if (constraint->comment != NULL && constraint->comment[0] != '\0')
+	    {
+	      output_ctx (" ");
+	      help_print_describe_comment (output_ctx, constraint->comment);
+	    }
 	}
     }
+  output_ctx (";\n");
 }
 
 
@@ -5522,6 +5530,7 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
 
       if (reverse_unique_flag)
 	{
+	  output_ctx ("\n");
 	  emit_reverse_unique_def (ctxt, output_ctx, cl->op);
 	}
 
