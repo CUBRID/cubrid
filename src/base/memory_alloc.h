@@ -271,6 +271,7 @@ extern "C"
 {
 #endif
   extern char *db_private_strdup (THREAD_ENTRY * thrd, const char *s);
+  extern char *db_private_strndup (THREAD_ENTRY * thrd, const char *s, size_t size);
 #ifdef __cplusplus
 }
 #endif

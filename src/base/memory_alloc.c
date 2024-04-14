@@ -695,6 +695,37 @@ db_private_strdup (THREAD_ENTRY * thrd, const char *s)
   return cp;
 }
 
+
+/*
+ * db_private_strndup () - duplicate string with size. memory for the duplicated
+ *   string is obtanined by db_private_alloc
+ *   return: pointer to duplicated str
+ *   thrd(in): thread conext if it is server, otherwise NULL
+ *   s(in): source string
+ *   size(in): source string size
+ */
+char *
+db_private_strndup (THREAD_ENTRY * thrd, const char *s, size_t size)
+{
+  char *cp;
+
+  /* fast return */
+  if (s == NULL)
+    {
+      return NULL;
+    }
+
+  cp = (char *) db_private_alloc (thrd, size + 1);
+
+  if (cp != NULL)
+    {
+      memcpy (cp, s, size);
+      cp[size] = '\0';
+    }
+
+  return cp;
+}
+
 /*
  * db_private_free () - call free function for current private heap
  *   return:
