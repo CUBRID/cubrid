@@ -1160,9 +1160,11 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	   result_type;
 
   int sig_num_args = pt_length_of_list (node->info.method_call.arg_list);
-  std::vector < int >sig_arg_mode;
-  std::vector < int >sig_arg_type;
-  std::vector <std::string> sig_arg_default;
+  std::vector <int> sig_arg_mode;
+  std::vector <int> sig_arg_type;
+
+  std::vector <char *> sig_arg_default;
+  std::vector <int> sig_arg_default_size;
 
   int sig_result_type;
   int param_cnt = 0;
@@ -1211,13 +1213,9 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	    // there are trailing default arguments
 	    num_trailing_default_args = param_cnt - sig_num_args;
 	  }
+
 	sig_arg_default.resize (param_cnt);
-	/*
-	else
-	  {
-	    // no default values
-	  }
-	*/
+	sig_arg_default_size.resize (param_cnt);
 
 	DB_VALUE args;
 	/* arg_mode, arg_type */
@@ -1261,12 +1259,10 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 		    goto end;
 		  }
 
-		if (i < sig_num_args)
-		  {
-		    // getting default value is not required for specified paramters
-		    sig_arg_default.emplace_back ("");
-		  }
-		else
+		sig_arg_default[i] = NULL;
+		sig_arg_default_size[i] = -1;
+
+		if (i >= sig_num_args)
 		  {
 		    error = db_get (arg_mop_p, SP_ATTR_IS_OPTIONAL, &optional_val);
 		    if (error == NO_ERROR)
@@ -1277,17 +1273,18 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 			    error = db_get (arg_mop_p, SP_ATTR_DEFAULT_VALUE, &default_val);
 			    if (error == NO_ERROR)
 			      {
-				char *default_val_str = nullptr;
 				if (!DB_IS_NULL (&default_val))
 				  {
-				    // required parameter
-				    default_val_str = (char *) db_get_string (&default_val);
-				    sig_arg_default[i].assign (default_val_str);
+				    sig_arg_default_size[i] = db_get_string_size (&default_val);
+				    if (sig_arg_default_size[i] > 0)
+				      {
+					sig_arg_default[i] = db_private_strndup (NULL, db_get_string (&default_val), sig_arg_default_size[i]);
+				      }
 				  }
 				else
 				  {
-				    // TODO: CBRD-25261 - handle invalid default value
-				    // do nothing?
+				    // default value is NULL
+				    sig_arg_default_size[i] = -2; // special value
 				  }
 			      }
 			    else
@@ -1297,9 +1294,11 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 			  }
 			else
 			  {
-			    // TODO: CBRD-25261 - error
+			    // should not happened
+			    // this should be checked in semantic checking of create procedure/function statement
 			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, "is not optional");
-			    // do nothing?
+			    assert (false);
+			    goto end;
 			  }
 		      }
 		    else
@@ -1421,7 +1420,6 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	      }
 
 	    sig->arg_info->default_value = (char **) db_private_alloc (NULL, (param_cnt) * sizeof (char *));
-
 	    sig->arg_info->default_value_size = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
 
 	    for (int i = 0; i < param_cnt; i++)
@@ -1429,12 +1427,10 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 		sig->arg_info->arg_mode[i] = sig_arg_mode[i];
 		sig->arg_info->arg_type[i] = sig_arg_type[i];
 
-		sig->arg_info->default_value_size[i] = sig_arg_default[i].size ();
+		sig->arg_info->default_value_size[i] = sig_arg_default_size[i];
 		if (sig->arg_info->default_value_size[i] > 0)
 		  {
-		    sig->arg_info->default_value[i] = (char *) db_private_alloc (NULL,
-						      sizeof (char) * (sig->arg_info->default_value_size[i] + 1));
-		    strncpy (sig->arg_info->default_value[i], sig_arg_default[i].data (), sig->arg_info->default_value_size[i]);
+		    sig->arg_info->default_value[i] = sig_arg_default[i];
 		  }
 	      }
 	  }

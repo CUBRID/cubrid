@@ -9440,16 +9440,16 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 
   if (default_value_node->info.data_default.default_expr_type != DB_DEFAULT_NONE)
     {
-      node_ptr = NULL;
-      parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
-      if (node_ptr != NULL)
-	{
-	  PT_ERRORmf (parser,
-		      node_ptr,
-		      MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
-		      fcode_get_lowercase_name (node_ptr->info.function.function_type));
-	}
+      //node_ptr = NULL;
+      //parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
+      //if (node_ptr != NULL)
+      {
+	PT_ERRORmf (parser,
+		    default_value_node->info.data_default.default_value,
+		    MSGCAT_SET_PARSER_SEMANTIC,
+		    MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+		    pt_short_print (parser, default_value_node->info.data_default.default_value));
+      }
     }
   else
     {
@@ -9461,7 +9461,7 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 	  error =
 	    (error == ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO;
 	  PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, error,
-		       default_value_print, pt_short_print (parser, param->data_type));
+		       default_value_print, pt_get_type_name (param->type_enum, param->data_type));
 	}
     }
 

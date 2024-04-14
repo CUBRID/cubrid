@@ -47,6 +47,7 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.protocol.Header;
 import com.cubrid.jsp.protocol.PrepareArgs;
 import com.cubrid.jsp.protocol.RequestCode;
+import com.cubrid.jsp.value.NullValue;
 import com.cubrid.jsp.value.StringValue;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
@@ -410,13 +411,24 @@ public class ExecuteThread extends Thread {
             int pos = unpacker.unpackInt();
             int mode = unpacker.unpackInt();
             int type = unpacker.unpackInt();
-            String defaultVal = unpacker.unpackCString();
+            int defaultValSize = unpacker.unpackInt();
+            String defaultVal = null;
 
             Value val = null;
             if (pos != -1) {
                 val = arguments[pos];
             } else {
-                val = new StringValue(defaultVal);
+                if (defaultValSize > 0) {
+                    defaultVal = unpacker.unpackCString();
+                    val = new StringValue(defaultVal);
+                } else if (defaultValSize == 0) {
+                    val = new StringValue("");
+                } else if (defaultValSize == -2) {
+                    val = new NullValue();
+                } else {
+                    // internal error
+                    assert false;
+                }
             }
             val.setMode(mode);
             val.setDbType(type);

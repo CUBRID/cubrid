@@ -202,12 +202,11 @@ method_sig_node::pack (cubpacking::packer &serializator) const
 	}
       for (int i = 0; i < num_method_args; i++)
 	{
-	  std::string str;
+	  serializator.pack_int (arg_info->default_value_size[i]);
 	  if (arg_info->default_value_size[i] > 0)
 	    {
-	      str.assign (arg_info->default_value[i], arg_info->default_value_size[i]);
+	      serializator.pack_c_string (arg_info->default_value[i], arg_info->default_value_size[i]);
 	    }
-	  serializator.pack_string (str);
 	}
       serializator.pack_int (arg_info->result_type);
     }
@@ -258,8 +257,12 @@ method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t 
 	}
       for (int i = 0; i < num_method_args; i++)
 	{
-	  size += serializator.get_packed_c_string_size ((const char *) arg_info->default_value[i],
-		  (size_t) arg_info->default_value_size[i], size); /* method_sig->arg_info->arg_mode[i] */
+	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_default_size[i] */
+	  if (arg_info->default_value_size[i] > 0)
+	    {
+	      size += serializator.get_packed_c_string_size ((const char *) arg_info->default_value[i],
+		      (size_t) arg_info->default_value_size[i], size); /* method_sig->arg_info->arg_default[i] */
+	    }
 	}
       size += serializator.get_packed_int_size (size); /* method_sig->arg_info->result_type */
     }
@@ -428,13 +431,11 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
 
 	  for (int i = 0; i < num_method_args; i++)
 	    {
-	      std::string str;
-	      deserializator.unpack_string (str);
-
-
-	      arg_info->default_value_size[i] = str.size ();
+	      deserializator.unpack_int (arg_info->default_value_size[i]);
 	      if (arg_info->default_value_size[i] > 0)
 		{
+		  std::string str;
+		  deserializator.unpack_string (str);
 		  arg_info->default_value[i] = (char *) db_private_alloc (NULL, sizeof (char) * (arg_info->default_value_size[i] + 1));
 		  strncpy (arg_info->default_value[i], str.data (), arg_info->default_value_size[i]);
 		}
