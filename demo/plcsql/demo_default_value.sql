@@ -19,6 +19,7 @@ end;
 CALL demo_default_value2 ();
 CALL demo_default_value2 ('c');
 CALL demo_default_value2 ('c', 'd');
+CALL demo_default_value2 ('c', 'd', 'e'); -- error
 
 -- trailing arguments
 create or replace procedure demo_default_value3 (
@@ -55,7 +56,7 @@ begin
 end;
 
 CALL demo_default_value8 ('a');
-CALL demo_default_value8 ('a', NULL);
+CALL demo_default_value8 ('a', NULL); -- equivalent with above
 CALL demo_default_value8 ('a', 'b');
 
 -- Error 1) no trailing arguments
@@ -68,7 +69,7 @@ begin
     DBMS_OUTPUT.put_line(b);
 end;
 
--- Error) not same type
+-- Not error (coercible)
 create or replace procedure demo_default_value5 (
         a varchar, 
         b varchar := 1
@@ -77,6 +78,8 @@ begin
     DBMS_OUTPUT.put_line(a);
     DBMS_OUTPUT.put_line(b);
 end;
+
+call demo_default_value5 ('a');
 
 -- Error) type incompatbile
 create or replace procedure demo_default_value6 (
@@ -112,3 +115,23 @@ create or replace procedure demo_default_value9 (
 begin
     DBMS_OUTPUT.put_line(a);
 end;
+
+-- expression (error case)
+create or replace procedure demo_default_value10 (
+        a varchar := SYSDATETIME
+) as
+begin
+    DBMS_OUTPUT.put_line(a);
+end;
+
+CALL demo_default_value10 ();
+
+-- expression (error case)
+create or replace procedure demo_default_value11 (
+        a varchar := CURRENT_USER
+) as
+begin
+    DBMS_OUTPUT.put_line(a);
+end;
+
+CALL demo_default_value11 ();
