@@ -152,6 +152,8 @@ typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
 typedef struct xasl_stat XASL_STATS;
 
+typedef struct sq_cache SQ_CACHE;
+
 typedef struct topn_tuple TOPN_TUPLE;
 typedef struct topn_tuples TOPN_TUPLES;
 
@@ -927,6 +929,19 @@ struct xasl_stat
   UINT64 fetch_time;
 };
 
+struct sq_cache
+{
+  MHT_TABLE *ht;
+  UINT64 size_max;
+  UINT64 size;
+  UINT64 miss_max;
+  struct
+  {
+    int hit;
+    int miss;
+  } stats;
+};
+
 /* top-n sorting object */
 struct topn_tuples
 {
@@ -1076,18 +1091,7 @@ struct xasl_node
   ORDERBY_STATS orderby_stats;
   GROUPBY_STATS groupby_stats;
   XASL_STATS xasl_stats;
-  struct sq_cache
-  {
-    MHT_TABLE *ht;
-    UINT64 size_max;
-    UINT64 size;
-    UINT64 miss_max;
-    struct
-    {
-      UINT64 hit;
-      UINT64 miss;
-    } stats;
-  } sq_cache;
+  SQ_CACHE *sq_cache;
 
   TOPN_TUPLES *topn_items;	/* top-n tuples for orderby limit */
 

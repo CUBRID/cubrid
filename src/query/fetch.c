@@ -3872,9 +3872,9 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 
-      if (sq_check_enable (regu_var->xasl))
+      if (sq_check_enable (thread_p, regu_var->xasl))
 	{
-	  if (!sq_get (regu_var->xasl, regu_var))
+	  if (!sq_get (thread_p, regu_var->xasl, regu_var))
 	    {
 	      /* execute linked query */
 	      EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
@@ -3882,7 +3882,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 		{
 		  goto exit_on_error;
 		}
-	      sq_put (regu_var->xasl, regu_var);
+	      sq_put (thread_p, regu_var->xasl, regu_var);
 	    }
 	  else
 	    {

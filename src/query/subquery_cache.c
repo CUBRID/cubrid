@@ -33,79 +33,56 @@
 #include "regu_var.hpp"
 #include "object_representation.h"
 #include "system_parameter.h"
+#include "memory_alloc.h"
 
 #include "list_file.h"
 #include "db_set_function.h"
 
 #include "subquery_cache.h"
 
-typedef union _sq_regu_value
-{
-  /* fields used by both XASL interpreter and regulator */
-  DB_VALUE *dbvalptr;		/* for constant values */
-  QFILE_SORTED_LIST_ID *srlist_id;	/* sorted list identifier for subquery results */
-} sq_regu_value;
-
-typedef struct _sq_key
-{
-  DB_VALUE *pred_set;
-} sq_key;
-
-typedef struct _sq_val
-{
-  sq_regu_value val;
-  REGU_DATATYPE t;
-} sq_val;
-
 /**************************************************************************************/
 
 /* Static functions for sq_cache hash table. */
 
-static sq_key *sq_make_key (xasl_node * xasl);
-static sq_val *sq_make_val (REGU_VARIABLE * val);
-static void sq_free_key (sq_key * key);
-static void sq_free_val (sq_val * val);
-static void sq_unpack_val (sq_val * val, REGU_VARIABLE * retp);
+static SQ_KEY *sq_make_key (THREAD_ENTRY * thread_p, xasl_node * xasl);
+static SQ_VAL *sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val);
+static void sq_free_key (SQ_KEY * key);
+static void sq_free_val (SQ_VAL * val);
+static void sq_unpack_val (SQ_VAL * val, REGU_VARIABLE * retp);
 
 static unsigned int sq_hash_func (const void *key, unsigned int ht_size);
 static int sq_cmp_func (const void *key1, const void *key2);
 static int sq_rem_func (const void *key, void *data, void *args);
 
-static int sq_walk_xasl_check_not_caching (xasl_node * xasl);
-static int sq_walk_xasl_and_add_val_to_set (void *p, int type, sq_key * pred_set);
+static int sq_walk_xasl_check_not_caching (THREAD_ENTRY * thread_p, xasl_node * xasl);
+static int sq_walk_xasl_and_add_val_to_set (THREAD_ENTRY * thread_p, void *p, int type, SQ_KEY * pred_set);
 
 /**************************************************************************************/
 
 /*
  * sq_make_key () - Creates a key for the scalar subquery cache.
- *   return: Pointer to a newly allocated sq_key structure, or NULL if no constant predicate is present.
+ *   return: Pointer to a newly allocated SQ_KEY structure, or NULL if no constant predicate is present.
  *   xasl(in): The XASL node of the scalar subquery.
  *
  * This function generates a key for caching the results of a scalar subquery. It checks the provided XASL node
  * for predicates (where_key, where_pred, where_range) and creates a set (pred_set) to represent the key.
  * If no predicates are found or the set cannot be populated, NULL is returned. Otherwise, a pointer to the
- * newly created sq_key structure is returned.
+ * newly created SQ_KEY structure is returned.
  */
-sq_key *
-sq_make_key (xasl_node * xasl)
+SQ_KEY *
+sq_make_key (THREAD_ENTRY * thread_p, xasl_node * xasl)
 {
-  sq_key *keyp;
+  SQ_KEY *keyp;
   int cnt = 0;
   ACCESS_SPEC_TYPE *p;
 
   p = xasl->spec_list;
 
-  if (p && !p->where_key && !p->where_pred && !p->where_range)
-    {
-      /* if there's no predicate in xasl, not caching */
-      return NULL;
-    }
-
-  keyp = (sq_key *) malloc (sizeof (sq_key));
+  keyp = (SQ_KEY *) db_private_alloc (NULL, sizeof (SQ_KEY));
   keyp->pred_set = db_value_create ();
   db_make_set (keyp->pred_set, db_set_create_basic (NULL, NULL));
 
-  cnt = sq_walk_xasl_and_add_val_to_set ((void *) xasl, SQ_TYPE_XASL, keyp);
+  cnt = sq_walk_xasl_and_add_val_to_set (thread_p, (void *) xasl, SQ_TYPE_XASL, keyp);
 
   if (cnt == 0)
     {
@@ -118,18 +95,18 @@ sq_make_key (xasl_node * xasl)
 
 /*
  * sq_make_val () - Creates a value structure for the scalar subquery cache.
- *   return: Pointer to a newly created sq_val structure.
- *   val(in): The REGU_VARIABLE for which to create the sq_val structure.
+ *   return: Pointer to a newly created SQ_VAL structure.
+ *   val(in): The REGU_VARIABLE for which to create the SQ_VAL structure.
  *
- * Allocates and initializes a new sq_val structure based on the given REGU_VARIABLE. The function handles
+ * Allocates and initializes a new SQ_VAL structure based on the given REGU_VARIABLE. The function handles
  * different types of REGU_VARIABLE (e.g., TYPE_CONSTANT, TYPE_LIST_ID) appropriately by copying or cloning
- * the necessary data. It returns a pointer to the newly allocated and initialized sq_val structure.
+ * the necessary data. It returns a pointer to the newly allocated and initialized SQ_VAL structure.
  */
-sq_val *
-sq_make_val (REGU_VARIABLE * val)
+SQ_VAL *
+sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val)
 {
-  sq_val *ret;
-  ret = (sq_val *) malloc (sizeof (sq_val));
+  SQ_VAL *ret;
+  ret = (SQ_VAL *) db_private_alloc (NULL, sizeof (SQ_VAL));
 
   ret->t = val->type;
 
@@ -140,9 +117,7 @@ sq_make_val (REGU_VARIABLE * val)
       break;
 
     case TYPE_LIST_ID:
-      ret->val.srlist_id = (QFILE_SORTED_LIST_ID *) malloc (sizeof (QFILE_SORTED_LIST_ID));
-      ret->val.srlist_id->list_id = qfile_clone_list_id (val->value.srlist_id->list_id, true);
-      ret->val.srlist_id->sorted = val->value.srlist_id->sorted;
+      /* should be implemented later. */
       break;
 
     default:
@@ -154,30 +129,30 @@ sq_make_val (REGU_VARIABLE * val)
 }
 
 /*
- * sq_free_key () - Frees the memory allocated for a sq_key structure.
- *   key(in): The sq_key structure to be freed.
+ * sq_free_key () - Frees the memory allocated for a SQ_KEY structure.
+ *   key(in): The SQ_KEY structure to be freed.
  *
- * This function releases the memory allocated for the pred_set within the sq_key structure and then
- * frees the sq_key structure itself.
+ * This function releases the memory allocated for the pred_set within the SQ_KEY structure and then
+ * frees the SQ_KEY structure itself.
  */
 void
-sq_free_key (sq_key * key)
+sq_free_key (SQ_KEY * key)
 {
   db_value_clear (key->pred_set);
   pr_free_ext_value (key->pred_set);
 
-  free (key);
+  db_private_free_and_init (NULL, key);
 }
 
 /*
- * sq_free_val () - Frees the memory allocated for a sq_val structure.
- *   v(in): The sq_val structure to be freed.
+ * sq_free_val () - Frees the memory allocated for a SQ_VAL structure.
+ *   v(in): The SQ_VAL structure to be freed.
  *
- * Depending on the type of the value in the sq_val structure (e.g., TYPE_CONSTANT, TYPE_LIST_ID),
- * this function frees the associated resources and then the sq_val structure itself.
+ * Depending on the type of the value in the SQ_VAL structure (e.g., TYPE_CONSTANT, TYPE_LIST_ID),
+ * this function frees the associated resources and then the SQ_VAL structure itself.
  */
 void
-sq_free_val (sq_val * v)
+sq_free_val (SQ_VAL * v)
 {
   switch (v->t)
     {
@@ -186,28 +161,27 @@ sq_free_val (sq_val * v)
       break;
 
     case TYPE_LIST_ID:
-      QFILE_FREE_AND_INIT_LIST_ID (v->val.srlist_id->list_id);
-      free (v->val.srlist_id);
+      /* should be implemented later.. */
       break;
 
     default:
       assert (0);
       break;
     }
-  free (v);
+  db_private_free_and_init (NULL, v);
 }
 
 /*
- * sq_unpack_val () - Unpacks the value from a sq_val structure into a REGU_VARIABLE.
- *   v(in): The sq_val structure containing the value to be unpacked.
+ * sq_unpack_val () - Unpacks the value from a SQ_VAL structure into a REGU_VARIABLE.
+ *   v(in): The SQ_VAL structure containing the value to be unpacked.
  *   retp(out): The REGU_VARIABLE to store the unpacked value.
  *
- * Based on the type of the value in the sq_val structure, this function unpacks the value and stores
+ * Based on the type of the value in the SQ_VAL structure, this function unpacks the value and stores
  * it in the provided REGU_VARIABLE. The function handles different types appropriately, such as copying
  * DB_VALUE or cloning a LIST_ID.
  */
 void
-sq_unpack_val (sq_val * v, REGU_VARIABLE * retp)
+sq_unpack_val (SQ_VAL * v, REGU_VARIABLE * retp)
 {
   switch (v->t)
     {
@@ -248,13 +222,13 @@ sq_unpack_val (sq_val * v, REGU_VARIABLE * retp)
  *   key(in): The key to be hashed.
  *   ht_size(in): The size of the hash table.
  *   
- * Generates a hash value for the given key by hashing the elements of the pred_set within the sq_key structure.
+ * Generates a hash value for the given key by hashing the elements of the pred_set within the SQ_KEY structure.
  * The hash value is then modulated by the size of the hash table to ensure it falls within valid bounds.
  */
 unsigned int
 sq_hash_func (const void *key, unsigned int ht_size)
 {
-  sq_key *k = (sq_key *) key;
+  SQ_KEY *k = (SQ_KEY *) key;
   int i;
   unsigned int h = 0;
   DB_SET *set = db_get_set (k->pred_set);
@@ -275,19 +249,19 @@ sq_hash_func (const void *key, unsigned int ht_size)
  *   key1(in): The first key to compare.
  *   key2(in): The second key to compare.
  *
- * Compares two sq_key structures to determine if they are equal. The comparison is based on the elements
+ * Compares two SQ_KEY structures to determine if they are equal. The comparison is based on the elements
  * of the pred_set within each key. The function returns 1 if the keys are considered equal, otherwise 0.
  */
 int
 sq_cmp_func (const void *key1, const void *key2)
 {
-  sq_key *k1, *k2;
+  SQ_KEY *k1, *k2;
   int i, sz1, sz2;
   DB_SET *set1, *set2;
   DB_VALUE v1, v2;
 
-  k1 = (sq_key *) key1;
-  k2 = (sq_key *) key2;
+  k1 = (SQ_KEY *) key1;
+  k2 = (SQ_KEY *) key2;
   set1 = db_get_set (k1->pred_set);
   set2 = db_get_set (k2->pred_set);
   sz1 = db_set_size (set1);
@@ -323,13 +297,13 @@ sq_cmp_func (const void *key1, const void *key2)
  *   args(in): Additional arguments (unused).
  *
  * This function is called when an entry is removed from the scalar subquery cache. It frees the resources
- * allocated for the key and the data (sq_val structure) using sq_free_key and sq_free_val functions.
+ * allocated for the key and the data (SQ_VAL structure) using sq_free_key and sq_free_val functions.
  */
 int
 sq_rem_func (const void *key, void *data, void *args)
 {
-  sq_free_key ((sq_key *) key);
-  sq_free_val ((sq_val *) data);
+  sq_free_key ((SQ_KEY *) key);
+  sq_free_val ((SQ_VAL *) data);
   return NO_ERROR;
 }
 
@@ -342,18 +316,31 @@ sq_rem_func (const void *key, void *data, void *args)
  * caching its results. Conditions include the presence of if_pred, after_join_pred, or dptr_list in the XASL node.
  */
 int
-sq_walk_xasl_check_not_caching (xasl_node * xasl)
+sq_walk_xasl_check_not_caching (THREAD_ENTRY * thread_p, xasl_node * xasl)
 {
   xasl_node *scan_ptr, *aptr;
   int ret;
-  sq_key *key;
+  SQ_KEY *key;
+
+  if (!xasl)
+    {
+      return true;
+    }
+  else if (!xasl->spec_list)
+    {
+      return true;
+    }
+  else if (!xasl->spec_list->where_key && !xasl->spec_list->where_pred && !xasl->spec_list->where_range)
+    {
+      return true;
+    }
 
   if (xasl->if_pred || xasl->after_join_pred || xasl->dptr_list)
     {
       return true;
     }
 
-  key = sq_make_key (xasl);
+  key = sq_make_key (thread_p, xasl);
 
   if (key == NULL)
     {
@@ -367,14 +354,14 @@ sq_walk_xasl_check_not_caching (xasl_node * xasl)
     {
       for (scan_ptr = xasl->scan_ptr; scan_ptr != NULL; scan_ptr = scan_ptr->next)
 	{
-	  ret |= sq_walk_xasl_check_not_caching (scan_ptr);
+	  ret |= sq_walk_xasl_check_not_caching (thread_p, scan_ptr);
 	}
     }
   if (xasl->aptr_list)
     {
       for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
 	{
-	  ret |= sq_walk_xasl_check_not_caching (aptr);
+	  ret |= sq_walk_xasl_check_not_caching (thread_p, aptr);
 	}
     }
 
@@ -394,7 +381,7 @@ sq_walk_xasl_check_not_caching (xasl_node * xasl)
  * The count of values added to the set is returned.
  */
 int
-sq_walk_xasl_and_add_val_to_set (void *p, int type, sq_key * key)
+sq_walk_xasl_and_add_val_to_set (THREAD_ENTRY * thread_p, void *p, int type, SQ_KEY * key)
 {
   int cnt = 0;
 
@@ -416,18 +403,18 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, sq_key * key)
 	  for (p = xasl->spec_list; p; p = p->next)
 	    {
 	      /* key */
-	      cnt += sq_walk_xasl_and_add_val_to_set (p->where_key, SQ_TYPE_PRED, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, p->where_key, SQ_TYPE_PRED, key);
 	      /* pred */
-	      cnt += sq_walk_xasl_and_add_val_to_set (p->where_pred, SQ_TYPE_PRED, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, p->where_pred, SQ_TYPE_PRED, key);
 	      /* range */
-	      cnt += sq_walk_xasl_and_add_val_to_set (p->where_range, SQ_TYPE_PRED, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, p->where_range, SQ_TYPE_PRED, key);
 	    }
 
 	  if (xasl->scan_ptr)
 	    {
 	      for (scan_ptr = xasl->scan_ptr; scan_ptr != NULL; scan_ptr = scan_ptr->next)
 		{
-		  cnt += sq_walk_xasl_and_add_val_to_set (scan_ptr, SQ_TYPE_XASL, key);
+		  cnt += sq_walk_xasl_and_add_val_to_set (thread_p, scan_ptr, SQ_TYPE_XASL, key);
 		}
 	    }
 
@@ -435,7 +422,7 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, sq_key * key)
 	    {
 	      for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
 		{
-		  cnt += sq_walk_xasl_and_add_val_to_set (aptr, SQ_TYPE_XASL, key);
+		  cnt += sq_walk_xasl_and_add_val_to_set (thread_p, aptr, SQ_TYPE_XASL, key);
 		}
 	    }
 
@@ -448,14 +435,14 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, sq_key * key)
 	  PRED_EXPR *src = (PRED_EXPR *) p;
 	  if (src->type == T_PRED)
 	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (src->pe.m_pred.lhs, SQ_TYPE_PRED, key);
-	      cnt += sq_walk_xasl_and_add_val_to_set (src->pe.m_pred.rhs, SQ_TYPE_PRED, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->pe.m_pred.lhs, SQ_TYPE_PRED, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->pe.m_pred.rhs, SQ_TYPE_PRED, key);
 	    }
 	  else if (src->type == T_EVAL_TERM)
 	    {
 	      COMP_EVAL_TERM t = src->pe.m_eval_term.et.et_comp;
-	      cnt += sq_walk_xasl_and_add_val_to_set (t.lhs, SQ_TYPE_REGU_VAR, key);
-	      cnt += sq_walk_xasl_and_add_val_to_set (t.rhs, SQ_TYPE_REGU_VAR, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, t.lhs, SQ_TYPE_REGU_VAR, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, t.rhs, SQ_TYPE_REGU_VAR, key);
 	    }
 	}
       break;
@@ -466,16 +453,16 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, sq_key * key)
 	  REGU_VARIABLE *src = (REGU_VARIABLE *) p;
 	  if (src->type == TYPE_CONSTANT)
 	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.dbvalptr, SQ_TYPE_DBVAL, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->value.dbvalptr, SQ_TYPE_DBVAL, key);
 	    }
 	  if (src->type == TYPE_DBVAL)
 	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (&src->value.dbval, SQ_TYPE_DBVAL, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, &src->value.dbval, SQ_TYPE_DBVAL, key);
 	    }
 	  else if (src->type == TYPE_INARITH)
 	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.arithptr->leftptr, SQ_TYPE_REGU_VAR, key);
-	      cnt += sq_walk_xasl_and_add_val_to_set (src->value.arithptr->rightptr, SQ_TYPE_REGU_VAR, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->value.arithptr->leftptr, SQ_TYPE_REGU_VAR, key);
+	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->value.arithptr->rightptr, SQ_TYPE_REGU_VAR, key);
 	    }
 	}
 
@@ -508,20 +495,21 @@ sq_walk_xasl_and_add_val_to_set (void *p, int type, sq_key * key)
  * hash table could not be created.
  */
 int
-sq_cache_initialize (xasl_node * xasl)
+sq_cache_initialize (THREAD_ENTRY * thread_p, xasl_node * xasl)
 {
   UINT64 max_subquery_cache_size = (UINT64) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
   int sq_hm_entries = (int) max_subquery_cache_size / 2048;	// default 1024
-  xasl->sq_cache.ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
-  if (!xasl->sq_cache.ht)
+  xasl->sq_cache = (SQ_CACHE *) db_private_alloc (NULL, sizeof (SQ_CACHE));
+  xasl->sq_cache->ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
+  if (!xasl->sq_cache->ht)
     {
       return ER_FAILED;
     }
-  xasl->sq_cache.stats.hit = (UINT64) 0;
-  xasl->sq_cache.stats.miss = (UINT64) 0;
-  xasl->sq_cache.size = (UINT64) 0;
-  xasl->sq_cache.size_max = max_subquery_cache_size;
-  xasl->sq_cache.miss_max = max_subquery_cache_size / 2048;	// default 1024
+  xasl->sq_cache->stats.hit = 0;
+  xasl->sq_cache->stats.miss = 0;
+  xasl->sq_cache->size = (UINT64) 0;
+  xasl->sq_cache->size_max = max_subquery_cache_size;
+  xasl->sq_cache->miss_max = max_subquery_cache_size / 2048;	// default 1024
   XASL_SET_FLAG (xasl, XASL_SQ_CACHE_INITIALIZED);
   return NO_ERROR;
 }
@@ -538,14 +526,14 @@ sq_cache_initialize (xasl_node * xasl)
  * to the cache.
  */
 int
-sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
+sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * regu_var)
 {
-  sq_key *key;
-  sq_val *val;
+  SQ_KEY *key;
+  SQ_VAL *val;
   const void *ret;
   UINT64 new_entry_size = 0;
 
-  key = sq_make_key (xasl);
+  key = sq_make_key (thread_p, xasl);
 
   if (key == NULL)
     {
@@ -553,26 +541,26 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
       return ER_FAILED;
     }
 
-  val = sq_make_val (regu_var);
+  val = sq_make_val (thread_p, regu_var);
 
   if (!XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
     {
-      sq_cache_initialize (xasl);
+      sq_cache_initialize (thread_p, xasl);
     }
 
-  new_entry_size += (UINT64) or_db_value_size (key->pred_set) + sizeof (sq_key);
+  new_entry_size += (UINT64) or_db_value_size (key->pred_set) + sizeof (SQ_KEY);
 
   switch (val->t)
     {
     case TYPE_CONSTANT:
-      new_entry_size += (UINT64) or_db_value_size (val->val.dbvalptr) + sizeof (sq_val);
+      new_entry_size += (UINT64) or_db_value_size (val->val.dbvalptr) + sizeof (SQ_VAL);
       break;
 
     default:
       break;
     }
 
-  if (xasl->sq_cache.size_max < xasl->sq_cache.size + new_entry_size)
+  if (xasl->sq_cache->size_max < xasl->sq_cache->size + new_entry_size)
     {
       XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
       sq_free_key (key);
@@ -580,9 +568,9 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
       return ER_FAILED;
     }
 
-  ret = mht_put_if_not_exists (xasl->sq_cache.ht, key, val);
+  ret = mht_put_if_not_exists (xasl->sq_cache->ht, key, val);
 
-  xasl->sq_cache.size += new_entry_size;
+  xasl->sq_cache->size += new_entry_size;
 
   if (!ret || ret != val)
     {
@@ -605,10 +593,10 @@ sq_put (xasl_node * xasl, REGU_VARIABLE * regu_var)
  * variable, and the function returns True. Otherwise, the function updates cache miss counters and returns False.
  */
 bool
-sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
+sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * regu_var)
 {
-  sq_key *key;
-  sq_val *ret;
+  SQ_KEY *key;
+  SQ_VAL *ret;
 
   if (XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
     {
@@ -617,9 +605,9 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
          maximum, it evaluates the hit-to-miss ratio to decide whether continuing caching 
          is beneficial. This approach optimizes cache usage and performance by dynamically 
          adapting to the effectiveness of the cache. */
-      if (xasl->sq_cache.stats.miss >= xasl->sq_cache.miss_max)
+      if (xasl->sq_cache->stats.miss >= xasl->sq_cache->miss_max)
 	{
-	  if (xasl->sq_cache.stats.hit / xasl->sq_cache.stats.miss < SQ_CACHE_MIN_HIT_RATIO)
+	  if (xasl->sq_cache->stats.hit / xasl->sq_cache->stats.miss < SQ_CACHE_MIN_HIT_RATIO)
 	    {
 	      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
 	      return false;
@@ -627,7 +615,7 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
 	}
     }
 
-  key = sq_make_key (xasl);
+  key = sq_make_key (thread_p, xasl);
   if (key == NULL)
     {
       XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
@@ -635,16 +623,16 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
     }
   if (!XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
     {
-      sq_cache_initialize (xasl);
-      xasl->sq_cache.stats.miss++;
+      sq_cache_initialize (thread_p, xasl);
+      xasl->sq_cache->stats.miss++;
       sq_free_key (key);
       return false;
     }
 
-  ret = (sq_val *) mht_get (xasl->sq_cache.ht, key);
+  ret = (SQ_VAL *) mht_get (xasl->sq_cache->ht, key);
   if (ret == NULL)
     {
-      xasl->sq_cache.stats.miss++;
+      xasl->sq_cache->stats.miss++;
       sq_free_key (key);
       return false;
     }
@@ -652,7 +640,7 @@ sq_get (xasl_node * xasl, REGU_VARIABLE * regu_var)
   sq_unpack_val (ret, regu_var);
   sq_free_key (key);
 
-  xasl->sq_cache.stats.hit++;
+  xasl->sq_cache->stats.hit++;
   return true;
 }
 
@@ -671,14 +659,16 @@ sq_cache_destroy (xasl_node * xasl)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "destroy sq_cache at xasl %p\ncache info : \n\thit : %10lu\n\tmiss: %10lu\n\tsize: %10lu Bytes\n",
-		    xasl, xasl->sq_cache.stats.hit, xasl->sq_cache.stats.miss, xasl->sq_cache.size);
-      mht_clear (xasl->sq_cache.ht, sq_rem_func, NULL);
-      mht_destroy (xasl->sq_cache.ht);
+		    xasl, xasl->sq_cache->stats.hit, xasl->sq_cache->stats.miss, xasl->sq_cache->size);
+      mht_clear (xasl->sq_cache->ht, sq_rem_func, NULL);
+      mht_destroy (xasl->sq_cache->ht);
+      xasl->sq_cache->ht = NULL;
+      db_private_free_and_init (NULL, xasl->sq_cache);
+      xasl->sq_cache = NULL;
     }
   XASL_CLEAR_FLAG (xasl,
 		   XASL_SQ_CACHE_ENABLED | XASL_SQ_CACHE_INITIALIZED | XASL_SQ_CACHE_NOT_CACHING |
 		   XASL_SQ_CACHE_NOT_CACHING_CHECKED);
-  xasl->sq_cache.ht = NULL;
 }
 
 /*
@@ -696,7 +686,7 @@ sq_cache_destroy (xasl_node * xasl)
  * that might prevent caching.
  */
 int
-sq_check_enable (xasl_node * xasl)
+sq_check_enable (THREAD_ENTRY * thread_p, xasl_node * xasl)
 {
   if (!(xasl) || XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_NOT_CACHING)
       || !(xasl->status == XASL_CLEARED || xasl->status == XASL_INITIALIZED))
@@ -712,7 +702,7 @@ sq_check_enable (xasl_node * xasl)
       XASL_SET_FLAG (xasl, XASL_SQ_CACHE_ENABLED);
       if (!XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_NOT_CACHING_CHECKED))
 	{
-	  if (sq_walk_xasl_check_not_caching (xasl))
+	  if (sq_walk_xasl_check_not_caching (thread_p, xasl))
 	    {
 	      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
 	    }

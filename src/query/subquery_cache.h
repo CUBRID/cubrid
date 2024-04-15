@@ -25,11 +25,11 @@
 
 #ident "$Id$"
 
-extern int sq_cache_initialize (xasl_node * xasl);
-extern int sq_put (xasl_node * xasl, REGU_VARIABLE * result);
-extern bool sq_get (xasl_node * xasl, REGU_VARIABLE * retp);
+extern int sq_cache_initialize (THREAD_ENTRY * thread_p, xasl_node * xasl);
+extern int sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * result);
+extern bool sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * retp);
 extern void sq_cache_destroy (xasl_node * xasl);
-extern int sq_check_enable (xasl_node * xasl);
+extern int sq_check_enable (THREAD_ENTRY * thread_p, xasl_node * xasl);
 
 #define SQ_CACHE_MIN_HIT_RATIO 9	/* it means 90% */
 
@@ -37,5 +37,26 @@ extern int sq_check_enable (xasl_node * xasl);
 #define SQ_TYPE_PRED 1
 #define SQ_TYPE_REGU_VAR 2
 #define SQ_TYPE_DBVAL 3
+
+typedef union sq_regu_value SQ_REGU_VALUE;
+typedef struct sq_key SQ_KEY;
+typedef struct sq_val SQ_VAL;
+union sq_regu_value
+{
+  /* fields used by both XASL interpreter and regulator */
+  DB_VALUE *dbvalptr;		/* for constant values */
+  QFILE_SORTED_LIST_ID *srlist_id;	/* sorted list identifier for subquery results */
+};
+
+struct sq_key
+{
+  DB_VALUE *pred_set;
+};
+
+struct sq_val
+{
+  SQ_REGU_VALUE val;
+  REGU_DATATYPE t;
+};
 
 #endif /* _SUBQUERY_CACHE_H_ */

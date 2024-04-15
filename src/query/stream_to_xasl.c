@@ -1700,9 +1700,6 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   /* initialize xasl status */
   xasl->status = XASL_INITIALIZED;
-  XASL_CLEAR_FLAG (xasl,
-		   XASL_SQ_CACHE_ENABLED | XASL_SQ_CACHE_INITIALIZED | XASL_SQ_CACHE_NOT_CACHING |
-		   XASL_SQ_CACHE_NOT_CACHING_CHECKED);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -1790,6 +1787,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     }
 
   ptr = or_unpack_int (ptr, (int *) &xasl->ordbynum_flag);
+  xasl->sq_cache = NULL;
 
   xasl->topn_items = NULL;
 
