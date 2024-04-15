@@ -64,7 +64,10 @@ TEXT_OUTPUT *g_obj_out = &object_output;
 #if defined(SUPPORT_THREAD_UNLOAD)
 int thread_count = 0;
 bool check_fetch_time = false;	// ctshim,  test only
-int varchar_alloc_size = 4096;
+int skip_write_time = 0;	// ctshim
+int varchar_alloc_size = 0;
+int g_modular = -1;
+int g_accept = -1;
 #endif
 
 int page_size = 4096;
@@ -160,28 +163,44 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
 #if defined(SUPPORT_THREAD_UNLOAD)
-  varchar_alloc_size = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
-  thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
-  if (thread_count == 999)
+  if (datafile_per_class)
     {
-      check_fetch_time = true;
-      thread_count = 0;
-      varchar_alloc_size = 0;
-      datafile_per_class = false;
+      if (do_objects)
+	{
+	  g_modular = utility_get_option_int_value (arg_map, UNLOAD_MODULAR_VALUE_S);
+	  g_accept = utility_get_option_int_value (arg_map, UNLOAD_REMAINDER_VALUE_S);
+	  if ((g_modular > 1) && (g_accept < 0 || g_accept >= g_modular))
+	    {
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	      goto end;
+	    }
+	}
+
+      thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
+      if (thread_count == 999)
+	{
+	  check_fetch_time = true;
+	  skip_write_time = 0;
+	  thread_count = 0;
+	  varchar_alloc_size = 0;
+	  datafile_per_class = false;
+	}
+      else if (thread_count >= 200)
+	{
+	  check_fetch_time = false;
+	  skip_write_time = 2;
+	  thread_count -= 200;
+	}
+      else if (thread_count >= 100)
+	{
+	  check_fetch_time = false;
+	  skip_write_time = 1;
+	  thread_count -= 100;
+	}
     }
-  varchar_alloc_size *= 1024;	// to KB
 
-  if (thread_count > 100)	// ctshim
-    thread_count = 100;
-
-  if (datafile_per_class == false)
-    {
-      fprintf (stdout, "warning: '-%s' option ('--%s') is ignored.\n", UNLOAD_THREAD_COUNT_S, UNLOAD_THREAD_COUNT_L);
-      fflush (stdout);
-
-      thread_count = 0;
-    }
-  //include_references
+  varchar_alloc_size = utility_get_option_int_value (arg_map, UNLOAD_VARCHAR_ALLOC_SIZE_S);
+  varchar_alloc_size *= 1024;	// to KB  
 #endif
 
   /* depreciated */

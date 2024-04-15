@@ -399,13 +399,21 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
  */
 int
 locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oidp,
-		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea)
+		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+		   , int modular_val, int accept_val
+#endif
+  )
 {
 #if defined(CS_MODE)
   int req_error;
   char *ptr;
   int return_value = ER_FAILED;
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 6) + (OR_OID_SIZE * 2)) a_request;
+#else
   OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 4) + (OR_OID_SIZE * 2)) a_request;
+#endif
   char *request;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 4) + OR_OID_SIZE) a_reply;
   char *reply;
@@ -420,6 +428,22 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   ptr = or_pack_int (ptr, *nobjects);
   ptr = or_pack_int (ptr, *nfetched);
   ptr = or_pack_oid (ptr, last_oidp);
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+  ptr = or_pack_int (ptr, modular_val);
+  ptr = or_pack_int (ptr, accept_val);
+#if 0
+  {				// ctshim
+    FILE *fp;
+
+    fp = fopen ("/home/cubrid/CUBRID/fig/databases/haha_1.txt", "a+t");
+    if (fp)
+      {
+	fprintf (fp, "****** locator_fetch_all: %d, %d\n", modular_val, accept_val);
+	fclose (fp);
+      }
+  }
+#endif
+#endif
   *fetch_copyarea = NULL;
 
   req_error =
@@ -447,7 +471,11 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
-			fetch_copyarea);
+			fetch_copyarea
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+			, modular_val, accept_val
+#endif
+    );
 
   exit_server (*thread_p);
 

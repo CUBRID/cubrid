@@ -41,6 +41,8 @@ extern struct text_output *g_obj_out;
 extern int thread_count;
 extern bool check_fetch_time;
 extern int varchar_alloc_size;
+extern int g_modular;
+extern int g_accept;
 #endif
 extern int page_size;
 extern int cached_pages;
@@ -51,7 +53,7 @@ extern bool verbose_flag;
 extern bool latest_image_flag;
 extern bool include_references;
 extern bool do_schema;
-extern bool do_objects;
+//extern bool do_objects;
 extern bool ignore_err_flag;
 extern bool required_class_only;
 extern bool datafile_per_class;

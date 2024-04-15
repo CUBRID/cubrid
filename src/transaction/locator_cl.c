@@ -2754,7 +2754,11 @@ locator_fun_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose, int (*fun) (MOBJ
        * updated by the locator_fetch_all function on the server
        */
       error_code =
-	locator_fetch_all (hfid, &lock, fetch_version_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area);
+	locator_fetch_all (hfid, &lock, fetch_version_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+			   , -1, -1
+#endif
+	);
       if (error_code != NO_ERROR)
 	{
 	  /* There was a failure. Was the transaction aborted ? */

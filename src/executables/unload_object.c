@@ -639,29 +639,44 @@ open_object_file (TEXT_OUTPUT * obj_out, extract_context & ctxt, const char *out
 		  int seqno)
 {
   char out_fname[PATH_MAX];
-  if (seqno > 0)
+#if defined(SUPPORT_THREAD_UNLOAD)
+  char tmp_name[DB_MAX_IDENTIFIER_LENGTH];
+  char *name_ptr = tmp_name;
+
+  if (g_modular > 1)
     {
-      if (class_name && *class_name)
+      assert (class_name && *class_name);
+      if (seqno > 0)
 	{
-	  snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s_%d%s", output_dirname, ctxt.output_prefix, class_name, seqno,
-		    OBJECT_SUFFIX);
+	  sprintf (tmp_name, "p%d(%d)_%s_t%d(%d)", g_accept, g_modular, class_name, seqno, thread_count);
 	}
       else
 	{
-	  snprintf (out_fname, PATH_MAX - 1, "%s/%s_%d%s", output_dirname, ctxt.output_prefix, seqno, OBJECT_SUFFIX);
+	  sprintf (tmp_name, "p%d(%d)_%s", g_accept, g_modular, class_name);
 	}
+    }
+  else if (seqno > 0)
+    {
+      assert (class_name && *class_name);
+      sprintf (tmp_name, "%s_t%d(%d)", class_name, seqno, thread_count);
     }
   else
     {
-      if (class_name && *class_name)
-	{
-	  snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix, class_name,
-		    OBJECT_SUFFIX);
-	}
-      else
-	{
-	  snprintf (out_fname, PATH_MAX - 1, "%s/%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX);
-	}
+      name_ptr = (char *) class_name;
+    }
+#endif
+
+  if (class_name && *class_name)
+    {
+#if defined(SUPPORT_THREAD_UNLOAD)
+      snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix, name_ptr, OBJECT_SUFFIX);
+#else
+      snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix, class_name, OBJECT_SUFFIX);
+#endif
+    }
+  else
+    {
+      snprintf (out_fname, PATH_MAX - 1, "%s/%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX);
     }
 
 #if defined(USE_LOW_IO_FUNC)
@@ -1482,8 +1497,11 @@ unload_fetcher (UNLD_CLASS_PARAM * unld_class_param, LC_FETCH_VERSION_TYPE fetch
   while (nobjects != nfetched)
     {
       MY_THR_LOCK ();		//????????????????????????????????????????????????   
-      if (locator_fetch_all
-	  (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area) == NO_ERROR)
+      if (locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+			     , g_modular, g_accept
+#endif
+	  ) == NO_ERROR)
 	{
 	  MY_THR_UNLOCK ();	//????????????????????????????????????????????????         
 	  if (fetch_area != NULL)
@@ -1624,8 +1642,12 @@ unload_thread_proc (void *param)
 	{
 	  unload_writer (parg, node->lc_copy_area, obj_out);
 	  parg->uci->cparea_lst_ref->add_freelist (node);
+	  std::this_thread::yield ();	//usleep (3);
 	}
-      std::this_thread::yield ();	//usleep (3);
+      else
+	{
+	  usleep (10);
+	}
     }
 
   DEBUG_PRINT ("*** is_terminate *** \n");
@@ -2031,8 +2053,12 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 
       while (nobjects != nfetched)
 	{
-	  if (locator_fetch_all
-	      (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area) == NO_ERROR)
+	  //fprintf(stdout, ">>>>>>>> %d, %d\n", g_modular, g_accept); fflush(stdout); // ctshim
+	  if (locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+				 , g_modular, g_accept
+#endif
+	      ) == NO_ERROR)
 	    {
 	      if (fetch_area != NULL)
 		{
@@ -2737,10 +2763,27 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
 
   size_t total = strlen (output_dirname) + strlen (output_prefix) + strlen (suffix) + 8;
 
+#if defined(SUPPORT_THREAD_UNLOAD)
+  char proc_name[32];
+
+  if (g_modular > 1)
+    {
+      total += sprintf (proc_name, "p%d(%d)", g_accept, g_modular);
+    }
+#endif
+
   if (total > filename_size)
     {
       return -1;
     }
+
+#if defined(SUPPORT_THREAD_UNLOAD)
+  if (g_modular > 1)
+    {
+      snprintf (output_filename_p, filename_size - 1, "%s/%s_%s%s", output_dirname, output_prefix, proc_name, suffix);
+      return 0;
+    }
+#endif
 
   snprintf (output_filename_p, filename_size - 1, "%s/%s%s", output_dirname, output_prefix, suffix);
 

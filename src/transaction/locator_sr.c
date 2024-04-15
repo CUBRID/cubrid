@@ -2773,7 +2773,11 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn, con
  */
 int
 xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type,
-		    OID * class_oid, int *nobjects, int *nfetched, OID * last_oid, LC_COPYAREA ** fetch_area)
+		    OID * class_oid, int *nobjects, int *nfetched, OID * last_oid, LC_COPYAREA ** fetch_area
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+		    , int modular_val, int accept_val
+#endif
+  )
 {
   LC_COPYAREA_DESC prefetch_des;	/* Descriptor for decache of objects related to transaction isolation level */
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
@@ -2899,6 +2903,17 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
 
       while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
 	{
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+	  if (modular_val > 1)
+	    {
+	      assert (accept_val >= 0 && accept_val < modular_val);
+	      if (oid.pageid % modular_val != accept_val)
+		{
+		  continue;
+		}
+	    }
+#endif
+
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
 	  COPY_OID (&obj->oid, &oid);

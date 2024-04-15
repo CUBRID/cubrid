@@ -55,8 +55,7 @@ class print_output;
  */
 
 #if defined(SUPPORT_THREAD_UNLOAD)
-
-//#define USE_LOW_IO_FUNC               // ctshim
+#define USE_LOW_IO_FUNC		// ctshim
 typedef struct dbval_buf
 {
   char *buf;

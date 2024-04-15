@@ -1373,6 +1373,10 @@ typedef struct _ha_config
 #define UNLOAD_THREAD_COUNT_L                   "thread-count"
 #define UNLOAD_VARCHAR_ALLOC_SIZE_S             'm'
 #define UNLOAD_VARCHAR_ALLOC_SIZE_L             "memory_alloc_size"
+#define UNLOAD_MODULAR_VALUE_S                  11923
+#define UNLOAD_MODULAR_VALUE_L                  "modular"
+#define UNLOAD_REMAINDER_VALUE_S                11924
+#define UNLOAD_REMAINDER_VALUE_L                "remainder"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

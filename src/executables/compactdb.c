@@ -432,8 +432,11 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
 #endif
   while (nobjects != nfetched)
     {
-      if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid,
-			     &fetch_area) == NO_ERROR)
+      if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+			     , -1, -1
+#endif
+	  ) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {

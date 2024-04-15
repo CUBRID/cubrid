@@ -591,6 +591,7 @@ configure_file(cmake/version.h.cmake version.h)
 
 # ctshim
 add_definitions(-DSUPPORT_THREAD_UNLOAD)
+add_definitions(-DSUPPORT_THREAD_UNLOAD_MTP)
 
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
