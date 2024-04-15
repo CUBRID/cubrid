@@ -122,6 +122,8 @@ namespace cubmethod
     private:
       void destory_all_cursors ();
 
+      bool is_supported_dbtype (const DB_VALUE &value);
+
       runtime_context *m_rctx;
       bool m_is_running;
       bool m_is_for_scan;

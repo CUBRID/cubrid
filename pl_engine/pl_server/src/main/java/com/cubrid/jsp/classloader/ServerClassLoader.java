@@ -45,6 +45,6 @@ public class ServerClassLoader extends BaseClassLoader {
     }
 
     private ServerClassLoader() {
-        super(ClassLoaderManager.getServerPath(), new URL[0], null);
+        super(ClassLoaderManager.getStaticPath(), new URL[0], null);
     }
 }

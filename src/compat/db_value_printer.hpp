@@ -48,6 +48,7 @@ class db_value_printer
       , m_padding (padding)
     {}
 
+    void describe_type  (const db_value *value);
     void describe_money (const db_monetary *value); //former describe_money(parser...)
     void describe_value (const db_value *value);    //former describe_value(parser...)
     void describe_data (const db_value *value);     //former describe_data(parser...)

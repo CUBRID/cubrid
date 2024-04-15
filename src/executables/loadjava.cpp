@@ -42,6 +42,8 @@ namespace fs = std::filesystem;
 using namespace std::regex_constants;
 
 #define JAVA_DIR                "java"
+#define JAVA_STATIC_DIR         "java_static"
+
 #if defined(WINDOWS)
 #define SEPERATOR               "\\"
 #else /* ! WINDOWS */
@@ -51,8 +53,8 @@ using namespace std::regex_constants;
 static const std::string JAVA_PACKAGE_PATTERN = "^([a-z_]{1}[a-z0-9_]*(\\.[a-z_]{1}[a-z0-9_]*)*)$";
 static const std::string SEPARATOR_STRING (SEPERATOR);
 
-static const std::string DYNAMIC_PATH = JAVA_DIR + SEPARATOR_STRING + "dynamic";
-static const std::string SERVER_PATH = JAVA_DIR + SEPARATOR_STRING + "server";
+static const std::string DYNAMIC_PATH = JAVA_DIR;
+static const std::string STATIC_PATH = JAVA_STATIC_DIR;
 
 static std::string Path;
 static char *Program_name = NULL;
@@ -113,7 +115,7 @@ parse_argument (int argc, char *argv[])
 	}
 	break;
 	case 'j':
-	  Path = SERVER_PATH;
+	  Path = STATIC_PATH;
 	  break;
 	case 'h':
 	/* fall through */
@@ -235,7 +237,7 @@ main (int argc, char *argv[])
   // DB path e.g. $CUBRID/demodb
   java_dir_path.assign (std::string (db->pathname));
 
-  // e.g. $CUBRID/demodb/java/dynamic or $CUBRID/demodb/java/server
+  // e.g. $CUBRID/demodb/java or e.g. $CUBRID/demodb/java_static
   if (Path.empty())
     {
       Path = DYNAMIC_PATH;

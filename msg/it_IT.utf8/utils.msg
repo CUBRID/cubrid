@@ -916,6 +916,7 @@ Usage: loadjava [OPTION] database-name java-class-file\n\
 valid options:\n\
   -y, --overwrite              sovrascrivere class file, se esiste, niente predefinito\n\
   -p, --package                nome pacchetto java, vuoto se non specificato\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Impossibile aprire il file di output '%1$s'\n

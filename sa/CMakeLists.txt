@@ -51,6 +51,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_json_path.cpp
   ${COMPAT_DIR}/db_json_types_internal.cpp
   ${COMPAT_DIR}/db_macro.c
+  ${COMPAT_DIR}/db_method_static.cpp
   ${COMPAT_DIR}/db_obj.c
   ${COMPAT_DIR}/db_old.c
   ${COMPAT_DIR}/db_query.c
