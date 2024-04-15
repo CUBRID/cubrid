@@ -279,6 +279,11 @@ namespace cubthread
       bool trigger_involved;
       bool is_cdc_daemon;
 
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+      int unload_modular;
+      int unload_accept;
+#endif
+
 #if !defined(NDEBUG)
       fi_test_item *fi_test_array;
 

@@ -8026,6 +8026,19 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      /* stop */
 		      break;
 		    }
+
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+		  if (thread_p->unload_modular > 1)
+		    {
+		      assert (thread_p->unload_accept >= 0 && thread_p->unload_accept < thread_p->unload_modular);
+		      if (oid.pageid % thread_p->unload_modular != thread_p->unload_accept)
+			{
+			  scan = S_END;
+			  oid.slotid = -1;
+			  break;
+			}
+		    }
+#endif
 		  if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
 		    {
 		      /* skip the header */

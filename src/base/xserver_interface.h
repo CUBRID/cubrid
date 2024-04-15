@@ -99,11 +99,7 @@ extern int xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int cla
 			       int prefetching, LC_COPYAREA ** fetch_area);
 extern int xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
 			       LC_FETCH_VERSION_TYPE fetch_type, OID * class_oid, int *nobjects, int *nfetched,
-			       OID * last_oid, LC_COPYAREA ** fetch_area
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-			       , int modular_val, int accept_val
-#endif
-  );
+			       OID * last_oid, LC_COPYAREA ** fetch_area);
 extern int xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * instance_lock,
 					int *instance_lock_timeout, OID * class_oid, LOCK * class_lock, int *nobjects,
 					int *nfetched, int *nfailed_instance_locks, OID * last_oid,

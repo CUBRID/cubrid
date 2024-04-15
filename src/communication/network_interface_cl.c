@@ -431,18 +431,6 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
   ptr = or_pack_int (ptr, modular_val);
   ptr = or_pack_int (ptr, accept_val);
-#if 0
-  {				// ctshim
-    FILE *fp;
-
-    fp = fopen ("/home/cubrid/CUBRID/fig/databases/haha_1.txt", "a+t");
-    if (fp)
-      {
-	fprintf (fp, "****** locator_fetch_all: %d, %d\n", modular_val, accept_val);
-	fclose (fp);
-      }
-  }
-#endif
 #endif
   *fetch_copyarea = NULL;
 
@@ -469,13 +457,14 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   THREAD_ENTRY *thread_p = enter_server ();
 
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+  thread_p->unload_modular = modular_val;
+  thread_p->unload_accept = accept_val;
+#endif
+
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
-			fetch_copyarea
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-			, modular_val, accept_val
-#endif
-    );
+			fetch_copyarea);
 
   exit_server (*thread_p);
 

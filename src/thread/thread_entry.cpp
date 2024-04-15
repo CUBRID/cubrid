@@ -187,6 +187,11 @@ namespace cubthread
     tran_entries[THREAD_TS_XCACHE] = NULL;
     tran_entries[THREAD_TS_FPCACHE] = NULL;
 
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+    unload_modular = -1;
+    unload_accept = -1;
+#endif
+
 #if !defined (NDEBUG)
     fi_thread_init (this);
 #endif /* DEBUG */

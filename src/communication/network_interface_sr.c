@@ -843,28 +843,17 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
   ptr = or_unpack_int (ptr, &modular_val);
   ptr = or_unpack_int (ptr, &accept_val);
-#if 0
-  {				// ctshim
-    FILE *fp;
-
-    fp = fopen ("/home/cubrid/CUBRID/fig/databases/haha_2.txt", "a+t");
-    if (fp)
-      {
-	fprintf (fp, "****** slocator_fetch_all: %d, %d\n", modular_val, accept_val);
-	fclose (fp);
-      }
-  }
 #endif
+
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+  thread_p->unload_modular = modular_val;
+  thread_p->unload_accept = accept_val;
 #endif
 
   copy_area = NULL;
   success =
     xlocator_fetch_all (thread_p, &hfid, &lock, (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, &nobjects,
-			&nfetched, &last_oid, &copy_area
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-			, modular_val, accept_val
-#endif
-    );
+			&nfetched, &last_oid, &copy_area);
 
   if (success != NO_ERROR)
     {
