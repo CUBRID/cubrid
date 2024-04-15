@@ -14305,13 +14305,9 @@ pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       if (node->info.host_var.index >= 0)
 	{
 	  pr_clone_value (&query->host_variables[node->info.host_var.index],
-			  &parser->host_variables[parser->host_var_count]);
-	  parser->sub_host_var_index[parser->host_var_count] = node->info.host_var.index;
-	  node->info.host_var.index = parser->host_var_count;
-	  parser->dbval_cnt++;
+			  &parser->host_variables[node->info.host_var.index]);
+	  parser->sub_host_var_index[node->info.host_var.index] = node->info.host_var.index;
 	}
-
-      parser->host_var_count++;
     }
 
   *continue_walk = PT_CONTINUE_WALK;
@@ -14609,8 +14605,6 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   int var_count;
 
   context = *parser;
-  context.dbval_cnt = 0;
-  context.host_var_count = context.auto_param_count = 0;
 
   var_count = parser->host_var_count + parser->auto_param_count;
 
@@ -14630,11 +14624,9 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  context.host_var_count = 0;
-
   parser_walk_tree (&context, stmt, pt_sub_host_vars_index, parser, NULL, NULL);
 
-  stmt->sub_host_var_count = context.host_var_count;
+  stmt->sub_host_var_count = var_count;
   stmt->sub_host_var_index = context.sub_host_var_index;
 
   error = do_prepare_select (&context, stmt);
