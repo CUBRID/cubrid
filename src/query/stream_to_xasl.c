@@ -2619,6 +2619,18 @@ stx_build_method_arg_info (THREAD_ENTRY * thread_p, char *ptr, METHOD_ARG_INFO *
       goto error;
     }
 
+  method_arg_info->default_value_size = (int *) stx_alloc_struct (thread_p, sizeof (int) * num_args);
+  if (method_arg_info->default_value_size == NULL)
+    {
+      goto error;
+    }
+
+  method_arg_info->default_value = (char **) stx_alloc_struct (thread_p, sizeof (char *) * num_args);
+  if (method_arg_info->default_value == NULL)
+    {
+      goto error;
+    }
+
   for (n = 0; n < num_args; n++)
     {
       ptr = or_unpack_int (ptr, &method_arg_info->arg_mode[n]);
@@ -2626,6 +2638,11 @@ stx_build_method_arg_info (THREAD_ENTRY * thread_p, char *ptr, METHOD_ARG_INFO *
   for (n = 0; n < num_args; n++)
     {
       ptr = or_unpack_int (ptr, &method_arg_info->arg_type[n]);
+    }
+  for (n = 0; n < num_args; n++)
+    {
+      ptr = or_unpack_int (ptr, &method_arg_info->default_value_size[n]);
+      method_arg_info->default_value[n] = stx_restore_string (thread_p, ptr);
     }
 
   ptr = or_unpack_int (ptr, &method_arg_info->result_type);
