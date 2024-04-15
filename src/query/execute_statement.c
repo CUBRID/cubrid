@@ -3488,7 +3488,7 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   init_compile_context (parser);
 
   /* All CTE sub-queries included in the query must be prepared first. */
-  if (pt_is_allowed_result_cache())
+  if (pt_is_allowed_result_cache ())
     {
       parser_walk_tree (parser, statement, do_prepare_cte_pre, NULL, NULL, NULL);
     }
@@ -14305,13 +14305,9 @@ pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       if (node->info.host_var.index >= 0)
 	{
 	  pr_clone_value (&query->host_variables[node->info.host_var.index],
-			  &parser->host_variables[parser->host_var_count]);
-	  parser->cte_host_var_index[parser->host_var_count] = node->info.host_var.index;
-	  node->info.host_var.index = parser->host_var_count;
-	  parser->dbval_cnt++;
+			  &parser->host_variables[node->info.host_var.index]);
+	  parser->cte_host_var_index[node->info.host_var.index] = node->info.host_var.index;
 	}
-
-      parser->host_var_count++;
     }
 
   *continue_walk = PT_CONTINUE_WALK;
@@ -14607,12 +14603,11 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
   int var_count;
 
   cte_context = *parser;
-  cte_context.dbval_cnt = 0;
-  cte_context.host_var_count = cte_context.auto_param_count = 0;
 
   var_count = parser->host_var_count + parser->auto_param_count;
 
   stmt->info.query.flag.cte_query_cached = 1;
+
   cte_context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
   if (cte_context.host_variables == NULL)
     {
@@ -14627,11 +14622,9 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  cte_context.host_var_count = 0;
-
   parser_walk_tree (&cte_context, stmt, pt_cte_host_vars_index, parser, NULL, NULL);
 
-  stmt->cte_host_var_count = cte_context.host_var_count;
+  stmt->cte_host_var_count = var_count;
   stmt->cte_host_var_index = cte_context.cte_host_var_index;
 
   error = do_prepare_select (&cte_context, stmt);
