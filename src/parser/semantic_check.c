@@ -9403,7 +9403,7 @@ pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 }
 
 /*
- * pt_check_create_stored_procedure () - do semantic checks for default values of create procedure/function statement
+ * pt_check_default_value_param_for_stored_procedure () - do semantic checks for default value params' invalid form: Out parameter, system expressions, incoercible type
  *   return:  none
  *   parser(in): the parser context used to derive the statement
  *   node(in): a statement
@@ -9440,16 +9440,11 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 
   if (default_value_node->info.data_default.default_expr_type != DB_DEFAULT_NONE)
     {
-      //node_ptr = NULL;
-      //parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
-      //if (node_ptr != NULL)
-      {
-	PT_ERRORmf (parser,
-		    default_value_node->info.data_default.default_value,
-		    MSGCAT_SET_PARSER_SEMANTIC,
-		    MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
-		    pt_short_print (parser, default_value_node->info.data_default.default_value));
-      }
+      PT_ERRORmf (parser,
+		  default_value_node->info.data_default.default_value,
+		  MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+		  pt_short_print (parser, default_value_node->info.data_default.default_value));
     }
   else
     {
