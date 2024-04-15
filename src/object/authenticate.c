@@ -800,6 +800,8 @@ end:
     {
       tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
     }
+
+  return error;
 }
 
 /*

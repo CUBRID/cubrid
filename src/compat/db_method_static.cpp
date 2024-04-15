@@ -519,7 +519,7 @@ au_set_password_encoded_method (MOP user, DB_VALUE *returnval, DB_VALUE *passwor
 	    }
 	}
 
-      error = au_set_password (user, string, 0, ENCODE_PREFIX_DES);
+      error = au_set_password_encrypt (user, string, 0, ENCODE_PREFIX_DES);
       if (error != NO_ERROR)
 	{
 	  db_make_error (returnval, error);
@@ -569,11 +569,11 @@ au_set_password_encoded_sha1_method (MOP user, DB_VALUE *returnval, DB_VALUE *pa
       /* in case of SHA2, prefix is not stripped */
       if (string != NULL && IS_ENCODED_SHA2_512 (string))
 	{
-	  error = au_set_password (user, string + 1 /* 1 for prefix */, 0, ENCODE_PREFIX_SHA2_512);
+	  error = au_set_password_encrypt (user, string + 1 /* 1 for prefix */, 0, ENCODE_PREFIX_SHA2_512);
 	}
       else
 	{
-	  error = au_set_password (user, string, 0, ENCODE_PREFIX_SHA1);
+	  error = au_set_password_encrypt (user, string, 0, ENCODE_PREFIX_SHA1);
 	}
 
       if (error != NO_ERROR)
@@ -781,7 +781,6 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
-      db_make_error (return_val, error);
       return;
     }
 
@@ -804,7 +803,7 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
   error = au_change_class_owner (class_mop, owner_mop);
   if (error != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error);
+      ASSERT_ERROR ();
       db_make_error (return_val, error);
     }
 }

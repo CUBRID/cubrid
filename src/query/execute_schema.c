@@ -10148,7 +10148,7 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
       return error;
     }
 
-  user_mop = db_find_user (user->info.name.original);
+  user_mop = au_find_user (user->info.name.original);
   if (user_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (error);

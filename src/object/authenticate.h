@@ -102,6 +102,7 @@ extern authenticate_context *au_ctx;
 
 #define au_set_user                     au_ctx->set_user
 #define au_set_password                 au_ctx->set_password
+#define au_set_password_encrypt         au_ctx->set_password
 
 
 #define au_disable_passwords            au_ctx->disable_passwords
@@ -191,6 +192,7 @@ extern MOP au_add_user (const char *name, int *exists);
 extern int au_add_member (MOP group, MOP member);
 extern int au_drop_member (MOP group, MOP member);
 extern int au_drop_user (MOP user);
+
 extern int au_set_user_comment (MOP user, const char *comment);
 //
 
