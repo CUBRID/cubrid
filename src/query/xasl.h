@@ -934,7 +934,6 @@ struct sq_cache
   MHT_TABLE *ht;
   UINT64 size_max;
   UINT64 size;
-  UINT64 miss_max;
   struct
   {
     int hit;

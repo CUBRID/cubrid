@@ -455,10 +455,6 @@ sq_walk_xasl_and_add_val_to_set (THREAD_ENTRY * thread_p, void *p, int type, SQ_
 	    {
 	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->value.dbvalptr, SQ_TYPE_DBVAL, key);
 	    }
-	  if (src->type == TYPE_DBVAL)
-	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, &src->value.dbval, SQ_TYPE_DBVAL, key);
-	    }
 	  else if (src->type == TYPE_INARITH)
 	    {
 	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->value.arithptr->leftptr, SQ_TYPE_REGU_VAR, key);
@@ -509,7 +505,6 @@ sq_cache_initialize (THREAD_ENTRY * thread_p, xasl_node * xasl)
   xasl->sq_cache->stats.miss = 0;
   xasl->sq_cache->size = (UINT64) 0;
   xasl->sq_cache->size_max = max_subquery_cache_size;
-  xasl->sq_cache->miss_max = max_subquery_cache_size / 2048;	// default 1024
   XASL_SET_FLAG (xasl, XASL_SQ_CACHE_INITIALIZED);
   return NO_ERROR;
 }
@@ -605,7 +600,8 @@ sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * regu_var)
          maximum, it evaluates the hit-to-miss ratio to decide whether continuing caching 
          is beneficial. This approach optimizes cache usage and performance by dynamically 
          adapting to the effectiveness of the cache. */
-      if (xasl->sq_cache->stats.miss >= xasl->sq_cache->miss_max)
+      UINT64 sq_cache_miss_max = xasl->sq_cache->size_max / 2048;
+      if (xasl->sq_cache->stats.miss >= sq_cache_miss_max)
 	{
 	  if (xasl->sq_cache->stats.hit / xasl->sq_cache->stats.miss < SQ_CACHE_MIN_HIT_RATIO)
 	    {
