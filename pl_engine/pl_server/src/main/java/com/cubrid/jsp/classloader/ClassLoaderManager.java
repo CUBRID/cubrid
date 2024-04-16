@@ -65,7 +65,7 @@ public class ClassLoaderManager {
 
     public static Path getStaticPath() {
         if (staticPath == null) {
-                staticPath = getRootPath().resolve("java_static/");
+            staticPath = getRootPath().resolve("java_static/");
             createDirIfNotExists(staticPath);
         }
         return staticPath;
