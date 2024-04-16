@@ -14329,14 +14329,16 @@ static PT_NODE *
 pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PARSER_CONTEXT *query = (PARSER_CONTEXT *) arg;
+  int i = parser->host_var_count;
 
-  if (node->node_type == PT_HOST_VAR)
+  if (node->node_type == PT_HOST_VAR && node->info.host_var.index >= 0)
     {
-      if (node->info.host_var.index >= 0)
+      /* to exclude already setting host variable */
+      if (parser->cte_host_var_index[node->info.host_var.index] < 0)
 	{
-	  pr_clone_value (&query->host_variables[node->info.host_var.index],
-			  &parser->host_variables[node->info.host_var.index]);
-	  parser->cte_host_var_index[node->info.host_var.index] = node->info.host_var.index;
+	  parser->cte_host_var_index[i] = node->info.host_var.index;
+	  node->info.host_var.index = parser->host_var_count;
+	  parser->host_var_count++;
 	}
     }
 
@@ -14601,20 +14603,14 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   int err = NO_ERROR;
   PARSER_CONTEXT cte_context;
-  int var_count;
+  int i, var_count;
 
   cte_context = *parser;
 
+  cte_context.host_var_count = 0;
   var_count = parser->host_var_count + parser->auto_param_count;
 
   stmt->info.query.flag.cte_query_cached = 1;
-
-  cte_context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
-  if (cte_context.host_variables == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
 
   cte_context.cte_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
   if (cte_context.cte_host_var_index == NULL)
@@ -14623,9 +14619,14 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
+  /* to ininitialize empty index */
+  for (i = 0; i < var_count; i++)
+    {
+      cte_context.cte_host_var_index[i] = -1;
+    }
   parser_walk_tree (&cte_context, stmt, pt_cte_host_vars_index, parser, NULL, NULL);
 
-  stmt->cte_host_var_count = var_count;
+  stmt->cte_host_var_count = cte_context.host_var_count;
   stmt->cte_host_var_index = cte_context.cte_host_var_index;
 
   err = do_prepare_select (&cte_context, stmt);

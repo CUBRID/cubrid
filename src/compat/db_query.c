@@ -569,7 +569,7 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 int
 db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 {
-  int i, k, q, cte_num;
+  int i, q = 0, cte_num;
   char *ptr = NULL;
 
   assert (info != NULL);

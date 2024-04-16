@@ -2382,24 +2382,19 @@ static DB_PREPARE_CTE_INFO *
 set_prepare_cte_info (PT_NODE * cte_query, DB_PREPARE_CTE_INFO * cte_info, int cte_num_query)
 {
   int i, q = cte_num_query;
+  int alloc_size = sizeof (DB_PREPARE_CTE_INFO) * (cte_num_query / 4 + 1) * 4;
 
-  if (cte_info == NULL)
+  if (cte_num_query % 4 == 0)	/* need to realloc cte info every 4 */
     {
-      cte_info = (DB_PREPARE_CTE_INFO *) malloc (sizeof (DB_PREPARE_CTE_INFO) * 4);
-      if (cte_info == NULL)
+      DB_PREPARE_CTE_INFO *cte_realloc = (DB_PREPARE_CTE_INFO *) realloc (cte_info, alloc_size);
+
+      if (cte_realloc == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_PREPARE_CTE_INFO) * 4);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
 	  goto err_exit;
 	}
-    }
-  else if (cte_num_query % 4 == 0)	/* need to realloc cte info every 4 */
-    {
-      cte_info = (DB_PREPARE_CTE_INFO *) realloc (cte_info, sizeof (DB_PREPARE_CTE_INFO) * 4);
-      if (cte_info == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_PREPARE_CTE_INFO) * 4);
-	  goto err_exit;
-	}
+
+      cte_info = cte_realloc;
     }
 
   XASL_ID_COPY (&cte_info[q].cte_xasl_id, cte_query->xasl_id);
@@ -2422,11 +2417,11 @@ set_prepare_cte_info (PT_NODE * cte_query, DB_PREPARE_CTE_INFO * cte_info, int c
 err_exit:
   if (cte_info != NULL)
     {
-      if (cte_info->cte_host_var_index != NULL)
+      for (i = 0; i < cte_num_query; i++)
 	{
-	  free (cte_info->cte_host_var_index);
+	  free_and_init (cte_info[i].cte_host_var_index);
 	}
-      free (cte_info);
+      free_and_init (cte_info);
     }
 
   return NULL;
@@ -2451,10 +2446,13 @@ do_process_prepare_cte_query_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void 
   if (stmt->info.query.flag.cte_query_cached)
     {
       prepare_info->cte_info = set_prepare_cte_info (stmt, prepare_info->cte_info, prepare_info->cte_num_query);
-      if (prepare_info->cte_info != NULL)
+      if (prepare_info->cte_info == NULL)
 	{
-	  prepare_info->cte_num_query++;
+	  *continue_walk = PT_STOP_WALK;
+	  return stmt;
 	}
+
+      prepare_info->cte_num_query++;
     }
 
   return stmt;
@@ -2478,7 +2476,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   const char *const statement_literal = (char *) statement->info.prepare.statement->info.value.data_value.str->bytes;
   int err = NO_ERROR;
   char *stmt_info = NULL;
-  int info_len = 0;
+  int i, info_len = 0;
   assert (statement->node_type == PT_PREPARE_STATEMENT);
   db_init_prepare_info (&prepare_info);
 
@@ -2594,12 +2592,20 @@ cleanup:
 
   if (prepare_info.into_list != NULL)
     {
-      int i = 0;
       for (i = 0; i < prepare_info.into_count; i++)
 	{
 	  free_and_init (prepare_info.into_list[i]);
 	}
       free_and_init (prepare_info.into_list);
+    }
+
+  if (prepare_info.cte_info != NULL)
+    {
+      for (i = 0; i < prepare_info.cte_num_query; i++)
+	{
+	  free_and_init (prepare_info.cte_info[i].cte_host_var_index);
+	}
+      free_and_init (prepare_info.cte_info);
     }
 
   return err;
