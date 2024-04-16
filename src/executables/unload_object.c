@@ -275,8 +275,7 @@ public:
     while (m_max <= m_used)
       {
 	pthread_mutex_unlock (&m_cs_lock);
-	std::this_thread::yield ();	// usleep (10);
-	DEBUG_PRINT ("\t\twait add(%d)\n", ntry);
+	std::this_thread::yield ();	// usleep (10); 
 	pthread_mutex_lock (&m_cs_lock);
       }
 
@@ -292,7 +291,6 @@ public:
 	m_tail = pt;
       }
     m_used++;
-    DEBUG_PRINT ("\t\tadd(%d)\n", m_used);
     pthread_mutex_unlock (&m_cs_lock);
   }
 
@@ -310,7 +308,6 @@ public:
 	    m_tail = NULL;
 	  }
 	m_used--;
-	DEBUG_PRINT ("\t\tget(%d)\n", m_used);
       }
     pthread_mutex_unlock (&m_cs_lock);
     return pt;
@@ -328,6 +325,9 @@ struct _unloaddb_class_info
   int referenced_class;
   bool is_terminate;
   extract_context *pctxt;
+
+  pthread_mutex_t mtx;
+  pthread_cond_t cond;
 
   class copyarea_list *cparea_lst_ref;
 };
@@ -1467,13 +1467,6 @@ gauge_alarm_handler (int sig)
 
 #if defined(SUPPORT_THREAD_UNLOAD)
 static pthread_mutex_t g_cs_lock = PTHREAD_MUTEX_INITIALIZER;
-#if 0
-#define  MY_THR_LOCK()    pthread_mutex_lock(&g_cs_lock)
-#define  MY_THR_UNLOCK()  pthread_mutex_unlock(&g_cs_lock)
-#else
-#define  MY_THR_LOCK()
-#define  MY_THR_UNLOCK()
-#endif
 
 void
 unload_fetcher (UNLD_CLASS_PARAM * unld_class_param, LC_FETCH_VERSION_TYPE fetch_type)
@@ -1492,22 +1485,21 @@ unload_fetcher (UNLD_CLASS_PARAM * unld_class_param, LC_FETCH_VERSION_TYPE fetch
 
   OID_SET_NULL (&last_oid);
 
-  DEBUG_PRINT ("*** unload_fetcher() ***\n");
-
   while (nobjects != nfetched)
     {
-      MY_THR_LOCK ();		//????????????????????????????????????????????????   
       if (locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
 			     , g_modular, g_accept
 #endif
 	  ) == NO_ERROR)
 	{
-	  MY_THR_UNLOCK ();	//????????????????????????????????????????????????         
 	  if (fetch_area != NULL)
 	    {
 	      unld_class_param->cparea_lst_ref->add (fetch_area, true);
 	      fetch_area = NULL;
+	      //pthread_mutex_lock (&unld_class_param->mtx);  // ctshim
+	      pthread_cond_signal (&unld_class_param->cond);
+	      //pthread_mutex_unlock (&unld_class_param->mtx);                
 	    }
 	  else
 	    {
@@ -1517,19 +1509,15 @@ unload_fetcher (UNLD_CLASS_PARAM * unld_class_param, LC_FETCH_VERSION_TYPE fetch
 	}
       else
 	{
-	  MY_THR_UNLOCK ();	//????????????????????????????????????????????????         
 	  /* some error was occurred */
 	  if (!ignore_err_flag)
 	    {
-	      break;		//goto exit_on_error;
+	      break;
 	    }
-	  else
-	    ++failed_objects;
+
+	  ++failed_objects;
 	}
     }
-
-  //sleep (3);
-  unld_class_param->is_terminate = true;
 }
 
 
@@ -1550,8 +1538,6 @@ unload_writer (UNLD_THR_PARAM * unld_thr_param, LC_COPYAREA * fetch_area, TEXT_O
   time_t start = 0;
 #endif
   int ret = NO_ERROR;
-
-  DEBUG_PRINT ("*** unload_writer(%d) ***\n", unld_thr_param->thread_idx);	//==============================================
 
 #if defined(SUPPORT_THREAD_UNLOAD)
   desc_obj = make_desc_obj (class_ptr, varchar_alloc_size);
@@ -1633,34 +1619,30 @@ unload_thread_proc (void *param)
   er_context_p = new cuberr::context ();
   er_context_p->register_thread_local ();
 
-  DEBUG_PRINT ("*** unload_thread_proc(%d)\n", idx);	//==============================================
-
-  while (parg->uci->is_terminate == false)
+  do
     {
+      pthread_mutex_lock (&parg->uci->mtx);
+      pthread_cond_wait (&parg->uci->cond, &parg->uci->mtx);
+      pthread_mutex_unlock (&parg->uci->mtx);
+
       node = parg->uci->cparea_lst_ref->get ();
       if (node)
 	{
 	  unload_writer (parg, node->lc_copy_area, obj_out);
 	  parg->uci->cparea_lst_ref->add_freelist (node);
-	  std::this_thread::yield ();	//usleep (3);
-	}
-      else
-	{
-	  usleep (10);
 	}
     }
-
-  DEBUG_PRINT ("*** is_terminate *** \n");
+  while (parg->uci->is_terminate == false);
 
   node = parg->uci->cparea_lst_ref->get ();
   while (node)
     {
       unload_writer (parg, node->lc_copy_area, obj_out);
       parg->uci->cparea_lst_ref->add_freelist (node);
-      std::this_thread::yield ();	//usleep (3);      
       node = parg->uci->cparea_lst_ref->get ();
     }
 
+  //
   er_context_p->deregister_thread_local ();
   delete er_context_p;
   er_context_p = NULL;
@@ -1987,7 +1969,11 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
       unld_cls_info.referenced_class = 0;
       unld_cls_info.is_terminate = false;
 
-      //thread_count = 1;                   //-----------------------------------------------------------  
+      if (pthread_mutex_init (&unld_cls_info.mtx, NULL) == 0)
+	{
+	  error = pthread_cond_init (&unld_cls_info.cond, NULL);
+	}
+
       cparea_lst_class.set_max_list (thread_count * 4);
       //cparea_lst_class.set_max_list (thread_count);
       unld_cls_info.cparea_lst_ref = &cparea_lst_class;
@@ -1996,8 +1982,8 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
       pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
       pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 
-      DEBUG_PRINT ("*** Threading ***\n");	//==============================================
 
+      //pthread_mutex_lock (&unld_cls_info.mtx);
       for (i = 0; i < thread_count; i++)
 	{
 	  thr_param[i].thread_idx = i;
@@ -2008,16 +1994,18 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 
 	  if (pthread_create (&(thr_param[i].tid), NULL, unload_thread_proc, (void *) (thr_param + i)) != NO_ERROR)
 	    {
-	      DEBUG_PRINT ("*** pthread_create(%d) \n", i);	//==============================================
-
 	      abort ();
 	      exit (0);
 	    }
 	}
+      //pthread_mutex_unlock (&unld_cls_info.mtx);   
 
+      std::this_thread::yield ();
       unload_fetcher (&unld_cls_info, fetch_type);
 
-      DEBUG_PRINT ("*** Start join\n");	//==============================================
+      unld_cls_info.is_terminate = true;
+      pthread_cond_broadcast (&unld_cls_info.cond);
+      std::this_thread::yield ();
 
       for (i = 0; i < thread_count; i++)
 	{
@@ -2031,9 +2019,8 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 	    }
 	}
 
+      pthread_cond_destroy (&unld_cls_info.cond);
       //unld_cls_info.cparea_lst_ref->clear_freelist ();
-
-      DEBUG_PRINT ("*** Complete join\n");	//==============================================
 
       for (i = 0; i < thread_count; i++)
 	{
