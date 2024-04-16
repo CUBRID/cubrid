@@ -657,12 +657,25 @@ db_compile_statement_local (DB_SESSION * session)
 		  /* set the flag to recompile from it's main query */
 		  statement->info.execute.recompile = 1;
 		  er_clearid ();
+		  err = NO_ERROR;
 		}
-	      else
-		{
-		  return err;
-		}
+	      break;
 	    }
+	}
+
+      /* clear prepare info. */
+      if (cte_info)
+	{
+	  for (i = 0; i < cte_num_query; i++)
+	    {
+	      free_and_init (cte_info[i].cte_host_var_index);
+	    }
+	  free_and_init (cte_info);
+	}
+
+      if (err != NO_ERROR)
+	{
+	  return err;
 	}
     }
   /* prefetch and lock classes to avoid deadlock */
