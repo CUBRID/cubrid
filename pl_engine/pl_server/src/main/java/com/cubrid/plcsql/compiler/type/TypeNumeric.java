@@ -68,7 +68,11 @@ public class TypeNumeric extends Type {
     }
 
     private TypeNumeric(int precision, short scale) {
-        super(IDX_NUMERIC, getPlcName(precision, scale), "java.math.BigDecimal", getTypicalValueStr(precision, scale));
+        super(
+                IDX_NUMERIC,
+                getPlcName(precision, scale),
+                "java.math.BigDecimal",
+                getTypicalValueStr(precision, scale));
         this.precision = precision;
         this.scale = scale;
     }
