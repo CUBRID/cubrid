@@ -44,9 +44,7 @@
 
 /* Static functions for sq_cache hash table. */
 
-static SQ_KEY *sq_make_key (THREAD_ENTRY * thread_p, xasl_node * xasl);
 static SQ_VAL *sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val);
-static void sq_free_key (SQ_KEY * key);
 static void sq_free_val (SQ_VAL * val);
 static void sq_unpack_val (SQ_VAL * val, REGU_VARIABLE * retp);
 
@@ -521,20 +519,13 @@ sq_cache_initialize (THREAD_ENTRY * thread_p, xasl_node * xasl)
  * to the cache.
  */
 int
-sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * regu_var)
+sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * regu_var)
 {
-  SQ_KEY *key;
   SQ_VAL *val;
   const void *ret;
   UINT64 new_entry_size = 0;
 
   key = sq_make_key (thread_p, xasl);
-
-  if (key == NULL)
-    {
-      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
-      return ER_FAILED;
-    }
 
   val = sq_make_val (thread_p, regu_var);
 
@@ -558,7 +549,6 @@ sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * regu_var)
   if (xasl->sq_cache->size_max < xasl->sq_cache->size + new_entry_size)
     {
       XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
-      sq_free_key (key);
       sq_free_val (val);
       return ER_FAILED;
     }
@@ -569,7 +559,6 @@ sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * regu_var)
 
   if (!ret || ret != val)
     {
-      sq_free_key (key);
       sq_free_val (val);
       return ER_FAILED;
     }
@@ -588,9 +577,8 @@ sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * regu_var)
  * variable, and the function returns True. Otherwise, the function updates cache miss counters and returns False.
  */
 bool
-sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * regu_var)
+sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * regu_var)
 {
-  SQ_KEY *key;
   SQ_VAL *ret;
 
   if (XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
@@ -611,17 +599,10 @@ sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * regu_var)
 	}
     }
 
-  key = sq_make_key (thread_p, xasl);
-  if (key == NULL)
-    {
-      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
-      return false;
-    }
   if (!XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
     {
       sq_cache_initialize (thread_p, xasl);
       xasl->sq_cache->stats.miss++;
-      sq_free_key (key);
       return false;
     }
 
@@ -629,12 +610,10 @@ sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * regu_var)
   if (ret == NULL)
     {
       xasl->sq_cache->stats.miss++;
-      sq_free_key (key);
       return false;
     }
 
   sq_unpack_val (ret, regu_var);
-  sq_free_key (key);
 
   xasl->sq_cache->stats.hit++;
   return true;

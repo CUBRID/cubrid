@@ -25,11 +25,17 @@
 
 #ident "$Id$"
 
+typedef union sq_regu_value SQ_REGU_VALUE;
+typedef struct sq_key SQ_KEY;
+typedef struct sq_val SQ_VAL;
+
 extern int sq_cache_initialize (THREAD_ENTRY * thread_p, xasl_node * xasl);
-extern int sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * result);
-extern bool sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * retp);
+extern int sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * result);
+extern bool sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * regu_var);
 extern void sq_cache_destroy (xasl_node * xasl);
 extern int sq_check_enable (THREAD_ENTRY * thread_p, xasl_node * xasl);
+extern SQ_KEY *sq_make_key (THREAD_ENTRY * thread_p, xasl_node * xasl);
+extern void sq_free_key (SQ_KEY * key);
 
 #define SQ_CACHE_MIN_HIT_RATIO 9	/* it means 90% */
 
@@ -38,9 +44,7 @@ extern int sq_check_enable (THREAD_ENTRY * thread_p, xasl_node * xasl);
 #define SQ_TYPE_REGU_VAR 2
 #define SQ_TYPE_DBVAL 3
 
-typedef union sq_regu_value SQ_REGU_VALUE;
-typedef struct sq_key SQ_KEY;
-typedef struct sq_val SQ_VAL;
+
 union sq_regu_value
 {
   /* fields used by both XASL interpreter and regulator */

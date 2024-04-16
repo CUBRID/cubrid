@@ -3874,20 +3874,35 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
       if (sq_check_enable (thread_p, regu_var->xasl))
 	{
-	  if (!sq_get (thread_p, regu_var->xasl, regu_var))
+	  SQ_KEY *key;
+	  if ((key = sq_make_key (thread_p, regu_var->xasl)) == NULL)
 	    {
-	      /* execute linked query */
+	      XASL_SET_FLAG (regu_var->xasl, XASL_SQ_CACHE_NOT_CACHING);
 	      EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
 	      if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
 		{
 		  goto exit_on_error;
 		}
-	      sq_put (thread_p, regu_var->xasl, regu_var);
 	    }
 	  else
 	    {
-	      /* FOUND */
-	      regu_var->xasl->status = XASL_SUCCESS;
+	      if (!sq_get (thread_p, key, regu_var->xasl, regu_var))
+		{
+		  /* execute linked query */
+		  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+		  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+		    {
+		      sq_free_key (key);
+		      goto exit_on_error;
+		    }
+		  sq_put (thread_p, key, regu_var->xasl, regu_var);
+		}
+	      else
+		{
+		  /* FOUND */
+		  regu_var->xasl->status = XASL_SUCCESS;
+		}
+	      sq_free_key (key);
 	    }
 	}
       else
