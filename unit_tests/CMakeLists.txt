@@ -99,6 +99,7 @@ if (UNIT_TESTS OR UNIT_TEST_MONITOR)
   message("    monitor")
   add_subdirectory(monitor)
 endif(UNIT_TESTS OR UNIT_TEST_MONITOR)
+
 if (UNIT_TESTS OR UNIT_TEST_MEMORY_MONITOR)
   message("    memory_monitor")
   add_subdirectory(memory_monitor)
