@@ -92,6 +92,13 @@ jobs:
     parallelism: 8
     <<: *test_defaults
 
+  test_sql:
+    <<: *defaults
+    environment:
+      TEST_SUITE: plcsql
+    resource_class: medium
+    <<: *test_defaults
+
   build-windows:
     machine:
       image: 'windows-server-2019-vs2019:2022.08.1'
