@@ -138,8 +138,6 @@ extern int do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern void do_print_classname_on_method (DB_OBJECT * self, DB_VALUE * result);
 extern void do_print_on_method (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * msg);
-extern void dbmeth_class_name (DB_OBJECT * self, DB_VALUE * result);
-extern void dbmeth_print (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * msg);
 
 extern int do_rename (PARSER_CONTEXT * parser, PT_NODE * statement);
 
