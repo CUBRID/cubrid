@@ -100,6 +100,8 @@ static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * pars
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
+
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
  *   pointer array
@@ -1659,6 +1661,30 @@ db_get_lock_classes (DB_SESSION * session)
   return (char **) (session->parser->lcks_classes);
 }
 
+static PT_NODE *
+do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  int *err = (int *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
+    {
+      return stmt;
+    }
+
+  if (stmt->info.query.flag.cte_query_cached)
+    {
+      *err = do_execute_cte (parser, stmt);
+      if (*err != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return stmt;
+}
+
 /*
  * db_execute_and_keep_statement_local() - This function executes the SQL
  *    statement identified by the stmt argument and returns the result.
@@ -1805,7 +1831,11 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   /* All CTE sub-queries included in the query must be executed first. */
   if (pt_is_allowed_result_cache ())
     {
-      parser_walk_tree (parser, statement, do_execute_cte_pre, (void *) &statement->flag, NULL, NULL);
+      parser_walk_tree (parser, statement, do_execute_cte_pre, &err, NULL, NULL);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
     }
 
   if (statement->node_type == PT_PREPARE_STATEMENT)

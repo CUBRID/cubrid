@@ -143,6 +143,7 @@ static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * syn
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
+static PT_NODE *do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
 
@@ -3466,6 +3467,30 @@ end:
   return error;
 }
 
+PT_NODE *
+do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  int *err = (int *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
+    {
+      return stmt;
+    }
+
+  if (stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
+    {
+      *err = do_prepare_cte (parser, stmt);
+      if (*err != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return stmt;
+}
+
 /*
  * do_prepare_statement() - Prepare a given statement for execution
  *   return: Error code
@@ -3490,7 +3515,11 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* All CTE sub-queries included in the query must be prepared first. */
   if (pt_is_allowed_result_cache ())
     {
-      parser_walk_tree (parser, statement, do_prepare_cte_pre, NULL, NULL, NULL);
+      parser_walk_tree (parser, statement, do_prepare_cte_pre, &err, NULL, NULL);
+      if (err != NO_ERROR)
+	{
+	  goto err_exit;
+	}
     }
 
   switch (statement->node_type)
@@ -3521,6 +3550,7 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
+err_exit:
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_prepare_statement() */
 
@@ -14315,10 +14345,10 @@ pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   return node;
 }
 
-PT_NODE *
+static PT_NODE *
 do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
-  int query_flag = *(int *) arg;
+  int *err = (int *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -14329,39 +14359,10 @@ do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *con
 
   if (stmt->info.query.flag.cte_query_cached)
     {
-      int err;
-
-      err = do_execute_cte (parser, stmt, query_flag);
-      if (err != NO_ERROR)
+      *err = do_execute_cte (parser, stmt);
+      if (*err != NO_ERROR)
 	{
 	  *continue_walk = PT_STOP_WALK;
-	}
-    }
-
-  return stmt;
-}
-
-PT_NODE *
-do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
-{
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
-    {
-      return stmt;
-    }
-
-  if (stmt->info.query.hint & PT_HINT_QUERY_CACHE)
-    {
-      if (stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
-	{
-	  int err;
-
-	  err = do_prepare_cte (parser, stmt);
-	  if (err != NO_ERROR)
-	    {
-	      *continue_walk = PT_STOP_WALK;
-	    }
 	}
     }
 
@@ -14598,7 +14599,7 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  int error = NO_ERROR;
+  int err = NO_ERROR;
   PARSER_CONTEXT cte_context;
   int var_count;
 
@@ -14627,9 +14628,9 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
   stmt->cte_host_var_count = var_count;
   stmt->cte_host_var_index = cte_context.cte_host_var_index;
 
-  error = do_prepare_select (&cte_context, stmt);
+  err = do_prepare_select (&cte_context, stmt);
 
-  return error;
+  return err;
 }
 
 /*
@@ -14640,13 +14641,13 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
  * query_flag     : query flag for execution
  */
 int
-do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * stmt, int query_flag)
+do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   QUERY_ID query_id;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables;
   CACHE_TIME clt_cache_time;
-  int err, i, flag = query_flag & ~EXECUTE_QUERY_WITH_COMMIT;
+  int err, i, flag = RESULT_CACHE_REQUIRED;
 
   CACHE_TIME_RESET (&clt_cache_time);
 
@@ -14664,12 +14665,12 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * stmt, int query_flag)
     }
 
   err =
-    execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
-		   flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
+    execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id, flag, &clt_cache_time,
+		   &stmt->cache_time);
 
   free (host_variables);
 
-  return NO_ERROR;
+  return err;
 }
 
 /*

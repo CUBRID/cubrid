@@ -152,9 +152,7 @@ extern int do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 /* for CTE result-cache */
 extern int do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
-extern int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag);
-extern PT_NODE *do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
-extern PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
+extern int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern bool pt_is_allowed_result_cache (void);
 
 extern int do_update (PARSER_CONTEXT * parser, PT_NODE * statement);
