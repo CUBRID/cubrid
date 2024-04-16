@@ -40,8 +40,6 @@ extern "C" size_t malloc_usable_size (void *);
 #endif
 #endif
 
-#include "error_manager.h"
-#include "system_parameter.h"
 #include "memory_monitor_sr.hpp"
 
 typedef struct mmon_metainfo MMON_METAINFO;
@@ -54,8 +52,6 @@ struct mmon_metainfo
 
 namespace cubmem
 {
-  memory_monitor *mmon_Gl = nullptr;
-
   memory_monitor::memory_monitor (const char *server_name)
     : m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")},
@@ -72,6 +68,18 @@ namespace cubmem
 #else
     std::string target ("/src/");
 #endif // !WINDOWS
+
+    // TODO: To minimize the search cost and prevent unnecessary paths
+    //       from being included in the tag_name, we are cutting the string based on
+    //       the rightmost "/src/" found. However, in this case, when the allocation
+    //       occurs on the same 'line', "/src/test.c" and "/src/thirdparty/src/test.c"
+    //       get the same tag_name, making it impossible to distinguish memory alloc-
+    //       ations from two different files. However, such exceptional situations
+    //       are very rare, as memory allocations must occur on the same line number.
+    //       Handling these exceptions would increase the overall cost of this function.
+    //       Moreover, currently, although these exceptional situations theoretically exist,
+    //       they have not been encountered in developer tests.
+    //       Therefore, it has been decided to address them if discovered in the future.
 
     // Find the last occurrence of "src" in the path
     size_t pos = filecopy.rfind (target);
@@ -242,65 +250,4 @@ namespace cubmem
     fflush (outfile_fp);
     fclose (outfile_fp);
   }
-}
-
-using namespace cubmem;
-
-bool mmon_is_memory_monitor_enabled ()
-{
-  return (mmon_Gl != nullptr);
-}
-
-int mmon_initialize (const char *server_name)
-{
-  int error = NO_ERROR;
-
-  assert (mmon_Gl == nullptr);
-  assert (server_name != nullptr);
-
-  if (prm_get_bool_value (PRM_ID_ENABLE_MEMORY_MONITORING))
-    {
-#if !defined(WINDOWS)
-      mmon_Gl = new (std::nothrow) memory_monitor (server_name);
-      if (mmon_Gl == nullptr)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (memory_monitor));
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return error;
-	}
-#endif // !WINDOWS
-    }
-  return error;
-}
-
-void mmon_finalize ()
-{
-  if (mmon_is_memory_monitor_enabled ())
-    {
-#if !defined (NDEBUG)
-      mmon_Gl->finalize_dump ();
-#endif
-      delete mmon_Gl;
-      mmon_Gl = nullptr;
-    }
-}
-
-size_t mmon_get_allocated_size (char *ptr)
-{
-  return mmon_Gl->get_allocated_size (ptr);
-}
-
-void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line)
-{
-  mmon_Gl->add_stat (ptr, size, file, line);
-}
-
-void mmon_sub_stat (char *ptr)
-{
-  mmon_Gl->sub_stat (ptr);
-}
-
-void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
-{
-  mmon_Gl->aggregate_server_info (server_info);
 }
