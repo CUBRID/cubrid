@@ -92,7 +92,7 @@ jobs:
     parallelism: 8
     <<: *test_defaults
 
-  test_sql:
+  test_plcsql:
     <<: *defaults
     environment:
       TEST_SUITE: plcsql
