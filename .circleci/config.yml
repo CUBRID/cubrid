@@ -100,6 +100,7 @@ jobs:
           command: |
             choco upgrade chocolatey
             choco install openjdk8redhatbuild --no-progress -y
+            choco install cmake.install --version=3.26.3 --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
             choco install cmake --version=3.26.3 --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
             choco install winflexbison wixtoolset --no-progress -y
             choco install ant --ignore-dependencies --no-progress -y

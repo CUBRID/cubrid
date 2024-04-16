@@ -22,9 +22,11 @@
 
 project(Test)
 
+set(TEST_COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/common)
+
 set (TEST_INCLUDES
   ${EP_INCLUDES}
-  ${CMAKE_CURRENT_SOURCE_DIR}/common  # todo: find a better solution
+  ${TEST_COMMON_DIR}
   )
 
 option (UNIT_TEST_MEMORY_ALLOC  "Unit testing: memory allocation")
@@ -35,13 +37,28 @@ option (UNIT_TEST_PACKING "Unit testing: packing")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
+option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 
 message("  unit_tests/...")
 
-if (AT_LEAST_ONE_UNIT_TEST)
-  message("    common")
-  add_subdirectory(common)
-endif()
+# Catch2
+include(ExternalProject)
+set(CATCH2_TARGET catch2)
+externalproject_add(${CATCH2_TARGET}
+  GIT_REPOSITORY      https://github.com/catchorg/Catch2
+  GIT_TAG             255aa5f   # https://github.com/catchorg/Catch2/releases/tag/v2.11.3
+  INSTALL_COMMAND     ""
+  CMAKE_CACHE_ARGS    -DCATCH_BUILD_TESTING:STRING=off
+                      -DCATCH_INSTALL_DOCS:STRING=off
+                      -DCATCH_INSTALL_HELPERS:STRING=off
+                      -DBUILD_TESTING:STRING=off
+)
+set (CATCH2_DIR ${CMAKE_BINARY_DIR}/unit_tests/catch2-prefix/src/catch2)
+include_directories(${CATCH2_DIR}/single_include)
+list(APPEND TESTS_EXTERNAL_TARGETS ${CATCH2_TARGET})
+
+message("   common")
+add_subdirectory(common)
 
 if (UNIT_TESTS OR UNIT_TEST_MEMORY_ALLOC)
   message("    memory_alloc")
@@ -82,3 +99,8 @@ if (UNIT_TESTS OR UNIT_TEST_MONITOR)
   message("    monitor")
   add_subdirectory(monitor)
 endif(UNIT_TESTS OR UNIT_TEST_MONITOR)
+
+if (UNIT_TESTS OR UNIT_TEST_MEMORY_MONITOR)
+  message("    memory_monitor")
+  add_subdirectory(memory_monitor)
+endif(UNIT_TESTS OR UNIT_TEST_MEMORY_MONITOR)
