@@ -601,7 +601,7 @@ sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, REGU_VARIABLE * regu_var)
          is beneficial. This approach optimizes cache usage and performance by dynamically 
          adapting to the effectiveness of the cache. */
       UINT64 sq_cache_miss_max = xasl->sq_cache->size_max / 2048;
-      if (xasl->sq_cache->stats.miss >= sq_cache_miss_max)
+      if (xasl->sq_cache->stats.miss >= (int) sq_cache_miss_max)
 	{
 	  if (xasl->sq_cache->stats.hit / xasl->sq_cache->stats.miss < SQ_CACHE_MIN_HIT_RATIO)
 	    {
