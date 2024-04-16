@@ -14554,11 +14554,76 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
 }
 
 /*
+ * do_execute_prepared_cte () - execute CTE statements as prepared statement for result-cache
+ * return : Error code
+ * parser (in)	 : parser context
+ * stmt (in)     : whole or main query of prepared statement
+ * cte_num_query : the number of CTE queries
+ * cte_info (in) : prepare info. for CTE query 
+ */
+int
+do_execute_prepared_cte (PARSER_CONTEXT * parser, PT_NODE * stmt, int cte_num_query, DB_PREPARE_CTE_INFO * cte_info)
+{
+  int i, k, err = NO_ERROR;
+  DB_VALUE *host_variables;
+  QUERY_ID query_id;
+  QFILE_LIST_ID *list_id;
+
+  for (i = 0; i < cte_num_query; i++)
+    {
+      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * cte_info[i].cte_host_var_count);
+
+      if (host_variables == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (DB_VALUE) * cte_info[i].cte_host_var_count);
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto clear_and_exit;
+	}
+
+      for (k = 0; k < cte_info[i].cte_host_var_count; k++)
+	{
+	  pr_clone_value (&parser->host_variables[cte_info[i].cte_host_var_index[k]], &host_variables[k]);
+	}
+
+      err =
+	execute_query (&cte_info[i].cte_xasl_id, &query_id, cte_info[i].cte_host_var_count, host_variables,
+		       &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
+
+      free (host_variables);
+
+      if (err != NO_ERROR)
+	{
+	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
+	    {
+	      /* set the flag to recompile from it's main query */
+	      stmt->info.execute.recompile = 1;
+	      er_clearid ();
+	      err = NO_ERROR;
+	    }
+	  break;
+	}
+    }
+
+clear_and_exit:
+  /* clear prepare info. */
+  if (cte_info)
+    {
+      for (i = 0; i < cte_num_query; i++)
+	{
+	  free_and_init (cte_info[i].cte_host_var_index);
+	}
+      free_and_init (cte_info);
+    }
+
+  return err;
+}
+
+/*
  * do_execute_cte () - execute CTE statements in WITH clause for query cache
  * return : Error code
- * parser (in)	  : parser context
- * stmt (in) : statement to execute
- * query_flag     : query flag for execution
+ * parser (in) : parser context
+ * stmt (in)   : statement to execute
  */
 int
 do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)

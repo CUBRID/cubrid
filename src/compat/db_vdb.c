@@ -627,57 +627,17 @@ db_compile_statement_local (DB_SESSION * session)
 	}
 
       /* execute CTE queries first */
-      for (i = 0; i < cte_num_query; i++)
+      if (cte_info)
 	{
-	  int k;
-	  DB_VALUE *host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * cte_info[i].cte_host_var_count);
-
-	  if (host_variables == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (DB_VALUE) * cte_info[i].cte_host_var_count);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  for (k = 0; k < cte_info[i].cte_host_var_count; k++)
-	    {
-	      pr_clone_value (&parser->host_variables[cte_info[i].cte_host_var_index[k]], &host_variables[k]);
-	    }
-
-	  err =
-	    execute_query (&cte_info[i].cte_xasl_id, &query_id, cte_info[i].cte_host_var_count, host_variables,
-			   &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
-
-	  free (host_variables);
+	  err = do_execute_prepared_cte (parser, statement, cte_num_query, cte_info);
 
 	  if (err != NO_ERROR)
 	    {
-	      if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
-		{
-		  /* set the flag to recompile from it's main query */
-		  statement->info.execute.recompile = 1;
-		  er_clearid ();
-		  err = NO_ERROR;
-		}
-	      break;
+	      return err;
 	    }
-	}
-
-      /* clear prepare info. */
-      if (cte_info)
-	{
-	  for (i = 0; i < cte_num_query; i++)
-	    {
-	      free_and_init (cte_info[i].cte_host_var_index);
-	    }
-	  free_and_init (cte_info);
-	}
-
-      if (err != NO_ERROR)
-	{
-	  return err;
 	}
     }
+
   /* prefetch and lock classes to avoid deadlock */
   (void) pt_class_pre_fetch (parser, statement);
   if (pt_has_error (parser))
