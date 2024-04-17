@@ -33,6 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.Set;
 
 public class ExprField extends Expr {
 
@@ -59,13 +60,14 @@ public class ExprField extends Expr {
         this.fieldName = fieldName;
     }
 
-    public String javaCode() {
+    public String javaCode(Set<String> javaTypesUsed) {
 
         if (colIndex > 0) {
 
             // record is for a Static SQL
             //
             assert type != null;
+            javaTypesUsed.add(type.fullJavaType);
             return String.format(
                     "(%s) getFieldWithIndex(%s, %d)", type.javaCode, record.javaCode(), colIndex);
         } else {
