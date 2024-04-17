@@ -541,7 +541,14 @@ namespace cubmethod
 
     if (qres && qres->type == T_SELECT)
       {
-	result_info.query_id = qres->res.s.query_id;
+	if (qresult.tuple_count > 0)
+	  {
+	    result_info.query_id = qres->res.s.query_id;
+	  }
+	else
+	  {
+	    result_info.query_id = NULL_QUERY_ID; // initialized value
+	  }
       }
     return error;
   }
@@ -764,6 +771,7 @@ namespace cubmethod
       {
 	g_open_buffer_control_flags |= PARSER_FOR_PLCSQL_STATIC_SQL;
       }
+    db_init_lexer_lineno();
     m_session = db_open_buffer (m_sql_stmt.c_str());
     g_open_buffer_control_flags = 0;
 
@@ -841,6 +849,7 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
+    db_init_lexer_lineno ();
     m_session = db_open_buffer (sql_stmt_copy.c_str());
     if (!m_session)
       {

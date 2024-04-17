@@ -1470,17 +1470,17 @@ _[uU][tT][fF]8[']		{
 
 "\\n"				{
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr,
-									    (from_plcsql_text || prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? "\\n" : "\n");
+									    (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? "\\n" : "\n");
 				}
 
 "\\r"				{
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr,
-									    (from_plcsql_text || prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? "\\r" : "\r");
+									    (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? "\\r" : "\r");
 				}
 
 "\\t"				{
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr,
-									    (from_plcsql_text || prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? "\\t" : "\t");
+									    (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? "\\t" : "\t");
 				}
 
 "\\%"				{
@@ -1492,7 +1492,7 @@ _[uU][tT][fF]8[']		{
 				}
 
 [\\]['"]			{
-					if (from_plcsql_text || prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes)
+					if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes)
 					  {
 					    csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\\");
 					    unput(*(yytext + 1));
@@ -1506,14 +1506,14 @@ _[uU][tT][fF]8[']		{
 
 [\\].				{
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr,
-							   (from_plcsql_text || prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? yytext : yytext + 1);
+							   (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? yytext : yytext + 1);
 				}
 
 [\\]\n				{
 					this_parser->line = yylineno;
 					this_parser->column = yycolumn = yycolumn_end = 0;
 
-					if (from_plcsql_text || prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes)
+					if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes)
 					  {
 					    csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\\\n");
 					  }
@@ -1670,7 +1670,7 @@ _[uU][tT][fF]8[']		{
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[iI][fF]             |
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[cC][aA][sS][eE]     |
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[lL][oO][oO][pP]     |
-<PLCSQL_TEXT>[eE][nN][dD]                               { begin_token(yytext);
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]*                     { begin_token(yytext);
                                                                 plcsql_begin_end_balance--;
                                                                 if (plcsql_begin_end_balance < 0) {
                                                                         // syntax error.

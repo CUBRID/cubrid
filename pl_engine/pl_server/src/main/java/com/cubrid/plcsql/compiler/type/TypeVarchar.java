@@ -28,53 +28,46 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.type;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.HashMap;
+import java.util.Map;
 
-public class TypeSpecVariadic extends TypeSpec {
+public class TypeVarchar extends Type {
 
-    public final TypeSpecSimple elem;
+    public static final int MAX_LEN = 1073741823;
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        assert false
-                : "unreachable"; // cannot be a part of an AST: only in a symbol table for CUBRID
-        // predefined functions
-        throw new RuntimeException("unreachable");
-    }
+    public final int length;
 
-    @Override
-    public String toJavaSignature() {
-        assert false : "unreachable"; // cannot be a parameter or return type of a stored procedure
-        throw new RuntimeException("unreachable");
-    }
+    public static synchronized TypeVarchar getInstance(int length) {
 
-    @Override
-    public boolean equals(Object o) {
-        if (o == null || this.getClass() != o.getClass()) {
-            return false;
+        assert length <= MAX_LEN && length >= 1;
+
+        TypeVarchar ret = instances.get(length);
+        if (ret == null) {
+            ret = new TypeVarchar(length);
+            instances.put(length, ret);
         }
-        return this.elem.equals(((TypeSpecVariadic) o).elem);
+
+        return ret;
     }
 
-    @Override
-    public int hashCode() {
-        return elem.hashCode() + 31;
+    // ---------------------------------------------------------------------------
+    // Private
+    // ---------------------------------------------------------------------------
+
+    private static final Map<Integer, TypeVarchar> instances = new HashMap<>();
+
+    private static String getPlcName(int length) {
+        return String.format("Varchar(%d)", length);
     }
 
-    @Override
-    public String toString() {
-        return elem + "[]";
+    private static String getTypicalValueStr(int length) {
+        return String.format("cast(? as varchar(%d))", length);
     }
 
-    @Override
-    public String getTypicalValueStr() {
-        return null;
-    }
-
-    public TypeSpecVariadic(TypeSpecSimple elem) {
-        super(null, null, null, -1, null);
-        this.elem = elem;
+    private TypeVarchar(int length) {
+        super(IDX_STRING, getPlcName(length), "java.lang.String", getTypicalValueStr(length));
+        this.length = length;
     }
 }

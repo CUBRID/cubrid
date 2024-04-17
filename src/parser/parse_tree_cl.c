@@ -6410,6 +6410,7 @@ pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.alter_user.user_name, arg);
   PT_APPLY_WALK (parser, p->info.alter_user.password, arg);
+  PT_APPLY_WALK (parser, p->info.alter_user.members, arg);
   return p;
 }
 
@@ -6433,6 +6434,26 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.alter_user.password);
       b = pt_append_nulstring (parser, b, " password ");
       b = pt_append_varchar (parser, b, r1);
+    }
+
+  if (p->info.alter_user.members != NULL)
+    {
+      if (p->info.alter_user.code == PT_ADD_MEMBERS)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter_user.members);
+	  b = pt_append_nulstring (parser, b, " add members ");
+	  b = pt_append_varchar (parser, b, r1);
+	}
+      else if (p->info.alter_user.code == PT_DROP_MEMBERS)
+	{
+	  r1 = pt_print_bytes (parser, p->info.alter_user.members);
+	  b = pt_append_nulstring (parser, b, " drop members ");
+	  b = pt_append_varchar (parser, b, r1);
+	}
+      else
+	{
+	  assert (false);
+	}
     }
 
   if (p->info.alter_user.comment != NULL)
@@ -7583,7 +7604,14 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.sp.type == PT_SP_FUNCTION)
     {
       q = pt_append_nulstring (parser, q, " return ");
-      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->info.sp.ret_type));
+      if (p->info.sp.ret_data_type)
+	{
+	  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.sp.ret_data_type));
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, pt_show_type_enum (p->info.sp.ret_type));
+	}
     }
 
   r3 = pt_print_bytes (parser, p->info.sp.body);
@@ -7845,7 +7873,14 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, " ");
   q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp_param.mode));
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+  if (p->data_type)
+    {
+      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->data_type));
+    }
+  else
+    {
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+    }
 
   if (p->info.sp_param.comment != NULL)
     {
@@ -9478,6 +9513,11 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  if (!insert_with_use_sbr)
 	    {
+	      if (PT_SPEC_CTE_POINTER (p) != NULL)
+		{
+		  r1 = pt_print_bytes (parser, p->info.spec.cte_name);
+		  q = pt_append_varchar (parser, q, r1);
+		}
 	      r1 = pt_print_bytes (parser, p->info.spec.range_var);
 	      q = pt_append_nulstring (parser, q, " ");
 	      q = pt_append_varchar (parser, q, r1);
@@ -13303,6 +13343,7 @@ pt_apply_name (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.name.path_correlation, arg);
   PT_APPLY_WALK (parser, p->info.name.default_value, arg);
+  PT_APPLY_WALK (parser, p->info.name.constant_value, arg);
   PT_APPLY_WALK (parser, p->info.name.indx_key_limit, arg);
   return p;
 }

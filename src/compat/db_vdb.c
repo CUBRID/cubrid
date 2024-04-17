@@ -274,6 +274,12 @@ db_open_file (FILE * file)
   return session;
 }
 
+void
+db_init_lexer_lineno ()
+{
+  csql_yyset_lineno (1);
+}
+
 /*
  * db_make_session_for_one_statement_execution() -
  * return:

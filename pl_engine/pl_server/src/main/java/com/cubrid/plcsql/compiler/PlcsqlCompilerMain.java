@@ -248,7 +248,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // typechecking
 
-        TypeChecker typeChecker = new TypeChecker(converter.symbolStack);
+        TypeChecker typeChecker = new TypeChecker(converter.symbolStack, converter);
         typeChecker.visitUnit(unit);
 
         if (verbose) {

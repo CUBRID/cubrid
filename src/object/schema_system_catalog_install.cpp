@@ -672,7 +672,7 @@ namespace cubschema
       {"is_reverse", "integer"},
       {"is_primary_key", "integer"},
       {"is_foreign_key", "integer"},
-      {"filter_expression", format_varchar (255)},
+      {"filter_expression", format_varchar (1073741823)},
       {"have_function", "integer"},
       {"comment", format_varchar (1024)},
       {"status", "integer"}
@@ -1585,7 +1585,7 @@ namespace cubschema
       {"is_deduplicate", "varchar(3)"},
       {"deduplicate_key_level", "smallint"},
 #endif
-      {"filter_expression", "varchar(255)"},
+      {"filter_expression", "varchar(1073741823)"},
       {"have_function", "varchar(3)"},
       {"comment", "varchar(1024)"},
       {"status", "varchar(255)"},

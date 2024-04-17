@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -38,10 +39,10 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public class DeclForRecord extends DeclId {
 
     public final String name;
-    public final List<Misc.Pair<String, TypeSpec>> fieldTypes;
+    public final List<Misc.Pair<String, Type>> fieldTypes;
 
     public DeclForRecord(
-            ParserRuleContext ctx, String name, List<Misc.Pair<String, TypeSpec>> fieldTypes) {
+            ParserRuleContext ctx, String name, List<Misc.Pair<String, Type>> fieldTypes) {
         super(ctx);
 
         this.name = name;

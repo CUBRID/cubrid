@@ -30,13 +30,14 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class DeclRoutine extends Decl {
 
     public final String name;
     public final NodeList<DeclParam> paramList;
-    public final TypeSpec retType;
+    public final TypeSpec retTypeSpec;
     public NodeList<Decl> decls;
     public Body body;
 
@@ -44,14 +45,14 @@ public abstract class DeclRoutine extends Decl {
             ParserRuleContext ctx,
             String name,
             NodeList<DeclParam> paramList,
-            TypeSpec retType,
+            TypeSpec retTypeSpec,
             NodeList<Decl> decls,
             Body body) {
         super(ctx);
 
         this.name = name;
         this.paramList = paramList;
-        this.retType = retType;
+        this.retTypeSpec = retTypeSpec;
         this.decls = decls;
         this.body = body;
     }
@@ -60,7 +61,7 @@ public abstract class DeclRoutine extends Decl {
 
         if (paramList != null) {
             for (DeclParam dp : paramList.nodes) {
-                if (dp.typeSpec.equals(TypeSpecSimple.TIMESTAMP)) {
+                if (dp.typeSpec.type == Type.TIMESTAMP) {
                     return true;
                 }
             }
@@ -74,6 +75,6 @@ public abstract class DeclRoutine extends Decl {
     }
 
     public boolean isProcedure() {
-        return (retType == null);
+        return (retTypeSpec == null);
     }
 }

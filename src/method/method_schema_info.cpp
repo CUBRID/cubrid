@@ -136,6 +136,7 @@ namespace cubmethod
   {
     lang_set_parser_use_client_charset (false);
 
+    db_init_lexer_lineno ();
     m_session = db_open_buffer (sql_stmt.c_str());
     if (!m_session)
       {

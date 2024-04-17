@@ -69,6 +69,7 @@
 
 #define TEMP_SETUP_COST 5.0
 #define QO_CPU_WEIGHT   0.0025
+#define ISCAN_OID_ACCESS_OVERHEAD  20
 #define MJ_CPU_OVERHEAD_FACTOR   20
 #define ISCAN_IO_HIT_RATIO   0.5
 #define SSCAN_DEFAULT_CARD 100
@@ -236,6 +237,8 @@ static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni
 static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
+static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
+				BITSET * cur_visited_terms);
 static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
 static PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix);
 
@@ -1857,7 +1860,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
-  double sel, sel_limit, objects, height, leaves, opages, filter_sel;
+  double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access;
   double object_IO, index_IO;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
@@ -1979,8 +1982,8 @@ qo_iscan_cost (QO_PLAN * planp)
       filter_sel *= QO_TERM_SELECTIVITY (termp);
     }
 
-  /* number of objects to be selected */
-  objects = sel * (double) QO_NODE_NCARD (nodep);
+  /* number of leaf to be selected */
+  leaf_access = sel * (double) QO_NODE_NCARD (nodep);
   /* height of the B+tree */
   height = (double) cum_statsp->height - 1;
   if (height < 0)
@@ -2013,18 +2016,19 @@ qo_iscan_cost (QO_PLAN * planp)
   if (qo_is_index_covering_scan (planp))
     {
       object_IO = 1.0;
+      heap_access = 0;
     }
   else
     {
       object_IO = opages * sel * filter_sel;
+      heap_access = (double) QO_NODE_NCARD (nodep) * sel * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
     }
-
   object_IO = MAX (1.0, object_IO);
 
   /* index scan requires more CPU cost than sequential scan */
   planp->fixed_cpu_cost = 0.0;
   planp->fixed_io_cost = index_IO;
-  planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT;
+  planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
 }
 
@@ -4706,75 +4710,6 @@ qo_plan_set_cost_fn (const char *plan_name, int fn)
 }				/* qo_plan_set_cost_fn */
 
 /*
- * qo_set_cost () - csql method interface to qo_set_cost_fn()
- *   return: nothing
- *   target(in): The target of the method; we don't care
- *   result(in): The result returned by the method; we don't care
- *   plan(in): The plan type to get jacked
- *   cost(in): The new cost for that plan type
- *
- * Note: This should get registered in the schema as
- *
- *		alter class foo
- *			add class method opt_set_cost(string, string)
- *			function qo_set_cost;
- *
- *	No libraries or other files are required, since this will
- *	always be linked in to the base executable.  Once linked, you
- *	should be able to do things like
- *
- *		call opt_set_cost("iscan", "0") on class foo
- *
- *	from csql
- */
-void
-qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * cost)
-{
-  const char *plan_string;
-  const char *cost_string;
-
-  switch (DB_VALUE_TYPE (plan))
-    {
-    case DB_TYPE_STRING:
-    case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-      plan_string = db_get_string (plan);
-      break;
-    default:
-      plan_string = "unknown";
-      break;
-    }
-
-  switch (DB_VALUE_TYPE (cost))
-    {
-    case DB_TYPE_STRING:
-    case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-      cost_string = db_get_string (cost);
-      break;
-    default:
-      cost_string = "d";
-      break;
-    }
-
-  /*
-   * This relies on the fact that qo_plan_set_cost_fn is returning a
-   * CONST string.  That way we don't need to dup it, and therefore we
-   * won't leak it when the return value is discarded.
-   */
-  plan_string = qo_plan_set_cost_fn (plan_string, cost_string[0]);
-  if (plan_string != NULL)
-    {
-      db_make_string (result, plan_string);
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      db_make_error (result, ER_GENERIC_ERROR);
-    }
-}
-
-/*
  * qo_init_planvec () -
  *   return:
  *   planvec(in):
@@ -6457,6 +6392,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   BITSET sarged_terms;
   BITSET info_terms;
   BITSET pinned_subqueries;
+  BITSET visited_segs;
 
   bitset_init (&nl_join_terms, planner->env);
   bitset_init (&sm_join_terms, planner->env);
@@ -6465,7 +6401,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   bitset_init (&sarged_terms, planner->env);
   bitset_init (&info_terms, planner->env);
   bitset_init (&pinned_subqueries, planner->env);
-
+  bitset_init (&visited_segs, planner->env);
 
   if (head_node == NULL)
     {
@@ -6635,7 +6571,18 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   /* in given partition, collect terms connected to tail_info */
   {
     int retry_cnt, edge_cnt, path_cnt;
-    bool found_edge;
+    bool found_edge, skip_term;
+
+    /* set visited segs for removing join terms already logically evaluated. */
+    for (i = bitset_iterate (visited_terms, &bi); i != -1; i = bitset_next_member (&bi))
+      {
+	term = QO_ENV_TERM (planner->env, i);
+
+	if (QO_TERM_NOMINAL_SEG (term))
+	  {
+	    bitset_union (&visited_segs, &(QO_TERM_SEGS (term)));
+	  }
+      }
 
     retry_cnt = 0;		/* init */
 
@@ -6675,6 +6622,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  }
 
 	found_edge = false;	/* init */
+	skip_term = false;
 
 	if (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (tail_node)))
 	  {
@@ -6779,22 +6727,38 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		break;
 
 	      case QO_TC_JOIN:
-		/* check for idx-join */
-		if (QO_TERM_CAN_USE_INDEX (term))
+		/* check for term which is already logically evaluated. */
+		if (QO_TERM_NOMINAL_SEG (term))
 		  {
-		    idx_join_cnt++;
+		    if (qo_check_skip_term (planner->env, visited_segs, term, visited_terms, &info_terms))
+		      {
+			skip_term = true;
+		      }
+		    else
+		      {
+			bitset_union (&visited_segs, &(QO_TERM_SEGS (term)));
+		      }
 		  }
-		bitset_add (&nl_join_terms, i);
-		/* check for m-join */
-		if (QO_TERM_IS_FLAGED (term, QO_TERM_MERGEABLE_EDGE))
+
+		if (!skip_term)
 		  {
-		    bitset_add (&sm_join_terms, i);
-		  }
-		else
-		  {		/* non-eq edge */
-		    if (IS_OUTER_JOIN_TYPE (join_type) && QO_ON_COND_TERM (term))
-		      {		/* ON clause */
-			bitset_add (&duj_terms, i);	/* need for m-join */
+		    /* check for idx-join */
+		    if (QO_TERM_CAN_USE_INDEX (term))
+		      {
+			idx_join_cnt++;
+		      }
+		    bitset_add (&nl_join_terms, i);
+		    /* check for m-join */
+		    if (QO_TERM_IS_FLAGED (term, QO_TERM_MERGEABLE_EDGE))
+		      {
+			bitset_add (&sm_join_terms, i);
+		      }
+		    else
+		      {		/* non-eq edge */
+			if (IS_OUTER_JOIN_TYPE (join_type) && QO_ON_COND_TERM (term))
+			  {	/* ON clause */
+			    bitset_add (&duj_terms, i);	/* need for m-join */
+			  }
 		      }
 		  }
 		break;
@@ -6843,7 +6807,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	bitset_add (&info_terms, i);	/* add to info term */
 
 	/* skip always true dummy join term and do not evaluate */
-	if (QO_TERM_CLASS (term) != QO_TC_DUMMY_JOIN)
+	if (!skip_term && QO_TERM_CLASS (term) != QO_TC_DUMMY_JOIN)
 	  {
 	    bitset_add (&sarged_terms, i);	/* add to sarged term */
 	  }
@@ -7158,6 +7122,7 @@ wrapup:
   bitset_delset (&sarged_terms);
   bitset_delset (&info_terms);
   bitset_delset (&pinned_subqueries);
+  bitset_delset (&visited_segs);
 }
 
 /*
@@ -8359,7 +8324,7 @@ qo_clean_planner (QO_PLANNER * planner)
  * -------------------------------------------
  * Tables joined | Tables considered at a time
  * --------------+----------------------------
- *  4..25        | 4
+ *  8..25        | 8
  * 26..37        | 3
  * 38..          | 2
  * -------------------------------------------
@@ -8437,7 +8402,7 @@ qo_search_partition_join (QO_PLANNER * planner, QO_PARTITION * partition, BITSET
     }
   else
     {
-      planner->join_unit = (nodes_cnt <= 25) ? MIN (4, nodes_cnt) : (nodes_cnt <= 37) ? 3 : 2;
+      planner->join_unit = (nodes_cnt <= 25) ? MIN (8, nodes_cnt) : (nodes_cnt <= 37) ? 3 : 2;
     }
 
   /* STEP 1: do join search with visited nodes */
@@ -9604,6 +9569,12 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
   if (info->ndv > 0)
     {
       int ndv = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;	/* need to change type to INT64 */
+
+      if (info->cum_stats.is_indexed == true)
+	{
+	  /* Choose the better NDV of the two. */
+	  return MIN (ndv, info->cum_stats.pkeys[0]);
+	}
       return ndv;
     }
 
@@ -10372,6 +10343,97 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
     }
 
   return orderby_skip;
+}
+
+/*
+ * qo_check_skip_term - checks whether term can be skipped.
+ *	    skip term which is already logically evaluated.
+ *   return:  true or false
+ *   plan (in): input index plan to be analyzed
+ */
+static bool
+qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
+		    BITSET * cur_visited_terms)
+{
+  BITSET remaining_terms, connected_segs, all_visited_terms, eq_visited_segs;
+  BITSET_ITERATOR bi;
+  QO_TERM *tmp_term;
+  int i, prev_card;
+  bool result;
+
+  /* check unvisited segments */
+  if (!bitset_subset (&visited_segs, &(QO_TERM_SEGS (term))))
+    {
+      return false;
+    }
+  bitset_init (&remaining_terms, env);
+  bitset_init (&connected_segs, env);
+  bitset_init (&all_visited_terms, env);
+  bitset_init (&eq_visited_segs, env);
+
+  /* gather terms having same eqclass */
+  bitset_union (&all_visited_terms, visited_terms);
+  bitset_union (&all_visited_terms, cur_visited_terms);
+
+  for (i = bitset_iterate (&all_visited_terms, &bi); i != -1; i = bitset_next_member (&bi))
+    {
+      tmp_term = QO_ENV_TERM (env, i);
+
+      if (QO_TERM_EQCLASS (tmp_term) == QO_TERM_EQCLASS (term))
+	{
+	  bitset_add (&remaining_terms, i);
+	  bitset_union (&eq_visited_segs, &(QO_TERM_SEGS (tmp_term)));
+	}
+    }
+
+  /* check number of remaining terms. at least n-1 terms can be fully connected. */
+  if (bitset_cardinality (&remaining_terms) < bitset_cardinality (&eq_visited_segs) - 1)
+    {
+      result = false;
+      goto end;
+    }
+
+  /* check whether segments of eqclass are fully connected */
+  prev_card = bitset_cardinality (&remaining_terms);
+  while (!bitset_is_empty (&remaining_terms))
+    {
+      for (i = bitset_iterate (&remaining_terms, &bi); i != -1; i = bitset_next_member (&bi))
+	{
+	  tmp_term = QO_ENV_TERM (env, i);
+
+	  if (bitset_is_empty (&connected_segs) || bitset_intersects (&connected_segs, &(QO_TERM_SEGS (tmp_term))))
+	    {
+	      /* first time or connected segs */
+	      bitset_union (&connected_segs, &(QO_TERM_SEGS (tmp_term)));
+	      bitset_remove (&remaining_terms, i);
+	    }
+	}
+
+      if (prev_card == bitset_cardinality (&remaining_terms))
+	{
+	  /* There are no more connected terms. */
+	  break;
+	}
+      prev_card = bitset_cardinality (&remaining_terms);
+    }
+
+  if (bitset_subset (&connected_segs, &(QO_TERM_SEGS (term))))
+    {
+      /* already evaluated */
+      result = true;
+    }
+  else
+    {
+      result = false;
+    }
+
+end:
+  bitset_delset (&remaining_terms);
+  bitset_delset (&connected_segs);
+  bitset_delset (&all_visited_terms);
+  bitset_delset (&eq_visited_segs);
+
+  return result;
 }
 
 /*

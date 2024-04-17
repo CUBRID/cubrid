@@ -28,27 +28,24 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.type;
 
 import java.util.HashMap;
 import java.util.Map;
 
-public class TypeSpecChar extends TypeSpecSimple {
+public class TypeChar extends Type {
 
     public static final int MAX_LEN = 268435455;
 
-    // NOTE: no accept() method. inherit it from the parent TypeSpecSimple
-
     public final int length;
 
-    public static synchronized TypeSpecChar getInstance(int length) {
+    public static synchronized TypeChar getInstance(int length) {
 
         assert length <= MAX_LEN && length >= 1;
 
-        TypeSpecChar ret = instances.get(length);
+        TypeChar ret = instances.get(length);
         if (ret == null) {
-            String typicalValueStr = String.format("cast(? as char(%d))", length);
-            ret = new TypeSpecChar(typicalValueStr, length);
+            ret = new TypeChar(length);
             instances.put(length, ret);
         }
 
@@ -59,10 +56,18 @@ public class TypeSpecChar extends TypeSpecSimple {
     // Private
     // ---------------------------------------------------------------------------
 
-    private static final Map<Integer, TypeSpecChar> instances = new HashMap<>();
+    private static final Map<Integer, TypeChar> instances = new HashMap<>();
 
-    private TypeSpecChar(String typicalValueStr, int length) {
-        super("String", "java.lang.String", IDX_STRING, typicalValueStr);
+    private static String getPlcName(int length) {
+        return String.format("Char(%d)", length);
+    }
+
+    private static String getTypicalValueStr(int length) {
+        return String.format("cast(? as char(%d))", length);
+    }
+
+    private TypeChar(int length) {
+        super(IDX_STRING, getPlcName(length), "java.lang.String", getTypicalValueStr(length));
         this.length = length;
     }
 }

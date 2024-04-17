@@ -43,6 +43,7 @@
 #include "databases_file.h"
 #include "object_fetch.h"
 #include "extract_schema.hpp"
+#include "schema_system_catalog_constants.h"
 
 
 class print_output;
@@ -50,15 +51,14 @@ class print_output;
 /*
  * Authorization Class Names
  */
+#define AU_ROOT_CLASS_NAME      CT_ROOT_NAME
+#define AU_OLD_ROOT_CLASS_NAME  CT_AUTHORIZATIONS_NAME
+#define AU_USER_CLASS_NAME      CT_USER_NAME
+#define AU_PASSWORD_CLASS_NAME  CT_PASSWORD_NAME
+#define AU_AUTH_CLASS_NAME      CT_AUTHORIZATION_NAME
 
-extern const char *AU_ROOT_CLASS_NAME;
-extern const char *AU_OLD_ROOT_CLASS_NAME;
-extern const char *AU_USER_CLASS_NAME;
-extern const char *AU_PASSWORD_CLASS_NAME;
-extern const char *AU_AUTH_CLASS_NAME;
-extern const char *AU_GRANT_CLASS_NAME;
-extern const char *AU_PUBLIC_USER_NAME;
-extern const char *AU_DBA_USER_NAME;
+#define AU_PUBLIC_USER_NAME     "PUBLIC"
+#define AU_DBA_USER_NAME        "DBA"
 
 /*
  * Authorization Types
@@ -74,6 +74,18 @@ extern const char *AU_DBA_USER_NAME;
 #define AU_ALTER        DB_AUTH_ALTER
 #define AU_INDEX        DB_AUTH_INDEX
 #define AU_EXECUTE      DB_AUTH_EXECUTE
+
+enum AU_OBJECT
+{
+  AU_OBJECT_CLASS,		/* TABLE, VIEW (_db_class) */
+  AU_OBJECT_TRIGGER,		/* TRIGGER (_db_trigger) */
+  AU_OBJECT_SERIAL,		/* SERIAL (db_serial) */
+  AU_OBJECT_SERVER,		/* SERVER (db_server) */
+  AU_OBJECT_SYNONYM,		/* SYNONYM (_db_synonym) */
+  AU_OBJECT_PROCEDURE		/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
+};
+
+extern const char *AU_OBJECT_CLASS_NAME[];
 
 /*
  * Mask to extract only the authorization bits from a cache.  This can also
@@ -98,6 +110,18 @@ extern const char *AU_DBA_USER_NAME;
 
 #define AU_CACHE_INVALID        0x80000000
 
+
+/* Password related macros */
+#define ENCODE_PREFIX_DEFAULT           (char)0
+#define ENCODE_PREFIX_DES               (char)1
+#define ENCODE_PREFIX_SHA1              (char)2
+#define ENCODE_PREFIX_SHA2_512          (char)3
+
+#define IS_ENCODED_DES(string)          (string[0] == ENCODE_PREFIX_DES)
+#define IS_ENCODED_SHA1(string)         (string[0] == ENCODE_PREFIX_SHA1)
+#define IS_ENCODED_SHA2_512(string)     (string[0] == ENCODE_PREFIX_SHA2_512)
+#define IS_ENCODED_ANY(string) \
+  (IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA1 (string) || IS_ENCODED_DES (string))
 
 int au_disable (void);
 void au_enable (int save);
@@ -179,6 +203,7 @@ extern MOP Au_public_user;
 extern char Au_user_password[AU_MAX_PASSWORD_BUF + 4];
 extern int Au_disable;
 
+extern MOP Au_user_class;
 
 extern void au_init (void);
 extern void au_final (void);
@@ -199,7 +224,10 @@ extern MOP au_add_user (const char *name, int *exists);
 extern int au_add_member (MOP group, MOP member);
 extern int au_drop_member (MOP group, MOP member);
 extern int au_drop_user (MOP user);
+
+extern int au_set_password_encrypt (MOP user, const char *password, int encode, char encrypt_prefix);
 extern int au_set_password (MOP user, const char *password);
+
 extern int au_set_user_comment (MOP user, const char *comment);
 
 extern const char *au_user_name (void);
@@ -231,25 +259,19 @@ extern void au_reset_authorization_caches (void);
 
 /* misc utilities */
 extern int au_change_owner (MOP class_mop, MOP owner_mop);
+extern int au_change_class_owner (MOP class_mop, MOP owner_mop);
+extern int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
+
 extern MOP au_get_class_owner (MOP classmop);
 extern int au_check_user (void);
 extern char *au_get_user_name (MOP obj);
 extern bool au_is_dba_group_member (MOP user);
 extern bool au_is_user_group_member (MOP group_user, MOP user);
-extern void au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * serial_val, DB_VALUE * owner_val);
 
 /* debugging functions */
 extern void au_dump (void);
 extern void au_dump_to_file (FILE * fp);
 extern void au_dump_user (MOP user, FILE * fp);
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/* used by test code, should be changed to au_dump . . . */
-extern void au_print_class_auth (MOP class_mop);
-#endif
-
-/* called only at initialization time to get the static methods linked */
-extern void au_link_static_methods (void);
 
 /* migration utilities */
 
@@ -267,28 +289,9 @@ extern int au_perform_pop_user ();
 /*
  * Etc
  */
-
-extern void au_find_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name);
-extern void au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VALUE * password);
-extern void au_set_password_method (MOP user, DB_VALUE * returnval, DB_VALUE * password);
-extern void au_set_password_encoded_method (MOP user, DB_VALUE * returnval, DB_VALUE * password);
-extern void au_set_password_encoded_sha1_method (MOP user, DB_VALUE * returnval, DB_VALUE * password);
-extern void au_add_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval);
-extern void au_drop_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval);
-extern void au_drop_user_method (MOP root, DB_VALUE * returnval, DB_VALUE * name);
-extern void au_change_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * class_val, DB_VALUE * owner_val);
 extern int au_change_trigger_owner (MOP trigger_mop, MOP owner_mop);
-extern void au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigger_val,
-					    DB_VALUE * owner_val);
-extern void au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_);
-extern void au_check_authorization_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VALUE * auth);
 extern int au_change_sp_owner (MOP sp, MOP owner);
-extern void au_change_sp_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * sp, DB_VALUE * owner);
-extern void au_login_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * user, DB_VALUE * password);
 extern void au_dump_auth (FILE * fp);
-extern void au_describe_user_method (MOP user, DB_VALUE * returnval);
-extern void au_info_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
-extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
 extern int au_check_serial_authorization (MOP serial_object);
 extern int au_check_server_authorization (MOP server_object);
 extern bool au_is_server_authorized_user (DB_VALUE * owner_val);

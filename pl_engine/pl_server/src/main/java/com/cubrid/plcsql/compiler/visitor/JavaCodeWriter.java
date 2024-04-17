@@ -33,6 +33,7 @@ package com.cubrid.plcsql.compiler.visitor;
 import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.type.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -155,7 +156,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'CLASS-NAME'%",
                 node.getClassName(),
                 "%'RETURN-TYPE'%",
-                node.routine.retType == null ? "void" : node.routine.retType.javaCode(),
+                node.routine.retTypeSpec == null ? "void" : node.routine.retTypeSpec.type.javaCode,
                 "%'METHOD-NAME'%",
                 node.routine.name,
                 "%'+PARAMETERS'%",
@@ -209,7 +210,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 Misc.UNKNOWN_LINE_COLUMN,
                 tmplDeclRoutine,
                 "%'RETURN-TYPE'%",
-                node.retType == null ? "void" : node.retType.javaCode(),
+                node.retTypeSpec == null ? "void" : node.retTypeSpec.type.javaCode,
                 "%'+PARAMETERS'%",
                 visitNodeList(node.paramList).setDelimiter(","),
                 "%'+NULLIFY-OUT-PARAMETERS'%",
@@ -234,13 +235,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitDeclParamIn(DeclParamIn node) {
-        String code = String.format("%s %s", node.typeSpec.javaCode(), node.name);
+        String code = String.format("%s %s", node.typeSpec.type.javaCode, node.name);
         return new CodeTemplate("DeclParamIn", Misc.UNKNOWN_LINE_COLUMN, code);
     }
 
     @Override
     public CodeToResolve visitDeclParamOut(DeclParamOut node) {
-        String code = String.format("%s[] %s", node.typeSpec.javaCode(), node.name);
+        String code = String.format("%s[] %s", node.typeSpec.type.javaCode, node.name);
         return new CodeTemplate("DeclParamOut", Misc.UNKNOWN_LINE_COLUMN, code);
     }
 
@@ -259,7 +260,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitDeclVar(DeclVar node) {
 
-        String ty = node.typeSpec.javaCode();
+        String ty = node.typeSpec.type.javaCode;
         if (node.val == null) {
             String code = String.format("%s[] %s = new %s[] { null };", ty, node.name, ty);
             return new CodeTemplate("DeclVar", Misc.UNKNOWN_LINE_COLUMN, code);
@@ -297,7 +298,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 node.notNull ? Misc.getLineColumnOf(node.ctx) : Misc.UNKNOWN_LINE_COLUMN,
                 node.notNull ? tmplNotNullConst : tmplNullableConst,
                 "%'TYPE'%",
-                node.typeSpec.javaCode(),
+                node.typeSpec.type.javaCode,
                 "%'NAME'%",
                 node.name,
                 "%'+VAL'%",
@@ -414,7 +415,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl;
 
-        if (node.resultType.equals(TypeSpecSimple.NULL)) {
+        if (node.resultType == Type.NULL) {
             // in this case, every branch including else-part has null as its expression.
             tmpl = new CodeTemplate("ExprCase", Misc.UNKNOWN_LINE_COLUMN, "null");
         } else {
@@ -424,7 +425,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             Misc.UNKNOWN_LINE_COLUMN,
                             tmplExprCase,
                             "%'SELECTOR-TYPE'%",
-                            node.selectorType.javaCode(),
+                            node.selectorType.javaCode,
                             "%'+SELECTOR-VALUE'%",
                             visit(node.selector),
                             "%'+WHEN-PARTS'%",
@@ -432,7 +433,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             "%'+ELSE-PART'%",
                             node.elsePart == null ? "null" : visit(node.elsePart),
                             "%'RESULT-TYPE'%",
-                            node.resultType.javaCode());
+                            node.resultType.javaCode);
         }
 
         return applyCoercion(node.coercion, tmpl);
@@ -452,7 +453,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl;
 
-        if (node.resultType.equals(TypeSpecSimple.NULL)) {
+        if (node.resultType == Type.NULL) {
             // in this case, every branch including else has null as its expression.
             tmpl = new CodeTemplate("ExprCond", Misc.UNKNOWN_LINE_COLUMN, "null");
         } else {
@@ -504,7 +505,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             "%'CURSOR'%",
                             node.id.javaCode(),
                             "%'JAVA-TYPE'%",
-                            node.attr.ty.javaCode(),
+                            node.attr.ty.javaCode,
                             "%'SUBMSG'%",
                             "tried to retrieve an attribute from an unopened SYS_REFCURSOR",
                             "%'METHOD'%",
@@ -594,7 +595,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'DYNAMIC-SQL'%",
                         dynSql,
                         "%'RETURN-TYPE'%",
-                        node.decl.retType.javaCode(),
+                        node.decl.retTypeSpec.type.javaCode,
                         "%'PARAMETERS'%",
                         wrapperParam,
                         "%'+SET-GLOBAL-FUNC-ARGS'%",
@@ -684,7 +685,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         assert node.args != null;
         assert node.resultType != null;
-        String ty = node.resultType.javaCode();
+        String ty = node.resultType.javaCode;
 
         CodeTemplate tmpl;
 
@@ -695,7 +696,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             Misc.getLineColumnOf(node.ctx),
                             String.format(
                                     "(%s) invokeBuiltinFunc(conn, \"%s\", %d)",
-                                    ty, node.name, node.resultType.simpleTypeIdx));
+                                    ty, node.name, node.resultType.idx));
         } else {
             tmpl =
                     new CodeTemplate(
@@ -707,7 +708,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             "%'NAME'%",
                             node.name,
                             "%'RESULT-TYPE-CODE'%",
-                            Integer.toString(node.resultType.simpleTypeIdx),
+                            Integer.toString(node.resultType.idx),
                             // assumption: built-in functions do not have OUT parameters
                             "%'+ARGS'%",
                             visitNodeList(node.args).setDelimiter(","));
@@ -755,7 +756,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'FUNC-NAME'%",
                         node.name,
                         "%'RETURN-TYPE'%",
-                        node.decl.retType.javaCode(),
+                        node.decl.retTypeSpec.type.javaCode,
                         "%'PARAMETERS'%",
                         wrapperParam,
                         "%'+ALLOC-COERCED-OUT-ARGS'%",
@@ -1058,7 +1059,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 Misc.getLineColumnOf(node.ctx),
                 tmplStmtCase,
                 "%'SELECTOR-TYPE'%",
-                node.selectorType.javaCode(),
+                node.selectorType.javaCode,
                 "%'+SELECTOR-VALUE'%",
                 visit(node.selector),
                 "%'+WHEN-PARTS'%",
@@ -1156,7 +1157,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 resultStr =
                         String.format(
                                 "(%s) rs.getObject(%d)",
-                                node.columnTypeList.get(i).javaCode(), i + 1);
+                                node.columnTypeList.get(i).javaCode, i + 1);
             }
 
             Coercion c = node.coercions.get(i);
@@ -1320,7 +1321,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 resultStr =
                         String.format(
                                 "(%s) r%%'LEVEL'%%.getObject(%d)",
-                                node.columnTypeList.get(i).javaCode(), i + 1);
+                                node.columnTypeList.get(i).javaCode, i + 1);
             }
 
             Coercion c = node.coercions.get(i);
@@ -2001,13 +2002,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     }
 
     @Override
-    public CodeToResolve visitTypeSpecPercent(TypeSpecPercent node) {
+    public CodeToResolve visitTypeSpec(TypeSpec node) {
         // TypeSpecs are not visited
         throw new RuntimeException("unreachable");
     }
 
     @Override
-    public CodeToResolve visitTypeSpecSimple(TypeSpecSimple node) {
+    public CodeToResolve visitTypeSpecPercent(TypeSpecPercent node) {
         // TypeSpecs are not visited
         throw new RuntimeException("unreachable");
     }
@@ -2320,7 +2321,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         exprPlcsqlPos,
                         tmplCastCoercion,
                         "%'TYPE'%",
-                        cast.dst.javaCode(),
+                        cast.dst.javaCode,
                         "%'+EXPR'%",
                         exprCode);
             } else if (c instanceof Coercion.Conversion) {
@@ -2330,9 +2331,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         exprPlcsqlPos,
                         tmplConvCoercion,
                         "%'SRC-TYPE'%",
-                        conv.src.plcName,
+                        Type.getTypeByIdx(conv.src.idx).plcName,
                         "%'DST-TYPE'%",
-                        conv.dst.plcName,
+                        Type.getTypeByIdx(conv.dst.idx).plcName,
                         "%'+EXPR'%",
                         exprCode);
             } else if (c instanceof Coercion.CoerceAndCheckPrecision) {
@@ -2434,9 +2435,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             if (param instanceof DeclParamOut) {
                 ExprId id = (ExprId) args.nodes.get(i);
                 DeclIdTyped declId = (DeclIdTyped) id.decl;
-                sbuf.append(String.format("%s[] o%d", declId.typeSpec().javaCode, i));
+                sbuf.append(String.format("%s[] o%d", declId.typeSpec().type.javaCode, i));
             } else {
-                sbuf.append(String.format("%s o%d", param.typeSpec.javaCode, i));
+                sbuf.append(String.format("%s o%d", param.typeSpec.type.javaCode, i));
             }
         }
 
@@ -2483,7 +2484,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 assert cRev != null; // by earlier check
                 String outVal =
                         String.format(
-                                "(%s) stmt.getObject(%d)", param.typeSpec.javaCode, i + argOffset);
+                                "(%s) stmt.getObject(%d)",
+                                param.typeSpec.type.javaCode, i + argOffset);
                 updateOutArgs.add(String.format("o%d[0] = %s;", i, cRev.javaCode(outVal)));
 
                 DeclId declId = id.decl;
@@ -2537,7 +2539,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 if (c instanceof Coercion.Identity) {
                     argsToLocal.append("o" + i);
                 } else {
-                    String paramType = param.typeSpec.javaCode;
+                    String paramType = param.typeSpec.type.javaCode;
                     allocCoercedOutArgs.add(
                             String.format(
                                     "%s[] p%d = new %s[] { %s };",

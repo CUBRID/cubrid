@@ -35,8 +35,6 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class TypeSpecPercent extends TypeSpec {
 
-    public TypeSpec resolvedType;
-
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitTypeSpecPercent(this);
@@ -46,47 +44,8 @@ public class TypeSpecPercent extends TypeSpec {
     public final String column;
 
     public TypeSpecPercent(ParserRuleContext ctx, String table, String column) {
-        super(ctx, null, null, -1, null);
+        super(ctx, null); // null: unknown yet
         this.table = table;
         this.column = column;
-    }
-
-    @Override
-    public String toJavaSignature() {
-        if (resolvedType == null) {
-            assert false;
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.toJavaSignature();
-        }
-    }
-
-    @Override
-    public String javaCode() {
-        if (resolvedType == null) {
-            assert false;
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.javaCode();
-        }
-    }
-
-    @Override
-    public String toString() {
-        if (resolvedType == null) {
-            return "%UNRESOLVED";
-        } else {
-            return resolvedType.toString();
-        }
-    }
-
-    @Override
-    public String getTypicalValueStr() {
-        if (resolvedType == null) {
-            assert false;
-            throw new RuntimeException("unreachable");
-        } else {
-            return resolvedType.getTypicalValueStr();
-        }
     }
 }

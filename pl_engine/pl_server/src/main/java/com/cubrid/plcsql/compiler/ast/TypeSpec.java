@@ -30,75 +30,46 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
+import com.cubrid.plcsql.compiler.type.TypeVariadic;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.HashMap;
+import java.util.Map;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class TypeSpec extends AstNode {
+public class TypeSpec extends AstNode {
 
-    public final String plcName;
-    public final String javaCode;
-    public final int simpleTypeIdx;
-    public final String typicalValueStr; // used to type builtin function calls
+    public Type type;
 
-    public TypeSpec(
-            ParserRuleContext ctx,
-            String plcName,
-            String javaCode,
-            int simpleTypeIdx,
-            String typicalValueStr) {
-
-        super(ctx);
-        this.plcName = plcName;
-        this.javaCode = javaCode;
-        this.simpleTypeIdx = simpleTypeIdx;
-        this.typicalValueStr = typicalValueStr;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitTypeSpec(this);
     }
 
-    public static TypeSpec ofJavaName(String javaType) {
-        if (javaType.endsWith("[]")) {
-            String elemType = javaType.substring(0, javaType.length() - 2);
-            TypeSpecSimple elem = TypeSpecSimple.ofJavaName(elemType);
-            if (elem == null) {
-                return null;
-            } else {
-                return new TypeSpecVariadic(elem);
-            }
-        } else {
-            return TypeSpecSimple.ofJavaName(javaType);
+    public TypeSpec(ParserRuleContext ctx, Type type) {
+        super(ctx);
+        this.type = type;
+    }
+
+    private static Map<Type, TypeSpec> bogus =
+            new HashMap<>(); // bogus TypeSpec means one with the null context
+
+    static {
+        for (int i = Type.IDX_OBJECT; i < Type.BOUND_OF_IDX; i++) {
+            Type ty = Type.getTypeByIdx(i);
+            TypeVariadic vty = TypeVariadic.getInstance(ty);
+            bogus.put(ty, new TypeSpec(null, ty));
+            bogus.put(vty, new TypeSpec(null, vty));
         }
     }
 
-    @Override
-    public String toString() {
-        return plcName;
-    }
+    public static TypeSpec getBogus(Type type) {
+        TypeSpec ret = bogus.get(type);
+        if (ret == null) {
+            ret = new TypeSpec(null, type);
+            bogus.put(type, ret);
+        }
 
-    @Override
-    public boolean equals(Object that) {
-        return this == that; // Actually, this is the same as equals of Object class.
-        // I just want to be explicit.
-    }
-
-    public String javaCode() {
-        assert javaCode != null;
-        return javaCode;
-    }
-
-    public abstract String toJavaSignature();
-
-    public String getTypicalValueStr() {
-        return typicalValueStr;
-    }
-
-    // overriden by TypeSpecSimple
-    public boolean isNumber() {
-        return false;
-    }
-
-    public boolean isString() {
-        return false;
-    }
-
-    public boolean isDateTime() {
-        return false;
+        return ret;
     }
 }

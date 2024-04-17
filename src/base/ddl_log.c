@@ -82,6 +82,7 @@ struct t_ddl_audit_handle
   char ip_addr[16];
   int pid;
   int ddl_stmt_cnt;
+  int ddl_stmt_cnt_backup;
   char str_qry_exec_begin_time[DDL_TIME_LEN];
   struct timeval qry_exec_begin_time;
   char elapsed_time[DDL_TIME_LEN];
@@ -148,6 +149,7 @@ logddl_init (T_APP_NAME app_name)
   memset (&ddl_audit_handle, 0x00, sizeof (T_DDL_AUDIT_HANDLE));
 
   ddl_audit_handle.ddl_stmt_cnt = 0;
+  ddl_audit_handle.ddl_stmt_cnt_backup = 0;
   ddl_audit_handle.execute_type = LOGDDL_RUN_EXECUTE_FUNC;
   ddl_audit_handle.loaddb_file_type = LOADDB_FILE_TYPE_NONE;
   ddl_audit_handle.csql_input_type = CSQL_INPUT_TYPE_NONE;
@@ -188,6 +190,7 @@ logddl_free (bool all_free)
 #endif
 
   ddl_audit_handle.ddl_stmt_cnt = 0;
+  ddl_audit_handle.ddl_stmt_cnt_backup = 0;
   ddl_audit_handle.execute_type = LOGDDL_RUN_EXECUTE_FUNC;
   ddl_audit_handle.loaddb_file_type = LOADDB_FILE_TYPE_NONE;
   ddl_audit_handle.str_qry_exec_begin_time[0] = '\0';
@@ -385,6 +388,19 @@ logddl_set_stmt_type (int stmt_type, PT_NODE * statement)
 
       ddl_audit_handle.ddl_stmt_cnt++;
       return true;
+    }
+  else if (stmt_type == PT_COMMIT_WORK || stmt_type == PT_ROLLBACK_WORK)
+    {
+      /* Although commit/rollback is not a DDL statement, 
+       * the history of commit/rollback for the previously performed DDL statement must be left, 
+       * so set it so that the information can be output.
+       */
+      assert (ddl_audit_handle.ddl_stmt_cnt_backup <= ddl_audit_handle.ddl_stmt_cnt);
+      if (ddl_audit_handle.ddl_stmt_cnt_backup < ddl_audit_handle.ddl_stmt_cnt)
+	{
+	  ddl_audit_handle.ddl_stmt_cnt_backup = ddl_audit_handle.ddl_stmt_cnt;
+	  return true;
+	}
     }
 
   return false;
@@ -1448,6 +1464,7 @@ logddl_reset_query_text ()
   ddl_audit_handle.sql_text[0] = '\0';
   ddl_audit_handle.sql_text_len = 0;
   ddl_audit_handle.ddl_stmt_cnt = 0;
+  ddl_audit_handle.ddl_stmt_cnt_backup = 0;
 }
 
 // only used in callback_handler::prepare()
