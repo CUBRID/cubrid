@@ -1051,9 +1051,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     "AUTONOMOUS_TRANSACTION can only be declared at the top level");
         }
 
+        throw new SemanticError(
+                Misc.getLineColumnOf(ctx),
+                "AUTONOMOUS_TRANSACTION is not supported yet");
+
+        /*
         // just turn on the flag and return nothing
         autonomousTransaction = true;
         return null;
+         */
     }
 
     @Override
