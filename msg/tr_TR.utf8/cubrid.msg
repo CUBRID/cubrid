@@ -1447,7 +1447,6 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 1361 Dropping system generated stored procedure is not allowed.
 1362 PL/CSQL Stored procedure/function does not support Invoker's rights
-
 1363 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1934,7 +1933,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
+<<<<<<< HEAD
 318 Stored procedure/function "$1$s" does not exist.
+=======
+>>>>>>> upstream/develop
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

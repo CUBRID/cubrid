@@ -1447,7 +1447,6 @@ $ LOADDB
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 1361 Dropping system generated stored procedure is not allowed.
 1362 PL/CSQL Stored procedure/function does not support Invoker's rights
-
 1363 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL

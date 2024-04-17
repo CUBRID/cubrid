@@ -1447,7 +1447,6 @@ $ LOADDB
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 1361 시스템 생성 stored procedure를 삭제(drop)할 수 없습니다.
 1362 PL/CSQL 저장 프로시저/함수는 호출자 권한을 지원하지 않습니다
-
 1363 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1934,7 +1933,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 이름 바꾸기는 소유자를 변경할 수 없습니다.
 316 이름 바꾸기는 같은 이름으로 변경할 수 없습니다.
 317 식별자는 LIMIT 절 안에 있을 수 없습니다.
+<<<<<<< HEAD
 318 저장 프로시저/함수 "$1$s"이(가) 존재하지 않습니다.
+=======
+>>>>>>> upstream/develop
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
