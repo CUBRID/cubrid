@@ -66,22 +66,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         this.staticSqls = staticSqls;
     }
 
-    public void addToImports(String i) {
-
-        assert i != null;
-
-        if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(i)) {
-            // no need to import Cursor now
-        } else if (i.startsWith("java.lang.")
-                && i.lastIndexOf('.') == 9) { // 9:the index of the second '.'
-            // no need to import java.lang.*
-        } else if (i.startsWith("Null")) {
-            // NULL type is not a java type but an internal type for convenience in typechecking.
-        } else {
-            imports.add(i);
-        }
-    }
-
     public void askServerSemanticQuestions() {
         if (semanticQuestions.size() == 0) {
             return; // nothing to do
@@ -187,7 +171,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 Type retType =
                         DBTypeAdapter.getDeclType(
                                 fs.retType.type, fs.retType.prec, fs.retType.scale);
-                addToImports(retType.fullJavaType);
 
                 gfc.decl = new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(retType));
 
@@ -213,7 +196,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 Type ty =
                         DBTypeAdapter.getDeclType(
                                 ct.colType.type, ct.colType.prec, ct.colType.scale);
-                addToImports(ty.fullJavaType);
 
                 assert node instanceof TypeSpecPercent;
                 ((TypeSpecPercent) node).type = ty;
@@ -225,10 +207,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public AstNode visitSql_script(Sql_scriptContext ctx) {
-
-        addToImports("com.cubrid.jsp.Server");
-        addToImports("com.cubrid.plcsql.predefined.PlcsqlRuntimeError");
-        addToImports("java.util.List");
 
         AstNode ret = visitCreate_routine(ctx.create_routine());
 
@@ -358,7 +336,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        addToImports("java.math.BigDecimal");
         return new TypeSpec(ctx, TypeNumeric.getInstance(precision, scale));
     }
 
@@ -409,7 +386,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String plcType = Misc.getNormalizedText(ctx);
         Type ty = nameToType.get(plcType);
         assert ty != null;
-        addToImports(ty.fullJavaType);
         return new TypeSpec(ctx, ty);
     }
 
@@ -637,7 +613,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public ExprDate visitDate_exp(Date_expContext ctx) {
-        addToImports("java.sql.Date");
 
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
@@ -653,7 +628,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public ExprTime visitTime_exp(Time_expContext ctx) {
-        addToImports("java.sql.Time");
 
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
@@ -669,7 +643,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public ExprTimestamp visitTimestamp_exp(Timestamp_expContext ctx) {
-        addToImports("java.sql.Timestamp");
 
         String s = ctx.quoted_string().getText();
         return parseZonedDateTime(ctx, s, false, "TIMESTAMP");
@@ -677,7 +650,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public ExprDatetime visitDatetime_exp(Datetime_expContext ctx) {
-        addToImports("java.sql.Timestamp");
 
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
@@ -733,7 +705,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             Misc.getLineColumnOf(ctx), // s006
                             "number of digits of an integer literal may not exceed 38");
                 }
-                addToImports("java.math.BigDecimal");
                 ty = Type.NUMERIC_ANY;
             } else if (bi.compareTo(INT_MAX) > 0 || bi.compareTo(INT_MIN) < 0) {
                 ty = Type.BIGINT;
@@ -751,7 +722,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public ExprFloat visitFp_num_exp(Fp_num_expContext ctx) {
         try {
-            addToImports("java.math.BigDecimal");
 
             String text = ctx.FLOATING_POINT_NUM().getText().toLowerCase();
 
@@ -830,8 +800,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         || fieldName.equals("NEXTVAL")) {
 
                     connectionRequired = true;
-                    addToImports("java.sql.*");
-                    addToImports("java.math.BigDecimal");
 
                     String recordText = Misc.getNormalizedText(ctx.record);
                     // do not push a symbol table: no nested structure
@@ -864,7 +832,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (decl == null) {
 
             connectionRequired = true;
-            addToImports("java.sql.*");
 
             ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args);
             semanticQuestions.put(ret, new ServerAPI.FunctionSignature(name));
@@ -879,7 +846,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
 
                 connectionRequired = true;
-                addToImports("java.sql.*");
                 return new ExprBuiltinFuncCall(ctx, name, args);
             } else {
                 if (decl.paramList.nodes.size() != args.nodes.size()) {
@@ -1015,7 +981,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitList_exp(List_expContext ctx) {
         NodeList<Expr> elems = visitExpressions(ctx.expressions());
-        addToImports("java.util.Arrays");
         return new ExprList(ctx, elems);
     }
      */
@@ -1140,7 +1105,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public AstNode visitCursor_definition(Cursor_definitionContext ctx) {
 
         connectionRequired = true;
-        addToImports("java.sql.*");
 
         String name = Misc.getNormalizedText(ctx.identifier());
 
@@ -1320,7 +1284,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             // this is possibly a global function call
 
             connectionRequired = true;
-            addToImports("java.sql.*");
 
             Expr ret = new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS);
             semanticQuestions.put(ret, new ServerAPI.FunctionSignature(name));
@@ -1336,7 +1299,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             } else if (decl instanceof DeclFunc) {
                 if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
                     connectionRequired = true;
-                    addToImports("java.sql.*");
                     return new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS);
                 } else {
                     return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
@@ -1553,7 +1515,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public AstNode visitStmt_for_cursor_loop(Stmt_for_cursor_loopContext ctx) {
 
         connectionRequired = true;
-        addToImports("java.sql.*");
 
         symbolStack.pushSymbolTable("for_cursor_loop", null);
 
@@ -1605,7 +1566,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public StmtForSqlLoop visitStmt_for_static_sql_loop(Stmt_for_static_sql_loopContext ctx) {
 
         connectionRequired = true;
-        addToImports("java.sql.*");
 
         symbolStack.pushSymbolTable("for_s_sql_loop", null);
 
@@ -1653,7 +1613,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public StmtForSqlLoop visitStmt_for_dynamic_sql_loop(Stmt_for_dynamic_sql_loopContext ctx) {
 
         connectionRequired = true;
-        addToImports("java.sql.*");
 
         symbolStack.pushSymbolTable("for_d_sql_loop", null);
 
@@ -1794,10 +1753,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        if (whenParts.nodes.size() > 0) {
-            addToImports("java.util.Objects");
-        }
-
         controlFlowBlocked = allFlowsBlocked; // s017-6
         return new StmtCase(ctx, level, selector, whenParts, elsePart);
     }
@@ -1843,7 +1798,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public StmtStaticSql visitStatic_sql(Static_sqlContext ctx) {
 
         connectionRequired = true;
-        addToImports("java.sql.*");
         SqlSemantics sws = staticSqls.get(ctx);
         assert sws != null;
         StaticSql staticSql = checkAndConvertStaticSql(sws, ctx);
@@ -1870,7 +1824,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public AstNode visitClose_statement(Close_statementContext ctx) {
 
         connectionRequired = true;
-        addToImports("java.sql.*");
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
 
@@ -1889,7 +1842,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public AstNode visitOpen_statement(Open_statementContext ctx) {
 
         connectionRequired = true;
-        addToImports("java.sql.*");
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
 
@@ -1933,7 +1885,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public AstNode visitFetch_statement(Fetch_statementContext ctx) {
 
         connectionRequired = true;
-        addToImports("java.sql.*");
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
         ExprId cursor = visitNonFuncIdentifier(idCtx); // s037: undeclared id ...
@@ -1979,7 +1930,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public AstNode visitOpen_for_statement(Open_for_statementContext ctx) {
 
         connectionRequired = true;
-        addToImports("java.sql.*");
 
         ExprId refCursor = visitNonFuncIdentifier(ctx.identifier()); // s040: undeclared id ...
         if (!isAssignableTo(refCursor)) {
@@ -2009,14 +1959,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtCommit visitCommit_statement(Commit_statementContext ctx) {
         connectionRequired = true;
-        addToImports("java.sql.*");
         return new StmtCommit(ctx);
     }
 
     @Override
     public StmtRollback visitRollback_statement(Rollback_statementContext ctx) {
         connectionRequired = true;
-        addToImports("java.sql.*");
         return new StmtRollback(ctx);
     }
 
@@ -2041,7 +1989,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (decl == null) {
 
             connectionRequired = true;
-            addToImports("java.sql.*");
 
             StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args);
             semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(name));
@@ -2085,7 +2032,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public StmtSql visitExecute_immediate(Execute_immediateContext ctx) {
 
         connectionRequired = true;
-        addToImports("java.sql.*");
 
         Expr dynSql = visitExpression(ctx.dyn_sql().expression());
 
@@ -2447,7 +2393,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     }
 
                     ExprAutoParam autoParam = new ExprAutoParam(ctx, pi.value, pi.type);
-                    addToImports(DBTypeAdapter.getValueType(pi.type).fullJavaType);
                     hostExprs.put(
                             autoParam,
                             null); // null: type check is not necessary for auto parameters
@@ -2577,7 +2522,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             Type paramType =
                     DBTypeAdapter.getDeclType(params[i].type, params[i].prec, params[i].scale);
-            addToImports(paramType.fullJavaType);
 
             TypeSpec tySpec = TypeSpec.getBogus(paramType);
             if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) != 0) {
