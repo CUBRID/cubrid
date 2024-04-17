@@ -253,7 +253,7 @@ method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t 
 	}
       for (int i = 0; i < num_method_args; i++)
 	{
-	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_mode[i] */
+	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_type[i] */
 	}
       for (int i = 0; i < num_method_args; i++)
 	{
