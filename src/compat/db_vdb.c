@@ -629,7 +629,7 @@ db_compile_statement_local (DB_SESSION * session)
       /* execute CTE queries first */
       if (cte_info)
 	{
-	  err = do_execute_prepared_cte (parser, statement, cte_num_query, cte_info);
+	  err = do_execute_prepared_cte (parser, cte_num_query, cte_info);
 
 	  if (err != NO_ERROR)
 	    {

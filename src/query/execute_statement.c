@@ -14266,30 +14266,6 @@ pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   return node;
 }
 
-static PT_NODE *
-do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
-{
-  int *err = (int *) arg;
-
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
-    {
-      return stmt;
-    }
-
-  if (stmt->info.query.flag.cte_query_cached)
-    {
-      *err = do_execute_cte (parser, stmt);
-      if (*err != NO_ERROR)
-	{
-	  *continue_walk = PT_STOP_WALK;
-	}
-    }
-
-  return stmt;
-}
-
 /*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
  *                       plan generation, and creating XASL as the result
@@ -14557,12 +14533,11 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
  * do_execute_prepared_cte () - execute CTE statements as prepared statement for result-cache
  * return : Error code
  * parser (in)	 : parser context
- * stmt (in)     : whole or main query of prepared statement
  * cte_num_query : the number of CTE queries
  * cte_info (in) : prepare info. for CTE query 
  */
 int
-do_execute_prepared_cte (PARSER_CONTEXT * parser, PT_NODE * stmt, int cte_num_query, DB_PREPARE_CTE_INFO * cte_info)
+do_execute_prepared_cte (PARSER_CONTEXT * parser, int cte_num_query, DB_PREPARE_CTE_INFO * cte_info)
 {
   int i, k, err = NO_ERROR;
   DB_VALUE *host_variables;
@@ -14594,13 +14569,6 @@ do_execute_prepared_cte (PARSER_CONTEXT * parser, PT_NODE * stmt, int cte_num_qu
 
       if (err != NO_ERROR)
 	{
-	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
-	    {
-	      /* set the flag to recompile from it's main query */
-	      stmt->info.execute.recompile = 1;
-	      er_clearid ();
-	      err = NO_ERROR;
-	    }
 	  break;
 	}
     }
