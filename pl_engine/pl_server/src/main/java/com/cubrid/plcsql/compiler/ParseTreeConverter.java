@@ -1052,8 +1052,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         throw new SemanticError(
-                Misc.getLineColumnOf(ctx),
-                "AUTONOMOUS_TRANSACTION is not supported yet");
+                Misc.getLineColumnOf(ctx), "AUTONOMOUS_TRANSACTION is not supported yet");
 
         /*
         // just turn on the flag and return nothing

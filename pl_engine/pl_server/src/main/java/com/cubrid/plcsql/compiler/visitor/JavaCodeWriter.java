@@ -46,12 +46,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private Set<String> javaTypesUsed = new HashSet<>();
 
-    private void addToImports(String fullJavaType) {
+    private void addToImports(String fullJavaType) {}
 
-    }
     private String getJavaCodeOfType(TypeSpec tySpec) {
         return getJavaCodeOfType(tySpec.type);
     }
+
     private String getJavaCodeOfType(Type type) {
         javaTypesUsed.add(type.fullJavaType);
         return type.javaCode;
@@ -155,7 +155,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                 visitNodeList(node.routine.decls));
 
         // return type
-        String strRetType = node.routine.retTypeSpec == null ? "void" : getJavaCodeOfType(node.routine.retTypeSpec);
+        String strRetType =
+                node.routine.retTypeSpec == null
+                        ? "void"
+                        : getJavaCodeOfType(node.routine.retTypeSpec);
 
         // parameters
         Object strParamArr =
@@ -170,17 +173,20 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeToResolve bodyCode = visit(node.routine.body);
 
         // imports
-        // CAUTION: importsArray must be made after visiting all the subnodes of this Unit node because javaTypesUsed,
-        //  which is the set of Java types to appear in the generated Java code, is built while visiting the submodes
+        // CAUTION: importsArray must be made after visiting all the subnodes of this Unit node
+        // because javaTypesUsed,
+        //  which is the set of Java types to appear in the generated Java code, is built while
+        // visiting the submodes
         int i = 0;
         String[] importsArray = new String[javaTypesUsed.size()];
-        for (String javaType: javaTypesUsed) {
+        for (String javaType : javaTypesUsed) {
             if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(javaType)) {
                 // no need to import Cursor now
             } else if (javaType.startsWith("java.lang.") && javaType.lastIndexOf('.') == 9) {
                 // no need to import java.lang.*;
             } else if (javaType.startsWith("Null")) {
-                // NULL type is not a java type but an internal type for convenience in typechecking.
+                // NULL type is not a java type but an internal type for convenience in
+                // typechecking.
             } else {
                 importsArray[i] = "import " + javaType + ";";
                 i++;
@@ -559,7 +565,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitExprDate(ExprDate node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprDate", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
+        CodeTemplate tmpl =
+                new CodeTemplate(
+                        "ExprDate", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -567,7 +575,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public CodeToResolve visitExprDatetime(ExprDatetime node) {
 
         CodeTemplate tmpl =
-                new CodeTemplate("ExprDatetime", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
+                new CodeTemplate(
+                        "ExprDatetime", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -582,7 +591,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitExprField(ExprField node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprField", Misc.getLineColumnOf(node.ctx), node.javaCode(javaTypesUsed));
+        CodeTemplate tmpl =
+                new CodeTemplate(
+                        "ExprField", Misc.getLineColumnOf(node.ctx), node.javaCode(javaTypesUsed));
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -825,14 +836,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitExprUint(ExprUint node) {
-        CodeTemplate tmpl = new CodeTemplate("ExprUnit", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
+        CodeTemplate tmpl =
+                new CodeTemplate(
+                        "ExprUnit", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
         return applyCoercion(node.coercion, tmpl);
     }
 
     @Override
     public CodeToResolve visitExprFloat(ExprFloat node) {
         CodeTemplate tmpl =
-                new CodeTemplate("ExprFloat", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
+                new CodeTemplate(
+                        "ExprFloat", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -902,7 +916,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitExprTime(ExprTime node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprTime", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
+        CodeTemplate tmpl =
+                new CodeTemplate(
+                        "ExprTime", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -940,7 +956,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public CodeToResolve visitExprTimestamp(ExprTimestamp node) {
 
         CodeTemplate tmpl =
-                new CodeTemplate("ExprTimestamp", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
+                new CodeTemplate(
+                        "ExprTimestamp", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -948,7 +965,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public CodeToResolve visitExprAutoParam(ExprAutoParam node) {
 
         CodeTemplate tmpl =
-                new CodeTemplate("ExprAutoParam", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
+                new CodeTemplate(
+                        "ExprAutoParam", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
         return applyCoercion(node.coercion, tmpl);
     }
 
