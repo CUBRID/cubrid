@@ -658,7 +658,7 @@ static int heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid,
 					   HEAP_SCANCACHE ** scan_cache);
 static int heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					  const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
-					  int is_indexscan, MVCC_SNAPSHOT * mvcc_snapshot);
+					  MVCC_SNAPSHOT * mvcc_snapshot);
 static int heap_scancache_force_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 static int heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					const OID * class_oid);
@@ -6806,12 +6806,11 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
  *   cache_last_fix_page(in): Wheater or not to cache the last fetched page
  *                            between scan objects ?
  *   is_queryscan(in):
- *   is_indexscan(in):
  *
  */
 static int
 heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
-			       const OID * class_oid, int cache_last_fix_page, bool is_queryscan, int is_indexscan,
+			       const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
 			       MVCC_SNAPSHOT * mvcc_snapshot)
 {
   int ret = NO_ERROR;
@@ -6920,14 +6919,13 @@ exit_on_error:
  *                  For any class, NULL or NULL_OID can be given
  *   cache_last_fix_page(in): Wheater or not to cache the last fetched page
  *                            between scan objects ?
- *   is_indexscan(in):
  *
  */
 int
 heap_scancache_start (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid, const OID * class_oid,
-		      int cache_last_fix_page, int is_indexscan, MVCC_SNAPSHOT * mvcc_snapshot)
+		      int cache_last_fix_page, MVCC_SNAPSHOT * mvcc_snapshot)
 {
-  return heap_scancache_start_internal (thread_p, scan_cache, hfid, class_oid, cache_last_fix_page, true, is_indexscan,
+  return heap_scancache_start_internal (thread_p, scan_cache, hfid, class_oid, cache_last_fix_page, true,
 					mvcc_snapshot);
 }
 
@@ -6966,7 +6964,7 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
   int i;
   int ret = NO_ERROR;
 
-  if (heap_scancache_start_internal (thread_p, scan_cache, hfid, NULL, false, false, false, mvcc_snapshot) != NO_ERROR)
+  if (heap_scancache_start_internal (thread_p, scan_cache, hfid, NULL, false, false, mvcc_snapshot) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -8300,7 +8298,7 @@ heap_scanrange_start (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, cons
   int ret = NO_ERROR;
 
   /* Start the scan cache */
-  ret = heap_scancache_start (thread_p, &scan_range->scan_cache, hfid, class_oid, true, false, mvcc_snapshot);
+  ret = heap_scancache_start (thread_p, &scan_range->scan_cache, hfid, class_oid, true, mvcc_snapshot);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -14473,7 +14471,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
       /* Dump individual Objects */
       if (dump_records == true)
 	{
-	  if (heap_scancache_start (thread_p, &scan_cache, hfid, NULL, true, false, NULL) != NO_ERROR)
+	  if (heap_scancache_start (thread_p, &scan_cache, hfid, NULL, true, NULL) != NO_ERROR)
 	    {
 	      /* something went wrong, return */
 	      heap_attrinfo_end (thread_p, &attr_info);
@@ -16714,7 +16712,7 @@ xheap_has_instance (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  return ER_FAILED;
 	}
     }
-  if (heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true, false, mvcc_snapshot) != NO_ERROR)
+  if (heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true, mvcc_snapshot) != NO_ERROR)
     {
       return ER_FAILED;
     }

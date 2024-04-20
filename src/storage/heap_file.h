@@ -407,8 +407,7 @@ extern VFID *heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFI
 extern void heap_flush (THREAD_ENTRY * thread_p, const OID * oid);
 extern int xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid);
 extern int heap_scancache_start (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
-				 const OID * class_oid, int cache_last_fix_page, int is_indexscan,
-				 MVCC_SNAPSHOT * mvcc_snapshot);
+				 const OID * class_oid, int cache_last_fix_page, MVCC_SNAPSHOT * mvcc_snapshot);
 extern int heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					const OID * class_oid, int op_type, MVCC_SNAPSHOT * mvcc_snapshot);
 extern int heap_scancache_quick_start (HEAP_SCANCACHE * scan_cache);

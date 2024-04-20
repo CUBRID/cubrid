@@ -12031,7 +12031,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (heap_scancache_start (thread_p, &scan_cache, NULL, NULL, true, false, mvcc_snapshot) != NO_ERROR)
+      if (heap_scancache_start (thread_p, &scan_cache, NULL, NULL, true, mvcc_snapshot) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -12732,7 +12732,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      if (scan_cache_inited == false)
 		{
 		  if (heap_scancache_start (thread_p, &scan_cache, &crt_incr_info.m_class_hfid,
-					    &crt_incr_info.m_class_oid, false, false, mvcc_snapshot) != NO_ERROR)
+					    &crt_incr_info.m_class_oid, false, mvcc_snapshot) != NO_ERROR)
 		    {
 		      goto exit_on_error;
 		    }
