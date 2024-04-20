@@ -6879,7 +6879,6 @@ pgbuf_search_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_ancho
   PGBUF_BCB *bufptr;
 #if defined(SERVER_MODE)
   int rv;
-  int loop_cnt;
 #endif
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
@@ -6893,9 +6892,6 @@ one_phase:
       if (VPID_EQ (&(bufptr->vpid), vpid))
 	{
 #if defined(SERVER_MODE)
-	  loop_cnt = 0;
-
-	mutex_lock:
 
 	  rv = PGBUF_BCB_TRYLOCK (bufptr);
 	  if (rv == 0)
@@ -6962,9 +6958,6 @@ try_again:
       if (VPID_EQ (&(bufptr->vpid), vpid))
 	{
 #if defined(SERVER_MODE)
-	  loop_cnt = 0;
-
-	mutex_lock2:
 
 	  rv = PGBUF_BCB_TRYLOCK (bufptr);
 	  if (rv == 0)
