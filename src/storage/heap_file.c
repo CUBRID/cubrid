@@ -7330,6 +7330,7 @@ heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_get_if_diff_chn () - Get specified object of the given slotted page when
  *                       its cache coherency number is different
@@ -7444,6 +7445,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
 
   return scan;
 }
+#endif
 
 /*
  * heap_prepare_get_context () - Prepare for obtaining/processing heap object.
