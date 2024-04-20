@@ -15,7 +15,20 @@ test_defaults: &test_defaults
         command: |
           ulimit -c 1
           /entrypoint.sh checkout
-          circleci tests glob cubrid-testcases/$TEST_SUITE/_* | circleci tests split | tee tc.list
+          if [ $TEST_SUITE = "plcsql" ] 
+          then
+            # Hack way to run plcsql test without modifying CUBRID CI docker
+            TEST_SUITE="sql"
+            glob_path=cubrid-testcases/sql/{_05_plcsql,_35_fig_cake/plcsql}
+          elif [ $TEST_SUITE = "sql" ] 
+          then
+            rm -rf cubrid-testcases/$TEST_SUITE/_05_plcsql
+            rm -rf cubrid-testcases/$TEST_SUITE/_35_fig_cake/plcsql
+            glob_path="cubrid-testcases/$TEST_SUITE/_*"
+          else
+            glob_path="cubrid-testcases/$TEST_SUITE/_*"
+          fi
+          circleci tests glob $glob_path | circleci tests split | tee tc.list
           find cubrid-testcases/$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
           /entrypoint.sh test
     - run:
@@ -79,6 +92,13 @@ jobs:
     parallelism: 8
     <<: *test_defaults
 
+  test_plcsql:
+    <<: *defaults
+    environment:
+      TEST_SUITE: plcsql
+    resource_class: medium
+    <<: *test_defaults
+
   build-windows:
     machine:
       image: 'windows-server-2019-vs2019:2022.08.1'
@@ -122,6 +142,9 @@ workflows:
           requires:
             - build
       - test_sql:
+          requires:
+            - build
+      - test_plcsql:
           requires:
             - build
 

@@ -111,6 +111,18 @@ extern const char *AU_OBJECT_CLASS_NAME[];
 #define AU_CACHE_INVALID        0x80000000
 
 
+/* Password related macros */
+#define ENCODE_PREFIX_DEFAULT           (char)0
+#define ENCODE_PREFIX_DES               (char)1
+#define ENCODE_PREFIX_SHA1              (char)2
+#define ENCODE_PREFIX_SHA2_512          (char)3
+
+#define IS_ENCODED_DES(string)          (string[0] == ENCODE_PREFIX_DES)
+#define IS_ENCODED_SHA1(string)         (string[0] == ENCODE_PREFIX_SHA1)
+#define IS_ENCODED_SHA2_512(string)     (string[0] == ENCODE_PREFIX_SHA2_512)
+#define IS_ENCODED_ANY(string) \
+  (IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA1 (string) || IS_ENCODED_DES (string))
+
 int au_disable (void);
 void au_enable (int save);
 MOP au_get_public_user (void);
@@ -212,7 +224,10 @@ extern MOP au_add_user (const char *name, int *exists);
 extern int au_add_member (MOP group, MOP member);
 extern int au_drop_member (MOP group, MOP member);
 extern int au_drop_user (MOP user);
+
+extern int au_set_password_encrypt (MOP user, const char *password, int encode, char encrypt_prefix);
 extern int au_set_password (MOP user, const char *password);
+
 extern int au_set_user_comment (MOP user, const char *comment);
 
 extern const char *au_user_name (void);
@@ -244,20 +259,19 @@ extern void au_reset_authorization_caches (void);
 
 /* misc utilities */
 extern int au_change_owner (MOP class_mop, MOP owner_mop);
+extern int au_change_class_owner (MOP class_mop, MOP owner_mop);
+extern int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
+
 extern MOP au_get_class_owner (MOP classmop);
 extern int au_check_user (void);
 extern char *au_get_user_name (MOP obj);
 extern bool au_is_dba_group_member (MOP user);
 extern bool au_is_user_group_member (MOP group_user, MOP user);
-extern void au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * serial_val, DB_VALUE * owner_val);
 
 /* debugging functions */
 extern void au_dump (void);
 extern void au_dump_to_file (FILE * fp);
 extern void au_dump_user (MOP user, FILE * fp);
-
-/* called only at initialization time to get the static methods linked */
-extern void au_link_static_methods (void);
 
 /* migration utilities */
 
@@ -269,28 +283,9 @@ extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 /*
  * Etc
  */
-
-extern void au_find_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name);
-extern void au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VALUE * password);
-extern void au_set_password_method (MOP user, DB_VALUE * returnval, DB_VALUE * password);
-extern void au_set_password_encoded_method (MOP user, DB_VALUE * returnval, DB_VALUE * password);
-extern void au_set_password_encoded_sha1_method (MOP user, DB_VALUE * returnval, DB_VALUE * password);
-extern void au_add_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval);
-extern void au_drop_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval);
-extern void au_drop_user_method (MOP root, DB_VALUE * returnval, DB_VALUE * name);
-extern void au_change_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * class_val, DB_VALUE * owner_val);
 extern int au_change_trigger_owner (MOP trigger_mop, MOP owner_mop);
-extern void au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigger_val,
-					    DB_VALUE * owner_val);
-extern void au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_);
-extern void au_check_authorization_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VALUE * auth);
 extern int au_change_sp_owner (MOP sp, MOP owner);
-extern void au_change_sp_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * sp, DB_VALUE * owner);
-extern void au_login_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * user, DB_VALUE * password);
 extern void au_dump_auth (FILE * fp);
-extern void au_describe_user_method (MOP user, DB_VALUE * returnval);
-extern void au_info_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
-extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
 extern int au_check_serial_authorization (MOP serial_object);
 extern int au_check_server_authorization (MOP server_object);
 extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
