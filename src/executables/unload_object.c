@@ -771,7 +771,7 @@ open_output_file (extract_context & ctxt, const char *output_dirname, const char
 #if defined(SUPPORT_THREAD_UNLOAD)
   if (thread_count > 0)
     {
-      assert ((!datafile_per_class && !class_name) || (datafile_per_class && class_name));
+      assert (datafile_per_class && class_name);
       for (int i = 0; i < thread_count; i++)
 	{
 	  if (open_object_file (&(thr_param[i].text_output), ctxt, output_dirname, class_name, i + 1) == false)
