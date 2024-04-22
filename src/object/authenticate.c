@@ -466,6 +466,7 @@ static void au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp);
 static void au_print_auth (MOP auth, FILE * fp);
 
 
+
 /*
  * DB_ EXTENSION FUNCTIONS
  */
