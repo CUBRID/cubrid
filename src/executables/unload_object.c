@@ -1619,20 +1619,21 @@ unload_thread_proc (void *param)
   er_context_p = new cuberr::context ();
   er_context_p->register_thread_local ();
 
-  do
+  while (parg->uci->is_terminate == false)
     {
-      pthread_mutex_lock (&parg->uci->mtx);
-      pthread_cond_wait (&parg->uci->cond, &parg->uci->mtx);
-      pthread_mutex_unlock (&parg->uci->mtx);
-
       node = parg->uci->cparea_lst_ref->get ();
       if (node)
 	{
 	  unload_writer (parg, node->lc_copy_area, obj_out);
 	  parg->uci->cparea_lst_ref->add_freelist (node);
 	}
+      else if (parg->uci->is_terminate == false)
+	{
+	  pthread_mutex_lock (&parg->uci->mtx);
+	  pthread_cond_wait (&parg->uci->cond, &parg->uci->mtx);
+	  pthread_mutex_unlock (&parg->uci->mtx);
+	}
     }
-  while (parg->uci->is_terminate == false);
 
   node = parg->uci->cparea_lst_ref->get ();
   while (node)
