@@ -1447,7 +1447,6 @@ $ LOADDB
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 1361 시스템 생성 stored procedure를 삭제(drop)할 수 없습니다.
 1362 PL/CSQL 저장 프로시저/함수는 호출자 권한을 지원하지 않습니다
-
 1363 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL

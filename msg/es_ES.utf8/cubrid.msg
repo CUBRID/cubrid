@@ -1447,7 +1447,6 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 1361 Dropping system generated stored procedure is not allowed.
 1362 PL/CSQL Stored procedure/function does not support Invoker's rights
-
 1363 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL

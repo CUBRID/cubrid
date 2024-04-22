@@ -479,7 +479,10 @@ method_sig_node::freemem ()
 
   if (class_name != nullptr)
     {
-      db_private_free_and_init (NULL, class_name);
+      if (class_name != nullptr)
+	{
+	  db_private_free_and_init (NULL, class_name);
+	}
     }
 
   if (arg_info != nullptr)
