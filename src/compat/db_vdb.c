@@ -100,8 +100,6 @@ static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * pars
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement);
 
-static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
-
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
  *   pointer array
