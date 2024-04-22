@@ -723,6 +723,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR "oracle_compat_number_behavior"
 
+#define PRM_NAME_PL_TRANSACTION_CONTROL "pl_transaction_control"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2277,8 +2279,8 @@ int PRM_ER_LOG_TDE = false;
 static int prm_er_log_tde_default = false;
 static unsigned int prm_er_log_tde_flag = 0;
 
-bool PRM_JAVA_STORED_PROCEDURE = false;
-static bool prm_java_stored_procedure_default = false;
+bool PRM_JAVA_STORED_PROCEDURE = true;
+static bool prm_java_stored_procedure_default = true;
 static unsigned int prm_java_stored_procedure_flag = 0;
 
 int PRM_JAVA_STORED_PROCEDURE_PORT = 0;
@@ -2402,6 +2404,10 @@ static unsigned int prm_oracle_compat_number_behavior_flag = 0;
 bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
 static bool prm_statdump_force_add_int_max_default = false;
 static unsigned int prm_statdump_force_add_int_max_flag = 0;
+
+bool PRM_PL_TRANSACTION_CONTROL = false;
+static bool prm_pl_transaction_control_default = false;
+static unsigned int prm_pl_transaction_control_flag = 0;
 
 int PRM_VACUUM_OVFP_CHECK_DURATION = 45000;
 static int prm_vacuum_ovfp_check_duration_default = 45000;
@@ -6280,6 +6286,17 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_statdump_force_add_int_max_flag,
    (void *) &prm_statdump_force_add_int_max_default,
    (void *) &PRM_STATDUMP_FORCE_ADD_INT_MAX,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PL_TRANSACTION_CONTROL,
+   PRM_NAME_PL_TRANSACTION_CONTROL,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   &prm_pl_transaction_control_flag,
+   (void *) &prm_pl_transaction_control_default,
+   (void *) &PRM_PL_TRANSACTION_CONTROL,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

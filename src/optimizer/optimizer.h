@@ -168,7 +168,6 @@ extern bool qo_is_index_iss_scan (QO_PLAN * plan);
 extern bool qo_is_index_loose_scan (QO_PLAN * plan);
 extern bool qo_is_index_mro_scan (QO_PLAN * plan);
 extern bool qo_plan_multi_range_opt (QO_PLAN * plan);
-extern void qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * cost);
 
 /*
  *  QO_XASL support functions
