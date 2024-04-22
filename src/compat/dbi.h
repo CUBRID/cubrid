@@ -56,6 +56,11 @@ extern "C"
   enum
   { DB_NO_OIDS, DB_ROW_OIDS, DB_COLUMN_OIDS };
 
+  enum OPEN_BUFFER_FLAGS
+  { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1 };
+
+  extern int g_open_buffer_control_flags;
+
 /* Memory reclamation functions */
   extern void db_objlist_free (DB_OBJLIST * list);
   extern void db_string_free (char *string);
@@ -577,6 +582,7 @@ extern "C"
   extern DB_SESSION *db_open_buffer (const char *buffer);
   extern DB_SESSION *db_open_file (FILE * file);
   extern DB_SESSION *db_open_file_name (const char *name);
+  extern void db_init_lexer_lineno ();
 
   extern int db_statement_count (DB_SESSION * session);
 

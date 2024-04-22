@@ -1075,6 +1075,7 @@ enum pt_node_type
   PT_JSON_TABLE_COLUMN,
   PT_DBLINK_TABLE,
   PT_DBLINK_TABLE_DML,
+  PT_SP_BODY,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -1828,6 +1829,7 @@ typedef struct pt_stored_proc_info PT_STORED_PROC_INFO;
 typedef struct pt_prepare_info PT_PREPARE_INFO;
 typedef struct pt_execute_info PT_EXECUTE_INFO;
 typedef struct pt_stored_proc_param_info PT_STORED_PROC_PARAM_INFO;
+typedef struct pt_stored_proc_body_info PT_SP_BODY_INFO;
 typedef struct pt_truncate_info PT_TRUNCATE_INFO;
 typedef struct pt_do_info PT_DO_INFO;
 typedef union pt_statement_info PT_STATEMENT_INFO;
@@ -2508,6 +2510,7 @@ struct pt_host_var_info
   const char *str;		/* ??? */
   PT_MISC_TYPE var_type;	/* PT_HOST_IN, PT_HOST_OUT, */
   int index;			/* for PT_HOST_VAR ordering */
+  const char *label;
 };
 
 /* Info for lists of PT_NODE */
@@ -3339,11 +3342,19 @@ struct pt_pointer_info
   bool do_walk;			/* apply walk on node bool */
 };
 
+struct pt_stored_proc_body_info
+{
+  int lang;
+  PT_NODE *decl;		/* PT_VALUE */
+  PT_NODE *impl;		/* PT_VALUE */
+  bool direct;			/* whether the body has implementation (direct) or points to a implementation file (indirect) */
+};
+
 struct pt_stored_proc_info
 {
   PT_NODE *name;
   PT_NODE *param_list;
-  PT_NODE *java_method;
+  PT_NODE *body;
   PT_NODE *comment;
   PT_NODE *owner;		/* for ALTER PROCEDURE/FUNCTION name OWNER TO new_owner */
   PT_MISC_TYPE type;
@@ -3668,6 +3679,7 @@ union pt_statement_info
   PT_TRACE_INFO trace;
   PT_KILLSTMT_INFO killstmt;
   PT_WITH_CLAUSE_INFO with_clause;
+  PT_SP_BODY_INFO sp_body;
 };
 
 /*
@@ -3892,6 +3904,7 @@ struct parser_context
 						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
+
   int dbval_cnt;		/* to be assigned to XASL */
   int *cte_host_var_index;	/* CTE host variable index in non_recursive CTE node */
   int line, column;		/* current input line and column */
@@ -3927,6 +3940,8 @@ struct parser_context
 
   int max_print_len;		/* for pt_short_print */
 
+  char **external_into_label;
+  int external_into_label_cnt;
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;
@@ -3956,6 +3971,7 @@ struct parser_context
     unsigned return_generated_keys:1;
     unsigned is_system_generated_stmt:1;
     unsigned is_auto_commit:1;	/* set to true, if auto commit. */
+    unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
   } flag;
 };
 

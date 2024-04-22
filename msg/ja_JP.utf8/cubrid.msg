@@ -1444,8 +1444,9 @@ $ LOADDB
 1358 影響を受ける行数は不明です。
 
 1359 Java VM crashed: %1$s
+1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
-1360 ラストエラー
+1361 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1507,8 +1508,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 31 正しくないcreate userステートメントです。\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 正しくないcreate triggerステートメントです。\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 正しくないcreate シリアルステートメントです。\n  CREATE シリアル identifier {START WITH integer} {INCREMENT BY integer}\n    シリアル_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 正しくないcreate procedureステートメントです。\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 正しくないcreate functionステートメントです。\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+34 正しくないcreate procedureステートメントです。\n  CREATE [OR REPLACE] PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {procedure_source|procedure_spec}
+35 正しくないcreate functionステートメントです。\n  CREATE [OR REPLACE] FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {function_source|function_spec}
 36 正しくないgroupsステートメントです。\n  groups spec: GROUPS identifier {, identifier}*
 37 正しくないmembersステートメントです。\n  member spec: MEMBERS identifier {, identifier}*
 38 正しくないpasswordステートメントです。\n  password spec: PASSWORD 'STRING'
@@ -1930,6 +1931,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
+317 Identifiers cannot be in a LIMIT clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。
