@@ -235,7 +235,7 @@ sq_hash_func (const void *key, unsigned int ht_size)
   for (i = 0; i < db_set_size (set); i++)
     {
       db_set_get (set, i, &v);
-      h += mht_valhash (&v, ht_size);
+      h ^= mht_valhash (&v, ht_size);
       pr_clear_value (&v);
     }
   return h % ht_size;
