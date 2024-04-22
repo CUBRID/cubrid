@@ -31,7 +31,7 @@ public class ServerConfig {
         this.logPath =
                 rootPath + File.separatorChar + LOG_DIR + File.separatorChar + name + "_java.log";
 
-        String cubridTmpEnv = System.getProperty("CUBRID_TMP");
+        String cubridTmpEnv = System.getenv("CUBRID_TMP");
         this.tmpPath =
                 (cubridTmpEnv != null) ? cubridTmpEnv : this.rootPath + File.separatorChar + "tmp";
 

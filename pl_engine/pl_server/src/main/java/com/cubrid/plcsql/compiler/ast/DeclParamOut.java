@@ -53,6 +53,6 @@ public class DeclParamOut extends DeclParam {
     }
 
     public String toJavaSignature() {
-        return String.format("%s[]", typeSpec.toJavaSignature());
+        return String.format("%s[]", typeSpec.type.fullJavaType);
     }
 }

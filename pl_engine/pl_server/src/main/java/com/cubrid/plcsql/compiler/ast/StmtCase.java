@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -45,7 +46,7 @@ public class StmtCase extends Stmt {
     public final NodeList<CaseStmt> whenParts;
     public final NodeList<Stmt> elsePart;
 
-    public TypeSpec selectorType;
+    public Type selectorType;
 
     public StmtCase(
             ParserRuleContext ctx,
@@ -61,7 +62,7 @@ public class StmtCase extends Stmt {
         this.elsePart = elsePart;
     }
 
-    public void setSelectorType(TypeSpec ty) {
+    public void setSelectorType(Type ty) {
         this.selectorType = ty;
     }
 }

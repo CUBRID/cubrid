@@ -34,8 +34,9 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
+import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.annotation.Operator;
-import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -228,7 +229,13 @@ public class SpLib {
         assert args != null;
 
         int argsLen = args.length;
-        String hostVars = getHostVarsStr(argsLen);
+        String hostVars;
+        if (SymbolStack.noParenBuiltInFunc.indexOf(name) >= 0) {
+            assert argsLen == 0;
+            hostVars = "";
+        } else {
+            hostVars = getHostVarsStr(argsLen);
+        }
         String query = String.format("select %s%s from dual", name, hostVars);
         try {
             PreparedStatement pstmt = conn.prepareStatement(query);
@@ -239,39 +246,39 @@ public class SpLib {
             if (rs.next()) {
                 Object ret;
                 switch (resultTypeCode) {
-                    case TypeSpecSimple.IDX_NULL:
-                    case TypeSpecSimple.IDX_OBJECT:
+                    case Type.IDX_NULL:
+                    case Type.IDX_OBJECT:
                         ret = rs.getObject(1);
                         break;
-                    case TypeSpecSimple.IDX_STRING:
+                    case Type.IDX_STRING:
                         ret = rs.getString(1);
                         break;
-                    case TypeSpecSimple.IDX_SHORT:
+                    case Type.IDX_SHORT:
                         ret = rs.getShort(1);
                         break;
-                    case TypeSpecSimple.IDX_INT:
+                    case Type.IDX_INT:
                         ret = rs.getInt(1);
                         break;
-                    case TypeSpecSimple.IDX_BIGINT:
+                    case Type.IDX_BIGINT:
                         ret = rs.getLong(1);
                         break;
-                    case TypeSpecSimple.IDX_NUMERIC:
+                    case Type.IDX_NUMERIC:
                         ret = rs.getBigDecimal(1);
                         break;
-                    case TypeSpecSimple.IDX_FLOAT:
+                    case Type.IDX_FLOAT:
                         ret = rs.getFloat(1);
                         break;
-                    case TypeSpecSimple.IDX_DOUBLE:
+                    case Type.IDX_DOUBLE:
                         ret = rs.getDouble(1);
                         break;
-                    case TypeSpecSimple.IDX_DATE:
+                    case Type.IDX_DATE:
                         ret = rs.getDate(1);
                         break;
-                    case TypeSpecSimple.IDX_TIME:
+                    case Type.IDX_TIME:
                         ret = rs.getTime(1);
                         break;
-                    case TypeSpecSimple.IDX_DATETIME:
-                    case TypeSpecSimple.IDX_TIMESTAMP:
+                    case Type.IDX_DATETIME:
+                    case Type.IDX_TIMESTAMP:
                         ret = rs.getTimestamp(1);
                         break;
                     default:

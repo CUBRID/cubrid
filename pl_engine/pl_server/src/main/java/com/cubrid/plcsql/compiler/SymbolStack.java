@@ -34,6 +34,8 @@ import static com.cubrid.plcsql.compiler.antlrgen.PlcParser.*;
 
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.type.Type;
+import com.cubrid.plcsql.compiler.type.TypeVariadic;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -44,6 +46,17 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class SymbolStack {
+
+    public static final List<String> noParenBuiltInFunc =
+            Arrays.asList(
+                    "SYS_DATE",
+                    "SYS_DATETIME",
+                    "SYS_TIME",
+                    "SYS_TIMESTAMP",
+                    "SYSDATE",
+                    "SYSDATETIME",
+                    "SYSTIME",
+                    "SYSTIMESTAMP");
 
     public static final int LEVEL_PREDEFINED = 0;
     public static final int LEVEL_MAIN = 1;
@@ -85,10 +98,11 @@ public class SymbolStack {
                         for (Class pt : paramTypes) {
                             String typeName = pt.getTypeName();
                             // System.out.println("  " + typeName);
-                            TypeSpec paramType = TypeSpec.ofJavaName(typeName);
+                            Type paramType = Type.ofJavaName(typeName);
                             assert paramType != null;
 
-                            DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
+                            DeclParamIn p =
+                                    new DeclParamIn(null, "p" + i, TypeSpec.getBogus(paramType));
                             params.addNode(p);
                             i++;
                         }
@@ -96,11 +110,11 @@ public class SymbolStack {
                         // return type
                         String typeName = m.getReturnType().getTypeName();
                         // System.out.println("  =>" + typeName);
-                        TypeSpec retType = TypeSpec.ofJavaName(typeName);
+                        Type retType = Type.ofJavaName(typeName);
                         assert retType != null;
 
                         // add op
-                        DeclFunc op = new DeclFunc(null, name, params, retType);
+                        DeclFunc op = new DeclFunc(null, name, params, TypeSpec.getBogus(retType));
                         putOperator(name, op, opAnnot.coercionScheme());
                     }
                 }
@@ -122,7 +136,9 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$ENABLE",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "size", TypeSpecSimple.INT)));
+                                .addNode(
+                                        new DeclParamIn(
+                                                null, "size", TypeSpec.getBogus(Type.INT))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
 
         // get_line
@@ -133,10 +149,16 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamOut(
-                                                null, "line", TypeSpecSimple.STRING_ANY, false))
+                                                null,
+                                                "line",
+                                                TypeSpec.getBogus(Type.STRING_ANY),
+                                                false))
                                 .addNode(
                                         new DeclParamOut(
-                                                null, "status", TypeSpecSimple.INT, true)));
+                                                null,
+                                                "status",
+                                                TypeSpec.getBogus(Type.INT),
+                                                true)));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
 
         // new_line
@@ -149,7 +171,9 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT_LINE",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING_ANY)));
+                                .addNode(
+                                        new DeclParamIn(
+                                                null, "s", TypeSpec.getBogus(Type.STRING_ANY))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
 
         // put
@@ -158,7 +182,9 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING_ANY)));
+                                .addNode(
+                                        new DeclParamIn(
+                                                null, "s", TypeSpec.getBogus(Type.STRING_ANY))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
     }
 
@@ -488,8 +514,7 @@ public class SymbolStack {
         addPredefinedExceptions();
     }
 
-    public static DeclFunc getOperator(
-            List<Coercion> outCoercions, String name, TypeSpec... argTypes) {
+    public static DeclFunc getOperator(List<Coercion> outCoercions, String name, Type... argTypes) {
         return getFuncOverload(outCoercions, operators, name, argTypes);
     }
 
@@ -563,42 +588,34 @@ public class SymbolStack {
                     "label " + name + " has already been declared");
         }
 
-        putDeclTo(currSymbolTable, name, decl);
+        decl.setScope(currSymbolTable.scope);
+        currSymbolTable.labels.put(name, decl);
     }
 
-    <D extends Decl> void putDecl(String name, D decl) {
+    void putDecl(String name, Decl decl) {
         assert !(decl instanceof DeclLabel);
         putDeclTo(currSymbolTable, name, decl);
     }
 
-    private static <D extends Decl> void putDeclTo(SymbolTable symbolTable, String name, D decl) {
+    private static void putDeclTo(SymbolTable symbolTable, String name, Decl decl) {
         assert decl != null;
 
-        Map<String, D> map = symbolTable.<D>map((Class<D>) decl.getClass());
-        assert map != null;
-        if (map == symbolTable.labels) {
-            // currently, a symbol table is always pushed right before putting a label
-            assert !map.containsKey(name);
-        } else {
-            if (symbolTable.ids.containsKey(name)
-                    || symbolTable.procs.containsKey(name)
-                    || symbolTable.funcs.containsKey(name)
-                    || symbolTable.exceptions.containsKey(name)) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(decl.ctx), // s062
-                        name + " has already been declared in the same scope");
-            }
-            if (symbolTable.scope.level == 1 && map.size() == 0) {
-                // the first symbol added to the level 1 is the top-level procedure/function being
-                // created or replaced
+        Map<String, Decl> map = symbolTable.decls;
 
-                assert map == symbolTable.procs
-                        || map == symbolTable.funcs; // top-level procedure/function
-                if (predefinedSymbols.funcs.containsKey(name)) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(decl.ctx), // s063
-                            "procedure/function cannot be created with the same name as a built-in function");
-                }
+        if (map.containsKey(name)) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(decl.ctx), // s062
+                    name + " has already been declared in the same scope");
+        }
+        if (symbolTable.scope.level == 1 && map.size() == 0) {
+            // the first symbol added to the level 1 is the top-level procedure/function being
+            // created or replaced
+
+            assert decl instanceof DeclRoutine; // top-level procedure/function
+            if (predefinedSymbols.decls.containsKey(name)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(decl.ctx), // s063
+                        "procedure/function cannot be created with the same name as a built-in function");
             }
         }
 
@@ -607,46 +624,93 @@ public class SymbolStack {
     }
 
     DeclId getDeclId(String name) {
-        return getDecl(DeclId.class, name);
+        Decl d = getDecl(name);
+        if (d instanceof DeclId) {
+            return (DeclId) d;
+        } else {
+            if (d == null) {
+                return null;
+            } else {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(d.ctx), // s071
+                        name + " is not an identifier but " + d.kind() + " in this scope");
+            }
+        }
     }
 
     DeclProc getDeclProc(String name) {
-        return getDecl(DeclProc.class, name);
-    }
-
-    DeclVar getDeclVar(String name) {
-        return getDecl(DeclVar.class, name);
+        Decl d = getDecl(name);
+        if (d instanceof DeclProc) {
+            return (DeclProc) d;
+        } else {
+            if (d == null) {
+                return null;
+            } else {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(d.ctx), // s072
+                        name + " is not a procedure but " + d.kind() + " in this scope");
+            }
+        }
     }
 
     DeclFunc getDeclFunc(String name) {
-        DeclFunc ret = getDecl(DeclFunc.class, name);
-        return ret;
+        Decl d = getDecl(name);
+        if (d instanceof DeclFunc) {
+            return (DeclFunc) d;
+        } else {
+            if (d == null) {
+                return null;
+            } else {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(d.ctx), // s073
+                        name + " is not a function but " + d.kind() + " in this scope");
+            }
+        }
     }
 
     DeclException getDeclException(String name) {
-        return getDecl(DeclException.class, name);
+        Decl d = getDecl(name);
+        if (d instanceof DeclException) {
+            return (DeclException) d;
+        } else {
+            if (d == null) {
+                return null;
+            } else {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(d.ctx), // s074
+                        name + " is not an exception but " + d.kind() + " in this scope");
+            }
+        }
     }
 
     DeclLabel getDeclLabel(String name) {
-        return getDecl(DeclLabel.class, name);
+        assert name != null;
+
+        for (SymbolTable t : symbolTableStack) {
+
+            if (t.labels.containsKey(name)) {
+                return t.labels.get(name);
+            }
+        }
+
+        return null;
     }
 
     // return DeclId or DeclFunc for an identifier expression
     Decl getDeclForIdExpr(String name) {
-        DeclId declId = getDeclId(name);
-        DeclFunc declFunc = getDeclFunc(name);
-
-        if (declFunc == null) {
-            return declId;
-        } else if (declId == null) {
-            return declFunc;
+        Decl d = getDecl(name);
+        if (d instanceof DeclId || d instanceof DeclFunc) {
+            return d;
         } else {
-            if (declId.scope().level > declFunc.scope().level) {
-                return declId;
+            if (d == null) {
+                return null;
             } else {
-                assert declId.scope().level
-                        < declFunc.scope().level; // they cannot be on the same level
-                return declFunc;
+                throw new SemanticError(
+                        Misc.getLineColumnOf(d.ctx), // s075
+                        name
+                                + " is neither an identifier nor a function but "
+                                + d.kind()
+                                + " in this scope");
             }
         }
     }
@@ -667,7 +731,7 @@ public class SymbolStack {
             List<Coercion> outCoercions,
             Map<String, FuncOverloads> map,
             String name,
-            TypeSpec... argTypes) {
+            Type... argTypes) {
 
         FuncOverloads overloads = map.get(name);
         if (overloads == null) {
@@ -694,44 +758,21 @@ public class SymbolStack {
 
     private static class SymbolTable {
         final Scope scope;
-
-        final Map<String, DeclId> ids = new HashMap<>();
-        final Map<String, DeclProc> procs = new HashMap<>();
-        final Map<String, DeclFunc> funcs = new HashMap<>();
-        final Map<String, DeclException> exceptions = new HashMap<>();
+        final Map<String, Decl> decls = new HashMap<>();
         final Map<String, DeclLabel> labels = new HashMap<>();
 
         SymbolTable(Scope scope) {
             this.scope = scope;
         }
-
-        <D extends Decl> Map<String, D> map(Class<D> declClass) {
-            if (DeclId.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) ids;
-            } else if (DeclProc.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) procs;
-            } else if (DeclFunc.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) funcs;
-            } else if (DeclException.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) exceptions;
-            } else if (DeclLabel.class.isAssignableFrom(declClass)) {
-                return (Map<String, D>) labels;
-            } else {
-                assert false : ("unknown declaration type: " + declClass.getSimpleName());
-                return null;
-            }
-        }
     }
 
-    private <D extends Decl> D getDecl(Class<D> declClass, String name) {
+    private Decl getDecl(String name) {
         assert name != null;
 
-        int size = symbolTableStack.size();
-        for (int i = 0; i < size; i++) {
-            SymbolTable t = symbolTableStack.get(i);
-            Map<String, D> map = t.<D>map(declClass);
-            if (map.containsKey(name)) {
-                return map.get(name);
+        for (SymbolTable t : symbolTableStack) {
+
+            if (t.decls.containsKey(name)) {
+                return t.decls.get(name);
             }
         }
 
@@ -749,9 +790,9 @@ public class SymbolStack {
         }
 
         void put(DeclFunc decl) {
-            List<TypeSpec> paramTypes =
+            List<Type> paramTypes =
                     decl.paramList.nodes.stream()
-                            .map(e -> e.typeSpec())
+                            .map(e -> e.typeSpec().type)
                             .collect(Collectors.toList());
             DeclFunc old = overloads.put(paramTypes, decl);
             // system predefined operators and functions must be unique with their names and
@@ -759,19 +800,19 @@ public class SymbolStack {
             assert old == null;
         }
 
-        DeclFunc get(List<Coercion> outCoercions, List<TypeSpec> argTypes) {
+        DeclFunc get(List<Coercion> outCoercions, List<Type> argTypes) {
 
-            List<TypeSpec> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
+            List<Type> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
             if (paramTypes == null) {
                 return null; // no match
             } else {
                 assert argTypes.size() == outCoercions.size();
                 if (name.equals("opIn")) {
                     // opIn is the only operation that uses variadic parameters
-                    TypeSpec ty = paramTypes.get(0);
+                    Type ty = paramTypes.get(0);
                     paramTypes.clear();
                     paramTypes.add(ty);
-                    paramTypes.add(new TypeSpecVariadic((TypeSpecSimple) ty));
+                    paramTypes.add(TypeVariadic.getInstance(ty));
                 }
 
                 DeclFunc declFunc = overloads.get(paramTypes);
@@ -785,7 +826,7 @@ public class SymbolStack {
         //
         // ---------------------------------------------------------
 
-        private final Map<List<TypeSpec>, DeclFunc> overloads =
+        private final Map<List<Type>, DeclFunc> overloads =
                 new HashMap<>(); // (arg types --> func decl) map
         private final CoercionScheme coercionScheme;
         private final String name;

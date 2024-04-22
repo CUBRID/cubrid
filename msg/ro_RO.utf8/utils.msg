@@ -933,6 +933,7 @@ Usage: loadjava [OPTION] database-name java-class-file\n\
 valid options:\n\
   -y, --overwrite              suprascrie fişierul de clasă dacă exista, implicit nu\n\
   -p, --package                Numele pachetului Java, gol dacă nu este specificat\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Fişierul de ieşire '%1$s' nu a putut fi deschis\n

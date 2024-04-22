@@ -43,33 +43,32 @@ import java.util.Hashtable;
 public class ClassLoaderManager {
     private static Hashtable<Path, Instant> lastModifiedMap = new Hashtable<>();
 
-    private static Path root = null;
-    private static Path server = null;
-    private static Path dynamic = null;
+    private static Path rootPath = null;
+    private static Path staticPath = null;
+    private static Path dynamicPath = null;
 
     public static Path getRootPath() {
-        if (root == null) {
-            Path dbPath = Paths.get(Server.getServerConfig().getDatabasePath());
-            root = dbPath.resolve("java/");
-            createDirIfNotExists(root);
+        if (rootPath == null) {
+            rootPath = Paths.get(Server.getServerConfig().getDatabasePath());
+            createDirIfNotExists(rootPath);
         }
-        return root;
+        return rootPath;
     }
 
     public static Path getDynamicPath() {
-        if (dynamic == null) {
-            dynamic = getRootPath().resolve("dynamic/");
-            createDirIfNotExists(dynamic);
+        if (dynamicPath == null) {
+            dynamicPath = getRootPath().resolve("java/");
+            createDirIfNotExists(dynamicPath);
         }
-        return dynamic;
+        return dynamicPath;
     }
 
-    public static Path getServerPath() {
-        if (server == null) {
-            server = getRootPath().resolve("server/");
-            createDirIfNotExists(server);
+    public static Path getStaticPath() {
+        if (staticPath == null) {
+            staticPath = getRootPath().resolve("java_static/");
+            createDirIfNotExists(staticPath);
         }
-        return server;
+        return staticPath;
     }
 
     public static boolean isModified(Path path) {

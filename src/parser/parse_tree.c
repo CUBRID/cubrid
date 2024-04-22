@@ -121,6 +121,10 @@ PT_RESERVED_NAME pt_Reserved_name_table[] = {
   ,
   {"p_class_oid", RESERVED_P_CLASS_OID, DB_TYPE_OBJECT}
   ,
+  {"p_cur_volumeid", RESERVED_P_CUR_VOLUMEID, DB_TYPE_INTEGER}
+  ,
+  {"p_cur_pageid", RESERVED_P_CUR_PAGEID, DB_TYPE_INTEGER}
+  ,
   {"p_prev_pageid", RESERVED_P_PREV_PAGEID, DB_TYPE_INTEGER}
   ,
   {"p_next_pageid", RESERVED_P_NEXT_PAGEID, DB_TYPE_INTEGER}

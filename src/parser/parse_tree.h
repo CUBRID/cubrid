@@ -1452,7 +1452,9 @@ typedef enum
   PT_CHANGE_TABLE_COMMENT,
   PT_CHANGE_COLUMN_COMMENT,
   PT_CHANGE_INDEX_COMMENT,
-  PT_CHANGE_INDEX_STATUS
+  PT_CHANGE_INDEX_STATUS,
+  PT_ADD_MEMBERS,		/* alter user type */
+  PT_DROP_MEMBERS
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -2029,6 +2031,8 @@ struct pt_alter_user_info
   PT_NODE *user_name;		/* PT_NAME */
   PT_NODE *password;		/* PT_VALUE (string) */
   PT_NODE *comment;		/* PT_VALUE */
+  PT_ALTER_CODE code;		/* PT_ADD_MEMBERS, PT_DROP_MEMBERS */
+  PT_NODE *members;		/* PT_NAME list */
 };
 
 /* Info for ALTER_TRIGGER */
@@ -2616,6 +2620,8 @@ typedef enum
 
   /* Reserved page info names */
   RESERVED_P_CLASS_OID,
+  RESERVED_P_CUR_VOLUMEID,
+  RESERVED_P_CUR_PAGEID,
   RESERVED_P_PREV_PAGEID,
   RESERVED_P_NEXT_PAGEID,
   RESERVED_P_NUM_SLOTS,

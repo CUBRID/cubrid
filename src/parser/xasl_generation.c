@@ -26529,6 +26529,10 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID 
       /* Page info names */
     case RESERVED_P_CLASS_OID:
       return HEAP_PAGE_INFO_CLASS_OID;
+    case RESERVED_P_CUR_VOLUMEID:
+      return HEAP_PAGE_INFO_CUR_VOLUME;
+    case RESERVED_P_CUR_PAGEID:
+      return HEAP_PAGE_INFO_CUR_PAGE;
     case RESERVED_P_PREV_PAGEID:
       return HEAP_PAGE_INFO_PREV_PAGE;
     case RESERVED_P_NEXT_PAGEID:

@@ -172,9 +172,9 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitExName(ExName node);
 
-    public abstract R visitTypeSpecPercent(TypeSpecPercent node);
+    public abstract R visitTypeSpec(TypeSpec node);
 
-    public abstract R visitTypeSpecSimple(TypeSpecSimple node);
+    public abstract R visitTypeSpecPercent(TypeSpecPercent node);
 
     public abstract R visitCaseExpr(CaseExpr node);
 
@@ -202,7 +202,6 @@ public abstract class AstVisitor<R> {
     DeclIdTyped
     Expr
     Stmt
-    TypeSpec
 
     # actually no ast nodes
     DeclForIter

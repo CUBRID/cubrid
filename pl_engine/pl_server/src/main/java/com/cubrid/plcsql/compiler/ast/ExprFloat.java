@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -41,9 +42,9 @@ public class ExprFloat extends Expr {
     }
 
     public final String val;
-    public final TypeSpecSimple ty;
+    public final Type ty;
 
-    public ExprFloat(ParserRuleContext ctx, String val, TypeSpecSimple ty) {
+    public ExprFloat(ParserRuleContext ctx, String val, Type ty) {
         super(ctx);
 
         this.val = val;
@@ -51,12 +52,12 @@ public class ExprFloat extends Expr {
     }
 
     public String javaCode() {
-        switch (ty.simpleTypeIdx) {
-            case TypeSpecSimple.IDX_DOUBLE:
+        switch (ty.idx) {
+            case Type.IDX_DOUBLE:
                 return "new Double(\"" + val + "\")";
-            case TypeSpecSimple.IDX_FLOAT:
+            case Type.IDX_FLOAT:
                 return "new Float(\"" + val + "\")";
-            case TypeSpecSimple.IDX_NUMERIC:
+            case Type.IDX_NUMERIC:
                 return "new BigDecimal(\"" + val + "\")";
             default:
                 throw new RuntimeException("unreachable");

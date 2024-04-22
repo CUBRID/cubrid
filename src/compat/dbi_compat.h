@@ -186,6 +186,7 @@ extern "C"
   extern void db_print_stats (void);
 
   extern void db_preload_classes (const char *name1, ...);
+  extern void db_install_static_methods ();	/* see db_method_static.cpp */
   extern void db_link_static_methods (DB_METHOD_LINK * methods);
   extern void db_unlink_static_methods (DB_METHOD_LINK * methods);
   extern void db_flush_static_methods (void);
@@ -622,6 +623,7 @@ extern "C"
   extern DB_SESSION *db_open_buffer (const char *buffer);
   extern DB_SESSION *db_open_file (FILE * file);
   extern DB_SESSION *db_open_file_name (const char *name);
+  extern void db_init_lexer_lineno ();
 
   extern int db_statement_count (DB_SESSION * session);
 

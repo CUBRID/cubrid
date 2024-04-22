@@ -35,6 +35,7 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.compiler.DBTypeAdapter;
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.math.BigDecimal;
 import java.sql.Date;
@@ -60,7 +61,7 @@ public class ExprAutoParam extends Expr {
         this.ty = ty;
     }
 
-    public TypeSpecSimple getTypeSpec() {
+    public Type getType() {
         return DBTypeAdapter.getValueType(ty);
     }
 

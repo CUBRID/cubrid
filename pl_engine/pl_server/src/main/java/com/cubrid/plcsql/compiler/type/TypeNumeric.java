@@ -28,28 +28,25 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.type;
 
 import java.util.HashMap;
 import java.util.Map;
 
-public class TypeSpecNumeric extends TypeSpecSimple {
-
-    // NOTE: no accept() method. inherit it from the parent TypeSpecSimple
+public class TypeNumeric extends Type {
 
     public final int precision;
     public final short scale;
 
-    public static synchronized TypeSpecNumeric getInstance(int precision, short scale) {
+    public static synchronized TypeNumeric getInstance(int precision, short scale) {
 
         assert precision <= 38 && precision >= 1;
         assert scale <= precision && scale >= 0;
 
         int key = precision * 100 + scale;
-        TypeSpecNumeric ret = instances.get(key);
+        TypeNumeric ret = instances.get(key);
         if (ret == null) {
-            String typicalValueStr = String.format("cast(? as numeric(%d, %d))", precision, scale);
-            ret = new TypeSpecNumeric(typicalValueStr, precision, scale);
+            ret = new TypeNumeric(precision, scale);
             instances.put(key, ret);
         }
 
@@ -60,10 +57,22 @@ public class TypeSpecNumeric extends TypeSpecSimple {
     // Private
     // ---------------------------------------------------------------------------
 
-    private static final Map<Integer, TypeSpecNumeric> instances = new HashMap<>();
+    private static final Map<Integer, TypeNumeric> instances = new HashMap<>();
 
-    private TypeSpecNumeric(String typicalValueStr, int precision, short scale) {
-        super("Numeric", "java.math.BigDecimal", IDX_NUMERIC, typicalValueStr);
+    private static String getPlcName(int precision, short scale) {
+        return String.format("Numeric(%d, %d)", precision, scale);
+    }
+
+    private static String getTypicalValueStr(int precision, short scale) {
+        return String.format("cast(? as numeric(%d, %d))", precision, scale);
+    }
+
+    private TypeNumeric(int precision, short scale) {
+        super(
+                IDX_NUMERIC,
+                getPlcName(precision, scale),
+                "java.math.BigDecimal",
+                getTypicalValueStr(precision, scale));
         this.precision = precision;
         this.scale = scale;
     }

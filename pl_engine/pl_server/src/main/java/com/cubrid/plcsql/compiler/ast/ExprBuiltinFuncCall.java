@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -43,7 +44,7 @@ public class ExprBuiltinFuncCall extends Expr {
     public final String name;
     public final NodeList<Expr> args;
 
-    public TypeSpecSimple resultType;
+    public Type resultType;
 
     public ExprBuiltinFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
         super(ctx);
@@ -52,7 +53,7 @@ public class ExprBuiltinFuncCall extends Expr {
         this.args = args;
     }
 
-    public void setResultType(TypeSpecSimple resultType) {
+    public void setResultType(Type resultType) {
         this.resultType = resultType;
     }
 }
