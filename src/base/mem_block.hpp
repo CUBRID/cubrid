@@ -33,6 +33,8 @@
 #ifndef _MEM_BLOCK_HPP_
 #define _MEM_BLOCK_HPP_
 
+#include "porting.h"
+
 #include <memory.h>
 #include <functional>
 
@@ -96,7 +98,7 @@ namespace cubmem
   // block_allocator - allocation, deallocation and reallocation of memory blocks. it preserves the contents of the
   //                   block on reallocation
   //
-  struct block_allocator
+  struct EXPORT_IMPORT block_allocator
   {
     public:
       using alloc_func = std::function<void (block &b, size_t size)>;
@@ -110,9 +112,9 @@ namespace cubmem
 
       block_allocator &operator= (const block_allocator &other);
   };
-  extern const block_allocator STANDARD_BLOCK_ALLOCATOR;
-  extern const block_allocator EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR;
-  extern const block_allocator CSTYLE_BLOCK_ALLOCATOR;
+  EXPORT_IMPORT extern const block_allocator STANDARD_BLOCK_ALLOCATOR;
+  EXPORT_IMPORT extern const block_allocator EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR;
+  EXPORT_IMPORT extern const block_allocator CSTYLE_BLOCK_ALLOCATOR;
 
   // single_block_allocator - maintains and allocates a single memory block
   //

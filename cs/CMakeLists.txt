@@ -50,6 +50,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_json_path.cpp
   ${COMPAT_DIR}/db_json_types_internal.cpp
   ${COMPAT_DIR}/db_macro.c
+  ${COMPAT_DIR}/db_method_static.cpp
   ${COMPAT_DIR}/db_obj.c
   ${COMPAT_DIR}/db_old.c
   ${COMPAT_DIR}/db_query.c
@@ -294,6 +295,7 @@ set(JSP_SOURCES
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_connection_cl.cpp
+  ${METHOD_DIR}/method_compile_def.cpp
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
@@ -512,7 +514,7 @@ add_library(cubridcs SHARED
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
-target_compile_definitions(cubridcs PRIVATE CS_MODE ${COMMON_DEFS})
+target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubridcs PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)
