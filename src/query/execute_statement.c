@@ -14537,7 +14537,7 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
  * cte_info (in) : prepare info. for CTE query 
  */
 int
-do_execute_prepared_cte (PARSER_CONTEXT * parser, int cte_num_query, DB_PREPARE_CTE_INFO * cte_info)
+do_execute_prepared_cte (PARSER_CONTEXT * parser, PT_NODE * stmt, int cte_num_query, DB_PREPARE_CTE_INFO * cte_info)
 {
   int i, k, err = NO_ERROR;
   DB_VALUE *host_variables;
@@ -14569,6 +14569,13 @@ do_execute_prepared_cte (PARSER_CONTEXT * parser, int cte_num_query, DB_PREPARE_
 
       if (err != NO_ERROR)
 	{
+	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+	    {
+	      /* set the flag to recompile from it's main query */
+	      stmt->info.execute.recompile = 1;
+	      er_clearid ();
+	      err = NO_ERROR;
+	    }
 	  break;
 	}
     }
@@ -14620,6 +14627,15 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
   err =
     execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id, flag, &clt_cache_time,
 		   &stmt->cache_time);
+
+  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+    {
+      /* retry the statement once */
+      if (do_prepare_statement (parser, stmt) == NO_ERROR)
+	{
+	  err = do_execute_statement (parser, stmt);
+	}
+    }
 
   free (host_variables);
 
