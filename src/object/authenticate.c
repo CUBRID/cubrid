@@ -467,6 +467,9 @@ static void au_print_auth (MOP auth, FILE * fp);
 
 
 
+
+
+
 /*
  * DB_ EXTENSION FUNCTIONS
  */
