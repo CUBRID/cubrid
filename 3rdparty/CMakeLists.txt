@@ -481,13 +481,51 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
       "${LIBTBB_BYPRODUCTS}"
     )
     add_custom_command(TARGET ${LIBTBB_TARGET} POST_BUILD ${LIBTBB_INSTALL_POSTCOMMAND})
-  else(UNIX)
-    #set(LIBTBB_DLL ${WINDOWS_EXTERNAL_DIR}/tbb/redist/intel64/vc14/tbb12.dll)
-    #set(LIBTBB_LIBS ${WINDOWS_EXTERNAL_DIR}/tbb/lib/intel64/vc14/tbb.lib)
-    #set(LIBTBB_INCLUDES ${WINDOWS_EXTERNAL_DIR}/tbb/include/tbb)
-    #set(LIBTBB_INCLUDES_2 ${WINDOWS_EXTERNAL_DIR}/tbb/include/oneapi)
-    #set(LIBTBB_INCLUDES_3 ${WINDOWS_EXTERNAL_DIR}/tbb/include/oneapi/tbb)
-    #set(LIBTBB_INCLUDES_4 ${WINDOWS_EXTERNAL_DIR}/tbb/include/oneapi/tbb/detail)
+  else(WIN32)
+    # libtbb for Windows
+    set(WIN_LIBTBB_URL "https://github.com/oneapi-src/oneTBB/releases/download/v2021.11.0/oneapi-tbb-2021.11.0-win.zip")
+    set(WIN_LIBTBB_FILENAME "${WINDOWS_EXTERNAL_DIR}/Download/oneapi-tbb-2021.11.0-win.zip")
+    file(DOWNLOAD ${WIN_LIBTBB_URL} ${WIN_LIBTBB_FILENAME} SHOW_PROGRESS)
+
+    set(WIN_LIBTBB_INSTALL_DIR "${WINDOWS_EXTERNAL_DIR}/Install/tbb")
+    file(MAKE_DIRECTORY ${WIN_LIBTBB_INSTALL_DIR})
+    execute_process(COMMAND ${CMAKE_COMMAND} -E tar -xf ${WIN_FLEX_BISON_FILENAME} WORKING_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
+
+    execute_process(
+      COMMAND ${CMAKE_COMMAND} -E tar -xf ${WIN_LIBTBB_FILENAME}
+      WORKING_DIRECTORY ${WIN_LIBTBB_INSTALL_DIR}
+    )
+
+    #add_custom_command(TARGET ${LIBTBB_TARGET}
+    #  PRE_BUILD
+    #  COMMAND ${CMAKE_COMMAND} -E tar -xf ${WIN_LIBTBB_FILENAME} -C ${WIN_LIBTBB_INSTALL_DIR}
+    #  WORKING_DIRECTORY ${WIN_LIBTBB_INSTALL_DIR}
+    #  COMMENT "  extracting ${WIN_LIBTBB_FILENAME}..."
+    #)
+
+    set(LIBTBB_DLL ${WIN_LIBTBB_INSTALL_DIR}/redist/intel64/vc14/tbb12.dll)
+    set(LIBTBB_LIBS ${WIN_LIBTBB_INSTALL_DIR}/lib/intel64/vc14/tbb.lib)
+
+    execute_process(
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WIN_LIBTBB_INSTALL_DIR}/include to ${WINDOWS_EXTERNAL_INCLUDE_DIR}"
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${WIN_LIBTBB_INSTALL_DIR}/include/tbb ${WINDOWS_EXTERNAL_INCLUDE_DIR}/tbb
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${WIN_LIBTBB_INSTALL_DIR}/include/oneapi ${WINDOWS_EXTERNAL_INCLUDE_DIR}/oneapi
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${LIBTBB_DLL} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libtbb.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy ${LIBTBB_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libtbb.dll
+    )
+
+    #add_custom_target(${LIBTBB_TARGET}
+    #  COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WIN_LIBTBB_INSTALL_DIR}/include to ${WINDOWS_EXTERNAL_INCLUDE_DIR}"
+    #  COMMAND ${CMAKE_COMMAND} -E copy_directory ${WIN_LIBTBB_INSTALL_DIR}/include/tbb ${WINDOWS_EXTERNAL_INCLUDE_DIR}/tbb
+    #  COMMAND ${CMAKE_COMMAND} -E copy_directory ${WIN_LIBTBB_INSTALL_DIR}/include/oneapi ${WINDOWS_EXTERNAL_INCLUDE_DIR}/oneapi
+    #  COMMAND ${CMAKE_COMMAND} -E echo "  copying ${LIBTBB_DLL} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libtbb.dll"
+    #  COMMAND ${CMAKE_COMMAND} -E copy ${LIBTBB_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libtbb.dll
+    #)
+
+    set(LIBTBB_INCLUDES ${WINDOWS_EXTERNAL_INCLUDE_DIR}/tbb)
+    set(LIBTBB_INCLUDES_2 ${WINDOWS_EXTERNAL_INCLUDE_DIR}/oneapi)
+    set(LIBTBB_INCLUDES_3 ${WINDOWS_EXTERNAL_INCLUDE_DIR}/oneapi/tbb)
+    set(LIBTBB_INCLUDES_4 ${WINDOWS_EXTERNAL_INCLUDE_DIR}/oneapi/tbb/detail)
   endif(UNIX)
 endif()
 list(APPEND EP_TARGETS ${LIBTBB_TARGET})
