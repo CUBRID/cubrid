@@ -80,6 +80,7 @@ namespace cubmem
 
     public:
       size_t get_allocated_size (char *ptr);
+      inline int get_target_pos ();
       inline void add_stat (char *ptr, const size_t size, const char *file, const int line);
       inline void sub_stat (char *ptr);
       void aggregate_server_info (MMON_SERVER_INFO &server_info);
@@ -106,6 +107,11 @@ namespace cubmem
   };
 
   extern memory_monitor *mmon_Gl;
+
+  inline int memory_monitor::get_target_pos ()
+  {
+    return m_target_pos;
+  }
 
   inline void memory_monitor::make_stat_name (char *buf, const char *file, const int line)
   {

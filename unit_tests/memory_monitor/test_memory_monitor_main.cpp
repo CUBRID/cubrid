@@ -37,10 +37,15 @@ char **test_mem_in_the_scope_multithread = NULL;
 char *test_mem_out_of_scope = NULL;
 char *test_mem_small = NULL;
 
-using namespace cubmem;
+int target_pos = 0;
 
-// Global memory_monitor
-memory_monitor *mmon_Gl = nullptr;
+namespace cubmem
+{
+  // Global memory_monitor
+  memory_monitor *mmon_Gl = nullptr;
+} //namespace cubmem
+
+using namespace cubmem;
 
 // Dummy APIs
 int mmon_initialize (const char *server_name)
@@ -49,7 +54,10 @@ int mmon_initialize (const char *server_name)
   if (mmon_Gl == nullptr)
     {
       fprintf (stdout, "memory_monitor allocation failed\n");
+      return -1;
     }
+  std::string target ("/src/");
+  target_pos = mmon_Gl->get_target_pos () - target.length ();
   return 0;
 }
 
@@ -90,6 +98,19 @@ int find_test_stat (MMON_SERVER_INFO &server_info, std::string target)
   return -1;
 }
 
+// generate string with given length
+std::string genString (int length)
+{
+  std::string result;
+
+  for (int i = 0; i < length; ++i)
+    {
+      result += 'A';
+    }
+
+  return result;
+}
+
 /* ***IMPORTANT!!***
  * The unit tests for the 'memory_monitor' class are intertwined within one cohesive framework.
  * Each test depends on all the previous tests. These tests can be broadly categorized into
@@ -109,9 +130,12 @@ TEST_CASE ("Test mmon_add_stat", "")
   MMON_SERVER_INFO test_server_info;
   size_t allocated_size;
   size_t allocated_size_2;
+  std::string test_filename;
+  std::string test_filename2;
   int ret;
   REQUIRE (mmon_is_memory_monitor_enabled () == false);
-  mmon_initialize ("unittest");
+  ret = mmon_initialize ("unittest");
+  REQUIRE (ret == 0);
   REQUIRE (mmon_is_memory_monitor_enabled () == true);
 
   mmon_aggregate_server_info (test_server_info);
@@ -122,9 +146,11 @@ TEST_CASE ("Test mmon_add_stat", "")
   test_mem_in_the_scope_normal = (char *) malloc (32);
   test_mem_in_the_scope_with_base = (char *) malloc (20 + MMON_METAINFO_SIZE);
   allocated_size = malloc_usable_size (test_mem_in_the_scope_normal);
-  mmon_add_stat (test_mem_in_the_scope_normal, allocated_size, "/src/add_test.c", 100);
+  test_filename = genString (target_pos) + "/src/add_test.c";
+  mmon_add_stat (test_mem_in_the_scope_normal, allocated_size, test_filename.c_str (), 100);
   allocated_size_2 = malloc_usable_size (test_mem_in_the_scope_with_base);
-  mmon_add_stat (test_mem_in_the_scope_with_base, allocated_size_2, "/src/base/add_test.c", 100);
+  test_filename2 = genString (target_pos) + "/src/base/add_test.c";
+  mmon_add_stat (test_mem_in_the_scope_with_base, allocated_size_2, test_filename2.c_str (), 100);
 
   mmon_aggregate_server_info (test_server_info);
   ret = find_test_stat (test_server_info, "add_test.c:100");
@@ -153,6 +179,8 @@ TEST_CASE ("Test mmon_add_stat 2", "")
   size_t current_size;
   size_t allocated_size;
   size_t allocated_size_2;
+  std::string test_filename;
+  std::string test_filename2;
   int ret;
 
   mmon_aggregate_server_info (test_server_info);
@@ -164,9 +192,11 @@ TEST_CASE ("Test mmon_add_stat 2", "")
   test_mem_in_the_scope_normal_2 = (char *) malloc (32);
   test_mem_in_the_scope_with_src = (char *) malloc (20 + MMON_METAINFO_SIZE);
   allocated_size = malloc_usable_size (test_mem_in_the_scope_normal_2);
-  mmon_add_stat (test_mem_in_the_scope_normal_2, allocated_size, "/src/add_test.c", 100);
+  test_filename = genString (target_pos) + "/src/add_test.c";
+  mmon_add_stat (test_mem_in_the_scope_normal_2, allocated_size, test_filename.c_str (), 100);
   allocated_size_2 = malloc_usable_size (test_mem_in_the_scope_with_src);
-  mmon_add_stat (test_mem_in_the_scope_with_src, allocated_size_2, "/src/something/thirdparty/src/add_test.c", 100);
+  test_filename2 = genString (target_pos) + "/src/something/thirdparty/src/add_test.c";
+  mmon_add_stat (test_mem_in_the_scope_with_src, allocated_size_2, test_filename2.c_str (), 100);
 
   mmon_aggregate_server_info (test_server_info);
   ret = find_test_stat (test_server_info, "add_test.c:100");
@@ -191,6 +221,7 @@ TEST_CASE ("Test mmon_add_stat w/ multithreads", "")
   std::vector <std::thread> threads;
   size_t allocated_size[num_threads];
   size_t total_allocated_size = 0;
+  std::string test_filename;
   int ret;
 
   mmon_aggregate_server_info (test_server_info);
@@ -199,11 +230,12 @@ TEST_CASE ("Test mmon_add_stat w/ multithreads", "")
   test_server_info.stat_info.clear();
   test_mem_in_the_scope_multithread = (char **) malloc (sizeof (char *) * num_threads);
   memset (test_mem_in_the_scope_multithread, 0, sizeof (char *) * num_threads);
+  test_filename = genString (target_pos) + "/src/base/add_test_multithread.c";
 
-  auto alloc_mem_and_request_add_stat = [] (char *ptr, size_t size, size_t &allocated_size)
+  auto alloc_mem_and_request_add_stat = [] (char *ptr, const char *file, size_t size, size_t &allocated_size)
   {
     allocated_size = malloc_usable_size (ptr);
-    mmon_add_stat (ptr, allocated_size, "base/add_test_multithread.c", 100);
+    mmon_add_stat (ptr, allocated_size, file, 100);
   };
 
   for (int i = 0; i < num_threads; i++)
@@ -211,7 +243,7 @@ TEST_CASE ("Test mmon_add_stat w/ multithreads", "")
       size_t size = 10 * (i + 1) + MMON_METAINFO_SIZE;
       test_mem_in_the_scope_multithread[i] = (char *) malloc (size);
       threads.emplace_back (alloc_mem_and_request_add_stat, test_mem_in_the_scope_multithread[i],
-			    size, std::ref (allocated_size[i]));
+			    test_filename.c_str (), size, std::ref (allocated_size[i]));
     }
 
   for (auto &t : threads)
@@ -227,7 +259,7 @@ TEST_CASE ("Test mmon_add_stat w/ multithreads", "")
   ret = find_test_stat (test_server_info, "base/add_test_multithread.c:100");
 
   REQUIRE (ret != -1);
-  REQUIRE (test_server_info.num_stat == 3);
+  REQUIRE (test_server_info.num_stat == 4);
   REQUIRE (test_server_info.stat_info[ret].second == total_allocated_size);
 }
 
