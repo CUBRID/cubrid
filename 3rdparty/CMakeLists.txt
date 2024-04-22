@@ -23,6 +23,7 @@ set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")                          # rapidjson library sources URL
 set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f.tar.gz")                     # openssl library sources URL
 set(WITH_LIBUNIXODBC_URL "https://ftp.osuosl.org/pub/blfs/conglomeration/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
+set(WITH_LIBTBB_URL "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.11.0.tar.gz")               # intel oneTBB library sources URL
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
@@ -41,6 +42,7 @@ set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editlin
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODBC library (default: EXTERNAL)")
 set(WITH_RE2          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with re2 library (default: EXTERNAL)")
+set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB library (default: EXTERNAL)")
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
@@ -49,6 +51,7 @@ message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 message(STATUS "Build with RE2 library: ${WITH_RE2}")
+message(STATUS "Build with TBB library: ${WITH_LIBTBB}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
   if (CMAKE_GENERATOR MATCHES "Ninja")
@@ -449,6 +452,51 @@ list(APPEND EP_TARGETS ${RE2_TARGET})
 list(APPEND EP_LIBS ${RE2_LIBS})
 list(APPEND EP_INCLUDES ${RE2_INCLUDES})
 
+# libTBB
+set(LIBTBB_TARGET libtbb)
+if(WITH_LIBTBB STREQUAL "EXTERNAL")
+  if(UNIX)
+    #compile TBB library given an internet url to a TBB archive
+    #e.g. https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.11.0.tar.gz
+    set(LIBTBB_ORIGINAL_LIBS ${3RDPARTY_LIBS_DIR}/lib64/libtbb.a)
+    set(LIBTBB_LIBS ${3RDPARTY_LIBS_DIR}/lib/libtbb.a)
+    set(LIBTBB_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/libtbb/include/tbb)
+    set(LIBTBB_INCLUDES_2 ${3RDPARTY_LIBS_DIR}/Source/libtbb/include/oneapi)
+    set(LIBTBB_INCLUDES_3 ${3RDPARTY_LIBS_DIR}/Source/libtbb/include/oneapi/tbb)
+    set(LIBTBB_INCLUDES_4 ${3RDPARTY_LIBS_DIR}/Source/libtbb/include/oneapi/tbb/detail)
+    set(LIBTBB_CONFIGURE -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR} -DCMAKE_CXX_FLAGS=-DTBB_ALLOCATOR_TRAITS_BROKEN -D__TBB_DYNAMIC_LOAD_ENABLED=0 -DTBBMALLOC_BUILD=OFF -DTBBMALLOC_PROXY_BUILD=OFF -DTBB_TEST=OFF -DTBB_ENABLE_IPO=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release)
+    set(LIBTBB_INSTALL_POSTCOMMAND COMMAND ${CMAKE_COMMAND} -E copy ${LIBTBB_ORIGINAL_LIBS} ${LIBTBB_LIBS})
+    ADD_BY_PRODUCTS_VARIABLE ("LIBTBB" ${LIBTBB_LIBS})
+    externalproject_add(${LIBTBB_TARGET}
+      URL                  ${WITH_LIBTBB_URL}
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
+      TIMEOUT              600
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBTBB_CONFIGURE}
+      BUILD_IN_SOURCE      TRUE
+      BUILD_COMMAND        make -j
+      INSTALL_COMMAND      make -j install
+      "${LIBTBB_BYPRODUCTS}"
+    )
+    add_custom_command(TARGET ${LIBTBB_TARGET} POST_BUILD ${LIBTBB_INSTALL_POSTCOMMAND})
+  else(UNIX)
+    set(LIBTBB_DLL ${WINDOWS_EXTERNAL_DIR}/tbb/redist/intel64/vc14/tbb12.dll)
+    set(LIBTBB_LIBS ${WINDOWS_EXTERNAL_DIR}/tbb/lib/intel64/vc14/tbb.lib)
+    set(LIBTBB_INCLUDES ${WINDOWS_EXTERNAL_DIR}/tbb/include/tbb)
+    set(LIBTBB_INCLUDES_2 ${WINDOWS_EXTERNAL_DIR}/tbb/include/oneapi)
+    set(LIBTBB_INCLUDES_3 ${WINDOWS_EXTERNAL_DIR}/tbb/include/oneapi/tbb)
+    set(LIBTBB_INCLUDES_4 ${WINDOWS_EXTERNAL_DIR}/tbb/include/oneapi/tbb/detail)
+  endif(UNIX)
+endif()
+list(APPEND EP_TARGETS ${LIBTBB_TARGET})
+list(APPEND EP_INCLUDES ${LIBTBB_INCLUDES})
+list(APPEND EP_INCLUDES ${LIBTBB_INCLUDES_2})
+list(APPEND EP_INCLUDES ${LIBTBB_INCLUDES_3})
+list(APPEND EP_INCLUDES ${LIBTBB_INCLUDES_4})
+list(APPEND EP_LIBS ${LIBTBB_LIBS})
+
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
@@ -469,3 +517,4 @@ expose_3rdparty_variable(LIBOPENSSL)
 expose_3rdparty_variable(LIBUNIXODBC)
 expose_3rdparty_variable(RAPIDJSON)
 expose_3rdparty_variable(RE2)
+expose_3rdparty_variable(LIBTBB)

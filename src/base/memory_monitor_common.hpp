@@ -30,6 +30,7 @@
 #include <algorithm>
 
 #define MMON_MAX_SERVER_NAME_LENGTH 32
+#define MMON_MAX_NAME_LENGTH 255
 #define MMON_CONVERT_TO_KB_SIZE(size) ((size) / 1024)
 
 typedef struct mmon_server_info MMON_SERVER_INFO;

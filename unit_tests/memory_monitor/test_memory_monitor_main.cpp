@@ -31,7 +31,7 @@ constexpr int num_threads = 100;
 // Global variable for whole unit-test
 char *test_mem_in_the_scope_normal = NULL;
 char *test_mem_in_the_scope_with_base = NULL;
-char *test_mem_in_the_scope_abnormal = NULL;
+char *test_mem_in_the_scope_normal_2 = NULL;
 char *test_mem_in_the_scope_with_src = NULL;
 char **test_mem_in_the_scope_multithread = NULL;
 char *test_mem_out_of_scope = NULL;
@@ -40,18 +40,13 @@ char *test_mem_small = NULL;
 using namespace cubmem;
 
 // Global memory_monitor
-memory_monitor *test_mmon_Gl = nullptr;
+memory_monitor *mmon_Gl = nullptr;
 
 // Dummy APIs
-bool mmon_is_memory_monitor_enabled ()
-{
-  return (test_mmon_Gl != nullptr);
-}
-
 int mmon_initialize (const char *server_name)
 {
-  test_mmon_Gl = new (std::nothrow) memory_monitor ("unittest");
-  if (test_mmon_Gl == nullptr)
+  mmon_Gl = new (std::nothrow) memory_monitor ("unittest");
+  if (mmon_Gl == nullptr)
     {
       fprintf (stdout, "memory_monitor allocation failed\n");
     }
@@ -62,29 +57,19 @@ void mmon_finalize ()
 {
   if (mmon_is_memory_monitor_enabled ())
     {
-      delete test_mmon_Gl;
-      test_mmon_Gl = nullptr;
+      delete mmon_Gl;
+      mmon_Gl = nullptr;
     }
 }
 
 size_t mmon_get_allocated_size (char *ptr)
 {
-  return test_mmon_Gl->get_allocated_size (ptr);
-}
-
-void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line)
-{
-  test_mmon_Gl->add_stat (ptr, size, file, line);
-}
-
-void mmon_sub_stat (char *ptr)
-{
-  test_mmon_Gl->sub_stat (ptr);
+  return mmon_Gl->get_allocated_size (ptr);
 }
 
 void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
 {
-  test_mmon_Gl->aggregate_server_info (server_info);
+  mmon_Gl->aggregate_server_info (server_info);
 }
 // Dummy APIs end
 
@@ -155,16 +140,14 @@ TEST_CASE ("Test mmon_add_stat", "")
   REQUIRE (test_server_info.stat_info[ret].second == allocated_size_2);
 }
 
-// Test add_stat() w/ abnormal case
+// Test add_stat() 2
 //
 // Test add_stat() with single thread when different file paths
-// that will be made same stat name are given (abnormal case)
-// There is a potential issue scenario that can't distinguish different allocation. (TODO in memory_monitor::make_stat_name ())
-// However, since such behavior is currently allowed,
-// it is necessary to test whether such behavior also returns the expected results.
+// that has multiple "/src/" in a file path.
 //
-// Expected Result: stat name "add_test.c:100" with value "allocated_size + allocated_size_2"
-TEST_CASE ("Test mmon_add_stat abnormal", "")
+// Expected Result: stat name "add_test.c:100" with value "allocated_size" and
+//                  stat name "something/thirdparty/src/add_stat.c:100" with value "allocated_size_2"
+TEST_CASE ("Test mmon_add_stat 2", "")
 {
   MMON_SERVER_INFO test_server_info;
   size_t current_size;
@@ -178,10 +161,10 @@ TEST_CASE ("Test mmon_add_stat abnormal", "")
   current_size = test_server_info.stat_info[ret].second;
   test_server_info.stat_info.clear();
 
-  test_mem_in_the_scope_abnormal = (char *) malloc (32);
+  test_mem_in_the_scope_normal_2 = (char *) malloc (32);
   test_mem_in_the_scope_with_src = (char *) malloc (20 + MMON_METAINFO_SIZE);
-  allocated_size = malloc_usable_size (test_mem_in_the_scope_abnormal);
-  mmon_add_stat (test_mem_in_the_scope_abnormal, allocated_size, "/src/add_test.c", 100);
+  allocated_size = malloc_usable_size (test_mem_in_the_scope_normal_2);
+  mmon_add_stat (test_mem_in_the_scope_normal_2, allocated_size, "/src/add_test.c", 100);
   allocated_size_2 = malloc_usable_size (test_mem_in_the_scope_with_src);
   mmon_add_stat (test_mem_in_the_scope_with_src, allocated_size_2, "/src/something/thirdparty/src/add_test.c", 100);
 
@@ -189,8 +172,12 @@ TEST_CASE ("Test mmon_add_stat abnormal", "")
   ret = find_test_stat (test_server_info, "add_test.c:100");
 
   REQUIRE (ret != -1);
-  REQUIRE (test_server_info.num_stat == 2);
-  REQUIRE (test_server_info.stat_info[ret].second == current_size + allocated_size + allocated_size_2);
+  REQUIRE (test_server_info.num_stat == 3);
+  REQUIRE (test_server_info.stat_info[ret].second == current_size + allocated_size);
+
+  ret = find_test_stat (test_server_info, "something/thirdparty/src/add_test.c:100");
+  REQUIRE (ret != -1);
+  REQUIRE (test_server_info.stat_info[ret].second == allocated_size_2);
 }
 
 // Test add_stat() w/ multi threads
@@ -278,7 +265,7 @@ TEST_CASE ("Test mmon_sub_stat", "")
   mmon_sub_stat (test_mem_small);
   mmon_sub_stat (test_mem_out_of_scope);
   mmon_sub_stat (test_mem_in_the_scope_normal);
-  mmon_sub_stat (test_mem_in_the_scope_abnormal);
+  mmon_sub_stat (test_mem_in_the_scope_normal_2);
   mmon_sub_stat (test_mem_in_the_scope_with_src);
 
   REQUIRE (mmon_get_allocated_size (test_mem_small) == answer_small);
@@ -291,7 +278,7 @@ TEST_CASE ("Test mmon_sub_stat", "")
   REQUIRE (test_server_info.stat_info[ret].second == 0);
 
   free (test_mem_in_the_scope_normal);
-  free (test_mem_in_the_scope_abnormal);
+  free (test_mem_in_the_scope_normal_2);
   free (test_mem_in_the_scope_with_base);
   free (test_mem_in_the_scope_with_src);
   free (test_mem_small);

@@ -33,11 +33,6 @@ namespace cubmem
 
 using namespace cubmem;
 
-bool mmon_is_memory_monitor_enabled ()
-{
-  return (mmon_Gl != nullptr);
-}
-
 int mmon_initialize (const char *server_name)
 {
   int error = NO_ERROR;
@@ -75,16 +70,6 @@ void mmon_finalize ()
 size_t mmon_get_allocated_size (char *ptr)
 {
   return mmon_Gl->get_allocated_size (ptr);
-}
-
-void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line)
-{
-  mmon_Gl->add_stat (ptr, size, file, line);
-}
-
-void mmon_sub_stat (char *ptr)
-{
-  mmon_Gl->sub_stat (ptr);
 }
 
 void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)

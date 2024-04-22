@@ -3145,6 +3145,9 @@ void
 logtb_disable_update (THREAD_ENTRY * thread_p)
 {
   db_Disable_modifications = 1;
+#ifdef SERVER_MODE
+  mmon_finalize ();
+#endif
   er_log_debug (ARG_FILE_LINE, "logtb_disable_update: db_Disable_modifications = %d\n", db_Disable_modifications);
 }
 
