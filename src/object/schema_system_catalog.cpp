@@ -80,11 +80,7 @@ namespace cubschema
     CT_TRIGGER_NAME,			// "db_trigger"
 
     /* currently, not implemented */
-<<<<<<< HEAD
     CT_RESOLUTION_NAME		// "_db_resolution"
-=======
-    CT_RESOLUTION_NAME,		// "_db_resolution"
->>>>>>> cef37b5f9 ([CBRD-24921] Refactor defining system catalogs in boot_cl.c)
   };
 
   static const std::vector <std::string> sm_system_vclass_names =
@@ -122,12 +118,7 @@ bool sm_check_system_class_by_name (const std::string_view name)
 {
   // TODO: bool is_enclosed = identifier_store::is_enclosed (name);
   return identifier_store::check_identifier_is_valid (name, false)
-<<<<<<< HEAD
 	 && (sm_is_system_class (name) || sm_is_system_vclass (name));
-=======
-	 && (cubschema::sm_catalog_class_names.is_exists (name)
-	     || cubschema::sm_catalog_vclass_names.is_exists (name));
->>>>>>> cef37b5f9 ([CBRD-24921] Refactor defining system catalogs in boot_cl.c)
 }
 
 bool sm_is_system_class (const std::string_view name)
