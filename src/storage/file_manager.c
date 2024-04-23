@@ -11057,6 +11057,21 @@ file_tracker_dump_all_heap (THREAD_ENTRY * thread_p, FILE * fp, bool dump_record
 }
 
 /*
+ * class_dump () - dump a specific heap file with class name
+ *
+ * return            :
+ * thread_p (in)     : thread entry
+ * fp (in)           : output file
+ * dump_records (in) : true to dump records
+ * class_name (in)   : name of class to dump
+ */
+void
+class_dump (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name)
+{
+  fprintf (fp, "\n\n*** DUMP A CLASS NAMED %s ***\n\n", class_name);
+}
+
+/*
  * file_tracker_item_dump_heap_capacity () - FILE_TRACK_ITEM_FUNC to dump heap file capacity
  *
  * return            : error code

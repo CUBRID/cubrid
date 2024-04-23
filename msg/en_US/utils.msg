@@ -817,6 +817,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Couldn't open output file '%1$s'\n
+16 Invalid class name '%1$s'.\n
 60 \
 diagdb: Dump a database.\n\
 usage: %1$s diagdb [OPTION] database-name\n\
@@ -834,7 +835,11 @@ valid options:\n\
                                 6 dump disk bitmaps\n\
                                 7 dump catalog\n\
                                 8 dump log\n\
-                                9 dump heap\n
+                                9 dump heap / class\n\
+  -n, --class-name=NAME        NAME of class; only used in -d 9 option; NAME should be full class name\n\
+                               that includes owner name and class name, split by '.';\n\
+                               catalog classes do not need owner name.\n
+
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
