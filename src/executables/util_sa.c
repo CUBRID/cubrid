@@ -1720,27 +1720,28 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
       class_name = utility_get_option_string_value (arg_map, DIAG_CLASS_NAME_S, 0);
       if (class_name == NULL)
-      {
-        /* this dumps the contents of all heaps */
-        fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
-        (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
-      }
-      else 
-      {
-        /* this dumps the contents of a specific heap for given class name */
-        if (!sm_check_system_class_by_name(class_name))
-        {
-          /* check if the format of class name is valid */
-          if (utility_check_class_name(class_name) != NO_ERROR)
-          {
-            PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_BAD_CLASSNAME),
-            class_name);
-            goto error_exit;
-          }
-        }
-        fprintf (outfp, "\n*** DUMP OF A SPECIFIC HEAP ***\n");
-        class_dump (thread_p, outfp, dump_records, class_name);
-      }
+	{
+	  /* this dumps the contents of all heaps */
+	  fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
+	  (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
+	}
+      else
+	{
+	  /* this dumps the contents of a specific heap for given class name */
+	  if (!sm_check_system_class_by_name (class_name))
+	    {
+	      /* check if the format of class name is valid */
+	      if (utility_check_class_name (class_name) != NO_ERROR)
+		{
+		  PRINT_AND_LOG_ERR_MSG (msgcat_message
+					 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_BAD_CLASSNAME),
+					 class_name);
+		  goto error_exit;
+		}
+	    }
+	  fprintf (outfp, "\n*** DUMP OF A SPECIFIC HEAP ***\n");
+	  class_dump (thread_p, outfp, dump_records, class_name);
+	}
     }
 
   db_shutdown ();
