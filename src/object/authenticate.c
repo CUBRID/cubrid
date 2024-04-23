@@ -69,6 +69,8 @@
 #include "optimizer.h"
 #include "network_interface_cl.h"
 #include "printer.hpp"
+#include "schema_system_catalog.hpp"
+#include "authenticate_cache.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -101,20 +103,25 @@ extern bool catcls_Enable;
 #define MSGCAT_AUTH_AUTH_TITLE          15
 #define MSGCAT_AUTH_USER_DIRECT_GROUPS  16
 
-/*
- * Authorization Class Names
- */
-const char *AU_ROOT_CLASS_NAME = "db_root";
-const char *AU_OLD_ROOT_CLASS_NAME = "db_authorizations";
+const char *AU_TYPE_SET[] = {
+  "SELECT",			/* DB_AUTH_SELECT */
+  "INSERT",			/* DB_AUTH_INSERT */
+  "UPDATE",			/* DB_AUTH_UPDATE */
+  "DELETE",			/* DB_AUTH_DELETE */
+  "ALTER",			/* DB_AUTH_ALTER */
+  "INDEX",			/* DB_AUTH_INDEX */
+  "EXECUTE"			/* DB_AUTH_EXECUTE */
+};
 
-const char *AU_USER_CLASS_NAME = "db_user";
-const char *AU_PASSWORD_CLASS_NAME = "db_password";
-const char *AU_AUTH_CLASS_NAME = "db_authorization";
-const char *AU_GRANT_CLASS_NAME = "db_grant";
-
-const char *AU_PUBLIC_USER_NAME = "PUBLIC";
-const char *AU_DBA_USER_NAME = "DBA";
-
+const int AU_TYPE_SET_LEN[] = {
+  strlen ("SELECT"),		/* DB_AUTH_SELECT */
+  strlen ("INSERT"),		/* DB_AUTH_INSERT */
+  strlen ("UPDATE"),		/* DB_AUTH_UPDATE */
+  strlen ("DELETE"),		/* DB_AUTH_DELETE */
+  strlen ("ALTER"),		/* DB_AUTH_ALTER */
+  strlen ("INDEX"),		/* DB_AUTH_INDEX */
+  strlen ("EXECUTE")		/* DB_AUTH_EXECUTE */
+};
 
 /*
  * Grant set structure
@@ -136,50 +143,15 @@ const char *AU_DBA_USER_NAME = "DBA";
 #define GRANT_ENTRY_CACHE(index) 	((index) + 2)
 
 #define PASSWORD_ENCRYPTION_SEED        "U9a$y1@zw~a0%"
-#define ENCODE_PREFIX_DEFAULT           (char)0
-#define ENCODE_PREFIX_DES               (char)1
-#define ENCODE_PREFIX_SHA1              (char)2
-#define ENCODE_PREFIX_SHA2_512          (char)3
-#define IS_ENCODED_DES(string)          (string[0] == ENCODE_PREFIX_DES)
-#define IS_ENCODED_SHA1(string)         (string[0] == ENCODE_PREFIX_SHA1)
-#define IS_ENCODED_SHA2_512(string)     (string[0] == ENCODE_PREFIX_SHA2_512)
-#define IS_ENCODED_ANY(string) \
-  (IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA1 (string) || IS_ENCODED_DES (string))
 
 /* Macro to determine if a dbvalue is a character strign type. */
 #define IS_STRING(n)    DB_IS_STRING (n)
 
 /* Macro to determine if a name is system catalog class */
-#define IS_CATALOG_CLASS(name) \
-        (strcmp(name, CT_CLASS_NAME) == 0 || \
-         strcmp(name, CT_ATTRIBUTE_NAME) == 0 || \
-         strcmp(name, CT_DOMAIN_NAME) == 0 || \
-         strcmp(name, CT_METHOD_NAME) == 0 || \
-         strcmp(name, CT_METHSIG_NAME) == 0 || \
-         strcmp(name, CT_METHARG_NAME) == 0 || \
-         strcmp(name, CT_METHFILE_NAME) == 0 || \
-         strcmp(name, CT_QUERYSPEC_NAME) == 0 || \
-         strcmp(name, CT_RESOLUTION_NAME) ==0 || \
-         strcmp(name, CT_INDEX_NAME) == 0 || \
-         strcmp(name, CT_INDEXKEY_NAME) == 0 || \
-         strcmp(name, CT_CLASSAUTH_NAME) == 0 || \
-         strcmp(name, CT_DATATYPE_NAME) == 0 || \
-         strcmp(name, CT_STORED_PROC_NAME) == 0 || \
-         strcmp(name, CT_STORED_PROC_ARGS_NAME) == 0 || \
-         strcmp(name, CT_PARTITION_NAME) == 0 || \
-         strcmp(name, CT_SERIAL_NAME) == 0 || \
-         strcmp(name, CT_USER_NAME) == 0 || \
-         strcmp(name, CT_COLLATION_NAME) == 0 || \
-         strcmp(name, CT_HA_APPLY_INFO_NAME) == 0 || \
-         strcmp(name, CT_TRIGGER_NAME) == 0 || \
-         strcmp(name, CT_ROOT_NAME) == 0 || \
-         strcmp(name, CT_PASSWORD_NAME) == 0 || \
-         strcmp(name, CT_AUTHORIZATION_NAME) == 0 || \
-         strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
-	 strcmp(name, CT_CHARSET_NAME) == 0 || \
-         strcmp(name, CT_DB_SERVER_NAME) == 0 || \
-	 strcmp(name, CT_SYNONYM_NAME) == 0 || \
-	 strcmp(name, CT_DUAL_NAME) == 0)
+
+// *INDENT-OFF*
+#define IS_CATALOG_CLASS(name) sm_is_system_class (std::string_view (name))
+// *INDENT-ON*
 
 enum fetch_by
 {
@@ -212,43 +184,19 @@ struct au_grant
 };
 
 /*
- * AU_CLASS_CACHE
+ * AU_OBJECT_CLASS_NAME
  *
- * This structure is attached to classes and provides a cache of
- * the authorization bits.  Once authorization is calculated by examining
- * the group/grant hierarchy, the combined vector of bits is stored
- * in the cache for faster access.
- * In releases prior to 2.0, this was a single vector of bits for the
- * active user.  With the introduction of views, it became necessary
- * to relatively quickly perform a "setuid" operation to switch
- * authorization contexts within methods accessed through a view.
- * Because of this, the cache has been extended to be a variable length
- * array of entries, indexed by a user identifier.
+ * This is list of class names that CUBRID manages as database objects
+ * Their existence is checked when dropping an user
  */
-typedef struct au_class_cache AU_CLASS_CACHE;
-struct au_class_cache
-{
-  struct au_class_cache *next;
-
-  SM_CLASS *class_;
-  unsigned int data[1];
-};
-
-/*
- * AU_USER_CACHE
- *
- * This is used to maintain a list of the users that have been
- * registered into the authorization caches.  Each time a "setuid" is
- * performed, the requested user is added to the caches if it is
- * not already present.
- */
-typedef struct au_user_cache AU_USER_CACHE;
-struct au_user_cache
-{
-  struct au_user_cache *next;
-
-  DB_OBJECT *user;
-  int index;
+const char *AU_OBJECT_CLASS_NAME[] = {
+  CT_CLASS_NAME,		/* AU_OBJECT_CLASS */
+  CT_TRIGGER_NAME,		/* AU_OBJECT_TRIGGER */
+  CT_SERIAL_NAME,		/* AU_OBJECT_SERIAL */
+  CT_DB_SERVER_NAME,		/* AU_OBJECT_SERVER */
+  CT_SYNONYM_NAME,		/* AU_OBJECT_SYNONYM */
+  CT_STORED_PROC_NAME,		/* AU_OBJECT_PROCEDURE */
+  NULL
 };
 
 /*
@@ -378,130 +326,16 @@ char Au_user_password_sha2_512[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
  */
 static DB_OBJECT *Au_authorizations_class;
 static DB_OBJECT *Au_authorization_class;
-static DB_OBJECT *Au_user_class;
+DB_OBJECT *Au_user_class;
 static DB_OBJECT *Au_password_class;
-
-/*
- * Au_user_cache
- *
- * The list of cached users.
- */
-static AU_USER_CACHE *Au_user_cache = NULL;
-
-/*
- * Au_class_caches
- *
- * A list of all allocated class caches.  These are maintained on a list
- * so that we can get to all of them easily when they need to be
- * altered.
- */
-static AU_CLASS_CACHE *Au_class_caches = NULL;
-
-/*
- * Au_cache_depth
- *
- * These maintain information about the structure of the class caches.
- * Au_cache_depth has largest current index.
- * Au_cache_max has the total size of the allocated arrays.
- * Au_cache_increment has the growth count when the array needs to be
- * extended.
- * The caches are usually allocated larger than actually necessary so
- * we can avoid reallocating all of them when a new user is added.
- * Probably not that big a deal.
- */
-static int Au_cache_depth = 0;
-static int Au_cache_max = 0;
-static int Au_cache_increment = 4;
-
-/*
- * Au_cache_index
- *
- * This is the current index into the class authorization caches.
- * It will be maintained in parallel with the current user.
- * Each user is assigned a particular index, when the user changes,
- * Au_cache_index is changed as well.
- */
-static int Au_cache_index = -1;
 
 static const char *auth_type_name[] = {
   "select", "insert", "update", "delete", "alter", "index", "execute"
 };
 
-
-/* 'get_attribute_number' is a statically linked method used only for QA
-   scenario */
-void get_attribute_number (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * attr_name);
-
-
-/*
- * au_static_links
- *
- * Since authorization is always linked in with the database, the
- * methods are defined statically.  The linkage will be done
- * during au_init even though it is redundant on subsequent
- * restart calls.
- */
-static DB_METHOD_LINK au_static_links[] = {
-  {"au_add_user_method", (METHOD_LINK_FUNCTION) au_add_user_method},
-  {"au_drop_user_method", (METHOD_LINK_FUNCTION) au_drop_user_method},
-  {"au_find_user_method", (METHOD_LINK_FUNCTION) au_find_user_method},
-  {"au_add_member_method", (METHOD_LINK_FUNCTION) au_add_member_method},
-  {"au_drop_member_method", (METHOD_LINK_FUNCTION) au_drop_member_method},
-  {"au_set_password_method", (METHOD_LINK_FUNCTION) au_set_password_method},
-  {"au_set_password_encoded_method", (METHOD_LINK_FUNCTION) au_set_password_encoded_method},
-  {"au_set_password_encoded_sha1_method", (METHOD_LINK_FUNCTION) au_set_password_encoded_sha1_method},
-  {"au_describe_user_method", (METHOD_LINK_FUNCTION) au_describe_user_method},
-  {"au_describe_root_method", (METHOD_LINK_FUNCTION) au_describe_root_method},
-  {"au_info_method", (METHOD_LINK_FUNCTION) au_info_method},
-  {"au_login_method", (METHOD_LINK_FUNCTION) au_login_method},
-  {"au_change_owner_method", (METHOD_LINK_FUNCTION) au_change_owner_method},
-  {"au_change_trigger_owner_method", (METHOD_LINK_FUNCTION) au_change_trigger_owner_method},
-  {"au_get_owner_method", (METHOD_LINK_FUNCTION) au_get_owner_method},
-  {"au_check_authorization_method", (METHOD_LINK_FUNCTION) au_check_authorization_method},
-
-  /*
-   * qo_set_cost
-   *
-   * This function is exported by optimizer/query_planner.c, and provides a backdoor that
-   * allows us some gross manipulation capabilities for the query
-   * optimizer.  By adding it to the list of method implementations that
-   * are statically linked we make it easy for us to add a method to an
-   * arbitrary class for those cases where we need to poke the optimizer.
-   * To use this, try
-   *
-   *      alter class foo add method class set_cost(string, string)
-   *              function qo_set_cost;
-   *
-   * and then utter
-   *
-   *      call set_cost('iscan', '0') on class foo;
-   */
-  {"qo_set_cost", (METHOD_LINK_FUNCTION) qo_set_cost},
-  {"get_attribute_number", (METHOD_LINK_FUNCTION) get_attribute_number},
-  {"dbmeth_class_name", (METHOD_LINK_FUNCTION) dbmeth_class_name},
-  {"dbmeth_print", (METHOD_LINK_FUNCTION) dbmeth_print},
-  {"au_change_sp_owner_method", (METHOD_LINK_FUNCTION) au_change_sp_owner_method},
-  {"au_change_serial_owner_method", (METHOD_LINK_FUNCTION) au_change_serial_owner_method},
-
-  {NULL, NULL}
-};
-
-
 static int au_get_set (MOP obj, const char *attname, DB_SET ** set);
 static int au_get_object (MOP obj, const char *attname, MOP * mop_ptr);
 static int au_set_get_obj (DB_SET * set, int index, MOP * obj);
-static AU_CLASS_CACHE *au_make_class_cache (int depth);
-static void au_free_class_cache (AU_CLASS_CACHE * cache);
-static AU_CLASS_CACHE *au_install_class_cache (SM_CLASS * sm_class);
-
-static int au_extend_class_caches (int *index);
-static int au_find_user_cache_index (DB_OBJECT * user, int *index, int check_it);
-static void free_user_cache (AU_USER_CACHE * u);
-static void reset_cache_for_user_and_class (SM_CLASS * sm_class);
-
-static void remove_user_cache_references (MOP user);
-static void init_caches (void);
-static void flush_caches (void);
 
 static MOP au_make_user (const char *name);
 static int au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, bool grant_option);
@@ -527,7 +361,7 @@ static int add_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor);
 static void drop_grant_entry (DB_SET * grants, int index);
 static int get_grants (MOP auth, DB_SET ** grant_ptr, int filter);
 static int apply_grants (MOP auth, MOP class_mop, unsigned int *bits);
-static int update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache);
+static int update_cache (MOP classop, SM_CLASS * sm_class);
 static int appropriate_error (unsigned int bits, unsigned int requested);
 static int check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type);
 
@@ -562,7 +396,6 @@ static void au_print_cache (int cache, FILE * fp);
 static void au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp);
 static void au_print_auth (MOP auth, FILE * fp);
 
-static int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
 /*
  * DB_ EXTENSION FUNCTIONS
  */
@@ -696,415 +529,6 @@ au_set_get_obj (DB_SET * set, int index, MOP * obj)
 
   return error;
 }
-
-
-/*
- * AUTHORIZATION CACHES
- */
-
-/*
- * au_make_class_cache - Allocates and initializes a new class cache
- *    return: new cache structure
- *    depth(in): number of elements to include in the cache
- */
-static AU_CLASS_CACHE *
-au_make_class_cache (int depth)
-{
-  AU_CLASS_CACHE *new_class_cache = NULL;
-  int i;
-  size_t size;
-
-  if (depth <= 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-    }
-  else
-    {
-      size = sizeof (AU_CLASS_CACHE) + ((depth - 1) * sizeof (unsigned int));
-      new_class_cache = (AU_CLASS_CACHE *) malloc (size);
-      if (new_class_cache == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return NULL;
-	}
-
-      new_class_cache->next = NULL;
-      new_class_cache->class_ = NULL;
-      for (i = 0; i < depth; i++)
-	{
-	  new_class_cache->data[i] = AU_CACHE_INVALID;
-	}
-    }
-
-  return new_class_cache;
-}
-
-/*
- * au_free_class_cache - Frees a class cache
- *    return: none
- *    cache(in): cache to free
- */
-static void
-au_free_class_cache (AU_CLASS_CACHE * cache)
-{
-  if (cache != NULL)
-    {
-      free_and_init (cache);
-    }
-}
-
-/*
- * au_install_class_cache - This allocates a new class cache and attaches
- *                          it to a class.
- *   return: new class cache
- *   class(in): class structure to get the new cache
- *
- * Note: Once a cache/class association has been made, we also put the
- *       cache on the global cache list so we can maintain it consistently.
- */
-static AU_CLASS_CACHE *
-au_install_class_cache (SM_CLASS * sm_class)
-{
-  AU_CLASS_CACHE *new_class_cache;
-
-  new_class_cache = au_make_class_cache (Au_cache_max);
-  if (new_class_cache != NULL)
-    {
-      new_class_cache->next = Au_class_caches;
-      Au_class_caches = new_class_cache;
-      new_class_cache->class_ = sm_class;
-      sm_class->auth_cache = new_class_cache;
-    }
-
-  return new_class_cache;
-}
-
-/*
- * au_free_authorization_cache -  This removes a class cache from the global
- *                                cache list, detaches it from the class
- *                                and frees it.
- *   return: none
- *   cache(in): class cache
- */
-void
-au_free_authorization_cache (void *cache)
-{
-  AU_CLASS_CACHE *c, *prev;
-
-  if (cache != NULL)
-    {
-      for (c = Au_class_caches, prev = NULL; c != NULL && c != cache; c = c->next)
-	{
-	  prev = c;
-	}
-      if (c != NULL)
-	{
-	  if (prev == NULL)
-	    {
-	      Au_class_caches = c->next;
-	    }
-	  else
-	    {
-	      prev->next = c->next;
-	    }
-	}
-      au_free_class_cache ((AU_CLASS_CACHE *) cache);
-    }
-}
-
-/*
- * au_extend_class_caches - This extends the all existing class caches so they
- *                          can contain an additional element.
- *   return: error code
- *   index(out): next available index
- *
- * Note: If we have already preallocated some extra elements it will use one
- *       and avoid reallocating all the caches. If we have no extra elements,
- *       we grow all the caches by a certain amount.
- */
-static int
-au_extend_class_caches (int *index)
-{
-  int error = NO_ERROR;
-  AU_CLASS_CACHE *c, *new_list, *new_entry, *next;
-  int new_max, i;
-
-  if (Au_cache_depth < Au_cache_max)
-    {
-      *index = Au_cache_depth;
-      Au_cache_depth++;
-    }
-  else
-    {
-      new_list = NULL;
-      new_max = Au_cache_max + Au_cache_increment;
-
-      for (c = Au_class_caches; c != NULL && !error; c = c->next)
-	{
-	  new_entry = au_make_class_cache (new_max);
-	  if (new_entry == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	    }
-	  else
-	    {
-	      for (i = 0; i < Au_cache_depth; i++)
-		{
-		  new_entry->data[i] = c->data[i];
-		}
-	      new_entry->class_ = c->class_;
-	      new_entry->next = new_list;
-	      new_list = new_entry;
-	    }
-	}
-
-      if (!error)
-	{
-	  for (c = Au_class_caches, next = NULL; c != NULL; c = next)
-	    {
-	      next = c->next;
-	      c->class_->auth_cache = NULL;
-	      au_free_class_cache (c);
-	    }
-	  for (c = new_list; c != NULL; c = c->next)
-	    {
-	      c->class_->auth_cache = c;
-	    }
-
-	  Au_class_caches = new_list;
-	  Au_cache_max = new_max;
-	  *index = Au_cache_depth;
-	  Au_cache_depth++;
-	}
-    }
-
-  return error;
-}
-
-/*
- * au_find_user_cache_index - This determines the cache index for the given
- *                            user.
- *   return: error code
- *   user(in): user object
- *   index(out): returned user index
- *   check_it(in):
- *
- * Note: If the user has never been added to the authorization cache,
- *       we reserve a new index for the user.  Reserving the user index may
- *       result in growing all the existing class caches.
- *       This is the primary work function for AU_SET_USER() and it should
- *       be fast.
- */
-static int
-au_find_user_cache_index (DB_OBJECT * user, int *index, int check_it)
-{
-  int error = NO_ERROR;
-  AU_USER_CACHE *u, *new_user_cache;
-  DB_OBJECT *class_mop;
-
-  for (u = Au_user_cache; u != NULL && !ws_is_same_object (u->user, user); u = u->next)
-    ;
-
-  if (u != NULL)
-    {
-      *index = u->index;
-    }
-  else
-    {
-      /*
-       * User wasn't in the cache, add it and extend the existing class
-       * caches.  First do a little sanity check just to make sure this
-       * is a user object.
-       */
-      if (check_it)
-	{
-	  class_mop = sm_get_class (user);
-	  if (class_mop == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-	  else if (class_mop != Au_user_class)
-	    {
-	      error = ER_AU_CORRUPTED;	/* need a better error */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      return er_errid ();
-	    }
-	}
-
-      new_user_cache = (AU_USER_CACHE *) malloc (sizeof (AU_USER_CACHE));
-      if (new_user_cache != NULL)
-	{
-	  if ((error = au_extend_class_caches (index)))
-	    {
-	      free_and_init (new_user_cache);
-	    }
-	  else
-	    {
-	      new_user_cache->next = Au_user_cache;
-	      Au_user_cache = new_user_cache;
-	      new_user_cache->user = user;
-	      new_user_cache->index = *index;
-	    }
-	}
-    }
-
-  return error;
-}
-
-/*
- * free_user_cache - Frees a user cache. Make sure to clear the MOP pointer.
- *   returns: none
- *   u(in): user cache
- */
-static void
-free_user_cache (AU_USER_CACHE * u)
-{
-  if (u != NULL)
-    {
-      u->user = NULL;		/* clear GC roots */
-      free_and_init (u);
-    }
-}
-
-
-/*
- * reset_cache_for_user_and_class - This is called whenever a grant or revoke
- *                                  operation is performed. It resets the
- *                                  caches only for a particular
- *                                  user/class pair
- *   return : none
- *   class(in): class structure
- *
- * Note: This was originally written so that only the authorization
- *       cache for the given user was cleared.  This does not work however
- *       if we're changing authorization for a group and there are members
- *       of that group already cached.
- *       We could be smart and try to invalidate the caches of all
- *       members of this user but instead just go ahead and invalidate
- *       everyone's cache for this class.  This isn't optimal but doesn't really
- *       matter that much.  grant/revoke don't happen very often.
- */
-static void
-reset_cache_for_user_and_class (SM_CLASS * sm_class)
-{
-  AU_USER_CACHE *u;
-  AU_CLASS_CACHE *c;
-
-  for (c = Au_class_caches; c != NULL && c->class_ != sm_class; c = c->next);
-  if (c != NULL)
-    {
-      /*
-       * invalide every user's cache for this class_, could be more
-       * selective and do only the given user and its members
-       */
-      for (u = Au_user_cache; u != NULL; u = u->next)
-	{
-	  c->data[u->index] = AU_CACHE_INVALID;
-	}
-    }
-}
-
-/*
- * au_reset_authorization_caches - This is called by ws_clear_all_hints()
- *                                 and ws_abort_mops() on transaction
- *                                 boundaries.
- *   return: none
- *
- * Note: We reset all the authorization caches at this point.
- *       This sets all of the authorization entries in a cache to be invalid.
- *       Normally this is done when the authorization for this
- *       class changes in some way.  The next time the cache is used, it
- *       will force the recomputation of the authorization bits.
- *       We should try to be smarter and flush the caches only when we know
- *       that the authorization catalogs have changed in some way.
- */
-
-void
-au_reset_authorization_caches (void)
-{
-  AU_CLASS_CACHE *c;
-  int i;
-
-  for (c = Au_class_caches; c != NULL; c = c->next)
-    {
-      for (i = 0; i < Au_cache_depth; i++)
-	{
-	  c->data[i] = AU_CACHE_INVALID;
-	}
-    }
-}
-
-/*
- * remove_user_cache_reference - This is called when a user object is deleted.
- *   return: none
- *   user(in): user object
- *
- * Note: If there is an authorization cache entry for this user, we NULL
- *       the user pointer so it will no longer be used.  We could to in
- *       and restructure all the caches to remove the deleted user but user
- *       deletion isn't that common.  Just leave an unused entry in the
- *       cache array.
- */
-static void
-remove_user_cache_references (MOP user)
-{
-  AU_USER_CACHE *u;
-
-  for (u = Au_user_cache; u != NULL; u = u->next)
-    {
-      if (ws_is_same_object (u->user, user))
-	{
-	  u->user = NULL;
-	}
-    }
-}
-
-/*
- * init_caches - Called during au_init().  Initialize all of the cache
- *               related global variables.
- *   return: none
- */
-static void
-init_caches (void)
-{
-  Au_user_cache = NULL;
-  Au_class_caches = NULL;
-  Au_cache_depth = 0;
-  Au_cache_max = 0;
-  Au_cache_increment = 4;
-  Au_cache_index = -1;
-}
-
-/*
- * flush_caches - Called during au_final(). Free the authorization cache
- *                structures and initialize the global variables
- *                to their default state.
- *   return : none
- */
-static void
-flush_caches (void)
-{
-  AU_USER_CACHE *u, *nextu;
-  AU_CLASS_CACHE *c, *nextc;
-
-  for (c = Au_class_caches, nextc = NULL; c != NULL; c = nextc)
-    {
-      nextc = c->next;
-      c->class_->auth_cache = NULL;
-      au_free_class_cache (c);
-    }
-  for (u = Au_user_cache, nextu = NULL; u != NULL; u = nextu)
-    {
-      nextu = u->next;
-      free_user_cache (u);
-    }
-
-  /* clear the associated globals */
-  init_caches ();
-}
-
 
 /*
  * COMPARISON
@@ -1374,36 +798,6 @@ exit:
 }
 
 /*
- * au_find_user_method - Method interface to au_find_user.
- *   return: none
- *   class(in):
- *   returnval(out):
- *   name(in):
- */
-void
-au_find_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name)
-{
-  MOP user;
-  int error = NO_ERROR;
-
-  db_make_null (returnval);
-  if (name != NULL && IS_STRING (name) && !DB_IS_NULL (name) && db_get_string (name) != NULL)
-    {
-      user = au_find_user (db_get_string (name));
-      if (user != NULL)
-	{
-	  db_make_object (returnval, user);
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_USER;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-      db_make_error (returnval, error);
-    }
-}
-
-/*
  * au_make_user -  Create a new user object. Convert the name to upper case
  *                 so that au_find_user can use a query.
  *   return: new user object
@@ -1534,7 +928,6 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
   DB_VALUE value, class_name_val;
   DB_AUTH type;
   int i;
-  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "INDEX", "EXECUTE" };
 
   if (au_obj == NULL)
     {
@@ -1583,7 +976,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       ;
     }
 
-  db_make_varchar (&value, 7, type_set[i], strlen (type_set[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&value, 7, AU_TYPE_SET[i], AU_TYPE_SET_LEN[i], LANG_SYS_CODESET, LANG_SYS_COLLATION);
   obj_set (au_obj, "auth_type", &value);
 
   db_make_int (&value, (int) grant_option);
@@ -1626,7 +1019,6 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   STATEMENT_ID stmt_id;
-  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "INDEX", "EXECUTE" };
 
   for (i = 0; i < COUNT_FOR_VARIABLES; i++)
     {
@@ -1675,7 +1067,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
     {
       ;
     }
-  db_make_string (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
+  db_make_string (&val[INDEX_FOR_AUTH_TYPE], AU_TYPE_SET[i]);
 
   session = db_open_buffer (sql_query);
   if (session == NULL)
@@ -2100,6 +1492,77 @@ exit:
 }
 
 /*
+ * au_delete_auth_of_dropping_user - delete _db_auth records refers to the given grantee user.
+ *   return: error code
+ *   user(in): the grantee user name to be dropped
+ */
+static int
+au_delete_auth_of_dropping_user (MOP user)
+{
+  int error = NO_ERROR, save;
+  const char *sql_query = "DELETE FROM [" CT_CLASSAUTH_NAME "] [au] WHERE [au].[grantee] = ?;";
+  DB_VALUE val;
+  DB_QUERY_RESULT *result = NULL;
+  DB_SESSION *session = NULL;
+  int stmt_id;
+
+  db_make_null (&val);
+
+  /* Disable the checking for internal authorization object access */
+  AU_DISABLE (save);
+
+  assert (user != NULL);
+
+  session = db_open_buffer_local (sql_query);
+  if (session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
+  db_make_object (&val, user);
+  error = db_push_values (session, 1, &val);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, &result);
+  if (error < 0)
+    {
+      goto release;
+    }
+
+  error = db_query_end (result);
+
+release:
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+exit:
+  pr_clear_value (&val);
+
+  AU_ENABLE (save);
+
+  return error;
+}
+
+/*
  * check_user_name
  *   return: error code
  *   name(in): proposed user name
@@ -2301,85 +1764,6 @@ au_add_user (const char *name, int *exists)
       AU_ENABLE (save);
     }
   return (user);
-}
-
-/*
- * au_add_user_method
- *   return: none
- *   class(in): class object
- *   returnval(out): return value of this method
- *   name(in):
- *   password(in):
- */
-void
-au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VALUE * password)
-{
-  int error;
-  int exists;
-  MOP user;
-  const char *tmp = NULL;
-
-  if (name != NULL && IS_STRING (name) && !DB_IS_NULL (name) && ((tmp = db_get_string (name)) != NULL))
-    {
-      if (intl_identifier_upper_string_size (tmp) >= DB_MAX_USER_LENGTH)
-	{
-	  error = ER_USER_NAME_TOO_LONG;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  db_make_error (returnval, error);
-	  return;
-	}
-      /*
-       * although au_set_password will check this, check it out here before
-       * we bother creating the user object
-       */
-      if (password != NULL && IS_STRING (password) && !DB_IS_NULL (password) && (tmp = db_get_string (password))
-	  && strlen (tmp) > AU_MAX_PASSWORD_CHARS)
-	{
-	  error = ER_AU_PASSWORD_OVERFLOW;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  db_make_error (returnval, error);
-	}
-      else
-	{
-	  user = au_add_user (db_get_string (name), &exists);
-	  if (user == NULL)
-	    {
-	      /* return the error that was set */
-	      db_make_error (returnval, er_errid ());
-	    }
-	  else if (exists)
-	    {
-	      error = ER_AU_USER_EXISTS;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, db_get_string (name));
-	      db_make_error (returnval, error);
-	    }
-	  else
-	    {
-	      if (password != NULL && IS_STRING (password) && !DB_IS_NULL (password))
-		{
-		  error = au_set_password (user, db_get_string (password));
-		  if (error != NO_ERROR)
-		    {
-		      db_make_error (returnval, error);
-		    }
-		  else
-		    {
-		      db_make_object (returnval, user);
-		    }
-		}
-	      else
-		{
-		  db_make_object (returnval, user);
-		}
-	    }
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_USER;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-      db_make_error (returnval, error);
-    }
 }
 
 /*
@@ -2713,154 +2097,32 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 }
 
 /*
- * au_set_password -  Set the password string for a user.
+ * au_set_password_encrypt -  Set the password string for a user with specifying encode flag and ecnrypt string prefix
  *   return: error code
  *   user(in): user object
  *   password(in): new password
  */
 int
+au_set_password_encrypt (MOP user, const char *password, int encode, char encrypt_prefix)
+{
+  return (au_set_password_internal (user, password, encode, encrypt_prefix));
+}
+
+/*
+ * au_set_password -  Set the password string for a user.
+ *   return: error code
+ *   user(in): user object
+ *   password(in): new password
+ *   encode(in): flag to enable encryption of the string in the database
+ *   encrypt_prefix(in): If encode flag is 0, then we assume that the given password have been encrypted. So, All I have
+ *                       to do is add prefix(SHA2) to given password.
+ *                       If encode flag is 1, then we should encrypt password with sha2 and add prefix (SHA2) to it.
+ *                       So, I don't care what encrypt_prefix value is.
+ */
+int
 au_set_password (MOP user, const char *password)
 {
   return (au_set_password_internal (user, password, 1, ENCODE_PREFIX_SHA2_512));
-}
-
-/*
- * au_set_password_method -  Method interface for au_set_password.
- *   return: none
- *   user(in): user object
- *   returnval(out): return value of this method
- *   password(in): new password
- */
-void
-au_set_password_method (MOP user, DB_VALUE * returnval, DB_VALUE * password)
-{
-  int error;
-  const char *string = NULL;
-
-  db_make_null (returnval);
-  if (password != NULL)
-    {
-      if (IS_STRING (password) && !DB_IS_NULL (password))
-	{
-	  string = db_get_string (password);
-	}
-
-      error = au_set_password (user, string);
-      if (error != NO_ERROR)
-	{
-	  db_make_error (returnval, error);
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_PASSWORD;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-      db_make_error (returnval, error);
-    }
-}
-
-/*
- * au_set_password_encoded_method - Method interface for setting
- *                                  encoded passwords.
- *   return: none
- *   user(in): user object
- *   returnval(out): return value of this object
- *   password(in): new password
- *
- * Note: We don't check for the 8 character limit here because this is intended
- *       to be used only by the schema generated by unloaddb.  For this
- *       application, the password length was validated when it was first
- *       created.
- */
-void
-au_set_password_encoded_method (MOP user, DB_VALUE * returnval, DB_VALUE * password)
-{
-  int error;
-  const char *string = NULL;
-
-  db_make_null (returnval);
-  if (password != NULL)
-    {
-      if (IS_STRING (password))
-	{
-	  if (DB_IS_NULL (password))
-	    {
-	      string = NULL;
-	    }
-	  else
-	    {
-	      string = db_get_string (password);
-	    }
-	}
-
-      error = au_set_password_internal (user, string, 0, ENCODE_PREFIX_DES);
-      if (error != NO_ERROR)
-	{
-	  db_make_error (returnval, error);
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_PASSWORD;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-      db_make_error (returnval, error);
-    }
-}
-
-/*
- * au_set_password_encoded_sha1_method - Method interface for setting sha1/2 passwords.
- *   return: none
- *   user(in): user object
- *   returnval(out): return value of this object
- *   password(in): new password
- *
- * Note: We don't check for the 8 character limit here because this is intended
- *       to be used only by the schema generated by unloaddb.  For this
- *       application, the password length was validated when it was first
- *       created.
- */
-void
-au_set_password_encoded_sha1_method (MOP user, DB_VALUE * returnval, DB_VALUE * password)
-{
-  int error;
-  const char *string = NULL;
-
-  db_make_null (returnval);
-  if (password != NULL)
-    {
-      if (IS_STRING (password))
-	{
-	  if (DB_IS_NULL (password))
-	    {
-	      string = NULL;
-	    }
-	  else
-	    {
-	      string = db_get_string (password);
-	    }
-	}
-
-      /* in case of SHA2, prefix is not stripped */
-      if (string != NULL && IS_ENCODED_SHA2_512 (string))
-	{
-	  error = au_set_password_internal (user, string + 1 /* 1 for prefix */ , 0, ENCODE_PREFIX_SHA2_512);
-	}
-      else
-	{
-	  error = au_set_password_internal (user, string, 0, ENCODE_PREFIX_SHA1);
-	}
-
-      if (error != NO_ERROR)
-	{
-	  db_make_error (returnval, error);
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_PASSWORD;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-      db_make_error (returnval, error);
-    }
 }
 
 /*
@@ -3353,72 +2615,6 @@ au_drop_member (MOP group, MOP member)
 }
 
 /*
- * au_drop_member_method -  Method interface for au_drop_member.
- *   return: none
- *   user(in): user object
- *   returnval(in): return value of this method
- *   memval(in):
- */
-void
-au_drop_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval)
-{
-  int error = NO_ERROR;
-  MOP member;
-
-  if (memval != NULL)
-    {
-      member = NULL;
-      if (DB_VALUE_TYPE (memval) == DB_TYPE_OBJECT && !DB_IS_NULL (memval) && db_get_object (memval) != NULL)
-	{
-	  member = db_get_object (memval);
-	}
-      else if (IS_STRING (memval) && !DB_IS_NULL (memval) && db_get_string (memval) != NULL)
-	{
-	  member = au_find_user (db_get_string (memval));
-	  if (member == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	      goto error;
-	    }
-	}
-
-      if (member != NULL)
-	{
-	  if (ws_is_same_object (user, Au_user) || au_is_dba_group_member (Au_user))
-	    {
-	      error = au_drop_member (user, member);
-	    }
-	  else
-	    {
-	      error = ER_AU_NOT_OWNER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	    }
-	}
-      else
-	{
-	  error = ER_AU_INVALID_USER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_USER;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-    }
-
-error:
-  if (error == NO_ERROR)
-    {
-      db_make_null (returnval);
-    }
-  else
-    {
-      db_make_error (returnval, error);
-    }
-}
-
-/*
  * au_drop_user - Drop a user from the database.
  *   return: error code
  *   user(in): user object
@@ -3452,13 +2648,6 @@ au_drop_user (MOP user)
   DB_SET *new_groups, *direct_groups;
   int g, gcard, i;
   DB_VALUE name;
-  static const char *class_name[] = {
-    /*
-     * drop user command can be called only by DBA group,
-     * so we can use query for _db_class directly
-     */
-    "_db_class", "db_trigger", "db_serial", "_db_server", "_db_synonym", "_db_stored_procedure", NULL
-  };
   char query_buf[1024];
 
   AU_DISABLE (save);
@@ -3487,9 +2676,9 @@ au_drop_user (MOP user)
     }
 
   /* check if user owns class/vclass/trigger/serial/synonym */
-  for (i = 0; class_name[i] != NULL; i++)
+  for (i = 0; AU_OBJECT_CLASS_NAME[i] != NULL; i++)
     {
-      sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", class_name[i]);
+      sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", AU_OBJECT_CLASS_NAME[i]);
       session = db_open_buffer (query_buf);
       if (session == NULL)
 	{
@@ -3693,6 +2882,12 @@ au_drop_user (MOP user)
 	}
     }
 
+  error = au_delete_auth_of_dropping_user (user);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
   /*
    * could go through classes created by this user and change ownership
    * to the DBA ? - do this as the classes are referenced instead
@@ -3708,54 +2903,6 @@ error:
   AU_ENABLE (save);
   return error;
 }
-
-/*
- * au_drop_user_method - Method interface for au_drop_user.
- *   return: none
- *   root(in):
- *   returnval(out): return value of this method
- *   name(in):
- */
-void
-au_drop_user_method (MOP root, DB_VALUE * returnval, DB_VALUE * name)
-{
-  int error;
-  DB_OBJECT *user = NULL;
-
-  db_make_null (returnval);
-
-  if (Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
-    {
-      error = ER_AU_DBA_ONLY;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "drop_user");
-      db_make_error (returnval, error);
-    }
-  else
-    {
-      user = NULL;
-      if (name != NULL && IS_STRING (name) && db_get_string (name) != NULL)
-	{
-	  error = au_find_user_to_drop (db_get_string (name), &user);
-	  if (error == NO_ERROR)
-	    {
-	      assert (user != NULL);
-	      error = au_drop_user (user);
-	    }
-
-	  if (error != NO_ERROR)
-	    {
-	      db_make_error (returnval, error);
-	    }
-	}
-      else
-	{
-	  error = ER_AU_INVALID_USER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-	  db_make_error (returnval, error);
-	}
-    }
-}
-
 
 /*
  * AUTHORIZATION CACHING
@@ -4086,15 +3233,15 @@ apply_grants (MOP auth, MOP class_mop, unsigned int *bits)
  *   cache(in):
  */
 static int
-update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
+update_cache (MOP classop, SM_CLASS * sm_class)
 {
   int error = NO_ERROR;
   DB_SET *groups = NULL;
   int i, save, card;
   DB_VALUE value;
   MOP group, auth;
-  unsigned int *bits;
   bool is_member = false;
+  unsigned int *bits = NULL;
   bool need_pop_er_stack = false;
 
   /*
@@ -4107,7 +3254,12 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
 
   need_pop_er_stack = true;
 
-  bits = &cache->data[Au_cache_index];
+  bits = get_cache_bits (sm_class);
+  if (bits == NULL)
+    {
+      assert (false);
+      return er_errid ();
+    }
 
   /* initialize the cache bits */
   *bits = AU_NO_AUTHORIZATION;
@@ -4125,7 +3277,6 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
   if (is_member)
     {
       *bits = AU_FULL_AUTHORIZATION;
-
       goto end;
     }
 
@@ -4140,7 +3291,6 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
     {
       /* might want to allow grant/revoke on self */
       *bits = AU_FULL_AUTHORIZATION;
-
       goto end;
     }
 
@@ -4383,44 +3533,44 @@ static int
 check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
 {
   int error = NO_ERROR;
-  AU_CLASS_CACHE *cache;
-  unsigned int cache_bits;
+  unsigned int *cache_bits;
   unsigned int mask;
 
   /*
    * this potentially can be called during initialization when we don't
    * actually have any users yet.  If so, assume its ok
    */
-  if (Au_cache_index < 0)
-    return NO_ERROR;
-
-  cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
-  if (sm_class->auth_cache == NULL)
+  if (au_get_cache_index () < 0)
     {
-      cache = au_install_class_cache (sm_class);
-      if (cache == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
+      return NO_ERROR;
     }
-  cache_bits = cache->data[Au_cache_index];
 
-  if (cache_bits == AU_CACHE_INVALID)
+  cache_bits = get_cache_bits (sm_class);
+  if (cache_bits == NULL)
     {
-      if (update_cache (classop, sm_class, cache))
+      return er_errid ();
+    }
+
+  if (*cache_bits == AU_CACHE_INVALID)
+    {
+      if (update_cache (classop, sm_class))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
-      cache_bits = cache->data[Au_cache_index];
+      cache_bits = get_cache_bits (sm_class);
+      if (cache_bits == NULL)
+	{
+	  assert (false);
+	  return er_errid ();
+	}
     }
 
   /* build the complete bit mask */
   mask = type | (type << AU_GRANT_SHIFT);
-  if ((cache_bits & mask) != mask)
+  if ((*cache_bits & mask) != mask)
     {
-      error = appropriate_error (cache_bits, mask);
+      error = appropriate_error (*cache_bits, mask);
       if (error)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5168,6 +4318,73 @@ fail_end:
  * MISC UTILITIES
  */
 
+int
+au_change_class_owner (MOP class_mop, MOP owner_mop)
+{
+  int error = NO_ERROR;
+  int i;
+  MOP *sub_partitions = NULL;
+  int is_partition = DB_NOT_PARTITIONED_CLASS;
+  bool has_savepoint = false;
+
+  assert (class_mop != NULL);
+  assert (owner_mop != NULL);
+
+  error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  if (is_partition == DB_PARTITION_CLASS)	/* if partition; error */
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_NOT_ALLOWED_ACCESS_TO_PARTITION, "");
+      goto end;
+    }
+
+  if (is_partition == DB_PARTITIONED_CLASS)	/* if partitioned class; do actions to all partitions */
+    {
+      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+
+      has_savepoint = true;
+
+      for (i = 0; sub_partitions[i] != NULL; i++)
+	{
+	  error = au_change_owner (sub_partitions[i], owner_mop);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto end;
+	    }
+	}
+    }
+
+  error = au_change_owner (class_mop, owner_mop);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+end:
+  if (sub_partitions)
+    {
+      free_and_init (sub_partitions);
+    }
+
+  if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
+    }
+
+  return error;
+}
+
 /*
  * au_change_owner - This changes the owning user of a class.
  *                   This should be called only by the DBA.
@@ -5423,138 +4640,6 @@ end:
 }
 
 /*
- * au_change_owner_method - Method interface to au_change_owner
- *   return: none
- *   obj(in): class whose owner is to change
- *   returnval(out): return value of this method
- *   class(in):
- *   owner(in): new owner
- */
-void
-au_change_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * class_val, DB_VALUE * owner_val)
-{
-  MOP class_mop = NULL;
-  SM_CLASS *class_ = NULL;
-  MOP *sub_partitions = NULL;
-  MOP owner_mop = NULL;
-  const char *class_name = NULL;
-  const char *owner_name = NULL;
-  int is_partition = DB_NOT_PARTITIONED_CLASS;
-  bool has_savepoint = false;
-  int i;
-  int error = NO_ERROR;
-
-  if (!return_val || !class_val || !owner_val)
-    {
-      ERROR_SET_WARNING (error, ER_AU_INVALID_ARGUMENTS);
-      db_make_error (return_val, error);
-      return;
-    }
-
-  if (!DB_IS_STRING (class_val) || (class_name = db_get_string (class_val)) == NULL)
-    {
-      ERROR_SET_WARNING_1ARG (error, ER_AU_INVALID_CLASS, "");
-      db_make_error (return_val, error);
-      return;
-    }
-
-  if (!DB_IS_STRING (owner_val) || (owner_name = db_get_string (owner_val)) == NULL)
-    {
-      ERROR_SET_WARNING_1ARG (error, ER_AU_INVALID_USER, "");
-      db_make_error (return_val, error);
-      return;
-    }
-
-  class_mop = sm_find_class (class_name);
-  if (class_mop == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      db_make_error (return_val, error);
-      return;
-    }
-
-  error = au_fetch_class_force (class_mop, &class_, AU_FETCH_UPDATE);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return;
-    }
-
-  /* To change the owner of a system class is not allowed. */
-  if (sm_issystem (class_))
-    {
-      ERROR_SET_ERROR_1ARG (error, ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS, "");
-      db_make_error (return_val, error);
-      return;
-    }
-
-  owner_mop = au_find_user (owner_name);
-  if (owner_mop == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      db_make_error (return_val, error);
-      return;
-    }
-
-  error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      db_make_error (return_val, error);
-      return;
-    }
-
-  if (is_partition == DB_PARTITION_CLASS)	/* if partition; error */
-    {
-      ERROR_SET_ERROR (error, ER_NOT_ALLOWED_ACCESS_TO_PARTITION);
-      db_make_error (return_val, error);
-      goto end;
-    }
-
-  if (is_partition == DB_PARTITIONED_CLASS)	/* if partitioned class; do actions to all partitions */
-    {
-      error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  db_make_error (return_val, error);
-	  goto end;
-	}
-
-      has_savepoint = true;
-
-      for (i = 0; sub_partitions[i]; i++)
-	{
-	  error = au_change_owner (sub_partitions[i], owner_mop);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      db_make_error (return_val, error);
-	      goto end;
-	    }
-	}
-    }
-
-  error = au_change_owner (class_mop, owner_mop);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      db_make_error (return_val, error);
-    }
-
-end:
-  if (sub_partitions)
-    {
-      free_and_init (sub_partitions);
-    }
-
-  if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
-    {
-      tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
-    }
-}
-
-/*
  * au_change_serial_owner() - Change serial object's owner
  *   return: error code
  *   object(in/out): serial object whose owner is to be changed
@@ -5740,74 +4825,6 @@ end:
 }
 
 /*
- * au_change_serial_owner_method() - Method interface to au_change_serial_owner
- *   return: none
- *   obj(in): class whose owner is to change
- *   returnval(out): return value of this method
- *   serial(in): serial name
- *   owner(in): new owner
- */
-void
-au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * serial_val, DB_VALUE * owner_val)
-{
-  MOP serial_class_mop = NULL;
-  MOP serial_mop = NULL;
-  DB_IDENTIFIER serial_obj_id;
-  MOP owner_mop = NULL;
-  const char *serial_name = NULL;
-  char user_specified_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
-  const char *owner_name = NULL;
-  int error = NO_ERROR;
-
-  if (!return_val || !serial_val || !owner_val)
-    {
-      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
-      db_make_error (return_val, error);
-      return;
-    }
-
-  if (!DB_IS_STRING (serial_val) || (serial_name = db_get_string (serial_val)) == NULL)
-    {
-      ERROR_SET_WARNING_1ARG (error, ER_OBJ_INVALID_ARGUMENT, "");
-      db_make_error (return_val, error);
-      return;
-    }
-
-  if (!DB_IS_STRING (owner_val) || (owner_name = db_get_string (owner_val)) == NULL)
-    {
-      ERROR_SET_WARNING_1ARG (error, ER_AU_INVALID_USER, "");
-      db_make_error (return_val, error);
-      return;
-    }
-
-  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
-
-  sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
-  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, user_specified_serial_name);
-  if (serial_mop == NULL)
-    {
-      ERROR_SET_ERROR_1ARG (error, ER_QPROC_SERIAL_NOT_FOUND, user_specified_serial_name);
-      db_make_error (return_val, error);
-      return;
-    }
-
-  owner_mop = au_find_user (owner_name);
-  if (owner_mop == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      db_make_error (return_val, error);
-      return;
-    }
-
-  error = au_change_serial_owner (serial_mop, owner_mop, false);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      db_make_error (return_val, error);
-    }
-}
-
-/*
  * au_change_trigger_owner - This changes the owning user of a trigger.
  *                           This should be called only by the DBA.
  *   return: error code
@@ -5937,68 +4954,6 @@ end:
 }
 
 /*
- * au_change_trigger_owner_method - Method interface to au_change_trigger_owner
- *   return: none
- *   obj(in):
- *   returnval(out): return value of this method
- *   trigger(in): trigger whose owner is to change
- *   owner(in): new owner
- */
-void
-au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigger_val, DB_VALUE * owner_val)
-{
-  MOP trigger_mop = NULL;
-  MOP owner_mop = NULL;
-  const char *trigger_name = NULL;
-  const char *owner_name = NULL;
-  int error = NO_ERROR;
-
-  if (!return_val || !trigger_val || !owner_val)
-    {
-      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
-      db_make_error (return_val, error);
-      return;
-    }
-
-  if (!DB_IS_STRING (trigger_val) || (trigger_name = db_get_string (trigger_val)) == NULL)
-    {
-      ERROR_SET_WARNING_1ARG (error, ER_TR_TRIGGER_NOT_FOUND, "");
-      db_make_error (return_val, error);
-      return;
-    }
-
-  if (!DB_IS_STRING (owner_val) || (owner_name = db_get_string (owner_val)) == NULL)
-    {
-      ERROR_SET_WARNING_1ARG (error, ER_AU_INVALID_USER, "");
-      db_make_error (return_val, error);
-      return;
-    }
-
-  trigger_mop = tr_find_trigger (trigger_name);
-  if (trigger_mop == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      db_make_error (return_val, error);
-      return;
-    }
-
-  owner_mop = au_find_user (owner_name);
-  if (owner_mop == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      db_make_error (return_val, error);
-      return;
-    }
-
-  error = au_change_trigger_owner (trigger_mop, owner_mop);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      db_make_error (return_val, error);
-    }
-}
-
-/*
  * au_get_class_owner - This access the user object that is the owner of
  *                      the class.
  *   return: user object (owner of class_)
@@ -6027,92 +4982,6 @@ au_get_class_owner (MOP classmop)
     }
 
   return (owner);
-}
-
-/*
- * au_get_owner_method - Method interface to au_change_owner
- *   return: none
- *   obj(in):
- *   returnval(out): return value of this method
- *   class(in): class object
- */
-void
-au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
-{
-  MOP user;
-  MOP classmop;
-  int error = NO_ERROR;
-
-  db_make_null (returnval);
-  if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
-    {
-      classmop = sm_find_class (db_get_string (class_));
-      if (classmop != NULL)
-	{
-	  user = au_get_class_owner (classmop);
-	  if (user != NULL)
-	    {
-	      db_make_object (returnval, user);
-	    }
-	  else
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	    }
-	}
-      else
-	{
-	  error = ER_AU_INVALID_CLASS;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, db_get_string (class_));
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_CLASS;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-    }
-
-  if (error != NO_ERROR)
-    {
-      db_make_error (returnval, error);
-    }
-}
-
-/*
- * au_check_authorization_method -
- *    return: none
- *    obj(in):
- *    returnval(out): return value of this method
- *    class(in):
- *    auth(in):
- */
-void
-au_check_authorization_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VALUE * auth)
-{
-  MOP classmop;
-  int error = NO_ERROR;
-
-  db_make_null (returnval);
-  if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
-    {
-
-      classmop = sm_find_class (db_get_string (class_));
-      if (classmop != NULL)
-	{
-	  error = au_check_authorization (classmop, (DB_AUTH) db_get_int (auth));
-	  db_make_int (returnval, (error == NO_ERROR) ? true : false);
-	}
-      else
-	{
-	  error = ER_AU_INVALID_CLASS;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, db_get_string (class_));
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_CLASS;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-    }
 }
 
 /*
@@ -6188,56 +5057,6 @@ au_change_sp_owner (MOP sp, MOP owner)
 end:
   AU_ENABLE (save);
   return (error);
-}
-
-/*
- * au_change_sp_owner_method -
- *   return: none
- *   obj(in):
- *   returnval(in):
- *   sp(in):
- *   owner(in):
- */
-void
-au_change_sp_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * sp, DB_VALUE * owner)
-{
-  MOP user, sp_mop;
-  int error;
-  int ok = 0;
-
-  db_make_null (returnval);
-  if (sp != NULL && IS_STRING (sp) && !DB_IS_NULL (sp) && db_get_string (sp) != NULL)
-    {
-      if (owner != NULL && IS_STRING (owner) && !DB_IS_NULL (owner) && db_get_string (owner) != NULL)
-	{
-	  sp_mop = jsp_find_stored_procedure (db_get_string (sp));
-	  if (sp_mop != NULL)
-	    {
-	      user = au_find_user (db_get_string (owner));
-	      if (user != NULL)
-		{
-		  error = au_change_sp_owner (sp_mop, user);
-		  if (error == NO_ERROR)
-		    {
-		      ok = 1;
-		    }
-		}
-	    }
-	}
-      else
-	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1, "");
-	}
-    }
-  else
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_EXIST, 1, "");
-    }
-
-  if (!ok)
-    {
-      db_make_error (returnval, er_errid ());
-    }
 }
 
 /*
@@ -6396,8 +5215,7 @@ static int
 check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
 {
   int error = NO_ERROR;
-  AU_CLASS_CACHE *cache;
-  unsigned int bits;
+  unsigned int *bits;
 
   /*
    * Callers generally check Au_disable already to avoid the function call.
@@ -6420,37 +5238,36 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
     }
   else
     {
-      cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
-      if (cache == NULL)
+      bits = get_cache_bits (sm_class);
+      if (bits == NULL)
 	{
-	  cache = au_install_class_cache (sm_class);
-	  if (cache == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
+	  assert (false);
+	  return er_errid ();
 	}
-      bits = cache->data[Au_cache_index];
 
-      if ((bits & type) != type)
+      if ((*bits & type) != type)
 	{
-	  if (bits == AU_CACHE_INVALID)
+	  if (*bits == AU_CACHE_INVALID)
 	    {
 	      /* update the cache and try again */
-	      error = update_cache (classobj, sm_class, cache);
+	      error = update_cache (classobj, sm_class);
 	      if (error == NO_ERROR)
 		{
-		  bits = cache->data[Au_cache_index];
-		  if ((bits & type) != type)
+		  bits = get_cache_bits (sm_class);
+		  if (bits == NULL)
 		    {
-		      error = appropriate_error (bits, type);
+		      return er_errid ();
+		    }
+		  if ((*bits & type) != type)
+		    {
+		      error = appropriate_error (*bits, type);
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 		    }
 		}
 	    }
 	  else
 	    {
-	      error = appropriate_error (bits, type);
+	      error = appropriate_error (*bits, type);
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 	}
@@ -7038,7 +5855,7 @@ au_set_user (MOP newuser)
 	{
 
 	  Au_user = newuser;
-	  Au_cache_index = index;
+	  au_set_cache_index (index);
 
 	  /*
 	   * it is important that we don't call sm_bump_local_schema_version() here
@@ -7258,62 +6075,6 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
       AU_ENABLE (save);
     }
   return (error);
-}
-
-/*
- * au_login_method - Method interface to au_login.
- *   return: none
- *   class_mop(in): class object
- *   returnval(out): return value of this method
- *   user(in): user name
- *   password(in): password
- */
-void
-au_login_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * user, DB_VALUE * password)
-{
-  int error = NO_ERROR;
-  char *user_name;
-
-  if (user != NULL)
-    {
-      if (IS_STRING (user) && !DB_IS_NULL (user) && db_get_string (user) != NULL)
-	{
-	  if (password != NULL && IS_STRING (password))
-	    {
-	      error = au_login (db_get_string (user), db_get_string (password), false);
-	    }
-	  else
-	    {
-	      error = au_login (db_get_string (user), NULL, false);
-	    }
-	}
-    }
-  else
-    {
-      error = ER_AU_INVALID_USER;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
-    }
-
-  if (error == NO_ERROR)
-    {
-      user_name = db_get_user_name ();
-      error = clogin_user (user_name);
-
-      if (error == NO_ERROR)
-	{
-	  db_make_null (returnval);
-	}
-      else
-	{
-	  db_make_error (returnval, error);
-	}
-
-      db_string_free (user_name);
-    }
-  else
-    {
-      db_make_error (returnval, error);
-    }
 }
 
 /*
@@ -8720,85 +7481,6 @@ au_dump_user (MOP user, FILE * fp)
    */
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * au_print_class_auth() - Dumps authorization information for
- *                         a particular class.
- *   return: none
- *   class(in): class object
- *
- * Note: Used by the test program, should pass in a file pointer here !
- *       The db_root class used to have a user attribute which was a set
- *       containing the object-id for all users.  The users attribute has been
- *       eliminated for performance reasons.  A query on the db_user class is
- *       new used to find all users.
- */
-void
-au_print_class_auth (MOP class_mop)
-{
-  MOP user;
-  DB_SET *grants;
-  int j, title, gsize;
-  DB_VALUE element, value;
-  char *query;
-  DB_QUERY_RESULT *query_result;
-  DB_QUERY_ERROR query_error;
-  int error;
-  DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
-
-  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2);
-
-  if (query)
-    {
-      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
-
-      error = db_compile_and_execute_local (query, &query_result, &query_error);
-      /* error is row count if not negative. */
-      if (error > 0)
-	{
-	  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-	    {
-	      if (db_query_get_tuple_value (query_result, 0, &user_val) == NO_ERROR)
-		{
-		  user = db_get_object (&user_val);
-		  title = 0;
-		  obj_get (user, "authorization", &value);
-		  get_grants (db_get_object (&value), &grants, 1);
-		  gsize = set_size (grants);
-		  for (j = 0; j < gsize; j += GRANT_ENTRY_LENGTH)
-		    {
-		      set_get_element (grants, GRANT_ENTRY_CLASS (j), &element);
-		      if (db_get_object (&element) == class_mop)
-			{
-			  if (!title)
-			    {
-			      obj_get (user, "name", &value);
-			      if (db_get_string (&value) != NULL)
-				{
-				  fprintf (stdout,
-					   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION,
-							   MSGCAT_AUTH_USER_NAME2), db_get_string (&value));
-				}
-			      pr_clear_value (&value);
-			      title = 1;
-			    }
-			  au_print_grant_entry (grants, j, stdout);
-			}
-		    }
-		  set_free (grants);
-		}
-	    }
-	}
-      if (error >= 0)
-	{
-	  db_query_end (query_result);
-	}
-      free_and_init (query);
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * au_dump_to_file() - Dump all authorization information including
  *                     user/group hierarchy.
@@ -8891,101 +7573,8 @@ au_dump (void)
 }
 
 /*
- * au_describe_user_method() - Method interface to au_dump_user.
- *                             Can only be called when using the csql
- *                             interpreter since it dumps to stdout
- *   return: none
- *   user(in): user object
- *   returnval(out): return value of this method
- */
-void
-au_describe_user_method (MOP user, DB_VALUE * returnval)
-{
-  db_make_null (returnval);
-  if (user != NULL)
-    {
-      au_dump_user (user, stdout);
-    }
-}
-
-/*
- * au_info_method() - Method interface for authorization dump utilities.
- *   return: none
- *   class_mop(in): class object
- *   returnval(out): return value of this method
- *   info(in):
- *
- * Note: This should be conditionalized so it knows what kind of environment
- *       this is (csql, esql).
- *       For now this is documented to only work within csql because it dumps
- *       to stdout.
- *       There are some hidden parameters that trigger other dump routines.
- *       This is a convenient hook for these things until we
- *       have a more formal way to call them (if we ever do).  These
- *       are not documented in the user manual.
- */
-void
-au_info_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info)
-{
-  db_make_null (returnval);
-
-  if (info != NULL && IS_STRING (info) && !DB_IS_NULL (info) && db_get_string (info) != NULL)
-    {
-      /* this dumps stuff to stdout */
-      help_print_info (db_get_string (info), stdout);
-    }
-}
-
-/*
- * au_describe_root_method() - Method interface for authorization dump
- *                             utilities
- *   return: none
- *   class_mop(in): class object
- *   returnval(out): return value of this method
- *   info(in):
- *
- * Note: This should be conditionalized so it knows what kind of environment
- *       this is (csql, esql).  For now this is documented to
- *       only work within csql because it dumps to stdout.
- *       There are some hidden parameters that trigger other dump routines.
- *       This is a convenient hook for these things until we
- *       have a more formal way to call them (if we ever do).  These
- *       are not documented in the user manual.
- */
-void
-au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info)
-{
-  db_make_null (returnval);
-
-  if (info == NULL)
-    {
-      au_dump ();
-    }
-  else
-    {
-      /*
-       * temporary, pass this through for older databases that still
-       * have the "info" method pointing to this function
-       */
-      au_info_method (class_mop, returnval, info);
-    }
-}
-
-
-/*
  * AUTHORIZATION CLASSES
  */
-
-/*
- * au_link_static_methods() - Called during the restart sequence to statically
- *                            link the authorization methods.
- *    return: none
- */
-void
-au_link_static_methods (void)
-{
-  db_link_static_methods (&au_static_links[0]);
-}
 
 /*
  * au_install() - This is used to initialize the authorization system in a
@@ -9200,7 +7789,7 @@ au_install (void)
       goto exit_on_error;
     }
   Au_user = Au_dba_user;
-  Au_cache_index = index;
+  au_set_cache_index (index);
 
   AU_SET_USER (Au_dba_user);
 
@@ -9337,8 +7926,7 @@ int
 au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
 {
   SM_CLASS *class_;
-  AU_CLASS_CACHE *cache;
-  unsigned int bits = 0;
+  unsigned int *bits = NULL;
   int error = NO_ERROR;
 
   if (!Au_disable)
@@ -9350,57 +7938,25 @@ au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
 
       class_ = (SM_CLASS *) mop->object;
 
-      cache = (AU_CLASS_CACHE *) class_->auth_cache;
-      if (cache == NULL)
+      bits = get_cache_bits (class_);
+      if (bits == NULL)
 	{
-	  cache = au_install_class_cache (class_);
-	  if (cache == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
+	  return er_errid ();
 	}
 
-      bits = cache->data[Au_cache_index];
-      if (bits == AU_CACHE_INVALID)
+      if (*bits == AU_CACHE_INVALID)
 	{
-	  error = update_cache (mop, class_, cache);
+	  error = update_cache (mop, class_);
 	  if (error == NO_ERROR)
 	    {
-	      bits = cache->data[Au_cache_index];
+	      bits = get_cache_bits (class_);
 	    }
 	}
-      *auth = bits;
+      *auth = *bits;
     }
 
   return error;
 }
-
-/*
- * get_attribute_number - attribute number of the given attribute/class
- *   return:
- *   arg1(in):
- *   arg2(in):
- */
-void
-get_attribute_number (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * attr_name)
-{
-  int attrid, shared;
-  DB_DOMAIN *dom;
-
-  db_make_null (result);
-
-  if (DB_VALUE_TYPE (attr_name) != DB_TYPE_STRING)
-    return;
-
-  /* we will only look for regular attributes and not class attributes. this is a limitation of this method. */
-  if (sm_att_info (target, db_get_string (attr_name), &attrid, &dom, &shared, 0 /* non-class attrs */ )
-      < 0)
-    return;
-
-  db_make_int (result, attrid);
-}
-
 
 /*
  * au_disable - set Au_disable true

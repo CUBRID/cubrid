@@ -102,6 +102,8 @@ static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, P
 static PT_NODE *do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg,
 						 int *continue_walk);
 
+int g_open_buffer_control_flags = 0;
+
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
  *   pointer array
@@ -216,6 +218,11 @@ db_open_buffer_local (const char *buffer)
 
   if (session)
     {
+      if (g_open_buffer_control_flags & PARSER_FOR_PLCSQL_STATIC_SQL)
+	{
+	  session->parser->flag.is_parsing_static_sql = 1;
+	}
+
       session->statements = parser_parse_string_with_escapes (session->parser, buffer, false);
       if (session->statements)
 	{
@@ -269,6 +276,12 @@ db_open_file (FILE * file)
     }
 
   return session;
+}
+
+void
+db_init_lexer_lineno ()
+{
+  csql_yyset_lineno (1);
 }
 
 /*

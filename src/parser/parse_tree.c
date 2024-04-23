@@ -121,6 +121,10 @@ PT_RESERVED_NAME pt_Reserved_name_table[] = {
   ,
   {"p_class_oid", RESERVED_P_CLASS_OID, DB_TYPE_OBJECT}
   ,
+  {"p_cur_volumeid", RESERVED_P_CUR_VOLUMEID, DB_TYPE_INTEGER}
+  ,
+  {"p_cur_pageid", RESERVED_P_CUR_PAGEID, DB_TYPE_INTEGER}
+  ,
   {"p_prev_pageid", RESERVED_P_PREV_PAGEID, DB_TYPE_INTEGER}
   ,
   {"p_next_pageid", RESERVED_P_NEXT_PAGEID, DB_TYPE_INTEGER}
@@ -1227,6 +1231,10 @@ parser_create_parser (void)
   parser->flag.has_internal_error = 0;
   parser->max_print_len = 0;
   parser->flag.is_auto_commit = 0;
+  parser->flag.is_parsing_static_sql = 0;
+
+  parser->external_into_label = NULL;
+  parser->external_into_label_cnt = 0;
 
   return parser;
 }

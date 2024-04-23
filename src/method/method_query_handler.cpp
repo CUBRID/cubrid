@@ -18,12 +18,15 @@
 
 #include "method_query_handler.hpp"
 
+#include "parser.h"
+#include "api_compat.h" /* DB_SESSION */
 #include "db.h"
 #include "dbi.h"
 #include "dbtype.h"
 #include "method_query_util.hpp"
 #include "method_schema_info.hpp"
 #include "object_primitive.h"
+#include "optimizer.h" /* qo_get_optimization_param, qo_set_optimization_param */
 
 /* from jsp_cl.c */
 extern void jsp_set_prepare_call ();
@@ -205,6 +208,21 @@ namespace cubmethod
 	return prepare (m_sql_stmt, m_prepare_flag);
       }
     return ER_FAILED;
+  }
+
+  int
+  query_handler::prepare_compile (const std::string &sql)
+  {
+    int level;
+    qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 2);
+
+    int error = prepare (sql, PREPARE_STATIC_SQL);
+
+    // restore
+    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+
+    return error;
   }
 
   int
@@ -523,7 +541,14 @@ namespace cubmethod
 
     if (qres && qres->type == T_SELECT)
       {
-	result_info.query_id = qres->res.s.query_id;
+	if (qresult.tuple_count > 0)
+	  {
+	    result_info.query_id = qres->res.s.query_id;
+	  }
+	else
+	  {
+	    result_info.query_id = NULL_QUERY_ID; // initialized value
+	  }
       }
     return error;
   }
@@ -742,7 +767,14 @@ namespace cubmethod
   {
     int &flag = m_prepare_flag;
 
+    if (flag & PREPARE_STATIC_SQL)
+      {
+	g_open_buffer_control_flags |= PARSER_FOR_PLCSQL_STATIC_SQL;
+      }
+    db_init_lexer_lineno();
     m_session = db_open_buffer (m_sql_stmt.c_str());
+    g_open_buffer_control_flags = 0;
+
     if (!m_session)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
@@ -776,10 +808,7 @@ namespace cubmethod
 	  {
 	    close_and_free_session ();
 	  }
-	else
-	  {
-	    m_error_ctx.set_error (stmt_id, db_error_string (1), __FILE__, __LINE__);
-	  }
+	m_error_ctx.set_error (stmt_id, db_error_string (1), __FILE__, __LINE__);
 	m_is_prepared = false;
 	return ER_FAILED;
       }
@@ -820,6 +849,7 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
+    db_init_lexer_lineno ();
     m_session = db_open_buffer (sql_stmt_copy.c_str());
     if (!m_session)
       {

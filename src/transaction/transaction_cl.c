@@ -67,7 +67,7 @@ int tm_Tran_index = NULL_TRAN_INDEX;
 TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
 bool tm_Tran_async_ws = false;
 int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
-bool tm_Tran_check_interrupt = false;
+bool tm_Tran_check_interrupt = true;
 int tm_Tran_ID = -1;
 int tm_Tran_invalidate_snapshot = 1;
 LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not lock twice. */
@@ -385,7 +385,9 @@ tran_commit (bool retain_lock)
 
   tran_reset_latest_query_status ();
 
-  tran_reset_libcas_function ();
+  // FIXME: If SP supports TCL, the libcas depth should not be reset. 
+  // A nested SP can perform commit/rollback
+  // tran_reset_libcas_function ();
 
   return error_code;
 }
@@ -501,7 +503,9 @@ tran_abort (void)
 
   tran_reset_latest_query_status ();
 
-  tran_reset_libcas_function ();
+  // FIXME: If SP supports TCL, the libcas depth should not be reset. 
+  // A nested SP can perform commit/rollback
+  // tran_reset_libcas_function ();
 
   return error_code;
 }
@@ -1329,6 +1333,7 @@ void
 tran_end_libcas_function (void)
 {
   tm_libcas_depth--;
+
   assert (tm_libcas_depth >= 0);
 }
 
