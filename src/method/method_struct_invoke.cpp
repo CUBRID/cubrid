@@ -218,8 +218,6 @@ namespace cubmethod
 	    arg_default_size[i] = sig->arg_info->default_value_size[i];
 	    arg_default[i] = sig->arg_info->default_value[i];
 	  }
-
-	result_type = sig->arg_info->result_type;
       }
 
     transaction_control = tc;

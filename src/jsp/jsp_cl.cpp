@@ -1397,13 +1397,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	sig->arg_info = (METHOD_ARG_INFO *) db_private_alloc (NULL, sizeof (METHOD_ARG_INFO));
 	if (!sig->arg_info)
 	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
-	if (param_cnt > 0)
-	  {
-	    sig->arg_info->arg_mode = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
+	    sig->arg_info->arg_mode = (int *) db_private_alloc (NULL, (sig_num_args) * sizeof (int));
 	    if (!sig->arg_info->arg_mode)
 	      {
 		sig->arg_info->arg_mode = nullptr;
@@ -1411,45 +1405,56 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 		goto end;
 	      }
 
-	    sig->arg_info->arg_type = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
-	    if (!sig->arg_info->arg_type)
+	    if (param_cnt > 0)
 	      {
-		sig->arg_info->arg_type = nullptr;
-		error = ER_OUT_OF_VIRTUAL_MEMORY;
-		goto end;
-	      }
-
-	    sig->arg_info->default_value = (char **) db_private_alloc (NULL, (param_cnt) * sizeof (char *));
-	    sig->arg_info->default_value_size = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
-
-	    for (int i = 0; i < param_cnt; i++)
-	      {
-		sig->arg_info->arg_mode[i] = sig_arg_mode[i];
-		sig->arg_info->arg_type[i] = sig_arg_type[i];
-
-		sig->arg_info->default_value_size[i] = sig_arg_default_size[i];
-		if (sig->arg_info->default_value_size[i] > 0)
+		sig->arg_info->arg_mode = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
+		if (!sig->arg_info->arg_mode)
 		  {
-		    sig->arg_info->default_value[i] = sig_arg_default[i];
+		    sig->arg_info->arg_mode = nullptr;
+		    error = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
+
+		sig->arg_info->arg_type = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
+		if (!sig->arg_info->arg_type)
+		  {
+		    sig->arg_info->arg_type = nullptr;
+		    error = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
+
+		sig->arg_info->default_value = (char **) db_private_alloc (NULL, (param_cnt) * sizeof (char *));
+		sig->arg_info->default_value_size = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
+
+		for (int i = 0; i < param_cnt; i++)
+		  {
+		    sig->arg_info->arg_mode[i] = sig_arg_mode[i];
+		    sig->arg_info->arg_type[i] = sig_arg_type[i];
+
+		    sig->arg_info->default_value_size[i] = sig_arg_default_size[i];
+		    if (sig->arg_info->default_value_size[i] > 0)
+		      {
+			sig->arg_info->default_value[i] = sig_arg_default[i];
+		      }
 		  }
 	      }
+	    else
+	      {
+		sig->arg_info->arg_mode = nullptr;
+		sig->arg_info->arg_type = nullptr;
+		sig->arg_info->default_value = nullptr;
+		sig->arg_info->default_value_size = nullptr;
+	      }
+
+	    sig->arg_info->result_type = sig_result_type;
+
+	    sig_list.num_methods = 1;
 	  }
 	else
 	  {
-	    sig->arg_info->arg_mode = nullptr;
-	    sig->arg_info->arg_type = nullptr;
-	    sig->arg_info->default_value = nullptr;
-	    sig->arg_info->default_value_size = nullptr;
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
 	  }
-
-	sig->arg_info->result_type = sig_result_type;
-
-	sig_list.num_methods = 1;
-      }
-    else
-      {
-	error = ER_OUT_OF_VIRTUAL_MEMORY;
-	goto end;
       }
   }
 
