@@ -1733,14 +1733,11 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	      /* check if the format of class name is valid */
 	      if (utility_check_class_name (class_name) != NO_ERROR)
 		{
-		  PRINT_AND_LOG_ERR_MSG (msgcat_message
-					 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_BAD_CLASSNAME),
-					 class_name);
 		  goto error_exit;
 		}
 	    }
-	  fprintf (outfp, "\n*** DUMP OF A SPECIFIC HEAP ***\n");
-	  class_dump (thread_p, outfp, dump_records, class_name);
+	  fprintf (outfp, "\n*** DUMP OF SPECIFIC HEAP(S) ***\n");
+	  file_class_dump_specific_heap_file (thread_p, outfp, dump_records, class_name);
 	}
     }
 

@@ -304,7 +304,6 @@ typedef enum
 typedef enum
 {
   DIAGDB_MSG_BAD_OUTPUT = 15,
-  DIAGDB_MSG_BAD_CLASSNAME = 16,
   DIAGDB_MSG_USAGE = 60
 } MSGCAT_DIAGDB_MSG;
 
@@ -1198,7 +1197,7 @@ typedef struct _ha_config
 #define DIAG_OUTPUT_FILE_L                      "output-file"
 #define DIAG_EMERGENCY_S                        11202
 #define DIAG_EMERGENCY_L                        "emergency"
-#define DIAG_CLASS_NAME_S                       'n'
+#define DIAG_CLASS_NAME_S                       'c'
 #define DIAG_CLASS_NAME_L                       "class-name"
 
 /* patch option list */
