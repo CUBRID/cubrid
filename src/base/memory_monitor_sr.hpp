@@ -29,7 +29,9 @@
 #include <unordered_map>
 #include <shared_mutex>
 
+#if !defined(WINDOWS)
 #include "concurrent_unordered_map.h"
+#endif
 #include "memory_monitor_common.hpp"
 
 #if defined(__SVR4)
@@ -90,6 +92,7 @@ namespace cubmem
       inline char *get_metainfo_pos (char *ptr, size_t size);
       inline void make_stat_name (char *buf, const char *file, const int line);
 
+#if !defined(WINDOWS)
     private:
       std::string m_server_name;
       // Entries of m_stat_name_map and m_stat_map will not be deleted
@@ -104,18 +107,27 @@ namespace cubmem
       // And memory_monitor also can't manage some allocations after it is started like allocations at C++ containers(STL),
       // and some C++ allocations occurred at header files.
       const int m_magic_number;
+#endif
   };
 
   extern memory_monitor *mmon_Gl;
 
   inline int memory_monitor::get_target_pos ()
   {
+#if !defined(WINDOWS)
     return m_target_pos;
+#else
+    return 0;
+#endif
   }
 
   inline void memory_monitor::make_stat_name (char *buf, const char *file, const int line)
   {
+#if !defined(WINDOWS)
     sprintf (buf, "%s:%d", file + m_target_pos, line);
+#else
+    return;
+#endif
   }
 
   inline char *memory_monitor::get_metainfo_pos (char *ptr, size_t size)
@@ -130,6 +142,7 @@ namespace cubmem
     // size should not be 0 because of MMON_METAINFO_SIZE
     assert (size > 0);
 
+#if !defined(WINDOWS)
     char *meta_ptr = get_metainfo_pos (ptr, size);
     MMON_METAINFO *metainfo = (MMON_METAINFO *) meta_ptr;
 
@@ -162,16 +175,13 @@ retry:
     // put meta info into the allocated chunk
     metainfo->magic_number = m_magic_number;
     m_meta_alloc_count++;
+#endif
   }
 
   inline void memory_monitor::sub_stat (char *ptr)
   {
-#if defined(WINDOWS)
-    size_t allocated_size = 0;
-    assert (false);
-#else
+#if !defined(WINDOWS)
     size_t allocated_size = malloc_usable_size ((void *)ptr);
-#endif // !WINDOWS
 
     assert (ptr != NULL);
 
@@ -194,6 +204,9 @@ retry:
 	    assert (m_meta_alloc_count >= 0);
 	  }
       }
+#else
+    return;
+#endif
   }
 } //namespace cubmem
 
