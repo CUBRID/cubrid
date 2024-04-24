@@ -1531,6 +1531,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *db_name;
   const char *output_file = NULL;
+  const char *class_name;
   FILE *outfp = NULL;
   bool is_emergency = false;
   DIAGDUMP_TYPE diag;
@@ -1565,13 +1566,17 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
+  class_name = utility_get_option_string_value (arg_map, DIAG_CLASS_NAME_S, 0);
   diag = (DIAGDUMP_TYPE) utility_get_option_int_value (arg_map, DIAG_DUMP_TYPE_S);
 
   if (diag != DIAGDUMP_LOG && utility_get_option_string_table_size (arg_map) != 1)
     {
       goto print_diag_usage;
     }
-
+  if (diag == DIAGDUMP_ALL && class_name != NULL)
+    {
+      goto print_diag_usage;
+    }
   if (check_database_name (db_name))
     {
       goto error_exit;
@@ -1716,28 +1721,28 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP)
     {
       bool dump_records;
-      const char *class_name;
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
-      class_name = utility_get_option_string_value (arg_map, DIAG_CLASS_NAME_S, 0);
+
       if (class_name == NULL)
 	{
-	  /* this dumps the contents of all heaps */
 	  fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
 	  (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
 	}
       else
 	{
-	  /* this dumps the contents of a specific heap for given class name */
+	  if (diag == DIAGDUMP_ALL)
+	    {
+	      goto print_diag_usage;
+	    }
 	  if (!sm_check_system_class_by_name (class_name))
 	    {
-	      /* check if the format of class name is valid */
 	      if (utility_check_class_name (class_name) != NO_ERROR)
 		{
 		  goto error_exit;
 		}
 	    }
-	  fprintf (outfp, "\n*** DUMP OF SPECIFIC HEAP(S) ***\n");
-	  file_class_dump_specific_heap_file (thread_p, outfp, dump_records, class_name);
+	  fprintf (outfp, "\n*** DUMP HEAP OF %s ***\n", class_name);
+	  heap_dump_specific_file (thread_p, outfp, dump_records, class_name);
 	}
     }
 

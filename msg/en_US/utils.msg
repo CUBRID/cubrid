@@ -834,10 +834,7 @@ valid options:\n\
                                 6 dump disk bitmaps\n\
                                 7 dump catalog\n\
                                 8 dump log\n\
-                                9 dump heap / class\n\
-  -c, --class-name=CLASS       name of CLASS; only used in -d 9 option; class name should be full class name\n\
-                               that includes owner name and class name, split by '.';\n\
-                               catalog classes do not need owner name.\n
+                                9 dump heap\n
 
 
 

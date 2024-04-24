@@ -215,8 +215,6 @@ extern DISK_ISVALID file_tracker_check (THREAD_ENTRY * thread_p);
 extern int file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp);
 extern int file_tracker_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 extern int file_tracker_dump_all_heap (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records);
-extern void file_class_dump_specific_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records,
-						const char *class_name);
 extern int file_tracker_dump_all_heap_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 extern int file_tracker_dump_all_btree_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 #if defined (SA_MODE)

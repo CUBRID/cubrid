@@ -554,6 +554,7 @@ extern int heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 					 HEAP_SCANCACHE * scan_cache, int *is_set);
 
 extern void heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records);
+extern void heap_dump_specific_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name);
 extern void heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp, HEAP_CACHE_ATTRINFO * attr_info, bool dump_schema);
 #if defined (CUBRID_DEBUG)
 extern void heap_chnguess_dump (FILE * fp);

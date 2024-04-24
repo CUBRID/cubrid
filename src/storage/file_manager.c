@@ -11057,22 +11057,6 @@ file_tracker_dump_all_heap (THREAD_ENTRY * thread_p, FILE * fp, bool dump_record
 }
 
 /*
- * file_class_dump_specific_heap_file () - dump a specific heap file with class name
- *
- * return            :
- * thread_p (in)     : thread entry
- * fp (in)           : output file
- * dump_records (in) : true to dump records
- * class_name (in)   : name of class to dump
- */
-void
-file_class_dump_specific_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name)
-{
-  /* todo: Fetch HFID of class which corresponds to class_name, and dump heap file by HFID. Will be handled at CBRD-25313 and CBRD-25314. */
-  fprintf (fp, "\n\n*** DUMP A CLASS NAMED %s ***\n\n", class_name);
-}
-
-/*
  * file_tracker_item_dump_heap_capacity () - FILE_TRACK_ITEM_FUNC to dump heap file capacity
  *
  * return            : error code
