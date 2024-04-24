@@ -1730,10 +1730,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
       else
 	{
-	  if (diag == DIAGDUMP_ALL)
-	    {
-	      goto print_diag_usage;
-	    }
+	  assert (diag != DIAGDUMP_ALL);
 	  if (!sm_check_system_class_by_name (class_name))
 	    {
 	      if (utility_check_class_name (class_name) != NO_ERROR)
