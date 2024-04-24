@@ -54,7 +54,7 @@ namespace HL
 
     inline void *malloc (size_t sz)
     {
-#if defined(SERVER_MODE) && !defined(WINDOWS)
+#if defined(SERVER_MODE) && !defined(_MSC_VER)
       if (mmon_is_memory_monitor_enabled ())
 	{
 	  void *p =::malloc (sz + cubmem::MMON_METAINFO_SIZE);
@@ -68,14 +68,14 @@ namespace HL
 	{
 #endif
 	  return::malloc (sz);
-#if defined(SERVER_MODE) && !defined(WINDOWS)
+#if defined(SERVER_MODE) && !defined(_MSC_VER)
 	}
 #endif
     }
 
     inline void free (void *ptr)
     {
-#if defined(SERVER_MODE) && !defined(WINDOWS)
+#if defined(SERVER_MODE) && !defined(_MSC_VER)
       if (mmon_is_memory_monitor_enabled ())
 	{
 	  mmon_sub_stat ((char *) ptr);
