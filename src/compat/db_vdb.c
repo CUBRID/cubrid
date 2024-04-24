@@ -627,9 +627,9 @@ db_compile_statement_local (DB_SESSION * session)
     {
       /* we don't actually have the statement which will be executed and we need to get some information about it from
        * the server */
-      DB_PREPARE_SUBQUERY_INFO *info;
+      DB_PREPARE_SUBQUERY_INFO *subquery_info;
       int i, num_query;
-      int err = do_get_prepared_statement_info (session, stmt_ndx, &num_query, &info);
+      int err = do_get_prepared_statement_info (session, stmt_ndx, &num_query, &subquery_info);
 
       QUERY_ID query_id;
       QFILE_LIST_ID *list_id;
@@ -639,41 +639,13 @@ db_compile_statement_local (DB_SESSION * session)
 	  return err;
 	}
 
-      for (i = 0; i < num_query; i++)
+      /* execute subqueries first */
+      if (subquery_info)
 	{
-	  int k;
-	  DB_VALUE *host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * info[i].host_var_count);
-
-	  if (host_variables == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (DB_VALUE) * info[i].host_var_count);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  for (k = 0; k < info[i].host_var_count; k++)
-	    {
-	      pr_clone_value (&parser->host_variables[info[i].host_var_index[k]], &host_variables[k]);
-	    }
-
-	  err =
-	    execute_query (&info[i].xasl_id, &query_id, info[i].host_var_count, host_variables,
-			   &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
-
-	  free (host_variables);
-
+	  err = do_execute_prepared_subquery (parser, statement, num_query, subquery_info);
 	  if (err != NO_ERROR)
 	    {
-	      if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
-		{
-		  /* set the flag to recompile from it's main query */
-		  statement->info.execute.recompile = 1;
-		  er_clearid ();
-		}
-	      else
-		{
-		  return err;
-		}
+	      return err;
 	    }
 	}
     }
@@ -1673,6 +1645,30 @@ db_get_lock_classes (DB_SESSION * session)
   return (char **) (session->parser->lcks_classes);
 }
 
+static PT_NODE *
+do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  int *err = (int *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
+    {
+      return stmt;
+    }
+
+  if (stmt->info.query.flag.subquery_cached)
+    {
+      *err = do_execute_subquery (parser, stmt);
+      if (*err != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return stmt;
+}
+
 /*
  * db_execute_and_keep_statement_local() - This function executes the SQL
  *    statement identified by the stmt argument and returns the result.
@@ -1820,6 +1816,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   if (pt_is_allowed_result_cache ())
     {
       parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &statement->flag, NULL, NULL);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
     }
 
   if (statement->node_type == PT_PREPARE_STATEMENT)
@@ -2366,24 +2366,19 @@ static DB_PREPARE_SUBQUERY_INFO *
 set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int num_query)
 {
   int i, q = num_query;
+  int alloc_size = sizeof (DB_PREPARE_SUBQUERY_INFO) * (num_query / 4 + 1) * 4;
 
-  if (info == NULL)
+  if (num_query % 4 == 0)	/* need to realloc subquery info every 4 */
     {
-      info = (DB_PREPARE_SUBQUERY_INFO *) malloc (sizeof (DB_PREPARE_SUBQUERY_INFO) * 4);
-      if (info == NULL)
+      DB_PREPARE_SUBQUERY_INFO *alloc = (DB_PREPARE_SUBQUERY_INFO *) realloc (info, alloc_size);
+
+      if (alloc == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_PREPARE_SUBQUERY_INFO) * 4);
 	  goto err_exit;
 	}
-    }
-  else if (num_query % 4 == 0)	/* need to realloc subquery info every 4 */
-    {
-      info = (DB_PREPARE_SUBQUERY_INFO *) realloc (info, sizeof (DB_PREPARE_SUBQUERY_INFO) * 4);
-      if (info == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_PREPARE_SUBQUERY_INFO) * 4);
-	  goto err_exit;
-	}
+
+      info = alloc;
     }
 
   XASL_ID_COPY (&info[q].xasl_id, query->xasl_id);
@@ -2405,11 +2400,11 @@ set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int
 err_exit:
   if (info != NULL)
     {
-      if (info->host_var_index != NULL)
+      for (i = 0; i < num_query; i++)
 	{
-	  free (info->host_var_index);
+	  free_and_init (info[i].host_var_index);
 	}
-      free (info);
+      free_and_init (info);
     }
 
   return NULL;
@@ -2435,10 +2430,13 @@ do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *
     {
       prepare_info->subquery_info =
 	set_prepare_subquery_info (stmt, prepare_info->subquery_info, prepare_info->subquery_num);
-      if (prepare_info->subquery_info != NULL)
+      if (prepare_info->subquery_info == NULL)
 	{
-	  prepare_info->subquery_num++;
+	  *continue_walk = PT_STOP_WALK;
+	  return stmt;
 	}
+
+      prepare_info->subquery_num++;
     }
 
   return stmt;
@@ -2462,7 +2460,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   const char *const statement_literal = (char *) statement->info.prepare.statement->info.value.data_value.str->bytes;
   int err = NO_ERROR;
   char *stmt_info = NULL;
-  int info_len = 0;
+  int i, info_len = 0;
   assert (statement->node_type == PT_PREPARE_STATEMENT);
   db_init_prepare_info (&prepare_info);
 
@@ -2578,12 +2576,20 @@ cleanup:
 
   if (prepare_info.into_list != NULL)
     {
-      int i = 0;
       for (i = 0; i < prepare_info.into_count; i++)
 	{
 	  free_and_init (prepare_info.into_list[i]);
 	}
       free_and_init (prepare_info.into_list);
+    }
+
+  if (prepare_info.subquery_info != NULL)
+    {
+      for (i = 0; i < prepare_info.subquery_num; i++)
+	{
+	  free_and_init (prepare_info.subquery_info[i].host_var_index);
+	}
+      free_and_init (prepare_info.subquery_info);
     }
 
   return err;

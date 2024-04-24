@@ -150,9 +150,9 @@ extern int do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 /* for subquery result-cache */
 extern int do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
-extern int do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag);
-extern PT_NODE *do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
-extern PT_NODE *do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
+extern int do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query,
+					 DB_PREPARE_SUBQUERY_INFO * info);
 extern bool pt_is_allowed_result_cache (void);
 
 extern int do_update (PARSER_CONTEXT * parser, PT_NODE * statement);

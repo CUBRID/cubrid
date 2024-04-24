@@ -143,6 +143,7 @@ static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * syn
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
+static PT_NODE *do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
 
@@ -3466,6 +3467,31 @@ end:
   return error;
 }
 
+PT_NODE *
+do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  int *err = (int *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
+    {
+      return stmt;
+    }
+
+  if ((stmt->info.query.is_subquery == PT_IS_SUBQUERY || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY)
+      && stmt->info.query.correlation_level == 0 && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
+    {
+      *err = do_prepare_subquery (parser, stmt);
+      if (*err != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return stmt;
+}
+
 /*
  * do_prepare_statement() - Prepare a given statement for execution
  *   return: Error code
@@ -3490,7 +3516,11 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* All CTE and sub-queries included in the query must be prepared first. */
   if (pt_is_allowed_result_cache ())
     {
-      parser_walk_tree (parser, statement, do_prepare_subquery_pre, NULL, NULL, NULL);
+      parser_walk_tree (parser, statement, do_prepare_subquery_pre, &err, NULL, NULL);
+      if (err != NO_ERROR)
+	{
+	  goto err_exit;
+	}
     }
 
   switch (statement->node_type)
@@ -3521,6 +3551,7 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
+err_exit:
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_prepare_statement() */
 
@@ -14218,74 +14249,22 @@ static PT_NODE *
 pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PARSER_CONTEXT *query = (PARSER_CONTEXT *) arg;
+  int i = parser->host_var_count;
 
-  if (node->node_type == PT_HOST_VAR)
+  if (node->node_type == PT_HOST_VAR && node->info.host_var.index >= 0)
     {
-      if (node->info.host_var.index >= 0)
+      /* to exclude already setting host variable */
+      if (parser->sub_host_var_index[node->info.host_var.index] < 0)
 	{
-	  pr_clone_value (&query->host_variables[node->info.host_var.index],
-			  &parser->host_variables[node->info.host_var.index]);
-	  parser->sub_host_var_index[node->info.host_var.index] = node->info.host_var.index;
+	  parser->sub_host_var_index[i] = node->info.host_var.index;
+	  node->info.host_var.index = parser->host_var_count;
+	  parser->host_var_count++;
 	}
     }
 
   *continue_walk = PT_CONTINUE_WALK;
 
   return node;
-}
-
-PT_NODE *
-do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
-{
-  int query_flag = *(int *) arg;
-
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
-    {
-      return stmt;
-    }
-
-  if (stmt->info.query.flag.subquery_cached)
-    {
-      int err;
-
-      err = do_execute_subquery (parser, stmt, query_flag);
-      if (err != NO_ERROR)
-	{
-	  *continue_walk = PT_STOP_WALK;
-	}
-    }
-
-  return stmt;
-}
-
-PT_NODE *
-do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
-{
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
-    {
-      return stmt;
-    }
-
-  if (stmt->info.query.hint & PT_HINT_QUERY_CACHE)
-    {
-      if ((stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY || stmt->info.query.is_subquery == PT_IS_SUBQUERY)
-	  && stmt->info.query.correlation_level == 0)
-	{
-	  int err;
-
-	  err = do_prepare_subquery (parser, stmt);
-	  if (err != NO_ERROR)
-	    {
-	      *continue_walk = PT_STOP_WALK;
-	    }
-	}
-    }
-
-  return stmt;
 }
 
 /*
@@ -14514,27 +14493,21 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
  * do_prepare_subquery () - prepare subquery statements for query cache
  * return : Error code
  * parser (in)	  : parser context
- * stmt (in) : statement to prepare
+ * stmt (in) : subquery statement to prepare
  */
 int
 do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  int error = NO_ERROR;
+  int err = NO_ERROR;
   PARSER_CONTEXT context;
-  int var_count;
+  int i, var_count;
 
   context = *parser;
 
+  context.host_var_count = 0;
   var_count = parser->host_var_count + parser->auto_param_count;
 
   stmt->info.query.flag.subquery_cached = 1;
-
-  context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
-  if (context.host_variables == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
 
   context.sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
   if (context.sub_host_var_index == NULL)
@@ -14543,14 +14516,84 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
+  /* to ininitialize empty index */
+  for (i = 0; i < var_count; i++)
+    {
+      context.sub_host_var_index[i] = -1;
+    }
   parser_walk_tree (&context, stmt, pt_sub_host_vars_index, parser, NULL, NULL);
 
-  stmt->sub_host_var_count = var_count;
+  stmt->sub_host_var_count = context.host_var_count;
   stmt->sub_host_var_index = context.sub_host_var_index;
 
-  error = do_prepare_select (&context, stmt);
+  err = do_prepare_select (&context, stmt);
 
-  return error;
+  return err;
+}
+
+/*
+ * do_execute_prepared_subquery () - execute CTE statements as prepared statement for result-cache
+ * return : Error code
+ * parser (in)	 : parser context
+ * num_query : the number of subqueries
+ * info (in) : prepare info. for subquery 
+ */
+int
+do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query, DB_PREPARE_SUBQUERY_INFO * info)
+{
+  int i, k, err = NO_ERROR;
+  DB_VALUE *host_variables;
+  QUERY_ID query_id;
+  QFILE_LIST_ID *list_id;
+
+  for (i = 0; i < num_query; i++)
+    {
+      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * info[i].host_var_count);
+
+      if (host_variables == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (DB_VALUE) * info[i].host_var_count);
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto clear_and_exit;
+	}
+
+      for (k = 0; k < info[i].host_var_count; k++)
+	{
+	  pr_clone_value (&parser->host_variables[info[i].host_var_index[k]], &host_variables[k]);
+	}
+
+      err =
+	execute_query (&info[i].xasl_id, &query_id, info[i].host_var_count, host_variables,
+		       &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
+
+      free (host_variables);
+
+      if (err != NO_ERROR)
+	{
+	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+	    {
+	      /* set the flag to recompile from it's main query */
+	      stmt->info.execute.recompile = 1;
+	      er_clearid ();
+	      err = NO_ERROR;
+	    }
+	  break;
+	}
+    }
+
+clear_and_exit:
+  /* clear prepare info. */
+  if (info)
+    {
+      for (i = 0; i < num_query; i++)
+	{
+	  free_and_init (info[i].host_var_index);
+	}
+      free_and_init (info);
+    }
+
+  return err;
 }
 
 /*
@@ -14561,13 +14604,13 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
  * query_flag     : query flag for execution
  */
 int
-do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int query_flag)
+do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   QUERY_ID query_id;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables;
   CACHE_TIME clt_cache_time;
-  int err, i, flag = query_flag & ~EXECUTE_QUERY_WITH_COMMIT;
+  int err, i, flag = RESULT_CACHE_REQUIRED;
 
   CACHE_TIME_RESET (&clt_cache_time);
 
@@ -14585,12 +14628,21 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int query_flag)
     }
 
   err =
-    execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id,
-		   flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
+    execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id, flag, &clt_cache_time,
+		   &stmt->cache_time);
+
+  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+    {
+      /* retry the statement once */
+      if (do_prepare_statement (parser, stmt) == NO_ERROR)
+	{
+	  err = do_execute_statement (parser, stmt);
+	}
+    }
 
   free (host_variables);
 
-  return NO_ERROR;
+  return err;
 }
 
 /*
