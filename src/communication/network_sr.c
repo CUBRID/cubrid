@@ -1133,12 +1133,14 @@ net_server_start (const char *server_name)
       goto end;
     }
 
+#if !defined(WINDOWS)
   if (mmon_initialize (server_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize memory_monitor\n");
       status = -1;
       goto end;
     }
+#endif /* !WINDOWS */
 
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
@@ -1186,7 +1188,9 @@ net_server_start (const char *server_name)
 
   cubthread::finalize ();
   cubthread::internal_tasks_worker_pool::finalize ();
+#if !defined(WINDOWS)
   mmon_finalize ();
+#endif /* !WINDOWS */
   er_final (ER_ALL_FINAL);
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();

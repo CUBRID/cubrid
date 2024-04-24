@@ -36,6 +36,7 @@
  * memory_wrapper.hpp         CANNOT INCLUDE      |     CANNOT INCLUDE        |   END OF INCLUDE
  */
 
+#if !defined(WINDOWS)
 #ifdef SERVER_MODE
 // TODO: The usage of operator new encompasses various additional methods beyond basic usage.
 // However, as CUBRID does not currently utilize such additional methods, they are not overloaded.
@@ -63,5 +64,6 @@ inline void operator delete (void *ptr, size_t sz) noexcept
 
 #define new new(__FILE__, __LINE__)
 #endif // SERVER_MODE
+#endif // !WINDOWS
 
 #endif // _MEMORY_WRAPPER_HPP_

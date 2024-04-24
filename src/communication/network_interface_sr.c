@@ -11201,6 +11201,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
+#if !defined(WINDOWS)
   MMON_SERVER_INFO server_info;
 
   mmon_aggregate_server_info (server_info);
@@ -11271,4 +11272,13 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
     }
   db_private_free_and_init (thread_p, buffer_a);
+#else // WINDOWS
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+
+  // send error
+  ptr = or_pack_int (reply, 0);
+  ptr = or_pack_int (ptr, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+#endif // !WINDOWS
 }

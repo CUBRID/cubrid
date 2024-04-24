@@ -20,6 +20,7 @@
  * memory_monitor_sr.cpp - Implementation of memory monitor module
  */
 
+#if !defined(WINDOWS)
 #include <cassert>
 #include <cstring>
 #include <algorithm>
@@ -31,7 +32,6 @@ namespace cubmem
   std::atomic<uint64_t> m_stat_map[8192] = {};
 
   memory_monitor::memory_monitor (const char *server_name)
-#if !defined(WINDOWS)
     : m_stat_name_map {4096},
       m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")},
@@ -53,14 +53,10 @@ namespace cubmem
 	m_target_pos = 0;
       }
   }
-#else
-  {}
-#endif
 
   size_t memory_monitor::get_allocated_size (char *ptr)
   {
     size_t allocated_size = 0;
-#if !defined(WINDOWS)
     allocated_size = malloc_usable_size ((void *)ptr);
 
     if (allocated_size <= MMON_METAINFO_SIZE)
@@ -76,13 +72,12 @@ namespace cubmem
       {
 	allocated_size = (size_t) metainfo->allocated_size - MMON_METAINFO_SIZE;
       }
-#endif
+
     return allocated_size;
   }
 
   void memory_monitor::aggregate_server_info (MMON_SERVER_INFO &server_info)
   {
-#if !defined(WINDOWS)
     strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
     server_info.total_mem_usage = m_total_mem_usage.load ();
     server_info.total_metainfo_mem_usage = m_meta_alloc_count * MMON_METAINFO_SIZE;
@@ -101,7 +96,6 @@ namespace cubmem
       return stat_pair1.second > stat_pair2.second;
     };
     std::sort (server_info.stat_info.begin (), server_info.stat_info.end (), comp);
-#endif
   }
 
   void memory_monitor::finalize_dump ()
@@ -136,3 +130,4 @@ namespace cubmem
     fclose (outfile_fp);
   }
 }
+#endif // !WINDOWS

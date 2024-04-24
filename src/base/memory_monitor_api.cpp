@@ -20,6 +20,7 @@
  * memory_monitor_api.cpp - Implementation of memory monitor APIs
  */
 
+#if !defined(WINDOWS)
 #include <cassert>
 
 #include "error_manager.h"
@@ -42,7 +43,6 @@ int mmon_initialize (const char *server_name)
 
   if (prm_get_bool_value (PRM_ID_ENABLE_MEMORY_MONITORING))
     {
-#if !defined(WINDOWS)
       mmon_Gl = new (std::nothrow) memory_monitor (server_name);
       if (mmon_Gl == nullptr)
 	{
@@ -50,7 +50,6 @@ int mmon_initialize (const char *server_name)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  return error;
 	}
-#endif // !WINDOWS
     }
   return error;
 }
@@ -76,3 +75,4 @@ void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
 {
   mmon_Gl->aggregate_server_info (server_info);
 }
+#endif // !WINDOWS
