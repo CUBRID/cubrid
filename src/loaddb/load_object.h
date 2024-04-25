@@ -63,7 +63,6 @@ class print_output;
 #define close      _close
 #define read       _read
 #define write      _write
-#define lseek      _lseeki64
 #define O_RDONLY   _O_RDONLY
 #define O_WRONLY   _O_WRONLY
 #define O_APPEND   _O_APPEND
