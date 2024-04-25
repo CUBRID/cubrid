@@ -120,7 +120,7 @@ namespace cubmem
 
   inline void memory_monitor::make_stat_name (char *buf, const char *file, const int line)
   {
-    assert (strlen (file + m_target_pos) + Integer.toString (line).length() + 1 <= MMON_MAX_NAME_LENGTH);
+    assert (strlen (file + m_target_pos) + std::to_string (line).length() + 1 <= MMON_MAX_NAME_LENGTH);
     snprintf (buf, MMON_MAX_NAME_LENGTH, "%s:%d", file + m_target_pos, line);
   }
 
