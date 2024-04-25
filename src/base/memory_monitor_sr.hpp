@@ -153,6 +153,7 @@ retry:
       {
 	std::pair<tbb::concurrent_unordered_map<std::string, int>::iterator, bool> insert_success;
 	metainfo->stat_id = m_stat_name_map.size ();
+	assert (metainfo->stat_id < MMON_MAP_RESERVE_SIZE);
 	// stat_id starts with 0
 	insert_success = m_stat_name_map.insert (std::pair <std::string, int> (stat_name, metainfo->stat_id));
 	if (!insert_success.second)
