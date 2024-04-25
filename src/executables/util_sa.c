@@ -1573,10 +1573,12 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     {
       goto print_diag_usage;
     }
+
   if (diag == DIAGDUMP_ALL && class_name != NULL)
     {
       goto print_diag_usage;
     }
+
   if (check_database_name (db_name))
     {
       goto error_exit;
@@ -1730,7 +1732,6 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
       else
 	{
-	  assert (diag != DIAGDUMP_ALL);
 	  if (!sm_check_system_class_by_name (class_name))
 	    {
 	      if (utility_check_class_name (class_name) != NO_ERROR)
@@ -1739,7 +1740,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		}
 	    }
 	  fprintf (outfp, "\n*** DUMP HEAP OF %s ***\n", class_name);
-	  heap_dump_specific_file (thread_p, outfp, dump_records, class_name);
+	  heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
 	}
     }
 
