@@ -803,7 +803,7 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
   error = au_change_class_owner (class_mop, owner_mop);
   if (error != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error);
+      ASSERT_ERROR ();
       db_make_error (return_val, error);
     }
 }
