@@ -688,7 +688,7 @@ open_object_file (TEXT_OUTPUT * obj_out, extract_context & ctxt, const char *out
   get_output_file_name (ctxt, output_dirname, class_name, seqno, out_fname);
 
 #if defined(SUPPORT_THREAD_UNLOAD)
-  obj_out->fd = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+  obj_out->fd = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, OPEN_MODE_VALUE);
   if (obj_out->fd == INVALID_FILE_NO)
 #else
   obj_out->fp = fopen_ex (out_fname, "wb");
@@ -809,7 +809,7 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
 
   if (thread_count > 1)
     {
-      newfd = open (new_fname, O_WRONLY | O_APPEND, 0666);
+      newfd = open (new_fname, O_WRONLY | O_APPEND, OPEN_MODE_VALUE);
       if (newfd == INVALID_FILE_NO)
 	{
 	  return false;
@@ -822,7 +822,7 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
   for (i = 1; i < thread_count; i++)
     {
       get_output_file_name (ctxt, output_dirname, class_name, i + 1, old_fname);
-      oldfd = open (old_fname, O_RDONLY, 0666);
+      oldfd = open (old_fname, O_RDONLY, OPEN_MODE_VALUE);
       if (oldfd == INVALID_FILE_NO)
 	{
 	  free (buf);

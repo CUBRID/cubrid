@@ -162,7 +162,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   split_schema_files = utility_get_option_string_value (arg_map, UNLOAD_SPLIT_SCHEMA_FILES_S, 0);
   is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
-#if defined(SUPPORT_THREAD_UNLOAD)
+#if !defined (WINDOWS) && defined(SUPPORT_THREAD_UNLOAD)
   if (datafile_per_class)
     {
       if (do_objects)
