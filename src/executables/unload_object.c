@@ -830,8 +830,13 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
 	}
       //struct stat stbuf;
       //if (stat (old_fname, &stbuf) == -1)      
+#if defined(WINDOWS)
+      length = _lseeki64 (oldfd, 0, SEEK_END);
+      _lseeki64 (oldfd, 0, SEEK_SET);
+#else
       length = lseek64 (oldfd, 0, SEEK_END);
       lseek64 (oldfd, 0, SEEK_SET);
+#endif
 
       offset = 0;
       while (offset < length)
