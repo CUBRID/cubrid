@@ -12,6 +12,7 @@ test_defaults: &test_defaults
         shell: /bin/bash
         environment:
           _JAVA_OPTIONS: -Xmx1g
+          BRANCH_TESTCASES: feature/plcsql-p1
         command: |
           ulimit -c 1
           /entrypoint.sh checkout
@@ -102,7 +103,7 @@ jobs:
   build-windows:
     machine:
       image: 'windows-server-2019-vs2019:2022.08.1'
-      resource_class: windows.large
+      resource_class: windows.medium
       shell: powershell.exe -ExecutionPolicy Bypass
     environment:
       - CMAKE_GENERATOR: "Visual Studio 16 2019"
@@ -148,4 +149,6 @@ workflows:
           requires:
             - build
 
-      - build-windows
+      - build-windows:
+          requires:
+            - build
