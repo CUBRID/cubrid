@@ -479,7 +479,7 @@ check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type)
    * this potentially can be called during initialization when we don't
    * actually have any users yet.  If so, assume its ok
    */
-  if (au_get_cache_index () < 0)
+  if (Au_cache.get_cache_index () < 0)
     {
       return NO_ERROR;
     }

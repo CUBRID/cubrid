@@ -488,7 +488,7 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
   current_user = dba_user;
-  au_set_cache_index (index);
+  Au_cache.set_cache_index (index);
 
   set_user (dba_user);
 

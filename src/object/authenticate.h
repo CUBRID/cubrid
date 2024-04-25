@@ -73,46 +73,44 @@ extern authenticate_context *au_ctx;
 // Instead of using global variables, use authenticate_context's member variables/functions
 
 // Variables
-#define Au_root         au_ctx->root
-#define Au_user         au_ctx->current_user
-#define Au_dba_user     au_ctx->dba_user
-#define Au_public_user  au_ctx->public_user
-#define Au_disable      au_ctx->disable_auth_check
+#define Au_root                         au_ctx->root
+#define Au_user                         au_ctx->current_user
+#define Au_dba_user                     au_ctx->dba_user
+#define Au_public_user                  au_ctx->public_user
+#define Au_disable                      au_ctx->disable_auth_check
 
-#define Au_authorizations_class au_ctx->authorizations_class
-#define Au_authorization_class  au_ctx->authorization_class
-#define Au_user_class           au_ctx->user_class
-#define Au_password_class       au_ctx->password_class
+#define Au_authorizations_class         au_ctx->authorizations_class
+#define Au_authorization_class          au_ctx->authorization_class
+#define Au_user_class                   au_ctx->user_class
+#define Au_password_class               au_ctx->password_class
 
-#define Au_user_name            au_ctx->user_name
+#define Au_user_name                    au_ctx->user_name
 
-#define Au_user_password au_ctx->user_password
-#define Au_user_password_des_oldstyle au_ctx->user_password_des_oldstyle
-#define Au_user_password_sha1 au_ctx->user_password_sha1
-#define Au_user_password_sha2_512 au_ctx->user_password_sha2_512
+#define Au_user_password                au_ctx->user_password
+#define Au_user_password_des_oldstyle   au_ctx->user_password_des_oldstyle
+#define Au_user_password_sha1           au_ctx->user_password_sha1
+#define Au_user_password_sha2_512       au_ctx->user_password_sha2_512
 
-#define Au_cache        au_ctx->caches
+#define Au_cache                        au_ctx->caches
 
 /* Functions */
-#define au_install      au_ctx->install
-#define au_start        au_ctx->start
+#define au_install                      au_ctx->install
+#define au_start                        au_ctx->start
 
-#define au_get_public_user_name au_ctx->get_public_user_name
-#define au_get_user_class_name  au_ctx->get_user_class_name
+#define au_get_public_user_name         au_ctx->get_public_user_name
+#define au_get_user_class_name          au_ctx->get_user_class_name
 
-#define au_set_user     au_ctx->set_user
-#define au_set_password au_ctx->set_password
+#define au_set_user                     au_ctx->set_user
+#define au_set_password                 au_ctx->set_password
+#define au_set_password_encrypt         au_ctx->set_password
 
 
-#define au_disable_passwords au_ctx->disable_passwords
+#define au_disable_passwords            au_ctx->disable_passwords
 
-#define au_get_current_user_name    au_ctx->get_current_user_name
+#define au_get_current_user_name        au_ctx->get_current_user_name
 
-#define au_check_user au_ctx->check_user
-#define au_has_user_name au_ctx->has_user_name
-
-#define au_get_cache_index au_ctx->caches.get_cache_index
-#define au_set_cache_index au_ctx->caches.set_cache_index
+#define au_check_user                   au_ctx->check_user
+#define au_has_user_name                au_ctx->has_user_name
 
 #define AU_SET_USER     au_set_user
 
