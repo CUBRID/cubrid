@@ -573,7 +573,7 @@ start:
 	  tout->count += nbytes;
 	}
       else
-	{			/* need more buffer */          
+	{			/* need more buffer */
 	  CHECK_PRINT_ERROR (text_print_flush (tout));
 	  goto start;		/* retry */
 	}
