@@ -14519,7 +14519,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 void
 heap_dump_specific_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name)
 {
-  /* todo: Fetch HFID of class which corresponds to class_name, and dump heap file by HFID. Will be handled at CBRD-25313 and CBRD-25314. */
+  /* TODO: Fetch HFID of class which corresponds to class_name, and dump heap file by HFID. Will be handled at CBRD-25313 and CBRD-25314. */
   fprintf (fp, "\n\n*** DUMP A CLASS NAMED %s ***\n\n", class_name);
 }
 
