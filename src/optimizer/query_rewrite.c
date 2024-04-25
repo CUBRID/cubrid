@@ -3702,13 +3702,23 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 	      continue;		/* curr_pk_spec->next */
 	    }
 
+	  /* Do not use next_pk_spec in the for-loop because curr_pk_spec may change. */
+	  next_pk_spec = curr_pk_spec->next;
+
+	  /* safe guard */
+	  if (prev_pk_spec == NULL
+	      && (next_pk_spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
+		  || next_pk_spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER))
+	    {
+	      assert (false);
+	      continue;		/* give up */
+	    }
+
 	  qo_reduce_predicate_for_parent_spec (parser, query, &reduce_reference_info);
 
 	  assert (reduce_reference_info.join_pred_point_list == NULL);
 	  assert (reduce_reference_info.parent_pred_point_list == NULL);
 	  assert (reduce_reference_info.append_not_null_pred_list == NULL);
-
-	  next_pk_spec = curr_pk_spec->next;
 
 	  if (prev_pk_spec != NULL)
 	    {
@@ -3717,6 +3727,7 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 	  else
 	    {
 	      query->info.query.q.select.from = next_pk_spec;
+	      next_pk_spec->info.spec.join_type = PT_JOIN_NONE;
 	    }
 
 	  /* reset location */
