@@ -14507,6 +14507,23 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
   fprintf (fp, "\n\n*** END OF DUMP FOR HEAP FILE ***\n\n");
 }
 
+#if defined (SA_MODE)
+/*
+ * heap_dump_heap_file () - dump a specific heap file with class name
+ *
+ * return            :
+ * thread_p (in)     : thread entry
+ * fp (in)           : output file
+ * dump_records (in) : true to dump records
+ * class_name (in)   : name of class to dump
+ */
+void
+heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name)
+{
+  /* TODO: Fetch HFID of class which corresponds to class_name, and dump heap file by HFID. Will be handled at CBRD-25313 and CBRD-25314. */
+}
+#endif
+
 /*
  * heap_dump_capacity () - dump heap file capacity
  *
