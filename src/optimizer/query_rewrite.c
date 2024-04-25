@@ -3707,8 +3707,7 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 
 	  /* safe guard */
 	  if (prev_pk_spec == NULL
-	      && (next_pk_spec->info.spec.join_type == PT_JOIN_NATURAL
-		  || next_pk_spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
+	      && (next_pk_spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
 		  || next_pk_spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER
 		  || next_pk_spec->info.spec.join_type == PT_JOIN_FULL_OUTER))
 	    {
@@ -3730,6 +3729,7 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 	    {
 	      query->info.query.q.select.from = next_pk_spec;
 	      next_pk_spec->info.spec.join_type = PT_JOIN_NONE;
+	      next_pk_spec->info.spec.natural = false;
 	    }
 
 	  /* reset location */
