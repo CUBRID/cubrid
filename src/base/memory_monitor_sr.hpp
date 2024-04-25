@@ -178,7 +178,7 @@ retry:
 
 	if (metainfo->magic_number == m_magic_number)
 	  {
-	    assert (metainfo->stat_id >= 0 && metainfo->stat_id < m_stat_map.size());
+	    assert (metainfo->stat_id >= 0 && metainfo->stat_id < MMON_MAP_RESERVE_SIZE);
 	    assert (m_total_mem_usage >= metainfo->allocated_size && m_stat_map[metainfo->stat_id] >= metainfo->allocated_size);
 	    assert (metainfo->allocated_size == allocated_size);
 
