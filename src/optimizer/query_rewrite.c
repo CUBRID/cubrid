@@ -3728,6 +3728,7 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 	  else
 	    {
 	      query->info.query.q.select.from = next_pk_spec;
+
 	      next_pk_spec->info.spec.join_type = PT_JOIN_NONE;
 	      next_pk_spec->info.spec.natural = false;
 	    }
