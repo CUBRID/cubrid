@@ -46,11 +46,11 @@ namespace cubmem
 
     if (pos != std::string::npos)
       {
-	      m_target_pos = pos + target.length ();
+	m_target_pos = pos + target.length ();
       }
     else
       {
-	      m_target_pos = 0;
+	m_target_pos = 0;
       }
   }
 
@@ -61,7 +61,7 @@ namespace cubmem
 
     if (allocated_size <= MMON_METAINFO_SIZE)
       {
-	      return allocated_size;
+	return allocated_size;
       }
 
     char *meta_ptr = get_metainfo_pos (ptr, allocated_size);
@@ -70,7 +70,7 @@ namespace cubmem
 
     if (metainfo->magic_number == m_magic_number)
       {
-	      allocated_size = (size_t) metainfo->allocated_size - MMON_METAINFO_SIZE;
+	allocated_size = (size_t) metainfo->allocated_size - MMON_METAINFO_SIZE;
       }
 
     return allocated_size;
@@ -86,8 +86,8 @@ namespace cubmem
 
     for (const auto &[stat_name, stat_id] : m_stat_name_map)
       {
-	      // m_stat_map[stat_id] means memory usage
-	      server_info.stat_info.emplace_back (stat_name, m_stat_map[stat_id].load ());
+	// m_stat_map[stat_id] means memory usage
+	server_info.stat_info.emplace_back (stat_name, m_stat_map[stat_id].load ());
       }
 
     // This funciton is for sorting the vector in descending order by memory usage

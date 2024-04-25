@@ -258,7 +258,7 @@ TEST_CASE ("Test mmon_add_stat w/ multithreads", "")
       size_t size = 10 * (i + 1) + MMON_METAINFO_SIZE;
       test_mem_in_the_scope_multithread[i] = (char *) malloc (size);
       threads.emplace_back (alloc_mem_and_request_add_stat, test_mem_in_the_scope_multithread[i],
-			                      test_filename.c_str (), size, std::ref (allocated_size[i]));
+			    test_filename.c_str (), size, std::ref (allocated_size[i]));
     }
 
   for (auto &t : threads)

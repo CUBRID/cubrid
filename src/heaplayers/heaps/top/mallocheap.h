@@ -56,20 +56,20 @@ namespace HL
     {
 #if defined(SERVER_MODE) && !defined(_MSC_VER)
       if (mmon_is_memory_monitor_enabled ())
-	      {
-	        void *p =::malloc (sz + cubmem::MMON_METAINFO_SIZE);
-	        if (p != NULL)
-	          {
-	            mmon_add_stat ((char *) p, sz + cubmem::MMON_METAINFO_SIZE, __FILE__, __LINE__);
-	          }
-	        return p;
-	      }
+	{
+	  void *p =::malloc (sz + cubmem::MMON_METAINFO_SIZE);
+	  if (p != NULL)
+	    {
+	      mmon_add_stat ((char *) p, sz + cubmem::MMON_METAINFO_SIZE, __FILE__, __LINE__);
+	    }
+	  return p;
+	}
       else
-	      {
+	{
 #endif
-	        return::malloc (sz);
+	  return::malloc (sz);
 #if defined(SERVER_MODE) && !defined(_MSC_VER)
-	      }
+	}
 #endif
     }
 
@@ -77,9 +77,9 @@ namespace HL
     {
 #if defined(SERVER_MODE) && !defined(_MSC_VER)
       if (mmon_is_memory_monitor_enabled ())
-	      {
-	        mmon_sub_stat ((char *) ptr);
-	      }
+	{
+	  mmon_sub_stat ((char *) ptr);
+	}
 #endif
       ::free (ptr);
     }
