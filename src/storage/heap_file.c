@@ -14524,18 +14524,19 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   OID class_oid;
   LC_FIND_CLASSNAME status;
   HFID hfid;
-  
-  status = xlocator_find_class_oid(thread_p, class_name, &class_oid, S_LOCK);
-  if (status != LC_CLASSNAME_EXIST){
-    return;
-  }
 
-  error_code = heap_hfid_cache_get(thread_p, &class_oid, &hfid, NULL, NULL);
+  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, S_LOCK);
+  if (status != LC_CLASSNAME_EXIST)
+    {
+      return;
+    }
+
+  error_code = heap_hfid_cache_get (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error_code != NO_ERROR)
-  {
-    return;
-  }
-  heap_dump(thread_p, fp, &hfid, dump_records);
+    {
+      return;
+    }
+  heap_dump (thread_p, fp, &hfid, dump_records);
 
 }
 #endif
