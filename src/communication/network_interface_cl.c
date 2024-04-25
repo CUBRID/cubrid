@@ -444,7 +444,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
     net_client_request_recv_copyarea (NET_SERVER_LC_FETCHALL, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea,
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
-				      (modular_val != -1)
+				      (modular_val != UNLOAD_MODULAR_UNDEFINED)
 #else
 				      false
 #endif

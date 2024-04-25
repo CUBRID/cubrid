@@ -2875,7 +2875,7 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
 
   /* Assume that the next object can fit in one page */
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
-  copyarea_length = (thread_p->unload_modular == -1) ? DB_PAGESIZE : (DB_PAGESIZE * 200);
+  copyarea_length = (thread_p->unload_modular == UNLOAD_MODULAR_UNDEFINED) ? DB_PAGESIZE : (DB_PAGESIZE * 200);
 #else
   copyarea_length = DB_PAGESIZE;
 #endif

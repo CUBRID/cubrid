@@ -2756,7 +2756,7 @@ locator_fun_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose, int (*fun) (MOBJ
       error_code =
 	locator_fetch_all (hfid, &lock, fetch_version_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
-			   , -1, -1
+			   , UNLOAD_MODULAR_UNDEFINED, UNLOAD_MODULAR_UNDEFINED
 #endif
 	);
       if (error_code != NO_ERROR)

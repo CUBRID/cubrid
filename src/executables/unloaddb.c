@@ -66,8 +66,8 @@ int thread_count = 0;
 bool check_fetch_time = false;	// ctshim,  test only
 int skip_write_time = 0;	// ctshim
 int varchar_alloc_size = 0;
-int g_modular = -1;
-int g_accept = -1;
+int g_modular = UNLOAD_MODULAR_UNDEFINED;
+int g_accept = UNLOAD_MODULAR_UNDEFINED;
 #endif
 
 int page_size = 4096;

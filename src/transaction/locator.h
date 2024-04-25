@@ -264,6 +264,11 @@ struct lc_copyarea_desc
   RECDES *recdes;
 };
 
+
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+#define UNLOAD_MODULAR_UNDEFINED  (-1)
+#endif
+
 /*
  * Fetching multiple objects (vector fetch)
  */

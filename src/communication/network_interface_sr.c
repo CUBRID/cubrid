@@ -843,8 +843,8 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   int content_size;
   int num_objs = 0;
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
-  int modular_val = -2;
-  int accept_val = -2;
+  int modular_val = UNLOAD_MODULAR_UNDEFINED;
+  int accept_val = UNLOAD_MODULAR_UNDEFINED;
   int server_endian = (__BYTE_ORDER == __LITTLE_ENDIAN) ? 1 : ((__BYTE_ORDER == __BIG_ENDIAN) ? 2 : 0);
   int client_endian;
   int encode_endian = 0;
@@ -866,7 +866,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     {
       encode_endian = 1;
     }
-  else if (modular_val == -1)
+  else if (modular_val == UNLOAD_MODULAR_UNDEFINED)
     {
       encode_endian = 1;
     }

@@ -188,8 +188,8 @@ namespace cubthread
     tran_entries[THREAD_TS_FPCACHE] = NULL;
 
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
-    unload_modular = -1;
-    unload_accept = -1;
+    unload_modular = UNLOAD_MODULAR_UNDEFINED;
+    unload_accept = UNLOAD_MODULAR_UNDEFINED;
 #endif
 
 #if !defined (NDEBUG)
