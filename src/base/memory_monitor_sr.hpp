@@ -65,7 +65,11 @@ namespace cubmem
   // 8 byte size + 4 byte stat + 4 byte magicnumber
   static constexpr int MMON_METAINFO_SIZE = 16;
 
-  extern std::atomic<uint64_t> m_stat_map[8192];
+  // Because of performance optimization, we have to reserve the size of the map(or mapping array).
+  // We think that the number of entry of map(or mapping array) cannot over 8K.
+  static constexpr int MMON_MAP_RESERVE_SIZE = 8192;
+
+  extern std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE];
 
   class memory_monitor
   {
@@ -116,7 +120,8 @@ namespace cubmem
 
   inline void memory_monitor::make_stat_name (char *buf, const char *file, const int line)
   {
-    sprintf (buf, "%s:%d", file + m_target_pos, line);
+    assert (strlen (file + m_target_pos) + Integer.toString (line).length() + 1 <= MMON_MAX_NAME_LENGTH);
+    snprintf (buf, MMON_MAX_NAME_LENGTH, "%s:%d", file + m_target_pos, line);
   }
 
   inline char *memory_monitor::get_metainfo_pos (char *ptr, size_t size)
@@ -131,8 +136,7 @@ namespace cubmem
     // size should not be 0 because of MMON_METAINFO_SIZE
     assert (size > 0);
 
-    char *meta_ptr = get_metainfo_pos (ptr, size);
-    MMON_METAINFO *metainfo = (MMON_METAINFO *) meta_ptr;
+    MMON_METAINFO *metainfo = (MMON_METAINFO *) get_metainfo_pos (ptr, size);
 
     metainfo->allocated_size = (uint64_t) size;
     m_total_mem_usage += metainfo->allocated_size;
@@ -144,21 +148,19 @@ retry:
     if (search != m_stat_name_map.end ())
       {
 	metainfo->stat_id = search->second;
-	m_stat_map[metainfo->stat_id] += metainfo->allocated_size;
       }
     else
       {
 	std::pair<tbb::concurrent_unordered_map<std::string, int>::iterator, bool> insert_success;
 	metainfo->stat_id = m_stat_name_map.size ();
 	// stat_id starts with 0
-	std::pair <std::string, int> entry (stat_name, metainfo->stat_id);
-	insert_success = m_stat_name_map.insert (entry);
+	insert_success = m_stat_name_map.insert (std::pair <std::string, int> (stat_name, metainfo->stat_id));
 	if (!insert_success.second)
 	  {
 	    goto retry;
 	  }
-	m_stat_map[metainfo->stat_id] += metainfo->allocated_size;
       }
+    m_stat_map[metainfo->stat_id] += metainfo->allocated_size;
 
     // put meta info into the allocated chunk
     metainfo->magic_number = m_magic_number;
@@ -169,18 +171,15 @@ retry:
   {
     size_t allocated_size = malloc_usable_size ((void *)ptr);
 
-    assert (ptr != NULL);
-
     if (allocated_size >= MMON_METAINFO_SIZE)
       {
-	char *meta_ptr = get_metainfo_pos (ptr, allocated_size);
-	MMON_METAINFO *metainfo = (MMON_METAINFO *) meta_ptr;
+	MMON_METAINFO *metainfo = (MMON_METAINFO *) get_metainfo_pos (ptr, allocated_size);
 
 	if (metainfo->magic_number == m_magic_number)
 	  {
-	    assert ((metainfo->stat_id >= 0 && metainfo->stat_id < m_stat_map.size()));
-	    assert (m_stat_map[metainfo->stat_id] >= metainfo->allocated_size);
-	    assert (m_total_mem_usage >= metainfo->allocated_size);
+	    assert (metainfo->stat_id >= 0 && metainfo->stat_id < m_stat_map.size());
+	    assert (m_total_mem_usage >= metainfo->allocated_size && m_stat_map[metainfo->stat_id] >= metainfo->allocated_size);
+	    assert (metainfo->allocated_size == allocated_size);
 
 	    m_total_mem_usage -= metainfo->allocated_size;
 	    m_stat_map[metainfo->stat_id] -= metainfo->allocated_size;
@@ -210,6 +209,8 @@ inline void mmon_add_stat (char *ptr, const size_t size, const char *file, const
 
 inline void mmon_sub_stat (char *ptr)
 {
+  assert (ptr != NULL);
+
   cubmem::mmon_Gl->sub_stat (ptr);
 }
 #endif // !WINDOWS

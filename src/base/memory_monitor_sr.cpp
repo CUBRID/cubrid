@@ -29,10 +29,10 @@
 
 namespace cubmem
 {
-  std::atomic<uint64_t> m_stat_map[8192] = {};
+  std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE] = {};
 
   memory_monitor::memory_monitor (const char *server_name)
-    : m_stat_name_map {4096},
+    : m_stat_name_map {MMON_MAP_RESERVE_SIZE},
       m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")},
       m_total_mem_usage {0},
