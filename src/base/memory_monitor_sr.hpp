@@ -47,6 +47,8 @@ extern "C" size_t malloc_usable_size (void *);
 #endif
 #endif
 
+#define MMON_MAX_NAME_LENGTH 255
+
 typedef struct mmon_metainfo MMON_METAINFO;
 struct mmon_metainfo
 {
