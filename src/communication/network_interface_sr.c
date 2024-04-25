@@ -821,7 +821,11 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   int success;
   char *ptr;
   int fetch_version_type;
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 5) + OR_OID_SIZE) a_reply;
+#else
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 4) + OR_OID_SIZE) a_reply;
+#endif
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *desc_ptr = NULL;
   int desc_size;
@@ -831,6 +835,9 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
   int modular_val = -2;
   int accept_val = -2;
+  int server_endian = (__BYTE_ORDER == __LITTLE_ENDIAN) ? 1 : ((__BYTE_ORDER == __BIG_ENDIAN) ? 2 : 0);
+  int client_endian;
+  int encode_endian = 0;
 #endif
 
   ptr = or_unpack_hfid (request, &hfid);
@@ -843,6 +850,16 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
   ptr = or_unpack_int (ptr, &modular_val);
   ptr = or_unpack_int (ptr, &accept_val);
+  ptr = or_unpack_int (ptr, &client_endian);
+
+  if (client_endian != server_endian || server_endian == 0)
+    {
+      encode_endian = 1;
+    }
+  else if (modular_val == -1)
+    {
+      encode_endian = 1;
+    }
 #endif
 
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
@@ -862,7 +879,16 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   if (copy_area != NULL)
     {
+#if defined(SUPPORT_THREAD_UNLOAD)	// ctshim
+      extern int locator_send_copy_area2 (LC_COPYAREA * copyarea, char **contents_ptr, int *contents_length,
+					  char **desc_ptr, int *desc_length);
+      if (encode_endian == 0)
+	num_objs = locator_send_copy_area2 (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      else
+	num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+#else
       num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+#endif
     }
   else
     {
@@ -877,6 +903,9 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_pack_int (reply, num_objs);
   ptr = or_pack_int (ptr, desc_size);
   ptr = or_pack_int (ptr, content_size);
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+  ptr = or_pack_int (ptr, encode_endian);
+#endif
   ptr = or_pack_lock (ptr, lock);
   ptr = or_pack_int (ptr, nobjects);
   ptr = or_pack_int (ptr, nfetched);
@@ -894,6 +923,12 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       locator_free_copy_area (copy_area);
     }
 
+#if defined(SUPPORT_THREAD_UNLOAD)	// ctshim
+  if (encode_endian == 0)
+    {
+      return;
+    }
+#endif
   if (desc_ptr)
     {
       free_and_init (desc_ptr);

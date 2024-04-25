@@ -344,7 +344,7 @@ extern int net_client_request3 (int request, char *argbuf, int argsize, char *re
 #endif
 
 extern int net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					     LC_COPYAREA ** reply_copy_area);
+					     LC_COPYAREA ** reply_copy_area, bool is_unloaddb);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int net_client_request_recv_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
 					       char *databuf, int datasize, char *replydata, INT64 * replydatasize_ptr);

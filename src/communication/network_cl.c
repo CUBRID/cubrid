@@ -2302,7 +2302,7 @@ net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length
  */
 int
 net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				  LC_COPYAREA ** reply_copy_area)
+				  LC_COPYAREA ** reply_copy_area, bool is_unloaddb)
 {
   unsigned int rc;
   int size;
@@ -2355,6 +2355,13 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
   reply = or_unpack_int (reply, &num_objs);
   reply = or_unpack_int (reply, &packed_desc_size);
   reply = or_unpack_int (reply, &content_size);
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+  int decode_endian = 1;
+  if (request == NET_SERVER_LC_FETCHALL)
+    {
+      reply = or_unpack_int (reply, &decode_endian);
+    }
+#endif
 
   if (packed_desc_size == 0 && content_size == 0)
     {
@@ -2381,7 +2388,17 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 		}
 	      else
 		{
-		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
+#if defined(SUPPORT_THREAD_UNLOAD)	// ctshim
+		  //if(is_unloaddb) 
+		  if (decode_endian == 0)
+		    {
+		      extern void locator_unpack_copy_area_descriptor2 (int num_objs, LC_COPYAREA * copyarea,
+									char *desc, int packed_desc_size);
+		      locator_unpack_copy_area_descriptor2 (num_objs, *reply_copy_area, packed_desc, packed_desc_size);
+		    }
+		  else
+#endif
+		    locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
 		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 		  free_and_init (packed_desc);
 		}

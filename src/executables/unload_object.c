@@ -633,12 +633,10 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
   return true;
 }
 
-
-static bool
-open_object_file (TEXT_OUTPUT * obj_out, extract_context & ctxt, const char *output_dirname, const char *class_name,
-		  int seqno)
+static void
+get_output_file_name (extract_context & ctxt, const char *output_dirname, const char *class_name, int seqno,
+		      char *name_buf)
 {
-  char out_fname[PATH_MAX];
 #if defined(SUPPORT_THREAD_UNLOAD)
   char tmp_name[DB_MAX_IDENTIFIER_LENGTH];
   char *name_ptr = tmp_name;
@@ -669,15 +667,25 @@ open_object_file (TEXT_OUTPUT * obj_out, extract_context & ctxt, const char *out
   if (class_name && *class_name)
     {
 #if defined(SUPPORT_THREAD_UNLOAD)
-      snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix, name_ptr, OBJECT_SUFFIX);
+      snprintf (name_buf, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix, name_ptr, OBJECT_SUFFIX);
 #else
-      snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix, class_name, OBJECT_SUFFIX);
+      snprintf (name_buf, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix, class_name, OBJECT_SUFFIX);
 #endif
     }
   else
     {
-      snprintf (out_fname, PATH_MAX - 1, "%s/%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX);
+      snprintf (name_buf, PATH_MAX - 1, "%s/%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX);
     }
+}
+
+static bool
+open_object_file (TEXT_OUTPUT * obj_out, extract_context & ctxt, const char *output_dirname, const char *class_name,
+		  int seqno)
+{
+  char out_fname[PATH_MAX];
+
+  out_fname[0] = '\0';
+  get_output_file_name (ctxt, output_dirname, class_name, seqno, out_fname);
 
 #if defined(USE_LOW_IO_FUNC)
   obj_out->fd = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
@@ -761,6 +769,97 @@ fulsh_all_object_files (bool is_close)
     }
 
   return bret;
+}
+
+
+
+//  Merge and delete multiple divided files
+static bool
+merge_and_remove_files (extract_context & ctxt, const char *output_dirname, const char *class_name)
+{
+  int i, alloc_sz;
+  int newfd, oldfd;
+  char new_fname[PATH_MAX];
+  char old_fname[PATH_MAX];
+  char *buf = NULL;
+  off_t length, offset;
+  ssize_t size, r_size, w_size;
+
+  if (thread_count <= 0)
+    {
+      return true;
+    }
+
+
+#if 1				// time check
+  struct timeval startTime, endTime;
+  double diffTime;
+
+  gettimeofday (&startTime, NULL);
+#endif
+
+  // rename
+  old_fname[0] = new_fname[0] = '\0';
+  get_output_file_name (ctxt, output_dirname, class_name, 1, old_fname);
+  get_output_file_name (ctxt, output_dirname, class_name, -1, new_fname);
+  if (rename (old_fname, new_fname) != 0)
+    {
+      return false;
+    }
+
+  if (thread_count > 1)
+    {
+      newfd = open (new_fname, O_WRONLY | O_APPEND, 0666);
+      if (newfd == INVALID_FILE_NO)
+	{
+	  return false;
+	}
+    }
+
+  alloc_sz = 16 * 1024 * 1000;
+  buf = (char *) malloc (alloc_sz);
+
+  for (i = 1; i < thread_count; i++)
+    {
+      get_output_file_name (ctxt, output_dirname, class_name, i + 1, old_fname);
+      oldfd = open (old_fname, O_RDONLY, 0666);
+      if (oldfd == INVALID_FILE_NO)
+	{
+	  free (buf);
+	  return false;
+	}
+      //struct stat stbuf;
+      //if (stat (old_fname, &stbuf) == -1)      
+      length = lseek (oldfd, 0, SEEK_END);
+      lseek (oldfd, 0, SEEK_SET);
+
+      offset = 0;
+      while (offset < length)
+	{
+	  size = length - offset;
+	  if (size > alloc_sz)
+	    size = alloc_sz;
+
+	  r_size = read (oldfd, buf, size);
+	  w_size = write (newfd, buf, size);
+	  offset += size;
+	}
+
+      close (oldfd);
+      unlink (old_fname);
+    }
+
+  close (newfd);
+  free (buf);
+
+#if 1
+  gettimeofday (&endTime, NULL);
+  diffTime = (endTime.tv_sec - startTime.tv_sec) + ((double) (endTime.tv_usec - startTime.tv_usec) / 1000000);
+  printf ("Merge time= %.6f s\n", diffTime);
+#endif
+
+
+  return true;
 }
 #endif // #if defined(SUPPORT_THREAD_UNLOAD)
 
@@ -1354,6 +1453,15 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 		      status = 1;
 		      goto end;
 		    }
+
+#if defined(SUPPORT_THREAD_UNLOAD)
+		  //  Merge and delete multiple divided files
+		  if (merge_and_remove_files (ctxt, output_dirname, sm_ch_name ((MOBJ) class_ptr)) == false)
+		    {
+		      status = 1;
+		      goto end;
+		    }
+#endif
 		}
 
 	      if (ret_val != NO_ERROR)
