@@ -202,6 +202,7 @@ namespace cubmethod
     signature.assign (sig->method_name);
     auth.assign (sig->auth_name);
     num_args = sig->num_method_args;
+    result_type = sig->result_type;
     if (num_args > 0)
       {
 	arg_pos.resize (num_args);
@@ -214,8 +215,6 @@ namespace cubmethod
 	    arg_mode[i] = sig->arg_info->arg_mode[i];
 	    arg_type[i] = sig->arg_info->arg_type[i];
 	  }
-
-	result_type = sig->arg_info->result_type;
       }
 
     transaction_control = tc;

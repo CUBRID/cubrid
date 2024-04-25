@@ -46,6 +46,7 @@ method_sig_node::method_sig_node (method_sig_node &&obj)
   method_type = obj.method_type;
   method_arg_pos = obj.method_arg_pos;
   num_method_args = obj.num_method_args;
+  result_type = obj.result_type;
 
   obj.method_name = nullptr;
   obj.auth_name = nullptr;
@@ -61,7 +62,6 @@ method_sig_node::method_sig_node (method_sig_node &&obj)
     {
       arg_info->arg_mode = obj.arg_info->arg_mode;
       arg_info->arg_type = obj.arg_info->arg_type;
-      arg_info->result_type = obj.arg_info->result_type;
 
       obj.arg_info->arg_mode = nullptr;
       obj.arg_info->arg_type = nullptr;
@@ -118,6 +118,8 @@ method_sig_node::method_sig_node (const method_sig_node &obj)
       class_name = nullptr;
     }
 
+  result_type = obj.result_type;
+
   if (obj.arg_info != nullptr)
     {
       if (num_method_args > 0)
@@ -135,7 +137,6 @@ method_sig_node::method_sig_node (const method_sig_node &obj)
 	  arg_info->arg_mode = nullptr;
 	  arg_info->arg_type = nullptr;
 	}
-      arg_info->result_type = obj.arg_info->result_type;
     }
 }
 
@@ -156,6 +157,7 @@ method_sig_node::pack (cubpacking::packer &serializator) const
 
   serializator.pack_int (method_type);
   serializator.pack_int (num_method_args);
+  serializator.pack_int (result_type);
 
   for (int i = 0; i < num_method_args + 1; i++)
     {
@@ -183,7 +185,6 @@ method_sig_node::pack (cubpacking::packer &serializator) const
 	{
 	  serializator.pack_int (arg_info->arg_type[i]);
 	}
-      serializator.pack_int (arg_info->result_type);
     }
   else
     {
@@ -204,9 +205,9 @@ method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t 
       size += serializator.get_packed_c_string_size (auth_name, strlen (auth_name), size);
     }
 
-  /* method type and num_method_args */
-  size += serializator.get_packed_int_size (size);
-  size += serializator.get_packed_int_size (size);
+  size += serializator.get_packed_int_size (size); /* method type */
+  size += serializator.get_packed_int_size (size); /* num_method_args */
+  size += serializator.get_packed_int_size (size); /* result_type */
 
   for (int i = 0; i < num_method_args + 1; i++)
     {
@@ -227,7 +228,6 @@ method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t 
 	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_mode[i] */
 	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_type[i] */
 	}
-      size += serializator.get_packed_int_size (size); /* method_sig->arg_info->result_type */
     }
 
   return size;
@@ -281,6 +281,8 @@ method_sig_node::operator= (const method_sig_node &obj)
 	  method_arg_pos = nullptr;
 	}
 
+      result_type = obj.result_type;
+
       if (obj.class_name != nullptr)
 	{
 	  int class_name_len = strlen (obj.class_name);
@@ -304,7 +306,6 @@ method_sig_node::operator= (const method_sig_node &obj)
 		  arg_info->arg_type[n] = obj.arg_info->arg_type[n];
 		}
 	    }
-	  arg_info->result_type = obj.arg_info->result_type;
 	}
       else
 	{
@@ -341,6 +342,7 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
   deserializator.unpack_int (type);
   method_type = static_cast<METHOD_TYPE> (type);
   deserializator.unpack_int (num_method_args);
+  deserializator.unpack_int (result_type);
 
   method_arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args + 1));
   for (int n = 0; n < num_method_args + 1; n++)
@@ -387,7 +389,6 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
 	  arg_info->arg_type = nullptr;
 	}
 
-      deserializator.unpack_int (arg_info->result_type);
     }
   else
     {

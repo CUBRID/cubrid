@@ -2553,6 +2553,8 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
 
   num_args = method_sig->num_method_args;
 
+  ptr = or_unpack_int (ptr, &method_sig->result_type);
+
   method_sig->method_arg_pos = (int *) stx_alloc_struct (thread_p, sizeof (int) * (num_args + 1));
   if (method_sig->method_arg_pos == NULL)
     {
@@ -2627,8 +2629,6 @@ stx_build_method_arg_info (THREAD_ENTRY * thread_p, char *ptr, METHOD_ARG_INFO *
     {
       ptr = or_unpack_int (ptr, &method_arg_info->arg_type[n]);
     }
-
-  ptr = or_unpack_int (ptr, &method_arg_info->result_type);
 
   return ptr;
 

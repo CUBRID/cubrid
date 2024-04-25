@@ -1262,6 +1262,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	sig->next = nullptr;
 	sig->num_method_args = sig_num_args;
 	sig->method_type = METHOD_TYPE_JAVA_SP;
+	sig->result_type = sig_result_type;
 
 	// method_name
 	const char *method_name = db_get_string (&method);
@@ -1351,8 +1352,6 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	    sig->arg_info->arg_mode = nullptr;
 	    sig->arg_info->arg_type = nullptr;
 	  }
-
-	sig->arg_info->result_type = sig_result_type;
 
 	sig_list.num_methods = 1;
       }
