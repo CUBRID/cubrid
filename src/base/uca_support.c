@@ -2619,7 +2619,7 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
   ce_index = 0;
   state = 0;
   error_found = false;
-  while (strlen (str) > 0 && !error_found)
+  while (*str && !error_found)
     {
       int result = 0;
       int val;

@@ -843,7 +843,8 @@ lockdb: 데이터베이스의 lock 정보 출력\n\
 사용법: %1$s lockdb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -912,7 +913,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음\n
+  -y, --overwrite              클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음\n\
+  -j, --jni                    JNI 사용을 위해 정적 로딩 영역에 클래스 또는 Jar를 추가함\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 '%1$s'을 열 수 없습니다\n

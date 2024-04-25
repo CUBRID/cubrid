@@ -7560,9 +7560,16 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	  goto error;
 	}
 
-      while ((int) strlen (path_tmp) + 1 > len_result_path)
+      bool is_resize = false;
+      int need_size = (int) strlen (path_tmp) + 1;
+      while (need_size > len_result_path)
 	{
 	  len_result_path += SYS_CONNECT_BY_PATH_MEM_STEP;
+	  is_resize = true;
+	}
+
+      if (is_resize)
+	{
 	  db_private_free_and_init (thread_p, result_path);
 	  result_path = (char *) db_private_alloc (thread_p, sizeof (char) * len_result_path);
 	  if (result_path == NULL)

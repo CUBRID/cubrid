@@ -153,7 +153,8 @@ static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *
 static void pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf);
 static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_for, DB_VALUE * upper_limit,
 						bool * has_limit);
-static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val);
+static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val,
+					  bool add_offset);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class);
 static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for,
@@ -7374,14 +7375,15 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
  *    SELECT * FROM
  *      (SELECT IF( VC.vclass_name = '',
  *                  (SELECT COUNT(*) FROM <view_name> LIMIT 1),
- *                  VC.vclass_name )
- *                AS View_,
+ *                  LOWER(VC.owner_name) + '.' + VC.vclass_name )
+ *                AS VIEW,
  *              IF( VC.comment IS NULL or VC.comment = '',
  *                  VC.vclass_def,
  *                  VC.vclass_def + ' COMMENT=''' + VC.comment + '''' )
- *                AS Create_View
+ *                AS [CREATE VIEW]
  *              FROM db_vclass VC
- *              WHERE VC.vclass_name=<view_name>)
+ *              WHERE VC.vclass_name=<lower_view_name> AND
+ *                    VC.owner_name=<upper_owner_name>)
  *     show_create_view;
  *
  *  Note : The first column in query (name of view = VC.vclass_name) is wrapped
@@ -7404,6 +7406,9 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   PT_NODE *node = NULL;
   PT_NODE *from_item = NULL;
   char lower_view_name[DB_MAX_IDENTIFIER_LENGTH];
+  char owner_name[DB_MAX_USER_LENGTH];
+  char upper_owner_name[DB_MAX_USER_LENGTH];
+  bool is_system_class_or_vclass = false;
 
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
@@ -7423,19 +7428,44 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
 
   intl_identifier_lower (view_identifier->info.name.original, lower_view_name);
 
+  sm_qualifier_name (lower_view_name, owner_name, DB_MAX_USER_LENGTH);
+  intl_identifier_upper (owner_name, upper_owner_name);
+
+  if (sm_check_system_class_by_name (lower_view_name) == true)
+    {
+      is_system_class_or_vclass = true;
+    }
+
   /* ------ SELECT list ------- */
   {
-    /* View name : IF( VC.vclass_name = '', (SELECT COUNT(*) FROM <view_name> LIMIT 1), VC.vclass_name ) AS View */
+    /* View name : IF( VC.vclass_name = '',
+     *                 (SELECT COUNT(*) FROM <view_name> LIMIT 1),
+     *                 LOWER(VC.owner_name) + '.' + VC.vclass_name )
+     *               AS View
+     */
     PT_NODE *if_true_node = NULL;
     PT_NODE *if_false_node = NULL;
     PT_NODE *pred = NULL;
     PT_NODE *view_field = NULL;
+    PT_NODE *concat_arg = NULL, *concat_sep = NULL;
+    PT_NODE *qualifier = NULL;
 
     if_true_node = pt_make_dummy_query_check_table (parser, lower_view_name);
     if_false_node = pt_make_dotted_identifier (parser, "VC.vclass_name");
+
+    /* LOWER(VC.owner_name) + '.' + VC.vclass_name */
+    if (!is_system_class_or_vclass)
+      {
+	concat_arg = pt_make_dotted_identifier (parser, "VC.owner_name");
+	concat_arg = parser_make_expression (parser, PT_LOWER, concat_arg, NULL, NULL);
+	concat_sep = pt_make_string_value (parser, ".");
+	qualifier = parser_make_expression (parser, PT_CONCAT, concat_arg, concat_sep, NULL);
+	if_false_node = parser_make_expression (parser, PT_CONCAT, qualifier, if_false_node, NULL);
+      }
+
     pred = pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", "");
 
-    view_field = pt_make_if_with_expressions (parser, pred, if_true_node, if_false_node, "View");
+    view_field = pt_make_if_with_expressions (parser, pred, if_true_node, if_false_node, "VIEW");
     node->info.query.q.select.list = parser_append_node (view_field, node->info.query.q.select.list);
   }
 
@@ -7460,7 +7490,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
     rhs = pt_make_pred_name_string_val (parser, PT_EQ, "VC.comment", "");
     pred = parser_make_expression (parser, PT_OR, lhs, rhs, NULL);
 
-    create_view_field = pt_make_if_with_expressions (parser, pred, if_true_node, if_false_node, "Create View");
+    create_view_field = pt_make_if_with_expressions (parser, pred, if_true_node, if_false_node, "CREATE VIEW");
 
     node->info.query.q.select.list = parser_append_node (create_view_field, node->info.query.q.select.list);
   }
@@ -7470,13 +7500,24 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
 
   /* ------ SELECT ... WHERE ------- */
   {
-    PT_NODE *where_item = NULL;
-    where_item =
+    PT_NODE *where_item1 = NULL, *where_item2 = NULL;
+
+    /* VC.vclass_name = <lower_view_name> */
+    where_item1 =
       pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", sm_remove_qualifier_name (lower_view_name));
+
+    if (!is_system_class_or_vclass)
+      {
+	/* VC.owner_name = <upper_owner_name> */
+	where_item2 = pt_make_pred_name_string_val (parser, PT_EQ, "VC.owner_name", upper_owner_name);
+
+	/* where_item1: where_item1 AND where_item2 */
+	where_item1 = parser_make_expression (parser, PT_AND, where_item1, where_item2, NULL);
+      }
 
     /* WHERE list should be empty */
     assert (node->info.query.q.select.where == NULL);
-    node->info.query.q.select.where = parser_append_node (where_item, node->info.query.q.select.where);
+    node->info.query.q.select.where = parser_append_node (where_item1, node->info.query.q.select.where);
   }
 
   return node;
@@ -8094,7 +8135,7 @@ pt_split_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
     }
 
   /* if we have hints that refers globally to the join statement then we skip the split */
-  if ((delete_stmt->info.delete_.hint & PT_HINT_ORDERED && delete_stmt->info.delete_.ordered_hint == NULL)
+  if ((delete_stmt->info.delete_.hint & PT_HINT_ORDERED)
       || ((delete_stmt->info.delete_.hint & PT_HINT_USE_NL) && delete_stmt->info.delete_.use_nl_hint == NULL)
       || ((delete_stmt->info.delete_.hint & PT_HINT_USE_IDX) && delete_stmt->info.delete_.use_idx_hint == NULL)
       || ((delete_stmt->info.delete_.hint & PT_HINT_USE_MERGE) && delete_stmt->info.delete_.use_merge_hint == NULL))
@@ -9503,7 +9544,7 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
  *  specified as LIMIT :offset, :row_count this function returns :offset + :row_count)
  */
 static int
-pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val)
+pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val, bool add_offset)
 {
   int save_set_host_var;
   TP_DOMAIN *domainp = NULL;
@@ -9572,7 +9613,14 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
 	}
 
       /* add range to current limit */
-      db_make_bigint (limit_val, db_get_bigint (limit_val) + db_get_bigint (&range));
+      if (add_offset)
+	{
+	  db_make_bigint (limit_val, db_get_bigint (limit_val) + db_get_bigint (&range));
+	}
+      else
+	{
+	  db_make_bigint (limit_val, db_get_bigint (&range));
+	}
     }
 
 cleanup:
@@ -9594,7 +9642,7 @@ cleanup:
  * limit_val (in/out) : limit value
  */
 int
-pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * limit_val)
+pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * limit_val, bool add_offset)
 {
   assert_release (limit_val != NULL);
 
@@ -9607,7 +9655,7 @@ pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * l
 
   if (query->info.query.limit)
     {
-      return pt_get_query_limit_from_limit (parser, query->info.query.limit, limit_val);
+      return pt_get_query_limit_from_limit (parser, query->info.query.limit, limit_val, add_offset);
     }
 
   if (query->info.query.orderby_for != NULL)
@@ -9623,6 +9671,35 @@ pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * l
     }
 
   return NO_ERROR;
+}
+
+/*
+ * pt_get_query_limit_from_query () - get the limit value from a query
+ * return : error code or NO_ERROR
+ * parser (in)	      : parser context
+ * query (in)	      : query
+ */
+DB_BIGINT
+pt_get_query_limit_from_query (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  DB_VALUE limit_val;
+
+  if (pt_get_query_limit_value (parser, query, &limit_val, false) != NO_ERROR)
+    {
+      /* remove error which is occured in this function */
+      if (pt_has_error (parser))
+	{
+	  pt_reset_error (parser);
+	  parser->flag.has_internal_error = 0;
+	}
+      return 0;
+    }
+  else if (DB_IS_NULL (&limit_val))
+    {
+      return 0;
+    }
+
+  return db_get_bigint (&limit_val);
 }
 
 /*
@@ -9665,7 +9742,7 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query
   save_set_host_var = parser->flag.set_host_var;
   parser->flag.set_host_var = 1;
 
-  if (pt_get_query_limit_value (parser, query, &limit_val) != NO_ERROR)
+  if (pt_get_query_limit_value (parser, query, &limit_val, true) != NO_ERROR)
     {
       goto end;
     }
@@ -10166,7 +10243,7 @@ pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser, PT_NODE * stateme
       return false;
     }
 
-  if (pt_get_query_limit_value (parser, statement, &limit_val) != NO_ERROR)
+  if (pt_get_query_limit_value (parser, statement, &limit_val, true) != NO_ERROR)
     {
       val = 0;
     }
@@ -10756,8 +10833,9 @@ pt_get_name_with_qualifier_removed (const char *name)
 const char *
 pt_get_name_without_current_user_name (const char *name)
 {
-  char *dot = NULL;
-  char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *dot = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH];
+  int qualifier_name_len;
   const char *current_schema_name = NULL;
   const char *object_name = NULL;
   int error = NO_ERROR;
@@ -10767,10 +10845,8 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
-  assert (strlen (name) < DB_MAX_IDENTIFIER_LENGTH);
-  strcpy (name_copy, name);
-
-  dot = strchr (name_copy, '.');
+  /* Find the ending position of the user-specified name. */
+  dot = strchr (name, '.');
 
   /* If the name is not a user-specified name, it is returned as is. */
   if (dot == NULL)
@@ -10782,17 +10858,28 @@ pt_get_name_without_current_user_name (const char *name)
       return name;
     }
 
+  /* Length of user-specified name. */
+  qualifier_name_len = STATIC_CAST (int, dot - name);
+
+  /* If it exceeds DB_MAX_USER_LENGTH, it is not a user-specified name. */
+  if (qualifier_name_len >= DB_MAX_USER_LENGTH)
+    {
+      return name;
+    }
+
+  /* Copy the user-specified name to the buffer for comparison with the current schema name. */
+  memcpy (qualifier_name, name, qualifier_name_len);
+  qualifier_name[qualifier_name_len] = '\0';
+
   current_schema_name = sc_current_schema_name ();
 
-  dot[0] = '\0';
-
-  if (intl_identifier_casecmp (name_copy, current_schema_name) == 0)
+  if (intl_identifier_casecmp (qualifier_name, current_schema_name) == 0)
     {
       /*
        * e.g.        name: current_schema_name.object_name
        *      object_name: object_name
        */
-      object_name = strchr (name, '.') + 1;
+      object_name = dot + 1;
     }
   else
     {

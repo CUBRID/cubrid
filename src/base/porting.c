@@ -2258,36 +2258,6 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
     }
 }
 
-char *
-trim (char *str)
-{
-  char *p;
-  char *s;
-
-  if (str == NULL)
-    return (str);
-
-  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'); s++)
-    ;
-  if (*s == '\0')
-    {
-      *str = '\0';
-      return (str);
-    }
-
-  /* *s must be a non-white char */
-  for (p = s; *p != '\0'; p++)
-    ;
-  for (p--; *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'; p--)
-    ;
-  *++p = '\0';
-
-  if (s != str)
-    memmove (str, s, strlen (s) + 1);
-
-  return (str);
-}
-
 int
 parse_int (int *ret_p, const char *str_p, int base)
 {

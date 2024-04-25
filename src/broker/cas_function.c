@@ -188,7 +188,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   gettimeofday (&end_tran_begin, NULL);
 
-  err_code = ux_end_tran ((char) tran_type, false);
+  err_code = ux_end_tran ((char) tran_type, false, false);
 
   if ((tran_type == CCI_TRAN_ROLLBACK) && (req_info->client_version < CAS_MAKE_VER (8, 2, 0)))
     {
@@ -670,9 +670,15 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	}
       else
 	{
+#if defined(CAS_FOR_CGW)
+	  HIDE_PWD_INFO t_pwd_info;
+	  INIT_HIDE_PASSWORD_INFO (&t_pwd_info);
+	  cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &t_pwd_info);
+#else
 	  assert (((DB_SESSION *) srv_handle->session)->parser);
 	  PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
 	  cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &psr->hide_pwd_info);
+#endif
 	}
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
@@ -766,13 +772,18 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 			      exec_func_name, srv_h_id);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-
+#if defined(CAS_FOR_CGW)
+	      HIDE_PWD_INFO t_pwd_info;
+	      INIT_HIDE_PASSWORD_INFO (&t_pwd_info);
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &t_pwd_info);
+#else
 	      assert (srv_handle->session);
 	      assert (((DB_SESSION *) srv_handle->session)->parser);
 	      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
 
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
 					       &psr->hide_pwd_info);
+#endif
 	      bind_value_log (&query_start_time, bind_value_index, argc, argv, param_mode_size, param_mode,
 			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
 	    }
@@ -2108,10 +2119,6 @@ fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   cas_log_write (0, true, "con_close");
   net_buf_cp_int (net_buf, 0, NULL);
 
-  if (req_info->driver_info[DRIVER_INFO_CLIENT_TYPE] != CAS_CLIENT_SERVER_SIDE_JDBC)
-    {
-      logddl_free (true);
-    }
   return FN_CLOSE_CONN;
 }
 

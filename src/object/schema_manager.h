@@ -36,7 +36,7 @@
 #include "work_space.h"		/* for MOP */
 #include "class_object.h"	/* for SM_CLASS */
 #include "schema_template.h"	/* template interface */
-#include "schema_system_catalog.hpp" /* for comparing system catalog name */
+#include "schema_system_catalog.hpp"	/* for comparing system catalog name */
 #include "trigger_manager.h"	/* for TR_EVENT_TYPE */
 #include "tde.h"
 
@@ -218,6 +218,7 @@ extern bool sm_has_indexes (MOBJ class_);
 /* Interpreter support functions */
 extern char *sm_downcase_name (const char *name, char *buf, int buf_size);
 extern char *sm_user_specified_name (const char *name, char *buf, int buf_size);
+extern char *sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size);
 extern char *sm_qualifier_name (const char *name, char *buf, int buf_size);
 extern const char *sm_remove_qualifier_name (const char *name);
 extern MOP sm_find_class (const char *name);

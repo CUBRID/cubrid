@@ -845,7 +845,8 @@ lockdb: データベースのロック情報を出力\n\
 使い方: %1$s lockdb [オプション] <データベース名>\n\
 \n\
 オプション:\n\
-  -o, --output-file=FILE       出力メッセージをセーブするファイル; デフォルト: なし\n
+  -o, --output-file=FILE       出力メッセージをセーブするファイル; デフォルト: なし\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -914,7 +915,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              クラスファイルがもう存在したらオーバーライトする。; デフォルト: オーバーライトしない\n
+  -y, --overwrite              クラスファイルがもう存在したらオーバーライトする。; デフォルト: オーバーライトしない\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 出力ファイル「%1$s」が開けません。\n

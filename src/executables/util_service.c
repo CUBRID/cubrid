@@ -809,7 +809,7 @@ proc_execute_internal (const char *file, const char *args[], bool wait_child, bo
       else
 	{
 	  k = 0;
-	  for (j = 0; j < strlen (args[i]); j++)
+	  for (j = 0; args[i][j] != '\0'; j++)
 	    {
 	      if (args[i][j] == '"')
 		{

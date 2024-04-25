@@ -1378,6 +1378,8 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_PUSH_PRED  0x200000000ULL	/* do not push predicates */
 #define  PT_HINT_NO_MERGE  0x400000000ULL	/* do not merge view or in-line view */
 #define  PT_HINT_NO_ELIMINATE_JOIN  0x800000000ULL	/* do not eliminate join */
+#define  PT_HINT_SAMPLING_SCAN  0x1000000000ULL	/* SELECT sampling data instead of full data */
+#define  PT_HINT_LEADING  0x2000000000ULL	/* force specific table to join left-to-right */
 
 /* Codes for error messages */
 typedef enum
@@ -1439,7 +1441,9 @@ typedef enum
   PT_CHANGE_TABLE_COMMENT,
   PT_CHANGE_COLUMN_COMMENT,
   PT_CHANGE_INDEX_COMMENT,
-  PT_CHANGE_INDEX_STATUS
+  PT_CHANGE_INDEX_STATUS,
+  PT_ADD_MEMBERS,		/* alter user type */
+  PT_DROP_MEMBERS
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -1705,7 +1709,8 @@ typedef enum
   PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN = 0x200,	/* one of the spec's indexes will be scanned for b-tree node info */
   PT_SPEC_FLAG_MVCC_COND_REEV = 0x400,	/* the spec is used in mvcc condition reevaluation */
   PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
-  PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000	/* the spec was checked and does not have any uniques */
+  PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
+  PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000	/* spec for sampling scan */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2014,6 +2019,8 @@ struct pt_alter_user_info
   PT_NODE *user_name;		/* PT_NAME */
   PT_NODE *password;		/* PT_VALUE (string) */
   PT_NODE *comment;		/* PT_VALUE */
+  PT_ALTER_CODE code;		/* PT_ADD_MEMBERS, PT_DROP_MEMBERS */
+  PT_NODE *members;		/* PT_NAME list */
 };
 
 /* Info for ALTER_TRIGGER */
@@ -2247,7 +2254,7 @@ struct pt_delete_info
   PT_NODE *cursor_name;		/* PT_NAME */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
-  PT_NODE *ordered_hint;	/* ORDERED_HINT hint's arguments (PT_NAME list) */
+  PT_NODE *leading_hint;	/* LEADING_HINT hint's arguments (PT_NAME list) */
   PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
   PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
   PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
@@ -2598,6 +2605,8 @@ typedef enum
 
   /* Reserved page info names */
   RESERVED_P_CLASS_OID,
+  RESERVED_P_CUR_VOLUMEID,
+  RESERVED_P_CUR_PAGEID,
   RESERVED_P_PREV_PAGEID,
   RESERVED_P_NEXT_PAGEID,
   RESERVED_P_NUM_SLOTS,
@@ -2880,7 +2889,7 @@ struct pt_select_info
   PT_NODE *having;		/* PT_EXPR */
   PT_NODE *using_index;		/* PT_NAME (list) */
   PT_NODE *with_increment;	/* PT_NAME (list) */
-  PT_NODE *ordered;		/* PT_NAME (list) */
+  PT_NODE *leading;		/* PT_NAME (list) */
   PT_NODE *use_nl;		/* PT_NAME (list) */
   PT_NODE *use_idx;		/* PT_NAME (list) */
   PT_NODE *index_ss;		/* PT_NAME (list) */
@@ -2960,6 +2969,7 @@ struct pt_query_info
   PT_NODE *qcache_hint;		/* enable/disable query cache */
   PT_NODE *limit;		/* PT_VALUE (list) limit clause parameter(s) */
   void *xasl;			/* xasl proc pointer */
+  XASL_ID *cte_xasl_id;		/* xasl_id for CTE query */
   UINTPTR id;			/* query unique id # */
   PT_HINT_ENUM hint;		/* hint flag */
   bool is_order_dependent;	/* true if query is order dependent */
@@ -3055,7 +3065,7 @@ struct pt_update_info
   PT_NODE *check_where;		/* with check option predicate */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
-  PT_NODE *ordered_hint;	/* USE_NL hint's arguments (PT_NAME list) */
+  PT_NODE *leading_hint;	/* LEADING hint's arguments (PT_NAME list) */
   PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
   PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
   PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
@@ -3338,6 +3348,8 @@ struct pt_stored_proc_info
   PT_MISC_TYPE type;
   unsigned or_replace:1;	/* OR REPLACE clause */
   PT_TYPE_ENUM ret_type;
+  PT_NODE *ret_data_type;
+
 };
 
 struct pt_prepare_info
@@ -3751,6 +3763,9 @@ struct parser_node
   PARSER_VARCHAR *expr_before_const_folding;	/* text before constant folding (used by value, host var nodes) */
   PT_TYPE_ENUM type_enum;	/* type enumeration tag PT_TYPE_??? */
   CACHE_TIME cache_time;	/* client or server cache time */
+  int cte_host_var_count;	/* CTE host variable count */
+  int *cte_host_var_index;	/* CTE host variable index in non_recursive CTE node */
+
   struct
   {
     unsigned recompile:1;	/* the statement should be recompiled - used for plan cache */
@@ -3877,6 +3892,7 @@ struct parser_context
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
   int dbval_cnt;		/* to be assigned to XASL */
+  int *cte_host_var_index;	/* CTE host variable index in non_recursive CTE node */
   int line, column;		/* current input line and column */
 
   void *etc;			/* application context */

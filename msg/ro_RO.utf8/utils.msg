@@ -862,7 +862,8 @@ lockdb: Afişează situaţia lock-urilor bazei de date.\n\
 utilizare: %1$s lockdb [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
-  -o, --output-file=FIŞIER    redirecţionează mesajele de ieşire către un FIŞIER; implicit: nul\n
+  -o, --output-file=FIŞIER    redirecţionează mesajele de ieşire către un FIŞIER; implicit: nul\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -931,7 +932,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              suprascrie fişierul de clasă dacă exista, implicit nu\n
+  -y, --overwrite              suprascrie fişierul de clasă dacă exista, implicit nu\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Fişierul de ieşire '%1$s' nu a putut fi deschis\n

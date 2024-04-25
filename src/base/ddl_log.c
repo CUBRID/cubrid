@@ -82,6 +82,7 @@ struct t_ddl_audit_handle
   char ip_addr[16];
   int pid;
   int ddl_stmt_cnt;
+  int ddl_stmt_cnt_backup;
   char str_qry_exec_begin_time[DDL_TIME_LEN];
   struct timeval qry_exec_begin_time;
   char elapsed_time[DDL_TIME_LEN];
@@ -131,7 +132,6 @@ static void logddl_set_sql_text (char *sql_text, int sql_len, HIDE_PWD_INFO_PTR 
 static bool logddl_set_stmt_type (int stmt_type, PT_NODE * statement);
 
 static bool is_executed_ddl_for_trans = false;
-static bool is_executed_ddl_for_csql = false;
 static bool has_password_type = false;
 
 void
@@ -149,6 +149,7 @@ logddl_init (T_APP_NAME app_name)
   memset (&ddl_audit_handle, 0x00, sizeof (T_DDL_AUDIT_HANDLE));
 
   ddl_audit_handle.ddl_stmt_cnt = 0;
+  ddl_audit_handle.ddl_stmt_cnt_backup = 0;
   ddl_audit_handle.execute_type = LOGDDL_RUN_EXECUTE_FUNC;
   ddl_audit_handle.loaddb_file_type = LOADDB_FILE_TYPE_NONE;
   ddl_audit_handle.csql_input_type = CSQL_INPUT_TYPE_NONE;
@@ -189,6 +190,7 @@ logddl_free (bool all_free)
 #endif
 
   ddl_audit_handle.ddl_stmt_cnt = 0;
+  ddl_audit_handle.ddl_stmt_cnt_backup = 0;
   ddl_audit_handle.execute_type = LOGDDL_RUN_EXECUTE_FUNC;
   ddl_audit_handle.loaddb_file_type = LOADDB_FILE_TYPE_NONE;
   ddl_audit_handle.str_qry_exec_begin_time[0] = '\0';
@@ -200,7 +202,6 @@ logddl_free (bool all_free)
   if (all_free)
     {
       is_executed_ddl_for_trans = false;
-      is_executed_ddl_for_csql = false;
 
       ddl_audit_handle.auto_commit_mode = false;
       ddl_audit_handle.csql_input_type = CSQL_INPUT_TYPE_NONE;
@@ -384,10 +385,22 @@ logddl_set_stmt_type (int stmt_type, PT_NODE * statement)
   if (logddl_is_ddl_type (stmt_type, statement) == true)
     {
       is_executed_ddl_for_trans = true;
-      is_executed_ddl_for_csql = true;
 
       ddl_audit_handle.ddl_stmt_cnt++;
       return true;
+    }
+  else if (stmt_type == PT_COMMIT_WORK || stmt_type == PT_ROLLBACK_WORK)
+    {
+      /* Although commit/rollback is not a DDL statement, 
+       * the history of commit/rollback for the previously performed DDL statement must be left, 
+       * so set it so that the information can be output.
+       */
+      assert (ddl_audit_handle.ddl_stmt_cnt_backup <= ddl_audit_handle.ddl_stmt_cnt);
+      if (ddl_audit_handle.ddl_stmt_cnt_backup < ddl_audit_handle.ddl_stmt_cnt)
+	{
+	  ddl_audit_handle.ddl_stmt_cnt_backup = ddl_audit_handle.ddl_stmt_cnt;
+	  return true;
+	}
     }
 
   return false;
@@ -907,8 +920,7 @@ write_error:
       fp = NULL;
     }
 
-  is_executed_ddl_for_trans = false;
-  logddl_free (false);
+  logddl_free (true);
 }
 
 void
@@ -927,7 +939,7 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
       return;
     }
 
-  if (is_executed_ddl_for_csql == false)
+  if (is_executed_ddl_for_trans == false)
     {
       return;
     }
@@ -1400,7 +1412,7 @@ logddl_get_app_name (T_APP_NAME app_name)
 }
 
 void
-logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
+logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, PARSER_CONTEXT * parser)
 {
   if (ddl_logging_enabled == false)
     {
@@ -1426,15 +1438,22 @@ logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, HIDE_PWD_IN
 	}
       else if (statement->sql_user_text && statement->sql_user_text_len > 0)
 	{
-	  HIDE_PWD_INFO t_hide_pwd_info;
+	  if (parser->original_buffer == NULL || parser->original_buffer[0] == '\0')
+	    {
+	      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len, NULL);
+	    }
+	  else
+	    {
+	      HIDE_PWD_INFO t_hide_pwd_info;
+	      HIDE_PWD_INFO_PTR hide_pwd_info_ptr = &parser->hide_pwd_info;
+	      int start = (int) (statement->sql_user_text - parser->original_buffer);
 
-	  INIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
-	  password_remake_offset_for_one_query (&t_hide_pwd_info, hide_pwd_info_ptr,
-						statement->buffer_pos - statement->sql_user_text_len,
-						statement->buffer_pos);
-
-	  logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len, &t_hide_pwd_info);
-	  QUIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
+	      INIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
+	      password_remake_offset_for_one_query (&t_hide_pwd_info, hide_pwd_info_ptr, start,
+						    start + statement->sql_user_text_len);
+	      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len, &t_hide_pwd_info);
+	      QUIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
+	    }
 	}
     }
 }
@@ -1445,6 +1464,7 @@ logddl_reset_query_text ()
   ddl_audit_handle.sql_text[0] = '\0';
   ddl_audit_handle.sql_text_len = 0;
   ddl_audit_handle.ddl_stmt_cnt = 0;
+  ddl_audit_handle.ddl_stmt_cnt_backup = 0;
 }
 
 // only used in callback_handler::prepare()

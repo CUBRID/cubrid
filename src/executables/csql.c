@@ -1920,7 +1920,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (session->statements && session->statements[num_stmts])
 	{
 	  int t_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, num_stmts + 1);
-	  logddl_check_and_set_query_text (session->statements[num_stmts], t_type, &session->parser->hide_pwd_info);
+	  logddl_check_and_set_query_text (session->statements[num_stmts], t_type, session->parser);
 	}
 
       if (stmt_id <= 0)
@@ -2929,19 +2929,22 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   csql_Pager_cmd[PATH_MAX - 1] = '\0';
   csql_Formatter_cmd[PATH_MAX - 1] = '\0';
 
-  env = getenv ("EDITOR");
+  env = getenv ("CUBRID_CSQL_EDITOR");
+  env = env != NULL ? env : getenv ("EDITOR");
   if (env)
     {
       strncpy (csql_Editor_cmd, env, PATH_MAX - 1);
     }
 
-  env = getenv ("SHELL");
+  env = getenv ("CUBRID_CSQL_SHELL");
+  env = env != NULL ? env : getenv ("SHELL");
   if (env)
     {
       strncpy (csql_Shell_cmd, env, PATH_MAX - 1);
     }
 
-  env = getenv ("FORMATTER");
+  env = getenv ("CUBRID_CSQL_FORMATTER");
+  env = env != NULL ? env : getenv ("FORMATTER");
   if (env)
     {
       strncpy (csql_Formatter_cmd, env, PATH_MAX - 1);

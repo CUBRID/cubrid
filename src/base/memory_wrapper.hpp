@@ -23,6 +23,8 @@
 #ifndef _MEMORY_WRAPPER_HPP_
 #define _MEMORY_WRAPPER_HPP_
 
+#if !defined(WINDOWS)
+
 #include "memory_cwrapper.h"
 
 /* ***IMPORTANT!!***
@@ -63,5 +65,6 @@ inline void operator delete (void *ptr, size_t sz) noexcept
 
 #define new new(__FILE__, __LINE__)
 #endif // SERVER_MODE
+#endif // !WINDOWS
 
 #endif // _MEMORY_WRAPPER_HPP_

@@ -848,7 +848,8 @@ lockdb: Affiche l'état du verrouillage de la base de données.\n\
 usage: %1$s lockdb [OPTION] database-name\n\
 \n\
 options valids:\n\
-  -o, --output-file=FICHIER   redirige les messages de sortie à FICHIER; par défaut: aucun\n
+  -o, --output-file=FICHIER   redirige les messages de sortie à FICHIER; par défaut: aucun\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -917,7 +918,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              remplace le fichier de classe si lui existe, par défaut non\n
+  -y, --overwrite              remplace le fichier de classe si lui existe, par défaut non\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Impossible d'ouvrir le fichier de sortie '%1$s'\n

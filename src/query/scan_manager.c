@@ -50,6 +50,7 @@
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "query_hash_scan.h"
+#include "statistics.h"
 #include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
@@ -2818,13 +2819,13 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     regu_variable_list_node * regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
 		     HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		     HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
-		     regu_variable_list_node * regu_list_recordinfo)
+		     regu_variable_list_node * regu_list_recordinfo, bool is_partition_table)
 {
   HEAP_SCAN_ID *hsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   /* scan type is HEAP SCAN or HEAP SCAN RECORD INFO */
-  assert (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO);
+  assert (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO || scan_type == S_HEAP_SAMPLING_SCAN);
   scan_id->type = scan_type;
 
   /* initialize SCAN_ID structure */
@@ -2862,6 +2863,19 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   hsidp->cache_recordinfo = cache_recordinfo;
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
+
+  /* for scampling statistics. */
+  if (scan_type == S_HEAP_SAMPLING_SCAN && !is_partition_table)
+    {
+      int total_pages = 0;
+      if (file_get_num_total_user_pages (thread_p, cls_oid, &total_pages) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      /* sampling_weight = total_page / sampling_page */
+      hsidp->sampling.weight = MAX ((total_pages / NUMBER_OF_SAMPLING_PAGES), 1);
+    }
 
   return NO_ERROR;
 }
@@ -4064,6 +4078,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
+    case S_HEAP_SAMPLING_SCAN:
       hsidp = &scan_id->s.hsid;
       UT_CAST_TO_NULL_HEAP_OID (&hsidp->hfid, &hsidp->curr_oid);
       if (!OID_IS_ROOTOID (&hsidp->cls_oid))
@@ -4501,6 +4516,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
     case S_HEAP_PAGE_SCAN:
+    case S_HEAP_SAMPLING_SCAN:
       if (s_id->grouped)
 	{
 	  /* grouped, fixed scan */
@@ -4654,6 +4670,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
+    case S_HEAP_SAMPLING_SCAN:
       hsidp = &scan_id->s.hsid;
 
       /* do not free attr_cache here. xs_clear_access_spec_list() will free attr_caches. */
@@ -4773,6 +4790,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_HEAP_PAGE_SCAN:
     case S_CLASS_ATTR_SCAN:
     case S_VALUES_SCAN:
+    case S_HEAP_SAMPLING_SCAN:
       break;
 
     case S_INDX_SCAN:
@@ -5065,6 +5083,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
+    case S_HEAP_SAMPLING_SCAN:
       status = scan_next_heap_scan (thread_p, scan_id);
       break;
 
@@ -5228,6 +5247,12 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
 			       is_peeking);
 		}
+	      else if (scan_id->type == S_HEAP_SAMPLING_SCAN)
+		{
+		  sp_scan =
+		    heap_next_sampling (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
+					&hsidp->scan_cache, is_peeking, &hsidp->sampling);
+		}
 	      else
 		{
 		  assert (scan_id->type == S_HEAP_SCAN_RECORD_INFO);
@@ -5276,7 +5301,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
-	  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
+	  && PGBUF_IS_PAGE_CHANGED (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 	{
 	  is_peeking = COPY;
 	  COPY_OID (&hsidp->curr_oid, &retry_oid);
@@ -5452,7 +5477,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	      if (object_get_status == OBJ_REPEAT_GET_WITH_LOCK
 		  || (hsidp->scan_cache.page_watcher.pgptr != NULL
-		      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa)))
+		      && PGBUF_IS_PAGE_CHANGED (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa)))
 		{
 		  is_peeking = COPY;
 		  COPY_OID (&hsidp->curr_oid, &retry_oid);
@@ -5473,7 +5498,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 
 	  if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
-	      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
+	      && PGBUF_IS_PAGE_CHANGED (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 	    {
 	      is_peeking = COPY;
 	      COPY_OID (&hsidp->curr_oid, &retry_oid);
@@ -5490,7 +5515,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 
 	      if (is_peeking != 0 && hsidp->scan_cache.page_watcher.pgptr != NULL
-		  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
+		  && PGBUF_IS_PAGE_CHANGED (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 		{
 		  is_peeking = COPY;
 		  COPY_OID (&hsidp->curr_oid, &retry_oid);
@@ -5511,7 +5536,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 
 	      if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
-		  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
+		  && PGBUF_IS_PAGE_CHANGED (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 		{
 		  is_peeking = COPY;
 		  COPY_OID (&hsidp->curr_oid, &retry_oid);
@@ -7873,6 +7898,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
+    case S_HEAP_SAMPLING_SCAN:
       if (scan_id->scan_stats.noscan)
 	{
 	  fprintf (fp, "(noscan");	/* aggregate optimization is not a scan */
@@ -7939,6 +7965,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_LIST_SCAN:
+    case S_HEAP_SAMPLING_SCAN:
       fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) scan_id->scan_stats.read_rows,
 	       (unsigned long long int) scan_id->scan_stats.qualified_rows);
       if (scan_id->scan_stats.agl)

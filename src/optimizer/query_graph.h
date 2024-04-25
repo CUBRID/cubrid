@@ -94,6 +94,7 @@ struct qo_attr_info
 {
   /* cumulative stats for all attributes under this umbrella */
   QO_ATTR_CUM_STATS cum_stats;
+  INT64 ndv;			/* Number of Distinct Values of column */
 };
 
 struct qo_index_entry
@@ -586,6 +587,9 @@ typedef enum
 #define QO_IS_EDGE_TERM(t)	(QO_TERM_CLASS(t) & 0x10)
 #define QO_IS_FAKE_TERM(t)	(QO_TERM_CLASS(t) & 0x08)
 #define QO_IS_DEP_TERM(t)	(QO_TERM_CLASS(t) == QO_TC_DEP_LINK || QO_TERM_CLASS(t) == QO_TC_DEP_JOIN)
+
+#define QO_IS_NL_JOIN(p)	(p->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN || \
+				 p->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN)
 
 struct qo_term
 {

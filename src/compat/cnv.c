@@ -107,9 +107,11 @@
 
 /* US Zone Definitions */
 #define LOCAL_STAR        "*"
+#define LOCAL_STAR_LENGTH (1)	// strlen (LOCAL_STAR)
 #define LOCAL_MINUS       "-"
 #define LOCAL_PLUS        "+"
 #define LOCAL_SPACE       " "
+#define LOCAL_SPACE_LENGTH (1)	// strlen (LOCAL_SPACE)
 #define LOCAL_0           "0"
 #define LOCAL_EXP_LENGTH  "E+dd"
 #define LOCAL_EXP         "E"
@@ -707,9 +709,9 @@ us_time_value (int *the_hour, int *the_min, int *the_sec)
 	}
 
       /* Skip blank "pattern" character. */
-      if (strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)) == 0)
+      if (strncmp (cnv_fmt_next_token (), LOCAL_SPACE, LOCAL_SPACE_LENGTH) == 0)
 	{
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + LOCAL_SPACE_LENGTH, FL_LOCAL_TIME);
 	}
       else
 	{
@@ -845,9 +847,9 @@ us_mtime_value (int *the_hour, int *the_min, int *the_sec, int *the_msec)
     }
 
   /* Skip blank "pattern" character. */
-  if (strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)) == 0)
+  if (strncmp (cnv_fmt_next_token (), LOCAL_SPACE, LOCAL_SPACE_LENGTH) == 0)
     {
-      cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
+      cnv_fmt_analyze (cnv_fmt_next_token () + LOCAL_SPACE_LENGTH, FL_LOCAL_TIME);
     }
   else
     {
@@ -937,12 +939,12 @@ us_timestamp_value (int *the_month, int *the_day, int *the_year, int *the_hour, 
 	}
 
       /* Skip blank "pattern" character. */
-      bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE));
+      bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, LOCAL_SPACE_LENGTH);
       if (bad_value)
 	{
 	  break;
 	}
-      cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
+      cnv_fmt_analyze (cnv_fmt_next_token () + LOCAL_SPACE_LENGTH, FL_LOCAL_TIME);
 
       error = us_time_value (the_hour, the_min, the_sec);
 
@@ -1009,12 +1011,12 @@ us_datetime_value (int *the_month, int *the_day, int *the_year, int *the_hour, i
 	}
 
       /* Skip blank "pattern" character. */
-      bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE));
+      bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, LOCAL_SPACE_LENGTH);
       if (bad_value)
 	{
 	  break;
 	}
-      cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
+      cnv_fmt_analyze (cnv_fmt_next_token () + LOCAL_SPACE_LENGTH, FL_LOCAL_TIME);
 
       error = us_mtime_value (the_hour, the_min, the_sec, the_msec);
 
@@ -1379,8 +1381,8 @@ ko_time_value (int *the_hour, int *the_min, int *the_sec)
 	  *the_hour += 12;
 	}
       /* Skip blank "pattern" character. */
-      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)))
-	cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_KO_KR_TIME);
+      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, LOCAL_SPACE_LENGTH))
+	cnv_fmt_analyze (cnv_fmt_next_token () + LOCAL_SPACE_LENGTH, FL_KO_KR_TIME);
 
       type = cnv_fmt_lex (&token);
       bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_BLANK || type == FT_TIME_DIGITS_0
@@ -1481,8 +1483,8 @@ ko_mtime_value (int *the_hour, int *the_min, int *the_sec, int *the_msec)
 	  *the_hour += 12;
 	}
       /* Skip blank "pattern" character. */
-      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)))
-	cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_KO_KR_TIME);
+      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, LOCAL_SPACE_LENGTH))
+	cnv_fmt_analyze (cnv_fmt_next_token () + LOCAL_SPACE_LENGTH, FL_KO_KR_TIME);
 
       type = cnv_fmt_lex (&token);
       bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_BLANK || type == FT_TIME_DIGITS_0
@@ -1583,9 +1585,9 @@ ko_timestamp_value (int *the_month, int *the_day, int *the_year, int *the_hour, 
 	}
 
       /* Skip blank "pattern" character. */
-      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)))
+      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, LOCAL_SPACE_LENGTH))
 	{
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_KO_KR_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + LOCAL_SPACE_LENGTH, FL_KO_KR_TIME);
 	}
 
       error = ko_time_value (the_hour, the_min, the_sec);
@@ -1655,9 +1657,9 @@ ko_datetime_value (int *the_month, int *the_day, int *the_year, int *the_hour, i
 	}
 
       /* Skip blank "pattern" character. */
-      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)))
+      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, LOCAL_SPACE_LENGTH))
 	{
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_KO_KR_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + LOCAL_SPACE_LENGTH, FL_KO_KR_TIME);
 	}
 
       error = ko_time_value (the_hour, the_min, the_sec);
@@ -4014,12 +4016,12 @@ fmt_time_value (const char *descriptor, int *the_hour, int *the_min, int *the_se
 	    }
 
 	  /* Skip blank "pattern" character. */
-	  bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE));
+	  bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, LOCAL_SPACE_LENGTH);
 	  if (bad_value)
 	    {
 	      break;
 	    }
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + LOCAL_SPACE_LENGTH, FL_LOCAL_TIME);
 
 	  error = local_am_pm_value (&pm);
 	  if (error)
@@ -4351,12 +4353,12 @@ fmt_timestamp_value (const char *descriptor, int *the_month, int *the_day, int *
 	    }
 
 	  /* Skip blank "pattern" character. */
-	  bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE));
+	  bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, LOCAL_SPACE_LENGTH);
 	  if (bad_value)
 	    {
 	      break;
 	    }
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + LOCAL_SPACE_LENGTH, FL_LOCAL_TIME);
 
 	  error = fmt_time_value ("X", the_hour, the_min, the_sec);
 	}
@@ -4444,12 +4446,12 @@ fmt_datetime_value (const char *descriptor, int *the_month, int *the_day, int *t
 	    }
 
 	  /* Skip blank "pattern" character. */
-	  bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE));
+	  bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, LOCAL_SPACE_LENGTH);
 	  if (bad_value)
 	    {
 	      break;
 	    }
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + LOCAL_SPACE_LENGTH, FL_LOCAL_TIME);
 	  error = fmt_time_value ("X", the_hour, the_min, the_sec);
 	}
       while (0);
@@ -4757,7 +4759,7 @@ ffmt_print (FLOAT_FORMAT * ffmt, double the_double, char *string, int max_size)
       if (type == FT_ZEROES)
 	{
 	  int nzeroes;
-	  int sl = strlen (LOCAL_STAR);
+	  int sl = LOCAL_STAR_LENGTH;
 	  adj_ar_remove (buffer, start, start + token.length);
 	  for (nzeroes = intl_mbs_len (token.text); nzeroes > 0; nzeroes--)
 	    {
@@ -4790,7 +4792,7 @@ ffmt_print (FLOAT_FORMAT * ffmt, double the_double, char *string, int max_size)
 	  adj_ar_remove (buffer, start, start + length);
 	  if (ffmt->fractional_type == DIGIT_STAR)
 	    {
-	      int sl = strlen (LOCAL_STAR);
+	      int sl = LOCAL_STAR_LENGTH;
 	      for (; nzeroes > 0; nzeroes--)
 		{
 		  adj_ar_insert (buffer, LOCAL_STAR, sl, start);
@@ -5129,7 +5131,7 @@ mfmt_print (MONETARY_FORMAT * mfmt, double the_double, char *string, int max_siz
       if (type == FT_ZEROES)
 	{
 	  int nzeroes;
-	  int sl = strlen (LOCAL_STAR);
+	  int sl = LOCAL_STAR_LENGTH;
 	  adj_ar_remove (buffer, start, start + token.length);
 	  for (nzeroes = intl_mbs_len (token.text); nzeroes > 0; nzeroes--)
 	    {
@@ -5163,7 +5165,7 @@ mfmt_print (MONETARY_FORMAT * mfmt, double the_double, char *string, int max_siz
 	  adj_ar_remove (buffer, start, start + length);
 	  if (mfmt->fractional_type == DIGIT_STAR)
 	    {
-	      int sl = strlen (LOCAL_STAR);
+	      int sl = LOCAL_STAR_LENGTH;
 	      for (; nzeroes > 0; nzeroes--)
 		{
 		  adj_ar_insert (buffer, LOCAL_STAR, sl, start);
@@ -5614,7 +5616,7 @@ ifmt_numeric_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string, i
       if (type == FT_ZEROES)
 	{
 	  int nzeroes;
-	  int sl = strlen (LOCAL_STAR);
+	  int sl = LOCAL_STAR_LENGTH;
 	  adj_ar_remove (buffer, start, start + token.length);
 	  for (nzeroes = intl_mbs_len (token.text); nzeroes > 0; nzeroes--)
 	    {
@@ -6447,7 +6449,7 @@ num_fmt_print (FLOAT_FORMAT * ffmt, const DB_VALUE * the_numeric, char *string, 
       if (type == FT_ZEROES)
 	{
 	  int nzeroes;
-	  int sl = strlen (LOCAL_STAR);
+	  int sl = LOCAL_STAR_LENGTH;
 	  adj_ar_remove (buffer, start, start + token.length);
 	  for (nzeroes = intl_mbs_len (token.text); nzeroes > 0; nzeroes--)
 	    {

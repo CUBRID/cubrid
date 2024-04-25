@@ -2374,11 +2374,14 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
   int file_size;
   char *buffer;
   int buffer_size;
+  int is_contention;
   int send_size;
+  char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_unpack_int (request, &buffer_size);
+  ptr = or_unpack_int (request, &buffer_size);
+  ptr = or_unpack_int (ptr, &is_contention);
 
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
@@ -2396,7 +2399,7 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
       return;
     }
 
-  xlock_dump (thread_p, outfp);
+  xlock_dump (thread_p, outfp, is_contention);
   file_size = ftell (outfp);
 
   /*
@@ -4000,42 +4003,27 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
 
-  ptr = or_unpack_oid (request, &classoid);
-  ptr = or_unpack_int (ptr, &with_fullscan);
+  ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
 
-  error = xstats_update_statistics (thread_p, &classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
-  if (error != NO_ERROR)
+  class_attr_ndv.attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
+  if (class_attr_ndv.attr_ndv == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
     }
 
-  (void) or_pack_errcode (reply, error);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
+  for (int i = 0; i < class_attr_ndv.attr_cnt + 1; i++)
+    {
+      ptr = or_unpack_int (ptr, &class_attr_ndv.attr_ndv[i].id);
+      ptr = or_unpack_int64 (ptr, &class_attr_ndv.attr_ndv[i].ndv);
+    }
+  ptr = or_unpack_oid (ptr, &classoid);
+  ptr = or_unpack_int (ptr, &with_fullscan);
 
-/*
- * sqst_update_all_statistics -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sqst_update_all_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int error, with_fullscan;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = or_unpack_int (request, &with_fullscan);
-
-  error = xstats_update_all_statistics (thread_p, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+  error =
+    xstats_update_statistics (thread_p, &classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING),
+			      &class_attr_ndv);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -10381,28 +10369,68 @@ sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
 void
 sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *buffer = NULL;
+  char *buffer = NULL, *ptr = NULL;
   int buffer_size = 0;
-
+  int oid_cnt = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
   load_session *session = NULL;
   int error_code = session_get_load_session (thread_p, session);
-  if (error_code == NO_ERROR)
-    {
-      assert (session != NULL);
+  std::vector < const cubload::class_entry * >class_entries;
 
-      session->update_class_statistics (*thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto end;
+    }
+  assert (session != NULL);
+
+  /* check disable_statistics */
+  if (session->get_args ().disable_statistics || session->get_args ().syntax_check)
+    {
+      error_code = NO_ERROR;
+      goto end;
     }
 
-  if (er_errid () != NO_ERROR || er_has_error ())
+  session->get_class_registry ().get_all_class_entries (class_entries);
+
+for (const cubload::class_entry * class_entry:class_entries)
     {
-      return_error_to_client (thread_p, rid);
+      if (!class_entry->is_ignored ())
+	{
+	  oid_cnt++;
+	}
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  /* start packing result */
+  /* buffer_size is (int:number of OIDs) + size of packed OIDs */
+  buffer_size = OR_INT_SIZE + (oid_cnt * sizeof (OID));
+  buffer = (char *) db_private_alloc (thread_p, buffer_size);
+  if (buffer == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+  ptr = or_pack_int (buffer, oid_cnt);
+for (const cubload::class_entry * class_entry:class_entries)
+    {
+      if (!class_entry->is_ignored ())
+	{
+	  OID *class_oid = const_cast < OID * >(&class_entry->get_class_oid ());
+	  ptr = or_pack_oid (ptr, class_oid);
+	}
+    }
 
-  or_pack_int (reply, error_code);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+end:
+  char *ptr2 = or_pack_int (reply, buffer_size);
+  ptr2 = or_pack_int (ptr2, error_code);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
+				     buffer_size);
+
+  if (buffer != NULL)
+    {
+      db_private_free_and_init (thread_p, buffer);
+    }
 }
 
 void
@@ -11173,6 +11201,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
+#if !defined(WINDOWS)
   MMON_SERVER_INFO server_info;
 
   mmon_aggregate_server_info (server_info);
@@ -11243,4 +11272,13 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
     }
   db_private_free_and_init (thread_p, buffer_a);
+#else // WINDOWS
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+
+  // send error
+  ptr = or_pack_int (reply, 0);
+  ptr = or_pack_int (ptr, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+#endif // !WINDOWS
 }

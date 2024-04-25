@@ -24,11 +24,38 @@
 #ifndef _MEMORY_MONITOR_SR_HPP_
 #define _MEMORY_MONITOR_SR_HPP_
 
+#if !defined(WINDOWS)
+#include <cstdio>
 #include <atomic>
-#include <unordered_map>
-#include <shared_mutex>
 
+#include "concurrent_unordered_map.h"
 #include "memory_monitor_common.hpp"
+
+#if defined(__SVR4)
+extern "C" size_t malloc_usable_size (void *);
+#elif defined(__APPLE__)
+#include <malloc/malloc.h>
+
+#ifndef HAVE_USR_INCLUDE_MALLOC_H
+#define HAVE_USR_INCLUDE_MALLOC_H
+#endif
+#elif defined(__linux__)
+#include <malloc.h>
+
+#ifndef HAVE_USR_INCLUDE_MALLOC_H
+#define HAVE_USR_INCLUDE_MALLOC_H
+#endif
+#endif
+
+#define MMON_MAX_NAME_LENGTH 255
+
+typedef struct mmon_metainfo MMON_METAINFO;
+struct mmon_metainfo
+{
+  uint64_t allocated_size;
+  int stat_id;
+  int magic_number;
+};
 
 namespace cubmem
 {
@@ -37,6 +64,12 @@ namespace cubmem
   // Don't adjust it freely
   // 8 byte size + 4 byte stat + 4 byte magicnumber
   static constexpr int MMON_METAINFO_SIZE = 16;
+
+  // Because of performance optimization, we have to reserve the size of the map(or mapping array).
+  // We think that the number of entry of map(or mapping array) cannot over 8K.
+  static constexpr int MMON_MAP_RESERVE_SIZE = 8192;
+
+  extern std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE];
 
   class memory_monitor
   {
@@ -52,23 +85,23 @@ namespace cubmem
 
     public:
       size_t get_allocated_size (char *ptr);
-      void add_stat (char *ptr, const size_t size, const char *file, const int line);
-      void sub_stat (char *ptr);
+      inline int get_target_pos ();
+      inline void add_stat (char *ptr, const size_t size, const char *file, const int line);
+      inline void sub_stat (char *ptr);
       void aggregate_server_info (MMON_SERVER_INFO &server_info);
       void finalize_dump ();
 
     private:
-      static char *get_metainfo_pos (char *ptr, size_t size);
-      static std::string make_stat_name (const char *file, const int line);
+      inline char *get_metainfo_pos (char *ptr, size_t size);
+      inline void make_stat_name (char *buf, const char *file, const int line);
 
     private:
       std::string m_server_name;
-      mutable std::shared_mutex m_stat_map_mutex;
       // Entries of m_stat_name_map and m_stat_map will not be deleted
-      std::unordered_map <std::string, int> m_stat_name_map;        // key: stat name, value: stat id
-      std::unordered_map <int, std::atomic <uint64_t>> m_stat_map;  // key: stat id, value: memory usage
+      tbb::concurrent_unordered_map <std::string, int> m_stat_name_map;        // key: stat name, value: stat id
       std::atomic <uint64_t> m_total_mem_usage;
       std::atomic <int> m_meta_alloc_count;                         // for checking occupancy of memory used by metainfo space
+      int m_target_pos;
       // Magic number is for checking an allocated memory which is out-of-scope of memory_monitor.
       // It's because memory_monitor starts to manage information about heap memory allocation
       // not "right after cubrid server starts" but "after some allocations are occurred because of
@@ -77,13 +110,109 @@ namespace cubmem
       // and some C++ allocations occurred at header files.
       const int m_magic_number;
   };
+
+  extern memory_monitor *mmon_Gl;
+
+  inline int memory_monitor::get_target_pos ()
+  {
+    return m_target_pos;
+  }
+
+  inline void memory_monitor::make_stat_name (char *buf, const char *file, const int line)
+  {
+    assert (strlen (file + m_target_pos) + Integer.toString (line).length() + 1 <= MMON_MAX_NAME_LENGTH);
+    snprintf (buf, MMON_MAX_NAME_LENGTH, "%s:%d", file + m_target_pos, line);
+  }
+
+  inline char *memory_monitor::get_metainfo_pos (char *ptr, size_t size)
+  {
+    return ptr + size - MMON_METAINFO_SIZE;
+  }
+
+  inline void memory_monitor::add_stat (char *ptr, const size_t size, const char *file, const int line)
+  {
+    char stat_name[MMON_MAX_NAME_LENGTH];
+
+    // size should not be 0 because of MMON_METAINFO_SIZE
+    assert (size > 0);
+
+    MMON_METAINFO *metainfo = (MMON_METAINFO *) get_metainfo_pos (ptr, size);
+
+    metainfo->allocated_size = (uint64_t) size;
+    m_total_mem_usage += metainfo->allocated_size;
+
+    make_stat_name (stat_name, file, line);
+
+retry:
+    const auto search = m_stat_name_map.find (stat_name);
+    if (search != m_stat_name_map.end ())
+      {
+	metainfo->stat_id = search->second;
+      }
+    else
+      {
+	std::pair<tbb::concurrent_unordered_map<std::string, int>::iterator, bool> insert_success;
+	metainfo->stat_id = m_stat_name_map.size ();
+	assert (metainfo->stat_id < MMON_MAP_RESERVE_SIZE);
+	// stat_id starts with 0
+	insert_success = m_stat_name_map.insert (std::pair <std::string, int> (stat_name, metainfo->stat_id));
+	if (!insert_success.second)
+	  {
+	    goto retry;
+	  }
+      }
+    m_stat_map[metainfo->stat_id] += metainfo->allocated_size;
+
+    // put meta info into the allocated chunk
+    metainfo->magic_number = m_magic_number;
+    m_meta_alloc_count++;
+  }
+
+  inline void memory_monitor::sub_stat (char *ptr)
+  {
+    size_t allocated_size = malloc_usable_size ((void *)ptr);
+
+    if (allocated_size >= MMON_METAINFO_SIZE)
+      {
+	MMON_METAINFO *metainfo = (MMON_METAINFO *) get_metainfo_pos (ptr, allocated_size);
+
+	if (metainfo->magic_number == m_magic_number)
+	  {
+	    assert (metainfo->stat_id >= 0 && metainfo->stat_id < m_stat_map.size());
+	    assert (m_total_mem_usage >= metainfo->allocated_size && m_stat_map[metainfo->stat_id] >= metainfo->allocated_size);
+	    assert (metainfo->allocated_size == allocated_size);
+
+	    m_total_mem_usage -= metainfo->allocated_size;
+	    m_stat_map[metainfo->stat_id] -= metainfo->allocated_size;
+
+	    metainfo->magic_number = 0;
+	    m_meta_alloc_count--;
+	    assert (m_meta_alloc_count >= 0);
+	  }
+      }
+  }
 } //namespace cubmem
 
-extern bool mmon_is_memory_monitor_enabled ();
 extern int mmon_initialize (const char *server_name);
 extern void mmon_finalize ();
 extern size_t mmon_get_allocated_size (char *ptr);
-extern void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line);
-extern void mmon_sub_stat (char *ptr);
 extern void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info);
+
+inline bool mmon_is_memory_monitor_enabled ()
+{
+  return (cubmem::mmon_Gl != nullptr);
+}
+
+inline void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line)
+{
+  cubmem::mmon_Gl->add_stat (ptr, size, file, line);
+}
+
+inline void mmon_sub_stat (char *ptr)
+{
+  assert (ptr != NULL);
+
+  cubmem::mmon_Gl->sub_stat (ptr);
+}
+#endif // !WINDOWS
 #endif // _MEMORY_MONITOR_SR_HPP_

@@ -845,7 +845,8 @@ lockdb: veritabanının kilit durumunu görüntüler.\n\
 kullanım: %1$s lockdb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
-  -o, --output-file=FILE      FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n
+  -o, --output-file=FILE      FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -914,7 +915,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              varsa sınıf dosyanın üzerine yazmak, varsayılan yok\n
+  -y, --overwrite              varsa sınıf dosyanın üzerine yazmak, varsayılan yok\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Çıktı dosyası '%1$s' açılamıyor \n

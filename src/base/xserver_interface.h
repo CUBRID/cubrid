@@ -169,6 +169,7 @@ extern int xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isola
 extern LOG_LSA *log_get_final_restored_lsa (void);
 extern float log_get_db_compatibility (void);
 extern int log_set_no_logging (void);
+extern bool log_is_no_logging (void);
 extern bool logtb_has_updated (THREAD_ENTRY * thread_p);
 
 
@@ -200,8 +201,8 @@ extern int xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid);
 
 extern char *xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id, unsigned int timestamp,
 						int *length);
-extern int xstats_update_statistics (THREAD_ENTRY * thread_p, OID * classoid, bool with_fullscan);
-extern int xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan);
+extern int xstats_update_statistics (THREAD_ENTRY * thread_p, OID * classoid, bool with_fullscan,
+				     CLASS_ATTR_NDV * class_attr_ndv);
 
 extern DKNPAGES xdisk_get_total_numpages (THREAD_ENTRY * thread_p, VOLID volid);
 extern DKNPAGES xdisk_get_free_numpages (THREAD_ENTRY * thread_p, VOLID volid);
@@ -242,7 +243,7 @@ extern int xcatalog_check_rep_dir (THREAD_ENTRY * thread_p, OID * class_id, OID 
 
 extern int xacl_reload (THREAD_ENTRY * thread_p);
 extern void xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp);
-extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp);
+extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention);
 
 extern int xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_p,
 				       int include_query_exec_info);

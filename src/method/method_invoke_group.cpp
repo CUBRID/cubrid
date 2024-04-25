@@ -20,6 +20,7 @@
 
 #include "boot_sr.h"
 #include "dbtype.h"		/* db_value_* */
+#include "db_value_printer.hpp"
 #include "jsp_comm.h"		/* common communcation functions for javasp */
 #include "mem_block.hpp" /* cubmem::extensible_block */
 #include "method_invoke.hpp"
@@ -30,6 +31,7 @@
 #include "method_connection_sr.hpp"
 #include "method_connection_pool.hpp"
 #include "session.h"
+#include "string_buffer.hpp"
 
 #if defined (SA_MODE)
 #include "query_method.hpp"
@@ -174,6 +176,72 @@ namespace cubmethod
     m_parameter_info = param_info;
   }
 
+  bool
+  method_invoke_group::is_supported_dbtype (const DB_VALUE &value)
+  {
+    bool res = false;
+    switch (DB_VALUE_TYPE (&value))
+      {
+      case DB_TYPE_INTEGER:
+      case DB_TYPE_SHORT:
+      case DB_TYPE_BIGINT:
+      case DB_TYPE_FLOAT:
+      case DB_TYPE_DOUBLE:
+      case DB_TYPE_MONETARY:
+      case DB_TYPE_NUMERIC:
+      case DB_TYPE_CHAR:
+      case DB_TYPE_NCHAR:
+      case DB_TYPE_VARNCHAR:
+      case DB_TYPE_STRING:
+
+      case DB_TYPE_DATE:
+      case DB_TYPE_TIME:
+      case DB_TYPE_TIMESTAMP:
+      case DB_TYPE_DATETIME:
+
+      case DB_TYPE_SET:
+      case DB_TYPE_MULTISET:
+      case DB_TYPE_SEQUENCE:
+      case DB_TYPE_OID:
+      case DB_TYPE_OBJECT:
+
+      case DB_TYPE_RESULTSET:
+      case DB_TYPE_NULL:
+	res = true;
+	break;
+
+      // unsupported types
+      case DB_TYPE_BIT:
+      case DB_TYPE_VARBIT:
+      case DB_TYPE_TABLE:
+      case DB_TYPE_BLOB:
+      case DB_TYPE_CLOB:
+      case DB_TYPE_TIMESTAMPTZ:
+      case DB_TYPE_TIMESTAMPLTZ:
+      case DB_TYPE_DATETIMETZ:
+      case DB_TYPE_DATETIMELTZ:
+      case DB_TYPE_JSON:
+	res = false;
+	break;
+
+      // obsolete, internal, unused type
+      case DB_TYPE_ELO:
+      case DB_TYPE_VARIABLE:
+      case DB_TYPE_SUB:
+      case DB_TYPE_POINTER:
+      case DB_TYPE_ERROR:
+      case DB_TYPE_VOBJ:
+      case DB_TYPE_DB_VALUE:
+      case DB_TYPE_MIDXKEY:
+      case DB_TYPE_ENUMERATION:
+      default:
+	assert (false);
+	break;
+      }
+
+    return res;
+  }
+
   int
   method_invoke_group::prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base,
 				const std::vector<bool> &arg_use_vec)
@@ -195,6 +263,24 @@ namespace cubmethod
 	  }
 	  case METHOD_TYPE_JAVA_SP:
 	  {
+	    /* check arg_base's type is supported */
+	    for (const DB_VALUE &value : arg_base)
+	      {
+		if (is_supported_dbtype (value) == false)
+		  {
+		    error = ER_SP_EXECUTE_ERROR;
+		    std::string err_msg = "unsupported argument type - ";
+
+		    string_buffer sb;
+		    db_value_printer printer (sb);
+		    printer.describe_type (&value);
+
+		    err_msg += std::string (sb.get_buffer(), sb.len ());
+		    set_error_msg (err_msg);
+		    return error;
+		  }
+	      }
+
 	    /* optimize arguments only for java sp not to send redundant values */
 	    DB_VALUE null_val;
 	    db_make_null (&null_val);
@@ -344,6 +430,12 @@ namespace cubmethod
   query_cursor *
   method_invoke_group::create_cursor (QUERY_ID query_id, bool oid_included)
   {
+    if (query_id == NULL_QUERY_ID || query_id >= SHRT_MAX)
+      {
+	// false query e.g) SELECT * FROM db_class WHERE 0 <> 0
+	return nullptr;
+      }
+
     m_cursor_set.insert (query_id);
     return m_rctx->create_cursor (m_thread_p, query_id, oid_included);
   }

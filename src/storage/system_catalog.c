@@ -112,7 +112,8 @@ static int rv;
 #define CATALOG_DISK_ATTR_POSITION_OFF   16
 #define CATALOG_DISK_ATTR_CLASSOID_OFF   20
 #define CATALOG_DISK_ATTR_N_BTSTATS_OFF  28
-#define CATALOG_DISK_ATTR_SIZE           80
+#define CATALOG_DISK_ATTR_NDV_OFF        80
+#define CATALOG_DISK_ATTR_SIZE           88
 
 #define CATALOG_BT_STATS_BTID_OFF        0
 #define CATALOG_BT_STATS_LEAFS_OFF       OR_BTID_ALIGNED_SIZE
@@ -212,6 +213,7 @@ static LF_ENTRY_DESCRIPTOR catalog_entry_Descriptor = {
   /* using mutex? */
   LF_EM_NOT_USING_MUTEX,
 
+  LF_ENTRY_DESCRIPTOR_MAX_ALLOC,
   catalog_entry_alloc,
   catalog_entry_free,
   catalog_entry_init,
@@ -430,6 +432,7 @@ catalog_get_disk_attribute (DISK_ATTR * attr_p, char *rec_p)
   attr_p->position = OR_GET_INT (rec_p + CATALOG_DISK_ATTR_POSITION_OFF);
   OR_GET_OID (rec_p + CATALOG_DISK_ATTR_CLASSOID_OFF, &attr_p->classoid);
   attr_p->n_btstats = OR_GET_INT (rec_p + CATALOG_DISK_ATTR_N_BTSTATS_OFF);
+  OR_GET_INT64 (rec_p + CATALOG_DISK_ATTR_NDV_OFF, &attr_p->ndv);
   attr_p->bt_stats = NULL;
 }
 
@@ -468,6 +471,7 @@ catalog_put_disk_attribute (char *rec_p, DISK_ATTR * attr_p)
 
   OR_PUT_OID (rec_p + CATALOG_DISK_ATTR_CLASSOID_OFF, &attr_p->classoid);
   OR_PUT_INT (rec_p + CATALOG_DISK_ATTR_N_BTSTATS_OFF, attr_p->n_btstats);
+  OR_PUT_INT64 (rec_p + CATALOG_DISK_ATTR_NDV_OFF, &attr_p->ndv);
 }
 
 static void
@@ -2545,6 +2549,7 @@ catalog_copy_disk_attributes (DISK_ATTR * new_attrs_p, int new_attr_count, DISK_
 	      continue;
 	    }
 
+	  new_attr_p->ndv = pre_attr_p->ndv;
 	  catalog_copy_btree_statistic (new_attr_p->bt_stats, new_attr_p->n_btstats, pre_attr_p->bt_stats,
 					pre_attr_p->n_btstats);
 	}

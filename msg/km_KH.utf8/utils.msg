@@ -847,7 +847,8 @@ lockdb: Display lock-status of the database.\n\
 usage: %1$s lockdb [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -916,7 +917,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              overwrite class file if exist, default no\n
+  -y, --overwrite              overwrite class file if exist, default no\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Cannot open output file '%1$s'\n

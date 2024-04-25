@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Base de datos "%1$s" es desconocida, o el archivo "databases.txt" no se puede accesar.
 117 El nombre de ruta absoluto para la base de datos es demasiado largo. La longitud combinada de la ruta "%1$s" y el nombre "%2$s" es %3$d; la longitud combinada debe ser inferior a %4$d.
 118 No se ha podido localizar el directorio de trabajo actual.
-119 Ne eblas trovi ("%1$s") en "%2$s". Bonvolu kontroli permesojn de la dosiero aŭ se estas la gastnomo.
+119 No se puede encontrar el nombre de host ("%1$s") en "%2$s". Verifique los permisos del archivo o si existe el nombre de host.
 120 El numero maximo de volumenes (%1$d) ha sido excedido.
 121 Tratando de eliminar "%1$s", un volumen permanente de la base de datos.
 122 No se puede acceder al catálogo del sistema de mensajes.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 No se puede establecer un tunel hacia el servidor maestro.
 348 Debe especificar un identificador sea de servicio o de puerto.
 349 Servicio desconocido para TCP: %1$s.
-350 Ne eblas trovi ("%1$s") en "%2$s". Bonvolu kontroli permesojn de la dosiero aŭ se estas la gastnomo.
+350 No se puede encontrar el nombre de host ("%1$s") en "%2$s". Verifique los permisos del archivo o si existe el nombre de host.
 351 No se puede crear enchufe TCP.
 352 tcp_open: no se puede obtener un puerto TCP reservado.
 353 No se puede establecer conexion hacia el servidor maestro en host "%1$s".
@@ -683,8 +683,8 @@ $ LOADDB
 613 En clase "%3$s", componenta local "%1$s" no puede servir como sustituto de alias para clase "%2$s". Los dominios no son compatibles.
 614 Numero de carpetas de registros activos ha excedido el numero maximo deseado de %1$d.
 615 No se puede establecer contacto con la interfaz Winsock. Error de Winsock: %1$d.
-616 No se puede determinar el nombre de maquina utilizando interfaz Winsock. Error de Winsock: %1$d.
-617 No se puede determinar el id de maquina utilizando interfaz Winsocket. Debe de haber alguna entrada en la tabla de nombres de host para esta maquina. Error de Winsock: %1$d.
+616 No se puede encontrar el nombre de host ("%1$s") en "%2$s". Verifique los permisos del archivo o si existe el nombre de host.
+617 No se puede encontrar el nombre de host ("%1$s") en "%2$s". Verifique los permisos del archivo o si existe el nombre de host.
 618 Atributo no es actualizable.
 619 Conjunto de codigo de origen mala.
 620 Conjunto de codigo de destino malo.
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 La carga del índice se canceló después de un error.
 1244 La carga de actualizaciones de atributos compartidos desde archivos de objetos no es compatible con el modo CS.
 1245 La carga de actualizaciones de atributos de clase desde archivos de objetos no es compatible con el modo CS.
-1246 Ne eblas ricevi adreson kaj kanonikan nomon por ("%1$s") en "%2$s". Bonvolu kontroli la permeson de la dosiero aŭ se estas la gastnomo.
+1246 No se puede obtener la dirección y el nombre canónico del nombre de host ("%1$s") en "%2$s". Verifique el permiso del archivo o si existe el nombre de host.
 1247 El tiempo (%1$s) especificado tiene que ser despues del tiempo (%2$s) del respaldo especificado.
 1248 Archivo de clave no válido: %1$s
 1249 No se puede encontrar la clave (índice: %1$d).
@@ -1443,7 +1443,9 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1357 Error al convertir una cadena SQL a una cadena ancha.
 1358 Se desconoce el número de filas afectadas.
 
-1359 Ultimo error
+1359 Java VM crashed: %1$s
+
+1360 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

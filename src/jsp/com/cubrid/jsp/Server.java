@@ -52,6 +52,7 @@ public class Server {
     private static String spPath;
     private static String rootPath;
     private static String udsPath;
+    private static String tmpPath;
 
     private static List<String> jvmArguments = null;
 
@@ -85,6 +86,12 @@ public class Server {
                             + "_java.log";
             loggingThread = new LoggingThread(logFilePath);
             loggingThread.start();
+
+            tmpPath = System.getenv("CUBRID_TMP");
+            if (tmpPath == null) {
+                tmpPath = rootPath + File.separator + "tmp";
+            }
+            System.setProperty("java.io.tmpdir", tmpPath);
 
             if (OSValidator.IS_UNIX && port_number == -1) {
                 final File socketFile = new File(udsPath);

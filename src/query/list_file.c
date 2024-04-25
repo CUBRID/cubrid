@@ -182,6 +182,7 @@ static LF_ENTRY_DESCRIPTOR qfile_sort_list_entry_desc = {
   0,				/* does not have a key, not used in a hash table */
   0,				/* does not have a mutex */
   LF_EM_NOT_USING_MUTEX,
+  LF_ENTRY_DESCRIPTOR_MAX_ALLOC,
   qfile_alloc_sort_list,
   qfile_dealloc_sort_list,
   NULL,
@@ -3744,7 +3745,7 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
 {
   int prorated_pages, sort_key_size, sort_key_overhead;
 
-  prorated_pages = (int) list_id_p->page_cnt;
+  prorated_pages = (int) MAX (list_id_p->page_cnt, 1);
   if (key_info_p->use_original == 1)
     {
       /* P_sort_key */

@@ -1238,6 +1238,7 @@ lockdb (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   const char *output_file = NULL;
   FILE *outfp = NULL;
+  int is_contention;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1250,6 +1251,7 @@ lockdb (UTIL_FUNCTION_ARG * arg)
       goto print_lock_usage;
     }
 
+  is_contention = utility_get_option_bool_value (arg_map, LOCK_DISPLAY_CONTENTION_S);
   output_file = utility_get_option_string_value (arg_map, LOCK_OUTPUT_FILE_S, 0);
   if (output_file == NULL)
     {
@@ -1288,7 +1290,7 @@ lockdb (UTIL_FUNCTION_ARG * arg)
 
   (void) db_set_isolation (TRAN_READ_COMMITTED);
 
-  lock_dump (outfp);
+  lock_dump (outfp, is_contention);
   db_shutdown ();
 
   if (outfp != stdout)

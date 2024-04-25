@@ -45,6 +45,7 @@ import java.util.stream.Stream;
 
 public class StoredProcedureClassLoader extends URLClassLoader {
     private static volatile StoredProcedureClassLoader instance = null;
+    private static volatile StoredProcedureStaticClassLoader parentInstance = null;
 
     private static final String ROOT_PATH = Server.getSpPath() + "/java/";
     private static final Path root = Paths.get(ROOT_PATH);
@@ -56,6 +57,7 @@ public class StoredProcedureClassLoader extends URLClassLoader {
         if (instance == null) {
             instance = new StoredProcedureClassLoader();
         }
+        parentInstance = StoredProcedureStaticClassLoader.getInstance();
 
         return instance;
     }
@@ -92,16 +94,22 @@ public class StoredProcedureClassLoader extends URLClassLoader {
     }
 
     public Class<?> loadClass(String name) throws ClassNotFoundException {
+        Class<?> found = null;
         try {
-            if (!isModified()) {
-                return super.loadClass(name);
+            if (isModified()) {
+                instance = new StoredProcedureClassLoader();
+                found = instance.loadClass(name);
+            } else {
+                found = super.loadClass(name);
             }
-
-            instance = new StoredProcedureClassLoader();
-            return instance.loadClass(name);
-        } catch (IOException e) {
-            return null;
+        } catch (Exception e) {
         }
+
+        if (found == null) {
+            found = parentInstance.loadClass(name);
+        }
+
+        return found;
     }
 
     private boolean isModified() throws IOException {

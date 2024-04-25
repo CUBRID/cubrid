@@ -1896,11 +1896,6 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   root_header->node.split_info.pivot = 0.0f;
   root_header->node.split_info.index = 0;
 
-  /* the 64 bit extending should be initialized to 0 
-   * because only the 32bit count is used at this point */
-  root_header->_64.over = 0;
-  root_header->_64.num_nulls = root_header->_64.num_oids = root_header->num_keys = 0;
-
   if (load_args->btid->unique_pk)
     {
       root_header->num_nulls = n_nulls;
@@ -2063,6 +2058,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       VPID_SET_NULL (&header->prev_vpid);
       header->split_info.pivot = 0.0f;
       header->split_info.index = 0;
+      header->common_prefix = 0;
 
       error_code = btree_init_node_header (thread_p, &btid->vfid, *page_new, header, false);
       if (error_code != NO_ERROR)
@@ -4109,26 +4105,14 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  assert (!DB_IS_NULL (&fk_key));
 	  assert (DB_VALUE_DOMAIN_TYPE (&fk_key) == DB_TYPE_MIDXKEY);
 
-	  /* { v1, OID }      ==> v1
-	   * { v1, v2 , OID } ==> { v1, v2 }
-	   */
-
 	  DB_VALUE *new_ptr = (fk_key_ptr == &(new_fk_key[0])) ? &(new_fk_key[1]) : &(new_fk_key[0]);
 
 	  pr_clear_value (new_ptr);
-	  if (fk_key.data.midxkey.ncolumns > 2)
+	  ret = btree_remake_reference_key_with_FK (thread_p, pk_bt_scan.btid_int.key_type, &fk_key, new_ptr);
+	  if (ret != NO_ERROR)
 	    {
-	      pr_clone_value (&fk_key, new_ptr);
-	      /* Fakes the last column(deduplicate_key_attr) as if it doesn't exist. 
-	       * To do this, reduce the number of columns.
-	       * Modify bitmap information for btree_multicol_key_is_null() function. */
-	      new_ptr->data.midxkey.ncolumns--;
-	      or_multi_set_null (new_ptr->data.midxkey.buf, new_ptr->data.midxkey.ncolumns);
-	      new_ptr->data.midxkey.domain = pk_bt_scan.btid_int.key_type;
-	    }
-	  else
-	    {
-	      pr_midxkey_get_element_nocopy (&fk_key.data.midxkey, 0, new_ptr, NULL, NULL);
+	      ASSERT_ERROR ();
+	      break;
 	    }
 
 	  if (btree_compare_key (fk_key_ptr, new_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL) == DB_EQ)

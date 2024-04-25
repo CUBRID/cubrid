@@ -844,7 +844,8 @@ lockdb: 显示数据库的锁状态.\n\
 用法: %1$s lockdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
-  -o, --output-file=FILE       重定向输出信息到文件 FILE ; 默认: 空\n
+  -o, --output-file=FILE       重定向输出信息到文件 FILE ; 默认: 空\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -913,7 +914,8 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              如果类存在则进行重写, 默认 不\n
+  -y, --overwrite              如果类存在则进行重写, 默认 不\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 无法打开输出文件 '%1$s'\n

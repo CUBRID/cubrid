@@ -34,6 +34,7 @@ add_executable(test_memory_monitor
   ${TEST_MEMORY_MONITOR_SOURCES}
   )
 
+target_link_libraries(test_memory_monitor LINK_PRIVATE ${EP_LIBS})
 target_compile_options(test_memory_monitor PRIVATE ${compile_warning_flags})
 target_compile_definitions(test_memory_monitor PRIVATE
   ${COMMON_DEFS} SERVER_MODE
@@ -42,7 +43,7 @@ target_include_directories(test_memory_monitor PRIVATE
   ${TEST_INCLUDES}
   )
 add_dependencies(test_memory_monitor
-  ${CATCH2_TARGET}
+  ${CATCH2_TARGET} ${EP_TARGETS}
   )
 if(WIN32)
   target_link_libraries(test_memory_monitor PRIVATE ws2_32)

@@ -1552,7 +1552,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      goto error;
 	    }
 	}
-      if (DB_IS_NULL (peek_left) || (peek_third && DB_IS_NULL (peek_third)))
+      if (!prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
+	  && (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || (peek_third && DB_IS_NULL (peek_third))))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}

@@ -560,15 +560,16 @@ sm_add_static_method (const char *name, void (*function) ())
       Static_method_table = new_;
       new_->function = function;
 
-      new_->name = (char *) malloc (strlen (name) + 1);
+      int size = strlen (name) + 1;	// include '\0'
+      new_->name = (char *) malloc (size);
       if (new_->name == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (name) + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  free (new_);
 	  return;
 	}
 
-      strcpy ((char *) new_->name, name);
+      memcpy (new_->name, name, size);
     }
 }
 
@@ -687,7 +688,7 @@ sm_count_tokens (const char *string, int *maxcharp)
       return (tokens);
     }
 
-  for (i = 0; i < (int) strlen (string); i++)
+  for (i = 0; string[i] != '\0'; i++)
     {
       if (char_isspace (string[i]))
 	{
@@ -695,7 +696,7 @@ sm_count_tokens (const char *string, int *maxcharp)
 	}
       tokens++;
 
-      for (chars = 0; i < (int) strlen (string) && !char_isspace (string[i]); i++, chars++)
+      for (chars = 0; string[i] != '\0' && !char_isspace (string[i]); i++, chars++)
 	;
       if (chars > maxchars)
 	{
@@ -1408,7 +1409,7 @@ sm_link_dynamic_methods (METHOD_LINK * links, const char **files, const char **c
   const char *file;
   HINSTANCE libhandle;
   FARPROC func;
-  int i, j;
+  int i, j, len;
 
   if (links != NULL)
     {
@@ -1417,14 +1418,15 @@ sm_link_dynamic_methods (METHOD_LINK * links, const char **files, const char **c
       for (i = 0; files[i] != NULL && error == NO_ERROR; i++)
 	{
 	  file = files[i];
+	  len = strlen (file);
 	  /* Should have a "method name too long" error but I don't want to introduce one right now.  If we have
 	   * problems with a particular DLL file, just ignore it and attempt to get the methods from the other files. */
-	  if (strlen (file) + 3 < PATH_MAX)
+	  if (len + 3 < PATH_MAX)
 	    {
 	      /* massage the file extension so that it has .dll */
 	      strcpy (filebuf, file);
 
-	      for (j = strlen (file) - 1; j > 0 && filebuf[j] != '.'; j--)
+	      for (j = len - 1; j > 0 && filebuf[j] != '.'; j--)
 		;
 
 	      if (j > 0)
@@ -1506,8 +1508,8 @@ sm_file_extension (const char *path, const char *ext)
 {
   DB_C_INT plen, elen;
 
-  plen = strlen (path);
-  elen = strlen (ext);
+  plen = (DB_C_INT) strlen (path);
+  elen = (DB_C_INT) strlen (ext);
 
   return (plen > elen) && (strcmp (&(path[plen - elen]), ext) == 0);
 }
@@ -2189,13 +2191,14 @@ sm_downcase_name (const char *name, char *buf, int buf_size)
 char *
 sm_user_specified_name (const char *name, char *buf, int buf_size)
 {
-  char user_specified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  const char *current_schema_name = NULL;
   const char *dot = NULL;
+  char user_specified_name[SM_MAX_IDENTIFIER_LENGTH];
+  int user_specified_name_len;
+  const char *current_schema_name = NULL;
   int error = NO_ERROR;
 
   assert (buf != NULL);
-  assert (buf_size > 0);
+  assert (buf_size >= SM_MAX_IDENTIFIER_LENGTH);
 
   if (name == NULL || name[0] == '\0')
     {
@@ -2204,10 +2207,16 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
-  /* If the name is already a user-specified name or a system class name, do not recreate it. */
+  /* Find the ending position of the user-specified name. */
   dot = strchr (name, '.');
+
+  /* If the name is already a user-specified name or a system class name, do not recreate it. */
   if (dot != NULL)
     {
+      /* There must be only one dot(.) because dot(.) cannot be used in identifier names
+       * even if the exception rule is used. */
+      assert (strchr (dot + 1, '.') == NULL);
+
       assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
       assert (strlen (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
@@ -2217,7 +2226,20 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
        */
       return sm_downcase_name (name, buf, buf_size);
     }
-  assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+
+  /* If the length of the object name was not previously checked, it may exceed 222 bytes.
+   * In this case, return only the object name without raising an error. And expect that the object is not found */
+  if (strlen (name) >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
+    {
+      assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
+
+      /*
+       * e.g.   name: object_name (exceeds)
+       *      return: object_name (exceeds)
+       */
+      return sm_downcase_name (name, buf, buf_size);
+    }
+
   if (sm_check_system_class_by_name (name))
     {
       /*
@@ -2229,14 +2251,106 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
-  assert (snprintf (NULL, 0, "%s.%s", current_schema_name, name) < buf_size);
-  assert (snprintf (NULL, 0, "%s.%s", current_schema_name, name) < SM_MAX_IDENTIFIER_LENGTH);
+  /* Calculate the length of the user-specified name in advance. */
+  user_specified_name_len = snprintf (NULL, 0, "%s.%s", current_schema_name, name);
+
+  if (user_specified_name_len >= buf_size || user_specified_name_len >= SM_MAX_IDENTIFIER_LENGTH)
+    {
+      assert (false);
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
+      return NULL;
+    }
 
   /*
    * e.g.   name: object_name
    *      return: current_user_name.object_name
    */
-  snprintf (user_specified_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", current_schema_name, name);
+  sprintf (user_specified_name, "%s.%s", current_schema_name, name);
+  user_specified_name[user_specified_name_len] = '\0';
+
+  return sm_downcase_name (user_specified_name, buf, buf_size);
+}
+
+/*
+ * sm_user_specified_name_for_serial() - Make the name a user-specified name.
+ *   return: output buffer pointer or NULL on error
+ *   name(in): user-specified name or object name
+ *   buf(out): output buffer
+ *   buf_size(in): output buffer length
+ */
+char *
+sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
+{
+  const char *dot = NULL;
+  char user_specified_name[DB_MAX_SERIAL_NAME_LENGTH];
+  int user_specified_name_len;
+  const char *current_schema_name = NULL;
+  int error = NO_ERROR;
+
+  assert (buf != NULL);
+  assert (buf_size >= DB_MAX_SERIAL_NAME_LENGTH);
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
+      return NULL;
+    }
+
+  /* Find the ending position of the user-specified name. */
+  dot = strchr (name, '.');
+
+  /* If the name is already a user-specified name or a system class name, do not recreate it. */
+  if (dot != NULL)
+    {
+      /* There must be only one dot(.) because dot(.) cannot be used in identifier names
+       * even if the exception rule is used. */
+      assert (strchr (dot + 1, '.') == NULL);
+
+      assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
+      assert (strlen (dot + 1) < DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH);
+
+      /*
+       * e.g.   name: user_name.object_name
+       *      return: user_name.object_name
+       */
+      return sm_downcase_name (name, buf, buf_size);
+    }
+
+  /* If the length of the object name was not previously checked, it may exceed 482 bytes.
+   * In this case, return only the object name without raising an error. And expect that the object is not found */
+  if (strlen (name) >= DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH)
+    {
+      assert (strlen (name) < DB_MAX_SERIAL_NAME_LENGTH);
+
+      /*
+       * e.g.   name: object_name (exceeds)
+       *      return: object_name (exceeds)
+       */
+      return sm_downcase_name (name, buf, buf_size);
+    }
+
+  current_schema_name = sc_current_schema_name ();
+
+  /* Calculate the length of the user-specified name in advance. */
+  user_specified_name_len = snprintf (NULL, 0, "%s.%s", current_schema_name, name);
+
+  if (user_specified_name_len >= buf_size || user_specified_name_len >= SM_MAX_IDENTIFIER_LENGTH)
+    {
+      assert (false);
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
+      return NULL;
+    }
+
+  /*
+   * e.g.   name: object_name
+   *      return: current_user_name.object_name
+   */
+  sprintf (user_specified_name, "%s.%s", current_schema_name, name);
+  user_specified_name[user_specified_name_len] = '\0';
+
   return sm_downcase_name (user_specified_name, buf, buf_size);
 }
 
@@ -2251,32 +2365,51 @@ char *
 sm_qualifier_name (const char *name, char *buf, int buf_size)
 {
   const char *dot = NULL;
-  int len = 0;
+  int qualifier_name_len;
   int error = NO_ERROR;
+
+  assert (buf != NULL);
+  assert (buf_size >= SM_MAX_USER_LENGTH);
 
   if (name == NULL || name[0] == '\0')
     {
       ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
       return NULL;
     }
 
-  assert (buf != NULL);
-  assert (buf_size > 0);
+
+  /* Find the ending position of the user-specified name. */
+  dot = strchr (name, '.');
 
   /* If the name is not a user-specified name, NULL is returned. */
-  dot = strchr (name, '.');
   if (dot == NULL)
     {
+      /*
+       * e.g.           name: object_name
+       *      qualifier_name: NULL
+       */
+      buf[0] = '\0';
       return NULL;
     }
 
-  len = STATIC_CAST (int, dot - name);
+  /* There must be only one dot(.) because dot(.) cannot be used in identifier names
+   * even if the exception rule is used. */
+  assert (strchr (dot + 1, '.') == NULL);
 
-  assert (len < buf_size);
-  assert (len < SM_MAX_USER_LENGTH);
+  qualifier_name_len = STATIC_CAST (int, dot - name);
 
-  memcpy (buf, name, len);
-  buf[len] = '\0';
+  /* If it exceeds SM_MAX_USER_LENGTH, it is not a user-specified name. */
+  if (qualifier_name_len >= SM_MAX_USER_LENGTH)
+    {
+      assert (false);
+      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
+      return NULL;
+    }
+
+  memcpy (buf, name, qualifier_name_len);
+  buf[qualifier_name_len] = '\0';
 
   return buf;
 }
@@ -3381,21 +3514,21 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
       if (keyattr)
 	{
 	  const char *p = NULL;
+	  int copy_len;
 
-	  keyattr[0] = 0;
 	  if (DB_IS_NULL (&attrname) || (p = db_get_string (&attrname)) == NULL)
 	    {
+	      keyattr[0] = 0;
 	      goto partition_failed;
 	    }
-	  strncpy (keyattr, p, DB_MAX_IDENTIFIER_LENGTH);
-	  if (strlen (p) < DB_MAX_IDENTIFIER_LENGTH)
+
+	  copy_len = (int) strlen (p);
+	  if (copy_len > DB_MAX_IDENTIFIER_LENGTH)
 	    {
-	      keyattr[strlen (p)] = 0;
+	      copy_len = DB_MAX_IDENTIFIER_LENGTH;
 	    }
-	  else
-	    {
-	      keyattr[DB_MAX_IDENTIFIER_LENGTH] = 0;
-	    }
+	  memcpy (keyattr, p, copy_len);
+	  keyattr[copy_len] = '\0';
 	}
 
       if (partitions)
@@ -4116,7 +4249,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 	  return er_errid ();
 	}
 
-      error = stats_update_statistics (WS_OID (classop), (with_fullscan ? 1 : 0));
+      error = stats_update_statistics (classop, (with_fullscan ? 1 : 0));
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
@@ -4292,7 +4425,10 @@ sm_update_all_catalog_statistics (bool with_fullscan)
     CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
     CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
     CT_COLLATION_NAME, CT_CHARSET_NAME, CT_SYNONYM_NAME,
-    NULL
+    CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME, CT_PARTITION_NAME,
+    CT_SERIAL_NAME, CT_USER_NAME, CT_AUTHORIZATION_NAME,
+    CT_TRIGGER_NAME, CT_PASSWORD_NAME, CT_HA_APPLY_INFO_NAME,
+    CT_DB_SERVER_NAME, NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
@@ -10124,7 +10260,6 @@ fixup_self_domain (TP_DOMAIN * domain, MOP self)
   for (d = domain; d != NULL; d = d->next)
     {
       /* PR_TYPE is changeable only for transient domain. */
-      assert (d->type != tp_Type_null || !d->is_cached);
       if (d->type == tp_Type_null && !d->is_cached)
 	{
 	  d->type = tp_Type_object;

@@ -445,6 +445,8 @@ qdump_access_method_string (ACCESS_METHOD access)
       return "index";
     case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
       return "sequential record info";
+    case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
+      return "sequential sampling scan";
     case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
       return "sequential page scan";
     default:
@@ -2345,6 +2347,13 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
+      if (XASL_IS_FLAGED (xasl_p, XASL_SAMPLING_SCAN))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_SAMPLING_SCAN);
+	  fprintf (foutput, "%sXASL_SAMPLING_SCAN", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
       if (xasl_p->flag)
 	{
 	  fprintf (foutput, "%d%s", xasl_p->flag, (nflag ? "|" : ""));
@@ -3209,9 +3218,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     case DELETE_PROC:
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
 	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
-	       (long long int) xasl_p->xasl_stats.ioreads);
+	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
       indent += 2;
       break;
 
