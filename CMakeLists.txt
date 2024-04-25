@@ -812,6 +812,10 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   install(DIRECTORY ${JDBC_DIR}/
     DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC
     FILES_MATCHING PATTERN "*.jar"
+    PATTERN ".github" EXCLUDE
+    PATTERN "cmake" EXCLUDE
+    PATTERN "src" EXCLUDE
+    PATTERN "output" EXCLUDE
   )
 endif()
 
@@ -831,7 +835,7 @@ add_subdirectory(demo)
 add_subdirectory(contrib)
 add_subdirectory(locales)
 add_subdirectory(timezones)
-add_subdirectory(jsp)
+add_subdirectory(pl_engine)
 if(AT_LEAST_ONE_UNIT_TEST)
   add_subdirectory(unit_tests)
 endif()
