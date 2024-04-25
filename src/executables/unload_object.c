@@ -538,7 +538,7 @@ extractobjects_cleanup ()
       close_all_object_files (false);
       free_and_init (thr_param);
 
-#if defined(USE_LOW_IO_FUNC)
+#if defined(SUPPORT_THREAD_UNLOAD)
       g_obj_out->fd = INVALID_FILE_NO;
 #else
       g_obj_out->fp = NULL;
@@ -550,7 +550,7 @@ extractobjects_cleanup ()
     {
       if (g_obj_out->buffer != NULL)
 	free_and_init (g_obj_out->buffer);
-#if defined(USE_LOW_IO_FUNC)
+#if defined(SUPPORT_THREAD_UNLOAD)
       if (g_obj_out->fd != INVALID_FILE_NO)
 	close (g_obj_out->fd);
 #else
@@ -687,7 +687,7 @@ open_object_file (TEXT_OUTPUT * obj_out, extract_context & ctxt, const char *out
   out_fname[0] = '\0';
   get_output_file_name (ctxt, output_dirname, class_name, seqno, out_fname);
 
-#if defined(USE_LOW_IO_FUNC)
+#if defined(SUPPORT_THREAD_UNLOAD)
   obj_out->fd = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
   if (obj_out->fd == INVALID_FILE_NO)
 #else
@@ -713,7 +713,7 @@ close_all_object_files (bool close_only)
 	{
 	  free_and_init (thr_param[i].text_output.buffer);
 	}
-#if defined(USE_LOW_IO_FUNC)
+#if defined(SUPPORT_THREAD_UNLOAD)
       if (thr_param[i].text_output.fd != INVALID_FILE_NO)
 	{
 	  close (thr_param[i].text_output.fd);
@@ -737,7 +737,7 @@ fulsh_all_object_files (bool is_close)
 
   for (i = 0; i < thread_count; i++)
     {
-#if defined(USE_LOW_IO_FUNC)
+#if defined(SUPPORT_THREAD_UNLOAD)
       if (thr_param[i].text_output.fd != INVALID_FILE_NO)
 	{
 	  if (text_print_flush (&(thr_param[i].text_output)) != NO_ERROR)
@@ -909,7 +909,7 @@ close_output_file ()
 	{
 	  bret = false;
 	}
-#if defined(USE_LOW_IO_FUNC)
+#if defined(SUPPORT_THREAD_UNLOAD)
       close (g_obj_out->fd);
       g_obj_out->fd = INVALID_FILE_NO;
 #else

@@ -507,7 +507,7 @@ text_print_flush (TEXT_OUTPUT * tout)
 #endif
 
   /* flush to disk */
-#if defined(USE_LOW_IO_FUNC)
+#if defined(SUPPORT_THREAD_UNLOAD)
   if (tout->count != write (tout->fd, tout->buffer, tout->count))
 #else
   if (tout->count != (int) fwrite (tout->buffer, 1, tout->count, tout->fp))

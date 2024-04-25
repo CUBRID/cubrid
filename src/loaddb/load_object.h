@@ -55,7 +55,6 @@ class print_output;
  */
 
 #if defined(SUPPORT_THREAD_UNLOAD)
-#define USE_LOW_IO_FUNC		// ctshim
 typedef struct dbval_buf
 {
   char *buf;
@@ -87,7 +86,7 @@ typedef struct text_output
   /* number of current buffered bytes */
   int count;
   /* output file */
-#if defined(USE_LOW_IO_FUNC)
+#if defined(SUPPORT_THREAD_UNLOAD)
 #define INVALID_FILE_NO  (-1)
   int fd;
 #else
@@ -116,47 +115,4 @@ extern int er_filter_errid (bool ignore_warning);
 extern void get_ignored_errors (std::vector<int> &vec);
 /* *INDENT-ON* */
 
-
-class CTEXT_OUTPUT
-{
-private:
-  char *m_buffer;		/* pointer to the buffer */
-  char *m_ptr;			/* pointer to the next byte to buffer when writing */
-  int m_iosize;			/* optimal I/O pagesize for device */
-  int m_count;			/* number of current buffered bytes */
-
-  char *_buf_base;		/* Start of reserve area. */
-  char *_buf_end;		/* End of reserve area. */
-
-  int m_fd;			/* output file */
-
-public:
-    CTEXT_OUTPUT ()
-  {
-    m_buffer = NULL;
-    m_fd = -1;
-    m_iosize = 0;
-    m_count = 0;
-  }
-   ~CTEXT_OUTPUT ()
-  {
-    if (m_buffer)
-      {
-	free (m_buffer);
-      }
-    close_file ();
-  }
-  bool create_file (const char *fname)
-  {
-    m_fd = open (fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    return (m_fd != -1);
-  }
-  void close_file ()
-  {
-    if (m_fd != -1)
-      {
-	close (m_fd);
-      }
-  }
-};
 #endif /* _LOAD_OBJECT_H_ */

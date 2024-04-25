@@ -43,17 +43,17 @@
 #include "util_func.h"
 
 
-#if defined(SUPPORT_THREAD_UNLOAD)
+//#if defined(SUPPORT_THREAD_UNLOAD)
 #if 1				// time check  ctshim
 #include <sys/time.h>
 #endif
-#endif
+//#endif
 
 char *database_name = NULL;
 const char *output_dirname = NULL;
 char *input_filename = NULL;
 FILE *output_file = NULL;
-#if defined(USE_LOW_IO_FUNC)
+#if defined(SUPPORT_THREAD_UNLOAD)
 TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, INVALID_FILE_NO };
 #else
 TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, NULL };
@@ -418,7 +418,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       unload_context.exec_name = exec_name;
       unload_context.login_user = user;
       unload_context.output_prefix = output_prefix;
-#if defined(SUPPORT_THREAD_UNLOAD)
 #if 1				// time check
       struct timeval startTime, endTime;
       double diffTime;
@@ -433,12 +432,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       gettimeofday (&endTime, NULL);
       diffTime = (endTime.tv_sec - startTime.tv_sec) + ((double) (endTime.tv_usec - startTime.tv_usec) / 1000000);
       printf ("Elapsed= %.6f s\n", diffTime);
-#endif
-#else
-      if (extract_objects (unload_context, output_dirname))
-	{
-	  status = 1;
-	}
 #endif
     }
   AU_RESTORE (au_save);

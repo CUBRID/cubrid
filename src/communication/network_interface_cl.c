@@ -442,7 +442,13 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   req_error =
     net_client_request_recv_copyarea (NET_SERVER_LC_FETCHALL, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea, (modular_val != -1));
+				      OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea,
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+				      (modular_val != -1)
+#else
+				      false
+#endif
+    );
   if (req_error == NO_ERROR)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
