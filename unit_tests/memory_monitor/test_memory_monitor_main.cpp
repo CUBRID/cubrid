@@ -172,8 +172,14 @@ TEST_CASE ("Test mmon_add_stat", "")
 // Test add_stat() with single thread when different file paths
 // that has multiple "/src/" in a file path.
 //
-// Expected Result: stat name "add_test.c:100" with value "allocated_size + allocated_size_3" and
-//                  stat name "something/thirdparty/src/add_stat.c:100" with value "allocated_size_2"
+// Expected Result:
+//    1) stat name "add_test.c:100" with value "allocated_size + allocated_size_3", which means
+//       we just catch "rightmost /src/" of main code source tree (CUBRID/src/...).
+//       So "/src/" which appears before ".../cubrid/src/", it will be ignored.
+//       ex) ".../src/.../cubrid/src/base/some_file.c" is given, the result is "base/some_file.c:line"
+//    2) stat name "something/thirdparty/src/add_stat.c:100" with value "allocated_size_2", which means
+//       we doesn't care about "/src/" which appears after main source tree.
+//       ex) ".../cubrid/src/.../src/some_file.c" is given, the result is ".../src/some_file.c:line"
 TEST_CASE ("Test mmon_add_stat 2", "")
 {
   MMON_SERVER_INFO test_server_info;
