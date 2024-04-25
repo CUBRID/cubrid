@@ -837,7 +837,6 @@ valid options:\n\
                                 9 dump heap\n
 
 
-
 $set 25 MSGCAT_UTIL_SET_LOCKDB
 15 Couldn't open output file '%1$s'\n
 59 lockdb cannot run as standalone mode.\n
