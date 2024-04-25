@@ -703,6 +703,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 		  compile_info.err_column, err_msg.c_str ());
 	  pt_record_error (parser, parser->statement_number, compile_info.err_line, compile_info.err_column, er_msg (),
 			   NULL);
+	  goto error_exit;
 	}
     }
   else				/* SP_LANG_JAVA */
