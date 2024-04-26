@@ -14552,6 +14552,11 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
     {
       heap_dump (thread_p, fp, &parts[i].class_hfid, dump_records);
     }
+
+  if (parts != NULL)
+    {
+      heap_clear_partition_info (thread_p, parts, parts_count);
+    }
 }
 #endif
 
