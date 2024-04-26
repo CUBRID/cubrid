@@ -126,7 +126,6 @@ struct method_arg_info
 {
   int *arg_mode; /* IN, OUT, INOUT */
   int *arg_type; /* DB_TYPE */
-  int result_type; /* DB_TYPE */
 
   method_arg_info () = default;
 };
@@ -141,6 +140,7 @@ struct method_sig_node
   METHOD_TYPE method_type;	/* instance or class method */
   int num_method_args;		/* number of arguments */
   int *method_arg_pos;		/* arg position in list file */
+  int result_type;              /* DB_TYPE */
 
   char *class_name;		/* class name for the class method */
   METHOD_ARG_INFO *arg_info;    /* argument info */
