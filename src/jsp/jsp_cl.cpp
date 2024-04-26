@@ -717,6 +717,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 		  compile_info.err_column, err_msg.c_str ());
 	  pt_record_error (parser, parser->statement_number, compile_info.err_line, compile_info.err_column, er_msg (),
 			   NULL);
+	  goto error_exit;
 	}
     }
   else				/* SP_LANG_JAVA */
@@ -1341,6 +1342,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	sig->next = nullptr;
 	sig->num_method_args = param_cnt;
 	sig->method_type = METHOD_TYPE_JAVA_SP;
+	sig->result_type = sig_result_type;
 
 	// method_name
 	const char *method_name = db_get_string (&method);
@@ -1437,8 +1439,6 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 		sig->arg_info->default_value = nullptr;
 		sig->arg_info->default_value_size = nullptr;
 	      }
-
-	    sig->arg_info->result_type = sig_result_type;
 
 	    sig_list.num_methods = 1;
 	  }

@@ -3969,7 +3969,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  DB_VALUE result_type;
 		  if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type) == NO_ERROR)
 		    {
-		      (*tail)->arg_info->result_type = db_get_int (&result_type);
+		      (*tail)->result_type = db_get_int (&result_type);
 		      pr_clear_value (&result_type);
 		    }
 		  else

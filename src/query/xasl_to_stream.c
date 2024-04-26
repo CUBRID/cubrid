@@ -5813,6 +5813,7 @@ xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
 
   ptr = or_pack_int (ptr, method_sig->method_type);
   ptr = or_pack_int (ptr, method_sig->num_method_args);
+  ptr = or_pack_int (ptr, method_sig->result_type);
 
   for (n = 0; n < method_sig->num_method_args + 1; n++)
     {
@@ -5869,8 +5870,6 @@ xts_process_method_arg_info (char *ptr, const METHOD_ARG_INFO * method_arg_info,
 	}
       ptr = or_pack_int (ptr, offset);
     }
-
-  ptr = or_pack_int (ptr, method_arg_info->result_type);
 
   return ptr;
 }
@@ -7596,6 +7595,7 @@ xts_sizeof_method_sig (const METHOD_SIG * method_sig)
 	   + PTR_SIZE		/* auth_name */
 	   + OR_INT_SIZE	/* method_type */
 	   + OR_INT_SIZE	/* num_method_args */
+	   + (OR_INT_SIZE)	/* result type */
 	   + (OR_INT_SIZE * (method_sig->num_method_args + 1))	/* method_arg_pos */
 	   + PTR_SIZE);		/* next */
 
@@ -7614,7 +7614,7 @@ xts_sizeof_method_arg_info (const METHOD_ARG_INFO * method_arg_info, int num_arg
 	   + (num_args * OR_INT_SIZE)	/* arg_type */
 	   + (num_args * OR_INT_SIZE)	/* default_value_size */
 	   + (num_args * PTR_SIZE)	/* default_value */
-	   + (OR_INT_SIZE));	/* result type */
+    );
 
   return size;
 }

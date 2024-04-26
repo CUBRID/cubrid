@@ -202,6 +202,7 @@ namespace cubmethod
     signature.assign (sig->method_name);
     auth.assign (sig->auth_name);
     num_args = sig->num_method_args;
+    result_type = sig->result_type;
     if (num_args > 0)
       {
 	arg_pos.resize (num_args);
