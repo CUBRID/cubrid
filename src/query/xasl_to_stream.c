@@ -5848,6 +5848,7 @@ static char *
 xts_process_method_arg_info (char *ptr, const METHOD_ARG_INFO * method_arg_info, int num_args)
 {
   int n;
+  int offset;
   for (n = 0; n < num_args; n++)
     {
       ptr = or_pack_int (ptr, method_arg_info->arg_mode[n]);
@@ -5855,6 +5856,19 @@ xts_process_method_arg_info (char *ptr, const METHOD_ARG_INFO * method_arg_info,
   for (n = 0; n < num_args; n++)
     {
       ptr = or_pack_int (ptr, method_arg_info->arg_type[n]);
+    }
+  for (n = 0; n < num_args; n++)
+    {
+      ptr = or_pack_int (ptr, method_arg_info->default_value_size[n]);
+      if (method_arg_info->default_value_size[n] > 0)
+	{
+	  offset = xts_save_string (method_arg_info->default_value[n]);
+	}
+      else
+	{
+	  offset = xts_save_string ("");
+	}
+      ptr = or_pack_int (ptr, offset);
     }
 
   return ptr;
@@ -7598,6 +7612,8 @@ xts_sizeof_method_arg_info (const METHOD_ARG_INFO * method_arg_info, int num_arg
 
   size += ((num_args * OR_INT_SIZE)	/* arg_mode */
 	   + (num_args * OR_INT_SIZE)	/* arg_type */
+	   + (num_args * OR_INT_SIZE)	/* default_value_size */
+	   + (num_args * PTR_SIZE)	/* default_value */
     );
 
   return size;

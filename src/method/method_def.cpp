@@ -62,9 +62,13 @@ method_sig_node::method_sig_node (method_sig_node &&obj)
     {
       arg_info->arg_mode = obj.arg_info->arg_mode;
       arg_info->arg_type = obj.arg_info->arg_type;
+      arg_info->default_value = obj.arg_info->default_value;
+      arg_info->default_value_size = obj.arg_info->default_value_size;
 
       obj.arg_info->arg_mode = nullptr;
       obj.arg_info->arg_type = nullptr;
+      obj.arg_info->default_value = nullptr;
+      obj.arg_info->default_value_size = nullptr;
       obj.arg_info = nullptr;
     }
 }
@@ -126,16 +130,29 @@ method_sig_node::method_sig_node (const method_sig_node &obj)
 	{
 	  arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 	  arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->default_value = (char **) db_private_alloc (NULL, sizeof (char *) * (num_method_args));
+	  arg_info->default_value_size = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 	  for (int n = 0; n < num_method_args; n++)
 	    {
 	      arg_info->arg_mode[n] = obj.arg_info->arg_mode[n];
 	      arg_info->arg_type[n] = obj.arg_info->arg_type[n];
+
+	      arg_info->default_value_size[n] = obj.arg_info->default_value_size[n];
+	      if (obj.arg_info->default_value_size[n] > 0)
+		{
+		  arg_info->default_value[n] = (char *) db_private_alloc (NULL, sizeof (char) * (arg_info->default_value_size[n] + 1));
+		  strncpy (arg_info->default_value[n], obj.arg_info->default_value[n], arg_info->default_value_size[n]);
+		  arg_info->default_value[n][arg_info->default_value_size[n]] = 0;
+		}
+
 	    }
 	}
       else
 	{
 	  arg_info->arg_mode = nullptr;
 	  arg_info->arg_type = nullptr;
+	  arg_info->default_value = nullptr;
+	  arg_info->default_value_size = nullptr;
 	}
     }
 }
@@ -185,6 +202,14 @@ method_sig_node::pack (cubpacking::packer &serializator) const
 	{
 	  serializator.pack_int (arg_info->arg_type[i]);
 	}
+      for (int i = 0; i < num_method_args; i++)
+	{
+	  serializator.pack_int (arg_info->default_value_size[i]);
+	  if (arg_info->default_value_size[i] > 0)
+	    {
+	      serializator.pack_c_string (arg_info->default_value[i], arg_info->default_value_size[i]);
+	    }
+	}
     }
   else
     {
@@ -226,7 +251,19 @@ method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t 
       for (int i = 0; i < num_method_args; i++)
 	{
 	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_mode[i] */
+	}
+      for (int i = 0; i < num_method_args; i++)
+	{
 	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_type[i] */
+	}
+      for (int i = 0; i < num_method_args; i++)
+	{
+	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_default_size[i] */
+	  if (arg_info->default_value_size[i] > 0)
+	    {
+	      size += serializator.get_packed_c_string_size ((const char *) arg_info->default_value[i],
+		      (size_t) arg_info->default_value_size[i], size); /* method_sig->arg_info->arg_default[i] */
+	    }
 	}
     }
 
@@ -300,10 +337,19 @@ method_sig_node::operator= (const method_sig_node &obj)
 	    {
 	      arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 	      arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	      arg_info->default_value = (char **) db_private_alloc (NULL, sizeof (char *) * (num_method_args));
+	      arg_info->default_value_size = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 	      for (int n = 0; n < num_method_args; n++)
 		{
 		  arg_info->arg_mode[n] = obj.arg_info->arg_mode[n];
 		  arg_info->arg_type[n] = obj.arg_info->arg_type[n];
+		  arg_info->default_value_size[n] = obj.arg_info->default_value_size[n];
+		  if (obj.arg_info->default_value_size[n] > 0)
+		    {
+		      arg_info->default_value[n] = (char *) db_private_alloc (NULL, sizeof (char) * (arg_info->default_value_size[n] + 1));
+		      strncpy (arg_info->default_value[n], obj.arg_info->default_value[n], arg_info->default_value_size[n]);
+		      arg_info->default_value[n][arg_info->default_value_size[n]] = 0;
+		    }
 		}
 	    }
 	}
@@ -372,6 +418,8 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
 	{
 	  arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 	  arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->default_value = (char **) db_private_alloc (NULL, sizeof (char *) * (num_method_args));
+	  arg_info->default_value_size = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 
 	  for (int i = 0; i < num_method_args; i++)
 	    {
@@ -382,11 +430,25 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
 	    {
 	      deserializator.unpack_int (arg_info->arg_type[i]);
 	    }
+
+	  for (int i = 0; i < num_method_args; i++)
+	    {
+	      deserializator.unpack_int (arg_info->default_value_size[i]);
+	      if (arg_info->default_value_size[i] > 0)
+		{
+		  std::string str;
+		  deserializator.unpack_string (str);
+		  arg_info->default_value[i] = (char *) db_private_alloc (NULL, sizeof (char) * (arg_info->default_value_size[i] + 1));
+		  strncpy (arg_info->default_value[i], str.data (), arg_info->default_value_size[i]);
+		}
+	    }
 	}
       else
 	{
 	  arg_info->arg_mode = nullptr;
 	  arg_info->arg_type = nullptr;
+	  arg_info->default_value = nullptr;
+	  arg_info->default_value_size = nullptr;
 	}
 
     }
@@ -416,7 +478,6 @@ method_sig_node::freemem ()
       db_private_free_and_init (NULL, method_arg_pos);
     }
 
-
   if (class_name != nullptr)
     {
       db_private_free_and_init (NULL, class_name);
@@ -431,6 +492,18 @@ method_sig_node::freemem ()
       if (arg_info->arg_type != nullptr)
 	{
 	  db_private_free_and_init (NULL, arg_info->arg_type);
+	}
+      if (arg_info->default_value_size != nullptr)
+	{
+	  for (int i = 0; i < num_method_args; i++)
+	    {
+	      if (arg_info->default_value_size[i] > 0)
+		{
+		  db_private_free_and_init (NULL, arg_info->default_value[i]);
+		}
+	    }
+	  db_private_free_and_init (NULL, arg_info->default_value);
+	  db_private_free_and_init (NULL, arg_info->default_value_size);
 	}
       db_private_free_and_init (NULL, arg_info);
     }

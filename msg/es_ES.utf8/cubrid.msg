@@ -1447,7 +1447,6 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 1361 Dropping system generated stored procedure is not allowed.
 1362 PL/CSQL Stored procedure/function does not support Invoker's rights
-
 1363 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1935,6 +1934,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
 318 Stored procedure/function "$1$s" does not exist.
+319 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
+320 Only trailing default parameter is allowed: invalid at '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.

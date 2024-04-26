@@ -116,6 +116,8 @@ namespace cubmethod
     std::vector<int> arg_pos;
     std::vector<int> arg_mode;
     std::vector<int> arg_type;
+    std::vector<int> arg_default_size;
+    std::vector<char *> arg_default;
     int result_type;
 
     bool transaction_control; // TODO: wrap it with proper structs

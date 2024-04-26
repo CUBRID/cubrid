@@ -127,6 +127,9 @@ struct method_arg_info
   int *arg_mode; /* IN, OUT, INOUT */
   int *arg_type; /* DB_TYPE */
 
+  char **default_value; /* VARCHAR (256) */
+  int *default_value_size;
+
   method_arg_info () = default;
 };
 
