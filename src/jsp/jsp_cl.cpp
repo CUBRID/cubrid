@@ -57,7 +57,6 @@
 #include "jsp_comm.h"
 #include "method_compile_def.hpp"
 #include "sp_catalog.hpp"
-#include "parser_message.h"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
@@ -1296,8 +1295,8 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 			  }
 			else
 			  {
-			    error = ER_PT_SEMANTIC;
-			    PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_TOO_FEW_ARGUMENT, param_cnt);
+			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, param_cnt, sig_num_args);
+			    error = er_errid ();
 			    goto end;
 			  }
 		      }
