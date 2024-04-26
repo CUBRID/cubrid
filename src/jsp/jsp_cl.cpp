@@ -57,6 +57,7 @@
 #include "jsp_comm.h"
 #include "method_compile_def.hpp"
 #include "sp_catalog.hpp"
+#include "parser_message.h"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
@@ -1295,10 +1296,8 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 			  }
 			else
 			  {
-			    // should not happened
-			    // this should be checked in semantic checking of create procedure/function statement
-			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, "is not optional");
-			    assert (false);
+			    error = ER_PT_SEMANTIC;
+			    PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_TOO_FEW_ARGUMENT, param_cnt);
 			    goto end;
 			  }
 		      }
