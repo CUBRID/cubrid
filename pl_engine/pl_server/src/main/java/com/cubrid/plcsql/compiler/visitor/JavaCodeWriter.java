@@ -46,8 +46,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private Set<String> javaTypesUsed = new HashSet<>();
 
-    private void addToImports(String fullJavaType) {}
-
     private String getJavaCodeOfType(TypeSpec tySpec) {
         return getJavaCodeOfType(tySpec.type);
     }
