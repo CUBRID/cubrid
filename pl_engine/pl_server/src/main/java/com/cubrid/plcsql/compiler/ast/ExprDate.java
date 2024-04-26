@@ -33,6 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.time.LocalDate;
+import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprDate extends Expr {
@@ -50,7 +51,10 @@ public class ExprDate extends Expr {
         this.date = date;
     }
 
-    public String javaCode() {
+    public String javaCode(Set<String> javaTypesUsed) {
+
+        javaTypesUsed.add("java.sql.Date");
+
         if (date.equals(DateTimeParser.nullDate)) {
             return "new Date(0 - 1900, 0 - 1, 0)";
         } else {
