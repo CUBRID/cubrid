@@ -176,11 +176,10 @@ retry:
       {
 	MMON_METAINFO *metainfo = (MMON_METAINFO *) get_metainfo_pos (ptr, allocated_size);
 
-	if (metainfo->magic_number == m_magic_number)
+	if (metainfo->magic_number == m_magic_number && metainfo->allocated_size == allocated_size
+	    && metainfo->stat_id < MMON_MAP_RESERVE_SIZE && metainfo->stat_id >= 0)
 	  {
-	    assert (metainfo->stat_id >= 0 && metainfo->stat_id < MMON_MAP_RESERVE_SIZE);
 	    assert (m_total_mem_usage >= metainfo->allocated_size && m_stat_map[metainfo->stat_id] >= metainfo->allocated_size);
-	    assert (metainfo->allocated_size == allocated_size);
 
 	    m_total_mem_usage -= metainfo->allocated_size;
 	    m_stat_map[metainfo->stat_id] -= metainfo->allocated_size;
