@@ -2856,20 +2856,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  pr_clear_value (&value);
 	}
-
-      /* comment */
-      if (statement->info.serial.comment != NULL)
-	{
-	  assert (statement->info.serial.comment->node_type == PT_VALUE);
-	  comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
-	  db_make_string (&value, comment);
-	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
-	  pr_clear_value (&value);
-	  if (error < 0)
-	    {
-	      goto end;
-	    }
-	}
       break;
 
     case PT_CHANGE_OWNER:
@@ -2899,24 +2885,16 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  ASSERT_ERROR ();
 	  goto end;
 	}
-
-      /* comment */
-      if (statement->info.serial.comment != NULL)
-	{
-	  assert (statement->info.serial.comment->node_type == PT_VALUE);
-	  comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
-	  db_make_string (&value, comment);
-	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
-	  pr_clear_value (&value);
-	  if (error < 0)
-	    {
-	      goto end;
-	    }
-	}
       break;
 
-    case PT_SERIAL_COMMENT:
-      /* comment */
+    default:
+      assert (false);
+      break;
+    }
+
+  /* comment */
+  if (statement->info.serial.comment != NULL)
+    {
       assert (statement->info.serial.comment->node_type == PT_VALUE);
       comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
       db_make_string (&value, comment);
@@ -2926,11 +2904,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
-      break;
-
-    default:
-      assert (false);
-      break;
     }
 
   serial_object = dbt_finish_object (obj_tmpl);
@@ -2945,7 +2918,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   obj_tmpl = NULL;
 
 end:
-  if (!OID_ISNULL (&serial_obj_id) && alter_serial_code == PT_SERIAL_OPTION)
+  if (!OID_ISNULL (&serial_obj_id))
     {
       (void) serial_decache ((OID *) (&serial_obj_id));
     }
