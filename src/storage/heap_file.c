@@ -5235,7 +5235,6 @@ heap_manager_finalize (void)
  *   hfid(in/out): Object heap file identifier.
  *                 All fields in the identifier are set, except the volume
  *                 identifier which should have already been set by the caller.
- *   exp_npgs(in): Expected number of pages
  *   class_oid(in): OID of the class for which the heap will be created.
  *   reuse_oid(in): if true, the OIDs of deleted instances will be reused
  *
