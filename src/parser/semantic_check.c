@@ -10026,8 +10026,7 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (au_is_dba_group_member (Au_user) == false)
 	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_NOT_OWNER,
-		      "change_serial_owner");
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_NOT_OWNER);
 	  return;
 	}
       break;
