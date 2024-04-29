@@ -4042,7 +4042,14 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
       qfile_clear_sort_info (&info);
 #endif /* not SortCache */
       qfile_close_list (thread_p, list_id_p);
-      qfile_destroy_list (thread_p, list_id_p);
+      if (list_id_p->is_result_cached)
+	{
+	  qfile_clear_list_id (list_id_p);
+	}
+      else
+	{
+	  qfile_destroy_list (thread_p, list_id_p);
+	}
       qfile_close_and_free_list_file (thread_p, srlist_id);
       return NULL;
     }
@@ -4059,9 +4066,15 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   qfile_close_scan (thread_p, &t_scan_id);
   qfile_clear_sort_info (&info);
 #endif /* not SortCache */
-
   qfile_close_list (thread_p, list_id_p);
-  qfile_destroy_list (thread_p, list_id_p);
+  if (list_id_p->is_result_cached)
+    {
+      qfile_clear_list_id (list_id_p);
+    }
+  else
+    {
+      qfile_destroy_list (thread_p, list_id_p);
+    }
   qfile_copy_list_id (list_id_p, srlist_id, true);
   QFILE_FREE_AND_INIT_LIST_ID (srlist_id);
 

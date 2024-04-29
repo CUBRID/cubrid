@@ -3479,8 +3479,9 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       return stmt;
     }
 
-  if ((stmt->info.query.is_subquery == PT_IS_SUBQUERY || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY)
-      && stmt->info.query.correlation_level == 0 && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
+  if ((stmt->info.query.is_subquery == PT_IS_SUBQUERY || stmt->info.query.is_subquery == PT_IS_UNION_SUBQUERY
+       || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
+      && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
       *err = do_prepare_subquery (parser, stmt);
       if (*err != NO_ERROR)

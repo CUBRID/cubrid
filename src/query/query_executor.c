@@ -25513,5 +25513,9 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
 
   qfile_copy_list_id (xasl->list_id, list_id, false);
 
+  /* for checking the cached list file */
+  xasl->list_id->is_result_cached = true;
+  xasl->list_id->query_id = xasl_state->query_id;
+
   return NO_ERROR;
 }
