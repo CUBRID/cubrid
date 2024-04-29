@@ -181,6 +181,7 @@ extern "C"
   extern void db_print_stats (void);
 
   extern void db_preload_classes (const char *name1, ...);
+  extern void db_install_static_methods ();	/* see db_method_static.cpp */
   extern void db_link_static_methods (DB_METHOD_LINK * methods);
   extern void db_unlink_static_methods (DB_METHOD_LINK * methods);
   extern void db_flush_static_methods (void);
