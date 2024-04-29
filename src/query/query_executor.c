@@ -15087,16 +15087,16 @@ end:
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
       er_print_callstack (ARG_FILE_LINE, "ending query execution with qlist_count = %d\n", thread_p->m_qlist_count);
-    }
-  if (list_id && list_id->type_list.type_cnt != 0)
-    {
-      // one new list file
-      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
-    }
-  else
-    {
-      // no new list files
-      assert (thread_p->m_qlist_count == qlist_enter_count);
+      if (list_id && list_id->type_list.type_cnt != 0)
+	{
+	  // one new list file
+	  assert (thread_p->m_qlist_count == qlist_enter_count + 1);
+	}
+      else
+	{
+	  // no new list files
+	  assert (thread_p->m_qlist_count == qlist_enter_count);
+	}
     }
 #endif // SERVER_MODE
 
