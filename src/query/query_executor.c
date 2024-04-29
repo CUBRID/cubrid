@@ -13665,7 +13665,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state *
       xasl->xasl_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       xasl->xasl_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
       xasl->xasl_stats.fetch_time +=
-	perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) - old_fetch_time;
+	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
+		   old_fetch_time) / 1000);
     }
 
   thread_dec_recursion_depth (thread_p);
