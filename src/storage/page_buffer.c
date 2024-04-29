@@ -2152,6 +2152,8 @@ try_again:
 	{
 	  perfmon_pbx_fix_acquire_time (thread_p, perf.perf_page_type, perf.perf_page_found, perf.perf_latch_mode,
 					perf.perf_cond_type, perf.fix_wait_time);
+	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
+					  perf.fix_wait_time);
 	}
     }
 
