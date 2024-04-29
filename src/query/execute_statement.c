@@ -14507,18 +14507,18 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   stmt->info.query.flag.cte_query_cached = 1;
 
-  cte_context.cte_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
-  if (cte_context.cte_host_var_index == NULL)
+  if (var_count > 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      cte_context.cte_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+      if (cte_context.cte_host_var_index == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      /* to ininitialize empty index */
+      memset ((void *) cte_context.cte_host_var_index, -1, var_count * sizeof (int));
     }
 
-  /* to ininitialize empty index */
-  for (i = 0; i < var_count; i++)
-    {
-      cte_context.cte_host_var_index[i] = -1;
-    }
   parser_walk_tree (&cte_context, stmt, pt_cte_host_vars_index, parser, NULL, NULL);
 
   stmt->cte_host_var_count = cte_context.host_var_count;

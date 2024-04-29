@@ -2393,9 +2393,10 @@ set_prepare_cte_info (PT_NODE * cte_query, DB_PREPARE_CTE_INFO * cte_info, int c
       goto err_exit;
     }
 
-  for (i = 0; i < cte_query->cte_host_var_count; i++)
+  if (cte_query->cte_host_var_count > 0)
     {
-      cte_info[q].cte_host_var_index[i] = cte_query->cte_host_var_index[i];
+      memcpy (cte_info[q].cte_host_var_index, cte_query->cte_host_var_index,
+	      cte_query->cte_host_var_count * sizeof (int));
     }
 
   return cte_info;

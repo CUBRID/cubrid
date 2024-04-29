@@ -16068,7 +16068,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	      xcache_unfix (thread_p, ent);
 	    }
 
-	  if (ent == NULL || list_cache_entry_p == NULL || list_id == NULL)
+	  if (list_id == NULL)
 	    {
 	      /* re-execute CTE without resut-cache */
 	      if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
