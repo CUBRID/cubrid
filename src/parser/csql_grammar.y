@@ -3879,6 +3879,10 @@ alter_stmt
 			      {
 			        node->info.serial.code = PT_CHANGE_OWNER;
 			      }
+			    else if (comment != NULL)
+			      {
+			        node->info.serial.code = PT_SERIAL_COMMENT;
+			      }
 			  }
 		DBG_PRINT}}
 	| ALTER						/* 1 */

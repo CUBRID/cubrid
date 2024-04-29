@@ -1445,7 +1445,8 @@ typedef enum
   PT_CHANGE_INDEX_STATUS,
   PT_ADD_MEMBERS,		/* alter user type */
   PT_DROP_MEMBERS,
-  PT_SERIAL_OPTION		/* alter serial type */
+  PT_SERIAL_OPTION,		/* alter serial type */
+  PT_SERIAL_COMMENT
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -2183,7 +2184,7 @@ struct pt_serial_info
   PT_NODE *cached_num_val;	/* PT_VALUE */
   PT_NODE *owner_name;		/* PT_NAME */
   PT_NODE *comment;		/* PT_VALUE */
-  PT_ALTER_CODE code;		/* PT_SERIAL_OPTION, PT_CHANGE_OWNER */
+  PT_ALTER_CODE code;		/* PT_SERIAL_OPTION, PT_CHANGE_OWNER, PT_SERIAL_COMMENT */
   int cyclic;
   int no_max;
   int no_min;

@@ -10031,6 +10031,14 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
 
+    case PT_SERIAL_COMMENT:
+      if (node->info.serial.comment == NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
+	  return;
+	}
+      break;
+
     default:
       assert (false);
       break;
