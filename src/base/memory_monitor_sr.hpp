@@ -93,7 +93,7 @@ namespace cubmem
 
     private:
       inline char *get_metainfo_pos (char *ptr, size_t size);
-      inline std::string make_stat_name (const char *file, const int line);
+      inline void make_stat_name (char *buf, const char *file, const int line);
 
     private:
       std::string m_server_name;
@@ -118,10 +118,10 @@ namespace cubmem
     return m_target_pos;
   }
 
-  inline std::string memory_monitor::make_stat_name (const char *file, const int line)
+  inline void memory_monitor::make_stat_name (char *buf, const char *file, const int line)
   {
-    std::string filecopy (file + m_target_pos);
-    return filecopy + ":" + std::to_string (line);
+    assert (strlen (file + m_target_pos) + std::to_string (line).length() + 1 <= MMON_MAX_NAME_LENGTH);
+    snprintf (buf, MMON_MAX_NAME_LENGTH, "%s:%d", file + m_target_pos, line);
   }
 
   inline char *memory_monitor::get_metainfo_pos (char *ptr, size_t size)
@@ -131,7 +131,7 @@ namespace cubmem
 
   inline void memory_monitor::add_stat (char *ptr, const size_t size, const char *file, const int line)
   {
-    std::string stat_name;
+    char stat_name[MMON_MAX_NAME_LENGTH];
 
     // size should not be 0 because of MMON_METAINFO_SIZE
     assert (size > 0);
@@ -141,7 +141,7 @@ namespace cubmem
     metainfo->allocated_size = (uint64_t) size;
     m_total_mem_usage += metainfo->allocated_size;
 
-    stat_name = make_stat_name (file, line);
+    make_stat_name (stat_name, file, line);
 
 retry:
     const auto search = m_stat_name_map.find (stat_name);
