@@ -5722,15 +5722,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	    {
 	      /* the caller is the holder of the buffer page */
 	      holder->fix_count++;
+
 	      /* holder->dirty_before_holder not changed */
-	      if (request_mode == PGBUF_LATCH_WRITE)
-		{
-		  holder->perf_stat.hold_has_write_latch = 1;
-		}
-	      else
-		{
-		  holder->perf_stat.hold_has_read_latch = 1;
-		}
+	      holder->perf_stat.hold_has_read_latch = 1;
 	    }
 #if defined(SERVER_MODE)
 	  else
@@ -5747,16 +5741,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 
 	      holder->fix_count = 1;
 	      holder->bufptr = bufptr;
-	      if (request_mode == PGBUF_LATCH_WRITE)
-		{
-		  holder->perf_stat.hold_has_write_latch = 1;
-		  holder->perf_stat.hold_has_read_latch = 0;
-		}
-	      else
-		{
-		  holder->perf_stat.hold_has_read_latch = 1;
-		  holder->perf_stat.hold_has_write_latch = 0;
-		}
+
+	      holder->perf_stat.hold_has_read_latch = 1;
+	      holder->perf_stat.hold_has_write_latch = 0;
 	      holder->perf_stat.dirtied_by_holder = 0;
 	      holder->perf_stat.dirty_before_hold = buf_is_dirty;
 	    }
