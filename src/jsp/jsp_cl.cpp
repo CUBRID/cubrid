@@ -121,6 +121,8 @@ static int drop_stored_procedure_code (const char *name);
 static int jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node_list, method_sig_list &sig_list);
 static int *jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list);
 
+static std::string get_class_name (const std::string &target);
+
 extern bool ssl_client;
 
 /*
@@ -1536,4 +1538,14 @@ jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list)
     }
 
   return arg_list;
+}
+
+static std::string
+get_class_name (const std::string &target)
+{
+  auto pos = target.find_last_of ('(');
+  std::string name_part = target.substr (0, pos);
+
+  pos = name_part.find_last_of ('.');
+  return name_part.substr (0, pos);
 }
