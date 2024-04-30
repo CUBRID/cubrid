@@ -195,7 +195,7 @@ namespace cubload
 	return LC_CLASSNAME_ERROR;
       }
 
-    error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, false, NULL);
+    error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, NULL);
     if (error != NO_ERROR)
       {
 	ASSERT_ERROR ();
