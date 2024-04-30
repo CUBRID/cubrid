@@ -1574,7 +1574,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       goto print_diag_usage;
     }
 
-  if (diag == DIAGDUMP_ALL && class_name != NULL)
+  if (diag != DIAGDUMP_HEAP && class_name != NULL)
     {
       goto print_diag_usage;
     }
