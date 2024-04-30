@@ -83,7 +83,8 @@ public class DatetimeValue extends Value {
     }
 
     public Timestamp toTimestamp() throws TypeMismatchException {
-        return timestamp;
+        long sec = timestamp.getTime() / 1000L; // truncate milli-seconds
+        return new Timestamp(sec * 1000L);
     }
 
     public Timestamp toDatetime() throws TypeMismatchException {
