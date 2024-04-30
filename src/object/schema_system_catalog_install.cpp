@@ -889,6 +889,7 @@ namespace cubschema
 	   );
   }
 
+
   system_catalog_definition
   system_catalog_initializer::get_stored_procedure_code ()
   {
@@ -898,8 +899,11 @@ namespace cubschema
 		   CT_STORED_PROC_CODE_NAME,
 		   // columns
     {
-      {"sp_name", format_varchar (255)},
+      {"name", format_varchar (65535)}, // java's name limit
+      {"created_time", format_varchar (16)},
       {"owner", AU_USER_CLASS_NAME},
+      {"is_static", "integer"},
+      {"is_system_generated", "integer"},
       {"stype", "integer"},
       {"scode", format_varchar (1073741823)},
       {"otype", "integer"},
@@ -907,8 +911,8 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"name", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"ocode", nullptr}, false}
+      {DB_CONSTRAINT_UNIQUE, "", {"name", nullptr}, false},
+      {DB_CONSTRAINT_UNIQUE, "", {"name", "created_time", nullptr}, false},
     },
 // authorization
     {

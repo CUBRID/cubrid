@@ -84,8 +84,11 @@ typedef sp_directive SP_DIRECTIVE_ENUM;
 
 struct sp_code_info
 {
-  std::string sp_name;
+  std::string name;
+  std::string created_time;
   MOP owner;
+  int is_static;
+  int is_system_generated;
   int stype;
   std::string scode;
   int otype;
