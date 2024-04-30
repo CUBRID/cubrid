@@ -6866,15 +6866,11 @@ STATIC_INLINE PGBUF_BCB *
 pgbuf_search_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
 {
   PGBUF_BCB *bufptr;
-  int mbw_cnt;
 #if defined(SERVER_MODE)
   int rv;
-  int loop_cnt;
 #endif
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-
-  mbw_cnt = 0;
 
 /* one_phase: no hash-chain mutex */
 one_phase:
@@ -6885,9 +6881,6 @@ one_phase:
       if (VPID_EQ (&(bufptr->vpid), vpid))
 	{
 #if defined(SERVER_MODE)
-	  loop_cnt = 0;
-
-	mutex_lock:
 
 	  rv = PGBUF_BCB_TRYLOCK (bufptr);
 	  if (rv == 0)
@@ -6900,11 +6893,6 @@ one_phase:
 		{
 		  /* give up one_phase */
 		  goto two_phase;
-		}
-
-	      if (loop_cnt++ < mbw_cnt)
-		{
-		  goto mutex_lock;
 		}
 
 	      /* An unconditional request is given for acquiring mutex */
@@ -6959,9 +6947,6 @@ try_again:
       if (VPID_EQ (&(bufptr->vpid), vpid))
 	{
 #if defined(SERVER_MODE)
-	  loop_cnt = 0;
-
-	mutex_lock2:
 
 	  rv = PGBUF_BCB_TRYLOCK (bufptr);
 	  if (rv == 0)
@@ -6975,11 +6960,6 @@ try_again:
 		{
 		  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_TRYLOCK, 0);
 		  return NULL;
-		}
-
-	      if (loop_cnt++ < mbw_cnt)
-		{
-		  goto mutex_lock2;
 		}
 
 	      /* ret == EBUSY : bufptr->mutex is not held */
