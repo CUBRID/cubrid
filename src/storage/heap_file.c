@@ -14505,6 +14505,57 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
   fprintf (fp, "\n\n*** END OF DUMP FOR HEAP FILE ***\n\n");
 }
 
+#if defined (SA_MODE)
+/*
+ * heap_dump_heap_file () - dump a specific heap file with class name
+ *
+ * return            :
+ * thread_p (in)     : thread entry
+ * fp (in)           : output file
+ * dump_records (in) : true to dump records
+ * class_name (in)   : name of class to dump
+ */
+void
+heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name)
+{
+  int error_code = NO_ERROR;
+  OID class_oid;
+  LC_FIND_CLASSNAME status;
+  HFID hfid;
+  OR_PARTITION *parts = NULL;
+  int parts_count = 0;
+
+  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, S_LOCK);
+  if (status != LC_CLASSNAME_EXIST)
+    {
+      return;
+    }
+
+  error_code = heap_hfid_cache_get (thread_p, &class_oid, &hfid, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+
+  heap_dump (thread_p, fp, &hfid, dump_records);
+
+  error_code = heap_get_class_partitions (thread_p, &class_oid, &parts, &parts_count);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+
+  for (int i = 1; i < parts_count; i++)
+    {
+      heap_dump (thread_p, fp, &parts[i].class_hfid, dump_records);
+    }
+
+  heap_clear_partition_info (thread_p, parts, parts_count);
+}
+#endif
+
 /*
  * heap_dump_capacity () - dump heap file capacity
  *
