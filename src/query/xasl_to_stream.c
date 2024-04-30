@@ -127,6 +127,7 @@ static int xts_save_key_range_array (const KEY_RANGE * ptr, int size);
 static int xts_save_upddel_class_info_array (const UPDDEL_CLASS_INFO * classes, int nelements);
 static int xts_save_update_assignment_array (const UPDATE_ASSIGNMENT * assigns, int nelements);
 static int xts_save_odku_info (const ODKU_INFO * odku_info);
+static int xts_save_sq_cache (const SQ_CACHE * sq_cache);
 
 static char *xts_process (char *ptr, const json_table_column & json_table_col);
 static char *xts_process (char *ptr, const json_table_node & json_table_node);
@@ -2824,6 +2825,17 @@ xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
   return offset;
 }
 
+static int
+xts_save_sq_cache (const SQ_CACHE * sq_cache)
+{
+  int offset = 0;
+  if (sq_cache)
+    {
+      offset = xts_save_db_value_array (sq_cache->sq_key_struct, sq_cache->n_elements);
+    }
+  return offset;
+}
+
 /*
  * xts_process_xasl_header () - Pack XASL node header in buffer.
  *
@@ -3228,6 +3240,23 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_xasl_node (xasl->next);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  if (xasl->sq_cache)
+    {
+      ptr = or_pack_int (ptr, xasl->sq_cache->n_elements);
+    }
+  else
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+
+  offset = xts_save_sq_cache (xasl->sq_cache);
+
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -6085,7 +6114,9 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 
   size += (OR_INT_SIZE		/* iscan_oid_order */
 	   + PTR_SIZE		/* query_alias */
-	   + PTR_SIZE);		/* next */
+	   + PTR_SIZE		/* next */
+	   + PTR_SIZE		/* sq_cache_n_elements */
+	   + PTR_SIZE);		/* sq_cache */
 
   return size;
 }

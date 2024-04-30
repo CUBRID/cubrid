@@ -147,12 +147,12 @@ using ANALYTIC_EVAL_TYPE = cubxasl::analytic_eval_type;
 using PRED_EXPR = cubxasl::pred_expr;
 // *INDENT-ON*
 
+typedef struct sq_cache SQ_CACHE;
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
 typedef struct xasl_stat XASL_STATS;
-
-typedef struct sq_cache SQ_CACHE;
 
 typedef struct topn_tuple TOPN_TUPLE;
 typedef struct topn_tuples TOPN_TUPLES;
@@ -497,10 +497,7 @@ struct cte_proc_node
 #define XASL_NEED_SINGLE_TUPLE_SCAN   0x8000	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	      0x10000	/* is any tde class related */
 #define XASL_SAMPLING_SCAN	      0x20000	/* is sampling scan */
-#define XASL_SQ_CACHE_ENABLED	      0x40000
-#define XASL_SQ_CACHE_INITIALIZED   0x80000
-#define XASL_SQ_CACHE_NOT_CACHING_CHECKED   0x100000
-#define XASL_SQ_CACHE_NOT_CACHING  0x200000
+#define XASL_SQ_CACHE	      0x40000
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -929,18 +926,6 @@ struct xasl_stat
   UINT64 fetch_time;
 };
 
-struct sq_cache
-{
-  MHT_TABLE *ht;
-  UINT64 size_max;
-  UINT64 size;
-  struct
-  {
-    int hit;
-    int miss;
-  } stats;
-};
-
 /* top-n sorting object */
 struct topn_tuples
 {
@@ -966,6 +951,22 @@ struct partition_spec_node
   PARTITION_SPEC_TYPE *next;	/* next partition */
 };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+
+struct sq_cache
+{
+  DB_VALUE **sq_key_struct;
+  int n_elements;
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  MHT_TABLE *ht;
+  UINT64 size_max;
+  UINT64 size;
+  struct
+  {
+    int hit;
+    int miss;
+  } stats;
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
+};
 
 struct access_spec_node
 {
@@ -1081,6 +1082,8 @@ struct xasl_node
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
 
+  SQ_CACHE *sq_cache;
+
 #if defined (CS_MODE) || defined (SA_MODE)
   int projected_size;		/* # of bytes per result tuple */
   double cardinality;		/* estimated cardinality of result */
@@ -1090,7 +1093,6 @@ struct xasl_node
   ORDERBY_STATS orderby_stats;
   GROUPBY_STATS groupby_stats;
   XASL_STATS xasl_stats;
-  SQ_CACHE *sq_cache;
 
   TOPN_TUPLES *topn_items;	/* top-n tuples for orderby limit */
 

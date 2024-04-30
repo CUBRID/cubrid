@@ -77,6 +77,7 @@ static OID *stx_restore_OID_array (THREAD_ENTRY * thread_p, char *ptr, int size)
 static METHOD_SIG_LIST *stx_restore_method_sig_list (THREAD_ENTRY * thread_p, char *ptr);
 static METHOD_SIG *stx_restore_method_sig (THREAD_ENTRY * thread_p, char *ptr, int size);
 static KEY_RANGE *stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr, int size);
+static SQ_CACHE *stx_restore_sq_cache (THREAD_ENTRY * thread_p, char *ptr, int n_elements);
 
 static char *stx_build_xasl_node (THREAD_ENTRY * thread_p, char *tmp, XASL_NODE * ptr);
 static char *stx_build_xasl_header (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE_HEADER * xasl_header);
@@ -1685,6 +1686,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 {
   int offset;
   int tmp, i;
+  UINTPTR tmp_ptr;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   /* initialize query_in_progress flag */
@@ -1787,7 +1789,6 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     }
 
   ptr = or_unpack_int (ptr, (int *) &xasl->ordbynum_flag);
-  xasl->sq_cache = NULL;
 
   xasl->topn_items = NULL;
 
@@ -2275,6 +2276,9 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	  goto error;
 	}
     }
+  ptr = or_unpack_int (ptr, &i);
+  ptr = or_unpack_int (ptr, &offset);
+  xasl->sq_cache = stx_restore_sq_cache (thread_p, &xasl_unpack_info->packed_xasl[offset], i);
 
   memset (&xasl->orderby_stats, 0, sizeof (xasl->orderby_stats));
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
@@ -2412,6 +2416,26 @@ stx_build_cte_xasl_id (THREAD_ENTRY * thread_p, char *ptr, XASL_ID * cte_xasl_id
   ptr += OR_INT_SIZE;
 
   return ptr;
+}
+
+static SQ_CACHE *
+stx_restore_sq_cache (THREAD_ENTRY * thread_p, char *ptr, int n_elements)
+{
+  SQ_CACHE *sq_cache = NULL;
+
+  if (n_elements > 0)
+    {
+      sq_cache = (SQ_CACHE *) stx_alloc_struct (thread_p, sizeof (SQ_CACHE));
+      sq_cache->sq_key_struct = stx_restore_db_value_array_extra (thread_p, ptr, n_elements, n_elements);
+      sq_cache->n_elements = n_elements;
+      sq_cache->ht = NULL;
+      sq_cache->size_max = 0;
+      sq_cache->size = 0;
+      sq_cache->stats.hit = 0;
+      sq_cache->stats.miss = 0;
+    }
+
+  return sq_cache;
 }
 
 static char *

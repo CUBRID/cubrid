@@ -3872,12 +3872,12 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 
-      if (sq_check_enable (thread_p, regu_var->xasl))
+      if (regu_var->xasl && XASL_IS_FLAGED (regu_var->xasl, XASL_SQ_CACHE))
 	{
 	  SQ_KEY *key;
 	  if ((key = sq_make_key (thread_p, regu_var->xasl)) == NULL)
 	    {
-	      XASL_SET_FLAG (regu_var->xasl, XASL_SQ_CACHE_NOT_CACHING);
+	      XASL_CLEAR_FLAG (regu_var->xasl, XASL_SQ_CACHE);
 	      EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
 	      if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
 		{
@@ -3895,14 +3895,17 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 		      sq_free_key (key);
 		      goto exit_on_error;
 		    }
-		  sq_put (thread_p, key, regu_var->xasl, regu_var);
+		  if (sq_put (thread_p, key, regu_var->xasl, regu_var) == ER_FAILED)
+		    {
+		      sq_free_key (key);
+		    }
 		}
 	      else
 		{
 		  /* FOUND */
 		  regu_var->xasl->status = XASL_SUCCESS;
+		  sq_free_key (key);
 		}
-	      sq_free_key (key);
 	    }
 	}
       else

@@ -65,6 +65,7 @@
 #include "compile_context.h"
 #include "db_json.hpp"
 #include "jsp_cl.h"
+#include "subquery_cache.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -629,7 +630,9 @@ static int pt_get_mvcc_reev_range_data (PARSER_CONTEXT * parser, TABLE_INFO * ta
 static PT_NODE *pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
-
+static bool pt_check_corr_subquery_hash_result_cache (XASL_NODE * xasl);
+static bool pt_prepare_sq_cache (XASL_NODE * xasl);
+static int pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type);
 
 static void
 pt_init_xasl_supp_info ()
@@ -13960,6 +13963,21 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      regu->value.dbvalptr = value_list->val;
 		      /* move to next db_value holder */
 		      value_list = value_list->next;
+		      if (node->info.query.q.select.hint & PT_HINT_NO_SUBQUERY_CACHE)
+			{
+			  /* it means SUBQUERY RESULT won't be cached. */
+			}
+		      else
+			{
+			  if (pt_check_corr_subquery_hash_result_cache (xasl))
+			    {
+			      if (pt_prepare_sq_cache (xasl))
+				{
+				  XASL_SET_FLAG (xasl, XASL_SQ_CACHE);
+				}
+			    }
+			}
+
 		    }
 		  else
 		    {
@@ -27185,4 +27203,197 @@ pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred)
     }
 
   return xasl;
+}
+
+/*
+ * pt_check_corr_subquery_hash_result_cache () -
+ *
+ * return : bool
+ * xasl (in) :
+ */
+
+bool
+pt_check_corr_subquery_hash_result_cache (XASL_NODE * xasl)
+{
+  int cache;
+  if (xasl)
+    {
+      XASL_NODE *scan_ptr, *aptr;
+      bool ret;
+
+      if (!xasl->spec_list)
+	{
+	  return false;
+	}
+      else if (xasl->spec_list->where_key && !xasl->spec_list->where_pred && !xasl->spec_list->where_range)
+	{
+	  return false;
+	}
+      if (xasl->if_pred || xasl->after_join_pred || xasl->dptr_list)
+	{
+	  return false;
+	}
+      if (!XASL_IS_FLAGED (xasl, XASL_LINK_TO_REGU_VARIABLE))
+	{
+	  return false;
+	}
+      ret = true;
+      if (xasl->scan_ptr)
+	{
+	  for (scan_ptr = xasl->scan_ptr; scan_ptr != NULL; scan_ptr = scan_ptr->next)
+	    {
+	      ret &= pt_check_corr_subquery_hash_result_cache (scan_ptr);
+	    }
+	}
+      if (xasl->aptr_list)
+	{
+	  for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
+	    {
+	      ret &= pt_check_corr_subquery_hash_result_cache (aptr);
+	    }
+	}
+      return ret;
+    }
+
+  return false;
+}
+
+/*
+ * pt_prepare_sq_cache () -
+ *
+ * return : bool
+ * xasl (in) :
+ */
+
+bool
+pt_prepare_sq_cache (XASL_NODE * xasl)
+{
+  int n_elements;
+  DB_VALUE **sq_key_struct;
+
+  n_elements = pt_make_sq_cache_key_struct (NULL, (void *) xasl, SQ_TYPE_XASL);
+  sq_key_struct = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
+  memset ((void *) sq_key_struct, 0, n_elements * sizeof (DB_VALUE *));
+  pt_make_sq_cache_key_struct (sq_key_struct, (void *) xasl, SQ_TYPE_XASL);
+
+  if (n_elements <= 0)
+    {
+      free (sq_key_struct);
+      return false;
+    }
+
+  xasl->sq_cache = (SQ_CACHE *) pt_alloc_packing_buf (sizeof (SQ_CACHE));
+
+  xasl->sq_cache->sq_key_struct = sq_key_struct;
+  xasl->sq_cache->n_elements = n_elements;
+
+  return true;
+}
+
+/*
+ * pt_make_sq_cache_key_struct () -
+ *
+ * return : int 
+ * xasl (in) :
+ */
+
+int
+pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type)
+{
+  int cnt = 0;
+  int i;
+  XASL_NODE *xasl_src;
+  XASL_NODE *scan_ptr, *aptr;
+  ACCESS_SPEC_TYPE *spec;
+  PRED_EXPR *pred_src;
+  REGU_VARIABLE *regu_src;
+  if (!p)
+    {
+      return 0;
+    }
+
+  switch (type)
+    {
+    case SQ_TYPE_XASL:
+      xasl_src = (XASL_NODE *) p;
+      spec = xasl_src->spec_list;
+      for (spec = xasl_src->spec_list; spec; spec = spec->next)
+	{
+	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_key, SQ_TYPE_PRED);
+	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_pred, SQ_TYPE_PRED);
+	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_range, SQ_TYPE_PRED);
+	}
+      if (xasl_src->scan_ptr)
+	{
+	  for (scan_ptr = xasl_src->scan_ptr; scan_ptr != NULL; scan_ptr = scan_ptr->next)
+	    {
+	      cnt += pt_make_sq_cache_key_struct (key_struct, (void *) scan_ptr, SQ_TYPE_XASL);
+	    }
+	}
+      if (xasl_src->aptr_list)
+	{
+	  for (aptr = xasl_src->aptr_list; aptr != NULL; aptr = aptr->next)
+	    {
+	      cnt += pt_make_sq_cache_key_struct (key_struct, (void *) aptr, SQ_TYPE_XASL);
+	    }
+	}
+      break;
+    case SQ_TYPE_PRED:
+      pred_src = (PRED_EXPR *) p;
+      if (pred_src->type == T_PRED)
+	{
+	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) pred_src->pe.m_pred.lhs, SQ_TYPE_PRED);
+	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) pred_src->pe.m_pred.rhs, SQ_TYPE_PRED);
+	}
+      else if (pred_src->type == T_EVAL_TERM)
+	{
+	  COMP_EVAL_TERM t = pred_src->pe.m_eval_term.et.et_comp;
+	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) t.lhs, SQ_TYPE_REGU_VAR);
+	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) t.rhs, SQ_TYPE_REGU_VAR);
+	}
+      else
+	{
+	  /* give up */
+	}
+      break;
+    case SQ_TYPE_REGU_VAR:
+      regu_src = (REGU_VARIABLE *) p;
+      if (regu_src->type == TYPE_CONSTANT)
+	{
+	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.dbvalptr, SQ_TYPE_DBVAL);
+	}
+      else if (regu_src->type == TYPE_INARITH)
+	{
+	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->leftptr, SQ_TYPE_REGU_VAR);
+	  cnt +=
+	    pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->rightptr, SQ_TYPE_REGU_VAR);
+	}
+      else
+	{
+	  /* give up */
+	}
+      break;
+    case SQ_TYPE_DBVAL:
+      if (key_struct)
+	{
+	  i = 0;
+	  if (key_struct[i])
+	    {
+	      while (key_struct[i] != NULL)
+		{
+		  i++;
+		}
+	    }
+	  key_struct[i] = (DB_VALUE *) p;
+	}
+
+      cnt++;
+      break;
+
+    default:
+      /* give up */
+      break;
+    }
+
+  return cnt;
 }

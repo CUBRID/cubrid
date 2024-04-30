@@ -33,7 +33,6 @@ extern int sq_cache_initialize (THREAD_ENTRY * thread_p, xasl_node * xasl);
 extern int sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * result);
 extern bool sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * regu_var);
 extern void sq_cache_destroy (xasl_node * xasl);
-extern int sq_check_enable (THREAD_ENTRY * thread_p, xasl_node * xasl);
 extern SQ_KEY *sq_make_key (THREAD_ENTRY * thread_p, xasl_node * xasl);
 extern void sq_free_key (SQ_KEY * key);
 
@@ -54,7 +53,11 @@ union sq_regu_value
 
 struct sq_key
 {
-  DB_VALUE *pred_set;
+  /*
+     DB_VALUE *pred_set;
+   */
+  DB_VALUE **dbv_array;
+  int n_elements;
 };
 
 struct sq_val

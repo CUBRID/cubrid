@@ -3275,10 +3275,10 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
   qdump_print_stats_text (fp, xasl_p->connect_by_ptr, indent);
 
-  if (XASL_IS_FLAGED (xasl_p, XASL_SQ_CACHE_INITIALIZED) && !XASL_IS_FLAGED (xasl_p, XASL_SQ_CACHE_NOT_CACHING))
+  if (xasl_p->sq_cache && xasl_p->sq_cache->ht)
     {
       fprintf (fp, "%*c", indent, ' ');
-      fprintf (fp, "SUBQUERY_CACHE (hit: %lu, miss: %lu, size: %lu Bytes)\n", xasl_p->sq_cache->stats.hit,
+      fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu Bytes)\n", xasl_p->sq_cache->stats.hit,
 	       xasl_p->sq_cache->stats.miss, xasl_p->sq_cache->size);
     }
 

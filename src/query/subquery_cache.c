@@ -52,8 +52,8 @@ static unsigned int sq_hash_func (const void *key, unsigned int ht_size);
 static int sq_cmp_func (const void *key1, const void *key2);
 static int sq_rem_func (const void *key, void *data, void *args);
 
-static int sq_walk_xasl_check_not_caching (THREAD_ENTRY * thread_p, xasl_node * xasl);
-static int sq_walk_xasl_and_add_val_to_set (THREAD_ENTRY * thread_p, void *p, int type, SQ_KEY * pred_set);
+static int sq_walk_xasl_check_not_caching (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+//static int sq_walk_xasl_and_add_val_to_set (THREAD_ENTRY * thread_p, void *p, int type, SQ_KEY * pred_set);
 
 /**************************************************************************************/
 
@@ -68,14 +68,11 @@ static int sq_walk_xasl_and_add_val_to_set (THREAD_ENTRY * thread_p, void *p, in
  * newly created SQ_KEY structure is returned.
  */
 SQ_KEY *
-sq_make_key (THREAD_ENTRY * thread_p, xasl_node * xasl)
+sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   SQ_KEY *keyp;
-  int cnt = 0;
-  ACCESS_SPEC_TYPE *p;
-
-  p = xasl->spec_list;
-
+  int i, cnt = 0;
+/*
   keyp = (SQ_KEY *) db_private_alloc (NULL, sizeof (SQ_KEY));
   keyp->pred_set = db_value_create ();
   db_make_set (keyp->pred_set, db_set_create_basic (NULL, NULL));
@@ -86,6 +83,13 @@ sq_make_key (THREAD_ENTRY * thread_p, xasl_node * xasl)
     {
       sq_free_key (keyp);
       return NULL;
+    }*/
+  keyp = (SQ_KEY *) db_private_alloc (NULL, sizeof (SQ_KEY));
+  keyp->n_elements = xasl->sq_cache->n_elements;
+  keyp->dbv_array = (DB_VALUE **) db_private_alloc (NULL, keyp->n_elements * sizeof (DB_VALUE *));
+  for (i = 0; i < keyp->n_elements; i++)
+    {
+      keyp->dbv_array[i] = db_value_copy (xasl->sq_cache->sq_key_struct[i]);
     }
 
   return keyp;
@@ -136,9 +140,16 @@ sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val)
 void
 sq_free_key (SQ_KEY * key)
 {
-  db_value_clear (key->pred_set);
-  pr_free_ext_value (key->pred_set);
-
+  int i;
+  /*
+     db_value_clear (key->pred_set);
+     pr_free_ext_value (key->pred_set);
+   */
+  for (i = 0; i < key->n_elements; i++)
+    {
+      pr_free_ext_value (key->dbv_array[i]);
+    }
+  db_private_free_and_init (NULL, key->dbv_array);
   db_private_free_and_init (NULL, key);
 }
 
@@ -229,14 +240,10 @@ sq_hash_func (const void *key, unsigned int ht_size)
   SQ_KEY *k = (SQ_KEY *) key;
   int i;
   unsigned int h = 0;
-  DB_SET *set = db_get_set (k->pred_set);
-  DB_VALUE v;
 
-  for (i = 0; i < db_set_size (set); i++)
+  for (i = 0; i < k->n_elements; i++)
     {
-      db_set_get (set, i, &v);
-      h ^= mht_valhash (&v, ht_size);
-      pr_clear_value (&v);
+      h ^= mht_valhash (k->dbv_array[i], ht_size);
     }
   return h % ht_size;
 }
@@ -255,15 +262,10 @@ sq_cmp_func (const void *key1, const void *key2)
 {
   SQ_KEY *k1, *k2;
   int i, sz1, sz2;
-  DB_SET *set1, *set2;
-  DB_VALUE v1, v2;
-
   k1 = (SQ_KEY *) key1;
   k2 = (SQ_KEY *) key2;
-  set1 = db_get_set (k1->pred_set);
-  set2 = db_get_set (k2->pred_set);
-  sz1 = db_set_size (set1);
-  sz2 = db_set_size (set2);
+  sz1 = k1->n_elements;
+  sz2 = k2->n_elements;
 
   if (sz1 != sz2)
     {
@@ -272,16 +274,11 @@ sq_cmp_func (const void *key1, const void *key2)
 
   for (i = 0; i < sz1; i++)
     {
-      db_set_get (set1, i, &v1);
-      db_set_get (set2, i, &v2);
-      if (!mht_compare_dbvalues_are_equal (&v1, &v2))
+      if (!mht_compare_dbvalues_are_equal (k1->dbv_array[i], k2->dbv_array[i]))
 	{
-	  pr_clear_value (&v1);
-	  pr_clear_value (&v2);
+
 	  return 0;
 	}
-      pr_clear_value (&v1);
-      pr_clear_value (&v2);
     }
   return 1;
 
@@ -314,9 +311,9 @@ sq_rem_func (const void *key, void *data, void *args)
  * caching its results. Conditions include the presence of if_pred, after_join_pred, or dptr_list in the XASL node.
  */
 int
-sq_walk_xasl_check_not_caching (THREAD_ENTRY * thread_p, xasl_node * xasl)
+sq_walk_xasl_check_not_caching (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
-  xasl_node *scan_ptr, *aptr;
+  XASL_NODE *scan_ptr, *aptr;
   int ret;
   SQ_KEY *key;
 
@@ -367,119 +364,6 @@ sq_walk_xasl_check_not_caching (THREAD_ENTRY * thread_p, xasl_node * xasl)
 }
 
 /*
- * sq_walk_xasl_and_add_val_to_set () - Recursively walks through a XASL tree and adds values to a DB_VALUE set.
- *   return: The count of values added to the set.
- *   p(in): Pointer to the current component (XASL node, predicate expression, or regu variable, or DB_VALUE) being processed.
- *   type(in): The type of the component being processed, indicating whether it's a XASL node, predicate expression, regu variable, or a DB_VALUE.
- *   pred_set(in/out): The DB_VALUE set to which values are being added.
- *
- * This function recursively processes a XASL tree, including its access spec list, predicate expressions, and regu variables.
- * For each node or expression that contains a constant value or a DB value, that value is added to the specified DB_VALUE set.
- * The function uses the type parameter to determine the appropriate processing method for the current component.
- * The count of values added to the set is returned.
- */
-int
-sq_walk_xasl_and_add_val_to_set (THREAD_ENTRY * thread_p, void *p, int type, SQ_KEY * key)
-{
-  int cnt = 0;
-
-  if (!p)
-    {
-      return 0;
-    }
-
-  switch (type)
-    {
-    case SQ_TYPE_XASL:
-      if (1)
-	{
-	  xasl_node *xasl = (xasl_node *) p;
-	  xasl_node *scan_ptr, *aptr;
-	  ACCESS_SPEC_TYPE *p;
-
-	  p = xasl->spec_list;
-	  for (p = xasl->spec_list; p; p = p->next)
-	    {
-	      /* key */
-	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, p->where_key, SQ_TYPE_PRED, key);
-	      /* pred */
-	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, p->where_pred, SQ_TYPE_PRED, key);
-	      /* range */
-	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, p->where_range, SQ_TYPE_PRED, key);
-	    }
-
-	  if (xasl->scan_ptr)
-	    {
-	      for (scan_ptr = xasl->scan_ptr; scan_ptr != NULL; scan_ptr = scan_ptr->next)
-		{
-		  cnt += sq_walk_xasl_and_add_val_to_set (thread_p, scan_ptr, SQ_TYPE_XASL, key);
-		}
-	    }
-
-	  if (xasl->aptr_list)
-	    {
-	      for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
-		{
-		  cnt += sq_walk_xasl_and_add_val_to_set (thread_p, aptr, SQ_TYPE_XASL, key);
-		}
-	    }
-
-	}
-      break;
-
-    case SQ_TYPE_PRED:
-      if (1)
-	{
-	  PRED_EXPR *src = (PRED_EXPR *) p;
-	  if (src->type == T_PRED)
-	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->pe.m_pred.lhs, SQ_TYPE_PRED, key);
-	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->pe.m_pred.rhs, SQ_TYPE_PRED, key);
-	    }
-	  else if (src->type == T_EVAL_TERM)
-	    {
-	      COMP_EVAL_TERM t = src->pe.m_eval_term.et.et_comp;
-	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, t.lhs, SQ_TYPE_REGU_VAR, key);
-	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, t.rhs, SQ_TYPE_REGU_VAR, key);
-	    }
-	}
-      break;
-
-    case SQ_TYPE_REGU_VAR:
-      if (1)
-	{
-	  REGU_VARIABLE *src = (REGU_VARIABLE *) p;
-	  if (src->type == TYPE_CONSTANT)
-	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->value.dbvalptr, SQ_TYPE_DBVAL, key);
-	    }
-	  else if (src->type == TYPE_INARITH)
-	    {
-	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->value.arithptr->leftptr, SQ_TYPE_REGU_VAR, key);
-	      cnt += sq_walk_xasl_and_add_val_to_set (thread_p, src->value.arithptr->rightptr, SQ_TYPE_REGU_VAR, key);
-	    }
-	}
-
-      break;
-
-    case SQ_TYPE_DBVAL:
-      if (1)
-	{
-	  db_set_add (db_get_set (key->pred_set), (DB_VALUE *) p);
-	  cnt++;
-	}
-
-      break;
-
-    default:
-      assert (0);
-      break;
-    }
-
-  return cnt;
-}
-
-/*
  * sq_cache_initialize () - Initializes the cache for a given XASL node.
  *   return: NO_ERROR if successful, ER_FAILED otherwise.
  *   xasl(in/out): The XASL node for which the cache is being initialized.
@@ -489,21 +373,18 @@ sq_walk_xasl_and_add_val_to_set (THREAD_ENTRY * thread_p, void *p, int type, SQ_
  * hash table could not be created.
  */
 int
-sq_cache_initialize (THREAD_ENTRY * thread_p, xasl_node * xasl)
+sq_cache_initialize (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   UINT64 max_subquery_cache_size = (UINT64) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
   int sq_hm_entries = (int) max_subquery_cache_size / 2048;	// default 1024
-  xasl->sq_cache = (SQ_CACHE *) db_private_alloc (NULL, sizeof (SQ_CACHE));
+
   xasl->sq_cache->ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
   if (!xasl->sq_cache->ht)
     {
       return ER_FAILED;
     }
-  xasl->sq_cache->stats.hit = 0;
-  xasl->sq_cache->stats.miss = 0;
-  xasl->sq_cache->size = (UINT64) 0;
+
   xasl->sq_cache->size_max = max_subquery_cache_size;
-  XASL_SET_FLAG (xasl, XASL_SQ_CACHE_INITIALIZED);
   return NO_ERROR;
 }
 
@@ -519,22 +400,20 @@ sq_cache_initialize (THREAD_ENTRY * thread_p, xasl_node * xasl)
  * to the cache.
  */
 int
-sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * regu_var)
+sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE * regu_var)
 {
   SQ_VAL *val;
   const void *ret;
   UINT64 new_entry_size = 0;
 
-  key = sq_make_key (thread_p, xasl);
-
   val = sq_make_val (thread_p, regu_var);
 
-  if (!XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
+  if (!xasl->sq_cache->ht)
     {
       sq_cache_initialize (thread_p, xasl);
     }
 
-  new_entry_size += (UINT64) or_db_value_size (key->pred_set) + sizeof (SQ_KEY);
+  new_entry_size += (UINT64) (key->n_elements) * or_db_value_size (key->dbv_array[0]) + sizeof (SQ_KEY);
 
   switch (val->t)
     {
@@ -548,22 +427,20 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE *
 
   if (xasl->sq_cache->size_max < xasl->sq_cache->size + new_entry_size)
     {
-      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
+      XASL_CLEAR_FLAG (xasl, XASL_SQ_CACHE);
       sq_free_val (val);
       return ER_FAILED;
     }
 
   ret = mht_put_if_not_exists (xasl->sq_cache->ht, key, val);
 
-  xasl->sq_cache->size += new_entry_size;
-
   if (!ret || ret != val)
     {
       sq_free_val (val);
       return ER_FAILED;
     }
+  xasl->sq_cache->size += new_entry_size;
   return NO_ERROR;
-
 }
 
 /*
@@ -577,11 +454,11 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE *
  * variable, and the function returns True. Otherwise, the function updates cache miss counters and returns False.
  */
 bool
-sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * regu_var)
+sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE * regu_var)
 {
   SQ_VAL *ret;
 
-  if (XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
+  if (XASL_IS_FLAGED (xasl, XASL_SQ_CACHE) && xasl->sq_cache->ht)
     {
       /* This conditional check acts as a mechanism to prevent the cache from being 
          overwhelmed by unsuccessful lookups. If the cache miss count exceeds a predefined 
@@ -593,13 +470,13 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE *
 	{
 	  if (xasl->sq_cache->stats.hit / xasl->sq_cache->stats.miss < SQ_CACHE_MIN_HIT_RATIO)
 	    {
-	      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
+	      XASL_CLEAR_FLAG (xasl, XASL_SQ_CACHE);
 	      return false;
 	    }
 	}
     }
 
-  if (!XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
+  if (!xasl->sq_cache->ht)
     {
       sq_cache_initialize (thread_p, xasl);
       xasl->sq_cache->stats.miss++;
@@ -628,62 +505,25 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE *
  * no longer needed or before it is deallocated.
  */
 void
-sq_cache_destroy (xasl_node * xasl)
+sq_cache_destroy (XASL_NODE * xasl)
 {
-  if (XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_INITIALIZED))
+  int i;
+  if (xasl->sq_cache)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "destroy sq_cache at xasl %p\ncache info : \n\thit : %10lu\n\tmiss: %10lu\n\tsize: %10lu Bytes\n",
-		    xasl, xasl->sq_cache->stats.hit, xasl->sq_cache->stats.miss, xasl->sq_cache->size);
-      mht_clear (xasl->sq_cache->ht, sq_rem_func, NULL);
-      mht_destroy (xasl->sq_cache->ht);
-      xasl->sq_cache->ht = NULL;
-      db_private_free_and_init (NULL, xasl->sq_cache);
-      xasl->sq_cache = NULL;
-    }
-  XASL_CLEAR_FLAG (xasl,
-		   XASL_SQ_CACHE_ENABLED | XASL_SQ_CACHE_INITIALIZED | XASL_SQ_CACHE_NOT_CACHING |
-		   XASL_SQ_CACHE_NOT_CACHING_CHECKED);
-}
-
-/*
- * sq_check_enable () - Checks if caching is enabled for a given XASL node and updates the cache status flags accordingly.
- *   xasl(in): The XASL node to check and update cache status for.
- *
- * This function determines whether caching is enabled for a specified XASL node. It first checks if the node is null, 
- * if caching has been explicitly disabled, or if the node's status is neither CLEARED nor INITIALIZED, returning FALSE in 
- * any of these cases. 
- * If the XASL_SQ_CACHE_ENABLED is already set, it returns TRUE, indicating caching is enabled. 
- * Otherwise, it sets the XASL_SQ_CACHE_ENABLED if not already set, checks if the node should not be cached by calling 
- * sq_walk_xasl_check_not_caching(), and updates the flag accordingly. The function returns FALSE if caching is not enabled 
- * by the end of its execution. 
- * This ensures that the node's caching status is accurately reflected and updated based on its current state and any conditions 
- * that might prevent caching.
- */
-int
-sq_check_enable (THREAD_ENTRY * thread_p, xasl_node * xasl)
-{
-  if (!(xasl) || XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_NOT_CACHING)
-      || !(xasl->status == XASL_CLEARED || xasl->status == XASL_INITIALIZED))
-    {
-      return FALSE;
-    }
-  if (XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_ENABLED))
-    {
-      return TRUE;
-    }
-  else
-    {
-      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_ENABLED);
-      if (!XASL_IS_FLAGED (xasl, XASL_SQ_CACHE_NOT_CACHING_CHECKED))
+      for (i = 0; i < xasl->sq_cache->n_elements; i++)
 	{
-	  if (sq_walk_xasl_check_not_caching (thread_p, xasl))
-	    {
-	      XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING);
-	    }
-	  XASL_SET_FLAG (xasl, XASL_SQ_CACHE_NOT_CACHING_CHECKED);
+	  pr_clear_value (xasl->sq_cache->sq_key_struct[i]);
 	}
-      return FALSE;
+      xasl->sq_cache->n_elements = 0;
+      if (xasl->sq_cache->ht)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"destroy sq_cache at xasl %p\ncache info : \n\thit : %10d\n\tmiss: %10d\n\tsize: %10lu Bytes\n",
+			xasl, xasl->sq_cache->stats.hit, xasl->sq_cache->stats.miss, xasl->sq_cache->size);
+	  mht_clear (xasl->sq_cache->ht, sq_rem_func, NULL);
+	  mht_destroy (xasl->sq_cache->ht);
+	  xasl->sq_cache->ht = NULL;
+	}
     }
-  return FALSE;
+  XASL_CLEAR_FLAG (xasl, XASL_SQ_CACHE);
 }
