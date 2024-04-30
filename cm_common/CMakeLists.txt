@@ -23,6 +23,9 @@ set(CMSTAT_SOURCES
   ${CM_COMMON_DIR}/cm_utils.c
   ${CM_COMMON_DIR}/cm_broker_jni.c
   )
+if(WIN32)
+  list(APPEND CMSTAT_SOURCES ${BASE_DIR}/chartype.c)
+endif(WIN32)
 SET_SOURCE_FILES_PROPERTIES(
     ${CMSTAT_SOURCES}
     PROPERTIES LANGUAGE CXX
