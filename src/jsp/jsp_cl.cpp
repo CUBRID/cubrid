@@ -1095,11 +1095,14 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   target = db_get_string (&target_val);
   class_name = get_class_name (target);
 
+  // TODO: CBRD-24552
+  /*
   err = drop_stored_procedure_code (class_name.c_str ());
   if (err != NO_ERROR)
     {
       goto error;
     }
+  */
 
   err = db_get (sp_mop, SP_ATTR_ARG_COUNT, &arg_cnt_val);
   if (err != NO_ERROR)
