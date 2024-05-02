@@ -2226,10 +2226,15 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   /* clear the body node */
   if (xasl->aptr_list)
     {
+      XASL_NODE *xptr;
+
       XASL_SET_FLAG (xasl->aptr_list, decache_clone_flag);
-      if (xasl->aptr_list->sub_xasl_id)
+      for (xptr = xasl->aptr_list; xptr; xptr = xptr->next)
 	{
-	  qfile_clear_list_id (xasl->aptr_list->list_id);
+	  if (xptr->sub_xasl_id)
+	    {
+	      qfile_clear_list_id (xptr->list_id);
+	    }
 	}
       pg_cnt += qexec_clear_xasl (thread_p, xasl->aptr_list, is_final);
     }
