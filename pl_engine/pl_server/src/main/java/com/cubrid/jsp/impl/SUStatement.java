@@ -604,7 +604,7 @@ public class SUStatement {
         if (obj == null) return null;
 
         try {
-            return obj.toDatetime();    // toTimestamp() truncates non-zero millisecond value
+            return obj.toDatetime(); // toTimestamp() truncates non-zero millisecond value
         } catch (TypeMismatchException e) {
             return null;
         }

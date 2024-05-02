@@ -31,8 +31,8 @@
 
 package com.cubrid.jsp;
 
-import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.context.ContextManager;
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.BooleanValue;
