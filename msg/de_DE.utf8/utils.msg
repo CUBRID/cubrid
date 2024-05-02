@@ -914,7 +914,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              Klassendatei, wenn vorhanden, überschreiben, Standard nein\n
+  -y, --overwrite              Klassendatei, wenn vorhanden, überschreiben, Standard nein\n\
+  -p, --package                Java-Paketname, leer, wenn nicht angegeben\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Ausgangdatei '%1$s' kann nicht geöffnet werden\n

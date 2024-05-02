@@ -66,11 +66,9 @@ namespace cubmethod
   class schema_info_handler
   {
     public:
-      schema_info_handler (error_context &ctx)
-	: m_error_ctx (ctx)
-      {
-	//
-      }
+      schema_info_handler (error_context &ctx);
+      ~schema_info_handler ();
+
       schema_info get_schema_info (int schema_type, std::string &arg1, std::string &arg2, int flag);
 
     protected:
@@ -99,7 +97,6 @@ namespace cubmethod
 
       int class_type (DB_OBJECT *class_obj);
       int set_priv_table (std::vector<priv_table> &pts, int index, char *name, unsigned int class_priv);
-
     private:
 
       void close_and_free_session ();
