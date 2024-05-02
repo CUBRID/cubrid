@@ -260,7 +260,8 @@ static void sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * so
 static int sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc,
 			      bool tde_encrypted);
 
-static int sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start, bool tde_encrypted);
+static int sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start,
+			    bool tde_encrypted);
 static int sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start);
 
 static int sort_get_num_half_tmpfiles (int tot_buffers, int input_pages);
@@ -2734,7 +2735,9 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int out_file, 
 	  if (sort_spage_insert (output_buffer, &out_recdes) == NULL_SLOTID)
 	    {
 	      /* Output buffer is full */
-	      error = sort_write_area (thread_p, &sort_param->temp[out_file], cur_page[out_file], 1, output_buffer, sort_param->tde_encrypted);
+	      error =
+		sort_write_area (thread_p, &sort_param->temp[out_file], cur_page[out_file], 1, output_buffer,
+				 sort_param->tde_encrypted);
 	      if (error != NO_ERROR)
 		{
 		  return error;
@@ -2760,7 +2763,9 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int out_file, 
   if (sort_spage_get_numrecs (output_buffer))
     {
       /* Flush the partially full output page */
-      error = sort_write_area (thread_p, &sort_param->temp[out_file], cur_page[out_file], 1, output_buffer, sort_param->tde_encrypted);
+      error =
+	sort_write_area (thread_p, &sort_param->temp[out_file], cur_page[out_file], 1, output_buffer,
+			 sort_param->tde_encrypted);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4537,7 +4542,8 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
  *       returned.
  */
 static int
-sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start, bool tde_encrypted)
+sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start,
+		 bool tde_encrypted)
 {
   PAGE_PTR page_ptr = NULL;
   VPID vpid;
