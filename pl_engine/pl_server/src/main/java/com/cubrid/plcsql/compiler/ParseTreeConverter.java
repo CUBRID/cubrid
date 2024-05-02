@@ -1725,7 +1725,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             String routine = symbolStack.getCurrentScope().routine;
             DeclFunc df = symbolStack.getDeclFunc(routine);
             assert df != null;
-            return new StmtReturn(ctx, visitExpression(ctx.expression()), df.retTypeSpec.type);
+            return new StmtReturn(ctx, visitExpression(ctx.expression()), df.retTypeSpec);
         }
     }
 

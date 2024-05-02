@@ -42,12 +42,12 @@ public class StmtReturn extends Stmt {
     }
 
     public final Expr retVal;
-    public final Type retType;
+    public final TypeSpec retTypeSpec;
 
-    public StmtReturn(ParserRuleContext ctx, Expr retVal, Type retType) {
+    public StmtReturn(ParserRuleContext ctx, Expr retVal, TypeSpec retTypeSpec) {
         super(ctx);
 
         this.retVal = retVal;
-        this.retType = retType;
+        this.retTypeSpec = retTypeSpec;
     }
 }
