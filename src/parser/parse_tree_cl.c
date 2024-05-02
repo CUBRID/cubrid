@@ -195,6 +195,7 @@ static PT_NODE *pt_apply_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p, v
 static PT_NODE *pt_apply_set_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_set_xaction (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_prepare (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_timeout (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -5025,7 +5026,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_ZZ_ERROR_MSG] = pt_apply_error_msg;
   pt_apply_func_array[PT_CONSTRAINT] = pt_apply_constraint;
   pt_apply_func_array[PT_NODE_POINTER] = pt_apply_pointer;
-  pt_apply_func_array[PT_CREATE_STORED_PROCEDURE] = pt_apply_stored_procedure;
+  pt_apply_func_array[PT_CREATE_STORED_PROCEDURE] = pt_apply_create_stored_procedure;
   pt_apply_func_array[PT_ALTER_STORED_PROCEDURE] = pt_apply_stored_procedure;
   pt_apply_func_array[PT_DROP_STORED_PROCEDURE] = pt_apply_stored_procedure;
   pt_apply_func_array[PT_PREPARE_STATEMENT] = pt_apply_prepare;
@@ -7558,6 +7559,22 @@ pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 }
 
 /*
+ * pt_apply_create_stored_procedure () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   g(in):
+ *   arg(in):
+ */
+static PT_NODE *
+pt_apply_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.sp.param_list, arg);
+  PT_APPLY_WALK (parser, p->info.sp.ret_data_type, arg);
+  return p;
+}
+
+/*
  * pt_apply_stored_procedure () -
  *   return:
  *   parser(in):
@@ -8458,7 +8475,7 @@ static PT_NODE *
 pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.data_type.entity, arg);
-  PT_APPLY_WALK (parser, p->info.data_type.virt_data_type, arg);
+  PT_APPLY_WALK (parser, p->info.data_type.table_column, arg);
   PT_APPLY_WALK (parser, p->info.data_type.enumeration, arg);
   return p;
 }
@@ -8596,6 +8613,13 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	  q = pt_append_nulstring (parser, q, ")");
 	}
+      break;
+
+    case PT_TYPE_TABLE_COLUMN:
+      r1 = pt_print_bytes (parser, p->info.data_type.table_column);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring(parser, q, "%type");
+
       break;
 
     default:

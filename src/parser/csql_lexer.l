@@ -1018,6 +1018,7 @@ IDL       [a-zA-Z0-9_]
 [tT][iI][nN][yY][iI][nN][tT]				{ begin_token(yytext);   return SmallInt; }
 [tT][rR][uU][eE]							{ begin_token(yytext);   return True; }
 [tT][rR][uU][nN][cC][aA][tT][eE]					{ begin_token(yytext);	 return TRUNCATE; }
+[tT][yY][pP][eE]                					{ begin_token(yytext);	 return TYPE; }
 [uU][cC][aA][sS][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return UCASE; }
@@ -1084,7 +1085,7 @@ IDL       [a-zA-Z0-9_]
 \\N									{ begin_token(yytext);   return Null; }
 
 "->"									{ begin_token(yytext);   return RIGHT_ARROW; }
-"."										{ begin_token(yytext);   return DOT; }
+"."									{ begin_token(yytext);   return DOT; }
 "->>"									{ begin_token(yytext);   return DOUBLE_RIGHT_ARROW; }
 "||"									{
 									  begin_token(yytext);
