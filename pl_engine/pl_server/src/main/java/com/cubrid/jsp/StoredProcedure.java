@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -126,7 +127,11 @@ public class StoredProcedure {
                 resolved = args[i].toTime();
 
             } else if (argsTypes[i] == Timestamp.class) {
-                resolved = args[i].toTimestamp();
+                if (args[i].getDbType() == DBType.DB_DATETIME) {
+                    resolved = args[i].toDatetime();
+                } else {
+                    resolved = args[i].toTimestamp();
+                }
 
             } else if (argsTypes[i] == BigDecimal.class) {
                 resolved = args[i].toBigDecimal();
@@ -183,7 +188,11 @@ public class StoredProcedure {
                 resolved = args[i].toTimeArray();
 
             } else if (argsTypes[i] == Timestamp[].class) {
-                resolved = args[i].toTimestampArray();
+                if (args[i].getDbType() == DBType.DB_DATETIME) {
+                    resolved = args[i].toDatetimeArray();
+                } else {
+                    resolved = args[i].toTimestampArray();
+                }
 
             } else if (argsTypes[i] == BigDecimal[].class) {
                 resolved = args[i].toBigDecimalArray();
