@@ -85,9 +85,7 @@ public class StoredProcedure {
         return resolved;
     }
 
-    public void setArgs() {}
-
-    public void checkArgs() throws TypeMismatchException {
+    private void checkArgs() throws TypeMismatchException {
         Class<?>[] argsTypes = target.getArgsTypes();
         if (argsTypes.length != args.length) {
             throw new TypeMismatchException(
