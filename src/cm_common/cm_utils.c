@@ -540,37 +540,6 @@ read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
   res->result = info;
 }
 
-
-char *
-ut_trim (char *str)
-{
-  char *p;
-  char *s;
-
-  if (str == NULL)
-    return (str);
-
-  for (s = str; *s != '\0' && char_isspace2 (*s); s++)
-    ;
-  if (*s == '\0')
-    {
-      *str = '\0';
-      return (str);
-    }
-
-  /* *s must be a non-white char */
-  for (p = s; *p != '\0'; p++)
-    ;
-  for (p--; char_isspace2 (*p); p--)
-    ;
-  *++p = '\0';
-
-  if (s != str)
-    memmove (str, s, strlen (s) + 1);
-
-  return (str);
-}
-
 int
 string_tokenize (char *str, char *tok[], int num_tok)
 {

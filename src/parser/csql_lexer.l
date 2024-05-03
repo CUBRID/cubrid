@@ -45,6 +45,11 @@ static char *parser_c_hint (void);
 static char *parser_line_hint (void);
 static void begin_token (char *token);
 
+static void init_plcsql_lexing();
+static int plcsql_begin_end_balance;
+static int plcsql_nest_level;
+static int from_plcsql_text;
+
 extern int yycolumn;
 extern int yycolumn_end;
 
@@ -72,6 +77,7 @@ int msg_ptr;
 
 int yybuffer_pos;
 int is_dblink_query_string = 0;
+int expecting_pl_lang_spec = 0;
 %}
 
 %option yylineno
@@ -89,9 +95,11 @@ int is_dblink_query_string = 0;
 %x QUOTED_BINARY_STRING
 %x QUOTED_UTF8_STRING
 %x POST_DOT_OR_RIGHT_ARROW_STRING
+%x PL_LANG_SPEC
+%x PLCSQL_TEXT
 
-
-
+ /* id letter */
+IDL       [a-zA-Z0-9_]
 
 %%
 
@@ -134,7 +142,12 @@ int is_dblink_query_string = 0;
 [aA][rR][iI][aA]							{ begin_token(yytext);   
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return ARIA; }
-[aA][sS]								{ begin_token(yytext);   return AS; }
+[aA][sS]								{ begin_token(yytext);
+                                                                                if (expecting_pl_lang_spec) {
+                                                                                        expecting_pl_lang_spec = 0;
+                                                                                        BEGIN(PL_LANG_SPEC);
+                                                                                }
+                                                                                return AS; }
 [aA][sS][cC]								{ begin_token(yytext);   return ASC; }
 [aA][sS][sS][eE][rR][tT][iI][oO][nN]					{ begin_token(yytext);   return ASSERTION; }
 [aA][sS][yY][nN][cC]							{ begin_token(yytext);   return ASYNC; }
@@ -146,6 +159,7 @@ int is_dblink_query_string = 0;
 										return AUTO_INCREMENT; }
 [aA][vV][gG]								{ begin_token(yytext);   return AVG; }
 [bB][eE][fF][oO][rR][eE]						{ begin_token(yytext);   return BEFORE; }
+[bB][eE][gG][iI][nN]							{ begin_token(yytext);   return BEGIN_; }
 [bB][eE][nN][cC][hH][mM][aA][rR][kK]					{ begin_token(yytext);
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return BENCHMARK; }
@@ -462,7 +476,12 @@ int is_dblink_query_string = 0;
 [iI][nN][vV][iI][sS][iI][bB][lL][eE]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return INVISIBLE; }
-[iI][sS]								{ begin_token(yytext);   return IS; }
+[iI][sS]								{ begin_token(yytext);
+                                                                                if (expecting_pl_lang_spec) {
+                                                                                        expecting_pl_lang_spec = 0;
+                                                                                        BEGIN(PL_LANG_SPEC);
+                                                                                }
+                                                                                return IS; }
 [iI][sS][oO][lL][aA][tT][iI][oO][nN]					{ begin_token(yytext);   return ISOLATION; }
 [iI][nN][tT]								{ begin_token(yytext);   return INTEGER; }
 [iI][nN][tT][eE][gG][eE][rR]						{ begin_token(yytext);   return INTEGER; }
@@ -734,6 +753,9 @@ int is_dblink_query_string = 0;
 [pP][eE][rR][cC][eE][nN][tT][iI][lL][eE]_[dD][iI][sS][cC]	{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PERCENTILE_DISC; }
+[pP][lL][cC][sS][qQ][lL]				{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return PLCSQL; }
 [pP][oO][rR][tT]        					        { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PORT; }
@@ -1313,7 +1335,12 @@ _[uU][tT][fF]8[']		{
 				}
 
 <QUOTED_CHAR_STRING>[']		{
-					BEGIN(INITIAL);
+                                        if (from_plcsql_text) {
+                                                from_plcsql_text = 0;
+                                                BEGIN(PLCSQL_TEXT);
+                                        } else {
+                                                BEGIN(INITIAL);
+                                        }
                                         DBG_PRINT_STRING("'", csql_yylval.cptr, "'");
 					return CHAR_STRING;
 				}
@@ -1325,7 +1352,12 @@ _[uU][tT][fF]8[']		{
 				}
 
 <DELIMITED_ID_NAME>["]		{
-					BEGIN(INITIAL);
+                                        if (from_plcsql_text) {
+                                                from_plcsql_text = 0;
+                                                BEGIN(PLCSQL_TEXT);
+                                        } else {
+                                                BEGIN(INITIAL);
+                                        }
                                         DBG_PRINT_STRING("\"", csql_yylval.cptr, "\"");
 					if (strlen(csql_yylval.cptr) >= 254)
 					  {
@@ -1335,7 +1367,12 @@ _[uU][tT][fF]8[']		{
 				}
 
 <BRACKET_ID_NAME>"]"		{
-					BEGIN(INITIAL);
+                                        if (from_plcsql_text) {
+                                                from_plcsql_text = 0;
+                                                BEGIN(PLCSQL_TEXT);
+                                        } else {
+                                                BEGIN(INITIAL);
+                                        }
                                         DBG_PRINT_STRING("[", csql_yylval.cptr, "]");
 					if (strlen(csql_yylval.cptr) >= 254)
 					  {
@@ -1345,7 +1382,12 @@ _[uU][tT][fF]8[']		{
 				}
 
 <BACKTICK_ID_NAME>"`"		{
-					BEGIN(INITIAL);
+                                        if (from_plcsql_text) {
+                                                from_plcsql_text = 0;
+                                                BEGIN(PLCSQL_TEXT);
+                                        } else {
+                                                BEGIN(INITIAL);
+                                        }
                                         DBG_PRINT_STRING("`", csql_yylval.cptr, "`");
 					if (strlen(csql_yylval.cptr) >= 254)
 					  {
@@ -1361,6 +1403,7 @@ _[uU][tT][fF]8[']		{
 				}
 
 <QUOTED_NCHAR_STRING,QUOTED_BIT_STRING,QUOTED_HEX_STRING,QUOTED_CHAR_STRING,DOUBLY_QUOTED_CHAR_STRING,QUOTED_EUCKR_STRING,QUOTED_ISO_STRING,QUOTED_BINARY_STRING,QUOTED_UTF8_STRING><<EOF>>	{
+                                        from_plcsql_text = 0;
 					BEGIN(INITIAL);
                                         DBG_PRINT_STRING("?", csql_yylval.cptr, "<EOF>");
 					csql_yyerror("unterminated string");
@@ -1368,6 +1411,7 @@ _[uU][tT][fF]8[']		{
 				}
 
 <DELIMITED_ID_NAME,BRACKET_ID_NAME,BACKTICK_ID_NAME><<EOF>>	{
+                                        from_plcsql_text = 0;
 					BEGIN(INITIAL);
                                         DBG_PRINT_STRING("?", csql_yylval.cptr, "<EOF>");
 					csql_yyerror("unterminated identifier");
@@ -1399,15 +1443,27 @@ _[uU][tT][fF]8[']		{
 				}
 
 <QUOTED_NCHAR_STRING,QUOTED_CHAR_STRING,QUOTED_EUCKR_STRING,QUOTED_ISO_STRING,QUOTED_BINARY_STRING,QUOTED_UTF8_STRING>['][']	{
-					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "'");
+                                        if (from_plcsql_text) {
+                                            csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "''");
+                                        } else {
+                                            csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "'");
+                                        }
 				}
 
 <DOUBLY_QUOTED_CHAR_STRING,DELIMITED_ID_NAME>["]["]	{
-					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\"");
+                                        if (from_plcsql_text) {
+                                            csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\"\"");
+                                        } else {
+                                            csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\"");
+                                        }
 				}
 
 <BACKTICK_ID_NAME>[`][`]	{
-					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "`");
+                                        if (from_plcsql_text) {
+                                            csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "``");
+                                        } else {
+                                            csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "`");
+                                        }
 				}
 
 <QUOTED_NCHAR_STRING,QUOTED_CHAR_STRING,DOUBLY_QUOTED_CHAR_STRING,QUOTED_EUCKR_STRING,QUOTED_ISO_STRING,QUOTED_BINARY_STRING,QUOTED_UTF8_STRING>{
@@ -1469,7 +1525,7 @@ _[uU][tT][fF]8[']		{
 
 }
 
-"//"				{
+<INITIAL,PL_LANG_SPEC>"//"	{
 					char* cp = parser_line_hint();
 					if (cp)
 					  {
@@ -1479,7 +1535,7 @@ _[uU][tT][fF]8[']		{
 				}
 
 
-"/*"				{
+<INITIAL,PL_LANG_SPEC>"/*"	{
 					char* cp = parser_c_hint();
 					if (cp)
 					  {
@@ -1489,8 +1545,7 @@ _[uU][tT][fF]8[']		{
 				}
 
 
-
-"--"				{
+<INITIAL,PL_LANG_SPEC>"--"	{
 					char* cp = parser_line_hint();
 					if (cp)
 					  {
@@ -1529,6 +1584,132 @@ _[uU][tT][fF]8[']		{
 \\[R][S][D]				{ begin_token(yytext);   return SERBIAN_DINAR_SIGN; }
 
 .					{ begin_token(yytext);   return yytext[0]; }
+
+ /* mode PL_LANG_SPEC */
+
+<PL_LANG_SPEC>[lL][aA][nN][gG][uU][aA][gG][eE]          { begin_token(yytext);   return LANGUAGE; }
+<PL_LANG_SPEC>[jJ][aA][vV][aA]                          { begin_token(yytext);
+                                                                BEGIN(INITIAL);
+                                                                return JAVA; }
+<PL_LANG_SPEC>[pP][lL][cC][sS][qQ][lL]                  { begin_token(yytext);
+                                                                BEGIN(PLCSQL_TEXT);
+                                                                init_plcsql_lexing();
+                                                                return PLCSQL; }
+
+<PL_LANG_SPEC>[ \t\r]+					{ begin_token(yytext); }
+<PL_LANG_SPEC>\n					{ begin_token(yytext);
+								this_parser->line = yylineno;
+								this_parser->column = yycolumn = yycolumn_end = 0; }
+
+<PL_LANG_SPEC><<EOF>> 					{
+                                                                BEGIN(INITIAL);
+                                                                csql_yyerror("unterminated PL language spec");
+                                                                return UNTERMINATED_PL_LANG_SPEC; }
+
+<PL_LANG_SPEC>{IDL}+                                    {
+                                                                BEGIN(PLCSQL_TEXT);
+                                                                init_plcsql_lexing();
+                                                                yybuffer_pos -= csql_yyleng;
+                                                                yyless(0); }
+
+<PL_LANG_SPEC>.                                         {
+                                                                BEGIN(PLCSQL_TEXT);
+                                                                init_plcsql_lexing();
+                                                                yybuffer_pos -= csql_yyleng;
+                                                                yyless(0); }
+
+ /* mode PLCSQL_TEXT */
+
+<PLCSQL_TEXT>"/*"([^*]*[*]+[^*/])*[^*]*[*]+"/"	        |
+<PLCSQL_TEXT>[ \t\r]+					{ begin_token(yytext);
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT>"//".*\n                                   |
+<PLCSQL_TEXT>"--".*\n	                                |
+<PLCSQL_TEXT>\n					        { begin_token(yytext);
+								this_parser->line = yylineno;
+								this_parser->column = yycolumn = yycolumn_end = 0;
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT><<EOF>> 					{
+                                                                BEGIN(INITIAL);
+                                                                csql_yyerror("unterminated PL/CSQL text");
+                                                                return UNTERMINATED_PL_LANG_SPEC; }
+<PLCSQL_TEXT>['] 				        {
+                                                                from_plcsql_text = 1;
+                                                                BEGIN (QUOTED_CHAR_STRING);
+                                                                csql_yylval.cptr = pt_append_string(this_parser, NULL, ""); }
+<PLCSQL_TEXT>["] 				        {
+                                                                from_plcsql_text = 1;
+                                                                BEGIN (DELIMITED_ID_NAME);
+                                                                csql_yylval.cptr = pt_append_string(this_parser, NULL, ""); }
+<PLCSQL_TEXT>"[" 				        {
+                                                                from_plcsql_text = 1;
+                                                                BEGIN (BRACKET_ID_NAME);
+                                                                csql_yylval.cptr = pt_append_string(this_parser, NULL, ""); }
+<PLCSQL_TEXT>"`" 				        {
+                                                                from_plcsql_text = 1;
+                                                                BEGIN (BACKTICK_ID_NAME);
+                                                                csql_yylval.cptr = pt_append_string(this_parser, NULL, ""); }
+
+
+<PLCSQL_TEXT>[bB][eE][gG][iI][nN]                       |
+<PLCSQL_TEXT>[iI][fF]                                   |
+<PLCSQL_TEXT>[lL][oO][oO][pP]                           { begin_token(yytext);
+                                                                plcsql_begin_end_balance++;
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT>[cC][aA][sS][eE]                           { begin_token(yytext);
+                                                                // case can start an expression and can appear in a balance 0 area
+                                                                if (plcsql_begin_end_balance == 0) {
+                                                                        plcsql_nest_level++;
+                                                                }
+                                                                plcsql_begin_end_balance++;
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[iI][fF]             |
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[cC][aA][sS][eE]     |
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[lL][oO][oO][pP]     |
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]*                     { begin_token(yytext);
+                                                                plcsql_begin_end_balance--;
+                                                                if (plcsql_begin_end_balance < 0) {
+                                                                        // syntax error.
+                                                                        // ignore this for now and let the PL/CSQL parser raise the error
+                                                                        plcsql_begin_end_balance = 0;
+                                                                }
+                                                                if (plcsql_begin_end_balance == 0) {
+                                                                        plcsql_nest_level--;
+                                                                        if (plcsql_nest_level < 0) {
+                                                                                BEGIN(INITIAL);
+                                                                        }
+                                                                }
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+
+<PLCSQL_TEXT>[pP][rR][oO][cC][eE][dD][uU][rR][eE]       { begin_token(yytext);
+                                                                if (plcsql_begin_end_balance == 0) {
+                                                                        // increase the nest level only when it is not in a block statement
+                                                                        plcsql_nest_level++;
+                                                                }
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT>[fF][uU][nN][cC][tT][iI][oO][nN]           { begin_token(yytext);
+                                                                if (plcsql_begin_end_balance == 0) {
+                                                                        // increase the nest level only when it is not in a block statement
+                                                                        plcsql_nest_level++;
+                                                                }
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+
+<PLCSQL_TEXT>{IDL}+                                     { begin_token(yytext);
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+
+<PLCSQL_TEXT>. 					        { begin_token(yytext);
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+
+
 %%
 
 int parser_yyinput_single_mode = 0;
@@ -1780,6 +1961,14 @@ yywrap ()
 }
 
 
+static void
+init_plcsql_lexing()
+{
+        plcsql_begin_end_balance = 0;
+        plcsql_nest_level = 0;
+        from_plcsql_text = 0;
+}
+
 static int
 parser_yyinput_single_line (char *buff, int max_size)
 {
@@ -1998,7 +2187,6 @@ consume_comment:
 
   return NULL;
 }
-
 
 static char *
 parser_line_hint (void)

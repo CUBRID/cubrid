@@ -10117,8 +10117,9 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 {
   int error = NO_ERROR;
   DB_OBJECT *obj = NULL;
-  DB_VALUE returnval, class_val, user_val;
+  MOP class_mop, user_mop;
   PT_NODE *class_, *user;
+  SM_CLASS *sm_class = NULL;
 
   assert (alter != NULL);
 
@@ -10128,20 +10129,35 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
   user = alter->info.alter.alter_clause.user.user_name;
   assert (user != NULL);
 
-  db_make_null (&returnval);
-
-  db_make_string (&class_val, class_->info.name.original);
-  db_make_string (&user_val, user->info.name.original);
-
-  au_change_owner_method (obj, &returnval, &class_val, &user_val);
-
-  pr_clear_value (&class_val);
-  pr_clear_value (&user_val);
-
-  if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
+  class_mop = sm_find_class (class_->info.name.original);
+  if (class_mop == NULL)
     {
-      error = db_get_error (&returnval);
+      ASSERT_ERROR_AND_SET (error);
+      return error;
     }
+
+  error = au_fetch_class_force (class_mop, &sm_class, AU_FETCH_UPDATE);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  /* To change the owner of a system class is not allowed. */
+  if (sm_issystem (sm_class))
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS, "");
+      return error;
+    }
+
+  user_mop = au_find_user (user->info.name.original);
+  if (user_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = au_change_class_owner (class_mop, user_mop);
 
   return error;
 }
