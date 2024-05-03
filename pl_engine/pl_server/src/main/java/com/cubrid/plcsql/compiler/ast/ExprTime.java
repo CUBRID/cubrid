@@ -32,6 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.time.LocalTime;
+import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprTime extends Expr {
@@ -49,7 +50,8 @@ public class ExprTime extends Expr {
         this.time = time;
     }
 
-    public String javaCode() {
+    public String javaCode(Set<String> javaTypesUsed) {
+        javaTypesUsed.add("java.sql.Time");
         return String.format(
                 "new Time(%d, %d, %d)", time.getHour(), time.getMinute(), time.getSecond());
     }
