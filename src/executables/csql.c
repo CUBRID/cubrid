@@ -3603,6 +3603,15 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       db_disable_trigger ();
     }
 
+  if (csql_arg->db_name != NULL)
+    {
+      logddl_set_db_name (csql_arg->db_name);
+    }
+  if (csql_arg->user_name != NULL)
+    {
+      logddl_set_user_name (csql_arg->user_name);
+    }
+
   fprintf (csql_Output_fp, "Connected.\n");
 
 
