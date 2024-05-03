@@ -72,18 +72,7 @@ sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   SQ_KEY *keyp;
   int i, cnt = 0;
-/*
-  keyp = (SQ_KEY *) db_private_alloc (NULL, sizeof (SQ_KEY));
-  keyp->pred_set = db_value_create ();
-  db_make_set (keyp->pred_set, db_set_create_basic (NULL, NULL));
 
-  cnt = sq_walk_xasl_and_add_val_to_set (thread_p, (void *) xasl, SQ_TYPE_XASL, keyp);
-
-  if (cnt == 0)
-    {
-      sq_free_key (keyp);
-      return NULL;
-    }*/
   keyp = (SQ_KEY *) db_private_alloc (NULL, sizeof (SQ_KEY));
   keyp->n_elements = xasl->sq_cache->n_elements;
   keyp->dbv_array = (DB_VALUE **) db_private_alloc (NULL, keyp->n_elements * sizeof (DB_VALUE *));
@@ -141,10 +130,6 @@ void
 sq_free_key (SQ_KEY * key)
 {
   int i;
-  /*
-     db_value_clear (key->pred_set);
-     pr_free_ext_value (key->pred_set);
-   */
   for (i = 0; i < key->n_elements; i++)
     {
       pr_free_ext_value (key->dbv_array[i]);

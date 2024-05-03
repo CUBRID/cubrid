@@ -630,7 +630,10 @@ static int pt_get_mvcc_reev_range_data (PARSER_CONTEXT * parser, TABLE_INFO * ta
 static PT_NODE *pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
+
 static bool pt_check_corr_subquery_hash_result_cache (XASL_NODE * xasl);
+static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+							  int *continue_walk);
 static bool pt_prepare_sq_cache (XASL_NODE * xasl);
 static int pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type);
 
@@ -13969,9 +13972,12 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 			}
 		      else
 			{
-			  if (pt_check_corr_subquery_hash_result_cache (xasl))
+			  if (pt_check_corr_subquery_hash_result_cache (xasl) && pt_prepare_sq_cache (xasl))
 			    {
-			      if (pt_prepare_sq_cache (xasl))
+			      bool cachable = true;
+			      parser_walk_tree (parser, node, NULL, NULL, pt_check_corr_subquery_not_cachable_expr,
+						&cachable);
+			      if (cachable)
 				{
 				  XASL_SET_FLAG (xasl, XASL_SQ_CACHE);
 				}
@@ -27206,10 +27212,12 @@ pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred)
 }
 
 /*
- * pt_check_corr_subquery_hash_result_cache () -
+ * pt_check_corr_subquery_hash_result_cache ()
+ * - Checks if the provided XASL node and its subqueries can be cached based on certain conditions related to predicates
+ * and other flags within the structure.
  *
- * return : bool
- * xasl (in) :
+ * return : bool - Returns true if the XASL node and its subqueries satisfy the conditions for caching, false otherwise.
+ * xasl (in) : XASL_NODE* - Pointer to the XASL node being checked for caching compatibility.
  */
 
 bool
@@ -27225,7 +27233,7 @@ pt_check_corr_subquery_hash_result_cache (XASL_NODE * xasl)
 	{
 	  return false;
 	}
-      else if (xasl->spec_list->where_key && !xasl->spec_list->where_pred && !xasl->spec_list->where_range)
+      else if (!xasl->spec_list->where_key && !xasl->spec_list->where_pred && !xasl->spec_list->where_range)
 	{
 	  return false;
 	}
@@ -27259,10 +27267,11 @@ pt_check_corr_subquery_hash_result_cache (XASL_NODE * xasl)
 }
 
 /*
- * pt_prepare_sq_cache () -
+ * pt_prepare_sq_cache () - Prepares a cache structure for subqueries (SQ) associated with the provided XASL node.
+ * It generates a key structure for the cache based on the subquery's properties and initializes the cache.
  *
- * return : bool
- * xasl (in) :
+ * return : bool - Returns true if the cache is successfully prepared and the node can support caching, false if any step fails.
+ * xasl (in) : XASL_NODE* - Pointer to the XASL node for which the subquery cache is being prepared.
  */
 
 bool
@@ -27291,10 +27300,14 @@ pt_prepare_sq_cache (XASL_NODE * xasl)
 }
 
 /*
- * pt_make_sq_cache_key_struct () -
+ * pt_make_sq_cache_key_struct () - Generates a key structure for caching by recursively evaluating elements within
+ * the provided XASL or predicate expressions. It constructs a complex key based on various types of elements involved in
+ * the query processing, like subqueries, predicates, and regular variables.
  *
- * return : int 
- * xasl (in) :
+ * return : int - Returns the count of elements added to the key structure.
+ * key_struct (in/out) : DB_VALUE** - Pointer to the array where generated keys are stored.
+ * p (in) : void* - Generic pointer to the element being processed, which can be a XASL node, predicate, or regular variable.
+ * type (in) : int - Integer representing the type of element being processed, used to determine how to handle the element.
  */
 
 int
@@ -27396,4 +27409,36 @@ pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type)
     }
 
   return cnt;
+}
+
+static PT_NODE *
+pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+
+  if (node->node_type == PT_EXPR)
+    {
+      bool *cachable = (bool *) arg;
+      switch (node->type_enum)
+	{
+	case PT_TYPE_DATETIME:
+	  *cachable = false;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+
+	default:
+	  break;
+	}
+      switch (node->info.expr.op)
+	{
+	case PT_RAND:
+	  *cachable = false;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+
+  return node;
 }

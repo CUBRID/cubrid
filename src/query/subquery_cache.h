@@ -53,9 +53,6 @@ union sq_regu_value
 
 struct sq_key
 {
-  /*
-     DB_VALUE *pred_set;
-   */
   DB_VALUE **dbv_array;
   int n_elements;
 };
