@@ -1774,35 +1774,11 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	    }
 	  else
 	    {			/* is CAST expr */
-	      if ((dt1 = arg1->data_type) && (dt2 = arg2->data_type) && dt1->type_enum == dt2->type_enum
-		  && (dt1->info.data_type.precision == dt2->info.data_type.precision)
-		  && (dt1->info.data_type.dec_precision == dt2->info.data_type.dec_precision))
+	      if ((temp = parser_copy_tree_list (parser, arg2)) == NULL)
 		{
-		  /* exactly the same type */
-		  if ((temp = parser_copy_tree_list (parser, arg2)) == NULL)
-		    {
-		      PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      *wherep = save_where_next;
-		      continue;	/* give up */
-		    }
-		}
-	      else
-		{		/* create nested CAST node */
-		  PT_NODE *dt = NULL;
-		  if (arg1->type_enum == PT_TYPE_ENUMERATION)
-		    {
-		      /* be sure to cast to the same enumeration type */
-		      dt = arg1->data_type;
-		    }
-		  temp =
-		    pt_wrap_with_cast_op (parser, parser_copy_tree_list (parser, arg2), arg1->type_enum,
-					  TP_FLOATING_PRECISION_VALUE, 0, dt);
-		  if (temp == NULL)
-		    {
-		      PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      *wherep = save_where_next;
-		      continue;	/* give up */
-		    }
+		  PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  *wherep = save_where_next;
+		  continue;	/* give up */
 		}
 	    }
 

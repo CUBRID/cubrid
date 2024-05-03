@@ -245,7 +245,7 @@ load_hosts_file ()
   char host_conf_file_full_path[PATH_MAX];
   char *hosts_conf_dir;
 
-  char *token, temp_token[LINE_BUF_SIZE + 1];
+  char *token;
   char *save_ptr_strtok;
   /*delimiter */
   const char *delim = " \t\n";
@@ -292,10 +292,9 @@ load_hosts_file ()
 	    {
 	      break;
 	    }
-	  strcpy (temp_token, token);
 	  if (hostent_flag == INSERT_IPADDR)
 	    {
-	      if (is_valid_ip (temp_token) == false)
+	      if (is_valid_ip (token) == false)
 		{
 		  continue;
 		}
@@ -313,16 +312,16 @@ load_hosts_file ()
 		  break;
 		}
 
-	      str_len = strlen (temp_token);
+	      str_len = strlen (token);
 	      if (str_len > HOSTNAME_LEN - 1)
 		{
 		  continue;
 		}
-	      else if (is_valid_ip (temp_token) == true)
+	      else if (is_valid_ip (token) == true)
 		{
 		  continue;
 		}
-	      else if (is_valid_hostname (temp_token, str_len) == false)
+	      else if (is_valid_hostname (token, str_len) == false)
 		{
 		  continue;
 		}
@@ -385,8 +384,10 @@ is_valid_ip (char *ip_addr)
   char *token;
   char *save_ptr_strtok;
   const char *delim = " .\n";
+  char temp_str[LINE_BUF_SIZE + 1];
 
-  if ((token = strtok_r (ip_addr, delim, &save_ptr_strtok)) == NULL)
+  snprintf (temp_str, LINE_BUF_SIZE + 1, "%s", ip_addr);
+  if ((token = strtok_r (temp_str, delim, &save_ptr_strtok)) == NULL)
     {
       goto err_phase;
     }

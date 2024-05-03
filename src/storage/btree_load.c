@@ -745,7 +745,7 @@ bt_load_heap_scancache_start_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * 
 
   /* Start scancache */
   if (heap_scancache_start (thread_p, scan_cache, &args->hfids[args->cur_class],
-			    &args->class_ids[args->cur_class], save_cache_last_fix_page, false, NULL) != NO_ERROR)
+			    &args->class_ids[args->cur_class], save_cache_last_fix_page, NULL) != NO_ERROR)
     {
       return ER_FAILED;
     }
