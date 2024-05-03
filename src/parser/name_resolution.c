@@ -401,6 +401,8 @@ static int pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO *
 static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink,
 					    S_REMOTE_TBL_COLS * rmt_tbl_cols);
 
+static PT_NODE *pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node);
+
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
  *			   insert to make sure no "correlated" names are used
@@ -939,9 +941,20 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
       /* If pt_name in group by/ having, maybe it's alias. We will try to resolve it later. */
       if (!is_pt_name_in_group_having (in_node))
 	{
-	  /* it may be a naked parameter or a path expression anchored by a naked parameter. Try and resolve it as
-	   * such. */
-	  node = pt_bind_parameter_path (parser, in_node);
+
+	  if (parser->flag.is_parsing_static_sql == 1)
+	    {
+	      // clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
+	      pt_reset_error (parser);
+
+	      node = pt_parameterize_for_static_sql (parser, in_node);
+	    }
+	  else			// in case of compiling static SQL, do not resolve with variable defined in runtime
+	    {
+	      /* it may be a naked parameter or a path expression anchored by a naked parameter. Try and resolve it as
+	       * such. */
+	      node = pt_bind_parameter_path (parser, in_node);
+	    }
 
 	  if (node == NULL && !pt_has_error (parser))
 	    {
@@ -3305,7 +3318,21 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  }
 	else
 	  {
-	    *continue_walk = PT_STOP_WALK;
+	    if (parser->flag.is_parsing_static_sql == 1 && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+	      {
+		// clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
+		er_clear ();
+		pt_reset_error (parser);
+
+		node = pt_parameterize_for_static_sql (parser, node);
+
+		/* don't visit leaves */
+		*continue_walk = PT_LIST_WALK;
+	      }
+	    else
+	      {
+		*continue_walk = PT_STOP_WALK;
+	      }
 	  }
       }
       break;
@@ -11437,6 +11464,55 @@ pt_resolve_dblink_check_owner_name (PARSER_CONTEXT * parser, PT_NODE * node, cha
   pr_clear_value (&value);
 
   return NO_ERROR;
+}
+
+static PT_NODE *
+pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
+{
+  PT_NODE *hostvar = parser_new_node (parser, PT_HOST_VAR);
+  hostvar->info.host_var.str = pt_append_string (parser, NULL, "?");
+
+  // For cursor variable (for example: r.id), use parser_print_tree(name) instead of name.original.
+  hostvar->info.host_var.label = parser_print_tree (parser, name_node);
+  hostvar->info.host_var.var_type = PT_HOST_IN;
+  hostvar->info.host_var.index = parser->host_var_count;
+  hostvar->type_enum = PT_TYPE_NONE;
+
+  // Expand parser->host_variables by realloc
+  int count_to_realloc = parser->host_var_count + 1;
+
+  /* We actually allocate around twice more than needed so that we don't do useless copies too often. */
+  count_to_realloc = (count_to_realloc / 2) * 4;
+
+  if (count_to_realloc == 0)
+    {
+      count_to_realloc = 1;
+    }
+
+  DB_VALUE *larger_host_variables = (DB_VALUE *) realloc (parser->host_variables, count_to_realloc * sizeof (DB_VALUE));
+  if (larger_host_variables == NULL)
+    {
+      PT_ERRORm (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  TP_DOMAIN **larger_host_var_expected_domains =
+    (TP_DOMAIN **) realloc (parser->host_var_expected_domains, count_to_realloc * sizeof (TP_DOMAIN *));
+
+  parser->host_variables = larger_host_variables;
+  parser->host_var_expected_domains = larger_host_var_expected_domains;
+
+  db_make_null (&parser->host_variables[parser->host_var_count]);
+  parser->host_var_expected_domains[parser->host_var_count] = pt_type_enum_to_db_domain (PT_TYPE_NONE);
+
+  ++parser->host_var_count;
+  larger_host_variables = NULL;
+  larger_host_var_expected_domains = NULL;
+
+  PT_NODE_MOVE_NUMBER_OUTERLINK (hostvar, name_node);
+  parser_free_tree (parser, name_node);
+
+  return hostvar;
 }
 
 typedef struct link_columns
