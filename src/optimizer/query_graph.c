@@ -540,22 +540,6 @@ qo_optimize_helper (QO_ENV * env)
       conj->next = next;
     }
 
-  for (n = 1; n < env->nnodes; n++)
-    {
-      node = QO_ENV_NODE (env, n);
-
-      /* check join-edge for explicit join */
-      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_NONE && QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_CROSS
-	  && !BITSET_MEMBER (nodeset, n))
-	{
-	  p_node = QO_ENV_NODE (env, n - 1);
-	  (void) qo_add_dummy_join_term (env, p_node, node);
-	  /* Is it safe to pass node[n-1] as head node? Yes, because the sequence of QO_NODEs corresponds to the
-	   * sequence of PT_SPEC list
-	   */
-	}
-    }
-
   /* classify terms for outer join */
   qo_classify_outerjoin_terms (env);
 
