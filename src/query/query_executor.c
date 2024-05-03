@@ -7276,17 +7276,6 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
       goto exit_on_error;
     }
 
-#if 0
-  if (merge_infop->join_type == JOIN_INNER)
-    {
-      list_id = qexec_hash_join (thread_p, outer_xasl->list_id, inner_xasl->list_id, merge_infop, ls_flag);
-    }
-  else
-    {
-      GOTO_EXIT_ON_ERROR;
-    }
-#endif
-
   if (list_id_p != NULL)
     {
       qfile_close_list (thread_p, list_id_p);
