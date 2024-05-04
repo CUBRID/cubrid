@@ -5631,7 +5631,6 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   VFID_SET_NULL (&(root_header->ovfid));
 
   /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-  // root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
   root_header->_32.rev_level = BTREE_CURRENT_REV_LEVEL;
   SET_DECOMPRESS_IDX_HEADER (root_header, deduplicate_key_pos);
 
@@ -5812,7 +5811,6 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
     }
 
   /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-  //btid->rev_level = root_header->rev_level;
   btid->rev_level = root_header->_32.rev_level;
   btid->deduplicate_key_idx = GET_DECOMPRESS_IDX_HEADER (root_header);
 
