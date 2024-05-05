@@ -15237,8 +15237,7 @@ heap_chnguess_realloc (void)
   if (heap_Guesschn->bitindex == NULL)
     {
       ret = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
-	      (size_t) (heap_Guesschn->nbytes * heap_Guesschn->num_entries));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, (size_t) (heap_Guesschn->nbytes * heap_Guesschn->num_entries));
       heap_Guesschn->bitindex = save_bitindex;
       heap_Guesschn->nbytes = save_nbytes;
       heap_Guesschn->num_clients = HEAP_NBYTES_TO_NBITS (save_nbytes);
