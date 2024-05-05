@@ -1,4 +1,4 @@
-# Installing Build Requiements
+# Installing Build Requirements
 
 ## Build Requirements
 
