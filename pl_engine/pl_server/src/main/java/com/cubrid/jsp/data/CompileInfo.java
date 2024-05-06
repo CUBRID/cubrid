@@ -62,6 +62,8 @@ public class CompileInfo implements PackableObject {
         this.signature = sig;
     }
 
+    public static byte[] dummy = new byte[] {'\0'};
+
     @Override
     public void pack(CUBRIDPacker packer) {
         packer.packInt(errCode);
@@ -74,7 +76,11 @@ public class CompileInfo implements PackableObject {
             packer.packString(createStmt);
             packer.packString(className);
             packer.packString(signature);
-            packer.packCString(compiled);
+            if (compiled != null) {
+                packer.packCString(compiled);
+            } else {
+                packer.packCString(dummy);
+            }
         }
     }
 }
