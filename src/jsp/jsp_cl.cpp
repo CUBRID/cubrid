@@ -698,6 +698,20 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
       arg_info.data_type = pt_type_enum_to_db (p->type_enum);
       arg_info.mode = jsp_map_pt_misc_to_sp_mode (p->info.sp_param.mode);
+
+      // default value
+      // coerciable is already checked in semantic_check
+      PT_NODE *default_value = p->info.sp_param.default_value;
+      if (default_value)
+	{
+	  pt_evaluate_tree (parser, default_value->info.data_default.default_value, &arg_info.default_value, 1);
+	  arg_info.is_optional = true;
+	}
+      else
+	{
+	  db_make_null (&arg_info.default_value);
+	}
+
       arg_info.comment = (char *) PT_NODE_SP_ARG_COMMENT (p);
 
       // check # of args constraint
@@ -1264,12 +1278,18 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 {
   int error = NO_ERROR;
   int save;
-  DB_VALUE method, auth, param_cnt_val, mode, arg_type, temp, lang_val, directive_val, result_type;
+  DB_VALUE method, auth, param_cnt_val, mode, arg_type, optional_val, default_val, temp, lang_val, directive_val,
+	   result_type;
 
   int sig_num_args = pt_length_of_list (node->info.method_call.arg_list);
-  std::vector < int >sig_arg_mode;
-  std::vector < int >sig_arg_type;
+  std::vector <int> sig_arg_mode;
+  std::vector <int> sig_arg_type;
+
+  std::vector <char *> sig_arg_default;
+  std::vector <int> sig_arg_default_size;
+
   int sig_result_type;
+  int param_cnt = 0;
 
   METHOD_SIG *sig = nullptr;
 
@@ -1278,6 +1298,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
   db_make_null (&param_cnt_val);
   db_make_null (&mode);
   db_make_null (&arg_type);
+  db_make_null (&default_val);
   db_make_null (&temp);
   db_make_null (&result_type);
 
@@ -1301,13 +1322,22 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	    goto end;
 	  }
 
-	int param_cnt = db_get_int (&param_cnt_val);
-	if (sig_num_args != param_cnt)
+	int num_trailing_default_args = 0;
+	param_cnt = db_get_int (&param_cnt_val);
+	if (sig_num_args > param_cnt)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, param_cnt, sig_num_args);
 	    error = er_errid ();
 	    goto end;
 	  }
+	else if (sig_num_args < param_cnt)
+	  {
+	    // there are trailing default arguments
+	    num_trailing_default_args = param_cnt - sig_num_args;
+	  }
+
+	sig_arg_default.resize (param_cnt);
+	sig_arg_default_size.resize (param_cnt);
 
 	DB_VALUE args;
 	/* arg_mode, arg_type */
@@ -1318,7 +1348,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	  }
 
 	DB_SET *param_set = db_get_set (&args);
-	for (int i = 0; i < sig_num_args; i++)
+	for (int i = 0; i < param_cnt; i++)
 	  {
 	    set_get_element (param_set, i, &temp);
 	    DB_OBJECT *arg_mop_p = db_get_object (&temp);
@@ -1351,9 +1381,56 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 		    goto end;
 		  }
 
+		sig_arg_default[i] = NULL;
+		sig_arg_default_size[i] = -1;
+
+		if (i >= sig_num_args)
+		  {
+		    error = db_get (arg_mop_p, SP_ATTR_IS_OPTIONAL, &optional_val);
+		    if (error == NO_ERROR)
+		      {
+			int is_optional = db_get_int (&optional_val);
+			if (is_optional == 1)
+			  {
+			    error = db_get (arg_mop_p, SP_ATTR_DEFAULT_VALUE, &default_val);
+			    if (error == NO_ERROR)
+			      {
+				if (!DB_IS_NULL (&default_val))
+				  {
+				    sig_arg_default_size[i] = db_get_string_size (&default_val);
+				    if (sig_arg_default_size[i] > 0)
+				      {
+					sig_arg_default[i] = db_private_strndup (NULL, db_get_string (&default_val), sig_arg_default_size[i]);
+				      }
+				  }
+				else
+				  {
+				    // default value is NULL
+				    sig_arg_default_size[i] = -2; // special value
+				  }
+			      }
+			    else
+			      {
+				goto end;
+			      }
+			  }
+			else
+			  {
+			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, param_cnt, sig_num_args);
+			    error = er_errid ();
+			    goto end;
+			  }
+		      }
+		    else
+		      {
+			goto end;
+		      }
+		  }
+
 		pr_clear_value (&mode);
 		pr_clear_value (&arg_type);
 		pr_clear_value (&temp);
+		pr_clear_value (&default_val);
 	      }
 	  }
 	pr_clear_value (&args);
@@ -1382,7 +1459,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
     if (sig)
       {
 	sig->next = nullptr;
-	sig->num_method_args = sig_num_args;
+	sig->num_method_args = param_cnt;
 	sig->method_type = METHOD_TYPE_JAVA_SP;
 	sig->result_type = sig_result_type;
 
@@ -1423,64 +1500,72 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	memcpy (sig->auth_name, auth_name, auth_name_len);
 	sig->auth_name[auth_name_len] = 0;
 
-	sig->method_arg_pos = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
+	sig->method_arg_pos = (int *) db_private_alloc (NULL, (param_cnt + 1) * sizeof (int));
 	if (!sig->method_arg_pos)
 	  {
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
 
-	for (int i = 0; i < sig_num_args + 1; i++)
+	for (int i = 0; i < param_cnt + 1; i++)
 	  {
-	    sig->method_arg_pos[i] = i;
+	    sig->method_arg_pos[i] = (i < sig_num_args) ? i : -1;
 	  }
 
 	sig->class_name = nullptr;
 
 
 	sig->arg_info = (METHOD_ARG_INFO *) db_private_alloc (NULL, sizeof (METHOD_ARG_INFO));
-	if (!sig->arg_info)
+	if (sig->arg_info)
+	  {
+	    if (param_cnt > 0)
+	      {
+		sig->arg_info->arg_mode = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
+		if (!sig->arg_info->arg_mode)
+		  {
+		    sig->arg_info->arg_mode = nullptr;
+		    error = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
+
+		sig->arg_info->arg_type = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
+		if (!sig->arg_info->arg_type)
+		  {
+		    sig->arg_info->arg_type = nullptr;
+		    error = ER_OUT_OF_VIRTUAL_MEMORY;
+		    goto end;
+		  }
+
+		sig->arg_info->default_value = (char **) db_private_alloc (NULL, (param_cnt) * sizeof (char *));
+		sig->arg_info->default_value_size = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
+
+		for (int i = 0; i < param_cnt; i++)
+		  {
+		    sig->arg_info->arg_mode[i] = sig_arg_mode[i];
+		    sig->arg_info->arg_type[i] = sig_arg_type[i];
+
+		    sig->arg_info->default_value_size[i] = sig_arg_default_size[i];
+		    if (sig->arg_info->default_value_size[i] > 0)
+		      {
+			sig->arg_info->default_value[i] = sig_arg_default[i];
+		      }
+		  }
+	      }
+	    else
+	      {
+		sig->arg_info->arg_mode = nullptr;
+		sig->arg_info->arg_type = nullptr;
+		sig->arg_info->default_value = nullptr;
+		sig->arg_info->default_value_size = nullptr;
+	      }
+
+	    sig_list.num_methods = 1;
+	  }
+	else
 	  {
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
-
-	if (sig_num_args > 0)
-	  {
-	    sig->arg_info->arg_mode = (int *) db_private_alloc (NULL, (sig_num_args) * sizeof (int));
-	    if (!sig->arg_info->arg_mode)
-	      {
-		sig->arg_info->arg_mode = nullptr;
-		error = ER_OUT_OF_VIRTUAL_MEMORY;
-		goto end;
-	      }
-
-	    sig->arg_info->arg_type = (int *) db_private_alloc (NULL, (sig_num_args) * sizeof (int));
-	    if (!sig->arg_info->arg_type)
-	      {
-		sig->arg_info->arg_type = nullptr;
-		error = ER_OUT_OF_VIRTUAL_MEMORY;
-		goto end;
-	      }
-
-	    for (int i = 0; i < sig_num_args; i++)
-	      {
-		sig->arg_info->arg_mode[i] = sig_arg_mode[i];
-		sig->arg_info->arg_type[i] = sig_arg_type[i];
-	      }
-	  }
-	else
-	  {
-	    sig->arg_info->arg_mode = nullptr;
-	    sig->arg_info->arg_type = nullptr;
-	  }
-
-	sig_list.num_methods = 1;
-      }
-    else
-      {
-	error = ER_OUT_OF_VIRTUAL_MEMORY;
-	goto end;
       }
   }
 

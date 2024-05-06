@@ -608,6 +608,20 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
       goto error;
     }
 
+  db_make_int (&value, info.is_optional);
+  err = dbt_put_internal (obt_p, SP_ATTR_IS_OPTIONAL, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  err = dbt_put_internal (obt_p, SP_ATTR_DEFAULT_VALUE, &info.default_value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
   if (!info.comment.empty ())
     {
       db_make_string (&value, info.comment.data ());

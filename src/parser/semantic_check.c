@@ -271,6 +271,7 @@ static PT_NODE *pt_check_where (PARSER_CONTEXT * parser, PT_NODE * node);
 static int pt_check_range_partition_strict_increasing (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * part,
 						       PT_NODE * part_next, PT_NODE * column_dt);
 static int pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * value, PT_NODE * data_type);
+static int pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param);
 
 /* pt_combine_compatible_info () - combine two cinfo into cinfo1
  *   return: true if compatible, else false
@@ -9402,6 +9403,67 @@ pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 }
 
 /*
+ * pt_check_default_value_param_for_stored_procedure () - do semantic checks for default value params' invalid form: Out parameter, system expressions, incoercible type
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static int
+pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param)
+{
+  int error = NO_ERROR;
+  PT_NODE *node_ptr = NULL;
+  PT_NODE *default_value_node = NULL;
+  PT_NODE *default_value = NULL;
+  const char *default_value_print = NULL;
+
+  default_value_node = param->info.sp_param.default_value =
+    pt_check_data_default (parser, param->info.sp_param.default_value);
+  if (pt_has_error (parser))
+    {
+      return error;
+    }
+
+  assert (default_value_node != NULL && default_value_node->info.data_default.shared == PT_DEFAULT);
+
+  default_value = default_value_node->info.data_default.default_value;
+  default_value_print = pt_short_print (parser, default_value);
+
+  if (param->info.sp_param.mode != PT_INPUT && param->info.sp_param.mode != PT_NOPUT)
+    {
+      PT_ERRORmf (parser,
+		  param,
+		  MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_SP_OUT_DEFAULT_ARG_NOT_ALLOWED, pt_short_print (parser, param->info.sp_param.name));
+      return error;
+    }
+
+  if (default_value_node->info.data_default.default_expr_type != DB_DEFAULT_NONE)
+    {
+      PT_ERRORmf (parser,
+		  default_value_node->info.data_default.default_value,
+		  MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+		  pt_short_print (parser, default_value_node->info.data_default.default_value));
+    }
+  else
+    {
+      error =
+	pt_coerce_value_for_default_value (parser, default_value, default_value, param->type_enum,
+					   param->data_type, default_value_node->info.data_default.default_expr_type);
+      if (error != NO_ERROR)
+	{
+	  error =
+	    (error == ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO;
+	  PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, error,
+		       default_value_print, pt_get_type_name (param->type_enum, param->data_type));
+	}
+    }
+
+  return error;
+}
+
+/*
  * pt_check_create_stored_procedure () - do semantic checks on the create procedure/function statement
  *   return:  none
  *   parser(in): the parser context used to derive the statement
@@ -9410,7 +9472,14 @@ pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 static void
 pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *param;
+  int error = NO_ERROR;
+  PT_NODE *param = NULL;
+  PT_NODE *default_value_node = NULL;
+  PT_NODE *default_value = NULL;
+  PT_NODE *initial_def_val = NULL;
+
+  int param_count = 0;
+  bool has_default_value = false;
 
   for (param = node->info.sp.param_list; param; param = param->next)
     {
@@ -9421,7 +9490,32 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_ERRORmf (parser, param, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_ARG_TYPE),
 			  pt_get_type_name (param->type_enum, param->data_type));
 	    }
-	  return;
+	  goto end;
+	}
+
+      /* check trailing arguments */
+      if (param->info.sp_param.default_value != NULL)
+	{
+	  has_default_value = true;
+	  // check default value
+	  error = pt_check_default_value_param_for_stored_procedure (parser, param);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+      else
+	{
+	  // error for non-trailing arguments
+	  if (has_default_value)
+	    {
+	      PT_ERRORmf (parser,
+			  param,
+			  MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_SP_NON_TRAILING_OPTIONAL_PARAMS,
+			  pt_short_print (parser, param->info.sp_param.name));
+	      goto end;
+	    }
 	}
     }
 
@@ -9434,9 +9528,12 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_ERRORmf (parser, node, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_RETURN_TYPE),
 			  pt_get_type_name (node->info.sp.ret_type, node->info.sp.ret_data_type));
 	    }
-	  return;
+	  goto end;
 	}
     }
+
+end:
+  return;
 }
 
 /*
