@@ -6684,6 +6684,12 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p, QF
 	    }
 	}
 
+      if (flag == V_UNBOUND)
+	{
+	  /* next tuple */
+	  continue;
+	}
+
       hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_join_p->hash_list_scan_type);
 
       if (hash_join_p->hash_list_scan_type == HASH_METH_IN_MEM)
@@ -6851,7 +6857,14 @@ qexec_hash_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFILE
 	    }
 	}
 
+      if (flag == V_UNBOUND)
+	{
+	  /* next tuple */
+	  continue;
+	}
+
       hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_join_p->hash_list_scan_type);
+      hash_join_p->curr_hash_key = hash_key;
 
       do
 	{
@@ -7014,6 +7027,12 @@ qexec_hash_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFILE
 		{
 		  break;
 		}
+	    }
+
+	  if (flag == V_UNBOUND)
+	    {
+	      /* next tuple */
+	      continue;
 	    }
 
 	  if (c != DB_EQ)
@@ -7275,12 +7294,24 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
     }
 
 #if 0
-  {
-    mht_dump_hls (thread_p, stdout, hash_join.memory.hash_table, 1, qdata_print_hash_scan_entry,
-		  &inner_xasl->list_id->type_list, (void *) &hash_join.hash_list_scan_type);
-    printf ("temp file : tuple count = %d, file_size = %dK\n", inner_xasl->list_id->tuple_cnt,
-	    inner_xasl->list_id->page_cnt * 16);
-  }
+  if (build_xasl->list_id->tuple_cnt <= 100)
+    {
+      if (hash_join.hash_list_scan_type == HASH_METH_IN_MEM || hash_join.hash_list_scan_type == HASH_METH_HYBRID)
+	{
+	  mht_dump_hls (thread_p, stdout, hash_join.memory.hash_table, 1, qdata_print_hash_scan_entry,
+			&inner_xasl->list_id->type_list, (void *) &hash_join.hash_list_scan_type);
+	  printf ("temp file : tuple count = %d, file_size = %dK\n", inner_xasl->list_id->tuple_cnt,
+		  inner_xasl->list_id->page_cnt * 16);
+	}
+      else if (hash_join.hash_list_scan_type == HASH_METH_HASH_FILE)
+	{
+	  fhs_dump (thread_p, hash_join.file.hash_table);
+	}
+      else
+	{
+	  /* nothing to do */
+	}
+    }
 #endif
 
   if (qfile_open_list_scan (prove_xasl->list_id, &prove_scan_id) != NO_ERROR)
@@ -7365,7 +7396,7 @@ exit_on_error:
 
   return ER_FAILED;
 
-#define BUILD_WEIGHT
+#undef BUILD_WEIGHT
 }
 
 /*
