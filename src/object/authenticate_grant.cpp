@@ -1348,7 +1348,7 @@ au_propagate_del_new_auth (AU_GRANT *glist, DB_AUTH mask)
   return error;
 }
 
-
+#if defined (SA_MODE)
 /*
  * au_force_write_new_auth -
  *   return: error code
@@ -1449,3 +1449,4 @@ end:
 
   return error;
 }
+#endif // SA_MODE
