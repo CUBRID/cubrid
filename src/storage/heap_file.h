@@ -237,8 +237,8 @@ typedef struct heap_idx_elements_info HEAP_IDX_ELEMENTS_INFO;
 struct heap_idx_elements_info
 {
   int num_btids;		/* class has # of btids */
-  int has_single_col;		/* class has single column index */
-  int has_multi_col;		/* class has multi-column index */
+  bool has_single_col;		/* class has single column index */
+  bool has_multi_col;		/* class has multi-column index */
 };
 
 /* heap operation types */
@@ -553,6 +553,9 @@ extern int heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 					 HEAP_SCANCACHE * scan_cache, int *is_set);
 
 extern void heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records);
+#if defined (SA_MODE)
+extern void heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name);
+#endif
 extern void heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp, HEAP_CACHE_ATTRINFO * attr_info, bool dump_schema);
 #if defined (CUBRID_DEBUG)
 extern void heap_chnguess_dump (FILE * fp);
