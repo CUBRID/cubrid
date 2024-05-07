@@ -552,7 +552,7 @@ qo_optimize_helper (QO_ENV * env)
 	  p_node = QO_ENV_NODE (env, n - 1);
 	  (void) qo_add_dummy_join_term (env, p_node, node);
 	}
-      else if (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER && !BITSET_MEMBER (nodeset, n))
+      else if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER && !BITSET_MEMBER (nodeset, n))
 	{
 	  /* right join without join-edge for prev node, a dummy term is added to maintain set of nodes for outer join */
 	  p_node = QO_ENV_NODE (env, n - 1);
