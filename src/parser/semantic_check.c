@@ -9319,7 +9319,7 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 static bool
-pt_is_undefined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
+pt_is_defined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
 {
   if (data_type && data_type->node_type == PT_DATA_TYPE && data_type->type_enum == PT_TYPE_OBJECT)
     {
@@ -9330,20 +9330,57 @@ pt_is_undefined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
 	    {
 	      PT_ERRORmf (parser, data_type, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED,
 			  name->info.name.original);
-	      return true;
+	      return false;
 	    }
 	}
     }
 
-  return false;
+  return true;
+}
+
+static PT_TYPE_ENUM
+pt_get_type_enum_of_table_column (PARSER_CONTEXT * parser, PT_NODE * data_type)
+{
+  PT_NODE *table_column = data_type->info.data_type.table_column;
+  assert (PT_IS_DOT_NODE (table_column));
+  PT_NODE *table_name = table_column->info.dot.arg1;
+  PT_NODE *column_name = table_column->info.dot.arg2;
+  assert (PT_IS_NAME_NODE (table_name));
+  assert (PT_IS_NAME_NODE (column_name));
+  const char *table_name_cstr = table_name->info.name.original;
+  const char *column_name_cstr = column_name->info.name.original;
+
+  DB_ATTRIBUTE *attr = db_get_attribute_by_name (table_name_cstr, column_name_cstr);
+  if (attr == NULL)
+    {
+      PT_ERRORmf2 (parser, table_column, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNDEFINED_TABLE_COLUMN,
+		   table_name_cstr, column_name_cstr);
+      return PT_TYPE_NONE;
+    }
+
+  DB_DOMAIN *domain = db_attribute_domain (attr);
+  assert (domain);
+  int db_type = TP_DOMAIN_TYPE (domain);
+
+  return pt_db_to_type_enum ((DB_TYPE) db_type);
 }
 
 static bool
-pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM type_enum, PT_NODE * data_type)
+pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM & type_enum, PT_NODE * data_type)
 {
+
+  if (type_enum == PT_TYPE_NONE)
+    {
+      // type specification of the form <table>.<column>%type
+      type_enum = pt_get_type_enum_of_table_column (parser, data_type);
+      if (type_enum == PT_TYPE_NONE)
+	{
+	  return false;
+	}
+    }
+
   switch (type_enum)
     {
-
     case PT_TYPE_SMALLINT:
     case PT_TYPE_INTEGER:
     case PT_TYPE_BIGINT:
@@ -9360,16 +9397,30 @@ pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM type_enum, PT_
       return true;
 
     case PT_TYPE_OBJECT:
-      return !pt_is_undefined_class (parser, data_type);
+      if (data_type->type_enum == PT_TYPE_TABLE_COLUMN)
+	{
+	  // not allowed for PL/CSQL
+	  return false;
+	}
+      else
+	{
+	  return pt_is_defined_class (parser, data_type);
+	}
 
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
     case PT_TYPE_SEQUENCE:
       {
+	if (data_type->type_enum == PT_TYPE_TABLE_COLUMN)
+	  {
+	    // not allowed for PL/CSQL
+	    return false;
+	  }
+
 	PT_NODE *dt;
 	for (dt = data_type; dt; dt = dt->next)
 	  {
-	    if (pt_is_undefined_class (parser, dt))
+	    if (!pt_is_defined_class (parser, dt))
 	      {
 		return false;
 	      }
@@ -9412,13 +9463,32 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *param;
 
+  bool is_plcsql = (node->info.sp.body->info.sp_body.lang == SP_LANG_PLCSQL);
+
   for (param = node->info.sp.param_list; param; param = param->next)
     {
-      if (!pt_is_type_supported_by_sp (parser, param->type_enum, param->data_type))
+      if (param->type_enum == PT_TYPE_NONE)
+	{
+
+	  // only when the param type is of the form <table>.<column>%TYPE
+	  assert (param->data_type->type_enum == PT_TYPE_TABLE_COLUMN);
+
+	  if (!is_plcsql)
+	    {
+	      PT_ERRORm (parser, param, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_PERCENT_TYPE);
+	      return;
+	    }
+	}
+
+      if (pt_is_type_supported_by_sp (parser, param->type_enum, param->data_type))
+	{
+	  assert (param->type_enum != PT_TYPE_NONE);
+	}
+      else
 	{
 	  if (!pt_has_error (parser))
 	    {
-	      PT_ERRORmf (parser, param, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_ARG_TYPE),
+	      PT_ERRORmf (parser, param, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SUPPORTED_SP_ARG_TYPE,
 			  pt_get_type_name (param->type_enum, param->data_type));
 	    }
 	  return;
@@ -9427,12 +9497,31 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (node->info.sp.type == PT_SP_FUNCTION)
     {
-      if (!pt_is_type_supported_by_sp (parser, node->info.sp.ret_type, node->info.sp.ret_data_type))
+      if (node->info.sp.ret_type == PT_TYPE_NONE)
+	{
+
+	  // only when the return type is of the form <table>.<column>%TYPE
+	  assert (node->info.sp.ret_data_type->type_enum == PT_TYPE_TABLE_COLUMN);
+
+	  if (!is_plcsql)
+	    {
+	      PT_ERRORm (parser, node->info.sp.ret_data_type, MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_NOT_ALLOWED_PERCENT_TYPE);
+	      return;
+	    }
+	}
+
+      if (pt_is_type_supported_by_sp (parser, node->info.sp.ret_type, node->info.sp.ret_data_type))
+	{
+	  assert (node->info.sp.ret_type != PT_TYPE_NONE);
+	}
+      else
 	{
 	  if (!pt_has_error (parser))
 	    {
-	      PT_ERRORmf (parser, node, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_RETURN_TYPE),
-			  pt_get_type_name (node->info.sp.ret_type, node->info.sp.ret_data_type));
+	      PT_ERRORmf (parser, node->info.sp.ret_data_type, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_NOT_SUPPORTED_SP_RET_TYPE, pt_get_type_name (node->info.sp.ret_type,
+										       node->info.sp.ret_data_type));
 	    }
 	  return;
 	}

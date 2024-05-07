@@ -1415,8 +1415,8 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1337 Günlük kaydı mevcut değil (lsa : %1$lld|%2$d). Arşiv günlüğü birimi silindi.
 1338 Flashback zaten çalışıyor. Flashback, aynı anda birden fazla kullanıcı tarafından çalıştırılamaz.
 
-1339 Desteklenmeyen bağımsız değişken türü saklı yordam: %1$s
-1340 Desteklenmeyen saklı yordam dönüş türü: %1$s
+1339 (deleted)
+1340 (deleted)
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.
@@ -1932,6 +1932,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
+318 Unsupported argument type '%1$s' of a stored procedure
+319 Unsupported return type '%1$s' of a stored procedure
+320 %TYPE type specification is allowed only for PL/CSQL
+321 Table column '%1$s.%2$s' has not been defined
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

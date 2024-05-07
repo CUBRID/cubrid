@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 

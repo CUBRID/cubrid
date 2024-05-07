@@ -1415,8 +1415,8 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1337 El registro de registro no existe (lsa: %1$lld|%2$d). El volumen de registro de archivo se ha eliminado.
 1338 Flashback ya se está ejecutando. Flashback no puede ser ejecutado por más de un usuario al mismo tiempo.
 
-1339 Tipo de argumento no admitido de procedimiento almacenado: %1$s
-1340 Tipo de devolución no admitido de procedimiento almacenado: %1$s
+1339 (deleted)
+1340 (deleted)
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.
@@ -1932,6 +1932,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
+318 Unsupported argument type '%1$s' of a stored procedure
+319 Unsupported return type '%1$s' of a stored procedure
+320 %TYPE type specification is allowed only for PL/CSQL
+321 Table column '%1$s.%2$s' has not been defined
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.

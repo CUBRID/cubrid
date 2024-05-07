@@ -1415,8 +1415,8 @@ $ LOADDB
 1337 아카이브 로그 볼륨이 삭제되어 해당 로그 레코드가 존재하지 않습니다(lsa : %1$lld|%2$d).
 1338 플래시백이 이미 실행 중입니다. 플래시백은 동시에 두 명 이상의 사용자가 실행할 수 없습니다.
 
-1339 Stored Procedure에서 지원하지 않는 인수 타입입니다: %1$s
-1340 Stored Procedure에서 지원하지 않는 결과 타입입니다: %1$s
+1339 (deleted)
+1340 (deleted)
 
 1341 권한 부여 내부 함수에 잘못된 인자 발생.
 1342 AUTO_INCREMENT는 소유자 변경을 허용하지 않습니다.
@@ -1932,6 +1932,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 이름 바꾸기는 소유자를 변경할 수 없습니다.
 316 이름 바꾸기는 같은 이름으로 변경할 수 없습니다.
 317 식별자는 LIMIT 절 안에 있을 수 없습니다.
+318 Unsupported argument type '%1$s' of a stored procedure
+319 Unsupported return type '%1$s' of a stored procedure
+320 %TYPE type specification is allowed only for PL/CSQL
+321 Table column '%1$s.%2$s' has not been defined
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

@@ -1415,8 +1415,8 @@ $ LOADDB
 1337 ログレコードが存在しません（lsa：%1$lld|%2$d）。 アーカイブログボリュームが削除されました。
 1338 フラッシュバックはすでに実行されています。 フラッシュバックは、複数のユーザーが同時に実行することはできません。
 
-1339 サポートされていない引数タイプのストアドプロシージャ: %1$s
-1340 サポートされていない戻りタイプのストアドプロシージャ: %1$s
+1339 (deleted)
+1340 (deleted)
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.
@@ -1932,6 +1932,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
+318 Unsupported argument type '%1$s' of a stored procedure
+319 Unsupported return type '%1$s' of a stored procedure
+320 %TYPE type specification is allowed only for PL/CSQL
+321 Table column '%1$s.%2$s' has not been defined
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

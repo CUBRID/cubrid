@@ -1415,8 +1415,8 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1337 Log record does not exist (lsa : %1$lld|%2$d). The archive log volume has been deleted.
 1338 Flashback is already running. Flashback cannot be run by more than one user at the same time.
 
-1339 Unsupported argument type of stored procedure: %1$s
-1340 Unsupported return type of stored procedure: %1$s
+1339 (deleted)
+1340 (deleted)
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.
@@ -1932,6 +1932,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
+318 Unsupported argument type '%1$s' of a stored procedure
+319 Unsupported return type '%1$s' of a stored procedure
+320 %TYPE type specification is allowed only for PL/CSQL
+321 Table column '%1$s.%2$s' has not been defined
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

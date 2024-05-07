@@ -8618,7 +8618,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_TABLE_COLUMN:
       r1 = pt_print_bytes (parser, p->info.data_type.table_column);
       q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring(parser, q, "%type");
+      q = pt_append_nulstring (parser, q, "%type");
 
       break;
 

@@ -1415,8 +1415,8 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1337 Înregistrarea jurnalului nu există (lsa : %1$lld|%2$d). Volumul jurnalului de arhivă a fost șters.
 1338 Flashback rulează deja. Flashback nu poate fi rulat de mai mult de un utilizator în același timp.
 
-1339 Tipul de argument neacceptat al procedurii stocate: %1$s
-1340 Tipul de returnare neacceptat al procedurii stocate: %1$s
+1339 (deleted)
+1340 (deleted)
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.
@@ -1932,6 +1932,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
+318 Unsupported argument type '%1$s' of a stored procedure
+319 Unsupported return type '%1$s' of a stored procedure
+320 %TYPE type specification is allowed only for PL/CSQL
+321 Table column '%1$s.%2$s' has not been defined
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

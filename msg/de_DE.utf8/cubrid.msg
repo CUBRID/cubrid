@@ -1415,8 +1415,8 @@ $ LOADDB
 1337 Protokolldatensatz existiert nicht (lsa : %1$lld|%2$d). Das Archivprotokoll-Volume wurde gelöscht.
 1338 Flashback läuft bereits. Flashback kann nicht von mehr als einem Benutzer gleichzeitig ausgeführt werden.
 
-1339 Nicht unterstützter Argumenttyp der gespeicherten Prozedur: %1$s
-1340 Nicht unterstützter Rückgabetyp der gespeicherten Prozedur: %1$s
+1339 (deleted)
+1340 (deleted)
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.
@@ -1932,6 +1932,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
+318 Unsupported argument type '%1$s' of a stored procedure
+319 Unsupported return type '%1$s' of a stored procedure
+320 %TYPE type specification is allowed only for PL/CSQL
+321 Table column '%1$s.%2$s' has not been defined
+
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.

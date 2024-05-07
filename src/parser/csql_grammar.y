@@ -12535,11 +12535,11 @@ sp_return_type
 			if (dt)
 			  {
 			    dt->type_enum = PT_TYPE_TABLE_COLUMN;
-                            dt->data_type = NULL;       // unknown yet
+                            dt->data_type = NULL;
                             dt->info.data_type.table_column = $1;
 			  }
 
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TABLE_COLUMN), dt);
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_NONE), dt); // PT_TYPE_NONE: unknown yet
 			$$ = ctn;
 
 		DBG_PRINT}}
@@ -12741,11 +12741,11 @@ sp_param_type
 			if (dt)
 			  {
 			    dt->type_enum = PT_TYPE_TABLE_COLUMN;
-                            dt->data_type = NULL;       // unknown yet
+                            dt->data_type = NULL;
                             dt->info.data_type.table_column = $1;
 			  }
 
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TABLE_COLUMN), dt);
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_NONE), dt); // PT_TYPE_NONE: unknown yet
 			$$ = ctn;
 
 		DBG_PRINT}}

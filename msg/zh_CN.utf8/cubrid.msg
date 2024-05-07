@@ -1416,8 +1416,8 @@ $ LOADDB
 1337 日志记录不存在 (lsa : %1$lld|%2$d)。 存档日志卷已被删除。
 1338 闪回已在运行。 Flashback 不能由多个用户同时运行。
 
-1339 不支持的存储过程的参数类型: %1$s
-1340 不支持的存储过程的返回类型: %1$s
+1339 (deleted)
+1340 (deleted)
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.
@@ -1933,6 +1933,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
+318 Unsupported argument type '%1$s' of a stored procedure
+319 Unsupported return type '%1$s' of a stored procedure
+320 %TYPE type specification is allowed only for PL/CSQL
+321 Table column '%1$s.%2$s' has not been defined
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
