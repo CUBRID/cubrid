@@ -37,6 +37,7 @@
 
 #include "dbtype.h"
 #include "authenticate.h"
+#include "authenticate_access_auth.hpp"
 #include "string_opfunc.h"
 #include "schema_manager.h"
 #include "schema_class_truncator.hpp"

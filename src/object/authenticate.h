@@ -176,10 +176,6 @@ extern int au_force_write_new_auth (void);
 // get authenticate info of the given class mop
 extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 
-// delete _db_auth records refers to the given table
-extern int au_delete_auth_of_dropping_table (const char *class_name);
-//
-
 /*
  * USER OPERATIONS (authenticate_access_user.cpp)
  */
