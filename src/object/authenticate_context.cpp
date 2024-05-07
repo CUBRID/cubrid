@@ -739,7 +739,7 @@ authenticate_context::set_user (MOP newuser)
 
 
 /*
- * au_set_password -  Set the password string for a user.
+ * au_set_password_encrypt -  Set the password string for a user.
  *   return: error code
  *   user(in): user object
  *   password(in): new password
@@ -752,7 +752,7 @@ authenticate_context::set_password (MOP user, const char *password, int encode =
 }
 
 /*
- * au_set_password -  Set the password string for a user.
+ * au_set_password_encrypt -  Set the password string for a user.
  *   return: error code
  *   user(in): user object
  *   password(in): new password

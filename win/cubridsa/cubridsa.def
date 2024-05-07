@@ -198,7 +198,7 @@ EXPORTS
 	csql
 	csql_get_message
 	basename
-	au_set_password
+	au_set_password_encrypt
 	au_disable_passwords
 	er_has_error
 	er_msg

@@ -1778,7 +1778,7 @@ db_set_password (DB_OBJECT * user, const char *old_passwd, const char *new_passw
   CHECK_MODIFICATION_ERROR ();
 
   /* should check old password ! */
-  retval = au_set_password (user, new_passwd);
+  retval = au_set_password_encrypt (user, new_passwd);
 
   return (retval);
 }

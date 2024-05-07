@@ -2034,7 +2034,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
   if (password != NULL)
     {
-      error = au_set_password (user, password);
+      error = au_set_password_encrypt (user, password);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2243,7 +2243,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (node != NULL)
     {
       password = IS_STRING (node) ? GET_STRING (node) : NULL;
-      error = au_set_password (user, password);
+      error = au_set_password_encrypt (user, password);
       if (error != NO_ERROR)
 	{
 	  goto end;

@@ -84,7 +84,6 @@ extern authenticate_context *au_ctx;
 #define au_get_user_class_name          au_ctx->get_user_class_name
 
 #define au_set_user                     au_ctx->set_user
-#define au_set_password                 au_ctx->set_password
 #define au_set_password_encrypt         au_ctx->set_password
 
 #define au_get_current_user_name        au_ctx->get_current_user_name

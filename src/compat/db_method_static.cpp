@@ -186,7 +186,7 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
 	  return;
 	}
       /*
-       * although au_set_password will check this, check it out here before
+       * although au_set_password_encrypt will check this, check it out here before
        * we bother creating the user object
        */
       if (password != NULL && DB_IS_STRING (password) && !DB_IS_NULL (password) && (tmp = db_get_string (password))
@@ -214,7 +214,7 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
 	    {
 	      if (password != NULL && DB_IS_STRING (password) && !DB_IS_NULL (password))
 		{
-		  error = au_set_password (user, db_get_string (password));
+		  error = au_set_password_encrypt (user, db_get_string (password));
 		  if (error != NO_ERROR)
 		    {
 		      db_make_error (returnval, error);
@@ -451,7 +451,7 @@ error:
 }
 
 /*
- * au_set_password_method -  Method interface for au_set_password.
+ * au_set_password_method -  Method interface for au_set_password_encrypt.
  *   return: none
  *   user(in): user object
  *   returnval(out): return value of this method
@@ -471,7 +471,7 @@ au_set_password_method (MOP user, DB_VALUE *returnval, DB_VALUE *password)
 	  string = db_get_string (password);
 	}
 
-      error = au_set_password (user, string);
+      error = au_set_password_encrypt (user, string);
       if (error != NO_ERROR)
 	{
 	  db_make_error (returnval, error);
@@ -519,7 +519,7 @@ au_set_password_encoded_method (MOP user, DB_VALUE *returnval, DB_VALUE *passwor
 	    }
 	}
 
-      error = au_set_password (user, string, 0, ENCODE_PREFIX_DES);
+      error = au_set_password_encrypt (user, string, 0, ENCODE_PREFIX_DES);
       if (error != NO_ERROR)
 	{
 	  db_make_error (returnval, error);
@@ -569,11 +569,11 @@ au_set_password_encoded_sha1_method (MOP user, DB_VALUE *returnval, DB_VALUE *pa
       /* in case of SHA2, prefix is not stripped */
       if (string != NULL && IS_ENCODED_SHA2_512 (string))
 	{
-	  error = au_set_password (user, string + 1 /* 1 for prefix */, 0, ENCODE_PREFIX_SHA2_512);
+	  error = au_set_password_encrypt (user, string + 1 /* 1 for prefix */, 0, ENCODE_PREFIX_SHA2_512);
 	}
       else
 	{
-	  error = au_set_password (user, string, 0, ENCODE_PREFIX_SHA1);
+	  error = au_set_password_encrypt (user, string, 0, ENCODE_PREFIX_SHA1);
 	}
 
       if (error != NO_ERROR)
