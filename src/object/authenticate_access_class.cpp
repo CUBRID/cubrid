@@ -966,3 +966,45 @@ is_protected_class (MOP classmop, SM_CLASS *sm_class, DB_AUTH auth)
     }
   return illegal;
 }
+
+/*
+ * au_get_class_privilege() -
+ *   return: error code
+ *   mop(in):
+ *   auth(in):
+ */
+int
+au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
+{
+  SM_CLASS *class_;
+  unsigned int *bits = NULL;
+  int error = NO_ERROR;
+
+  if (!Au_disable)
+    {
+      if (mop == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      class_ = (SM_CLASS *) mop->object;
+
+      bits = Au_cache.get_cache_bits (class_);
+      if (bits == NULL)
+	{
+	  return er_errid ();
+	}
+
+      if (*bits == AU_CACHE_INVALID)
+	{
+	  error = Au_cache.update (mop, class_);
+	  if (error == NO_ERROR)
+	    {
+	      bits = Au_cache.get_cache_bits (class_);
+	    }
+	}
+      *auth = *bits;
+    }
+
+  return error;
+}
