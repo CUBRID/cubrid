@@ -50,21 +50,6 @@
 
 class print_output;
 
-/* 
- * name is user_specified_name.
- * owner_name must be a char array of size DB_MAX_IDENTIFIER_LENGTH to copy user_specified_name.
- * class_name refers to class_name after dot(.).
- */
-#define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) \
-	do \
-	  { \
-	    assert (strlen ((name)) < STATIC_CAST (int, sizeof ((owner_name)))); \
-	    strcpy ((owner_name), (name)); \
-	    (class_name) = strchr ((owner_name), '.'); \
-	    *(class_name)++ = '\0'; \
-	  } \
-	while (0)
-
 extern authenticate_context *au_ctx;
 
 /* Backward compatability */
