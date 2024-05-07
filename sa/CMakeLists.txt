@@ -292,6 +292,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate_context.cpp
   ${OBJECT_DIR}/authenticate_access_class.cpp
   ${OBJECT_DIR}/authenticate_grant.cpp
+  ${OBJECT_DIR}/authenticate_owner.cpp
   ${OBJECT_DIR}/authenticate_password.cpp
   ${OBJECT_DIR}/authenticate_access_user.cpp
   ${OBJECT_DIR}/authenticate_migration.cpp

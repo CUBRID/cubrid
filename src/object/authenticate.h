@@ -247,8 +247,10 @@ extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, 
 //
 
 /*
- * CHANGING OWNER OPERATIONS
+ * OWNER OPERATIONS
  */
+extern int au_check_owner (DB_VALUE * creator_val);
+
 extern int au_change_owner (MOP class_mop, MOP owner_mop);
 extern int au_change_class_owner (MOP class_mop, MOP owner_mop);
 extern int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
