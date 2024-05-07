@@ -546,16 +546,15 @@ qo_optimize_helper (QO_ENV * env)
   for (n = 1; n < env->nnodes; n++)
     {
       node = QO_ENV_NODE (env, n);
-      /* In case of ansi join without join-edge, a dummy join term is added to maintain the outer join. */
       if (QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (ansi_nodeset, n))
 	{
+	  /* In case of ansi join without join-edge, a dummy join term is added to maintain the outer join. */
 	  p_node = QO_ENV_NODE (env, n - 1);
 	  (void) qo_add_dummy_join_term (env, p_node, node);
 	}
-
-      /* In case of right join without join-edge for prev node, a dummy join term is added to maintain set of nodes for outer join */
-      if (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER && !BITSET_MEMBER (nodeset, n))
+      else if (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER && !BITSET_MEMBER (nodeset, n))
 	{
+	  /* right join without join-edge for prev node, a dummy term is added to maintain set of nodes for outer join */
 	  p_node = QO_ENV_NODE (env, n - 1);
 	  (void) qo_add_dummy_join_term (env, p_node, node);
 	}
