@@ -1932,8 +1932,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
-318 Unsupported argument type '%1$s' of a stored procedure
-319 Unsupported return type '%1$s' of a stored procedure
+318 Unsupported argument type '%1$s' of the stored procedure
+319 Unsupported return type '%1$s' of the stored procedure
 320 %TYPE type specification is allowed only for PL/CSQL
 321 Table column '%1$s.%2$s' has not been defined
 

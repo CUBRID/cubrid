@@ -1932,8 +1932,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 이름 바꾸기는 소유자를 변경할 수 없습니다.
 316 이름 바꾸기는 같은 이름으로 변경할 수 없습니다.
 317 식별자는 LIMIT 절 안에 있을 수 없습니다.
-318 Unsupported argument type '%1$s' of a stored procedure
-319 Unsupported return type '%1$s' of a stored procedure
+318 Unsupported argument type '%1$s' of the stored procedure
+319 Unsupported return type '%1$s' of the stored procedure
 320 %TYPE type specification is allowed only for PL/CSQL
 321 Table column '%1$s.%2$s' has not been defined
 
