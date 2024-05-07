@@ -66,6 +66,7 @@
 #include "optimizer.h"
 #include "network_interface_cl.h"
 #include "printer.hpp"
+#include "authenticate_access_auth.hpp"
 #include "authenticate_cache.hpp"
 #include "authenticate_grant.hpp"
 
@@ -127,9 +128,6 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
   au_init ();
   return au_ctx->login (name, password, ignore_dba_privilege);
 }
-
-static void au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp);
-static void au_print_auth (MOP auth, FILE * fp);
 
 /*
  * DB_ EXTENSION FUNCTIONS
@@ -713,91 +711,6 @@ end:
 }
 
 /*
- * LOGIN/LOGOUT
- */
-
-
-/*
- * DEBUGGING FUNCTIONS
- */
-
-/*
- * au_print_grant_entry() -
- *   return: none
- *   grants(in):
- *   grant_index(in):
- *   fp(in):
- */
-static void
-au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp)
-{
-  DB_VALUE value;
-
-  set_get_element (grants, GRANT_ENTRY_CLASS (grant_index), &value);
-  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CLASS_NAME),
-	   sm_get_ch_name (db_get_object (&value)));
-  fprintf (fp, " ");
-
-  set_get_element (grants, GRANT_ENTRY_SOURCE (grant_index), &value);
-  obj_get (db_get_object (&value), "name", &value);
-
-  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_FROM_USER),
-	   db_get_string (&value));
-
-  pr_clear_value (&value);
-
-  set_get_element (grants, GRANT_ENTRY_CACHE (grant_index), &value);
-  Au_cache.print_cache (db_get_int (&value), fp);
-}
-
-/*
- * au_print_auth() -
- *   return: none
- *   auth(in):
- *   fp(in):
- */
-static void
-au_print_auth (MOP auth, FILE * fp)
-{
-  DB_VALUE value;
-  DB_SET *grants;
-  int i, gsize;
-  int error;
-
-  /* kludge, some older databases used the name "user", rather than "owner" */
-  error = obj_get (auth, "owner", &value);
-  if (error != NO_ERROR)
-    {
-      error = obj_get (auth, "user", &value);
-      if (error != NO_ERROR)
-	return;			/* punt */
-    }
-
-  if (db_get_object (&value) != NULL)
-    {
-      obj_get (db_get_object (&value), "name", &value);
-      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_USER_TITLE),
-	       db_get_string (&value));
-      pr_clear_value (&value);
-    }
-  else
-    {
-      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_UNDEFINED_USER));
-    }
-
-  get_grants (auth, &grants, 1);
-  if (grants != NULL)
-    {
-      gsize = set_size (grants);
-      for (i = 0; i < gsize; i += GRANT_ENTRY_LENGTH)
-	{
-	  au_print_grant_entry (grants, i, fp);
-	}
-      set_free (grants);
-    }
-}
-
-/*
  * au_dump_auth() - Prints authorization info for all users.
  *   return: none
  *   fp(in): output file
@@ -835,7 +748,7 @@ au_dump_auth (FILE * fp)
 		  user = db_get_object (&user_val);
 		  if (au_get_object (user, "authorization", &auth) == NO_ERROR)
 		    {
-		      au_print_auth (auth, fp);
+		      au_print_grants (auth, fp);
 		    }
 		}
 	    }
@@ -913,7 +826,7 @@ au_dump_user (MOP user, FILE * fp)
   /* dump local grants */
   if (au_get_object (user, "authorization", &auth) == NO_ERROR)
     {
-      au_print_auth (auth, fp);
+      au_print_grants (auth, fp);
     }
 
   /*
@@ -1012,15 +925,6 @@ au_dump (void)
 {
   au_dump_to_file (stdout);
 }
-
-/*
- * AUTHORIZATION CLASSES
- */
-
-
-/*
- * RESTART/SHUTDOWN
- */
 
 /*
  * au_get_class_privilege() -
@@ -1147,75 +1051,4 @@ bool
 au_is_server_authorized_user (DB_VALUE * owner_val)
 {
   return (au_check_owner (owner_val) == NO_ERROR);
-}
-
-/*
- * au_delete_auth_of_dropping_user - delete _db_auth records refers to the given grantee user.
- *   return: error code
- *   user(in): the grantee user name to be dropped
- */
-static int
-au_delete_auth_of_dropping_user (MOP user)
-{
-  int error = NO_ERROR, save;
-  const char *sql_query = "DELETE FROM [" CT_CLASSAUTH_NAME "] [au] WHERE [au].[grantee] = ?;";
-  DB_VALUE val;
-  DB_QUERY_RESULT *result = NULL;
-  DB_SESSION *session = NULL;
-  int stmt_id;
-
-  db_make_null (&val);
-
-  /* Disable the checking for internal authorization object access */
-  AU_DISABLE (save);
-
-  assert (user != NULL);
-
-  session = db_open_buffer_local (sql_query);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto release;
-    }
-
-  db_make_object (&val, user);
-  error = db_push_values (session, 1, &val);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &result);
-  if (error < 0)
-    {
-      goto release;
-    }
-
-  error = db_query_end (result);
-
-release:
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
-
-exit:
-  pr_clear_value (&val);
-
-  AU_ENABLE (save);
-
-  return error;
 }

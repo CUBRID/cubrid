@@ -57,6 +57,7 @@ static void map_grant_list (AU_GRANT *grants, MOP grantor);
 static int find_grant_entry (DB_SET *grants, MOP class_mop, MOP grantor);
 static int add_grant_entry (DB_SET *grants, MOP class_mop, MOP grantor);
 static void drop_grant_entry (DB_SET *grants, int index);
+static void print_grant_entry (DB_SET *grants, int grant_index, FILE *fp);
 
 /*
  * GRANT/REVOKE OPERATION
@@ -787,6 +788,35 @@ find_grant_entry (DB_SET *grants, MOP class_mop, MOP grantor)
 }
 
 /*
+ * print_grant_entry() -
+ *   return: none
+ *   grants(in):
+ *   grant_index(in):
+ *   fp(in):
+ */
+static void
+print_grant_entry (DB_SET *grants, int grant_index, FILE *fp)
+{
+  DB_VALUE value;
+
+  set_get_element (grants, GRANT_ENTRY_CLASS (grant_index), &value);
+  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CLASS_NAME),
+	   sm_get_ch_name (db_get_object (&value)));
+  fprintf (fp, " ");
+
+  set_get_element (grants, GRANT_ENTRY_SOURCE (grant_index), &value);
+  obj_get (db_get_object (&value), "name", &value);
+
+  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_FROM_USER),
+	   db_get_string (&value));
+
+  pr_clear_value (&value);
+
+  set_get_element (grants, GRANT_ENTRY_CACHE (grant_index), &value);
+  Au_cache.print_cache (db_get_int (&value), fp);
+}
+
+/*
  * get_grants -  This gets the grant set from an authorization object,
  *               VERY CAREFULLY.
  *   return: error code
@@ -1346,6 +1376,55 @@ au_propagate_del_new_auth (AU_GRANT *glist, DB_AUTH mask)
     }
 
   return error;
+}
+
+/*
+ * au_print_grants() -
+ *   return: none
+ *   auth(in):
+ *   fp(in):
+ */
+void
+au_print_grants (MOP auth, FILE *fp)
+{
+  DB_VALUE value;
+  DB_SET *grants;
+  int i, gsize;
+  int error;
+
+  /* kludge, some older databases used the name "user", rather than "owner" */
+  error = obj_get (auth, "owner", &value);
+  if (error != NO_ERROR)
+    {
+      error = obj_get (auth, "user", &value);
+      if (error != NO_ERROR)
+	{
+	  return;  /* punt */
+	}
+    }
+
+  if (db_get_object (&value) != NULL)
+    {
+      obj_get (db_get_object (&value), "name", &value);
+      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_USER_TITLE),
+	       db_get_string (&value));
+      pr_clear_value (&value);
+    }
+  else
+    {
+      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_UNDEFINED_USER));
+    }
+
+  get_grants (auth, &grants, 1);
+  if (grants != NULL)
+    {
+      gsize = set_size (grants);
+      for (i = 0; i < gsize; i += GRANT_ENTRY_LENGTH)
+	{
+	  print_grant_entry (grants, i, fp);
+	}
+      set_free (grants);
+    }
 }
 
 #if defined (SA_MODE)
