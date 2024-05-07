@@ -14247,7 +14247,6 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 static PT_NODE *
 pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PARSER_CONTEXT *query = (PARSER_CONTEXT *) arg;
   int i = parser->host_var_count;
 
   if (node->node_type == PT_HOST_VAR && node->info.host_var.index >= 0)
@@ -14519,7 +14518,7 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
       memset ((void *) cte_context.cte_host_var_index, -1, var_count * sizeof (int));
     }
 
-  parser_walk_tree (&cte_context, stmt, pt_cte_host_vars_index, parser, NULL, NULL);
+  parser_walk_tree (&cte_context, stmt, pt_cte_host_vars_index, NULL, NULL, NULL);
 
   stmt->cte_host_var_count = cte_context.host_var_count;
   stmt->cte_host_var_index = cte_context.cte_host_var_index;
