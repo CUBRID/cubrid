@@ -180,8 +180,6 @@ extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 extern int au_delete_auth_of_dropping_table (const char *class_name);
 //
 
-extern int au_add_method_check_authorization (void);
-
 /*
  * USER OPERATIONS (authenticate_access_user.cpp)
  */

@@ -48,6 +48,9 @@
 #define AU_PUBLIC_USER_NAME     "PUBLIC"
 #define AU_DBA_USER_NAME        "DBA"
 
+// static functions
+static int au_add_method_check_authorization (void);
+
 void
 authenticate_context::reset (void)
 {
@@ -911,3 +914,49 @@ authenticate_context::get_user_class_name (void)
 {
   return AU_USER_CLASS_NAME;
 }
+
+//
+// STATIC FUNCTIONS
+//
+
+/*
+ * au_add_method_check_authorization -
+ *    return: error code
+ */
+static int
+au_add_method_check_authorization (void)
+{
+  MOP auth;
+  SM_TEMPLATE *def;
+  int save;
+
+  AU_DISABLE (save);
+
+  auth = db_find_class (AU_AUTH_CLASS_NAME);
+  if (auth == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  def = smt_edit_class_mop (auth, AU_ALTER);
+  if (def == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  smt_add_class_method (def, "check_authorization", "au_check_authorization_method");
+  smt_assign_argument_domain (def, "check_authorization", true, NULL, 0, "integer", (DB_DOMAIN *) 0);
+  smt_assign_argument_domain (def, "check_authorization", true, NULL, 1, "varchar(255)", (DB_DOMAIN *) 0);
+  smt_assign_argument_domain (def, "check_authorization", true, NULL, 2, "integer", (DB_DOMAIN *) 0);
+  sm_update_class (def, NULL);
+
+  au_grant (Au_public_user, auth, AU_EXECUTE, false);
+
+  AU_ENABLE (save);
+  return NO_ERROR;
+
+exit_on_error:
+  AU_ENABLE (save);
+  return ER_FAILED;
+}
+
