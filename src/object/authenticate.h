@@ -194,6 +194,10 @@ extern int au_add_member (MOP group, MOP member);
 extern int au_drop_member (MOP group, MOP member);
 extern int au_drop_user (MOP user);
 extern int au_set_user_comment (MOP user, const char *comment);
+
+extern char *au_get_user_name (MOP obj);
+extern bool au_is_dba_group_member (MOP user);
+extern bool au_is_user_group_member (MOP group_user, MOP user);
 //
 
 /*
@@ -209,8 +213,15 @@ extern int au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, LC_FETC
 			      DB_AUTH type);
 extern int au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
 				    LC_FETCH_VERSION_TYPE fetch_version_type);
+//
 
+/*
+ * CHECK AUTHORIZATION OPERATIONS
+ */
 extern int au_check_class_authorization (MOP op, DB_AUTH auth);	// legacy name - au_check_authorization
+extern int au_check_serial_authorization (MOP serial_object);
+extern int au_check_server_authorization (MOP server_object);
+extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
 //
 
 /*
@@ -239,35 +250,34 @@ extern int au_check_class_authorization (MOP op, DB_AUTH auth);	// legacy name -
  */
 extern int au_export_users (extract_context & ctxt, print_output & output_ctx);
 extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_mop);
+//
 
-/* misc utilities */
+/*
+ * CHANGING OWNER OPERATIONS
+ */
 extern int au_change_owner (MOP class_mop, MOP owner_mop);
 extern int au_change_class_owner (MOP class_mop, MOP owner_mop);
 extern int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
 extern int au_change_trigger_owner (MOP trigger_mop, MOP owner_mop);
 extern int au_change_sp_owner (MOP sp, MOP owner);
-
 extern MOP au_get_class_owner (MOP classmop);
-extern char *au_get_user_name (MOP obj);
-extern bool au_is_dba_group_member (MOP user);
-extern bool au_is_user_group_member (MOP group_user, MOP user);
+//
 
-/* debugging functions */
+/*
+ * DEBUGGING PURPOSE FUNCTIONS
+ */
 extern void au_dump (void);
 extern void au_dump_to_file (FILE * fp);
 extern void au_dump_user (MOP user, FILE * fp);
+extern void au_dump_auth (FILE * fp);
+//
 
 /*
- * Etc
+ * SET TYPE OPERATIONS
  */
-
 extern int au_get_set (MOP obj, const char *attname, DB_SET ** set);
 extern int au_get_object (MOP obj, const char *attname, MOP * mop_ptr);
 extern int au_set_get_obj (DB_SET * set, int index, MOP * obj);
+//
 
-
-extern void au_dump_auth (FILE * fp);
-extern int au_check_serial_authorization (MOP serial_object);
-extern int au_check_server_authorization (MOP server_object);
-extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
 #endif /* _AUTHENTICATE_H_ */
