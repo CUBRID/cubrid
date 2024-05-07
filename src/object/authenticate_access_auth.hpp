@@ -17,11 +17,11 @@
  */
 
 /*
- * authenticate_auth_access.hpp -
+ * authenticate_access_auth.hpp -
  */
 
-#ifndef _AUTHENTICATE_AUTH_ACCESS_HPP_
-#define _AUTHENTICATE_AUTH_ACCESS_HPP_
+#ifndef _authenticate_access_auth_HPP_
+#define _authenticate_access_auth_HPP_
 
 #define AU_AUTH_ATTR_OWNER     "owner"
 #define AU_AUTH_ATTR_GRANTS    "grants"
@@ -79,4 +79,4 @@ class au_auth_accessor
     }
 };
 
-#endif // _AUTHENTICATE_AUTH_ACCESS_HPP_
+#endif // _authenticate_access_auth_HPP_

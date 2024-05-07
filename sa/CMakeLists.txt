@@ -287,13 +287,13 @@ set(QUERY_HEADERS
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate.c
-  ${OBJECT_DIR}/authenticate_auth_access.cpp
+  ${OBJECT_DIR}/authenticate_access_auth.cpp
   ${OBJECT_DIR}/authenticate_cache.cpp
   ${OBJECT_DIR}/authenticate_context.cpp
-  ${OBJECT_DIR}/authenticate_class_access.cpp
+  ${OBJECT_DIR}/authenticate_access_class.cpp
   ${OBJECT_DIR}/authenticate_grant.cpp
   ${OBJECT_DIR}/authenticate_password.cpp
-  ${OBJECT_DIR}/authenticate_user_access.cpp
+  ${OBJECT_DIR}/authenticate_access_user.cpp
   ${OBJECT_DIR}/authenticate_migration.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c

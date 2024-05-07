@@ -183,7 +183,7 @@ extern int au_delete_auth_of_dropping_table (const char *class_name);
 extern int au_add_method_check_authorization (void);
 
 /*
- * USER OPERATIONS (authenticate_user_access.cpp)
+ * USER OPERATIONS (authenticate_access_user.cpp)
  */
 extern MOP au_find_user (const char *user_name);
 extern int au_find_user_to_drop (const char *user_name, MOP * user);
@@ -197,7 +197,7 @@ extern int au_set_user_comment (MOP user, const char *comment);
 //
 
 /*
- * CLASS ACCESS OPERATIONS (authenticate_class_access.cpp)
+ * CLASS ACCESS OPERATIONS (authenticate_access_class.cpp)
  */
 /* class & instance accessors */
 extern int au_fetch_class (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type);

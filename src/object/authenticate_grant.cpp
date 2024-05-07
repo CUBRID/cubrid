@@ -24,7 +24,7 @@
 
 #include "authenticate.h"
 #include "authenticate_cache.hpp"
-#include "authenticate_auth_access.hpp"
+#include "authenticate_access_auth.hpp"
 
 #include "db.h" /* db_compile_and_execute_local () */
 #include "dbtype.h" /* DB_IS_STRING */

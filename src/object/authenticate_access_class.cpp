@@ -17,7 +17,7 @@
  */
 
 /*
- * authenticate_class_access.cpp -
+ * authenticate_access_class.cpp -
  */
 
 #include "authenticate.h"
