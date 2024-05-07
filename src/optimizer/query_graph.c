@@ -436,7 +436,7 @@ qo_optimize_helper (QO_ENV * env)
   int level;
   QO_TERM *term;
   QO_NODE *node, *p_node;
-  BITSET nodeset;
+  BITSET nodeset, ansi_nodeset;
   int n;
 
   parser = QO_ENV_PARSER (env);
@@ -494,6 +494,7 @@ qo_optimize_helper (QO_ENV * env)
   }
 
   bitset_init (&nodeset, env);
+  bitset_init (&ansi_nodeset, env);
 
   /* add term in the ON clause */
   for (spec = tree->info.query.q.select.from; spec; spec = spec->next)
@@ -517,7 +518,13 @@ qo_optimize_helper (QO_ENV * env)
 	      if (QO_TERM_CLASS (term) == QO_TC_JOIN)
 		{
 		  QO_ASSERT (env, QO_ON_COND_TERM (term));
-		  bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
+		  bitset_add (&ansi_nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
+
+		  n = QO_TERM_LOCATION (term);
+		  if (QO_NODE_LOCATION (QO_TERM_HEAD (term)) == n - 1 && QO_NODE_LOCATION (QO_TERM_TAIL (term)) == n)
+		    {
+		      bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
+		    }
 		}
 
 	      conj->next = next;
@@ -535,12 +542,19 @@ qo_optimize_helper (QO_ENV * env)
       conj->next = next;
     }
 
-  /* In case of ansi join without join-edge, a dummy join relationship is added to maintain the outer join. */
+  /* check join-edge for ansi(explicit) join */
   for (n = 1; n < env->nnodes; n++)
     {
       node = QO_ENV_NODE (env, n);
+      /* In case of ansi join without join-edge, a dummy join term is added to maintain the outer join. */
+      if (QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (ansi_nodeset, n))
+	{
+	  p_node = QO_ENV_NODE (env, n - 1);
+	  (void) qo_add_dummy_join_term (env, p_node, node);
+	}
 
-      if (QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (nodeset, n))
+      /* In case of right join without join-edge for prev node, a dummy join term is added to maintain set of nodes for outer join */
+      if (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER && !BITSET_MEMBER (nodeset, n))
 	{
 	  p_node = QO_ENV_NODE (env, n - 1);
 	  (void) qo_add_dummy_join_term (env, p_node, node);
