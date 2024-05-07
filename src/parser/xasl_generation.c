@@ -27420,17 +27420,16 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
       bool *cachable = (bool *) arg;
       switch (node->type_enum)
 	{
-	case PT_TYPE_DATETIME:
-	  *cachable = false;
-	  *continue_walk = PT_STOP_WALK;
-	  break;
-
 	default:
 	  break;
 	}
       switch (node->info.expr.op)
 	{
-	case PT_RAND:
+	case PT_SYS_GUID:
+	case PT_RANDOM:
+	case PT_INCR:
+	case PT_DESC:
+	case PT_DRANDOM:
 	  *cachable = false;
 	  *continue_walk = PT_STOP_WALK;
 	  break;
@@ -27438,7 +27437,5 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
 	  break;
 	}
     }
-
-
   return node;
 }

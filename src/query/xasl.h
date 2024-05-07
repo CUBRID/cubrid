@@ -1052,6 +1052,7 @@ struct xasl_node
   XASL_ID *cte_xasl_id;		/* for CTE's query cache */
   int cte_host_var_count;
   int *cte_host_var_index;
+
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
   LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite locking for queries which obtain candidate

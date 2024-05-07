@@ -390,6 +390,7 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
   SQ_VAL *val;
   const void *ret;
   UINT64 new_entry_size = 0;
+  int i;
 
   val = sq_make_val (thread_p, regu_var);
 
@@ -398,8 +399,11 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
       sq_cache_initialize (thread_p, xasl);
     }
 
-  new_entry_size += (UINT64) (key->n_elements) * or_db_value_size (key->dbv_array[0]) + sizeof (SQ_KEY);
-
+  for (i = 0; i < key->n_elements; i++)
+    {
+      new_entry_size += (UINT64) or_db_value_size (key->dbv_array[i]);
+    }
+  new_entry_size += sizeof (SQ_KEY);
   switch (val->t)
     {
     case TYPE_CONSTANT:
