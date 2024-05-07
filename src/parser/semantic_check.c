@@ -9369,7 +9369,7 @@ static bool
 pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM & type_enum, PT_NODE * data_type)
 {
 
-  if (type_enum == PT_TYPE_NONE)
+  if (type_enum == PT_TYPE_NONE && data_type && data_type->type_enum == PT_TYPE_TABLE_COLUMN)
     {
       // type specification of the form <table>.<column>%type
       type_enum = pt_get_type_enum_of_table_column (parser, data_type);
@@ -9397,26 +9397,12 @@ pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM & type_enum, P
       return true;
 
     case PT_TYPE_OBJECT:
-      if (data_type->type_enum == PT_TYPE_TABLE_COLUMN)
-	{
-	  // not allowed for PL/CSQL
-	  return false;
-	}
-      else
-	{
-	  return pt_is_defined_class (parser, data_type);
-	}
+      return pt_is_defined_class (parser, data_type);
 
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
     case PT_TYPE_SEQUENCE:
       {
-	if (data_type->type_enum == PT_TYPE_TABLE_COLUMN)
-	  {
-	    // not allowed for PL/CSQL
-	    return false;
-	  }
-
 	PT_NODE *dt;
 	for (dt = data_type; dt; dt = dt->next)
 	  {

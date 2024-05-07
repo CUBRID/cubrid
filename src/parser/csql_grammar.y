@@ -1416,7 +1416,6 @@ static char *g_plcsql_text;
 %token TRIM
 %token True
 %token TRUNCATE
-%token TYPE
 %token UNDER
 %token Union
 %token UNIQUE
@@ -1672,6 +1671,7 @@ static char *g_plcsql_text;
 %token <cptr> TIMEZONE
 %token <cptr> TRACE
 %token <cptr> TRAN
+%token <cptr> TYPE
 %token <cptr> TRIGGERS
 %token <cptr> UCASE
 %token <cptr> UNCOMMITTED
@@ -22976,6 +22976,7 @@ identifier
 	| TRACE                  {{ DBG_TRACE_GRAMMAR(identifier, | TRACE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TRAN                   {{ DBG_TRACE_GRAMMAR(identifier, | TRAN               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TRIGGERS               {{ DBG_TRACE_GRAMMAR(identifier, | TRIGGERS           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| TYPE                   {{ DBG_TRACE_GRAMMAR(identifier, | TYPE               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| UCASE                  {{ DBG_TRACE_GRAMMAR(identifier, | UCASE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| UNCOMMITTED            {{ DBG_TRACE_GRAMMAR(identifier, | UNCOMMITTED        ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| VARIANCE               {{ DBG_TRACE_GRAMMAR(identifier, | VARIANCE           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
