@@ -12051,8 +12051,8 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
   int *num_btids;
   OR_INDEX *indexp;
 
-  idx_info->has_single_col = 0;
-  idx_info->has_multi_col = 0;
+  idx_info->has_single_col = false;
+  idx_info->has_multi_col = false;
   idx_info->num_btids = 0;
 
   num_btids = &idx_info->num_btids;
@@ -12096,22 +12096,22 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	{
 	  if (indexp->n_atts == 2)
 	    {
-	      idx_info->has_single_col = 1;
+	      idx_info->has_single_col = true;
 	    }
 	  else
 	    {
-	      idx_info->has_multi_col = 1;
+	      idx_info->has_multi_col = true;
 	    }
 	}
       else
 	{
 	  if (indexp->n_atts == 1)
 	    {
-	      idx_info->has_single_col = 1;
+	      idx_info->has_single_col = true;
 	    }
 	  else if (indexp->n_atts > 1)
 	    {
-	      idx_info->has_multi_col = 1;
+	      idx_info->has_multi_col = true;
 	    }
 	}
 
@@ -12159,7 +12159,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	}			/* for (i = 0 ...) */
     }
 
-  if (idx_info->has_multi_col == 0 && num_found_attrs == 0)
+  if (!idx_info->has_multi_col && num_found_attrs == 0)
     {
       /* initialize the attrinfo cache and return, there is nothing else to do */
       /* (void) memset(attr_info, '\0', sizeof (HEAP_CACHE_ATTRINFO)); */
