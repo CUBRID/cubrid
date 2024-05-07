@@ -425,6 +425,13 @@ struct qo_node
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER)
 
+#define QO_NODE_IS_ANSI_JOIN(node) \
+  (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_LEFT_OUTER  || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER  || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_NATURAL     || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_INNER)
+
 #define QO_ADD_OUTER_DEP_SET(tail,head) \
    bitset_union (&(QO_NODE_OUTER_DEP_SET (tail)), &(QO_NODE_OUTER_DEP_SET (head))); \
    bitset_add (&(QO_NODE_OUTER_DEP_SET (tail)), QO_NODE_IDX (head));

@@ -535,12 +535,12 @@ qo_optimize_helper (QO_ENV * env)
       conj->next = next;
     }
 
-  /* In case of an outer join without join-edge, a dummy join relationship is added to maintain the outer join. */
+  /* In case of ansi join without join-edge, a dummy join relationship is added to maintain the outer join. */
   for (n = 1; n < env->nnodes; n++)
     {
       node = QO_ENV_NODE (env, n);
 
-      if (QO_NODE_IS_OUTER_JOIN (node) && !BITSET_MEMBER (nodeset, n))
+      if (QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (nodeset, n))
 	{
 	  p_node = QO_ENV_NODE (env, n - 1);
 	  (void) qo_add_dummy_join_term (env, p_node, node);
