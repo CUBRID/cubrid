@@ -974,7 +974,7 @@ is_protected_class (MOP classmop, SM_CLASS *sm_class, DB_AUTH auth)
  *   auth(in):
  */
 int
-au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
+au_get_class_privilege (DB_OBJECT *mop, unsigned int *auth)
 {
   SM_CLASS *class_;
   unsigned int *bits = NULL;
