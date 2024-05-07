@@ -517,12 +517,7 @@ qo_optimize_helper (QO_ENV * env)
 	      if (QO_TERM_CLASS (term) == QO_TC_JOIN)
 		{
 		  QO_ASSERT (env, QO_ON_COND_TERM (term));
-
-		  n = QO_TERM_LOCATION (term);
-		  if (QO_NODE_LOCATION (QO_TERM_HEAD (term)) == n - 1 && QO_NODE_LOCATION (QO_TERM_TAIL (term)) == n)
-		    {
-		      bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
-		    }
+		  bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
 		}
 
 	      conj->next = next;
@@ -538,6 +533,18 @@ qo_optimize_helper (QO_ENV * env)
 
       term = qo_add_term (conj, PREDICATE_TERM, env);
       conj->next = next;
+    }
+
+  /* In case of an outer join without join-edge, a dummy join relationship is added to maintain the outer join. */
+  for (n = 1; n < env->nnodes; n++)
+    {
+      node = QO_ENV_NODE (env, n);
+
+      if (QO_NODE_IS_OUTER_JOIN (node) && !BITSET_MEMBER (nodeset, n))
+	{
+	  p_node = QO_ENV_NODE (env, n - 1);
+	  (void) qo_add_dummy_join_term (env, p_node, node);
+	}
     }
 
   /* classify terms for outer join */
