@@ -78,22 +78,6 @@ extern bool catcls_Enable;
 /* Macro to determine if a name is system catalog class */
 
 /*
- * AU_OBJECT_CLASS_NAME
- *
- * This is list of class names that CUBRID manages as database objects
- * Their existence is checked when dropping an user
- */
-const char *AU_OBJECT_CLASS_NAME[] = {
-  CT_CLASS_NAME,		/* AU_OBJECT_CLASS */
-  CT_TRIGGER_NAME,		/* AU_OBJECT_TRIGGER */
-  CT_SERIAL_NAME,		/* AU_OBJECT_SERIAL */
-  CT_DB_SERVER_NAME,		/* AU_OBJECT_SERVER */
-  CT_SYNONYM_NAME,		/* AU_OBJECT_SYNONYM */
-  CT_STORED_PROC_NAME,		/* AU_OBJECT_PROCEDURE */
-  NULL
-};
-
-/*
  *
  *
  * 

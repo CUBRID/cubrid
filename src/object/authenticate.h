@@ -50,8 +50,6 @@
 
 class print_output;
 
-extern const char *AU_OBJECT_CLASS_NAME[];
-
 /* 
  * name is user_specified_name.
  * owner_name must be a char array of size DB_MAX_IDENTIFIER_LENGTH to copy user_specified_name.
