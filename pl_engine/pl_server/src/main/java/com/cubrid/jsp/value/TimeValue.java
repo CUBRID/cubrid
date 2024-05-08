@@ -61,6 +61,7 @@ public class TimeValue extends Value {
 
     public TimeValue(Time time) {
         this.time = time;
+        assert time.getTime() % 1000L == 0;
     }
 
     public Date toDate() throws TypeMismatchException {
