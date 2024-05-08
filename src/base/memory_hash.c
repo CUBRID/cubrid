@@ -56,6 +56,7 @@
 #include "intl_support.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#include "memory_wrapper.hpp"
 
 #if __WORDSIZE == 32
 #define GET_PTR_FOR_HASH(key) ((unsigned int)(key))

@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include "tsc_timer.h"
+#include "memory_wrapper.hpp"
 
 /*
  * get_clock_freq() - get the CPU clock rate

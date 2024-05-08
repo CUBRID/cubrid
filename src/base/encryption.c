@@ -37,6 +37,7 @@
 #include "encryption.h"
 #include "memory_alloc.h"
 #include "sha1.h"
+#include "memory_wrapper.hpp"
 
 #if defined (WINDOWS)
 static BYTE des_Keyblob[] = {

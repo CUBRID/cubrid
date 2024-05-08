@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include "chartype.h"
+#include "memory_wrapper.hpp"
 
 #define CP_NONE  (CHAR_PROP_NONE)
 #define CP_SPC   (CHAR_PROP_SPACE)

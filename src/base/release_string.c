@@ -37,6 +37,7 @@
 #include "language_support.h"
 #include "environment_variable.h"
 #include "log_comm.h"
+#include "memory_wrapper.hpp"
 
 /*
  * COMPATIBILITY_RULE - Structure that encapsulates compatibility rules.

@@ -22,6 +22,7 @@
 #include "lockfree_transaction_table.hpp"
 
 #include <cassert>
+#include "memory_wrapper.hpp"
 
 namespace lockfree
 {

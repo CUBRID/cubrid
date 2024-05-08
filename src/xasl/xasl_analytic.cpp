@@ -23,6 +23,7 @@
 #include "xasl_analytic.hpp"
 
 #include "dbtype.h"
+#include "memory_wrapper.hpp"
 
 namespace cubxasl
 {

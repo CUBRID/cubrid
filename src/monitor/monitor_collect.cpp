@@ -17,6 +17,7 @@
  */
 
 #include "monitor_collect.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubmonitor
 {

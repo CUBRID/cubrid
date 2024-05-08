@@ -23,6 +23,7 @@
 #include "list_file.h"
 #include "log_impl.h"
 #include "object_representation.h"
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

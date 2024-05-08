@@ -21,6 +21,7 @@
 #include "oid.h"
 #include "dbtype.h"
 #include "method_struct_value.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

@@ -33,6 +33,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include "memory_wrapper.hpp"
 
 /*
  * EXTERN TO ALL SERVER RECOVERY FUNCTION CODED SOMEWHERE ELSE

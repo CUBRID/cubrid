@@ -21,6 +21,7 @@
 #include "porting.h"
 
 #include <algorithm>
+#include "memory_wrapper.hpp"
 
 static void
 string_ncopy (std::string &dest, const char *src, size_t max_size)

@@ -32,6 +32,7 @@
 #include "porting.h"
 #include "memory_hash.h"
 #include "es_common.h"
+#include "memory_wrapper.hpp"
 
 /*
  * es_get_type -

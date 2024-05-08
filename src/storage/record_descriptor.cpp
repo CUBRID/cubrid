@@ -28,6 +28,7 @@
 #include "slotted_page.h"
 
 #include <cstring>
+#include "memory_wrapper.hpp"
 
 //  record_descriptor extends functionality for recdes:
 //

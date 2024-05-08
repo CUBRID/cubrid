@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include "mprec.h"
 #include <stdlib.h>
+#include "memory_wrapper.hpp"
 
 void free_Bigints (struct _Jv_Bigint *p);
 

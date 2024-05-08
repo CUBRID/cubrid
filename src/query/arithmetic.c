@@ -50,6 +50,7 @@
 #if defined(SOLARIS)
 #include <ieeefp.h>
 #endif
+#include "memory_wrapper.hpp"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)

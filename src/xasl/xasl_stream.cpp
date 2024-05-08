@@ -26,6 +26,7 @@
 #include "object_representation.h"
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 static int stx_Xasl_errcode = NO_ERROR;

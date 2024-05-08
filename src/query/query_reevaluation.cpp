@@ -23,6 +23,7 @@
 #include "query_reevaluation.hpp"
 
 #include "scan_manager.h"
+#include "memory_wrapper.hpp"
 
 namespace cubquery
 {

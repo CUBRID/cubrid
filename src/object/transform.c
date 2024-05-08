@@ -38,6 +38,7 @@
 #include "language_support.h"
 #include "system_catalog.h"
 #endif /* !CS_MODE */
+#include "memory_wrapper.hpp"
 
 /*
  * These define the structure of the meta class objects

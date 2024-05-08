@@ -23,6 +23,7 @@
 #include "identifier_store.hpp"
 #include "oid.h"
 #include "schema_system_catalog_constants.h"
+#include "memory_wrapper.hpp"
 
 using namespace cubbase;
 

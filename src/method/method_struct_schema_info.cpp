@@ -19,6 +19,7 @@
 #include "method_struct_schema_info.hpp"
 
 #include "language_support.h"
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

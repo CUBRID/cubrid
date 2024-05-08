@@ -24,6 +24,7 @@
 #include "binaryheap.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
+#include "memory_wrapper.hpp"
 
 #define BH_PARENT(i)	((i - 1)/2)
 #define BH_LEFT(i)	(2*(i) + 1)

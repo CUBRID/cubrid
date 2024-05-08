@@ -29,6 +29,7 @@
 #include "thread_manager.hpp"
 
 #include <cstring>
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {

@@ -29,6 +29,7 @@
 
 #include "object_representation.h" /* OR_ */
 #include "jsp_comm.h" /* jsp_writen() */
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

@@ -26,6 +26,7 @@
 #include "bit.h"
 
 #include <assert.h>
+#include "memory_wrapper.hpp"
 
 /*
  * 8-bit section

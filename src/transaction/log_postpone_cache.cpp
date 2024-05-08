@@ -28,6 +28,7 @@
 #include "log_manager.h"
 
 #include <cstring>
+#include "memory_wrapper.hpp"
 
 void
 log_postpone_cache::reset ()

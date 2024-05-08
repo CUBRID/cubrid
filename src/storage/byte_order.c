@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include "byte_order.h"
+#include "memory_wrapper.hpp"
 
 /*
  * LITTLE ENDIAN TRANSFORMATION FUNCTIONS

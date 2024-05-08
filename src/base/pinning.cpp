@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include "pinning.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubbase
 {

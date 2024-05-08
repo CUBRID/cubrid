@@ -30,6 +30,7 @@
 #else
 #include "query_method.hpp"
 #endif
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

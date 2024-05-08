@@ -19,6 +19,7 @@
 #include "method_error.hpp"
 
 #include "error_manager.h"
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

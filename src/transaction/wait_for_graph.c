@@ -35,6 +35,7 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
+#include "memory_wrapper.hpp"
 
 /* Prune the number of found cycles in a cycle group */
 static const int WFG_PRUNE_CYCLES_IN_CYCLE_GROUP = 10;

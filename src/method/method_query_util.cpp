@@ -28,6 +28,7 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #endif
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

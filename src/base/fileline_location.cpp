@@ -25,6 +25,7 @@
 #include "porting.h"
 
 #include <cstring>
+#include "memory_wrapper.hpp"
 
 namespace cubbase
 {

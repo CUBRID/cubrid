@@ -19,6 +19,7 @@
 #include "lockfree_transaction_system.hpp"
 
 #include <cassert>
+#include "memory_wrapper.hpp"
 
 namespace lockfree
 {

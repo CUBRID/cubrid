@@ -23,6 +23,7 @@
 #include "resource_tracker.hpp"
 
 #include "error_manager.h"
+#include "memory_wrapper.hpp"
 
 namespace cubbase
 {

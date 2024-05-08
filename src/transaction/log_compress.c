@@ -31,6 +31,7 @@
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "perf_monitor.h"
+#include "memory_wrapper.hpp"
 
 /*
  * log_zip - compress(zip) log data into LOG_ZIP

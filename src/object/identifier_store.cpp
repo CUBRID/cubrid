@@ -20,6 +20,7 @@
 
 #include "language_support.h"
 #include "chartype.h"
+#include "memory_wrapper.hpp"
 
 namespace cubbase
 {

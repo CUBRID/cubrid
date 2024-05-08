@@ -60,7 +60,7 @@ namespace HL
 	  void *p =::malloc (sz + cubmem::MMON_METAINFO_SIZE);
 	  if (p != NULL)
 	    {
-	      mmon_add_stat ((char *) p, sz + cubmem::MMON_METAINFO_SIZE, __FILE__, __LINE__);
+	      mmon_add_stat ((char *) p, malloc_usable_size (p), __FILE__, __LINE__);
 	    }
 	  return p;
 	}

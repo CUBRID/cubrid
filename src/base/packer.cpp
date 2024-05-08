@@ -33,6 +33,7 @@
 #include <cstring>
 #include <vector>
 #include <string>
+#include "memory_wrapper.hpp"
 
 namespace cubpacking
 {

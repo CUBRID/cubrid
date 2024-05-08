@@ -30,6 +30,7 @@
 #include <ctype.h>
 
 #include "misc_string.h"
+#include "memory_wrapper.hpp"
 
 /*
  * ustr_casestr() - find a substring, case ignored

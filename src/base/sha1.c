@@ -42,6 +42,7 @@
 #include "error_manager.h"
 
 #include <assert.h>
+#include "memory_wrapper.hpp"
 
 /*
  *  Define the circular shift macro

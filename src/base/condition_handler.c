@@ -38,6 +38,7 @@
 #include "adjustable_array.h"
 #include "condition_handler_err.h"
 #include "intl_support.h"
+#include "memory_wrapper.hpp"
 
 /* format type of condition argument */
 enum co_format_type

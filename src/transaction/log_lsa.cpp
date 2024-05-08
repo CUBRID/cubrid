@@ -23,6 +23,7 @@
 #include "log_lsa.hpp"
 
 #include <cstdio>
+#include "memory_wrapper.hpp"
 
 void
 lsa_to_string (char *buf, int buf_size, const log_lsa *lsa)

@@ -35,6 +35,7 @@
 #if !defined(SERVER_MODE)
 #include "virtual_object.h"
 #endif
+#include "memory_wrapper.hpp"
 
 const char db_value_printer::DECIMAL_FORMAT[] = "%#.*g";
 

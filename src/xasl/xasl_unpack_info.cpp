@@ -22,6 +22,7 @@
 #if defined (SERVER_MODE)
 #include "thread_entry.hpp"
 #endif
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 static XASL_UNPACK_INFO *xasl_Unpack_info = NULL;

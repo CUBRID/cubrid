@@ -19,6 +19,7 @@
 #include "method_def.hpp"
 
 #include "memory_private_allocator.hpp"
+#include "memory_wrapper.hpp"
 
 method_sig_node::method_sig_node ()
 {

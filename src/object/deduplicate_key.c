@@ -36,6 +36,7 @@
 #endif
 
 #include "deduplicate_key.h"
+#include "memory_wrapper.hpp"
 
 /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 

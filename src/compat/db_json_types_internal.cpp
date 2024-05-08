@@ -17,6 +17,7 @@
  */
 
 #include "db_json_types_internal.hpp"
+#include "memory_wrapper.hpp"
 
 bool
 JSON_DOC::IsLeaf ()

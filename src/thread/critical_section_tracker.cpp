@@ -25,6 +25,7 @@
 #include "resource_tracker.hpp"
 
 #include <iostream>
+#include "memory_wrapper.hpp"
 
 namespace cubsync
 {

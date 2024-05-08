@@ -24,6 +24,7 @@
 
 #include "pinnable_buffer.hpp"
 #include "pinning.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubmem
 {

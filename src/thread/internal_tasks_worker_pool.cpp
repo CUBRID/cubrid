@@ -22,6 +22,7 @@
 
 #include "internal_tasks_worker_pool.hpp"
 #include "thread_worker_pool.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {

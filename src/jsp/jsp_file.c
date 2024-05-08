@@ -36,6 +36,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "memory_wrapper.hpp"
 
 bool
 javasp_open_info_dir ()

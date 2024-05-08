@@ -52,6 +52,7 @@
 #include "log_storage.hpp"
 #include "log_volids.hpp"
 #include "tde.h"
+#include "memory_wrapper.hpp"
 
 #define off_signals(new_mask, old_mask) \
   do {  \

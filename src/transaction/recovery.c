@@ -38,6 +38,7 @@
 #include "overflow_file.h"
 #include "boot_sr.h"
 #include "locator_sr.h"
+#include "memory_wrapper.hpp"
 
 /*
  *

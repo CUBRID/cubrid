@@ -39,6 +39,7 @@
 #include <cas_cci.h>
 
 #include <db_json.hpp>
+#include "memory_wrapper.hpp"
 
 #define MAX_LEN_CONNECTION_URL    512
 

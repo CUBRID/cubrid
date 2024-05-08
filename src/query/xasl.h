@@ -45,6 +45,7 @@
 #include "object_representation_sr.h"
 #include "scan_manager.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "memory_cwrapper.h"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 // forward definition

@@ -32,6 +32,7 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
+#include "memory_wrapper.hpp"
 
 enum class JSON_PATH_TYPE
 {

@@ -17,6 +17,7 @@
  */
 
 #include "db_function.hpp"
+#include "memory_wrapper.hpp"
 
 const char *
 fcode_get_uppercase_name (FUNC_CODE ftype)

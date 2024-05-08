@@ -24,6 +24,7 @@
 #include "method_query_util.hpp"
 #include "method_schema_info.hpp"
 #include "object_primitive.h"
+#include "memory_wrapper.hpp"
 
 /* from jsp_cl.c */
 extern void jsp_set_prepare_call ();

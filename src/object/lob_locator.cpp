@@ -32,6 +32,7 @@
 
 #include <cstring>
 #include <string>
+#include "memory_wrapper.hpp"
 
 bool
 lob_locator_is_valid (const char *locator)

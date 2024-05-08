@@ -35,6 +35,7 @@
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "storage_common.h"
+#include "memory_wrapper.hpp"
 
 #include <string.h>
 

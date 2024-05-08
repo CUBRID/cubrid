@@ -52,6 +52,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "thread_compat.hpp"
+#include "memory_wrapper.hpp"
 
 #ifdef EHASH_DEBUG
 #define EHASH_BALANCE_FACTOR     4	/* Threshold rate of no. of directory pointers over no. of bucket pages. If

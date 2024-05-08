@@ -20,6 +20,7 @@
 
 #include "dbtran_def.h"
 #include "language_support.h"
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

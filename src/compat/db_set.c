@@ -40,6 +40,7 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <string.h>
+#include "memory_wrapper.hpp"
 
 #define ERROR_SET(error, code) \
   do {                     \

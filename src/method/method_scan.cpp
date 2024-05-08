@@ -22,6 +22,7 @@
 #include "list_file.h" /* qfile_ */
 #include "object_representation.h" /* OR_ */
 #include "method_runtime_context.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubscan
 {

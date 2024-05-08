@@ -31,6 +31,7 @@
 #include "object_primitive.h"
 
 #include <cassert>
+#include "memory_wrapper.hpp"
 
 namespace cubxasl
 {

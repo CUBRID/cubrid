@@ -21,6 +21,7 @@
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
+#include "memory_wrapper.hpp"
 
 void *
 JSON_PRIVATE_ALLOCATOR::Malloc (size_t size)

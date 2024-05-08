@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include "storage_common.h"
+#include "memory_wrapper.hpp"
 
 /*
  *

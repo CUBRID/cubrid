@@ -19,6 +19,7 @@
 #include "thread_lockfree_hash_map.hpp"
 
 #include "thread_manager.hpp"
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {

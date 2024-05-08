@@ -31,6 +31,7 @@
 #include "dbtype.h"
 #include "fetch.h"
 #include "xasl.h"
+#include "memory_wrapper.hpp"
 
 /*
  * qproc_next_set_scan () -

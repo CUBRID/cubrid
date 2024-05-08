@@ -32,6 +32,7 @@
 #include "error_manager.h"
 
 #include <algorithm>
+#include "memory_wrapper.hpp"
 
 namespace cubload
 {

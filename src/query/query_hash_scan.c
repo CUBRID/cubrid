@@ -49,6 +49,7 @@
 #include "db_date.h"
 #include "thread_compat.hpp"
 #include "oid.h"
+#include "memory_wrapper.hpp"
 
 
 static bool safe_memcpy (void *data, void *source, int size);

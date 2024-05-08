@@ -48,6 +48,7 @@
 #include "parser.h"
 #else /* !SERVER_MODE */
 #endif
+#include "memory_wrapper.hpp"
 
 
 /* If this is the server stub out ws_pin.

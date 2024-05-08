@@ -21,6 +21,7 @@
  */
 
 #include "printer.hpp"
+#include "memory_wrapper.hpp"
 
 void print_output::operator+= (const char ch)
 {

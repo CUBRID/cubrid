@@ -84,6 +84,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "show_scan.h"
+#include "memory_wrapper.hpp"
 
 #if defined(CS_MODE)
 extern bool tran_is_in_libcas (void);

@@ -42,6 +42,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

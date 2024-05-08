@@ -30,6 +30,7 @@
 #include <fcntl.h>
 #include <io.h>
 #endif
+#include "memory_wrapper.hpp"
 
 namespace
 {

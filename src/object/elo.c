@@ -63,6 +63,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "storage_common.h"
+#include "memory_wrapper.hpp"
 
 static const DB_ELO elo_Initializer = { -1LL, NULL, NULL, ELO_NULL, ES_NONE };
 

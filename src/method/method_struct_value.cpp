@@ -34,6 +34,7 @@
 #endif
 
 #include <cstring>
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

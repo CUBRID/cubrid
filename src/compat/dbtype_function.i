@@ -142,6 +142,7 @@ STATIC_INLINE DB_TYPE db_value_domain_type (const DB_VALUE * value) __attribute_
 #endif // !NO_INLINE_DBTYPE_FUNCTION
 
 #include <assert.h>
+#include "memory_cwrapper.h"
 
 /*
  * db_get_int() -

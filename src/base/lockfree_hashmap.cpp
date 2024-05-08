@@ -17,6 +17,7 @@
  */
 
 #include "lockfree_hashmap.hpp"
+#include "memory_wrapper.hpp"
 
 namespace lockfree
 {
