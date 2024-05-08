@@ -8275,15 +8275,6 @@ pt_print_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       break;
 
-    case PT_SERIAL_COMMENT:
-      if (p->info.serial.comment != NULL)
-	{
-	  r1 = pt_print_bytes (parser, p->info.serial.comment);
-	  q = pt_append_nulstring (parser, q, " comment ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
-      break;
-
     default:
       assert (false);
       break;

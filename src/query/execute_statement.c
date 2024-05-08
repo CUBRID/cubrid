@@ -2887,10 +2887,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       break;
 
-    case PT_SERIAL_COMMENT:
-      /* Use only comment */
-      break;
-
     default:
       assert (false);
       break;
