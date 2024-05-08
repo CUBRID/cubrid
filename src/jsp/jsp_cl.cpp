@@ -828,7 +828,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       code_info.stype = 0;
       code_info.scode = pl_code;
       code_info.otype = 0;
-      code_info.ocode = "dummy"; // TODO
+      code_info.ocode = "dummy"; // TODO: CBRD-24552
       code_info.owner = Au_user; // current user
 
       err = sp_add_stored_procedure_code (code_info);
