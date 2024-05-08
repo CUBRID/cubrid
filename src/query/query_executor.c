@@ -2248,7 +2248,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       pg_cnt += qexec_clear_agg_orderby_const_list (thread_p, xasl, is_final);
     }
 
-
   if (is_final)
     {
       /* clear the db_values in the tree */
@@ -12031,7 +12030,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (heap_scancache_start (thread_p, &scan_cache, NULL, NULL, true, false, mvcc_snapshot) != NO_ERROR)
+      if (heap_scancache_start (thread_p, &scan_cache, NULL, NULL, true, mvcc_snapshot) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -12732,7 +12731,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      if (scan_cache_inited == false)
 		{
 		  if (heap_scancache_start (thread_p, &scan_cache, &crt_incr_info.m_class_hfid,
-					    &crt_incr_info.m_class_oid, false, false, mvcc_snapshot) != NO_ERROR)
+					    &crt_incr_info.m_class_oid, false, mvcc_snapshot) != NO_ERROR)
 		    {
 		      goto exit_on_error;
 		    }
@@ -13660,7 +13659,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state *
       xasl->xasl_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       xasl->xasl_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
       xasl->xasl_stats.fetch_time +=
-	perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) - old_fetch_time;
+	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
+		   old_fetch_time) / 1000);
     }
 
   thread_dec_recursion_depth (thread_p);

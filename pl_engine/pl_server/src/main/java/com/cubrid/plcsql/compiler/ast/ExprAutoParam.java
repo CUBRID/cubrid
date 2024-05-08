@@ -41,6 +41,7 @@ import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.apache.commons.text.StringEscapeUtils;
 
@@ -65,7 +66,7 @@ public class ExprAutoParam extends Expr {
         return DBTypeAdapter.getValueType(ty);
     }
 
-    public String javaCode() {
+    public String javaCode(Set<String> javaTypesUsed) {
 
         if (ty == DBType.DB_NULL) {
             return "null";
@@ -97,6 +98,7 @@ public class ExprAutoParam extends Expr {
                 return String.format("new Long(%sL)", javaObj);
             case DBType.DB_NUMERIC:
                 assert javaObj instanceof BigDecimal;
+                javaTypesUsed.add("java.math.BigDecimal");
                 return String.format("new BigDecimal(\"%s\")", javaObj);
             case DBType.DB_FLOAT:
                 assert javaObj instanceof Float;
@@ -106,13 +108,16 @@ public class ExprAutoParam extends Expr {
                 return String.format("new Double(%s)", javaObj);
             case DBType.DB_DATE:
                 assert javaObj instanceof Date;
+                javaTypesUsed.add("java.sql.Date");
                 return String.format("Date.valueOf(\"%s\")", javaObj);
             case DBType.DB_TIME:
                 assert javaObj instanceof Time;
+                javaTypesUsed.add("java.sql.Time");
                 return String.format("Time.valueOf(\"%s\")", javaObj);
             case DBType.DB_DATETIME:
             case DBType.DB_TIMESTAMP:
                 assert javaObj instanceof Timestamp;
+                javaTypesUsed.add("java.sql.Timestamp");
                 return String.format("Timestamp.valueOf(\"%s\")", javaObj);
             default:
                 assert false : "unreachable";

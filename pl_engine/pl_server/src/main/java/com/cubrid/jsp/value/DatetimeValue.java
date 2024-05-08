@@ -83,7 +83,8 @@ public class DatetimeValue extends Value {
     }
 
     public Timestamp toTimestamp() throws TypeMismatchException {
-        return timestamp;
+        long sec = timestamp.getTime() / 1000L; // truncate milli-seconds
+        return new Timestamp(sec * 1000L);
     }
 
     public Timestamp toDatetime() throws TypeMismatchException {
@@ -91,7 +92,7 @@ public class DatetimeValue extends Value {
     }
 
     public Object toDefault() throws TypeMismatchException {
-        return toTimestamp();
+        return timestamp;
     }
 
     public String toString() {
@@ -111,7 +112,7 @@ public class DatetimeValue extends Value {
     }
 
     public Timestamp[] toDatetimeArray() throws TypeMismatchException {
-        return new Timestamp[] {toTimestamp()};
+        return new Timestamp[] {toDatetime()};
     }
 
     public Object[] toObjectArray() throws TypeMismatchException {
@@ -123,6 +124,6 @@ public class DatetimeValue extends Value {
     }
 
     public Object toObject() throws TypeMismatchException {
-        return toTimestamp();
+        return timestamp;
     }
 }
