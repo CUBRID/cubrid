@@ -24,12 +24,13 @@
 #ifndef _AUTHENTICATE_CONTEXT_HPP_
 #define _AUTHENTICATE_CONTEXT_HPP_
 
+#include "porting.h"
 #include "dbtype_def.h"
 
 #include "authenticate_cache.hpp"
 #include "authenticate_password.hpp" /* AU_MAX_PASSWORD_BUF */
 
-class authenticate_context
+class EXPORT_IMPORT authenticate_context
 {
   public:
 
