@@ -913,8 +913,8 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {"name", nullptr}, false},
       {DB_CONSTRAINT_UNIQUE, "", {"name", "created_time", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"name", nullptr}, false},
     },
 // authorization
     {
