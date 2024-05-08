@@ -224,6 +224,7 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_DATATYPE_NAME, system_catalog_initializer::get_data_type());
   ADD_TABLE_DEFINITION (CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure());
   ADD_TABLE_DEFINITION (CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_arguments());
+  ADD_TABLE_DEFINITION (CT_STORED_PROC_CODE_NAME, system_catalog_initializer::get_stored_procedure_code());
   ADD_TABLE_DEFINITION (CT_SERIAL_NAME, system_catalog_initializer::get_serial());
   ADD_TABLE_DEFINITION (CT_HA_APPLY_INFO_NAME, system_catalog_initializer::get_ha_apply_info());
   ADD_TABLE_DEFINITION (CT_COLLATION_NAME, system_catalog_initializer::get_collations());
@@ -854,8 +855,6 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
@@ -890,8 +889,41 @@ namespace cubschema
 // initializer
     nullptr
 	   );
+  }
 
 
+  system_catalog_definition
+  system_catalog_initializer::get_stored_procedure_code ()
+  {
+
+    return system_catalog_definition (
+		   // name
+		   CT_STORED_PROC_CODE_NAME,
+		   // columns
+    {
+      {"name", format_varchar (65535)}, // java's name limit
+      {"created_time", format_varchar (16)},
+      {"owner", AU_USER_CLASS_NAME},
+      {"is_static", "integer"},
+      {"is_system_generated", "integer"},
+      {"stype", "integer"},
+      {"scode", format_varchar (1073741823)},
+      {"otype", "integer"},
+      {"ocode", format_varchar (1073741823)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"name", nullptr}, false},
+      {DB_CONSTRAINT_UNIQUE, "", {"name", "created_time", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
   }
 
   system_catalog_definition

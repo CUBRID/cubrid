@@ -666,6 +666,123 @@ error:
   return err;
 }
 
+int
+sp_add_stored_procedure_code (SP_CODE_INFO &info)
+{
+  DB_OBJECT *classobj_p, *object_p;
+  DB_OTMPL *obt_p = NULL;
+  DB_VALUE value;
+  int save;
+  int err;
+
+  AU_DISABLE (save);
+
+  classobj_p = db_find_class (SP_CODE_CLASS_NAME);
+  if (classobj_p == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      goto error;
+    }
+
+  obt_p = dbt_create_object_internal (classobj_p);
+  if (obt_p == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      goto error;
+    }
+
+  db_make_string (&value, info.created_time.data ());
+  err = dbt_put_internal (obt_p, SP_ATTR_TIMESTAMP, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_object (&value, info.owner);
+  err = dbt_put_internal (obt_p, SP_ATTR_OWNER, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_string (&value, info.name.data ());
+  err = dbt_put_internal (obt_p, SP_ATTR_CLS_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_int (&value, info.stype);
+  err = dbt_put_internal (obt_p, SP_ATTR_SOURCE_TYPE, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.scode.data (), info.scode.length (), INTL_CODESET_UTF8,
+		   LANG_COLL_UTF8_BINARY);
+  err = dbt_put_internal (obt_p, SP_ATTR_SOURCE_CODE, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+
+  db_make_int (&value, info.otype);
+  err = dbt_put_internal (obt_p, SP_ATTR_OBJECT_TYPE, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.ocode.data (), info.ocode.length (), INTL_CODESET_UTF8,
+		   LANG_COLL_UTF8_BINARY);
+  err = dbt_put_internal (obt_p, SP_ATTR_OBJECT_CODE, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  object_p = dbt_finish_object (obt_p);
+  if (!object_p)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      goto error;
+    }
+  obt_p = NULL;
+
+  err = locator_flush_instance (object_p);
+  if (err != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      obj_delete (object_p);
+      goto error;
+    }
+
+  AU_ENABLE (save);
+  return NO_ERROR;
+
+error:
+  if (obt_p)
+    {
+      dbt_abort_object (obt_p);
+    }
+
+  AU_ENABLE (save);
+  return err;
+}
+
 void sp_normalize_name (std::string &s)
 {
   s.resize (SM_MAX_IDENTIFIER_LENGTH);

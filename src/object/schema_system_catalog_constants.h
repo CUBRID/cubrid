@@ -40,6 +40,7 @@
 #define CT_DATATYPE_NAME           "_db_data_type"
 #define CT_STORED_PROC_NAME        "_db_stored_procedure"
 #define CT_STORED_PROC_ARGS_NAME   "_db_stored_procedure_args"
+#define CT_STORED_PROC_CODE_NAME   "_db_stored_procedure_code"
 #define CT_PARTITION_NAME          "_db_partition"
 #define CT_SERIAL_NAME             "db_serial"
 #define CT_HA_APPLY_INFO_NAME      "db_ha_apply_info"

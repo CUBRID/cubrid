@@ -34,6 +34,18 @@
 #define SAVEPOINT_ADD_STORED_PROC "ADDSTOREDPROC"
 #define SAVEPOINT_CREATE_STORED_PROC "CREATESTOREDPROC"
 
+enum sp_source_code_type
+{
+  SPSC_PLCSQL,
+  SPSC_JAVA
+};
+
+enum sp_object_code_type
+{
+  SPOC_JAVA_CLASS,
+  SPOC_JAVA_JAR
+};
+
 // *INDENT-OFF*
 struct sp_arg_info
 {
@@ -74,6 +86,20 @@ enum sp_directive : int
 };
 typedef sp_directive SP_DIRECTIVE_ENUM;
 
+struct sp_code_info
+{
+  std::string name;
+  std::string created_time;
+  MOP owner;
+  int is_static;
+  int is_system_generated;
+  int stype;
+  std::string scode;
+  int otype;
+  std::string ocode;
+};
+typedef sp_code_info SP_CODE_INFO;
+
 struct sp_info
 {
   std::string sp_name;
@@ -110,6 +136,7 @@ int sp_builtin_install ();
 // insert into system catalogs
 int sp_add_stored_procedure (SP_INFO &info);
 int sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info);
+int sp_add_stored_procedure_code (SP_CODE_INFO &info);
 
 // misc
 void sp_normalize_name (std::string &s);
