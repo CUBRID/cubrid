@@ -658,7 +658,7 @@ static int heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid,
 					   HEAP_SCANCACHE ** scan_cache);
 static int heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					  const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
-					  int is_indexscan, MVCC_SNAPSHOT * mvcc_snapshot);
+					  MVCC_SNAPSHOT * mvcc_snapshot);
 static int heap_scancache_force_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 static int heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					const OID * class_oid);
@@ -1527,8 +1527,8 @@ heap_classrepr_finalize_cache (void)
 #endif /* DEBUG_CLASSREPR_CACHE */
 
   /* finalize hash entries table */
-  cache_entry = heap_Classrepr_cache.area;
-  for (i = 0; cache_entry != NULL && i < heap_Classrepr_cache.num_entries; i++)
+  cache_entry = heap_Classrepr->area;
+  for (i = 0; cache_entry != NULL && i < heap_Classrepr->num_entries; i++)
     {
       pthread_mutex_destroy (&cache_entry[i].mutex);
 
@@ -1548,36 +1548,36 @@ heap_classrepr_finalize_cache (void)
 	}
       free_and_init (cache_entry[i].repr);
     }
-  if (heap_Classrepr_cache.area != NULL)
+  if (heap_Classrepr->area != NULL)
     {
-      free_and_init (heap_Classrepr_cache.area);
+      free_and_init (heap_Classrepr->area);
     }
-  heap_Classrepr_cache.num_entries = -1;
+  heap_Classrepr->num_entries = -1;
 
   /* finalize hash bucket table */
-  hash_entry = heap_Classrepr_cache.hash_table;
-  for (i = 0; hash_entry != NULL && i < heap_Classrepr_cache.num_hash; i++)
+  hash_entry = heap_Classrepr->hash_table;
+  for (i = 0; hash_entry != NULL && i < heap_Classrepr->num_hash; i++)
     {
       pthread_mutex_destroy (&hash_entry[i].hash_mutex);
     }
-  heap_Classrepr_cache.num_hash = -1;
-  if (heap_Classrepr_cache.hash_table != NULL)
+  heap_Classrepr->num_hash = -1;
+  if (heap_Classrepr->hash_table != NULL)
     {
-      free_and_init (heap_Classrepr_cache.hash_table);
+      free_and_init (heap_Classrepr->hash_table);
     }
 
   /* finalize hash lock table */
-  if (heap_Classrepr_cache.lock_table != NULL)
+  if (heap_Classrepr->lock_table != NULL)
     {
-      free_and_init (heap_Classrepr_cache.lock_table);
+      free_and_init (heap_Classrepr->lock_table);
     }
 
   /* finalize LRU list */
 
-  pthread_mutex_destroy (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+  pthread_mutex_destroy (&heap_Classrepr->LRU_list.LRU_mutex);
 
   /* initialize free list */
-  pthread_mutex_destroy (&heap_Classrepr_cache.free_list.free_mutex);
+  pthread_mutex_destroy (&heap_Classrepr->free_list.free_mutex);
 
   heap_Classrepr = NULL;
 
@@ -1649,18 +1649,18 @@ heap_classrepr_entry_remove_from_LRU (HEAP_CLASSREPR_ENTRY * cache_entry)
 {
   if (cache_entry)
     {
-      if (cache_entry == heap_Classrepr_cache.LRU_list.LRU_top)
+      if (cache_entry == heap_Classrepr->LRU_list.LRU_top)
 	{
-	  heap_Classrepr_cache.LRU_list.LRU_top = cache_entry->next;
+	  heap_Classrepr->LRU_list.LRU_top = cache_entry->next;
 	}
       else
 	{
 	  cache_entry->prev->next = cache_entry->next;
 	}
 
-      if (cache_entry == heap_Classrepr_cache.LRU_list.LRU_bottom)
+      if (cache_entry == heap_Classrepr->LRU_list.LRU_bottom)
 	{
-	  heap_Classrepr_cache.LRU_list.LRU_bottom = cache_entry->prev;
+	  heap_Classrepr->LRU_list.LRU_bottom = cache_entry->prev;
 	}
       else
 	{
@@ -1783,9 +1783,9 @@ heap_classrepr_decache_guessed_last (const OID * class_oid)
       /* Remove from LRU list */
       if (cache_entry->zone == ZONE_LRU)
 	{
-	  rv = pthread_mutex_lock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+	  rv = pthread_mutex_lock (&heap_Classrepr->LRU_list.LRU_mutex);
 	  (void) heap_classrepr_entry_remove_from_LRU (cache_entry);
-	  pthread_mutex_unlock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+	  pthread_mutex_unlock (&heap_Classrepr->LRU_list.LRU_mutex);
 	  cache_entry->zone = ZONE_VOID;
 	}
       cache_entry->prev = NULL;
@@ -1913,7 +1913,7 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
       return NO_ERROR;
     }
 
-  cache_entry = &heap_Classrepr_cache.area[*idx_incache];
+  cache_entry = &heap_Classrepr->area[*idx_incache];
 
   rv = pthread_mutex_lock (&cache_entry->mutex);
   cache_entry->fcnt--;
@@ -1923,9 +1923,9 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
        * Is this entry declared to be decached
        */
 #ifdef DEBUG_CLASSREPR_CACHE
-      rv = pthread_mutex_lock (&heap_Classrepr_cache.num_fix_entries_mutex);
-      heap_Classrepr_cache.num_fix_entries--;
-      pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
+      rv = pthread_mutex_lock (&heap_Classrepr->num_fix_entries_mutex);
+      heap_Classrepr->num_fix_entries--;
+      pthread_mutex_unlock (&heap_Classrepr->num_fix_entries_mutex);
 #endif /* DEBUG_CLASSREPR_CACHE */
       if (cache_entry->force_decache)
 	{
@@ -1941,9 +1941,9 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
       else
 	{
 	  /* relocate entry to the top of LRU list */
-	  if (cache_entry != heap_Classrepr_cache.LRU_list.LRU_top)
+	  if (cache_entry != heap_Classrepr->LRU_list.LRU_top)
 	    {
-	      rv = pthread_mutex_lock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+	      rv = pthread_mutex_lock (&heap_Classrepr->LRU_list.LRU_mutex);
 	      if (cache_entry->zone == ZONE_LRU)
 		{
 		  /* remove from LRU list */
@@ -1952,19 +1952,19 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
 
 	      /* insert into LRU top */
 	      cache_entry->prev = NULL;
-	      cache_entry->next = heap_Classrepr_cache.LRU_list.LRU_top;
-	      if (heap_Classrepr_cache.LRU_list.LRU_top == NULL)
+	      cache_entry->next = heap_Classrepr->LRU_list.LRU_top;
+	      if (heap_Classrepr->LRU_list.LRU_top == NULL)
 		{
-		  heap_Classrepr_cache.LRU_list.LRU_bottom = cache_entry;
+		  heap_Classrepr->LRU_list.LRU_bottom = cache_entry;
 		}
 	      else
 		{
-		  heap_Classrepr_cache.LRU_list.LRU_top->prev = cache_entry;
+		  heap_Classrepr->LRU_list.LRU_top->prev = cache_entry;
 		}
-	      heap_Classrepr_cache.LRU_list.LRU_top = cache_entry;
+	      heap_Classrepr->LRU_list.LRU_top = cache_entry;
 	      cache_entry->zone = ZONE_LRU;
 
-	      pthread_mutex_unlock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+	      pthread_mutex_unlock (&heap_Classrepr->LRU_list.LRU_mutex);
 	    }
 	}
     }
@@ -2026,7 +2026,7 @@ heap_classrepr_lock_class (THREAD_ENTRY * thread_p, HEAP_CLASSREPR_HASH * hash_a
 	}
     }
 
-  cur_lock_entry = &heap_Classrepr_cache.lock_table[cur_thrd_entry->index];
+  cur_lock_entry = &heap_Classrepr->lock_table[cur_thrd_entry->index];
   cur_lock_entry->class_oid = *class_oid;
   cur_lock_entry->next_wait_thrd = NULL;
   cur_lock_entry->lock_next = hash_anchor->lock_next;
@@ -2116,23 +2116,23 @@ heap_classrepr_entry_alloc (void)
 /* check_free_list: */
 
   /* 1. Get entry from free list */
-  if (heap_Classrepr_cache.free_list.free_top == NULL)
+  if (heap_Classrepr->free_list.free_top == NULL)
     {
       goto check_LRU_list;
     }
 
-  rv = pthread_mutex_lock (&heap_Classrepr_cache.free_list.free_mutex);
-  if (heap_Classrepr_cache.free_list.free_top == NULL)
+  rv = pthread_mutex_lock (&heap_Classrepr->free_list.free_mutex);
+  if (heap_Classrepr->free_list.free_top == NULL)
     {
-      pthread_mutex_unlock (&heap_Classrepr_cache.free_list.free_mutex);
+      pthread_mutex_unlock (&heap_Classrepr->free_list.free_mutex);
       cache_entry = NULL;
     }
   else
     {
-      cache_entry = heap_Classrepr_cache.free_list.free_top;
-      heap_Classrepr_cache.free_list.free_top = cache_entry->next;
-      heap_Classrepr_cache.free_list.free_cnt--;
-      pthread_mutex_unlock (&heap_Classrepr_cache.free_list.free_mutex);
+      cache_entry = heap_Classrepr->free_list.free_top;
+      heap_Classrepr->free_list.free_top = cache_entry->next;
+      heap_Classrepr->free_list.free_cnt--;
+      pthread_mutex_unlock (&heap_Classrepr->free_list.free_mutex);
 
       rv = pthread_mutex_lock (&cache_entry->mutex);
       cache_entry->next = NULL;
@@ -2143,13 +2143,13 @@ heap_classrepr_entry_alloc (void)
 
 check_LRU_list:
   /* 2. Get entry from LRU list */
-  if (heap_Classrepr_cache.LRU_list.LRU_bottom == NULL)
+  if (heap_Classrepr->LRU_list.LRU_bottom == NULL)
     {
       goto expand_list;
     }
 
-  rv = pthread_mutex_lock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
-  for (cache_entry = heap_Classrepr_cache.LRU_list.LRU_bottom; cache_entry != NULL; cache_entry = cache_entry->prev)
+  rv = pthread_mutex_lock (&heap_Classrepr->LRU_list.LRU_mutex);
+  for (cache_entry = heap_Classrepr->LRU_list.LRU_bottom; cache_entry != NULL; cache_entry = cache_entry->prev)
     {
       if (cache_entry->fcnt == 0)
 	{
@@ -2160,7 +2160,7 @@ check_LRU_list:
 	  break;
 	}
     }
-  pthread_mutex_unlock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+  pthread_mutex_unlock (&heap_Classrepr->LRU_list.LRU_mutex);
 
   if (cache_entry == NULL)
     {
@@ -2232,14 +2232,14 @@ static int
 heap_classrepr_entry_free (HEAP_CLASSREPR_ENTRY * cache_entry)
 {
   int rv;
-  rv = pthread_mutex_lock (&heap_Classrepr_cache.free_list.free_mutex);
+  rv = pthread_mutex_lock (&heap_Classrepr->free_list.free_mutex);
 
-  cache_entry->next = heap_Classrepr_cache.free_list.free_top;
-  heap_Classrepr_cache.free_list.free_top = cache_entry;
+  cache_entry->next = heap_Classrepr->free_list.free_top;
+  heap_Classrepr->free_list.free_top = cache_entry;
   cache_entry->zone = ZONE_FREE;
-  heap_Classrepr_cache.free_list.free_cnt++;
+  heap_Classrepr->free_list.free_cnt++;
 
-  pthread_mutex_unlock (&heap_Classrepr_cache.free_list.free_mutex);
+  pthread_mutex_unlock (&heap_Classrepr->free_list.free_mutex);
 
   return NO_ERROR;
 }
@@ -2521,9 +2521,9 @@ search_begin:
       cache_entry->fcnt = 1;
       cache_entry->class_oid = *class_oid;
 #ifdef DEBUG_CLASSREPR_CACHE
-      r = pthread_mutex_lock (&heap_Classrepr_cache.num_fix_entries_mutex);
-      heap_Classrepr_cache.num_fix_entries++;
-      pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
+      r = pthread_mutex_lock (&heap_Classrepr->num_fix_entries_mutex);
+      heap_Classrepr->num_fix_entries++;
+      pthread_mutex_unlock (&heap_Classrepr->num_fix_entries_mutex);
 
 #endif /* DEBUG_CLASSREPR_CACHE */
       *idx_incache = cache_entry->idx;
@@ -6806,12 +6806,11 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
  *   cache_last_fix_page(in): Wheater or not to cache the last fetched page
  *                            between scan objects ?
  *   is_queryscan(in):
- *   is_indexscan(in):
  *
  */
 static int
 heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
-			       const OID * class_oid, int cache_last_fix_page, bool is_queryscan, int is_indexscan,
+			       const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
 			       MVCC_SNAPSHOT * mvcc_snapshot)
 {
   int ret = NO_ERROR;
@@ -6920,14 +6919,13 @@ exit_on_error:
  *                  For any class, NULL or NULL_OID can be given
  *   cache_last_fix_page(in): Wheater or not to cache the last fetched page
  *                            between scan objects ?
- *   is_indexscan(in):
  *
  */
 int
 heap_scancache_start (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid, const OID * class_oid,
-		      int cache_last_fix_page, int is_indexscan, MVCC_SNAPSHOT * mvcc_snapshot)
+		      int cache_last_fix_page, MVCC_SNAPSHOT * mvcc_snapshot)
 {
-  return heap_scancache_start_internal (thread_p, scan_cache, hfid, class_oid, cache_last_fix_page, true, is_indexscan,
+  return heap_scancache_start_internal (thread_p, scan_cache, hfid, class_oid, cache_last_fix_page, true,
 					mvcc_snapshot);
 }
 
@@ -6966,7 +6964,7 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
   int i;
   int ret = NO_ERROR;
 
-  if (heap_scancache_start_internal (thread_p, scan_cache, hfid, NULL, false, false, false, mvcc_snapshot) != NO_ERROR)
+  if (heap_scancache_start_internal (thread_p, scan_cache, hfid, NULL, false, false, mvcc_snapshot) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -8313,7 +8311,7 @@ heap_scanrange_start (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, cons
   int ret = NO_ERROR;
 
   /* Start the scan cache */
-  ret = heap_scancache_start (thread_p, &scan_range->scan_cache, hfid, class_oid, true, false, mvcc_snapshot);
+  ret = heap_scancache_start (thread_p, &scan_range->scan_cache, hfid, class_oid, true, mvcc_snapshot);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -12066,8 +12064,8 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
   int *num_btids;
   OR_INDEX *indexp;
 
-  idx_info->has_single_col = 0;
-  idx_info->has_multi_col = 0;
+  idx_info->has_single_col = false;
+  idx_info->has_multi_col = false;
   idx_info->num_btids = 0;
 
   num_btids = &idx_info->num_btids;
@@ -12111,22 +12109,22 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	{
 	  if (indexp->n_atts == 2)
 	    {
-	      idx_info->has_single_col = 1;
+	      idx_info->has_single_col = true;
 	    }
 	  else
 	    {
-	      idx_info->has_multi_col = 1;
+	      idx_info->has_multi_col = true;
 	    }
 	}
       else
 	{
 	  if (indexp->n_atts == 1)
 	    {
-	      idx_info->has_single_col = 1;
+	      idx_info->has_single_col = true;
 	    }
 	  else if (indexp->n_atts > 1)
 	    {
-	      idx_info->has_multi_col = 1;
+	      idx_info->has_multi_col = true;
 	    }
 	}
 
@@ -12174,7 +12172,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	}			/* for (i = 0 ...) */
     }
 
-  if (idx_info->has_multi_col == 0 && num_found_attrs == 0)
+  if (!idx_info->has_multi_col && num_found_attrs == 0)
     {
       /* initialize the attrinfo cache and return, there is nothing else to do */
       /* (void) memset(attr_info, '\0', sizeof (HEAP_CACHE_ATTRINFO)); */
@@ -14486,7 +14484,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
       /* Dump individual Objects */
       if (dump_records == true)
 	{
-	  if (heap_scancache_start (thread_p, &scan_cache, hfid, NULL, true, false, NULL) != NO_ERROR)
+	  if (heap_scancache_start (thread_p, &scan_cache, hfid, NULL, true, NULL) != NO_ERROR)
 	    {
 	      /* something went wrong, return */
 	      heap_attrinfo_end (thread_p, &attr_info);
@@ -14519,6 +14517,57 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 
   fprintf (fp, "\n\n*** END OF DUMP FOR HEAP FILE ***\n\n");
 }
+
+#if defined (SA_MODE)
+/*
+ * heap_dump_heap_file () - dump a specific heap file with class name
+ *
+ * return            :
+ * thread_p (in)     : thread entry
+ * fp (in)           : output file
+ * dump_records (in) : true to dump records
+ * class_name (in)   : name of class to dump
+ */
+void
+heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name)
+{
+  int error_code = NO_ERROR;
+  OID class_oid;
+  LC_FIND_CLASSNAME status;
+  HFID hfid;
+  OR_PARTITION *parts = NULL;
+  int parts_count = 0;
+
+  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, S_LOCK);
+  if (status != LC_CLASSNAME_EXIST)
+    {
+      return;
+    }
+
+  error_code = heap_hfid_cache_get (thread_p, &class_oid, &hfid, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+
+  heap_dump (thread_p, fp, &hfid, dump_records);
+
+  error_code = heap_get_class_partitions (thread_p, &class_oid, &parts, &parts_count);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+
+  for (int i = 1; i < parts_count; i++)
+    {
+      heap_dump (thread_p, fp, &parts[i].class_hfid, dump_records);
+    }
+
+  heap_clear_partition_info (thread_p, parts, parts_count);
+}
+#endif
 
 /*
  * heap_dump_capacity () - dump heap file capacity
@@ -16727,7 +16776,7 @@ xheap_has_instance (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  return ER_FAILED;
 	}
     }
-  if (heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true, false, mvcc_snapshot) != NO_ERROR)
+  if (heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true, mvcc_snapshot) != NO_ERROR)
     {
       return ER_FAILED;
     }
