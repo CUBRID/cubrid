@@ -47,7 +47,7 @@ namespace cubthread
 			      "waiter_timeout_count"),
     cubperf::stat_definition (STAT_NO_SLEEP_COUNT, cubperf::stat_definition::COUNTER, "waiter_no_sleep_count"),
     cubperf::stat_definition (STAT_AWAKEN_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "waiter_awake_count", "waiter_wakeup_delay_time")
+			      "waiter_awake_count", "waiter_wakeup_delay_time")
   };
 
   // atomic statistics
