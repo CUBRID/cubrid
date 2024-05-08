@@ -42,7 +42,7 @@ namespace cubthread
     cubperf::stat_definition (STAT_LOOP_EXECUTE_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
 			      "daemon_loop_count", "daemon_execute_time"),
     cubperf::stat_definition (STAT_LOOP_PAUSE_TIME, cubperf::stat_definition::TIMER,
-    "daemon_pause_time")
+			      "daemon_pause_time")
   };
 
   //////////////////////////////////////////////////////////////////////////
