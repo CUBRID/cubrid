@@ -27411,6 +27411,16 @@ pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type)
   return cnt;
 }
 
+/*
+ * pt_check_corr_subquery_not_cachable_expr () - Evaluates whether expressions within a node are cachable for subqueries. 
+ * 
+ * 
+ * parser (in): PARSER_CONTEXT* - Pointer to the parser context, provides contextual information necessary for processing the node.
+ * node (in): PT_NODE* - Pointer to the query node being checked. This node can represent various query elements such as expressions.
+ * arg (in/out): void* - A generic pointer, which in this context is used to point to a boolean flag indicating cachability.
+ * continue_walk (in/out): int* - Pointer to an integer that controls the continuation of the tree walk. Set to PT_STOP_WALK to halt further processing.
+ * 
+ */
 static PT_NODE *
 pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -27418,11 +27428,6 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
   if (node->node_type == PT_EXPR)
     {
       bool *cachable = (bool *) arg;
-      switch (node->type_enum)
-	{
-	default:
-	  break;
-	}
       switch (node->info.expr.op)
 	{
 	case PT_SYS_GUID:
