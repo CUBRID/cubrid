@@ -1415,8 +1415,8 @@ $ LOADDB
 1337 ログレコードが存在しません（lsa：%1$lld|%2$d）。 アーカイブログボリュームが削除されました。
 1338 フラッシュバックはすでに実行されています。 フラッシュバックは、複数のユーザーが同時に実行することはできません。
 
-1339 (deleted)
-1340 (deleted)
+1339 Unsupported argument type '%1$s' of the stored procedure
+1340 Unsupported return type '%1$s' of the stored procedure
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.

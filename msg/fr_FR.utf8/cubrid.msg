@@ -1415,8 +1415,8 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1337 L'enregistrement de journal n'existe pas (lsa : %1$lld|%2$d). Le volume du journal d'archivage a été supprimé.
 1338 Flashback est déjà en cours d'exécution. Flashback ne peut pas être exécuté par plus d'un utilisateur à la fois.
 
-1339 (deleted)
-1340 (deleted)
+1339 Unsupported argument type '%1$s' of the stored procedure
+1340 Unsupported return type '%1$s' of the stored procedure
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.

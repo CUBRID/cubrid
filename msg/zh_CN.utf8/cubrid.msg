@@ -1416,8 +1416,8 @@ $ LOADDB
 1337 日志记录不存在 (lsa : %1$lld|%2$d)。 存档日志卷已被删除。
 1338 闪回已在运行。 Flashback 不能由多个用户同时运行。
 
-1339 (deleted)
-1340 (deleted)
+1339 Unsupported argument type '%1$s' of the stored procedure
+1340 Unsupported return type '%1$s' of the stored procedure
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.

@@ -1415,8 +1415,8 @@ $ LOADDB
 1337 Protokolldatensatz existiert nicht (lsa : %1$lld|%2$d). Das Archivprotokoll-Volume wurde gelöscht.
 1338 Flashback läuft bereits. Flashback kann nicht von mehr als einem Benutzer gleichzeitig ausgeführt werden.
 
-1339 (deleted)
-1340 (deleted)
+1339 Unsupported argument type '%1$s' of the stored procedure
+1340 Unsupported return type '%1$s' of the stored procedure
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.

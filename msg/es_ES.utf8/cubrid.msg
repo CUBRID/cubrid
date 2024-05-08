@@ -1415,8 +1415,8 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1337 El registro de registro no existe (lsa: %1$lld|%2$d). El volumen de registro de archivo se ha eliminado.
 1338 Flashback ya se está ejecutando. Flashback no puede ser ejecutado por más de un usuario al mismo tiempo.
 
-1339 (deleted)
-1340 (deleted)
+1339 Unsupported argument type '%1$s' of the stored procedure
+1340 Unsupported return type '%1$s' of the stored procedure
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.
