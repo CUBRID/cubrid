@@ -50,7 +50,7 @@
 
 class print_output;
 
-extern authenticate_context *au_ctx;
+extern EXPORT_IMPORT authenticate_context *au_ctx;
 
 /* Backward compatability */
 // Instead of using global variables, use authenticate_context's member variables/functions
