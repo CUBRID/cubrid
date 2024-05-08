@@ -1415,8 +1415,8 @@ $ LOADDB
 1337 아카이브 로그 볼륨이 삭제되어 해당 로그 레코드가 존재하지 않습니다(lsa : %1$lld|%2$d).
 1338 플래시백이 이미 실행 중입니다. 플래시백은 동시에 두 명 이상의 사용자가 실행할 수 없습니다.
 
-1339 Unsupported argument type '%1$s' of the stored procedure
-1340 Unsupported return type '%1$s' of the stored procedure
+1339 Stored Procedure에서 지원하지 않는 인수 타입입니다: %1$s
+1340 Stored Procedure에서 지원하지 않는 결과 타입입니다: %1$s
 
 1341 권한 부여 내부 함수에 잘못된 인자 발생.
 1342 AUTO_INCREMENT는 소유자 변경을 허용하지 않습니다.

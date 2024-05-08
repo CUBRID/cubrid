@@ -1416,8 +1416,8 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1337 Log record does not exist (lsa : %1$lld|%2$d). The archive log volume has been deleted.
 1338 Flashback is already running. Flashback cannot be run by more than one user at the same time.
 
-1339 Unsupported argument type '%1$s' of the stored procedure
-1340 Unsupported return type '%1$s' of the stored procedure
+1339 Unsupported argument type of stored procedure: %1$s
+1340 Unsupported return type of stored procedure: %1$s
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.

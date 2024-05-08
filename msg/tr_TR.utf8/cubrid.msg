@@ -1415,8 +1415,8 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1337 Günlük kaydı mevcut değil (lsa : %1$lld|%2$d). Arşiv günlüğü birimi silindi.
 1338 Flashback zaten çalışıyor. Flashback, aynı anda birden fazla kullanıcı tarafından çalıştırılamaz.
 
-1339 Unsupported argument type '%1$s' of the stored procedure
-1340 Unsupported return type '%1$s' of the stored procedure
+1339 Desteklenmeyen bağımsız değişken türü saklı yordam: %1$s
+1340 Desteklenmeyen saklı yordam dönüş türü: %1$s
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.

@@ -1415,8 +1415,8 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1337 Înregistrarea jurnalului nu există (lsa : %1$lld|%2$d). Volumul jurnalului de arhivă a fost șters.
 1338 Flashback rulează deja. Flashback nu poate fi rulat de mai mult de un utilizator în același timp.
 
-1339 Unsupported argument type '%1$s' of the stored procedure
-1340 Unsupported return type '%1$s' of the stored procedure
+1339 Tipul de argument neacceptat al procedurii stocate: %1$s
+1340 Tipul de returnare neacceptat al procedurii stocate: %1$s
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.

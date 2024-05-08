@@ -1415,8 +1415,8 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1337 Il record di registro non esiste (lsa : %1$lld|%2$d). Il volume del registro di archivio è stato eliminato.
 1338 Flashback è già in esecuzione. Flashback non può essere eseguito da più utenti contemporaneamente.
 
-1339 Unsupported argument type '%1$s' of the stored procedure
-1340 Unsupported return type '%1$s' of the stored procedure
+1339 Tipo di argomento non supportato della procedura memorizzata: %1$s
+1340 Tipo di restituzione di stored procedure non supportato: %1$s
 
 1341 Invalid arguments to authorization internal function.
 1342 AUTO_INCREMENT does not allow change of owner.
