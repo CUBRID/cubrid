@@ -495,17 +495,6 @@ error:
 int
 text_print_flush (TEXT_OUTPUT * tout)
 {
-#if defined(SUPPORT_THREAD_UNLOAD)
-  extern int skip_write_time;
-  if (skip_write_time == 1)
-    {
-      /* re-init */
-      tout->ptr = tout->buffer;
-      tout->count = 0;
-      return NO_ERROR;
-    }
-#endif
-
   /* flush to disk */
 #if defined(SUPPORT_THREAD_UNLOAD)
   if (tout->count != write (tout->fd, tout->buffer, tout->count))
@@ -538,13 +527,6 @@ text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ..
   int nbytes, size;
   va_list ap;
   assert (buflen >= 0);
-#if defined(SUPPORT_THREAD_UNLOAD)
-  extern int skip_write_time;
-  if (skip_write_time == 2)
-    {
-      return NO_ERROR;
-    }
-#endif
 
 start:
   size = tout->iosize - tout->count;	/* free space size */

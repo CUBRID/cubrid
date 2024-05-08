@@ -64,7 +64,7 @@ TEXT_OUTPUT *g_obj_out = &object_output;
 #if defined(SUPPORT_THREAD_UNLOAD)
 int thread_count = 0;
 bool check_fetch_time = false;	// ctshim,  test only
-int skip_write_time = 0;	// ctshim
+int merge_type = 0;
 int varchar_alloc_size = 0;
 int g_modular = UNLOAD_MODULAR_UNDEFINED;
 int g_accept = UNLOAD_MODULAR_UNDEFINED;
@@ -180,21 +180,27 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       if (thread_count == 999)
 	{
 	  check_fetch_time = true;
-	  skip_write_time = 0;
+	  merge_type = 0;
 	  thread_count = 0;
 	  varchar_alloc_size = 0;
 	  datafile_per_class = false;
 	}
+      else if (thread_count >= 300)
+	{
+	  check_fetch_time = false;
+	  merge_type = 3;
+	  thread_count -= 300;
+	}
       else if (thread_count >= 200)
 	{
 	  check_fetch_time = false;
-	  skip_write_time = 2;
+	  merge_type = 2;
 	  thread_count -= 200;
 	}
       else if (thread_count >= 100)
 	{
 	  check_fetch_time = false;
-	  skip_write_time = 1;
+	  merge_type = 1;
 	  thread_count -= 100;
 	}
     }

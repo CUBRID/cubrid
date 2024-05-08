@@ -72,6 +72,12 @@
 #include <thread>
 #include "error_context.hpp"
 
+#if defined(SUPPORT_THREAD_UNLOAD)
+#include <unistd.h>
+#include <sys/mman.h>
+extern int merge_type;
+#endif
+
 #define MARK_CLASS_REQUESTED(cl_no) \
   (class_requested[cl_no / 8] |= 1 << cl_no % 8)
 #define MARK_CLASS_REFERENCED(cl_no) \
@@ -771,8 +777,6 @@ fulsh_all_object_files (bool is_close)
   return bret;
 }
 
-
-
 //  Merge and delete multiple divided files
 static bool
 merge_and_remove_files (extract_context & ctxt, const char *output_dirname, const char *class_name)
@@ -783,13 +787,18 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
   char old_fname[PATH_MAX];
   char *buf = NULL;
   off_t length, offset;
-  ssize_t size, r_size, w_size;
+  ssize_t size, r_size, w_size, wb;
 
-  if (thread_count <= 0)
+#if 1
+  char *pmap, *pin;
+  off_t pa_offset;
+  size_t map_size;
+#endif
+
+  if (thread_count <= 0 || (merge_type == 0))
     {
       return true;
     }
-
 
 #if 1				// time check
   struct timeval startTime, endTime;
@@ -816,8 +825,19 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
 	}
     }
 
+  // merge_type 1:  no use mmap
+  //            2:  use mmap, multiple
+  //            3:  use mmap, once 
+
   alloc_sz = 16 * 1024 * 1000;
-  buf = (char *) malloc (alloc_sz);
+  if (merge_type == 1)
+    {
+      buf = (char *) malloc (alloc_sz);
+    }
+  else
+    {
+      buf = NULL;
+    }
 
   for (i = 1; i < thread_count; i++)
     {
@@ -825,7 +845,8 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
       oldfd = open (old_fname, O_RDONLY, OPEN_MODE_VALUE);
       if (oldfd == INVALID_FILE_NO)
 	{
-	  free (buf);
+	  if (buf)
+	    free (buf);
 	  return false;
 	}
       //struct stat stbuf;
@@ -842,11 +863,48 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
       while (offset < length)
 	{
 	  size = length - offset;
-	  if (size > alloc_sz)
-	    size = alloc_sz;
+	  if (size > alloc_sz && (merge_type != 3))
+	    {
+	      size = alloc_sz;
+	    }
 
-	  r_size = read (oldfd, buf, size);
-	  w_size = write (newfd, buf, size);
+	  if (merge_type == 1)
+	    {
+	      r_size = read (oldfd, buf, size);
+	      w_size = write (newfd, buf, size);
+	      assert (r_size == w_size);
+	    }
+	  else
+	    {
+	      pa_offset = offset & ~(sysconf (_SC_PAGE_SIZE) - 1);
+	      map_size = size + (offset - pa_offset);
+
+	      pmap = (char *) mmap (NULL, map_size, PROT_READ, MAP_PRIVATE, oldfd, pa_offset);
+	      if (pmap != MAP_FAILED)
+		{
+		  pin = pmap + (offset - pa_offset);
+		  w_size = 0;
+		  while (w_size < size)
+		    {
+		      wb = write (newfd, pin, (size - w_size));
+		      assert (wb > 0);
+		      pin += wb;
+		      w_size += wb;
+		    }
+		  munmap (pmap, map_size);
+		}
+	      else
+		{
+		  if (buf == NULL)
+		    {
+		      buf = (char *) malloc (alloc_sz);
+		    }
+		  r_size = read (oldfd, buf, size);
+		  w_size = write (newfd, buf, size);
+		  assert (r_size == w_size);
+		}
+	    }
+
 	  offset += size;
 	}
 
@@ -855,7 +913,8 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
     }
 
   close (newfd);
-  free (buf);
+  if (buf)
+    free (buf);
 
 #if 1
   gettimeofday (&endTime, NULL);
@@ -1766,6 +1825,151 @@ unload_thread_proc (void *param)
 #endif // #if defined(SUPPORT_THREAD_UNLOAD)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+int
+print_object_header_for_class (extract_context & ctxt, SM_CLASS * class_ptr, OID * class_oid, TEXT_OUTPUT * obj_out)
+{
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *class_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  SM_ATTRIBUTE *attribute;
+  int v, error = NO_ERROR;
+
+  v = 0;
+  for (attribute = class_ptr->shared; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
+    {
+      if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      if (v == 0)
+	{
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  CHECK_PRINT_ERROR (text_print
+			     (obj_out, NULL, 0, "%cclass %s%s%s%s shared (%s%s%s", '%',
+			      output_owner, PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
+	}
+      else
+	{
+	  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, ", %s%s%s", PRINT_IDENTIFIER (attribute->header.name)));
+	}
+
+      ++v;
+    }
+  if (v)
+    {
+      CHECK_PRINT_ERROR (text_print (obj_out, ")\n", 2, NULL));
+    }
+
+  v = 0;
+  for (attribute = class_ptr->shared; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
+    {
+      if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      if (v)
+	{
+	  CHECK_PRINT_ERROR (text_print (obj_out, " ", 1, NULL));
+	}
+      error = process_value (&attribute->default_value.value, obj_out);
+      if (error != NO_ERROR)
+	{
+	  if (!ignore_err_flag)
+	    {
+	      goto exit_on_error;
+	    }
+	  error = NO_ERROR;
+	}
+
+      ++v;
+    }
+  if (v)
+    {
+      CHECK_PRINT_ERROR (text_print (obj_out, "\n", 1, NULL));
+    }
+
+  v = 0;
+  for (attribute = class_ptr->class_attributes; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
+    {
+      if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      if (v == 0)
+	{
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  CHECK_PRINT_ERROR (text_print
+			     (obj_out, NULL, 0, "%cclass %s%s%s%s class (%s%s%s", '%',
+			      output_owner, PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
+	}
+      else
+	{
+	  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, ", %s%s%s", PRINT_IDENTIFIER (attribute->header.name)));
+	}
+      ++v;
+    }
+  if (v)
+    {
+      CHECK_PRINT_ERROR (text_print (obj_out, ")\n", 2, NULL));
+    }
+
+  v = 0;
+  for (attribute = class_ptr->class_attributes; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
+    {
+      if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      if (v)
+	{
+	  CHECK_PRINT_ERROR (text_print (obj_out, " ", 1, NULL));
+	}
+      if ((error = process_value (&attribute->default_value.value, obj_out)) != NO_ERROR)
+	{
+	  if (!ignore_err_flag)
+	    {
+	      goto exit_on_error;
+	    }
+	  error = NO_ERROR;
+	}
+
+      ++v;
+    }
+
+  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+
+  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
+
+  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s%s ("	/* new line */
+				 : "%cclass %s%s%s%s (", '%', output_owner, PRINT_IDENTIFIER (class_name)));
+
+  v = 0;
+  attribute = class_ptr->ordered_attributes;
+  while (attribute)
+    {
+      if (attribute->header.name_space == ID_ATTRIBUTE)
+	{
+	  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? " %s%s%s"	/* space */
+					 : "%s%s%s", PRINT_IDENTIFIER (attribute->header.name)));
+	  ++v;
+	}
+      attribute = (SM_ATTRIBUTE *) attribute->order_link;
+    }
+  CHECK_PRINT_ERROR (text_print (obj_out, ")\n", 2, NULL));
+
+exit_on_error:
+  return error;
+}
+
 /*
  * process_class - dump one class in loader format
  *    return: NO_ERROR, if successful, error number, if not successful.
@@ -1877,6 +2081,29 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 #endif
 
   class_oid = ws_oid (class_);
+
+#if defined(SUPPORT_THREAD_UNLOAD)	//=========================================================================================================
+  if (thread_count <= 0)
+    {
+      error = print_object_header_for_class (ctxt, class_ptr, class_oid, obj_out);
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+  else
+    {
+      for (i = 0; i < thread_count; i++)
+	{
+	  error = print_object_header_for_class (ctxt, class_ptr, class_oid, &(thr_param[i].text_output));
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+    }
+
+#else //#if defined(SUPPORT_THREAD_UNLOAD) //=========================================================================================================
 
   v = 0;
   for (attribute = class_ptr->shared; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
@@ -2005,6 +2232,7 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
       attribute = (SM_ATTRIBUTE *) attribute->order_link;
     }
   CHECK_PRINT_ERROR (text_print (obj_out, ")\n", 2, NULL));
+#endif //#if defined(SUPPORT_THREAD_UNLOAD) //============================================================================================================
 
   /* Find the heap where the instances are stored */
   hfid = sm_ch_heap ((MOBJ) class_ptr);
