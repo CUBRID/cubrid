@@ -33,6 +33,11 @@
 
 #include <vector>
 #include <functional>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <chrono>
+#include <sstream>
 
 #include "authenticate.h"
 #include "error_manager.h"
@@ -650,6 +655,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   int err = NO_ERROR;
   bool has_savepoint = false;
   PLCSQL_COMPILE_INFO compile_info;
+  std::string pl_code;
 
   SP_INFO sp_info;
 
@@ -726,7 +732,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
-      std::string pl_code (statement->sql_user_text, statement->sql_user_text_len);
+      pl_code.assign (statement->sql_user_text, statement->sql_user_text_len);
       err = plcsql_transfer_file (pl_code, false, compile_info);
       if (err == NO_ERROR && compile_info.err_code == NO_ERROR)
 	{
@@ -807,6 +813,31 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       goto error_exit;
     }
+
+  if (!pl_code.empty ())
+    {
+      SP_CODE_INFO code_info;
+
+      auto now = std::chrono::system_clock::now();
+      auto converted_timep = std::chrono::system_clock::to_time_t (now);
+      std::stringstream stm;
+      stm << std::put_time (localtime (&converted_timep), "%Y%m%d%H%M%S");
+
+      code_info.name = get_class_name (sp_info.target);
+      code_info.created_time = stm.str ();
+      code_info.stype = 0;
+      code_info.scode = pl_code;
+      code_info.otype = 0;
+      code_info.ocode = "dummy"; // TODO
+      code_info.owner = Au_user; // current user
+
+      err = sp_add_stored_procedure_code (code_info);
+      if (err != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
   return NO_ERROR;
 
 error_exit:
@@ -1107,16 +1138,13 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
     }
 
   target = db_get_string (&target_val);
-  // TODO: CBRD-24552
-  /*
-    class_name = get_class_name (target);
+  class_name = get_class_name (target);
 
   err = drop_stored_procedure_code (class_name.c_str ());
   if (err != NO_ERROR)
     {
       goto error;
     }
-  */
 
   err = db_get (sp_mop, SP_ATTR_ARG_COUNT, &arg_cnt_val);
   if (err != NO_ERROR)
