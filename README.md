@@ -27,7 +27,7 @@ Follow tutorials at:
   - To use ninja build system, CMake 3.16.3 or later is required
 - For more information about 3rdparty libraries, see [3rdparty/README.md](3rdparty/README.md)
 
-### How to Install the Build Requiements
+### How to Install the Build Requirements
 
   Please refer to the following link:
 
