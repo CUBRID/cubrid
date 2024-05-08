@@ -61,7 +61,7 @@ namespace cubthread
     cubperf::stat_definition (Wpstat_retire_task, cubperf::stat_definition::COUNTER_AND_TIMER,
 			      "Counter_retire_task", "Timer_retire_task"),
     cubperf::stat_definition (Wpstat_found_in_queue, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "Counter_found_task_in_queue", "Timer_found_task_in_queue"),
+			      "Counter_found_task_in_queue", "Timer_found_task_in_queue"),
     cubperf::stat_definition (Wpstat_wakeup_with_task, cubperf::stat_definition::COUNTER_AND_TIMER,
     "Counter_wakeup_with_task", "Timer_wakeup_with_task"),
     cubperf::stat_definition (Wpstat_recycle_context, cubperf::stat_definition::COUNTER_AND_TIMER,
