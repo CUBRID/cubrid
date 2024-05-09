@@ -195,8 +195,8 @@ jobs:
           msg: |
             **cppcheck**
             ${{ steps.get-comment-body.outputs.body }}
-  memory_header_check:
-    name: memory_header_check
+  memory-header-check:
+    name: memory-header-check
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
