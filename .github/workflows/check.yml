@@ -230,7 +230,7 @@ jobs:
             done
 
             # [exception case] lea_heap.c is third party code
-            if [[ "$f" -ne "src/heaplayers/lea_heap.c" ]]; then
+            if [ "$f" != "src/heaplayers/lea_heap.c" ]; then
               last_include_line=$(cat $f | grep -n "^#include" | cut -d':' -f1 | tail -1)
               wrapper_include_line=$(cat $f | grep -n "^#include" | grep "memory_wrapper.hpp" | cut -d':' -f1)
               if [ "$last_include_line" -ne "$wrapper_include_line" ]; then
