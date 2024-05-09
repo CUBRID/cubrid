@@ -121,16 +121,16 @@ namespace cubmem
 	  {
 	    // Case1. Reveal tracking hole
 	    //    This case catch the tracking holes that can occur during tracking.
-           //    These holes can occur in the following situation:
-           //              cub_alloc() -> free() -> cub_alloc()
-           //    In sub_stat(), called from cub_free(), the is_exist flag
-           //    should be disabled, but if default free() is called,
-           //    the memory is deallocated without unset the flag.
-           //    If cub_alloc() is then called to reuse that memory, it is considered
-           //    an error in memory tracking.
-	   fprintf (stderr, "metainfo pointer %p is already allocated by %s:%d 
-                    but %s:%d is the allocation request of this round\n", metainfo,
-                    debug_search->second.filename, debug_search->second.line, file, line);
+	    //    These holes can occur in the following situation:
+	    //              cub_alloc() -> free() -> cub_alloc()
+	    //    In sub_stat(), called from cub_free(), the is_exist flag
+	    //    should be disabled, but if default free() is called,
+	    //    the memory is deallocated without unset the flag.
+	    //    If cub_alloc() is then called to reuse that memory, it is considered
+	    //    an error in memory tracking.
+	    fprintf (stderr, "metainfo pointer %p is already allocated by %s:%d
+		     but %s:%d is the allocation request of this round\n", metainfo,
+		     debug_search->second.filename, debug_search->second.line, file, line);
 	    fflush (stderr);
 	    assert (false);
 	  }
