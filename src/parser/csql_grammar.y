@@ -77,6 +77,21 @@ typedef struct
   PT_NODE *c10;
 } container_10;
 
+typedef struct
+{
+  PT_NODE *c1;
+  PT_NODE *c2;
+  PT_NODE *c3;
+  PT_NODE *c4;
+  PT_NODE *c5;
+  PT_NODE *c6;
+  PT_NODE *c7;
+  PT_NODE *c8;
+  PT_NODE *c9;
+  PT_NODE *c10;
+  PT_NODE *c11;
+} container_11;
+
 void csql_yyerror_explicit (int line, int column);
 void csql_yyerror (const char *s);
 
@@ -264,6 +279,7 @@ static bool is_in_create_trigger = false;
 #define CONTAINER_AT_7(a)			(a).c8
 #define CONTAINER_AT_8(a)			(a).c9
 #define CONTAINER_AT_9(a)			(a).c10
+#define CONTAINER_AT_10(a)			(a).c11
 
 #define YEN_SIGN_TEXT           "(\0xa1\0xef)"
 #define DOLLAR_SIGN_TEXT        "$"
@@ -304,6 +320,7 @@ typedef enum
   SERIAL_MIN,
   SERIAL_CYCLE,
   SERIAL_CACHE,
+  SERIAL_CHANGE_OWNER,
 } SERIAL_DEFINE;
 
 typedef enum
@@ -551,6 +568,7 @@ static char *g_plcsql_text;
   container_3 c3;
   container_4 c4;
   container_10 c10;
+  container_11 c11;
   struct json_table_column_behavior jtcb;
 }
 
@@ -1026,8 +1044,10 @@ static char *g_plcsql_text;
 
 /* define rule type (container) */
 /*{{{*/
-%type <c10> opt_serial_option_list
-%type <c10> serial_option_list
+%type <c11> opt_serial_option_list
+%type <c11> serial_option_list
+%type <c11> opt_serial_option_list_or_owner_clause
+%type <c11> serial_owner_clause
 %type <c10> connect_info
 %type <c10> alter_server_list
 
@@ -1039,6 +1059,7 @@ static char *g_plcsql_text;
 %type <c3> ref_rule_list
 %type <c3> opt_ref_rule_list
 %type <c3> of_serial_option
+%type <c3> of_serial_owner_clause
 %type <c3> delete_from_using
 %type <c3> trigger_status_or_priority_or_change_owner
 
@@ -3288,12 +3309,29 @@ class_name_for_synonym
 opt_serial_option_list
 	: /* empty */
 		{{ DBG_TRACE_GRAMMAR(opt_serial_option_list, : );
-			container_10 ctn;
-			memset(&ctn, 0x00, sizeof(container_10));
+			container_11 ctn;
+			memset(&ctn, 0x00, sizeof(container_11));
 			$$ = ctn;
 		}}
 	| serial_option_list
 		{{ DBG_TRACE_GRAMMAR(opt_serial_option_list, | serial_option_list);
+			$$ = $1;
+		}}
+	;
+
+opt_serial_option_list_or_owner_clause
+	: /* empty */
+		{{ DBG_TRACE_GRAMMAR(opt_serial_option_list_or_owner_clause, : );
+			container_11 ctn;
+			memset(&ctn, 0x00, sizeof(container_11));
+			$$ = ctn;
+		}}
+	| serial_option_list
+		{{ DBG_TRACE_GRAMMAR(opt_serial_option_list_or_owner_clause, | serial_option_list);
+			$$ = $1;
+		}}
+	| serial_owner_clause
+		{{ DBG_TRACE_GRAMMAR(opt_serial_option_list_or_owner_clause, | serial_owner_clause);
 			$$ = $1;
 		}}
 	;
@@ -3319,7 +3357,7 @@ serial_option_list
 			 * 10: no_cache,
 			 */
 
-			container_10 ctn = $1;
+			container_11 ctn = $1;
 
 			PT_NODE* node = pt_top(this_parser);
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
@@ -3414,8 +3452,8 @@ serial_option_list
 			 * 10: no_cache,
 			 */
 
-			container_10 ctn;
-			memset(&ctn, 0x00, sizeof(container_10));
+			container_11 ctn;
+			memset(&ctn, 0x00, sizeof(container_11));
 
 			switch(TO_NUMBER (CONTAINER_AT_0($1)))
 			  {
@@ -3492,6 +3530,51 @@ of_serial_option
 		DBG_PRINT}}
 	;
 
+serial_owner_clause
+	: of_serial_owner_clause
+		{{ DBG_TRACE_GRAMMAR(serial_owner_clause, : of_serial_owner_clause);
+		        /* container order
+			 * 1: start_val
+			 *
+			 * 2: increment_val,
+			 *
+			 * 3: max_val,
+			 * 4: no_max,
+			 *
+			 * 5: min_val,
+			 * 6: no_min,
+			 *
+			 * 7: cyclic,
+			 * 8: no_cyclic,
+			 *
+			 * 9: cached_num_val,
+			 * 10: no_cache,
+			 * 11: owner,
+			 */
+
+			container_11 ctn;
+			memset(&ctn, 0x00, sizeof(container_11));
+
+			switch(TO_NUMBER (CONTAINER_AT_0($1)))
+			  {
+			    case SERIAL_CHANGE_OWNER:
+				ctn.c11 = CONTAINER_AT_1($1);
+				break;
+			  }
+
+			$$ = ctn;
+
+		DBG_PRINT}}
+	;
+
+of_serial_owner_clause
+        : OWNER TO identifier
+	        {{ DBG_TRACE_GRAMMAR(of_serial_owner_clause, : OWNER TO identifier);
+			container_3 ctn;
+			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_CHANGE_OWNER), $3, NULL);
+			$$ = ctn;
+	        DBG_PRINT}}
+	;
 
 opt_replace
 	: /* empty */
@@ -3738,9 +3821,9 @@ alter_stmt
 	| ALTER						/* 1 */
 	  SERIAL					/* 2 */
 	  serial_name					/* 3 */
-	  opt_serial_option_list			/* 4 */
+	  opt_serial_option_list_or_owner_clause	/* 4 */
 	  opt_comment_spec				/* 5 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER SERIAL serial_name opt_serial_option_list opt_comment_spec);
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER SERIAL serial_name opt_serial_option_list_or_owner_clause opt_comment_spec);
 			/* container order
 			 * 0: start_val
 			 * 1: increment_val,
@@ -3752,6 +3835,7 @@ alter_stmt
 			 * 7: no_cyclic,
 			 * 8: cached_num_val,
 			 * 9: no_cache,
+			 * 10: owner,
 			 */
 
 			PT_NODE *serial_name = $3;
@@ -3765,6 +3849,7 @@ alter_stmt
 			int no_cyclic = (int) TO_NUMBER (CONTAINER_AT_7 ($4));
 			PT_NODE *cached_num_val = CONTAINER_AT_8 ($4);
 			int no_cache = (int) TO_NUMBER (CONTAINER_AT_9 ($4));
+			PT_NODE *owner_name = CONTAINER_AT_10 ($4);
 			PT_NODE *comment = $5;
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERIAL);
@@ -3781,7 +3866,9 @@ alter_stmt
 			    node->info.serial.no_cyclic = no_cyclic;
 			    node->info.serial.cached_num_val = cached_num_val;
 			    node->info.serial.no_cache = no_cache;
+			    node->info.serial.owner_name = owner_name;
 			    node->info.serial.comment = comment;
+			    node->info.serial.code = PT_SERIAL_OPTION;
 			  }
 
 			$$ = node;
@@ -3789,13 +3876,13 @@ alter_stmt
 
 			if (!start_val && !increment_val && !max_val && !min_val
 			    && cyclic == 0 && no_max == 0 && no_min == 0
-			    && no_cyclic == 0 && !cached_num_val && no_cache == 0
-			    && comment == NULL)
+			    && no_cyclic == 0 && !cached_num_val && no_cache == 0)
 			  {
-			    PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
+			    if (owner_name != NULL)
+			      {
+			        node->info.serial.code = PT_CHANGE_OWNER;
+			      }
 			  }
-
 		DBG_PRINT}}
 	| ALTER						/* 1 */
 		{					/* 2 */
