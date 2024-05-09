@@ -142,9 +142,10 @@ namespace cubmem
     m_total_mem_usage += metainfo->allocated_size;
 
     make_stat_name (stat_name, file, line);
+    std::string stat_name_str (stat_name);
 
 retry:
-    const auto search = m_stat_name_map.find (stat_name);
+    const auto search = m_stat_name_map.find (stat_name_str);
     if (search != m_stat_name_map.end ())
       {
 	metainfo->stat_id = search->second;
@@ -155,7 +156,7 @@ retry:
 	metainfo->stat_id = m_stat_name_map.size ();
 	assert (metainfo->stat_id < MMON_MAP_RESERVE_SIZE);
 	// stat_id starts with 0
-	insert_success = m_stat_name_map.insert (std::pair <std::string, int> (stat_name, metainfo->stat_id));
+	insert_success = m_stat_name_map.insert (std::pair <std::string, int> (stat_name_str, metainfo->stat_id));
 	if (!insert_success.second)
 	  {
 	    goto retry;
