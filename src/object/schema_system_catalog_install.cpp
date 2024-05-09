@@ -913,7 +913,7 @@ namespace cubschema
     },
 // constraints
     {
-      // TODO: before created_time is managed in cub_javasp in the next issue, comment out the follwoing line. 
+      // TODO: before created_time is managed in cub_javasp in the next issue, comment out the follwoing line.
       // {DB_CONSTRAINT_UNIQUE, "", {"name", "created_time", nullptr}, false},
       {DB_CONSTRAINT_UNIQUE, "", {"name", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"created_time", nullptr}, false}
