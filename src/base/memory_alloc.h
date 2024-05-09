@@ -129,6 +129,15 @@ extern void db_scramble (void *region, int size);
           } \
         } while (0)
 
+#if defined(SERVER_MODE) && !defined(WINDOWS)
+#define free_and_init(ptr) \
+        do { \
+          if ((ptr)) { \
+            cub_free ((void*) (ptr)); \
+            (ptr) = NULL; \
+          } \
+        } while (0)
+#else
 #define free_and_init(ptr) \
         do { \
           if ((ptr)) { \
@@ -136,6 +145,7 @@ extern void db_scramble (void *region, int size);
             (ptr) = NULL; \
           } \
         } while (0)
+#endif
 
 #define os_free_and_init(ptr) \
         do { \
@@ -151,11 +161,19 @@ extern void db_scramble (void *region, int size);
           (ptr) = NULL; \
 	} while (0)
 
+#if defined(SERVER_MODE) && !defined(WINDOWS)
+#define free_and_init(ptr) \
+        do { \
+          cub_free ((void*) (ptr)); \
+          (ptr) = NULL; \
+        } while (0)
+#else
 #define free_and_init(ptr) \
         do { \
           free ((void*) (ptr)); \
           (ptr) = NULL; \
 	} while (0)
+#endif
 
 #define os_free_and_init(ptr) \
         do { \
