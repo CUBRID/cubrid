@@ -63,6 +63,16 @@ inline void operator delete (void *ptr, size_t sz) noexcept
   cub_free (ptr);
 }
 
+inline void operator delete [] (void *ptr) noexcept
+{
+  cub_free (ptr);
+}
+
+inline void operator delete [] (void *ptr, size_t sz) noexcept
+{
+  cub_free (ptr);
+}
+
 #define new new(__FILE__, __LINE__)
 #endif // SERVER_MODE
 #endif // !WINDOWS
