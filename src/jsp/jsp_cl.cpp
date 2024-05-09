@@ -1066,12 +1066,12 @@ static int
 drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 {
   MOP sp_mop, arg_mop, owner;
-  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_val, temp;
+  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_val, lang_val, temp;
   SP_TYPE_ENUM real_type;
   std::string class_name;
   const char *target;
   DB_SET *arg_set_p;
-  int save, i, arg_cnt;
+  int save, i, arg_cnt, lang;
   int err;
 
   AU_DISABLE (save);
@@ -1131,19 +1131,30 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
     }
 
   // delete _db_stored_procedure_code
-  err = db_get (sp_mop, SP_ATTR_TARGET, &target_val);
+
+  err = db_get (sp_mop, SP_ATTR_LANG, &lang_val);
   if (err != NO_ERROR)
     {
       goto error;
     }
 
-  target = db_get_string (&target_val);
-  class_name = get_class_name (target);
-
-  err = drop_stored_procedure_code (class_name.c_str ());
-  if (err != NO_ERROR)
+  lang = db_get_int (&lang_val);
+  if (lang == SP_LANG_PLCSQL)
     {
-      goto error;
+      err = db_get (sp_mop, SP_ATTR_TARGET, &target_val);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      target = db_get_string (&target_val);
+      class_name = get_class_name (target);
+
+      err = drop_stored_procedure_code (class_name.c_str ());
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   err = db_get (sp_mop, SP_ATTR_ARG_COUNT, &arg_cnt_val);
