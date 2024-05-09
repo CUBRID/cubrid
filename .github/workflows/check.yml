@@ -216,7 +216,7 @@ jobs:
 
             ext=$(expr $f : ".*\(\..*\)")
             case $ext in
-            .c|.cpp|.C|.CPP|) true;; # only these formats are checked.
+            .c|.cpp|.C|.CPP) true;; # only these formats are checked.
             *) continue ;; # skip others
             esac
 
