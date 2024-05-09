@@ -135,6 +135,11 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 
   if (mmon_is_memory_monitor_enabled ())
     {
+      if (ptr == NULL)
+	{
+	  return cub_alloc (size, file, line);
+	}
+
       if (size == 0)
 	{
 	  cub_free (ptr);
