@@ -154,9 +154,9 @@ namespace cubmem
 	if (!debug_insert.second)
 	  {
 	    // Case2. Double allocation (unreachable)
-           //    This case is not reached in normal memory allocation situations and
-           //    indicates a problem in the default allocation mechanism,
-           //    such as malloc(), if it is reached.
+	    //    This case is not reached in normal memory allocation situations and
+	    //    indicates a problem in the default allocation mechanism,
+	    //    such as malloc(), if it is reached.
 	    fprintf (stderr, "double memory allocation is occurred\n");
 	    fflush (stderr);
 	    assert (false);
