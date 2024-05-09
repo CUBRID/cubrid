@@ -179,26 +179,26 @@ namespace cubmem
 	    if (metainfo->magic_number == m_magic_number)
 	      {
 		// Case3. Metainfo corrupted
-               //    This case indicates that the metadata information owned
-               //    by the memory_monitor class for tracking has been corrupted.
-               //    This can occur in two scenarios:
-               //
-               //      - Overflow occurring in the memory allocated through cub_alloc(),
-               //      corrupting the metadata space.
-               //      - Memory allocated through cub_alloc() is deallocated without
-               //      erasing the metadata information via default free(), and then
-               //      deallocated through cub_free after being reallocated through basic
-               //      allocation functions like malloc().
-               //
-               //    In the second scenario, even if a different size is allocated compared
-               //    to the first allocation, the position of the pointer storing the metadata
-               //    information may not change. The position of the metadata is determined by
-               //    malloc_usable_size(), which can return a larger value than the size
-               //    requested by the user. This is because the OS allocates memory in chunks
-               //    rather than exactly as much as the user requested. Thus, even if the user
-               //    receives the same chunk through the basic allocation function,
-               //    the amount of memory usable by the user can be larger, indicating
-               //    potential corruption of the metadata space.
+		//    This case indicates that the metadata information owned
+		//    by the memory_monitor class for tracking has been corrupted.
+		//    This can occur in two scenarios:
+		//
+		//      - Overflow occurring in the memory allocated through cub_alloc(),
+		//      corrupting the metadata space.
+		//      - Memory allocated through cub_alloc() is deallocated without
+		//      erasing the metadata information via default free(), and then
+		//      deallocated through cub_free after being reallocated through basic
+		//      allocation functions like malloc().
+		//
+		//    In the second scenario, even if a different size is allocated compared
+		//    to the first allocation, the position of the pointer storing the metadata
+		//    information may not change. The position of the metadata is determined by
+		//    malloc_usable_size(), which can return a larger value than the size
+		//    requested by the user. This is because the OS allocates memory in chunks
+		//    rather than exactly as much as the user requested. Thus, even if the user
+		//    receives the same chunk through the basic allocation function,
+		//    the amount of memory usable by the user can be larger, indicating
+		//    potential corruption of the metadata space.
 		fprintf (stderr, "Metainfo is omitted by some reason.\n");
 		fflush (stderr);
 		assert (false);
