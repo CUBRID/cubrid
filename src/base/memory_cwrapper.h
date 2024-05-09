@@ -135,11 +135,13 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 
   if (mmon_is_memory_monitor_enabled ())
     {
+      /* Realloc spec.: Realloc should work same as malloc if ptr == NULL */
       if (ptr == NULL)
 	{
 	  return cub_alloc (size, file, line);
 	}
 
+      /* Realloc spec.: If input size is zero, just free ptr */
       if (size == 0)
 	{
 	  cub_free (ptr);
@@ -150,13 +152,11 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 	  if (new_ptr != NULL)
 	    {
 	      mmon_add_stat ((char *) new_ptr, malloc_usable_size (new_ptr), file, line);
-	      if (ptr != NULL)
-		{
-		  size_t old_size = get_allocated_size (ptr);
-		  size_t copy_size = old_size < size ? old_size : size;
-		  memcpy (new_ptr, ptr, copy_size);
-		  cub_free (ptr);
-		}
+
+              size_t old_size = get_allocated_size (ptr);
+              size_t copy_size = old_size < size ? old_size : size;
+              memcpy (new_ptr, ptr, copy_size);
+              cub_free (ptr);
 	    }
 	}
     }
