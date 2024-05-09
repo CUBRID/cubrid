@@ -195,3 +195,44 @@ jobs:
           msg: |
             **cppcheck**
             ${{ steps.get-comment-body.outputs.body }}
+  memory_header_check:
+    name: memory_header_check
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: jitterbit/get-changed-files@v1
+        id: files
+        continue-on-error: true
+      - name: Check memory header include
+        run: |
+          set +e # make this step proceed even if a command returns non-zero
+          license_headers=.github/workflows/memory_header_include
+          result="PASS"
+
+          for f in ${{ steps.files.outputs.added_modified }}; do
+            if [ -d "$f" ]; then
+              continue
+            fi
+
+            ext=$(expr $f : ".*\(\..*\)")
+            case $ext in
+            .c|.cpp|.C|.CPP|) true;; # only these formats are checked.
+            *) continue ;; # skip others
+            esac
+
+            result_for_f="FAIL"
+            for header in `find $memory_header_include -type f`; do
+              head $f | grep "#include" | grep "memory_wrapper.hpp" | diff -w - $header 2>&1 1>/dev/null
+              if [ $? -eq 0 ]; then
+                result_for_f="PASS"
+                break
+              fi
+            done
+
+            echo "$f: $result_for_f"
+            if [ "$result_for_f" = "FAIL" ]; then
+              result="FAIL"
+            fi
+          done
+
+          test $result = "PASS" # if non-zero, fail
