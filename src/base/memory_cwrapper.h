@@ -77,12 +77,15 @@ get_allocated_size (void *ptr)
 inline void
 cub_free (void *ptr)
 {
-  if (mmon_is_memory_monitor_enabled () && ptr != NULL)
+  if (ptr != NULL)
     {
-      assert (malloc_usable_size (ptr) != 0);
-      mmon_sub_stat ((char *) ptr);
+      if (mmon_is_memory_monitor_enabled ())
+	{
+	  assert (malloc_usable_size (ptr) != 0);
+	  mmon_sub_stat ((char *) ptr);
+	}
+      free (ptr);
     }
-  free (ptr);
 }
 
 inline void *
