@@ -222,7 +222,9 @@ jobs:
 
             result_for_f="FAIL"
             for header in `find $memory_header_include -type f`; do
-              head $f | grep "#include" | grep "memory_wrapper.hpp" | diff -w - $header 2>&1 1>/dev/null
+              head -n 1000 $f | grep "#include" | grep "memory_wrapper.hpp" >> difffile.txt
+              difffile.txt | diff -w - $header 2>&1 1>/dev/null
+              #head $f | grep "#include" | grep "memory_wrapper.hpp" | diff -w - $header 2>&1 1>/dev/null
               if [ $? -eq 0 ]; then
                 result_for_f="PASS"
                 break
