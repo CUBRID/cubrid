@@ -94,11 +94,18 @@ namespace cubmem
     private:
       inline char *get_metainfo_pos (char *ptr, size_t size);
       inline void make_stat_name (char *buf, const char *file, const int line);
+#if !defined (NDEBUG)
+      void check_add_stat_tracking_error_is_exist (MMON_METAINFO *metainfo);
+      void check_sub_stat_tracking_error_is_exist (MMON_METAINFO *metainfo);
+#endif
 
     private:
       std::string m_server_name;
       // Entries of m_stat_name_map and m_stat_map will not be deleted
       tbb::concurrent_unordered_map <std::string, int> m_stat_name_map;        // key: stat name, value: stat id
+#if !defined (NDEBUG)
+      tbb::concurrent_unordered_map <intptr_t, MMON_DEBUG_INFO> m_error_tracking_map;
+#endif
       std::atomic <uint64_t> m_total_mem_usage;
       std::atomic <int> m_meta_alloc_count;                         // for checking occupancy of memory used by metainfo space
       int m_target_pos;
@@ -166,6 +173,10 @@ retry:
     // put meta info into the allocated chunk
     metainfo->magic_number = m_magic_number;
     m_meta_alloc_count++;
+
+#if !defined (NDEBUG)
+    check_add_stat_tracking_error_is_exist (metainfo);
+#endif
   }
 
   inline void memory_monitor::sub_stat (char *ptr)
@@ -176,6 +187,9 @@ retry:
       {
 	MMON_METAINFO *metainfo = (MMON_METAINFO *) get_metainfo_pos (ptr, allocated_size);
 
+#if !defined (NDEBUG)
+	check_sub_stat_tracking_error_is_exist (metainfo);
+#endif
 	if (metainfo->magic_number == m_magic_number)
 	  {
 	    assert (metainfo->stat_id >= 0 && metainfo->stat_id < MMON_MAP_RESERVE_SIZE);

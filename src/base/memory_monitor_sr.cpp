@@ -27,6 +27,16 @@
 
 #include "memory_monitor_sr.hpp"
 
+#if !defined (NDEBUG)
+typedef struct mmon_debug_info MMON_DEBUG_INFO;
+struct mmon_debug_info
+{
+  char filename[255];
+  int line;
+  bool is_exist;
+};
+#endif
+
 namespace cubmem
 {
   std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE] = {};
@@ -75,6 +85,80 @@ namespace cubmem
 
     return allocated_size;
   }
+
+#if !defined (NDEBUG)
+  /* This section is for tracking errors of memory monitoring modules.
+   * There are three cases of tracking error:
+   *      1. Tracking hole
+   *      2. Memory double allocation (unreachable)
+   *      3. Metainfo omit
+   * */
+
+  void memory_monitor::check_add_stat_tracking_error (MMON_METAINFO *metainfo)
+  {
+    intptr_t ptr_key = reinterpret_cast <intptr_t> (metainfo);
+    auto debug_search = m_error_tracking_map.find (ptr_key);
+    if (debug_search != m_error_tracking_map.end ())
+      {
+	if (debug_search->second.is_exist)
+	  {
+	    // Case1. Reveal tracking hole
+	    //    In this case,
+	    fprintf (stderr, "pointer %p is already allocated by %s:%d but I'm %s:%d\n", metainfo, debug_search->second.filename,
+		     debug_search->second.line, file, line);
+	    fflush (stderr);
+	    assert (false);
+	  }
+	else
+	  {
+	    sprintf (debug_search->second.filename, "%s", file);
+	    debug_search->second.line = line;
+	    debug_search->second.is_exist = true;
+	  }
+      }
+    else
+      {
+	MMON_DEBUG_INFO debug_info;
+
+	sprintf (debug_info.filename, "%s", file);
+	debug_info.line = line;
+	debug_info.is_exist = true;
+
+	std::pair<tbb::concurrent_unordered_map<intptr_t, MMON_DEBUG_INFO>::iterator, bool> debug_insert;
+	debug_insert = m_error_tracking_map.insert (std::pair <intptr_t, MMON_DEBUG_INFO> (ptr_key, debug_info));
+	if (!debug_insert.second)
+	  {
+	    // Case2. Double allocation (unreachable)
+	    fprintf (stderr, "double allocation is occurred\n");
+	    fflush (stderr);
+	    assert (false);
+	  }
+      }
+  }
+
+  void memory_monitor::check_sub_stat_tracking_error_is_exist (MMON_METAINFO *metainfo)
+  {
+    intptr_t ptr_key = reinterpret_cast <intptr_t> (metainfo);
+    auto debug_search = m_error_tracking_map.find (ptr_key);
+    if (debug_search != m_error_tracking_map.end())
+      {
+	if (debug_search->second.is_exist)
+	  {
+	    debug_search->second.is_exist = false;
+	  }
+	else
+	  {
+	    if (metainfo->magic_number == m_magic_number)
+	      {
+		// Case3. Metainfo omit
+		fprintf (stderr, "This pointer should be exist. metainfo is omitted.\n");
+		fflush (stderr);
+		assert (false);
+	      }
+	  }
+      }
+  }
+#endif
 
   void memory_monitor::aggregate_server_info (MMON_SERVER_INFO &server_info)
   {
