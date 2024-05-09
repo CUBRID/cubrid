@@ -146,8 +146,6 @@ _DEFUN (quorem, (b, S), _Jv_Bigint * b _AND _Jv_Bigint * S)
 }
 
 #ifdef DEBUG
-#include <stdio.h>
-
 void
 print (_Jv_Bigint * b)
 {
