@@ -33,6 +33,7 @@
 #include <cstring>
 #include <vector>
 #include <string>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace cubpacking

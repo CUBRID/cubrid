@@ -91,6 +91,7 @@
 #endif /* !WINDOWS */
 
 #include <mutex>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /*

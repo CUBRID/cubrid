@@ -39,6 +39,7 @@
 #include <new>
 #include <stdio.h>
 #include <string.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))

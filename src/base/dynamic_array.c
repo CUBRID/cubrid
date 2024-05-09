@@ -25,6 +25,7 @@
 
 #include "error_code.h"
 #include "dynamic_array.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 dynamic_array *

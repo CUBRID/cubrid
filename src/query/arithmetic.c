@@ -50,6 +50,7 @@
 #if defined(SOLARIS)
 #include <ieeefp.h>
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 

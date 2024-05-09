@@ -30,6 +30,7 @@
 #include <ctype.h>
 
 #include "misc_string.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /*

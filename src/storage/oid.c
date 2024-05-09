@@ -28,6 +28,7 @@
 
 #include "oid.h"
 #include "schema_system_catalog_constants.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 typedef struct oid_cache_entry OID_CACHE_ENTRY;

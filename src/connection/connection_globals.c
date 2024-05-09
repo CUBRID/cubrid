@@ -37,6 +37,7 @@
 #include "connection_globals.h"
 #include "utility.h"
 #include "system_parameter.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 const char *css_Service_name = "cubrid";

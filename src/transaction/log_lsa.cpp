@@ -23,6 +23,7 @@
 #include "log_lsa.hpp"
 
 #include <cstdio>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 void

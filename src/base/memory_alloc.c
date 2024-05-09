@@ -46,6 +46,7 @@
 #endif // SERVER_MODE
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 #endif // SERVER_MODE
 

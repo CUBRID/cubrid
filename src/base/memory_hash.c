@@ -56,6 +56,7 @@
 #include "intl_support.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if __WORDSIZE == 32

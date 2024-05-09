@@ -26,6 +26,7 @@
 #include "bit.h"
 
 #include <assert.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /*

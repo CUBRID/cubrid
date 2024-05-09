@@ -50,6 +50,7 @@
 #include "db.h"
 #endif /* !defined (SERVER_MODE) */
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define PAD ' '			/* str_pad_char(INTL_CODESET_ISO88591, pad, &pad_size) */

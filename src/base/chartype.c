@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include "chartype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define CP_NONE  (CHAR_PROP_NONE)

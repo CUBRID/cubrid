@@ -37,6 +37,7 @@
 #include <sys/elf.h>
 
 #include "stack_dump.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define FRAME_PTR_REGISTER      EBP

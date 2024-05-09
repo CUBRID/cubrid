@@ -25,6 +25,7 @@
 #include "log_impl.h"
 
 #include <cstring>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 mvcc_active_tran::mvcc_active_tran ()

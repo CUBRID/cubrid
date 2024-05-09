@@ -38,6 +38,7 @@
 #include "language_support.h"
 #include "system_catalog.h"
 #endif /* !CS_MODE */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /*

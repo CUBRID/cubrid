@@ -38,6 +38,7 @@
 #include "boot_sr.h"
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 

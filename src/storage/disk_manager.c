@@ -63,6 +63,7 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "double_write_buffer.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /************************************************************************/

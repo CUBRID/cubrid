@@ -91,6 +91,7 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 #include "string_regex.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)

@@ -38,6 +38,7 @@
 #include "chartype.h"
 #include "system_parameter.h"
 #include "charset_converters.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)

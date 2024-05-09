@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include "tsc_timer.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /*

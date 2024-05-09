@@ -24,6 +24,7 @@
 #include "xserver_interface.h"
 #include "thread_manager.hpp"
 #include "method_error.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace cubmethod

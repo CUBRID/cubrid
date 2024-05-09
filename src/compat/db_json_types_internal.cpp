@@ -17,6 +17,7 @@
  */
 
 #include "db_json_types_internal.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 bool

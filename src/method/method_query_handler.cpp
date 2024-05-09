@@ -24,6 +24,7 @@
 #include "method_query_util.hpp"
 #include "method_schema_info.hpp"
 #include "object_primitive.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /* from jsp_cl.c */

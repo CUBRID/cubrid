@@ -31,6 +31,7 @@
 
 #include "xml_parser.h"
 #include "utility.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if defined(WINDOWS)

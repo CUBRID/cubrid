@@ -58,6 +58,7 @@
 #include <sys/types.h>
 #include <string.h>
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if defined(AIX) && !defined(DONT_HOOK_MALLOC)

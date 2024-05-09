@@ -21,6 +21,7 @@
 #include "porting.h"
 
 #include <algorithm>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 static void

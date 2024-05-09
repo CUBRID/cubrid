@@ -52,6 +52,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "thread_compat.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #ifdef EHASH_DEBUG

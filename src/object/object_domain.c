@@ -63,6 +63,7 @@
 
 #include "dbtype.h"
 #include "error_manager.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)

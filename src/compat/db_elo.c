@@ -32,6 +32,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /*

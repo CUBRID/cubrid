@@ -40,6 +40,7 @@
 #include "slotted_page.h"
 #include "dbtype.h"
 #include "xasl_cache.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)

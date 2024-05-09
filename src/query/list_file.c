@@ -47,6 +47,7 @@
 #include "thread_manager.hpp"	// for thread_sleep
 #include "xasl.h"
 #include "xasl_cache.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /* TODO */

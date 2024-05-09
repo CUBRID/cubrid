@@ -37,6 +37,7 @@
 #include "language_support.h"
 #include "environment_variable.h"
 #include "log_comm.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /*

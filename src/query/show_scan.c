@@ -60,6 +60,7 @@
 #include "server_support.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 typedef SCAN_CODE (*NEXT_SCAN_FUNC) (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,

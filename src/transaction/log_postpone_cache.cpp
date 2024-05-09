@@ -28,6 +28,7 @@
 #include "log_manager.h"
 
 #include <cstring>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 void

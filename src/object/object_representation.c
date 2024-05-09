@@ -45,6 +45,7 @@
 #include "query_list.h"
 #include "set_object.h"
 #include "access_spec.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)

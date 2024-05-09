@@ -23,6 +23,7 @@
 #include "query_reevaluation.hpp"
 
 #include "scan_manager.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace cubquery

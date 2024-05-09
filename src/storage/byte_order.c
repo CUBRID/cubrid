@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include "byte_order.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /*

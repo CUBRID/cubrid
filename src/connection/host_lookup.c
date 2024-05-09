@@ -45,6 +45,7 @@
 #include "environment_variable.h"
 #include "message_catalog.h"
 #include "host_lookup.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define LINE_BUF_SIZE                (512)

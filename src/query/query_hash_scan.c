@@ -49,6 +49,7 @@
 #include "db_date.h"
 #include "thread_compat.hpp"
 #include "oid.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 

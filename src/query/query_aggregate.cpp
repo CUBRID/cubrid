@@ -39,6 +39,7 @@
 #include "xasl.h"                           // QPROC_IS_INTERPOLATION_FUNC
 #include "xasl_aggregate.hpp"
 #include "statistics.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #include <cmath>

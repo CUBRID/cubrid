@@ -71,6 +71,7 @@
 #include <algorithm>
 #include <sstream>
 #include <stack>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define TODO_OPTIMIZE_JSON_BODY_STRING true

@@ -98,6 +98,7 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE  \
