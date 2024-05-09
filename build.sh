@@ -469,7 +469,7 @@ function show_usage ()
   echo "  -m      Set build mode(release, debug or coverage); [default: release]"
   echo "  -i      Increase build number; [default: no]"
   echo "  -a      Run autogen.sh before build; [default: yes]"
-  echo "  -g      Specifies the generator for a build (make, ninja); [default: make]"
+  echo "  -g      Specifies the generator for a build (make, ninja); [default: ninja]"
   echo "  -c opts Set configure options; [default: NONE]"
   echo "  -s path Set source path; [default: current directory]"
   echo "  -b path Set build path; [default: <source path>/build_<mode>_<target>]"
