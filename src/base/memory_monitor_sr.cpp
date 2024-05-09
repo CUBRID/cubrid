@@ -124,8 +124,8 @@ namespace cubmem
             //    These holes can occur in the following situation:
             //              cub_alloc() -> free() -> cub_alloc()
             //    In sub_stat(), called from cub_free(), the is_exist flag
-            //    should be disabled, but if default free() is called and the flag
-            //    is not disabled, the memory is deallocated without disabling the flag.
+            //    should be disabled, but if default free() is called,
+            //    the memory is deallocated without unset the flag.
             //    If cub_alloc() is then called to reuse that memory, it is considered
             //    an error in memory tracking.
 	    fprintf (stderr, "metainfo pointer %p is already allocated by %s:%d 
@@ -187,7 +187,7 @@ namespace cubmem
                 //      corrupting the metadata space.
                 //      - Memory allocated through cub_alloc() is deallocated without
                 //      erasing the metadata information via default free(), and then
-                //      returned through cub_free after being reallocated through basic
+                //      deallocated through cub_free after being reallocated through basic
                 //      allocation functions like malloc().
                 //
                 //    In the second scenario, even if a different size is allocated compared
