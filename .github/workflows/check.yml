@@ -229,8 +229,8 @@ jobs:
               fi
             done
 
-            last_include_line=$(cat $f | grep -n "#include" | cut -d':' -f1 | tail -1)
-            wrapper_include_line=$(cat $f | grep -n "#include" | grep "memory_wrapper.hpp" | cut -d':' -f1)
+            last_include_line=$(cat $f | grep -n "^#include" | cut -d':' -f1 | tail -1)
+            wrapper_include_line=$(cat $f | grep -n "^#include" | grep "memory_wrapper.hpp" | cut -d':' -f1)
             if [ "$last_include_line" -ne "$wrapper_include_line" ]; then
               result_for_f="FAIL"
             fi

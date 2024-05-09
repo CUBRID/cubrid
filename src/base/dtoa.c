@@ -30,6 +30,9 @@
 #include <stdlib.h>
 #include "mprec.h"
 #include <stdlib.h>
+#ifdef DEBUG
+#include <stdio.h>
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
