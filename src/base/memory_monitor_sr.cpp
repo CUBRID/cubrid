@@ -99,16 +99,16 @@ namespace cubmem
    *             If the key does not exist, it inserts the current information into
    *             MMON_DEBUG_INFO and adds it to the map.
    *
-   * sub_stat(): If the key exists, it disables the is_exist flag for that key.
+   * sub_stat(): If the key exists, it unset the is_exist flag for that key.
    *             If the key does not exist, it checks if the magic number matches.
    *             This is because even when memory allocated normally at the outside of the scope
-   *             can come inside to the sub_stat() and goes through this error check routine.
+   *             can come inside to the sub_stat() and go through this error check routine.
    *             If the magic number also matches, it considers the metadata to be corrupted.
    *
    * There are three cases of tracking error:
    *      1. Tracking hole
    *      2. Memory double allocation (unreachable)
-   *      3. Metainfo omit
+   *      3. Metainfo corrupted
    * */
 
   void memory_monitor::check_add_stat_tracking_error (MMON_METAINFO *metainfo)
@@ -178,7 +178,7 @@ namespace cubmem
 	  {
 	    if (metainfo->magic_number == m_magic_number)
 	      {
-		// Case3. Metainfo omit
+		// Case3. Metainfo corrupted
                 //    This case indicates that the metadata information owned
                 //    by the memory_monitor class for tracking has been corrupted.
                 //    This can occur in two scenarios:
