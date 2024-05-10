@@ -240,7 +240,8 @@ jobs:
 
             echo "$f: $result_for_f"
             if [ "$result_for_f" = "FAIL" ]; then
-              result="FAIL (Server code must include memory_wrapper.hpp)"
+              result="FAIL"
+              echo "Error: Server file must include memory_wrapper.hpp"
             fi
           done
 
