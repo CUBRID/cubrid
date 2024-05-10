@@ -436,13 +436,6 @@ struct qo_node
    bitset_union (&(QO_NODE_OUTER_DEP_SET (tail)), &(QO_NODE_OUTER_DEP_SET (head))); \
    bitset_add (&(QO_NODE_OUTER_DEP_SET (tail)), QO_NODE_IDX (head));
 
-#define QO_ADD_RIGHT_DEP_SET(tail,head) \
-   bitset_union (&(QO_NODE_RIGHT_DEP_SET (tail)), &(QO_NODE_RIGHT_DEP_SET (head))); \
-   bitset_add (&(QO_NODE_RIGHT_DEP_SET (tail)), QO_NODE_IDX (head));
-
-#define QO_ADD_RIGHT_TO_OUTER(tail,head) \
-   bitset_union (&(QO_NODE_OUTER_DEP_SET (tail)), &(QO_NODE_RIGHT_DEP_SET (head)));
-
 struct qo_segment
 {
   /*

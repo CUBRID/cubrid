@@ -436,8 +436,8 @@ qo_optimize_helper (QO_ENV * env)
   int level;
   QO_TERM *term;
   QO_NODE *node, *p_node;
-  BITSET nodeset, ansi_nodeset;
-  int n;
+  BITSET nodeset;
+  int n, k;
 
   parser = QO_ENV_PARSER (env);
   tree = QO_ENV_PT_TREE (env);
@@ -494,7 +494,6 @@ qo_optimize_helper (QO_ENV * env)
   }
 
   bitset_init (&nodeset, env);
-  bitset_init (&ansi_nodeset, env);
 
   /* add term in the ON clause */
   for (spec = tree->info.query.q.select.from; spec; spec = spec->next)
@@ -518,13 +517,7 @@ qo_optimize_helper (QO_ENV * env)
 	      if (QO_TERM_CLASS (term) == QO_TC_JOIN)
 		{
 		  QO_ASSERT (env, QO_ON_COND_TERM (term));
-		  bitset_add (&ansi_nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
-
-		  n = QO_TERM_LOCATION (term);
-		  if (QO_NODE_LOCATION (QO_TERM_HEAD (term)) == n - 1 && QO_NODE_LOCATION (QO_TERM_TAIL (term)) == n)
-		    {
-		      bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
-		    }
+		  bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
 		}
 
 	      conj->next = next;
@@ -546,17 +539,26 @@ qo_optimize_helper (QO_ENV * env)
   for (n = 1; n < env->nnodes; n++)
     {
       node = QO_ENV_NODE (env, n);
-      if (QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (ansi_nodeset, n))
+      /* In case of ansi join without join-edge, a dummy join term is added to maintain the outer join. */
+      if (QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (nodeset, n))
 	{
-	  /* In case of ansi join without join-edge, a dummy join term is added to maintain the outer join. */
 	  p_node = QO_ENV_NODE (env, n - 1);
 	  (void) qo_add_dummy_join_term (env, p_node, node);
 	}
-      else if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER && !BITSET_MEMBER (nodeset, n))
+
+      /* set dep set for right outer join */
+      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER)
 	{
-	  /* right join without join-edge for prev node, a dummy term is added to maintain set of nodes for outer join */
-	  p_node = QO_ENV_NODE (env, n - 1);
-	  (void) qo_add_dummy_join_term (env, p_node, node);
+	  /* In the case of right outer join, dependency is set on the entire preceding table connected by ANSI join. */
+	  k = n - 1;
+	  p_node = QO_ENV_NODE (env, k);
+	  QO_ADD_OUTER_DEP_SET (node, p_node);
+
+	  while (QO_NODE_IS_ANSI_JOIN (p_node))
+	    {
+	      p_node = QO_ENV_NODE (env, --k);
+	      QO_ADD_OUTER_DEP_SET (node, p_node);
+	    }
 	}
     }
 
@@ -1933,11 +1935,9 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
     {
     case PT_JOIN_INNER:
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
       break;
     case PT_JOIN_LEFT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
-      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
       for (i = 0; i < env->nterms; i++)
 	{
 	  temp_term = QO_ENV_TERM (env, i);
@@ -1955,9 +1955,7 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
       break;
     case PT_JOIN_RIGHT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
-      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
       QO_ADD_OUTER_DEP_SET (on_node, p_node);
-      QO_ADD_RIGHT_TO_OUTER (on_node, p_node);
       break;
     case PT_JOIN_FULL_OUTER:	/* not used */
       QO_TERM_JOIN_TYPE (term) = JOIN_OUTER;
@@ -2668,15 +2666,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
-		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
 		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
 		}
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_RIGHT_OUTER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
-		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
 		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
-		  QO_ADD_RIGHT_TO_OUTER (on_node, head_node);
 		}
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_FULL_OUTER)
 		{		/* not used */
@@ -2685,7 +2680,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
 		}
 	    }
 	  else
