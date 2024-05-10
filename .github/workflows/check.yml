@@ -236,9 +236,7 @@ jobs:
               if [ "$last_include_line" -ne "$wrapper_include_line" ]; then
                 result_for_f="FAIL"
               else # if equal, check warning comment
-                echo $wrapper_include_line
                 warning_comment=$(head -n $wrapper_include_line $f | tail -2 | head -1)
-                echo $warning_comment
                 if [ "$warning_comment" != "// XXX: SHOULD BE THE LAST INCLUDE HEADER" ]; then
                   result_for_f="FAIL"
                 fi
