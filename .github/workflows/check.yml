@@ -195,8 +195,8 @@ jobs:
           msg: |
             **cppcheck**
             ${{ steps.get-comment-body.outputs.body }}
-  memory-header-check:
-    name: memory-header-check
+  memory-monitor-check:
+    name: memory-monitor-check
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
@@ -240,7 +240,7 @@ jobs:
 
             echo "$f: $result_for_f"
             if [ "$result_for_f" = "FAIL" ]; then
-              result="FAIL"
+              result="FAIL (Server code must include memory_wrapper.hpp)"
             fi
           done
 
