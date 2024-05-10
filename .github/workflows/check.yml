@@ -246,7 +246,7 @@ jobs:
             echo "$f: $result_for_f"
             if [ "$result_for_f" = "FAIL" ]; then
               result="FAIL"
-              echo "Error: Server file must include memory_wrapper.hpp with XXX comment"
+              echo "Error: Server file in cubrid/CMakeLists.txt must include memory_wrapper.hpp with XXX comment"
             fi
           done
 
