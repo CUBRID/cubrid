@@ -235,13 +235,21 @@ jobs:
               wrapper_include_line=$(cat $f | grep -n "^#include" | grep "memory_wrapper.hpp" | cut -d':' -f1)
               if [ "$last_include_line" -ne "$wrapper_include_line" ]; then
                 result_for_f="FAIL"
+              else # if equal, check warning comment
+                warning_comment_line=wrapper_include_line - 1
+                echo $warning_commtent_line
+                warning_comment=$(head -n warning_comment_line | tail -1)
+                echo $warning_comment
+                if [ "$warning_comment" -ne "// XXX: SHOULD BE THE LAST INCLUDE HEADER" ]
+                  result_for_f="FAIL"
+                fi
               fi
             fi
 
             echo "$f: $result_for_f"
             if [ "$result_for_f" = "FAIL" ]; then
               result="FAIL"
-              echo "Error: Server file must include memory_wrapper.hpp"
+              echo "Error: Server file must include memory_wrapper.hpp with XXX comment"
             fi
           done
 
