@@ -668,7 +668,7 @@ static int heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
 				       bool ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
-#endif /* #if defined (ENABLE_UNUSED_FUNCTION) */
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen);
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
@@ -7447,7 +7447,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
 
   return scan;
 }
-#endif /* #if defined (ENABLE_UNUSED_FUNCTION) */
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_prepare_get_context () - Prepare for obtaining/processing heap object.
