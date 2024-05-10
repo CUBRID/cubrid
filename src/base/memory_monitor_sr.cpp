@@ -27,16 +27,6 @@
 
 #include "memory_monitor_sr.hpp"
 
-#if !defined (NDEBUG)
-typedef struct mmon_debug_info MMON_DEBUG_INFO;
-struct mmon_debug_info
-{
-  char filename[255];
-  int line;
-  bool is_exist;
-};
-#endif
-
 namespace cubmem
 {
   std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE] = {};
@@ -111,7 +101,7 @@ namespace cubmem
    *      3. Metainfo corrupted
    * */
 
-  void memory_monitor::check_add_stat_tracking_error (MMON_METAINFO *metainfo)
+  void memory_monitor::check_add_stat_tracking_error_is_exist (MMON_METAINFO *metainfo, const char *file, int line)
   {
     intptr_t ptr_key = reinterpret_cast <intptr_t> (metainfo);
     auto debug_search = m_error_tracking_map.find (ptr_key);
@@ -128,8 +118,8 @@ namespace cubmem
 	    //    the memory is deallocated without unset the flag.
 	    //    If cub_alloc() is then called to reuse that memory, it is considered
 	    //    an error in memory tracking.
-	    fprintf (stderr, "metainfo pointer %p is already allocated by %s:%d
-		     but %s:%d is the allocation request of this round\n", metainfo,
+	    fprintf (stderr, "metainfo pointer %p is already allocated by %s:%d "
+		     "but %s:%d is the allocation request of this round\n", metainfo,
 		     debug_search->second.filename, debug_search->second.line, file, line);
 	    fflush (stderr);
 	    assert (false);
