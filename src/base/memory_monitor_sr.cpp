@@ -199,7 +199,7 @@ namespace cubmem
 		//    receives the same chunk through the basic allocation function,
 		//    the amount of memory usable by the user can be larger, indicating
 		//    potential corruption of the metadata space.
-		fprintf (stderr, "Metainfo is omitted by some reason.\n");
+		fprintf (stderr, "Metainfo is corrupted by some reason.\n");
 		fflush (stderr);
 		assert (false);
 	      }
