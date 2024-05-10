@@ -50,6 +50,7 @@
 #include "broker_config.h"
 #include "util_func.h"
 #include "hide_password.h"
+#include "db.h"
 
 #define DDL_LOG_MSG 	            (256)
 #define DDL_LOG_PATH    	    "log/ddl_audit"
@@ -793,6 +794,9 @@ logddl_write ()
       return;
     }
 
+  logddl_set_db_name (db_get_database_name ());
+  logddl_set_user_name (db_get_user_name ());
+
   fp = logddl_open (ddl_audit_handle.app_name);
 
   if (fp != NULL)
@@ -846,6 +850,9 @@ logddl_write_tran_str (const char *fmt, ...)
     {
       goto write_error;
     }
+
+  logddl_set_db_name (db_get_database_name ());
+  logddl_set_user_name (db_get_user_name ());
 
   fp = logddl_open (ddl_audit_handle.app_name);
 
@@ -943,6 +950,9 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
     {
       return;
     }
+
+  logddl_set_db_name (db_get_database_name ());
+  logddl_set_user_name (db_get_user_name ());
 
   fp = logddl_open (ddl_audit_handle.app_name);
 
