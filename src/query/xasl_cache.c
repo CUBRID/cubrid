@@ -42,6 +42,7 @@
 
 #include <algorithm>
 #include <assert.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)

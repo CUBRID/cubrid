@@ -21,6 +21,8 @@
  */
 
 #include "network.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* The list should sync with net_server_request defined in network.h */
 /* client: used to collect histogram, server: used to log an error */

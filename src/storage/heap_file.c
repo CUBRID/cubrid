@@ -75,6 +75,7 @@
 #include "tde.h"
 
 #include <set>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)

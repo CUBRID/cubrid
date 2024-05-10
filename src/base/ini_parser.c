@@ -26,6 +26,7 @@
 #include "porting.h"
 #include "ini_parser.h"
 #include "chartype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define INI_BUFSIZ         	(512)

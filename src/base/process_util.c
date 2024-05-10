@@ -36,6 +36,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 int

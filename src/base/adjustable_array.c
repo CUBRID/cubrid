@@ -34,6 +34,7 @@
 
 #include "porting.h"
 #include "adjustable_array.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /*

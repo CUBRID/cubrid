@@ -60,6 +60,7 @@
 
 #include <chrono>
 #include <regex>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))

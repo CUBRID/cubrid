@@ -55,6 +55,8 @@
 #include "storage_common.h"
 #include "system_parameter.h"
 #include "object_representation.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static volatile LOG_PAGEID flashback_Min_log_pageid = NULL_LOG_PAGEID;	// Minumun log pageid to keep archive log volume from being removed
 

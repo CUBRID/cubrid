@@ -32,6 +32,7 @@
 #include "porting.h"
 #include "error_code.h"
 #include "environment_variable.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /* available root directory symbols; NULL terminated array */

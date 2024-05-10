@@ -53,6 +53,8 @@
 #include "method_struct_invoke.hpp"
 #include "thread_compat.hpp"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SA_MODE)
 int method_Num_method_jsp_calls = 0;

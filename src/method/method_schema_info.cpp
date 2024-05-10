@@ -32,6 +32,8 @@
 
 #include "language_support.h"
 #include "deduplicate_key.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

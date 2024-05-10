@@ -24,6 +24,7 @@
 
 #include <string>
 #include <vector>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace cubmonitor

@@ -58,6 +58,7 @@
 
 #include "dbtype.h"
 #include "memory_private_allocator.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)

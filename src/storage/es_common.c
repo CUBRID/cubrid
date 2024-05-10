@@ -32,6 +32,8 @@
 #include "porting.h"
 #include "memory_hash.h"
 #include "es_common.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * es_get_type -
