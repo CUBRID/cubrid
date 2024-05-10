@@ -27,6 +27,16 @@
 
 #include "memory_monitor_sr.hpp"
 
+#if !defined (NDEBUG)
+typedef struct mmon_debug_info MMON_DEBUG_INFO;
+struct mmon_debug_info
+{
+  char filename[255];
+  int line;
+  bool is_exist;
+};
+#endif
+
 namespace cubmem
 {
   std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE] = {};
@@ -75,6 +85,128 @@ namespace cubmem
 
     return allocated_size;
   }
+
+#if !defined (NDEBUG)
+  /* This section is for tracking errors of memory monitoring modules.
+   *
+   * The m_error_tracking_map uses the pointer address of metainfo as the key
+   * and MMON_DEBUG_INFO containing necessary debugging information as the value,
+   * and operates as follows:
+   *
+   * add_stat(): If the key exists, it checks the current usage status (is_exist)
+   *             for that key. If the is_exist flag is set, it classifies it as
+   *             an error case.
+   *             If the key does not exist, it inserts the current information into
+   *             MMON_DEBUG_INFO and adds it to the map.
+   *
+   * sub_stat(): If the key exists, it unset the is_exist flag for that key.
+   *             If the key does not exist, it checks if the magic number matches.
+   *             This is because even when memory allocated normally at the outside of the scope
+   *             can come inside to the sub_stat() and go through this error check routine.
+   *             If the magic number also matches, it considers the metadata to be corrupted.
+   *
+   * There are three cases of tracking error:
+   *      1. Tracking hole
+   *      2. Memory double allocation (unreachable)
+   *      3. Metainfo corrupted
+   * */
+
+  void memory_monitor::check_add_stat_tracking_error (MMON_METAINFO *metainfo)
+  {
+    intptr_t ptr_key = reinterpret_cast <intptr_t> (metainfo);
+    auto debug_search = m_error_tracking_map.find (ptr_key);
+    if (debug_search != m_error_tracking_map.end ())
+      {
+	if (debug_search->second.is_exist)
+	  {
+	    // Case1. Reveal tracking hole
+	    //    This case catch the tracking holes that can occur during tracking.
+	    //    These holes can occur in the following situation:
+	    //              cub_alloc() -> free() -> cub_alloc()
+	    //    In sub_stat(), called from cub_free(), the is_exist flag
+	    //    should be disabled, but if default free() is called,
+	    //    the memory is deallocated without unset the flag.
+	    //    If cub_alloc() is then called to reuse that memory, it is considered
+	    //    an error in memory tracking.
+	    fprintf (stderr, "metainfo pointer %p is already allocated by %s:%d
+		     but %s:%d is the allocation request of this round\n", metainfo,
+		     debug_search->second.filename, debug_search->second.line, file, line);
+	    fflush (stderr);
+	    assert (false);
+	  }
+	else
+	  {
+	    sprintf (debug_search->second.filename, "%s", file);
+	    debug_search->second.line = line;
+	    debug_search->second.is_exist = true;
+	  }
+      }
+    else
+      {
+	MMON_DEBUG_INFO debug_info;
+
+	sprintf (debug_info.filename, "%s", file);
+	debug_info.line = line;
+	debug_info.is_exist = true;
+
+	std::pair<tbb::concurrent_unordered_map<intptr_t, MMON_DEBUG_INFO>::iterator, bool> debug_insert;
+	debug_insert = m_error_tracking_map.insert (std::pair <intptr_t, MMON_DEBUG_INFO> (ptr_key, debug_info));
+	if (!debug_insert.second)
+	  {
+	    // Case2. Double allocation (unreachable)
+	    //    This case is not reached in normal memory allocation situations and
+	    //    indicates a problem in the default allocation mechanism,
+	    //    such as malloc(), if it is reached.
+	    fprintf (stderr, "double memory allocation is occurred\n");
+	    fflush (stderr);
+	    assert (false);
+	  }
+      }
+  }
+
+  void memory_monitor::check_sub_stat_tracking_error_is_exist (MMON_METAINFO *metainfo)
+  {
+    intptr_t ptr_key = reinterpret_cast <intptr_t> (metainfo);
+    auto debug_search = m_error_tracking_map.find (ptr_key);
+    if (debug_search != m_error_tracking_map.end())
+      {
+	if (debug_search->second.is_exist)
+	  {
+	    debug_search->second.is_exist = false;
+	  }
+	else
+	  {
+	    if (metainfo->magic_number == m_magic_number)
+	      {
+		// Case3. Metainfo corrupted
+		//    This case indicates that the metadata information owned
+		//    by the memory_monitor class for tracking has been corrupted.
+		//    This can occur in two scenarios:
+		//
+		//      - Overflow occurring in the memory allocated through cub_alloc(),
+		//      corrupting the metadata space.
+		//      - Memory allocated through cub_alloc() is deallocated without
+		//      erasing the metadata information via default free(), and then
+		//      deallocated through cub_free after being reallocated through basic
+		//      allocation functions like malloc().
+		//
+		//    In the second scenario, even if a different size is allocated compared
+		//    to the first allocation, the position of the pointer storing the metadata
+		//    information may not change. The position of the metadata is determined by
+		//    malloc_usable_size(), which can return a larger value than the size
+		//    requested by the user. This is because the OS allocates memory in chunks
+		//    rather than exactly as much as the user requested. Thus, even if the user
+		//    receives the same chunk through the basic allocation function,
+		//    the amount of memory usable by the user can be larger, indicating
+		//    potential corruption of the metadata space.
+		fprintf (stderr, "Metainfo is corrupted by some reason.\n");
+		fflush (stderr);
+		assert (false);
+	      }
+	  }
+      }
+  }
+#endif
 
   void memory_monitor::aggregate_server_info (MMON_SERVER_INFO &server_info)
   {
