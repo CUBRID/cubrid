@@ -35,7 +35,7 @@
  * You can include memory_cwrapper.h in a header file when the header file use allocation function.
  *                        HEADER FILE(.h/.hpp)    |   SOURCE FILE(.c/.cpp)    |   INCLUDE LOCATION
  * memory_cwrapper.h          CAN INCLUDE         |     CAN INCLUDE           |       ANYWHERE
- * memory_wrapper.hpp         CANNOT INCLUDE      |     CANNOT INCLUDE        |   END OF INCLUDE
+ * memory_wrapper.hpp         CANNOT INCLUDE      |     CAN INCLUDE           |   END OF INCLUDE
  */
 
 #ifdef SERVER_MODE
@@ -53,12 +53,26 @@ inline void *operator new[] (size_t size, const char *file, const int line)
   return cub_alloc (size, file, line);
 }
 
+/* Mainly delete (void *ptr, size_t sz) / delete [] (void *ptr, size_t sz) is called,
+ * but when deleting arrays of destructible class types, including incomplete types,
+ * either delete (void *ptr) / delete [] (void *ptr) or delete (void *ptr, size_t sz) /
+ * delete [] (void *ptr, size_t sz) can be called. */
 inline void operator delete (void *ptr) noexcept
 {
   cub_free (ptr);
 }
 
 inline void operator delete (void *ptr, size_t sz) noexcept
+{
+  cub_free (ptr);
+}
+
+inline void operator delete [] (void *ptr) noexcept
+{
+  cub_free (ptr);
+}
+
+inline void operator delete [] (void *ptr, size_t sz) noexcept
 {
   cub_free (ptr);
 }
