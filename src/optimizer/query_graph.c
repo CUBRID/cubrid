@@ -8193,7 +8193,6 @@ qo_node_clear (QO_ENV * env, int idx)
   bitset_init (&(QO_NODE_SUBQUERIES (node)), env);
   bitset_init (&(QO_NODE_SEGS (node)), env);
   bitset_init (&(QO_NODE_OUTER_DEP_SET (node)), env);
-  bitset_init (&(QO_NODE_RIGHT_DEP_SET (node)), env);
 
   QO_NODE_HINT (node) = PT_HINT_NONE;
 }
@@ -8212,7 +8211,6 @@ qo_node_free (QO_NODE * node)
   bitset_delset (&(QO_NODE_SEGS (node)));
   bitset_delset (&(QO_NODE_SUBQUERIES (node)));
   bitset_delset (&(QO_NODE_OUTER_DEP_SET (node)));
-  bitset_delset (&(QO_NODE_RIGHT_DEP_SET (node)));
   qo_free_class_info (QO_NODE_ENV (node), QO_NODE_INFO (node));
   if (QO_NODE_INDEXES (node))
     {
@@ -8331,12 +8329,6 @@ qo_node_dump (QO_NODE * node, FILE * f)
     {
       fputs (" (dep-set ", f);
       bitset_print (&(QO_NODE_DEP_SET (node)), f);
-      fputs (")", f);
-    }
-  if (!bitset_is_empty (&(QO_NODE_RIGHT_DEP_SET (node))))
-    {
-      fputs (" (right-dep-set ", f);
-      bitset_print (&(QO_NODE_RIGHT_DEP_SET (node)), f);
       fputs (")", f);
     }
 
