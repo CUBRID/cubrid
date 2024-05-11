@@ -161,7 +161,6 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
-  ${BASE_DIR}/ddl_log.h
 )
 
 set(HEAPLAYER_SOURCES
@@ -336,7 +335,10 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_connection_cl.cpp
   ${METHOD_DIR}/method_connection_sr.cpp
+  ${METHOD_DIR}/method_connection_java.cpp
   ${METHOD_DIR}/method_connection_pool.cpp
+  ${METHOD_DIR}/method_compile_def.cpp
+  ${METHOD_DIR}/method_compile.cpp
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_scan.cpp
@@ -630,7 +632,7 @@ add_library(cubridsa SHARED
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
-target_compile_definitions(cubridsa PRIVATE SA_MODE ${COMMON_DEFS})
+target_compile_definitions(cubridsa PRIVATE SA_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubridsa PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)

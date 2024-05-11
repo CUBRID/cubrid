@@ -43,6 +43,7 @@
 #include "method_struct_parameter_info.hpp" /* db_parameter_info */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */
 #include "porting.h" /* SOCKET */
+#include "storage_common.h"
 
 // thread_entry.hpp
 namespace cubthread
@@ -85,9 +86,14 @@ namespace cubmethod
       METHOD_GROUP_ID get_id () const;
       SOCKET get_socket () const;
       cubthread::entry *get_thread_entry () const;
-      std::queue<cubmem::extensible_block> &get_data_queue ();
+      std::queue<cubmem::block> &get_data_queue ();
       cubmethod::runtime_context *get_runtime_context ();
       connection_pool &get_connection_pool ();
+      SESSION_ID get_session_id () const
+      {
+	return m_sid;
+      }
+      TRANID get_tran_id ();
 
       bool is_running () const;
       bool is_for_scan () const;
@@ -108,6 +114,11 @@ namespace cubmethod
 
       void set_db_parameter_info (db_parameter_info *param_info);
 
+      inline METHOD_REQ_ID get_and_increment_request_id ()
+      {
+	return m_rctx->get_and_increment_request_id();
+      }
+
     private:
       void destory_all_cursors ();
 
@@ -118,14 +129,16 @@ namespace cubmethod
       bool m_is_for_scan;
 
       connection *m_connection;
-      std::queue<cubmem::extensible_block> m_data_queue;
+      std::queue<cubmem::block> m_data_queue;
 
       std::unordered_set <std::uint64_t> m_cursor_set;
       std::unordered_set <int> m_handler_set;
 
       std::string m_err_msg;
 
+      SESSION_ID m_sid;
       METHOD_GROUP_ID m_id;
+      TRANID m_tid;
 
       db_parameter_info *m_parameter_info;
       cubthread::entry *m_thread_p;

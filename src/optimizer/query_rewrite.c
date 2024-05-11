@@ -9563,6 +9563,11 @@ qo_do_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
+  if (parser->flag.is_parsing_static_sql == 1)
+    {
+      return;
+    }
+
   limit_offsetp = NULL;
   limit_row_countp = NULL;
 

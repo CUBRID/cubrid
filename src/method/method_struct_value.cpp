@@ -496,8 +496,8 @@ namespace cubmethod
 
       case DB_TYPE_NUMERIC:
       {
-	cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
-	deserializator.unpack_string_to_memblock (blk);
+	std::string numeric_str;
+	deserializator.unpack_string (numeric_str);
 
 	INTL_CODESET codeset;
 #if !defined (SERVER_MODE)
@@ -505,7 +505,8 @@ namespace cubmethod
 #else
 	codeset = LANG_SYS_CODESET;
 #endif
-	if (numeric_coerce_string_to_num (blk.get_ptr (), strlen (blk.get_ptr ()), codeset, v) != NO_ERROR)
+	db_make_null (v);
+	if (numeric_coerce_string_to_num (numeric_str.c_str (), numeric_str.size (), codeset, v) != NO_ERROR)
 	  {
 	    // TODO: needs error handling?
 	    assert (false);

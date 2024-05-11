@@ -301,6 +301,40 @@ make_valid_page_size (int *v)
     }
 }
 
+static int
+execute_query (const char *str)
+{
+  DB_SESSION *session = NULL;
+  STATEMENT_ID stmt_id;
+  int error = NO_ERROR;
+
+  session = db_open_buffer (str);
+  if (session == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, NULL);
+
+exit:
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+  return error;
+}
+
 /*
  * createdb() - createdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -657,6 +691,26 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
 
   db_commit_transaction ();
+
+  {
+    /* FIXME!! Register Built-in Packages, The following lines should be moved */
+    char built_in_package_spec[7][1024] = {
+      "CREATE OR REPLACE PROCEDURE enable (s INT) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.enable(int)';",
+      "CREATE OR REPLACE PROCEDURE disable () AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.disable()';",
+      "CREATE OR REPLACE PROCEDURE put (str String) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.put(java.lang.String)';",
+      "CREATE OR REPLACE PROCEDURE put_line (str STRING) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.putLine(java.lang.String)';",
+      "CREATE OR REPLACE PROCEDURE new_line () AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.newLine()';",
+      "CREATE OR REPLACE PROCEDURE get_line (line OUT STRING, status OUT INT) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.getLine(java.lang.String[], int[])';",
+      "CREATE OR REPLACE PROCEDURE get_lines (lines OUT STRING, cnt OUT INT) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.getLines(java.lang.String[], int[])';"
+    };
+
+    for (int i = 0; i < 7; i++)
+      {
+	execute_query (built_in_package_spec[i]);
+      }
+
+    db_commit_transaction ();
+  }
 
   if (user_define_file != NULL)
     {

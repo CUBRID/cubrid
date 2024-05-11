@@ -739,6 +739,10 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_LOGINFO];
   req_p->processing_function = sflashback_get_loginfo;
 
+  /* PL/CSQL */
+  req_p = &net_Requests[NET_SERVER_PLCSQL_TRANSFER_FILE];
+  req_p->processing_function = splcsql_transfer_file;
+
   /* memmon */
   req_p = &net_Requests[NET_SERVER_MMON_GET_SERVER_INFO];
   req_p->processing_function = smmon_get_server_info;
