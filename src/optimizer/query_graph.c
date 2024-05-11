@@ -547,14 +547,14 @@ qo_optimize_helper (QO_ENV * env)
 	}
 
       /* set dep set for right outer join */
-      if (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER)
+      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER)
 	{
 	  /* In the case of right outer join, dependency is set on the entire preceding table connected by ANSI join. */
 	  k = n - 1;
 	  p_node = QO_ENV_NODE (env, k);
 	  QO_ADD_OUTER_DEP_SET (node, p_node);
 
-	  while (QO_NODE_IS_ANSI_JOIN (p_node) && k < 0)
+	  while (k > 0 && QO_NODE_IS_ANSI_JOIN (p_node))
 	    {
 	      p_node = QO_ENV_NODE (env, --k);
 	      QO_ADD_OUTER_DEP_SET (node, p_node);
