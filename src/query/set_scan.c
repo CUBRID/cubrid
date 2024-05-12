@@ -31,6 +31,8 @@
 #include "dbtype.h"
 #include "fetch.h"
 #include "xasl.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * qproc_next_set_scan () -

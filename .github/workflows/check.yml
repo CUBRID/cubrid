@@ -195,3 +195,59 @@ jobs:
           msg: |
             **cppcheck**
             ${{ steps.get-comment-body.outputs.body }}
+  memory-monitor-check:
+    name: memory-monitor-check
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: jitterbit/get-changed-files@v1
+        id: files
+        continue-on-error: true
+      - name: Check memory header include
+        run: |
+          set +e # make this step proceed even if a command returns non-zero
+          memory_header_include=.github/workflows/memory_header_include
+          result="PASS"
+
+          for f in ${{ steps.files.outputs.added_modified }}; do
+            if [ -d "$f" ]; then
+              continue
+            fi
+
+            ext=$(expr $f : ".*\(\..*\)")
+            case $ext in
+            .c|.cpp|.C|.CPP) true;; # only these formats are checked.
+            *) continue ;; # skip others
+            esac
+
+            result_for_f="FAIL"
+            for header in `find $memory_header_include -type f`; do
+              cat $f | grep "#include" | grep "memory_wrapper.hpp" | diff -w - $header 2>&1 1>/dev/null
+              if [ $? -eq 0 ]; then
+                result_for_f="PASS"
+                break
+              fi
+            done
+
+            # [exception case] lea_heap.c is third party code
+            if [ "$f" != "src/heaplayers/lea_heap.c" ]; then
+              last_include_line=$(cat $f | grep -n "^#include" | cut -d':' -f1 | tail -1)
+              wrapper_include_line=$(cat $f | grep -n "^#include" | grep "memory_wrapper.hpp" | cut -d':' -f1)
+              if [ "$last_include_line" -ne "$wrapper_include_line" ]; then
+                result_for_f="FAIL"
+              else # if equal, check warning comment
+                warning_comment=$(head -n $wrapper_include_line $f | tail -2 | head -1)
+                if [ "$warning_comment" != "// XXX: SHOULD BE THE LAST INCLUDE HEADER" ]; then
+                  result_for_f="FAIL"
+                fi
+              fi
+            fi
+
+            echo "$f: $result_for_f"
+            if [ "$result_for_f" = "FAIL" ]; then
+              result="FAIL"
+              echo "Error: .c/.cpp file in cubrid/CMakeLists.txt must include memory_wrapper.hpp with XXX comment"
+            fi
+          done
+
+          test $result = "PASS" # if non-zero, fail

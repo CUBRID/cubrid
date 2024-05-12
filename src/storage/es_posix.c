@@ -47,6 +47,8 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SA_MODE) || defined (SERVER_MODE)
 /* es_posix_base_dir - */
