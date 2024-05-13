@@ -204,7 +204,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	}
 
       ip_file = p;
-      if (ip_file == NULL)
+      if (ip_file == NULL || strlen (ip_file) == 0)
 	{
 	  sprintf (admin_err_msg,
 		   "%s: error while loading access control file(%s:%d)" " - IP list file paths are empty.",
