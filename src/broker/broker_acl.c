@@ -151,7 +151,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 
       if (!char_isalpha (buf[0]) && !(buf[0] == '[' || buf[0] == '*'))
 	{
-	  sprintf (admin_err_msg, "invalid acl list entry: (%s)", buf);
+	  sprintf (admin_err_msg, "%s: invalid acl list entry: (%s:%d)", shm_appl->broker_name, filename, line);
 	  goto error;
 	}
 
