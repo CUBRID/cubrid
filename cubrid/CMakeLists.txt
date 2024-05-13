@@ -133,7 +133,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
-  ${BASE_DIR}/test_include.cpp
   )
 set (BASE_HEADERS
   ${BASE_DIR}/error_code.h
