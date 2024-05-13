@@ -36,6 +36,8 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define foutput stdout
 

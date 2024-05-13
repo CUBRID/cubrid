@@ -26,6 +26,13 @@
 #include "config.h"
 
 #include "chartype.h"
+#if defined(COMMENTED_CODE_FOR_REFERENCE)
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define CP_NONE  (CHAR_PROP_NONE)
 #define CP_SPC   (CHAR_PROP_SPACE)
@@ -201,9 +208,6 @@ trim (char *str)
  * If you need any changes to the contents of the above array, you can refer to build_chartype_table() to recreate it.
  */
 // build mapper and prop table
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
 
 static const int A_GRAVE_ACCENT = 192;
 static const int MULT_ISO8859 = 215;

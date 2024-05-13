@@ -61,6 +61,7 @@
 #include "tde.h"
 #include "flashback_cl.h"
 #include "connection_support.h"
+#include "memory_monitor_cl.hpp"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -4541,4 +4542,102 @@ error_exit:
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 
+}
+
+int
+memmon (UTIL_FUNCTION_ARG * arg)
+{
+#if defined(CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  bool need_shutdown = false;
+  const char *outfile_name;
+  FILE *outfile_fp = NULL;
+  int error_code = NO_ERROR;
+  MMON_SERVER_INFO server_info;
+
+  outfile_name = utility_get_option_string_value (arg_map, MEMMON_OUTPUT_S, 0);
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_memmon_usage;
+    }
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  if (outfile_name)
+    {
+      outfile_fp = fopen (outfile_name, "w+");
+      if (outfile_fp == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_CANNOT_OPEN_OUTPUT_FILE),
+				 outfile_name);
+	  goto error_exit;
+	}
+    }
+  else
+    {
+      outfile_fp = stdout;
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  if (db_restart (arg->command_name, TRUE, database_name))
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
+      goto error_exit;
+    }
+  need_shutdown = true;
+
+  if (!prm_get_bool_value (PRM_ID_ENABLE_MEMORY_MONITORING))
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_SUPPORTED));
+      goto error_exit;
+    }
+
+  /* execute phase */
+  error_code = mmon_get_server_info (server_info);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  mmon_print_server_info (server_info, outfile_fp);
+
+  fclose (outfile_fp);
+
+  db_shutdown ();
+
+  return EXIT_SUCCESS;
+
+print_memmon_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+error_exit:
+  if (need_shutdown)
+    {
+      db_shutdown ();
+    }
+
+  if (outfile_fp)
+    {
+      fclose (outfile_fp);
+    }
+
+  return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
 }
