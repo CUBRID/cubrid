@@ -34,9 +34,7 @@
 #include "object_representation.h"
 #include "system_parameter.h"
 #include "memory_alloc.h"
-
 #include "list_file.h"
-#include "db_set_function.h"
 
 #include "subquery_cache.h"
 
@@ -53,7 +51,6 @@ static int sq_cmp_func (const void *key1, const void *key2);
 static int sq_rem_func (const void *key, void *data, void *args);
 
 static int sq_walk_xasl_check_not_caching (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
-//static int sq_walk_xasl_and_add_val_to_set (THREAD_ENTRY * thread_p, void *p, int type, SQ_KEY * pred_set);
 
 /**************************************************************************************/
 
@@ -63,9 +60,7 @@ static int sq_walk_xasl_check_not_caching (THREAD_ENTRY * thread_p, XASL_NODE * 
  *   xasl(in): The XASL node of the scalar subquery.
  *
  * This function generates a key for caching the results of a scalar subquery. It checks the provided XASL node
- * for predicates (where_key, where_pred, where_range) and creates a set (pred_set) to represent the key.
- * If no predicates are found or the set cannot be populated, NULL is returned. Otherwise, a pointer to the
- * newly created SQ_KEY structure is returned.
+ * for predicates (where_key, where_pred, where_range) and creates a DB_VALUE array to represent the key.
  */
 SQ_KEY *
 sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
@@ -123,7 +118,7 @@ sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val)
  * sq_free_key () - Frees the memory allocated for a SQ_KEY structure.
  *   key(in): The SQ_KEY structure to be freed.
  *
- * This function releases the memory allocated for the pred_set within the SQ_KEY structure and then
+ * This function releases the memory allocated for the DB_VAUE array within the SQ_KEY structure and then
  * frees the SQ_KEY structure itself.
  */
 void
@@ -216,7 +211,7 @@ sq_unpack_val (SQ_VAL * v, REGU_VARIABLE * retp)
  *   key(in): The key to be hashed.
  *   ht_size(in): The size of the hash table.
  *   
- * Generates a hash value for the given key by hashing the elements of the pred_set within the SQ_KEY structure.
+ * Generates a hash value for the given key by hashing the elements of the DB_VALUE array within the SQ_KEY structure.
  * The hash value is then modulated by the size of the hash table to ensure it falls within valid bounds.
  */
 unsigned int
@@ -240,7 +235,7 @@ sq_hash_func (const void *key, unsigned int ht_size)
  *   key2(in): The second key to compare.
  *
  * Compares two SQ_KEY structures to determine if they are equal. The comparison is based on the elements
- * of the pred_set within each key. The function returns 1 if the keys are considered equal, otherwise 0.
+ * of the DB_VALUE array within each key. The function returns 1 if the keys are considered equal, otherwise 0.
  */
 int
 sq_cmp_func (const void *key1, const void *key2)

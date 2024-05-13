@@ -13972,14 +13972,17 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 			}
 		      else
 			{
-			  if (pt_check_corr_subquery_hash_result_cache (xasl) && pt_prepare_sq_cache (xasl))
+			  if (pt_check_corr_subquery_hash_result_cache (xasl))
 			    {
 			      bool cachable = true;
 			      parser_walk_tree (parser, node, NULL, NULL, pt_check_corr_subquery_not_cachable_expr,
 						&cachable);
 			      if (cachable)
 				{
-				  XASL_SET_FLAG (xasl, XASL_SQ_CACHE);
+				  if (pt_prepare_sq_cache (xasl))
+				    {
+				      XASL_SET_FLAG (xasl, XASL_SQ_CACHE);
+				    }
 				}
 			    }
 			}
@@ -27431,9 +27434,9 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
       switch (node->info.expr.op)
 	{
 	case PT_SYS_GUID:
+	case PT_RAND:
+	case PT_DRAND:
 	case PT_RANDOM:
-	case PT_INCR:
-	case PT_DESC:
 	case PT_DRANDOM:
 	  *cachable = false;
 	  *continue_walk = PT_STOP_WALK;
