@@ -8192,67 +8192,92 @@ pt_print_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, "alter serial ");
   q = pt_append_varchar (parser, q, r1);
 
-  if (p->info.serial.start_val != NULL)
+  switch (p->info.serial.code)
     {
-      r1 = pt_print_bytes (parser, p->info.serial.start_val);
-      q = pt_append_nulstring (parser, q, " start with ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+    case PT_SERIAL_OPTION:
+      if (p->info.serial.start_val != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.start_val);
+	  q = pt_append_nulstring (parser, q, " start with ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
 
-  if (p->info.serial.increment_val)
-    {
-      r1 = pt_print_bytes (parser, p->info.serial.increment_val);
-      q = pt_append_nulstring (parser, q, " increment by ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+      if (p->info.serial.increment_val)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.increment_val);
+	  q = pt_append_nulstring (parser, q, " increment by ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
 
-  if (p->info.serial.min_val)
-    {
-      r1 = pt_print_bytes (parser, p->info.serial.min_val);
-      q = pt_append_nulstring (parser, q, " minvalue ");
-      q = pt_append_varchar (parser, q, r1);
-    }
-  else if (p->info.serial.no_min == 1)
-    {
-      q = pt_append_nulstring (parser, q, " nomaxvalue ");
-    }
+      if (p->info.serial.min_val)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.min_val);
+	  q = pt_append_nulstring (parser, q, " minvalue ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      else if (p->info.serial.no_min == 1)
+	{
+	  q = pt_append_nulstring (parser, q, " nomaxvalue ");
+	}
 
-  if (p->info.serial.max_val)
-    {
-      r1 = pt_print_bytes (parser, p->info.serial.max_val);
-      q = pt_append_nulstring (parser, q, " maxvalue ");
-      q = pt_append_varchar (parser, q, r1);
-    }
-  else if (p->info.serial.no_max == 1)
-    {
-      q = pt_append_nulstring (parser, q, " nomaxvalue ");
-    }
+      if (p->info.serial.max_val)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.max_val);
+	  q = pt_append_nulstring (parser, q, " maxvalue ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      else if (p->info.serial.no_max == 1)
+	{
+	  q = pt_append_nulstring (parser, q, " nomaxvalue ");
+	}
 
-  if (p->info.serial.cyclic)
-    {
-      q = pt_append_nulstring (parser, q, " cycle ");
-    }
-  else if (p->info.serial.no_cyclic == 1)
-    {
-      q = pt_append_nulstring (parser, q, " nocycle ");
-    }
+      if (p->info.serial.cyclic)
+	{
+	  q = pt_append_nulstring (parser, q, " cycle ");
+	}
+      else if (p->info.serial.no_cyclic == 1)
+	{
+	  q = pt_append_nulstring (parser, q, " nocycle ");
+	}
 
-  if (p->info.serial.cached_num_val && p->info.serial.no_cache != 1)
-    {
-      r1 = pt_print_bytes (parser, p->info.serial.cached_num_val);
-      q = pt_append_nulstring (parser, q, " cache ");
-      q = pt_append_varchar (parser, q, r1);
-    }
-  else if (p->info.serial.no_cache != 0)
-    {
-      q = pt_append_nulstring (parser, q, " nocache ");
-    }
+      if (p->info.serial.cached_num_val && p->info.serial.no_cache != 1)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.cached_num_val);
+	  q = pt_append_nulstring (parser, q, " cache ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      else if (p->info.serial.no_cache != 0)
+	{
+	  q = pt_append_nulstring (parser, q, " nocache ");
+	}
 
-  if (p->info.serial.comment != NULL)
-    {
-      r1 = pt_print_bytes (parser, p->info.serial.comment);
-      q = pt_append_nulstring (parser, q, " comment ");
-      q = pt_append_varchar (parser, q, r1);
+      if (p->info.serial.comment != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.comment);
+	  q = pt_append_nulstring (parser, q, " comment ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      break;
+
+    case PT_CHANGE_OWNER:
+      if (p->info.serial.owner_name != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.owner_name);
+	  q = pt_append_nulstring (parser, q, " owner to ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (p->info.serial.comment != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.comment);
+	  q = pt_append_nulstring (parser, q, " comment ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      break;
+
+    default:
+      assert (false);
+      break;
     }
 
   return q;
@@ -8362,6 +8387,7 @@ pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.serial.increment_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.min_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.max_val, arg);
+  PT_APPLY_WALK (parser, p->info.serial.owner_name, arg);
   return p;
 }
 

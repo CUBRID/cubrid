@@ -665,8 +665,10 @@ static int heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE 
 static int heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * hfid);
 static int heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 static int heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool scan_state);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
 				       bool ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen);
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
@@ -7330,6 +7332,7 @@ heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_get_if_diff_chn () - Get specified object of the given slotted page when
  *                       its cache coherency number is different
@@ -7444,6 +7447,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
 
   return scan;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_prepare_get_context () - Prepare for obtaining/processing heap object.
@@ -15212,8 +15216,8 @@ heap_chnguess_realloc (void)
   /*
    * Save current information, so we can copy them at a alater point
    */
-  save_bitindex = heap_Guesschn_area.bitindex;
-  save_nbytes = heap_Guesschn_area.nbytes;
+  save_bitindex = heap_Guesschn->bitindex;
+  save_nbytes = heap_Guesschn->nbytes;
 
   /*
    * Find the number of clients that need to be supported. Avoid small
@@ -15230,18 +15234,17 @@ heap_chnguess_realloc (void)
     }
 
   /* Make sure every single bit is used */
-  heap_Guesschn_area.nbytes = HEAP_NBITS_TO_NBYTES (heap_Guesschn_area.num_clients);
-  heap_Guesschn_area.num_clients = HEAP_NBYTES_TO_NBITS (heap_Guesschn_area.nbytes);
+  heap_Guesschn->nbytes = HEAP_NBITS_TO_NBYTES (heap_Guesschn->num_clients);
+  heap_Guesschn->num_clients = HEAP_NBYTES_TO_NBITS (heap_Guesschn->nbytes);
 
-  heap_Guesschn_area.bitindex = (unsigned char *) malloc (heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries);
-  if (heap_Guesschn_area.bitindex == NULL)
+  heap_Guesschn->bitindex = (unsigned char *) malloc (heap_Guesschn->nbytes * heap_Guesschn->num_entries);
+  if (heap_Guesschn->bitindex == NULL)
     {
       ret = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
-	      (size_t) (heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries));
-      heap_Guesschn_area.bitindex = save_bitindex;
-      heap_Guesschn_area.nbytes = save_nbytes;
-      heap_Guesschn_area.num_clients = HEAP_NBYTES_TO_NBITS (save_nbytes);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, (size_t) (heap_Guesschn->nbytes * heap_Guesschn->num_entries));
+      heap_Guesschn->bitindex = save_bitindex;
+      heap_Guesschn->nbytes = save_nbytes;
+      heap_Guesschn->num_clients = HEAP_NBYTES_TO_NBITS (save_nbytes);
       goto exit_on_error;
     }
 
@@ -15249,15 +15252,15 @@ heap_chnguess_realloc (void)
    * Now reset the bits for each entry
    */
 
-  for (i = 0; i < heap_Guesschn_area.num_entries; i++)
+  for (i = 0; i < heap_Guesschn->num_entries; i++)
     {
-      entry = &heap_Guesschn_area.entries[i];
-      entry->bits = &heap_Guesschn_area.bitindex[i * heap_Guesschn_area.nbytes];
+      entry = &heap_Guesschn->entries[i];
+      entry->bits = &heap_Guesschn->bitindex[i * heap_Guesschn->nbytes];
       /*
        * Copy the bits
        */
       memcpy (entry->bits, &save_bitindex[i * save_nbytes], save_nbytes);
-      HEAP_NBYTES_CLEARED (&entry->bits[save_nbytes], heap_Guesschn_area.nbytes - save_nbytes);
+      HEAP_NBYTES_CLEARED (&entry->bits[save_nbytes], heap_Guesschn->nbytes - save_nbytes);
     }
   /*
    * Now throw previous storage
@@ -15468,7 +15471,7 @@ heap_chnguess_remove_entry (const void *oid_key, void *ent, void *xignore)
   OID_SET_NULL (&entry->oid);
   entry->chn = NULL_CHN;
   entry->recently_accessed = false;
-  heap_Guesschn_area.clock_hand = entry->idx;
+  heap_Guesschn->clock_hand = entry->idx;
 
   return NO_ERROR;
 }
@@ -15499,7 +15502,7 @@ heap_chnguess_dump (FILE * fp)
       max_tranindex = logtb_get_number_of_total_tran_indices ();
       for (i = 0; i < heap_Guesschn->num_entries; i++)
 	{
-	  entry = &heap_Guesschn_area.entries[i];
+	  entry = &heap_Guesschn->entries[i];
 
 	  if (!OID_ISNULL (&entry->oid))
 	    {
@@ -15624,7 +15627,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
        */
       if (entry->chn != chn)
 	{
-	  HEAP_NBYTES_CLEARED (entry->bits, heap_Guesschn_area.nbytes);
+	  HEAP_NBYTES_CLEARED (entry->bits, heap_Guesschn->nbytes);
 	  entry->chn = chn;
 	}
     }
@@ -15664,7 +15667,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
 		{
 		  entry->oid = *oid;
 		  entry->chn = chn;
-		  HEAP_NBYTES_CLEARED (entry->bits, heap_Guesschn_area.nbytes);
+		  HEAP_NBYTES_CLEARED (entry->bits, heap_Guesschn->nbytes);
 		  break;
 		}
 	    }
@@ -15712,7 +15715,7 @@ heap_chnguess_clear (THREAD_ENTRY * thread_p, int tran_index)
     {
       for (i = 0; i < heap_Guesschn->num_entries; i++)
 	{
-	  entry = &heap_Guesschn_area.entries[i];
+	  entry = &heap_Guesschn->entries[i];
 	  if (!OID_ISNULL (&entry->oid))
 	    {
 	      HEAP_BIT_CLEAR (entry->bits, (unsigned int) tran_index);
