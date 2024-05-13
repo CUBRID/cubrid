@@ -149,6 +149,12 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	  continue;
 	}
 
+      if (!char_isalpha (buf[0]) && !(buf[0] == '[' || buf[0] == '*'))
+	{
+	  sprintf (admin_err_msg, "invalid acl list entry: (%s)", buf);
+	  goto error;
+	}
+
       if (is_current_broker_section == false && strncmp (buf, "[%", 2) == 0 && buf[strlen (buf) - 1] == ']')
 	{
 	  buf[strlen (buf) - 1] = '\0';
@@ -246,13 +252,6 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
     }
 
   fclose (fd_access_list);
-
-  if (is_current_broker_section == false)
-    {
-      sprintf (admin_err_msg, "error: broker section is NOT found (%s)", filename);
-      return -1;
-    }
-
 
 #if defined (WINDOWS)
   MAKE_ACL_SEM_NAME (acl_sem_name, shm_appl->broker_name);
