@@ -91,6 +91,8 @@
 #endif /* !WINDOWS */
 
 #include <mutex>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * Definition of error message structure. One structure is defined for each

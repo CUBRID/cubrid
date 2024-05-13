@@ -81,6 +81,8 @@
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"

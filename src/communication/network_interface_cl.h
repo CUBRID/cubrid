@@ -55,6 +55,7 @@
 #include "dynamic_array.h"
 #include "flashback_cl.h"
 #include "method_compile_def.hpp"
+#include "memory_monitor_common.hpp"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -459,4 +460,6 @@ EXPORT_IMPORT extern int plcsql_transfer_file (const std::string & input_file, c
 					       PLCSQL_COMPILE_INFO & compile_info);
 
 
+/* memmon */
+extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

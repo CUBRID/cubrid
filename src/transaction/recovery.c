@@ -38,6 +38,8 @@
 #include "overflow_file.h"
 #include "boot_sr.h"
 #include "locator_sr.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  *
