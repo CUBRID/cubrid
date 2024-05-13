@@ -14580,16 +14580,8 @@ ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * r
   xasl->proc.hashjoin.outer_xasl = left;
   xasl->proc.hashjoin.inner_xasl = right;
 
-  if (join_type == JOIN_RIGHT)
-    {
-      right->next = left;
-      xasl->aptr_list = right;
-    }
-  else
-    {
-      left->next = right;
-      xasl->aptr_list = left;
-    }
+  left->next = right;
+  xasl->aptr_list = left;
 
   return xasl;
 }

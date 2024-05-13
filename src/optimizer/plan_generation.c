@@ -537,17 +537,16 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
 {
   XASL_NODE *hashjoin = NULL;
   PARSER_CONTEXT *parser = NULL;
-  QFILE_LIST_MERGE_INFO *ls_merge;
+  QFILE_LIST_MERGE_INFO *merge_info_p;
   PT_NODE *outer_spec, *inner_spec;
   PT_NODE *outer_attr, *inner_attr;
-  PT_NODE *hash_pred;
+  PT_NODE *hash_pred, *during_join_pred;
   int i, left_epos, rght_epos, cnt, seg_idx, ncols;
   int left_nlen, left_elen, rght_nlen, rght_elen, nlen;
   SORT_LIST *order, *prev_order;
   QO_TERM *term;
   BITSET_ITERATOR bi;
   BITSET term_segs;
-  int *poslist;
 
   bitset_init (&term_segs, env);
 
@@ -565,34 +564,33 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
       goto exit_on_error;
     }
 
-  ls_merge = &hashjoin->proc.mergelist.ls_merge;
+  merge_info_p = &hashjoin->proc.hashjoin.ls_merge;
 
-  ls_merge->join_type = plan->plan_un.join.join_type;
+  merge_info_p->join_type = plan->plan_un.join.join_type;
 
-  ncols = ls_merge->ls_column_cnt = bitset_cardinality (&(plan->plan_un.join.join_terms));
+  ncols = merge_info_p->ls_column_cnt = bitset_cardinality (&(plan->plan_un.join.join_terms));
   assert (ncols > 0);
 
-  ls_merge->ls_outer_column = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
-  if (ls_merge->ls_outer_column == NULL)
+  merge_info_p->ls_outer_column = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
+  if (merge_info_p->ls_outer_column == NULL)
     {
       goto exit_on_error;
     }
 
-  ls_merge->ls_outer_unique = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
-  if (ls_merge->ls_outer_unique == NULL)
+  merge_info_p->ls_outer_unique = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
+  if (merge_info_p->ls_outer_unique == NULL)
     {
       goto exit_on_error;
     }
 
-  ls_merge->ls_inner_column = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
-
-  if (ls_merge->ls_inner_column == NULL)
+  merge_info_p->ls_inner_column = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
+  if (merge_info_p->ls_inner_column == NULL)
     {
       goto exit_on_error;
     }
 
-  ls_merge->ls_inner_unique = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
-  if (ls_merge->ls_inner_unique == NULL)
+  merge_info_p->ls_inner_unique = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
+  if (merge_info_p->ls_inner_unique == NULL)
     {
       goto exit_on_error;
     }
@@ -606,10 +604,10 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
     {
       term = QO_ENV_TERM (env, i);
 
-      if (ls_merge->join_type == JOIN_INNER && QO_IS_PATH_TERM (term))
+      if (merge_info_p->join_type == JOIN_INNER && QO_IS_PATH_TERM (term))
 	{
 	  /* mark hash join spec as single-fetch */
-	  ls_merge->single_fetch = QPROC_SINGLE_OUTER;
+	  merge_info_p->single_fetch = QPROC_SINGLE_OUTER;
 	}
 
       if (BITSET_MEMBER (*left_exprs, i) && left_elist != NULL)
@@ -617,7 +615,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
 	  /* Then we added an "extra" column for the expression to the left_elist.  We want to treat that expression as
 	   * the outer expression, but we want to leave it off of the list of segments that are projected out of the
 	   * merge. Take it off, but remember it in "outer_attr" so that we can fix up domain info in a little while. */
-	  ls_merge->ls_outer_column[cnt] = left_epos++;
+	  merge_info_p->ls_outer_column[cnt] = left_epos++;
 	  outer_attr = left_elist;
 	  left_elist = left_elist->next;
 	}
@@ -634,15 +632,15 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
 
 	  outer_attr = QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_idx));
 
-	  ls_merge->ls_outer_column[cnt] = pt_find_attribute (parser, outer_attr, left_list);
+	  merge_info_p->ls_outer_column[cnt] = pt_find_attribute (parser, outer_attr, left_list);
 	}
-      ls_merge->ls_outer_unique[cnt] = false;	/* currently, unused */
+      merge_info_p->ls_outer_unique[cnt] = false;	/* currently, unused */
 
       if (BITSET_MEMBER (*rght_exprs, i) && rght_elist != NULL)
 	{
 	  /* This situation is exactly analogous to the one above, except that we're concerned with the right (inner)
 	   * side this time. */
-	  ls_merge->ls_inner_column[cnt] = rght_epos++;
+	  merge_info_p->ls_inner_column[cnt] = rght_epos++;
 	  inner_attr = rght_elist;
 	  rght_elist = rght_elist->next;
 	}
@@ -659,9 +657,9 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
 
 	  inner_attr = QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_idx));
 
-	  ls_merge->ls_inner_column[cnt] = pt_find_attribute (parser, inner_attr, rght_list);
+	  merge_info_p->ls_inner_column[cnt] = pt_find_attribute (parser, inner_attr, rght_list);
 	}
-      ls_merge->ls_inner_unique[cnt] = false;	/* currently, unused */
+      merge_info_p->ls_inner_unique[cnt] = false;	/* currently, unused */
 
       cnt++;
     }				/* for (i = ... ) */
@@ -672,15 +670,15 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
   rght_elen = bitset_cardinality (rght_exprs);
   rght_nlen = pt_length_of_list (rght_list) - rght_elen;
 
-  nlen = ls_merge->ls_pos_cnt = left_nlen + rght_nlen;
-  ls_merge->ls_outer_inner_list = (int *) pt_alloc_packing_buf (nlen * sizeof (int));
-  if (ls_merge->ls_outer_inner_list == NULL)
+  nlen = merge_info_p->ls_pos_cnt = left_nlen + rght_nlen;
+  merge_info_p->ls_outer_inner_list = (int *) pt_alloc_packing_buf (nlen * sizeof (int));
+  if (merge_info_p->ls_outer_inner_list == NULL)
     {
       goto exit_on_error;
     }
 
-  ls_merge->ls_pos_list = (int *) pt_alloc_packing_buf (nlen * sizeof (int));
-  if (ls_merge->ls_pos_list == NULL)
+  merge_info_p->ls_pos_list = (int *) pt_alloc_packing_buf (nlen * sizeof (int));
+  if (merge_info_p->ls_pos_list == NULL)
     {
       goto exit_on_error;
     }
@@ -691,29 +689,128 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
 
   for (i = 0; i < left_nlen; i++)
     {
-      ls_merge->ls_outer_inner_list[i] = QFILE_OUTER_LIST;
-      ls_merge->ls_pos_list[i] = i + left_elen;
+      merge_info_p->ls_outer_inner_list[i] = QFILE_OUTER_LIST;
+      merge_info_p->ls_pos_list[i] = i + left_elen;
     }
 
   for (i = 0; i < nlen - left_nlen; i++)
     {
-      ls_merge->ls_outer_inner_list[left_nlen + i] = QFILE_INNER_LIST;
-      ls_merge->ls_pos_list[left_nlen + i] = i + rght_elen;
+      merge_info_p->ls_outer_inner_list[left_nlen + i] = QFILE_INNER_LIST;
+      merge_info_p->ls_pos_list[left_nlen + i] = i + rght_elen;
     }
 
-  hashjoin->proc.mergelist.outer_spec_list = NULL;
-  hashjoin->proc.mergelist.outer_val_list = NULL;
-  hashjoin->proc.mergelist.inner_spec_list = NULL;
-  hashjoin->proc.mergelist.inner_val_list = NULL;
+  /* make outer_spec_list, outer_val_list, inner_spec_list, and inner_val_list */
+  if (merge_info_p->join_type == JOIN_INNER)
+    {
+      hashjoin->proc.hashjoin.outer_spec_list = NULL;
+      hashjoin->proc.hashjoin.outer_val_list = NULL;
+      hashjoin->proc.hashjoin.inner_spec_list = NULL;
+      hashjoin->proc.hashjoin.inner_val_list = NULL;
+    }
+  else
+    {
+      int *pos_list;
+
+      /* set poslist of outer XASL node */
+      pos_list = NULL;		/* init */
+      if (left_elen > 0)
+	{
+	  /* proceed to name list and skip out join edge exprs */
+	  for (i = 0; i < left_elen; i++)
+	    {
+	      left_list = left_list->next;
+	    }
+
+	  pos_list = (int *) malloc (left_nlen * sizeof (int));
+	  if (pos_list == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, left_nlen * sizeof (int));
+	      goto exit_on_error;
+	    }
+
+	  for (i = 0; i < left_nlen; i++)
+	    {
+	      pos_list[i] = i + left_elen;
+	    }
+	}
+
+      /* sets xasl->spec_list and xasl->val_list */
+      hashjoin = ptqo_to_list_scan_proc (parser, hashjoin, SCAN_PROC, left, left_list, NULL, pos_list);
+
+      /* dealloc */
+      if (pos_list != NULL)
+	{
+	  free_and_init (pos_list);
+	}
+
+      if (hashjoin == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      hashjoin->proc.hashjoin.outer_spec_list = hashjoin->spec_list;
+      hashjoin->proc.hashjoin.outer_val_list = hashjoin->val_list;
+
+      /* set poslist of inner XASL node */
+      pos_list = NULL;		/* init */
+      if (rght_elen > 0)
+	{
+	  /* proceed to name list and skip out join edge exprs */
+	  for (i = 0; i < rght_elen; i++)
+	    {
+	      rght_list = rght_list->next;
+	    }
+
+	  pos_list = (int *) malloc (rght_nlen * sizeof (int));
+	  if (pos_list == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, rght_nlen * sizeof (int));
+	      goto exit_on_error;
+	    }
+
+	  for (i = 0; i < rght_nlen; i++)
+	    {
+	      pos_list[i] = i + rght_elen;
+	    }
+	}
+
+      /* sets xasl->spec_list and xasl->val_list */
+      hashjoin = ptqo_to_list_scan_proc (parser, hashjoin, SCAN_PROC, rght, rght_list, NULL, pos_list);
+
+      /* dealloc */
+      if (pos_list)
+	{
+	  free_and_init (pos_list);
+	}
+
+      if (hashjoin == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      hashjoin->proc.hashjoin.inner_spec_list = hashjoin->spec_list;
+      hashjoin->proc.hashjoin.inner_val_list = hashjoin->val_list;
+
+      hashjoin->spec_list = NULL;
+      hashjoin->val_list = NULL;
+
+      /* add outer join terms */
+      during_join_pred = make_pred_from_bitset (env, &(plan->plan_un.join.during_join_terms), is_always_true);
+      if (during_join_pred)
+	{
+	  hashjoin = add_after_join_predicate (env, hashjoin, during_join_pred);
+
+	  /* free pointer node list */
+	  parser_free_tree (QO_ENV_PARSER (env), during_join_pred);
+	}
+    }
 
 exit_on_end:
-
   bitset_delset (&term_segs);
 
   return hashjoin;
 
 exit_on_error:
-
   hashjoin = NULL;
 
   goto exit_on_end;
@@ -1770,8 +1867,8 @@ check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
       /*
        * Make sure the merge_list_info looks plausible.
        */
-      || hashjoin->proc.mergelist.outer_xasl == NULL || hashjoin->proc.mergelist.inner_xasl == NULL
-      || hashjoin->proc.mergelist.ls_merge.ls_column_cnt <= 0)
+      || hashjoin->proc.hashjoin.outer_xasl == NULL || hashjoin->proc.hashjoin.inner_xasl == NULL
+      || hashjoin->proc.hashjoin.ls_merge.ls_column_cnt <= 0)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "false");
       xasl = NULL;
@@ -1779,11 +1876,11 @@ check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
 
   if (hashjoin != NULL)
     {
-      ncols = hashjoin->proc.mergelist.ls_merge.ls_column_cnt;
+      ncols = hashjoin->proc.hashjoin.ls_merge.ls_column_cnt;
       for (i = 0; i < ncols; i++)
 	{
-	  if (hashjoin->proc.mergelist.ls_merge.ls_outer_column[i] < 0
-	      || hashjoin->proc.mergelist.ls_merge.ls_inner_column[i] < 0)
+	  if (hashjoin->proc.hashjoin.ls_merge.ls_outer_column[i] < 0
+	      || hashjoin->proc.hashjoin.ls_merge.ls_inner_column[i] < 0)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "false");
 	      xasl = NULL;
@@ -2648,7 +2745,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		    break;
 		  }
 
-		ls_merge = &hashjoin->proc.mergelist.ls_merge;
+		ls_merge = &hashjoin->proc.hashjoin.ls_merge;
 
 		p = 0;		/* init */
 		for (attr = seg_nlist; attr; attr = attr->next)

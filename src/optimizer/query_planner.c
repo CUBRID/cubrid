@@ -116,6 +116,7 @@ static void qo_join_free (QO_PLAN *);
 static void qo_scan_fprint (QO_PLAN *, FILE *, int);
 static void qo_sort_fprint (QO_PLAN *, FILE *, int);
 static void qo_join_fprint (QO_PLAN *, FILE *, int);
+static void qo_hjoin_fprint (QO_PLAN *, FILE *, int);
 static void qo_follow_fprint (QO_PLAN *, FILE *, int);
 static void qo_worst_fprint (QO_PLAN *, FILE *, int);
 
@@ -335,7 +336,7 @@ static QO_PLAN_VTBL qo_merge_join_plan_vtbl = {
 
 static QO_PLAN_VTBL qo_hash_join_plan_vtbl = {
   "hash-join",
-  qo_join_fprint,
+  qo_hjoin_fprint,
   qo_join_walk,
   qo_join_free,
   qo_mjoin_cost,		/* TO DO - add qo_hjoin_cost */
@@ -2589,7 +2590,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 	     BITSET * join_terms, BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms,
 	     BITSET * pinned_subqueries, BITSET * hash_terms)
 {
-  QO_PLAN *plan = NULL;
+  QO_PLAN *plan = NULL, *swap = NULL;
   QO_NODE *node = NULL;
   PT_NODE *spec = NULL;
   BITSET sarg_out_terms;
@@ -2700,6 +2701,33 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
     case QO_JOINMETHOD_HASH_JOIN:
       plan->vtbl = &qo_hash_join_plan_vtbl;
       plan->order = QO_UNORDERED;
+
+      if (join_type == JOIN_INNER)
+	{
+	  if (outer->info->cardinality < inner->info->cardinality)
+	    {
+	      swap = inner;
+	      inner = outer;	/* build */
+	      outer = swap;	/* prove */
+	    }
+	}
+      else if (join_type == JOIN_LEFT)
+	{
+	  /* fall through */
+	}
+      else if (join_type == JOIN_RIGHT)
+	{
+	  swap = inner;
+	  inner = outer;	/* build */
+	  outer = swap;		/* prove */
+	}
+      else
+	{
+	  /* give up */
+	  assert (false);
+	  return NULL;
+	}
+
       break;
     }
 
@@ -3121,6 +3149,57 @@ qo_mjoin_cost (QO_PLAN * planp)
   planp->variable_cpu_cost += (outer_cardinality + inner_cardinality) * QO_CPU_WEIGHT * MJ_CPU_OVERHEAD_FACTOR;
   /* merge cost */
   planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
+}
+
+/*
+ * qo_hjoin_fprint () -
+ *   return:
+ *   plan(in):
+ *   f(in):
+ *   howfar(in):
+ */
+static void
+qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
+{
+  switch (plan->plan_un.join.join_type)
+    {
+    case JOIN_INNER:
+      fputs (" (inner join)", f);
+      break;
+
+    case JOIN_LEFT:
+      fputs (" (left outer join)", f);
+      break;
+
+    case JOIN_RIGHT:
+      fputs (" (right outer join)", f);
+      break;
+
+    case JOIN_OUTER:		/* not used */
+      assert (false);
+      fputs (" (full outer join)", f);
+      break;
+
+    case JOIN_CSELECT:
+      assert (false);
+      fputs (" (cselect join)", f);
+      break;
+
+    case NO_JOIN:
+    default:
+      fputs (" (unknown join type)", f);
+      break;
+    }
+
+  if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
+    {
+      fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "edge:");
+      qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.join_terms), f);
+    }
+
+  qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "build: ");
+  qo_plan_fprint (plan->plan_un.join.inner, f, howfar, "prove: ");
+  qo_plan_print_outer_join_terms (plan, f, howfar);
 }
 
 /*

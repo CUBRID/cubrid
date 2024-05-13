@@ -1691,6 +1691,8 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   /* initialize query_in_progress flag */
   xasl->query_in_progress = false;
 
+  xasl->n_oid_list = 0;
+
   /* XASL node header is packed first */
   ptr = stx_build_xasl_header (thread_p, ptr, &xasl->header);
 
