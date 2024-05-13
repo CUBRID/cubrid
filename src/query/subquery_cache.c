@@ -107,7 +107,7 @@ sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val)
       break;
 
     default:
-      assert (0);
+      /* Never happens. */
       break;
     }
 
@@ -154,7 +154,7 @@ sq_free_val (SQ_VAL * v)
       break;
 
     default:
-      assert (0);
+      /* Never happens */
       break;
     }
   db_private_free_and_init (NULL, v);
@@ -195,12 +195,12 @@ sq_unpack_val (SQ_VAL * v, REGU_VARIABLE * retp)
 	}
       else
 	{
-	  assert (0);
 	  retp->value.srlist_id->list_id = qfile_clone_list_id (v->val.srlist_id->list_id, true);
 	}
       break;
 
     default:
+      /* Never happens */
       break;
     }
 }

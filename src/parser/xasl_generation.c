@@ -27442,6 +27442,7 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
 	  *continue_walk = PT_STOP_WALK;
 	  break;
 	default:
+	  /* continue walk */
 	  break;
 	}
     }
