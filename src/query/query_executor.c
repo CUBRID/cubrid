@@ -7499,6 +7499,10 @@ qexec_hash_outer_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
   assert (qp_scan == S_END);
 
 exit_on_end:
+  scan_end_scan (thread_p, prove_scan_id_p);
+
+  prove_scan_id_p->s.llsid.tplrecp = NULL;
+
   if (result_tuple_record.tpl)
     {
       db_private_free_and_init (thread_p, result_tuple_record.tpl);
@@ -7546,6 +7550,8 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
   bool need_coerce_type;
 
   HASH_LIST_SCAN hash_join;
+
+  type_list.domp = NULL;
 
   outer_xasl = xasl->proc.hashjoin.outer_xasl;
   inner_xasl = xasl->proc.hashjoin.inner_xasl;
