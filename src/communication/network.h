@@ -312,4 +312,18 @@ extern int net_server_start (const char *name);
 extern const char *get_capability_string (int cap, int cap_type);
 extern const char *get_net_request_name (int request);
 
+#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+__inline int
+get_endian_type ()
+{
+#if defined(WINDOWS)
+  unsigned int e_v = 0x12345678;
+  unsigned char *e_p = (char *) (&e_v);
+  return ((e_p[0] == 0x78) ? 1 : (e_p[0] == 0x12) ? 2 : 0);
+#else
+  return (__BYTE_ORDER == __LITTLE_ENDIAN) ? 1 : ((__BYTE_ORDER == __BIG_ENDIAN) ? 2 : 0);
+#endif
+}
+#endif
+
 #endif /* _NETWORK_H_ */

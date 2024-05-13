@@ -56,25 +56,6 @@ class print_output;
 
 #if defined(SUPPORT_THREAD_UNLOAD)
 
-#if defined (WINDOWS)
-#include <io.h>
-
-#define open       _open
-#define close      _close
-#define read       _read
-#define write      _write
-#define O_RDONLY   _O_RDONLY
-#define O_WRONLY   _O_WRONLY
-#define O_APPEND   _O_APPEND
-#define O_WRONLY   _O_WRONLY
-#define O_CREAT    _O_CREAT
-#define O_TRUNC    _O_TRUNC
-
-#define OPEN_MODE_VALUE   (_S_IREAD | _S_IWRITE)
-#else
-#define OPEN_MODE_VALUE   0666
-#endif
-
 typedef struct dbval_buf
 {
   char *buf;

@@ -845,7 +845,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
   int modular_val = UNLOAD_MODULAR_UNDEFINED;
   int accept_val = UNLOAD_MODULAR_UNDEFINED;
-  int server_endian = (__BYTE_ORDER == __LITTLE_ENDIAN) ? 1 : ((__BYTE_ORDER == __BIG_ENDIAN) ? 2 : 0);
+  int server_endian = get_endian_type ();
   int client_endian;
   int encode_endian = 0;
 #endif

@@ -435,7 +435,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
   ptr = or_pack_int (ptr, modular_val);
   ptr = or_pack_int (ptr, accept_val);
-  int client_endian = (__BYTE_ORDER == __LITTLE_ENDIAN) ? 1 : ((__BYTE_ORDER == __BIG_ENDIAN) ? 2 : 0);
+  int client_endian = get_endian_type ();
   ptr = or_pack_int (ptr, client_endian);
 #endif
   *fetch_copyarea = NULL;

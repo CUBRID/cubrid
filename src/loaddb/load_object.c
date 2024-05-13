@@ -568,6 +568,7 @@ exit_on_error:
   goto exit_on_end;
 }
 
+#if 0				// ctshim
 int
 text_string_print (TEXT_OUTPUT * tout, const char *buf, int buflen)
 {
@@ -637,7 +638,7 @@ exit_on_error:
   CHECK_EXIT_ERROR (error);
   goto exit_on_end;
 }
-
+#endif
 
 /*
  * desc_obj_to_disk - transforms the object into a disk record for eventual

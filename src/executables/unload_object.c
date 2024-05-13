@@ -40,6 +40,10 @@
 #define	SIGALRM	14
 #endif /* WINDOWS */
 
+#if defined (WINDOWS)
+#include <io.h>
+#endif
+
 #include "authenticate.h"
 #include "utility.h"
 #include "load_object.h"
@@ -73,8 +77,16 @@
 #include "error_context.hpp"
 
 #if defined(SUPPORT_THREAD_UNLOAD)
+#if defined (WINDOWS)
+#include "porting.h"
+#endif
+
+#define OPEN_MODE_VALUE   0666
+
+#if !defined(WINDOWS)
 #include <unistd.h>
 #include <sys/mman.h>
+#endif
 extern int merge_type;
 #endif
 
@@ -176,8 +188,13 @@ static FILE *unloadlog_file = NULL;
 
 
 #if defined(SUPPORT_THREAD_UNLOAD)
-//#define DEBUG_PRINT(args...) fprintf(stdout, ##args); fflush(stdout)
-#define DEBUG_PRINT(args...)
+#if defined(WINDOWS)
+#define DEBUG_PRINT(...) fprintf(stdout, __VA_ARGS__); fflush(stdout)
+//#define DEBUG_PRINT(...) 
+#else
+#define DEBUG_PRINT(args...) fprintf(stdout, ##args); fflush(stdout)
+//#define DEBUG_PRINT(args...) 
+#endif
 
 typedef struct _lc_copyarea_node LC_COPYAREA_NODE;
 struct _lc_copyarea_node
@@ -786,7 +803,16 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
   char new_fname[PATH_MAX];
   char old_fname[PATH_MAX];
   char *buf = NULL;
-  off_t length, offset;
+#if defined(SOLARIS) || defined(AIX) || (defined(HPUX) && (_LFS64_LARGEFILE == 1))
+  off64_t length, offset;
+#elif defined(I386) && defined(LINUX)
+  __off64_t length, offset;
+#elif defined(WINDOWS)
+  __int64 length, offset;
+#else
+  int length, offset;
+#endif
+  //off_t length, offset;
   ssize_t size, r_size, w_size, wb;
 
 #if 1
@@ -828,6 +854,9 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
   // merge_type 1:  no use mmap
   //            2:  use mmap, multiple
   //            3:  use mmap, once 
+#if defined(WINDOWS)
+  merge_type = 1;
+#endif
 
   alloc_sz = 16 * 1024 * 1000;
   if (merge_type == 1)
@@ -850,13 +879,29 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
 	  return false;
 	}
       //struct stat stbuf;
-      //if (stat (old_fname, &stbuf) == -1)      
+      //if (stat (old_fname, &stbuf) == -1)
+#if defined(SOLARIS) || defined(AIX) || (defined(HPUX) && (_LFS64_LARGEFILE == 1))
+      length = lseek64 (oldfd, (off64_t) 0, SEEK_END);
+      lseek64 (oldfd, (off64_t) 0, SEEK_SET);
+#elif defined(I386) && defined(LINUX)
+      length = lseek64 (oldfd, (__off64_t) 0, SEEK_END);
+      lseek64 (oldfd, (__off64_t) 0, SEEK_SET);
+#elif defined(WINDOWS)
+      length = _lseeki64 (oldfd, (__int64) 0, SEEK_END);
+      _lseeki64 (oldfd, (__int64) 0, SEEK_SET);
+#else
+      length = lseek (oldfd, 0, SEEK_END);
+      lseek (oldfd, 0, SEEK_SET);
+#endif
+
+#if 0
 #if defined(WINDOWS)
       length = _lseeki64 (oldfd, 0, SEEK_END);
       _lseeki64 (oldfd, 0, SEEK_SET);
 #else
       length = lseek64 (oldfd, 0, SEEK_END);
       lseek64 (oldfd, 0, SEEK_SET);
+#endif
 #endif
 
       offset = 0;
@@ -874,6 +919,7 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
 	      w_size = write (newfd, buf, size);
 	      assert (r_size == w_size);
 	    }
+#if !defined(WINDOWS)
 	  else
 	    {
 	      pa_offset = offset & ~(sysconf (_SC_PAGE_SIZE) - 1);
@@ -904,6 +950,7 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
 		  assert (r_size == w_size);
 		}
 	    }
+#endif
 
 	  offset += size;
 	}
@@ -1776,7 +1823,7 @@ unload_writer (UNLD_THR_PARAM * unld_thr_param, LC_COPYAREA * fetch_area, TEXT_O
   return ret;
 }
 
-void *
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 unload_thread_proc (void *param)
 {
   UNLD_THR_PARAM *parg = (UNLD_THR_PARAM *) param;
@@ -1821,6 +1868,7 @@ unload_thread_proc (void *param)
   er_context_p = NULL;
 
   pthread_exit (NO_ERROR);
+  return (THREAD_RET_T) 0;
 }
 #endif // #if defined(SUPPORT_THREAD_UNLOAD)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2321,8 +2369,10 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
       unld_cls_info.cparea_lst_ref = &cparea_lst_class;
 
       pthread_attr_init (&thread_attr);
+#if !defined(WINDOWS)
       pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
       pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
+#endif
 
 
       //pthread_mutex_lock (&unld_cls_info.mtx);
@@ -2363,6 +2413,7 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 
       pthread_cond_destroy (&unld_cls_info.cond);
       //unld_cls_info.cparea_lst_ref->clear_freelist ();
+      pthread_attr_destroy (&thread_attr);
 
       for (i = 0; i < thread_count; i++)
 	{

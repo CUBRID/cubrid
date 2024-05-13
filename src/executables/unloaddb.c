@@ -45,7 +45,9 @@
 
 //#if defined(SUPPORT_THREAD_UNLOAD)
 #if 1				// time check  ctshim
+#if !defined(WINDOWS)
 #include <sys/time.h>
+#endif
 #endif
 //#endif
 

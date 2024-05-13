@@ -34,12 +34,15 @@
 static HL_HEAPID ws_Heap_id = 0;
 
 #if defined(SUPPORT_THREAD_UNLOAD)
+#if defined(WINDOWS)
+#include "porting.h"
+#endif
 
 #if defined(SERVER_MODE)
 #error "Not support SERVER_MODE"
 #endif
 
-pthread_t ws_Heap_Owner_id = -1;
+pthread_t ws_Heap_Owner_id = (pthread_t) - 1;
 //db_get_client_type
 //extern int db_get_client_type (void);
 bool
@@ -89,7 +92,7 @@ db_destroy_workspace_heap (void)
       hl_unregister_lea_heap (ws_Heap_id);
       ws_Heap_id = 0;
 #if defined(SUPPORT_THREAD_UNLOAD)
-      ws_Heap_Owner_id = -1;
+      ws_Heap_Owner_id = (pthread_t) - 1;
 #endif
     }
 }

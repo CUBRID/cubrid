@@ -590,8 +590,10 @@ configure_file(cmake/config.h.cmake config.h)
 configure_file(cmake/version.h.cmake version.h)
 
 # ctshim
+#if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 add_definitions(-DSUPPORT_THREAD_UNLOAD)
 add_definitions(-DSUPPORT_THREAD_UNLOAD_MTP)
+#endif()
 
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
