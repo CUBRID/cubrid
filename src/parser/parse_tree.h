@@ -1136,6 +1136,9 @@ enum pt_type_enum
   PT_TYPE_DATETIMELTZ,
 
   PT_TYPE_MAX,
+
+  PT_TYPE_TABLE_COLUMN,		/* not a real type but a type specification of the form <table>.<column>%TYPE */
+  /* which can be used only in SP parameter and return types */
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
 
@@ -1445,7 +1448,8 @@ typedef enum
   PT_CHANGE_INDEX_COMMENT,
   PT_CHANGE_INDEX_STATUS,
   PT_ADD_MEMBERS,		/* alter user type */
-  PT_DROP_MEMBERS
+  PT_DROP_MEMBERS,
+  PT_SERIAL_OPTION		/* alter serial type */
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -2181,7 +2185,9 @@ struct pt_serial_info
   PT_NODE *max_val;		/* PT_VALUE */
   PT_NODE *min_val;		/* PT_VALUE */
   PT_NODE *cached_num_val;	/* PT_VALUE */
+  PT_NODE *owner_name;		/* PT_NAME */
   PT_NODE *comment;		/* PT_VALUE */
+  PT_ALTER_CODE code;		/* PT_SERIAL_OPTION, PT_CHANGE_OWNER */
   int cyclic;
   int no_max;
   int no_min;
@@ -2230,7 +2236,7 @@ struct pt_data_type_info
   PT_NODE *entity;		/* class PT_NAME list for PT_TYPE_OBJECT */
   PT_NODE *enumeration;		/* values list for PT_TYPE_ENUMERATION */
   DB_OBJECT *virt_object;	/* virt class object if a vclass */
-  PT_NODE *virt_data_type;	/* for non-primitive types- sets, etc. */
+  PT_NODE *table_column;	/* for type specification of the form <table>.<column>%TYPE */
   PT_TYPE_ENUM virt_type_enum;	/* type enumeration tage PT_TYPE_??? */
   int precision;		/* for float and int, length of char */
   int dec_precision;		/* decimal precision for float */
