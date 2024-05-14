@@ -270,12 +270,13 @@ public class PlcsqlCompilerMain {
             Server.log(unit.getClassName() + logStore.toString());
         }
 
+        String javaSig = unit.getJavaSignature();
         CompileInfo info =
                 new CompileInfo(
                         javaCode,
-                        String.format(sqlTemplate[0], unit.getJavaSignature()),
+                        sqlTemplate[0] + String.format(" '%s';", javaSig),
                         unit.getClassName(),
-                        unit.getJavaSignature());
+                        javaSig);
         return info;
     }
 

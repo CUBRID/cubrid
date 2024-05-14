@@ -1934,6 +1934,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
 318 Only DBA and DBA group members can change the SERIAL OWNER.
+319 Unsupported argument type '%1$s' of the stored procedure
+320 Unsupported return type '%1$s' of the stored procedure
+321 %TYPE type specification is allowed only for PL/CSQL
+322 Table column '%1$s.%2$s' has not been defined
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
