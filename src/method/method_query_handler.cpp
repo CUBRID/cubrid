@@ -27,8 +27,6 @@
 #include "method_schema_info.hpp"
 #include "object_primitive.h"
 #include "optimizer.h" /* qo_get_optimization_param, qo_set_optimization_param */
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
 
 /* from jsp_cl.c */
 extern void jsp_set_prepare_call ();
