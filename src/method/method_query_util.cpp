@@ -28,6 +28,8 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

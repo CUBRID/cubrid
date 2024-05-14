@@ -89,7 +89,8 @@ typedef enum
   MSGCAT_UTIL_SET_VACUUMDB = 55,
   MSGCAT_UTIL_SET_CHECKSUMDB = 56,
   MSGCAT_UTIL_SET_TDE = 57,
-  MSGCAT_UTIL_SET_FLASHBACK = 58
+  MSGCAT_UTIL_SET_FLASHBACK = 58,
+  MSGCAT_UTIL_SET_MEMMON = 59
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -738,6 +739,15 @@ typedef enum
   FLASHBACK_MSG_USAGE = 60
 } MSGCAT_FLASHBACK_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_MEMMON */
+typedef enum
+{
+  MEMMON_MSG_NOT_SUPPORTED = 1,
+  MEMMON_MSG_NOT_IN_STANDALONE = 2,
+  MEMMON_MSG_CANNOT_OPEN_OUTPUT_FILE = 3,
+  MEMMON_MSG_USAGE = 60
+} MSGCAT_MEMMON_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -785,6 +795,7 @@ typedef enum
   CHECKSUMDB,
   TDE,
   FLASHBACK,
+  MEMMON,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -997,6 +1008,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
 #define UTIL_OPTION_TDE			        "tde"
 #define UTIL_OPTION_FLASHBACK                   "flashback"
+#define UTIL_OPTION_MEMMON                      "memmon"
 
 #define HIDDEN_CS_MODE_S                        15000
 
@@ -1695,6 +1707,10 @@ typedef struct _ha_config
 #define FLASHBACK_OLDEST_S          14102
 #define FLASHBACK_OLDEST_L          "oldest"
 
+/* memmon option list */
+#define MEMMON_OUTPUT_S             'o'
+#define MEMMON_OUTPUT_L             "output-file"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1830,6 +1846,7 @@ extern "C"
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int tde (UTIL_FUNCTION_ARG * arg_map);
   extern int flashback (UTIL_FUNCTION_ARG * arg_map);
+  extern int memmon (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);

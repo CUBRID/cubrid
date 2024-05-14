@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longitud o caracter '%1$c' en el nombre de la base de datos '%2$s'\n no valida.
@@ -1313,3 +1314,14 @@ opciones válidas:\n\
                                   para retrospectiva; predeterminado: genera solo sentencias SQL para flashback\n\
     --oldest                      flashback más antiguo se realiza en orden cronológico para las sentencias SQL ejecutadas desde\n\
                                   la hora de inicio hasta la hora de finalización; predeterminado: último\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 Por favor, configure el parámetro del sistema 'enable_memory_monitoring' en 'cubrid.conf' y reinicie el servidor de la base de datos.\n
+2 memmon no puede ejecutarse en modo independiente.\n
+3 Error al abrir el archivo de salida con el nombre %1$s.\n
+60 \
+memmon: Proporciona información sobre el uso de memoria de un servidor de base de datos.\n\
+uso: %1$s memmon [OPCIÓN] nombre-de-base-de-datos\n\
+\n\
+opción válida:\n\
+    -o, --output-file=ARCHIVO    guardar resultados en ARCHIVO\n

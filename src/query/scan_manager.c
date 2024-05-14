@@ -51,6 +51,8 @@
 #include "xasl.h"
 #include "query_hash_scan.h"
 #include "statistics.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

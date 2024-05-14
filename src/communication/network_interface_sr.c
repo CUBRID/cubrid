@@ -88,6 +88,8 @@
 #include "log_manager.h"
 #include "crypt_opfunc.h"
 #include "flashback.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -11181,4 +11183,103 @@ css_send_error:
 
   flashback_reset ();
   return;
+}
+
+/*
+ * smmon_get_server_info - get memory usage info from memory monitor
+ *
+ * return:
+ *
+ *  rid(in):
+ *  request(in):
+ *  reqlen(in):
+ */
+void
+smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *buffer_a = NULL, *buffer, *ptr;
+  int size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error = NO_ERROR;
+#if !defined(WINDOWS)
+  MMON_SERVER_INFO server_info;
+
+  mmon_aggregate_server_info (server_info);
+
+  // Size of server name
+  size += or_packed_string_length (server_info.server_name, NULL);
+  size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
+
+  // Size of total_mem_usage
+  size += OR_INT64_SIZE;
+
+  // Size of total_metainfo_mem_usage
+  size += OR_INT64_SIZE;
+
+  // Size of num_stat
+  size += OR_INT_SIZE;
+
+  // Size of stat name and memory usage
+  // *INDENT-OFF*
+  for (const auto &s_info : server_info.stat_info)
+    {
+      // Size of filename
+      size += or_packed_string_length (s_info.first.c_str (), NULL);
+      size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
+
+      // Size of memory usage
+      size += OR_INT64_SIZE;
+    }
+  // *INDENT-ON*
+
+  buffer_a = (char *) db_private_alloc (thread_p, size + MAX_ALIGNMENT);
+  if (buffer_a == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  else
+    {
+      buffer = PTR_ALIGN (buffer_a, MAX_ALIGNMENT);
+
+      ptr = buffer;
+
+      ptr = or_pack_string (ptr, server_info.server_name);
+      ptr = or_pack_int64 (ptr, server_info.total_mem_usage);
+      ptr = or_pack_int64 (ptr, server_info.total_metainfo_mem_usage);
+      ptr = or_pack_int (ptr, server_info.num_stat);
+
+      // *INDENT-OFF*
+      for (const auto &s_info : server_info.stat_info)
+        {
+          ptr = or_pack_string (ptr, s_info.first.c_str ());
+          ptr = or_pack_int64 (ptr, s_info.second);
+        }
+      // *INDENT-ON*
+      assert (size == (int) (ptr - buffer));
+    }
+
+  if (error != NO_ERROR)
+    {
+      ptr = or_pack_int (reply, 0);
+      ptr = or_pack_int (ptr, error);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    }
+  else
+    {
+      ptr = or_pack_int (reply, size);
+      ptr = or_pack_int (ptr, error);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
+    }
+  db_private_free_and_init (thread_p, buffer_a);
+#else // WINDOWS
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+
+  // send error
+  ptr = or_pack_int (reply, 0);
+  ptr = or_pack_int (ptr, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+#endif // !WINDOWS
 }

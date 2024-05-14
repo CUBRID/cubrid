@@ -42,6 +42,8 @@
 #include "dbtype.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 

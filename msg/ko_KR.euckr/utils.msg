@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n

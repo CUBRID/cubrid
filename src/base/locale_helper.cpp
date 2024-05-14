@@ -25,6 +25,8 @@
 #include <locale>
 #include <codecvt>
 #include <string>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cublocale
 {
@@ -226,7 +228,7 @@ namespace cublocale
 	converted.resize (nLen);
 	MultiByteToWideChar (CP_UTF8, 0, in.data (), in.size (), &converted[0], nLen);
 #else
-	std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.from_bytes (in);
+	std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {} .from_bytes (in);
 #endif
 	out.assign (std::move (converted));
 	is_success = true;
@@ -270,7 +272,7 @@ namespace cublocale
 	out.resize (nLen);
 	WideCharToMultiByte (CP_UTF8, 0, in.data (), in.size (), &out[0], nLen, NULL, NULL);
 #else
-	out = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.to_bytes (in);
+	out = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {} .to_bytes (in);
 #endif
 	is_success = true;
       }

@@ -11216,3 +11216,74 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 #endif // CS_MODE
   return ER_NOT_IN_STANDALONE;
 }
+
+/*
+ * mmon_get_server_info - request to server to get server memory usage info
+ *
+ * return : cubrid error
+ *
+ *   server_info(in/out): save memory usage information of the server
+ */
+int
+mmon_get_server_info (MMON_SERVER_INFO & server_info)
+{
+#if defined(CS_MODE)
+  char *buffer, *ptr, *temp_str;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, dummy;
+  int error = NO_ERROR;
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_GET_SERVER_INFO, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
+    }
+
+  if (error == NO_ERROR)
+    {
+      // unpack server name
+      ptr = or_unpack_string_nocopy (buffer, &temp_str);
+      memcpy (server_info.server_name, temp_str, strlen (temp_str) + 1);
+
+      // unpack server total memory usage
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_mem_usage));
+
+      // unpack metainfo total memory usage
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_metainfo_mem_usage));
+
+      // unpack the number of stat
+      ptr = or_unpack_int (ptr, (int *) &(server_info.num_stat));
+
+      // unpack file name and its memory usage
+      server_info.stat_info.resize (server_info.num_stat);
+
+      // *INDENT-OFF*
+      // unpack memory usage entry info
+      for (auto &s_info : server_info.stat_info)
+        {
+          ptr = or_unpack_string_nocopy (ptr, &temp_str);
+          s_info.first = temp_str;
+          ptr = or_unpack_int64 (ptr, (int64_t *) &(s_info.second));
+        }
+      // *INDENT-ON*
+    }
+  free_and_init (buffer);
+
+  return error;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}

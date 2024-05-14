@@ -24,6 +24,8 @@
 #include "perf.hpp"
 
 #include <cassert>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 // todo: fix time unit
 
@@ -43,10 +45,10 @@ namespace cubthread
     cubperf::stat_definition (STAT_LOCK_WAKEUP_COUNT, cubperf::stat_definition::COUNTER, "waiter_lock_wakeup_count"),
     cubperf::stat_definition (STAT_SLEEP_COUNT, cubperf::stat_definition::COUNTER, "waiter_sleep_count"),
     cubperf::stat_definition (STAT_TIMEOUT_COUNT, cubperf::stat_definition::COUNTER,
-			      "waiter_timeout_count"),
+    "waiter_timeout_count"),
     cubperf::stat_definition (STAT_NO_SLEEP_COUNT, cubperf::stat_definition::COUNTER, "waiter_no_sleep_count"),
     cubperf::stat_definition (STAT_AWAKEN_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
-			      "waiter_awake_count", "waiter_wakeup_delay_time")
+    "waiter_awake_count", "waiter_wakeup_delay_time")
   };
 
   // atomic statistics

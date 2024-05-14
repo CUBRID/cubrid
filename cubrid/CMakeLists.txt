@@ -105,6 +105,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/memory_monitor_api.cpp
+  ${BASE_DIR}/memory_monitor_sr.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
@@ -150,6 +152,10 @@ set (BASE_HEADERS
   ${BASE_DIR}/lockfree_transaction_table.hpp
   ${BASE_DIR}/lockfree_transaction_system.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_cwrapper.h
+  ${BASE_DIR}/memory_wrapper.hpp
+  ${BASE_DIR}/memory_monitor_common.hpp
+  ${BASE_DIR}/memory_monitor_sr.hpp
   ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
   ${BASE_DIR}/msgcat_set_log.hpp

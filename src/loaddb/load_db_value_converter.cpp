@@ -37,6 +37,8 @@
 #include <cassert>
 #include <cmath>
 #include <cstring> // for std::memcpy
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 const std::size_t MAX_DIGITS_FOR_SHORT = 5;   // default for 16 bit signed shorts: 32767 (0x7FFF)
 const std::size_t MAX_DIGITS_FOR_INT = 10;    // default for 32 bit signed integers: 2147483647 (0x7FFFFFFF)

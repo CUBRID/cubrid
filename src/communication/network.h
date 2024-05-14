@@ -271,6 +271,9 @@ enum net_server_request
   NET_SERVER_FLASHBACK_GET_SUMMARY,
   NET_SERVER_FLASHBACK_GET_LOGINFO,
 
+  /* memmon */
+  NET_SERVER_MMON_GET_SERVER_INFO,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.

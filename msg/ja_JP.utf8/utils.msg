@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 レングスが正しくないか、正しくない文字「%1$c」がデータベース名「%2$s」に入っています。\n
@@ -1314,3 +1315,14 @@ flashback：特定のトランザクションをフラッシュバックする�
                                   フラッシュバック用。デフォルト：フラッシュバックのSQLステートメントのみを出力します\n\
     --oldest                      フラッシュバックは、開始時刻から終了時刻まで実行されたSQLステートメントに対して時系列で実行されます;\n\
                                   デフォルト：最新\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 'cubrid.conf'内のシステムパラメータ 'enable_memory_monitoring' を設定し、データベースサーバーを再起動してください。\n\
+2 memmon はスタンドアロンモードで実行できません。\n\
+3 ファイル名 %1$s で出力ファイルを開けませんでした。\n\
+60 \
+memmon: データベースサーバーのメモリ使用状況情報を提供します。\n\
+使用法: %1$s memmon [OPTION] データベース名\n\
+\n\
+有効なオプション:\n\
+    -o, --output-file=FILE    結果を FILE に出力します\n

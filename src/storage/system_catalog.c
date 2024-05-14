@@ -44,6 +44,8 @@
 #include "object_representation.h"
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

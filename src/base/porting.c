@@ -58,6 +58,8 @@
 #include <sys/types.h>
 #include <string.h>
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined(AIX) && !defined(DONT_HOOK_MALLOC)
 #undef malloc
@@ -1311,7 +1313,6 @@ os_rename_file (const char *src_path, const char *dest_path)
 #endif /* WINDOWS */
 }
 
-#include <signal.h>
 /*
  * os_set_signal_handler() - sets the signal handler
  *   return: Old signal handler which can be used to restore
