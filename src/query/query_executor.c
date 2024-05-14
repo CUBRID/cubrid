@@ -521,10 +521,16 @@ static QFILE_LIST_ID *qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID *
 static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_hash_join_init (THREAD_ENTRY * thread_p, XASL_NODE * build_xasl, HASH_LIST_SCAN * hash_join_p,
 				 int value_count, bool need_coerce_type);
-static void qexec_hash_join_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p, int value_count);
-static int qexec_hash_join_build (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p,
-				  QFILE_LIST_SCAN_ID * build_scan_id_p, int *build_value_indexes, TP_DOMAIN ** domains,
-				  TP_DOMAIN ** coerce_domains);
+static void qexec_hash_join_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p);
+static int qexec_hash_join_fetch_values (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record_p,
+					 HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, int *value_indexes,
+					 TP_DOMAIN ** domains, TP_DOMAIN ** coerce_domains, bool need_coerce_type);
+static int qexec_hash_join_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p,
+				      QFILE_TUPLE_RECORD * tuple_record_p, QFILE_LIST_SCAN_ID * scan_id_p);
+static int qexec_hash_join_prove_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p,
+				      QFILE_TUPLE_RECORD * tuple_record_p, QFILE_LIST_SCAN_ID * scan_id_p);
+static int qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, HASH_LIST_SCAN * hash_join_p,
+				  int *value_indexes, TP_DOMAIN ** domains, TP_DOMAIN ** coerce_domains);
 static int qexec_hash_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 				  QFILE_LIST_MERGE_INFO * merge_info_p, HASH_LIST_SCAN * hash_join_p,
 				  QFILE_LIST_SCAN_ID * prove_scan_id_p, QFILE_LIST_SCAN_ID * build_scan_id_p,
@@ -6485,10 +6491,35 @@ static int
 qexec_hash_join_init (THREAD_ENTRY * thread_p, XASL_NODE * build_xasl, HASH_LIST_SCAN * hash_join_p, int value_count,
 		      bool need_coerce_type)
 {
-  static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE);
+  static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+
+  if (thread_p == NULL || build_xasl == NULL || build_xasl->list_id == NULL || hash_join_p == NULL || value_count <= 0)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (build_xasl->list_id->tuple_cnt <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  memset (hash_join_p, 0, sizeof (HASH_LIST_SCAN));
 
   hash_join_p->build_regu_list = NULL;
   hash_join_p->probe_regu_list = NULL;
+
+  hash_join_p->temp_key = qdata_alloc_hscan_key (thread_p, value_count, true);
+  if (hash_join_p->temp_key == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  hash_join_p->temp_new_key = qdata_alloc_hscan_key (thread_p, value_count, true);
+  if (hash_join_p->temp_new_key == NULL)
+    {
+      goto exit_on_error;
+    }
 
   if ((UINT64) build_xasl->list_id->page_cnt * DB_PAGESIZE <= mem_limit)
     {
@@ -6535,206 +6566,416 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, XASL_NODE * build_xasl, HASH_LIST
     }
 
   hash_join_p->curr_hash_key = 0;
-
-  hash_join_p->temp_key = qdata_alloc_hscan_key (thread_p, value_count, true);
-  if (hash_join_p->temp_key == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  hash_join_p->temp_new_key = qdata_alloc_hscan_key (thread_p, value_count, true);
-  if (hash_join_p->temp_new_key == NULL)
-    {
-      goto exit_on_error;
-    }
-
   hash_join_p->need_coerce_type = need_coerce_type;
 
   return NO_ERROR;
 
 exit_on_error:
-  qexec_hash_join_clear (thread_p, hash_join_p, value_count);
+  qexec_hash_join_clear (thread_p, hash_join_p);
 
   return ER_FAILED;
 }
 
 static void
-qexec_hash_join_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p, int value_count)
+qexec_hash_join_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p)
 {
+  if (thread_p == NULL || hash_join_p == NULL)
+    {
+      assert (false);
+      return;
+    }
+
   if (hash_join_p->build_regu_list != NULL)
     {
+      assert (false);		/* not used in hash join */
       qexec_reset_regu_variable_list (hash_join_p->build_regu_list);
     }
 
   if (hash_join_p->probe_regu_list != NULL)
     {
+      assert (false);		/* not used in hash join */
       qexec_reset_regu_variable_list (hash_join_p->probe_regu_list);
+    }
+
+  if (hash_join_p->temp_key != NULL)
+    {
+      qdata_free_hscan_key (thread_p, hash_join_p->temp_key, hash_join_p->temp_key->val_count);
+    }
+
+  if (hash_join_p->temp_new_key != NULL)
+    {
+      qdata_free_hscan_key (thread_p, hash_join_p->temp_new_key, hash_join_p->temp_new_key->val_count);
     }
 
   if (hash_join_p->hash_list_scan_type == HASH_METH_IN_MEM || hash_join_p->hash_list_scan_type == HASH_METH_HYBRID)
     {
-      mht_clear_hls (hash_join_p->memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
-      mht_destroy_hls (hash_join_p->memory.hash_table);
+      if (hash_join_p->memory.hash_table != NULL)
+	{
+	  mht_clear_hls (hash_join_p->memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
+	  mht_destroy_hls (hash_join_p->memory.hash_table);
+	}
 
       hash_join_p->memory.curr_hash_entry = NULL;
     }
   else if (hash_join_p->hash_list_scan_type == HASH_METH_HASH_FILE)
     {
-      fhs_destroy (thread_p, hash_join_p->file.hash_table);
-      db_private_free_and_init (thread_p, hash_join_p->file.hash_table);
+      if (hash_join_p->file.hash_table != NULL)
+	{
+	  fhs_destroy (thread_p, hash_join_p->file.hash_table);
+	  db_private_free_and_init (thread_p, hash_join_p->file.hash_table);
+	}
 
       hash_join_p->file.curr_oid = OID_INITIALIZER;
       hash_join_p->file.is_dk_bucket = false;
     }
+  else
+    {
+      /* nothing to do */
+    }
 
   hash_join_p->hash_list_scan_type == HASH_METH_NOT_USE;
   hash_join_p->curr_hash_key = 0;
-
-  if (hash_join_p->temp_key != NULL)
-    {
-      qdata_free_hscan_key (thread_p, hash_join_p->temp_key, value_count);
-    }
-
-  if (hash_join_p->temp_new_key != NULL)
-    {
-      qdata_free_hscan_key (thread_p, hash_join_p->temp_new_key, value_count);
-    }
-
   hash_join_p->need_coerce_type = false;
 }
 
 static int
-qexec_hash_join_build (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p, QFILE_LIST_SCAN_ID * build_scan_id_p,
-		       int *build_value_indexes, TP_DOMAIN ** domains, TP_DOMAIN ** coerce_domains)
+qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record_p, HASH_SCAN_KEY * key,
+			   HASH_SCAN_KEY * compare_key, int *value_indexes, TP_DOMAIN ** domains,
+			   TP_DOMAIN ** coerce_domains, bool need_coerce_type)
 {
-  SCAN_CODE qp_scan;
   OR_BUF iterator, buf;
-  DB_VALUE temp_value;
-  int rc /*return code */ , value_index, skip_index;
-
-  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_TUPLE_VALUE_FLAG flag;
+  DB_VALUE temp_value;
+  DB_VALUE_COMPARE_RESULT c;
+  int value_index, skip_index;
+  int error = NO_ERROR;
 
-  HASH_SCAN_KEY *key;
-  unsigned int hash_key;
-  HASH_SCAN_VALUE *hash_value = NULL;
-  TFTID tftid;
-
-  assert (thread_p != NULL);
-  assert (hash_join_p != NULL);
-  assert (build_scan_id_p != NULL);
-  assert (domains != NULL);
-
-  assert (hash_join_p->need_coerce_type == false || coerce_domains != NULL);
+  if (thread_p == NULL || tuple_record_p == NULL || key == NULL || value_indexes == NULL || domains == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
 
   db_make_null (&temp_value);
 
-  key = hash_join_p->temp_key;
+  c = DB_EQ;
 
-  while ((qp_scan = qfile_scan_list_next (thread_p, build_scan_id_p, &tuple_record, PEEK)) == S_SUCCESS)
+  for (value_index = 0; value_index < key->val_count; value_index++)
     {
-      for (value_index = 0; value_index < key->val_count; value_index++)
+      or_init (&iterator, tuple_record_p->tpl, QFILE_GET_TUPLE_LENGTH (tuple_record_p->tpl));
+
+      /* skip tuple header */
+      error = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
+      if (error != NO_ERROR)
 	{
-	  or_init (&iterator, tuple_record.tpl, QFILE_GET_TUPLE_LENGTH (tuple_record.tpl));
+	  goto exit_on_error;
+	}
 
-	  rc = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);	/* skip tuple header */
-	  if (rc != NO_ERROR)
+      for (skip_index = 0; skip_index < value_indexes[value_index]; skip_index++)
+	{
+	  error = or_advance (&iterator, QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (iterator.ptr));
+	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
+	}
 
-	  for (skip_index = 0; skip_index < build_value_indexes[value_index]; skip_index++)
-	    {
-	      rc = or_advance (&iterator, QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (iterator.ptr));
-	      if (rc != NO_ERROR)
-		{
-		  assert (false);
-		  goto exit_on_error;
-		}
-	    }
-
-	  rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
-	  if (rc != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  if (flag == V_UNBOUND)
-	    {
-	      /* next tuple */
-	      break;
-	    }
-
-	  pr_clear_value (key->values[value_index]);
-
-	  if (hash_join_p->need_coerce_type == true && coerce_domains != NULL && coerce_domains[value_index] != NULL
-	      && coerce_domains[value_index] != domains[value_index])
-	    {
-	      pr_clear_value (&temp_value);
-
-	      domains[value_index]->type->data_readval (&buf, &temp_value, domains[value_index], -1, false, NULL, 0);
-
-	      if (tp_value_coerce (&temp_value, key->values[value_index], coerce_domains[value_index]) !=
-		  DOMAIN_COMPATIBLE)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-			  pr_type_name (TP_DOMAIN_TYPE (domains[value_index])),
-			  pr_type_name (TP_DOMAIN_TYPE (coerce_domains[value_index])));
-		  goto exit_on_error;
-		}
-	    }
-	  else
-	    {
-	      domains[value_index]->type->data_readval (&buf, key->values[value_index], domains[value_index], -1, false,
-							NULL, 0);
-	    }
+      error = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
 	}
 
       if (flag == V_UNBOUND)
 	{
 	  /* next tuple */
-	  continue;
+	  goto exit_on_end;
 	}
 
-      hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_join_p->hash_list_scan_type);
+      pr_clear_value (key->values[value_index]);
 
-      if (hash_join_p->hash_list_scan_type == HASH_METH_IN_MEM)
+      if (need_coerce_type == true && coerce_domains != NULL && coerce_domains[value_index] != NULL
+	  && coerce_domains[value_index] != domains[value_index])
 	{
-	  hash_value = qdata_alloc_hscan_value (thread_p, tuple_record.tpl);
-	  if (hash_value == NULL)
-	    {
-	      goto exit_on_error;
-	    }
+	  pr_clear_value (&temp_value);
 
-	  if (mht_put_hls (hash_join_p->memory.hash_table, (void *) &hash_key, (void *) hash_value) == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-      else if (hash_join_p->hash_list_scan_type == HASH_METH_HYBRID)
-	{
-	  hash_value = qdata_alloc_hscan_value_OID (thread_p, build_scan_id_p);
-	  if (hash_value == NULL)
-	    {
-	      goto exit_on_error;
-	    }
+	  domains[value_index]->type->data_readval (&buf, &temp_value, domains[value_index], -1, false, NULL, 0);
 
-	  if (mht_put_hls (hash_join_p->memory.hash_table, (void *) &hash_key, (void *) hash_value) == NULL)
+	  if (tp_value_coerce (&temp_value, key->values[value_index], coerce_domains[value_index]) != DOMAIN_COMPATIBLE)
 	    {
+	      error = ER_TP_CANT_COERCE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		      pr_type_name (TP_DOMAIN_TYPE (domains[value_index])),
+		      pr_type_name (TP_DOMAIN_TYPE (coerce_domains[value_index])));
 	      goto exit_on_error;
 	    }
 	}
       else
 	{
-	  assert (hash_join_p->hash_list_scan_type == HASH_METH_HASH_FILE);
+	  domains[value_index]->type->data_readval (&buf, key->values[value_index], domains[value_index], -1, false,
+						    NULL, 0);
+	}
 
-	  SET_TFTID (tftid, build_scan_id_p->curr_vpid.volid, build_scan_id_p->curr_vpid.pageid,
-		     build_scan_id_p->curr_offset);
+      if (compare_key != NULL)
+	{
+	  c = tp_value_compare (key->values[value_index], compare_key->values[value_index], 0, 0);
+	  if (c != DB_EQ)
+	    {
+	      /* next tuple */
+	      goto exit_on_end;
+	    }
+	}
+    }
 
-	  if (fhs_insert (thread_p, hash_join_p->file.hash_table, (void *) &hash_key, &tftid) == NULL)
+exit_on_end:
+  pr_clear_value (&temp_value);
+
+  if (value_index != key->val_count)
+    {
+      return value_index;
+    }
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (error == NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
+
+  pr_clear_value (&temp_value);
+
+  return error;
+}
+
+static int
+qexec_hash_join_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p,
+			   QFILE_TUPLE_RECORD * tuple_record_p, QFILE_LIST_SCAN_ID * scan_id_p)
+{
+  HASH_SCAN_VALUE *hash_value = NULL;
+  TFTID tftid;
+  int error = NO_ERROR;
+
+  if (thread_p == NULL || hash_join_p == NULL || hash_join_p->temp_key == NULL
+      || (tuple_record_p == NULL && scan_id_p == NULL))
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (hash_join_p->hash_list_scan_type == HASH_METH_IN_MEM)
+    {
+      hash_value = qdata_alloc_hscan_value (thread_p, tuple_record_p->tpl);
+      if (hash_value == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      if (mht_put_hls (hash_join_p->memory.hash_table, (void *) &hash_join_p->curr_hash_key, (void *) hash_value) ==
+	  NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+  else if (hash_join_p->hash_list_scan_type == HASH_METH_HYBRID)
+    {
+      hash_value = qdata_alloc_hscan_value_OID (thread_p, scan_id_p);
+      if (hash_value == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      if (mht_put_hls (hash_join_p->memory.hash_table, (void *) &hash_join_p->curr_hash_key, (void *) hash_value) ==
+	  NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+  else if (hash_join_p->hash_list_scan_type == HASH_METH_HASH_FILE)
+    {
+      SET_TFTID (tftid, scan_id_p->curr_vpid.volid, scan_id_p->curr_vpid.pageid, scan_id_p->curr_offset);
+
+      if (fhs_insert (thread_p, hash_join_p->file.hash_table, (void *) &hash_join_p->curr_hash_key, &tftid) == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+  else
+    {
+      assert (false);
+      goto exit_on_error;
+    }
+
+  return NO_ERROR;
+
+exit_on_error:
+  return ER_FAILED;
+}
+
+static int
+qexec_hash_join_prove_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p,
+			   QFILE_TUPLE_RECORD * tuple_record_p, QFILE_LIST_SCAN_ID * scan_id_p)
+{
+  SCAN_CODE qp_scan;
+  QFILE_TUPLE_POSITION tuple_position;
+  unsigned int hash_key;
+  HASH_SCAN_VALUE *hash_value = NULL;
+  TFTID tftid;
+  EH_SEARCH eh_search;
+  int error = NO_ERROR;
+
+  if (thread_p == NULL || hash_join_p == NULL || hash_join_p->temp_key == NULL
+      || (tuple_record_p == NULL && scan_id_p == NULL))
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (hash_join_p->hash_list_scan_type == HASH_METH_IN_MEM)
+    {
+      if (tuple_record_p->tpl == NULL)
+	{
+	  hash_value =
+	    (HASH_SCAN_VALUE *) mht_get_hls (hash_join_p->memory.hash_table, (void *) &hash_join_p->curr_hash_key,
+					     (void **) &hash_join_p->memory.curr_hash_entry);
+	}
+      else
+	{
+	  hash_value =
+	    (HASH_SCAN_VALUE *) mht_get_next_hls (hash_join_p->memory.hash_table, (void *) &hash_join_p->curr_hash_key,
+						  (void **) &hash_join_p->memory.curr_hash_entry);
+	}
+
+      if (hash_value == NULL)
+	{
+	  tuple_record_p->tpl = NULL;
+	  tuple_record_p->size = 0;
+
+	  /* next tuple */
+	  goto exit_on_end;
+	}
+
+      tuple_record_p->tpl = ((HASH_SCAN_VALUE *) hash_join_p->memory.curr_hash_entry->data)->tuple;
+      tuple_record_p->size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_record_p->tpl);
+    }
+  else if (hash_join_p->hash_list_scan_type == HASH_METH_HYBRID)
+    {
+      if (tuple_record_p->tpl == NULL)
+	{
+	  hash_value =
+	    (HASH_SCAN_VALUE *) mht_get_hls (hash_join_p->memory.hash_table, (void *) &hash_join_p->curr_hash_key,
+					     (void **) &hash_join_p->memory.curr_hash_entry);
+	}
+      else
+	{
+	  hash_value =
+	    (HASH_SCAN_VALUE *) mht_get_next_hls (hash_join_p->memory.hash_table, (void *) &hash_join_p->curr_hash_key,
+						  (void **) &hash_join_p->memory.curr_hash_entry);
+	}
+
+      if (hash_value == NULL)
+	{
+	  tuple_record_p->tpl = NULL;
+	  tuple_record_p->size = 0;
+
+	  /* next tuple */
+	  goto exit_on_end;
+	}
+
+      MAKE_TUPLE_POSTION (tuple_position, hash_value->pos, scan_id_p);
+
+      qp_scan = qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_position, tuple_record_p, PEEK);
+      if (qp_scan != S_SUCCESS)
+	{
+	  goto exit_on_error;
+	}
+    }
+  else if (hash_join_p->hash_list_scan_type == HASH_METH_HASH_FILE)
+    {
+      if (tuple_record_p->tpl == NULL)
+	{
+	  eh_search = fhs_search (thread_p, hash_join_p, &tftid);
+	}
+      else
+	{
+	  eh_search = fhs_search_next (thread_p, hash_join_p, &tftid);
+	}
+
+      if (eh_search == EH_KEY_FOUND)
+	{
+	  MAKE_TFTID_TO_TUPLE_POSTION (tuple_position, tftid, scan_id_p);
+
+	  qp_scan = qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_position, tuple_record_p, PEEK);
+	  if (qp_scan != S_SUCCESS)
 	    {
 	      goto exit_on_error;
 	    }
+	}
+      else if (eh_search == EH_KEY_NOTFOUND)
+	{
+	  tuple_record_p->tpl = NULL;
+	  tuple_record_p->size = 0;
+
+	  /* next tuple */
+	  goto exit_on_end;
+	}
+      else
+	{
+	  goto exit_on_error;
+	}
+    }
+  else
+    {
+      goto exit_on_error;
+    }
+
+exit_on_end:
+  return NO_ERROR;
+
+exit_on_error:
+  return ER_FAILED;
+}
+
+static int
+qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, HASH_LIST_SCAN * hash_join_p,
+		       int *value_indexes, TP_DOMAIN ** domains, TP_DOMAIN ** coerce_domains)
+{
+  SCAN_CODE qp_scan;
+  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  int error = NO_ERROR;
+
+  if (thread_p == NULL || scan_id_p == NULL || hash_join_p == NULL || hash_join_p->temp_key == NULL
+      || value_indexes == NULL || domains == NULL || (hash_join_p->need_coerce_type == true && coerce_domains == NULL))
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  while ((qp_scan = qfile_scan_list_next (thread_p, scan_id_p, &tuple_record, PEEK)) == S_SUCCESS)
+    {
+      error =
+	qexec_hash_join_fetch_key (thread_p, &tuple_record, hash_join_p->temp_key, NULL, value_indexes, domains,
+				   coerce_domains, hash_join_p->need_coerce_type);
+      if (error != NO_ERROR)
+	{
+	  if (error < 0)
+	    {
+	      goto exit_on_error;
+	    }
+	  else
+	    {
+	      /* next tuple */
+	      continue;
+	    }
+	}
+
+      hash_join_p->curr_hash_key =
+	qdata_hash_scan_key (hash_join_p->temp_key, UINT_MAX, hash_join_p->hash_list_scan_type);
+
+      error = qexec_hash_join_build_key (thread_p, hash_join_p, &tuple_record, scan_id_p);
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
 	}
     }
 
@@ -6745,14 +6986,16 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p, QF
 
   assert (qp_scan == S_END);
 
-  pr_clear_value (&temp_value);
-
-  return NO_ERROR;
+exit_on_end:
+  return error;
 
 exit_on_error:
-  pr_clear_value (&temp_value);
+  if (error == NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
 
-  return ER_FAILED;
+  return error;
 }
 
 static int
@@ -6762,40 +7005,20 @@ qexec_hash_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFILE
 		       TP_DOMAIN ** prove_domains, TP_DOMAIN ** build_domains, TP_DOMAIN ** coerce_domains)
 {
   SCAN_CODE qp_scan;
-  OR_BUF iterator, buf;
-  DB_VALUE temp_value;
-  int value_index, skip_index;
-  int error = NO_ERROR;
-
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD found_tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD result_tuple_record = { NULL, 0 };
-  QFILE_TUPLE_POSITION tuple_position;
-  QFILE_TUPLE_VALUE_FLAG flag;
-
   HASH_SCAN_KEY *key, *found_key;
-  unsigned int hash_key;
-  HASH_SCAN_VALUE *hash_value = NULL, *found_hash_value = NULL;
-  HENTRY_HLS_PTR found_hash_entry;
-  TFTID tftid;
-  EH_SEARCH eh_search;
+  int error = NO_ERROR;
 
-  DB_VALUE_COMPARE_RESULT c;
-
-  assert (thread_p != NULL);
-  assert (list_id_p != NULL);
-  assert (merge_info_p != NULL);
-  assert (hash_join_p != NULL);
-  assert (prove_scan_id_p != NULL);
-  assert (build_scan_id_p != NULL);
-  assert (prove_value_indexes != NULL);
-  assert (build_value_indexes != NULL);
-  assert (prove_domains != NULL);
-  assert (build_domains != NULL);
-
-  assert (hash_join_p->need_coerce_type == false || coerce_domains != NULL);
-
-  db_make_null (&temp_value);
+  if (thread_p == NULL || list_id_p == NULL || merge_info_p == NULL || hash_join_p == NULL
+      || hash_join_p->temp_key == NULL || hash_join_p->temp_new_key == NULL || prove_scan_id_p == NULL
+      || build_scan_id_p == NULL || prove_value_indexes == NULL || build_value_indexes == NULL || prove_domains == NULL
+      || build_domains == NULL || (hash_join_p->need_coerce_type == true && coerce_domains == NULL))
+    {
+      assert (false);
+      return ER_FAILED;
+    }
 
   key = hash_join_p->temp_key;
   found_key = hash_join_p->temp_new_key;
@@ -6812,268 +7035,63 @@ qexec_hash_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFILE
       qfile_print_tuple (&prove_scan_id_p->list_id.type_list, tuple_record.tpl);
 #endif
 
-      for (value_index = 0; value_index < key->val_count; value_index++)
+      error =
+	qexec_hash_join_fetch_key (thread_p, &tuple_record, key, NULL, prove_value_indexes, prove_domains,
+				   coerce_domains, hash_join_p->need_coerce_type);
+      if (error != NO_ERROR)
 	{
-	  or_init (&iterator, tuple_record.tpl, QFILE_GET_TUPLE_LENGTH (tuple_record.tpl));
-
-	  error = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);	/* skip tuple header */
-	  if (error != NO_ERROR)
+	  if (error < 0)
 	    {
 	      goto exit_on_error;
-	    }
-
-	  for (skip_index = 0; skip_index < prove_value_indexes[value_index]; skip_index++)
-	    {
-	      error =
-		or_advance (&iterator, QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (iterator.ptr));
-	      if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	    }
-
-	  error = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  if (flag == V_UNBOUND)
-	    {
-	      /* next tuple */
-	      break;
-	    }
-
-	  pr_clear_value (key->values[value_index]);
-
-	  if (hash_join_p->need_coerce_type == true && coerce_domains != NULL && coerce_domains[value_index] != NULL
-	      && coerce_domains[value_index] != prove_domains[value_index])
-	    {
-	      pr_clear_value (&temp_value);
-
-	      prove_domains[value_index]->type->data_readval (&buf, &temp_value, prove_domains[value_index], -1, false,
-							      NULL, 0);
-
-	      if (tp_value_coerce (&temp_value, key->values[value_index], coerce_domains[value_index]) !=
-		  DOMAIN_COMPATIBLE)
-		{
-		  error = ER_TP_CANT_COERCE;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-			  pr_type_name (TP_DOMAIN_TYPE (prove_domains[value_index])),
-			  pr_type_name (TP_DOMAIN_TYPE (coerce_domains[value_index])));
-		  goto exit_on_error;
-		}
 	    }
 	  else
 	    {
-	      prove_domains[value_index]->type->data_readval (&buf, key->values[value_index],
-							      prove_domains[value_index], -1, false, NULL, 0);
+	      /* next tuple */
+	      continue;
 	    }
 	}
 
-      if (flag == V_UNBOUND)
-	{
-	  /* next tuple */
-	  continue;
-	}
-
-      hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_join_p->hash_list_scan_type);
-      hash_join_p->curr_hash_key = hash_key;
+      hash_join_p->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_join_p->hash_list_scan_type);
 
       do
 	{
-	  if (hash_join_p->hash_list_scan_type == HASH_METH_IN_MEM)
+	  error = qexec_hash_join_prove_key (thread_p, hash_join_p, &found_tuple_record, build_scan_id_p);
+	  if (error != NO_ERROR)
 	    {
-	      if (found_tuple_record.tpl == NULL)
-		{
-		  found_hash_value =
-		    (HASH_SCAN_VALUE *) mht_get_hls (hash_join_p->memory.hash_table, (void *) &hash_key,
-						     (void **) &found_hash_entry);
-		}
-	      else
-		{
-		  found_hash_value =
-		    (HASH_SCAN_VALUE *) mht_get_next_hls (hash_join_p->memory.hash_table, (void *) &hash_key,
-							  (void **) &found_hash_entry);
-		}
-
-	      if (found_hash_value == NULL)
-		{
-		  found_tuple_record.tpl = NULL;
-		  found_tuple_record.size = 0;
-
-		  /* next tuple */
-		  break;
-		}
-
-	      found_tuple_record.tpl = ((HASH_SCAN_VALUE *) found_hash_entry->data)->tuple;
-	      found_tuple_record.size = QFILE_GET_TUPLE_VALUE_LENGTH (found_tuple_record.tpl);
+	      goto exit_on_error;
 	    }
-	  else if (hash_join_p->hash_list_scan_type == HASH_METH_HYBRID)
+
+	  if (found_tuple_record.tpl == NULL)
 	    {
-	      if (found_tuple_record.tpl == NULL)
-		{
-		  found_hash_value =
-		    (HASH_SCAN_VALUE *) mht_get_hls (hash_join_p->memory.hash_table, (void *) &hash_key,
-						     (void **) &found_hash_entry);
-		}
-	      else
-		{
-		  found_hash_value =
-		    (HASH_SCAN_VALUE *) mht_get_next_hls (hash_join_p->memory.hash_table, (void *) &hash_key,
-							  (void **) &found_hash_entry);
-		}
-
-	      if (found_hash_value == NULL)
-		{
-		  found_tuple_record.tpl = NULL;
-		  found_tuple_record.size = 0;
-
-		  /* next tuple */
-		  break;
-		}
-
-	      MAKE_TUPLE_POSTION (tuple_position, found_hash_value->pos, build_scan_id_p);
-
-	      qp_scan =
-		qfile_jump_scan_tuple_position (thread_p, build_scan_id_p, &tuple_position, &found_tuple_record, PEEK);
-	      if (qp_scan != S_SUCCESS)
-		{
-		  goto exit_on_error;
-		}
-	    }
-	  else
-	    {
-	      if (found_tuple_record.tpl == NULL)
-		{
-		  eh_search = fhs_search (thread_p, hash_join_p, &tftid);
-		}
-	      else
-		{
-		  eh_search = fhs_search_next (thread_p, hash_join_p, &tftid);
-		}
-
-	      if (eh_search == EH_KEY_FOUND)
-		{
-		  MAKE_TFTID_TO_TUPLE_POSTION (tuple_position, tftid, build_scan_id_p);
-
-		  qp_scan =
-		    qfile_jump_scan_tuple_position (thread_p, build_scan_id_p, &tuple_position, &found_tuple_record,
-						    PEEK);
-		  if (qp_scan != S_SUCCESS)
-		    {
-		      goto exit_on_error;
-		    }
-		}
-	      else if (eh_search == EH_KEY_NOTFOUND)
-		{
-		  found_tuple_record.tpl = NULL;
-		  found_tuple_record.size = 0;
-
-		  /* next tuple */
-		  break;
-		}
-	      else
-		{
-		  goto exit_on_error;
-		}
+	      /* next tuple */
+	      break;
 	    }
 
 #if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
 	  qfile_print_tuple (&build_scan_id_p->list_id.type_list, found_tuple_record.tpl);
 #endif
 
-	  c = DB_EQ;
-
-	  for (value_index = 0; value_index < key->val_count; value_index++)
+	  error =
+	    qexec_hash_join_fetch_key (thread_p, &found_tuple_record, found_key, key, build_value_indexes,
+				       build_domains, coerce_domains, hash_join_p->need_coerce_type);
+	  if (error != NO_ERROR)
 	    {
-	      or_init (&iterator, found_tuple_record.tpl, QFILE_GET_TUPLE_LENGTH (found_tuple_record.tpl));
-
-	      error = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);	/* skip tuple header */
-	      if (error != NO_ERROR)
+	      if (error < 0)
 		{
 		  goto exit_on_error;
-		}
-
-	      for (skip_index = 0; skip_index < build_value_indexes[value_index]; skip_index++)
-		{
-		  error =
-		    or_advance (&iterator, QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (iterator.ptr));
-		  if (error != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
-		}
-
-	      error = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
-	      if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-
-	      if (flag == V_UNBOUND)
-		{
-		  /* next tuple */
-		  assert (false);
-		  break;
-		}
-
-	      pr_clear_value (found_key->values[value_index]);
-
-	      if (hash_join_p->need_coerce_type == true && coerce_domains != NULL && coerce_domains[value_index] != NULL
-		  && coerce_domains[value_index] != build_domains[value_index])
-		{
-		  pr_clear_value (&temp_value);
-
-		  build_domains[value_index]->type->data_readval (&buf, &temp_value, build_domains[value_index], -1,
-								  false, NULL, 0);
-
-		  if (tp_value_coerce (&temp_value, found_key->values[value_index], coerce_domains[value_index]) !=
-		      DOMAIN_COMPATIBLE)
-		    {
-		      error = ER_TP_CANT_COERCE;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-			      pr_type_name (TP_DOMAIN_TYPE (build_domains[value_index])),
-			      pr_type_name (TP_DOMAIN_TYPE (coerce_domains[value_index])));
-		      goto exit_on_error;
-		    }
 		}
 	      else
 		{
-		  build_domains[value_index]->type->data_readval (&buf, found_key->values[value_index],
-								  build_domains[value_index], -1, false, NULL, 0);
-		}
-
-#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
-	      db_value_fprint (stdout, key->values[value_index]);
-	      db_value_fprint (stdout, found_key->values[value_index]);
-#endif
-
-	      c = tp_value_compare (key->values[value_index], found_key->values[value_index], 0, 0);
-	      if (c != DB_EQ)
-		{
-		  break;
+		  /* next tuple */
+		  continue;
 		}
 	    }
 
-	  if (flag == V_UNBOUND)
+	  error = qexec_merge_tuple_add_list
+	    (thread_p, list_id_p, &tuple_record, &found_tuple_record, merge_info_p, &result_tuple_record);
+	  if (error != NO_ERROR)
 	    {
-	      /* next tuple */
-	      continue;
-	    }
-
-	  if (c == DB_EQ)
-	    {
-	      error = qexec_merge_tuple_add_list
-		(thread_p, list_id_p, &tuple_record, &found_tuple_record, merge_info_p, &result_tuple_record);
-	      if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	    }
-	  else
-	    {
-	      continue;
+	      goto exit_on_error;
 	    }
 	}
       while (true);
@@ -7091,8 +7109,6 @@ exit_on_end:
     {
       db_private_free_and_init (thread_p, result_tuple_record.tpl);
     }
-
-  pr_clear_value (&temp_value);
 
   return error;
 
@@ -7764,7 +7780,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
     }
 
   error =
-    qexec_hash_join_build (thread_p, &hash_join, &inner_scan_id, merge_info_p->ls_inner_column, inner_domains,
+    qexec_hash_join_build (thread_p, &inner_scan_id, &hash_join, merge_info_p->ls_inner_column, inner_domains,
 			   coerce_domains);
   if (error != NO_ERROR)
     {
@@ -7852,7 +7868,7 @@ exit_on_end:
 
   if (hash_join.hash_list_scan_type != HASH_METH_NOT_USE)
     {
-      qexec_hash_join_clear (thread_p, &hash_join, value_count);
+      qexec_hash_join_clear (thread_p, &hash_join);
     }
 
   qfile_close_scan (thread_p, &outer_scan_id);
