@@ -678,12 +678,12 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   const char *query_all =
     "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
-    "from [db_serial] where [class_name] is null and [att_name] is null";
+    "from [db_serial] where [class_name] is null and [attr_name] is null";
 
   const char *query_user =
     "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
-    "from [db_serial] where [class_name] is null and [att_name] is null and owner.name='%s'";
+    "from [db_serial] where [class_name] is null and [attr_name] is null and owner.name='%s'";
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
