@@ -77,13 +77,13 @@
 #include "environment_variable.h"
 #include "tcp.h"
 #include "host_lookup.h"
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
 
 #ifndef HAVE_GETHOSTBYNAME_R
 #include <pthread.h>
 static pthread_mutex_t gethostbyname_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* HAVE_GETHOSTBYNAME_R */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define HOST_ID_ARRAY_SIZE 8	/* size of the host_id string */
 #define TCP_MIN_NUM_RETRIES 3
