@@ -77,6 +77,8 @@
 #include "environment_variable.h"
 #include "tcp.h"
 #include "host_lookup.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #ifndef HAVE_GETHOSTBYNAME_R
 #include <pthread.h>
