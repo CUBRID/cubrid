@@ -3192,6 +3192,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
+  xasl_node *xptr;
 
   if (xasl_p == NULL)
     {
@@ -3224,19 +3225,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case UNION_PROC:
-      fprintf (fp, "UNION\n");
-      qdump_print_stats_text (fp, xasl_p->proc.union_.left, indent);
-      qdump_print_stats_text (fp, xasl_p->proc.union_.right, indent);
-      break;
     case DIFFERENCE_PROC:
-      fprintf (fp, "DIFFERENCE\n");
-      qdump_print_stats_text (fp, xasl_p->proc.union_.left, indent);
-      qdump_print_stats_text (fp, xasl_p->proc.union_.right, indent);
-      break;
     case INTERSECTION_PROC:
-      fprintf (fp, "INTERSECTION\n");
-      qdump_print_stats_text (fp, xasl_p->proc.union_.left, indent);
-      qdump_print_stats_text (fp, xasl_p->proc.union_.right, indent);
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
+	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
+	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
+      for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
+	{
+	  qdump_print_stats_text (fp, xptr, indent);
+	}
       break;
 
     case MERGELIST_PROC:
@@ -3336,13 +3333,19 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
 	}
 
-      qdump_print_stats_text (fp, xasl_p->aptr_list, indent);
+      for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
+	{
+	  qdump_print_stats_text (fp, xptr, indent);
+	}
     }
 
   if (xasl_p->dptr_list != NULL)
     {
       fprintf (fp, "%*cSUBQUERY (correlated)\n", indent, ' ');
-      qdump_print_stats_text (fp, xasl_p->dptr_list, indent);
+      for (xptr = xasl_p->dptr_list; xptr; xptr = xptr->next)
+	{
+	  qdump_print_stats_text (fp, xptr, indent);
+	}
     }
 }
 #endif /* SERVER_MODE */
