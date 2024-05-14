@@ -339,8 +339,13 @@ static QO_PLAN_VTBL qo_hash_join_plan_vtbl = {
   qo_hjoin_fprint,
   qo_join_walk,
   qo_join_free,
-  qo_mjoin_cost,		/* TO DO - add qo_hjoin_cost */
-  qo_mjoin_cost,		/* TO DO - add qo_hjoin_cost */
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
+  qo_zero_cost,			/* TO DO - add qo_hjoin_cost */
+  qo_zero_cost,			/* TO DO - add qo_hjoin_cost */
+#else
+  qo_mjoin_cost,
+  qo_mjoin_cost,
+#endif
   qo_join_info,
   "Hash join"
 };
@@ -6038,7 +6043,11 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   else
     {
       /* default: disable hash-join */
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
+      /* fall through */
+#else
       goto exit;
+#endif
     }
 
   outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);

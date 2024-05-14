@@ -6808,12 +6808,12 @@ qexec_hash_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFILE
 
   while ((qp_scan = qfile_scan_list_next (thread_p, prove_scan_id_p, &tuple_record, PEEK)) == S_SUCCESS)
     {
-      for (value_index = 0; value_index < key->val_count; value_index++)
-	{
-#if 0
-	  qfile_print_tuple (&prove_scan_id_p->list_id.type_list, tuple_record.tpl);
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
+      qfile_print_tuple (&prove_scan_id_p->list_id.type_list, tuple_record.tpl);
 #endif
 
+      for (value_index = 0; value_index < key->val_count; value_index++)
+	{
 	  or_init (&iterator, tuple_record.tpl, QFILE_GET_TUPLE_LENGTH (tuple_record.tpl));
 
 	  error = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);	/* skip tuple header */
@@ -6979,7 +6979,7 @@ qexec_hash_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFILE
 		}
 	    }
 
-#if 0
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
 	  qfile_print_tuple (&build_scan_id_p->list_id.type_list, found_tuple_record.tpl);
 #endif
 
@@ -7044,7 +7044,7 @@ qexec_hash_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFILE
 								  build_domains[value_index], -1, false, NULL, 0);
 		}
 
-#if 0
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
 	      db_value_fprint (stdout, key->values[value_index]);
 	      db_value_fprint (stdout, found_key->values[value_index]);
 #endif
@@ -7183,6 +7183,10 @@ qexec_hash_outer_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	{
 	  /* fall through */
 	}
+
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
+      qfile_print_tuple (&prove_scan_id_p->s.llsid.list_id->type_list, tuple_record.tpl);
+#endif
 
       for (value_index = 0; value_index < key->val_count; value_index++)
 	{
@@ -7382,6 +7386,10 @@ qexec_hash_outer_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 		}
 	    }
 
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
+	  qfile_print_tuple (&build_scan_id_p->list_id.type_list, found_tuple_record.tpl);
+#endif
+
 	  c = DB_EQ;
 
 	  for (value_index = 0; value_index < key->val_count; value_index++)
@@ -7442,6 +7450,11 @@ qexec_hash_outer_join_prove (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 		  build_domains[value_index]->type->data_readval (&buf, found_key->values[value_index],
 								  build_domains[value_index], -1, false, NULL, 0);
 		}
+
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
+	      db_value_fprint (stdout, key->values[value_index]);
+	      db_value_fprint (stdout, found_key->values[value_index]);
+#endif
 
 	      c = tp_value_compare (key->values[value_index], found_key->values[value_index], 0, 0);
 	      if (c != DB_EQ)
@@ -7537,7 +7550,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
   QFILE_LIST_ID *list_id_p = NULL;
   QFILE_LIST_SCAN_ID outer_scan_id, inner_scan_id;
-  ACCESS_SPEC_TYPE *outer_spec, *inner_spec;
+  ACCESS_SPEC_TYPE *outer_spec;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   int ls_flag;
 
@@ -7552,6 +7565,8 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
   HASH_LIST_SCAN hash_join;
 
   type_list.domp = NULL;
+
+  hash_join.hash_list_scan_type = HASH_METH_NOT_USE;
 
   outer_xasl = xasl->proc.hashjoin.outer_xasl;
   inner_xasl = xasl->proc.hashjoin.inner_xasl;
@@ -7756,7 +7771,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
       GOTO_EXIT_ON_ERROR;
     }
 
-#if 0
+#if !defined(NDEBUG) && 0	/* youngjinj */
   if (inner_xasl->list_id->tuple_cnt <= 100)
     {
       if (hash_join.hash_list_scan_type == HASH_METH_IN_MEM || hash_join.hash_list_scan_type == HASH_METH_HYBRID)
@@ -7797,20 +7812,11 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
   else
     {
       outer_spec = xasl->proc.hashjoin.outer_spec_list;
-      inner_spec = xasl->proc.hashjoin.inner_spec_list;
 
       assert (xasl->scan_op_type == S_SELECT);
 
       error = qexec_open_scan (thread_p, outer_spec, xasl->proc.hashjoin.outer_val_list, &xasl_state->vd, false,
 			       outer_spec->fixed_scan, outer_spec->grouped_scan, true, &outer_spec->s_id,
-			       xasl_state->query_id, S_SELECT, false, NULL);
-      if (error != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      error = qexec_open_scan (thread_p, inner_spec, xasl->proc.hashjoin.inner_val_list, &xasl_state->vd, false,
-			       inner_spec->fixed_scan, inner_spec->grouped_scan, true, &inner_spec->s_id,
 			       xasl_state->query_id, S_SELECT, false, NULL);
       if (error != NO_ERROR)
 	{
@@ -7824,9 +7830,6 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
       qexec_close_scan (thread_p, outer_spec);
       outer_spec = NULL;
-
-      qexec_close_scan (thread_p, inner_spec);
-      inner_spec = NULL;
 
       if (error != NO_ERROR)
 	{
@@ -7847,7 +7850,10 @@ exit_on_end:
       free_and_init (type_list.domp);
     }
 
-  qexec_hash_join_clear (thread_p, &hash_join, value_count);
+  if (hash_join.hash_list_scan_type != HASH_METH_NOT_USE)
+    {
+      qexec_hash_join_clear (thread_p, &hash_join, value_count);
+    }
 
   qfile_close_scan (thread_p, &outer_scan_id);
   qfile_close_scan (thread_p, &inner_scan_id);

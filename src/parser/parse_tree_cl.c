@@ -2361,7 +2361,11 @@ pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node)
       return NULL;
     }
 
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
+  /* fall through */
+#else
   CAST_POINTER_TO_NODE (node);
+#endif
 
   if (node->flag.is_cnf_start && !parser->flag.is_in_and_list)
     {
@@ -16879,11 +16883,24 @@ static PARSER_VARCHAR *
 pt_print_pointer (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL;
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
+  PT_NODE *save_next;
 
+  if (p)
+    {
+      save_next = p->info.pointer.node->next;
+      p->info.pointer.node->next = NULL;
+
+      b = pt_print_bytes_alias (parser, p->info.pointer.node);
+
+      p->info.pointer.node->next = save_next;
+    }
+#else
   if (p)
     {
       b = pt_print_bytes_alias (parser, p->info.pointer.node);
     }
+#endif
 
   return b;
 }
