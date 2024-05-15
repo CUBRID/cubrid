@@ -64,6 +64,8 @@
           }                     \
         } while (0)
 
+extern void KSHAN (const char *, ...);
+
 typedef enum
 {
   HOSTNAME_TO_IPADDR = 0,
@@ -664,7 +666,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   memset (addrp, 0, sizeof (addrinfo));
   if ((addrp->ai_canonname = strdup (hp->h_name)) == NULL)
     {
-      freeaddrinfo (addrp);
+      freeaddrinfo_uhost (addrp);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct sockaddr));
       ret = EAI_MEMORY;
       goto return_phase;
@@ -684,6 +686,22 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 return_phase:
 
   return ret;
+}
+
+void
+freeaddrinfo_uhost (struct addrinfo *res)
+{
+  if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
+    {
+      return (freeaddrinfo (res));
+    }
+
+  if (res)
+    {
+      FREE_MEM (res->ai_canonname);
+      FREE_MEM (res);
+    }
+  return;
 }
 
 static void
