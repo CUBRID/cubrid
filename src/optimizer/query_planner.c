@@ -2713,7 +2713,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 	    {
 	      swap = inner;
 	      inner = outer;	/* build */
-	      outer = swap;	/* prove */
+	      outer = swap;	/* probe */
 	    }
 	}
       else if (join_type == JOIN_LEFT)
@@ -2724,7 +2724,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 	{
 	  swap = inner;
 	  inner = outer;	/* build */
-	  outer = swap;		/* prove */
+	  outer = swap;		/* probe */
 	}
       else
 	{
@@ -3203,7 +3203,7 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
     }
 
   qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "build: ");
-  qo_plan_fprint (plan->plan_un.join.inner, f, howfar, "prove: ");
+  qo_plan_fprint (plan->plan_un.join.inner, f, howfar, "probe: ");
   qo_plan_print_outer_join_terms (plan, f, howfar);
 }
 
@@ -6008,12 +6008,15 @@ exit:
  *   pinned_subqueries(in):
  */
 static int
-qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * sm_join_terms,
+qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * hash_join_terms,
 		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
 {
   int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
   QO_NODE *inner_node;
+  int t;
+  BITSET_ITERATOR iter;
+  QO_TERM *term;
 
   /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
    * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work.
@@ -6021,6 +6024,39 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   if (bitset_intersects (sarged_terms, &(info->env->fake_terms)))
     {
       goto exit;
+    }
+
+  /* A query using a predicate for an oid is rewritten as a path join query.  The path join query is executed
+   * as a left outer join, so if the path join query is not executed with a follow plan, results with NULL values
+   * are retrieved even if the join predicate is not satisfied.
+   * 
+   *   e.g. drop table if exists t;
+   *        create table t (c int) dont_reuse_oid;
+   *        insert into t values (1);
+   *        select dual into :dummy_oid from dual limit 1;
+   * 
+   *        select * from t1 where t1 = :dummy_oid;
+   *
+   *        -- rewritten query
+   *        select dt_1.da_2.t1.c1 from table({:dummy_oid}) dt_1 (da_2)
+   * 
+   *        -- Query plan: follow
+   *        There are no results.
+   *        0 row selected.
+   *
+   *        -- Query plan: hash-join (left outer join)
+   *        c1: NULL
+   *        1 row selected.
+   * 
+   * This code prevents the path join query from being executed as a hash join plan rather than as a follow plan.
+   */
+  for (t = bitset_iterate (hash_join_terms, &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      term = QO_ENV_TERM (info->env, t);
+      if (QO_IS_PATH_TERM (term) && QO_TERM_JOIN_TYPE (term) != JOIN_INNER)
+	{
+	  goto exit;		/* give up */
+	}
     }
 
   /* At here, inner is single class spec */
@@ -6065,8 +6101,8 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   n =
     qo_check_plan_on_info (info,
 			   qo_join_new (info, join_type, QO_JOINMETHOD_HASH_JOIN, outer_plan, inner_plan,
-					sm_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
-					sm_join_terms));
+					hash_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
+					hash_join_terms));
 
 exit:
 

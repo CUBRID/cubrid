@@ -3327,9 +3327,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case HASHJOIN_PROC:
-      fprintf (fp, "HASHJOIN\n");
-      qdump_print_stats_text (fp, xasl_p->proc.hashjoin.outer_xasl, indent);
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
+	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
+	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
+      indent += 2;
+      fprintf (fp, "%*cBUILD (time: %d)\n", indent, ' ', TO_MSEC (xasl_p->proc.hashjoin.build_time));
       qdump_print_stats_text (fp, xasl_p->proc.hashjoin.inner_xasl, indent);
+      fprintf (fp, "%*cPROBE (time: %d)\n", indent, ' ', TO_MSEC (xasl_p->proc.hashjoin.probe_time));
+      qdump_print_stats_text (fp, xasl_p->proc.hashjoin.outer_xasl, indent);
+      indent -= 2;
       break;
 
     case MERGE_PROC:

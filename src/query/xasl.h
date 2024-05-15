@@ -376,6 +376,9 @@ struct hashjoin_proc_node
   VAL_LIST *inner_val_list;	/* output-value list for inner */
 
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
+
+  struct timeval build_time;
+  struct timeval probe_time;
 };
 
 typedef struct update_proc_node UPDATE_PROC_NODE;
