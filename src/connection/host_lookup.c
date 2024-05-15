@@ -64,8 +64,6 @@
           }                     \
         } while (0)
 
-extern void KSHAN (const char *, ...);
-
 typedef enum
 {
   HOSTNAME_TO_IPADDR = 0,
