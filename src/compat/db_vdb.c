@@ -102,6 +102,8 @@ static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, P
 static PT_NODE *do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg,
 						 int *continue_walk);
 
+static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
+
 int g_open_buffer_control_flags = 0;
 
 /*
@@ -643,12 +645,14 @@ db_compile_statement_local (DB_SESSION * session)
       if (subquery_info)
 	{
 	  err = do_execute_prepared_subquery (parser, statement, num_query, subquery_info);
+
 	  if (err != NO_ERROR)
 	    {
 	      return err;
 	    }
 	}
     }
+
   /* prefetch and lock classes to avoid deadlock */
   (void) pt_class_pre_fetch (parser, statement);
   if (pt_has_error (parser))

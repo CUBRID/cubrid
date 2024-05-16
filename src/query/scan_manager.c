@@ -4101,7 +4101,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  /* A new argument(is_indexscan = false) is appended */
 	  ret =
-	    heap_scancache_start (thread_p, &hsidp->scan_cache, &hsidp->hfid, &hsidp->cls_oid, scan_id->fixed, false,
+	    heap_scancache_start (thread_p, &hsidp->scan_cache, &hsidp->hfid, &hsidp->cls_oid, scan_id->fixed,
 				  mvcc_snapshot);
 	  if (ret != NO_ERROR)
 	    {
@@ -4181,7 +4181,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       /* A new argument(is_indexscan = true) is appended */
       ret =
-	heap_scancache_start (thread_p, &isidp->scan_cache, &isidp->hfid, &isidp->cls_oid, scan_id->fixed, true,
+	heap_scancache_start (thread_p, &isidp->scan_cache, &isidp->hfid, &isidp->cls_oid, scan_id->fixed,
 			      mvcc_snapshot);
       if (ret != NO_ERROR)
 	{

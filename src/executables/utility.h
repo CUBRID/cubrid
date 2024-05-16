@@ -1197,6 +1197,8 @@ typedef struct _ha_config
 #define DIAG_OUTPUT_FILE_L                      "output-file"
 #define DIAG_EMERGENCY_S                        11202
 #define DIAG_EMERGENCY_L                        "emergency"
+#define DIAG_CLASS_NAME_S                       'c'
+#define DIAG_CLASS_NAME_L                       "class-name"
 
 /* patch option list */
 #define PATCH_RECREATE_LOG_S                    'r'

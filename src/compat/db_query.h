@@ -137,7 +137,7 @@ extern "C"
     int statement_type;
   };
 
-  /* for CTE result-cache */
+  /* for subquery result-cache */
   typedef struct db_prepare_subquery_info DB_PREPARE_SUBQUERY_INFO;
 
   struct db_prepare_subquery_info
@@ -164,7 +164,6 @@ extern "C"
 
     int subquery_num;		/* the number of subqueries */
     DB_PREPARE_SUBQUERY_INFO *subquery_info;	/* subquery info for result-cache */
-  };
 
   extern SM_DOMAIN *db_query_format_src_domain (DB_QUERY_TYPE * query_type);
 

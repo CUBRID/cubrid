@@ -706,6 +706,7 @@ error:
 	  col = next_p;
 	}
     }
+
   if (info->host_variables.vals != NULL)
     {
       db_value_clear_array (&info->host_variables);

@@ -483,7 +483,6 @@ public class TypeChecker extends AstVisitor<Type> {
                 assert found > 0;
                 node.setType(ret);
                 node.setColIndex(found);
-                ptConv.addToImports(ret.fullJavaType);
             }
         } else {
             // this record is for a dynamic SQL
@@ -605,7 +604,6 @@ public class TypeChecker extends AstVisitor<Type> {
             Type ret;
             if (DBTypeAdapter.isSupported(ci.type)) {
                 ret = DBTypeAdapter.getValueType(ci.type);
-                ptConv.addToImports(ret.fullJavaType);
             } else {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.ctx), // s233
@@ -1136,7 +1134,7 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitStmtReturn(StmtReturn node) {
         if (node.retVal != null) {
             Type valType = visit(node.retVal);
-            Coercion c = Coercion.getCoercion(valType, node.retType);
+            Coercion c = Coercion.getCoercion(valType, node.retTypeSpec.type);
             if (c == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.retVal.ctx), // s217
