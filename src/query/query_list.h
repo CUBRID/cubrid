@@ -474,6 +474,7 @@ struct qfile_list_id
       (list_id)->tpl_descr.tplrec2 = NULL; \
       (list_id)->tpl_descr.merge_info = NULL; \
       (list_id)->is_domain_resolved = false; \
+      (list_id)->is_result_cached = false; \
     } \
   while (0)
 
