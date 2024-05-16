@@ -1390,23 +1390,8 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   QPROC_DB_VALUE_LIST value_list;
   int i;
 
-  QFILE_LIST_ID *cte_cached_list_id = NULL;
-
-  if (xasl->type == CTE_PROC)
-    {
-      if (xasl->proc.cte.non_recursive_part && xasl->proc.cte.non_recursive_part->sub_xasl_id)
-	{
-	  cte_cached_list_id = xasl->proc.cte.non_recursive_part->list_id;
-	}
-    }
-
-  if (xasl->sub_xasl_id)
-    {
-      cte_cached_list_id = xasl->list_id;
-    }
-
-  if (xasl->list_id && cte_cached_list_id == NULL)
-    {				/* destroy list file */
+  if (xasl->list_id && !xasl->list_id->is_result_cached)
+    {				/* destroy list file except for result-cached */
       (void) qfile_close_list (thread_p, xasl->list_id);
       qfile_destroy_list (thread_p, xasl->list_id);
     }

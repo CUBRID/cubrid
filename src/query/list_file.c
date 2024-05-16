@@ -2650,9 +2650,13 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
   act_right_func = NULL;
   act_both_func = NULL;
 
-  if (QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL))
+  /* result cached list_id cannot be used to append the union of results */
+  if (!lhs_file_p->is_result_cached && !rhs_file_p->is_result_cached)
     {
-      return qfile_union_list (thread_p, lhs_file_p, rhs_file_p, flag);
+      if (QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL))
+	{
+	  return qfile_union_list (thread_p, lhs_file_p, rhs_file_p, flag);
+	}
     }
 
   if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_DISTINCT))
