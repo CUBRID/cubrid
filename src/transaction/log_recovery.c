@@ -3219,7 +3219,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	  tsc_end_time_usec (&info_logging_elapsed_time, info_logging_check_time);
 	  if (info_logging_elapsed_time.tv_sec >= info_logging_interval_in_secs)
 	    {
-	      UINT64 done_page_cnt = log_lsa.pageid - start_redolsa->pageid;
+	      UINT64 done_page_cnt = lsa.pageid - start_redolsa->pageid;
 	      UINT64 total_page_cnt = log_cnt_pages_containing_lsa (start_redolsa, end_redo_lsa);
 
 	      double elapsed_time;
@@ -4015,58 +4015,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		      }
 		  }
 	      }
-	      break;
-
-	    case LOG_COMMIT:
-	    case LOG_ABORT:
-	      {
-		bool free_tran = false;
-		const int tran_index = logtb_find_tran_index (thread_p, tran_id);
-		LOG_TDES *tdes = nullptr;
-		if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
-		  {
-		    tdes = LOG_FIND_TDES (tran_index);
-		    assert (tdes && tdes->state != TRAN_ACTIVE);
-		    free_tran = true;
-		  }
-
-		if (stopat != NULL && *stopat != -1)
-		  {
-		    /*
-		     * Need to read the donetime record to find out if we need to stop
-		     * the recovery at this point.
-		     */
-		    log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-		    log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_DONETIME));
-		    // *INDENT-OFF*
-		    const LOG_REC_DONETIME *donetime = log_pgptr_reader.reinterpret_cptr<LOG_REC_DONETIME> ();
-		    // *INDENT-ON*
-
-		    if (difftime (*stopat, (time_t) donetime->at_time) < 0)
-		      {
-			/*
-			 * Stop the recovery process at this point
-			 */
-			LSA_SET_NULL (&lsa);
-
-			/* Commit/abort record was recorded after the stopat recovery time. The transaction needs to
-			 * undo all its changes (log_recovery_undo), so transaction descriptor needs to be kept,
-			 * and transaction state should be changed to aborted. The undo process starts from this
-			 * record's LSA and undoes all previous changes of the transaction
-			 * (See log_find_unilaterally_largest_undo_lsa usage from log_recovery_undo) */
-			if (tdes != NULL)
-			  {
-			    tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
-			  }
-			free_tran = false;
-		      }
-		  }
-		if (free_tran == true)
-		  {
-		    logtb_free_tran_index (thread_p, tran_index);
-		  }
-	      }
-
 	      break;
 
 	    case LOG_MVCC_UNDO_DATA:
