@@ -16063,12 +16063,8 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	  /* re-execute CTE without resut-cache */
 	  if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
 	    {
-	      /* re-execute CTE without resut-cache */
-	      if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
-		{
-		  qexec_failure_line (__LINE__, xasl_state);
-		  GOTO_EXIT_ON_ERROR;
-		}
+	      qexec_failure_line (__LINE__, xasl_state);
+	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
     }
