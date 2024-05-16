@@ -522,16 +522,16 @@ static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 static int qexec_hash_join_init (THREAD_ENTRY * thread_p, XASL_NODE * build_xasl, HASH_LIST_SCAN * hash_join_p,
 				 int value_count, bool need_coerce_type);
 static void qexec_hash_join_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p);
-static int qexec_hash_join_fetch_values (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record_p,
-					 HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, int *value_indexes,
-					 TP_DOMAIN ** domains, TP_DOMAIN ** coerce_domains, bool need_coerce_type);
+static int qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record_p,
+				      HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, int *value_indexes,
+				      TP_DOMAIN ** domains, TP_DOMAIN ** coerce_domains, bool need_coerce_type);
 static int qexec_hash_join_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p,
-				      QFILE_TUPLE_RECORD * tuple_record_p, QFILE_LIST_SCAN_ID * scan_id_p);
-static int qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p,
 				      QFILE_TUPLE_RECORD * tuple_record_p, QFILE_LIST_SCAN_ID * scan_id_p);
 static int qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p,
 				  HASH_LIST_SCAN * hash_join_p, int *value_indexes, TP_DOMAIN ** domains,
 				  TP_DOMAIN ** coerce_domains);
+static int qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p,
+				      QFILE_TUPLE_RECORD * tuple_record_p, QFILE_LIST_SCAN_ID * scan_id_p);
 static int qexec_hash_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 				  QFILE_LIST_MERGE_INFO * merge_info_p, HASH_LIST_SCAN * hash_join_p,
 				  QFILE_LIST_SCAN_ID * probe_scan_id_p, QFILE_LIST_SCAN_ID * build_scan_id_p,
@@ -539,7 +539,7 @@ static int qexec_hash_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_
 				  TP_DOMAIN ** build_domains, TP_DOMAIN ** coerce_domains);
 static int qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 					QFILE_LIST_MERGE_INFO * merge_info_p, HASH_LIST_SCAN * hash_join_p,
-					SCAN_ID * probe_scan_id_p, QFILE_LIST_SCAN_ID * build_scan_id_p,
+					SCAN_ID * probe_scan_id_p, SCAN_ID * build_scan_id_p,
 					int *probe_value_indexes, int *build_value_indexes, TP_DOMAIN ** probe_domains,
 					TP_DOMAIN ** build_domains, TP_DOMAIN ** coerce_domains,
 					PRED_EXPR * during_join_pred, XASL_STATE * xasl_state);
@@ -6814,6 +6814,71 @@ exit_on_error:
 }
 
 static int
+qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p,
+		       HASH_LIST_SCAN * hash_join_p, int *value_indexes, TP_DOMAIN ** domains,
+		       TP_DOMAIN ** coerce_domains)
+{
+  SCAN_CODE qp_scan;
+  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  int error = NO_ERROR;
+
+  if (thread_p == NULL || scan_id_p == NULL || hash_join_p == NULL || hash_join_p->temp_key == NULL
+      || value_indexes == NULL || domains == NULL || (hash_join_p->need_coerce_type == true && coerce_domains == NULL))
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  while ((qp_scan = qfile_scan_list_next (thread_p, scan_id_p, &tuple_record, PEEK)) == S_SUCCESS)
+    {
+      error =
+	qexec_hash_join_fetch_key (thread_p, &tuple_record, hash_join_p->temp_key, NULL, value_indexes, domains,
+				   coerce_domains, hash_join_p->need_coerce_type);
+      if (error != NO_ERROR)
+	{
+	  if (error < 0)
+	    {
+	      goto exit_on_error;
+	    }
+	  else
+	    {
+	      error = NO_ERROR;
+
+	      /* next tuple */
+	      continue;
+	    }
+	}
+
+      hash_join_p->curr_hash_key =
+	qdata_hash_scan_key (hash_join_p->temp_key, UINT_MAX, hash_join_p->hash_list_scan_type);
+
+      error = qexec_hash_join_build_key (thread_p, hash_join_p, &tuple_record, scan_id_p);
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  if (qp_scan == S_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  assert (qp_scan == S_END);
+
+exit_on_end:
+  return error;
+
+exit_on_error:
+  if (error == NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
+
+  return error;
+}
+
+static int
 qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p,
 			   QFILE_TUPLE_RECORD * tuple_record_p, QFILE_LIST_SCAN_ID * scan_id_p)
 {
@@ -6935,71 +7000,6 @@ exit_on_end:
 
 exit_on_error:
   return ER_FAILED;
-}
-
-static int
-qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p,
-		       HASH_LIST_SCAN * hash_join_p, int *value_indexes, TP_DOMAIN ** domains,
-		       TP_DOMAIN ** coerce_domains)
-{
-  SCAN_CODE qp_scan;
-  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
-  int error = NO_ERROR;
-
-  if (thread_p == NULL || scan_id_p == NULL || hash_join_p == NULL || hash_join_p->temp_key == NULL
-      || value_indexes == NULL || domains == NULL || (hash_join_p->need_coerce_type == true && coerce_domains == NULL))
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  while ((qp_scan = qfile_scan_list_next (thread_p, scan_id_p, &tuple_record, PEEK)) == S_SUCCESS)
-    {
-      error =
-	qexec_hash_join_fetch_key (thread_p, &tuple_record, hash_join_p->temp_key, NULL, value_indexes, domains,
-				   coerce_domains, hash_join_p->need_coerce_type);
-      if (error != NO_ERROR)
-	{
-	  if (error < 0)
-	    {
-	      goto exit_on_error;
-	    }
-	  else
-	    {
-	      error = NO_ERROR;
-
-	      /* next tuple */
-	      continue;
-	    }
-	}
-
-      hash_join_p->curr_hash_key =
-	qdata_hash_scan_key (hash_join_p->temp_key, UINT_MAX, hash_join_p->hash_list_scan_type);
-
-      error = qexec_hash_join_build_key (thread_p, hash_join_p, &tuple_record, scan_id_p);
-      if (error != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-    }
-
-  if (qp_scan == S_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  assert (qp_scan == S_END);
-
-exit_on_end:
-  return error;
-
-exit_on_error:
-  if (error == NO_ERROR)
-    {
-      error = ER_FAILED;
-    }
-
-  return error;
 }
 
 static int
@@ -7133,7 +7133,7 @@ exit_on_error:
 static int
 qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFILE_LIST_MERGE_INFO * merge_info_p,
 			     HASH_LIST_SCAN * hash_join_p, SCAN_ID * probe_scan_id_p,
-			     QFILE_LIST_SCAN_ID * build_scan_id_p, int *probe_value_indexes, int *build_value_indexes,
+			     SCAN_ID * build_scan_id_p, int *probe_value_indexes, int *build_value_indexes,
 			     TP_DOMAIN ** probe_domains, TP_DOMAIN ** build_domains, TP_DOMAIN ** coerce_domains,
 			     PRED_EXPR * during_join_pred, XASL_STATE * xasl_state)
 {
@@ -7169,7 +7169,14 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
       goto exit_on_error;
     }
 
+  error = scan_start_scan (thread_p, build_scan_id_p);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   probe_scan_id_p->s.llsid.tplrecp = &tuple_record;
+  build_scan_id_p->s.llsid.tplrecp = &found_tuple_record;
 
   while (true)
     {
@@ -7215,37 +7222,14 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	    }
 	}
 
-      if (during_join_pred != NULL)
-	{
-	  DB_LOGICAL ev_res;
-
-	  ev_res = eval_pred (thread_p, during_join_pred, &xasl_state->vd, NULL);
-	  if (ev_res == V_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  if (ev_res != V_TRUE)
-	    {
-	      error = qexec_merge_tuple_add_list
-		(thread_p, list_id_p, &tuple_record, NULL, merge_info_p, &result_tuple_record);
-	      if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-
-	      /* next tuple */
-	      continue;
-	    }
-	}
-
       hash_join_p->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_join_p->hash_list_scan_type);
 
       has_merge_tuple = false;
 
       do
 	{
-	  error = qexec_hash_join_probe_key (thread_p, hash_join_p, &found_tuple_record, build_scan_id_p);
+	  error =
+	    qexec_hash_join_probe_key (thread_p, hash_join_p, &found_tuple_record, &build_scan_id_p->s.llsid.lsid);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -7258,7 +7242,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	    }
 
 #if !defined(NDEBUG) && defined(HASH_JOIN_TEST)
-	  qfile_print_tuple (&build_scan_id_p->list_id.type_list, found_tuple_record.tpl);
+	  qfile_print_tuple (&build_scan_id_p->s.llsid.list_id->type_list, found_tuple_record.tpl);
 #endif
 
 	  error =
@@ -7273,6 +7257,38 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	      else
 		{
 		  error = NO_ERROR;
+
+		  /* next tuple */
+		  continue;
+		}
+	    }
+
+	  if (during_join_pred != NULL)
+	    {
+	      DB_LOGICAL ev_res;
+
+	      error =
+		fetch_val_list (thread_p, build_scan_id_p->s.llsid.scan_pred.regu_list, build_scan_id_p->vd, NULL, NULL,
+				found_tuple_record.tpl, PEEK);
+	      if (error != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+
+	      ev_res = eval_pred (thread_p, during_join_pred, &xasl_state->vd, NULL);
+	      if (ev_res == V_ERROR)
+		{
+		  goto exit_on_error;
+		}
+
+	      if (ev_res != V_TRUE)
+		{
+		  error = qexec_merge_tuple_add_list
+		    (thread_p, list_id_p, &tuple_record, NULL, merge_info_p, &result_tuple_record);
+		  if (error != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
 
 		  /* next tuple */
 		  continue;
@@ -7316,8 +7332,10 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 
 exit_on_end:
   scan_end_scan (thread_p, probe_scan_id_p);
+  scan_end_scan (thread_p, build_scan_id_p);
 
   probe_scan_id_p->s.llsid.tplrecp = NULL;
+  build_scan_id_p->s.llsid.tplrecp = NULL;
 
   if (result_tuple_record.tpl)
     {
@@ -7351,7 +7369,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
   QFILE_LIST_ID *list_id_p = NULL;
   QFILE_LIST_SCAN_ID outer_scan_id, inner_scan_id;
-  ACCESS_SPEC_TYPE *outer_spec;
+  ACCESS_SPEC_TYPE *outer_spec, *inner_spec;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   int ls_flag;
 
@@ -7651,9 +7669,10 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
     }
   else
     {
-      outer_spec = xasl->proc.hashjoin.outer_spec_list;
-
       assert (xasl->scan_op_type == S_SELECT);
+
+      outer_spec = xasl->proc.hashjoin.outer_spec_list;
+      inner_spec = xasl->proc.hashjoin.inner_spec_list;
 
       error = qexec_open_scan (thread_p, outer_spec, xasl->proc.hashjoin.outer_val_list, &xasl_state->vd, false,
 			       outer_spec->fixed_scan, outer_spec->grouped_scan, true, &outer_spec->s_id,
@@ -7663,10 +7682,18 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 	  GOTO_EXIT_ON_ERROR;
 	}
 
+      error = qexec_open_scan (thread_p, inner_spec, xasl->proc.hashjoin.inner_val_list, &xasl_state->vd, false,
+			       inner_spec->fixed_scan, inner_spec->grouped_scan, true, &inner_spec->s_id,
+			       xasl_state->query_id, S_SELECT, false, NULL);
+      if (error != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
       error =
-	qexec_hash_outer_join_probe (thread_p, list_id_p, merge_info_p, &hash_join, &outer_spec->s_id, &inner_scan_id,
-				     merge_info_p->ls_outer_column, merge_info_p->ls_inner_column, outer_domains,
-				     inner_domains, coerce_domains, xasl->after_join_pred, xasl_state);
+	qexec_hash_outer_join_probe (thread_p, list_id_p, merge_info_p, &hash_join, &outer_spec->s_id,
+				     &inner_spec->s_id, merge_info_p->ls_outer_column, merge_info_p->ls_inner_column,
+				     outer_domains, inner_domains, coerce_domains, xasl->after_join_pred, xasl_state);
 
       qexec_close_scan (thread_p, outer_spec);
       outer_spec = NULL;
