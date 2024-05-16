@@ -16070,10 +16070,6 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		  GOTO_EXIT_ON_ERROR;
 		}
 	    }
-	  else
-	    {
-	      qfile_copy_list_id (non_recursive_part->list_id, list_id, false);
-	    }
 	}
     }
   else
