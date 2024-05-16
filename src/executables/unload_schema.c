@@ -1108,13 +1108,13 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 
 	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
 	    {
-	      output_ctx ("ALTER SERIAL %s%s%s START WITH %s;\n",
+	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
 			  PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])),
 			  numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
 	    }
 	  else
 	    {
-	      output_ctx ("ALTER SERIAL %s%s%s START WITH %s;\n",
+	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
 			  PRINT_IDENTIFIER (db_get_string (&values[SERIAL_UNIQUE_NAME])),
 			  numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
 	    }
