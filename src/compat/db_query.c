@@ -651,16 +651,20 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 	{
 	  OR_UNPACK_XASL_ID (ptr, &info->subquery_info[q].xasl_id);
 	  ptr = or_unpack_int (ptr, &info->subquery_info[q].host_var_count);
-	  info->subquery_info[q].host_var_index = (int *) malloc (info->subquery_info[q].host_var_count * sizeof (int));
-	  if (info->subquery_info[q].host_var_index == NULL)
+	  if (info->subquery_info[q].host_var_count > 0)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      info->subquery_info[q].host_var_count * sizeof (int));
-	      goto error;
-	    }
-	  for (i = 0; i < info->subquery_info[q].host_var_count; i++)
-	    {
-	      ptr = or_unpack_int (ptr, &info->subquery_info[q].host_var_index[i]);
+	      info->subquery_info[q].host_var_index =
+		(int *) malloc (info->subquery_info[q].host_var_count * sizeof (int));
+	      if (info->subquery_info[q].host_var_index == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  info->subquery_info[q].host_var_count * sizeof (int));
+		  goto error;
+		}
+	      for (i = 0; i < info->subquery_info[q].host_var_count; i++)
+		{
+		  ptr = or_unpack_int (ptr, &info->subquery_info[q].host_var_index[i]);
+		}
 	    }
 	}
     }

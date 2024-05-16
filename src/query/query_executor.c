@@ -25511,7 +25511,7 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
       xcache_unfix (thread_p, ent);
     }
 
-  if (ent == NULL || list_cache_entry_p == NULL || list_id == NULL)
+  if (list_id == NULL)
     {
       return ER_FAILED;
     }

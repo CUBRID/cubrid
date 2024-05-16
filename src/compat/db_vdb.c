@@ -2366,10 +2366,11 @@ static DB_PREPARE_SUBQUERY_INFO *
 set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int num_query)
 {
   int i, q = num_query;
-  int alloc_size = sizeof (DB_PREPARE_SUBQUERY_INFO) * (num_query / 4 + 1) * 4;
 
   if (num_query % 4 == 0)	/* need to realloc subquery info every 4 */
     {
+      int alloc_size = sizeof (DB_PREPARE_SUBQUERY_INFO) * (num_query / 4 + 1) * 4;
+
       DB_PREPARE_SUBQUERY_INFO *alloc = (DB_PREPARE_SUBQUERY_INFO *) realloc (info, alloc_size);
 
       if (alloc == NULL)
@@ -2390,9 +2391,9 @@ set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int
       goto err_exit;
     }
 
-  for (i = 0; i < query->sub_host_var_count; i++)
+  if (query->sub_host_var_count > 0)
     {
-      info[q].host_var_index[i] = query->sub_host_var_index[i];
+      memcpy (info[q].host_var_index, query->sub_host_var_index, query->sub_host_var_count * sizeof (int));
     }
 
   return info;

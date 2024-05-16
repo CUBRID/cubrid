@@ -14249,7 +14249,6 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 static PT_NODE *
 pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PARSER_CONTEXT *query = (PARSER_CONTEXT *) arg;
   int i = parser->host_var_count;
 
   if (node->node_type == PT_HOST_VAR && node->info.host_var.index >= 0)
@@ -14510,19 +14509,19 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   stmt->info.query.flag.subquery_cached = 1;
 
-  context.sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
-  if (context.sub_host_var_index == NULL)
+  if (var_count > 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      context.sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+      if (context.sub_host_var_index == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      /* to ininitialize empty index */
+      memset (context.sub_host_var_index, -1, var_count * sizeof (int));
     }
 
-  /* to ininitialize empty index */
-  for (i = 0; i < var_count; i++)
-    {
-      context.sub_host_var_index[i] = -1;
-    }
-  parser_walk_tree (&context, stmt, pt_sub_host_vars_index, parser, NULL, NULL);
+  parser_walk_tree (&context, stmt, pt_sub_host_vars_index, NULL, NULL, NULL);
 
   stmt->sub_host_var_count = context.host_var_count;
   stmt->sub_host_var_index = context.sub_host_var_index;
