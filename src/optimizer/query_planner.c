@@ -339,7 +339,7 @@ static QO_PLAN_VTBL qo_hash_join_plan_vtbl = {
   qo_hjoin_fprint,
   qo_join_walk,
   qo_join_free,
-#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
+#if defined(HASH_JOIN_TEST)
   qo_zero_cost,			/* TO DO - add qo_hjoin_cost */
   qo_zero_cost,			/* TO DO - add qo_hjoin_cost */
 #else
@@ -6079,7 +6079,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   else
     {
       /* default: disable hash-join */
-#if !defined(NDEBUG) && defined(CUBRID_DEBUG_TEST)
+#if defined(HASH_JOIN_TEST)
       /* fall through */
 #else
       goto exit;
