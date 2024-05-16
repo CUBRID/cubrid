@@ -1161,6 +1161,7 @@ sm_define_view_stored_procedure_spec (void)
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
+	  "[sp].[unique_name] AS [unique_name], "
 	  "[sp].[sp_name] AS [sp_name], "
 	  "CASE [sp].[sp_type] WHEN 1 THEN 'PROCEDURE' ELSE 'FUNCTION' END AS [sp_type], "
 	  "CASE [sp].[return_type] "
@@ -1192,6 +1193,7 @@ sm_define_view_stored_procedure_arguments_spec (void)
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
+	  "[sp].[unique_name] AS [unique_name], "
 	  "[sp].[sp_name] AS [sp_name], "
 	  "[sp].[index_of] AS [index_of], "
 	  "[sp].[arg_name] AS [arg_name], "

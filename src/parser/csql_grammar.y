@@ -708,6 +708,10 @@ static char *g_plcsql_text;
 %type <node> serial_name
 %type <node> synonym_name_without_dot
 %type <node> synonym_name
+%type <node> procedure_name_without_dot
+%type <node> procedure_name
+%type <node> function_name_without_dot
+%type <node> function_name
 %type <node> opt_alter_synonym
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
@@ -3055,7 +3059,7 @@ create_stmt
 		  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE);
                   expecting_pl_lang_spec = 1;
 		}
-	  identifier opt_sp_param_list		        /* 5, 6 */
+	  procedure_name_without_dot opt_sp_param_list	/* 5, 6 */
 	  is_or_as pl_language_spec		        /* 7, 8 */
 	  opt_comment_spec				/* 9 */
 		{ pop_msg(); }
@@ -3086,7 +3090,7 @@ create_stmt
 			push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION);
                         expecting_pl_lang_spec = 1;
 		}
-	  identifier opt_sp_param_list	                /* 5, 6 */
+	  function_name_without_dot opt_sp_param_list   /* 5, 6 */
 	  RETURN sp_return_type		                /* 7, 8 */
 	  is_or_as pl_language_spec		        /* 9, 10 */
 	  opt_comment_spec				/* 11 */
@@ -5866,6 +5870,34 @@ synonym_name_without_dot
 synonym_name
 	: user_specified_name
 		{ DBG_TRACE_GRAMMAR(synonym_name, : user_specified_name);
+			$$ = $1;
+		}
+	;
+
+procedure_name_without_dot
+	: user_specified_name_without_dot
+		{ DBG_TRACE_GRAMMAR(procedure_name_without_dot, : user_specified_name_without_dot);
+			$$ = $1;
+		}
+	;
+	
+procedure_name
+	: user_specified_name
+		{ DBG_TRACE_GRAMMAR(procedure_name, : user_specified_name);
+			$$ = $1;
+		}
+	;
+	
+function_name_without_dot
+	: user_specified_name_without_dot
+		{ DBG_TRACE_GRAMMAR(function_name_without_dot, : user_specified_name_without_dot);
+			$$ = $1;
+		}
+	;
+	
+function_name
+	: user_specified_name
+		{ DBG_TRACE_GRAMMAR(function_name, : user_specified_name);
 			$$ = $1;
 		}
 	;

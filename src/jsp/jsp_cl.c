@@ -547,6 +547,7 @@ int
 jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   const char *name, *decl, *comment = NULL;
+  char downcase_stored_procedure_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   PT_MISC_TYPE type;
   PT_NODE *param_list, *p;
@@ -566,6 +567,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   name = (char *) PT_NODE_SP_NAME (statement);
+  sm_downcase_name (name, downcase_stored_procedure_name, DB_MAX_IDENTIFIER_LENGTH);
   if (name == NULL || name[0] == '\0')
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
@@ -667,7 +669,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  err = jsp_add_stored_procedure (name, type, ret_type, param_list, decl, comment);
+  err = jsp_add_stored_procedure (downcase_stored_procedure_name, type, ret_type, param_list, decl, comment);
   if (err != NO_ERROR)
     {
       goto error_exit;
@@ -901,7 +903,17 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
+  /* unique_name */
   db_make_string (&value, sp_name);
+  err = dbt_put_internal (obt_p, SP_ATTR_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* name */
+  db_make_string (&value, sm_remove_qualifier_name (sp_name));
   err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1063,7 +1075,18 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
+  /* unique_name */
   db_make_string (&value, checked_name);
+  err = dbt_put_internal (obt_p, SP_ATTR_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* name */
+  db_make_string (&value, sm_remove_qualifier_name (checked_name));
   err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
   pr_clear_value (&value);
 
