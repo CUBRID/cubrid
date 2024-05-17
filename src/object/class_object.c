@@ -2313,8 +2313,8 @@ classobj_constraint_size (SM_CONSTRAINT * constraint)
  *   constraint_seq(in): Constraint entry.  This is a sequence of the form:
  *      {
  *	    "B-tree ID",
- *	    [ "att_name", "asc_dsc", ]
- *	    [ "att_name", "asc_dsc", ]
+ *	    [ "attr_name", "asc_dsc", ]
+ *	    [ "attr_name", "asc_dsc", ]
  *	    {fk_info | pk_info | prefix_length}
  *          "filter_predicate",
  *          "comment"
