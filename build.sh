@@ -200,7 +200,7 @@ function build_configure ()
 
   print_check "Checking CCI directory"
   if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
-    print_check "CCI source path is not exist. It must be built for dblink"
+    print_check "CCI source path does not exist. It must be built for dblink"
     if [ -d $source_dir/.git/modules/cubrid-cci ]; then
       git submodule deinit -f cubrid-cci
     fi
@@ -212,17 +212,17 @@ function build_configure ()
   print_check "Checking manager server directory"
   if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
     without_cmserver="true"
-    print_error "Manager server source path is not exist. It will not be built"
+    print_error "Manager server source path does not exist. It will not be built"
   else
     if [ "$with_cci" = "false" ]; then
-      print_error "Manager server source path is exist, but Manager server requires cci header, It will not be built"
+      print_error "Manager server source path exists, but Manager server requires cci header, It will not be built"
     fi
   fi
 
   print_check "Checking JDBC directory"
   if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
     without_jdbc="true"
-    print_error "JDBC source path is not exist. It will not be built"
+    print_error "JDBC source path does not exist. It will not be built"
   fi
 
   print_check "Setting environment variables"
@@ -244,7 +244,7 @@ function build_configure ()
       configure_options="-DENABLE_32BIT=ON $configure_options" ;;
     x86_64);;
     *)
-      print_fatal "Build target [$build_target] is not valid target" ;;
+      print_fatal "Build target [$build_target] is not a valid target" ;;
   esac
 
   # set up build mode
@@ -258,7 +258,7 @@ function build_configure ()
     profile)
       configure_options="$configure_options -DCMAKE_BUILD_TYPE=Profile" ;;
     *)
-      print_fatal "Build mode [$build_mode] is not valid build mode" ;;
+      print_fatal "Build mode [$build_mode] is not a valid build mode" ;;
   esac
   print_result "OK"
 
@@ -322,19 +322,19 @@ function build_package ()
   print_check "Checking manager server directory"
   if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
     without_cmserver="true"
-    print_error "Manager server source path is not exist. It will not be packaged"
+    print_error "Manager server source path does not exist. It will not be packaged"
   fi
 
   print_check "Checking JDBC directory"
   if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
     without_jdbc="true"
-    print_error "JDBC source path is not exist. It will not be packaged"
+    print_error "JDBC source path does not exist. It will not be packaged"
   fi
   
   print_check "Checking CCI directory"
   if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
     with_cci="false"
-    print_error "CCI source path is not exist. It will not be packaged"
+    print_error "CCI source path does not exist. It will not be packaged"
   else 
     with_cci="true"
   fi
@@ -530,17 +530,17 @@ function get_options ()
   case $build_target in
     i386|x86|32|32bit) build_target="i386";;
     x86_64|x64|64|64bit) build_target="x86_64";;
-    *) show_usage; print_fatal "Target [$build_target] is not valid target" ;;
+    *) show_usage; print_fatal "Target [$build_target] is not a valid target" ;;
   esac
 
   case $build_mode in
     release|debug|coverage);;
-    *) show_usage; print_fatal "Mode [$build_mode] is not valid mode" ;;
+    *) show_usage; print_fatal "Mode [$build_mode] is not a valid mode" ;;
   esac
 
   case $build_generator in
     make|ninja);;
-    *) show_usage; print_fatal "Generator [$build_generator] is not valid mode" ;;
+    *) show_usage; print_fatal "Generator [$build_generator] is not a valid mode" ;;
   esac
 
   if [ "x$build_dir" = "x" ]; then
@@ -559,7 +559,7 @@ function get_options ()
 
   source_dir=$(readlink -f $source_dir)
   if [ ! -d "$source_dir" ]; then
-    print_fatal "Source path [$source_dir] is not exist"
+    print_fatal "Source path [$source_dir] does not exist"
   fi
 
   [ "x$packages" = "x" ] && packages=$default_packages
