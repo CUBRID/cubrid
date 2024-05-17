@@ -842,8 +842,8 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_UNIQUE, "", {"sp_name", "owner", nullptr}, false},
+      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {"unique_name", nullptr}, false},
+      {DB_CONSTRAINT_UNIQUE, "", {"sp_name", "owner", nullptr}, false}
     },
 // authorization
     {
@@ -877,7 +877,7 @@ namespace cubschema
 // constraints
     {
       {DB_CONSTRAINT_PRIMARY_KEY, "", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"sp_name", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"sp_name", nullptr}, false}
     },
 // authorization
     {

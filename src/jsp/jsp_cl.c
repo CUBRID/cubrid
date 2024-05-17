@@ -140,7 +140,7 @@ jsp_find_stored_procedure (const char *name)
 
   checked_name = jsp_check_stored_procedure_name (name);
   db_make_string (&value, checked_name);
-  mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_NAME, &value);
+  mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
 
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
@@ -1040,6 +1040,8 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
   char *checked_name;
   const char *arg_comment;
   DB_TYPE return_type_value;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  MOP owner = NULL;
 
   if (java_method == NULL)
     {
@@ -1050,6 +1052,13 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
   AU_DISABLE (save);
 
   checked_name = jsp_check_stored_procedure_name (name);
+
+  if (sm_qualifier_name (checked_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+  owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
 
   classobj_p = db_find_class (SP_CLASS_NAME);
 
@@ -1187,7 +1196,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_object (&value, Au_user);
+  db_make_object (&value, owner);
   err = dbt_put_internal (obt_p, SP_ATTR_OWNER, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
