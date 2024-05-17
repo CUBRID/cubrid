@@ -169,6 +169,7 @@ static void emit_cycle_warning (print_output & output_ctx);
 static void force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
 static DB_OBJLIST *get_ordered_classes (print_output & output_ctx, MOP * class_table);
 static int export_serial (extract_context & ctxt, print_output & output_ctx);
+static int emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx);
 static int emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
 			 DB_OBJLIST * vclass_list_has_using_index);
 
@@ -204,7 +205,7 @@ static void emit_primary_key_def (extract_context & ctxt, print_output & output_
 static void emit_primary_and_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_,
 					 const char *class_type);
 static void emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_);
-static int emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_);
+static void emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_);
 static void emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * domains);
 static int emit_autoincrement_def (print_output & output_ctx, DB_ATTRIBUTE * attribute);
 static void emit_method_def (extract_context & ctxt, print_output & output_ctx, DB_METHOD * method,
@@ -246,10 +247,6 @@ static int create_schema_info (extract_context & ctxt);
 static int create_filename_schema_info (const char *output_dirname, const char *output_prefix, char *output_filename_p,
 					const size_t filename_size);
 static void str_tolower (char *str);
-
-static bool is_builtin_package_function (const char *sp_name);
-static PARSER_VARCHAR *do_recreate_where_clause_or_function_attr (PARSER_CONTEXT ** parser, const char *class_name,
-								  DB_CONSTRAINT * constraint, bool where_clause);
 
 /*
  * CLASS DEPENDENCY ORDERING
@@ -904,6 +901,201 @@ err:
   return error;
 }
 
+static int
+emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
+{
+  int error = NO_ERROR;
+  int i;
+  DB_QUERY_RESULT *query_result;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
+  DB_DOMAIN *domain;
+  char str_buf[NUMERIC_MAX_STRING_SIZE] = { '\0' };
+  char *uppercase_user = NULL;
+  size_t uppercase_user_size = 0;
+  size_t query_size = 0;
+  char *query = NULL;
+
+  /*
+   * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
+   * when changing the following query. Notice the order of the result.
+   */
+  const char *query_all =
+    "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
+    "[cyclic], " "[started], " "[cached_num], " "[comment] "
+    "from [db_serial] where [class_name] is not null and [att_name] is not null";
+
+  const char *query_user =
+    "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
+    "[cyclic], " "[started], " "[cached_num], " "[comment] "
+    "from [db_serial] where [class_name] is not null and [att_name] is not null and owner.name='%s'";
+
+  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+    {
+      uppercase_user_size = intl_identifier_upper_string_size (ctxt.login_user);
+      uppercase_user = (char *) malloc (uppercase_user_size + 1);
+      if (uppercase_user == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, uppercase_user_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      intl_identifier_upper (ctxt.login_user, uppercase_user);
+
+      query_size = strlen (query_user) + strlen (uppercase_user) + 1;
+      query = (char *) malloc (query_size);
+      if (query_user == NULL)
+	{
+	  if (uppercase_user != NULL)
+	    {
+	      free_and_init (uppercase_user);
+	    }
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      sprintf (query, query_user, uppercase_user);
+    }
+
+  db_make_null (&diff_value);
+  db_make_null (&answer_value);
+
+  error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
+  if (error < 0)
+    {
+      goto err;
+    }
+
+
+
+  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
+    {
+      do
+	{
+	  for (i = 0; i < SERIAL_VALUE_INDEX_MAX; i++)
+	    {
+	      error = db_query_get_tuple_value (query_result, i, &values[i]);
+	      if (error != NO_ERROR)
+		{
+		  goto err;
+		}
+
+	      /* Validation of the result value */
+	      switch (i)
+		{
+		case SERIAL_OWNER_NAME:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			db_make_string (&values[i], "PUBLIC");
+		      }
+		  }
+		  break;
+
+		case SERIAL_UNIQUE_NAME:
+		case SERIAL_NAME:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		case SERIAL_CURRENT_VAL:
+		case SERIAL_INCREMENT_VAL:
+		case SERIAL_MAX_VAL:
+		case SERIAL_MIN_VAL:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_NUMERIC)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		case SERIAL_CYCLIC:
+		case SERIAL_STARTED:
+		case SERIAL_CACHED_NUM:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		case SERIAL_COMMENT:
+		  {
+		    if (DB_IS_NULL (&values[i]) == false && DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		default:
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+		  error = ER_INVALID_SERIAL_VALUE;
+		  goto err;
+		}
+	    }
+
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
+			  PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])),
+			  numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
+
+	      if (db_get_int (&values[SERIAL_STARTED]) == 1)
+		{
+
+		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+		}
+	    }
+	  else
+	    {
+	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
+			  PRINT_IDENTIFIER (db_get_string (&values[SERIAL_UNIQUE_NAME])),
+			  numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
+
+	      if (db_get_int (&values[SERIAL_STARTED]) == 1)
+		{
+		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ",
+			      PRINT_IDENTIFIER (db_get_string (&values[SERIAL_UNIQUE_NAME])));
+		}
+	    }
+
+	  db_value_clear (&diff_value);
+	  db_value_clear (&answer_value);
+	  for (i = 0; i < SERIAL_VALUE_INDEX_MAX; i++)
+	    {
+	      db_value_clear (&values[i]);
+	    }
+	}
+      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
+    }
+
+err:
+  db_query_end (query_result);
+
+  if (uppercase_user != NULL)
+    {
+      free_and_init (uppercase_user);
+    }
+  return error;
+}
+
+
 /*
  * export_synonym - export _db_synonym
  *    return: NO_ERROR if successful, error code otherwise
@@ -1244,6 +1436,16 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
       err_count++;
     }
 
+  if (emit_class_alter_serial (ctxt, schema_output_ctx) < NO_ERROR)
+    {
+      fprintf (stderr, "%s", db_error_string (3));
+      if (db_error_code () == ER_INVALID_SERIAL_VALUE)
+	{
+	  fprintf (stderr, " Check the value of db_serial object.\n");
+	}
+      err_count++;
+    }
+
   emit_schema (ctxt, schema_output_ctx, EXTRACT_VCLASS);
   if (er_errid () != NO_ERROR)
     {
@@ -1431,17 +1633,13 @@ emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * cl
 	      DB_OBJLIST * vclass_list_has_using_index)
 {
   DB_OBJLIST *cl;
-  int err_count = 0;
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
       /* if its some sort of vclass then it can't have indexes */
       if (db_is_vclass (cl->op) <= 0)
 	{
-	  if (emit_index_def (ctxt, output_ctx, cl->op) != NO_ERROR)
-	    {
-	      err_count++;
-	    }
+	  emit_index_def (ctxt, output_ctx, cl->op);
 	}
     }
 
@@ -1450,7 +1648,7 @@ emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * cl
       emit_query_specs_has_using_index (ctxt, output_ctx, vclass_list_has_using_index);
     }
 
-  return err_count;
+  return 0;
 }
 
 /*
@@ -3312,10 +3510,10 @@ emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_O
 
 /*
  * emit_index_def - emit the index constraint definitions for this class
- *    return: 
+ *    return: void
  *    class(in): the class to emit the indexes for
  */
-static int
+static void
 emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_)
 {
   DB_CONSTRAINT *constraint_list, *constraint;
@@ -3332,15 +3530,10 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
   char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 
-  PARSER_CONTEXT *parser = NULL;
-  PARSER_VARCHAR *res_vstr = NULL;
-  int error = NO_ERROR;
-  bool is_fail = false;
-
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
     {
-      return error;
+      return;
     }
 
   cls_name = db_get_class_name (class_);
@@ -3458,7 +3651,6 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	    }
 	}
 
-      is_fail = false;
       k = 0;
       for (att = atts; k < n_attrs; att++)
 	{
@@ -3470,18 +3662,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 		    {
 		      output_ctx (", ");
 		    }
-
-		  res_vstr = do_recreate_where_clause_or_function_attr (&parser, cls_name, constraint, false);
-		  if (res_vstr)
-		    {
-		      output_ctx ("%s", res_vstr->bytes);
-		    }
-		  else
-		    {
-		      output_ctx ("%s", constraint->func_index_info->expr_str);
-		      error = ER_FAILED;
-		      is_fail = true;
-		    }
+		  output_ctx ("%s", constraint->func_index_info->expr_str);
 		  if (constraint->func_index_info->fi_domain->is_desc)
 		    {
 		      output_ctx ("%s", " DESC");
@@ -3525,18 +3706,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	{
 	  if (constraint->filter_predicate->pred_string)
 	    {
-
-	      res_vstr = do_recreate_where_clause_or_function_attr (&parser, cls_name, constraint, true);
-	      if (res_vstr)
-		{
-		  output_ctx (") where %s", res_vstr->bytes);
-		}
-	      else
-		{
-		  output_ctx (") where %s", constraint->filter_predicate->pred_string);
-		  error = ER_FAILED;
-		  is_fail = true;
-		}
+	      output_ctx (") where %s", constraint->filter_predicate->pred_string);
 	    }
 	}
       else
@@ -3580,23 +3750,8 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	  help_print_describe_comment (output_ctx, constraint->comment);
 	}
 
-      if (is_fail == false)
-	{
-	  output_ctx (";\n");
-	}
-      else
-	{
-	  output_ctx (";%s\n", (parser ? "    /* Failure: Could be an error(Column name may be incorrect) */ "
-				: "    /* Notice: Could be an error */ "));
-	}
+      output_ctx (";\n");
     }
-
-  if (parser)
-    {
-      parser_free_parser (parser);
-    }
-
-  return error;
 }
 
 
@@ -4022,34 +4177,6 @@ emit_partition_info (extract_context & ctxt, print_output & output_ctx, MOP clso
   output_ctx (";\n");
 }
 
-// TODO: quick fix
-static bool
-is_builtin_package_function (const char *sp_name)
-{
-  static const char *builtin_list[] = {
-    "enable",
-    "disable",
-    "put",
-    "put_line",
-    "new_line",
-    "get_line",
-    "get_lines",
-    NULL
-  };
-
-  int dim, i;
-
-  dim = DIM (builtin_list);
-  for (i = 0; i < dim; i++)
-    {
-      if (builtin_list[i] != NULL && strcasecmp (builtin_list[i], sp_name) == 0)
-	{
-	  return true;
-	}
-    }
-  return false;
-}
-
 /*
  * emit_stored_procedure_args - emit stored procedure arguments
  *    return: 0 if success, error count otherwise
@@ -4162,12 +4289,6 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 	  || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
 	{
 	  err_count++;
-	  continue;
-	}
-
-      const char *sp_name = db_get_string (&sp_name_val);
-      if (is_builtin_package_function (sp_name))
-	{
 	  continue;
 	}
 
@@ -5023,6 +5144,17 @@ extract_class (extract_context & ctxt)
   emit_class_query_spec (ctxt, output_ctx, EXTRACT_CLASS);
   if (er_errid () == ER_FAILED)
     {
+      err = ER_FAILED;
+      goto end_class;
+    }
+
+  if (emit_class_alter_serial (ctxt, output_ctx) < NO_ERROR)
+    {
+      fprintf (stderr, "%s", db_error_string (3));
+      if (db_error_code () == ER_INVALID_SERIAL_VALUE)
+	{
+	  fprintf (stderr, " Check the value of db_serial object.\n");
+	}
       err = ER_FAILED;
       goto end_class;
     }
@@ -5902,104 +6034,4 @@ str_tolower (char *str)
       if (*p >= 'A' && *p <= 'Z')
 	*p = *p - 'A' + 'a';
     }
-}
-
-static PARSER_VARCHAR *
-do_recreate_where_clause_or_function_attr (PARSER_CONTEXT ** parser, const char *class_name, DB_CONSTRAINT * constraint,
-					   bool where_clause)
-{
-  PT_NODE **stmt;
-  PT_NODE *expr;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
-  PARSER_VARCHAR *res = NULL;
-  char qry_buf[4096];
-  char *query_str = qry_buf;
-  size_t query_str_len = 0;
-  char *in_str;
-  unsigned int save_custom;
-
-  assert (parser != NULL);
-  if (*parser == NULL)
-    {
-      *parser = parser_create_parser ();
-      if (*parser == NULL)
-	{
-	  return NULL;
-	}
-    }
-
-  assert (class_name != NULL);
-  if (where_clause)
-    {
-      in_str = constraint->filter_predicate->pred_string;
-      // SELECT 1 FROM [<class_name>] WHERE <in_str>  
-      query_str_len = strlen (in_str) + strlen (class_name) + 26;
-    }
-  else
-    {
-      in_str = constraint->func_index_info->expr_str;
-      // SELECT <in_str>  FROM [<class_name>]
-      query_str_len = strlen (in_str) + strlen (class_name) + 16;
-    }
-
-  if (query_str_len > sizeof (qry_buf))
-    {
-      query_str = (char *) malloc (query_str_len);
-      if (query_str == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_str_len);
-	  parser_free_parser (*parser);
-	  *parser = NULL;
-	  return NULL;
-	}
-    }
-
-  if (where_clause)
-    {
-      snprintf (query_str, query_str_len, "SELECT 1 FROM [%s] WHERE %s", class_name, in_str);
-    }
-  else
-    {
-      snprintf (query_str, query_str_len, "SELECT %s FROM [%s]", in_str, class_name);
-    }
-
-  stmt = parser_parse_string_use_sys_charset (*parser, query_str);
-  if (stmt == NULL || *stmt == NULL || pt_has_error (*parser))
-    {
-      goto error_exit;
-    }
-
-  expr = where_clause ? (*stmt)->info.query.q.select.where : (*stmt)->info.query.q.select.list;
-
-  *stmt = pt_resolve_names (*parser, *stmt, &sc_info);
-  if (*stmt == NULL || pt_has_error (*parser))
-    {
-      goto error_exit;
-    }
-
-  *stmt = pt_semantic_type (*parser, *stmt, &sc_info);
-  if (*stmt == NULL || pt_has_error (*parser))
-    {
-      goto error_exit;
-    }
-
-  /* make sure paren_type is 0 so parenthesis are not printed */
-  expr->info.expr.paren_type = 0;
-
-  save_custom = (*parser)->custom_print;
-  (*parser)->custom_print |= PT_CHARSET_COLLATE_FULL;
-  (*parser)->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
-  (*parser)->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
-  (*parser)->custom_print |= PT_SUPPRESS_RESOLVED;
-
-  res = pt_print_bytes (*parser, expr);
-  (*parser)->custom_print = save_custom;
-
-error_exit:
-  if (query_str != qry_buf)
-    {
-      free (query_str);
-    }
-
-  return res;
 }
