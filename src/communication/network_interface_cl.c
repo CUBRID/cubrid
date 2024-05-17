@@ -7591,7 +7591,7 @@ qmgr_drop_all_query_plans (void)
  * NOTE:
  */
 int
-qmgr_drop_query_plans_by_sha1 (char * sha1)
+qmgr_drop_query_plans_by_sha1 (char *sha1)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;

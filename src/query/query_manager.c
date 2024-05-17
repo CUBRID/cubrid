@@ -2064,7 +2064,7 @@ xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p)
  * Note: Clear sha1 XASL/filter predicate cache entries out upon request of the client.
  */
 int
-xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, char * sha1)
+xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, char *sha1)
 {
   xcache_remove_by_sha1 (thread_p, sha1);
   return NO_ERROR;

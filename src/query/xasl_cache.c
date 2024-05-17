@@ -267,9 +267,9 @@ static void xcache_cleanup (THREAD_ENTRY * thread_p);
 static BH_CMP_RESULT xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg);
 static bool xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 static void xcache_invalidate_entries (THREAD_ENTRY * thread_p,
-				       bool (*invalidate_check) (XASL_CACHE_ENTRY *, const void *), const void * arg);
-static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const void * arg);
-static bool xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void * arg);
+				       bool (*invalidate_check) (XASL_CACHE_ENTRY *, const void *), const void *arg);
+static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
+static bool xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
 static XCACHE_CLEANUP_REASON xcache_need_cleanup (void);
 
 /*
@@ -1745,7 +1745,7 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
  */
 static void
 xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XASL_CACHE_ENTRY *, const void *),
-			   const void * arg)
+			   const void *arg)
 {
 #define XCACHE_DELETE_XIDS_SIZE 1024
   XASL_CACHE_ENTRY *xcache_entry = NULL;
@@ -1841,10 +1841,10 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
  * arg (in)	     : Pointer to OID.
  */
 static bool
-xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const void * arg)
+xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const void *arg)
 {
   int oid_idx = 0;
-  const OID * related_to_oid = (OID *) arg;
+  const OID *related_to_oid = (OID *) arg;
 
   assert (xcache_entry != NULL);
   assert (related_to_oid != NULL);
@@ -1891,10 +1891,10 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid)
  * arg (in)	     : Pointer to OID.
  */
 static bool
-xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void * arg)
+xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg)
 {
   char sha1_xasl[45];
-  const char * sha1 = (char *) arg;
+  const char *sha1 = (char *) arg;
 
   assert (xcache_entry != NULL);
   assert (sha1 != NULL);
@@ -1919,7 +1919,7 @@ xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void * a
  * oid (in)	 : Object ID.
  */
 void
-xcache_remove_by_sha1 (THREAD_ENTRY * thread_p, const char * sha1)
+xcache_remove_by_sha1 (THREAD_ENTRY * thread_p, const char *sha1)
 {
   if (!xcache_Enabled)
     {
@@ -1928,8 +1928,7 @@ xcache_remove_by_sha1 (THREAD_ENTRY * thread_p, const char * sha1)
 
   xcache_check_logging ();
 
-  xcache_log ("remove entries: \n"
-	      "\t sha1 = %s \n" XCACHE_LOG_TRAN_TEXT, sha1, XCACHE_LOG_TRAN_ARGS (thread_p));
+  xcache_log ("remove entries: \n" "\t sha1 = %s \n" XCACHE_LOG_TRAN_TEXT, sha1, XCACHE_LOG_TRAN_ARGS (thread_p));
   xcache_invalidate_entries (thread_p, xcache_entry_is_related_to_sha1, (void *) sha1);
 }
 
