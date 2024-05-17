@@ -163,7 +163,10 @@ public class CUBRIDPacker {
             packString(((BigDecimal) result).toString(), charset);
         } else if (result instanceof String) {
             packInt(DBType.DB_STRING);
-            packString((String) result, charset);
+            packString((String) result);
+        } else if (result instanceof byte[]) {
+            packInt(DBType.DB_STRING);
+            packCString((byte[]) result);
         } else if (result instanceof java.sql.Date) {
             packInt(DBType.DB_DATE);
             packString(result.toString(), charset);
