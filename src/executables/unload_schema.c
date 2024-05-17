@@ -3110,7 +3110,7 @@ emit_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * 
 
   PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
 
-  output_ctx ("ALTER %s %s%s%s%s ADD ATTRIBUTE\n", class_type, output_owner, PRINT_IDENTIFIER (class_name_p));
+  output_ctx ("\nALTER %s %s%s%s%s ADD ATTRIBUTE\n", class_type, output_owner, PRINT_IDENTIFIER (class_name_p));
 
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
@@ -3488,7 +3488,7 @@ emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_O
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			    sizeof (output_owner));
 
-	  output_ctx ("CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s%s (", PRINT_IDENTIFIER (constraint->name),
+	  output_ctx ("\nCREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s%s (", PRINT_IDENTIFIER (constraint->name),
 		      output_owner, PRINT_IDENTIFIER (class_name));
 
 	  for (att = atts; *att != NULL; att++)
@@ -5826,13 +5826,11 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
 
       if (unique_flag)
 	{
-	  output_ctx ("\n");
 	  emit_unique_def (ctxt, output_ctx, cl->op, class_type);
 	}
 
       if (reverse_unique_flag)
 	{
-	  output_ctx ("\n");
 	  emit_reverse_unique_def (ctxt, output_ctx, cl->op);
 	}
 
