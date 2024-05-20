@@ -88,6 +88,7 @@
 #define MAX_NUM_CACHED_BROKER_FILES	4
 #define IS_FILE_MATCH_CONF_CACHE(cid, file)	(strcmp (br_conf_info[cid].conf_file, file) == 0)
 
+
 typedef struct t_conf_table T_CONF_TABLE;
 struct t_conf_table
 {
