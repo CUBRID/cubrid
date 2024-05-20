@@ -76,7 +76,7 @@ namespace cubmem
     return allocated_size;
   }
 
-#if !defined (NDEBUG)
+#if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
   /* This section is for tracking errors of memory monitoring modules.
    *
    * The m_error_tracking_map uses the pointer address of metainfo as the key
