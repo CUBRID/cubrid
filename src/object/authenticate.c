@@ -5870,6 +5870,14 @@ au_set_user (MOP newuser)
 	  error = sc_set_current_schema (Au_user);
 	}
     }
+  else
+    {
+      const char *name = sc_current_schema_name ();
+      if (name == NULL || *name == '\0')
+	{
+	  error = sc_set_current_schema (Au_user);
+	}
+    }
   return (error);
 }
 

@@ -4084,10 +4084,10 @@ alter_stmt
 		DBG_PRINT}}
 	| ALTER				/* 1 */
 	  procedure_or_function		/* 2 */
-	  identifier				/* 3 */
+	  procedure_name			/* 3 */
 	  opt_owner_clause			/* 4 */
 	  opt_comment_spec			/* 5 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function identifier opt_owner_clause opt_comment_spec);
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function procedure_name opt_owner_clause opt_comment_spec);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_STORED_PROCEDURE);
 
