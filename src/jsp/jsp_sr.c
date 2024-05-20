@@ -562,6 +562,11 @@ jsp_start_server (const char *db_name, const char *path, int port)
   // enable assertions in PL Server
   opts.insert(opts.begin(), "-ea"); // must be the first option in order not to override ones specified by the user
 #endif // !NDEBUG
+  
+  // CBRD-25364: Prevent JVM crash caused by libzip
+  // Added the following option as a default until the minimum JDK version is upgraded
+  opts.insert(opts.begin(), "-Dsun.zip.disableMemoryMapping=true");
+
   // *INDENT-ON*
     vm_n_ext_options += (int) opts.size ();
     options = new JavaVMOption[vm_n_default_options + vm_n_ext_options];
