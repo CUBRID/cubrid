@@ -129,10 +129,12 @@ class print_output;
     } \
   while (0)
 
+extern EXPORT_IMPORT authenticate_context *au_ctx (void);
+
 extern void au_init (void);
 extern void au_final (void);
 extern int au_login (const char *name, const char *password, bool ignore_dba_privilege);
-extern authenticate_context *au_ctx (void);
+
 /*
  * GRANT/REVOKE OPERATIONS (authenticate_grant.cpp)
  */
