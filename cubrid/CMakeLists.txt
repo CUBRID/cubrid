@@ -162,6 +162,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/process_util.h
   ${BASE_DIR}/resource_tracker.hpp
+  ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/semaphore.hpp
   )
@@ -190,7 +191,10 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_sr.c
   )
 
-  
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
+  )
+
 set(MONITOR_SOURCES
   ${MONITOR_DIR}/monitor_collect.cpp
   ${MONITOR_DIR}/monitor_registration.cpp
@@ -311,7 +315,10 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
+  ${TRANSACTION_DIR}/log_reader.cpp
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_recovery_redo.cpp
+  ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
@@ -333,6 +340,10 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
+  ${TRANSACTION_DIR}/log_reader.hpp
+  ${TRANSACTION_DIR}/log_recovery.h
+  ${TRANSACTION_DIR}/log_recovery_redo.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
@@ -375,6 +386,7 @@ set(STORAGE_SOURCES
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
+  ${STORAGE_DIR}/vpid.hpp
 )
 
 set(SESSION_SOURCES
@@ -501,6 +513,7 @@ set (CUBRID_LIB_SOURCES
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMPAT_HEADERS}
+  ${DEBUGGING_HEADERS}
   ${MONITOR_HEADERS}
   ${OBJECT_HEADERS}
   ${QUERY_HEADERS}

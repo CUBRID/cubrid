@@ -202,6 +202,19 @@ struct log_rcv
   int length;			/* Length of data */
   const char *data;		/* Replacement data. Pointer becomes invalid once the recovery of the data is finished */
   LOG_LSA reference_lsa;	/* Next LSA used by compensate/postpone. */
+
+  // *INDENT-OFF*
+  inline log_rcv ()
+    :mvcc_id (MVCCID_NULL), pgptr (nullptr), offset (0), length (0), data (nullptr)
+  {
+  }
+
+  log_rcv (const log_rcv &) = delete;
+  log_rcv (log_rcv &&) = delete;
+
+  log_rcv & operator= (const log_rcv &) = delete;
+  log_rcv & operator= (log_rcv &&) = delete;
+  // *INDENT-ON*
 };
 
 /*
@@ -210,12 +223,15 @@ struct log_rcv
 
 struct rvfun
 {
+  using fun_t = int (*)(THREAD_ENTRY * thread_p, LOG_RCV * logrcv);
+  using dump_fun_t = void (*)(FILE * fp, int length, void *data);
+
   LOG_RCVINDEX recv_index;	/* For verification */
   const char *recv_string;
-  int (*undofun) (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);
-  int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);
-  void (*dump_undofun) (FILE * fp, int length, void *data);
-  void (*dump_redofun) (FILE * fp, int length, void *data);
+  fun_t undofun;
+  fun_t redofun;
+  dump_fun_t dump_undofun;
+  dump_fun_t dump_redofun;
 };
 
 extern struct rvfun RV_fun[];
