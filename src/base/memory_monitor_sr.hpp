@@ -31,6 +31,15 @@
 #include "concurrent_unordered_map.h"
 #include "memory_monitor_common.hpp"
 
+#ifndef MMON_DEBUG_LEVEL
+/* 0: not debug
+ * 1: debug alloc count
+ * 2: debug tracking error
+ * 3: debug all
+ */
+#define MMON_DEBUG_LEVEL 0
+#endif
+
 #if defined(__SVR4)
 extern "C" size_t malloc_usable_size (void *);
 #elif defined(__APPLE__)
@@ -57,7 +66,7 @@ struct mmon_metainfo
   int magic_number;
 };
 
-#if !defined (NDEBUG)
+#if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
 typedef struct mmon_debug_info MMON_DEBUG_INFO;
 struct mmon_debug_info
 {
@@ -104,7 +113,7 @@ namespace cubmem
     private:
       inline char *get_metainfo_pos (char *ptr, size_t size);
       inline void make_stat_name (char *buf, const char *file, const int line);
-#if !defined (NDEBUG)
+#if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
       void check_add_stat_tracking_error_is_exist (MMON_METAINFO *metainfo, const char *file, int line);
       void check_sub_stat_tracking_error_is_exist (MMON_METAINFO *metainfo);
 #endif
@@ -113,7 +122,7 @@ namespace cubmem
       std::string m_server_name;
       // Entries of m_stat_name_map and m_stat_map will not be deleted
       tbb::concurrent_unordered_map <std::string, int> m_stat_name_map;        // key: stat name, value: stat id
-#if !defined (NDEBUG)
+#if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
       tbb::concurrent_unordered_map <intptr_t, MMON_DEBUG_INFO> m_error_tracking_map;
 #endif
       std::atomic <uint64_t> m_total_mem_usage;
@@ -184,7 +193,7 @@ retry:
     metainfo->magic_number = m_magic_number;
     m_meta_alloc_count++;
 
-#if !defined (NDEBUG)
+#if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
     check_add_stat_tracking_error_is_exist (metainfo, file, line);
 #endif
   }
@@ -197,7 +206,7 @@ retry:
       {
 	MMON_METAINFO *metainfo = (MMON_METAINFO *) get_metainfo_pos (ptr, allocated_size);
 
-#if !defined (NDEBUG)
+#if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
 	check_sub_stat_tracking_error_is_exist (metainfo);
 #endif
 	if (metainfo->magic_number == m_magic_number)
