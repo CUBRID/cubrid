@@ -297,6 +297,7 @@ struct t_broker_info
 
   char ignore_shard_hint;
   int proxy_timeout;
+  int net_buf_size;
   /* to here, these are used only in shard */
 
   char use_SSL;
