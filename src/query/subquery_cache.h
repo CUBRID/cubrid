@@ -38,11 +38,15 @@ extern void sq_free_key (SQ_KEY * key);
 
 #define SQ_CACHE_MIN_HIT_RATIO 9	/* it means 90% */
 
-#define SQ_TYPE_XASL 0
-#define SQ_TYPE_PRED 1
-#define SQ_TYPE_REGU_VAR 2
-#define SQ_TYPE_DBVAL 3
+enum sq_type
+{
+  SQ_TYPE_XASL = 0,
+  SQ_TYPE_PRED,
+  SQ_TYPE_REGU_VAR,
+  SQ_TYPE_DBVAL
+};
 
+typedef enum sq_type SQ_TYPE;
 
 union sq_regu_value
 {
