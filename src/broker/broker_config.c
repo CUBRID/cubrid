@@ -662,8 +662,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      br_info[num_brs].net_buf_size =
-	ini_getint (ini, sec_name, "NET_BUF_SIZE", DEFAULE_NET_BUF_SIZE, &lineno);
+      br_info[num_brs].net_buf_size = ini_getint (ini, sec_name, "NET_BUF_SIZE", DEFAULE_NET_BUF_SIZE, &lineno);
       if (br_info[num_brs].net_buf_size < 1)
 	{
 	  errcode = PARAM_BAD_RANGE;
