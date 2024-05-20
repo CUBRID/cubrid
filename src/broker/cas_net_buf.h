@@ -69,7 +69,7 @@
 
 #define NET_BUF_KBYTE                   1024
 #define SHARD_NET_BUF_SIZE              (512 * NET_BUF_KBYTE)
-#define NET_BUF_SIZE                    (16 * NET_BUF_KBYTE)
+#define NET_BUF_SIZE                    (get_net_buf_size ())
 #define NET_BUF_EXTRA_SIZE              (64 * NET_BUF_KBYTE)
 #define NET_BUF_ALLOC_SIZE              (NET_BUF_SIZE + NET_BUF_EXTRA_SIZE)
 #define SHARD_NET_BUF_ALLOC_SIZE        (SHARD_NET_BUF_SIZE + NET_BUF_EXTRA_SIZE)
