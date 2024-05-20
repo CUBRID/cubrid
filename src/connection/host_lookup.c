@@ -58,6 +58,9 @@
 #define MAX_NUM_IPADDR_PER_HOST      (1)
 
 #define NUM_DIGIT(VAL)              (size_t)(log10 (VAL) + 1)
+
+#if !defined (MALLOC)
+#define MALLOC(SIZE)            malloc(SIZE)
 #define FREE_MEM(PTR)           \
         do {                    \
           if (PTR) {            \
@@ -65,6 +68,7 @@
             PTR = 0;            \
           }                     \
         } while (0)
+#endif
 
 typedef enum
 {
@@ -121,7 +125,7 @@ hostent_alloc (char *ipaddr, char *hostname)
   struct hostent *hp;
   char addr_trans_bi_buf[sizeof (struct in_addr)];
 
-  if ((hp = (struct hostent *) malloc (sizeof (struct hostent))) == NULL)
+  if ((hp = (struct hostent *) MALLOC (sizeof (struct hostent))) == NULL)
     {
       goto return_phase;
     }
@@ -138,14 +142,14 @@ hostent_alloc (char *ipaddr, char *hostname)
   hp->h_name = strdup (hostname);
   hp->h_aliases = NULL;
 
-  if ((hp->h_addr_list = (char **) malloc (sizeof (char *) * MAX_NUM_IPADDR_PER_HOST)) == NULL)
+  if ((hp->h_addr_list = (char **) MALLOC (sizeof (char *) * MAX_NUM_IPADDR_PER_HOST)) == NULL)
     {
       FREE_MEM (hp->h_name);
       FREE_MEM (hp);
       goto return_phase;
     }
 
-  if ((hp->h_addr_list[0] = (char *) malloc (sizeof (char) * IPv4_ADDR_LEN)) == NULL)
+  if ((hp->h_addr_list[0] = (char *) MALLOC (sizeof (char) * IPv4_ADDR_LEN)) == NULL)
     {
       FREE_MEM (hp->h_addr_list);
       FREE_MEM (hp->h_name);
@@ -656,7 +660,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
       goto return_phase;
     }
 
-  if ((addrp = (struct addrinfo *) malloc (sizeof (struct addrinfo))) == NULL)
+  if ((addrp = (struct addrinfo *) MALLOC (sizeof (struct addrinfo))) == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct addrinfo));
       ret = EAI_MEMORY;
@@ -666,7 +670,7 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
   memset (addrp, 0, sizeof (addrinfo));
   if ((addrp->ai_canonname = strdup (hp->h_name)) == NULL)
     {
-      freeaddrinfo (addrp);
+      freeaddrinfo_uhost (addrp);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct sockaddr));
       ret = EAI_MEMORY;
       goto return_phase;
@@ -686,6 +690,22 @@ getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct add
 return_phase:
 
   return ret;
+}
+
+void
+freeaddrinfo_uhost (struct addrinfo *res)
+{
+  if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
+    {
+      return (freeaddrinfo (res));
+    }
+
+  if (res)
+    {
+      FREE_MEM (res->ai_canonname);
+      FREE_MEM (res);
+    }
+  return;
 }
 
 static void
