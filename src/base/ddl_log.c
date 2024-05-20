@@ -783,6 +783,8 @@ void
 logddl_write ()
 {
   FILE *fp = NULL;
+  char *dbname = NULL;
+  char *user_name = NULL;
 
   if (ddl_logging_enabled == false)
     {
@@ -794,8 +796,11 @@ logddl_write ()
       return;
     }
 
-  logddl_set_db_name (db_get_database_name ());
-  logddl_set_user_name (db_get_user_name ());
+  dbname = db_get_database_name ();
+  logddl_set_db_name (dbname);
+
+  user_name = db_get_user_name ();
+  logddl_set_user_name (user_name);
 
   fp = logddl_open (ddl_audit_handle.app_name);
 
@@ -830,6 +835,16 @@ write_error:
       fclose (fp);
       fp = NULL;
     }
+
+  if (dbname != NULL)
+    {
+      db_string_free (dbname);
+    }
+
+  if (user_name != NULL)
+    {
+      db_string_free (user_name);
+    }
 }
 
 void
@@ -840,6 +855,8 @@ logddl_write_tran_str (const char *fmt, ...)
   int len = 0;
   struct timeval time_val;
   va_list args;
+  char *dbname = NULL;
+  char *user_name = NULL;
 
   if (ddl_logging_enabled == false)
     {
@@ -851,8 +868,11 @@ logddl_write_tran_str (const char *fmt, ...)
       goto write_error;
     }
 
-  logddl_set_db_name (db_get_database_name ());
-  logddl_set_user_name (db_get_user_name ());
+  dbname = db_get_database_name ();
+  logddl_set_db_name (dbname);
+
+  user_name = db_get_user_name ();
+  logddl_set_user_name (user_name);
 
   fp = logddl_open (ddl_audit_handle.app_name);
 
@@ -927,6 +947,16 @@ write_error:
       fp = NULL;
     }
 
+  if (dbname != NULL)
+    {
+      db_string_free (dbname);
+    }
+
+  if (user_name != NULL)
+    {
+      db_string_free (user_name);
+    }
+
   logddl_free (true);
 }
 
@@ -936,6 +966,9 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
   FILE *fp = NULL;
   struct timeval time_val;
   va_list args;
+  char *dbname = NULL;
+  char *user_name = NULL;
+
   if (ddl_logging_enabled == false)
     {
       return;
@@ -951,8 +984,11 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
       return;
     }
 
-  logddl_set_db_name (db_get_database_name ());
-  logddl_set_user_name (db_get_user_name ());
+  dbname = db_get_database_name ();
+  logddl_set_db_name (dbname);
+
+  user_name = db_get_user_name ();
+  logddl_set_user_name (user_name);
 
   fp = logddl_open (ddl_audit_handle.app_name);
 
@@ -992,6 +1028,16 @@ write_error:
     {
       fclose (fp);
       fp = NULL;
+    }
+
+  if (dbname != NULL)
+    {
+      db_string_free (dbname);
+    }
+
+  if (user_name != NULL)
+    {
+      db_string_free (user_name);
     }
 
   logddl_free (true);
