@@ -82,6 +82,7 @@
 
 #ifndef HAVE_GETHOSTBYNAME_R
 #include <pthread.h>
+
 static pthread_mutex_t gethostbyname_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* HAVE_GETHOSTBYNAME_R */
 
@@ -143,14 +144,14 @@ css_gethostname (char *name, size_t namelen)
   size_t canonname_size = strlen (result->ai_canonname) + 1;	// +1 for NULL terminator
   if (canonname_size > namelen_)
     {
-      freeaddrinfo (result);
+      freeaddrinfo_uhost (result);
       return ER_FAILED;
     }
 
   memcpy (name, result->ai_canonname, canonname_size);
   name[canonname_size] = '\0';
 
-  freeaddrinfo (result);
+  freeaddrinfo_uhost (result);
   return NO_ERROR;
 }
 
