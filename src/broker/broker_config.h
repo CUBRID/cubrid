@@ -58,6 +58,8 @@
 #define	DEFAULT_AS_MIN_NUM	5
 #define	DEFAULT_AS_MAX_NUM	40
 
+#define DEFAULE_NET_BUF_SIZE	(16*1024)
+
 #if defined (WINDOWS)
 #if __WORDSIZE == 64
 #define	DEFAULT_SERVER_MAX_SIZE	"80M"

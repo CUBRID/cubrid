@@ -88,7 +88,6 @@
 #define MAX_NUM_CACHED_BROKER_FILES	4
 #define IS_FILE_MATCH_CONF_CACHE(cid, file)	(strcmp (br_conf_info[cid].conf_file, file) == 0)
 
-
 typedef struct t_conf_table T_CONF_TABLE;
 struct t_conf_table
 {
@@ -296,7 +295,8 @@ const char *broker_keywords[] = {
   "SHARD_PROXY_LOG_DIR",
   /* For backword compatibility */
   "SQL_LOG2",
-  "SHARD"
+  "SHARD",
+  "NET_BUF_SIZE"
 };
 
 int broker_keywords_size = sizeof (broker_keywords) / sizeof (char *);
@@ -657,6 +657,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       br_info[num_brs].appl_server_min_num =
 	ini_getint (ini, sec_name, "MIN_NUM_APPL_SERVER", DEFAULT_AS_MIN_NUM, &lineno);
       if (br_info[num_brs].appl_server_min_num < 1)
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
+
+      br_info[num_brs].net_buf_size =
+	ini_getint (ini, sec_name, "NET_BUF_SIZE", DEFAULE_NET_BUF_SIZE, &lineno);
+      if (br_info[num_brs].net_buf_size < 1)
 	{
 	  errcode = PARAM_BAD_RANGE;
 	  goto conf_error;
