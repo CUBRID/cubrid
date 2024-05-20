@@ -1768,7 +1768,6 @@ namespace cubschema
 		   CTV_STORED_PROC_NAME,
 		   // columns
     {
-      {"unique_name", "varchar(255)"},
       {"sp_name", "varchar(255)"},
       {"sp_type", "varchar(16)"},
       {"return_type", "varchar(16)"},
@@ -1806,7 +1805,6 @@ namespace cubschema
 		   CTV_STORED_PROC_ARGS_NAME,
 		   // columns
     {
-      {"unique_name", "varchar(255)"},
       {"sp_name", "varchar(255)"},
       {"index_of", "integer"},
       {"arg_name", "varchar(255)"},
