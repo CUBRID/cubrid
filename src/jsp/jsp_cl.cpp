@@ -33,6 +33,10 @@
 
 #include <vector>
 #include <functional>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 
 #include "authenticate.h"
 #include "error_manager.h"
@@ -650,6 +654,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   int err = NO_ERROR;
   bool has_savepoint = false;
   PLCSQL_COMPILE_INFO compile_info;
+  std::string pl_code;
 
   SP_INFO sp_info;
 
@@ -726,7 +731,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
-      std::string pl_code (statement->sql_user_text, statement->sql_user_text_len);
+      pl_code.assign (statement->sql_user_text, statement->sql_user_text_len);
       err = plcsql_transfer_file (pl_code, false, compile_info);
       if (err == NO_ERROR && compile_info.err_code == NO_ERROR)
 	{
@@ -807,6 +812,31 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       goto error_exit;
     }
+
+  if (!pl_code.empty ())
+    {
+      SP_CODE_INFO code_info;
+
+      auto now = std::chrono::system_clock::now();
+      auto converted_timep = std::chrono::system_clock::to_time_t (now);
+      std::stringstream stm;
+      stm << std::put_time (localtime (&converted_timep), "%Y%m%d%H%M%S");
+
+      code_info.name = get_class_name (sp_info.target);
+      code_info.created_time = stm.str ();
+      code_info.stype = 0;
+      code_info.scode = pl_code;
+      code_info.otype = 0;
+      code_info.ocode = "dummy"; // TODO: CBRD-24552
+      code_info.owner = Au_user; // current user
+
+      err = sp_add_stored_procedure_code (code_info);
+      if (err != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
   return NO_ERROR;
 
 error_exit:
@@ -1035,12 +1065,12 @@ static int
 drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 {
   MOP sp_mop, arg_mop, owner;
-  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_val, temp;
+  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_val, lang_val, temp;
   SP_TYPE_ENUM real_type;
   std::string class_name;
   const char *target;
   DB_SET *arg_set_p;
-  int save, i, arg_cnt;
+  int save, i, arg_cnt, lang;
   int err;
 
   AU_DISABLE (save);
@@ -1100,23 +1130,31 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
     }
 
   // delete _db_stored_procedure_code
-  err = db_get (sp_mop, SP_ATTR_TARGET, &target_val);
+
+  err = db_get (sp_mop, SP_ATTR_LANG, &lang_val);
   if (err != NO_ERROR)
     {
       goto error;
     }
 
-  target = db_get_string (&target_val);
-  // TODO: CBRD-24552
-  /*
-    class_name = get_class_name (target);
-
-  err = drop_stored_procedure_code (class_name.c_str ());
-  if (err != NO_ERROR)
+  lang = db_get_int (&lang_val);
+  if (lang == SP_LANG_PLCSQL)
     {
-      goto error;
+      err = db_get (sp_mop, SP_ATTR_TARGET, &target_val);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      target = db_get_string (&target_val);
+      class_name = get_class_name (std::string (target));
+
+      err = drop_stored_procedure_code (class_name.c_str ());
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
     }
-  */
 
   err = db_get (sp_mop, SP_ATTR_ARG_COUNT, &arg_cnt_val);
   if (err != NO_ERROR)
