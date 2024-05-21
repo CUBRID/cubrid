@@ -25,6 +25,7 @@
 #include <cstring>
 #include <algorithm>
 
+#include "environment_variable.h"
 #include "memory_monitor_sr.hpp"
 
 namespace cubmem
@@ -264,11 +265,22 @@ namespace cubmem
   void memory_monitor::print_debug_result ()
   {
     double mem_usage_ratio = 0.0;
-    FILE *outfile_fp = fopen ("mmon_debug_result.txt", "w+");
     MMON_SERVER_INFO server_info;
     std::vector<uint64_t> stat_alloc_count_vector;
     std::vector<uint64_t> stat_free_count_vector;
     std::vector<uint64_t> stat_peak_vector;
+    char filename[MMON_MAX_NAME_LENGTH * 2];
+    FILE *outfile_fp = NULL;
+
+    //sprintf (filename, "%s/%s", CUBRID_LOGDIR, "mmon_debug_result.txt");
+    (void) envvar_logdir_file (filename, MMON_MAX_NAME_LENGTH * 2, "/server/mmon_debug_result.txt");
+    outfile_fp = fopen (filename, "w+");
+    if (outfile_fp == NULL)
+      {
+	fprintf (stdout, "fopen() error. Creating mmon_debug_result.txt failed\n");
+	fflush (stdout);
+	return;
+      }
 
     auto MMON_CONVERT_TO_KB_SIZE = [] (uint64_t size)
     {
