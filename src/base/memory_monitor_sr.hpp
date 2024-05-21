@@ -37,7 +37,7 @@
  * 2: debug tracking error
  * 3: debug all
  */
-#define MMON_DEBUG_LEVEL 0
+#define MMON_DEBUG_LEVEL 1
 #endif
 
 #if defined(__SVR4)
@@ -109,6 +109,9 @@ namespace cubmem
       inline void sub_stat (char *ptr);
       void aggregate_server_info (MMON_SERVER_INFO &server_info);
       void finalize_dump ();
+#if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
+      void print_debug_result ();
+#endif
 
     private:
       inline char *get_metainfo_pos (char *ptr, size_t size);
@@ -124,6 +127,14 @@ namespace cubmem
       tbb::concurrent_unordered_map <std::string, int> m_stat_name_map;        // key: stat name, value: stat id
 #if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
       tbb::concurrent_unordered_map <intptr_t, MMON_DEBUG_INFO> m_error_tracking_map;
+#endif
+#if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
+      std::atomic <uint64_t> m_stat_alloc_count[MMON_MAP_RESERVE_SIZE];
+      std::atomic <uint64_t> m_stat_free_count[MMON_MAP_RESERVE_SIZE];
+      std::atomic <uint64_t> m_total_alloc_count;
+      std::atomic <uint64_t> m_total_free_count;
+      uint64_t m_stat_memory_peak[MMON_MAP_RESERVE_SIZE];
+      uint64_t m_total_memory_peak;
 #endif
       std::atomic <uint64_t> m_total_mem_usage;
       std::atomic <int> m_meta_alloc_count;                         // for checking occupancy of memory used by metainfo space
@@ -166,6 +177,13 @@ namespace cubmem
 
     metainfo->allocated_size = (uint64_t) size;
     m_total_mem_usage += metainfo->allocated_size;
+#if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
+    // check total allocated memory peak
+    if (m_total_mem_usage.load () > m_total_memory_peak)
+      {
+	m_total_memory_peak = m_total_mem_usage.load ();
+      }
+#endif
 
     make_stat_name (stat_name, file, line);
 
@@ -188,11 +206,21 @@ retry:
 	  }
       }
     m_stat_map[metainfo->stat_id] += metainfo->allocated_size;
+#if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
+    // check stat allocated memory peak
+    uint64_t stat_size = m_stat_map[metainfo->stat_id].load ();
+    if (stat_size > m_stat_memory_peak[metainfo->stat_id])
+      {
+	m_stat_memory_peak[metainfo->stat_id] = stat_size;
+      }
+    // add alloc count
+    m_stat_alloc_count[metainfo->stat_id]++;
+    m_total_alloc_count++;
+#endif
 
     // put meta info into the allocated chunk
     metainfo->magic_number = m_magic_number;
     m_meta_alloc_count++;
-
 #if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
     check_add_stat_tracking_error_is_exist (metainfo, file, line);
 #endif
@@ -221,6 +249,10 @@ retry:
 	    metainfo->magic_number = 0;
 	    m_meta_alloc_count--;
 	    assert (m_meta_alloc_count >= 0);
+#if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
+	    m_stat_free_count[metainfo->stat_id]++;
+	    m_total_free_count++;
+#endif
 	  }
       }
   }

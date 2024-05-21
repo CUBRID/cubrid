@@ -61,6 +61,9 @@ void mmon_finalize ()
 #if !defined (NDEBUG)
       mmon_Gl->finalize_dump ();
 #endif
+#if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
+      mmon_Gl->print_debug_result ();
+#endif
       delete mmon_Gl;
       mmon_Gl = nullptr;
     }

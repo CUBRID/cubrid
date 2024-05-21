@@ -25,6 +25,7 @@
 #include <cstring>
 #include <algorithm>
 
+#include "environment_variable.h"
 #include "memory_monitor_sr.hpp"
 
 namespace cubmem
@@ -36,6 +37,14 @@ namespace cubmem
       m_server_name {server_name},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")},
       m_total_mem_usage {0},
+#if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
+      m_stat_alloc_count {},
+      m_stat_free_count {},
+      m_total_alloc_count {0},
+      m_total_free_count {0},
+      m_stat_memory_peak {},
+      m_total_memory_peak {0},
+#endif
       m_meta_alloc_count {0}
   {
     std::string filecopy (__FILE__);
@@ -251,5 +260,74 @@ namespace cubmem
     fflush (outfile_fp);
     fclose (outfile_fp);
   }
+
+#if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
+  void memory_monitor::print_debug_result ()
+  {
+    double mem_usage_ratio = 0.0;
+    MMON_SERVER_INFO server_info;
+    std::vector<uint64_t> stat_alloc_count_vector;
+    std::vector<uint64_t> stat_free_count_vector;
+    std::vector<uint64_t> stat_peak_vector;
+    char filename[MMON_MAX_NAME_LENGTH * 2];
+    FILE *outfile_fp = NULL;
+
+    //sprintf (filename, "%s/%s", CUBRID_LOGDIR, "mmon_debug_result.txt");
+    (void) envvar_logdir_file (filename, MMON_MAX_NAME_LENGTH * 2, "/server/mmon_debug_result.txt");
+    outfile_fp = fopen (filename, "w+");
+    if (outfile_fp == NULL)
+      {
+	fprintf (stdout, "fopen() error. Creating mmon_debug_result.txt failed\n");
+	fflush (stdout);
+	return;
+      }
+
+    auto MMON_CONVERT_TO_KB_SIZE = [] (uint64_t size)
+    {
+      return ((size) / 1024);
+    };
+
+    // get stat information of memory_monitor like aggregate_server_info ()
+    strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
+    server_info.total_mem_usage = m_total_mem_usage.load ();
+    server_info.total_metainfo_mem_usage = m_meta_alloc_count * MMON_METAINFO_SIZE;
+
+    server_info.num_stat = m_stat_name_map.size ();
+
+    for (const auto &[stat_name, stat_id] : m_stat_name_map)
+      {
+	// m_stat_map[stat_id] means memory usage
+	server_info.stat_info.emplace_back (stat_name, m_stat_map[stat_id].load ());
+	// save debug result with the same order of server_info.stat_info
+	stat_alloc_count_vector.emplace_back (m_stat_alloc_count[stat_id].load ());
+	stat_free_count_vector.emplace_back (m_stat_free_count[stat_id].load ());
+	stat_peak_vector.emplace_back (m_stat_memory_peak[stat_id]);
+      }
+
+    fprintf (outfile_fp, "====================cubrid memmon====================\n");
+    fprintf (outfile_fp, "Server Name: %s\n", server_info.server_name);
+    fprintf (outfile_fp, "Total Memory Usage(KB): %lu\n\n", MMON_CONVERT_TO_KB_SIZE (server_info.total_mem_usage));
+    fprintf (outfile_fp, "Total Metainfo Memory Usage(KB): %lu\n\n",
+	     MMON_CONVERT_TO_KB_SIZE (server_info.total_metainfo_mem_usage));
+    fprintf (outfile_fp, "Total Alloc Count: %lu\n", m_total_alloc_count.load ());
+    fprintf (outfile_fp, "Total Dealloc Count: %lu\n", m_total_free_count.load ());
+    fprintf (outfile_fp, "Total Peak Memory(KB): %lu\n", MMON_CONVERT_TO_KB_SIZE (m_total_memory_peak));
+    fprintf (outfile_fp, "-----------------------------------------------------\n");
+
+    fprintf (outfile_fp, "\t%-50s | %10s | %10s | %10s\n", "File Name", "Alloc Cnt", "Free Cnt", "Peak Mem");
+
+    int cnt = 0;
+    for (const auto &[stat_name, mem_usage] : server_info.stat_info)
+      {
+	fprintf (outfile_fp, "\t%-50s | %10lu | %10lu | %10lu\n",stat_name.c_str (),
+		 stat_alloc_count_vector[cnt], stat_free_count_vector[cnt],
+		 MMON_CONVERT_TO_KB_SIZE (stat_peak_vector[cnt]));
+	cnt++;
+      }
+    fprintf (outfile_fp, "-----------------------------------------------------\n");
+    fflush (outfile_fp);
+    fclose (outfile_fp);
+  }
+#endif
 }
 #endif // !WINDOWS
