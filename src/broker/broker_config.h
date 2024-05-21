@@ -111,6 +111,8 @@
 
 #define DEFAULT_SSL_MODE                 "OFF"
 
+#define DEFAULE_NET_BUF_SIZE            "16K"
+
 #define CGW_LINK_SERVER_NAME_LEN	 256
 #define CGW_LINK_SERVER_IP_LEN		 32
 #define CGW_LINK_SERVER_PORT_LEN	 10

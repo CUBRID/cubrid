@@ -663,14 +663,18 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      br_info[num_brs].net_buf_size = ini_getint (ini, sec_name, "NET_BUF_SIZE", DEFAULE_NET_BUF_SIZE, &lineno);
-      if (br_info[num_brs].net_buf_size < 1)
+      br_info[num_brs].appl_server_num = br_info[num_brs].appl_server_min_num;
+
+      INI_GETSTR_CHK (s, ini, sec_name, "NET_BUF_SIZE", DEFAULE_NET_BUF_SIZE, &lineno);
+      strncpy_bufsize (size_str, s);
+      br_info[num_brs].net_buf_size = (int) ut_size_string_to_kbyte (size_str, "K");
+
+      if (br_info[num_brs].net_buf_size < 0)
 	{
 	  errcode = PARAM_BAD_RANGE;
 	  goto conf_error;
 	}
 
-      br_info[num_brs].appl_server_num = br_info[num_brs].appl_server_min_num;
 
       br_info[num_brs].appl_server_max_num =
 	ini_getint (ini, sec_name, "MAX_NUM_APPL_SERVER", DEFAULT_AS_MAX_NUM, &lineno);
