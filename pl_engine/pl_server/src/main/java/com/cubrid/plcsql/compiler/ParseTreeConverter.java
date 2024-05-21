@@ -756,7 +756,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public ExprStr visitQuoted_string(Quoted_stringContext ctx) {
         String val = ctx.getText();
-        return new ExprStr(ctx, quotedStrToJavaStr(val));
+        return new ExprStr(ctx, unquoteStr(val));
     }
 
     @Override
@@ -2197,10 +2197,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private static String unquoteStr(String val) {
         val = val.substring(1, val.length() - 1); // strip enclosing '
         return val.replace("''", "'");
-    }
-
-    private static String quotedStrToJavaStr(String val) {
-        return unquoteStr(val);
     }
 
     // --------------------------------------------------------
