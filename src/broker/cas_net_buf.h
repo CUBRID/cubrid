@@ -88,7 +88,7 @@
 #define NET_BUF_TYPE_SIZE(net_buf) (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL \
 ((net_buf)->client_version, PROTOCOL_V7) ? 2 * NET_SIZE_BYTE : NET_SIZE_BYTE)
 
-#define INT_DEFAULE_NET_BUF_SIZE        (16 * 1024)
+#define INT_DEFAULE_NET_BUF_SIZE        (16 * NET_BUF_KBYTE)
 
 typedef struct t_net_buf T_NET_BUF;
 struct t_net_buf
