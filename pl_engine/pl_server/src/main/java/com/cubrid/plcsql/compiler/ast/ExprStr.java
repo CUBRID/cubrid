@@ -81,5 +81,4 @@ public class ExprStr extends Expr {
     //   65534: maximum byte length of a Java string literal,
     //   4: maximum byte length of a character in UTF-8
     private static final int STR_LITERAL_CUT_LEN = 16383;
-
 }
