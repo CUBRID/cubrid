@@ -505,7 +505,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         ExprStr escape = ctx.escape == null ? null : visitQuoted_string(ctx.escape);
 
         if (escape != null) {
-            String escapeStr = StringEscapeUtils.unescapeJava(escape.val);
+            String escapeStr = escape.val;
             if (escapeStr.length() != 1) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx.escape), // s002
@@ -2200,7 +2200,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private static String quotedStrToJavaStr(String val) {
-        return StringEscapeUtils.escapeJava(unquoteStr(val));
+        return unquoteStr(val);
     }
 
     // --------------------------------------------------------
