@@ -927,7 +927,8 @@ plandump: クエリープラン表示と管理\n\
 \n\
 オプション:\n\
   -d, --drop                   サーバーキャッシュに存在するプランを全部削除\n\
-  -o, --output-file=FILE       出力メッセージを書き込むファイル; デフォルト: なし\n
+  -o, --output-file=FILE       出力メッセージを書き込むファイル; デフォルト: なし\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 出力ファイル「%1$s」が開けません。\n
