@@ -7290,6 +7290,8 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 		      goto exit_on_error;
 		    }
 
+		  has_merge_tuple = true;
+
 		  /* next tuple */
 		  continue;
 		}
@@ -7353,13 +7355,6 @@ exit_on_error:
   goto exit_on_end;
 }
 
-/*
- * 1. OUTER JOIN에서의 해시 조인 실행 계획은 LEFT면 outer가, RIGHT면 inner가 outer가 되도록 만들어진다고 가정한다.
- * 2. outer의 결과가 0건이면 inner, outer 조인에 관계 없이 결과가 0건이므로 해시 조인을 종료한다.
- * 3. inner의 결과가 0건이면 inner 조인의 경우에는 조인된 결과가 0건일 것이므로 해시 조인을 종료한다.
- *    outer join의 경우에는 build를 skip하고, inner 조인의 모든 결과가 해시 조인의 결과가 된다.
- * 4. java sp가 during term으로 있을 때
- */
 static int
 qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {

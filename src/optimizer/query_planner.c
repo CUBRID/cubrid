@@ -3202,8 +3202,8 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
       qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.join_terms), f);
     }
 
-  qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "build: ");
-  qo_plan_fprint (plan->plan_un.join.inner, f, howfar, "probe: ");
+  qo_plan_fprint (plan->plan_un.join.inner, f, howfar, "build: ");
+  qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "probe: ");
   qo_plan_print_outer_join_terms (plan, f, howfar);
 }
 

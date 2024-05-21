@@ -7796,7 +7796,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (hint & PT_HINT_NO_USE_HASH)
     {
-      if (pt_resolve_hint_args (parser, no_use_hash, spec_list, REQUIRE_ALL_MATCH) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, no_use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -7804,7 +7804,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (hint & PT_HINT_USE_HASH)
     {
-      if (pt_resolve_hint_args (parser, use_hash, spec_list, REQUIRE_ALL_MATCH) != NO_ERROR)
+      if (pt_resolve_hint_args (parser, use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
