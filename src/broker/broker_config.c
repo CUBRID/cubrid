@@ -1854,7 +1854,7 @@ is_invalid_buf_size (int size)
 
   // The unit of size is KB.
   switch (size)
-  {
+    {
     case 16:
     case 32:
     case 48:
@@ -1863,7 +1863,7 @@ is_invalid_buf_size (int size)
     default:
       ret = true;
       break;
-  }
+    }
 
   return ret;
 }
