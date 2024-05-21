@@ -104,6 +104,7 @@ static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INF
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
 #endif /* WINDOWS */
 
+
 static int cas_main (void);
 static int shard_cas_main (void);
 static void cas_sig_handler (int signo);
