@@ -319,11 +319,6 @@ namespace cubmem
     int cnt = 0;
     for (const auto &[stat_name, mem_usage] : server_info.stat_info)
       {
-	if (server_info.total_mem_usage != 0)
-	  {
-	    mem_usage_ratio = mem_usage / (double) server_info.total_mem_usage;
-	    mem_usage_ratio *= 100;
-	  }
 	fprintf (outfile_fp, "\t%-50s | %10lu | %10lu | %10lu\n",stat_name.c_str (),
 		 stat_alloc_count_vector[cnt], stat_free_count_vector[cnt],
 		 MMON_CONVERT_TO_KB_SIZE (stat_peak_vector[cnt]));
