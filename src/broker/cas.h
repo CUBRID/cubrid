@@ -139,7 +139,4 @@ extern bool check_server_alive (const char *db_name, const char *db_host);
 extern void cas_set_db_connect_status (int status);
 extern int cas_get_db_connect_status (void);
 extern T_BROKER_VERSION cas_get_client_version (void);
-
-extern int get_net_buf_size (void);
-extern int set_net_buf_size (void);
 #endif /* _CAS_H_ */

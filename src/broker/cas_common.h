@@ -168,7 +168,4 @@ enum
 
 
 extern int uts_key_check_local_host (void);
-#define DEFAULE_NET_BUF_SIZE    (16*1024)
-#define NET_BUF_SIZE_MAX    (64*1024)
-
 #endif /* _CAS_COMMON_H_ */

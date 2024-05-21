@@ -87,7 +87,6 @@
 #endif
 
 static const int DEFAULT_CHECK_INTERVAL = 1;
-static int _net_buf_size = DEFAULE_NET_BUF_SIZE;
 
 #define FUNC_NEEDS_RESTORING_CON_STATUS(func_code) \
   (((func_code) == CAS_FC_GET_DB_PARAMETER) \
@@ -104,7 +103,6 @@ static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INF
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
 #endif /* WINDOWS */
-
 
 static int cas_main (void);
 static int shard_cas_main (void);
@@ -903,7 +901,6 @@ cas_main (void)
       return -1;
     }
 
-  set_net_buf_size ();
   net_buf_init (&net_buf, cas_get_client_version ());
   net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE);
   if (net_buf.data == NULL)
@@ -3073,17 +3070,4 @@ T_BROKER_VERSION
 cas_get_client_version (void)
 {
   return req_info.client_version;
-}
-
-int
-get_net_buf_size ()
-{
-  return _net_buf_size;
-}
-
-int
-set_net_buf_size ()
-{
-  _net_buf_size = shm_appl->net_buf_size > 0 ? shm_appl->net_buf_size : DEFAULE_NET_BUF_SIZE;
-  return 1;
 }
