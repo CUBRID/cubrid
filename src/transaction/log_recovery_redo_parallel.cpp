@@ -647,4 +647,95 @@ namespace cublog
 	m_worker_pool->execute (task);
       }
   }
+
+
+  /*********************************************************************
+   * redo_job_impl - definition
+   *********************************************************************/
+
+  redo_job_impl::redo_job_impl (const log_lsa *a_end_redo_lsa, bool force_each_page_fetch)
+    : redo_parallel::redo_job_base (VPID_INITIALIZER, NULL_LSA)
+    , m_end_redo_lsa { a_end_redo_lsa }
+    , m_log_reader_page_fetch_mode (force_each_page_fetch
+				    ? log_reader::fetch_mode::FORCE
+				    : log_reader::fetch_mode::NORMAL)
+    , m_log_rtype { LOG_SMALLER_LOGREC_TYPE }
+  {
+  }
+
+  void redo_job_impl::reset (VPID a_vpid, const log_lsa &a_rcv_lsa, LOG_RECTYPE a_log_rtype)
+  {
+    set_vpid (a_vpid);
+    set_log_lsa (a_rcv_lsa);
+    assert (a_log_rtype != LOG_SMALLER_LOGREC_TYPE && a_log_rtype != LOG_LARGER_LOGREC_TYPE);
+    m_log_rtype = a_log_rtype;
+  }
+
+  int redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+			      LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
+  {
+    /* perf data for processing log redo asynchronously, enabled:
+     *  - during log crash recovery
+     *  - on the page server, when replication is executing in the asynchronous mode
+     * in both cases, it does include the part that effectively calls the redo function, so, for accurate
+     * evaluation the part that effectively executes the redo function must be accounted for
+     */
+    perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_ASYNC };
+
+    const auto &rcv_lsa = get_log_lsa ();
+    const int err_fetch = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, m_log_reader_page_fetch_mode);
+    if (err_fetch != NO_ERROR)
+      {
+	return err_fetch;
+      }
+    log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
+    const auto &rcv_vpid = get_vpid ();
+    switch (m_log_rtype)
+      {
+      case LOG_REDO_DATA:
+	read_record_and_redo<log_rec_redo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
+					    undo_unzip_support, redo_unzip_support);
+	break;
+      case LOG_MVCC_REDO_DATA:
+	read_record_and_redo<log_rec_mvcc_redo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
+	    undo_unzip_support, redo_unzip_support);
+	break;
+      case LOG_UNDOREDO_DATA:
+      case LOG_DIFF_UNDOREDO_DATA:
+	read_record_and_redo<log_rec_undoredo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
+						undo_unzip_support, redo_unzip_support);
+	break;
+      case LOG_MVCC_UNDOREDO_DATA:
+      case LOG_MVCC_DIFF_UNDOREDO_DATA:
+	read_record_and_redo<log_rec_mvcc_undoredo> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
+	    undo_unzip_support, redo_unzip_support);
+	break;
+      case LOG_RUN_POSTPONE:
+	read_record_and_redo<log_rec_run_postpone> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
+	    undo_unzip_support, redo_unzip_support);
+	break;
+      case LOG_COMPENSATE:
+	read_record_and_redo<log_rec_compensate> (thread_p, log_pgptr_reader, rcv_vpid, rcv_lsa,
+	    undo_unzip_support, redo_unzip_support);
+	break;
+      default:
+	assert (false);
+	break;
+      }
+
+    return NO_ERROR;
+  }
+
+  template <typename T>
+  inline void
+  redo_job_impl::read_record_and_redo (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+				       const VPID &rcv_vpid, const log_lsa &rcv_lsa,
+				       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
+  {
+    log_pgptr_reader.advance_when_does_not_fit (sizeof (T));
+    const T log_rec = log_pgptr_reader.reinterpret_copy_and_add_align<T> ();
+    log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa,
+				m_end_redo_lsa, m_log_rtype,
+				undo_unzip_support, redo_unzip_support);
+  }
 }
