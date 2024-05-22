@@ -130,6 +130,7 @@ enum thread_type
   TT_VACUUM_MASTER,
   TT_VACUUM_WORKER,
   TT_SYSTEM_WORKER,
+  TT_RECOVERY,
   TT_NONE
 };
 

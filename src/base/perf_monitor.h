@@ -635,6 +635,10 @@ typedef enum
   PSTAT_PB_AVOID_DEALLOC_CNT,
   PSTAT_PB_AVOID_VICTIM_CNT,
 
+  /* Redo recovery statistics */
+  PSTAT_LOG_REDO_ASYNC,
+  PSTAT_LOG_REDO_FUNC_EXEC,
+
   /* Complex statistics */
   PSTAT_PBX_FIX_COUNTERS,
   PSTAT_PBX_PROMOTE_COUNTERS,

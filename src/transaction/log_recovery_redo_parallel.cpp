@@ -18,6 +18,7 @@
 
 #include "log_recovery_redo_parallel.hpp"
 
+#include "log_manager.h"
 #include "vpid.hpp"
 
 namespace cublog
@@ -561,7 +562,9 @@ namespace cublog
     , m_waited_for_termination (false)
   {
     assert (a_worker_count > 0);
-    m_task_count = a_worker_count;
+
+    const thread_type tt = TT_RECOVERY;
+    m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
 
     do_init_worker_pool ();
     do_init_tasks ();
@@ -627,7 +630,8 @@ namespace cublog
     cubthread::manager *thread_manager = cubthread::get_manager ();
 
     m_worker_pool = thread_manager->create_worker_pool (m_task_count, m_task_count, "log_recovery_redo_thread_pool",
-		    nullptr, m_task_count, false /*debug_logging*/);
+		    m_pool_context_manager.get (),
+		    m_task_count, false /*debug_logging*/);
   }
 
   void

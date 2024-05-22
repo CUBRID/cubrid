@@ -277,7 +277,8 @@ namespace cublog
       };
 
     private:
-      unsigned m_task_count;
+      const unsigned m_task_count;
+      std::unique_ptr<cubthread::entry_manager> m_pool_context_manager;
 
       /* the workpool already has and internal bookkeeping and can also wait for the tasks to terminate;
        * however, it also has a hardcoded maximum wait time (60 seconds) after which it will assert;
@@ -398,6 +399,14 @@ namespace cublog
   int  redo_job_impl<TYPE_LOG_REC>::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
   {
+    /* perf data for processing log redo asynchronously, enabled:
+     *  - during log crash recovery
+     *  - on the page server, when replication is executing in the asynchronous mode
+     * in both cases, it does include the part that effectively calls the redo function, so, for accurate
+     * evaluation the part that effectively executes the redo function must be accounted for
+     */
+    perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_ASYNC };
+
     const auto &rcv_lsa = get_log_lsa ();
     const int err_set_lsa_and_fetch_page
       = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, m_log_reader_page_fetch_mode);
