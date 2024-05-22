@@ -516,13 +516,13 @@ struct cte_proc_node
 		  /* execute xasl query */ \
 		  if (_x->sub_xasl_id) \
 		    { \
+		      /* execute xasl for subquery's result-cache */ \
 		      if (qexec_execute_subquery_for_result_cache ((thread_p), _x, (v)->xasl_state) != NO_ERROR) \
 			{ \
-			  (_x)->status = XASL_FAILURE; \
-			} \
-		      else \
-			{ \
-			  (_x)->status = XASL_SUCCESS; \
+		  	  if (qexec_execute_mainblock ((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR) \
+		    	  { \
+		      	    (_x)->status = XASL_FAILURE; \
+			  } \
 			} \
 		    } \
 		  else if (qexec_execute_mainblock ((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR) \

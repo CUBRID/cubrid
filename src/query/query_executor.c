@@ -25463,7 +25463,7 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
   int *host_var_index = xasl->sub_host_var_index;
 
   QFILE_LIST_ID *list_id = NULL;	/* list-id of cached result */
-  DB_VALUE *dbval_p;		/* db values' pointer for searching cached query */
+  DB_VALUE *dbval_p = NULL;	/* db values' pointer for searching cached query */
   XASL_CACHE_ENTRY *ent = NULL;	/* xasl for cached query */
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
 
@@ -25473,10 +25473,13 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
       DB_VALUE_ARRAY params;
       bool cached_result;
 
-      dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * host_var_count);
-      for (i = 0; i < host_var_count; i++)
+      if (host_var_count > 0)
 	{
-	  db_value_clone (&xasl_state->vd.dbval_ptr[host_var_index[i]], &dbval_p[i]);
+	  dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * host_var_count);
+	  for (i = 0; i < host_var_count; i++)
+	    {
+	      dbval_p[i] = xasl_state->vd.dbval_ptr[host_var_index[i]];
+	    }
 	}
 
       params.size = host_var_count;
@@ -25488,9 +25491,9 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
 	  list_id = &list_cache_entry_p->list_id;
 	}
 
-      for (i = 0; i < host_var_count; i++)
+      if (host_var_count > 0)
 	{
-	  pr_clear_value (&dbval_p[i]);
+	  free (dbval_p);
 	}
 
       xcache_unfix (thread_p, ent);
@@ -25500,6 +25503,8 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
     {
       return ER_FAILED;
     }
+
+  xasl->status = XASL_SUCCESS;
 
   qfile_copy_list_id (xasl->list_id, list_id, false);
 
