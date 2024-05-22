@@ -1254,7 +1254,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	  domain = pt_node_to_db_domain (parser, tree, NULL);
 
 	  /* recheck type of expr for host_var */
-	  if (domain->type->id == DB_TYPE_NULL && (pt_is_hostvar (arg1) || pt_is_hostvar (arg2) || pt_is_hostvar (arg3)))
+	  if (domain && domain->type && domain->type->id == DB_TYPE_NULL
+	      && (pt_is_hostvar (arg1) || pt_is_hostvar (arg2) || pt_is_hostvar (arg3)))
 	    {
 	      common_type = pt_common_type (type1, type2);
 	      if (type3 != PT_TYPE_NONE)
