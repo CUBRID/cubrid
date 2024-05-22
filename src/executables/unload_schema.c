@@ -169,6 +169,7 @@ static void emit_cycle_warning (print_output & output_ctx);
 static void force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
 static DB_OBJLIST *get_ordered_classes (print_output & output_ctx, MOP * class_table);
 static int export_serial (extract_context & ctxt, print_output & output_ctx);
+static int emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx);
 static int emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
 			 DB_OBJLIST * vclass_list_has_using_index);
 
@@ -904,6 +905,201 @@ err:
   return error;
 }
 
+static int
+emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
+{
+  int error = NO_ERROR;
+  int i;
+  DB_QUERY_RESULT *query_result;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
+  DB_DOMAIN *domain;
+  char str_buf[NUMERIC_MAX_STRING_SIZE] = { '\0' };
+  char *uppercase_user = NULL;
+  size_t uppercase_user_size = 0;
+  size_t query_size = 0;
+  char *query = NULL;
+
+  /*
+   * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
+   * when changing the following query. Notice the order of the result.
+   */
+  const char *query_all =
+    "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
+    "[cyclic], " "[started], " "[cached_num], " "[comment] "
+    "from [db_serial] where [class_name] is not null and [att_name] is not null";
+
+  const char *query_user =
+    "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
+    "[cyclic], " "[started], " "[cached_num], " "[comment] "
+    "from [db_serial] where [class_name] is not null and [att_name] is not null and owner.name='%s'";
+
+  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+    {
+      uppercase_user_size = intl_identifier_upper_string_size (ctxt.login_user);
+      uppercase_user = (char *) malloc (uppercase_user_size + 1);
+      if (uppercase_user == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, uppercase_user_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      intl_identifier_upper (ctxt.login_user, uppercase_user);
+
+      query_size = strlen (query_user) + strlen (uppercase_user) + 1;
+      query = (char *) malloc (query_size);
+      if (query_user == NULL)
+	{
+	  if (uppercase_user != NULL)
+	    {
+	      free_and_init (uppercase_user);
+	    }
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      sprintf (query, query_user, uppercase_user);
+    }
+
+  db_make_null (&diff_value);
+  db_make_null (&answer_value);
+
+  error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
+  if (error < 0)
+    {
+      goto err;
+    }
+
+
+
+  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
+    {
+      do
+	{
+	  for (i = 0; i < SERIAL_VALUE_INDEX_MAX; i++)
+	    {
+	      error = db_query_get_tuple_value (query_result, i, &values[i]);
+	      if (error != NO_ERROR)
+		{
+		  goto err;
+		}
+
+	      /* Validation of the result value */
+	      switch (i)
+		{
+		case SERIAL_OWNER_NAME:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			db_make_string (&values[i], "PUBLIC");
+		      }
+		  }
+		  break;
+
+		case SERIAL_UNIQUE_NAME:
+		case SERIAL_NAME:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		case SERIAL_CURRENT_VAL:
+		case SERIAL_INCREMENT_VAL:
+		case SERIAL_MAX_VAL:
+		case SERIAL_MIN_VAL:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_NUMERIC)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		case SERIAL_CYCLIC:
+		case SERIAL_STARTED:
+		case SERIAL_CACHED_NUM:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		case SERIAL_COMMENT:
+		  {
+		    if (DB_IS_NULL (&values[i]) == false && DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		default:
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+		  error = ER_INVALID_SERIAL_VALUE;
+		  goto err;
+		}
+	    }
+
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
+			  PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])),
+			  numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
+
+	      if (db_get_int (&values[SERIAL_STARTED]) == 1)
+		{
+
+		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+		}
+	    }
+	  else
+	    {
+	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
+			  PRINT_IDENTIFIER (db_get_string (&values[SERIAL_UNIQUE_NAME])),
+			  numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
+
+	      if (db_get_int (&values[SERIAL_STARTED]) == 1)
+		{
+		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ",
+			      PRINT_IDENTIFIER (db_get_string (&values[SERIAL_UNIQUE_NAME])));
+		}
+	    }
+
+	  db_value_clear (&diff_value);
+	  db_value_clear (&answer_value);
+	  for (i = 0; i < SERIAL_VALUE_INDEX_MAX; i++)
+	    {
+	      db_value_clear (&values[i]);
+	    }
+	}
+      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
+    }
+
+err:
+  db_query_end (query_result);
+
+  if (uppercase_user != NULL)
+    {
+      free_and_init (uppercase_user);
+    }
+  return error;
+}
+
+
 /*
  * export_synonym - export _db_synonym
  *    return: NO_ERROR if successful, error code otherwise
@@ -1241,6 +1437,16 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
   emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_CLASS);
   if (er_errid () != NO_ERROR)
     {
+      err_count++;
+    }
+
+  if (emit_class_alter_serial (ctxt, schema_output_ctx) < NO_ERROR)
+    {
+      fprintf (stderr, "%s", db_error_string (3));
+      if (db_error_code () == ER_INVALID_SERIAL_VALUE)
+	{
+	  fprintf (stderr, " Check the value of db_serial object.\n");
+	}
       err_count++;
     }
 
@@ -2904,7 +3110,7 @@ emit_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * 
 
   PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
 
-  output_ctx ("ALTER %s %s%s%s%s ADD ATTRIBUTE\n", class_type, output_owner, PRINT_IDENTIFIER (class_name_p));
+  output_ctx ("\nALTER %s %s%s%s%s ADD ATTRIBUTE\n", class_type, output_owner, PRINT_IDENTIFIER (class_name_p));
 
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
@@ -3282,7 +3488,7 @@ emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_O
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			    sizeof (output_owner));
 
-	  output_ctx ("CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s%s (", PRINT_IDENTIFIER (constraint->name),
+	  output_ctx ("\nCREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s%s (", PRINT_IDENTIFIER (constraint->name),
 		      output_owner, PRINT_IDENTIFIER (class_name));
 
 	  for (att = atts; *att != NULL; att++)
@@ -5027,6 +5233,17 @@ extract_class (extract_context & ctxt)
       goto end_class;
     }
 
+  if (emit_class_alter_serial (ctxt, output_ctx) < NO_ERROR)
+    {
+      fprintf (stderr, "%s", db_error_string (3));
+      if (db_error_code () == ER_INVALID_SERIAL_VALUE)
+	{
+	  fprintf (stderr, " Check the value of db_serial object.\n");
+	}
+      err = ER_FAILED;
+      goto end_class;
+    }
+
 end_class:
   fflush (output_file);
 
@@ -5609,13 +5826,11 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
 
       if (unique_flag)
 	{
-	  output_ctx ("\n");
 	  emit_unique_def (ctxt, output_ctx, cl->op, class_type);
 	}
 
       if (reverse_unique_flag)
 	{
-	  output_ctx ("\n");
 	  emit_reverse_unique_def (ctxt, output_ctx, cl->op);
 	}
 
