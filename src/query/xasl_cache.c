@@ -267,8 +267,9 @@ static void xcache_cleanup (THREAD_ENTRY * thread_p);
 static BH_CMP_RESULT xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg);
 static bool xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 static void xcache_invalidate_entries (THREAD_ENTRY * thread_p,
-				       bool (*invalidate_check) (XASL_CACHE_ENTRY *, const OID *), const OID * arg);
-static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const OID * related_to_oid);
+				       bool (*invalidate_check) (XASL_CACHE_ENTRY *, const void *), const void *arg);
+static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
+static bool xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
 static XCACHE_CLEANUP_REASON xcache_need_cleanup (void);
 
 /*
@@ -1743,8 +1744,8 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
  * arg (in)		 : Argument for invalidation check function.
  */
 static void
-xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XASL_CACHE_ENTRY *, const OID *),
-			   const OID * arg)
+xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XASL_CACHE_ENTRY *, const void *),
+			   const void *arg)
 {
 #define XCACHE_DELETE_XIDS_SIZE 1024
   XASL_CACHE_ENTRY *xcache_entry = NULL;
@@ -1840,9 +1841,10 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
  * arg (in)	     : Pointer to OID.
  */
 static bool
-xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const OID * related_to_oid)
+xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const void *arg)
 {
   int oid_idx = 0;
+  const OID *related_to_oid = (OID *) arg;
 
   assert (xcache_entry != NULL);
   assert (related_to_oid != NULL);
@@ -1878,7 +1880,56 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid)
 
   xcache_log ("remove all entries: \n"
 	      "\t OID = %d|%d|%d \n" XCACHE_LOG_TRAN_TEXT, OID_AS_ARGS (oid), XCACHE_LOG_TRAN_ARGS (thread_p));
-  xcache_invalidate_entries (thread_p, xcache_entry_is_related_to_oid, oid);
+  xcache_invalidate_entries (thread_p, xcache_entry_is_related_to_oid, (void *) oid);
+}
+
+/*
+ * xcache_entry_is_related_to_sha1 () - Is XASL cache entry related to the sha1 given as argument.
+ *
+ * return	     : True if entry is related, false otherwise.
+ * xcache_entry (in) : XASL cache entry.
+ * arg (in)	     : Pointer to OID.
+ */
+static bool
+xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg)
+{
+  char sha1_xasl[45];
+  const char *sha1 = (char *) arg;
+
+  assert (xcache_entry != NULL);
+  assert (sha1 != NULL);
+
+  sprintf (sha1_xasl, "%08x %08x %08x %08x %08x", SHA1_AS_ARGS (&xcache_entry->xasl_id.sha1));
+  sha1_xasl[44] = '\0';
+
+  if (strncmp (sha1_xasl, sha1, strlen (sha1_xasl)) == 0)
+    {
+      /* Found relation. */
+      return true;
+    }
+  /* Not related. */
+  return false;
+}
+
+/*
+ * xcache_remove_by_sha1 () - Remove XASL cache entries by sha1.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * oid (in)	 : Object ID.
+ */
+void
+xcache_remove_by_sha1 (THREAD_ENTRY * thread_p, const char *sha1)
+{
+  if (!xcache_Enabled)
+    {
+      return;
+    }
+
+  xcache_check_logging ();
+
+  xcache_log ("remove entries: \n" "\t sha1 = %s \n" XCACHE_LOG_TRAN_TEXT, sha1, XCACHE_LOG_TRAN_ARGS (thread_p));
+  xcache_invalidate_entries (thread_p, xcache_entry_is_related_to_sha1, (void *) sha1);
 }
 
 /*
@@ -1976,11 +2027,8 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 
       fprintf (fp, "    sql user text = %s \n", xcache_entry->sql_info.sql_user_text);
       fprintf (fp, "    sql hash text = %s \n", xcache_entry->sql_info.sql_hash_text);
-      if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
-	{
-	  fprintf (fp, "    sql plan text = %s \n",
-		   xcache_entry->sql_info.sql_plan_text ? xcache_entry->sql_info.sql_plan_text : "(NONE)");
-	}
+      fprintf (fp, "    sql plan text = %s \n",
+	       xcache_entry->sql_info.sql_plan_text ? xcache_entry->sql_info.sql_plan_text : "(NONE)");
 
       fprintf (fp, "  OID_LIST (count = %d): \n", xcache_entry->n_related_objects);
       for (oid_index = 0; oid_index < xcache_entry->n_related_objects; oid_index++)
