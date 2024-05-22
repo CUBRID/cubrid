@@ -928,7 +928,8 @@ usage: %1$s plandump [OPTION] database-name\n\
 \n\
 valid options:\n\
   -d, --drop                   drop all plans in the server's cache\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Cannot open output file '%1$s'\n
