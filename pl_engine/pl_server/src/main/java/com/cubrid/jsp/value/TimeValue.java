@@ -32,9 +32,7 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
-import java.sql.Date;
 import java.sql.Time;
-import java.sql.Timestamp;
 import java.util.Calendar;
 
 public class TimeValue extends Value {

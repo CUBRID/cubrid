@@ -143,7 +143,7 @@ public class IntValue extends Value {
     }
 
     public Time[] toTimeArray() throws TypeMismatchException {
-        return new Time[] { toTime() };
+        return new Time[] {toTime()};
     }
 
     public Timestamp toTimestamp() throws TypeMismatchException {
@@ -151,7 +151,7 @@ public class IntValue extends Value {
     }
 
     public Timestamp[] toTimestampArray() throws TypeMismatchException {
-        return new Timestamp[] { toTimestamp() };
+        return new Timestamp[] {toTimestamp()};
     }
 
     public String toString() {

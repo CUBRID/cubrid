@@ -55,7 +55,8 @@ public class DateTimeParser {
     // min datetime: 0001-01-01 00:00:00.000
     public static final LocalDateTime minDatetimeLocal = LocalDateTime.of(1, 1, 1, 0, 0, 0, 0);
     // max datetime: 9999-12-31 23:59:59.999
-    public static final LocalDateTime maxDatetimeLocal = LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999);
+    public static final LocalDateTime maxDatetimeLocal =
+            LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999);
 
     private static final ZoneOffset TIMEZONE_0 = ZoneOffset.of("Z");
     // TODO: update the following value along with the server
@@ -65,8 +66,10 @@ public class DateTimeParser {
             ZonedDateTime.of(minTimestampLocal, TIMEZONE_0);
     private static final ZonedDateTime maxTimestamp =
             ZonedDateTime.of(maxTimestampLocal, TIMEZONE_0);
-    private static final ZonedDateTime minDatetimeUTC = ZonedDateTime.of(minDatetimeLocal, TIMEZONE_0);
-    private static final ZonedDateTime maxDatetimeUTC = ZonedDateTime.of(maxDatetimeLocal, TIMEZONE_0);
+    private static final ZonedDateTime minDatetimeUTC =
+            ZonedDateTime.of(minDatetimeLocal, TIMEZONE_0);
+    private static final ZonedDateTime maxDatetimeUTC =
+            ZonedDateTime.of(maxDatetimeLocal, TIMEZONE_0);
 
     public static final LocalDate nullDate = LocalDate.MAX;
     public static final LocalDateTime nullDatetime = LocalDateTime.MAX;
@@ -116,7 +119,8 @@ public class DateTimeParser {
             LocalDateTime ret = parseDateAndTime(s, true);
             if (ret != null
                     && ret != nullDatetime
-                    && (ret.compareTo(minDatetimeLocal) < 0 || ret.compareTo(maxDatetimeLocal) > 0)) {
+                    && (ret.compareTo(minDatetimeLocal) < 0
+                            || ret.compareTo(maxDatetimeLocal) > 0)) {
                 return null;
             }
 

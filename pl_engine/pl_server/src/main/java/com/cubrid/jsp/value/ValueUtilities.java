@@ -33,11 +33,11 @@ package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 
 public class ValueUtilities {
     public static Object resolveValue(int dbType, Value value) throws TypeMismatchException {
@@ -186,14 +186,14 @@ public class ValueUtilities {
         return dt.compareTo(MIN_DATETIME) >= 0 && dt.compareTo(MAX_DATETIME) <= 0;
     }
 
-    public static final Timestamp MIN_TIMESTAMP = Timestamp.valueOf(DateTimeParser.minTimestampLocal);
-    public static final Timestamp MAX_TIMESTAMP = Timestamp.valueOf(DateTimeParser.maxTimestampLocal);
+    public static final Timestamp MIN_TIMESTAMP =
+            Timestamp.valueOf(DateTimeParser.minTimestampLocal);
+    public static final Timestamp MAX_TIMESTAMP =
+            Timestamp.valueOf(DateTimeParser.maxTimestampLocal);
     public static final Timestamp MIN_DATETIME = Timestamp.valueOf(DateTimeParser.minDatetimeLocal);
     public static final Timestamp MAX_DATETIME = Timestamp.valueOf(DateTimeParser.maxDatetimeLocal);
 
     public static final Date NULL_DATE = new Date(0 - 1900, 0 - 1, 0);
     public static final Timestamp NULL_TIMESTAMP = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
     public static final Timestamp NULL_DATETIME = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
-
-
 }
