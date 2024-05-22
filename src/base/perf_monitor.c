@@ -3157,7 +3157,6 @@ perfmon_initialize (int num_trans)
     }
   memset (pstat_Global.is_watching, 0, memsize);
 
-  pstat_Global.n_watchers = 0;
   pstat_Global.initialized = true;
   return NO_ERROR;
 
@@ -3195,6 +3194,12 @@ perfmon_finalize (void)
     {
       free_and_init (pstat_Global.global_stats);
     }
+
+#if defined (SERVER_MODE)
+  // reset in case of 'always watching' initialization
+  pstat_Global.n_watchers = 0;
+#endif
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #if !defined (HAVE_ATOMIC_BUILTINS)
   pthread_mutex_destroy (&pstat_Global.watch_lock);
