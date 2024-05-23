@@ -6115,7 +6115,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
   size += (OR_INT_SIZE		/* iscan_oid_order */
 	   + PTR_SIZE		/* query_alias */
 	   + PTR_SIZE		/* next */
-	   + PTR_SIZE		/* sq_cache_n_elements */
+	   + OR_INT_SIZE	/* sq_cache_n_elements */
 	   + PTR_SIZE);		/* sq_cache */
 
   return size;

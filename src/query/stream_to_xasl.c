@@ -1686,7 +1686,6 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 {
   int offset;
   int tmp, i;
-  UINTPTR tmp_ptr;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   /* initialize query_in_progress flag */
