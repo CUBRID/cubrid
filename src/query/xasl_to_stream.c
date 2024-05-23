@@ -3256,7 +3256,6 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
 
   offset = xts_save_sq_cache (xasl->sq_cache);
-
   if (offset == ER_FAILED)
     {
       return NULL;
