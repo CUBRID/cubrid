@@ -13967,18 +13967,10 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      regu->value.dbvalptr = value_list->val;
 		      /* move to next db_value holder */
 		      value_list = value_list->next;
-		      if (node->info.query.q.select.hint & PT_HINT_NO_SUBQUERY_CACHE)
+		      if (pt_check_corr_subquery_hash_result_cache (parser, node, xasl))
 			{
-			  /* it means SUBQUERY RESULT won't be cached. */
+			  XASL_SET_FLAG (xasl, XASL_SQ_CACHE);
 			}
-		      else
-			{
-			  if (pt_check_corr_subquery_hash_result_cache (parser, node, xasl))
-			    {
-			      XASL_SET_FLAG (xasl, XASL_SQ_CACHE);
-			    }
-			}
-
 		    }
 		  else
 		    {
