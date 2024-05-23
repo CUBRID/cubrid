@@ -2902,6 +2902,8 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   json_t *subquery, *groupby, *orderby;
   json_t *left, *right, *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
+  json_t *t;
+  xasl_node *xptr;
 
   if (xasl_p == NULL || parent == NULL)
     {
@@ -2935,14 +2937,17 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      left = json_object ();
-      right = json_object ();
-
-      qdump_print_stats_json (xasl_p->proc.union_.left, left);
-      qdump_print_stats_json (xasl_p->proc.union_.right, right);
-
-      json_object_set_new (proc, "left", left);
-      json_object_set_new (proc, "right", right);
+      json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+      json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
+      json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+      subquery = json_array ();
+      for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
+	{
+	  t = json_object ();
+	  qdump_print_stats_json (xptr, t);
+	  json_array_append_new (subquery, t);
+	}
+      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
       break;
 
     case MERGELIST_PROC:
@@ -3069,22 +3074,25 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
-      if (HAVE_SUBQUERY_PROC (xasl_p->aptr_list))
+      subquery = json_array ();
+      for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  subquery = json_object ();
-	  qdump_print_stats_json (xasl_p->aptr_list, subquery);
-	  json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
+	  t = json_object ();
+	  qdump_print_stats_json (xptr, t);
+	  json_array_append_new (subquery, t);
 	}
-      else
-	{
-	  qdump_print_stats_json (xasl_p->aptr_list, proc);
-	}
+      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
     }
 
   if (xasl_p->dptr_list != NULL)
     {
-      subquery = json_object ();
-      qdump_print_stats_json (xasl_p->dptr_list, subquery);
+      subquery = json_array ();
+      for (xptr = xasl_p->dptr_list; xptr; xptr = xptr->next)
+	{
+	  t = json_object ();
+	  qdump_print_stats_json (xptr, t);
+	  json_array_append_new (subquery, t);
+	}
       json_object_set_new (proc, "SUBQUERY (correlated)", subquery);
     }
 }
