@@ -737,7 +737,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
 #define PRM_NAME_PRINT_INDEX_DETAIL        "print_index_detail"
 
-#define PRM_NAME_MAX_SUBQUERY_CACHE_SIZE    "subquery_cache_size"
+#define PRM_NAME_MAX_SUBQUERY_CACHE_SIZE    "max_subquery_cache_size"
 
 #define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
 

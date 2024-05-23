@@ -27274,11 +27274,11 @@ pt_recursive_check_corr_subquery_hash_result_cache (XASL_NODE * xasl)
 	{
 	  return false;
 	}
-      if (xasl->if_pred || xasl->after_join_pred || xasl->dptr_list)
+      if (xasl->dptr_list)
 	{
 	  return false;
 	}
-      if (!XASL_IS_FLAGED (xasl, XASL_LINK_TO_REGU_VARIABLE))
+      if (!XASL_IS_FLAGED (xasl, XASL_LINK_TO_REGU_VARIABLE) && !(xasl->type == SCAN_PROC))
 	{
 	  return false;
 	}
@@ -27351,6 +27351,7 @@ int
 pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type)
 {
   int cnt = 0;
+  int ret;
   int i;
   XASL_NODE *xasl_src;
   XASL_NODE *scan_ptr, *aptr;
@@ -27369,22 +27370,86 @@ pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type)
       spec = xasl_src->spec_list;
       for (spec = xasl_src->spec_list; spec; spec = spec->next)
 	{
-	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_key, SQ_TYPE_PRED);
-	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_pred, SQ_TYPE_PRED);
-	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_range, SQ_TYPE_PRED);
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_key, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_pred, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_range, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
 	}
       if (xasl_src->scan_ptr)
 	{
 	  for (scan_ptr = xasl_src->scan_ptr; scan_ptr != NULL; scan_ptr = scan_ptr->next)
 	    {
-	      cnt += pt_make_sq_cache_key_struct (key_struct, (void *) scan_ptr, SQ_TYPE_XASL);
+	      ret = pt_make_sq_cache_key_struct (key_struct, (void *) scan_ptr, SQ_TYPE_XASL);
+	      if (ret == ER_FAILED)
+		{
+		  return ER_FAILED;
+		}
+	      else
+		{
+		  cnt += ret;
+		}
 	    }
 	}
       if (xasl_src->aptr_list)
 	{
 	  for (aptr = xasl_src->aptr_list; aptr != NULL; aptr = aptr->next)
 	    {
-	      cnt += pt_make_sq_cache_key_struct (key_struct, (void *) aptr, SQ_TYPE_XASL);
+	      ret = pt_make_sq_cache_key_struct (key_struct, (void *) aptr, SQ_TYPE_XASL);
+	      if (ret == ER_FAILED)
+		{
+		  return ER_FAILED;
+		}
+	      else
+		{
+		  cnt += ret;
+		}
+	    }
+	}
+      if (xasl_src->if_pred)
+	{
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) xasl_src->if_pred, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	}
+      if (xasl_src->after_join_pred)
+	{
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) xasl_src->after_join_pred, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
 	    }
 	}
       break;
@@ -27392,35 +27457,140 @@ pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type)
       pred_src = (PRED_EXPR *) p;
       if (pred_src->type == T_PRED)
 	{
-	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) pred_src->pe.m_pred.lhs, SQ_TYPE_PRED);
-	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) pred_src->pe.m_pred.rhs, SQ_TYPE_PRED);
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) pred_src->pe.m_pred.lhs, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) pred_src->pe.m_pred.rhs, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
 	}
       else if (pred_src->type == T_EVAL_TERM)
 	{
 	  COMP_EVAL_TERM t = pred_src->pe.m_eval_term.et.et_comp;
-	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) t.lhs, SQ_TYPE_REGU_VAR);
-	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) t.rhs, SQ_TYPE_REGU_VAR);
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) t.lhs, SQ_TYPE_REGU_VAR);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) t.rhs, SQ_TYPE_REGU_VAR);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	}
+      else if (pred_src->type == T_NOT_TERM)
+	{
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) pred_src->pe.m_not_term, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
 	}
       else
 	{
-	  /* give up */
+	  return ER_FAILED;
 	}
       break;
     case SQ_TYPE_REGU_VAR:
       regu_src = (REGU_VARIABLE *) p;
-      if (regu_src->type == TYPE_CONSTANT)
+      switch (regu_src->type)
 	{
-	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.dbvalptr, SQ_TYPE_DBVAL);
-	}
-      else if (regu_src->type == TYPE_INARITH)
-	{
-	  cnt += pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->leftptr, SQ_TYPE_REGU_VAR);
-	  cnt +=
-	    pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->rightptr, SQ_TYPE_REGU_VAR);
-	}
-      else
-	{
-	  /* give up */
+	case TYPE_CONSTANT:
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.dbvalptr, SQ_TYPE_DBVAL);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  break;
+	case TYPE_INARITH:
+	case TYPE_OUTARITH:
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->leftptr, SQ_TYPE_REGU_VAR);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->rightptr, SQ_TYPE_REGU_VAR);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->thirdptr, SQ_TYPE_REGU_VAR);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  break;
+
+	case TYPE_ORDERBY_NUM:
+	case TYPE_POSITION:
+	case TYPE_LIST_ID:
+	  /* Currently not supported, implement later */
+	  return ER_FAILED;
+	  break;
+
+	case TYPE_POS_VALUE:
+	case TYPE_DBVAL:
+	  /* constants */
+	  break;
+
+	case TYPE_ATTR_ID:
+	case TYPE_CLASS_ATTR_ID:
+	case TYPE_SHARED_ATTR_ID:
+	  /* This is column in subquery */
+	  break;
+
+	case TYPE_OID:
+	case TYPE_CLASSOID:
+	case TYPE_REGUVAL_LIST:
+	case TYPE_REGU_VAR_LIST:
+	case TYPE_FUNC:
+	  /* Result Cache not supported */
+	  return ER_FAILED;
+	  break;
+
+	default:
+	  return ER_FAILED;
+	  break;
 	}
       break;
     case SQ_TYPE_DBVAL:
@@ -27441,7 +27611,7 @@ pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type)
       break;
 
     default:
-      /* give up */
+      return ER_FAILED;
       break;
     }
 
