@@ -710,8 +710,10 @@ static char *g_plcsql_text;
 %type <node> synonym_name
 %type <node> procedure_name_without_dot
 %type <node> procedure_name
+%type <node> procedure_name_list
 %type <node> function_name_without_dot
 %type <node> function_name
+%type <node> function_name_list
 %type <node> opt_alter_synonym
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
@@ -4663,8 +4665,8 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP PROCEDURE identifier_list
-		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP PROCEDURE identifier_list);
+	| DROP PROCEDURE procedure_name_list
+		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP PROCEDURE procedure_name_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_STORED_PROCEDURE);
 
@@ -4679,8 +4681,8 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP FUNCTION identifier_list
-		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP FUNCTION identifier_list);
+	| DROP FUNCTION function_name_list
+		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP FUNCTION function_name_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_STORED_PROCEDURE);
 
@@ -5887,6 +5889,23 @@ procedure_name
 			$$ = $1;
 		}
 	;
+
+procedure_name_list
+	: procedure_name_list ',' procedure_name
+		{{
+
+			$$ = parser_make_link($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| procedure_name
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
 	
 function_name_without_dot
 	: user_specified_name_without_dot
@@ -5900,6 +5919,23 @@ function_name
 		{ DBG_TRACE_GRAMMAR(function_name, : user_specified_name);
 			$$ = $1;
 		}
+	;
+
+function_name_list
+	: function_name_list ',' function_name
+		{{
+
+			$$ = parser_make_link($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| function_name
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 opt_partition_spec

@@ -876,8 +876,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"sp_name", nullptr}, false}
+      {DB_CONSTRAINT_INDEX, "", {"unique_name", nullptr}, false}
     },
 // authorization
     {
