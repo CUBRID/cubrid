@@ -2900,9 +2900,9 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   GROUPBY_STATS *gstats;
   json_t *proc, *scan = NULL;
   json_t *subquery, *groupby, *orderby;
-  json_t *left, *right, *outer, *inner;
+  json_t *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
-  json_t *t;
+  json_t *temp;
   xasl_node *xptr;
 
   if (xasl_p == NULL || parent == NULL)
@@ -2943,9 +2943,9 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       subquery = json_array ();
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  t = json_object ();
-	  qdump_print_stats_json (xptr, t);
-	  json_array_append_new (subquery, t);
+	  temp = json_object ();
+	  qdump_print_stats_json (xptr, temp);
+	  json_array_append_new (subquery, temp);
 	}
       json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
       break;
@@ -3077,9 +3077,9 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       subquery = json_array ();
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  t = json_object ();
-	  qdump_print_stats_json (xptr, t);
-	  json_array_append_new (subquery, t);
+	  temp = json_object ();
+	  qdump_print_stats_json (xptr, temp);
+	  json_array_append_new (subquery, temp);
 	}
       json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
     }
@@ -3089,9 +3089,9 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       subquery = json_array ();
       for (xptr = xasl_p->dptr_list; xptr; xptr = xptr->next)
 	{
-	  t = json_object ();
-	  qdump_print_stats_json (xptr, t);
-	  json_array_append_new (subquery, t);
+	  temp = json_object ();
+	  qdump_print_stats_json (xptr, temp);
+	  json_array_append_new (subquery, temp);
 	}
       json_object_set_new (proc, "SUBQUERY (correlated)", subquery);
     }
