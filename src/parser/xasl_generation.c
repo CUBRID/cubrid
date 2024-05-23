@@ -631,7 +631,8 @@ static PT_NODE *pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
 
-static bool pt_check_corr_subquery_hash_result_cache (XASL_NODE * xasl);
+static int pt_check_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl);
+static bool pt_recursive_check_corr_subquery_hash_result_cache (XASL_NODE * xasl);
 static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							  int *continue_walk);
 static bool pt_prepare_sq_cache (XASL_NODE * xasl);
@@ -13972,18 +13973,9 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 			}
 		      else
 			{
-			  if (pt_check_corr_subquery_hash_result_cache (xasl))
+			  if (pt_check_corr_subquery_hash_result_cache (parser, node, xasl))
 			    {
-			      bool cachable = true;
-			      parser_walk_tree (parser, node, NULL, NULL, pt_check_corr_subquery_not_cachable_expr,
-						&cachable);
-			      if (cachable)
-				{
-				  if (pt_prepare_sq_cache (xasl))
-				    {
-				      XASL_SET_FLAG (xasl, XASL_SQ_CACHE);
-				    }
-				}
+			      XASL_SET_FLAG (xasl, XASL_SQ_CACHE);
 			    }
 			}
 
@@ -27221,11 +27213,60 @@ pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred)
  * and other flags within the structure.
  *
  * return : bool - Returns true if the XASL node and its subqueries satisfy the conditions for caching, false otherwise.
+ * parser (in): PARSER_CONTEXT* - Pointer to the parser context, provides contextual information necessary for processing the node.
+ * node (in): PT_NODE* - Pointer to the query node being checked. This node can represent various query elements such as expressions.
+ * xasl (in) : XASL_NODE* - Pointer to the XASL node being checked for caching compatibility.
+ */
+
+int
+pt_check_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl)
+{
+  bool cachable;
+  if (node->info.query.q.select.hint & PT_HINT_NO_SUBQUERY_CACHE)
+    {
+      /* it means SUBQUERY RESULT won't be cached. */
+      return false;
+    }
+  else
+    {
+      if (pt_recursive_check_corr_subquery_hash_result_cache (xasl))
+	{
+	  cachable = true;
+	  parser_walk_tree (parser, node, NULL, NULL, pt_check_corr_subquery_not_cachable_expr, &cachable);
+	  if (cachable)
+	    {
+	      if (pt_prepare_sq_cache (xasl))
+		{
+		  return true;
+		}
+	      else
+		{
+		  return false;
+		}
+	    }
+	  else
+	    {
+	      return false;
+	    }
+	}
+      else
+	{
+	  return false;
+	}
+    }
+}
+
+/*
+ * pt_recursive_check_corr_subquery_hash_result_cache ()
+ * - Checks if the provided XASL node and its subqueries can be cached based on certain conditions related to predicates
+ * and other flags within the structure.
+ *
+ * return : bool - Returns true if the XASL node and its subqueries satisfy the conditions for caching, false otherwise.
  * xasl (in) : XASL_NODE* - Pointer to the XASL node being checked for caching compatibility.
  */
 
 bool
-pt_check_corr_subquery_hash_result_cache (XASL_NODE * xasl)
+pt_recursive_check_corr_subquery_hash_result_cache (XASL_NODE * xasl)
 {
   int cache;
   if (xasl)
@@ -27254,14 +27295,14 @@ pt_check_corr_subquery_hash_result_cache (XASL_NODE * xasl)
 	{
 	  for (scan_ptr = xasl->scan_ptr; scan_ptr != NULL; scan_ptr = scan_ptr->next)
 	    {
-	      ret &= pt_check_corr_subquery_hash_result_cache (scan_ptr);
+	      ret &= pt_recursive_check_corr_subquery_hash_result_cache (scan_ptr);
 	    }
 	}
       if (xasl->aptr_list)
 	{
 	  for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
 	    {
-	      ret &= pt_check_corr_subquery_hash_result_cache (aptr);
+	      ret &= pt_recursive_check_corr_subquery_hash_result_cache (aptr);
 	    }
 	}
       return ret;
@@ -27285,15 +27326,15 @@ pt_prepare_sq_cache (XASL_NODE * xasl)
   DB_VALUE **sq_key_struct;
 
   n_elements = pt_make_sq_cache_key_struct (NULL, (void *) xasl, SQ_TYPE_XASL);
+
+  if (n_elements <= 0)
+    {
+      return false;
+    }
   sq_key_struct = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
   memset ((void *) sq_key_struct, 0, n_elements * sizeof (DB_VALUE *));
   pt_make_sq_cache_key_struct (sq_key_struct, (void *) xasl, SQ_TYPE_XASL);
 
-  if (n_elements <= 0)
-    {
-      free (sq_key_struct);
-      return false;
-    }
 
   xasl->sq_cache = (SQ_CACHE *) pt_alloc_packing_buf (sizeof (SQ_CACHE));
 
