@@ -24,7 +24,6 @@
 #include <cassert>
 #include <cstring>
 #include <algorithm>
-#include <ctime>
 
 #include "environment_variable.h"
 #include "memory_monitor_sr.hpp"
@@ -86,8 +85,7 @@ namespace cubmem
     return allocated_size;
   }
 
-//#if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
-#if (MMON_DEBUG_LEVEL > 1)
+#if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
   /* This section is for tracking errors of memory monitoring modules.
    *
    * The m_error_tracking_map uses the pointer address of metainfo as the key
@@ -273,14 +271,8 @@ namespace cubmem
     std::vector<uint64_t> stat_peak_vector;
     char filename[MMON_MAX_NAME_LENGTH * 2];
     FILE *outfile_fp = NULL;
-    time_t timer;
-    struct tm *t;
-    timer = time (NULL);
-    t = localtime (&timer);
 
-    sprintf (filename, "mmon_debug_result_%d%d%d%d%d%d.txt", t->tm_year + 1900, t->tm_mon + 1,
-	     t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
-    //(void) envvar_logdir_file (filename, MMON_MAX_NAME_LENGTH * 2, "/server/mmon_debug_result.txt");
+    (void) envvar_logdir_file (filename, MMON_MAX_NAME_LENGTH * 2, "/server/mmon_debug_result.txt");
     outfile_fp = fopen (filename, "w+");
     if (outfile_fp == NULL)
       {
