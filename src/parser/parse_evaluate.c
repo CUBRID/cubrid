@@ -1252,6 +1252,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	      qualifier = tree->info.expr.qualifier;
 	    }
 	  domain = pt_node_to_db_domain (parser, tree, NULL);
+	  domain = tp_domain_cache (domain);
 
 	  /* recheck type of expr for host_var */
 	  if (domain && domain->type && domain->type->id == DB_TYPE_NULL
@@ -1263,8 +1264,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 		  common_type = pt_common_type (common_type, type3);
 		}
 	      domain = pt_type_enum_to_db_domain (common_type);
+	      domain = tp_domain_cache (domain);
 	    }
-	  domain = tp_domain_cache (domain);
 
 	  /* PT_BETWEEN_xxxx, PT_ASSIGN, PT_LIKE_ESCAPE do not need to be evaluated and will return 0 from
 	   * 'pt_evaluate_db_value_expr()' */
