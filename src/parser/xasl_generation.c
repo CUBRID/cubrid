@@ -27259,16 +27259,13 @@ pt_recursive_check_corr_subquery_hash_result_cache (XASL_NODE * xasl)
 	{
 	  return false;
 	}
-      else if (!xasl->spec_list->where_key && !xasl->spec_list->where_pred && !xasl->spec_list->where_range)
-	{
-	  return false;
-	}
-      if (xasl->dptr_list)
+      if (xasl->dptr_list || xasl->bptr_list || xasl->fptr_list)
 	{
 	  return false;
 	}
       if (!XASL_IS_FLAGED (xasl, XASL_LINK_TO_REGU_VARIABLE) && !(xasl->type == SCAN_PROC))
 	{
+	  /* Subquery link to REGU_VAR or linked join query */
 	  return false;
 	}
       ret = true;
@@ -27550,7 +27547,6 @@ pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type)
 	    }
 	  break;
 
-	case TYPE_ORDERBY_NUM:
 	case TYPE_POSITION:
 	case TYPE_LIST_ID:
 	  /* Currently not supported, implement later */
@@ -27565,6 +27561,7 @@ pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type)
 	case TYPE_ATTR_ID:
 	case TYPE_CLASS_ATTR_ID:
 	case TYPE_SHARED_ATTR_ID:
+	case TYPE_ORDERBY_NUM:
 	  /* This is column in subquery */
 	  break;
 
