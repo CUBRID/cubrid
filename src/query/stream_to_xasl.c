@@ -77,7 +77,6 @@ static OID *stx_restore_OID_array (THREAD_ENTRY * thread_p, char *ptr, int size)
 static METHOD_SIG_LIST *stx_restore_method_sig_list (THREAD_ENTRY * thread_p, char *ptr);
 static METHOD_SIG *stx_restore_method_sig (THREAD_ENTRY * thread_p, char *ptr, int size);
 static KEY_RANGE *stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr, int size);
-static SQ_CACHE *stx_restore_sq_cache (THREAD_ENTRY * thread_p, char *ptr, int n_elements);
 
 static char *stx_build_xasl_node (THREAD_ENTRY * thread_p, char *tmp, XASL_NODE * ptr);
 static char *stx_build_xasl_header (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE_HEADER * xasl_header);
@@ -137,6 +136,7 @@ static char *stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *tmp, A
 static char *stx_build_srlist_id (THREAD_ENTRY * thread_p, char *tmp, QFILE_SORTED_LIST_ID * ptr);
 static char *stx_build_sort_list (THREAD_ENTRY * thread_p, char *tmp, SORT_LIST * ptr);
 static char *stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *tmp, CONNECTBY_PROC_NODE * ptr);
+static char *stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p);
 
 static REGU_VALUE_LIST *stx_regu_value_list_alloc_and_init (THREAD_ENTRY * thread_p);
 static REGU_VALUE_ITEM *stx_regu_value_item_alloc_and_init (THREAD_ENTRY * thread_p);
@@ -2275,9 +2275,11 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	  goto error;
 	}
     }
-  ptr = or_unpack_int (ptr, &i);
-  ptr = or_unpack_int (ptr, &offset);
-  xasl->sq_cache = stx_restore_sq_cache (thread_p, &xasl_unpack_info->packed_xasl[offset], i);
+  ptr = stx_build_sq_cache (thread_p, ptr, &xasl->sq_cache);
+  if (ptr == NULL)
+    {
+      goto error;
+    }
 
   memset (&xasl->orderby_stats, 0, sizeof (xasl->orderby_stats));
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
@@ -2417,24 +2419,37 @@ stx_build_cte_xasl_id (THREAD_ENTRY * thread_p, char *ptr, XASL_ID * cte_xasl_id
   return ptr;
 }
 
-static SQ_CACHE *
-stx_restore_sq_cache (THREAD_ENTRY * thread_p, char *ptr, int n_elements)
+static char *
+stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p)
 {
-  SQ_CACHE *sq_cache = NULL;
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  SQ_CACHE *new_sq_cache = NULL;
+  int n_elements, offset;
+
+  *sq_cache_p = NULL;
+  ptr = or_unpack_int (ptr, &n_elements);
+  ptr = or_unpack_int (ptr, &offset);
 
   if (n_elements > 0)
     {
-      sq_cache = (SQ_CACHE *) stx_alloc_struct (thread_p, sizeof (SQ_CACHE));
-      sq_cache->sq_key_struct = stx_restore_db_value_array_extra (thread_p, ptr, n_elements, n_elements);
-      sq_cache->n_elements = n_elements;
-      sq_cache->ht = NULL;
-      sq_cache->size_max = 0;
-      sq_cache->size = 0;
-      sq_cache->stats.hit = 0;
-      sq_cache->stats.miss = 0;
+      new_sq_cache = (SQ_CACHE *) stx_alloc_struct (thread_p, sizeof (SQ_CACHE));
+      if (new_sq_cache == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      new_sq_cache->sq_key_struct =
+	stx_restore_db_value_array_extra (thread_p, &xasl_unpack_info->packed_xasl[offset], n_elements, n_elements);
+      new_sq_cache->n_elements = n_elements;
+      new_sq_cache->ht = NULL;
+      new_sq_cache->size_max = 0;
+      new_sq_cache->size = 0;
+      new_sq_cache->stats.hit = 0;
+      new_sq_cache->stats.miss = 0;
+      *sq_cache_p = new_sq_cache;
     }
 
-  return sq_cache;
+  return ptr;
 }
 
 static char *
