@@ -951,7 +951,6 @@ struct partition_spec_node
 };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
-
 struct access_spec_node
 {
   TARGET_TYPE type;		/* target class or list */
