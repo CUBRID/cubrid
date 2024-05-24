@@ -135,13 +135,12 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 
   if (mmon_is_memory_monitor_enabled ())
     {
-#if 0
       /* Realloc spec.: Realloc should work same as malloc if ptr == NULL */
       if (ptr == NULL)
 	{
 	  return cub_alloc (size, file, line);
 	}
-#endif
+
       /* Realloc spec.: If input size is zero, just free ptr */
       if (size == 0)
 	{
