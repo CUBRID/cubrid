@@ -67,8 +67,16 @@ sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   int i, cnt = 0;
 
   keyp = (SQ_KEY *) db_private_alloc (NULL, sizeof (SQ_KEY));
+  if (keyp == NULL)
+    {
+      return NULL;
+    }
   keyp->n_elements = xasl->sq_cache->sq_key_struct->n_elements;
   keyp->dbv_array = (DB_VALUE **) db_private_alloc (NULL, keyp->n_elements * sizeof (DB_VALUE *));
+  if (keyp->dbv_array == NULL)
+    {
+      return NULL;
+    }
   for (i = 0; i < keyp->n_elements; i++)
     {
       keyp->dbv_array[i] = db_value_copy (xasl->sq_cache->sq_key_struct->dbv_array[i]);
@@ -325,6 +333,7 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
     {
       if (sq_cache_initialize (xasl) == ER_FAILED)
 	{
+	  XASL_CLEAR_FLAG (xasl, XASL_USES_SQ_CACHE);
 	  return ER_FAILED;
 	}
     }
@@ -400,6 +409,7 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 
       if (sq_cache_initialize (xasl) == ER_FAILED)
 	{
+	  XASL_CLEAR_FLAG (xasl, XASL_USES_SQ_CACHE);
 	  return false;
 	}
       xasl->sq_cache->stats.miss++;
@@ -435,8 +445,8 @@ sq_cache_destroy (SQ_CACHE * sq_cache)
       if (sq_cache->ht)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"destroy sq_cache at xasl %p\ncache info : \n\thit : %10d\n\tmiss: %10d\n\tsize: %10lu Bytes\n",
-			xasl, sq_cache->stats.hit, sq_cache->stats.miss, sq_cache->size);
+			"destroy sq_cache  %p\ncache info : \n\thit : %10d\n\tmiss: %10d\n\tsize: %10lu Bytes\n",
+			sq_cache, sq_cache->stats.hit, sq_cache->stats.miss, sq_cache->size);
 	  mht_clear (sq_cache->ht, sq_rem_func, NULL);
 	  mht_destroy (sq_cache->ht);
 	  sq_cache->ht = NULL;
