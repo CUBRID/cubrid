@@ -148,7 +148,6 @@ using ANALYTIC_EVAL_TYPE = cubxasl::analytic_eval_type;
 using PRED_EXPR = cubxasl::pred_expr;
 // *INDENT-ON*
 
-
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
