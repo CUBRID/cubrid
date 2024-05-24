@@ -46,7 +46,7 @@ class log_reader final
     enum class fetch_mode
     {
       NORMAL,
-      FORCE
+      FORCE // if fetch_mode is FORCE, then log_reader will fetch the log page regardless of the condition
     };
 
     inline const log_lsa &get_lsa() const

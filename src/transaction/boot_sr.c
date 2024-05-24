@@ -2499,6 +2499,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   // after recovery we can boot vacuum
   error_code = vacuum_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   /*
    * Initialize the catalog manager, the query evaluator, and install meta

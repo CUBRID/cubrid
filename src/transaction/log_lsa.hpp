@@ -45,7 +45,6 @@ struct log_lsa
     , offset (log_offset)
   {
   }
-  inline log_lsa (const int64_t value);
   inline log_lsa (const log_lsa &olsa) = default;
   inline log_lsa &operator= (const log_lsa &olsa) = default;
 
@@ -94,11 +93,6 @@ inline bool LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2);
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
 //////////////////////////////////////////////////////////////////////////
-
-log_lsa::log_lsa (const int64_t value)
-{
-  std::memcpy (this, &value, sizeof (value));
-}
 
 constexpr bool
 log_lsa::is_null () const

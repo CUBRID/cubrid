@@ -25,20 +25,6 @@
 #include <cstdio>
 #include <functional>
 
-struct vpid;
-namespace cubpacking
-{
-  class packer;
-  class unpacker;
-}
-
-namespace vpid_utils
-{
-  void pack (cubpacking::packer &serializer, const vpid &vpd);
-  void unpack (cubpacking::unpacker &deserializer, vpid &vpd);
-  size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset);
-}
-
 namespace std
 {
   template<>
