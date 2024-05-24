@@ -632,7 +632,6 @@ static PT_NODE *pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE *
 static bool pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 static int pt_check_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl);
-static bool pt_recursive_check_corr_subquery_hash_result_cache (XASL_NODE * xasl);
 static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							  int *continue_walk);
 static bool pt_prepare_sq_cache (XASL_NODE * xasl);
@@ -27218,10 +27217,6 @@ pt_check_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * nod
       /* it means SUBQUERY RESULT won't be cached. */
       return false;
     }
-  if (!pt_recursive_check_corr_subquery_hash_result_cache (xasl))
-    {
-      return false;
-    }
   cachable = true;
   parser_walk_tree (parser, node, NULL, NULL, pt_check_corr_subquery_not_cachable_expr, &cachable);
   if (!cachable)
@@ -27234,53 +27229,6 @@ pt_check_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * nod
       return false;
     }
   return true;
-}
-
-/*
- * pt_recursive_check_corr_subquery_hash_result_cache ()
- * - Checks if the provided XASL node and its subqueries can be cached based on certain conditions related to predicates
- * and other flags within the structure.
- *
- * return : bool - Returns true if the XASL node and its subqueries satisfy the conditions for caching, false otherwise.
- * xasl (in) : XASL_NODE* - Pointer to the XASL node being checked for caching compatibility.
- */
-
-bool
-pt_recursive_check_corr_subquery_hash_result_cache (XASL_NODE * xasl)
-{
-  int cache;
-  if (xasl)
-    {
-      XASL_NODE *scan_ptr, *aptr;
-      bool ret;
-
-      if (!xasl->spec_list)
-	{
-	  return false;
-	}
-      if (xasl->dptr_list || xasl->bptr_list || xasl->fptr_list)
-	{
-	  return false;
-	}
-      ret = true;
-      if (xasl->scan_ptr)
-	{
-	  for (scan_ptr = xasl->scan_ptr; scan_ptr != NULL; scan_ptr = scan_ptr->next)
-	    {
-	      ret &= pt_recursive_check_corr_subquery_hash_result_cache (scan_ptr);
-	    }
-	}
-      if (xasl->aptr_list)
-	{
-	  for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
-	    {
-	      ret &= pt_recursive_check_corr_subquery_hash_result_cache (aptr);
-	    }
-	}
-      return ret;
-    }
-
-  return false;
 }
 
 /*
@@ -27304,7 +27252,7 @@ pt_prepare_sq_cache (XASL_NODE * xasl)
 
   n_elements = pt_make_sq_cache_key_struct (dbv_list, (void *) xasl, SQ_TYPE_XASL);
 
-  if (n_elements <= 0)
+  if (n_elements == 0 || n_elements == ER_FAILED)
     {
       return false;
     }
@@ -27354,6 +27302,10 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
     {
     case SQ_TYPE_XASL:
       xasl_src = (XASL_NODE *) p;
+      if (xasl_src->bptr_list || xasl_src->dptr_list || xasl_src->fptr_list || xasl_src->connect_by_ptr)
+	{
+	  return ER_FAILED;
+	}
       spec = xasl_src->spec_list;
       for (spec = xasl_src->spec_list; spec; spec = spec->next)
 	{
@@ -27556,13 +27508,13 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 
 	case TYPE_POS_VALUE:
 	case TYPE_DBVAL:
+	case TYPE_ORDERBY_NUM:
 	  /* constants */
 	  break;
 
 	case TYPE_ATTR_ID:
 	case TYPE_CLASS_ATTR_ID:
 	case TYPE_SHARED_ATTR_ID:
-	case TYPE_ORDERBY_NUM:
 	  /* This is column in subquery */
 	  break;
 

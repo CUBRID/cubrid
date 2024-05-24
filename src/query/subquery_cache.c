@@ -435,8 +435,8 @@ sq_cache_destroy (XASL_NODE * xasl)
 	  mht_destroy (xasl->sq_cache->ht);
 	  xasl->sq_cache->ht = NULL;
 	}
-      xasl->sq_cache->size_max = NULL;
-      xasl->sq_cache->size = NULL;
+      xasl->sq_cache->size_max = 0;
+      xasl->sq_cache->size = 0;
       xasl->sq_cache->enabled = false;
       xasl->sq_cache->stats.hit = 0;
       xasl->sq_cache->stats.miss = 0;
