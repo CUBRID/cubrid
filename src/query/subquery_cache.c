@@ -66,9 +66,9 @@ sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   SQ_KEY *keyp;
   int i, cnt = 0;
 
-  keyp = (SQ_KEY *) db_private_alloc (NULL, sizeof (SQ_KEY));
+  keyp = (SQ_KEY *) db_private_alloc (thread_p, sizeof (SQ_KEY));
   keyp->n_elements = xasl->sq_cache->n_elements;
-  keyp->dbv_array = (DB_VALUE **) db_private_alloc (NULL, keyp->n_elements * sizeof (DB_VALUE *));
+  keyp->dbv_array = (DB_VALUE **) db_private_alloc (thread_p, keyp->n_elements * sizeof (DB_VALUE *));
   for (i = 0; i < keyp->n_elements; i++)
     {
       keyp->dbv_array[i] = db_value_copy (xasl->sq_cache->sq_key_struct[i]);
@@ -90,7 +90,7 @@ SQ_VAL *
 sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val)
 {
   SQ_VAL *ret;
-  ret = (SQ_VAL *) db_private_alloc (NULL, sizeof (SQ_VAL));
+  ret = (SQ_VAL *) db_private_alloc (thread_p, sizeof (SQ_VAL));
 
   ret->t = val->type;
 
@@ -244,17 +244,12 @@ sq_cmp_func (const void *key1, const void *key2)
   k2 = (SQ_KEY *) key2;
   sz1 = k1->n_elements;
   sz2 = k2->n_elements;
-
-  if (sz1 != sz2)
-    {
-      return 0;
-    }
+  assert (sz1 == sz2);
 
   for (i = 0; i < sz1; i++)
     {
       if (!mht_compare_dbvalues_are_equal (k1->dbv_array[i], k2->dbv_array[i]))
 	{
-
 	  return 0;
 	}
     }
@@ -379,7 +374,7 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 {
   SQ_VAL *ret;
 
-  if (XASL_IS_FLAGED (xasl, XASL_USES_SQ_CACHE) && xasl->sq_cache->ht)
+  if (xasl->sq_cache->ht)
     {
       /* This conditional check acts as a mechanism to prevent the cache from being 
          overwhelmed by unsuccessful lookups. If the cache miss count exceeds a predefined 
