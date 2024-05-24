@@ -323,7 +323,10 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 
   if (!xasl->sq_cache->ht)
     {
-      sq_cache_initialize (xasl);
+      if (sq_cache_initialize (xasl) == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
     }
 
   for (i = 0; i < key->n_elements; i++)
@@ -394,7 +397,11 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 
   if (!xasl->sq_cache->ht)
     {
-      sq_cache_initialize (xasl);
+
+      if (sq_cache_initialize (xasl) == ER_FAILED)
+	{
+	  return false;
+	}
       xasl->sq_cache->stats.miss++;
       return false;
     }
@@ -421,23 +428,23 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
  * no longer needed or before it is deallocated.
  */
 void
-sq_cache_destroy (XASL_NODE * xasl)
+sq_cache_destroy (SQ_CACHE * sq_cache)
 {
-  if (xasl->sq_cache)
+  if (sq_cache)
     {
-      if (xasl->sq_cache->ht)
+      if (sq_cache->ht)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"destroy sq_cache at xasl %p\ncache info : \n\thit : %10d\n\tmiss: %10d\n\tsize: %10lu Bytes\n",
-			xasl, xasl->sq_cache->stats.hit, xasl->sq_cache->stats.miss, xasl->sq_cache->size);
-	  mht_clear (xasl->sq_cache->ht, sq_rem_func, NULL);
-	  mht_destroy (xasl->sq_cache->ht);
-	  xasl->sq_cache->ht = NULL;
+			xasl, sq_cache->stats.hit, sq_cache->stats.miss, sq_cache->size);
+	  mht_clear (sq_cache->ht, sq_rem_func, NULL);
+	  mht_destroy (sq_cache->ht);
+	  sq_cache->ht = NULL;
 	}
-      xasl->sq_cache->size_max = 0;
-      xasl->sq_cache->size = 0;
-      xasl->sq_cache->enabled = false;
-      xasl->sq_cache->stats.hit = 0;
-      xasl->sq_cache->stats.miss = 0;
+      sq_cache->size_max = 0;
+      sq_cache->size = 0;
+      sq_cache->enabled = false;
+      sq_cache->stats.hit = 0;
+      sq_cache->stats.miss = 0;
     }
 }
