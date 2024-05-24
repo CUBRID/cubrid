@@ -397,12 +397,14 @@ static UTIL_ARG_MAP ua_Plandump_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {PLANDUMP_DROP_S, {ARG_BOOLEAN}, {0}},
   {PLANDUMP_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {PLANDUMP_SHA1_S, {ARG_STRING}, {0}},
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Plandump_Option[] = {
   {PLANDUMP_DROP_L, 0, 0, PLANDUMP_DROP_S},
   {PLANDUMP_OUTPUT_FILE_L, 1, 0, PLANDUMP_OUTPUT_FILE_S},
+  {PLANDUMP_SHA1_L, 1, 0, PLANDUMP_SHA1_S},
   {0, 0, 0, 0}
 };
 
