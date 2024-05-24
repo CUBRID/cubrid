@@ -2903,6 +2903,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   json_t *subquery, *groupby, *orderby;
   json_t *left, *right, *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
+  json_t *sq_cache;
 
   if (xasl_p == NULL || parent == NULL)
     {
@@ -3007,6 +3008,23 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     }
 
   qdump_print_stats_json (xasl_p->connect_by_ptr, proc);
+
+  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_SQ_CACHE))
+    {
+      sq_cache = json_object ();
+      json_object_set_new (sq_cache, "hit", json_integer (xasl_p->sq_cache->stats.hit));
+      json_object_set_new (sq_cache, "miss", json_integer (xasl_p->sq_cache->stats.miss));
+      json_object_set_new (sq_cache, "size", json_integer (xasl_p->sq_cache->size));
+      if (xasl_p->sq_cache->enabled)
+	{
+	  json_object_set_new (sq_cache, "status", json_string ("enabled"));
+	}
+      else
+	{
+	  json_object_set_new (sq_cache, "status", json_string ("disabled"));
+	}
+      json_object_set_new (proc, "sq_cache", sq_cache);
+    }
 
   gstats = &xasl_p->groupby_stats;
   if (gstats->run_groupby)
@@ -3280,12 +3298,12 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       fprintf (fp, "%*c", indent, ' ');
       if (xasl_p->sq_cache->enabled)
 	{
-	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu Bytes, status: enabled)\n",
+	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu B, status: enabled)\n",
 		   xasl_p->sq_cache->stats.hit, xasl_p->sq_cache->stats.miss, xasl_p->sq_cache->size);
 	}
       else
 	{
-	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu Bytes, status: disabled)\n",
+	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu B, status: disabled)\n",
 		   xasl_p->sq_cache->stats.hit, xasl_p->sq_cache->stats.miss, xasl_p->sq_cache->size);
 	}
     }

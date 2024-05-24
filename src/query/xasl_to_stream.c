@@ -127,7 +127,6 @@ static int xts_save_key_range_array (const KEY_RANGE * ptr, int size);
 static int xts_save_upddel_class_info_array (const UPDDEL_CLASS_INFO * classes, int nelements);
 static int xts_save_update_assignment_array (const UPDATE_ASSIGNMENT * assigns, int nelements);
 static int xts_save_odku_info (const ODKU_INFO * odku_info);
-static int xts_save_sq_cache (const SQ_CACHE * sq_cache);
 
 static char *xts_process (char *ptr, const json_table_column & json_table_col);
 static char *xts_process (char *ptr, const json_table_node & json_table_node);
@@ -189,6 +188,7 @@ static char *xts_process_method_sig_list (char *ptr, const METHOD_SIG_LIST * met
 static char *xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int size);
 static char *xts_process_connectby_proc (char *ptr, const CONNECTBY_PROC_NODE * connectby_proc);
 static char *xts_process_regu_value_list (char *ptr, const REGU_VALUE_LIST * regu_value_list);
+static char *xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache);
 
 static int xts_sizeof (const json_table_column & ptr);
 static int xts_sizeof (const json_table_node & ptr);
@@ -2825,15 +2825,33 @@ xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
   return offset;
 }
 
-static int
-xts_save_sq_cache (const SQ_CACHE * sq_cache)
+static char *
+xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache)
 {
-  int offset = 0;
+  int offset, n_elements;
+
   if (sq_cache)
     {
+      n_elements = sq_cache->n_elements;
+      ptr = or_pack_int (ptr, n_elements);
+
       offset = xts_save_db_value_array (sq_cache->sq_key_struct, sq_cache->n_elements);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
     }
-  return offset;
+  else
+    {
+      n_elements = 0;
+      ptr = or_pack_int (ptr, n_elements);
+
+      offset = 0;
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  return ptr;
 }
 
 /*
@@ -3246,21 +3264,11 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   ptr = or_pack_int (ptr, offset);
 
-  if (xasl->sq_cache)
-    {
-      ptr = or_pack_int (ptr, xasl->sq_cache->n_elements);
-    }
-  else
-    {
-      ptr = or_pack_int (ptr, 0);
-    }
-
-  offset = xts_save_sq_cache (xasl->sq_cache);
-  if (offset == ER_FAILED)
+  ptr = xts_process_sq_cache (ptr, xasl->sq_cache);
+  if (ptr == NULL)
     {
       return NULL;
     }
-  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }

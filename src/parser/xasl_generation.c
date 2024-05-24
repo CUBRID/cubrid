@@ -636,8 +636,7 @@ static bool pt_recursive_check_corr_subquery_hash_result_cache (XASL_NODE * xasl
 static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							  int *continue_walk);
 static bool pt_prepare_sq_cache (XASL_NODE * xasl);
-static int pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type);
-
+static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
 static void
 pt_init_xasl_supp_info ()
 {
@@ -27300,22 +27299,29 @@ pt_recursive_check_corr_subquery_hash_result_cache (XASL_NODE * xasl)
 bool
 pt_prepare_sq_cache (XASL_NODE * xasl)
 {
-  int n_elements;
+  int n_elements, i;
   DB_VALUE **sq_key_struct;
+  QPROC_DB_VALUE_LIST dbv_list;
 
-  n_elements = pt_make_sq_cache_key_struct (NULL, (void *) xasl, SQ_TYPE_XASL);
+  regu_alloc (dbv_list);
+  dbv_list->val = NULL;
+  dbv_list->next = NULL;
+
+  n_elements = pt_make_sq_cache_key_struct (dbv_list, (void *) xasl, SQ_TYPE_XASL);
 
   if (n_elements <= 0)
     {
       return false;
     }
-  sq_key_struct = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
-  memset ((void *) sq_key_struct, 0, n_elements * sizeof (DB_VALUE *));
-  pt_make_sq_cache_key_struct (sq_key_struct, (void *) xasl, SQ_TYPE_XASL);
 
+  sq_key_struct = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
+  for (i = 0; i < n_elements; i++)
+    {
+      sq_key_struct[i] = dbv_list->val;
+      dbv_list = dbv_list->next;
+    }
 
   xasl->sq_cache = (SQ_CACHE *) pt_alloc_packing_buf (sizeof (SQ_CACHE));
-
   xasl->sq_cache->sq_key_struct = sq_key_struct;
   xasl->sq_cache->n_elements = n_elements;
 
@@ -27334,7 +27340,7 @@ pt_prepare_sq_cache (XASL_NODE * xasl)
  */
 
 int
-pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type)
+pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 {
   int cnt = 0;
   int ret;
@@ -27582,17 +27588,23 @@ pt_make_sq_cache_key_struct (DB_VALUE ** key_struct, void *p, int type)
     case SQ_TYPE_DBVAL:
       if (key_struct)
 	{
-	  i = 0;
-	  if (key_struct[i])
+	  QPROC_DB_VALUE_LIST new_dbv, list_p;
+	  if (key_struct->val != NULL)
 	    {
-	      while (key_struct[i] != NULL)
+	      list_p = key_struct;
+	      while (list_p->next)
 		{
-		  i++;
+		  list_p = list_p->next;
 		}
+	      regu_alloc (new_dbv);
+	      new_dbv->next = NULL;
+	      new_dbv->val = (DB_VALUE *) p;
 	    }
-	  key_struct[i] = (DB_VALUE *) p;
+	  else
+	    {
+	      key_struct->val = (DB_VALUE *) p;
+	    }
 	}
-
       cnt++;
       break;
 
