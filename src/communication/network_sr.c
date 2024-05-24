@@ -471,6 +471,9 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_ALL_PLANS];
   req_p->processing_function = sqmgr_drop_all_query_plans;
 
+  req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_SHA1_PLANS];
+  req_p->processing_function = sqmgr_drop_query_plans_by_sha1;
+
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_PLANS];
   req_p->processing_function = sqmgr_dump_query_plans;
 
