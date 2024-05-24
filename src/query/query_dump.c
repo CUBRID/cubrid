@@ -3023,7 +3023,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	{
 	  json_object_set_new (sq_cache, "status", json_string ("disabled"));
 	}
-      json_object_set_new (proc, "sq_cache", sq_cache);
+      json_object_set_new (proc, "SUBQUERY_CACHE", sq_cache);
     }
 
   gstats = &xasl_p->groupby_stats;
@@ -3298,12 +3298,12 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       fprintf (fp, "%*c", indent, ' ');
       if (xasl_p->sq_cache->enabled)
 	{
-	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %luB, status: enabled)\n",
+	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu, status: enabled)\n",
 		   xasl_p->sq_cache->stats.hit, xasl_p->sq_cache->stats.miss, xasl_p->sq_cache->size);
 	}
       else
 	{
-	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %luB, status: disabled)\n",
+	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu, status: disabled)\n",
 		   xasl_p->sq_cache->stats.hit, xasl_p->sq_cache->stats.miss, xasl_p->sq_cache->size);
 	}
     }
