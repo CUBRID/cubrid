@@ -35,6 +35,7 @@
 #include "regu_var.hpp"
 #include "storage_common.h"
 #include "string_opfunc.h"
+#include "subquery_cache.h"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "external_sort.h"
@@ -147,7 +148,6 @@ using ANALYTIC_EVAL_TYPE = cubxasl::analytic_eval_type;
 using PRED_EXPR = cubxasl::pred_expr;
 // *INDENT-ON*
 
-typedef struct sq_cache SQ_CACHE;
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct groupby_stat GROUPBY_STATS;
@@ -952,22 +952,6 @@ struct partition_spec_node
 };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
-struct sq_cache
-{
-  DB_VALUE **sq_key_struct;
-  int n_elements;
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  MHT_TABLE *ht;
-  UINT64 size_max;
-  UINT64 size;
-  bool enabled;
-  struct
-  {
-    int hit;
-    int miss;
-  } stats;
-#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
-};
 
 struct access_spec_node
 {

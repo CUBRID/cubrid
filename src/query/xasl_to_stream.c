@@ -2832,10 +2832,10 @@ xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache)
 
   if (sq_cache)
     {
-      n_elements = sq_cache->n_elements;
+      n_elements = sq_cache->sq_key_struct->n_elements;
       ptr = or_pack_int (ptr, n_elements);
 
-      offset = xts_save_db_value_array (sq_cache->sq_key_struct, sq_cache->n_elements);
+      offset = xts_save_db_value_array (sq_cache->sq_key_struct->dbv_array, n_elements);
       if (offset == ER_FAILED)
 	{
 	  return NULL;

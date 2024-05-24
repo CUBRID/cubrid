@@ -28,8 +28,9 @@
 typedef union sq_regu_value SQ_REGU_VALUE;
 typedef struct sq_key SQ_KEY;
 typedef struct sq_val SQ_VAL;
+typedef struct sq_cache SQ_CACHE;
 
-extern int sq_cache_initialize (THREAD_ENTRY * thread_p, xasl_node * xasl);
+extern int sq_cache_initialize (xasl_node * xasl);
 extern int sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * result);
 extern bool sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * regu_var);
 extern void sq_cache_destroy (xasl_node * xasl);
@@ -37,6 +38,22 @@ extern SQ_KEY *sq_make_key (THREAD_ENTRY * thread_p, xasl_node * xasl);
 extern void sq_free_key (SQ_KEY * key);
 
 #define SQ_CACHE_MIN_HIT_RATIO 9	/* it means 90% */
+
+struct sq_cache
+{
+  SQ_KEY *sq_key_struct;
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  MHT_TABLE *ht;
+  UINT64 size_max;
+  UINT64 size;
+  bool enabled;
+  struct
+  {
+    int hit;
+    int miss;
+  } stats;
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
+};
 
 enum sq_type
 {

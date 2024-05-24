@@ -27243,7 +27243,7 @@ bool
 pt_prepare_sq_cache (XASL_NODE * xasl)
 {
   int n_elements, i;
-  DB_VALUE **sq_key_struct;
+  SQ_KEY *sq_key_struct;
   QPROC_DB_VALUE_LIST dbv_list;
 
   regu_alloc (dbv_list);
@@ -27256,17 +27256,17 @@ pt_prepare_sq_cache (XASL_NODE * xasl)
     {
       return false;
     }
-
-  sq_key_struct = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
+  sq_key_struct = (SQ_KEY *) pt_alloc_packing_buf (sizeof (SQ_KEY));
+  sq_key_struct->dbv_array = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
   for (i = 0; i < n_elements; i++)
     {
-      sq_key_struct[i] = dbv_list->val;
+      sq_key_struct->dbv_array[i] = dbv_list->val;
       dbv_list = dbv_list->next;
     }
+  sq_key_struct->n_elements = n_elements;
 
   xasl->sq_cache = (SQ_CACHE *) pt_alloc_packing_buf (sizeof (SQ_CACHE));
   xasl->sq_cache->sq_key_struct = sq_key_struct;
-  xasl->sq_cache->n_elements = n_elements;
 
   return true;
 }

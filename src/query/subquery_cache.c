@@ -66,12 +66,12 @@ sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   SQ_KEY *keyp;
   int i, cnt = 0;
 
-  keyp = (SQ_KEY *) db_private_alloc (thread_p, sizeof (SQ_KEY));
-  keyp->n_elements = xasl->sq_cache->n_elements;
-  keyp->dbv_array = (DB_VALUE **) db_private_alloc (thread_p, keyp->n_elements * sizeof (DB_VALUE *));
+  keyp = (SQ_KEY *) db_private_alloc (NULL, sizeof (SQ_KEY));
+  keyp->n_elements = xasl->sq_cache->sq_key_struct->n_elements;
+  keyp->dbv_array = (DB_VALUE **) db_private_alloc (NULL, keyp->n_elements * sizeof (DB_VALUE *));
   for (i = 0; i < keyp->n_elements; i++)
     {
-      keyp->dbv_array[i] = db_value_copy (xasl->sq_cache->sq_key_struct[i]);
+      keyp->dbv_array[i] = db_value_copy (xasl->sq_cache->sq_key_struct->dbv_array[i]);
     }
 
   return keyp;
@@ -90,7 +90,7 @@ SQ_VAL *
 sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val)
 {
   SQ_VAL *ret;
-  ret = (SQ_VAL *) db_private_alloc (thread_p, sizeof (SQ_VAL));
+  ret = (SQ_VAL *) db_private_alloc (NULL, sizeof (SQ_VAL));
 
   ret->t = val->type;
 
@@ -285,7 +285,7 @@ sq_rem_func (const void *key, void *data, void *args)
  * hash table could not be created.
  */
 int
-sq_cache_initialize (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+sq_cache_initialize (XASL_NODE * xasl)
 {
   UINT64 max_subquery_cache_size = (UINT64) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
   int sq_hm_entries = (int) max_subquery_cache_size / 2048;	// default 1024
@@ -323,7 +323,7 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 
   if (!xasl->sq_cache->ht)
     {
-      sq_cache_initialize (thread_p, xasl);
+      sq_cache_initialize (xasl);
     }
 
   for (i = 0; i < key->n_elements; i++)
@@ -394,7 +394,7 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 
   if (!xasl->sq_cache->ht)
     {
-      sq_cache_initialize (thread_p, xasl);
+      sq_cache_initialize (xasl);
       xasl->sq_cache->stats.miss++;
       return false;
     }
@@ -423,7 +423,6 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 void
 sq_cache_destroy (XASL_NODE * xasl)
 {
-  int i;
   if (xasl->sq_cache)
     {
       if (xasl->sq_cache->ht)
