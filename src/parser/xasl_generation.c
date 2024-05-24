@@ -27594,6 +27594,7 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	      regu_alloc (new_dbv);
 	      new_dbv->next = NULL;
 	      new_dbv->val = (DB_VALUE *) p;
+	      list_p->next = new_dbv;
 	    }
 	  else
 	    {

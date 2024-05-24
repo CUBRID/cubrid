@@ -3298,12 +3298,12 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       fprintf (fp, "%*c", indent, ' ');
       if (xasl_p->sq_cache->enabled)
 	{
-	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu B, status: enabled)\n",
+	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %luB, status: enabled)\n",
 		   xasl_p->sq_cache->stats.hit, xasl_p->sq_cache->stats.miss, xasl_p->sq_cache->size);
 	}
       else
 	{
-	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu B, status: disabled)\n",
+	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %luB, status: disabled)\n",
 		   xasl_p->sq_cache->stats.hit, xasl_p->sq_cache->stats.miss, xasl_p->sq_cache->size);
 	}
     }
