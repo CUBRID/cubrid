@@ -38,6 +38,11 @@ extern SQ_KEY *sq_make_key (THREAD_ENTRY * thread_p, xasl_node * xasl);
 extern void sq_free_key (SQ_KEY * key);
 
 #define SQ_CACHE_MIN_HIT_RATIO 9	/* it means 90% */
+#define SQ_CACHE_SIZE_NENTRY_RATIO 2048
+
+#define SQ_CACHE_HT(xasl)			(xasl)->sq_cache->ht
+#define SQ_CACHE_ENABLED(xasl)			(xasl)->sq_cache->enabled
+#define SQ_CACHE_KEY_STRUCT(xasl)			(xasl)->sq_cache->sq_key_struct
 
 struct sq_cache
 {
@@ -81,7 +86,7 @@ struct sq_key
 struct sq_val
 {
   SQ_REGU_VALUE val;
-  REGU_DATATYPE t;
+  REGU_DATATYPE type;
 };
 
 #endif /* _SUBQUERY_CACHE_H_ */

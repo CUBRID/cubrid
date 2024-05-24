@@ -631,11 +631,11 @@ static PT_NODE *pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
 
-static int pt_check_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl);
+int pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl);
+static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
 static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							  int *continue_walk);
-static bool pt_prepare_sq_cache (XASL_NODE * xasl);
-static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
+
 static void
 pt_init_xasl_supp_info ()
 {
@@ -13965,7 +13965,7 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      regu->value.dbvalptr = value_list->val;
 		      /* move to next db_value holder */
 		      value_list = value_list->next;
-		      if (pt_check_corr_subquery_hash_result_cache (parser, node, xasl))
+		      if (pt_prepare_corr_subquery_hash_result_cache (parser, node, xasl))
 			{
 			  XASL_SET_FLAG (xasl, XASL_USES_SQ_CACHE);
 			}
@@ -27198,7 +27198,7 @@ pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred)
 }
 
 /*
- * pt_check_corr_subquery_hash_result_cache ()
+ * pt_prepare_corr_subquery_hash_result_cache ()
  * - Checks if the provided XASL node and its subqueries can be cached based on certain conditions related to predicates
  * and other flags within the structure.
  *
@@ -27209,42 +27209,23 @@ pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred)
  */
 
 int
-pt_check_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl)
+pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl)
 {
-  bool cachable;
+  int n_elements, i;
+  SQ_KEY *sq_key_struct;
+  QPROC_DB_VALUE_LIST dbv_list;
+  bool cachable = true;
+
   if (node->info.query.q.select.hint & PT_HINT_NO_SUBQUERY_CACHE)
     {
       /* it means SUBQUERY RESULT won't be cached. */
       return false;
     }
-  cachable = true;
   parser_walk_tree (parser, node, NULL, NULL, pt_check_corr_subquery_not_cachable_expr, &cachable);
   if (!cachable)
     {
       return false;
     }
-
-  if (!pt_prepare_sq_cache (xasl))
-    {
-      return false;
-    }
-  return true;
-}
-
-/*
- * pt_prepare_sq_cache () - Prepares a cache structure for subqueries (SQ) associated with the provided XASL node.
- * It generates a key structure for the cache based on the subquery's properties and initializes the cache.
- *
- * return : bool - Returns true if the cache is successfully prepared and the node can support caching, false if any step fails.
- * xasl (in) : XASL_NODE* - Pointer to the XASL node for which the subquery cache is being prepared.
- */
-
-bool
-pt_prepare_sq_cache (XASL_NODE * xasl)
-{
-  int n_elements, i;
-  SQ_KEY *sq_key_struct;
-  QPROC_DB_VALUE_LIST dbv_list;
 
   regu_alloc (dbv_list);
   dbv_list->val = NULL;
@@ -27256,6 +27237,7 @@ pt_prepare_sq_cache (XASL_NODE * xasl)
     {
       return false;
     }
+
   sq_key_struct = (SQ_KEY *) pt_alloc_packing_buf (sizeof (SQ_KEY));
   sq_key_struct->dbv_array = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
   for (i = 0; i < n_elements; i++)
@@ -27267,7 +27249,6 @@ pt_prepare_sq_cache (XASL_NODE * xasl)
 
   xasl->sq_cache = (SQ_CACHE *) pt_alloc_packing_buf (sizeof (SQ_CACHE));
   xasl->sq_cache->sq_key_struct = sq_key_struct;
-
   return true;
 }
 

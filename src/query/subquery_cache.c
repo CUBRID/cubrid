@@ -69,12 +69,14 @@ sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   keyp = (SQ_KEY *) db_private_alloc (NULL, sizeof (SQ_KEY));
   if (keyp == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (SQ_KEY));
       return NULL;
     }
   keyp->n_elements = xasl->sq_cache->sq_key_struct->n_elements;
   keyp->dbv_array = (DB_VALUE **) db_private_alloc (NULL, keyp->n_elements * sizeof (DB_VALUE *));
   if (keyp->dbv_array == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, keyp->n_elements * sizeof (DB_VALUE *));
       return NULL;
     }
   for (i = 0; i < keyp->n_elements; i++)
@@ -100,9 +102,9 @@ sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val)
   SQ_VAL *ret;
   ret = (SQ_VAL *) db_private_alloc (NULL, sizeof (SQ_VAL));
 
-  ret->t = val->type;
+  ret->type = val->type;
 
-  switch (ret->t)
+  switch (ret->type)
     {
     case TYPE_CONSTANT:
       ret->val.dbvalptr = db_value_copy (val->value.dbvalptr);
@@ -149,7 +151,7 @@ sq_free_key (SQ_KEY * key)
 void
 sq_free_val (SQ_VAL * v)
 {
-  switch (v->t)
+  switch (v->type)
     {
     case TYPE_CONSTANT:
       pr_free_ext_value (v->val.dbvalptr);
@@ -178,7 +180,7 @@ sq_free_val (SQ_VAL * v)
 void
 sq_unpack_val (SQ_VAL * v, REGU_VARIABLE * retp)
 {
-  switch (v->t)
+  switch (v->type)
     {
     case TYPE_CONSTANT:
       if (retp->value.dbvalptr)
@@ -296,7 +298,7 @@ int
 sq_cache_initialize (XASL_NODE * xasl)
 {
   UINT64 max_subquery_cache_size = (UINT64) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
-  int sq_hm_entries = (int) max_subquery_cache_size / 2048;	// default 1024
+  int sq_hm_entries = (int) max_subquery_cache_size / SQ_CACHE_SIZE_NENTRY_RATIO;	// default 1024
 
   xasl->sq_cache->ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
   if (!xasl->sq_cache->ht)
@@ -343,7 +345,7 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
       new_entry_size += (UINT64) or_db_value_size (key->dbv_array[i]);
     }
   new_entry_size += sizeof (SQ_KEY);
-  switch (val->t)
+  switch (val->type)
     {
     case TYPE_CONSTANT:
       new_entry_size += (UINT64) or_db_value_size (val->val.dbvalptr) + sizeof (SQ_VAL);
@@ -393,7 +395,7 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
          maximum, it evaluates the hit-to-miss ratio to decide whether continuing caching 
          is beneficial. This approach optimizes cache usage and performance by dynamically 
          adapting to the effectiveness of the cache. */
-      UINT64 sq_cache_miss_max = xasl->sq_cache->size_max / 2048;
+      UINT64 sq_cache_miss_max = xasl->sq_cache->size_max / SQ_CACHE_SIZE_NENTRY_RATIO;
       if (xasl->sq_cache->stats.miss >= (int) sq_cache_miss_max)
 	{
 	  if (xasl->sq_cache->stats.hit / xasl->sq_cache->stats.miss < SQ_CACHE_MIN_HIT_RATIO)
@@ -406,7 +408,6 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 
   if (!xasl->sq_cache->ht)
     {
-
       if (sq_cache_initialize (xasl) == ER_FAILED)
 	{
 	  XASL_CLEAR_FLAG (xasl, XASL_USES_SQ_CACHE);

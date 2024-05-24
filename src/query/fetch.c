@@ -3785,6 +3785,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
   REGU_VALUE_LIST *reguval_list = NULL;
   DB_TYPE head_type, cur_type;
   FUNCTION_TYPE *funcp = NULL;
+  XASL_NODE *xasl;
 
   switch (regu_var->type)
     {
@@ -3871,11 +3872,10 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       /* is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-
-      if (regu_var->xasl && XASL_IS_FLAGED (regu_var->xasl, XASL_USES_SQ_CACHE)
-	  && !(regu_var->xasl->sq_cache->ht && !regu_var->xasl->sq_cache->enabled))
+      xasl = regu_var->xasl;
+      if (xasl && XASL_IS_FLAGED (xasl, XASL_USES_SQ_CACHE) && !(SQ_CACHE_HT (xasl) && !SQ_CACHE_ENABLED (xasl)))
 	{
-	  if (!sq_get (thread_p, regu_var->xasl->sq_cache->sq_key_struct, regu_var->xasl, regu_var))
+	  if (!sq_get (thread_p, SQ_CACHE_KEY_STRUCT (xasl), xasl, regu_var))
 	    {
 	      SQ_KEY *key;
 	      /* execute linked query */
@@ -3884,12 +3884,12 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 		{
 		  goto exit_on_error;
 		}
-	      if ((key = sq_make_key (thread_p, regu_var->xasl)) == NULL)
+	      if ((key = sq_make_key (thread_p, xasl)) == NULL)
 		{
-		  XASL_CLEAR_FLAG (regu_var->xasl, XASL_USES_SQ_CACHE);
+		  XASL_CLEAR_FLAG (xasl, XASL_USES_SQ_CACHE);
 		  goto exit_on_error;
 		}
-	      if (sq_put (thread_p, key, regu_var->xasl, regu_var) == ER_FAILED)
+	      if (sq_put (thread_p, key, xasl, regu_var) == ER_FAILED)
 		{
 		  sq_free_key (key);
 		}
@@ -3897,9 +3897,8 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  else
 	    {
 	      /* FOUND */
-	      regu_var->xasl->status = XASL_SUCCESS;
+	      xasl->status = XASL_SUCCESS;
 	    }
-
 	}
       else
 	{
