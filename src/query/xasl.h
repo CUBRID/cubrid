@@ -497,7 +497,7 @@ struct cte_proc_node
 #define XASL_NEED_SINGLE_TUPLE_SCAN   0x8000	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	      0x10000	/* is any tde class related */
 #define XASL_SAMPLING_SCAN	      0x20000	/* is sampling scan */
-#define XASL_SQ_CACHE	      0x40000
+#define XASL_USES_SQ_CACHE	      0x40000	/* subquery uses result cache */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)

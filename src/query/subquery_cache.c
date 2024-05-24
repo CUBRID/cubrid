@@ -379,7 +379,7 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 {
   SQ_VAL *ret;
 
-  if (XASL_IS_FLAGED (xasl, XASL_SQ_CACHE) && xasl->sq_cache->ht)
+  if (XASL_IS_FLAGED (xasl, XASL_USES_SQ_CACHE) && xasl->sq_cache->ht)
     {
       /* This conditional check acts as a mechanism to prevent the cache from being 
          overwhelmed by unsuccessful lookups. If the cache miss count exceeds a predefined 

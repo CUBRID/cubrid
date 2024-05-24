@@ -3009,7 +3009,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
   qdump_print_stats_json (xasl_p->connect_by_ptr, proc);
 
-  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_SQ_CACHE))
+  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
     {
       sq_cache = json_object ();
       json_object_set_new (sq_cache, "hit", json_integer (xasl_p->sq_cache->stats.hit));
@@ -3293,7 +3293,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
   qdump_print_stats_text (fp, xasl_p->connect_by_ptr, indent);
 
-  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_SQ_CACHE))
+  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
     {
       fprintf (fp, "%*c", indent, ' ');
       if (xasl_p->sq_cache->enabled)

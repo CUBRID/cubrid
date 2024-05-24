@@ -13968,7 +13968,7 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      value_list = value_list->next;
 		      if (pt_check_corr_subquery_hash_result_cache (parser, node, xasl))
 			{
-			  XASL_SET_FLAG (xasl, XASL_SQ_CACHE);
+			  XASL_SET_FLAG (xasl, XASL_USES_SQ_CACHE);
 			}
 		    }
 		  else
