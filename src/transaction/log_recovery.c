@@ -25,6 +25,7 @@
 #include "log_recovery.h"
 
 #include "boot_sr.h"
+#include "file_io.h"
 #include "locator_sr.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
@@ -92,6 +93,7 @@ static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
 static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
 						  LOG_RCVINDEX rcv_index, const LOG_LSA * lsa);
+static inline int log_recovery_get_redo_parallel_count (THREAD_ENTRY * thread_p);
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
@@ -3171,6 +3173,18 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
   return false;
 }
 
+static int
+log_recovery_get_redo_parallel_count ()
+{
+  int recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
+#if defined (SERVER_MODE)
+  const int num_cpus = fileio_os_sysconf ();
+
+  recovery_redo_parallel_count = MIN (recovery_redo_parallel_count, num_cpus * 2);
+#endif
+  return recovery_redo_parallel_count;
+}
+
 /*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
  *
@@ -3229,9 +3243,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   // *INDENT-OFF*
   std::unique_ptr<cublog::redo_parallel> parallel_recovery_redo;
   // *INDENT-ON*
+
+  const int log_recovery_redo_parallel_count = log_recovery_get_redo_parallel_count ();
+
 #if defined(SERVER_MODE)
   {
-    const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
     assert (log_recovery_redo_parallel_count >= 0);
     if (log_recovery_redo_parallel_count > 0)
       {
@@ -3845,7 +3861,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	parallel_recovery_redo->wait_for_termination_and_stop_execution ();
 	rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_WAIT_FOR_PARALLEL);
       }
-    const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
     /* 'async' measures the time taken by the main thread to execute sync log records, dispatch async ones
      * and wait for the async infrastructure to finish */
     const auto duration_async_ms = std::chrono::duration_cast <std::chrono::milliseconds> (
