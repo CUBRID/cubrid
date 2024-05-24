@@ -27219,33 +27219,22 @@ pt_check_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * nod
       /* it means SUBQUERY RESULT won't be cached. */
       return false;
     }
-  else
+  if (!pt_recursive_check_corr_subquery_hash_result_cache (xasl))
     {
-      if (pt_recursive_check_corr_subquery_hash_result_cache (xasl))
-	{
-	  cachable = true;
-	  parser_walk_tree (parser, node, NULL, NULL, pt_check_corr_subquery_not_cachable_expr, &cachable);
-	  if (cachable)
-	    {
-	      if (pt_prepare_sq_cache (xasl))
-		{
-		  return true;
-		}
-	      else
-		{
-		  return false;
-		}
-	    }
-	  else
-	    {
-	      return false;
-	    }
-	}
-      else
-	{
-	  return false;
-	}
+      return false;
     }
+  cachable = true;
+  parser_walk_tree (parser, node, NULL, NULL, pt_check_corr_subquery_not_cachable_expr, &cachable);
+  if (!cachable)
+    {
+      return false;
+    }
+
+  if (!pt_prepare_sq_cache (xasl))
+    {
+      return false;
+    }
+  return true;
 }
 
 /*

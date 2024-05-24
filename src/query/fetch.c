@@ -3872,12 +3872,13 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 
-      if (regu_var->xasl && XASL_IS_FLAGED (regu_var->xasl, XASL_SQ_CACHE))
+      if (regu_var->xasl && XASL_IS_FLAGED (regu_var->xasl, XASL_SQ_CACHE)
+	  && !(regu_var->xasl->sq_cache->ht && !regu_var->xasl->sq_cache->enabled))
 	{
 	  SQ_KEY *key;
 	  if ((key = sq_make_key (thread_p, regu_var->xasl)) == NULL)
 	    {
-	      XASL_CLEAR_FLAG (regu_var->xasl, XASL_SQ_CACHE);
+	      regu_var->xasl->sq_cache->enabled = false;
 	      EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
 	      if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
 		{

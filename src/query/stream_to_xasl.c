@@ -2444,6 +2444,7 @@ stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p)
       new_sq_cache->ht = NULL;
       new_sq_cache->size_max = 0;
       new_sq_cache->size = 0;
+      new_sq_cache->enabled = false;
       new_sq_cache->stats.hit = 0;
       new_sq_cache->stats.miss = 0;
       *sq_cache_p = new_sq_cache;

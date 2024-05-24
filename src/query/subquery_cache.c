@@ -50,8 +50,6 @@ static unsigned int sq_hash_func (const void *key, unsigned int ht_size);
 static int sq_cmp_func (const void *key1, const void *key2);
 static int sq_rem_func (const void *key, void *data, void *args);
 
-static int sq_walk_xasl_check_not_caching (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
-
 /**************************************************************************************/
 
 /*
@@ -283,67 +281,6 @@ sq_rem_func (const void *key, void *data, void *args)
 }
 
 /*
- * sq_walk_xasl_check_not_caching () - Checks if a XASL should not be cached.
- *   return: True if the XASL should not be cached, False otherwise.
- *   xasl(in): The XASL node to check.
- *
- * Recursively checks a XASL node and its children to determine if any conditions exist that would prevent
- * caching its results. Conditions include the presence of if_pred, after_join_pred, or dptr_list in the XASL node.
- */
-int
-sq_walk_xasl_check_not_caching (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
-{
-  XASL_NODE *scan_ptr, *aptr;
-  int ret;
-  SQ_KEY *key;
-
-  if (!xasl)
-    {
-      return true;
-    }
-  else if (!xasl->spec_list)
-    {
-      return true;
-    }
-  else if (!xasl->spec_list->where_key && !xasl->spec_list->where_pred && !xasl->spec_list->where_range)
-    {
-      return true;
-    }
-
-  if (xasl->if_pred || xasl->after_join_pred || xasl->dptr_list)
-    {
-      return true;
-    }
-
-  key = sq_make_key (thread_p, xasl);
-
-  if (key == NULL)
-    {
-      return true;
-    }
-
-  sq_free_key (key);
-
-  ret = 0;
-  if (xasl->scan_ptr)
-    {
-      for (scan_ptr = xasl->scan_ptr; scan_ptr != NULL; scan_ptr = scan_ptr->next)
-	{
-	  ret |= sq_walk_xasl_check_not_caching (thread_p, scan_ptr);
-	}
-    }
-  if (xasl->aptr_list)
-    {
-      for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
-	{
-	  ret |= sq_walk_xasl_check_not_caching (thread_p, aptr);
-	}
-    }
-
-  return ret;
-}
-
-/*
  * sq_cache_initialize () - Initializes the cache for a given XASL node.
  *   return: NO_ERROR if successful, ER_FAILED otherwise.
  *   xasl(in/out): The XASL node for which the cache is being initialized.
@@ -363,7 +300,7 @@ sq_cache_initialize (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     {
       return ER_FAILED;
     }
-
+  xasl->sq_cache->enabled = true;
   xasl->sq_cache->size_max = max_subquery_cache_size;
   return NO_ERROR;
 }
@@ -411,7 +348,7 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 
   if (xasl->sq_cache->size_max < xasl->sq_cache->size + new_entry_size)
     {
-      XASL_CLEAR_FLAG (xasl, XASL_SQ_CACHE);
+      xasl->sq_cache->enabled = false;
       sq_free_val (val);
       return ER_FAILED;
     }
@@ -454,7 +391,7 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 	{
 	  if (xasl->sq_cache->stats.hit / xasl->sq_cache->stats.miss < SQ_CACHE_MIN_HIT_RATIO)
 	    {
-	      XASL_CLEAR_FLAG (xasl, XASL_SQ_CACHE);
+	      xasl->sq_cache->enabled = false;
 	      return false;
 	    }
 	}
@@ -494,11 +431,6 @@ sq_cache_destroy (XASL_NODE * xasl)
   int i;
   if (xasl->sq_cache)
     {
-      for (i = 0; i < xasl->sq_cache->n_elements; i++)
-	{
-	  pr_clear_value (xasl->sq_cache->sq_key_struct[i]);
-	}
-      xasl->sq_cache->n_elements = 0;
       if (xasl->sq_cache->ht)
 	{
 	  er_log_debug (ARG_FILE_LINE,
@@ -508,6 +440,10 @@ sq_cache_destroy (XASL_NODE * xasl)
 	  mht_destroy (xasl->sq_cache->ht);
 	  xasl->sq_cache->ht = NULL;
 	}
+      xasl->sq_cache->size_max = NULL;
+      xasl->sq_cache->size = NULL;
+      xasl->sq_cache->enabled = false;
+      xasl->sq_cache->stats.hit = 0;
+      xasl->sq_cache->stats.miss = 0;
     }
-  XASL_CLEAR_FLAG (xasl, XASL_SQ_CACHE);
 }
