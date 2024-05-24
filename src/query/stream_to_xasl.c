@@ -2438,6 +2438,8 @@ stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p)
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+      memset (new_sq_cache, 0, sizeof (SQ_CACHE));
+
       new_sq_cache->sq_key_struct =
 	stx_restore_db_value_array_extra (thread_p, &xasl_unpack_info->packed_xasl[offset], n_elements, n_elements);
       if (new_sq_cache->sq_key_struct == NULL)
@@ -2445,7 +2447,7 @@ stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p)
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
-      memset (new_sq_cache, 0, sizeof (SQ_CACHE));
+
       new_sq_cache->n_elements = n_elements;
       *sq_cache_p = new_sq_cache;
     }
