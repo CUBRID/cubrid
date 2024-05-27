@@ -110,9 +110,15 @@ public class CUBRIDUnpacker {
 
     public byte[] unpackCStringByteArray() {
         int len = unpackStringSize();
-        byte[] str = new byte[len];
-        buffer.get(str);
-        return str;
+        if (len > 0) {
+            byte[] str = new byte[len];
+            buffer.get(str);
+            align(DataUtilities.INT_ALIGNMENT);
+            return str;
+        } else {
+            align(DataUtilities.INT_ALIGNMENT);
+            return new byte[0];
+        }
     }
 
     public int unpackStringSize() {
@@ -162,7 +168,7 @@ public class CUBRIDUnpacker {
                 break;
             case DBType.DB_CHAR:
             case DBType.DB_STRING:
-                arg = new StringValue(unpackCString());
+                arg = new StringValue(unpackCStringByteArray());
                 break;
             case DBType.DB_DATE:
                 {
@@ -263,7 +269,7 @@ public class CUBRIDUnpacker {
                 break;
             case DBType.DB_CHAR:
             case DBType.DB_STRING:
-                arg = new StringValue(unpackCString(), mode, dbType);
+                arg = new StringValue(unpackCStringByteArray(), mode, dbType);
                 break;
             case DBType.DB_DATE:
                 {

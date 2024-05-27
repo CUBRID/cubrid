@@ -38,14 +38,25 @@ import java.sql.Time;
 import java.sql.Timestamp;
 
 public class StringValue extends Value {
-    private String value;
+    private byte[] value;
 
     public StringValue(String value) {
+        super();
+        this.value = value.getBytes();
+    }
+
+    public StringValue(byte[] value) {
         super();
         this.value = value;
     }
 
     public StringValue(String value, int mode, int dbType) {
+        super(mode);
+        this.value = value.getBytes();
+        this.dbType = dbType;
+    }
+
+    public StringValue(byte[] value, int mode, int dbType) {
         super(mode);
         this.value = value;
         this.dbType = dbType;
@@ -53,7 +64,7 @@ public class StringValue extends Value {
 
     public byte toByte() throws TypeMismatchException {
         try {
-            return Byte.parseByte(value);
+            return Byte.parseByte(new String(value));
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -61,7 +72,7 @@ public class StringValue extends Value {
 
     public short toShort() throws TypeMismatchException {
         try {
-            return Short.parseShort(value);
+            return Short.parseShort(new String(value));
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -69,7 +80,7 @@ public class StringValue extends Value {
 
     public int toInt() throws TypeMismatchException {
         try {
-            return Integer.parseInt(value);
+            return Integer.parseInt(new String(value));
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -77,7 +88,7 @@ public class StringValue extends Value {
 
     public long toLong() throws TypeMismatchException {
         try {
-            return Long.parseLong(value);
+            return Long.parseLong(new String(value));
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -85,7 +96,7 @@ public class StringValue extends Value {
 
     public float toFloat() throws TypeMismatchException {
         try {
-            return Float.parseFloat(value);
+            return Float.parseFloat(new String(value));
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -93,7 +104,7 @@ public class StringValue extends Value {
 
     public double toDouble() throws TypeMismatchException {
         try {
-            return Double.parseDouble(value);
+            return Double.parseDouble(new String(value));
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -101,7 +112,7 @@ public class StringValue extends Value {
 
     public Byte toByteObject() throws TypeMismatchException {
         try {
-            return Byte.valueOf(value);
+            return value[0];
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -109,7 +120,7 @@ public class StringValue extends Value {
 
     public Short toShortObject() throws TypeMismatchException {
         try {
-            return Short.valueOf(value);
+            return toShort();
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -117,7 +128,7 @@ public class StringValue extends Value {
 
     public Integer toIntegerObject() throws TypeMismatchException {
         try {
-            return Integer.valueOf(value);
+            return toInt();
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -125,7 +136,7 @@ public class StringValue extends Value {
 
     public Long toLongObject() throws TypeMismatchException {
         try {
-            return Long.valueOf(value);
+            return toLong();
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -133,7 +144,7 @@ public class StringValue extends Value {
 
     public Float toFloatObject() throws TypeMismatchException {
         try {
-            return Float.valueOf(value);
+            return toFloat();
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -141,7 +152,7 @@ public class StringValue extends Value {
 
     public Double toDoubleObject() throws TypeMismatchException {
         try {
-            return Double.valueOf(value);
+            return toDouble();
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -149,7 +160,7 @@ public class StringValue extends Value {
 
     public Date toDate() throws TypeMismatchException {
         try {
-            return Date.valueOf(value);
+            return Date.valueOf(new String(value));
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -157,7 +168,7 @@ public class StringValue extends Value {
 
     public Time toTime() throws TypeMismatchException {
         try {
-            return Time.valueOf(value);
+            return Time.valueOf(new String(value));
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -165,7 +176,7 @@ public class StringValue extends Value {
 
     public Timestamp toTimestamp() throws TypeMismatchException {
         try {
-            return Timestamp.valueOf(value);
+            return Timestamp.valueOf(new String(value));
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -173,7 +184,7 @@ public class StringValue extends Value {
 
     public Timestamp toDatetime() throws TypeMismatchException {
         try {
-            return Timestamp.valueOf(value);
+            return Timestamp.valueOf(new String(value));
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -181,7 +192,7 @@ public class StringValue extends Value {
 
     public BigDecimal toBigDecimal() throws TypeMismatchException {
         try {
-            return new BigDecimal(value);
+            return new BigDecimal(new String(value));
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -192,11 +203,11 @@ public class StringValue extends Value {
     }
 
     public String toString() {
-        return value;
+        return new String(value);
     }
 
     public byte[] toByteArray() throws TypeMismatchException {
-        return new byte[] {toByteObject().byteValue()};
+        return value;
     }
 
     public short[] toShortArray() throws TypeMismatchException {

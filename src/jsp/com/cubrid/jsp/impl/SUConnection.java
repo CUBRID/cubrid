@@ -254,7 +254,7 @@ public class SUConnection {
                 }
 
                 int type = DBType.getObjectDBtype(values[i]);
-                packer.packValue(values[i], type, "UTF-8");
+                packer.packValue(values[i], type);
             }
         } else {
             packer.packInt(0);
@@ -303,7 +303,7 @@ public class SUConnection {
         if (value != null) {
             packer.packInt(1); // has value
             int type = DBType.getObjectDBtype(value);
-            packer.packValue(value, type, "UTF-8");
+            packer.packValue(value, type);
         } else {
             packer.packInt(0); // has value
         }
