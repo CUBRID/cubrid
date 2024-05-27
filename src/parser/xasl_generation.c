@@ -27248,7 +27248,7 @@ pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * n
   sq_key_struct->n_elements = n_elements;
 
   xasl->sq_cache = (SQ_CACHE *) pt_alloc_packing_buf (sizeof (SQ_CACHE));
-  xasl->sq_cache->sq_key_struct = sq_key_struct;
+  SQ_CACHE_KEY_STRUCT (xasl) = sq_key_struct;
   return true;
 }
 
