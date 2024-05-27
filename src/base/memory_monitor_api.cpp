@@ -74,8 +74,16 @@ size_t mmon_get_allocated_size (char *ptr)
   return mmon_Gl->get_allocated_size (ptr);
 }
 
-void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
+int mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
 {
-  mmon_Gl->aggregate_server_info (server_info);
+  if (mmon_is_memory_monitor_enabled ())
+    {
+      mmon_Gl->aggregate_server_info (server_info);
+      return 0;
+    }
+  else
+    {
+      return -1;
+    }
 }
 #endif // !WINDOWS

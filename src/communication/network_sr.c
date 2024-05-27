@@ -746,6 +746,9 @@ net_server_init (void)
   /* memmon */
   req_p = &net_Requests[NET_SERVER_MMON_GET_SERVER_INFO];
   req_p->processing_function = smmon_get_server_info;
+
+  req_p = &net_Requests[NET_SERVER_MMON_FINALIZE_FORCE];
+  req_p->processing_function = smmon_finalize_force;
 }
 
 /*

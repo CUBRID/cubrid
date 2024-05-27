@@ -261,7 +261,7 @@ retry:
 extern int mmon_initialize (const char *server_name);
 extern void mmon_finalize ();
 extern size_t mmon_get_allocated_size (char *ptr);
-extern void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info);
+extern int mmon_aggregate_server_info (MMON_SERVER_INFO &server_info);
 
 inline bool mmon_is_memory_monitor_enabled ()
 {

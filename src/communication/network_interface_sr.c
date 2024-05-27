@@ -11246,7 +11246,11 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 #if !defined(WINDOWS)
   MMON_SERVER_INFO server_info;
 
-  mmon_aggregate_server_info (server_info);
+  error = mmon_aggregate_server_info (server_info);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
   // Size of server name
   size += or_packed_string_length (server_info.server_name, NULL);
@@ -11301,6 +11305,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       assert (size == (int) (ptr - buffer));
     }
 
+end:
   if (error != NO_ERROR)
     {
       ptr = or_pack_int (reply, 0);
@@ -11314,6 +11319,39 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
     }
   db_private_free_and_init (thread_p, buffer_a);
+#else // WINDOWS
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+
+  // send error
+  ptr = or_pack_int (reply, 0);
+  ptr = or_pack_int (ptr, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+#endif // !WINDOWS
+}
+
+/*
+ * smmon_finalize_force - finalize memory_monitor forcely
+ *
+ * return:
+ *
+ *  rid(in):
+ *  request(in):
+ *  reqlen(in):
+ */
+void
+smmon_finalize_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error = NO_ERROR;
+#if !defined(WINDOWS)
+  mmon_finalize ();
+
+  ptr = or_pack_int (reply, 0);
+  ptr = or_pack_int (ptr, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 #else // WINDOWS
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
   error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
