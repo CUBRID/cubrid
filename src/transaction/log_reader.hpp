@@ -46,7 +46,10 @@ class log_reader final
     enum class fetch_mode
     {
       NORMAL,
-      FORCE // if fetch_mode is FORCE, then log_reader will fetch the log page regardless of the condition
+      FORCE     /* If fetch_mode is FORCE, then log_reader will fetch the log page regardless of the condition
+                 * This is a remaining member after incorporating features from the LETS structure.
+                 * The log_reader class is currently only used in log_recovery, so only NORMAL mode is used.
+                 * However, since this class may be widely reused in the future, we are keeping this class and not removing it. */
     };
 
     inline const log_lsa &get_lsa() const
@@ -128,7 +131,11 @@ class log_reader final
      */
     THREAD_ENTRY *m_thread_entry = nullptr;
     log_lsa m_lsa = NULL_LSA;
-    LOG_CS_ACCESS_MODE m_cs_access = LOG_CS_FORCE_USE;
+    LOG_CS_ACCESS_MODE m_cs_access =
+	    LOG_CS_FORCE_USE; /* This is a remaining member after porting features from the LETS structure.
+                                                        * The log_reader class is currently only used in log_recovery,
+                                                        * so m_cs_access has a fixed value. However, since this class may be widely
+                                                        * re-used in the future, we are keeping this variable and not removing it.*/
     log_page *m_page = nullptr;
     char m_area_buffer[IO_MAX_PAGE_SIZE + DOUBLE_ALIGNMENT];
 };
