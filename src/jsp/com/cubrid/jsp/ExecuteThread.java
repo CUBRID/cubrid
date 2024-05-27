@@ -56,7 +56,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ExecuteThread extends Thread {
 
     // TODO: get charset from DB Server
-    public static String charSet = "UTF-8"; // System.getProperty("file.encoding");
+    public static String charSet = System.getProperty("file.encoding");
 
     private static final int REQ_CODE_INVOKE_SP = 0x01;
     private static final int REQ_CODE_RESULT = 0x02;
@@ -102,6 +102,10 @@ public class ExecuteThread extends Thread {
 
         packer = new CUBRIDPacker(resultBuffer);
         unpacker = new CUBRIDUnpacker(readbuffer);
+
+        if (charSet == null) {
+            charSet = "UTF-8";
+        }
     }
 
     public Socket getSocket() {
@@ -375,9 +379,7 @@ public class ExecuteThread extends Thread {
             if (args[i].getMode() > Value.IN) {
                 Value v = sp.makeOutValue(args[i].getResolved());
                 packer.packValue(
-                        ValueUtilities.resolveValue(args[i].getDbType(), v),
-                        args[i].getDbType(),
-                        this.charSet);
+                        ValueUtilities.resolveValue(args[i].getDbType(), v), args[i].getDbType());
             }
         }
     }
@@ -392,7 +394,7 @@ public class ExecuteThread extends Thread {
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
 
-        packer.packValue(resolvedResult, procedure.getReturnType(), this.charSet);
+        packer.packValue(resolvedResult, procedure.getReturnType());
         returnOutArgs(procedure, packer);
         resultBuffer = packer.getBuffer();
 
@@ -423,8 +425,8 @@ public class ExecuteThread extends Thread {
         resultBuffer.clear();
         packer.setBuffer(resultBuffer);
 
-        packer.packValue(new Integer(1), DBType.DB_INT, this.charSet);
-        packer.packValue(exception, DBType.DB_STRING, this.charSet);
+        packer.packValue(new Integer(1), DBType.DB_INT);
+        packer.packValue(exception, DBType.DB_STRING);
 
         resultBuffer = packer.getBuffer();
 
