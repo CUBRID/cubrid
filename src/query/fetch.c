@@ -3891,7 +3891,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 		}
 	      if (sq_put (thread_p, key, xasl, regu_var) == ER_FAILED)
 		{
-		  sq_free_key (key);
+		  sq_free_key (thread_p, key);
 		}
 	    }
 	  else

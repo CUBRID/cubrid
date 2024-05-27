@@ -33,9 +33,9 @@ typedef struct sq_cache SQ_CACHE;
 extern int sq_cache_initialize (xasl_node * xasl);
 extern int sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * result);
 extern bool sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, xasl_node * xasl, REGU_VARIABLE * regu_var);
-extern void sq_cache_destroy (SQ_CACHE * sq_cache);
+extern void sq_cache_destroy (THREAD_ENTRY * thread_p, SQ_CACHE * sq_cache);
 extern SQ_KEY *sq_make_key (THREAD_ENTRY * thread_p, xasl_node * xasl);
-extern void sq_free_key (SQ_KEY * key);
+extern void sq_free_key (THREAD_ENTRY * thread_p, SQ_KEY * key);
 
 #define SQ_CACHE_MIN_HIT_RATIO 9	/* it means 90% */
 #define SQ_CACHE_SIZE_NENTRY_RATIO 2048

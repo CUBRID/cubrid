@@ -43,7 +43,7 @@
 /* Static functions for sq_cache hash table. */
 
 static SQ_VAL *sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val);
-static void sq_free_val (SQ_VAL * val);
+static void sq_free_val (THREAD_ENTRY * thread_p, SQ_VAL * val);
 static void sq_unpack_val (SQ_VAL * val, REGU_VARIABLE * retp);
 
 static unsigned int sq_hash_func (const void *key, unsigned int ht_size);
@@ -66,14 +66,14 @@ sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   SQ_KEY *keyp;
   int i, cnt = 0;
 
-  keyp = (SQ_KEY *) db_private_alloc (NULL, sizeof (SQ_KEY));
+  keyp = (SQ_KEY *) db_private_alloc (thread_p, sizeof (SQ_KEY));
   if (keyp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (SQ_KEY));
       return NULL;
     }
   keyp->n_elements = xasl->sq_cache->sq_key_struct->n_elements;
-  keyp->dbv_array = (DB_VALUE **) db_private_alloc (NULL, keyp->n_elements * sizeof (DB_VALUE *));
+  keyp->dbv_array = (DB_VALUE **) db_private_alloc (thread_p, keyp->n_elements * sizeof (DB_VALUE *));
   if (keyp->dbv_array == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, keyp->n_elements * sizeof (DB_VALUE *));
@@ -100,7 +100,7 @@ SQ_VAL *
 sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val)
 {
   SQ_VAL *ret;
-  ret = (SQ_VAL *) db_private_alloc (NULL, sizeof (SQ_VAL));
+  ret = (SQ_VAL *) db_private_alloc (thread_p, sizeof (SQ_VAL));
 
   ret->type = val->type;
 
@@ -130,15 +130,15 @@ sq_make_val (THREAD_ENTRY * thread_p, REGU_VARIABLE * val)
  * frees the SQ_KEY structure itself.
  */
 void
-sq_free_key (SQ_KEY * key)
+sq_free_key (THREAD_ENTRY * thread_p, SQ_KEY * key)
 {
   int i;
   for (i = 0; i < key->n_elements; i++)
     {
       pr_free_ext_value (key->dbv_array[i]);
     }
-  db_private_free_and_init (NULL, key->dbv_array);
-  db_private_free_and_init (NULL, key);
+  db_private_free_and_init (thread_p, key->dbv_array);
+  db_private_free_and_init (thread_p, key);
 }
 
 /*
@@ -149,7 +149,7 @@ sq_free_key (SQ_KEY * key)
  * this function frees the associated resources and then the SQ_VAL structure itself.
  */
 void
-sq_free_val (SQ_VAL * v)
+sq_free_val (THREAD_ENTRY * thread_p, SQ_VAL * v)
 {
   switch (v->type)
     {
@@ -165,7 +165,7 @@ sq_free_val (SQ_VAL * v)
       /* Never happens */
       break;
     }
-  db_private_free_and_init (NULL, v);
+  db_private_free_and_init (thread_p, v);
 }
 
 /*
@@ -280,8 +280,9 @@ sq_cmp_func (const void *key1, const void *key2)
 int
 sq_rem_func (const void *key, void *data, void *args)
 {
-  sq_free_key ((SQ_KEY *) key);
-  sq_free_val ((SQ_VAL *) data);
+  THREAD_ENTRY *thread_p = (THREAD_ENTRY *) args;
+  sq_free_key (thread_p, (SQ_KEY *) key);
+  sq_free_val (thread_p, (SQ_VAL *) data);
   return NO_ERROR;
 }
 
@@ -358,7 +359,7 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
   if (xasl->sq_cache->size_max < xasl->sq_cache->size + new_entry_size)
     {
       xasl->sq_cache->enabled = false;
-      sq_free_val (val);
+      sq_free_val (thread_p, val);
       return ER_FAILED;
     }
 
@@ -366,7 +367,7 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 
   if (!ret || ret != val)
     {
-      sq_free_val (val);
+      sq_free_val (thread_p, val);
       return ER_FAILED;
     }
   xasl->sq_cache->size += new_entry_size;
@@ -439,7 +440,7 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
  * no longer needed or before it is deallocated.
  */
 void
-sq_cache_destroy (SQ_CACHE * sq_cache)
+sq_cache_destroy (THREAD_ENTRY * thread_p, SQ_CACHE * sq_cache)
 {
   if (sq_cache)
     {
@@ -448,7 +449,7 @@ sq_cache_destroy (SQ_CACHE * sq_cache)
 	  er_log_debug (ARG_FILE_LINE,
 			"destroy sq_cache  %p\ncache info : \n\thit : %10d\n\tmiss: %10d\n\tsize: %10lu Bytes\n",
 			sq_cache, sq_cache->stats.hit, sq_cache->stats.miss, sq_cache->size);
-	  mht_clear (sq_cache->ht, sq_rem_func, NULL);
+	  mht_clear (sq_cache->ht, sq_rem_func, (void *) thread_p);
 	  mht_destroy (sq_cache->ht);
 	  sq_cache->ht = NULL;
 	}
