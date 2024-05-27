@@ -40,14 +40,13 @@ extern void sq_free_key (THREAD_ENTRY * thread_p, SQ_KEY * key);
 #define SQ_CACHE_MIN_HIT_RATIO 9	/* it means 90% */
 #define SQ_CACHE_SIZE_NENTRY_RATIO 2048
 
-#define SQ_CACHE_HT(xasl)			(xasl)->sq_cache->ht
-#define SQ_CACHE_ENABLED(xasl)			(xasl)->sq_cache->enabled
-#define SQ_CACHE_KEY_STRUCT(xasl)			(xasl)->sq_cache->sq_key_struct
+#define SQ_CACHE_HT(xasl)		(xasl)->sq_cache->ht
+#define SQ_CACHE_ENABLED(xasl)		(xasl)->sq_cache->enabled
+#define SQ_CACHE_KEY_STRUCT(xasl)	(xasl)->sq_cache->sq_key_struct
 #define SQ_CACHE_HIT(xasl)              (xasl)->sq_cache->stats.hit
-#define SQ_CACHE_MISS(xasl)                                        (xasl)->sq_cache->stats.miss
+#define SQ_CACHE_MISS(xasl)             (xasl)->sq_cache->stats.miss
 #define SQ_CACHE_SIZE(xasl)             (xasl)->sq_cache->size
 #define SQ_CACHE_SIZE_MAX(xasl)         (xasl)->sq_cache->size_max
-#define SQ_CACHE_ENABLED(xasl)          (xasl)->sq_cache->enabled
 
 struct sq_cache
 {
