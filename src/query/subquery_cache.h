@@ -38,7 +38,7 @@ extern SQ_KEY *sq_make_key (THREAD_ENTRY * thread_p, xasl_node * xasl);
 extern void sq_free_key (THREAD_ENTRY * thread_p, SQ_KEY * key);
 
 #define SQ_CACHE_MIN_HIT_RATIO 9	/* it means 90% */
-#define SQ_CACHE_SIZE_NENTRY_RATIO 2048
+#define SQ_CACHE_EXPECTED_ENTRY_SIZE 512
 
 #define SQ_CACHE_HT(xasl)		(xasl)->sq_cache->ht
 #define SQ_CACHE_ENABLED(xasl)		(xasl)->sq_cache->enabled

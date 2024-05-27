@@ -299,7 +299,8 @@ int
 sq_cache_initialize (XASL_NODE * xasl)
 {
   UINT64 max_subquery_cache_size = (UINT64) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
-  int sq_hm_entries = (int) max_subquery_cache_size / SQ_CACHE_SIZE_NENTRY_RATIO;	// default 1024
+  int sq_hm_entries = (int) max_subquery_cache_size / SQ_CACHE_EXPECTED_ENTRY_SIZE;	// default 4096 (4K)
+  int actual_entries;
 
   SQ_CACHE_HT (xasl) = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
   if (!SQ_CACHE_HT (xasl))
@@ -308,6 +309,14 @@ sq_cache_initialize (XASL_NODE * xasl)
     }
   SQ_CACHE_ENABLED (xasl) = true;
   SQ_CACHE_SIZE_MAX (xasl) = max_subquery_cache_size;
+  SQ_CACHE_SIZE (xasl) += DB_SIZEOF (SQ_CACHE);
+  SQ_CACHE_SIZE (xasl) += DB_SIZEOF (MHT_TABLE);
+  actual_entries = mht_calculate_htsize ((unsigned int) sq_hm_entries);
+  SQ_CACHE_SIZE (xasl) += (DB_SIZEOF (HENTRY) * MAX (2, actual_entries / 2 + 1));
+  SQ_CACHE_SIZE (xasl) += (DB_SIZEOF (HENTRY_PTR) * actual_entries);
+  SQ_CACHE_SIZE (xasl) += sizeof (SQ_KEY);
+  SQ_CACHE_SIZE (xasl) += DB_SIZEOF (DB_VALUE *) * SQ_CACHE_KEY_STRUCT (xasl)->n_elements;
+
   return NO_ERROR;
 }
 
@@ -341,11 +350,15 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 	}
     }
 
+  new_entry_size += DB_SIZEOF (HENTRY);
+
   for (i = 0; i < key->n_elements; i++)
     {
       new_entry_size += (UINT64) or_db_value_size (key->dbv_array[i]);
     }
   new_entry_size += sizeof (SQ_KEY);
+  new_entry_size += DB_SIZEOF (DB_VALUE *) * key->n_elements;
+
   switch (val->type)
     {
     case TYPE_CONSTANT:
@@ -396,7 +409,7 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
          maximum, it evaluates the hit-to-miss ratio to decide whether continuing caching 
          is beneficial. This approach optimizes cache usage and performance by dynamically 
          adapting to the effectiveness of the cache. */
-      UINT64 sq_cache_miss_max = SQ_CACHE_SIZE_MAX (xasl) / SQ_CACHE_SIZE_NENTRY_RATIO;
+      UINT64 sq_cache_miss_max = SQ_CACHE_SIZE_MAX (xasl) / SQ_CACHE_EXPECTED_ENTRY_SIZE;
       if (SQ_CACHE_MISS (xasl) >= (int) sq_cache_miss_max)
 	{
 	  if (SQ_CACHE_HIT (xasl) / SQ_CACHE_MISS (xasl) < SQ_CACHE_MIN_HIT_RATIO)
