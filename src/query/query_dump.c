@@ -3012,10 +3012,10 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
     {
       sq_cache = json_object ();
-      json_object_set_new (sq_cache, "hit", json_integer (xasl_p->sq_cache->stats.hit));
-      json_object_set_new (sq_cache, "miss", json_integer (xasl_p->sq_cache->stats.miss));
-      json_object_set_new (sq_cache, "size", json_integer (xasl_p->sq_cache->size));
-      if (xasl_p->sq_cache->enabled)
+      json_object_set_new (sq_cache, "hit", json_integer (SQ_CACHE_HIT (xasl_p)));
+      json_object_set_new (sq_cache, "miss", json_integer (SQ_CACHE_MISS (xasl_p)));
+      json_object_set_new (sq_cache, "size", json_integer (SQ_CACHE_SIZE (xasl_p)));
+      if (SQ_CACHE_ENABLED (xasl_p))
 	{
 	  json_object_set_new (sq_cache, "status", json_string ("enabled"));
 	}
@@ -3296,15 +3296,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
     {
       fprintf (fp, "%*c", indent, ' ');
-      if (xasl_p->sq_cache->enabled)
+      if (SQ_CACHE_ENABLED (xasl_p))
 	{
 	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu, status: enabled)\n",
-		   xasl_p->sq_cache->stats.hit, xasl_p->sq_cache->stats.miss, xasl_p->sq_cache->size);
+		   SQ_CACHE_HIT (xasl_p), SQ_CACHE_MISS (xasl_p), SQ_CACHE_SIZE (xasl_p));
 	}
       else
 	{
 	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu, status: disabled)\n",
-		   xasl_p->sq_cache->stats.hit, xasl_p->sq_cache->stats.miss, xasl_p->sq_cache->size);
+		   SQ_CACHE_HIT (xasl_p), SQ_CACHE_MISS (xasl_p), SQ_CACHE_SIZE (xasl_p));
 	}
     }
 

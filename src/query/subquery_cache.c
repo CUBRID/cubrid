@@ -72,7 +72,7 @@ sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (SQ_KEY));
       return NULL;
     }
-  keyp->n_elements = xasl->sq_cache->sq_key_struct->n_elements;
+  keyp->n_elements = SQ_CACHE_KEY_STRUCT (xasl)->n_elements;
   keyp->dbv_array = (DB_VALUE **) db_private_alloc (thread_p, keyp->n_elements * sizeof (DB_VALUE *));
   if (keyp->dbv_array == NULL)
     {
@@ -81,7 +81,7 @@ sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
   for (i = 0; i < keyp->n_elements; i++)
     {
-      keyp->dbv_array[i] = db_value_copy (xasl->sq_cache->sq_key_struct->dbv_array[i]);
+      keyp->dbv_array[i] = db_value_copy (SQ_CACHE_KEY_STRUCT (xasl)->dbv_array[i]);
     }
 
   return keyp;
@@ -301,13 +301,13 @@ sq_cache_initialize (XASL_NODE * xasl)
   UINT64 max_subquery_cache_size = (UINT64) prm_get_bigint_value (PRM_ID_MAX_SUBQUERY_CACHE_SIZE);
   int sq_hm_entries = (int) max_subquery_cache_size / SQ_CACHE_SIZE_NENTRY_RATIO;	// default 1024
 
-  xasl->sq_cache->ht = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
-  if (!xasl->sq_cache->ht)
+  SQ_CACHE_HT (xasl) = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
+  if (!SQ_CACHE_HT (xasl))
     {
       return ER_FAILED;
     }
-  xasl->sq_cache->enabled = true;
-  xasl->sq_cache->size_max = max_subquery_cache_size;
+  SQ_CACHE_ENABLED (xasl) = true;
+  SQ_CACHE_SIZE_MAX (xasl) = max_subquery_cache_size;
   return NO_ERROR;
 }
 
@@ -332,7 +332,7 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 
   val = sq_make_val (thread_p, regu_var);
 
-  if (!xasl->sq_cache->ht)
+  if (!SQ_CACHE_HT (xasl))
     {
       if (sq_cache_initialize (xasl) == ER_FAILED)
 	{
@@ -356,21 +356,21 @@ sq_put (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
       break;
     }
 
-  if (xasl->sq_cache->size_max < xasl->sq_cache->size + new_entry_size)
+  if (SQ_CACHE_SIZE_MAX (xasl) < SQ_CACHE_SIZE (xasl) + new_entry_size)
     {
-      xasl->sq_cache->enabled = false;
+      SQ_CACHE_ENABLED (xasl) = false;
       sq_free_val (thread_p, val);
       return ER_FAILED;
     }
 
-  ret = mht_put_if_not_exists (xasl->sq_cache->ht, key, val);
+  ret = mht_put_if_not_exists (SQ_CACHE_HT (xasl), key, val);
 
   if (!ret || ret != val)
     {
       sq_free_val (thread_p, val);
       return ER_FAILED;
     }
-  xasl->sq_cache->size += new_entry_size;
+  SQ_CACHE_SIZE (xasl) += new_entry_size;
   return NO_ERROR;
 }
 
@@ -389,45 +389,45 @@ sq_get (THREAD_ENTRY * thread_p, SQ_KEY * key, XASL_NODE * xasl, REGU_VARIABLE *
 {
   SQ_VAL *ret;
 
-  if (xasl->sq_cache->ht)
+  if (SQ_CACHE_HT (xasl))
     {
       /* This conditional check acts as a mechanism to prevent the cache from being 
          overwhelmed by unsuccessful lookups. If the cache miss count exceeds a predefined 
          maximum, it evaluates the hit-to-miss ratio to decide whether continuing caching 
          is beneficial. This approach optimizes cache usage and performance by dynamically 
          adapting to the effectiveness of the cache. */
-      UINT64 sq_cache_miss_max = xasl->sq_cache->size_max / SQ_CACHE_SIZE_NENTRY_RATIO;
-      if (xasl->sq_cache->stats.miss >= (int) sq_cache_miss_max)
+      UINT64 sq_cache_miss_max = SQ_CACHE_SIZE_MAX (xasl) / SQ_CACHE_SIZE_NENTRY_RATIO;
+      if (SQ_CACHE_MISS (xasl) >= (int) sq_cache_miss_max)
 	{
-	  if (xasl->sq_cache->stats.hit / xasl->sq_cache->stats.miss < SQ_CACHE_MIN_HIT_RATIO)
+	  if (SQ_CACHE_HIT (xasl) / SQ_CACHE_MISS (xasl) < SQ_CACHE_MIN_HIT_RATIO)
 	    {
-	      xasl->sq_cache->enabled = false;
+	      SQ_CACHE_ENABLED (xasl) = false;
 	      return false;
 	    }
 	}
     }
 
-  if (!xasl->sq_cache->ht)
+  if (!SQ_CACHE_HT (xasl))
     {
       if (sq_cache_initialize (xasl) == ER_FAILED)
 	{
 	  XASL_CLEAR_FLAG (xasl, XASL_USES_SQ_CACHE);
 	  return false;
 	}
-      xasl->sq_cache->stats.miss++;
+      SQ_CACHE_MISS (xasl)++;
       return false;
     }
 
-  ret = (SQ_VAL *) mht_get (xasl->sq_cache->ht, key);
+  ret = (SQ_VAL *) mht_get (SQ_CACHE_HT (xasl), key);
   if (ret == NULL)
     {
-      xasl->sq_cache->stats.miss++;
+      SQ_CACHE_MISS (xasl)++;
       return false;
     }
 
   sq_unpack_val (ret, regu_var);
 
-  xasl->sq_cache->stats.hit++;
+  SQ_CACHE_HIT (xasl)++;
   return true;
 }
 
