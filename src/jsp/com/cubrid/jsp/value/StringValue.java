@@ -42,7 +42,7 @@ public class StringValue extends Value {
 
     public StringValue(String value) {
         super();
-        this.value = value.getBytes ();
+        this.value = value.getBytes();
     }
 
     public StringValue(byte[] value) {
@@ -52,7 +52,7 @@ public class StringValue extends Value {
 
     public StringValue(String value, int mode, int dbType) {
         super(mode);
-        this.value = value.getBytes ();
+        this.value = value.getBytes();
         this.dbType = dbType;
     }
 
@@ -120,7 +120,7 @@ public class StringValue extends Value {
 
     public Short toShortObject() throws TypeMismatchException {
         try {
-            return toShort ();
+            return toShort();
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -128,7 +128,7 @@ public class StringValue extends Value {
 
     public Integer toIntegerObject() throws TypeMismatchException {
         try {
-            return toInt ();
+            return toInt();
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -136,7 +136,7 @@ public class StringValue extends Value {
 
     public Long toLongObject() throws TypeMismatchException {
         try {
-            return toLong ();
+            return toLong();
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -144,7 +144,7 @@ public class StringValue extends Value {
 
     public Float toFloatObject() throws TypeMismatchException {
         try {
-            return toFloat ();
+            return toFloat();
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -152,7 +152,7 @@ public class StringValue extends Value {
 
     public Double toDoubleObject() throws TypeMismatchException {
         try {
-            return toDouble ();
+            return toDouble();
         } catch (NumberFormatException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -203,7 +203,7 @@ public class StringValue extends Value {
     }
 
     public String toString() {
-        return new String (value);
+        return new String(value);
     }
 
     public byte[] toByteArray() throws TypeMismatchException {

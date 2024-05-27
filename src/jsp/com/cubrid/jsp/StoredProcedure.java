@@ -331,7 +331,7 @@ public class StoredProcedure {
         } else if (o instanceof BigDecimal) {
             val = new DoubleValue(((BigDecimal) o).doubleValue());
         } else if (o instanceof String) {
-            val = new StringValue(((String) o).getBytes ());
+            val = new StringValue(((String) o).getBytes());
         } else if (o instanceof java.sql.Date) {
             val = new DateValue((java.sql.Date) o);
         } else if (o instanceof java.sql.Time) {
