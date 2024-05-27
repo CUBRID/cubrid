@@ -55,7 +55,11 @@ public class ValueUtilities {
                 break;
             case DBType.DB_CHAR:
             case DBType.DB_STRING:
-                resolvedResult = value.toString();
+                if (value instanceof StringValue) {
+                        resolvedResult = value.toByteArray();
+                } else {
+                        resolvedResult = value.toString ();
+                }
                 break;
             case DBType.DB_SET:
             case DBType.DB_MULTISET:

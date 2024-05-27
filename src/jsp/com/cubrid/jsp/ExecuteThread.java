@@ -56,7 +56,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ExecuteThread extends Thread {
 
     // TODO: get charset from DB Server
-    public static String charSet = "UTF-8"; // System.getProperty("file.encoding");
+    public static String charSet = System.getProperty("file.encoding");
 
     private static final int REQ_CODE_INVOKE_SP = 0x01;
     private static final int REQ_CODE_RESULT = 0x02;
@@ -102,6 +102,10 @@ public class ExecuteThread extends Thread {
 
         packer = new CUBRIDPacker(resultBuffer);
         unpacker = new CUBRIDUnpacker(readbuffer);
+
+        if (charSet == null) {
+                charSet = "UTF-8";
+        }
     }
 
     public Socket getSocket() {
@@ -477,3 +481,4 @@ public class ExecuteThread extends Thread {
         readbuffer = expanded;
     }
 }
+ 
