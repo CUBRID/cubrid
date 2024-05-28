@@ -31,7 +31,6 @@
 
 package com.cubrid.jsp.code;
 
-
 // cacheable Class object in-memory
 public class MemoryClass {
 
