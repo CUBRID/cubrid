@@ -11252,6 +11252,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
   else
     {
+      _er_log_debug (ARG_FILE_LINE, "Memory monitor is already disabled by cubrid memmon --disable-force.\n");
       error = ER_FAILED;
       goto end;
     }
