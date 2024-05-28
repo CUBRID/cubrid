@@ -38,7 +38,7 @@ int mmon_initialize (const char *server_name)
 {
   int error = NO_ERROR;
 
-  assert (mmon_Gl == nullptr);
+  assert (mmon_Gl == nullptr && mmon_disabled == true);
   assert (server_name != nullptr);
 
   if (prm_get_bool_value (PRM_ID_ENABLE_MEMORY_MONITORING))
