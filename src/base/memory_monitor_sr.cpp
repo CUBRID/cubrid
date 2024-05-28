@@ -28,6 +28,8 @@
 #include "environment_variable.h"
 #include "memory_monitor_sr.hpp"
 
+bool mmon_disabled = true;
+
 namespace cubmem
 {
   std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE] = {};

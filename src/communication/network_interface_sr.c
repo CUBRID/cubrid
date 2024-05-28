@@ -11246,8 +11246,11 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 #if !defined(WINDOWS)
   MMON_SERVER_INFO server_info;
 
-  error = mmon_aggregate_server_info (server_info);
-  if (error != NO_ERROR)
+  if (mmon_is_memory_monitor_enabled ())
+    {
+      mmon_aggregate_server_info (server_info);
+    }
+  else
     {
       goto end;
     }
@@ -11331,7 +11334,7 @@ end:
 }
 
 /*
- * smmon_finalize_force - finalize memory_monitor forcely
+ * smmon_disable_force - disable memory_monitor forcely
  *
  * return:
  *
@@ -11340,14 +11343,15 @@ end:
  *  reqlen(in):
  */
 void
-smmon_finalize_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
 #if !defined(WINDOWS)
-  mmon_finalize ();
+  sysprm_set_force (prm_get_name (PRM_ID_ENABLE_MEMORY_MONITORING), "no");
+  mmon_disabled = true;
 
   ptr = or_pack_int (reply, 0);
   ptr = or_pack_int (ptr, error);

@@ -4559,7 +4559,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
   MMON_SERVER_INFO server_info;
 
   outfile_name = utility_get_option_string_value (arg_map, MEMMON_OUTPUT_S, 0);
-  finalize_force = utility_get_option_bool_value (arg_map, MEMMON_FINALIZE_FORCE_S);
+  finalize_force = utility_get_option_bool_value (arg_map, MEMMON_DISABLE_FORCE_S);
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
@@ -4607,12 +4607,12 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
   if (finalize_force)
     {
-      error_code = mmon_finalize_force ();
+      error_code = mmon_disable_force ();
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
 	}
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_SUCCESS_FINALIZE));
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_DISABLE_SUCCESS));
       goto success_exit;
     }
 

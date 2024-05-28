@@ -50,13 +50,14 @@ int mmon_initialize (const char *server_name)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  return error;
 	}
+      mmon_disabled = false;
     }
   return error;
 }
 
 void mmon_finalize ()
 {
-  if (mmon_is_memory_monitor_enabled ())
+  if (mmon_Gl != nullptr)
     {
 #if !defined (NDEBUG)
       mmon_Gl->finalize_dump ();
@@ -64,6 +65,7 @@ void mmon_finalize ()
 #if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
       mmon_Gl->print_debug_result ();
 #endif
+      mmon_disabled = true;
       delete mmon_Gl;
       mmon_Gl = nullptr;
     }
@@ -74,16 +76,8 @@ size_t mmon_get_allocated_size (char *ptr)
   return mmon_Gl->get_allocated_size (ptr);
 }
 
-int mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
+void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
 {
-  if (mmon_is_memory_monitor_enabled ())
-    {
-      mmon_Gl->aggregate_server_info (server_info);
-      return 0;
-    }
-  else
-    {
-      return -1;
-    }
+  mmon_Gl->aggregate_server_info (server_info);
 }
 #endif // !WINDOWS

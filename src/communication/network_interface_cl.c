@@ -11347,14 +11347,12 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
 }
 
 /*
- * mmon_finalize_force - request to server to finalize memory_monitor forcely
+ * mmon_disable_force - request to server to disable memory_monitor forcely
  *
  * return : cubrid error
- *
- *   server_info(in/out): save memory usage information of the server
  */
 int
-mmon_finalize_force ()
+mmon_disable_force ()
 {
 #if defined(CS_MODE)
   char *buffer, *ptr;
@@ -11365,7 +11363,7 @@ mmon_finalize_force ()
   int error = NO_ERROR;
 
   req_error =
-    net_client_request2 (NET_SERVER_MMON_FINALIZE_FORCE, NULL, 0, reply,
+    net_client_request2 (NET_SERVER_MMON_DISABLE_FORCE, NULL, 0, reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
 
   if (req_error)
