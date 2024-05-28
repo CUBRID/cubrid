@@ -262,4 +262,5 @@ extern void splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, ch
 
 /* memmon */
 extern void smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

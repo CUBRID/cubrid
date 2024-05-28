@@ -902,11 +902,13 @@ static GETOPT_LONG ua_Flashback_Option[] = {
 static UTIL_ARG_MAP ua_Memmon_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {MEMMON_OUTPUT_S, {ARG_STRING}, {0}},
+  {MEMMON_DISABLE_FORCE_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Memmon_Option[] = {
   {MEMMON_OUTPUT_L, 1, 0, MEMMON_OUTPUT_S},
+  {MEMMON_DISABLE_FORCE_L, 0, 0, MEMMON_DISABLE_FORCE_S},
   {0, 0, 0, 0}
 };
 

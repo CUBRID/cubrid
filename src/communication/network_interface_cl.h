@@ -461,4 +461,5 @@ EXPORT_IMPORT extern int plcsql_transfer_file (const std::string & input_file, c
 
 /* memmon */
 extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
+extern int mmon_disable_force ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */

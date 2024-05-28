@@ -11345,3 +11345,44 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
   return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
+
+/*
+ * mmon_disable_force - request to server to disable memory_monitor forcely
+ *
+ * return : cubrid error
+ */
+int
+mmon_disable_force ()
+{
+#if defined(CS_MODE)
+  char *buffer, *ptr;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, dummy;
+  int error = NO_ERROR;
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_DISABLE_FORCE, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
+    }
+
+  free_and_init (buffer);
+
+  return error;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}

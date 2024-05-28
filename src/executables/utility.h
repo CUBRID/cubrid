@@ -745,6 +745,10 @@ typedef enum
   MEMMON_MSG_NOT_SUPPORTED = 1,
   MEMMON_MSG_NOT_IN_STANDALONE = 2,
   MEMMON_MSG_CANNOT_OPEN_OUTPUT_FILE = 3,
+  MEMMON_MSG_DISABLE_SUCCESS = 4,
+  MEMMON_MSG_CANNOT_USE_DISABLE_FORCE_WITH_OTHER_OPTION = 5,
+  MEMMON_MSG_MEMORY_MONITOR_IS_DISABLED = 6,
+  MEMMON_MSG_NOT_SUPPORTED_OS = 7,
   MEMMON_MSG_USAGE = 60
 } MSGCAT_MEMMON_MSG;
 
@@ -1713,6 +1717,8 @@ typedef struct _ha_config
 /* memmon option list */
 #define MEMMON_OUTPUT_S             'o'
 #define MEMMON_OUTPUT_L             "output-file"
+#define MEMMON_DISABLE_FORCE_S      14103
+#define MEMMON_DISABLE_FORCE_L      "disable-force"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
