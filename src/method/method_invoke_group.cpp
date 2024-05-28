@@ -72,11 +72,10 @@ namespace cubmethod
 	    mi = new method_invoke_builtin (this, sig);
 	    break;
 	  case METHOD_TYPE_JAVA_SP:
-	  {
-	    bool use_tcl = prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL);
+	  case METHOD_TYPE_PLCSQL:
+	    bool use_tcl = (type == METHOD_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL);
 	    mi = new method_invoke_java (this, sig, use_tcl);
-	  }
-	  break;
+	    break;
 	  default:
 	    assert (false); // not implemented yet
 	    break;
@@ -275,6 +274,7 @@ namespace cubmethod
 	    break;
 	  }
 	  case METHOD_TYPE_JAVA_SP:
+	  case METHOD_TYPE_PLCSQL:
 	  {
 	    /* check arg_base's type is supported */
 	    for (const DB_VALUE &value : arg_base)
@@ -362,7 +362,8 @@ namespace cubmethod
     m_rctx->push_stack (m_thread_p, this);
 
     // connect socket for java sp
-    bool is_in = m_kind_type.find (METHOD_TYPE_JAVA_SP) != m_kind_type.end ();
+    bool is_in = (m_kind_type.find (METHOD_TYPE_JAVA_SP) != m_kind_type.end ())
+		 || ((m_kind_type.find (METHOD_TYPE_PLCSQL) != m_kind_type.end ()));
     if (is_in)
       {
 	if (m_connection == nullptr)

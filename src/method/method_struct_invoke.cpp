@@ -98,6 +98,7 @@ namespace cubmethod
 	break;
       }
       case METHOD_TYPE_JAVA_SP:
+      case METHOD_TYPE_PLCSQL:
       {
 	serializator.pack_int (tran_id);
 	serializator.pack_int (args.size ());
@@ -140,6 +141,7 @@ namespace cubmethod
 	break;
       }
       case METHOD_TYPE_JAVA_SP:
+      case METHOD_TYPE_PLCSQL:
       {
 	size += serializator.get_packed_int_size (size);	// tran_id
 	size += serializator.get_packed_int_size (size);	// arg count
@@ -201,6 +203,7 @@ namespace cubmethod
   {
     signature.assign (sig->method_name);
     auth.assign (sig->auth_name);
+    lang = sig->method_type;
     num_args = sig->num_method_args;
     result_type = sig->result_type;
     if (num_args > 0)
@@ -231,6 +234,7 @@ namespace cubmethod
     serializator.pack_int (tran_id);
     serializator.pack_string (signature);
     serializator.pack_string (auth);
+    serializator.pack_int (lang);
     serializator.pack_int (num_args);
 
     for (int i = 0; i < num_args; i++)
@@ -263,6 +267,7 @@ namespace cubmethod
     size += serializator.get_packed_int_size (size); // tran_id
     size += serializator.get_packed_string_size (signature, size); // signature
     size += serializator.get_packed_string_size (auth, size); // auth
+    size += serializator.get_packed_int_size (size); // lang
     size += serializator.get_packed_int_size (size); // num_args
 
     for (int i = 0; i < num_args; i++)
