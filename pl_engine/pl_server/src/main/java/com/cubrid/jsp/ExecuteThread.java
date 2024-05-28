@@ -416,8 +416,8 @@ public class ExecuteThread extends Thread {
     private StoredProcedure makeStoredProcedure(CUBRIDUnpacker unpacker) throws Exception {
         String methodSig = unpacker.unpackCString();
         String authUser = unpacker.unpackCString();
-        int paramCount = unpacker.unpackInt();
         int lang = unpacker.unpackInt();
+        int paramCount = unpacker.unpackInt();
 
         Value[] arguments = prepareArgs.getArgs();
         Value[] methodArgs = new Value[paramCount];

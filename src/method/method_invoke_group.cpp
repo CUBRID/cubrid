@@ -73,9 +73,11 @@ namespace cubmethod
 	    break;
 	  case METHOD_TYPE_JAVA_SP:
 	  case METHOD_TYPE_PLCSQL:
+	  {
 	    bool use_tcl = (type == METHOD_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL);
 	    mi = new method_invoke_java (this, sig, use_tcl);
-	    break;
+	  }
+	  break;
 	  default:
 	    assert (false); // not implemented yet
 	    break;
