@@ -1322,6 +1322,7 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 4 Server memory monitor is disabled successfully.\n
 5 disable-force cannot be used with other options.\n
 6 Memory monitor is disabled. You can use it again after restarting the server.\n
+7 memmon is not supported on this operating system.\n
 60 \
 memmon: Provides memory usage information of a database server.\n\
 usage: %1$s memmon [OPTION] database-name\n\

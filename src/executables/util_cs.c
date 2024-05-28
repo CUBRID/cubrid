@@ -4618,6 +4618,15 @@ memmon (UTIL_FUNCTION_ARG * arg)
       error_code = mmon_disable_force ();
       if (error_code != NO_ERROR)
 	{
+	  switch (error_code)
+	    {
+	    case ER_INTERFACE_NOT_SUPPORTED_OPERATION:
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON,
+						     MEMMON_MSG_NOT_SUPPORTED_OS));
+	      break;
+	    default:
+	      break;
+	    }
 	  goto error_exit;
 	}
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_DISABLE_SUCCESS));
@@ -4628,8 +4637,19 @@ memmon (UTIL_FUNCTION_ARG * arg)
   error_code = mmon_get_server_info (server_info);
   if (error_code != NO_ERROR)
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON,
-					     MEMMON_MSG_MEMORY_MONITOR_IS_DISABLED));
+      switch (error_code)
+	{
+	case ER_FAILED:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON,
+						 MEMMON_MSG_MEMORY_MONITOR_IS_DISABLED));
+	  break;
+	case ER_INTERFACE_NOT_SUPPORTED_OPERATION:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON,
+						 MEMMON_MSG_NOT_SUPPORTED_OS));
+	  break;
+	default:
+	  break;
+	}
       goto error_exit;
     }
 
