@@ -76,6 +76,8 @@ struct mmon_debug_info
 };
 #endif
 
+extern bool mmon_disabled;
+
 namespace cubmem
 {
   // IMPORTANT!!
@@ -265,7 +267,7 @@ extern void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info);
 
 inline bool mmon_is_memory_monitor_enabled ()
 {
-  return (cubmem::mmon_Gl != nullptr);
+  return (!mmon_disabled);
 }
 
 inline void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line)

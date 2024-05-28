@@ -1316,12 +1316,17 @@ opzioni valide:\n\
                                  di fine; predefinito: più recente\n
 
 $set 59 MSGCAT_UTIL_SET_MEMMON
-1 Si prega di impostare il parametro di sistema 'enable_memory_monitoring' in 'cubrid.conf' e riavviare il server del database.\n\
-2 memmon non può essere eseguito in modalità standalone.\n\
-3 Impossibile aprire il file di output con il nome %1$s.\n\
+1 Si prega di impostare il parametro di sistema 'enable_memory_monitoring' in 'cubrid.conf' e riavviare il server del database.\n
+2 memmon non può essere eseguito in modalità standalone.\n
+3 Impossibile aprire il file di output con il nome %1$s.\n
+4 Il monitoraggio della memoria sul server è stato disabilitato con successo.\n
+5 disable-force non può essere utilizzato con altre opzioni.\n
+6 Il monitoraggio della memoria sul server è stato disabilitato. Puoi usarlo di nuovo dopo aver riavviato il server.\n
+7 memmon non è supportato su questo sistema operativo.\n
 60 \
 memmon: Fornisce informazioni sull'utilizzo della memoria di un server di database.\n\
 Utilizzo: %1$s memmon [OPZIONE] nome-database\n\
 \n\
 Opzioni valide:\n\
-    -o, --output-file=FILE    invia i risultati a FILE\n
+    -o, --output-file=FILE    invia i risultati a FILE\n\
+    --disable-force           disabilita forzatamente il monitoraggio della memoria del server.\n

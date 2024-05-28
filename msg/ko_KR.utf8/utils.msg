@@ -1306,9 +1306,14 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 1 'cubrid.conf'에서 시스템 파라미터 'enable_memory_monitoring'을 설정하고 데이터베이스 서버를 재시작하세요.\n
 2 memmon은 독립 모드에서 실행할 수 없습니다.\n
 3 파일 이름이 %1$s인 출력 파일을 열 수 없습니다.\n
+4 서버의 메모리 모니터링이 성공적으로 비활성화되었습니다.\n
+5 disable-force는 다른 옵션과 함께 사용할 수 없습니다.\n
+6 서버의 메모리 모니터링이 비활성화되었습니다. 서버를 재시작한 후 다시 사용할 수 있습니다.\n
+7 이 운영체제에서는 memmon을 지원하지 않습니다.\n
 60 \
 memmon: 데이터베이스 서버의 메모리 사용량 정보를 제공합니다.\n\
 사용법: %1$s memmon [옵션] 데이터베이스 이름\n\
 \n\
 유효한 옵션:\n\
-    -o, --output-file=FILE    결과를 FILE에 출력합니다\n
+    -o, --output-file=FILE    결과를 FILE에 출력합니다\n\
+    --disable-force           서버의 메모리 모니터링을 강제로 비활성화합니다.\n
