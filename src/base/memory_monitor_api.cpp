@@ -65,7 +65,6 @@ void mmon_finalize ()
 #if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
       mmon_Gl->print_debug_result ();
 #endif
-      mmon_disabled = true;
       delete mmon_Gl;
       mmon_Gl = nullptr;
     }
