@@ -28,35 +28,55 @@
  * OF SUCH DAMAGE.
  *
  */
+package com.cubrid.jsp.code;
 
-package com.cubrid.jsp.compiler;
+public class Signature {
+    private String className;
+    private String methodName;
+    private String args;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.URI;
-import javax.tools.SimpleJavaFileObject;
-
-public class CompiledCode extends SimpleJavaFileObject {
-    private String className = null;
-    private ByteArrayOutputStream baos = null;
-
-    public CompiledCode(String className) throws java.net.URISyntaxException {
-        super(new URI(className), Kind.CLASS);
-        this.className = className;
-        this.baos = new ByteArrayOutputStream();
+    public Signature(String cName, String mName, String args) {
+        className = cName;
+        methodName = mName;
+        this.args = args;
     }
 
     public String getClassName() {
         return className;
     }
 
-    public byte[] getByteCode() {
-        return baos.toByteArray();
+    public String getMethodName() {
+        return methodName;
     }
 
-    @Override
-    public OutputStream openOutputStream() throws IOException {
-        return baos;
+    public String getArgs() {
+        return args;
+    }
+
+    public static Signature parse(String signature) {
+        String className = null;
+        String methodName = null;
+        String args = null;
+
+        int argStart = signature.indexOf('(') + 1;
+        if (argStart < 0) {
+            throw new IllegalArgumentException("Parenthesis '(' not found");
+        }
+        int argEnd = signature.indexOf(')');
+        if (argEnd < 0) {
+            throw new IllegalArgumentException("Parenthesis ')' not found");
+        }
+        int nameStart = signature.substring(0, argStart).lastIndexOf('.') + 1;
+
+        if (signature.charAt(0) == '\'') {
+            className = signature.substring(1, nameStart - 1);
+        } else {
+            className = signature.substring(0, nameStart - 1);
+        }
+
+        methodName = signature.substring(nameStart, argStart - 1);
+        args = signature.substring(argStart, argEnd);
+
+        return new Signature(className, methodName, args);
     }
 }

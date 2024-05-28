@@ -29,51 +29,65 @@
  *
  */
 
-package com.cubrid.jsp.compiler;
+package com.cubrid.jsp.classloader;
 
 import com.cubrid.jsp.code.CompiledCode;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import javax.tools.FileObject;
-import javax.tools.ForwardingJavaFileManager;
-import javax.tools.JavaFileManager;
-import javax.tools.JavaFileObject;
+import com.cubrid.jsp.code.CompiledCodeSet;
+import java.util.Map.Entry;
+import java.util.UUID;
 
-public class MemoryFileManager extends ForwardingJavaFileManager<JavaFileManager> {
+public class SessionClassLoader extends ClassLoader {
 
-    private List<CompiledCode> codeList = new ArrayList<CompiledCode>();
+    private String id = null;
+    private CompiledCodeSet code = null;
 
-    protected MemoryFileManager(JavaFileManager fileManager) {
-        super(fileManager);
+    public SessionClassLoader(CompiledCodeSet code) {
+        id = UUID.randomUUID().toString();
+        this.code = code;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public CompiledCodeSet getCode() {
+        return code;
     }
 
     @Override
-    public JavaFileObject getJavaFileForOutput(
-            JavaFileManager.Location location,
-            String className,
-            JavaFileObject.Kind kind,
-            FileObject sibling)
-            throws IOException {
-        try {
-            CompiledCode c = new CompiledCode(className);
+    public Class<?> loadClass(String name) throws ClassNotFoundException {
+        Class<?> mainCls = findLoadedClass(name);
+        if (mainCls != null) {
+            // already loaded
+        } else {
+            try {
+                mainCls = super.loadClass(name);
+                if (mainCls != null) {
+                    return mainCls;
+                }
+            } catch (ClassNotFoundException e) {
+                // ignore
+            }
 
-            // register CompiledCode in GlobalClassStore
-            codeList.add(c);
-
-            return c;
-        } catch (Exception e) {
-            throw new RuntimeException(
-                    "Error occurs while creating output class file in memory for " + className, e);
+            // find in codesets
+            if (code != null) {
+                for (Entry<String, CompiledCode> entry : code.getCodeList()) {
+                    Class<?> cls = null;
+                    String className = entry.getKey();
+                    byte[] classBytes = entry.getValue().getByteCode();
+                    cls = defineClass(className, classBytes, 0, classBytes.length);
+                    if (name.equals(className)) {
+                        mainCls = cls;
+                    }
+                }
+            }
         }
+
+        return mainCls;
     }
 
-    @Override
-    public ClassLoader getClassLoader(JavaFileManager.Location location) {
-        return null;
-    }
-
-    public List<CompiledCode> getCodeList() {
-        return codeList;
+    public void clear() {
+        id = null;
+        code = null;
     }
 }

@@ -32,6 +32,8 @@
 package com.cubrid.jsp.compiler;
 
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.code.CompiledCodeSet;
+import com.cubrid.jsp.code.SourceCode;
 import java.nio.file.Path;
 import java.util.Arrays;
 import javax.tools.Diagnostic;
@@ -44,7 +46,6 @@ public class MemoryJavaCompiler {
 
     private JavaCompiler compiler;
     private Iterable<String> options = null;
-    private MemoryFileManager fileManager = null;
 
     public MemoryJavaCompiler() {
         compiler = ToolProvider.getSystemJavaCompiler();
@@ -55,17 +56,16 @@ public class MemoryJavaCompiler {
 
         Path cubrid_env_root = Server.getServer().getRootPath();
         useOptions("-classpath", cubrid_env_root + "/java/pl_server.jar");
-
-        fileManager = new MemoryFileManager(compiler.getStandardFileManager(null, null, null));
     }
 
-    public void useOptions(String... options) {
+    public synchronized void useOptions(String... options) {
         this.options = Arrays.asList(options);
     }
 
-    public void compile(SourceCode code) {
+    public synchronized CompiledCodeSet compile(SourceCode code) {
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
-
+        MemoryFileManager fileManager =
+                new MemoryFileManager(compiler.getStandardFileManager(null, null, null));
         JavaCompiler.CompilationTask task =
                 compiler.getTask(null, fileManager, collector, options, null, Arrays.asList(code));
 
@@ -87,13 +87,14 @@ public class MemoryJavaCompiler {
                         break;
                 }
             }
+
             if (hasErrors) {
                 throw new RuntimeException(exceptionMsg.toString());
             }
         }
-    }
 
-    public MemoryFileManager getFileManager() {
-        return fileManager;
+        assert (code.getClassName() != null);
+
+        return new CompiledCodeSet(code.getClassName(), fileManager.getCodeList());
     }
 }

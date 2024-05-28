@@ -32,9 +32,10 @@
 package com.cubrid.jsp;
 
 import com.cubrid.jsp.classloader.ClassLoaderManager;
-import com.cubrid.jsp.compiler.CompiledCode;
+import com.cubrid.jsp.code.CompiledCode;
+import com.cubrid.jsp.code.CompiledCodeSet;
+import com.cubrid.jsp.code.SourceCode;
 import com.cubrid.jsp.compiler.MemoryJavaCompiler;
-import com.cubrid.jsp.compiler.SourceCode;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.AuthInfo;
@@ -55,11 +56,9 @@ import com.cubrid.plcsql.compiler.PlcsqlCompilerMain;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
-import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
@@ -68,10 +67,11 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
-import org.apache.commons.io.IOUtils;
 
 public class ExecuteThread extends Thread {
 
@@ -319,7 +319,6 @@ public class ExecuteThread extends Thread {
 
         StoredProcedure procedure = makeStoredProcedure(unpacker);
 
-        pushUser(procedure.getAuthUser());
         Value result = procedure.invoke();
         popUser();
 
@@ -335,18 +334,24 @@ public class ExecuteThread extends Thread {
         sendAuthCommand(1, "");
     }
 
-    private void writeJar(List<CompiledCode> compiledCodeList, Path jarPath) throws IOException {
+    private void writeJar(CompiledCodeSet codeSet, OutputStream jarStream) throws IOException {
         JarArchiveOutputStream jaos = null;
         try {
-            OutputStream jarStream = Files.newOutputStream(jarPath);
             jaos = new JarArchiveOutputStream(new BufferedOutputStream(jarStream));
 
-            for (CompiledCode c : compiledCodeList) {
-                JarArchiveEntry jae = new JarArchiveEntry(c.getClassName() + ".class");
+            for (Map.Entry<String, CompiledCode> entry : codeSet.getCodeList()) {
+                JarArchiveEntry jae =
+                        new JarArchiveEntry(entry.getValue().getClassNameWithExtention());
+                byte[] arr = entry.getValue().getByteCode();
+                jae.setSize(arr.length);
                 jaos.putArchiveEntry(jae);
-                ByteArrayInputStream bis = new ByteArrayInputStream(c.getByteCode());
-                IOUtils.copy(bis, jaos);
-                bis.close();
+                jaos.write(arr);
+                jaos.flush();
+                // ByteArrayInputStream bis = new
+                // ByteArrayInputStream(entry.getValue().getByteCode());
+                // IOUtils.copy(bis, jaos);
+                // bis.close();
+
                 jaos.closeArchiveEntry();
             }
         } catch (IOException e) {
@@ -369,24 +374,31 @@ public class ExecuteThread extends Thread {
         try {
             info = PlcsqlCompilerMain.compilePLCSQL(inSource, verbose);
             if (info.errCode == 0) {
-
-                // The following writes .java file into /dynamic directory
-                Path javaFilePath =
-                        ClassLoaderManager.getDynamicPath().resolve(info.className + ".java");
-                File file = javaFilePath.toFile();
-                if (file.exists()) {
-                    file.delete();
-                }
-                new FileWriter(file).append(info.translated).close();
-                //
-
                 MemoryJavaCompiler compiler = new MemoryJavaCompiler();
                 SourceCode sCode = new SourceCode(info.className, info.translated);
-                compiler.compile(sCode);
+                CompiledCodeSet codeSet = compiler.compile(sCode);
 
-                Path jarPath = ClassLoaderManager.getDynamicPath().resolve(info.className + ".jar");
-                List<CompiledCode> codeList = compiler.getFileManager().getCodeList();
-                writeJar(codeList, jarPath);
+                int mode = 1; // 0: temp file mode, 1: memory stream mode
+                byte[] data = null;
+
+                // write to persistent
+                if (mode == 0) {
+                    Path jarPath =
+                            ClassLoaderManager.getDynamicPath().resolve(info.className + ".jar");
+                    OutputStream jarStream = Files.newOutputStream(jarPath);
+                    writeJar(codeSet, jarStream);
+                    data = Files.readAllBytes(jarPath);
+                    Files.deleteIfExists(jarPath);
+                } else {
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    writeJar(codeSet, baos);
+                    data = baos.toByteArray();
+                }
+
+                info.compiledType = 1; // TODO: always jar
+
+                String encodedStr = Base64.getEncoder().encodeToString(data);
+                info.compiledCode = encodedStr.getBytes();
             }
         } catch (Exception e) {
             info =
@@ -395,6 +407,7 @@ public class ExecuteThread extends Thread {
             throw new RuntimeException(e);
         } finally {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+
             info.pack(packer);
             Context.getCurrentExecuteThread().sendCommand(RequestCode.COMPILE, packer.getBuffer());
         }
@@ -404,6 +417,7 @@ public class ExecuteThread extends Thread {
         String methodSig = unpacker.unpackCString();
         String authUser = unpacker.unpackCString();
         int paramCount = unpacker.unpackInt();
+        int lang = unpacker.unpackInt();
 
         Value[] arguments = prepareArgs.getArgs();
         Value[] methodArgs = new Value[paramCount];
@@ -440,7 +454,9 @@ public class ExecuteThread extends Thread {
         boolean transactionControl = unpacker.unpackBool();
         getCurrentContext().setTransactionControl(transactionControl);
 
-        storedProcedure = new StoredProcedure(methodSig, authUser, methodArgs, returnType);
+        pushUser(authUser);
+
+        storedProcedure = new StoredProcedure(methodSig, lang, authUser, methodArgs, returnType);
         return storedProcedure;
     }
 

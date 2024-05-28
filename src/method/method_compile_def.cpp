@@ -53,6 +53,11 @@ namespace cubmethod
 	serializator.pack_string (register_stmt);
 	serializator.pack_string (class_name);
 	serializator.pack_string (java_signature);
+
+        serializator.pack_int (compiled_type);
+        if (compiled_type >= 0) {
+                serializator.pack_string (compiled_code);
+        }
       }
   }
 
@@ -73,6 +78,11 @@ namespace cubmethod
 	size += serializator.get_packed_string_size (register_stmt, size); // register_stmt
 	size += serializator.get_packed_string_size (class_name, size); // class_name
 	size += serializator.get_packed_string_size (java_signature, size); // java_signature
+
+	size += serializator.get_packed_int_size (size); // compiled_type
+        if (compiled_type >= 0) {
+                size += serializator.get_packed_string_size (compiled_code, size); // compiled_code
+        }
       }
 
     return size;
@@ -94,6 +104,11 @@ namespace cubmethod
 	deserializator.unpack_string (register_stmt);
 	deserializator.unpack_string (class_name);
 	deserializator.unpack_string (java_signature);
+
+	deserializator.unpack_int (compiled_type);
+        if (compiled_type >= 0) {
+                deserializator.unpack_string (compiled_code);
+        }
       }
   }
 

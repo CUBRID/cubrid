@@ -29,33 +29,60 @@
  *
  */
 
-package com.cubrid.jsp.compiler;
+package com.cubrid.jsp.code;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URI;
 import javax.tools.SimpleJavaFileObject;
 
-public class SourceCode extends SimpleJavaFileObject {
-    private String className;
-    private String code;
+public class CompiledCode extends SimpleJavaFileObject {
+    private String className = null;
+    private ByteArrayOutputStream baos = null;
 
-    public SourceCode(String className, String code) {
-        super(
-                URI.create("string:///" + className.replace('.', '/') + Kind.SOURCE.extension),
-                Kind.SOURCE);
-        this.code = code;
-        this.className = className;
+    private byte[] byteCode = null;
+
+    public CompiledCode(String className) throws java.net.URISyntaxException {
+        super(new URI(className), Kind.CLASS);
+
+        int idx = className.indexOf(".");
+        if (idx != -1) {
+            this.className = className.substring(0, idx);
+
+        } else {
+            this.className = className;
+        }
+        this.baos = new ByteArrayOutputStream();
     }
 
     public String getClassName() {
         return className;
     }
 
-    public String getCode() {
-        return code;
+    public String getClassNameWithExtention() {
+        return className + ".class";
+    }
+
+    public byte[] getByteCode() {
+        if (byteCode == null) {
+            byteCode = baos.toByteArray();
+            try {
+                baos.close();
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        return byteCode;
     }
 
     @Override
     public CharSequence getCharContent(boolean ignoreEncodingErrors) {
-        return code;
+        return new String(getByteCode());
+    }
+
+    @Override
+    public OutputStream openOutputStream() throws IOException {
+        return baos;
     }
 }

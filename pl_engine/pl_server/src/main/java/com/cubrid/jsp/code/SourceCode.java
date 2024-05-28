@@ -29,51 +29,33 @@
  *
  */
 
-package com.cubrid.jsp.compiler;
+package com.cubrid.jsp.code;
 
-import com.cubrid.jsp.code.CompiledCode;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import javax.tools.FileObject;
-import javax.tools.ForwardingJavaFileManager;
-import javax.tools.JavaFileManager;
-import javax.tools.JavaFileObject;
+import java.net.URI;
+import javax.tools.SimpleJavaFileObject;
 
-public class MemoryFileManager extends ForwardingJavaFileManager<JavaFileManager> {
+public class SourceCode extends SimpleJavaFileObject {
+    private String className;
+    private String code;
 
-    private List<CompiledCode> codeList = new ArrayList<CompiledCode>();
+    public SourceCode(String className, String code) {
+        super(
+                URI.create("string:///" + className.replace('.', '/') + Kind.SOURCE.extension),
+                Kind.SOURCE);
+        this.code = code;
+        this.className = className;
+    }
 
-    protected MemoryFileManager(JavaFileManager fileManager) {
-        super(fileManager);
+    public String getClassName() {
+        return className;
+    }
+
+    public String getCode() {
+        return code;
     }
 
     @Override
-    public JavaFileObject getJavaFileForOutput(
-            JavaFileManager.Location location,
-            String className,
-            JavaFileObject.Kind kind,
-            FileObject sibling)
-            throws IOException {
-        try {
-            CompiledCode c = new CompiledCode(className);
-
-            // register CompiledCode in GlobalClassStore
-            codeList.add(c);
-
-            return c;
-        } catch (Exception e) {
-            throw new RuntimeException(
-                    "Error occurs while creating output class file in memory for " + className, e);
-        }
-    }
-
-    @Override
-    public ClassLoader getClassLoader(JavaFileManager.Location location) {
-        return null;
-    }
-
-    public List<CompiledCode> getCodeList() {
-        return codeList;
+    public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+        return code;
     }
 }

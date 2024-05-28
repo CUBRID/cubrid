@@ -29,51 +29,39 @@
  *
  */
 
-package com.cubrid.jsp.compiler;
+package com.cubrid.jsp.code;
 
-import com.cubrid.jsp.code.CompiledCode;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import javax.tools.FileObject;
-import javax.tools.ForwardingJavaFileManager;
-import javax.tools.JavaFileManager;
-import javax.tools.JavaFileObject;
 
-public class MemoryFileManager extends ForwardingJavaFileManager<JavaFileManager> {
+// cacheable Class object in-memory
+public class MemoryClass {
 
-    private List<CompiledCode> codeList = new ArrayList<CompiledCode>();
+    private String className = null;
+    private CompiledCodeSet loadedCode = null;
+    private Class<?> loadedClass = null;
 
-    protected MemoryFileManager(JavaFileManager fileManager) {
-        super(fileManager);
+    public MemoryClass(String className) {
+        this.className = className;
     }
 
-    @Override
-    public JavaFileObject getJavaFileForOutput(
-            JavaFileManager.Location location,
-            String className,
-            JavaFileObject.Kind kind,
-            FileObject sibling)
-            throws IOException {
-        try {
-            CompiledCode c = new CompiledCode(className);
+    public String getClassName() {
+        return className;
+    }
 
-            // register CompiledCode in GlobalClassStore
-            codeList.add(c);
+    public void setCode(CompiledCodeSet codeset) {
+        clear();
+        this.loadedCode = codeset;
+    }
 
-            return c;
-        } catch (Exception e) {
-            throw new RuntimeException(
-                    "Error occurs while creating output class file in memory for " + className, e);
+    public Class<?> getLoadedClass() {
+        return loadedClass;
+    }
+
+    public void clear() {
+        if (this.loadedCode != null) {
+            this.loadedCode.clear();
+            this.loadedCode = null;
         }
-    }
 
-    @Override
-    public ClassLoader getClassLoader(JavaFileManager.Location location) {
-        return null;
-    }
-
-    public List<CompiledCode> getCodeList() {
-        return codeList;
+        loadedClass = null;
     }
 }
