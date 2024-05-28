@@ -11252,6 +11252,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
   else
     {
+      error = ER_FAILED;
       goto end;
     }
 

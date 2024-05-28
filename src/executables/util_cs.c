@@ -4628,6 +4628,8 @@ memmon (UTIL_FUNCTION_ARG * arg)
   error_code = mmon_get_server_info (server_info);
   if (error_code != NO_ERROR)
     {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON,
+					     MEMMON_MSG_MEMORY_MONITOR_IS_DISABLED));
       goto error_exit;
     }
 
