@@ -11350,7 +11350,6 @@ smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
 #if !defined(WINDOWS)
-  sysprm_set_force (prm_get_name (PRM_ID_ENABLE_MEMORY_MONITORING), "no");
   mmon_disabled = true;
 
   ptr = or_pack_int (reply, 0);
