@@ -1309,9 +1309,14 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 1 请在 'cubrid.conf' 中设置系统参数 'enable_memory_monitoring' 并重新启动数据库服务器。\n
 2 memmon 无法以独立模式运行。\n
 3 打开文件名为 %1$s 的输出文件失败。\n
+4 服务器上的内存监控已成功禁用。\n
+5 disable-force不能与其他选项一起使用。\n
+6 服务器上的内存监控已被禁用。您可以在重新启动服务器后再次使用它。\n
+7 此操作系统不支持memmon。\n
 60 \
 memmon：提供数据库服务器的内存使用信息。\n\
 使用方法：%1$s memmon [选项] 数据库名称\n\
 \n\
 有效选项：\n\
-    -o, --output-file=FILE    将结果输出到 FILE 中\n
+    -o, --output-file=FILE    将结果输出到 FILE 中\n\
+    --disable-force           强制禁用服务器的内存监视器。\n

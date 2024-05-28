@@ -38,7 +38,7 @@ int mmon_initialize (const char *server_name)
 {
   int error = NO_ERROR;
 
-  assert (mmon_Gl == nullptr);
+  assert (mmon_Gl == nullptr && mmon_disabled == true);
   assert (server_name != nullptr);
 
   if (prm_get_bool_value (PRM_ID_ENABLE_MEMORY_MONITORING))
@@ -50,13 +50,14 @@ int mmon_initialize (const char *server_name)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  return error;
 	}
+      mmon_disabled = false;
     }
   return error;
 }
 
 void mmon_finalize ()
 {
-  if (mmon_is_memory_monitor_enabled ())
+  if (mmon_Gl != nullptr)
     {
 #if !defined (NDEBUG)
       mmon_Gl->finalize_dump ();

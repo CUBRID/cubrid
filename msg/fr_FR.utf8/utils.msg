@@ -1327,12 +1327,17 @@ options valides :\n\
                                   de l'heure de début à l'heure de fin ; par défaut : le plus récent\n
 
 $set 59 MSGCAT_UTIL_SET_MEMMON
-1 Veuillez définir le paramètre système 'enable_memory_monitoring' dans 'cubrid.conf' et redémarrer le serveur de base de données.\n\
-2 memmon ne peut pas fonctionner en mode autonome.\n\
-3 Échec de l'ouverture du fichier de sortie avec le nom de fichier %1$s.\n\
+1 Veuillez définir le paramètre système 'enable_memory_monitoring' dans 'cubrid.conf' et redémarrer le serveur de base de données.\n
+2 memmon ne peut pas fonctionner en mode autonome.\n
+3 Échec de l'ouverture du fichier de sortie avec le nom de fichier %1$s.\n
+4 La surveillance de la mémoire sur le serveur est désactivée avec succès.\n
+5 disable-force ne peut pas être utilisé avec d'autres options.\n
+6 La surveillance de la mémoire sur le serveur a été désactivée. Vous pouvez l'utiliser à nouveau après avoir redémarré le serveur.\n
+7 memmon n'est pas pris en charge sur ce système d'exploitation.\n
 60 \
 memmon: Fournit des informations sur l'utilisation de la mémoire d'un serveur de base de données.\n\
 utilisation: %1$s memmon [OPTION] nom-de-la-base-de-données\n\
 \n\
 Option valide:\n\
-    -o, --output-file=FILE    résultats de sortie vers un fichier\n
+    -o, --output-file=FILE    résultats de sortie vers un fichier\n\
+    --disable-force           désactiver la surveillance de la mémoire du serveur de force.\n

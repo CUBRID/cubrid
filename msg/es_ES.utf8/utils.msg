@@ -1321,9 +1321,14 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 1 Por favor, configure el parámetro del sistema 'enable_memory_monitoring' en 'cubrid.conf' y reinicie el servidor de la base de datos.\n
 2 memmon no puede ejecutarse en modo independiente.\n
 3 Error al abrir el archivo de salida con el nombre %1$s.\n
+4 La monitorización de memoria en el servidor se ha deshabilitado con éxito.\n
+5 disable-force no se puede usar con otras opciones.\n
+6 La monitorización de memoria en el servidor se ha deshabilitado. Puedes volver a utilizarla después de reiniciar el servidor.\n
+7 memmon no es compatible con este sistema operativo.\n
 60 \
 memmon: Proporciona información sobre el uso de memoria de un servidor de base de datos.\n\
 uso: %1$s memmon [OPCIÓN] nombre-de-base-de-datos\n\
 \n\
 opción válida:\n\
-    -o, --output-file=ARCHIVO    guardar resultados en ARCHIVO\n
+    -o, --output-file=ARCHIVO    guardar resultados en ARCHIVO\n\
+    --disable-force              deshabilitar forzosamente el monitor de memoria del servidor.\n
