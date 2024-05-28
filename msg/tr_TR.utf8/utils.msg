@@ -1313,9 +1313,14 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 1 Lütfen 'cubrid.conf' dosyasında sistem parametresi 'enable_memory_monitoring' değerini ayarlayın ve veritabanı sunucusunu yeniden başlatın.\n
 2 memmon, bağımsız çalışma modunda çalıştırılamaz.\n
 3 Dosya adı %1$s olan çıkış dosyası açılamadı.\n
+4 Sunucuda bellek izleme başarıyla devre dışı bırakıldı.\n
+5 disable-force diğer seçeneklerle birlikte kullanılamaz.\n
+6 Sunucuda bellek izleme devre dışı bırakıldı. Sunucuyu yeniden başlattıktan sonra tekrar kullanabilirsiniz.\n
+7 memmon bu işletim sisteminde desteklenmiyor.\n
 60 \
 memmon: Bir veritabanı sunucusunun bellek kullanımı bilgilerini sağlar.\n\
 kullanım: %1$s memmon [SEÇENEK] veritabanı-adı\n\
 \n\
 geçerli seçenek:\n\
-    -o, --output-file=FILE    sonuçları DOSYA'ya çıkar\n
+    -o, --output-file=FILE    sonuçları DOSYA'ya çıkar\n\
+    --disable-force           sunucunun bellek izleme özelliğini zorla devre dışı bırakın.\n

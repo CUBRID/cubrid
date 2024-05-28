@@ -1320,9 +1320,14 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 1 Bitte setzen Sie den Systemparameter 'enable_memory_monitoring' in 'cubrid.conf' und starten Sie den Datenbankserver neu.\n
 2 memmon kann nicht im eigenständigen Modus ausgeführt werden.\n
 3 Fehler beim Öffnen der Ausgabedatei mit dem Dateinamen %1$s.\n
+4 Die Speicherüberwachung auf dem Server wurde erfolgreich deaktiviert.\n
+5 disable-force kann nicht zusammen mit anderen Optionen verwendet werden.\n
+6 Die Speicherüberwachung auf dem Server wurde deaktiviert. Sie können sie nach einem Neustart des Servers erneut verwenden.\n
+7 memmon wird auf diesem Betriebssystem nicht unterstützt.\n
 60 \
 memmon: Bietet Informationen zur Speicherauslastung eines Datenbankservers.\n\
 Verwendung: %1$s memmon [OPTION] Datenbankname\n\
 \n\
 Gültige Optionen:\n\
-    -o, --output-file=DATEI    Ergebnisse in DATEI ausgeben\n
+    -o, --output-file=DATEI    Ergebnisse in DATEI ausgeben\n\
+    --disable-force            Speicherüberwachung des Servers zwangsweise deaktivieren.\n
