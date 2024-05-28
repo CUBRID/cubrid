@@ -4553,13 +4553,13 @@ memmon (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   bool need_shutdown = false;
   const char *outfile_name;
-  bool finalize_force = false;
+  bool disable_force = false;
   FILE *outfile_fp = NULL;
   int error_code = NO_ERROR;
   MMON_SERVER_INFO server_info;
 
   outfile_name = utility_get_option_string_value (arg_map, MEMMON_OUTPUT_S, 0);
-  finalize_force = utility_get_option_bool_value (arg_map, MEMMON_DISABLE_FORCE_S);
+  disable_force = utility_get_option_bool_value (arg_map, MEMMON_DISABLE_FORCE_S);
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
@@ -4569,6 +4569,14 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
   if (check_database_name (database_name))
     {
+      goto error_exit;
+    }
+
+  if (outfile_name && disable_force)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON,
+			      MEMMON_MSG_CANNOT_USE_DISABLE_FORCE_WITH_OTHER_OPTION));
       goto error_exit;
     }
 
@@ -4605,7 +4613,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (finalize_force)
+  if (disable_force)
     {
       error_code = mmon_disable_force ();
       if (error_code != NO_ERROR)

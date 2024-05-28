@@ -1320,6 +1320,7 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 2 memmon cannot run as standalone mode.\n
 3 Fail to open output file with filename %1$s.\n
 4 Server memory monitor is disabled successfully.\n
+5 disable-force cannot be used with other options.\n
 60 \
 memmon: Provides memory usage information of a database server.\n\
 usage: %1$s memmon [OPTION] database-name\n\
