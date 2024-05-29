@@ -2665,8 +2665,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
   if (ha_node_list == NULL || ha_node_list[0] == '\0')
     {
       sprintf (err_string, "%s is empty", prm_get_name (PRM_ID_HA_NODE_LIST));
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, err_string);
-      return ER_FAILED;
+      goto error;
     }
 
   hb_Cluster->myself = NULL;
@@ -2693,8 +2692,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 		    {
 		      sprintf (err_string, "In replica mode, (%s) must not be in the %s", hb_Cluster->host_name,
 			       prm_get_name (PRM_ID_HA_REPLICA_LIST));
-		      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, err_string);
-		      return ER_FAILED;
+		      goto error;
 		    }
 		  else
 		    {
@@ -2712,8 +2710,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
   if (hb_Cluster->state != HB_NSTATE_REPLICA && hb_Cluster->myself == NULL)
     {
       sprintf (err_string, "cannot find (%s) in the %s", hb_Cluster->host_name, prm_get_name (PRM_ID_HA_NODE_LIST));
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, err_string);
-      return ER_FAILED;
+      goto error;
     }
 
   num_nodes = priority;
@@ -2730,8 +2727,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
   if (hb_Cluster->state == HB_NSTATE_REPLICA && tmp_string[0] == '\0')
     {
       sprintf (err_string, "%s is empty", prm_get_name (PRM_ID_HA_REPLICA_LIST));
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, err_string);
-      return ER_FAILED;
+      goto error;
     }
 
   for (priority = 0, p = strtok_r (tmp_string, "@", &savep); p; priority++, p = strtok_r (NULL, " ,:", &savep))
@@ -2743,8 +2739,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	    {
 	      sprintf (err_string, "group id of (%s, %s) is different", prm_get_name (PRM_ID_HA_NODE_LIST),
 		       prm_get_name (PRM_ID_HA_REPLICA_LIST));
-	      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, err_string);
-	      return ER_FAILED;
+	      goto error;
 	    }
 	}
       else
@@ -2754,8 +2749,16 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	    {
 	      if (are_hostnames_equal (node->host_name, hb_Cluster->host_name))
 		{
-		  hb_Cluster->myself = node;
-		  hb_Cluster->state = HB_NSTATE_REPLICA;
+		  if (hb_Cluster->state != HB_NSTATE_REPLICA)
+		    {
+		      sprintf (err_string, "In not replica mode, (%s) must not be in the %s", hb_Cluster->host_name,
+			       prm_get_name (PRM_ID_HA_REPLICA_LIST));
+		      goto error;
+		    }
+		  else
+		    {
+		      hb_Cluster->myself = node;
+		    }
 		}
 	    }
 	}
@@ -2765,11 +2768,15 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
     {
       sprintf (err_string, "In replica mode, (%s) must be in the %s", hb_Cluster->host_name,
 	       prm_get_name (PRM_ID_HA_REPLICA_LIST));
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, err_string);
-      return ER_FAILED;
+      goto error;
     }
 
   return num_nodes + priority;
+
+error:
+
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, err_string);
+  return ER_FAILED;
 }
 
 
