@@ -1738,8 +1738,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		{
 		  goto error_exit;
 		}
-	    }
-	  fprintf (outfp, "\n*** DUMP HEAP OF %s ***\n", class_name);
+      }
 	  heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
 	}
     }
