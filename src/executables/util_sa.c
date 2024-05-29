@@ -1738,7 +1738,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		{
 		  goto error_exit;
 		}
-      }
+	    }
 	  heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
 	}
     }
