@@ -222,6 +222,14 @@ qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals
       return NULL;
     }
 
+  key->tuples = (QFILE_TUPLE_RECORD **) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_RECORD *) * val_cnt);
+  if (key->tuples == NULL)
+    {
+      db_private_free (thread_p, key);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_TUPLE_RECORD *) * val_cnt);
+      return NULL;
+    }
+
   if (alloc_vals)
     {
       for (i = 0; i < val_cnt; i++)
@@ -234,6 +242,18 @@ qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
 	      return NULL;
 	    }
+
+	  key->tuples[i] = (QFILE_TUPLE_RECORD *) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_RECORD));
+	  if (key->tuples[i] == NULL)
+	    {
+	      key->free_values = true;
+	      qdata_free_hscan_key (thread_p, key, i);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
+	      return NULL;
+	    }
+
+	  key->tuples[i]->tpl = NULL;
+	  key->tuples[i]->size = 0;
 	}
     }
 
@@ -272,6 +292,23 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
       db_private_free (thread_p, key->values);
     }
 
+  if (key->tuples != NULL)
+    {
+      if (key->free_values)
+	{
+	  for (int i = 0; i < val_count; i++)
+	    {
+	      if (key->tuples[i])
+		{
+		  db_private_free (thread_p, key->tuples[i]);
+		}
+	    }
+	}
+
+      /* free values array */
+      db_private_free (thread_p, key->tuples);
+    }
+
   /* free structure */
   db_private_free (thread_p, key);
 }
@@ -293,6 +330,36 @@ qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_met
   for (i = 0; i < ckey->val_count; i++)
     {
       tmp_hash_val = mht_get_hash_number (ht_size, ckey->values[i]);
+      hash_val = hash_val ^ tmp_hash_val;
+      if (hash_val == 0)
+	{
+	  hash_val = tmp_hash_val;
+	}
+    }
+
+  if (hash_method == HASH_METH_HASH_FILE)
+    {
+      hash_val = fhs_hash (&hash_val);
+    }
+
+  return hash_val;
+}
+
+unsigned int
+qdata_hash_scan_key_with_tuple (const void *key, unsigned int ht_size, HASH_METHOD hash_method, TP_DOMAIN ** domains)
+{
+  HASH_SCAN_KEY *ckey = (HASH_SCAN_KEY *) key;
+  int part;
+  int i;
+  unsigned int tmp_hash_val = 0;
+  unsigned int hash_val = 0;
+
+  /* build hash value */
+  for (i = 0; i < ckey->val_count; i++)
+    {
+      tmp_hash_val =
+	mht_get_hash_number_with_tuple (ht_size, ckey->tuples[i]->tpl, ckey->tuples[i]->size,
+					TP_DOMAIN_TYPE (domains[i]));
       hash_val = hash_val ^ tmp_hash_val;
       if (hash_val == 0)
 	{
