@@ -4869,9 +4869,12 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   struct sockaddr_in udp_saddr;
   char host_name[CUB_MAXHOSTNAMELEN];
 
-  if (nodes == NULL)
+  if (nodes == NULL || nodes[0] == '\0')
     {
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_HA_NODE_LIST));
+      char err_string[LINE_MAX];
+
+      sprintf (err_string, "%s is empty", prm_get_name (PRM_ID_HA_NODE_LIST));
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, err_string);
 
       return ER_PRM_BAD_VALUE;
     }
