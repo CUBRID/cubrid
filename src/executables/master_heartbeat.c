@@ -2690,8 +2690,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 		{
 		  if (hb_Cluster->state == HB_NSTATE_REPLICA)
 		    {
-		      sprintf (err_string, "In replica mode, (%s) must not be in the %s", hb_Cluster->host_name,
-			       prm_get_name (PRM_ID_HA_REPLICA_LIST));
+		      sprintf (err_string, "In replica mode, (%s) must not be specified in the %s",
+			       hb_Cluster->host_name, prm_get_name (PRM_ID_HA_NODE_LIST));
 		      goto error;
 		    }
 		  else
@@ -2751,8 +2751,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 		{
 		  if (hb_Cluster->state != HB_NSTATE_REPLICA)
 		    {
-		      sprintf (err_string, "In not replica mode, (%s) must not be in the %s", hb_Cluster->host_name,
-			       prm_get_name (PRM_ID_HA_REPLICA_LIST));
+		      sprintf (err_string, "In not replica mode, (%s) must not be specified in the %s",
+			       hb_Cluster->host_name, prm_get_name (PRM_ID_HA_REPLICA_LIST));
 		      goto error;
 		    }
 		  else
@@ -2766,7 +2766,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 
   if (hb_Cluster->state == HB_NSTATE_REPLICA && hb_Cluster->myself == NULL)
     {
-      sprintf (err_string, "In replica mode, (%s) must be in the %s", hb_Cluster->host_name,
+      sprintf (err_string, "In replica mode, (%s) must be specified in the %s", hb_Cluster->host_name,
 	       prm_get_name (PRM_ID_HA_REPLICA_LIST));
       goto error;
     }
