@@ -173,7 +173,7 @@ TEST_CASE ("Test mmon_add_stat", "")
 // that has multiple "/src/" in a file path.
 //
 // Expected Result:
-//    1) stat name "add_test.c:100" with value "allocated_size + allocated_size_3", which means
+//    1) stat name "add_test.c:100" with value "allocated_size", which means
 //       we just catch "rightmost /src/" of main code source tree (CUBRID/src/...).
 //       So "/src/" which appears before ".../cubrid/src/", it will be ignored.
 //       ex) ".../src/.../cubrid/src/base/some_file.c" is given, the result is "base/some_file.c:line"
@@ -186,10 +186,8 @@ TEST_CASE ("Test mmon_add_stat 2", "")
   size_t current_size;
   size_t allocated_size;
   size_t allocated_size_2;
-  size_t allocated_size_3;
   std::string test_filename;
   std::string test_filename2;
-  std::string test_filename3;
   int ret;
 
   mmon_aggregate_server_info (test_server_info);
@@ -213,7 +211,7 @@ TEST_CASE ("Test mmon_add_stat 2", "")
 
   REQUIRE (ret != -1);
   REQUIRE (test_server_info.num_stat == 3);
-  REQUIRE (test_server_info.stat_info[ret].second == current_size + allocated_size + allocated_size_3);
+  REQUIRE (test_server_info.stat_info[ret].second == current_size + allocated_size);
 
   ret = find_test_stat (test_server_info, "something/thirdparty/src/add_test.c:100");
   REQUIRE (ret != -1);
