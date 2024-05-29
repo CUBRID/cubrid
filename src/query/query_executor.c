@@ -40,6 +40,7 @@
 #include "partition_sr.h"
 #include "query_aggregate.hpp"
 #include "query_analytic.hpp"
+#include "query_hash_scan_constants.h"
 #include "query_opfunc.h"
 #include "fetch.h"
 #include "dbtype.h"
@@ -6661,24 +6662,37 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
 
   c = DB_EQ;
 
-  for (value_index = 0; value_index < key->val_count; value_index++)
-    {
-      or_init (&iterator, tuple_record_p->tpl, QFILE_GET_TUPLE_LENGTH (tuple_record_p->tpl));
+  or_init (&iterator, tuple_record_p->tpl, QFILE_GET_TUPLE_LENGTH (tuple_record_p->tpl));
 
-      /* skip tuple header */
-      error = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
-      if (error != NO_ERROR)
+  /* skip tuple header */
+  error = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  for (skip_index = 0; skip_index < key->val_count; skip_index++)	/* skip_index는 key->val_count만큼만 순회하는게 맞을까? */
+    {
+      for (value_index = 0; value_index < key->val_count; value_index++)
 	{
-	  goto exit_on_error;
+	  if (value_indexes[value_index] == skip_index)
+	    {
+	      break;
+	    }
 	}
 
-      for (skip_index = 0; skip_index < value_indexes[value_index]; skip_index++)
+      if (value_index == key->val_count)
 	{
+	  assert (false);
+
 	  error = or_advance (&iterator, QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (iterator.ptr));
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
+
+	  /* next tuple */
+	  continue;
 	}
 
       error = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
@@ -6731,9 +6745,9 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
 exit_on_end:
   pr_clear_value (&temp_value);
 
-  if (value_index != key->val_count)
+  if (skip_index != key->val_count)
     {
-      return value_index + 1;
+      return skip_index + 1;
     }
 
   return NO_ERROR;
@@ -7075,6 +7089,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	    }
 
 #if !defined(NDEBUG) && defined(HASH_JOIN_TEST)
+	  fprintf (stdout, "\nFound Key: ");
 	  qfile_print_tuple (&build_scan_id_p->list_id.type_list, found_tuple_record.tpl);
 #endif
 
@@ -7242,6 +7257,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	    }
 
 #if !defined(NDEBUG) && defined(HASH_JOIN_TEST)
+	  fprintf (stdout, "\nFound Key: ");
 	  qfile_print_tuple (&build_scan_id_p->s.llsid.list_id->type_list, found_tuple_record.tpl);
 #endif
 
@@ -7574,6 +7590,8 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
     {
       GOTO_EXIT_ON_ERROR;
     }
+
+  xasl->proc.hashjoin.hash_method = hash_join.hash_list_scan_type;
 
   on_trace = thread_is_on_trace (thread_p);
   if (on_trace)

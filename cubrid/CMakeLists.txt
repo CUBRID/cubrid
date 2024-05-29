@@ -242,6 +242,7 @@ set(QUERY_SOURCES
   )
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
+  ${QUERY_DIR}/query_hash_scan_constants.h
   ${QUERY_DIR}/query_hash_scan.h
   ${QUERY_DIR}/query_analytic.hpp
   ${QUERY_DIR}/query_monitoring.hpp

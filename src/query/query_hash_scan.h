@@ -27,6 +27,7 @@
 #error Wrong module
 #endif // not server and not SA mode
 
+#include "query_hash_scan_constants.h"
 #include "regu_var.hpp"
 
 #define MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p) \
@@ -53,16 +54,6 @@
       (tuple_pos).tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
     } \
   while (0)
-
-/* kind of hash list scan method */
-enum hash_method
-{
-  HASH_METH_NOT_USE = 0,
-  HASH_METH_IN_MEM = 1,
-  HASH_METH_HYBRID = 2,
-  HASH_METH_HASH_FILE = 3
-};
-typedef enum hash_method HASH_METHOD;
 
 /* Tuple position structure for hash value */
 typedef struct qfile_tuple_simple_pos QFILE_TUPLE_SIMPLE_POS;

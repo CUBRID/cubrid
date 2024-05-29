@@ -3329,6 +3329,8 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 
   ptr = stx_build_ls_merge_info (thread_p, ptr, &hash_join_info->ls_merge);
 
+  hash_join_info->hash_method = HASH_METH_NOT_USE;
+
   return ptr;
 
 error:

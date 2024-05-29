@@ -29,6 +29,7 @@
 
 #include "access_json_table.hpp"
 #include "access_spec.hpp"
+#include "query_hash_scan_constants.h"
 #include "memory_hash.h"
 #include "method_def.hpp"
 #include "query_list.h"
@@ -377,6 +378,7 @@ struct hashjoin_proc_node
 
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
 
+  HASH_METHOD hash_method;
   struct timeval build_time;
   struct timeval probe_time;
 };

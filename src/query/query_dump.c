@@ -3327,8 +3327,26 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case HASHJOIN_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
-	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
+      char *type;
+      if (xasl_p->proc.hashjoin.hash_method == HASH_METH_IN_MEM)
+	{
+	  type = "memory";
+	}
+      else if (xasl_p->proc.hashjoin.hash_method == HASH_METH_HYBRID)
+	{
+	  type = "hybrid";
+	}
+      else if (xasl_p->proc.hashjoin.hash_method == HASH_METH_HASH_FILE)
+	{
+	  type = "file";
+	}
+      else
+	{
+	  type = "none";
+	}
+
+      fprintf (fp, "%s (%s) (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
+	       type, TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
 	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
       indent += 2;
       fprintf (fp, "%*cBUILD (time: %d)\n", indent, ' ', TO_MSEC (xasl_p->proc.hashjoin.build_time));
