@@ -304,6 +304,7 @@ typedef enum
 typedef enum
 {
   DIAGDB_MSG_BAD_OUTPUT = 15,
+  DIAGDB_MSG_UNKNOWN_CLASS = 16,
   DIAGDB_MSG_USAGE = 60
 } MSGCAT_DIAGDB_MSG;
 
