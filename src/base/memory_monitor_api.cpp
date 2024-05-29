@@ -67,6 +67,7 @@ void mmon_finalize ()
 #endif
       delete mmon_Gl;
       mmon_Gl = nullptr;
+      mmon_disabled = true;
     }
 }
 
