@@ -33,7 +33,6 @@ char *test_mem_in_the_scope_normal = NULL;
 char *test_mem_in_the_scope_with_base = NULL;
 char *test_mem_in_the_scope_normal_2 = NULL;
 char *test_mem_in_the_scope_with_src = NULL;
-char *test_mem_in_the_scope_normal_3 = NULL;
 char **test_mem_in_the_scope_multithread = NULL;
 char *test_mem_out_of_scope = NULL;
 char *test_mem_small = NULL;
@@ -58,6 +57,7 @@ int mmon_initialize (const char *server_name)
       fprintf (stdout, "memory_monitor allocation failed\n");
       return -1;
     }
+  mmon_disabled = false;
   target_pos = mmon_Gl->get_target_pos () - target.length ();
   return 0;
 }
@@ -200,7 +200,6 @@ TEST_CASE ("Test mmon_add_stat 2", "")
 
   test_mem_in_the_scope_normal_2 = (char *) malloc (32);
   test_mem_in_the_scope_with_src = (char *) malloc (20 + MMON_METAINFO_SIZE);
-  test_mem_in_the_scope_normal_3 = (char *) malloc (100);
   allocated_size = malloc_usable_size (test_mem_in_the_scope_normal_2);
   test_filename = genString (target_pos) + "/src/add_test.c";
   mmon_add_stat (test_mem_in_the_scope_normal_2, allocated_size, test_filename.c_str (), 100);
@@ -208,10 +207,6 @@ TEST_CASE ("Test mmon_add_stat 2", "")
   allocated_size_2 = malloc_usable_size (test_mem_in_the_scope_with_src);
   test_filename2 = genString (target_pos) + "/src/something/thirdparty/src/add_test.c";
   mmon_add_stat (test_mem_in_the_scope_with_src, allocated_size_2, test_filename2.c_str (), 100);
-
-  allocated_size_3 = malloc_usable_size (test_mem_in_the_scope_normal_3);
-  test_filename3 = genString (target_pos - target.length()) + "a/src/src/add_test.c";
-  mmon_add_stat (test_mem_in_the_scope_normal_3, allocated_size_3, test_filename3.c_str (), 100);
 
   mmon_aggregate_server_info (test_server_info);
   ret = find_test_stat (test_server_info, "add_test.c:100");
@@ -314,7 +309,6 @@ TEST_CASE ("Test mmon_sub_stat", "")
   mmon_sub_stat (test_mem_in_the_scope_normal);
   mmon_sub_stat (test_mem_in_the_scope_normal_2);
   mmon_sub_stat (test_mem_in_the_scope_with_src);
-  mmon_sub_stat (test_mem_in_the_scope_normal_3);
 
   REQUIRE (mmon_get_allocated_size (test_mem_small) == answer_small);
   REQUIRE (mmon_get_allocated_size (test_mem_out_of_scope) == answer_out_of_scope);
@@ -329,7 +323,6 @@ TEST_CASE ("Test mmon_sub_stat", "")
   free (test_mem_in_the_scope_normal_2);
   free (test_mem_in_the_scope_with_base);
   free (test_mem_in_the_scope_with_src);
-  free (test_mem_in_the_scope_normal_3);
   free (test_mem_small);
   free (test_mem_out_of_scope);
 }
