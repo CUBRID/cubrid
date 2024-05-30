@@ -100,7 +100,7 @@ parse_argument (int argc, char *argv[])
 	case 'p':
 	{
 	  // check valid package name
-	  if (optarg == null)
+	  if (optarg == NULL)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
