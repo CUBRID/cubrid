@@ -4916,8 +4916,6 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   hb_Cluster->num_nodes = hb_cluster_load_group_and_node_list ((char *) nodes, (char *) replicas);
   if (hb_Cluster->num_nodes < 1)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_Cluster->num_nodes is smaller than '1'. (num_nodes=%d). \n",
-			   hb_Cluster->num_nodes);
       pthread_mutex_unlock (&hb_Cluster->lock);
 
       return ER_PRM_BAD_VALUE;
