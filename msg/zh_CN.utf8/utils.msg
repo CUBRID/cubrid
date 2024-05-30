@@ -926,7 +926,8 @@ plandump: 显示或控制缓存的查询计划.\n\
 \n\
 可用选项:\n\
   -d, --drop                   丢弃服务端缓存中的所有计划\n\
-  -o, --output-file=FILE       重定向输出信息到FILE; 默认: 空\n
+  -o, --output-file=FILE       重定向输出信息到FILE; 默认: 空\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 无法打开输出文件 '%1$s'\n
