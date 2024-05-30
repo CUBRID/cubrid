@@ -491,6 +491,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
     }
 
   shm_as_p->cci_default_autocommit = br_info_p->cci_default_autocommit;
+  shm_as_p->net_buf_size = br_info_p->net_buf_size;
   shm_as_p->job_queue_size = br_info_p->job_queue_size;
   shm_as_p->job_queue[0].id = 0;	/* initialize max heap */
   shm_as_p->max_prepared_stmt_count = br_info_p->max_prepared_stmt_count;
