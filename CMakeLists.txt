@@ -590,8 +590,15 @@ configure_file(cmake/config.h.cmake config.h)
 configure_file(cmake/version.h.cmake version.h)
 
 # add_definitions(-DCUBRID_DEBUG_TEST)
-# add_definitions(-DHASH_JOIN_TEST_LEVEL1)
-# add_definitions(-DHASH_JOIN_TEST_LEVEL2)
+
+# Hash List Scan
+# add_definitions(-DDEBUG_HASH_LIST_SCAN_DUMP_HASH_TABLE)
+# add_definitions(-DDEBUG_HASH_LIST_SCAN_DUMP_FILE_HASH)
+
+# Hash Join
+# add_definitions(-DTEST_HASH_JOIN_FORCE_ENABLE)
+# add_definitions(-DDEBUG_HASH_JOIN_DUMP_HASH_TABLE)
+# add_definitions(-DDEBUG_HASH_JOIN_DUMP_PROBE)
 
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
