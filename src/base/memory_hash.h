@@ -28,7 +28,6 @@
 
 #include "dbtype_def.h"
 #include "memory_alloc.h"
-#include "object_domain.h"
 #include "thread_compat.hpp"
 
 #include <stdio.h>
@@ -85,6 +84,8 @@ extern unsigned int mht_5strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
 
 extern unsigned int mht_get_hash_number (const int unsigned ht_size, const DB_VALUE * val);
+extern unsigned int mht_get_hash_number_with_tuple (unsigned int ht_size, char *value, int value_size, DB_TYPE type,
+						    int precision);
 extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
 extern int mht_compare_identifiers_equal (const void *key1, const void *key2);
