@@ -2664,7 +2664,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 
   if (ha_node_list == NULL || ha_node_list[0] == '\0')
     {
-      sprintf (err_string, "%s is empty", prm_get_name (PRM_ID_HA_NODE_LIST));
+      snprintf (err_string, LINE_MAX, "%s is empty.", prm_get_name (PRM_ID_HA_NODE_LIST));
       goto error;
     }
 
@@ -2690,8 +2690,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 		{
 		  if (hb_Cluster->state == HB_NSTATE_REPLICA)
 		    {
-		      sprintf (err_string, "In replica mode, (%s) must not be specified in the %s",
-			       hb_Cluster->host_name, prm_get_name (PRM_ID_HA_NODE_LIST));
+		      snprintf (err_string, LINE_MAX, "In replica mode, (%s) must not be specified in the %s.",
+				hb_Cluster->host_name, prm_get_name (PRM_ID_HA_NODE_LIST));
 		      goto error;
 		    }
 		  else
@@ -2709,7 +2709,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 
   if (hb_Cluster->state != HB_NSTATE_REPLICA && hb_Cluster->myself == NULL)
     {
-      sprintf (err_string, "cannot find (%s) in the %s", hb_Cluster->host_name, prm_get_name (PRM_ID_HA_NODE_LIST));
+      snprintf (err_string, LINE_MAX, "cannot find (%s) in the %s.", hb_Cluster->host_name,
+		prm_get_name (PRM_ID_HA_NODE_LIST));
       goto error;
     }
 
@@ -2726,7 +2727,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 
   if (hb_Cluster->state == HB_NSTATE_REPLICA && tmp_string[0] == '\0')
     {
-      sprintf (err_string, "%s is empty", prm_get_name (PRM_ID_HA_REPLICA_LIST));
+      snprintf (err_string, LINE_MAX, "%s is empty.", prm_get_name (PRM_ID_HA_REPLICA_LIST));
       goto error;
     }
 
@@ -2737,8 +2738,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	{
 	  if (strcmp (hb_Cluster->group_id, p) != 0)
 	    {
-	      sprintf (err_string, "group id of (%s, %s) is different", prm_get_name (PRM_ID_HA_NODE_LIST),
-		       prm_get_name (PRM_ID_HA_REPLICA_LIST));
+	      snprintf (err_string, LINE_MAX, "group id of (%s, %s) is different.", prm_get_name (PRM_ID_HA_NODE_LIST),
+			prm_get_name (PRM_ID_HA_REPLICA_LIST));
 	      goto error;
 	    }
 	}
@@ -2751,8 +2752,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 		{
 		  if (hb_Cluster->state != HB_NSTATE_REPLICA)
 		    {
-		      sprintf (err_string, "In not replica mode, (%s) must not be specified in the %s",
-			       hb_Cluster->host_name, prm_get_name (PRM_ID_HA_REPLICA_LIST));
+		      snprintf (err_string, LINE_MAX, "In not replica mode, (%s) must not be specified in the %s.",
+				hb_Cluster->host_name, prm_get_name (PRM_ID_HA_REPLICA_LIST));
 		      goto error;
 		    }
 		  else
@@ -2766,8 +2767,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 
   if (hb_Cluster->state == HB_NSTATE_REPLICA && hb_Cluster->myself == NULL)
     {
-      sprintf (err_string, "In replica mode, (%s) must be specified in the %s", hb_Cluster->host_name,
-	       prm_get_name (PRM_ID_HA_REPLICA_LIST));
+      snprintf (err_string, LINE_MAX, "In replica mode, (%s) must be specified in the %s.", hb_Cluster->host_name,
+		prm_get_name (PRM_ID_HA_REPLICA_LIST));
       goto error;
     }
 
@@ -4868,16 +4869,6 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   int rv;
   struct sockaddr_in udp_saddr;
   char host_name[CUB_MAXHOSTNAMELEN];
-
-  if (nodes == NULL || nodes[0] == '\0')
-    {
-      char err_string[LINE_MAX];
-
-      sprintf (err_string, "%s is empty", prm_get_name (PRM_ID_HA_NODE_LIST));
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, err_string);
-
-      return ER_PRM_BAD_VALUE;
-    }
 
   if (hb_Cluster == NULL)
     {
