@@ -3747,7 +3747,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 #if 0
       mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
 		    (void *) &llsidp->list_id->type_list, (void *) &llsidp->hlsid.hash_list_scan_type);
-      printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+      printf ("temp file : tuple count = %lld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
 	      llsidp->list_id->page_cnt * 16);
 #endif
 
@@ -4907,7 +4907,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 #if 0
 	  (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
 			       (void *) &llsidp->list_id->type_list, (void *) &llsidp->hlsid.hash_list_scan_type);
-	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+	  printf ("temp file : tuple count = %lld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
 		  llsidp->list_id->page_cnt * 16);
 #endif
 	  mht_clear_hls (llsidp->hlsid.memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);

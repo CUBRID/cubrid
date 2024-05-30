@@ -6649,7 +6649,8 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
   QFILE_TUPLE_VALUE_FLAG value_flag;
   int value_size;
   DB_VALUE temp_value;
-  DB_VALUE_COMPARE_RESULT c;
+  TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
+  DB_VALUE_COMPARE_RESULT compare_result = DB_EQ;
   int key_index, value_index;
   int error = NO_ERROR;
 
@@ -6660,8 +6661,6 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
     }
 
   db_make_null (&temp_value);
-
-  c = DB_EQ;
 
   or_init (&iterator, tuple_record_p->tpl, QFILE_GET_TUPLE_LENGTH (tuple_record_p->tpl));
 
@@ -6716,72 +6715,41 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
 	  goto exit_on_error;
 	}
 
-      if (need_coerce_type == true)
+      pr_clear_value (key->values[key_index]);
+
+      if (need_coerce_type == true && coerce_domains != NULL && coerce_domains[key_index] != NULL
+	  && coerce_domains[key_index] != domains[key_index])
 	{
-	  pr_clear_value (key->values[key_index]);
+	  domains[key_index]->type->data_readval (&buf, &temp_value, domains[key_index], -1, false, NULL, 0);
 
-	  if (need_coerce_type == true && coerce_domains != NULL && coerce_domains[key_index] != NULL
-	      && coerce_domains[key_index] != domains[key_index])
+	  domain_status = tp_value_coerce (&temp_value, key->values[key_index], coerce_domains[key_index]);
+	  pr_clear_value (&temp_value);
+	  if (domain_status != DOMAIN_COMPATIBLE)
 	    {
-	      pr_clear_value (&temp_value);
-
-	      domains[key_index]->type->data_readval (&buf, &temp_value, domains[key_index], -1, false, NULL, 0);
-
-	      if (tp_value_coerce (&temp_value, key->values[key_index], coerce_domains[key_index]) != DOMAIN_COMPATIBLE)
-		{
-		  error = ER_TP_CANT_COERCE;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-			  pr_type_name (TP_DOMAIN_TYPE (domains[key_index])),
-			  pr_type_name (TP_DOMAIN_TYPE (coerce_domains[key_index])));
-		  goto exit_on_error;
-		}
-	    }
-	  else
-	    {
-	      domains[key_index]->type->data_readval (&buf, key->values[key_index], domains[key_index], -1, false, NULL,
-						      0);
-	    }
-
-	  if (compare_key != NULL)
-	    {
-	      c = tp_value_compare (key->values[key_index], compare_key->values[key_index], 0, 0);
-	      if (c != DB_EQ)
-		{
-		  /* give up; next tuple */
-		  goto exit_on_end;
-		}
+	      error = ER_TP_CANT_COERCE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		      pr_type_name (TP_DOMAIN_TYPE (domains[key_index])),
+		      pr_type_name (TP_DOMAIN_TYPE (coerce_domains[key_index])));
+	      goto exit_on_error;
 	    }
 	}
       else
 	{
-	  key->tuples[key_index]->tpl = buf.ptr;
-	  key->tuples[key_index]->size = value_size;
+	  domains[key_index]->type->data_readval (&buf, key->values[key_index], domains[key_index], -1, false, NULL, 0);
+	}
 
-	  if (compare_key != NULL)
+      if (compare_key != NULL)
+	{
+	  compare_result = tp_value_compare (key->values[key_index], compare_key->values[key_index], 0, 0);
+	  if (compare_result != DB_EQ)
 	    {
-
-	      if (key->tuples[key_index]->size != compare_key->tuples[key_index]->size)
-		{
-		  /* give up; next tuple */
-		  goto exit_on_end;
-		}
-
-	      if (memcmp
-		  (key->tuples[key_index]->tpl, compare_key->tuples[key_index]->tpl, key->tuples[key_index]->size) != 0)
-		{
-		  /* give up; next tuple */
-		  goto exit_on_end;
-		}
+	      /* give up; next tuple */
+	      goto exit_on_end;
 	    }
 	}
     }
 
 exit_on_end:
-  if (need_coerce_type == true)
-    {
-      pr_clear_value (&temp_value);
-    }
-
   if (iterator.ptr < iterator.endptr)
     {
       /* add 1 to return a value greater than 0 */
@@ -6795,8 +6763,6 @@ exit_on_error:
     {
       error = ER_FAILED;
     }
-
-  pr_clear_value (&temp_value);
 
   return error;
 }
@@ -6901,16 +6867,8 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p,
 	    }
 	}
 
-      if (hash_join_p->need_coerce_type == true)
-	{
-	  hash_join_p->curr_hash_key =
-	    qdata_hash_scan_key (hash_join_p->temp_key, UINT_MAX, hash_join_p->hash_list_scan_type);
-	}
-      else
-	{
-	  hash_join_p->curr_hash_key =
-	    qdata_hash_scan_key_with_tuple (hash_join_p->temp_key, UINT_MAX, hash_join_p->hash_list_scan_type, domains);
-	}
+      hash_join_p->curr_hash_key =
+	qdata_hash_scan_key (hash_join_p->temp_key, UINT_MAX, hash_join_p->hash_list_scan_type);
 
       error = qexec_hash_join_build_key (thread_p, hash_join_p, &tuple_record, scan_id_p);
       if (error != NO_ERROR)
@@ -7118,15 +7076,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	    }
 	}
 
-      if (hash_join_p->need_coerce_type == true)
-	{
-	  hash_join_p->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_join_p->hash_list_scan_type);
-	}
-      else
-	{
-	  hash_join_p->curr_hash_key =
-	    qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_join_p->hash_list_scan_type, probe_domains);
-	}
+      hash_join_p->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_join_p->hash_list_scan_type);
 
       do
 	{
@@ -7690,7 +7640,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 	{
 	  mht_dump_hls (thread_p, stdout, hash_join.memory.hash_table, 1, qdata_print_hash_scan_entry,
 			&inner_xasl->list_id->type_list, (void *) &hash_join.hash_list_scan_type);
-	  printf ("temp file : tuple count = %d, file_size = %dK\n", inner_xasl->list_id->tuple_cnt,
+	  printf ("temp file : tuple count = %lld, file_size = %dK\n", inner_xasl->list_id->tuple_cnt,
 		  inner_xasl->list_id->page_cnt * 16);
 	}
       else if (hash_join.hash_list_scan_type == HASH_METH_HASH_FILE)
