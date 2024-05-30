@@ -2931,7 +2931,6 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     case BUILD_SCHEMA_PROC:
       json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
       json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
       json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
       break;
 
@@ -2940,7 +2939,6 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     case INTERSECTION_PROC:
       json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
       json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
       json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
       subquery = json_array ();
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
