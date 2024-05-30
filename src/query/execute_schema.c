@@ -7015,8 +7015,7 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
     {
       if (attribute->type_enum == PT_TYPE_NONE)
 	{
-	  pt_record_error (parser, parser->statement_number, attribute->line_number, attribute->column_number,
-			   "system error - attribute type not set", NULL);
+    attribute->type_enum = PT_TYPE_VARCHAR;
 	}
       else
 	{
