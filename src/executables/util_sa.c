@@ -1536,6 +1536,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   bool is_emergency = false;
   DIAGDUMP_TYPE diag;
   THREAD_ENTRY *thread_p;
+  int error_code = NO_ERROR;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (db_name == NULL)
@@ -1739,11 +1740,16 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		  goto error_exit;
 		}
 	    }
-	  if (heap_dump_heap_file (thread_p, outfp, dump_records, class_name) == ER_LC_UNKNOWN_CLASSNAME)
+	  error_code = heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
+	  if (error_code != NO_ERROR)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_UNKNOWN_CLASS),
-				     class_name);
+	      if (error_code == ER_LC_UNKNOWN_CLASSNAME)
+		{
+		  PRINT_AND_LOG_ERR_MSG (msgcat_message
+					 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_UNKNOWN_CLASS),
+					 class_name);
+		}
+	      goto error_exit;
 	    }
 	}
     }
