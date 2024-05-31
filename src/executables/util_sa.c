@@ -1739,7 +1739,10 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		  goto error_exit;
 		}
 	    }
-	  heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
+	  if (heap_dump_heap_file (thread_p, outfp, dump_records, class_name) == ER_LC_UNKNOWN_CLASSNAME)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message(MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_UNKNOWN_CLASS), class_name);
+    }
 	}
     }
 
