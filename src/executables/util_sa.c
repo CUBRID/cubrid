@@ -1737,7 +1737,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      if (utility_check_class_name (class_name) != NO_ERROR)
 		{
-      db_shutdown ();
+		  db_shutdown ();
 		  goto error_exit;
 		}
 	    }
@@ -1750,7 +1750,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 					 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_UNKNOWN_CLASS),
 					 class_name);
 		}
-        db_shutdown ();
+	      db_shutdown ();
 	      goto error_exit;
 	    }
 	}
