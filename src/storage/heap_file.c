@@ -46,7 +46,6 @@
 #include "btree.h"
 #include "btree_unique.hpp"
 #include "schema_system_catalog_constants.h"	/* for CT_SERIAL_NAME */
-#include "utility.h"
 #include "transform.h"
 #include "serial.h"
 #include "object_primitive.h"
