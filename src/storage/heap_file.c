@@ -14512,7 +14512,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 /*
  * heap_dump_heap_file () - dump a specific heap file with class name
  *
- * return            :
+ * return            : error code
  * thread_p (in)     : thread entry
  * fp (in)           : output file
  * dump_records (in) : true to dump records
@@ -14531,7 +14531,6 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   status = xlocator_find_class_oid (thread_p, class_name, &class_oid, S_LOCK);
   if (status != LC_CLASSNAME_EXIST)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, class_name);
       return ER_LC_UNKNOWN_CLASSNAME;
     }
 
@@ -14540,6 +14539,7 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   error_code = heap_hfid_cache_get (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error_code != NO_ERROR)
     {
+      assert (false);
       return error_code;
     }
 
@@ -14548,6 +14548,7 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   error_code = heap_get_class_partitions (thread_p, &class_oid, &parts, &parts_count);
   if (error_code != NO_ERROR)
     {
+      assert (false);
       return error_code;
     }
 
