@@ -14532,7 +14532,8 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   status = xlocator_find_class_oid (thread_p, class_name, &class_oid, S_LOCK);
   if (status != LC_CLASSNAME_EXIST)
     {
-      return ER_LC_UNKNOWN_CLASSNAME;
+      error_code = ER_LC_UNKNOWN_CLASSNAME;
+      goto exit;
     }
 
   fprintf (fp, "\n*** DUMP HEAP OF %s ***\n", class_name);
@@ -14541,7 +14542,7 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   if (error_code != NO_ERROR)
     {
       assert (false);
-      return error_code;
+      goto exit;
     }
 
   heap_dump (thread_p, fp, &hfid, dump_records);
@@ -14550,7 +14551,7 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   if (error_code != NO_ERROR)
     {
       assert (false);
-      return error_code;
+      goto exit;
     }
 
   for (int i = 1; i < parts_count; i++)
@@ -14559,7 +14560,9 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
     }
 
   heap_clear_partition_info (thread_p, parts, parts_count);
-  return NO_ERROR;
+
+exit:
+  return error_code;
 }
 #endif
 
