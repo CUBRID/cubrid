@@ -7540,7 +7540,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 	{
 	  if (col->node_type == PT_VALUE && col->type_enum == PT_TYPE_NULL)
 	    {
-        col->type_enum = PT_TYPE_VARCHAR;
+	      col->type_enum = PT_TYPE_VARCHAR;
 	    }
 	  else
 	    {

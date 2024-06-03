@@ -7015,7 +7015,7 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
     {
       if (attribute->type_enum == PT_TYPE_NONE)
 	{
-    attribute->type_enum = PT_TYPE_VARCHAR;
+	  attribute->type_enum = PT_TYPE_VARCHAR;
 	}
       else
 	{
