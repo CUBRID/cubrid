@@ -244,7 +244,7 @@ jobs:
             fi
 
             # [exception case] memory_monitor_sr.cpp / memory_monitor_api.cpp is base file of memory monitoring module
-            if [ "$f" != "src/base/memory_monitor_sr.cpp" ] && [ "$f" != "src/base/memory_monitor_api.cpp" ]; then
+            if [ "$f" == "src/base/memory_monitor_sr.cpp" ] || [ "$f" == "src/base/memory_monitor_api.cpp" ]; then
               result_for_f="PASS"
             fi
 
