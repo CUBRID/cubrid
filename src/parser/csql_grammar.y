@@ -1029,6 +1029,7 @@ static char *g_plcsql_text;
 %type <node> dblink_column_definition
 
 %type <node> pl_language_spec
+%type <node> table_column
 
 /*}}}*/
 
@@ -1074,6 +1075,7 @@ static char *g_plcsql_text;
 %type <c2> of_cached_num
 %type <c2> of_cycle_nocycle
 %type <c2> data_type
+%type <c2> sp_param_type
 %type <c2> primitive_type
 %type <c2> opt_prec_2
 %type <c2> in_pred_operand
@@ -1690,6 +1692,7 @@ static char *g_plcsql_text;
 %token <cptr> TIMEZONE
 %token <cptr> TRACE
 %token <cptr> TRAN
+%token <cptr> TYPE
 %token <cptr> TRIGGERS
 %token <cptr> UCASE
 %token <cptr> UNCOMMITTED
@@ -12597,7 +12600,7 @@ opt_plus
 
 sp_return_type
         : data_type
-                {{ DBG_TRACE_GRAMMAR(sp_return_type, | data_type);
+                {{ DBG_TRACE_GRAMMAR(sp_return_type, : data_type);
 
 			$$ = $1;
 
@@ -12610,6 +12613,23 @@ sp_return_type
 			$$ = ctn;
 
                 DBG_PRINT}}
+        | table_column MOD TYPE
+		{{ DBG_TRACE_GRAMMAR(sp_return_type, | table_column MOD TYPE);
+
+			container_2 ctn;
+
+			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			if (dt)
+			  {
+			    dt->type_enum = PT_TYPE_TABLE_COLUMN;
+                            dt->data_type = NULL;
+                            dt->info.data_type.table_column = $1;
+			  }
+
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_NONE), dt); // PT_TYPE_NONE: unknown yet
+			$$ = ctn;
+
+		DBG_PRINT}}
         ;
 
 is_or_as
@@ -12763,9 +12783,9 @@ sp_param_list
 sp_param_def
 	: identifier
 	  opt_sp_in_out
-	  data_type
+	  sp_param_type
 	  opt_comment_spec
-		{{ DBG_TRACE_GRAMMAR(sp_param_def, : identifier opt_sp_in_out data_type opt_comment_spec); 
+		{{ DBG_TRACE_GRAMMAR(sp_param_def, : identifier opt_sp_in_out sp_param_type opt_comment_spec);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_SP_PARAMETERS);
 
@@ -12782,28 +12802,58 @@ sp_param_def
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| identifier
-	  opt_sp_in_out
-	  CURSOR
-	  opt_comment_spec
-		{{ DBG_TRACE_GRAMMAR(sp_param_def, | identifier opt_sp_in_out CURSOR opt_comment_spec); 
+	;
 
-			PT_NODE *node = parser_new_node (this_parser, PT_SP_PARAMETERS);
+sp_param_type
+        : data_type
+		{{ DBG_TRACE_GRAMMAR(sp_param_type, : data_type);
 
-			if (node)
+                        $$ = $1;
+
+		DBG_PRINT}}
+        | CURSOR
+		{{ DBG_TRACE_GRAMMAR(sp_param_type, | CURSOR);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_RESULTSET), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+        | table_column MOD TYPE
+		{{ DBG_TRACE_GRAMMAR(sp_param_type, | table_column MOD TYPE);
+
+			container_2 ctn;
+
+			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			if (dt)
 			  {
-			    node->type_enum = PT_TYPE_RESULTSET;
-			    node->data_type = NULL;
-			    node->info.sp_param.name = $1;
-			    node->info.sp_param.mode = $2;
-			    node->info.sp_param.comment = $4;
+			    dt->type_enum = PT_TYPE_TABLE_COLUMN;
+                            dt->data_type = NULL;
+                            dt->info.data_type.table_column = $1;
 			  }
 
-			$$ = node;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_NONE), dt); // PT_TYPE_NONE: unknown yet
+			$$ = ctn;
+
+		DBG_PRINT}}
+        ;
+
+table_column
+        : class_name DOT identifier
+		{{ DBG_TRACE_GRAMMAR(table_column, : class_name DOT identifier);
+
+			PT_NODE *dot = parser_new_node (this_parser, PT_DOT_);
+			if (dot)
+			  {
+			    dot->info.dot.arg1 = $1;
+			    dot->info.dot.arg2 = $3;
+			  }
+
+                        $$ = dot;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	;
+        ;
 
 opt_sp_in_out
 	: opt_in_out
@@ -23013,6 +23063,7 @@ identifier
 	| TRACE                  {{ DBG_TRACE_GRAMMAR(identifier, | TRACE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TRAN                   {{ DBG_TRACE_GRAMMAR(identifier, | TRAN               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TRIGGERS               {{ DBG_TRACE_GRAMMAR(identifier, | TRIGGERS           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| TYPE                   {{ DBG_TRACE_GRAMMAR(identifier, | TYPE               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| UCASE                  {{ DBG_TRACE_GRAMMAR(identifier, | UCASE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| UNCOMMITTED            {{ DBG_TRACE_GRAMMAR(identifier, | UNCOMMITTED        ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| VARIANCE               {{ DBG_TRACE_GRAMMAR(identifier, | VARIANCE           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}

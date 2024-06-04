@@ -163,6 +163,7 @@ extern int xcache_insert (THREAD_ENTRY * thread_p, const compile_context * conte
 			  int n_oid, const OID * class_oids, const int *class_locks,
 			  const int *tcards, XASL_CACHE_ENTRY ** xcache_entry);
 extern void xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid);
+extern void xcache_remove_by_sha1 (THREAD_ENTRY * thread_p, const char *sha1);
 extern void xcache_drop_all (THREAD_ENTRY * thread_p);
 extern void xcache_dump (THREAD_ENTRY * thread_p, FILE * fp);
 
