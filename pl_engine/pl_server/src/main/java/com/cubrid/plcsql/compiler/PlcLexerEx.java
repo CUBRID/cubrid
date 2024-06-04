@@ -77,7 +77,7 @@ public class PlcLexerEx extends PlcLexer {
 
         String s = sbuf.toString().trim();
         if (s.length() > 0) {
-            return s + " AS LANGUAGE JAVA NAME '%s';";
+            return s + " AS LANGUAGE JAVA NAME";
         } else {
             return null;
         }

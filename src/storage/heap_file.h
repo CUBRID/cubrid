@@ -237,8 +237,8 @@ typedef struct heap_idx_elements_info HEAP_IDX_ELEMENTS_INFO;
 struct heap_idx_elements_info
 {
   int num_btids;		/* class has # of btids */
-  int has_single_col;		/* class has single column index */
-  int has_multi_col;		/* class has multi-column index */
+  bool has_single_col;		/* class has single column index */
+  bool has_multi_col;		/* class has multi-column index */
 };
 
 /* heap operation types */

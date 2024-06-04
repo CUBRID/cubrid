@@ -174,7 +174,9 @@ struct spage_slots_context
 static int spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * sphdr, PAGE_PTR pgptr, int save);
 static int spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PTR page_p,
 				   int *other_saved_spaces);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int spage_get_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, SPAGE_HEADER * sphdr, PAGE_PTR pgptr);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int spage_get_total_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PTR page_p);
 static void spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp, VPID * vpid);
 static int spage_compare_slot_offset (const void *arg1, const void *arg2);
@@ -201,8 +203,10 @@ static void spage_reduce_a_slot (PAGE_PTR page_p);
 static int spage_check_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 				  int record_descriptor_length, SPAGE_SLOT ** out_slot_p, int *out_space_p,
 				  int *out_old_waste_p, int *out_new_waste_p);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int spage_check_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 				       int mvcc_delete_record_length, int mvcc_insert_record_length);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPAGE_SLOT * slot_p,
 					 const RECDES * record_descriptor_p, int space);
 static int spage_update_record_after_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPAGE_HEADER * page_header_p,
@@ -230,10 +234,14 @@ static SCAN_CODE spage_get_record_data (PAGE_PTR pgptr, SPAGE_SLOT * sptr, RECDE
 static bool spage_has_enough_total_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, SPAGE_HEADER * sphdr, int space);
 static bool spage_has_enough_contiguous_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, SPAGE_HEADER * sphdr,
 					       int space);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int offset,
 			     const RECDES * recdes, bool is_append);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static void spage_add_contiguous_free_space (PAGE_PTR pgptr, int space);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static void spage_reduce_contiguous_free_space (PAGE_PTR pgptr, int space);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static INLINE void spage_verify_header (PAGE_PTR page_p) __attribute__ ((ALWAYS_INLINE));
 
 // *INDENT-OFF*
@@ -637,6 +645,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * spage_get_saved_spaces_by_other_trans () - Find the total saved space by
  *                                            other transactions
@@ -655,6 +664,7 @@ spage_get_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, SPAGE_HEADER * p
 
   return saved_by_other_trans;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * spage_get_total_saved_spaces () - Find the total saved space
@@ -2273,6 +2283,7 @@ spage_check_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_i
   return SP_SUCCESS;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
 * spage_check_mvcc_updatable () - check whether is enough free area to update
 *                   a record in MVCC
@@ -2380,6 +2391,7 @@ spage_check_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID s
 
   return SP_SUCCESS;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * spage_update_record_in_place () -
@@ -2630,6 +2642,7 @@ spage_is_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, 
   return true;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
 * spage_is_mvcc_updatable () - check whether is enough free area to update
  *                   a record in MVCC
@@ -2651,6 +2664,7 @@ spage_is_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot
 
   return true;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * spage_update_record_type () - Update the type of the record located at the
@@ -2761,6 +2775,7 @@ spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
   return is_reclaim;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * spage_split () - Split the record stored at given slot_id at offset location
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
@@ -3654,6 +3669,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id, P
 
   return SP_SUCCESS;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * spage_search_record () -
@@ -4726,6 +4742,7 @@ spage_get_page_header_info (PAGE_PTR page_p, DB_VALUE ** page_header_info)
   return S_SUCCESS;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * spage_get_record_offset () - Find the offset of the record associated with
  *                              the given slot on the given page
@@ -4755,6 +4772,7 @@ spage_get_record_offset (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot
 
   return slot_p->offset_to_record;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * spage_get_slot () - Looks for the slot with slot_id identifier in page_p
@@ -4844,6 +4862,7 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bo
 #endif
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * spage_reduce_contiguous_free_space () -
  *   return:
@@ -4867,7 +4886,7 @@ spage_reduce_contiguous_free_space (PAGE_PTR page_p, int space)
 
   spage_verify_header (page_p);
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * spage_header_start_scan () -

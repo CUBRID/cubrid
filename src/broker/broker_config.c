@@ -123,6 +123,7 @@ static void read_conf_cache (int cid, bool * acl, int *num_br, int *shm_id, char
 static void write_conf_cache (char *file, bool * acl_flag, int *num_broker, int *shm_id, char *alog,
 			      T_BROKER_INFO * br_info, time_t bf_mtime);
 static void clear_conf_cache_entry (int cid);
+static bool is_invalid_buf_size (int size);
 
 static T_CONF_TABLE tbl_appl_server[] = {
   {APPL_SERVER_CAS_TYPE_NAME, APPL_SERVER_CAS},
@@ -296,7 +297,8 @@ const char *broker_keywords[] = {
   "SHARD_PROXY_LOG_DIR",
   /* For backword compatibility */
   "SQL_LOG2",
-  "SHARD"
+  "SHARD",
+  "NET_BUF_SIZE"
 };
 
 int broker_keywords_size = sizeof (broker_keywords) / sizeof (char *);
@@ -663,6 +665,17 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       br_info[num_brs].appl_server_num = br_info[num_brs].appl_server_min_num;
+
+      INI_GETSTR_CHK (s, ini, sec_name, "NET_BUF_SIZE", DEFAULE_NET_BUF_SIZE, &lineno);
+      strncpy_bufsize (size_str, s);
+      br_info[num_brs].net_buf_size = (int) ut_size_string_to_kbyte (size_str, "K");
+
+      if (is_invalid_buf_size (br_info[num_brs].net_buf_size))
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
+
 
       br_info[num_brs].appl_server_max_num =
 	ini_getint (ini, sec_name, "MAX_NUM_APPL_SERVER", DEFAULT_AS_MAX_NUM, &lineno);
@@ -1832,4 +1845,25 @@ int
 conf_get_value_proxy_log_mode (const char *value)
 {
   return (get_conf_value (value, tbl_proxy_log_mode));
+}
+
+static bool
+is_invalid_buf_size (int size)
+{
+  bool ret = false;
+
+  // The unit of size is KB.
+  switch (size)
+    {
+    case 16:
+    case 32:
+    case 48:
+    case 64:
+      break;
+    default:
+      ret = true;
+      break;
+    }
+
+  return ret;
 }
