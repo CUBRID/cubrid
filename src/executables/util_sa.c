@@ -1601,7 +1601,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-    need_db_shutdown = true;
+  need_db_shutdown = true;
 
   if (diag < DIAGDUMP_ALL || diag >= DIAGDUMP_END_OF_OPTION)
     {
