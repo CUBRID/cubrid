@@ -1601,6 +1601,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+    need_db_shutdown = true;
+
   if (diag < DIAGDUMP_ALL || diag >= DIAGDUMP_END_OF_OPTION)
     {
       goto print_diag_usage;
@@ -1738,7 +1740,6 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      if (utility_check_class_name (class_name) != NO_ERROR)
 		{
-		  need_db_shutdown = true;
 		  goto error_exit;
 		}
 	    }
@@ -1751,7 +1752,6 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 					 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_UNKNOWN_CLASS),
 					 class_name);
 		}
-	      need_db_shutdown = true;
 	      goto error_exit;
 	    }
 	}
