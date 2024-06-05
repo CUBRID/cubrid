@@ -1534,6 +1534,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   const char *class_name;
   FILE *outfp = NULL;
   bool is_emergency = false;
+  bool need_db_shutdown = false;
   DIAGDUMP_TYPE diag;
   THREAD_ENTRY *thread_p;
   int error_code = NO_ERROR;
@@ -1737,7 +1738,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      if (utility_check_class_name (class_name) != NO_ERROR)
 		{
-		  db_shutdown ();
+		  need_db_shutdown = true;
 		  goto error_exit;
 		}
 	    }
@@ -1750,7 +1751,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 					 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_UNKNOWN_CLASS),
 					 class_name);
 		}
-	      db_shutdown ();
+	      need_db_shutdown = true;
 	      goto error_exit;
 	    }
 	}
@@ -1772,6 +1773,11 @@ print_diag_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
 error_exit:
+  if (need_db_shutdown)
+    {
+      db_shutdown ();
+    }
+
   if (output_file != NULL && outfp != NULL && outfp != stdout)
     {
       fclose (outfp);
