@@ -1058,7 +1058,7 @@ alloc_text_output (TEXT_OUTPUT * obj_out, const char *output_dirname)
    * NEED FUTURE OPTIMIZATION
    */
   obj_out->iosize = 1024 * 1024;	/* 1 Mbyte */
-  obj_out->iosize -= (obj_out->iosize % blksize);
+  obj_out->iosize -= (obj_out->iosize % blksize);	// ctshim
 
   obj_out->buffer = (char *) malloc (obj_out->iosize);
 
@@ -2364,7 +2364,7 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 	  error = pthread_cond_init (&unld_cls_info.cond, NULL);
 	}
 
-      cparea_lst_class.set_max_list (thread_count * 4);
+      cparea_lst_class.set_max_list (thread_count * 4);	// ctshim
       //cparea_lst_class.set_max_list (thread_count);
       unld_cls_info.cparea_lst_ref = &cparea_lst_class;
 

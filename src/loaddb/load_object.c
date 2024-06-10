@@ -597,9 +597,12 @@ text_string_print (TEXT_OUTPUT * tout, const char *buf, int buflen)
       CHECK_PRINT_ERROR (text_print_flush (tout));
     }
 
-  memcpy (tout->ptr, buf, buflen);
-  tout->ptr += buflen;
-  tout->count += buflen;
+  if (buflen > 0)
+    {
+      memcpy (tout->ptr, buf, buflen);
+      tout->ptr += buflen;
+      tout->count += buflen;
+    }
 exit_on_end:
   return error;
 exit_on_error:
@@ -611,16 +614,20 @@ int
 text_formatted_print (TEXT_OUTPUT * tout, char const *fmt, ...)
 {
   int error = NO_ERROR;
-  int nbytes, size;
+  int nbytes, avail;
   va_list ap;
+
 start:
-  size = tout->iosize - tout->count;	/* free space size */
+  avail = tout->iosize - tout->count;	/* free space size */
+  assert (avali > 0);
+
   va_start (ap, fmt);
-  nbytes = vsnprintf (tout->ptr, size, fmt, ap);
+  nbytes = vsnprintf (tout->ptr, avail, fmt, ap);
   va_end (ap);
   if (nbytes > 0)
     {
-      if (nbytes < size)
+      assert (nbytes < tout->iosize);
+      if (nbytes < avail)
 	{			/* OK */
 	  tout->ptr += nbytes;
 	  tout->count += nbytes;
@@ -1413,6 +1420,73 @@ strnchr (const char *str, char ch, int nbytes)
 static int
 print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len)
 {
+#if defined(SUPPORT_THREAD_UNLOAD)	// 20240610
+  int error = NO_ERROR;
+  const char *end;
+  int write_len = 0;
+
+  if (tout->iosize <= tout->count + 2 /* for single quotes at both */ )
+    {
+      CHECK_PRINT_ERROR (text_print_flush (tout));
+    }
+
+  /* opening quote */
+  tout->ptr[0] = '\'';
+  tout->ptr++;
+  tout->count++;
+
+  for (end = str + len; str < end && *str; str++)
+    {
+      if (*str != '\'')
+	{
+	  if (tout->iosize <= (tout->count + 1))
+	    {
+	      CHECK_PRINT_ERROR (text_print_flush (tout));
+	    }
+	  tout->ptr[0] = *str;
+	  tout->ptr++;
+	  tout->count++;
+	  write_len++;
+	}
+      else
+	{
+	  if (tout->iosize <= (tout->count + 2))
+	    {
+	      CHECK_PRINT_ERROR (text_print_flush (tout));
+	    }
+	  tout->ptr[0] = '\'';
+	  tout->ptr[1] = '\'';
+	  tout->ptr += 2;
+	  tout->count += 2;
+	  write_len += 2;
+	}
+
+      if (write_len >= max_token_len)
+	{
+	  if (tout->iosize <= (tout->count + 3))
+	    {
+	      CHECK_PRINT_ERROR (text_print_flush (tout));
+	    }
+	  tout->ptr[0] = '\'';
+	  tout->ptr[1] = '+';
+	  tout->ptr[2] = '\n';
+	  tout->ptr += 3;
+	  tout->count += 3;
+	  write_len = 0;
+	}
+    }
+
+  if (tout->iosize <= (tout->count + 1))
+    {
+      CHECK_PRINT_ERROR (text_print_flush (tout));
+    }
+
+  /* closing quote */
+  tout->ptr[0] = '\'';
+  tout->ptr++;
+  tout->count++;
+
+#else // #if defined(SUPPORT_THREAD_UNLOAD)
   int error = NO_ERROR;
   const char *p, *end;
   int partial_len, write_len, left_nbytes;
@@ -1453,6 +1527,8 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
 
   /* closing quote */
   CHECK_PRINT_ERROR (text_print (tout, "'", 1, NULL));
+#endif // #if defined(SUPPORT_THREAD_UNLOAD)
+
 exit_on_end:
   return error;
 exit_on_error:
