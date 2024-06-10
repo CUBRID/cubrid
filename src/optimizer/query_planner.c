@@ -71,6 +71,9 @@
 #define QO_CPU_WEIGHT   0.0025
 #define ISCAN_OID_ACCESS_OVERHEAD  20
 #define MJ_CPU_OVERHEAD_FACTOR   20
+#define HJ_BUILD_CPU_OVERHEAD_FACTOR   30
+#define HJ_PROBE_CPU_OVERHEAD_FACTOR   20
+#define HJ_FILE_IO_WEIGHT  0.5
 #define ISCAN_IO_HIT_RATIO   0.5
 #define SSCAN_DEFAULT_CARD 100
 
@@ -149,6 +152,7 @@ static void qo_iscan_cost (QO_PLAN *);
 static void qo_sort_cost (QO_PLAN *);
 static void qo_mjoin_cost (QO_PLAN *);
 static void qo_nljoin_cost (QO_PLAN *);
+static void qo_hjoin_cost (QO_PLAN *);
 static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
@@ -340,11 +344,11 @@ static QO_PLAN_VTBL qo_hash_join_plan_vtbl = {
   qo_join_walk,
   qo_join_free,
 #if defined(TEST_HASH_JOIN_FORCE_ENABLE)
-  qo_zero_cost,			/* TO DO - add qo_hjoin_cost */
-  qo_zero_cost,			/* TO DO - add qo_hjoin_cost */
+  qo_zero_cost,
+  qo_zero_cost,
 #else
-  qo_mjoin_cost,
-  qo_mjoin_cost,
+  qo_hjoin_cost,
+  qo_hjoin_cost,
 #endif
   qo_join_info,
   "Hash join"
@@ -3092,6 +3096,12 @@ qo_nljoin_cost (QO_PLAN * planp)
     planp->variable_cpu_cost += MAX (0.0, guessed_result_cardinality - 1.0) * subq_cpu_cost;
     planp->variable_io_cost += MAX (0.0, outer->variable_io_cost - 1.0) * subq_io_cost;	/* assume IO as # blocks */
   }
+
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
+  fprintf (stdout, "\n[DEBUG] Nested Loop Cost: \n");
+  fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+#endif
 }
 
 /*
@@ -3154,6 +3164,75 @@ qo_mjoin_cost (QO_PLAN * planp)
   planp->variable_cpu_cost += (outer_cardinality + inner_cardinality) * QO_CPU_WEIGHT * MJ_CPU_OVERHEAD_FACTOR;
   /* merge cost */
   planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
+
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
+  fprintf (stdout, "\n[DEBUG] Sort Merge Cost: \n");
+  fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+#endif
+}
+
+/*
+ * qo_hjoin_cost () -
+ *   return:
+ *   planp(in):
+ */
+static void
+qo_hjoin_cost (QO_PLAN * planp)
+{
+  QO_PLAN *inner;
+  QO_PLAN *outer;
+  QO_ENV *env;
+  double outer_cardinality = 0.0, inner_cardinality = 0.0;
+
+  static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE);
+
+  inner = planp->plan_un.join.inner;
+
+  /* for worst cost */
+  if (inner->fixed_cpu_cost == QO_INFINITY || inner->fixed_io_cost == QO_INFINITY
+      || inner->variable_cpu_cost == QO_INFINITY || inner->variable_io_cost == QO_INFINITY)
+    {
+      qo_worst_cost (planp);
+      return;
+    }
+
+  outer = planp->plan_un.join.outer;
+
+  /* for worst cost */
+  if (outer->fixed_cpu_cost == QO_INFINITY || outer->fixed_io_cost == QO_INFINITY
+      || outer->variable_cpu_cost == QO_INFINITY || outer->variable_io_cost == QO_INFINITY)
+    {
+      qo_worst_cost (planp);
+      return;
+    }
+
+  env = outer->info->env;
+  outer_cardinality = outer->info->cardinality;
+  inner_cardinality = inner->info->cardinality;
+
+  /* CPU and IO costs which are fixed against join */
+  planp->fixed_cpu_cost = outer->fixed_cpu_cost + inner->fixed_cpu_cost;
+  planp->fixed_io_cost = outer->fixed_io_cost + inner->fixed_io_cost;
+
+  /* CPU and IO costs which are variable according to the join plan */
+  planp->variable_cpu_cost = outer->variable_cpu_cost + inner->variable_cpu_cost;
+  planp->variable_cpu_cost += (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
+  planp->variable_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+
+  planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
+
+  if (inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ ) > mem_limit)
+    {
+      planp->variable_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
+      planp->variable_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+    }
+
+#if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
+  fprintf (stdout, "\n[DEBUG] Hash Join Cost: \n");
+  fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+#endif
 }
 
 /*
@@ -6079,7 +6158,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   else
     {
       /* default: disable hash-join */
-#if defined(TEST_HASH_JOIN_FORCE_ENABLE)
+#if defined(TEST_HASH_JOIN_ENABLE)
       /* fall through */
 #else
       goto exit;
