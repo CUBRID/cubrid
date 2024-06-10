@@ -2140,6 +2140,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *output_file = NULL;
+  char *sha1 = NULL;
   bool drop_flag = false;
   FILE *outfp = NULL;
 
@@ -2151,6 +2152,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
 
   drop_flag = utility_get_option_bool_value (arg_map, PLANDUMP_DROP_S);
   output_file = utility_get_option_string_value (arg_map, PLANDUMP_OUTPUT_FILE_S, 0);
+  sha1 = utility_get_option_string_value (arg_map, PLANDUMP_SHA1_S, 0);
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2192,8 +2194,16 @@ plandump (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  qmgr_dump_query_plans (outfp);
-  if (drop_flag)
+  if (sha1 != NULL)
+    {
+      if (qmgr_drop_query_plans_by_sha1 (sha1) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+    }
+  else if (drop_flag)
     {
       if (qmgr_drop_all_query_plans () != NO_ERROR)
 	{
@@ -2202,6 +2212,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
     }
+  qmgr_dump_query_plans (outfp);
   db_shutdown ();
 
   if (outfp != stdout)

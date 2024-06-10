@@ -12,42 +12,49 @@
 
 ## Linux (Fedora/RHEL/CentOS)
 
-```
+```sh
+
+yum install -y centos-release-scl
+
 # install devtoolset-8 (recommended)
 yum install -y devtoolset-8-gcc devtoolset-8-gcc-c++ devtoolset-8-make devtoolset-8-elfutils-libelf-devel devtoolset-8-systemtap-sdt-devel
 
+yum install -y ncurses-devel git which
+
 # install JDK 1.8
-yum install java-1.8.0-openjdk-devel
+yum install -y java-1.8.0-openjdk-devel
 
 
 # install build tools
 export CMAKE_VERSION=3.26.3
-curl -L https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/cmake-$CMAKE_VERSION-linux-x86_64.tar.gz | tar xzvf - \ 
+curl -L https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/cmake-$CMAKE_VERSION-linux-x86_64.tar.gz | tar xzvf - \
     && yes | cp -fR cmake-$CMAKE_VERSION-linux-x86_64/* /usr
 
 export NINJA_VERSION=1.11.1
 source scl_source enable devtoolset-8 \
 	&& curl -L https://github.com/ninja-build/ninja/archive/refs/tags/v$NINJA_VERSION.tar.gz | tar xzvf - \
     && cd ninja-$NINJA_VERSION && cmake -Bbuild-cmake && cmake --build build-cmake \
-    && mv build-cmake/ninja /usr/bin/ninja
+    && mv build-cmake/ninja /usr/bin/ninja \
+    && cd ..
 
-yum install ant libtool libtool-ltdl autoconf automake rpm-build
+yum install -y ant libtool libtool-ltdl autoconf automake rpm-build
 
 
 # install FLEX and BISON
-yum install flex
+yum install -y flex
 
 export BISON_VERSION=3.0.5
 curl -L https://ftp.gnu.org/gnu/bison/bison-$BISON_VERSION.tar.gz | tar xzvf - \
-     && cd bison-$BISON_VERSION && ./configure --prefix=/usr && make all install \ 
+     && cd bison-$BISON_VERSION && ./configure --prefix=/usr && make all install \
      && rm -rf bison-$BISON_VERSION && cd ..
+
 ```
 
 ## Windows
 
 Please refer to the following script. Note that you have to run Powershell as Administrator 
 
-```
+```pwsh
 # Install chocolately (recommended)
 Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')); \
     [System.Environment]::SetEnvironmentVariable('PATH', "\"${env:PATH};%ALLUSERSPROFILE%\chocolatey\bin\"", 'Machine');

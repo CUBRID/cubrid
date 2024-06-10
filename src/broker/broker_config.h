@@ -111,6 +111,8 @@
 
 #define DEFAULT_SSL_MODE                 "OFF"
 
+#define DEFAULE_NET_BUF_SIZE            "16K"
+
 #define CGW_LINK_SERVER_NAME_LEN	 256
 #define CGW_LINK_SERVER_IP_LEN		 32
 #define CGW_LINK_SERVER_PORT_LEN	 10
@@ -297,6 +299,7 @@ struct t_broker_info
 
   char ignore_shard_hint;
   int proxy_timeout;
+  int net_buf_size;
   /* to here, these are used only in shard */
 
   char use_SSL;

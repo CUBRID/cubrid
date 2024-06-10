@@ -1370,8 +1370,6 @@ cas_main (void)
 
 	    logddl_check_ddl_audit_param ();
 	    logddl_set_broker_info (shm_as_index, shm_appl->broker_name);
-	    logddl_set_db_name (db_name);
-	    logddl_set_user_name (db_user);
 	    logddl_set_ip (client_ip_str);
 
 	    db_set_client_ip_addr (client_ip_str);

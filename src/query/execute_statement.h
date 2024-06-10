@@ -148,6 +148,13 @@ extern int do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+/* for CTE result-cache */
+extern int do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_execute_prepared_cte (PARSER_CONTEXT * parser, PT_NODE * stmt, int cte_num_query,
+				    DB_PREPARE_CTE_INFO * cte_info);
+extern bool pt_is_allowed_result_cache (void);
+
 extern int do_update (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -200,6 +207,4 @@ extern int do_find_class_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_serial_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_trigger_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_synonym_by_query (const char *name, char *buf, int buf_size);
-
-
 #endif /* _EXECUTE_STATEMENT_H_ */

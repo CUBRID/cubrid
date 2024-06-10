@@ -138,6 +138,7 @@ extern void sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *re
 extern void sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_end_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
