@@ -112,6 +112,7 @@ namespace cubmethod
 
     std::string signature;
     std::string auth;
+    int lang;
     int num_args;
     std::vector<int> arg_pos;
     std::vector<int> arg_mode;

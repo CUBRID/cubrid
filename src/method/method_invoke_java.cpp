@@ -489,7 +489,17 @@ namespace cubmethod
 	i++;
       }
 
-    cubmem::block blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info));
+    cubmem::block blk;
+    if (s_code != S_ERROR)
+      {
+	blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info));
+      }
+    else
+      {
+	blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+					       ARG_FILE_LINE));
+      }
+
     error = mcon_send_data_to_java (m_group->get_socket (), get_next_java_header (m_java_header), std::move (blk));
     if (blk.is_valid ())
       {
@@ -497,6 +507,7 @@ namespace cubmethod
 	blk.ptr = NULL;
 	blk.dim = 0;
       }
+
     return error;
   }
 

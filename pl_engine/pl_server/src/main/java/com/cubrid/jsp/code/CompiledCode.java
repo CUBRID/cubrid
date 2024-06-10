@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,31 +29,60 @@
  *
  */
 
-package com.cubrid.jsp;
+package com.cubrid.jsp.code;
 
-import java.util.HashMap;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.URI;
+import javax.tools.SimpleJavaFileObject;
 
-public class TargetMethodCache {
-    private HashMap<String, TargetMethod> methods;
+public class CompiledCode extends SimpleJavaFileObject {
+    private String className = null;
+    private ByteArrayOutputStream baos = null;
 
-    public TargetMethodCache() {
-        methods = new HashMap<String, TargetMethod>();
-    }
+    private byte[] byteCode = null;
 
-    public TargetMethod get(String signature) throws Exception {
-        TargetMethod method = null;
+    public CompiledCode(String className) throws java.net.URISyntaxException {
+        super(new URI(className), Kind.CLASS);
 
-        method = methods.get(signature);
-        if (method == null) {
-            // TODO (CBRD-25370) : disabled temporary
-            // method = new TargetMethod(signature);
-            methods.put(signature, method);
+        int idx = className.indexOf(".");
+        if (idx != -1) {
+            this.className = className.substring(0, idx);
+
+        } else {
+            this.className = className;
         }
-
-        return method;
+        this.baos = new ByteArrayOutputStream();
     }
 
-    public void clear() {
-        methods.clear();
+    public String getClassName() {
+        return className;
+    }
+
+    public String getClassNameWithExtention() {
+        return className + ".class";
+    }
+
+    public byte[] getByteCode() {
+        if (byteCode == null) {
+            byteCode = baos.toByteArray();
+            try {
+                baos.close();
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        return byteCode;
+    }
+
+    @Override
+    public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+        return new String(getByteCode());
+    }
+
+    @Override
+    public OutputStream openOutputStream() throws IOException {
+        return baos;
     }
 }

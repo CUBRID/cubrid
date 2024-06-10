@@ -803,7 +803,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, sp_info.sp_name.data ());
-	  return er_errid ();
+	  goto error_exit;
 	}
     }
 
@@ -824,10 +824,10 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
       code_info.name = get_class_name (sp_info.target);
       code_info.created_time = stm.str ();
-      code_info.stype = 0;
+      code_info.stype = (sp_info.lang == SP_LANG_PLCSQL) ? SPSC_PLCSQL : SPSC_JAVA;
       code_info.scode = pl_code;
-      code_info.otype = 0;
-      code_info.ocode = "dummy"; // TODO: CBRD-24552
+      code_info.otype = compile_info.compiled_type;
+      code_info.ocode = compile_info.compiled_code;
       code_info.owner = Au_user; // current user
 
       err = sp_add_stored_procedure_code (code_info);
@@ -1514,6 +1514,22 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 
 	memcpy (sig->method_name, method_name, method_name_len);
 	sig->method_name[method_name_len] = 0;
+
+	// lang
+	error = db_get (mop_p, SP_ATTR_LANG, &lang_val);
+	if (error != NO_ERROR)
+	  {
+	    goto end;
+	  }
+
+	if (db_get_int (&lang_val) == SP_LANG_PLCSQL)
+	  {
+	    sig->method_type = METHOD_TYPE_PLCSQL;
+	  }
+	else
+	  {
+	    sig->method_type = METHOD_TYPE_JAVA_SP;
+	  }
 
 	// auth_name
 	error = db_get (mop_p, SP_ATTR_DIRECTIVE, &directive_val);

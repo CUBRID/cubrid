@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.compiler;
 
+import com.cubrid.jsp.code.CompiledCode;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +44,7 @@ public class MemoryFileManager extends ForwardingJavaFileManager<JavaFileManager
 
     private List<CompiledCode> codeList = new ArrayList<CompiledCode>();
 
-    public MemoryFileManager(JavaFileManager fileManager) {
+    protected MemoryFileManager(JavaFileManager fileManager) {
         super(fileManager);
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,31 +29,33 @@
  *
  */
 
-package com.cubrid.jsp;
+package com.cubrid.jsp.code;
 
-import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-public class TargetMethodCache {
-    private HashMap<String, TargetMethod> methods;
+public class MemoryClassCache {
 
-    public TargetMethodCache() {
-        methods = new HashMap<String, TargetMethod>();
+    private Map<String, MemoryClass> classMap = null;
+
+    // singleton
+    private static class LazyHolder {
+        private static final MemoryClassCache INSTANCE = new MemoryClassCache(null);
     }
 
-    public TargetMethod get(String signature) throws Exception {
-        TargetMethod method = null;
-
-        method = methods.get(signature);
-        if (method == null) {
-            // TODO (CBRD-25370) : disabled temporary
-            // method = new TargetMethod(signature);
-            methods.put(signature, method);
-        }
-
-        return method;
+    public static MemoryClassCache getInstance() {
+        return LazyHolder.INSTANCE;
     }
 
-    public void clear() {
-        methods.clear();
+    public MemoryClassCache(MemoryClassCache parent) {
+        this.classMap = new ConcurrentHashMap<>();
+    }
+
+    public MemoryClass getByClassName(String className) {
+        return classMap.get(className);
+    }
+
+    public void put(MemoryClass mCls) {
+        classMap.put(mCls.getClassName(), mCls);
     }
 }

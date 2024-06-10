@@ -29,34 +29,38 @@
  *
  */
 
-package com.cubrid.jsp.compiler;
+package com.cubrid.jsp.code;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.URI;
-import javax.tools.SimpleJavaFileObject;
+// cacheable Class object in-memory
+public class MemoryClass {
 
-public class CompiledCode extends SimpleJavaFileObject {
     private String className = null;
-    private ByteArrayOutputStream baos = null;
+    private CompiledCodeSet loadedCode = null;
+    private Class<?> loadedClass = null;
 
-    public CompiledCode(String className) throws java.net.URISyntaxException {
-        super(new URI(className), Kind.CLASS);
+    public MemoryClass(String className) {
         this.className = className;
-        this.baos = new ByteArrayOutputStream();
     }
 
     public String getClassName() {
         return className;
     }
 
-    public byte[] getByteCode() {
-        return baos.toByteArray();
+    public void setCode(CompiledCodeSet codeset) {
+        clear();
+        this.loadedCode = codeset;
     }
 
-    @Override
-    public OutputStream openOutputStream() throws IOException {
-        return baos;
+    public Class<?> getLoadedClass() {
+        return loadedClass;
+    }
+
+    public void clear() {
+        if (this.loadedCode != null) {
+            this.loadedCode.clear();
+            this.loadedCode = null;
+        }
+
+        loadedClass = null;
     }
 }

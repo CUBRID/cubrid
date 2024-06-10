@@ -3849,7 +3849,6 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	  else if (PT_IS_JAVA_SP (node))
 	    {
 	      (*tail)->class_name = NULL;
-	      (*tail)->method_type = METHOD_TYPE_JAVA_SP;
 
 	      int num_args = (*tail)->num_method_args;
 
@@ -3883,6 +3882,23 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  if (db_get (mop_p, SP_ATTR_TARGET, &method) == NO_ERROR)
 		    {
 		      (*tail)->method_name = (char *) db_get_string (&method);
+		    }
+		  else
+		    {
+		      break;
+		    }
+
+		  DB_VALUE lang;
+		  if (db_get (mop_p, SP_ATTR_LANG, &lang) == NO_ERROR)
+		    {
+		      if (db_get_int (&lang) == SP_LANG_PLCSQL)
+			{
+			  (*tail)->method_type = METHOD_TYPE_PLCSQL;
+			}
+		      else
+			{
+			  (*tail)->method_type = METHOD_TYPE_JAVA_SP;
+			}
 		    }
 		  else
 		    {

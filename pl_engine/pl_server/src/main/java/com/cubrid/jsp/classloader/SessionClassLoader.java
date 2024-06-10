@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,31 +29,65 @@
  *
  */
 
-package com.cubrid.jsp;
+package com.cubrid.jsp.classloader;
 
-import java.util.HashMap;
+import com.cubrid.jsp.code.CompiledCode;
+import com.cubrid.jsp.code.CompiledCodeSet;
+import java.util.Map.Entry;
+import java.util.UUID;
 
-public class TargetMethodCache {
-    private HashMap<String, TargetMethod> methods;
+public class SessionClassLoader extends ClassLoader {
 
-    public TargetMethodCache() {
-        methods = new HashMap<String, TargetMethod>();
+    private String id = null;
+    private CompiledCodeSet code = null;
+
+    public SessionClassLoader(CompiledCodeSet code) {
+        id = UUID.randomUUID().toString();
+        this.code = code;
     }
 
-    public TargetMethod get(String signature) throws Exception {
-        TargetMethod method = null;
+    public String getId() {
+        return id;
+    }
 
-        method = methods.get(signature);
-        if (method == null) {
-            // TODO (CBRD-25370) : disabled temporary
-            // method = new TargetMethod(signature);
-            methods.put(signature, method);
+    public CompiledCodeSet getCode() {
+        return code;
+    }
+
+    @Override
+    public Class<?> loadClass(String name) throws ClassNotFoundException {
+        Class<?> mainCls = findLoadedClass(name);
+        if (mainCls != null) {
+            // already loaded
+        } else {
+            try {
+                mainCls = super.loadClass(name);
+                if (mainCls != null) {
+                    return mainCls;
+                }
+            } catch (ClassNotFoundException e) {
+                // ignore
+            }
+
+            // find in codesets
+            if (code != null) {
+                for (Entry<String, CompiledCode> entry : code.getCodeList()) {
+                    Class<?> cls = null;
+                    String className = entry.getKey();
+                    byte[] classBytes = entry.getValue().getByteCode();
+                    cls = defineClass(className, classBytes, 0, classBytes.length);
+                    if (name.equals(className)) {
+                        mainCls = cls;
+                    }
+                }
+            }
         }
 
-        return method;
+        return mainCls;
     }
 
     public void clear() {
-        methods.clear();
+        id = null;
+        code = null;
     }
 }

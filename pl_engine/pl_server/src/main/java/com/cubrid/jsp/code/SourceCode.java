@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,31 +29,33 @@
  *
  */
 
-package com.cubrid.jsp;
+package com.cubrid.jsp.code;
 
-import java.util.HashMap;
+import java.net.URI;
+import javax.tools.SimpleJavaFileObject;
 
-public class TargetMethodCache {
-    private HashMap<String, TargetMethod> methods;
+public class SourceCode extends SimpleJavaFileObject {
+    private String className;
+    private String code;
 
-    public TargetMethodCache() {
-        methods = new HashMap<String, TargetMethod>();
+    public SourceCode(String className, String code) {
+        super(
+                URI.create("string:///" + className.replace('.', '/') + Kind.SOURCE.extension),
+                Kind.SOURCE);
+        this.code = code;
+        this.className = className;
     }
 
-    public TargetMethod get(String signature) throws Exception {
-        TargetMethod method = null;
-
-        method = methods.get(signature);
-        if (method == null) {
-            // TODO (CBRD-25370) : disabled temporary
-            // method = new TargetMethod(signature);
-            methods.put(signature, method);
-        }
-
-        return method;
+    public String getClassName() {
+        return className;
     }
 
-    public void clear() {
-        methods.clear();
+    public String getCode() {
+        return code;
+    }
+
+    @Override
+    public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+        return code;
     }
 }
