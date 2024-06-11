@@ -10998,6 +10998,202 @@ static int
 mr_readval_string_internal2 (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 			     int copy_buf_len, int align)
 {
+  int precision;
+  int rc = NO_ERROR;
+  int compressed_size = 0, expected_decompressed_size = 0;
+  char *decompressed_string = NULL, *compressed_string = NULL;
+
+  if (value == NULL)
+    {
+      if (size == -1)
+	{
+	  rc = or_skip_varchar (buf, align);
+	}
+      else if (size)
+	{
+	  rc = or_advance (buf, size);
+	}
+
+      return rc;
+    }
+
+  precision = (domain != NULL) ? domain->precision : DB_MAX_VARCHAR_PRECISION;
+  if (size == 0)
+    {
+      /* its NULL */
+      db_value_domain_init (value, DB_TYPE_VARCHAR, precision, 0);
+      return NO_ERROR;
+    }
+
+  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+/* Get the compressed size and uncompressed size from the buffer, and point the buf->ptr
+       * towards the data stored in the buffer */
+  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &expected_decompressed_size);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (!copy)
+    {
+      if (compressed_size > 0)
+	{
+	  if (copy_buf && copy_buf_len >= expected_decompressed_size + 1)
+	    {
+	      /* read buf image into the copy_buf */
+	      decompressed_string = copy_buf;
+	    }
+	  else
+	    {
+	      /* Allocate storage for the string including the kludge NULL terminator */
+	      decompressed_string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
+	      if (decompressed_string == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  expected_decompressed_size * sizeof (char));
+		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto cleanup;
+		}
+	    }
+#if 0
+	  compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
+	  if (compressed_string == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (compressed_size + 1) * sizeof (char));
+	      rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto cleanup;
+	    }
+
+	  memcpy (compressed_string, buf->ptr, compressed_size);
+	  compressed_string[compressed_size] = '\0';
+#endif
+
+	  rc =
+	    pr_get_compressed_data_from_buffer (buf, decompressed_string, compressed_size, expected_decompressed_size);
+	  if (rc != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+
+	  db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
+			   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	  value->need_clear = true;
+#if 0
+	  db_set_compressed_string (value, compressed_string, compressed_size, true);
+#else
+	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
+#endif
+	}
+      else
+	{
+	  assert (compressed_size == 0);
+
+	  db_make_varchar (value, precision, buf->ptr, expected_decompressed_size, TP_DOMAIN_CODESET (domain),
+			   TP_DOMAIN_COLLATION (domain));
+	  value->need_clear = false;
+	  db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
+	}
+    }
+  else				/* if (!copy) */
+    {
+      bool compressed_need_clear = false;
+      int decompressed_size = 0;
+
+      if (copy_buf && copy_buf_len >= expected_decompressed_size + 1)
+	{
+	  /* read buf image into the copy_buf */
+	  decompressed_string = copy_buf;
+	}
+      else
+	{
+	  /* Allocate storage for the string including the kludge NULL terminator */
+	  decompressed_string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
+	  if (decompressed_string == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      expected_decompressed_size * sizeof (char));
+	      rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto cleanup;
+	    }
+	}
+
+      if (compressed_size > 0)
+	{
+#if 0
+	  compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
+	  if (compressed_string == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (compressed_size + 1) * sizeof (char));
+	      rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto cleanup;
+	    }
+
+	  memcpy (compressed_string, buf->ptr, compressed_size);
+	  compressed_string[compressed_size] = '\0';
+#endif
+
+	  rc =
+	    pr_get_compressed_data_from_buffer (buf, decompressed_string, compressed_size, expected_decompressed_size);
+	  if (rc != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+
+	  db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
+			   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
+
+#if 0
+	  db_set_compressed_string (value, compressed_string, compressed_size, true);
+#else
+	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
+#endif
+	}
+      else
+	{
+	  assert (compressed_size == 0);
+
+	  memcpy (decompressed_string, buf->ptr, expected_decompressed_size);
+	  decompressed_string[expected_decompressed_size] = '\0';
+
+	  db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
+			   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
+
+	  db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
+	}
+    }
+
+  or_skip_varchar_remainder (buf, (compressed_size > 0) ? compressed_size : expected_decompressed_size, align);
+
+cleanup:
+  if (rc != NO_ERROR)
+    {
+      if (decompressed_string != NULL && decompressed_string != copy_buf)
+	{
+	  db_private_free_and_init (NULL, decompressed_string);
+	}
+      if (compressed_string != NULL)
+	{
+	  db_private_free_and_init (NULL, compressed_string);
+	}
+    }
+
+  return rc;
+}
+
+#if 0				// ctshim
+static int
+mr_readval_string_internal2 (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+			     int copy_buf_len, int align)
+{
   int pad, precision;
   char *new_ = NULL, *start = NULL;
   int str_length;
@@ -11301,6 +11497,7 @@ cleanup:
 
   return rc;
 }
+#endif // #if 0 //ctshim
 
 int
 data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,

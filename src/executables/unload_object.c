@@ -1294,6 +1294,9 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), owner_str,
 				sizeof (owner_str));
 
+#if defined(SUPPORT_THREAD_UNLOAD)
+	      assert (thread_count <= 0);
+#endif
 	      if (text_print
 		  (g_obj_out, NULL, 0, "%cid %s%s%s%s %d\n", '%', owner_str,
 		   PRINT_IDENTIFIER (class_name), i) != NO_ERROR)
@@ -2445,7 +2448,12 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 		  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (fetch_area);
 		  obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
 #if defined(SUPPORT_THREAD_UNLOAD)
-		  if (check_fetch_time == false)
+		  if (check_fetch_time == true)
+		    {
+		      class_objects += mobjs->num_objs;
+		      total_objects += mobjs->num_objs;
+		    }
+		  else
 #endif
 		    for (i = 0; i < mobjs->num_objs; ++i)
 		      {
