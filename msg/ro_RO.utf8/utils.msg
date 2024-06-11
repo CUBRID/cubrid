@@ -131,6 +131,7 @@ Nume de utilitare de administrare disponibile:\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s este un utilitar pentru SGDB.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
@@ -193,6 +194,7 @@ Utilitare de administrare disponibile:\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s este un utilitar pentru SGBD.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n

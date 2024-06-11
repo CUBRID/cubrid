@@ -131,6 +131,7 @@ Vorhandene Admin-Utilitynamen:\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s ist ein Werkzeug für DBMS.\n\
 Für zusätzliche Informationen, http://www.cubrid.org besuchen\n
@@ -193,6 +194,7 @@ Vorhandene Administratorutilities:\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s ist ein Werkzeug für DBMS.\n\
 Für zusätzliche Informationen, http://www.cubrid.org, besuchen\n
