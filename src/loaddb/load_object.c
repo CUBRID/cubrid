@@ -1425,6 +1425,9 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
   const char *end;
   int write_len = 0;
 
+  const char *st;
+  int tlen;
+
   if (tout->iosize <= tout->count + 2 /* for single quotes at both */ )
     {
       CHECK_PRINT_ERROR (text_print_flush (tout));
@@ -1434,6 +1437,68 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
   tout->ptr[0] = '\'';
   tout->ptr++;
   tout->count++;
+
+#if 1				// ctshim
+  end = str + len;
+  for (st = str; str < end && *str; str++)
+    {
+      if (*str == '\'')
+	{
+	  tlen = (int) (str - st);
+	  if (tout->iosize <= (tout->count + tlen + 2))
+	    {
+	      CHECK_PRINT_ERROR (text_print_flush (tout));
+	    }
+	  memcpy (tout->ptr, st, tlen);
+	  tout->ptr += tlen;
+	  tout->ptr[0] = '\'';
+	  tout->ptr[1] = '\'';
+	  tout->ptr += 2;
+	  tout->count += (tlen + 2);
+	  write_len += 2;
+	  st = str + 1;
+	}
+      else if (++write_len >= max_token_len)
+	{
+	  tlen = (int) (str - st) + 1;
+	  if (tout->iosize <= (tout->count + tlen + 5))
+	    {
+	      CHECK_PRINT_ERROR (text_print_flush (tout));
+	    }
+	  memcpy (tout->ptr, st, tlen);
+	  tout->ptr += tlen;
+	  tout->count += tlen;
+
+	  if ((str + 1) < end && str[1])
+	    {
+	      memcpy (tout->ptr, "'+\n '", 5);
+	      tout->ptr += 5;
+	      tout->count += 5;
+	    }
+	  else
+	    {
+	      tout->ptr[0] = '\'';
+	      tout->ptr += 1;
+	      tout->count += 1;
+	    }
+	  write_len = 0;
+	  st = str + 1;
+	}
+    }
+
+  if (st < str)
+    {
+      tlen = (int) (str - st);
+      if (tout->iosize <= (tout->count + tlen))
+	{
+	  CHECK_PRINT_ERROR (text_print_flush (tout));
+	}
+      memcpy (tout->ptr, st, tlen);
+      tout->ptr += tlen;
+      tout->count += tlen;
+    }
+
+#else
 
   for (end = str + len; str < end && *str; str++)
     {
@@ -1463,18 +1528,28 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
 
       if (write_len >= max_token_len)
 	{
-	  if (tout->iosize <= (tout->count + 3))
+	  if (tout->iosize <= (tout->count + 5))
 	    {
 	      CHECK_PRINT_ERROR (text_print_flush (tout));
 	    }
-	  tout->ptr[0] = '\'';
-	  tout->ptr[1] = '+';
-	  tout->ptr[2] = '\n';
-	  tout->ptr += 3;
-	  tout->count += 3;
+
+	  if ((str + 1) < end && str[1])
+	    {
+	      memcpy (tout->ptr, "'+\n '", 5);
+	      tout->ptr += 5;
+	      tout->count += 5;
+	    }
+	  else
+	    {
+	      tout->ptr[0] = '\'';
+	      tout->ptr += 1;
+	      tout->count += 1;
+	    }
+
 	  write_len = 0;
 	}
     }
+#endif
 
   if (tout->iosize <= (tout->count + 1))
     {
