@@ -2711,32 +2711,6 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
       plan->vtbl = &qo_hash_join_plan_vtbl;
       plan->order = QO_UNORDERED;
 
-      if (join_type == JOIN_INNER)
-	{
-	  if (outer->info->cardinality < inner->info->cardinality)
-	    {
-	      swap = inner;
-	      inner = outer;	/* build */
-	      outer = swap;	/* probe */
-	    }
-	}
-      else if (join_type == JOIN_LEFT)
-	{
-	  /* fall through */
-	}
-      else if (join_type == JOIN_RIGHT)
-	{
-	  swap = inner;
-	  inner = outer;	/* build */
-	  outer = swap;		/* probe */
-	}
-      else
-	{
-	  /* give up */
-	  assert (false);
-	  return NULL;
-	}
-
       break;
     }
 
@@ -3100,7 +3074,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 #if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
   fprintf (stdout, "\n[DEBUG] Nested Loop Cost: \n");
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
-  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n\n", planp->variable_io_cost);
 #endif
 }
 
@@ -3168,7 +3142,7 @@ qo_mjoin_cost (QO_PLAN * planp)
 #if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
   fprintf (stdout, "\n[DEBUG] Sort Merge Cost: \n");
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
-  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n\n", planp->variable_io_cost);
 #endif
 }
 
@@ -3185,7 +3159,7 @@ qo_hjoin_cost (QO_PLAN * planp)
   QO_ENV *env;
   double outer_cardinality = 0.0, inner_cardinality = 0.0;
 
-  static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE);
+  static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
   inner = planp->plan_un.join.inner;
 
@@ -3231,7 +3205,7 @@ qo_hjoin_cost (QO_PLAN * planp)
 #if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
   fprintf (stdout, "\n[DEBUG] Hash Join Cost: \n");
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
-  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n\n", planp->variable_io_cost);
 #endif
 }
 
@@ -6138,43 +6112,106 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	}
     }
 
-  /* At here, inner is single class spec */
-  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+  if (join_type == JOIN_RIGHT)
+    {
+      /* converse outer join type */
+      join_type = JOIN_LEFT;
 
-  if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
-    {
-      /* join hint: disable hash-join */
-      goto exit;
-    }
-  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-    {
-      /* join hint: force hash-join */
-    }
-  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-    {
-      /* join hint: force nl-join, idx-join, m-join; skip hash-join */
-      goto exit;
+      for (t = bitset_iterate (hash_join_terms, &iter); t != -1; t = bitset_next_member (&iter))
+	{
+	  term = QO_ENV_TERM (info->env, t);
+	  if (QO_TERM_CLASS (term) == QO_TC_DEP_LINK)
+	    {
+	      goto exit;
+	    }
+	}
+
+      if (bitset_cardinality (&(outer->nodes)) == 1)
+	{			/* single class spec */
+	  inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+	  if (QO_NODE_HINT (inner_node) & PT_HINT_ORDERED)
+	    {
+	      /* join hint: force join left-to-right; skip hash-join because, these are only support left outer join */
+	      goto exit;
+	    }
+
+	  if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
+	    {
+	      /* join hint: disable hash-join */
+	      goto exit;
+	    }
+	  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
+	    {
+	      /* join hint: force hash-join */
+	    }
+	  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+	    {
+	      /* join hint: force nl-join, idx-join, m-join; skip hash-join */
+	      goto exit;
+	    }
+	  else
+	    {
+	      /* default: disable hash-join */
+#if defined(TEST_HASH_JOIN_ENABLE)
+	      /* fall through */
+#else
+	      goto exit;
+#endif
+	    }
+	}
+
+      outer_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
+      if (outer_plan == NULL)
+	{
+	  goto exit;
+	}
+
+      inner_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
+      if (inner_plan == NULL)
+	{
+	  goto exit;
+	}
     }
   else
     {
-      /* default: disable hash-join */
+      /* At here, inner is single class spec */
+      inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+
+      if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
+	{
+	  /* join hint: disable hash-join */
+	  goto exit;
+	}
+      else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
+	{
+	  /* join hint: force hash-join */
+	}
+      else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+	{
+	  /* join hint: force nl-join, idx-join, m-join; skip hash-join */
+	  goto exit;
+	}
+      else
+	{
+	  /* default: disable hash-join */
 #if defined(TEST_HASH_JOIN_ENABLE)
-      /* fall through */
+	  /* fall through */
 #else
-      goto exit;
+	  goto exit;
 #endif
-    }
+	}
 
-  outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
-  if (outer_plan == NULL)
-    {
-      goto exit;
-    }
+      outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
+      if (outer_plan == NULL)
+	{
+	  goto exit;
+	}
 
-  inner_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
-  if (inner_plan == NULL)
-    {
-      goto exit;
+      inner_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
+      if (inner_plan == NULL)
+	{
+	  goto exit;
+	}
     }
 
   n =
@@ -6184,7 +6221,6 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 					hash_join_terms));
 
 exit:
-
   return n;
 }
 
