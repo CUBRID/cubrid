@@ -1509,6 +1509,9 @@ pgbuf_initialize (void)
   pthread_mutex_init (&pgbuf_Pool.show_status_mutex, NULL);
 #endif
 
+#if defined (SERVER_MODE)
+  pgbuf_daemons_init ();
+#endif
   return NO_ERROR;
 
 error:
@@ -1535,6 +1538,10 @@ pgbuf_finalize (void)
 #if defined(CUBRID_DEBUG)
   pgbuf_dump_if_any_fixed ();
 #endif /* CUBRID_DEBUG */
+
+#if defined (SERVER_MODE)
+  pgbuf_daemons_destroy ();
+#endif
 
   /* final task for buffer hash table */
   if (pgbuf_Pool.buf_hash_table != NULL)
@@ -10969,6 +10976,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
   forward = true;
   search_nondirty = false;
   abort_reason = 0;
+
   for (i = 1; i < PGBUF_NEIGHBOR_PAGES;)
     {
       if (forward == true)
@@ -15737,12 +15745,6 @@ pgbuf_get_page_flush_interval (bool & is_timed_wait, cubthread::delta_time & per
 static void
 pgbuf_page_maintenance_execute (cubthread::entry & thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED ())
-    {
-      // wait for boot to finish
-      return;
-    }
-
   /* page buffer maintenance thread adjust quota's based on thread activity. */
   pgbuf_adjust_quotas (&thread_ref);
 
@@ -15770,12 +15772,6 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 
     void execute (cubthread::entry & thread_ref) override
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
       // did not timeout, someone requested flush... run at least once
       bool force_one_run = pgbuf_Page_flush_daemon->was_woken_up ();
       bool stop_iteration = false;
@@ -15814,12 +15810,6 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 static void
 pgbuf_page_post_flush_execute (cubthread::entry & thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED ())
-    {
-      // wait for boot to finish
-      return;
-    }
-
   /* assign flushed pages */
   if (pgbuf_assign_flushed_pages (&thread_ref))
     {
@@ -15855,12 +15845,6 @@ class pgbuf_flush_control_daemon_task : public cubthread::entry_task
 
     void execute (cubthread::entry & thread_ref) override
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
       if (m_first_run)
 	{
 	  gettimeofday (&m_end, NULL);

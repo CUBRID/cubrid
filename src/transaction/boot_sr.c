@@ -2477,6 +2477,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       ASSERT_ERROR ();
       goto error;
     }
+#if defined(SERVER_MODE)
+  dwb_daemons_init ();
+#endif /* SERVER_MODE */
 
   /*
    * Now restart the recovery manager and execute any recovery actions
@@ -2492,8 +2495,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  pgbuf_daemons_init ();
-  dwb_daemons_init ();
   cdc_daemons_init ();
 #endif /* SERVER_MODE */
 
@@ -2807,8 +2808,6 @@ error:
 
 #if defined(SERVER_MODE)
   cdc_daemons_destroy ();
-
-  pgbuf_daemons_destroy ();
   dwb_daemons_destroy ();
 #endif
 
