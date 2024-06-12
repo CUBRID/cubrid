@@ -7560,6 +7560,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
   DB_TYPE outer_type, inner_type;
   bool need_coerce_type;
   bool need_dbvalue_compare;
+  int common_precision, common_scale, outer_integral, inner_integral;
 
   HASH_LIST_SCAN hash_join;
 
@@ -7709,7 +7710,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
   value_count = merge_info_p->ls_column_cnt;
 
   {
-    /* check need_coerce_type */
+    /* check need_coerce_type, need_dbvalue_compare */
     need_coerce_type = false;
     need_dbvalue_compare = false;
 
@@ -7735,49 +7736,113 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
 	if (outer_type == inner_type)
 	  {
-	    if (coerce_domains != NULL)
+	    if (outer_domains[domain_index]->precision == inner_domains[domain_index]->precision
+		&& outer_domains[domain_index]->scale == inner_domains[domain_index]->scale)
 	      {
-		coerce_domains[domain_index] = NULL;
-	      }
+		if (coerce_domains != NULL)
+		  {
+		    coerce_domains[domain_index] = NULL;
+		  }
 
-	    switch (outer_type)
+		switch (outer_type)
+		  {
+		  case DB_TYPE_SMALLINT:
+		  case DB_TYPE_INTEGER:
+		  case DB_TYPE_BIGINT:
+		  case DB_TYPE_FLOAT:
+		  case DB_TYPE_DOUBLE:
+		  case DB_TYPE_NUMERIC:
+		  case DB_TYPE_TIME:
+		  case DB_TYPE_TIMESTAMP:
+		  case DB_TYPE_TIMESTAMPLTZ:
+		  case DB_TYPE_TIMESTAMPTZ:
+		  case DB_TYPE_DATE:
+		  case DB_TYPE_DATETIME:
+		  case DB_TYPE_DATETIMELTZ:
+		  case DB_TYPE_DATETIMETZ:
+		  case DB_TYPE_OID:
+		  case DB_TYPE_ENUMERATION:
+		  case DB_TYPE_BIT:
+		  case DB_TYPE_VARBIT:
+		    break;
+
+		  case DB_TYPE_MONETARY:
+		  case DB_TYPE_CHAR:
+		  case DB_TYPE_VARCHAR:
+		  case DB_TYPE_NCHAR:
+		  case DB_TYPE_VARNCHAR:
+		  case DB_TYPE_SET:
+		  case DB_TYPE_MULTISET:
+		  case DB_TYPE_SEQUENCE:
+		  case DB_TYPE_VOBJ:
+		  case DB_TYPE_JSON:
+		  default:
+		    need_dbvalue_compare = true;
+		    break;
+		  }
+	      }
+	    else
 	      {
-	      case DB_TYPE_SMALLINT:
-	      case DB_TYPE_INTEGER:
-	      case DB_TYPE_BIGINT:
-	      case DB_TYPE_FLOAT:
-	      case DB_TYPE_DOUBLE:
-	      case DB_TYPE_NUMERIC:
-	      case DB_TYPE_TIME:
-	      case DB_TYPE_TIMESTAMP:
-	      case DB_TYPE_TIMESTAMPLTZ:
-	      case DB_TYPE_TIMESTAMPTZ:
-	      case DB_TYPE_DATE:
-	      case DB_TYPE_DATETIME:
-	      case DB_TYPE_DATETIMELTZ:
-	      case DB_TYPE_DATETIMETZ:
-	      case DB_TYPE_OID:
-	      case DB_TYPE_ENUMERATION:
-	      case DB_TYPE_BIT:
-	      case DB_TYPE_VARBIT:
-		break;
+		if (need_coerce_type == false)
+		  {
+		    need_coerce_type = true;
+		    need_dbvalue_compare = true;
 
-	      case DB_TYPE_MONETARY:
-	      case DB_TYPE_CHAR:
-	      case DB_TYPE_VARCHAR:
-	      case DB_TYPE_NCHAR:
-	      case DB_TYPE_VARNCHAR:
-	      case DB_TYPE_SET:
-	      case DB_TYPE_MULTISET:
-	      case DB_TYPE_SEQUENCE:
-	      case DB_TYPE_VOBJ:
-	      case DB_TYPE_JSON:
-	      default:
-		need_dbvalue_compare = true;
-		break;
+		    coerce_domains = (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
+		    if (coerce_domains == NULL)
+		      {
+			GOTO_EXIT_ON_ERROR;
+		      }
+
+		    for (skip_index = 0; skip_index < domain_index; skip_index++)
+		      {
+			coerce_domains[skip_index] = NULL;
+		      }
+		  }
+		else
+		  {
+		    assert (coerce_domains != NULL);
+		  }
+
+		if (outer_type == DB_TYPE_NUMERIC)
+		  {
+		    common_scale = MAX (outer_domains[domain_index]->scale, inner_domains[domain_index]->scale);
+		    outer_integral = outer_domains[domain_index]->precision - outer_domains[domain_index]->scale;
+		    inner_integral = inner_domains[domain_index]->precision - inner_domains[domain_index]->scale;
+		    common_precision = MAX (outer_integral, inner_integral) + common_scale;
+
+		    if (outer_domains[domain_index]->precision == common_precision
+			&& outer_domains[domain_index]->scale == common_scale)
+		      {
+			coerce_domains[domain_index] = outer_domains[domain_index];
+		      }
+		    else if (inner_domains[domain_index]->precision == common_precision
+			     && inner_domains[domain_index]->scale == common_scale)
+		      {
+			coerce_domains[domain_index] = inner_domains[domain_index];
+		      }
+		    else
+		      {
+			coerce_domains[domain_index] = tp_domain_copy (outer_domains[domain_index], false);
+			coerce_domains[domain_index]->precision = common_precision;
+			coerce_domains[domain_index]->scale = common_scale;
+		      }
+		  }
+		else
+		  {
+		    common_precision =
+		      MAX (outer_domains[domain_index]->precision, inner_domains[domain_index]->precision);
+		    if (outer_domains[domain_index]->precision == common_precision)
+		      {
+			coerce_domains[domain_index] = outer_domains[domain_index];
+		      }
+		    else
+		      {
+			assert (inner_domains[domain_index]->precision == common_precision);
+			coerce_domains[domain_index] = inner_domains[domain_index];
+		      }
+		  }
 	      }
-
-	    /* fall through */
 	  }
 	else
 	  {
