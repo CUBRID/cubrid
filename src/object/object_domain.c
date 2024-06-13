@@ -2296,7 +2296,8 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 		  break;
 		}
 
-	      match = ((domain->precision == transient->precision) && (domain->is_desc == transient->is_desc));
+	      match = ((domain->precision == transient->precision) && (domain->is_desc == transient->is_desc)
+		       && domain->codeset == transient->codeset);
 	    }
 	  else if (exact == TP_STR_MATCH)
 	    {

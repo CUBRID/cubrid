@@ -267,16 +267,32 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	/* FALLTHRU */
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  strcpy (temp_buffer, temp_domain->type->name);
-	  if (temp_domain->precision == TP_FLOATING_PRECISION_VALUE)
+	  if (temp_domain->codeset == INTL_CODESET_LOB)
 	    {
-	      precision = DB_MAX_STRING_LENGTH;
+	      if (TP_IS_CHAR_TYPE (temp_domain->type->id))
+		{
+		  strcpy (temp_buffer, "CLOB INTERNAL");
+		  m_buf ("%s", ustr_upper (temp_buffer));
+		}
+	      else
+		{
+		  strcpy (temp_buffer, "BLOB INTERNAL");
+		  m_buf ("%s", ustr_upper (temp_buffer));
+		}
 	    }
 	  else
 	    {
-	      precision = temp_domain->precision;
+	      strcpy (temp_buffer, temp_domain->type->name);
+	      if (temp_domain->precision == TP_FLOATING_PRECISION_VALUE)
+		{
+		  precision = DB_MAX_STRING_LENGTH;
+		}
+	      else
+		{
+		  precision = temp_domain->precision;
+		}
+	      m_buf ("%s(%d)", ustr_upper (temp_buffer), precision);
 	    }
-	  m_buf ("%s(%d)", ustr_upper (temp_buffer), precision);
 	  break;
 
 	case DB_TYPE_JSON:

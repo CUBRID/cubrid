@@ -24950,7 +24950,8 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_
       assert (DB_VALUE_DOMAIN_TYPE (codeset_value) == DB_TYPE_INTEGER);
 
       cs = db_get_int (codeset_value);
-      if (cs != INTL_CODESET_UTF8 && cs != INTL_CODESET_ISO88591 && cs != INTL_CODESET_KSC5601_EUC)
+      if (cs != INTL_CODESET_UTF8 && cs != INTL_CODESET_ISO88591 && cs != INTL_CODESET_KSC5601_EUC
+	  && cs != INTL_CODESET_LOB)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
