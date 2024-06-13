@@ -25887,7 +25887,7 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   // Check every page is allocated
   for (size_t i = 0; i < array_size; i++)
     {
-      if (pgbuf_is_valid_page (thread_p, &heap_pages_array[i], false, NULL, NULL) != DISK_VALID)
+      if (pgbuf_is_valid_page (thread_p, &heap_pages_array[i], false) != DISK_VALID)
 	{
 	  assert (false);
 	  return ER_FAILED;
