@@ -131,6 +131,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$sはDBMS管理道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
@@ -193,6 +194,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$sはDBMS道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n

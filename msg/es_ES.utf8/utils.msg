@@ -131,6 +131,7 @@ Nombre de utilidad admin disponible:\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
@@ -193,6 +194,7 @@ Utilidades de administrador disponible:\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
