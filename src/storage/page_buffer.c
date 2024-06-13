@@ -10167,9 +10167,6 @@ pgbuf_get_check_page_validation_level (int page_validation_level)
  * pgbuf_is_valid_page () - Verify if given page is a valid one
  *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
  *   vpid(in): Complete Page identifier
- *   fun(in): A second function to call to verify if the above page is valid
- *            The function is called on vpid, and arguments
- *   args(in): Additional argument for fun
  *
  * Note: Verify that the given page is valid according to functions:
  *         1) disk_isvalid_page
@@ -10191,7 +10188,7 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error)
 
   /*valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid); */
   valid = disk_is_page_sector_reserved_with_debug_crash (thread_p, vpid->volid, vpid->pageid, !no_error);
-  if ((valid != DISK_VALID) && (valid != DISK_ERROR && !no_error))
+  if (valid == DISK_INVALID && !no_error)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
 	      fileio_get_volume_label (vpid->volid, PEEK));
