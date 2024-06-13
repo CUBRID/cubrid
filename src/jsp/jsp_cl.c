@@ -103,8 +103,9 @@ static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static int jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static PT_MISC_TYPE jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type);
 
-static int jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
-					      PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment);
+static int jsp_add_stored_procedure_argument (MOP * mop_p, MOP sp_mop, const char *sp_name, const char *arg_name,
+					      int index, PT_TYPE_ENUM data_type, PT_MISC_TYPE mode,
+					      const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
 				     PT_NODE * param_list, const char *java_method, const char *comment);
@@ -547,7 +548,6 @@ int
 jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   const char *name, *decl, *comment = NULL;
-  char downcase_stored_procedure_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   PT_MISC_TYPE type;
   PT_NODE *param_list, *p;
@@ -567,7 +567,6 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   name = (char *) PT_NODE_SP_NAME (statement);
-  sm_downcase_name (name, downcase_stored_procedure_name, DB_MAX_IDENTIFIER_LENGTH);
   if (name == NULL || name[0] == '\0')
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
@@ -669,7 +668,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  err = jsp_add_stored_procedure (downcase_stored_procedure_name, type, ret_type, param_list, decl, comment);
+  err = jsp_add_stored_procedure (name, type, ret_type, param_list, decl, comment);
   if (err != NO_ERROR)
     {
       goto error_exit;
@@ -893,12 +892,13 @@ jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum)
  */
 
 static int
-jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
+jsp_add_stored_procedure_argument (MOP * mop_p, MOP sp_mop, const char *sp_name, const char *arg_name, int index,
 				   PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
   DB_VALUE value;
+  //const OID *sp_oid;
   int save;
   int err;
 
@@ -920,23 +920,36 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  /* unique_name */
-  db_make_string (&value, sp_name);
-  err = dbt_put_internal (obt_p, SP_ATTR_UNIQUE_NAME, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
+  /* sp_of 
+     sp_oid = ws_oid (sp_mop);
+     db_make_oid (&value, sp_oid);
+     //db_make_object (&value, sp_mop);
+     err = dbt_put_internal (obt_p, SP_ATTR_SP_OF, &value);
+     pr_clear_value (&value);
+     if (err != NO_ERROR)
+     {
+     goto error;
+     }
+   */
+  /* unique_name
+     db_make_string (&value, sp_name);
+     err = dbt_put_internal (obt_p, SP_ATTR_UNIQUE_NAME, &value);
+     pr_clear_value (&value);
+     if (err != NO_ERROR)
+     {
+     goto error;
+     }
+   */
 
-  /* name */
-  db_make_string (&value, sm_remove_qualifier_name (sp_name));
-  err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
+  /* name
+     db_make_string (&value, sm_remove_qualifier_name (sp_name));
+     err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
+     pr_clear_value (&value);
+     if (err != NO_ERROR)
+     {
+     goto error;
+     }
+   */
 
   db_make_string (&value, arg_name);
   err = dbt_put_internal (obt_p, SP_ATTR_ARG_NAME, &value);
@@ -1022,7 +1035,7 @@ jsp_check_stored_procedure_name (const char *str)
   char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
 
-  sm_downcase_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
   name = strdup (buffer);
 
   return name;
@@ -1058,7 +1071,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
   const char *arg_comment;
   DB_TYPE return_type_value;
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  MOP owner = NULL;
+  MOP owner = NULL, *mop_list = NULL;
 
   if (java_method == NULL)
     {
@@ -1152,8 +1165,12 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
 
   for (node_p = param_list, i = 0; node_p != NULL; node_p = node_p->next)
     {
-      MOP mop = NULL;
+      i++;
+    }
 
+  mop_list = (MOP *) malloc (i * sizeof (MOP));
+  for (node_p = param_list, i = 0; node_p != NULL; node_p = node_p->next)
+    {
       if (jsp_check_param_type_supported (node_p) != NO_ERROR)
 	{
 	  err = er_errid ();
@@ -1165,14 +1182,14 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       arg_comment = (char *) PT_NODE_SP_ARG_COMMENT (node_p);
 
       err =
-	jsp_add_stored_procedure_argument (&mop, checked_name, name_info.original, i, node_p->type_enum,
-					   node_p->info.sp_param.mode, arg_comment);
+	jsp_add_stored_procedure_argument (&mop_list[i], classobj_p, checked_name, name_info.original, i,
+					   node_p->type_enum, node_p->info.sp_param.mode, arg_comment);
       if (err != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      db_make_object (&v, mop);
+      db_make_object (&v, mop_list[i]);
       err = set_put_element (param, i++, &v);
       pr_clear_value (&v);
 
@@ -1247,6 +1264,47 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
+  /* sp_of */
+  for (i--; i >= 0; i--)
+    {
+      pr_clear_value (&value);
+
+      obt_p = dbt_edit_object (mop_list[i]);
+      if (!obt_p)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  err = er_errid ();
+	  goto error;
+	}
+
+      db_make_object (&value, object_p);
+      err = dbt_put_internal (obt_p, SP_ATTR_SP_OF, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      object_p = dbt_finish_object (obt_p);
+      if (!object_p)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  err = er_errid ();
+	  goto error;
+	}
+      obt_p = NULL;
+
+      err = locator_flush_instance (object_p);
+      if (err != NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  err = er_errid ();
+	  obj_delete (object_p);
+	  goto error;
+	}
+    }
+
+  free (mop_list);
   free_and_init (checked_name);
   AU_ENABLE (save);
   return NO_ERROR;
@@ -1317,7 +1375,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
       goto error;
     }
 
-  err = db_get (sp_mop, SP_ATTR_SP_TYPE, &sp_type_val);
+  err = db_get (sp_mop, SP_ATTR_OWNER, &owner_val);
   if (err != NO_ERROR)
     {
       goto error;

@@ -1192,7 +1192,8 @@ sm_define_view_stored_procedure_arguments_spec (void)
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
-	  "[sp].[sp_name] AS [sp_name], "
+	  "[sp].[sp_of].[sp_name] AS [sp_name], "
+	  "CAST ([sp].[sp_of].[owner].[name] AS VARCHAR(255)) AS [sp_owner_name], " /* string -> varchar(255) */
 	  "[sp].[index_of] AS [index_of], "
 	  "[sp].[arg_name] AS [arg_name], "
 	  "CASE [sp].[data_type] "
@@ -1206,7 +1207,7 @@ sm_define_view_stored_procedure_arguments_spec (void)
 	  /* CT_STORED_PROC_ARGS_NAME */
 	  "[%s] AS [sp] "
 	"ORDER BY " /* Is it possible to remove ORDER BY? */
-	  "[sp].[sp_name], "
+	  "[sp].[sp_of].[sp_name], "
 	  "[sp].[index_of]",
 	CT_DATATYPE_NAME,
 	CT_STORED_PROC_ARGS_NAME);

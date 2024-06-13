@@ -866,8 +866,7 @@ namespace cubschema
 		   CT_STORED_PROC_ARGS_NAME,
 		   // columns
     {
-      {"unique_name", format_varchar (255)},
-      {"sp_name", format_varchar (255)},
+      {"sp_of", CT_STORED_PROC_NAME},
       {"index_of", "integer"},
       {"arg_name", format_varchar (255)},
       {"data_type", "integer"},
@@ -876,7 +875,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"unique_name", nullptr}, false}
+      {DB_CONSTRAINT_INDEX, "", {"sp_of", nullptr}, false}
     },
 // authorization
     {
@@ -1805,6 +1804,7 @@ namespace cubschema
 		   // columns
     {
       {"sp_name", "varchar(255)"},
+      {"sp_owner_name", "varchar(255)"},
       {"index_of", "integer"},
       {"arg_name", "varchar(255)"},
       {"data_type", "varchar(16)"},
