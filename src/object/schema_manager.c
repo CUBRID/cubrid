@@ -10686,10 +10686,17 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   for (i = 0, n_attrs = 0; attrs[i] != NULL; i++, n_attrs++)
     {
       type = attrs[i]->type->id;
-      if (!tp_valid_indextype (type))
+      if (attrs[i]->domain->codeset == INTL_CODESET_LOB || !tp_valid_indextype (type))
 	{
 	  error = ER_SM_INVALID_INDEX_TYPE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, pr_type_name (type));
+	  if (attrs[i]->domain->codeset == INTL_CODESET_LOB)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "LOB");
+	    }
+	  else
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, pr_type_name (type));
+	    }
 	}
       else if (attrs_prefix_length && attrs_prefix_length[i] >= 0)
 	{
@@ -16358,10 +16365,17 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   for (i = 0, n_attrs = 0; con->attributes[i] != NULL; i++, n_attrs++)
     {
       type = con->attributes[i]->type->id;
-      if (!tp_valid_indextype (type))
+      if (con->attributes[i]->domain->codeset == INTL_CODESET_LOB || !tp_valid_indextype (type))
 	{
 	  error = ER_SM_INVALID_INDEX_TYPE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, pr_type_name (type));
+	  if (con->attributes[i]->domain->codeset == INTL_CODESET_LOB)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "LOB");
+	    }
+	  else
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, pr_type_name (type));
+	    }
 	}
       else if (con->attrs_prefix_length && con->attrs_prefix_length[i] >= 0)
 	{
