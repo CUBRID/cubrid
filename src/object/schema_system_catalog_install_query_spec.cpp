@@ -269,7 +269,7 @@ sm_define_view_vclass_spec (void)
 const char *
 sm_define_view_attribute_spec (void)
 {
-  static char stmt [2048];
+  static char stmt [3000];
 
   // *INDENT-OFF*
   sprintf (stmt,
