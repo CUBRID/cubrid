@@ -131,6 +131,7 @@ Utilità admin disponibile:\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s è un tool per DBMS.\n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
@@ -193,6 +194,7 @@ Utilità amministrazione disponibili:\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s è un tool per DBMS.\n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
