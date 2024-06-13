@@ -893,6 +893,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         (node.mode == ExprSerialVal.SerialVal.CURR_VAL)
                                 ? "CURRENT_VALUE"
                                 : "NEXT_VALUE");
+        javaTypesUsed.add("java.math.BigDecimal");
         return applyCoercion(node.coercion, tmpl);
     }
 
