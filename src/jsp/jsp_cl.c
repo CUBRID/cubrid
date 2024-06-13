@@ -108,7 +108,8 @@ static int jsp_add_stored_procedure_argument (MOP * mop_p, MOP sp_mop, const cha
 					      const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
-				     PT_NODE * param_list, const char *java_method, const char *comment);
+				     PT_NODE * param_list, int param_count, const char *java_method,
+				     const char *comment);
 static int drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type);
 
 static int jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, method_sig_list & sig_list);
@@ -668,7 +669,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  err = jsp_add_stored_procedure (name, type, ret_type, param_list, decl, comment);
+  err = jsp_add_stored_procedure (name, type, ret_type, param_list, param_count, decl, comment);
   if (err != NO_ERROR)
     {
       goto error_exit;
@@ -898,7 +899,6 @@ jsp_add_stored_procedure_argument (MOP * mop_p, MOP sp_mop, const char *sp_name,
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
   DB_VALUE value;
-  //const OID *sp_oid;
   int save;
   int err;
 
@@ -919,37 +919,6 @@ jsp_add_stored_procedure_argument (MOP * mop_p, MOP sp_mop, const char *sp_name,
       err = er_errid ();
       goto error;
     }
-
-  /* sp_of 
-     sp_oid = ws_oid (sp_mop);
-     db_make_oid (&value, sp_oid);
-     //db_make_object (&value, sp_mop);
-     err = dbt_put_internal (obt_p, SP_ATTR_SP_OF, &value);
-     pr_clear_value (&value);
-     if (err != NO_ERROR)
-     {
-     goto error;
-     }
-   */
-  /* unique_name
-     db_make_string (&value, sp_name);
-     err = dbt_put_internal (obt_p, SP_ATTR_UNIQUE_NAME, &value);
-     pr_clear_value (&value);
-     if (err != NO_ERROR)
-     {
-     goto error;
-     }
-   */
-
-  /* name
-     db_make_string (&value, sm_remove_qualifier_name (sp_name));
-     err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
-     pr_clear_value (&value);
-     if (err != NO_ERROR)
-     {
-     goto error;
-     }
-   */
 
   db_make_string (&value, arg_name);
   err = dbt_put_internal (obt_p, SP_ATTR_ARG_NAME, &value);
@@ -1056,9 +1025,9 @@ jsp_check_stored_procedure_name (const char *str)
 
 static int
 jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM return_type,
-			  PT_NODE * param_list, const char *java_method, const char *comment)
+			  PT_NODE * param_list, int param_count, const char *java_method, const char *comment)
 {
-  DB_OBJECT *classobj_p, *object_p;
+  DB_OBJECT *classobj_p, *object_p, *sp_args_obj;
   DB_OTMPL *obt_p = NULL;
   DB_VALUE value, v;
   DB_SET *param = NULL;
@@ -1163,12 +1132,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  for (node_p = param_list, i = 0; node_p != NULL; node_p = node_p->next)
-    {
-      i++;
-    }
-
-  mop_list = (MOP *) malloc (i * sizeof (MOP));
+  mop_list = (MOP *) malloc (param_count * sizeof (MOP));
   for (node_p = param_list, i = 0; node_p != NULL; node_p = node_p->next)
     {
       if (jsp_check_param_type_supported (node_p) != NO_ERROR)
@@ -1267,8 +1231,6 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
   /* sp_of */
   for (i--; i >= 0; i--)
     {
-      pr_clear_value (&value);
-
       obt_p = dbt_edit_object (mop_list[i]);
       if (!obt_p)
 	{
@@ -1285,8 +1247,8 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
 	  goto error;
 	}
 
-      object_p = dbt_finish_object (obt_p);
-      if (!object_p)
+      sp_args_obj = dbt_finish_object (obt_p);
+      if (!sp_args_obj)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  err = er_errid ();
@@ -1294,12 +1256,12 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
 	}
       obt_p = NULL;
 
-      err = locator_flush_instance (object_p);
+      err = locator_flush_instance (sp_args_obj);
       if (err != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  err = er_errid ();
-	  obj_delete (object_p);
+	  obj_delete (sp_args_obj);
 	  goto error;
 	}
     }
@@ -1375,7 +1337,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
       goto error;
     }
 
-  err = db_get (sp_mop, SP_ATTR_OWNER, &owner_val);
+  err = db_get (sp_mop, SP_ATTR_SP_TYPE, &sp_type_val);
   if (err != NO_ERROR)
     {
       goto error;
