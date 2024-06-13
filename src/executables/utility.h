@@ -1382,6 +1382,8 @@ typedef struct _ha_config
 #define UNLOAD_MODULAR_VALUE_L                  "modular"
 #define UNLOAD_REMAINDER_VALUE_S                11924
 #define UNLOAD_REMAINDER_VALUE_L                "remainder"
+#define UNLOAD_PRINT_TO_STDOUT_S                'c'
+#define UNLOAD_PRINT_TO_STDOUT_L                "print_to_console"	// ctshim  add to utils.msg
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

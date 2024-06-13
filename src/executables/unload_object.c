@@ -188,14 +188,6 @@ static FILE *unloadlog_file = NULL;
 
 
 #if defined(SUPPORT_THREAD_UNLOAD)
-#if defined(WINDOWS)
-#define DEBUG_PRINT(...) fprintf(stdout, __VA_ARGS__); fflush(stdout)
-//#define DEBUG_PRINT(...) 
-#else
-#define DEBUG_PRINT(args...) fprintf(stdout, ##args); fflush(stdout)
-//#define DEBUG_PRINT(args...) 
-#endif
-
 typedef struct _lc_copyarea_node LC_COPYAREA_NODE;
 struct _lc_copyarea_node
 {
@@ -461,7 +453,7 @@ set_referenced_subclasses (DB_OBJECT * class_)
   else
     {
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-      fprintf (stdout, "cls_no_ptr is NULL\n");
+      fprintf (stderr, "cls_no_ptr is NULL\n");
 #endif /* CUBRID_DEBUG */
     }
 
@@ -669,17 +661,17 @@ get_output_file_name (extract_context & ctxt, const char *output_dirname, const 
       assert (class_name && *class_name);
       if (seqno > 0)
 	{
-	  sprintf (tmp_name, "p%d(%d)_%s_t%d(%d)", g_accept, g_modular, class_name, seqno, thread_count);
+	  sprintf (tmp_name, "p%d-%d_t%d-%d_%s", g_modular, g_accept, thread_count, seqno, class_name);
 	}
       else
 	{
-	  sprintf (tmp_name, "p%d(%d)_%s", g_accept, g_modular, class_name);
+	  sprintf (tmp_name, "p%d-%d_%s", g_modular, g_accept, class_name);
 	}
     }
   else if (seqno > 0)
     {
       assert (class_name && *class_name);
-      sprintf (tmp_name, "%s_t%d(%d)", class_name, seqno, thread_count);
+      sprintf (tmp_name, "t%d-%d_%s", thread_count, seqno, class_name);
     }
   else
     {
@@ -966,7 +958,7 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
 #if 1
   gettimeofday (&endTime, NULL);
   diffTime = (endTime.tv_sec - startTime.tv_sec) + ((double) (endTime.tv_usec - startTime.tv_usec) / 1000000);
-  printf ("Merge time= %.6f s\n", diffTime);
+  fprintf (fp_msg_out, "Merge time= %.6f s\n", diffTime);
 #endif
 
 
@@ -1060,7 +1052,7 @@ alloc_text_output (TEXT_OUTPUT * obj_out, const char *output_dirname)
   obj_out->iosize = 1024 * 1024;	/* 1 Mbyte */
   obj_out->iosize -= (obj_out->iosize % blksize);	// ctshim
 
-  obj_out->buffer = (char *) malloc (obj_out->iosize);
+  obj_out->buffer = (char *) malloc (obj_out->iosize + 1);
 
   obj_out->ptr = obj_out->buffer;	/* init */
   obj_out->count = 0;		/* init */
@@ -1218,7 +1210,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
    * Total the number of objects & mark requested classes.
    */
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-  fprintf (stdout, "----- all class dump -----\n");
+  fprintf (stderr, "----- all class dump -----\n");
 #endif /* CUBRID_DEBUG */
   for (i = 0; i < class_table->num; i++)
     {
@@ -1251,7 +1243,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
       if (*cptr == NULL)
 	{
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	  fprintf (stdout, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+	  fprintf (stderr, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
 #endif /* CUBRID_DEBUG */
 
 	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
@@ -1319,7 +1311,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 			  if ((has_obj_ref = check_referenced_domain (attribute->domain, false, &num_cls_ref)) == true)
 			    {
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
+			      fprintf (stderr, "found OBJECT domain: %s%s%s->%s\n",
 				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
@@ -1336,7 +1328,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 			  if ((has_obj_ref = check_referenced_domain (attribute->domain, false, &num_cls_ref)) == true)
 			    {
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
+			      fprintf (stderr, "found OBJECT domain: %s%s%s->%s\n",
 				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
@@ -1358,7 +1350,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 			  if (has_obj_ref == true)
 			    {
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
+			      fprintf (stderr, "found OBJECT domain: %s%s%s->%s\n",
 				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
@@ -1385,7 +1377,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
   OR_PUT_NULL_OID (&null_oid);
 
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-  fprintf (stdout, "has_obj_ref = %d, num_cls_ref = %d\n", has_obj_ref, num_cls_ref);
+  fprintf (stderr, "has_obj_ref = %d, num_cls_ref = %d\n", has_obj_ref, num_cls_ref);
 #endif /* CUBRID_DEBUG */
 
   if (has_obj_ref || num_cls_ref > 0)
@@ -1434,7 +1426,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 	  if (num_cls_ref != num_set)
 	    {
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	      fprintf (stdout, "num_cls_ref = %d, num_set = %d\n", num_cls_ref, num_set);
+	      fprintf (stderr, "num_cls_ref = %d, num_set = %d\n", num_cls_ref, num_set);
 #endif /* CUBRID_DEBUG */
 	      status = 1;
 	      goto end;
@@ -1447,7 +1439,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
     int total_req_cls = 0;
     int total_ref_cls = 0;
 
-    fprintf (stdout, "----- referenced class dump -----\n");
+    fprintf (stderr, "----- referenced class dump -----\n");
     for (i = 0; i < class_table->num; i++)
       {
 	if (!IS_CLASS_REQUESTED (i))
@@ -1464,11 +1456,11 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 		goto end;
 	      }
 	    SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
-	    fprintf (stdout, "%s%s%s.%s%s%s\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
+	    fprintf (stderr, "%s%s%s.%s%s%s\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
 	    total_ref_cls++;
 	  }
       }
-    fprintf (stdout, "class_table->num = %d, total_req_cls = %d, total_ref_cls = %d\n", class_table->num,
+    fprintf (stderr, "class_table->num = %d, total_req_cls = %d, total_ref_cls = %d\n", class_table->num,
 	     total_req_cls, total_ref_cls);
   }
 #endif /* CUBRID_DEBUG */
@@ -1531,7 +1523,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
     }
   if (verbose_flag)
     {
-      fprintf (stdout, HEADER_FORMAT, "Class Name", "Total Instances");
+      fprintf (fp_msg_out, HEADER_FORMAT, "Class Name", "Total Instances");
     }
 
   do
@@ -1594,7 +1586,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
   if (failed_objects != 0)
     {
       status = 1;
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
+      fprintf (fp_msg_out, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
 	       total_objects - failed_objects, total_objects);
       if (unloadlog_file != NULL)
 	{
@@ -1605,7 +1597,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
     }
   else if (verbose_flag)
     {
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_DUMPED),
+      fprintf (fp_msg_out, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_DUMPED),
 	       total_objects);
     }
 
@@ -1664,12 +1656,12 @@ gauge_alarm_handler (int sig)
 {
   if (sig == SIGALRM)
     {
-      fprintf (stdout, MSG_FORMAT "\r", gauge_class_name, class_objects,
+      fprintf (fp_msg_out, MSG_FORMAT "\r", gauge_class_name, class_objects,
 	       (class_objects > 0
 		&& approximate_class_objects >=
 		class_objects) ? (int) (100 * ((float) class_objects / (float) approximate_class_objects)) : 100,
 	       (int) (100 * ((float) total_objects / (float) total_approximate_class_objects)));
-      fflush (stdout);
+      fflush (fp_msg_out);
     }
   else
     {
@@ -2107,9 +2099,9 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 	    {
 	    case DB_TYPE_OID:
 	    case DB_TYPE_OBJECT:
-	      fprintf (stdout, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
-	      fflush (stdout);
-	      goto exit_on_end;
+	      fprintf (stderr, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+	      fflush (stderr);
+	      goto exit_on_end;	// ctshim
 	      break;
 
 	    default:
@@ -2301,8 +2293,8 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
-	  fflush (stdout);
+	  fprintf (fp_msg_out, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
+	  fflush (fp_msg_out);
 	}
       goto exit_on_end;
     }
@@ -2323,8 +2315,8 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
-	  fflush (stdout);
+	  fprintf (fp_msg_out, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
+	  fflush (fp_msg_out);
 	}
       goto exit_on_end;
     }
@@ -2436,7 +2428,6 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 
       while (nobjects != nfetched)
 	{
-	  //fprintf(stdout, ">>>>>>>> %d, %d\n", g_modular, g_accept); fflush(stdout); // ctshim
 	  if (locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
 				 , g_modular, g_accept
@@ -2545,8 +2536,8 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
       (void) os_set_signal_handler (SIGALRM, prev_handler);
 #endif
 
-      fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
-      fflush (stdout);
+      fprintf (fp_msg_out, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
+      fflush (fp_msg_out);
     }
   fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
 

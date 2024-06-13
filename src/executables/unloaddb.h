@@ -43,7 +43,9 @@ extern bool check_fetch_time;
 extern int varchar_alloc_size;
 extern int g_modular;
 extern int g_accept;
+extern bool g_print_to_stdout;
 #endif
+extern FILE *fp_msg_out;
 extern int page_size;
 extern int cached_pages;
 extern int64_t est_size;

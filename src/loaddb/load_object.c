@@ -495,6 +495,18 @@ error:
 int
 text_print_flush (TEXT_OUTPUT * tout)
 {
+#if defined(SUPPORT_THREAD_UNLOAD)
+  extern bool g_print_to_stdout;
+  if (g_print_to_stdout)
+    {
+      *tout->ptr = '\0';
+      fprintf (stdout, "%s", tout->buffer);
+      tout->ptr = tout->buffer;
+      tout->count = 0;
+      return NO_ERROR;
+    }
+#endif
+
   /* flush to disk */
 #if defined(SUPPORT_THREAD_UNLOAD)
   if (tout->count != write (tout->fd, tout->buffer, tout->count))
@@ -687,7 +699,7 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
       error = 0;
       if (OID_ISTEMP (WS_OID (obj->classop)))
 	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_TEMPORARY_CLASS_OID));
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_TEMPORARY_CLASS_OID));
 	  return (1);
 	}
 
@@ -1406,6 +1418,41 @@ strnchr (const char *str, char ch, int nbytes)
   return NULL;
 }
 
+
+int
+flush_quoted_str (TEXT_OUTPUT * tout, const char *st, int tlen)
+{
+  int ret = NO_ERROR;
+  int cpsize;
+  int capacity = tout->iosize - tout->count;
+
+  if (capacity <= tlen)
+    {
+      cpsize = (capacity < tlen) ? capacity : tlen;
+      memcpy (tout->ptr, st, cpsize);
+      tout->ptr += cpsize;
+      tout->count += cpsize;
+      tlen -= cpsize;
+      assert (tout->count == tout->iosize);
+      ret = text_print_flush (tout);
+      if ((ret == NO_ERROR) && (tlen > 0))
+	{
+	  memcpy (tout->ptr, st + cpsize, tlen);
+	  tout->ptr += tlen;
+	  tout->count += tlen;
+	}
+    }
+  else
+    {
+      memcpy (tout->ptr, st, tlen);
+      tout->ptr += tlen;
+      tout->count += tlen;
+    }
+
+  return ret;
+}
+
+
 /*
  * print_quoted_str - print quoted string sequences separated by new line to
  * TEXT_OUTPUT given
@@ -1420,16 +1467,15 @@ strnchr (const char *str, char ch, int nbytes)
 static int
 print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len)
 {
-#if defined(SUPPORT_THREAD_UNLOAD)	// 20240610
+#if defined(SUPPORT_THREAD_UNLOAD)
   int error = NO_ERROR;
   const char *end;
   int write_len = 0;
-
   const char *st;
-  int tlen;
 
-  if (tout->iosize <= tout->count + 2 /* for single quotes at both */ )
+  if (tout->iosize <= tout->count)
     {
+      assert (tout->iosize == tout->count);
       CHECK_PRINT_ERROR (text_print_flush (tout));
     }
 
@@ -1438,120 +1484,50 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
   tout->ptr++;
   tout->count++;
 
-#if 1				// ctshim
   end = str + len;
   for (st = str; str < end && *str; str++)
     {
       if (*str == '\'')
 	{
-	  tlen = (int) (str - st);
-	  if (tout->iosize <= (tout->count + tlen + 2))
+	  if ((error = flush_quoted_str (tout, st, (int) (str - st))) != NO_ERROR)
 	    {
-	      CHECK_PRINT_ERROR (text_print_flush (tout));
+	      goto exit_on_error;
 	    }
-	  memcpy (tout->ptr, st, tlen);
-	  tout->ptr += tlen;
-	  tout->ptr[0] = '\'';
-	  tout->ptr[1] = '\'';
-	  tout->ptr += 2;
-	  tout->count += (tlen + 2);
+	  if ((error = flush_quoted_str (tout, "''", 2)) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+
 	  write_len += 2;
-	  st = str + 1;
+	  st = str + 1;		// reset start point
 	}
       else if (++write_len >= max_token_len)
 	{
-	  tlen = (int) (str - st) + 1;
-	  if (tout->iosize <= (tout->count + tlen + 5))
+	  if ((error = flush_quoted_str (tout, st, ((int) (str - st) + 1))) != NO_ERROR)
 	    {
-	      CHECK_PRINT_ERROR (text_print_flush (tout));
+	      goto exit_on_error;
 	    }
-	  memcpy (tout->ptr, st, tlen);
-	  tout->ptr += tlen;
-	  tout->count += tlen;
 
-	  if ((str + 1) < end && str[1])
+	  error = ((str + 1) < end && str[1]) ? flush_quoted_str (tout, "'+\n '", 5) : flush_quoted_str (tout, "'", 1);
+	  if (error != NO_ERROR)
 	    {
-	      memcpy (tout->ptr, "'+\n '", 5);
-	      tout->ptr += 5;
-	      tout->count += 5;
+	      goto exit_on_error;
 	    }
-	  else
-	    {
-	      tout->ptr[0] = '\'';
-	      tout->ptr += 1;
-	      tout->count += 1;
-	    }
-	  write_len = 0;
-	  st = str + 1;
+
+	  write_len = 0;	// reset the number of characters written per line.
+	  st = str + 1;		// reset start point
 	}
     }
 
   if (st < str)
     {
-      tlen = (int) (str - st);
-      if (tout->iosize <= (tout->count + tlen))
+      if ((error = flush_quoted_str (tout, st, ((int) (str - st)))) != NO_ERROR)
 	{
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	}
-      memcpy (tout->ptr, st, tlen);
-      tout->ptr += tlen;
-      tout->count += tlen;
-    }
-
-#else
-
-  for (end = str + len; str < end && *str; str++)
-    {
-      if (*str != '\'')
-	{
-	  if (tout->iosize <= (tout->count + 1))
-	    {
-	      CHECK_PRINT_ERROR (text_print_flush (tout));
-	    }
-	  tout->ptr[0] = *str;
-	  tout->ptr++;
-	  tout->count++;
-	  write_len++;
-	}
-      else
-	{
-	  if (tout->iosize <= (tout->count + 2))
-	    {
-	      CHECK_PRINT_ERROR (text_print_flush (tout));
-	    }
-	  tout->ptr[0] = '\'';
-	  tout->ptr[1] = '\'';
-	  tout->ptr += 2;
-	  tout->count += 2;
-	  write_len += 2;
-	}
-
-      if (write_len >= max_token_len)
-	{
-	  if (tout->iosize <= (tout->count + 5))
-	    {
-	      CHECK_PRINT_ERROR (text_print_flush (tout));
-	    }
-
-	  if ((str + 1) < end && str[1])
-	    {
-	      memcpy (tout->ptr, "'+\n '", 5);
-	      tout->ptr += 5;
-	      tout->count += 5;
-	    }
-	  else
-	    {
-	      tout->ptr[0] = '\'';
-	      tout->ptr += 1;
-	      tout->count += 1;
-	    }
-
-	  write_len = 0;
+	  goto exit_on_error;
 	}
     }
-#endif
 
-  if (tout->iosize <= (tout->count + 1))
+  if (tout->iosize <= tout->count)
     {
       CHECK_PRINT_ERROR (text_print_flush (tout));
     }
@@ -1900,7 +1876,7 @@ desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
       break;
     default:
       CHECK_PRINT_ERROR (fprint_special_strings (tout, value));
@@ -1936,7 +1912,7 @@ desc_value_print (print_output & output_ctx, DB_VALUE * value)
       break;
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
       break;
     default:
       db_print_value (output_ctx, value);

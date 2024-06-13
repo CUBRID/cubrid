@@ -70,7 +70,9 @@ int merge_type = 0;
 int varchar_alloc_size = 0;
 int g_modular = UNLOAD_MODULAR_UNDEFINED;
 int g_accept = UNLOAD_MODULAR_UNDEFINED;
+bool g_print_to_stdout = 0;
 #endif
+extern FILE *fp_msg_out = stdout;
 
 int page_size = 4096;
 int cached_pages = 100;
@@ -164,7 +166,10 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   split_schema_files = utility_get_option_string_value (arg_map, UNLOAD_SPLIT_SCHEMA_FILES_S, 0);
   is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
+
 #if !defined (WINDOWS) && defined(SUPPORT_THREAD_UNLOAD)
+  g_print_to_stdout = utility_get_option_bool_value (arg_map, UNLOAD_PRINT_TO_STDOUT_S);
+
   if (datafile_per_class)
     {
       if (do_objects)
@@ -209,6 +214,16 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
   varchar_alloc_size = utility_get_option_int_value (arg_map, UNLOAD_VARCHAR_ALLOC_SIZE_S);
   varchar_alloc_size *= 1024;	// to KB  
+  if (g_print_to_stdout)
+    {
+      if (thread_count > 1)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	  goto end;
+	}
+
+      fp_msg_out = stderr;
+    }
 #endif
 
   /* depreciated */
@@ -291,8 +306,8 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   if (required_class_only && include_references)
     {
       include_references = false;
-      fprintf (stdout, "warning: '-ir' option is ignored.\n");
-      fflush (stdout);
+      fprintf (stderr, "warning: '-ir' option is ignored.\n");
+      fflush (stderr);
     }
 
   class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_READ, NULL);
@@ -439,7 +454,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 #if 1
       gettimeofday (&endTime, NULL);
       diffTime = (endTime.tv_sec - startTime.tv_sec) + ((double) (endTime.tv_usec - startTime.tv_usec) / 1000000);
-      printf ("Elapsed= %.6f s\n", diffTime);
+      fprintf (fp_msg_out, "Elapsed= %.6f s\n", diffTime);
 #endif
     }
   AU_RESTORE (au_save);
