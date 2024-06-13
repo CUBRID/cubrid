@@ -85,7 +85,7 @@
  * mutibyte characters.
  */
 #define INTL_CAN_STEAL_CS(cs_from,cs_to)  \
-    ((cs_from) == (cs_to) || (cs_to) == INTL_CODESET_RAW_BYTES)
+    ((cs_from) == (cs_to) || (cs_to) == INTL_CODESET_RAW_BYTES || (cs_to) == INTL_CODESET_LOB)
 
 /* Checks if string having charset 'cs_from' can be coerced (transformed) as
  * having charset 'cs_to'.
@@ -100,7 +100,8 @@
   do \
     { \
       if (((codeset) == INTL_CODESET_ISO88591) \
-       || ((codeset) == INTL_CODESET_RAW_BYTES)) \
+       || ((codeset) == INTL_CODESET_RAW_BYTES) \
+       || ((codeset) == INTL_CODESET_LOB)) \
 	{ \
 	  (*(current_char_size)) = 1; \
 	  (ptr) = (s) + 1; \
