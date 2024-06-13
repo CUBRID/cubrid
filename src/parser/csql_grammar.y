@@ -21431,8 +21431,7 @@ primitive_type
 			        dt->type_enum = PT_TYPE_VARBIT;
 			        dt->info.data_type.precision = DB_MAX_VARBIT_PRECISION;
 		                dt->info.data_type.units = INTL_CODESET_LOB;
-			        dt->info.data_type.collation_id = LANG_COLL_BINARY;
-			        dt->info.data_type.has_coll_spec = true;
+			        dt->info.data_type.has_coll_spec = false;
 			      }
 			  }
 
@@ -21444,7 +21443,7 @@ primitive_type
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | CLOB_ opt_internal_external );
 
 			container_2 ctn;
-			PT_NODE *dt;
+			PT_NODE *dt = NULL;
 
 			if ($2 == PT_LOB_INTERNAL)
 			  {
