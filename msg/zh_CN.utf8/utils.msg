@@ -131,6 +131,7 @@ cubrid 管理工具，版本 %1$s\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -193,6 +194,7 @@ cubrid 管理工具，版本 %1$s\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
