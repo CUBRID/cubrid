@@ -914,9 +914,10 @@ namespace cubschema
 // constraints
     {
       // TODO: before created_time is managed in cub_javasp in the next issue, comment out the follwoing line.
-      // {DB_CONSTRAINT_UNIQUE, "", {"name", "created_time", nullptr}, false},
       {DB_CONSTRAINT_PRIMARY_KEY, "", {"name", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"created_time", nullptr}, false}
+      {DB_CONSTRAINT_UNIQUE, "i__db_stored_procedure_code_meta", {"name", "created_time", "is_static", "is_system_generated", nullptr}, false},
+      {DB_CONSTRAINT_UNIQUE, "i__db_stored_procedure_code_scode", {"name", "stype", "scode", nullptr}, false},
+      {DB_CONSTRAINT_UNIQUE, "i__db_stored_procedure_code_ocode", {"name", "otype", "ocode", nullptr}, false}
     },
 // authorization
     {
