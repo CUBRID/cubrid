@@ -3856,7 +3856,21 @@ emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * 
       else
 	{
 	  has_collation = 0;
-	  output_ctx ("%s", prtype->name);
+	  if (domain->codeset == INTL_CODESET_LOB)
+	    {
+	      if (TP_IS_CHAR_TYPE (domain->type->id))
+		{
+		  output_ctx ("CLOB INTERNAL");
+		}
+	      else
+		{
+		  output_ctx ("BLOB INTERNAL");
+		}
+	    }
+	  else
+	    {
+	      output_ctx ("%s", prtype->name);
+	    }
 
 	  switch (type)
 	    {
@@ -3868,8 +3882,11 @@ emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * 
 	      /* FALLTHRU */
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
-	      precision = db_domain_precision (domain);
-	      output_ctx ("(%d)", precision == TP_FLOATING_PRECISION_VALUE ? DB_MAX_STRING_LENGTH : precision);
+	      if (domain->codeset != INTL_CODESET_LOB)
+		{
+		  precision = db_domain_precision (domain);
+		  output_ctx ("(%d)", precision == TP_FLOATING_PRECISION_VALUE ? DB_MAX_STRING_LENGTH : precision);
+		}
 	      break;
 
 	    case DB_TYPE_ENUMERATION:
@@ -3921,7 +3938,7 @@ emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * 
 	      break;
 	    }
 
-	  if (has_collation)
+	  if (has_collation && domain->codeset != INTL_CODESET_LOB)
 	    {
 	      (void) output_ctx (" COLLATE %s", lang_get_collation_name (domain->collation_id));
 	    }
