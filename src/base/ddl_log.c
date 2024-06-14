@@ -49,6 +49,7 @@
 #include "environment_variable.h"
 #include "broker_config.h"
 #include "util_func.h"
+#include "db.h"
 
 #define DDL_LOG_MSG 	            (256)
 #define DDL_LOG_PATH    	    "log/ddl_audit"
@@ -760,6 +761,8 @@ logddl_write ()
   FILE *fp = NULL;
   char buf[DDL_LOG_BUFFER_SIZE] = { 0 };
   int len = 0;
+  char *dbname = NULL;
+  char *user_name = NULL;
 
   if (ddl_logging_enabled == false)
     {
@@ -770,6 +773,12 @@ logddl_write ()
     {
       return;
     }
+
+  dbname = db_get_database_name ();
+  logddl_set_db_name (dbname);
+
+  user_name = db_get_user_name ();
+  logddl_set_user_name (user_name);
 
   fp = logddl_open (ddl_audit_handle.app_name);
 
@@ -805,6 +814,16 @@ write_error:
       fclose (fp);
       fp = NULL;
     }
+
+  if (dbname != NULL)
+    {
+      db_string_free (dbname);
+    }
+
+  if (user_name != NULL)
+    {
+      db_string_free (user_name);
+    }
 }
 
 void
@@ -815,6 +834,8 @@ logddl_write_tran_str (const char *fmt, ...)
   int len = 0;
   struct timeval time_val;
   va_list args;
+  char *dbname = NULL;
+  char *user_name = NULL;
 
   if (ddl_logging_enabled == false)
     {
@@ -825,6 +846,12 @@ logddl_write_tran_str (const char *fmt, ...)
     {
       goto write_error;
     }
+
+  dbname = db_get_database_name ();
+  logddl_set_db_name (dbname);
+
+  user_name = db_get_user_name ();
+  logddl_set_user_name (user_name);
 
   fp = logddl_open (ddl_audit_handle.app_name);
 
@@ -899,6 +926,16 @@ write_error:
       fp = NULL;
     }
 
+  if (dbname != NULL)
+    {
+      db_string_free (dbname);
+    }
+
+  if (user_name != NULL)
+    {
+      db_string_free (user_name);
+    }
+
   is_executed_ddl_for_trans = false;
   logddl_free (false);
 }
@@ -911,6 +948,9 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
   int len = 0;
   struct timeval time_val;
   va_list args;
+  char *dbname = NULL;
+  char *user_name = NULL;
+
   if (ddl_logging_enabled == false)
     {
       return;
@@ -925,6 +965,12 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
     {
       return;
     }
+
+  dbname = db_get_database_name ();
+  logddl_set_db_name (dbname);
+
+  user_name = db_get_user_name ();
+  logddl_set_user_name (user_name);
 
   fp = logddl_open (ddl_audit_handle.app_name);
 
@@ -965,6 +1011,16 @@ write_error:
     {
       fclose (fp);
       fp = NULL;
+    }
+
+  if (dbname != NULL)
+    {
+      db_string_free (dbname);
+    }
+
+  if (user_name != NULL)
+    {
+      db_string_free (user_name);
     }
 
   logddl_free (true);
