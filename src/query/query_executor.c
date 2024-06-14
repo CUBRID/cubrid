@@ -521,31 +521,32 @@ static QFILE_LIST_ID *qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID *
 					      XASL_STATE * xasl_state, int ls_flag);
 static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_hash_join_init (THREAD_ENTRY * thread_p, QFILE_LIST_ID * build_list_id, HASH_LIST_SCAN * hash_join_p,
-				 int value_count, bool need_coerce_type, bool need_dbvalue_compare);
+				 int value_count);
 static void qexec_hash_join_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p);
+static int qexec_hash_join_context_init (THREAD_ENTRY * thread_p, HASH_JOIN_CONTEXT * context_p,
+					 TP_DOMAIN ** outer_domains, TP_DOMAIN ** inner_domains, int value_count);
+static void qexec_hash_join_context_clear (THREAD_ENTRY * thread_p, HASH_JOIN_CONTEXT * context_p);
 STATIC_INLINE int qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record_p,
 					     HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, int *value_indexes,
-					     TP_DOMAIN ** domains, TP_DOMAIN ** coerce_domains, bool need_coerce_type,
-					     bool need_dbvalue_compare) __attribute__ ((ALWAYS_INLINE));
+					     TP_DOMAIN ** domains, HASH_JOIN_CONTEXT * context_p)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int qexec_hash_join_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p,
 					     QFILE_TUPLE_RECORD * tuple_record_p, QFILE_LIST_SCAN_ID * scan_id_p)
   __attribute__ ((ALWAYS_INLINE));
 static int qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, HASH_LIST_SCAN * hash_join_p,
-				  int *value_indexes, TP_DOMAIN ** domains, TP_DOMAIN ** coerce_domains);
+				  HASH_JOIN_CONTEXT * context_p);
 STATIC_INLINE int qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p,
 					     QFILE_TUPLE_RECORD * tuple_record_p, QFILE_LIST_SCAN_ID * scan_id_p)
   __attribute__ ((ALWAYS_INLINE));
 static int qexec_hash_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 				  QFILE_LIST_MERGE_INFO * merge_info_p, HASH_LIST_SCAN * hash_join_p,
 				  QFILE_LIST_SCAN_ID * probe_scan_id_p, QFILE_LIST_SCAN_ID * build_scan_id_p,
-				  int *probe_value_indexes, int *build_value_indexes, TP_DOMAIN ** probe_domains,
-				  TP_DOMAIN ** build_domains, TP_DOMAIN ** coerce_domains);
+				  HASH_JOIN_CONTEXT * context_p);
 static int qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 					QFILE_LIST_MERGE_INFO * merge_info_p, HASH_LIST_SCAN * hash_join_p,
-					SCAN_ID * probe_scan_id_p, SCAN_ID * build_scan_id_p, int *probe_value_indexes,
-					int *build_value_indexes, TP_DOMAIN ** probe_domains,
-					TP_DOMAIN ** build_domains, TP_DOMAIN ** coerce_domains,
-					PRED_EXPR * during_join_pred, XASL_STATE * xasl_state);
+					SCAN_ID * probe_scan_id_p, SCAN_ID * build_scan_id_p,
+					HASH_JOIN_CONTEXT * context_p, PRED_EXPR * during_join_pred,
+					XASL_STATE * xasl_state);
 static int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list, VAL_DESCR * vd,
 			    bool force_select_lock, int fixed, int grouped, bool iscan_oid_order, SCAN_ID * s_id,
@@ -6493,7 +6494,7 @@ exit_on_error:
 
 static int
 qexec_hash_join_init (THREAD_ENTRY * thread_p, QFILE_LIST_ID * build_list_id, HASH_LIST_SCAN * hash_join_p,
-		      int value_count, bool need_coerce_type, bool need_dbvalue_compare)
+		      int value_count)
 {
   static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
@@ -6587,8 +6588,7 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, QFILE_LIST_ID * build_list_id, HA
     }
 
   hash_join_p->curr_hash_key = 0;
-  hash_join_p->need_coerce_type = need_coerce_type;
-  hash_join_p->need_dbvalue_compare = need_dbvalue_compare;
+  hash_join_p->need_coerce_type = false;
 
   return NO_ERROR;
 
@@ -6656,13 +6656,275 @@ qexec_hash_join_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_join_p)
   hash_join_p->hash_list_scan_type == HASH_METH_NOT_USE;
   hash_join_p->curr_hash_key = 0;
   hash_join_p->need_coerce_type = false;
-  hash_join_p->need_dbvalue_compare = false;
+}
+
+static int
+qexec_hash_join_context_init (THREAD_ENTRY * thread_p, HASH_JOIN_CONTEXT * context_p, int *outer_indexes,
+			      int *inner_indexes, TP_DOMAIN ** outer_domains, TP_DOMAIN ** inner_domains,
+			      int value_count)
+{
+  int domain_index, type_index, skip_index;
+
+  DB_TYPE build_type, probe_type;
+  int build_precision, probe_precision;
+  int build_scale, probe_scale;
+  int build_integral, probe_integral;
+  int common_precision, common_scale;
+
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (context_p != NULL);
+  assert (outer_indexes != NULL);
+  assert (inner_indexes != NULL);
+  assert (outer_domains != NULL);
+  assert (inner_domains != NULL);
+
+  memset (context_p, 0, sizeof (HASH_JOIN_CONTEXT));
+
+  context_p->build_indexes = inner_indexes;
+  context_p->probe_indexes = outer_indexes;
+
+  context_p->build_domains = (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
+  if (context_p->build_domains == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
+      goto exit_on_error;
+    }
+
+  context_p->probe_domains = (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
+  if (context_p->probe_domains == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
+      goto exit_on_error;
+    }
+
+  context_p->need_common_domains = false;
+  context_p->need_compare_dbvalues = false;
+
+  for (domain_index = 0; domain_index < value_count; domain_index++)
+    {
+      context_p->build_domains[domain_index] = inner_domains[inner_indexes[domain_index]];
+      context_p->probe_domains[domain_index] = outer_domains[outer_indexes[domain_index]];
+
+      build_type = TP_DOMAIN_TYPE (inner_domains[domain_index]);
+      probe_type = TP_DOMAIN_TYPE (outer_domains[domain_index]);
+
+      if (build_type == probe_type)
+	{
+	  build_precision = context_p->build_domains[domain_index]->precision;
+	  build_scale = context_p->build_domains[domain_index]->scale;
+
+	  probe_precision = context_p->probe_domains[domain_index]->precision;
+	  probe_scale = context_p->probe_domains[domain_index]->scale;
+
+	  if (build_precision == probe_precision && build_scale == probe_scale)
+	    {
+	      if (context_p->common_domains != NULL)
+		{
+		  context_p->common_domains[domain_index] = NULL;
+		}
+
+	      switch (build_type)
+		{
+		case DB_TYPE_SMALLINT:
+		case DB_TYPE_INTEGER:
+		case DB_TYPE_BIGINT:
+		case DB_TYPE_FLOAT:
+		case DB_TYPE_DOUBLE:
+		case DB_TYPE_NUMERIC:
+		case DB_TYPE_TIME:
+		case DB_TYPE_TIMESTAMP:
+		case DB_TYPE_TIMESTAMPLTZ:
+		case DB_TYPE_TIMESTAMPTZ:
+		case DB_TYPE_DATE:
+		case DB_TYPE_DATETIME:
+		case DB_TYPE_DATETIMELTZ:
+		case DB_TYPE_DATETIMETZ:
+		case DB_TYPE_OID:
+		case DB_TYPE_ENUMERATION:
+		case DB_TYPE_BIT:
+		case DB_TYPE_VARBIT:
+		  break;
+
+		case DB_TYPE_MONETARY:
+		case DB_TYPE_CHAR:
+		case DB_TYPE_VARCHAR:
+		case DB_TYPE_NCHAR:
+		case DB_TYPE_VARNCHAR:
+		case DB_TYPE_SET:
+		case DB_TYPE_MULTISET:
+		case DB_TYPE_SEQUENCE:
+		case DB_TYPE_VOBJ:
+		case DB_TYPE_JSON:
+		default:
+		  context_p->need_compare_dbvalues = true;
+		  break;
+		}
+	    }
+	  else
+	    {
+	      /* build_type == probe_type && (build_precision != probe_precision || build_scale != probe_scale) */
+
+	      if (context_p->need_common_domains == false)
+		{
+		  context_p->need_common_domains = true;
+		  context_p->need_compare_dbvalues = true;
+
+		  context_p->common_domains =
+		    (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
+		  if (context_p->common_domains == NULL)
+		    {
+		      error = ER_OUT_OF_VIRTUAL_MEMORY;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
+		      goto exit_on_error;
+		    }
+
+		  for (skip_index = 0; skip_index < domain_index; skip_index++)
+		    {
+		      context_p->common_domains[skip_index] = NULL;
+		    }
+		}
+	      else
+		{
+		  assert (context_p->common_domains != NULL);
+		}
+
+	      if (build_type == DB_TYPE_NUMERIC)
+		{
+		  common_scale = MAX (build_scale, probe_scale);
+		  build_integral = build_precision - build_scale;
+		  probe_integral = probe_precision - probe_scale;
+		  common_precision = MAX (build_integral, probe_integral) + common_scale;
+		  common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
+
+		  if (common_precision == build_precision && common_scale == build_scale)
+		    {
+		      context_p->common_domains[domain_index] = context_p->build_domains[domain_index];
+		    }
+		  else if (common_precision == probe_precision && common_scale == probe_scale)
+		    {
+		      context_p->common_domains[domain_index] = context_p->probe_domains[domain_index];
+		    }
+		  else
+		    {
+		      context_p->common_domains[domain_index] =
+			tp_domain_copy (context_p->build_domains[domain_index], false);
+		      context_p->common_domains[domain_index]->precision = common_precision;
+		      context_p->common_domains[domain_index]->scale = common_scale;
+		    }
+		}
+	      else
+		{
+		  common_precision = MAX (build_precision, probe_precision);
+		  if (common_precision == build_precision)
+		    {
+		      context_p->common_domains[domain_index] = context_p->build_domains[domain_index];
+		    }
+		  else
+		    {
+		      assert (common_precision == probe_precision);
+		      context_p->common_domains[domain_index] = context_p->probe_domains[domain_index];
+		    }
+		}
+	    }
+	}
+      else
+	{
+	  /* build_type != probe_type */
+
+	  if (context_p->need_common_domains == false)
+	    {
+	      context_p->need_common_domains = true;
+	      context_p->need_compare_dbvalues = true;
+
+	      context_p->common_domains =
+		(TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
+	      if (context_p->common_domains == NULL)
+		{
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
+		  goto exit_on_error;
+		}
+
+	      for (skip_index = 0; skip_index < domain_index; skip_index++)
+		{
+		  context_p->common_domains[skip_index] = NULL;
+		}
+	    }
+	  else
+	    {
+	      assert (context_p->common_domains != NULL);
+	    }
+
+	  if (tp_more_general_type (build_type, probe_type) > 0)
+	    {
+	      context_p->common_domains[domain_index] = context_p->build_domains[domain_index];
+	    }
+	  else
+	    {
+	      context_p->common_domains[domain_index] = context_p->probe_domains[domain_index];
+	    }
+	}
+    }
+
+  assert (context_p->need_common_domains == false || context_p->common_domains != NULL);
+
+#if !defined(NDEBUG)
+  if (context_p->need_common_domains == true)
+    {
+      assert (context_p->need_compare_dbvalues == true);
+    }
+#endif
+
+  return NO_ERROR;
+
+exit_on_error:
+  qexec_hash_join_context_clear (thread_p, context_p);
+
+  if (error == NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
+
+  return error;
+}
+
+
+static void
+qexec_hash_join_context_clear (THREAD_ENTRY * thread_p, HASH_JOIN_CONTEXT * context_p)
+{
+  assert (thread_p != NULL);
+  assert (context_p != NULL);
+
+  context_p->build_domains = NULL;
+  context_p->probe_indexes = NULL;
+
+  if (context_p->build_domains != NULL)
+    {
+      db_private_free_and_init (thread_p, context_p->build_domains);
+    }
+
+  if (context_p->probe_domains != NULL)
+    {
+      db_private_free_and_init (thread_p, context_p->probe_domains);
+    }
+
+  if (context_p->common_domains != NULL)
+    {
+      db_private_free_and_init (thread_p, context_p->common_domains);
+    }
+
+  context_p->need_common_domains = false;
+  context_p->need_compare_dbvalues = false;
 }
 
 STATIC_INLINE int
 qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record_p, HASH_SCAN_KEY * key,
 			   HASH_SCAN_KEY * compare_key, int *value_indexes, TP_DOMAIN ** domains,
-			   TP_DOMAIN ** coerce_domains, bool need_coerce_type, bool need_dbvalue_compare)
+			   HASH_JOIN_CONTEXT * context_p)
 {
   OR_BUF iterator, buf;
   int value_size;
@@ -6678,7 +6940,7 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
   assert (key != NULL);
   assert (value_indexes != NULL);
   assert (domains != NULL);
-  assert (need_coerce_type == false || coerce_domains != NULL);
+  assert (context_p != NULL);
 
   db_make_null (&pre_coerce_value);
 
@@ -6720,18 +6982,18 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
 	  /* Skip the header of the tuple value. */
 	  or_init (&buf, iterator.ptr + QFILE_TUPLE_VALUE_HEADER_SIZE, value_size);
 
-	  if (need_dbvalue_compare == true)
+	  if (context_p->need_compare_dbvalues == true)
 	    {
 	      pr_clear_value (key->values[key_index]);
 
-	      if (need_coerce_type == true && coerce_domains[key_index] != NULL
-		  && coerce_domains[key_index] != domains[key_index])
+	      if (context_p->need_common_domains == true && context_p->common_domains[key_index] != NULL
+		  && context_p->common_domains[key_index] != domains[key_index])
 		{
 		  domains[key_index]->type->data_readval (&buf, &pre_coerce_value, domains[key_index], -1, false,
 							  NULL, 0);
 
 		  domain_status =
-		    tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
+		    tp_value_coerce (&pre_coerce_value, key->values[key_index], context_p->common_domains[key_index]);
 
 		  pr_clear_value (&pre_coerce_value);
 
@@ -6981,9 +7243,8 @@ exit_on_error:
 }
 
 static int
-qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p,
-		       HASH_LIST_SCAN * hash_join_p, int *value_indexes, TP_DOMAIN ** domains,
-		       TP_DOMAIN ** coerce_domains)
+qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, HASH_LIST_SCAN * hash_join_p,
+		       HASH_JOIN_CONTEXT * context_p)
 {
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
@@ -6994,18 +7255,14 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p,
   assert (scan_id_p != NULL);
   assert (hash_join_p != NULL);
   assert (hash_join_p->temp_key != NULL);
-  assert (value_indexes != NULL);
-  assert (domains != NULL);
-  assert (hash_join_p->need_coerce_type == false || coerce_domains != NULL);
+  assert (context_p != NULL);
 
   key = hash_join_p->temp_key;
 
   while ((qp_scan = qfile_scan_list_next (thread_p, scan_id_p, &tuple_record, PEEK)) == S_SUCCESS)
     {
       error = qexec_hash_join_fetch_key (thread_p, &tuple_record, hash_join_p->temp_key, NULL /* compare_key */ ,
-					 value_indexes, domains,
-					 coerce_domains, hash_join_p->need_coerce_type,
-					 hash_join_p->need_dbvalue_compare);
+					 context_p->build_indexes, context_p->build_domains, context_p);
       if (error != NO_ERROR)
 	{
 	  if (error < 0)
@@ -7021,14 +7278,14 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p,
 	    }
 	}
 
-      if (hash_join_p->need_dbvalue_compare == true)
+      if (context_p->need_compare_dbvalues == true)
 	{
 	  hash_join_p->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_join_p->hash_list_scan_type);
 	}
       else
 	{
 	  hash_join_p->curr_hash_key =
-	    qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_join_p->hash_list_scan_type, domains);
+	    qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_join_p->hash_list_scan_type, context_p->build_domains);
 	}
 
       error = qexec_hash_join_build_key (thread_p, hash_join_p, &tuple_record, scan_id_p);
@@ -7203,8 +7460,7 @@ static int
 qexec_hash_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 		       QFILE_LIST_MERGE_INFO * merge_info_p, HASH_LIST_SCAN * hash_join_p,
 		       QFILE_LIST_SCAN_ID * probe_scan_id_p, QFILE_LIST_SCAN_ID * build_scan_id_p,
-		       int *probe_value_indexes, int *build_value_indexes, TP_DOMAIN ** probe_domains,
-		       TP_DOMAIN ** build_domains, TP_DOMAIN ** coerce_domains)
+		       HASH_JOIN_CONTEXT * context_p)
 {
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
@@ -7221,11 +7477,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
   assert (hash_join_p->temp_new_key != NULL);
   assert (probe_scan_id_p != NULL);
   assert (build_scan_id_p != NULL);
-  assert (probe_value_indexes != NULL);
-  assert (build_value_indexes != NULL);
-  assert (probe_domains != NULL);
-  assert (build_domains != NULL);
-  assert (hash_join_p->need_coerce_type == false || coerce_domains != NULL);
+  assert (context_p != NULL);
 
   key = hash_join_p->temp_key;
   found_key = hash_join_p->temp_new_key;
@@ -7242,10 +7494,8 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
       qfile_print_tuple (&probe_scan_id_p->list_id.type_list, tuple_record.tpl);
 #endif
 
-      error = qexec_hash_join_fetch_key (thread_p, &tuple_record, key, NULL /* compare_key */ , probe_value_indexes,
-					 probe_domains,
-					 coerce_domains, hash_join_p->need_coerce_type,
-					 hash_join_p->need_dbvalue_compare);
+      error = qexec_hash_join_fetch_key (thread_p, &tuple_record, key, NULL /* compare_key */ ,
+					 context_p->probe_indexes, context_p->probe_domains, context_p);
       if (error != NO_ERROR)
 	{
 	  if (error < 0)
@@ -7261,14 +7511,14 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	    }
 	}
 
-      if (hash_join_p->need_dbvalue_compare == true)
+      if (context_p->need_compare_dbvalues == true)
 	{
 	  hash_join_p->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_join_p->hash_list_scan_type);
 	}
       else
 	{
 	  hash_join_p->curr_hash_key =
-	    qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_join_p->hash_list_scan_type, probe_domains);
+	    qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_join_p->hash_list_scan_type, context_p->probe_domains);
 	}
 
       do
@@ -7286,9 +7536,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	    }
 
 	  error = qexec_hash_join_fetch_key (thread_p, &found_tuple_record, found_key, key /* compare_key */ ,
-					     build_value_indexes,
-					     build_domains, coerce_domains, hash_join_p->need_coerce_type,
-					     hash_join_p->need_dbvalue_compare);
+					     context_p->build_indexes, context_p->build_domains, context_p);
 	  if (error != NO_ERROR)
 	    {
 	      if (error < 0)
@@ -7351,8 +7599,7 @@ exit_on_error:
 static int
 qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFILE_LIST_MERGE_INFO * merge_info_p,
 			     HASH_LIST_SCAN * hash_join_p, SCAN_ID * probe_scan_id_p,
-			     SCAN_ID * build_scan_id_p, int *probe_value_indexes, int *build_value_indexes,
-			     TP_DOMAIN ** probe_domains, TP_DOMAIN ** build_domains, TP_DOMAIN ** coerce_domains,
+			     SCAN_ID * build_scan_id_p, HASH_JOIN_CONTEXT * context_p,
 			     PRED_EXPR * during_join_pred, XASL_STATE * xasl_state)
 {
   SCAN_CODE qp_scan;
@@ -7371,11 +7618,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
   assert (hash_join_p->temp_new_key != NULL);
   assert (probe_scan_id_p != NULL);
   assert (build_scan_id_p != NULL);
-  assert (probe_value_indexes != NULL);
-  assert (build_value_indexes != NULL);
-  assert (probe_domains != NULL);
-  assert (build_domains != NULL);
-  assert (hash_join_p->need_coerce_type == false || coerce_domains != NULL);
+  assert (context_p != NULL);
 
   key = hash_join_p->temp_key;
   found_key = hash_join_p->temp_new_key;
@@ -7427,10 +7670,8 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
       qfile_print_tuple (&probe_scan_id_p->s.llsid.list_id->type_list, tuple_record.tpl);
 #endif
 
-      error = qexec_hash_join_fetch_key (thread_p, &tuple_record, key /* compare_key */ , NULL, probe_value_indexes,
-					 probe_domains,
-					 coerce_domains, hash_join_p->need_coerce_type,
-					 hash_join_p->need_dbvalue_compare);
+      error = qexec_hash_join_fetch_key (thread_p, &tuple_record, key, NULL /* compare_key */ ,
+					 context_p->probe_indexes, context_p->probe_domains, context_p);
       if (error != NO_ERROR)
 	{
 	  if (error < 0)
@@ -7456,14 +7697,14 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	    }
 	}
 
-      if (hash_join_p->need_dbvalue_compare == true)
+      if (context_p->need_compare_dbvalues == true)
 	{
 	  hash_join_p->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_join_p->hash_list_scan_type);
 	}
       else
 	{
 	  hash_join_p->curr_hash_key =
-	    qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_join_p->hash_list_scan_type, probe_domains);
+	    qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_join_p->hash_list_scan_type, context_p->probe_domains);
 	}
 
       has_merge_tuple = false;
@@ -7484,9 +7725,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	    }
 
 	  error = qexec_hash_join_fetch_key (thread_p, &found_tuple_record, found_key, key /* compare_key */ ,
-					     build_value_indexes,
-					     build_domains, coerce_domains, hash_join_p->need_coerce_type,
-					     hash_join_p->need_dbvalue_compare);
+					     context_p->build_indexes, context_p->build_domains, context_p);
 	  if (error != NO_ERROR)
 	    {
 	      if (error < 0)
@@ -7609,7 +7848,7 @@ static int
 qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {
   XASL_NODE *outer_xasl, *inner_xasl;
-  int domain_index, type_index, skip_index;
+  int type_index;
   int error = NO_ERROR;
 
   QFILE_LIST_ID *list_id_p = NULL;
@@ -7622,13 +7861,8 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
   int value_count;
   bool is_outer_join;
 
-  TP_DOMAIN **outer_domains = NULL, **inner_domains = NULL, **coerce_domains = NULL;
-  DB_TYPE outer_type, inner_type;
-  bool need_coerce_type;
-  bool need_dbvalue_compare;
-  int common_precision, common_scale, outer_integral, inner_integral;
-
   HASH_LIST_SCAN hash_join;
+  HASH_JOIN_CONTEXT context;
 
   bool on_trace;
   TSC_TICKS start_tick, end_tick;
@@ -7779,187 +8013,16 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
   value_count = merge_info_p->ls_column_cnt;
 
-  {
-    need_coerce_type = false;
-    need_dbvalue_compare = false;
-
-    outer_domains = (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
-    if (outer_domains == NULL)
-      {
-	GOTO_EXIT_ON_ERROR;
-      }
-
-    inner_domains = (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
-    if (inner_domains == NULL)
-      {
-	GOTO_EXIT_ON_ERROR;
-      }
-
-    for (domain_index = 0; domain_index < value_count; domain_index++)
-      {
-	outer_domains[domain_index] = outer_xasl->list_id->type_list.domp[merge_info_p->ls_outer_column[domain_index]];
-	inner_domains[domain_index] = inner_xasl->list_id->type_list.domp[merge_info_p->ls_inner_column[domain_index]];
-
-	outer_type = TP_DOMAIN_TYPE (outer_domains[domain_index]);
-	inner_type = TP_DOMAIN_TYPE (inner_domains[domain_index]);
-
-	if (outer_type == inner_type)
-	  {
-	    if (outer_domains[domain_index]->precision == inner_domains[domain_index]->precision
-		&& outer_domains[domain_index]->scale == inner_domains[domain_index]->scale)
-	      {
-		if (coerce_domains != NULL)
-		  {
-		    coerce_domains[domain_index] = NULL;
-		  }
-
-		switch (outer_type)
-		  {
-		  case DB_TYPE_SMALLINT:
-		  case DB_TYPE_INTEGER:
-		  case DB_TYPE_BIGINT:
-		  case DB_TYPE_FLOAT:
-		  case DB_TYPE_DOUBLE:
-		  case DB_TYPE_NUMERIC:
-		  case DB_TYPE_TIME:
-		  case DB_TYPE_TIMESTAMP:
-		  case DB_TYPE_TIMESTAMPLTZ:
-		  case DB_TYPE_TIMESTAMPTZ:
-		  case DB_TYPE_DATE:
-		  case DB_TYPE_DATETIME:
-		  case DB_TYPE_DATETIMELTZ:
-		  case DB_TYPE_DATETIMETZ:
-		  case DB_TYPE_OID:
-		  case DB_TYPE_ENUMERATION:
-		  case DB_TYPE_BIT:
-		  case DB_TYPE_VARBIT:
-		    break;
-
-		  case DB_TYPE_MONETARY:
-		  case DB_TYPE_CHAR:
-		  case DB_TYPE_VARCHAR:
-		  case DB_TYPE_NCHAR:
-		  case DB_TYPE_VARNCHAR:
-		  case DB_TYPE_SET:
-		  case DB_TYPE_MULTISET:
-		  case DB_TYPE_SEQUENCE:
-		  case DB_TYPE_VOBJ:
-		  case DB_TYPE_JSON:
-		  default:
-		    need_dbvalue_compare = true;
-		    break;
-		  }
-	      }
-	    else
-	      {
-		if (need_coerce_type == false)
-		  {
-		    need_coerce_type = true;
-		    need_dbvalue_compare = true;
-
-		    coerce_domains = (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
-		    if (coerce_domains == NULL)
-		      {
-			GOTO_EXIT_ON_ERROR;
-		      }
-
-		    for (skip_index = 0; skip_index < domain_index; skip_index++)
-		      {
-			coerce_domains[skip_index] = NULL;
-		      }
-		  }
-		else
-		  {
-		    assert (coerce_domains != NULL);
-		  }
-
-		if (outer_type == DB_TYPE_NUMERIC)
-		  {
-		    common_scale = MAX (outer_domains[domain_index]->scale, inner_domains[domain_index]->scale);
-		    outer_integral = outer_domains[domain_index]->precision - outer_domains[domain_index]->scale;
-		    inner_integral = inner_domains[domain_index]->precision - inner_domains[domain_index]->scale;
-		    common_precision = MAX (outer_integral, inner_integral) + common_scale;
-		    common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
-
-		    if (outer_domains[domain_index]->precision == common_precision
-			&& outer_domains[domain_index]->scale == common_scale)
-		      {
-			coerce_domains[domain_index] = outer_domains[domain_index];
-		      }
-		    else if (inner_domains[domain_index]->precision == common_precision
-			     && inner_domains[domain_index]->scale == common_scale)
-		      {
-			coerce_domains[domain_index] = inner_domains[domain_index];
-		      }
-		    else
-		      {
-			coerce_domains[domain_index] = tp_domain_copy (outer_domains[domain_index], false);
-			coerce_domains[domain_index]->precision = common_precision;
-			coerce_domains[domain_index]->scale = common_scale;
-		      }
-		  }
-		else
-		  {
-		    common_precision =
-		      MAX (outer_domains[domain_index]->precision, inner_domains[domain_index]->precision);
-		    if (outer_domains[domain_index]->precision == common_precision)
-		      {
-			coerce_domains[domain_index] = outer_domains[domain_index];
-		      }
-		    else
-		      {
-			assert (inner_domains[domain_index]->precision == common_precision);
-			coerce_domains[domain_index] = inner_domains[domain_index];
-		      }
-		  }
-	      }
-	  }
-	else
-	  {
-	    /* outer_type != inner_type */
-
-	    if (need_coerce_type == false)
-	      {
-		need_coerce_type = true;
-		need_dbvalue_compare = true;
-
-		coerce_domains = (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
-		if (coerce_domains == NULL)
-		  {
-		    GOTO_EXIT_ON_ERROR;
-		  }
-
-		for (skip_index = 0; skip_index < domain_index; skip_index++)
-		  {
-		    coerce_domains[skip_index] = NULL;
-		  }
-	      }
-	    else
-	      {
-		assert (coerce_domains != NULL);
-	      }
-
-	    if (tp_more_general_type (outer_type, inner_type) > 0)
-	      {
-		coerce_domains[domain_index] = outer_domains[domain_index];
-	      }
-	    else
-	      {
-		coerce_domains[domain_index] = inner_domains[domain_index];
-	      }
-	  }
-      }
-  }
-
-  error =
-    qexec_hash_join_init (thread_p, inner_xasl->list_id, &hash_join, value_count, need_coerce_type,
-			  need_dbvalue_compare);
+  error = qexec_hash_join_init (thread_p, inner_xasl->list_id, &hash_join, value_count);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
   xasl->proc.hashjoin.hash_method = hash_join.hash_list_scan_type;
+
+  qexec_hash_join_context_init (thread_p, &context, merge_info_p->ls_outer_column, merge_info_p->ls_inner_column,
+				outer_xasl->list_id->type_list.domp, inner_xasl->list_id->type_list.domp, value_count);
 
   if (is_outer_join == false)
     {
@@ -7978,9 +8041,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 	  tsc_getticks (&start_tick);
 	}
 
-      error =
-	qexec_hash_join_build (thread_p, &inner_scan_id, &hash_join, merge_info_p->ls_inner_column, inner_domains,
-			       coerce_domains);
+      error = qexec_hash_join_build (thread_p, &inner_scan_id, &hash_join, &context);
 
       if (on_trace)
 	{
@@ -8030,9 +8091,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 	}
 
       error =
-	qexec_hash_join_probe (thread_p, list_id_p, merge_info_p, &hash_join, &outer_scan_id, &inner_scan_id,
-			       merge_info_p->ls_outer_column, merge_info_p->ls_inner_column, outer_domains,
-			       inner_domains, coerce_domains);
+	qexec_hash_join_probe (thread_p, list_id_p, merge_info_p, &hash_join, &outer_scan_id, &inner_scan_id, &context);
 
       if (on_trace)
 	{
@@ -8067,9 +8126,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 	  tsc_getticks (&start_tick);
 	}
 
-      error =
-	qexec_hash_join_build (thread_p, &inner_scan_id, &hash_join, merge_info_p->ls_inner_column, inner_domains,
-			       coerce_domains);
+      error = qexec_hash_join_build (thread_p, &inner_scan_id, &hash_join, &context);
 
       if (on_trace)
 	{
@@ -8138,8 +8195,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
       error =
 	qexec_hash_outer_join_probe (thread_p, list_id_p, merge_info_p, &hash_join, &outer_spec->s_id,
-				     &inner_spec->s_id, merge_info_p->ls_outer_column, merge_info_p->ls_inner_column,
-				     outer_domains, inner_domains, coerce_domains, xasl->after_join_pred, xasl_state);
+				     &inner_spec->s_id, &context, xasl->after_join_pred, xasl_state);
 
       if (on_trace)
 	{
@@ -8179,20 +8235,7 @@ exit_on_end:
       qexec_hash_join_clear (thread_p, &hash_join);
     }
 
-  if (outer_domains != NULL)
-    {
-      db_private_free_and_init (thread_p, outer_domains);
-    }
-
-  if (inner_domains != NULL)
-    {
-      db_private_free_and_init (thread_p, inner_domains);
-    }
-
-  if (coerce_domains != NULL)
-    {
-      db_private_free_and_init (thread_p, coerce_domains);
-    }
+  qexec_hash_join_context_clear (thread_p, &context);
 
   return error;
 

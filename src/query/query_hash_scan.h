@@ -104,7 +104,7 @@ struct hash_list_scan
   {
     struct
     {
-      mht_hls_table *hash_table;	/* memory hash table for hash list scan */
+      MHT_HLS_TABLE *hash_table;	/* memory hash table for hash list scan */
       HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
     } memory;
     struct
@@ -117,7 +117,31 @@ struct hash_list_scan
   HASH_METHOD hash_list_scan_type;	/* IN_MEM, HYBRID or HASH_FILE */
   unsigned int curr_hash_key;	/* current hash key */
   bool need_coerce_type;	/* Are the types of probe and build different? */
-  bool need_dbvalue_compare;
+};
+
+typedef struct hash_join_context HASH_JOIN_CONTEXT;
+struct hash_join_context
+{
+  /* Indexes of the values ​​used in the build input */
+  int *build_indexes;
+
+  /* Indexes of the values ​​used in the probe input */
+  int *probe_indexes;
+
+  /* Domains of the values ​​used in the build input */
+  TP_DOMAIN **build_domains;
+
+  /* Domains of the values ​​used in the probe input */
+  TP_DOMAIN **probe_domains;
+
+  /* The common domains between the domains of values used in the build input and those used in the probe input. */
+  TP_DOMAIN **common_domains;
+
+  /* Whether there is a need to use a common domain */
+  bool need_common_domains;
+
+  /* Whether there is a need to make and compare with DB_VALUE */
+  bool need_compare_dbvalues;
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
