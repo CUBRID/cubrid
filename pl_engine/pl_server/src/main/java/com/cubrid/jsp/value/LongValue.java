@@ -33,6 +33,8 @@ package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
 import java.math.BigDecimal;
+import java.sql.Time;
+import java.sql.Timestamp;
 
 public class LongValue extends Value {
     private long value;
@@ -102,6 +104,22 @@ public class LongValue extends Value {
 
     public Object toObject() throws TypeMismatchException {
         return toLongObject();
+    }
+
+    public Time toTime() throws TypeMismatchException {
+        return ValueUtilities.longToTime(value);
+    }
+
+    public Time[] toTimeArray() throws TypeMismatchException {
+        return new Time[] {toTime()};
+    }
+
+    public Timestamp toTimestamp() throws TypeMismatchException {
+        return ValueUtilities.longToTimestamp(value);
+    }
+
+    public Timestamp[] toTimestampArray() throws TypeMismatchException {
+        return new Timestamp[] {toTimestamp()};
     }
 
     public String toString() {
