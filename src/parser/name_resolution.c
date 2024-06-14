@@ -5588,7 +5588,16 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
 	  return NULL;
 	}
 
-      corr_name = pt_name (parser, "");
+      if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_FOR_UPDATE))
+	{
+	  corr_name = pt_name (parser, in_node->info.name.original);
+	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_FOR_UPDATE);
+	}
+      else
+	{
+	  corr_name = pt_name (parser, "");
+	}
+
       PT_NODE_COPY_NUMBER_OUTERLINK (corr_name, in_node);
       in_node->next = NULL;
       in_node->or_next = NULL;
@@ -5607,10 +5616,6 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
       if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_ALLOW_REUSABLE_OID))
 	{
 	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_ALLOW_REUSABLE_OID);
-	}
-      if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_FOR_UPDATE))
-	{
-	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_FOR_UPDATE);
 	}
 
       parser_free_tree (parser, in_node);
@@ -9174,6 +9179,8 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
     {
       PT_NODE *node = statement->info.query.q.select.for_update;
       PT_NODE *spec = NULL;
+      PT_NODE *entity;
+      DB_OBJECT *db;
 
       if (statement->info.query.q.select.for_update != NULL)
 	{
@@ -9187,6 +9194,17 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 			      node->info.name.original);
 		  return NULL;
 		}
+
+	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
+		{
+		  db = entity->info.name.db_object;
+		  if (db_is_system_class (db) && (db_check_authorization (db, DB_AUTH_UPDATE) != NO_ERROR))
+		    {
+		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
+				   "UPDATE", entity->info.name.original);
+		      return NULL;
+		    }
+		}
 	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	  parser_free_tree (parser, statement->info.query.q.select.for_update);
@@ -9198,6 +9216,17 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	  for (spec = statement->info.query.q.select.from; spec != NULL; spec = spec->next)
 	    {
 	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
+		{
+		  db = entity->info.name.db_object;
+		  if (db_is_system_class (db) && (db_check_authorization (db, DB_AUTH_UPDATE) != NO_ERROR))
+		    {
+		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
+				   "UPDATE", entity->info.name.original);
+		      return NULL;
+		    }
+		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+		}
 	    }
 	}
     }

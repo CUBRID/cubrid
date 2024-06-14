@@ -1197,6 +1197,8 @@ typedef struct _ha_config
 #define DIAG_OUTPUT_FILE_L                      "output-file"
 #define DIAG_EMERGENCY_S                        11202
 #define DIAG_EMERGENCY_L                        "emergency"
+#define DIAG_CLASS_NAME_S                       'c'
+#define DIAG_CLASS_NAME_L                       "class-name"
 
 /* patch option list */
 #define PATCH_RECREATE_LOG_S                    'r'
@@ -1239,6 +1241,8 @@ typedef struct _ha_config
 #define PLANDUMP_DROP_L                         "drop"
 #define PLANDUMP_OUTPUT_FILE_S		        'o'
 #define PLANDUMP_OUTPUT_FILE_L                  "output-file"
+#define PLANDUMP_SHA1_S		        	's'
+#define PLANDUMP_SHA1_L                  	"sha1"
 
 /* tranlist option list */
 #if defined(NEED_PRIVILEGE_PASSWORD)

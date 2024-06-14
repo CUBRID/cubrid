@@ -53,6 +53,7 @@
 #include "xasl_predicate.hpp"
 #include "query_executor.h"
 #include "thread_entry.hpp"
+#include "subquery_cache.h"
 
 #include "dbtype.h"
 
@@ -3784,6 +3785,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
   REGU_VALUE_LIST *reguval_list = NULL;
   DB_TYPE head_type, cur_type;
   FUNCTION_TYPE *funcp = NULL;
+  XASL_NODE *xasl;
 
   switch (regu_var->type)
     {
@@ -3870,13 +3872,43 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       /* is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-
-      /* execute linked query */
-      EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
-      if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+      xasl = regu_var->xasl;
+      if (xasl && XASL_IS_FLAGED (xasl, XASL_USES_SQ_CACHE) && !(SQ_CACHE_HT (xasl) && !SQ_CACHE_ENABLED (xasl)))
 	{
-	  goto exit_on_error;
+	  if (!sq_get (thread_p, SQ_CACHE_KEY_STRUCT (xasl), xasl, regu_var))
+	    {
+	      SQ_KEY *key;
+	      /* execute linked query */
+	      EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+	      if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+		{
+		  goto exit_on_error;
+		}
+	      if ((key = sq_make_key (thread_p, xasl)) == NULL)
+		{
+		  XASL_CLEAR_FLAG (xasl, XASL_USES_SQ_CACHE);
+		  goto exit_on_error;
+		}
+	      if (sq_put (thread_p, key, xasl, regu_var) == ER_FAILED)
+		{
+		  sq_free_key (thread_p, key);
+		}
+	    }
+	  else
+	    {
+	      /* FOUND */
+	      xasl->status = XASL_SUCCESS;
+	    }
 	}
+      else
+	{
+	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+	  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+
       *peek_dbval = regu_var->value.dbvalptr;
       break;
 

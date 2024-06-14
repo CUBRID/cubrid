@@ -128,6 +128,8 @@ public class DBTypeAdapter {
                 return "DATETIMETZ";
             case DBType.DB_DATETIMELTZ:
                 return "DATETIMELTZ";
+            case DBType.DB_JSON:
+                return "JSON";
             default:
                 return "UNKNOWN (code " + dbType + ")";
         }
