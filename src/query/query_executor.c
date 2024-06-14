@@ -6722,29 +6722,23 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
 
 	  if (need_dbvalue_compare == true)
 	    {
-	      assert (db_value_is_null (key->values[key_index]));
+	      pr_clear_value (key->values[key_index]);
 
-	      if (need_coerce_type == true)
+	      if (need_coerce_type == true && coerce_domains[key_index] != NULL
+		  && coerce_domains[key_index] != domains[key_index])
 		{
-		  assert (coerce_domains != NULL);
+		  domains[key_index]->type->data_readval (&buf, &pre_coerce_value, domains[key_index], -1, false,
+							  NULL, 0);
 
+		  domain_status =
+		    tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
 
-		  if (coerce_domains[key_index] != NULL && coerce_domains[key_index] != domains[key_index])
+		  pr_clear_value (&pre_coerce_value);
+
+		  if (domain_status != DOMAIN_COMPATIBLE)
 		    {
-		      domains[key_index]->type->data_readval (&buf, &pre_coerce_value, domains[key_index], -1, false,
-							      NULL, 0);
-
-		      domain_status =
-			tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
-		      pr_clear_value (&pre_coerce_value);
-		      if (domain_status != DOMAIN_COMPATIBLE)
-			{
-			  error = ER_TP_CANT_COERCE;
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-				  pr_type_name (TP_DOMAIN_TYPE (domains[key_index])),
-				  pr_type_name (TP_DOMAIN_TYPE (coerce_domains[key_index])));
-			  goto exit_on_error;
-			}
+		      /* Give up and read the next tuple. */
+		      goto exit_on_next;
 		    }
 		}
 	      else
@@ -7885,6 +7879,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 		    outer_integral = outer_domains[domain_index]->precision - outer_domains[domain_index]->scale;
 		    inner_integral = inner_domains[domain_index]->precision - inner_domains[domain_index]->scale;
 		    common_precision = MAX (outer_integral, inner_integral) + common_scale;
+		    common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
 
 		    if (outer_domains[domain_index]->precision == common_precision
 			&& outer_domains[domain_index]->scale == common_scale)
