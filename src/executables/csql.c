@@ -2120,7 +2120,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	case CUBRID_STMT_EVALUATE:
 	  if (result != NULL)
 	    {
-              // Results can be values other than NULL
+	      // Results can be values other than NULL
 	      csql_results (csql_arg, result, db_get_query_type_ptr (result), stmt_start_line_no, stmt_type);
 	    }
 	  break;
