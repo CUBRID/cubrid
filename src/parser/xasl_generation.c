@@ -3904,7 +3904,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 			    }
 
 
-			  if (jsp_check_out_param_in_query (node, arg_mode) != NO_ERROR)
+			  if (jsp_check_out_param_in_query (parser, node, arg_mode) != NO_ERROR)
 			    {
 			      pr_clear_value (&args);
 			      return NULL;

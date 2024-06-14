@@ -56,6 +56,7 @@
 #include "dbtype.h"
 #include "jsp_comm.h"
 #include "method_compile_def.hpp"
+#include "parser_message.h"
 
 #define PT_NODE_SP_NAME(node) \
   ((node)->info.sp.name->info.name.original)
@@ -175,7 +176,7 @@ jsp_is_exist_stored_procedure (const char *name)
 }
 
 int
-jsp_check_out_param_in_query (PT_NODE * node, int arg_mode)
+jsp_check_out_param_in_query (PARSER_CONTEXT * parser, PT_NODE * node, int arg_mode)
 {
   int error = NO_ERROR;
 
@@ -186,7 +187,7 @@ jsp_check_out_param_in_query (PT_NODE * node, int arg_mode)
       // check out parameters
       if (arg_mode != SP_MODE_IN)
 	{
-	  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_OUT_ARGS_EXISTS_IN_QUERY,
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_OUT_ARGS_EXISTS_IN_QUERY,
 		      node->info.method_call.method_name->info.name.original);
 	  error = ER_PT_SEMANTIC;
 	}
@@ -1466,7 +1467,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 		error = db_get (arg_mop_p, SP_ATTR_MODE, &mode);
 		int arg_mode = db_get_int (&mode);
 
-		error = jsp_check_out_param_in_query (node, arg_mode);
+		error = jsp_check_out_param_in_query (parser, node, arg_mode);
 
 		if (error == NO_ERROR)
 		  {
