@@ -2614,11 +2614,12 @@ mht_get_hash_number_with_tuple (unsigned int ht_size, char *value, int value_siz
 
     case DB_TYPE_VARBIT:
       {
-	unsigned int size_prefix, size;
+	unsigned int size_prefix, net_size, size;
 	size_prefix = or_get_byte (&buf, &error);
 	if (size_prefix == OR_MAX_BYTE_UNSIGNED)
 	  {
-	    size = or_get_int (&buf, &error);
+	    error = or_get_data (&buf, (char *) &net_size, OR_INT_SIZE);
+	    size = OR_GET_INT (&net_size);
 	  }
 	else
 	  {
