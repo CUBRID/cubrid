@@ -98,6 +98,7 @@
 #define LANG_VARIABLE_CHARSET(x) ((x) != INTL_CODESET_ASCII     && \
 				  (x) != INTL_CODESET_RAW_BITS  && \
 				  (x) != INTL_CODESET_RAW_BYTES && \
+				  (x) != INTL_CODESET_LOB && \
 				  (x) != INTL_CODESET_ISO88591)
 
 enum

@@ -10050,7 +10050,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
       *dest_length = src_padded_length;
     }
 
-  if (dest_codeset == INTL_CODESET_RAW_BYTES)
+  if (dest_codeset == INTL_CODESET_RAW_BYTES || dest_codeset == INTL_CODESET_LOB)
     {
       /* when coercing multibyte to binary charset, we just reinterpret each byte as one character */
       if (INTL_CODESET_MULT (src_codeset) > 1)
@@ -10164,7 +10164,8 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 	{
 	  assert (copy_size <= alloc_size);
 
-	  if (src_codeset == INTL_CODESET_RAW_BYTES && (INTL_CODESET_MULT (dest_codeset) > 1))
+	  if ((src_codeset == INTL_CODESET_RAW_BYTES || src_codeset == INTL_CODESET_LOB)
+	      && (INTL_CODESET_MULT (dest_codeset) > 1))
 	    {
 	      int conv_size = 0;
 

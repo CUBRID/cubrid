@@ -2196,8 +2196,15 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	    {
 	      if (SM_IS_ATTFLAG_UNIQUE_FAMILY (constraint))
 		{
-		  ERROR2 (error, ER_SM_INVALID_UNIQUE_TYPE, atts[i]->type->name,
-			  SM_GET_CONSTRAINT_STRING (constraint_type));
+		  if (atts[i]->domain->codeset == INTL_CODESET_LOB)
+		    {
+		      ERROR2 (error, ER_SM_INVALID_UNIQUE_TYPE, "LOB", SM_GET_CONSTRAINT_STRING (constraint_type));
+		    }
+		  else
+		    {
+		      ERROR2 (error, ER_SM_INVALID_UNIQUE_TYPE, atts[i]->type->name,
+			      SM_GET_CONSTRAINT_STRING (constraint_type));
+		    }
 		}
 	      else
 		{

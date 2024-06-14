@@ -103,6 +103,7 @@ namespace cublocale
 					      &conv_size);
 	    break;
 	  case INTL_CODESET_RAW_BYTES:
+	  case INTL_CODESET_LOB:
 	    /* when coercing multibyte to binary charset, we just reinterpret each byte as one character */
 	    to_str.assign (utf8_string.begin(), utf8_string.end());
 	    break;
@@ -166,6 +167,7 @@ namespace cublocale
 					      &conv_size);
 	    break;
 	  case INTL_CODESET_RAW_BYTES:
+	  case INTL_CODESET_LOB:
 	    intl_binary_to_utf8 ((const unsigned char *) input_string.data (), input_string.size (),
 				 (unsigned char **) &utf8_str_ptr,
 				 &conv_size);

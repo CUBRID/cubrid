@@ -4152,7 +4152,7 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 	      dt->info.data_type.collation_id = attr_coll;
 	      dt->info.data_type.units = attr_cs;
 
-	      if (attr_cs == INTL_CODESET_RAW_BYTES)
+	      if (attr_cs == INTL_CODESET_RAW_BYTES || attr_cs == INTL_CODESET_LOB)
 		{
 		  /* conversion from multi-byte to binary must keep text */
 		  if (elem->info.value.data_value.str != NULL)

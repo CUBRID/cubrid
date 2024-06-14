@@ -21590,8 +21590,9 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 		  wrap_dt->info.data_type.units = (int) codeset;
 		  wrap_dt->info.data_type.collation_flag = TP_DOMAIN_COLL_NORMAL;
 		}
-	      if (node->node_type == PT_VALUE && codeset == INTL_CODESET_RAW_BYTES
-		  && node->data_type->info.data_type.units != INTL_CODESET_RAW_BYTES)
+	      if (node->node_type == PT_VALUE && (codeset == INTL_CODESET_RAW_BYTES || codeset == INTL_CODESET_LOB)
+		  && node->data_type->info.data_type.units != INTL_CODESET_RAW_BYTES
+		  && node->data_type->info.data_type.units != INTL_CODESET_LOB)
 		{
 		  /* cannot have values of ENUM type here */
 		  assert (PT_IS_CHAR_STRING_TYPE (node->type_enum));

@@ -1522,6 +1522,7 @@ intl_upper_string_size (const ALPHABET_DATA * alphabet, const unsigned char *src
     {
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       break;
 
     case INTL_CODESET_KSC5601_EUC:

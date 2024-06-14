@@ -9905,7 +9905,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      {
 		DB_DATA_STATUS data_status = DATA_STATUS_OK;
 
-		if (TP_DOMAIN_CODESET (desired_domain) == INTL_CODESET_RAW_BYTES)
+		if (TP_DOMAIN_CODESET (desired_domain) == INTL_CODESET_RAW_BYTES
+		    || TP_DOMAIN_CODESET (desired_domain) == INTL_CODESET_LOB)
 		  {
 		    /* avoid data truncation when converting to binary charset */
 		    db_value_domain_init (&conv_val, DB_VALUE_TYPE (src), db_get_string_size (src), 0);
