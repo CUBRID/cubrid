@@ -8720,11 +8720,8 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1, *r2;
 
-  unsigned int save_custom = parser->custom_print;
-  parser->custom_print |= PT_SUPPRESS_RESOLVED;
   r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
-  parser->custom_print = save_custom;
 
   if (p->info.delete_.with != NULL)
     {
