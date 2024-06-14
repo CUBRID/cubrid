@@ -3873,8 +3873,8 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  if (db_get (mop_p, SP_ATTR_ARGS, &args) == NO_ERROR)
 		    {
 		      DB_SET *param_set = db_get_set (&args);
-		      DB_VALUE mode, arg_type, temp;
-		      int i;
+		      DB_VALUE mode, type, temp;
+		      int i, arg_mode, arg_type;
 		      for (i = 0; i < num_args; i++)
 			{
 			  set_get_element (param_set, i, &temp);
@@ -3883,21 +3883,31 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 			    {
 			      if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
 				{
-				  (*tail)->arg_info.arg_mode[i] = db_get_int (&mode);
+				  arg_mode = db_get_int (&mode);
 				}
 
-			      if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
+			      if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &type) == NO_ERROR)
 				{
-				  (*tail)->arg_info.arg_type[i] = db_get_int (&arg_type);
+				  arg_type = db_get_int (&type);
 				}
+
+			      (*tail)->arg_info.arg_mode[i] = arg_mode;
+			      (*tail)->arg_info.arg_type[i] = arg_type;
 
 			      pr_clear_value (&mode);
-			      pr_clear_value (&arg_type);
+			      pr_clear_value (&type);
 			      pr_clear_value (&temp);
 			    }
 			  else
 			    {
 			      break;
+			    }
+
+
+			  if (jsp_check_out_param_in_query (node, mop_p, arg_mode) != NO_ERROR)
+			    {
+			      pr_clear_value (&args);
+			      return NULL;
 			    }
 			}
 		      pr_clear_value (&args);
@@ -3906,6 +3916,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		    {
 		      break;
 		    }
+
 
 		  /* result type */
 		  DB_VALUE result_type;
@@ -4694,9 +4705,9 @@ pt_index_value (const VAL_LIST * value, int index)
  *   grbynum_valp(in): groupby_num() dbvalue
  */
 static AGGREGATE_TYPE *
-pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * out_list, VAL_LIST * value_list,
-		 REGU_VARIABLE_LIST regu_list, REGU_VARIABLE_LIST scan_regu_list, PT_NODE * out_names,
-		 DB_VALUE ** grbynum_valp)
+pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * out_list,
+		 VAL_LIST * value_list, REGU_VARIABLE_LIST regu_list,
+		 REGU_VARIABLE_LIST scan_regu_list, PT_NODE * out_names, DB_VALUE ** grbynum_valp)
 {
   PT_NODE *select_list, *from, *where, *having;
   AGGREGATE_INFO info;
@@ -4926,8 +4937,8 @@ pt_pop_symbol_info (PARSER_CONTEXT * parser)
  *   where_range(in):
  */
 static ACCESS_SPEC_TYPE *
-pt_make_access_spec (TARGET_TYPE spec_type, ACCESS_METHOD access, INDX_INFO * indexptr, PRED_EXPR * where_key,
-		     PRED_EXPR * where_pred, PRED_EXPR * where_range)
+pt_make_access_spec (TARGET_TYPE spec_type, ACCESS_METHOD access, INDX_INFO * indexptr,
+		     PRED_EXPR * where_key, PRED_EXPR * where_pred, PRED_EXPR * where_range)
 {
   ACCESS_SPEC_TYPE *spec = NULL;
 
@@ -5056,15 +5067,17 @@ pt_fill_in_attrid_array (REGU_VARIABLE_LIST attr_list, ATTR_ID * attr_array, int
  *   schema_type(in):
  */
 static ACCESS_SPEC_TYPE *
-pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT * class_, TARGET_TYPE scan_type,
-			   ACCESS_METHOD access, INDX_INFO * indexptr, PRED_EXPR * where_key, PRED_EXPR * where_pred,
-			   PRED_EXPR * where_range, REGU_VARIABLE_LIST attr_list_key, REGU_VARIABLE_LIST attr_list_pred,
-			   REGU_VARIABLE_LIST attr_list_rest, REGU_VARIABLE_LIST attr_list_range,
-			   OUTPTR_LIST * output_val_list, REGU_VARIABLE_LIST regu_val_list,
-			   HEAP_CACHE_ATTRINFO * cache_key, HEAP_CACHE_ATTRINFO * cache_pred,
-			   HEAP_CACHE_ATTRINFO * cache_rest, HEAP_CACHE_ATTRINFO * cache_range,
-			   ACCESS_SCHEMA_TYPE schema_type, DB_VALUE ** cache_recordinfo,
-			   REGU_VARIABLE_LIST reserved_val_list)
+pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT * class_,
+			   TARGET_TYPE scan_type, ACCESS_METHOD access, INDX_INFO * indexptr,
+			   PRED_EXPR * where_key, PRED_EXPR * where_pred,
+			   PRED_EXPR * where_range, REGU_VARIABLE_LIST attr_list_key,
+			   REGU_VARIABLE_LIST attr_list_pred,
+			   REGU_VARIABLE_LIST attr_list_rest,
+			   REGU_VARIABLE_LIST attr_list_range, OUTPTR_LIST * output_val_list,
+			   REGU_VARIABLE_LIST regu_val_list, HEAP_CACHE_ATTRINFO * cache_key,
+			   HEAP_CACHE_ATTRINFO * cache_pred, HEAP_CACHE_ATTRINFO * cache_rest,
+			   HEAP_CACHE_ATTRINFO * cache_range, ACCESS_SCHEMA_TYPE schema_type,
+			   DB_VALUE ** cache_recordinfo, REGU_VARIABLE_LIST reserved_val_list)
 {
   ACCESS_SPEC_TYPE *spec;
   HFID *hfid;
@@ -5258,8 +5271,8 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
 // tbl_info (in)     : table info cache
 //
 static json_table_node *
-pt_make_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json_table, size_t & start_id,
-			      TABLE_INFO * tbl_info)
+pt_make_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json_table,
+			      size_t & start_id, TABLE_INFO * tbl_info)
 {
   json_table_node *root_node = (json_table_node *) pt_alloc_packing_buf (sizeof (json_table_node));
   pt_make_json_table_spec_node_internal (parser, &json_table->tree->info.json_table_node_info, start_id, tbl_info,
@@ -5278,8 +5291,8 @@ pt_make_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json
 // tbl_info (in)     : table info cache
 //
 static ACCESS_SPEC_TYPE *
-pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar, PRED_EXPR * where_pred,
-				PT_JSON_TABLE_INFO * json_table, TABLE_INFO * tbl_info)
+pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar,
+				PRED_EXPR * where_pred, PT_JSON_TABLE_INFO * json_table, TABLE_INFO * tbl_info)
 {
   ACCESS_SPEC_TYPE *spec;
   size_t start_id = 0;
@@ -5309,8 +5322,9 @@ pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_re
  *   attr_list_rest(in):
  */
 static ACCESS_SPEC_TYPE *
-pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METHOD access, INDX_INFO * indexptr, PRED_EXPR * where_pred,
-			  REGU_VARIABLE_LIST attr_list_pred, REGU_VARIABLE_LIST attr_list_rest,
+pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METHOD access, INDX_INFO * indexptr,
+			  PRED_EXPR * where_pred, REGU_VARIABLE_LIST attr_list_pred,
+			  REGU_VARIABLE_LIST attr_list_rest,
 			  REGU_VARIABLE_LIST attr_list_build, REGU_VARIABLE_LIST attr_list_probe)
 {
   ACCESS_SPEC_TYPE *spec;
@@ -5370,8 +5384,8 @@ pt_make_showstmt_access_spec (PRED_EXPR * where_pred, SHOWSTMT_TYPE show_type, R
  *   attr_list(in):
  */
 static ACCESS_SPEC_TYPE *
-pt_make_set_access_spec (REGU_VARIABLE * set_expr, ACCESS_METHOD access, INDX_INFO * indexptr, PRED_EXPR * where_pred,
-			 REGU_VARIABLE_LIST attr_list)
+pt_make_set_access_spec (REGU_VARIABLE * set_expr, ACCESS_METHOD access, INDX_INFO * indexptr,
+			 PRED_EXPR * where_pred, REGU_VARIABLE_LIST attr_list)
 {
   ACCESS_SPEC_TYPE *spec;
 
@@ -5404,8 +5418,9 @@ pt_make_set_access_spec (REGU_VARIABLE * set_expr, ACCESS_METHOD access, INDX_IN
  *   attr_list(in):
  */
 static ACCESS_SPEC_TYPE *
-pt_make_cselect_access_spec (XASL_NODE * xasl, METHOD_SIG_LIST * method_sig_list, ACCESS_METHOD access,
-			     INDX_INFO * indexptr, PRED_EXPR * where_pred, REGU_VARIABLE_LIST attr_list)
+pt_make_cselect_access_spec (XASL_NODE * xasl, METHOD_SIG_LIST * method_sig_list,
+			     ACCESS_METHOD access, INDX_INFO * indexptr,
+			     PRED_EXPR * where_pred, REGU_VARIABLE_LIST attr_list)
 {
   ACCESS_SPEC_TYPE *spec;
 
@@ -7528,8 +7543,8 @@ pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
  *   index_pred (in): the range
  */
 static PT_NODE *
-pt_make_prefix_index_data_filter (PARSER_CONTEXT * parser, PT_NODE * where_key_part, PT_NODE * where_part,
-				  QO_XASL_INDEX_INFO * index_pred)
+pt_make_prefix_index_data_filter (PARSER_CONTEXT * parser, PT_NODE * where_key_part,
+				  PT_NODE * where_part, QO_XASL_INDEX_INFO * index_pred)
 {
   PT_NODE *ipl_where_part = NULL;
   PT_NODE *diff_part;
@@ -9834,8 +9849,8 @@ pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
  */
 
 static REGU_VARIABLE *
-pt_to_regu_attr_descr (PARSER_CONTEXT * parser, DB_OBJECT * class_object, HEAP_CACHE_ATTRINFO * cache_attrinfo,
-		       PT_NODE * attr)
+pt_to_regu_attr_descr (PARSER_CONTEXT * parser, DB_OBJECT * class_object,
+		       HEAP_CACHE_ATTRINFO * cache_attrinfo, PT_NODE * attr)
 {
   const char *attr_name = attr->info.name.original;
   int attr_id;
@@ -11764,7 +11779,9 @@ pt_fix_first_term_func_index_for_iss (PARSER_CONTEXT * parser, QO_INDEX_ENTRY * 
   QO_SEGMENT *seg = NULL;
   QO_NODE *head = NULL;
   char *class_name = NULL;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = {
+    NULL, NULL, 0, 0, 0, false, false
+  };
 
   assert (index_entryp->constraints->func_index_info);
   func_index = index_entryp->constraints->func_index_info;
@@ -12292,8 +12309,8 @@ pt_get_mvcc_reev_range_data (PARSER_CONTEXT * parser, TABLE_INFO * table_info, P
  *   index_pred(in):
  */
 static ACCESS_SPEC_TYPE *
-pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_part, PT_NODE * where_part,
-		       QO_PLAN * plan, QO_XASL_INDEX_INFO * index_pred)
+pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_part,
+		       PT_NODE * where_part, QO_PLAN * plan, QO_XASL_INDEX_INFO * index_pred)
 {
   SYMBOL_INFO *symbols = NULL;
   ACCESS_SPEC_TYPE *access = NULL;
@@ -12760,8 +12777,8 @@ pt_to_showstmt_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * whe
  *   where_part(in):
  */
 static ACCESS_SPEC_TYPE *
-pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * subquery, PT_NODE * where_part,
-				PT_NODE * where_hash_part)
+pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * subquery,
+				PT_NODE * where_part, PT_NODE * where_hash_part)
 {
   XASL_NODE *subquery_proc;
   PT_NODE *saved_current_class;
@@ -12889,6 +12906,10 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   subquery_proc = (XASL_NODE *) src_derived_tbl->info.spec.derived_table->info.query.xasl;
 
   method_sig_list = pt_to_method_sig_list (parser, cselect, src_derived_tbl->info.spec.as_attr_list);
+  if (method_sig_list == NULL)
+    {
+      return NULL;
+    }
 
   /* This generates a list of TYPE_POSITION regu_variables There information is stored in a QFILE_TUPLE_VALUE_POSITION,
    * which describes a type and index into a list file. */
@@ -13128,8 +13149,9 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
  *   src_derived_tbl(in):
  */
 ACCESS_SPEC_TYPE *
-pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_part, PT_NODE * where_part,
-		 QO_PLAN * plan, QO_XASL_INDEX_INFO * index_part, PT_NODE * src_derived_tbl, PT_NODE * where_hash_part)
+pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_part,
+		 PT_NODE * where_part, QO_PLAN * plan, QO_XASL_INDEX_INFO * index_part,
+		 PT_NODE * src_derived_tbl, PT_NODE * where_hash_part)
 {
   ACCESS_SPEC_TYPE *access = NULL;
 
@@ -13696,8 +13718,8 @@ pt_to_corr_subquery_list (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR id)
  *   target_class(in):
  */
 static SELUPD_LIST *
-pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulist, SELUPD_LIST * selupd_list,
-			     DB_OBJECT * target_class)
+pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulist,
+			     SELUPD_LIST * selupd_list, DB_OBJECT * target_class)
 {
   SELUPD_LIST *node;
   REGU_VARLIST_LIST l_regulist;
@@ -14348,8 +14370,8 @@ pt_to_fetch_proc_list (PARSER_CONTEXT * parser, PT_NODE * spec, XASL_NODE * root
  *   info(in):
  */
 XASL_NODE *
-ptqo_to_scan_proc (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl, PT_NODE * spec, PT_NODE * where_key_part,
-		   PT_NODE * where_part, QO_XASL_INDEX_INFO * info, PT_NODE * where_hash_part)
+ptqo_to_scan_proc (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl, PT_NODE * spec,
+		   PT_NODE * where_key_part, PT_NODE * where_part, QO_XASL_INDEX_INFO * info, PT_NODE * where_hash_part)
 {
   if (xasl == NULL)
     {
@@ -15378,8 +15400,8 @@ pt_metadomain_build_comp_graph (ANALYTIC_KEY_METADOMAIN * af_meta, int af_count,
  *   select_list(in): select list of query
  */
 static SORT_LIST *
-pt_sort_list_from_metadomain (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta, PT_NODE ** sort_list_index,
-			      PT_NODE * select_list)
+pt_sort_list_from_metadomain (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta,
+			      PT_NODE ** sort_list_index, PT_NODE * select_list)
 {
   PT_NODE *sort_list_pt = NULL;
   SORT_LIST *sort_list;
@@ -15461,8 +15483,8 @@ pt_metadomain_adjust_key_prefix (ANALYTIC_KEY_METADOMAIN * meta)
  *   info(in): analytic info structure
  */
 static ANALYTIC_EVAL_TYPE *
-pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta, ANALYTIC_EVAL_TYPE * eval,
-			     PT_NODE ** sort_list_index, ANALYTIC_INFO * info)
+pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta,
+			     ANALYTIC_EVAL_TYPE * eval, PT_NODE ** sort_list_index, ANALYTIC_INFO * info)
 {
   ANALYTIC_EVAL_TYPE *newa = NULL, *new2 = NULL, *tail;
   ANALYTIC_TYPE *func_p;
@@ -16743,8 +16765,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 		{
 		  if (xasl->instnum_pred)
 		    {
-		      PRED_EXPR *pred = pt_make_pred_expr_pred (xasl->instnum_pred,
-								xasl->ordbynum_pred, B_AND);
+		      PRED_EXPR *pred = pt_make_pred_expr_pred (xasl->instnum_pred, xasl->ordbynum_pred, B_AND);
 		      if (!pred)
 			{
 			  goto exit_on_error;
@@ -19949,8 +19970,8 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
  */
 PT_NODE *
 pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * select_list, PT_NODE * from,
-		     PT_NODE * with, PT_NODE * class_specs, PT_NODE * where, PT_NODE * using_index, PT_NODE * order_by,
-		     PT_NODE * orderby_for, int server_op, SCAN_OPERATION_TYPE scan_op_type)
+		     PT_NODE * with, PT_NODE * class_specs, PT_NODE * where, PT_NODE * using_index,
+		     PT_NODE * order_by, PT_NODE * orderby_for, int server_op, SCAN_OPERATION_TYPE scan_op_type)
 {
   PT_NODE *statement = NULL, *from_temp = NULL, *node = NULL;
   PT_NODE *save_next = NULL, *spec = NULL;
@@ -26674,8 +26695,7 @@ pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XAS
     {
       /* qo_plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_USE */
       /* convert ordbynum to key limit if we have iscan with multiple key ranges */
-      int err = pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan,
-							  xasl);
+      int err = pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan, xasl);
       if (err != NO_ERROR)
 	{
 	  return err;

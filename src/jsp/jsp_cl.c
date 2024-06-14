@@ -174,6 +174,39 @@ jsp_is_exist_stored_procedure (const char *name)
   return mop != NULL;
 }
 
+int
+jsp_check_out_param_in_query (PT_NODE * node, MOP obj, int arg_mode)
+{
+  int error = NO_ERROR;
+
+  assert ((node) && (node)->node_type == PT_METHOD_CALL);
+
+  if (node->info.method_call.call_or_expr != PT_IS_CALL_STMT)
+    {
+      // check out parameters
+      if (arg_mode != SP_MODE_IN)
+	{
+	  /* java stored procedure type (PROCEDURE or FUNCTION) */
+	  DB_VALUE sp_type_val;
+	  int sp_type;
+	  if (db_get (obj, SP_ATTR_SP_TYPE, &sp_type_val) == NO_ERROR)
+	    {
+	      int sp_type = (SP_TYPE_ENUM) db_get_int (&sp_type_val);
+	      error = ER_SP_OUT_ARGUMENT_EXISTS_IN_QUERY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+		      sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION",
+		      node->info.method_call.method_name->info.name.original);
+	    }
+	  else
+	    {
+	      assert (false);
+	      error = ER_FAILED;
+	    }
+	}
+    }
+  return error;
+}
+
 /*
  * jsp_check_param_type_supported
  *
@@ -449,18 +482,23 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = method_invoke_fold_constants (sig_list, args, ret_value);
 	}
       sig_list.freemem ();
+
+      error = er_errid ();
     }
 
-  vc = statement->info.method_call.arg_list;
-  for (int i = 0; i < (int) args.size () && vc; i++)
+  if (error == NO_ERROR)
     {
-      if (!PT_IS_CONST (vc))
+      vc = statement->info.method_call.arg_list;
+      for (int i = 0; i < (int) args.size () && vc; i++)
 	{
-	  DB_VALUE & arg = args[i];
-	  db_value_clear (&arg);
-	  free (&arg);
+	  if (!PT_IS_CONST (vc))
+	    {
+	      DB_VALUE & arg = args[i];
+	      db_value_clear (&arg);
+	      free (&arg);
+	    }
+	  vc = vc->next;
 	}
-      vc = vc->next;
     }
 
   if (error == NO_ERROR)
@@ -1438,9 +1476,13 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 	    if (arg_mop_p)
 	      {
 		error = db_get (arg_mop_p, SP_ATTR_MODE, &mode);
+		int arg_mode = db_get_int (&mode);
+
+		error = jsp_check_out_param_in_query (node, mop_p, arg_mode);
+
 		if (error == NO_ERROR)
 		  {
-		    sig_arg_mode.push_back (db_get_int (&mode));
+		    sig_arg_mode.push_back (arg_mode);
 		  }
 		else
 		  {
