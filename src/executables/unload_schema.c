@@ -1001,7 +1001,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
     {
       do
 	{
-	  for (i = 0; i < SERIAL_VALUE_INDEX_MAX; i++)
+	  for (i = 0; i < ALTER_SERIAL_VALUE_INDEX_MAX; i++)
 	    {
 	      error = db_query_get_tuple_value (query_result, i, &values[i]);
 	      if (error != NO_ERROR)
