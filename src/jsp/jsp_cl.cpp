@@ -154,7 +154,7 @@ jsp_find_stored_procedure (const char *name)
 
   checked_name = jsp_check_stored_procedure_name (name);
   db_make_string (&value, checked_name);
-  mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_NAME, &value);
+  mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
 
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
@@ -646,7 +646,8 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 int
 jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  const char *decl = NULL, *comment = NULL;
+  const char *decl = NULL, *comment = NULL, *sp_unique_name = NULL;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
 
   PT_NODE *param_list, *p;
   PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
@@ -675,7 +676,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
-  sp_info.sp_name = PT_NODE_SP_NAME (statement);
+  sp_info.sp_name = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));
   if (sp_info.sp_name.empty ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
@@ -773,7 +774,13 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
     }
   sp_info.target = decl ? decl : "";
-  sp_info.owner = Au_user; // current user
+  sp_unique_name = sp_info.sp_name.data ();
+  if (sm_qualifier_name (sp_unique_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+  sp_info.owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
   sp_info.comment = (char *) PT_NODE_SP_COMMENT (statement);
 
   if (err != NO_ERROR)
@@ -862,6 +869,8 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   int err = NO_ERROR;
   PT_NODE *sp_name = NULL, *sp_owner = NULL, *sp_comment = NULL;
   const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL;
+  char new_name_str[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
   MOP sp_mop = NULL, new_owner = NULL;
@@ -944,6 +953,21 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, name_str,
 	      real_type == SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
       goto error;
+    }
+
+  /* change the unique_name */
+  sm_downcase_name (owner_str, downcase_owner_name, DB_MAX_USER_LENGTH);
+  sprintf (new_name_str, "%s.%s", downcase_owner_name, sm_remove_qualifier_name (name_str));
+
+  if (new_name_str != NULL)
+    {
+      db_make_string (&user_val, new_name_str);
+      err = obj_set (sp_mop, SP_ATTR_UNIQUE_NAME, &user_val);
+      if (err < 0)
+	{
+	  goto error;
+	}
+      pr_clear_value (&user_val);
     }
 
   /* change the owner */
@@ -1046,7 +1070,7 @@ jsp_check_stored_procedure_name (const char *str)
   char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
 
-  sm_downcase_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
   name = strdup (buffer);
 
   return name;

@@ -290,10 +290,11 @@ sp_add_stored_procedure (SP_INFO &info)
 static int
 sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 {
-  DB_OBJECT *classobj_p, *object_p;
+  DB_OBJECT *classobj_p, *object_p, *sp_args_obj;
   DB_OTMPL *obt_p = NULL;
   DB_VALUE value;
   DB_SET *param = NULL;
+  MOP *mop_list = NULL;
   int save, err;
 
   AU_DISABLE (save);
@@ -325,11 +326,19 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    sp_normalize_name (info.sp_name);
+    /* unique_name */
     db_make_string (&value, info.sp_name.data ());
+    err = dbt_put_internal (obt_p, SP_ATTR_UNIQUE_NAME, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
+    /* sp_name */
+    db_make_string (&value, sm_remove_qualifier_name (info.sp_name.data ()));
     err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
     pr_clear_value (&value);
-
     if (err != NO_ERROR)
       {
 	goto error;
@@ -395,11 +404,12 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
+    mop_list = (MOP *) malloc (info.args.size() * sizeof (MOP));
+
     int i = 0;
     for (sp_arg_info &arg: info.args)
       {
 	DB_VALUE v;
-	MOP mop = NULL;
 
 	if (sp_check_param_type_supported (arg.data_type, arg.mode) != NO_ERROR)
 	  {
@@ -410,13 +420,13 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	arg.sp_name = info.sp_name;
 	arg.pkg_name = info.pkg_name;
 
-	err = sp_add_stored_procedure_argument (&mop, arg);
+	err = sp_add_stored_procedure_argument (&mop_list[i], arg);
 	if (err != NO_ERROR)
 	  {
 	    goto error;
 	  }
 
-	db_make_object (&v, mop);
+	db_make_object (&v, mop_list[i]);
 	err = set_put_element (param, i++, &v);
 	pr_clear_value (&v);
 
@@ -495,6 +505,46 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	obj_delete (object_p);
 	goto error;
       }
+
+    // args (_db_stored_procedure_args) sp_of oid begin
+    for (i--; i >= 0; i--)
+      {
+	obt_p = dbt_edit_object (mop_list[i]);
+	if (!obt_p)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    err = er_errid ();
+	    goto error;
+	  }
+
+	db_make_object (&value, object_p);
+	err = dbt_put_internal (obt_p, SP_ATTR_SP_OF, &value);
+	pr_clear_value (&value);
+	if (err != NO_ERROR)
+	  {
+	    goto error;
+	  }
+
+	sp_args_obj = dbt_finish_object (obt_p);
+	if (!sp_args_obj)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    err = er_errid ();
+	    goto error;
+	  }
+	obt_p = NULL;
+
+	err = locator_flush_instance (sp_args_obj);
+	if (err != NO_ERROR)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    err = er_errid ();
+	    obj_delete (sp_args_obj);
+	    goto error;
+	  }
+      }
+    free (mop_list);
+    // args (_db_stored_procedure_args) sp_of oid end
   }
 
   AU_ENABLE (save);
@@ -545,14 +595,6 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
     {
       assert (er_errid () != NO_ERROR);
       err = er_errid ();
-      goto error;
-    }
-
-  db_make_string (&value, info.sp_name.data ());
-  err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
       goto error;
     }
 

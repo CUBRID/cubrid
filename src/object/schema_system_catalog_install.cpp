@@ -830,6 +830,7 @@ namespace cubschema
 		   CT_STORED_PROC_NAME,
 		   // columns
     {
+      {"unique_name", format_varchar (255)},
       {"sp_name", format_varchar (255)},
       {"sp_type", "integer"},
       {"return_type", "integer"},
@@ -845,7 +846,8 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {"sp_name", nullptr}, false},
+      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {"unique_name", nullptr}, false},
+      {DB_CONSTRAINT_UNIQUE, "", {"sp_name", "owner", nullptr}, false}
     },
 // authorization
     {
@@ -866,7 +868,7 @@ namespace cubschema
 		   CT_STORED_PROC_ARGS_NAME,
 		   // columns
     {
-      {"sp_name", format_varchar (255)},
+      {"sp_of", CT_STORED_PROC_NAME},
       {"pkg_name", format_varchar (255)},
       {"index_of", "integer"},
       {"is_system_generated", "integer"},
@@ -879,7 +881,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"sp_name", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"sp_of", nullptr}, false},
     },
 // authorization
     {
@@ -1845,6 +1847,7 @@ namespace cubschema
 		   // columns
     {
       {"sp_name", "varchar(255)"},
+      {"sp_owner_name", "varchar(255)"},
       {"pkg_name", "varchar (255)"},
       {"index_of", "integer"},
       {"arg_name", "varchar(255)"},
