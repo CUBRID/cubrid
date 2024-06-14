@@ -930,7 +930,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   int i;
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
-  DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
+  DB_VALUE values[ALTER_SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
   DB_DOMAIN *domain;
   char str_buf[NUMERIC_MAX_STRING_SIZE] = { '\0' };
   char *uppercase_user = NULL;
