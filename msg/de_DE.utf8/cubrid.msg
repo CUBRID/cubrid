@@ -1445,8 +1445,8 @@ $ LOADDB
 
 1359 Java VM crashed: %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1361 %1$s "%2$s" has OUT or IN OUT arguments
-1362 Letzter Fehler
+
+1361 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -1930,13 +1930,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 313 Synonym "%1$s" already exists.
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
-316 Rename cannot be changed to the same name.
+316 Rename cannot be changed to the _same name.
 317 Identifiers cannot be in a LIMIT clause.
 318 Only DBA and DBA group members can change the SERIAL OWNER.
 319 Unsupported argument type '%1$s' of the stored procedure
 320 Unsupported return type '%1$s' of the stored procedure
 321 %TYPE type specification is allowed only for PL/CSQL
 322 Table column '%1$s.%2$s' has not been defined
+323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.

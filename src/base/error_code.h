@@ -1738,7 +1738,6 @@
 
 #define ER_SP_SERVER_CRASHED                        -1359
 #define ER_SP_COMPILE_ERROR                         -1360
-#define ER_SP_OUT_ARGUMENT_EXISTS_IN_QUERY          -1361
 
 #define ER_LAST_ERROR                               -1362
 

@@ -1445,8 +1445,8 @@ $ LOADDB
 
 1359 Java VM crashed: %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1361 %1$s "%2$s" has OUT or IN OUT arguments
-1362 ラストエラー
+
+1361 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1937,6 +1937,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 320 Unsupported return type '%1$s' of the stored procedure
 321 %TYPE type specification is allowed only for PL/CSQL
 322 Table column '%1$s.%2$s' has not been defined
+323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

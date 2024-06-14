@@ -1445,8 +1445,8 @@ $ LOADDB
 
 1359 Java VM 에 장애가 발생함. : %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1361 %1$s "%2$s" has OUT or IN OUT arguments
-1362 마지막 에러
+
+1361 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1937,6 +1937,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 320 Unsupported return type '%1$s' of the stored procedure
 321 %TYPE type specification is allowed only for PL/CSQL
 322 Table column '%1$s.%2$s' has not been defined
+323 Stored procedure/function '%1$s' 이(가) OUT 또는 IN OUT 인수를 가지고 있습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
