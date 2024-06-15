@@ -36,6 +36,7 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
+#include "subquery_cache.h"
 
 #define foutput stdout
 
@@ -2972,6 +2973,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   json_t *subquery, *groupby, *orderby;
   json_t *left, *right, *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
+  json_t *sq_cache;
 
   if (xasl_p == NULL || parent == NULL)
     {
@@ -3087,6 +3089,23 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     }
 
   qdump_print_stats_json (xasl_p->connect_by_ptr, proc);
+
+  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
+    {
+      sq_cache = json_object ();
+      json_object_set_new (sq_cache, "hit", json_integer (SQ_CACHE_HIT (xasl_p)));
+      json_object_set_new (sq_cache, "miss", json_integer (SQ_CACHE_MISS (xasl_p)));
+      json_object_set_new (sq_cache, "size", json_integer (SQ_CACHE_SIZE (xasl_p)));
+      if (SQ_CACHE_ENABLED (xasl_p))
+	{
+	  json_object_set_new (sq_cache, "status", json_string ("enabled"));
+	}
+      else
+	{
+	  json_object_set_new (sq_cache, "status", json_string ("disabled"));
+	}
+      json_object_set_new (proc, "SUBQUERY_CACHE", sq_cache);
+    }
 
   gstats = &xasl_p->groupby_stats;
   if (gstats->run_groupby)
@@ -3384,6 +3403,21 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
   qdump_print_stats_text (fp, xasl_p->connect_by_ptr, indent);
+
+  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
+    {
+      fprintf (fp, "%*c", indent, ' ');
+      if (SQ_CACHE_ENABLED (xasl_p))
+	{
+	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu, status: enabled)\n",
+		   SQ_CACHE_HIT (xasl_p), SQ_CACHE_MISS (xasl_p), SQ_CACHE_SIZE (xasl_p));
+	}
+      else
+	{
+	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu, status: disabled)\n",
+		   SQ_CACHE_HIT (xasl_p), SQ_CACHE_MISS (xasl_p), SQ_CACHE_SIZE (xasl_p));
+	}
+    }
 
   gstats = &xasl_p->groupby_stats;
   if (gstats->run_groupby)

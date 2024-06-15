@@ -4377,7 +4377,28 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 
   if (!(hint & PT_HINT_ORDERED) && (hint & PT_HINT_LEADING))
     {
-      if (tree->info.query.q.select.leading)
+      /* check if spec_id of LEADING match spec_id of tables. */
+      bool found = true;
+      for (arg = tree->info.query.q.select.leading; arg; arg = arg->next)
+	{
+	  for (i = 0; i < env->nnodes; i++)
+	    {
+	      node = QO_ENV_NODE (env, i);
+	      spec = QO_NODE_ENTITY_SPEC (node);
+	      if (spec->info.spec.id == arg->info.name.spec_id)
+		{
+		  break;
+		}
+	    }
+	  if (i == env->nnodes)
+	    {
+	      /* not found */
+	      found = false;
+	      break;
+	    }
+	}
+
+      if (found && tree->info.query.q.select.leading)
 	{
 	  /* find last leading node */
 	  for (arg = tree->info.query.q.select.leading; arg->next; arg = arg->next)
