@@ -98,8 +98,8 @@ struct hash_list_scan
 {
   regu_variable_list_node *build_regu_list;	/* regulator variable list */
   regu_variable_list_node *probe_regu_list;	/* regulator variable list */
-  hash_scan_key *temp_key;	/* temp probe key */
-  hash_scan_key *temp_new_key;	/* temp probe key with db_value */
+  HASH_SCAN_KEY *temp_key;	/* temp probe key */
+  HASH_SCAN_KEY *temp_new_key;	/* temp probe key with db_value */
   union
   {
     struct
@@ -122,6 +122,8 @@ struct hash_list_scan
 typedef struct hash_join_context HASH_JOIN_CONTEXT;
 struct hash_join_context
 {
+  HASH_LIST_SCAN hash_scan;
+
   /* Indexes of the values ​​used in the build input */
   int *build_indexes;
 
@@ -135,10 +137,10 @@ struct hash_join_context
   TP_DOMAIN **probe_domains;
 
   /* The common domains between the domains of values used in the build input and those used in the probe input. */
-  TP_DOMAIN **common_domains;
+  TP_DOMAIN **coerce_domains;
 
-  /* Whether there is a need to use a common domain */
-  bool need_common_domains;
+  /* Whether there is a need to use a coerce domain */
+  bool need_coerce_domains;
 
   /* Whether there is a need to make and compare with DB_VALUE */
   bool need_compare_dbvalues;
