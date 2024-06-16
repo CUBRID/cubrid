@@ -6728,6 +6728,8 @@ qexec_hash_join_context_init (THREAD_ENTRY * thread_p, HASH_JOIN_CONTEXT * conte
       goto exit_on_error;
     }
 
+  context_p->coerce_domains = NULL;
+
   context_p->need_coerce_domains = false;
   context_p->need_compare_dbvalues = false;
 
@@ -6736,8 +6738,8 @@ qexec_hash_join_context_init (THREAD_ENTRY * thread_p, HASH_JOIN_CONTEXT * conte
       context_p->build_domains[domain_index] = inner_domains[inner_indexes[domain_index]];
       context_p->probe_domains[domain_index] = outer_domains[outer_indexes[domain_index]];
 
-      build_type = TP_DOMAIN_TYPE (inner_domains[domain_index]);
-      probe_type = TP_DOMAIN_TYPE (outer_domains[domain_index]);
+      build_type = TP_DOMAIN_TYPE (context_p->build_domains[domain_index]);
+      probe_type = TP_DOMAIN_TYPE (context_p->probe_domains[domain_index]);
 
       if (build_type == probe_type)
 	{
@@ -6938,7 +6940,7 @@ qexec_hash_join_context_clear (THREAD_ENTRY * thread_p, HASH_JOIN_CONTEXT * cont
 
   qexec_hash_scan_clear (thread_p, &context_p->hash_scan);
 
-  context_p->build_domains = NULL;
+  context_p->build_indexes = NULL;
   context_p->probe_indexes = NULL;
 
   if (context_p->build_domains != NULL)
@@ -7246,7 +7248,6 @@ qexec_hash_join_build_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
   hash_method = hash_scan_p->hash_list_scan_type;
 
   assert (hash_method != HASH_METH_NOT_USE);
-  assert (hash_scan_p->curr_hash_key != 0);
 
   switch (hash_method)
     {
@@ -7377,8 +7378,6 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, 
 	    qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_method, context_p->build_domains);
 	}
 
-      assert (hash_scan_p->curr_hash_key != 0);
-
       error = qexec_hash_join_build_key (thread_p, &tuple_record, scan_id_p, context_p);
       if (error != NO_ERROR)
 	{
@@ -7431,7 +7430,6 @@ qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
   hash_method = hash_scan_p->hash_list_scan_type;
 
   assert (hash_method != HASH_METH_NOT_USE);
-  assert (hash_scan_p->curr_hash_key != 0);
 
   switch (hash_method)
     {
@@ -7647,8 +7645,6 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	    qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_method, context_p->probe_domains);
 	}
 
-      assert (hash_scan_p->curr_hash_key != 0);
-
       do
 	{
 	  error = qexec_hash_join_probe_key (thread_p, &found_tuple_record, build_scan_id_p, context_p);
@@ -7846,8 +7842,6 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 	  hash_scan_p->curr_hash_key =
 	    qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_method, context_p->probe_domains);
 	}
-
-      assert (hash_scan_p->curr_hash_key != 0);
 
       is_outer_filled = false;
 
