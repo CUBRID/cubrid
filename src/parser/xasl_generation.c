@@ -65,6 +65,7 @@
 #include "compile_context.h"
 #include "db_json.hpp"
 #include "jsp_cl.h"
+#include "subquery_cache.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -630,6 +631,10 @@ static PT_NODE *pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+int pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl);
+static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
+static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+							  int *continue_walk);
 
 static void
 pt_init_xasl_supp_info ()
@@ -13960,6 +13965,10 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      regu->value.dbvalptr = value_list->val;
 		      /* move to next db_value holder */
 		      value_list = value_list->next;
+		      if (pt_prepare_corr_subquery_hash_result_cache (parser, node, xasl))
+			{
+			  XASL_SET_FLAG (xasl, XASL_USES_SQ_CACHE);
+			}
 		    }
 		  else
 		    {
@@ -27186,4 +27195,387 @@ pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred)
     }
 
   return xasl;
+}
+
+/*
+ * pt_prepare_corr_subquery_hash_result_cache ()
+ * - Checks if the provided XASL node and its subqueries can be cached based on certain conditions related to predicates
+ * and other flags within the structure.
+ *
+ * return : bool - Returns true if the XASL node and its subqueries satisfy the conditions for caching, false otherwise.
+ * parser (in): PARSER_CONTEXT* - Pointer to the parser context, provides contextual information necessary for processing the node.
+ * node (in): PT_NODE* - Pointer to the query node being checked. This node can represent various query elements such as expressions.
+ * xasl (in) : XASL_NODE* - Pointer to the XASL node being checked for caching compatibility.
+ */
+
+int
+pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl)
+{
+  int n_elements, i;
+  SQ_KEY *sq_key_struct;
+  QPROC_DB_VALUE_LIST dbv_list;
+  bool cachable = true;
+
+  if (node->info.query.q.select.hint & PT_HINT_NO_SUBQUERY_CACHE)
+    {
+      /* it means SUBQUERY RESULT won't be cached. */
+      return false;
+    }
+  parser_walk_tree (parser, node, NULL, NULL, pt_check_corr_subquery_not_cachable_expr, &cachable);
+  if (!cachable)
+    {
+      return false;
+    }
+
+  regu_alloc (dbv_list);
+  dbv_list->val = NULL;
+  dbv_list->next = NULL;
+
+  n_elements = pt_make_sq_cache_key_struct (dbv_list, (void *) xasl, SQ_TYPE_XASL);
+
+  if (n_elements == 0 || n_elements == ER_FAILED)
+    {
+      return false;
+    }
+
+  sq_key_struct = (SQ_KEY *) pt_alloc_packing_buf (sizeof (SQ_KEY));
+  sq_key_struct->dbv_array = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
+  for (i = 0; i < n_elements; i++)
+    {
+      sq_key_struct->dbv_array[i] = dbv_list->val;
+      dbv_list = dbv_list->next;
+    }
+  sq_key_struct->n_elements = n_elements;
+
+  xasl->sq_cache = (SQ_CACHE *) pt_alloc_packing_buf (sizeof (SQ_CACHE));
+  SQ_CACHE_KEY_STRUCT (xasl) = sq_key_struct;
+  return true;
+}
+
+/*
+ * pt_make_sq_cache_key_struct () - Generates a key structure for caching by recursively evaluating elements within
+ * the provided XASL or predicate expressions. It constructs a complex key based on various types of elements involved in
+ * the query processing, like subqueries, predicates, and regular variables.
+ *
+ * return : int - Returns the count of elements added to the key structure.
+ * key_struct (in/out) : DB_VALUE** - Pointer to the array where generated keys are stored.
+ * p (in) : void* - Generic pointer to the element being processed, which can be a XASL node, predicate, or regular variable.
+ * type (in) : int - Integer representing the type of element being processed, used to determine how to handle the element.
+ */
+
+int
+pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
+{
+  int cnt = 0;
+  int ret;
+  int i;
+  XASL_NODE *xasl_src;
+  XASL_NODE *scan_ptr, *aptr;
+  ACCESS_SPEC_TYPE *spec;
+  PRED_EXPR *pred_src;
+  REGU_VARIABLE *regu_src;
+  if (!p)
+    {
+      return 0;
+    }
+
+  switch (type)
+    {
+    case SQ_TYPE_XASL:
+      xasl_src = (XASL_NODE *) p;
+      if (xasl_src->bptr_list || xasl_src->dptr_list || xasl_src->fptr_list || xasl_src->connect_by_ptr)
+	{
+	  return ER_FAILED;
+	}
+      spec = xasl_src->spec_list;
+      for (spec = xasl_src->spec_list; spec; spec = spec->next)
+	{
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_key, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_pred, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) spec->where_range, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	}
+      if (xasl_src->scan_ptr)
+	{
+	  for (scan_ptr = xasl_src->scan_ptr; scan_ptr != NULL; scan_ptr = scan_ptr->next)
+	    {
+	      ret = pt_make_sq_cache_key_struct (key_struct, (void *) scan_ptr, SQ_TYPE_XASL);
+	      if (ret == ER_FAILED)
+		{
+		  return ER_FAILED;
+		}
+	      else
+		{
+		  cnt += ret;
+		}
+	    }
+	}
+      if (xasl_src->aptr_list)
+	{
+	  for (aptr = xasl_src->aptr_list; aptr != NULL; aptr = aptr->next)
+	    {
+	      ret = pt_make_sq_cache_key_struct (key_struct, (void *) aptr, SQ_TYPE_XASL);
+	      if (ret == ER_FAILED)
+		{
+		  return ER_FAILED;
+		}
+	      else
+		{
+		  cnt += ret;
+		}
+	    }
+	}
+      if (xasl_src->if_pred)
+	{
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) xasl_src->if_pred, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	}
+      if (xasl_src->after_join_pred)
+	{
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) xasl_src->after_join_pred, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	}
+      break;
+    case SQ_TYPE_PRED:
+      pred_src = (PRED_EXPR *) p;
+      if (pred_src->type == T_PRED)
+	{
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) pred_src->pe.m_pred.lhs, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) pred_src->pe.m_pred.rhs, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	}
+      else if (pred_src->type == T_EVAL_TERM)
+	{
+	  COMP_EVAL_TERM t = pred_src->pe.m_eval_term.et.et_comp;
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) t.lhs, SQ_TYPE_REGU_VAR);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) t.rhs, SQ_TYPE_REGU_VAR);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	}
+      else if (pred_src->type == T_NOT_TERM)
+	{
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) pred_src->pe.m_not_term, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	}
+      else
+	{
+	  return ER_FAILED;
+	}
+      break;
+    case SQ_TYPE_REGU_VAR:
+      regu_src = (REGU_VARIABLE *) p;
+      switch (regu_src->type)
+	{
+	case TYPE_CONSTANT:
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.dbvalptr, SQ_TYPE_DBVAL);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  break;
+	case TYPE_INARITH:
+	case TYPE_OUTARITH:
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->leftptr, SQ_TYPE_REGU_VAR);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->rightptr, SQ_TYPE_REGU_VAR);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.arithptr->thirdptr, SQ_TYPE_REGU_VAR);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	  break;
+
+	case TYPE_POSITION:
+	case TYPE_LIST_ID:
+	  /* Currently not supported, implement later */
+	  return ER_FAILED;
+	  break;
+
+	case TYPE_POS_VALUE:
+	case TYPE_DBVAL:
+	case TYPE_ORDERBY_NUM:
+	  /* constants */
+	  break;
+
+	case TYPE_ATTR_ID:
+	case TYPE_CLASS_ATTR_ID:
+	case TYPE_SHARED_ATTR_ID:
+	  /* This is column in subquery */
+	  break;
+
+	case TYPE_OID:
+	case TYPE_CLASSOID:
+	case TYPE_REGUVAL_LIST:
+	case TYPE_REGU_VAR_LIST:
+	case TYPE_FUNC:
+	  /* Result Cache not supported */
+	  return ER_FAILED;
+	  break;
+
+	default:
+	  return ER_FAILED;
+	  break;
+	}
+      break;
+    case SQ_TYPE_DBVAL:
+      if (key_struct)
+	{
+	  QPROC_DB_VALUE_LIST new_dbv, list_p;
+	  if (key_struct->val != NULL)
+	    {
+	      list_p = key_struct;
+	      while (list_p->next)
+		{
+		  list_p = list_p->next;
+		}
+	      regu_alloc (new_dbv);
+	      new_dbv->next = NULL;
+	      new_dbv->val = (DB_VALUE *) p;
+	      list_p->next = new_dbv;
+	    }
+	  else
+	    {
+	      key_struct->val = (DB_VALUE *) p;
+	    }
+	}
+      cnt++;
+      break;
+
+    default:
+      return ER_FAILED;
+      break;
+    }
+
+  return cnt;
+}
+
+/*
+ * pt_check_corr_subquery_not_cachable_expr () - Evaluates whether expressions within a node are cachable for subqueries. 
+ * 
+ * 
+ * parser (in): PARSER_CONTEXT* - Pointer to the parser context, provides contextual information necessary for processing the node.
+ * node (in): PT_NODE* - Pointer to the query node being checked. This node can represent various query elements such as expressions.
+ * arg (in/out): void* - A generic pointer, which in this context is used to point to a boolean flag indicating cachability.
+ * continue_walk (in/out): int* - Pointer to an integer that controls the continuation of the tree walk. Set to PT_STOP_WALK to halt further processing.
+ * 
+ */
+static PT_NODE *
+pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+
+  if (node->node_type == PT_EXPR)
+    {
+      bool *cachable = (bool *) arg;
+      switch (node->info.expr.op)
+	{
+	case PT_SYS_GUID:
+	case PT_RAND:
+	case PT_DRAND:
+	case PT_RANDOM:
+	case PT_DRANDOM:
+	  *cachable = false;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	default:
+	  /* continue walk */
+	  break;
+	}
+    }
+  return node;
 }
