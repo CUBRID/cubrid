@@ -927,7 +927,8 @@ Anwendung: %1$s plandump [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
   -d, --drop                   alle Pläne ins Server-Cache exportieren \n\
-  -o, --output-file=DATEI       Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n
+  -o, --output-file=DATEI       Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
+  -s, --sha1=SHA1               drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Ausgangdatei '%1$s' kann nicht geöffnet werden\n

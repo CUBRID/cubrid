@@ -2120,8 +2120,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	case CUBRID_STMT_EVALUATE:
 	  if (result != NULL)
 	    {
-	      // suppress results (always NULL)
-	      // csql_results (csql_arg, result, db_get_query_type_ptr (result), stmt_start_line_no, stmt_type);
+	      // Results can be values other than NULL
+	      csql_results (csql_arg, result, db_get_query_type_ptr (result), stmt_start_line_no, stmt_type);
 	    }
 	  break;
 
@@ -2978,14 +2978,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   logddl_init (APP_NAME_CSQL);
   logddl_check_ddl_audit_param ();
-  if (csql_arg->db_name != NULL)
-    {
-      logddl_set_db_name (csql_arg->db_name);
-    }
-  if (csql_arg->user_name != NULL)
-    {
-      logddl_set_user_name (csql_arg->user_name);
-    }
+
   if (get_host_ip (ip_addr) == 0)
     {
       logddl_set_ip ((char *) ip_addr);

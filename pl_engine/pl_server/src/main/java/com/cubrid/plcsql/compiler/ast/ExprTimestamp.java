@@ -33,6 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.time.ZonedDateTime;
+import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprTimestamp extends Expr {
@@ -52,7 +53,9 @@ public class ExprTimestamp extends Expr {
         this.originType = originType;
     }
 
-    public String javaCode() {
+    public String javaCode(Set<String> javaTypesUsed) {
+
+        javaTypesUsed.add("java.sql.Timestamp");
 
         if (time.equals(DateTimeParser.nullDatetimeUTC)) {
             return "new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0)";

@@ -33,7 +33,6 @@ package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
 import java.sql.Date;
-import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.Calendar;
 
@@ -61,14 +60,11 @@ public class DateValue extends Value {
 
     public DateValue(Date date) {
         this.date = date;
+        assert date.getTime() % 1000L == 0; // millisecond value must be zero
     }
 
     public Date toDate() throws TypeMismatchException {
         return date;
-    }
-
-    public Time toTime() throws TypeMismatchException {
-        return new Time(date.getTime());
     }
 
     public Timestamp toTimestamp() throws TypeMismatchException {
@@ -91,16 +87,12 @@ public class DateValue extends Value {
         return new Date[] {date};
     }
 
-    public Time[] toTimeArray() throws TypeMismatchException {
-        return new Time[] {toTime()};
-    }
-
     public Timestamp[] toTimestampArray() throws TypeMismatchException {
         return new Timestamp[] {toTimestamp()};
     }
 
     public Timestamp[] toDatetimeArray() throws TypeMismatchException {
-        return new Timestamp[] {toTimestamp()};
+        return new Timestamp[] {toDatetime()};
     }
 
     public Object[] toObjectArray() throws TypeMismatchException {
