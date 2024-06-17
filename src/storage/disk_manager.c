@@ -527,8 +527,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   addr.vfid = NULL;
 
-  if ((strlen (vol_fullname) + 1 > DB_MAX_PATH_LENGTH)
-      || (DB_PAGESIZE < (PGLENGTH) (SSIZEOF (DISK_VOLUME_HEADER) + strlen (vol_fullname) + 1)))
+  if ((strlen (vol_fullname) + 1 > DB_MAX_PATH_LENGTH) ||
+      ((size_t) DB_PAGESIZE < ((size_t) (SSIZEOF (DISK_VOLUME_HEADER)) + strlen (vol_fullname) + 1)))
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, NULL, vol_fullname,
 	      strlen (vol_fullname) + 1, DB_MAX_PATH_LENGTH);
@@ -536,7 +536,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     }
 
   /* make sure that this is a valid purpose */
-  if (vol_purpose != DB_PERMANENT_DATA_PURPOSE && vol_purpose != DB_TEMPORARY_DATA_PURPOSE)
+  if ((vol_purpose != DB_PERMANENT_DATA_PURPOSE) && (vol_purpose != DB_TEMPORARY_DATA_PURPOSE))
     {
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_UNKNOWN_PURPOSE, 3, vol_purpose, DB_PERMANENT_DATA_PURPOSE,
@@ -545,8 +545,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     }
 
   /* safe guard: permanent volumes with temporary data purpose must be maxed */
-  assert (vol_purpose != DB_TEMPORARY_DATA_PURPOSE || ext_info->voltype != DB_PERMANENT_VOLTYPE
-	  || ext_info->nsect_total == ext_info->nsect_max);
+  assert ((vol_purpose != DB_TEMPORARY_DATA_PURPOSE) || (ext_info->voltype != DB_PERMANENT_VOLTYPE)
+	  || (ext_info->nsect_total == ext_info->nsect_max));
 
   /* undo must be logical since we are going to remove the volume in the case of rollback (really a crash since we are
    * in a top operation) */
@@ -631,8 +631,14 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   /* Initialize variable length fields */
 
   vhdr->next_volid = NULL_VOLID;
-  vhdr->offset_to_vol_fullname = vhdr->offset_to_next_vol_fullname = vhdr->offset_to_vol_remarks = 0;
+  vhdr->offset_to_vol_fullname = 0;
+  vhdr->offset_to_next_vol_fullname = 1;
+  vhdr->offset_to_vol_remarks = 2;
+
   vhdr->var_fields[vhdr->offset_to_vol_fullname] = '\0';
+  vhdr->var_fields[vhdr->offset_to_next_vol_fullname] = '\0';
+  vhdr->var_fields[vhdr->offset_to_vol_remarks] = '\0';
+
   error_code = disk_vhdr_set_vol_fullname (vhdr, vol_fullname);
   if (error_code != NO_ERROR)
     {
@@ -5161,35 +5167,55 @@ disk_type_to_string (DB_VOLTYPE voltype)
  * disk_vhdr_set_vol_fullname () -
  *   return: NO_ERROR
  *   vhdr(in):
- *   vol_fullname(in):
+ *   new_vol_fullname(in):
  */
 static int
-disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
+disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_vol_fullname)
 {
-  int length_diff;
-  int length_to_move;
+  int name_length_diff = 0;
+  int length_to_move = 0;
+  int vol_fullname_size = 0;
+  int next_vol_fullname_size = 0;
+  int remarks_size = 0;
+  int new_vol_fullname_size = 0;
   int ret = NO_ERROR;
+  bool is_remarks_trim = false;
 
-  length_diff = vhdr->offset_to_vol_remarks;
-
-  length_to_move = (length_diff + (int) strlen (vhdr->var_fields + length_diff) + 1
-		    - vhdr->offset_to_next_vol_fullname);
+  /* Contains null characters ( 1 byte ) */
+  vol_fullname_size = (int) strlen (vhdr->var_fields + vhdr->offset_to_vol_fullname) + 1;
+  next_vol_fullname_size = (int) strlen (vhdr->var_fields + vhdr->offset_to_next_vol_fullname) + 1;
+  remarks_size = (int) strlen (vhdr->var_fields + vhdr->offset_to_vol_remarks) + 1;
+  new_vol_fullname_size = (int) strlen (new_vol_fullname) + 1;
 
   /* Difference in length between new name and old name */
-  length_diff = (((int) strlen (vol_fullname) + 1)
-		 - (vhdr->offset_to_next_vol_fullname - vhdr->offset_to_vol_fullname));
+  name_length_diff = (new_vol_fullname_size - vol_fullname_size);
 
-  if (length_diff != 0)
+  length_to_move = (next_vol_fullname_size + remarks_size);
+
+  if (name_length_diff != 0)
     {
+      if ((disk_get_vhdr_size (vhdr) + name_length_diff) > DB_PAGESIZE)
+	{
+	  is_remarks_trim = true;
+
+	  length_to_move -= ((disk_get_vhdr_size (vhdr) + name_length_diff) - DB_PAGESIZE);
+	  remarks_size -= name_length_diff;
+	}
+
       /* We need to either move to right(expand) or left(shrink) the rest of the variable length fields */
-      memmove (disk_vhdr_get_next_vol_fullname (vhdr) + length_diff, disk_vhdr_get_next_vol_fullname (vhdr),
-	       length_to_move);
-      vhdr->offset_to_next_vol_fullname += length_diff;
-      vhdr->offset_to_vol_remarks += length_diff;
+      memmove (disk_vhdr_get_next_vol_fullname (vhdr) + name_length_diff,
+	       disk_vhdr_get_next_vol_fullname (vhdr), length_to_move);
+
+      vhdr->offset_to_next_vol_fullname += name_length_diff;
+      vhdr->offset_to_vol_remarks += name_length_diff;
+
+      if (is_remarks_trim == true)
+	{
+	  vhdr->var_fields[vhdr->offset_to_vol_remarks + remarks_size - 1] = '\0';
+	}
     }
 
-  (void) memcpy (disk_vhdr_get_vol_fullname (vhdr), vol_fullname,
-		 MIN ((ssize_t) strlen (vol_fullname) + 1, DB_MAX_PATH_LENGTH));
+  (void) memcpy (disk_vhdr_get_vol_fullname (vhdr), new_vol_fullname, MIN (new_vol_fullname_size, DB_MAX_PATH_LENGTH));
   return ret;
 }
 
@@ -5197,45 +5223,65 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
  * disk_vhdr_set_next_vol_fullname () -
  *   return: NO_ERROR
  *   vhdr(in):
- *   next_vol_fullname(in):
+ *   new_next_vol_fullname(in):
  */
 static int
-disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol_fullname)
+disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_next_vol_fullname)
 {
-  int length_diff;
+  int name_length_diff;
   int length_to_move;
   int ret = NO_ERROR;
-  int next_vol_fullname_size;
+  int vol_fullname_size = 0;
+  int next_vol_fullname_size = 0;
+  int new_next_vol_fullname_size = 0;
+  int remarks_size = 0;
+  bool is_remarks_trim = false;
 
-  if (next_vol_fullname == NULL)
+  if (new_next_vol_fullname == NULL)
     {
-      next_vol_fullname = "";
-      next_vol_fullname_size = 1;
+      new_next_vol_fullname = "";
+      new_next_vol_fullname_size = 1;
     }
   else
     {
-      next_vol_fullname_size = (int) strlen (next_vol_fullname) + 1;
-      if (next_vol_fullname_size > PATH_MAX)
+      new_next_vol_fullname_size = (int) strlen (new_next_vol_fullname) + 1;
+
+      if (new_next_vol_fullname_size > PATH_MAX)
 	{
-	  next_vol_fullname_size = PATH_MAX;
+	  new_next_vol_fullname_size = PATH_MAX;
 	}
     }
 
-  length_diff = vhdr->offset_to_vol_remarks;
-
-  length_to_move = (int) strlen (vhdr->var_fields + length_diff) + 1;
+  remarks_size = (int) strlen (vhdr->var_fields + vhdr->offset_to_vol_remarks) + 1;
+  next_vol_fullname_size = (int) strlen (vhdr->var_fields + vhdr->offset_to_next_vol_fullname) + 1;
 
   /* Difference in length between new name and old name */
-  length_diff = (next_vol_fullname_size - (vhdr->offset_to_vol_remarks - vhdr->offset_to_next_vol_fullname));
+  name_length_diff = (new_next_vol_fullname_size - next_vol_fullname_size);
 
-  if (length_diff != 0)
+  length_to_move = remarks_size;
+
+  if (name_length_diff != 0)
     {
+      if ((disk_get_vhdr_size (vhdr) + name_length_diff) > DB_PAGESIZE)
+	{
+	  is_remarks_trim = true;
+
+	  length_to_move -= ((disk_get_vhdr_size (vhdr) + name_length_diff) - DB_PAGESIZE);
+	  remarks_size -= name_length_diff;
+	}
+
       /* We need to either move to right(expand) or left(shrink) the rest of the variable length fields */
-      memmove (disk_vhdr_get_vol_remarks (vhdr) + length_diff, disk_vhdr_get_vol_remarks (vhdr), length_to_move);
-      vhdr->offset_to_vol_remarks += length_diff;
+      memmove (disk_vhdr_get_vol_remarks (vhdr) + name_length_diff, disk_vhdr_get_vol_remarks (vhdr), length_to_move);
+
+      vhdr->offset_to_vol_remarks += name_length_diff;
+
+      if (is_remarks_trim == true)
+	{
+	  vhdr->var_fields[vhdr->offset_to_vol_remarks + remarks_size - 1] = '\0';
+	}
     }
 
-  (void) memcpy (disk_vhdr_get_next_vol_fullname (vhdr), next_vol_fullname, next_vol_fullname_size);
+  (void) memcpy (disk_vhdr_get_next_vol_fullname (vhdr), new_next_vol_fullname, new_next_vol_fullname_size);
 
   return ret;
 }
