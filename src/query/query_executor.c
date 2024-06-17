@@ -6542,7 +6542,7 @@ qexec_hash_scan_init (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, HASH_L
   if ((UINT64) list_id_p->page_cnt * DB_PAGESIZE <= mem_limit)
     {
 #if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_BUILD)
-      fprintf (stdout, "\n[DEBUG] Hash Join -> In Memory\n");
+      fprintf (stdout, "\n[DEBUG] Hash Join Method: In Memory\n");
       fprintf (stdout, "  - Page Count: %d <= %lu\n", list_id_p->page_cnt, mem_limit / 16344);
 #endif
 
@@ -6559,7 +6559,7 @@ qexec_hash_scan_init (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, HASH_L
   else if ((UINT64) list_id_p->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
     {
 #if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_BUILD)
-      fprintf (stdout, "\n[DEBUG] Hash Join -> Hybrid\n");
+      fprintf (stdout, "\n[DEBUG] Hash Join Method: Hybrid\n");
       fprintf (stdout, "  - Page Count: %d > %lu\n", list_id_p->page_cnt, mem_limit / 16344);
       fprintf (stdout, "  - Tuple Count: %ld <= %lu\n", list_id_p->tuple_cnt,
 	       mem_limit / (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)));
@@ -6578,7 +6578,7 @@ qexec_hash_scan_init (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, HASH_L
   else
     {
 #if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_BUILD)
-      fprintf (stdout, "\n[DEBUG] Hash Join -> File\n");
+      fprintf (stdout, "\n[DEBUG] Hash Join Method: File\n");
       fprintf (stdout, "  - Page Count: %d > %lu\n", list_id_p->page_cnt, mem_limit / 16344);
       fprintf (stdout, "  - Tuple Count: %ld > %lu\n", list_id_p->tuple_cnt,
 	       mem_limit / (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)));
@@ -6647,6 +6647,7 @@ qexec_hash_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan_p)
 	  {
 	    mht_clear_hls (hash_scan_p->memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
 	    mht_destroy_hls (hash_scan_p->memory.hash_table);
+	    hash_scan_p->memory.hash_table = NULL;
 	  }
 
 	hash_scan_p->memory.curr_hash_entry = NULL;
@@ -7027,7 +7028,10 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
 
 	  if (context_p->need_compare_dbvalues == true)
 	    {
-	      pr_clear_value (key->values[key_index]);
+	      if (DB_NEED_CLEAR (key->values[key_index]))
+		{
+		  pr_clear_value (key->values[key_index]);
+		}
 
 	      if (context_p->need_coerce_domains == true && context_p->coerce_domains[key_index] != NULL
 		  && context_p->coerce_domains[key_index] != domains[key_index])
@@ -7043,7 +7047,10 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
 		  domain_status =
 		    tp_value_coerce (&pre_coerce_value, key->values[key_index], context_p->coerce_domains[key_index]);
 
-		  pr_clear_value (&pre_coerce_value);
+		  if (DB_NEED_CLEAR (&pre_coerce_value))
+		    {
+		      pr_clear_value (&pre_coerce_value);
+		    }
 
 		  if (domain_status != DOMAIN_COMPATIBLE)
 		    {
@@ -8378,10 +8385,6 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
   XASL_NODE *outer_xasl, *inner_xasl;
 
   QFILE_LIST_ID *list_id_p = NULL;
-  QFILE_TUPLE_VALUE_TYPE_LIST type_list;
-  int type_index;
-  int ls_flag;
-
   QFILE_LIST_MERGE_INFO *merge_info_p;
   bool is_outer_join;
 
@@ -8395,8 +8398,6 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
   outer_xasl = xasl->proc.hashjoin.outer_xasl;
   inner_xasl = xasl->proc.hashjoin.inner_xasl;
-
-  type_list.domp = NULL;
 
   merge_info_p = &(xasl->proc.hashjoin.ls_merge);
   is_outer_join = IS_OUTER_JOIN_TYPE (merge_info_p->join_type);
@@ -8432,20 +8433,24 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
     }
 
   {
-    ls_flag = 0;
+    QFILE_TUPLE_VALUE_TYPE_LIST type_list;
+    int ls_flag = 0;
+    int type_index;
+
+    type_list.type_cnt = merge_info_p->ls_pos_cnt;
+    type_list.domp = NULL;
+
+    type_list.domp = (TP_DOMAIN **) malloc (type_list.type_cnt * sizeof (TP_DOMAIN *));
+    if (type_list.domp == NULL)
+      {
+	GOTO_EXIT_ON_ERROR;
+      }
 
     QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
     if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
 	&& (xasl->orderby_list == NULL || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)) && xasl->option != Q_DISTINCT)
       {
 	QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
-      }
-
-    type_list.type_cnt = merge_info_p->ls_pos_cnt;
-    type_list.domp = (TP_DOMAIN **) malloc (type_list.type_cnt * sizeof (TP_DOMAIN *));
-    if (type_list.domp == NULL)
-      {
-	GOTO_EXIT_ON_ERROR;
       }
 
     for (type_index = 0; type_index < type_list.type_cnt; type_index++)
@@ -8464,6 +8469,11 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
     if (list_id_p == NULL)
       {
 	GOTO_EXIT_ON_ERROR;
+      }
+
+    if (type_list.domp != NULL)
+      {
+	free_and_init (type_list.domp);
       }
   }
 
@@ -8514,11 +8524,6 @@ exit_on_end:
       qfile_close_list (thread_p, list_id_p);
       qfile_copy_list_id (xasl->list_id, list_id_p, true);
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
-    }
-
-  if (type_list.domp != NULL)
-    {
-      free_and_init (type_list.domp);
     }
 
   qexec_hash_join_context_clear (thread_p, &context);

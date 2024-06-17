@@ -529,7 +529,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
 
 	      db_fprint_value (fp, &dbval);
 
-	      if (pr_is_set_type (pr_type_p->id))
+	      if (DB_NEED_CLEAR (&dbval))
 		{
 		  pr_clear_value (&dbval);
 		}

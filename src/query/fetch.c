@@ -4345,7 +4345,12 @@ fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VAL
 
   /* assume regu_var->type == TYPE_POSITION */
   pos_descr = &regu_var->value.pos_descr;
-  pr_clear_value (regu_var->vfetch_to);
+
+  if (DB_NEED_CLEAR (regu_var->vfetch_to))
+    {
+      pr_clear_value (regu_var->vfetch_to);
+    }
+
   *peek_dbval = regu_var->vfetch_to;
 
   /* locate value position in the tuple */
@@ -4590,7 +4595,8 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 	    }
 	  else
 	    {
-	      if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to)))
+	      if (DB_NEED_CLEAR (regup->value.vfetch_to)
+		  || pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to)))
 		{
 		  pr_clear_value (regup->value.vfetch_to);
 		}
@@ -4614,7 +4620,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
        */
       for (regup = regu_list; regup != NULL; regup = regup->next)
 	{
-	  if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to)))
+	  if (DB_NEED_CLEAR (regup->value.vfetch_to) || pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to)))
 	    {
 	      pr_clear_value (regup->value.vfetch_to);
 	    }

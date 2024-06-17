@@ -1023,7 +1023,8 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 	  pr_type_p->data_readval (&buf, &dbval, type_list_p->domp[i], -1, true, NULL, 0);
 
 	  db_fprint_value (stdout, &dbval);
-	  if (pr_is_set_type (pr_type_p->id))
+
+	  if (DB_NEED_CLEAR (&dbval) || pr_is_set_type (pr_type_p->id))
 	    {
 	      pr_clear_value (&dbval);
 	    }
