@@ -5249,18 +5249,19 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
 static int
 disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks)
 {
-  int maxsize;
+  int usable_size = 0;
   int ret = NO_ERROR;
 
   if (vol_remarks != NULL)
     {
-      maxsize = (DB_PAGESIZE - offsetof (DISK_VOLUME_HEADER, var_fields) - vhdr->offset_to_vol_remarks);
+      usable_size = (DB_PAGESIZE - offsetof (DISK_VOLUME_HEADER, var_fields) - vhdr->offset_to_vol_remarks);
 
-      if ((int) strlen (vol_remarks) > maxsize)
+      if ((int) strlen (vol_remarks) >= usable_size)
 	{
 	  /* Does not fit.. Truncate the comment */
-	  (void) strncpy (disk_vhdr_get_vol_remarks (vhdr), vol_remarks, maxsize - 1);
-	  vhdr->var_fields[maxsize] = '\0';
+	  (void) strncpy (disk_vhdr_get_vol_remarks (vhdr), vol_remarks, usable_size - 1);
+
+	  vhdr->var_fields[vhdr->offset_to_vol_remarks + usable_size - 1] = '\0';
 	}
       else
 	{
