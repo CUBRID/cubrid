@@ -397,8 +397,7 @@ extern void pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_
 extern bool pgbuf_is_lsa_temporary (PAGE_PTR pgptr);
 extern bool pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern bool pgbuf_check_page_type_no_error (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
-extern DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
-					 DISK_ISVALID (*fun) (const VPID * vpid, void *args), void *args);
+extern DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error);
 
 #if defined(CUBRID_DEBUG)
 extern void pgbuf_dump_if_any_fixed (void);
