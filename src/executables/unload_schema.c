@@ -1430,6 +1430,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	{
 	  fprintf (stderr, " Check the value of db_serial object.\n");
 	}
+      err_count++;
     }
 
   if (required_class_only == false && emit_stored_procedure (ctxt, schema_output_ctx) != NO_ERROR)
