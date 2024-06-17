@@ -734,6 +734,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       break;
       /* case DB_TYPE_TABLE: internal use only */
     case DB_TYPE_JSON:
+    case DB_TYPE_RESULTSET:
       value->domain.general_info.is_null = 1;
       value->need_clear = false;
       break;
