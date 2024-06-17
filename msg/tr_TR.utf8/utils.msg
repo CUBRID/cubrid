@@ -816,6 +816,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Çıktı dosyası '%1$s' açılmaadı \n
+16 Bilinmeyen sınıf "%1$s"\n
 60 \
 diagdb: Bir veritabanı dökümü.\n\
 kullanım: %1$s diagdb [SEÇENEK] database-name\n\

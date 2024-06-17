@@ -817,6 +817,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Couldn't open output file '%1$s'\n
+16 Unknown class "%1$s"\n
 60 \
 diagdb: Dump a database.\n\
 usage: %1$s diagdb [OPTION] database-name\n\
