@@ -350,7 +350,7 @@ static bool disk_Logging = false;
 STATIC_INLINE char *disk_vhdr_get_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *disk_vhdr_get_next_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int disk_vhdr_length_of_varfields (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int disk_get_vhdr_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 static int disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname);
 static int disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol_fullname);
 static int disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks);
@@ -658,7 +658,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
     {
-      log_append_dboutside_redo (thread_p, RVDK_NEWVOL, sizeof (*vhdr) + disk_vhdr_length_of_varfields (vhdr), vhdr);
+      log_append_dboutside_redo (thread_p, RVDK_NEWVOL, disk_get_vhdr_size (vhdr), vhdr);
 
       fault_inject_random_crash ();
 
@@ -673,7 +673,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
        *       RVDK_FORMAT calls recovery detectable.
        */
       addr.offset = -1;		/* First call is marked with offset -1. */
-      log_append_redo_data (thread_p, RVDK_FORMAT, &addr, sizeof (*vhdr) + disk_vhdr_length_of_varfields (vhdr), vhdr);
+      log_append_redo_data (thread_p, RVDK_FORMAT, &addr, disk_get_vhdr_size (vhdr), vhdr);
 
       fault_inject_random_crash ();
     }
@@ -704,7 +704,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
     {
       addr.offset = 0;		/* Header is located at position zero */
-      log_append_redo_data (thread_p, RVDK_FORMAT, &addr, sizeof (*vhdr) + disk_vhdr_length_of_varfields (vhdr), vhdr);
+      log_append_redo_data (thread_p, RVDK_FORMAT, &addr, disk_get_vhdr_size (vhdr), vhdr);
 
       fault_inject_random_crash ();
     }
@@ -5312,15 +5312,19 @@ disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr)
 }
 
 /*
- * disk_vhdr_length_of_varfields () - get length of volume header including variable fields
+ * disk_get_vhdr_size () - get size of volume header including variable fields
  *
- * return    : total length
+ * return    : total size
  * vhdr (in) : volume header
  */
 STATIC_INLINE int
-disk_vhdr_length_of_varfields (const DISK_VOLUME_HEADER * vhdr)
+disk_get_vhdr_size (const DISK_VOLUME_HEADER * vhdr)
 {
-  return (vhdr->offset_to_vol_remarks + (int) strlen (disk_vhdr_get_vol_remarks (vhdr)));
+  int remarks_size = 0;
+
+  remarks_size = (int) strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1;
+
+  return (offsetof (DISK_VOLUME_HEADER, var_fields) + (vhdr->offset_to_vol_remarks + remarks_size));;
 }
 
 /*
