@@ -136,6 +136,7 @@ static char *stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *tmp, A
 static char *stx_build_srlist_id (THREAD_ENTRY * thread_p, char *tmp, QFILE_SORTED_LIST_ID * ptr);
 static char *stx_build_sort_list (THREAD_ENTRY * thread_p, char *tmp, SORT_LIST * ptr);
 static char *stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *tmp, CONNECTBY_PROC_NODE * ptr);
+static char *stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p);
 
 static REGU_VALUE_LIST *stx_regu_value_list_alloc_and_init (THREAD_ENTRY * thread_p);
 static REGU_VALUE_ITEM *stx_regu_value_item_alloc_and_init (THREAD_ENTRY * thread_p);
@@ -2274,6 +2275,11 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	  goto error;
 	}
     }
+  ptr = stx_build_sq_cache (thread_p, ptr, &xasl->sq_cache);
+  if (ptr == NULL)
+    {
+      goto error;
+    }
 
   memset (&xasl->orderby_stats, 0, sizeof (xasl->orderby_stats));
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
@@ -2409,6 +2415,43 @@ stx_build_cte_xasl_id (THREAD_ENTRY * thread_p, char *ptr, XASL_ID * cte_xasl_id
 
   cte_xasl_id->time_stored.usec = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
+
+  return ptr;
+}
+
+static char *
+stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p)
+{
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  SQ_CACHE *new_sq_cache = NULL;
+  int n_elements, offset;
+
+  *sq_cache_p = NULL;
+  ptr = or_unpack_int (ptr, &n_elements);
+  ptr = or_unpack_int (ptr, &offset);
+
+  if (n_elements > 0)
+    {
+      new_sq_cache = (SQ_CACHE *) stx_alloc_struct (thread_p, sizeof (SQ_CACHE));
+      if (new_sq_cache == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      memset (new_sq_cache, 0, sizeof (SQ_CACHE));
+
+      new_sq_cache->sq_key_struct = (SQ_KEY *) stx_alloc_struct (thread_p, sizeof (SQ_KEY));
+      new_sq_cache->sq_key_struct->dbv_array =
+	stx_restore_db_value_array_extra (thread_p, &xasl_unpack_info->packed_xasl[offset], n_elements, n_elements);
+      if (new_sq_cache->sq_key_struct->dbv_array == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+
+      new_sq_cache->sq_key_struct->n_elements = n_elements;
+      *sq_cache_p = new_sq_cache;
+    }
 
   return ptr;
 }
