@@ -958,7 +958,7 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
 #if 1
   gettimeofday (&endTime, NULL);
   diffTime = (endTime.tv_sec - startTime.tv_sec) + ((double) (endTime.tv_usec - startTime.tv_usec) / 1000000);
-  fprintf (fp_msg_out, "Merge time= %.6f s\n", diffTime);
+  fprintf (stdout, "Merge time= %.6f s\n", diffTime);
 #endif
 
 
@@ -1523,7 +1523,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
     }
   if (verbose_flag)
     {
-      fprintf (fp_msg_out, HEADER_FORMAT, "Class Name", "Total Instances");
+      fprintf (stdout, HEADER_FORMAT, "Class Name", "Total Instances");
     }
 
   do
@@ -1586,7 +1586,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
   if (failed_objects != 0)
     {
       status = 1;
-      fprintf (fp_msg_out, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
 	       total_objects - failed_objects, total_objects);
       if (unloadlog_file != NULL)
 	{
@@ -1597,7 +1597,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
     }
   else if (verbose_flag)
     {
-      fprintf (fp_msg_out, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_DUMPED),
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_DUMPED),
 	       total_objects);
     }
 
@@ -1656,12 +1656,12 @@ gauge_alarm_handler (int sig)
 {
   if (sig == SIGALRM)
     {
-      fprintf (fp_msg_out, MSG_FORMAT "\r", gauge_class_name, class_objects,
+      fprintf (stdout, MSG_FORMAT "\r", gauge_class_name, class_objects,
 	       (class_objects > 0
 		&& approximate_class_objects >=
 		class_objects) ? (int) (100 * ((float) class_objects / (float) approximate_class_objects)) : 100,
 	       (int) (100 * ((float) total_objects / (float) total_approximate_class_objects)));
-      fflush (fp_msg_out);
+      fflush (stdout);
     }
   else
     {
@@ -2293,8 +2293,8 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (fp_msg_out, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
-	  fflush (fp_msg_out);
+	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
+	  fflush (stdout);
 	}
       goto exit_on_end;
     }
@@ -2315,8 +2315,8 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (fp_msg_out, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
-	  fflush (fp_msg_out);
+	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
+	  fflush (stdout);
 	}
       goto exit_on_end;
     }
@@ -2536,8 +2536,8 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
       (void) os_set_signal_handler (SIGALRM, prev_handler);
 #endif
 
-      fprintf (fp_msg_out, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
-      fflush (fp_msg_out);
+      fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
+      fflush (stdout);
     }
   fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
 

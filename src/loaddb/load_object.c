@@ -73,7 +73,12 @@ static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int 
 static const char *strnchr (const char *str, char ch, int nbytes);
 static int print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len);
 static void itoa_strreverse (char *begin, char *end);
+#if defined(UNUSED_FUNCTION) && !defined(SUPPORT_THREAD_UNLOAD)
 static int itoa_print (TEXT_OUTPUT * tout, DB_BIGINT value, int base);
+#else
+static int itoa_print_base10 (TEXT_OUTPUT * tout, DB_BIGINT value);
+#define itoa_print(o, v, b)  itoa_print_base10((o), (v))
+#endif
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 static void init_load_err_filter (void);
 static void default_clear_err_filter (void);
@@ -495,18 +500,6 @@ error:
 int
 text_print_flush (TEXT_OUTPUT * tout)
 {
-#if defined(SUPPORT_THREAD_UNLOAD)
-  extern bool g_print_to_stdout;
-  if (g_print_to_stdout)
-    {
-      *tout->ptr = '\0';
-      fprintf (stdout, "%s", tout->buffer);
-      tout->ptr = tout->buffer;
-      tout->count = 0;
-      return NO_ERROR;
-    }
-#endif
-
   /* flush to disk */
 #if defined(SUPPORT_THREAD_UNLOAD)
   if (tout->count != write (tout->fd, tout->buffer, tout->count))
@@ -764,7 +757,7 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
   int rc = NO_ERROR;
 #if defined(SUPPORT_THREAD_UNLOAD)
   int zvar[32];
-  bool do_copy = (obj->dbval_bufs == NULL);	// If do_copy is false, it is called from unloaddb.
+  //bool do_copy = (obj->dbval_bufs == NULL);   // If do_copy is false, it is called from unloaddb.
 #endif
   /* need nicer way to store these */
   if (class_->variable_count)
@@ -1589,6 +1582,7 @@ exit_on_error:
 
 #define INTERNAL_BUFFER_SIZE (400)	/* bigger than DBL_MAX_DIGITS */
 
+#if defined(UNUSED_FUNCTION) && !defined(SUPPORT_THREAD_UNLOAD)
 /*
  * itoa_strreverse - reverse a string
  *    return: void
@@ -1665,6 +1659,23 @@ exit_on_error:
   CHECK_EXIT_ERROR (error);
   goto exit_on_end;
 }
+#else
+static int
+itoa_print_base10 (TEXT_OUTPUT * tout, DB_BIGINT value)
+{
+  int nbytes;
+
+  nbytes = sprintf (tout->ptr, "%" PRId64, value);
+  if (nbytes < 0)
+    {
+      return ER_GENERIC_ERROR;
+    }
+
+  tout->ptr += nbytes;
+  tout->count += nbytes;
+  return NO_ERROR;
+}
+#endif
 
 /*
  * fprint_special_strings - print special DB_VALUE to TEXT_OUTPUT
