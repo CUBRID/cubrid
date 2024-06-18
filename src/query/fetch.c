@@ -4612,7 +4612,6 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
       for (regup = regu_list; regup != NULL; regup = regup->next)
 	{
 	  pr_clear_value (regup->value.vfetch_to);
-
 	  if (fetch_copy_dbval (thread_p, &regup->value, vd, class_oid, obj_oid, tpl, regup->value.vfetch_to) !=
 	      NO_ERROR)
 	    {
