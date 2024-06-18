@@ -719,56 +719,7 @@ export_serial (print_output & output_ctx)
 	    }
 	}
 
-      if (db_get_int (&values[SERIAL_STARTED]) == 1)
-	{
-	  /* Calculate next value of serial */
-	  db_make_null (&diff_value);
-	  error = numeric_db_value_sub (&values[SERIAL_MAX_VAL], &values[SERIAL_CURRENT_VAL], &diff_value);
-	  if (error == ER_IT_DATA_OVERFLOW)
-	    {
-	      // max - curr might be flooded.
-	      diff_value = values[SERIAL_MAX_VAL];
-	      er_clear ();
-	    }
-	  else if (error != NO_ERROR)
-	    {
-	      goto err;
-	    }
 
-	  error = numeric_db_value_compare (&values[SERIAL_INCREMENT_VAL], &diff_value, &answer_value);
-	  if (error != NO_ERROR)
-	    {
-	      goto err;
-	    }
-	  /* increment > diff */
-	  if (db_get_int (&answer_value) > 0)
-	    {
-	      /* no cyclic case */
-	      if (db_get_int (&values[SERIAL_CYCLIC]) == 0)
-		{
-		  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-			  pr_type_name (TP_DOMAIN_TYPE (domain)));
-		  error = ER_IT_DATA_OVERFLOW;
-		  goto err;
-		}
-
-	      db_value_clear (&values[SERIAL_CURRENT_VAL]);
-	      values[SERIAL_CURRENT_VAL] = values[SERIAL_MIN_VAL];
-	    }
-	  /* increment <= diff */
-	  else
-	    {
-	      error = numeric_db_value_add (&values[SERIAL_CURRENT_VAL], &values[SERIAL_INCREMENT_VAL], &answer_value);
-	      if (error != NO_ERROR)
-		{
-		  goto err;
-		}
-
-	      db_value_clear (&values[SERIAL_CURRENT_VAL]);
-	      values[SERIAL_CURRENT_VAL] = answer_value;
-	    }
-	}
 
       output_ctx ("call [find_user]('%s') on class [db_user] to [auser];\n",
 		  db_get_string (&values[SERIAL_OWNER_NAME]));
@@ -794,8 +745,15 @@ export_serial (print_output & output_ctx)
 	  desc_value_print (output_ctx, &values[SERIAL_COMMENT]);
 	}
       output_ctx (";\n");
-      output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
+
+      output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n",
 		  db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
+
+      if (db_get_int (&values[SERIAL_STARTED]) == 1)
+	{
+	  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+	}
+      output_ctx ("\n");
 
       db_value_clear (&diff_value);
       db_value_clear (&answer_value);
