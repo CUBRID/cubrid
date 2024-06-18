@@ -4590,10 +4590,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 	    }
 	  else
 	    {
-	      if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to)))
-		{
-		  pr_clear_value (regup->value.vfetch_to);
-		}
+	      pr_clear_value (regup->value.vfetch_to);
 	      rc = fetch_peek_dbval (thread_p, &regup->value, vd, class_oid, obj_oid, tpl, &tmp);
 	    }
 
@@ -4614,10 +4611,8 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
        */
       for (regup = regu_list; regup != NULL; regup = regup->next)
 	{
-	  if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to)))
-	    {
-	      pr_clear_value (regup->value.vfetch_to);
-	    }
+	  pr_clear_value (regup->value.vfetch_to);
+
 	  if (fetch_copy_dbval (thread_p, &regup->value, vd, class_oid, obj_oid, tpl, regup->value.vfetch_to) !=
 	      NO_ERROR)
 	    {
