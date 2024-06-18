@@ -833,6 +833,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Fişierul de ieşire '%1$s' nu a putut fi deschis\n
+16 Clasă necunoscută "%1$s"\n
 60 \
 diagdb: Varsă o baza de date.\n\
 utilizare: %1$s diagdb [OPŢIUNI] nume-bază-de-date\n\

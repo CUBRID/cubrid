@@ -188,6 +188,7 @@ static char *xts_process_method_sig_list (char *ptr, const METHOD_SIG_LIST * met
 static char *xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int size);
 static char *xts_process_connectby_proc (char *ptr, const CONNECTBY_PROC_NODE * connectby_proc);
 static char *xts_process_regu_value_list (char *ptr, const REGU_VALUE_LIST * regu_value_list);
+static char *xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache);
 
 static int xts_sizeof (const json_table_column & ptr);
 static int xts_sizeof (const json_table_node & ptr);
@@ -2824,6 +2825,35 @@ xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
   return offset;
 }
 
+static char *
+xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache)
+{
+  int offset, n_elements;
+
+  if (sq_cache)
+    {
+      n_elements = sq_cache->sq_key_struct->n_elements;
+      ptr = or_pack_int (ptr, n_elements);
+
+      offset = xts_save_db_value_array (sq_cache->sq_key_struct->dbv_array, n_elements);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+  else
+    {
+      n_elements = 0;
+      ptr = or_pack_int (ptr, n_elements);
+
+      offset = 0;
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  return ptr;
+}
+
 /*
  * xts_process_xasl_header () - Pack XASL node header in buffer.
  *
@@ -3233,6 +3263,12 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+
+  ptr = xts_process_sq_cache (ptr, xasl->sq_cache);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
 
   return ptr;
 }
@@ -6085,7 +6121,9 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 
   size += (OR_INT_SIZE		/* iscan_oid_order */
 	   + PTR_SIZE		/* query_alias */
-	   + PTR_SIZE);		/* next */
+	   + PTR_SIZE		/* next */
+	   + OR_INT_SIZE	/* sq_cache_n_elements */
+	   + PTR_SIZE);		/* sq_cache */
 
   return size;
 }
