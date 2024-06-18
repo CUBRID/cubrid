@@ -3230,6 +3230,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       if (!node->info.method_call.on_call_target
 	  && jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
 	{
+	  /*
+	   * Add user_schema to java_stored_procedure.
+	   * ex) CALL schema_name.method_name(); (== schema_name.sp_name);
+	   */
 	  PT_NODE *method_name = node->info.method_call.method_name;
 	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) method_name;
 	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name->info.name.original);
@@ -3246,6 +3250,14 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      node->info.method_call.arg_list = node->info.method_call.arg_list->next;
 	      node->info.method_call.on_call_target->next = NULL;
 	    }
+
+	  /*
+	   * Class methods are system tables and do not require user_schema.
+	   * Therefore, remove [schema_name.] from schema_name.method_name.
+	   * ex) CALL 'add_user()', 'drop_user()', 'find_user()'
+	   */
+	  node->info.method_call.method_name->info.name.original =
+	    sm_remove_qualifier_name (node->info.method_call.method_name->info.name.original);
 
 	  /* make method name look resolved */
 	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) node->info.method_call.method_name;

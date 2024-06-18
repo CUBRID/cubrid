@@ -646,7 +646,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 int
 jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  const char *decl = NULL, *comment = NULL, *sp_unique_name = NULL;
+  const char *decl = NULL, *comment = NULL;
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
 
   PT_NODE *param_list, *p;
@@ -774,8 +774,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
     }
   sp_info.target = decl ? decl : "";
-  sp_unique_name = sp_info.sp_name.data ();
-  if (sm_qualifier_name (sp_unique_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+  if (sm_qualifier_name (sp_info.sp_name.data (), owner_name, DB_MAX_USER_LENGTH) == NULL)
     {
       ASSERT_ERROR ();
       return NULL;

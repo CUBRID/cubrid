@@ -19282,7 +19282,7 @@ generic_function
 	;
 
 generic_function_for_call        
-	: identifier 
+	: procedure_name_without_dot 
         {
             if(pwd_info.parser_call_check)
             {
@@ -19297,7 +19297,7 @@ generic_function_for_call
             }
         }
         '(' opt_expression_list_for_call ')' opt_on_target
-		{{ DBG_TRACE_GRAMMAR(generic_function_for_call, : identifier '(' opt_expression_list ')' opt_on_target );
+		{{ DBG_TRACE_GRAMMAR(generic_function_for_call, : procedure_name_without_dot '(' opt_expression_list ')' opt_on_target );
 
 			PT_NODE *node = NULL;
 
