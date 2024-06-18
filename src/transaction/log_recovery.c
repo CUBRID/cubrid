@@ -5361,7 +5361,7 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
 	{
 	  ret = disk_get_creation_time (thread_p, volid, &vol_dbcreation);
 	  fileio_dismount (thread_p, vdes);
-	  if (difftime ((time_t) vol_dbcreation, (time_t) log_Gl.hdr.db_creation) != 0)
+	  if (difftime ((time_t) vol_dbcreation, (time_t) log_Gl.hdr.db_creation_time) != 0)
 	    {
 	      /* This volume does not belong to given database */
 	      ;			/* NO-OP */
@@ -5478,7 +5478,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
       if (log_Gl.append.vdes == NULL_VOLDES)
 	{
 	  /* Create the log active since we do not have one */
-	  ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &log_Gl.hdr.db_creation);
+	  ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &log_Gl.hdr.db_creation_time);
 	  if (ret != NO_ERROR)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");

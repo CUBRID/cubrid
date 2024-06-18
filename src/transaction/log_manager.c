@@ -202,7 +202,7 @@ std::atomic<std::int64_t> log_Clock_msec = {0};
 
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation);
+				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation_time);
 static int log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				    const char *prefix_logname, bool ismedia_crash, BO_RESTART_ARG * r_args,
 				    bool init_emergency);
@@ -689,7 +689,7 @@ log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_d
  *
  * return: nothing
  *
- *   db_creation(out): Database creation time
+ *   db_creation_time(out): Database creation time
  *   chkpt_lsa(out): Last checkpoint address
  *
  * NOTE: Get the start parameters: database creation time and the last
@@ -702,13 +702,13 @@ log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_d
  *              new defined volumes.
  */
 int
-log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa)
+log_get_db_start_parameters (INT64 * db_creation_time, LOG_LSA * chkpt_lsa)
 {
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
 
-  memcpy (db_creation, &log_Gl.hdr.db_creation, sizeof (*db_creation));
+  memcpy (db_creation_time, &log_Gl.hdr.db_creation_time, sizeof (*db_creation_time));
   rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
   memcpy (chkpt_lsa, &log_Gl.hdr.chkpt_lsa, sizeof (*chkpt_lsa));
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
@@ -787,16 +787,16 @@ log_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpat
 	    DKNPAGES npages)
 {
   int error_code = NO_ERROR;
-  INT64 db_creation;
+  INT64 db_creation_time;
 
-  db_creation = time (NULL);
-  if (db_creation == -1)
+  db_creation_time = time (NULL);
+  if (db_creation_time == -1)
     {
       error_code = ER_FAILED;
       return error_code;
     }
 
-  error_code = log_create_internal (thread_p, db_fullname, logpath, prefix_logname, npages, &db_creation);
+  error_code = log_create_internal (thread_p, db_fullname, logpath, prefix_logname, npages, &db_creation_time);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -814,13 +814,13 @@ log_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpat
  *   logpath(in):
  *   prefix_logname(in):
  *   npages(in):
- *   db_creation(in):
+ *   db_creation_time(in):
  *
  * NOTE:
  */
 static int
 log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
-		     DKNPAGES npages, INT64 * db_creation)
+		     DKNPAGES npages, INT64 * db_creation_time)
 {
   LOG_PAGE *loghdr_pgptr;	/* Pointer to log header */
   const char *catmsg;
@@ -858,7 +858,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
   /* Initialize the log header */
-  error_code = logpb_initialize_header (thread_p, &log_Gl.hdr, prefix_logname, npages, db_creation);
+  error_code = logpb_initialize_header (thread_p, &log_Gl.hdr, prefix_logname, npages, db_creation_time);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1153,12 +1153,12 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  /*
 	   * Set an approximate log header to continue the recovery process
 	   */
-	  INT64 db_creation = -1;	/* Database creation time in volume */
+	  INT64 db_creation_time = -1;	/* Database creation time in volume */
 	  int log_npages;
 
 	  log_npages = log_get_num_pages_for_creation (-1);
 
-	  error_code = logpb_initialize_header (thread_p, &log_Gl.hdr, prefix_logname, log_npages, &db_creation);
+	  error_code = logpb_initialize_header (thread_p, &log_Gl.hdr, prefix_logname, log_npages, &db_creation_time);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -1189,7 +1189,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   if (ismedia_crash != false && (r_args) && r_args->restore_slave)
     {
-      r_args->db_creation = log_Gl.hdr.db_creation;
+      r_args->db_creation_time = log_Gl.hdr.db_creation_time;
       LSA_COPY (&r_args->restart_repl_lsa, &log_Gl.hdr.smallest_lsa_at_last_chkpt);
     }
 
@@ -1341,7 +1341,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
       if (fileio_map_mounted (thread_p, (bool (*)(THREAD_ENTRY *, VOLID, void *)) log_verify_dbcreation,
-			      &log_Gl.hdr.db_creation) != true)
+			      &log_Gl.hdr.db_creation_time) != true)
 	{
 	  /* The log does not belong to the given database */
 	  logtb_undefine_trantable (thread_p);
@@ -6221,7 +6221,7 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 
   fprintf (out_fp, "\n ** DUMP LOG HEADER **\n");
 
-  tmp_time = (time_t) log_header_p->db_creation;
+  tmp_time = (time_t) log_header_p->db_creation_time;
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp,
 	   "HDR: Magic Symbol = %s at disk location = %lld\n     Creation_time = %s"
@@ -8822,7 +8822,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
 	      DKNPAGES log_npages, FILE * out_fp)
 {
   const char *vlabel;
-  INT64 db_creation;
+  INT64 db_creation_time;
   DISK_VOLPURPOSE vol_purpose;
   DISK_VOLUME_SPACE_INFO space_info;
   VOLID volid;
@@ -8830,13 +8830,13 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
   LOG_LSA init_nontemp_lsa;
   int ret = NO_ERROR;
 
-  ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &db_creation);
+  ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &db_creation_time);
   if (ret != NO_ERROR)
     {
       return ret;
     }
 
-  ret = log_create_internal (thread_p, db_fullname, logpath, prefix_logname, log_npages, &db_creation);
+  ret = log_create_internal (thread_p, db_fullname, logpath, prefix_logname, log_npages, &db_creation_time);
   if (ret != NO_ERROR)
     {
       return ret;
@@ -8885,7 +8885,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
 				      &init_nontemp_lsa);
 	}
 
-      (void) disk_set_creation (thread_p, volid, vlabel, &log_Gl.hdr.db_creation, &log_Gl.hdr.chkpt_lsa, false,
+      (void) disk_set_creation (thread_p, volid, vlabel, &log_Gl.hdr.db_creation_time, &log_Gl.hdr.chkpt_lsa, false,
 				DISK_DONT_FLUSH);
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
@@ -9313,7 +9313,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], val);
   idx++;
 
-  db_localdatetime ((time_t *) (&header->db_creation), &time_val);
+  db_localdatetime ((time_t *) (&header->db_creation_time), &time_val);
   error = db_make_datetime (out_values[idx], &time_val);
   idx++;
   if (error != NO_ERROR)
@@ -9651,7 +9651,7 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   db_make_int (out_values[idx], val);
   idx++;
 
-  db_localdatetime ((time_t *) (&header->db_creation), &time_val);
+  db_localdatetime ((time_t *) (&header->db_creation_time), &time_val);
   error = db_make_datetime (out_values[idx], &time_val);
   idx++;
   if (error != NO_ERROR)
@@ -14288,7 +14288,7 @@ cdc_check_lsa_range (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 		}
 
 	      arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
-	      if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
+	      if (difftime64 ((time_t) arv_hdr->db_creation_time, (time_t) log_Gl.hdr.db_creation_time) != 0)
 		{
 		  fileio_dismount (thread_p, vdes);
 		  LOG_ARCHIVE_CS_EXIT (thread_p);
@@ -14544,7 +14544,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 		    }
 
 		  arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
-		  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
+		  if (difftime64 ((time_t) arv_hdr->db_creation_time, (time_t) log_Gl.hdr.db_creation_time) != 0)
 		    {
 		      fileio_dismount (thread_p, vdes);
 

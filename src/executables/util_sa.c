@@ -4391,11 +4391,11 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
   char log_path[PATH_MAX];
   char query_buf[QUERY_BUF_SIZE];
   DB_VALUE in_value[APPLY_INFO_VALUES];
-  DB_DATETIME db_creation;
+  DB_DATETIME db_creation_time;
   DB_QUERY_RESULT *result;
   DB_QUERY_ERROR query_error;
 
-  db_localdatetime (&database_creation, &db_creation);
+  db_localdatetime (&database_creation, &db_creation_time);
   copy_log_base = prm_get_string_value (PRM_ID_HA_COPY_LOG_BASE);
   if (copy_log_base == NULL || *copy_log_base == '\0')
     {
@@ -4471,7 +4471,7 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
 		   LANG_SYS_COLLATION);
 
   /* 2. db_creation time */
-  db_make_datetime (&in_value[in_value_idx++], &db_creation);
+  db_make_datetime (&in_value[in_value_idx++], &db_creation_time);
 
   /* 3. copied_log_path */
   db_make_varchar (&in_value[in_value_idx++], 4096, log_path, strlen (log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
@@ -4746,7 +4746,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
       boot_shutdown_server (ER_ALL_FINAL);
     }
 
-  db_localdatetime (&restart_arg.db_creation, &datetime);
+  db_localdatetime (&restart_arg.db_creation_time, &datetime);
   db_datetime_to_string (db_creation_time, LINE_MAX, &datetime);
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
@@ -4773,7 +4773,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 	}
 
       error_code =
-	insert_ha_apply_info (database_name, master_host_name, restart_arg.db_creation,
+	insert_ha_apply_info (database_name, master_host_name, restart_arg.db_creation_time,
 			      restart_arg.restart_repl_lsa.pageid, (int) restart_arg.restart_repl_lsa.offset);
       if (error_code < 0)
 	{

@@ -290,7 +290,7 @@ struct fileio_backup_header
   char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix utility */
   float db_compatibility;	/* Compatibility of the database against the current release of CUBRID */
   int bk_hdr_version;		/* For future compatibility checking */
-  INT64 db_creation;		/* Database creation time */
+  INT64 db_creation_time;	/* Database creation time */
   INT64 start_time;		/* Time of backup start */
   INT64 end_time;		/* Time of backup end */
   char db_release[REL_MAX_RELEASE_LENGTH];	/* CUBRID Release */
@@ -557,7 +557,7 @@ extern FILEIO_BACKUP_SESSION *fileio_initialize_backup (const char *db_fullname,
 							const char *verbose_file_path, int num_threads,
 							int sleep_msecs);
 extern FILEIO_BACKUP_SESSION *fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_fullname,
-						   INT64 * db_creation, FILEIO_BACKUP_LEVEL backup_level,
+						   INT64 * db_creation_time, FILEIO_BACKUP_LEVEL backup_level,
 						   LOG_LSA * backup_start_lsa, LOG_LSA * backup_ckpt_lsa,
 						   FILEIO_BACKUP_RECORD_INFO * all_levels_info,
 						   FILEIO_BACKUP_SESSION * session, FILEIO_ZIP_METHOD zip_method,

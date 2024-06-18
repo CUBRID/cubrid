@@ -129,7 +129,7 @@ struct r91_disk_var_header
   INT32 sect_alloctb_page1;
   INT32 page_alloctb_page1;
   INT32 sys_lastpage;
-  INT64 db_creation;
+  INT64 db_creation_time;
   INT32 max_npages;
   INT32 dummy;
   LOG_LSA chkpt_lsa;
@@ -720,7 +720,7 @@ fix_volume_header (const char *vol_path)
   r92_header->sect_alloctb_page1 = r91_header->sect_alloctb_page1;
   r92_header->page_alloctb_page1 = r91_header->page_alloctb_page1;
   r92_header->sys_lastpage = r91_header->sys_lastpage;
-  r92_header->db_creation = r91_header->db_creation;
+  r92_header->db_creation_time = r91_header->db_creation_time;
   r92_header->max_npages = r91_header->total_pages;
   LSA_COPY (&r92_header->chkpt_lsa, &r91_header->chkpt_lsa);
   HFID_COPY (&r92_header->boot_hfid, &r91_header->boot_hfid);

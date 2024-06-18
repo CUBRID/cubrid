@@ -544,7 +544,7 @@ static int fileio_initialize_backup_info (int which_bkvinf);
 static FILEIO_BACKUP_INFO_ENTRY *fileio_allocate_backup_info (int which_bkvinf);
 
 static FILEIO_BACKUP_SESSION *fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
-						       INT64 db_creation, FILEIO_BACKUP_SESSION * session,
+						       INT64 db_creation_time, FILEIO_BACKUP_SESSION * session,
 						       bool first_time, bool authenticate, INT64 match_bkupcreation);
 static int fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p, int *next_pageid, int stop_pageid,
 					    FILEIO_BACKUP_SESSION * session, FILEIO_RESTORE_PAGE_BITMAP * page_bitmap);
@@ -7096,7 +7096,7 @@ fileio_abort_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
  * fileio_start_backup () - Start a backup session
  *   return: session or NULL
  *   db_fullname(in): Name of the database to backup
- *   db_creation(in): Creation time of database
+ *   db_creation_time(in): Creation time of database
  *   backup_level(in): Backup level
  *   backup_start_lsa(in): start lsa for backup
  *   backup_chkpt_lsa(in): checkpoint lsa for backup
@@ -7142,7 +7142,7 @@ fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 
   strncpy (backup_header_p->magic, CUBRID_MAGIC_DATABASE_BACKUP, CUBRID_MAGIC_MAX_LENGTH);
   strncpy_bufsize (backup_header_p->db_release, rel_release_string ());
   strncpy_bufsize (backup_header_p->db_fullname, db_full_name_p);
-  backup_header_p->db_creation = *db_creation_time_p;
+  backup_header_p->db_creation_time = *db_creation_time_p;
   backup_header_p->db_iopagesize = IO_PAGESIZE;
   backup_header_p->db_compatibility = rel_disk_compatible ();
   backup_header_p->level = backup_level;
@@ -9079,7 +9079,7 @@ fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 		      session_p->bkup.bkuphdr->unit_num++;
 		      /* Open the next volume */
 		      if (fileio_continue_restore (thread_p, session_p->bkup.bkuphdr->db_fullname,
-						   session_p->bkup.bkuphdr->db_creation, session_p, false, true,
+						   session_p->bkup.bkuphdr->db_creation_time, session_p, false, true,
 						   session_p->bkup.bkuphdr->start_time) == NULL)
 			{
 			  return ER_FAILED;
@@ -9275,7 +9275,7 @@ fileio_make_error_message (THREAD_ENTRY * thread_p, char *error_message_p)
  * fileio_continue_restore () - CONTINUE A RESTORE SESSION
  *   return: session or NULL
  *   db_fullname(in): Name of the database to backup
- *   db_creation(in): Creation of time data base
+ *   db_creation_time(in): Creation of time data base
  *   session(in/out): The session array
  *   first_time(in): true the first time called during restore
  *   authenticate(in): true when validation of new bkup volume header needed
@@ -9527,14 +9527,15 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 
 	  /* NOTE: This could mess with restoring to a new location */
 	  if (strcmp (backup_header_p->db_fullname, db_full_name_p) != 0
-	      || (db_creation_time > 0 && difftime ((time_t) db_creation_time, (time_t) backup_header_p->db_creation)))
+	      || (db_creation_time > 0
+		  && difftime ((time_t) db_creation_time, (time_t) backup_header_p->db_creation_time)))
 	    {
 	      if (is_first_time)
 		{
 		  char save_time1[64];
 		  char save_time2[64];
 
-		  fileio_ctime (&backup_header_p->db_creation, io_timeval);
+		  fileio_ctime (&backup_header_p->db_creation_time, io_timeval);
 		  strcpy (save_time1, io_timeval);
 
 		  fileio_ctime (&db_creation_time, io_timeval);
@@ -9546,7 +9547,7 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 		}
 	      else
 		{
-		  fileio_ctime (&backup_header_p->db_creation, io_timeval);
+		  fileio_ctime (&backup_header_p->db_creation_time, io_timeval);
 		  if (asprintf (&error_message_p,
 				msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_DB_MISMATCH),
 				session_p->bkup.vlabel, backup_header_p->db_fullname, io_timeval) < 0)
@@ -9696,7 +9697,7 @@ fileio_list_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, char *
   /* Show the backup volume header information. */
   fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BKUP_HDR));
 
-  tmp_time = (time_t) backup_header_p->db_creation;
+  tmp_time = (time_t) backup_header_p->db_creation_time;
   (void) ctime_r (&tmp_time, time_val);
   fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BKUP_HDR_DBINFO),
 	   backup_header_p->db_fullname, time_val, backup_header_p->db_iopagesize);
@@ -10372,7 +10373,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 	  VOLID volid;
 
 	  volid = session_p->dbfile.volid;
-	  if (disk_set_creation (thread_p, volid, to_vol_label_p, &backup_header_p->db_creation,
+	  if (disk_set_creation (thread_p, volid, to_vol_label_p, &backup_header_p->db_creation_time,
 				 &session_p->bkup.last_chkpt_lsa, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
 	    {
 	      goto error;
