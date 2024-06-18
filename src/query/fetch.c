@@ -3907,14 +3907,15 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    {
 	      goto exit_on_error;
 	    }
-        
-    if (regu_var->xasl && regu_var->xasl->sub_xasl_id)
+
+	  if (regu_var->xasl && regu_var->xasl->sub_xasl_id)
 	    {
-	      error = qdata_get_single_tuple_from_list_id (thread_p, regu_var->xasl->list_id, regu_var->xasl->single_tuple);
+	      error =
+		qdata_get_single_tuple_from_list_id (thread_p, regu_var->xasl->list_id, regu_var->xasl->single_tuple);
 	      if (error != NO_ERROR)
-	        {
-	          goto exit_on_error;
-	        }
+		{
+		  goto exit_on_error;
+		}
 	      regu_var->value.dbvalptr = regu_var->xasl->single_tuple->valp->val;
 	    }
 	}
