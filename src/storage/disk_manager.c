@@ -350,7 +350,11 @@ static bool disk_Logging = false;
 STATIC_INLINE char *disk_vhdr_get_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *disk_vhdr_get_next_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int disk_get_vhdr_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int disk_vhdr_get_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 static int disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname);
 static int disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol_fullname);
 static int disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks);
@@ -516,22 +520,26 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr;		/* Address of logging data */
   const char *vol_fullname = ext_info->name;
+  const char *remarks = ext_info->comments;
   DKNSECTS max_npages = DISK_SECTS_NPAGES (ext_info->nsect_max);
   int kbytes_to_be_written_per_sec = ext_info->max_writesize_in_sec;
   DISK_VOLPURPOSE vol_purpose = ext_info->purpose;
   DKNPAGES extend_npages = DISK_SECTS_NPAGES (ext_info->nsect_total);
   INT16 prev_volid;
+  int vol_fullname_size;
   int error_code = NO_ERROR;
 
   assert ((int) sizeof (DISK_VOLUME_HEADER) <= DB_PAGESIZE);
 
   addr.vfid = NULL;
 
-  if ((strlen (vol_fullname) + 1 > DB_MAX_PATH_LENGTH) ||
-      ((size_t) DB_PAGESIZE < ((size_t) (SSIZEOF (DISK_VOLUME_HEADER)) + strlen (vol_fullname) + 1)))
+  vol_fullname_size = strlen (vol_fullname) + 1;
+
+  if ((vol_fullname_size > DB_MAX_PATH_LENGTH) ||
+      ((offsetof (DISK_VOLUME_HEADER, var_fields) + vol_fullname_size) > DB_PAGESIZE))
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, NULL, vol_fullname,
-	      strlen (vol_fullname) + 1, DB_MAX_PATH_LENGTH);
+	      vol_fullname_size, DB_MAX_PATH_LENGTH);
       return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
     }
 
@@ -554,7 +562,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   addr.pgptr = NULL;
   if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
     {
-      log_append_undo_data (thread_p, RVDK_FORMAT, &addr, (int) strlen (vol_fullname) + 1, vol_fullname);
+      log_append_undo_data (thread_p, RVDK_FORMAT, &addr, vol_fullname_size, vol_fullname);
     }
   fault_inject_random_crash ();
 
@@ -653,7 +661,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       goto exit;
     }
 
-  error_code = disk_vhdr_set_vol_remarks (vhdr, ext_info->comments);
+  error_code = disk_vhdr_set_vol_remarks (vhdr, remarks);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -664,7 +672,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
     {
-      log_append_dboutside_redo (thread_p, RVDK_NEWVOL, disk_get_vhdr_size (vhdr), vhdr);
+      log_append_dboutside_redo (thread_p, RVDK_NEWVOL, disk_vhdr_get_vol_header_size (vhdr), vhdr);
 
       fault_inject_random_crash ();
 
@@ -679,7 +687,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
        *       RVDK_FORMAT calls recovery detectable.
        */
       addr.offset = -1;		/* First call is marked with offset -1. */
-      log_append_redo_data (thread_p, RVDK_FORMAT, &addr, disk_get_vhdr_size (vhdr), vhdr);
+      log_append_redo_data (thread_p, RVDK_FORMAT, &addr, disk_vhdr_get_vol_header_size (vhdr), vhdr);
 
       fault_inject_random_crash ();
     }
@@ -710,7 +718,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
     {
       addr.offset = 0;		/* Header is located at position zero */
-      log_append_redo_data (thread_p, RVDK_FORMAT, &addr, disk_get_vhdr_size (vhdr), vhdr);
+      log_append_redo_data (thread_p, RVDK_FORMAT, &addr, disk_vhdr_get_vol_header_size (vhdr), vhdr);
 
       fault_inject_random_crash ();
     }
@@ -5179,27 +5187,33 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_vol_fulln
   int remarks_size = 0;
   int new_vol_fullname_size = 0;
   int ret = NO_ERROR;
-  bool is_remarks_trim = false;
+  int trim_size = 0;
+
 
   /* Contains null characters ( 1 byte ) */
-  vol_fullname_size = (int) strlen (vhdr->var_fields + vhdr->offset_to_vol_fullname) + 1;
-  next_vol_fullname_size = (int) strlen (vhdr->var_fields + vhdr->offset_to_next_vol_fullname) + 1;
-  remarks_size = (int) strlen (vhdr->var_fields + vhdr->offset_to_vol_remarks) + 1;
+  vol_fullname_size = disk_vhdr_get_vol_fullname_size (vhdr);
+  next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
+  remarks_size = disk_vhdr_get_vol_remarks_size (vhdr);
   new_vol_fullname_size = (int) strlen (new_vol_fullname) + 1;
 
   /* Difference in length between new name and old name */
   name_length_diff = (new_vol_fullname_size - vol_fullname_size);
 
-  length_to_move = (next_vol_fullname_size + remarks_size);
+  /* When the new_vol_fullname is too long, causing other var_fields to overflow beyond the page. */
+  if (DB_PAGESIZE < (offsetof (DISK_VOLUME_HEADER, var_fields) + vhdr->offset_to_vol_remarks + name_length_diff))
+    {
+      return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
+    }
 
   if (name_length_diff != 0)
     {
-      if ((disk_get_vhdr_size (vhdr) + name_length_diff) > DB_PAGESIZE)
-	{
-	  is_remarks_trim = true;
+      length_to_move = (next_vol_fullname_size + remarks_size);
 
-	  length_to_move -= ((disk_get_vhdr_size (vhdr) + name_length_diff) - DB_PAGESIZE);
-	  remarks_size -= name_length_diff;
+      trim_size = disk_vhdr_get_vol_header_size (vhdr) + name_length_diff - DB_PAGESIZE;
+      if (trim_size > 0)
+	{
+	  length_to_move -= trim_size;
+	  remarks_size -= trim_size;
 	}
 
       /* We need to either move to right(expand) or left(shrink) the rest of the variable length fields */
@@ -5209,7 +5223,7 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_vol_fulln
       vhdr->offset_to_next_vol_fullname += name_length_diff;
       vhdr->offset_to_vol_remarks += name_length_diff;
 
-      if (is_remarks_trim == true)
+      if (trim_size > 0)
 	{
 	  vhdr->var_fields[vhdr->offset_to_vol_remarks + remarks_size - 1] = '\0';
 	}
@@ -5229,13 +5243,11 @@ static int
 disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_next_vol_fullname)
 {
   int name_length_diff;
-  int length_to_move;
   int ret = NO_ERROR;
-  int vol_fullname_size = 0;
   int next_vol_fullname_size = 0;
   int new_next_vol_fullname_size = 0;
   int remarks_size = 0;
-  bool is_remarks_trim = false;
+  int trim_size = 0;
 
   if (new_next_vol_fullname == NULL)
     {
@@ -5252,30 +5264,34 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_next
 	}
     }
 
-  remarks_size = (int) strlen (vhdr->var_fields + vhdr->offset_to_vol_remarks) + 1;
-  next_vol_fullname_size = (int) strlen (vhdr->var_fields + vhdr->offset_to_next_vol_fullname) + 1;
+  next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
 
   /* Difference in length between new name and old name */
   name_length_diff = (new_next_vol_fullname_size - next_vol_fullname_size);
 
-  length_to_move = remarks_size;
+  /* When the new_vol_fullname is too long, causing other var_fields to overflow beyond the page. */
+  if (DB_PAGESIZE < (offsetof (DISK_VOLUME_HEADER, var_fields) + vhdr->offset_to_vol_remarks + name_length_diff))
+    {
+      return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
+    }
 
   if (name_length_diff != 0)
     {
-      if ((disk_get_vhdr_size (vhdr) + name_length_diff) > DB_PAGESIZE)
-	{
-	  is_remarks_trim = true;
+      /* length to move */
+      remarks_size = disk_vhdr_get_vol_remarks_size (vhdr);
 
-	  length_to_move -= ((disk_get_vhdr_size (vhdr) + name_length_diff) - DB_PAGESIZE);
-	  remarks_size -= name_length_diff;
+      trim_size = disk_vhdr_get_vol_header_size (vhdr) + name_length_diff - DB_PAGESIZE;
+      if (trim_size > 0)
+	{
+	  remarks_size -= trim_size;
 	}
 
       /* We need to either move to right(expand) or left(shrink) the rest of the variable length fields */
-      memmove (disk_vhdr_get_vol_remarks (vhdr) + name_length_diff, disk_vhdr_get_vol_remarks (vhdr), length_to_move);
+      memmove (disk_vhdr_get_vol_remarks (vhdr) + name_length_diff, disk_vhdr_get_vol_remarks (vhdr), remarks_size);
 
       vhdr->offset_to_vol_remarks += name_length_diff;
 
-      if (is_remarks_trim == true)
+      if (trim_size > 0)
 	{
 	  vhdr->var_fields[vhdr->offset_to_vol_remarks + remarks_size - 1] = '\0';
 	}
@@ -5358,20 +5374,62 @@ disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr)
   return ((char *) (vhdr->var_fields + vhdr->offset_to_vol_remarks));
 }
 
+
 /*
- * disk_get_vhdr_size () - get size of volume header including variable fields
+ * disk_vhdr_get_vol_fullname_size () - get vol_fullname_size from volume header
+ *
+ * return    : volume fullname size
+ * vhdr (in) : volume header
+ */
+STATIC_INLINE int
+disk_vhdr_get_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
+{
+  return (int) (strlen (disk_vhdr_get_vol_fullname (vhdr)) + 1);
+}
+
+/*
+ * disk_vhdr_get_next_vol_fullname_size () - get next_vol_fullname_size from volume header
+ *
+ * return    : next volume fullname size
+ * vhdr (in) : volume header
+ */
+STATIC_INLINE int
+disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
+{
+  return (int) (strlen (disk_vhdr_get_next_vol_fullname (vhdr)) + 1);
+}
+
+/*
+ * disk_vhdr_get_vol_remarks_size () - get remarks_size from volume header
+ *
+ * return    : remarks size
+ * vhdr (in) : volume header
+ */
+STATIC_INLINE int
+disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr)
+{
+  return (int) (strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1);
+}
+
+
+
+/*
+ * disk_vhdr_get_vol_header_size () - get size of volume header including variable fields
  *
  * return    : total size
  * vhdr (in) : volume header
  */
 STATIC_INLINE int
-disk_get_vhdr_size (const DISK_VOLUME_HEADER * vhdr)
+disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr)
 {
-  int remarks_size = 0;
+  char *remarks = disk_vhdr_get_vol_remarks (vhdr);
 
-  remarks_size = (int) strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1;
+  if (vhdr == NULL)
+    {
+      return 0;
+    }
 
-  return (offsetof (DISK_VOLUME_HEADER, var_fields) + (vhdr->offset_to_vol_remarks + remarks_size));;
+  return (remarks + disk_vhdr_get_vol_remarks_size (vhdr)) - ((char *) vhdr);
 }
 
 /*
