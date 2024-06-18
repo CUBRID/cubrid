@@ -676,6 +676,7 @@ extern "C"
 
   /* This defines the basic type identifier constants. These are used in the domain specifications of attributes and method
    * arguments and as value type tags in the DB_VALUE structures.
+   * CAUTION: the following list must match db_type_names defined in dbtype_def.c
    */
   typedef enum
   {
@@ -731,6 +732,11 @@ extern "C"
 
     DB_TYPE_LAST = DB_TYPE_JSON
   } DB_TYPE;
+
+  extern const char *db_type_names[DB_TYPE_LAST + 1];
+  extern int db_get_db_type_of_name(const char *name);
+  extern const char* db_get_name_of_db_type(const int db_type);
+
 
   /* Domain information stored in DB_VALUE structures. */
   typedef union db_domain_info DB_DOMAIN_INFO;

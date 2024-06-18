@@ -47,25 +47,10 @@ catcls_add_data_type (struct db_object *class_mop)
   DB_VALUE val;
   int i;
 
-  const char *names[DB_TYPE_LAST] =
-  {
-    "INTEGER", "FLOAT", "DOUBLE", "STRING", "OBJECT",
-    "SET", "MULTISET", "SEQUENCE", "ELO", "TIME",
-    "TIMESTAMP", "DATE", "MONETARY", NULL /* VARIABLE */, NULL /* SUB */,
-    NULL /* POINTER */, NULL /* ERROR */, "SHORT", NULL /* VOBJ */,
-    NULL /* OID */,
-    NULL /* VALUE */, "NUMERIC", "BIT", "VARBIT", "CHAR",
-    "NCHAR", "VARNCHAR", NULL /* RESULTSET */, NULL /* MIDXKEY */,
-    NULL /* TABLE */,
-    "BIGINT", "DATETIME",
-    "BLOB", "CLOB", "ENUM",
-    "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ",
-    "JSON"
-  };
-
-  for (i = 0; i < DB_TYPE_LAST; i++)
+  for (i = 0; i <= DB_TYPE_LAST; i++)
     {
-      if (names[i] != NULL)
+      const char* type_name = db_get_name_of_db_type(i);
+      if (type_name != NULL)
 	{
 	  obj = db_create_internal (class_mop);
 	  if (obj == NULL)
@@ -74,10 +59,10 @@ catcls_add_data_type (struct db_object *class_mop)
 	      return er_errid ();
 	    }
 
-	  db_make_int (&val, i + 1);
+	  db_make_int (&val, i);
 	  db_put_internal (obj, "type_id", &val);
 
-	  db_make_varchar (&val, 16, names[i], strlen (names[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  db_make_varchar (&val, 16, type_name, strlen (type_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  db_put_internal (obj, "type_name", &val);
 	}
     }
@@ -831,7 +816,7 @@ namespace cubschema
     {
       {"sp_name", format_varchar (255)},
       {"sp_type", "integer"},
-      {"return_type", "integer"},
+      {"return_type", format_varchar (31)},
       {"arg_count", "integer"},
       {"args", format_sequence (CT_STORED_PROC_ARGS_NAME)},
       {"lang", "integer"},
@@ -867,7 +852,7 @@ namespace cubschema
       {"sp_name", format_varchar (255)},
       {"index_of", "integer"},
       {"arg_name", format_varchar (255)},
-      {"data_type", "integer"},
+      {"data_type", format_varchar (31)},
       {"mode", "integer"},
       {"comment", format_varchar (1024)},
     },

@@ -104,9 +104,9 @@ static int jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static PT_MISC_TYPE jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type);
 
 static int jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
-					      PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment);
+					      const char *data_type, PT_MISC_TYPE mode, const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
-static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
+static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const char *ret_type,
 				     PT_NODE * param_list, const char *java_method, const char *comment);
 static int drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type);
 
@@ -303,7 +303,12 @@ jsp_get_return_type (const char *name)
     }
 
   AU_ENABLE (save);
-  return db_get_int (&return_type);
+
+  int ret_type;
+  const char *ret_type_str = db_get_string(&return_type);
+  const int ret_type_str_len = db_get_string_size(&return_type);
+  jsp_parse_data_type_str(&ret_type, NULL, NULL, ret_type_str, ret_type_str_len);
+  return ret_type;
 }
 
 /*
@@ -546,6 +551,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
+  char ret_type_str[SP_DATA_TYPE_STR_LEN_MAX + 1];
   const char *name, *decl, *comment = NULL;
 
   PT_MISC_TYPE type;
@@ -667,7 +673,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  err = jsp_add_stored_procedure (name, type, ret_type, param_list, decl, comment);
+  jsp_stringify_data_type(ret_type_str, statement->info.sp.ret_type, statement->info.sp.ret_data_type);
+  err = jsp_add_stored_procedure (name, type, ret_type_str, param_list, decl, comment);
   if (err != NO_ERROR)
     {
       goto error_exit;
@@ -875,7 +882,7 @@ jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum)
 
 static int
 jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
-				   PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment)
+				   const char *data_type, PT_MISC_TYPE mode, const char *arg_comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -924,8 +931,9 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_int (&value, pt_type_enum_to_db (data_type));
+  db_make_string (&value, data_type);
   err = dbt_put_internal (obt_p, SP_ATTR_DATA_TYPE, &value);
+  pr_clear_value (&value);
   if (err != NO_ERROR)
     {
       goto error;
@@ -1013,7 +1021,7 @@ jsp_check_stored_procedure_name (const char *str)
  */
 
 static int
-jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM return_type,
+jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const char *return_type,
 			  PT_NODE * param_list, const char *java_method, const char *comment)
 {
   DB_OBJECT *classobj_p, *object_p;
@@ -1079,15 +1087,9 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  return_type_value = pt_type_enum_to_db (return_type);
-  if (jsp_check_return_type_supported (return_type_value) != NO_ERROR)
-    {
-      err = er_errid ();
-      goto error;
-    }
-
-  db_make_int (&value, (int) return_type_value);
+  db_make_string (&value, return_type);
   err = dbt_put_internal (obt_p, SP_ATTR_RETURN_TYPE, &value);
+  pr_clear_value (&value);
   if (err != NO_ERROR)
     {
       goto error;
@@ -1103,6 +1105,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
 
   for (node_p = param_list, i = 0; node_p != NULL; node_p = node_p->next)
     {
+      char data_type_buf[SP_DATA_TYPE_STR_LEN_MAX + 1];
       MOP mop = NULL;
 
       if (jsp_check_param_type_supported (node_p) != NO_ERROR)
@@ -1115,8 +1118,8 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
 
       arg_comment = (char *) PT_NODE_SP_ARG_COMMENT (node_p);
 
-      err =
-	jsp_add_stored_procedure_argument (&mop, checked_name, name_info.original, i, node_p->type_enum,
+      jsp_stringify_data_type(data_type_buf, node_p->type_enum, node_p->data_type);
+      err = jsp_add_stored_procedure_argument (&mop, checked_name, name_info.original, i, data_type_buf,
 					   node_p->info.sp_param.mode, arg_comment);
       if (err != NO_ERROR)
 	{
@@ -1450,7 +1453,12 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 		error = db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type);
 		if (error == NO_ERROR)
 		  {
-		    int type_val = db_get_int (&arg_type);
+                    int type_val;
+
+                    const char *arg_type_str = db_get_string(&arg_type);
+                    const int arg_type_str_len = db_get_string_size(&arg_type);
+                    jsp_parse_data_type_str(&type_val, NULL, NULL, arg_type_str, arg_type_str_len);
+
 		    if (type_val == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
@@ -1477,7 +1485,13 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 	  {
 	    goto end;
 	  }
-	sig_result_type = db_get_int (&result_type);
+
+        {
+            const char *res_type_str = db_get_string(&result_type);
+            const int res_type_str_len = db_get_string_size(&result_type);
+            jsp_parse_data_type_str(&sig_result_type, NULL, NULL, res_type_str, res_type_str_len);
+        }
+
 	if (sig_result_type == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
@@ -1613,4 +1627,23 @@ jsp_make_method_arglist (PARSER_CONTEXT * parser, PT_NODE * node_list)
     }
 
   return arg_list;
+}
+
+void
+jsp_stringify_data_type(char *buf, PT_TYPE_ENUM type_enum, PT_NODE *data_type)
+{
+    int db_type = pt_type_enum_to_db(type_enum);
+    strcpy(buf, db_get_name_of_db_type(db_type));
+
+    // TODO more
+}
+
+void
+jsp_parse_data_type_str(int *db_type, int *precision, int *scale, const char *data_type_str, const int data_type_str_len)
+{
+    char buf[SP_DATA_TYPE_STR_LEN_MAX + 1];
+    memcpy(buf, data_type_str, SP_DATA_TYPE_STR_LEN_MAX);
+    buf[data_type_str_len] = '\0';
+    *db_type = db_get_db_type_of_name(buf); // it returns -1 when no match
+    assert (*db_type >= 0);
 }

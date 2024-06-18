@@ -53,6 +53,8 @@
 #define SP_ATTR_MODE            "mode"
 #define SP_ATTR_ARG_COMMENT     "comment"
 
+#define SP_DATA_TYPE_STR_LEN_MAX    (31)
+
 typedef enum
 {
   SP_TYPE_PROCEDURE = 1,
@@ -71,6 +73,11 @@ typedef enum
   SP_LANG_PLCSQL = 0,
   SP_LANG_JAVA = 1
 } SP_LANG_ENUM;
+
+
+extern void jsp_stringify_data_type(char *buf, PT_TYPE_ENUM type_enum, PT_NODE *data_type);
+extern void jsp_parse_data_type_str(int *db_type, int *precision, int *scale,
+    const char *data_type_str, const int data_type_str_len);
 
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);

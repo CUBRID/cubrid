@@ -1163,12 +1163,7 @@ sm_define_view_stored_procedure_spec (void)
 	"SELECT "
 	  "[sp].[sp_name] AS [sp_name], "
 	  "CASE [sp].[sp_type] WHEN 1 THEN 'PROCEDURE' ELSE 'FUNCTION' END AS [sp_type], "
-	  "CASE [sp].[return_type] "
-	    "WHEN 0 THEN 'void' "
-	    "WHEN 28 THEN 'CURSOR' "
-	    /* CT_DATATYPE_NAME */
-	    "ELSE (SELECT [t].[type_name] FROM [%s] AS [t] WHERE [sp].[return_type] = [t].[type_id]) "
-	    "END AS [return_type], "
+	  "[sp].[return_type] AS [return_type], "
 	  "[sp].[arg_count] AS [arg_count], "
 	  "CASE [sp].[lang] WHEN 1 THEN 'JAVA' ELSE '' END AS [lang], "
 	  "[sp].[target] AS [target], "
@@ -1177,7 +1172,6 @@ sm_define_view_stored_procedure_spec (void)
 	"FROM "
 	  /* CT_STORED_PROC_NAME */
 	  "[%s] AS [sp]",
-	CT_DATATYPE_NAME,
 	CT_STORED_PROC_NAME);
   // *INDENT-ON*
 
@@ -1195,11 +1189,7 @@ sm_define_view_stored_procedure_arguments_spec (void)
 	  "[sp].[sp_name] AS [sp_name], "
 	  "[sp].[index_of] AS [index_of], "
 	  "[sp].[arg_name] AS [arg_name], "
-	  "CASE [sp].[data_type] "
-	    "WHEN 28 THEN 'CURSOR' "
-	    /* CT_DATATYPE_NAME */
-	    "ELSE (SELECT [t].[type_name] FROM [%s] AS [t] WHERE [sp].[data_type] = [t].[type_id]) "
-	    "END AS [data_type], "
+	  "[sp].[data_type] AS [data_type], "
 	  "CASE [sp].[mode] WHEN 1 THEN 'IN' WHEN 2 THEN 'OUT' ELSE 'INOUT' END AS [mode], "
 	  "[sp].[comment] AS [comment] "
 	"FROM "
@@ -1208,7 +1198,6 @@ sm_define_view_stored_procedure_arguments_spec (void)
 	"ORDER BY " /* Is it possible to remove ORDER BY? */
 	  "[sp].[sp_name], "
 	  "[sp].[index_of]",
-	CT_DATATYPE_NAME,
 	CT_STORED_PROC_ARGS_NAME);
   // *INDENT-ON*
 
