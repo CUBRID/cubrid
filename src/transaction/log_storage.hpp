@@ -147,7 +147,7 @@ struct log_header
   LOG_LSA bkup_level1_lsa;	/* Lsa of backup level 1 */
   LOG_LSA bkup_level2_lsa;	/* Lsa of backup level 2 */
   char prefix_name[MAXLOGNAME];	/* Log prefix name */
-  bool has_logging_been_skipped;	/* Has logging been skipped ? */
+  bool has_logging_been_skipped;/* Has logging been skipped ? */
   /* Here exists 5 bytes */
   VACUUM_LOG_BLOCKID vacuum_last_blockid;	/* Last processed blockid needed for vacuum. */
   int perm_status_obsolete;
@@ -168,9 +168,13 @@ struct log_header
 
   INT64 ha_promotion_time;
   INT64 db_restore_time;
+
   bool mark_will_del;
   bool does_block_need_vacuum;
   bool was_active_log_reset;
+  /* Here exists 5 bytes */
+
+  INT64 vol_creation_time; /* Volume creation time */
 
   log_header ()
     : magic {'0'}
@@ -218,6 +222,7 @@ struct log_header
   , mark_will_del (false)
   , does_block_need_vacuum (false)
   , was_active_log_reset (false)
+  , vol_creation_time (0)
   {
     //
   }
@@ -238,6 +243,7 @@ struct log_arv_header
   LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in archive log */
   int arv_num;			/* The archive number */
   INT32 dummy2;			/* Dummy field for 8byte align */
+  INT64 vol_creation_time;      /* Volume creation time */
 
   log_arv_header ()
     : magic {'0'}
@@ -248,6 +254,7 @@ struct log_arv_header
     , fpageid (0)
     , arv_num (0)
     , dummy2 (0)
+    , vol_creation_time (0)
   {
   }
 };

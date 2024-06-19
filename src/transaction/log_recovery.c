@@ -5302,7 +5302,7 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
   VOLID start_volid;
   VOLID volid;
   char vol_fullname[PATH_MAX];
-  INT64 vol_dbcreation;		/* Database creation time in volume */
+  INT64 db_creation_time;	/* Database creation time in volume */
   char *alloc_extpath = NULL;
   int ret = NO_ERROR;
 
@@ -5359,9 +5359,9 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
       vdes = fileio_mount (thread_p, log_Db_fullname, vol_fullname, volid, false, false);
       if (vdes != NULL_VOLDES)
 	{
-	  ret = disk_get_creation_time (thread_p, volid, &vol_dbcreation);
+	  ret = disk_get_creation_time (thread_p, volid, &db_creation_time);
 	  fileio_dismount (thread_p, vdes);
-	  if (difftime ((time_t) vol_dbcreation, (time_t) log_Gl.hdr.db_creation_time) != 0)
+	  if (difftime ((time_t) db_creation_time, (time_t) log_Gl.hdr.db_creation_time) != 0)
 	    {
 	      /* This volume does not belong to given database */
 	      ;			/* NO-OP */

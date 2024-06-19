@@ -200,7 +200,7 @@ std::atomic<std::int64_t> log_Clock_msec = {0};
 // *INDENT-ON*
 #endif /* SERVER_MODE */
 
-static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
+static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_db_creation_time);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation_time);
 static int log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -657,7 +657,7 @@ log_get_final_restored_lsa (void)
  * return:
  *
  *   volid(in): Volume identifier
- *   log_dbcreation(in): Database creation time according to the log.
+ *   log_db_creation_time(in): Database creation time according to the log.
  *
  * NOTE:Verify if database creation time according to the log matches
  *              the one according to the database volume. If they do not, it
@@ -665,16 +665,16 @@ log_get_final_restored_lsa (void)
  *              the same database.
  */
 static bool
-log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation)
+log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_db_creation_time)
 {
-  INT64 vol_dbcreation;		/* Database creation time in volume */
+  INT64 db_creation_time;	/* Database creation time in volume */
 
-  if (disk_get_creation_time (thread_p, volid, &vol_dbcreation) != NO_ERROR)
+  if (disk_get_creation_time (thread_p, volid, &db_creation_time) != NO_ERROR)
     {
       return false;
     }
 
-  if (difftime ((time_t) vol_dbcreation, (time_t) (*log_dbcreation)) == 0)
+  if (difftime ((time_t) db_creation_time, (time_t) (*log_db_creation_time)) == 0)
     {
       return true;
     }
@@ -6221,7 +6221,7 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 
   fprintf (out_fp, "\n ** DUMP LOG HEADER **\n");
 
-  tmp_time = (time_t) log_header_p->db_creation_time;
+  tmp_time = (time_t) log_header_p->vol_creation_time;
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp,
 	   "HDR: Magic Symbol = %s at disk location = %lld\n     Creation_time = %s"
@@ -8945,13 +8945,15 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const ch
 {
   PGLENGTH db_iopagesize;
   PGLENGTH log_page_size;
-  INT64 ignore_dbcreation;
+  INT64 ignore_db_creation_time;
+  INT64 ignore_vol_creation_time;
   float ignore_dbcomp;
   int dummy;
 
   LOG_CS_ENTER (thread_p);
   if (logpb_find_header_parameters (thread_p, false, db_fullname, logpath, prefix_logname, &db_iopagesize,
-				    &log_page_size, &ignore_dbcreation, &ignore_dbcomp, &dummy) == -1)
+				    &log_page_size, &ignore_db_creation_time, &ignore_vol_creation_time, &ignore_dbcomp,
+				    &dummy) == -1)
     {
       /*
        * For case where active log could not be found, user still needs
@@ -9019,14 +9021,15 @@ log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullna
 {
   PGLENGTH dummy_db_iopagesize;
   PGLENGTH dummy_ignore_log_page_size;
-  INT64 dummy_ignore_dbcreation;
+  INT64 dummy_ignore_db_creation_time;
+  INT64 dummy_ignore_vol_creation_time;
   float dummy_ignore_dbcomp;
   int db_charset = INTL_CODESET_NONE;
 
   LOG_CS_ENTER (thread_p);
   if (logpb_find_header_parameters (thread_p, false, db_fullname, logpath, prefix_logname, &dummy_db_iopagesize,
-				    &dummy_ignore_log_page_size, &dummy_ignore_dbcreation, &dummy_ignore_dbcomp,
-				    &db_charset) == -1)
+				    &dummy_ignore_log_page_size, &dummy_ignore_db_creation_time,
+				    &dummy_ignore_vol_creation_time, &dummy_ignore_dbcomp, &db_charset) == -1)
     {
       /*
        * For case where active log could not be found, user still needs
@@ -9289,7 +9292,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   int val;
   const char *str;
   char buf[256];
-  DB_DATETIME time_val;
+  DB_DATETIME vol_creation_time;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_HEADER *header = &ctx->header;
 
@@ -9313,8 +9316,8 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], val);
   idx++;
 
-  db_localdatetime ((time_t *) (&header->db_creation_time), &time_val);
-  error = db_make_datetime (out_values[idx], &time_val);
+  db_localdatetime ((time_t *) (&header->vol_creation_time), &vol_creation_time);
+  error = db_make_datetime (out_values[idx], &vol_creation_time);
   idx++;
   if (error != NO_ERROR)
     {
@@ -9626,7 +9629,7 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   int error = NO_ERROR;
   int idx = 0;
   int val;
-  DB_DATETIME time_val;
+  DB_DATETIME vol_creation_time;
 
   ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = (ARCHIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_ARV_HEADER *header = &ctx->header;
@@ -9651,8 +9654,8 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   db_make_int (out_values[idx], val);
   idx++;
 
-  db_localdatetime ((time_t *) (&header->db_creation_time), &time_val);
-  error = db_make_datetime (out_values[idx], &time_val);
+  db_localdatetime ((time_t *) (&header->vol_creation_time), &vol_creation_time);
+  error = db_make_datetime (out_values[idx], &vol_creation_time);
   idx++;
   if (error != NO_ERROR)
     {

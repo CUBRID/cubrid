@@ -970,7 +970,7 @@ namespace cubschema
 		   // columns
     {
       {"db_name", format_varchar (255)},
-      {"db_creation_time", "datetime"},
+      {"creation_time", "datetime"},
       {"copied_log_path", format_varchar (4096)},
       {"committed_lsa_pageid", "bigint"},
       {"committed_lsa_offset", "integer"},
