@@ -1940,9 +1940,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.
-318 Stored procedure/function "$1$s" does not exist.
-319 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
-320 Only trailing default parameter is allowed: invalid at '%1$s'.
+318 Only DBA and DBA group members can change the SERIAL OWNER.
+319 Unsupported argument type '%1$s' of the stored procedure
+320 Unsupported return type '%1$s' of the stored procedure
+321 %TYPE type specification is allowed only for PL/CSQL
+322 Table column '%1$s.%2$s' has not been defined
+323 Stored procedure/function "$1$s" does not exist.
+324 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
+325 Only trailing default parameter is allowed: invalid at '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

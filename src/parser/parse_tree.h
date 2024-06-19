@@ -1147,6 +1147,9 @@ enum pt_type_enum
   PT_TYPE_DATETIMELTZ,
 
   PT_TYPE_MAX,
+
+  PT_TYPE_TABLE_COLUMN,		/* not a real type but a type specification of the form <table>.<column>%TYPE */
+  /* which can be used only in SP parameter and return types */
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
 
@@ -1397,6 +1400,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_ELIMINATE_JOIN  0x800000000ULL	/* do not eliminate join */
 #define  PT_HINT_SAMPLING_SCAN  0x1000000000ULL	/* SELECT sampling data instead of full data */
 #define  PT_HINT_LEADING  0x2000000000ULL	/* force specific table to join left-to-right */
+#define  PT_HINT_NO_SUBQUERY_CACHE 0x4000000000ULL	/* don't use the subquery result cache */
 
 /* Codes for error messages */
 typedef enum
@@ -1460,7 +1464,8 @@ typedef enum
   PT_CHANGE_INDEX_COMMENT,
   PT_CHANGE_INDEX_STATUS,
   PT_ADD_MEMBERS,		/* alter user type */
-  PT_DROP_MEMBERS
+  PT_DROP_MEMBERS,
+  PT_SERIAL_OPTION		/* alter serial type */
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -2196,7 +2201,9 @@ struct pt_serial_info
   PT_NODE *max_val;		/* PT_VALUE */
   PT_NODE *min_val;		/* PT_VALUE */
   PT_NODE *cached_num_val;	/* PT_VALUE */
+  PT_NODE *owner_name;		/* PT_NAME */
   PT_NODE *comment;		/* PT_VALUE */
+  PT_ALTER_CODE code;		/* PT_SERIAL_OPTION, PT_CHANGE_OWNER */
   int cyclic;
   int no_max;
   int no_min;
@@ -2245,7 +2252,7 @@ struct pt_data_type_info
   PT_NODE *entity;		/* class PT_NAME list for PT_TYPE_OBJECT */
   PT_NODE *enumeration;		/* values list for PT_TYPE_ENUMERATION */
   DB_OBJECT *virt_object;	/* virt class object if a vclass */
-  PT_NODE *virt_data_type;	/* for non-primitive types- sets, etc. */
+  PT_NODE *table_column;	/* for type specification of the form <table>.<column>%TYPE */
   PT_TYPE_ENUM virt_type_enum;	/* type enumeration tage PT_TYPE_??? */
   int precision;		/* for float and int, length of char */
   int dec_precision;		/* decimal precision for float */
@@ -2983,6 +2990,7 @@ struct pt_query_info
     unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
+    unsigned cte_query_cached:1;	/* for CTE result-cached */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */

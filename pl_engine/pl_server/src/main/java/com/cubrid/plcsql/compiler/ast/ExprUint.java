@@ -32,6 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprUint extends Expr {
@@ -51,9 +52,10 @@ public class ExprUint extends Expr {
         this.ty = ty;
     }
 
-    public String javaCode() {
+    public String javaCode(Set<String> javaTypesUsed) {
         switch (ty.idx) {
             case Type.IDX_NUMERIC:
+                javaTypesUsed.add("java.math.BigDecimal");
                 return "new BigDecimal(\"" + val + "\")";
             case Type.IDX_BIGINT:
                 return "new Long(" + val + "L)";

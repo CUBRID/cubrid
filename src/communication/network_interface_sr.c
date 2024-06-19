@@ -6026,6 +6026,44 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 }
 
 /*
+ * sqmgr_drop_query_plans_by_sha1 - Process a NET_SERVER_QM_QUERY_DROP_SHA1_PLANS request
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in)qmgr_drop_query_plans_by_sha1:
+ *   reqlen(in):
+ *
+ * NOTE:
+ * Clear all XASL cache entires out upon request of the client.
+ * This function is a counter part to qmgr_drop_query_plans_by_sha1().
+ */
+void
+sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int status;
+  char *reply, *sha1;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  or_unpack_string_nocopy (request, &sha1);
+
+  /* call the server routine of query drop plan */
+  status = xqmgr_drop_query_plans_by_sha1 (thread_p, sha1);
+  if (status != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  /* pack status (DB_IN32) as a reply */
+  (void) or_pack_int (reply, status);
+
+  /* send reply and data to the client */
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+
+/*
  * sqmgr_dump_query_plans -
  *
  * return:

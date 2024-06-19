@@ -31,7 +31,9 @@
 package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.DateTimeParser;
+import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.SymbolStack;
@@ -2004,7 +2006,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(NULL_DATE)) {
+        if (l.equals(ValueUtilities.NULL_DATE)) {
             throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
@@ -2022,7 +2024,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(NULL_DATETIME)) {
+        if (l.equals(ValueUtilities.NULL_DATETIME)) {
             throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
@@ -2041,7 +2043,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(NULL_DATETIME)) {
+        if (l.equals(ValueUtilities.NULL_DATETIME)) {
             throw new VALUE_ERROR("attempt to use 'zero date'");
         }
         assert l.getNanos() == 0;
@@ -2158,7 +2160,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(NULL_DATE) || r.equals(NULL_DATE)) {
+        if (l.equals(ValueUtilities.NULL_DATE) || r.equals(ValueUtilities.NULL_DATE)) {
             throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
@@ -2172,7 +2174,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(NULL_DATETIME) || r.equals(NULL_DATETIME)) {
+        if (l.equals(ValueUtilities.NULL_DATETIME) || r.equals(ValueUtilities.NULL_DATETIME)) {
             throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
@@ -2192,7 +2194,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(NULL_DATETIME) || r.equals(NULL_DATETIME)) {
+        if (l.equals(ValueUtilities.NULL_DATETIME) || r.equals(ValueUtilities.NULL_DATETIME)) {
             throw new VALUE_ERROR("attempt to use 'zero date'");
         }
         assert l.getNanos() == 0;
@@ -2217,7 +2219,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(NULL_DATE)) {
+        if (l.equals(ValueUtilities.NULL_DATE)) {
             throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
@@ -2230,7 +2232,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(NULL_DATETIME)) {
+        if (l.equals(ValueUtilities.NULL_DATETIME)) {
             throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
@@ -2249,7 +2251,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(NULL_DATETIME)) {
+        if (l.equals(ValueUtilities.NULL_DATETIME)) {
             throw new VALUE_ERROR("attempt to use 'zero date'");
         }
         assert l.getNanos() == 0;
@@ -2354,8 +2356,8 @@ public class SpLib {
         if (e == null) {
             return null;
         }
-        if (e.equals(NULL_DATETIME)) {
-            return NULL_DATE;
+        if (e.equals(ValueUtilities.NULL_DATETIME)) {
+            return ValueUtilities.NULL_DATE;
         }
 
         return new Date(e.getYear(), e.getMonth(), e.getDate());
@@ -2373,8 +2375,8 @@ public class SpLib {
         if (e == null) {
             return null;
         }
-        if (e.equals(NULL_DATETIME)) {
-            return NULL_TIMESTAMP;
+        if (e.equals(ValueUtilities.NULL_DATETIME)) {
+            return ValueUtilities.NULL_TIMESTAMP;
         }
 
         return new Timestamp(
@@ -2391,7 +2393,7 @@ public class SpLib {
         if (e == null) {
             return null;
         }
-        if (e.equals(NULL_DATETIME)) {
+        if (e.equals(ValueUtilities.NULL_DATETIME)) {
             // must be calculated everytime because the AM/PM indicator can change according to the
             // locale change
             return String.format("00:00:00.000 %s 00/00/0000", AM_PM.format(ZERO_DATE));
@@ -2405,8 +2407,8 @@ public class SpLib {
         if (e == null) {
             return null;
         }
-        if (e.equals(NULL_DATE)) {
-            return NULL_DATETIME;
+        if (e.equals(ValueUtilities.NULL_DATE)) {
+            return ValueUtilities.NULL_DATETIME;
         }
 
         return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
@@ -2416,8 +2418,8 @@ public class SpLib {
         if (e == null) {
             return null;
         }
-        if (e.equals(NULL_DATE)) {
-            return NULL_TIMESTAMP;
+        if (e.equals(ValueUtilities.NULL_DATE)) {
+            return ValueUtilities.NULL_TIMESTAMP;
         }
 
         return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
@@ -2427,7 +2429,7 @@ public class SpLib {
         if (e == null) {
             return null;
         }
-        if (e.equals(NULL_DATE)) {
+        if (e.equals(ValueUtilities.NULL_DATE)) {
             return "00/00/0000";
         }
 
@@ -2449,8 +2451,8 @@ public class SpLib {
             return null;
         }
 
-        if (e.equals(NULL_TIMESTAMP)) {
-            return NULL_DATETIME;
+        if (e.equals(ValueUtilities.NULL_TIMESTAMP)) {
+            return ValueUtilities.NULL_DATETIME;
         }
         assert e.getNanos() == 0;
 
@@ -2469,8 +2471,8 @@ public class SpLib {
             return null;
         }
 
-        if (e.equals(NULL_TIMESTAMP)) {
-            return NULL_DATE;
+        if (e.equals(ValueUtilities.NULL_TIMESTAMP)) {
+            return ValueUtilities.NULL_DATE;
         }
         assert e.getNanos() == 0;
 
@@ -2491,7 +2493,7 @@ public class SpLib {
             return null;
         }
 
-        if (e.equals(NULL_TIMESTAMP)) {
+        if (e.equals(ValueUtilities.NULL_TIMESTAMP)) {
             // must be calculated everytime because the AM/PM indicator can change according to the
             // locale change
             return String.format("00:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
@@ -2901,7 +2903,7 @@ public class SpLib {
         }
 
         if (dt.equals(DateTimeParser.nullDatetime)) {
-            return NULL_DATETIME;
+            return ValueUtilities.NULL_DATETIME;
         } else {
             return new Timestamp(
                     dt.getYear() - 1900,
@@ -2958,7 +2960,7 @@ public class SpLib {
         }
 
         if (zdt.equals(DateTimeParser.nullDatetimeUTC)) {
-            return NULL_TIMESTAMP;
+            return ValueUtilities.NULL_TIMESTAMP;
         } else {
             assert zdt.getNano() == 0;
             return new Timestamp(
@@ -3511,67 +3513,42 @@ public class SpLib {
     }
 
     private static long bigDecimalToLong(BigDecimal bd) {
-        bd = bd.setScale(0, RoundingMode.HALF_UP); // 1.5 -->2, and -1.5 --> -2 NOTE: different from
-        // Math.round
         try {
-            return bd.longValueExact();
-        } catch (ArithmeticException e) {
-            throw new VALUE_ERROR("not fit in a BIGINT: " + bd);
+            return ValueUtilities.bigDecimalToLong(bd);
+        } catch (TypeMismatchException e) {
+            throw new VALUE_ERROR(e.getMessage());
         }
     }
 
     private static int bigDecimalToInt(BigDecimal bd) {
-        bd = bd.setScale(0, RoundingMode.HALF_UP); // 1.5 -->2, and -1.5 --> -2 NOTE: different from
-        // Math.round
         try {
-            return bd.intValueExact();
-        } catch (ArithmeticException e) {
-            throw new VALUE_ERROR("not fit in an INTEGER: " + bd);
+            return ValueUtilities.bigDecimalToInt(bd);
+        } catch (TypeMismatchException e) {
+            throw new VALUE_ERROR(e.getMessage());
         }
     }
 
     private static short bigDecimalToShort(BigDecimal bd) {
-        bd = bd.setScale(0, RoundingMode.HALF_UP); // 1.5 -->2, and -1.5 --> -2 NOTE: different from
-        // Math.round
         try {
-            return bd.shortValueExact();
-        } catch (ArithmeticException e) {
-            throw new VALUE_ERROR("not fit in a SHORT: " + bd);
+            return ValueUtilities.bigDecimalToShort(bd);
+        } catch (TypeMismatchException e) {
+            throw new VALUE_ERROR(e.getMessage());
         }
     }
 
     private static Time longToTime(long l) {
-        if (l < 0L) {
-            // negative values seem to result in a invalid time value
-            // e.g.
-            // select cast(cast(-1 as bigint) as time);
-            // === <Result of SELECT Command in Line 1> ===
-            //
-            // <00001>  cast( cast(-1 as bigint) as time): 12:00:0/ AM
-            //
-            // 1 row selected. (0.004910 sec) Committed. (0.000020 sec)
-            throw new VALUE_ERROR("negative values not allowed");
+        try {
+            return ValueUtilities.longToTime(l);
+        } catch (TypeMismatchException e) {
+            throw new VALUE_ERROR(e.getMessage());
         }
-
-        int totalSec = (int) (l % 86400L);
-        int hour = totalSec / 3600;
-        int minuteSec = totalSec % 3600;
-        int min = minuteSec / 60;
-        int sec = minuteSec % 60;
-        return new Time(hour, min, sec);
     }
 
     private static Timestamp longToTimestamp(long l) {
-        if (l < 0L) {
-            //   select cast(cast(-100 as bigint) as timestamp);
-            //   ERROR: Cannot coerce value of domain "bigint" to domain "timestamp"
-            throw new VALUE_ERROR("negative values not allowed");
-        } else if (l
-                > 2147483647L) { // 2147483647L : see section 'implicit type conversion' in the user
-            // manual
-            throw new VALUE_ERROR("values over 2,147,483,647 not allowed");
-        } else {
-            return new Timestamp(l * 1000L); // * 1000 : converts it to milli-seconds
+        try {
+            return ValueUtilities.longToTimestamp(l);
+        } catch (TypeMismatchException e) {
+            throw new VALUE_ERROR(e.getMessage());
         }
     }
 
@@ -4010,10 +3987,6 @@ public class SpLib {
             return "(" + String.join(", ", arr) + ")";
         }
     }
-
-    private static final Date NULL_DATE = new Date(0 - 1900, 0 - 1, 0);
-    private static final Timestamp NULL_DATETIME = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
-    private static final Timestamp NULL_TIMESTAMP = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
 
     private static boolean isEmptyStr(String s) {
         return s == null || s.length() == 0;

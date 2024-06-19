@@ -75,6 +75,7 @@ public class DBType { // see src/compat/dbtype_def.h
     public static final int DB_TIMESTAMPLTZ = 37;
     public static final int DB_DATETIMETZ = 38;
     public static final int DB_DATETIMELTZ = 39;
+    public static final int DB_JSON = 40;
 
     public static int getObjectDBtype(Object value) {
         if (value == null) return DB_NULL;
