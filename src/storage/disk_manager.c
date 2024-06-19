@@ -5173,16 +5173,16 @@ disk_type_to_string (DB_VOLTYPE voltype)
 
 /*
  * disk_vhdr_set_vol_fullname () -
- *   return: NO_ERROR
- *   vhdr(in):
- *   new_vol_fullname(in):
+ *   return:
+ *   vhdr(in): disk volume header
+ *   vol_fullname(in): volume fullname
  */
 static int
-disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_vol_fullname)
+disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
 {
   int name_length_diff = 0;
   int length_to_move = 0;
-  int vol_fullname_size = 0;
+  int old_vol_fullname_size = 0;
   int next_vol_fullname_size = 0;
   int remarks_size = 0;
   int new_vol_fullname_size = 0;
@@ -5191,13 +5191,13 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_vol_fulln
 
 
   /* Contains null characters ( 1 byte ) */
-  vol_fullname_size = disk_vhdr_get_vol_fullname_size (vhdr);
+  old_vol_fullname_size = disk_vhdr_get_vol_fullname_size (vhdr);
   next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
   remarks_size = disk_vhdr_get_vol_remarks_size (vhdr);
-  new_vol_fullname_size = (int) strlen (new_vol_fullname) + 1;
+  new_vol_fullname_size = (int) strlen (vol_fullname) + 1;
 
   /* Difference in length between new name and old name */
-  name_length_diff = (new_vol_fullname_size - vol_fullname_size);
+  name_length_diff = (new_vol_fullname_size - old_vol_fullname_size);
 
   /* When the new_vol_fullname is too long, causing other var_fields to overflow beyond the page. */
   if (DB_PAGESIZE < (offsetof (DISK_VOLUME_HEADER, var_fields) + vhdr->offset_to_vol_remarks + name_length_diff))
@@ -5229,15 +5229,15 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_vol_fulln
 	}
     }
 
-  (void) memcpy (disk_vhdr_get_vol_fullname (vhdr), new_vol_fullname, MIN (new_vol_fullname_size, DB_MAX_PATH_LENGTH));
+  (void) memcpy (disk_vhdr_get_vol_fullname (vhdr), vol_fullname, MIN (new_vol_fullname_size, DB_MAX_PATH_LENGTH));
   return ret;
 }
 
 /*
  * disk_vhdr_set_next_vol_fullname () -
- *   return: NO_ERROR
- *   vhdr(in):
- *   new_next_vol_fullname(in):
+ *   return: 
+ *   vhdr(in): disk volume header
+ *   new_next_vol_fullname(in): new next volume full name
  */
 static int
 disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_next_vol_fullname)
@@ -5305,8 +5305,8 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_next
 /*
  * disk_vhdr_set_vol_remarks () -
  *   return: NO_ERROR
- *   vhdr(in):
- *   vol_remarks(in):
+ *   vhdr(in): disk volume header
+ *   vol_remarks(in): remarks
  */
 static int
 disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks)
