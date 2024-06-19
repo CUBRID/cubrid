@@ -1980,6 +1980,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   short i, k, lhs_location, rhs_location, level;
   PT_JOIN_TYPE join_type;
   void *save_etc = NULL;
+  DB_VALUE value;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3227,13 +3228,16 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        * first parameter to the on_call_target.  If there is no parameter,
        * it will be caught in pt_semantic_check_local()
        */
-      if (!node->info.method_call.on_call_target
-	  && jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
+      if (!node->info.method_call.on_call_target && node->info.method_call.arg_list
+	  && !jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
 	{
-	  /*
-	   * Add user_schema to java_stored_procedure.
-	   * ex) CALL schema_name.method_name(); (== schema_name.sp_name);
-	   */
+	  node->info.method_call.on_call_target = node->info.method_call.arg_list;
+	  node->info.method_call.arg_list = node->info.method_call.arg_list->next;
+	  node->info.method_call.on_call_target->next = NULL;
+	}
+
+      if (!node->info.method_call.on_call_target)
+	{
 	  PT_NODE *method_name = node->info.method_call.method_name;
 	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) method_name;
 	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name->info.name.original);
@@ -3242,15 +3246,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  /* don't revisit leaves */
 	  *continue_walk = PT_LIST_WALK;
 	}
-      else
+      else if (node->info.method_call.on_call_target)
 	{
-	  if (!node->info.method_call.on_call_target && node->info.method_call.arg_list)
-	    {
-	      node->info.method_call.on_call_target = node->info.method_call.arg_list;
-	      node->info.method_call.arg_list = node->info.method_call.arg_list->next;
-	      node->info.method_call.on_call_target->next = NULL;
-	    }
-
 	  /*
 	   * Class methods are system tables and do not require user_schema.
 	   * Therefore, remove [schema_name.] from schema_name.method_name.
@@ -3298,7 +3295,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  node->info.method_call.method_name->info.name.spec_id = entity->info.spec.id;
 		}
 	    }
-
+	}
+      else
+	{
+	  assert (false);
+	  break;
 	}
 
       break;
@@ -3356,6 +3357,33 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	if (temp)
 	  {
 	    node = temp;
+	  }
+	else if (PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION (node))
+	  {
+	    PT_NODE *tmp_node = parser_new_node (parser, PT_NAME);
+	    if (tmp_node)
+	      {
+		tmp_node->info.name.original = pt_append_string (parser, node->info.dot.arg1->info.name.original, ".");
+		tmp_node->info.name.original =
+		  pt_append_string (parser, tmp_node->info.name.original,
+				    node->info.dot.arg2->info.function.generic_name);
+	      }
+
+	    if (jsp_is_exist_stored_procedure (tmp_node->info.name.original))
+	      {
+		node->info.dot.arg2->info.function.generic_name = tmp_node->info.name.original;
+		if (er_errid () == NO_ERROR)
+		  {
+		    pt_reset_error (parser);
+		  }
+		node = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
+		PT_NODE_INIT_OUTERLINK (node);
+		*continue_walk = PT_LIST_WALK;
+	      }
+	    else if (pt_has_error (parser))
+	      {
+		return NULL;
+	      }
 	  }
 	else if (pt_has_error (parser))
 	  {
