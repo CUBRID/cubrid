@@ -2668,7 +2668,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
       distinct_or_all = Q_ALL;
     }
 
-  if (lhs_file_p->tuple_cnt > 1)
+  /* for using result-cache */
+  if (!QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL) && lhs_file_p->tuple_cnt > 1)
     {
       lhs_file_p = qfile_sort_list (thread_p, lhs_file_p, NULL, distinct_or_all, true);
       if (lhs_file_p == NULL)
@@ -2685,7 +2686,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
 
   if (rhs_file_p)
     {
-      if (rhs_file_p->tuple_cnt > 1)
+      /* for using result-cache */
+      if (!QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL) && rhs_file_p->tuple_cnt > 1)
 	{
 	  rhs_file_p = qfile_sort_list (thread_p, rhs_file_p, NULL, distinct_or_all, true);
 	  if (rhs_file_p == NULL)
