@@ -75,7 +75,6 @@ typedef enum
 } SP_LANG_ENUM;
 
 
-extern void jsp_stringify_data_type(char *buf, PT_TYPE_ENUM type_enum, PT_NODE *data_type);
 extern void jsp_parse_data_type_str(int *db_type, int *precision, int *scale,
     const char *data_type_str, const int data_type_str_len);
 

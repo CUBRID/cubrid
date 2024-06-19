@@ -22,13 +22,13 @@
 #include <dbtype_def.h>
 
 /* CAUTION: the following list must match DB_TYPE defined in dbtype_def.h */
-const char *db_type_names[DB_TYPE_LAST + 1] =
+static const char *db_type_names[DB_TYPE_LAST + 1] =
 {
     NULL /* NULL */,
     "INTEGER",
     "FLOAT",
     "DOUBLE",
-    "STRING",
+    "VARCHAR",
     "OBJECT",
     "SET",
     "MULTISET",
