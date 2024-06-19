@@ -14545,6 +14545,7 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   int err = NO_ERROR;
   PARSER_CONTEXT context;
   int i, var_count;
+  PT_NODE *save_next = NULL;
 
   context = *parser;
 
@@ -14565,7 +14566,14 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
       memset (context.sub_host_var_index, -1, var_count * sizeof (int));
     }
 
+  /* not to traverse next subquery */
+  save_next = stmt->next;
+  stmt->next = NULL;
+
   parser_walk_tree (&context, stmt, pt_sub_host_vars_index, NULL, NULL, NULL);
+
+  /* restore next subquery */
+  stmt->next = save_next;
 
   stmt->sub_host_var_count = context.host_var_count;
   stmt->sub_host_var_index = context.sub_host_var_index;

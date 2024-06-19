@@ -1244,17 +1244,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-
-	      if (xasl->aptr_list && xasl->aptr_list->sub_xasl_id
-		  && XASL_IS_FLAGED (xasl->aptr_list, XASL_LINK_TO_REGU_VARIABLE))
-		{
-		  int i;
-
-		  for (i = 0; i < xasl->list_id->tpl_descr.f_cnt; i++)
-		    {
-		      db_value_clear (xasl->list_id->tpl_descr.f_valp[i]);
-		    }
-		}
 	    }
 	  break;
 
