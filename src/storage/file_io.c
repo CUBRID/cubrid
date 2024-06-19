@@ -10374,7 +10374,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 
 	  volid = session_p->dbfile.volid;
 	  if (disk_set_creation (thread_p, volid, to_vol_label_p, &backup_header_p->db_creation_time,
-				 &session_p->bkup.last_chkpt_lsa, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
+				 &session_p->bkup.last_chkpt_lsa, false, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
 	    {
 	      goto error;
 	    }

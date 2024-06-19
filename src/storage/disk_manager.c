@@ -835,13 +835,14 @@ disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname)
  *   new_dbcreation(in): New database creation time
  *   new_chkptlsa(in): New checkpoint
  *   logchange(in): Whether or not to log the change
+ *   is_new_db_creation(in): Whether or not to volume creation time update
  *   flush_page(in): true for flush dirty page. otherwise, false
  *
  * Note: This function is targeted for the log and recovery manager. It is used when a database is copied or renamed.
  */
 int
 disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_fullname, const INT64 * new_dbcreation,
-		   const LOG_LSA * new_chkptlsa, bool logchange, DISK_FLUSH_TYPE flush)
+		   const LOG_LSA * new_chkptlsa, bool logchange, bool is_new_db_creation, DISK_FLUSH_TYPE flush)
 {
   DISK_VOLUME_HEADER *vhdr = NULL;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
@@ -905,8 +906,28 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
     }
 
   /* Modify volume creation information */
-  memcpy (&vhdr->db_creation_time, new_dbcreation, sizeof (*new_dbcreation));
-  memcpy (&vhdr->chkpt_lsa, new_chkptlsa, sizeof (*new_chkptlsa));
+
+  /* TODO #
+   * Currently, the volume creation time and database creation time are updated only when the new database file is created.
+   * However, the existing code performs a memcpy even when the new_dbcreation value is the same as vhdr->db_creation, regardless of whether the database is being created.
+   * For now, the code has been changed as below, but it seems necessary to determine whether to refactor and improve this in the future.
+   */
+  if (is_new_db_creation == true)
+    {
+      assert (*new_dbcreation != vhdr->db_creation_time);
+      vhdr->vol_creation_time = time (NULL);
+      memcpy (&vhdr->db_creation_time, new_dbcreation, sizeof (*new_dbcreation));
+    }
+  else
+    {
+      assert (*new_dbcreation == vhdr->db_creation_time);
+    }
+
+  if ((vhdr->chkpt_lsa.pageid != new_chkptlsa->pageid) || (vhdr->chkpt_lsa.offset != new_chkptlsa->offset))
+    {
+      memcpy (&vhdr->chkpt_lsa, new_chkptlsa, sizeof (*new_chkptlsa));
+    }
+
   if (disk_vhdr_set_vol_fullname (vhdr, new_vol_fullname) != NO_ERROR)
     {
       goto error;

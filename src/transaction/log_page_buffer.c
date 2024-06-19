@@ -9303,7 +9303,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *to_vol
    * checkpoint lsa
    */
 
-  (void) disk_set_creation (thread_p, LOG_DBCOPY_VOLID, to_volname, db_creation_time, to_volchkpt_lsa, false,
+  (void) disk_set_creation (thread_p, LOG_DBCOPY_VOLID, to_volname, db_creation_time, to_volchkpt_lsa, false, true,
 			    DISK_DONT_FLUSH);
 
   logpb_flush_pages_direct (thread_p);
@@ -10084,7 +10084,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 
       error_code =
 	disk_set_creation (thread_p, volid, to_volname, &log_Gl.hdr.db_creation_time, &log_Gl.hdr.chkpt_lsa, true,
-			   DISK_DONT_FLUSH);
+			   false, DISK_DONT_FLUSH);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
