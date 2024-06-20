@@ -544,7 +544,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     }
 
   /* make sure that this is a valid purpose */
-  if ((vol_purpose != DB_PERMANENT_DATA_PURPOSE) && (vol_purpose != DB_TEMPORARY_DATA_PURPOSE))
+  if (vol_purpose != DB_PERMANENT_DATA_PURPOSE && vol_purpose != DB_TEMPORARY_DATA_PURPOSE)
     {
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_UNKNOWN_PURPOSE, 3, vol_purpose, DB_PERMANENT_DATA_PURPOSE,
@@ -553,8 +553,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     }
 
   /* safe guard: permanent volumes with temporary data purpose must be maxed */
-  assert ((vol_purpose != DB_TEMPORARY_DATA_PURPOSE) || (ext_info->voltype != DB_PERMANENT_VOLTYPE)
-	  || (ext_info->nsect_total == ext_info->nsect_max));
+  assert (vol_purpose != DB_TEMPORARY_DATA_PURPOSE || ext_info->voltype != DB_PERMANENT_VOLTYPE
+	  || ext_info->nsect_total == ext_info->nsect_max);
 
   /* undo must be logical since we are going to remove the volume in the case of rollback (really a crash since we are
    * in a top operation) */
@@ -5376,7 +5376,7 @@ disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr)
 
 
 /*
- * disk_vhdr_get_vol_fullname_size () - get vol_fullname_size from volume header
+ * disk_vhdr_get_vol_fullname_size () - get the size of the volume's fullname using the vhdr(in).
  *
  * return    : volume fullname size
  * vhdr (in) : volume header
@@ -5400,9 +5400,9 @@ disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
 }
 
 /*
- * disk_vhdr_get_vol_remarks_size () - get remarks_size from volume header
+ * disk_vhdr_get_vol_remarks_size () - get the size of 'remarks' from volume header
  *
- * return    : remarks size
+ * return    : the size of remarks
  * vhdr (in) : volume header
  */
 STATIC_INLINE int
@@ -5414,7 +5414,7 @@ disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr)
 
 
 /*
- * disk_vhdr_get_vol_header_size () - get size of volume header including variable fields
+ * disk_vhdr_get_vol_header_size () - get the size of volume header including variable fields
  *
  * return    : total size
  * vhdr (in) : volume header
