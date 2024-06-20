@@ -14546,6 +14546,7 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   PARSER_CONTEXT context;
   int i, var_count;
   PT_NODE *save_next = NULL;
+  PT_MISC_TYPE save_flag;
 
   context = *parser;
 
@@ -14578,7 +14579,13 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   stmt->sub_host_var_count = context.host_var_count;
   stmt->sub_host_var_index = context.sub_host_var_index;
 
+  /* save the flag for main query's prepare */
+  save_flag = stmt->info.query.is_subquery;
+
   err = do_prepare_select (&context, stmt);
+
+  /* restore the flag */
+  stmt->info.query.is_subquery = save_flag;
 
   return err;
 }

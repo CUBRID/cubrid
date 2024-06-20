@@ -13542,7 +13542,7 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
       xasl = (XASL_NODE *) node->info.query.xasl;
 
       /* subquery or cached subquery */
-      if (xasl && (pt_is_subquery (node) || node->info.query.flag.subquery_cached))
+      if (xasl && pt_is_subquery (node))
 	{
 	  if (node->info.query.correlation_level == 0)
 	    {
