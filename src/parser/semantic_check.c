@@ -9363,7 +9363,7 @@ pt_is_defined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
 static PT_TYPE_ENUM
 pt_resolve_table_column_type (PARSER_CONTEXT * parser, PT_NODE * data_type)
 {
-  assert(!data_type->data_type);
+  assert (!data_type->data_type);
 
   PT_NODE *table_column = data_type->info.data_type.table_column;
   assert (PT_IS_DOT_NODE (table_column));
@@ -9387,15 +9387,18 @@ pt_resolve_table_column_type (PARSER_CONTEXT * parser, PT_NODE * data_type)
   int db_type = TP_DOMAIN_TYPE (domain);
   PT_TYPE_ENUM type_enum = pt_db_to_type_enum ((DB_TYPE) db_type);
 
-  PT_NODE *dt = parser_new_node(parser, PT_DATA_TYPE);
+  PT_NODE *dt = parser_new_node (parser, PT_DATA_TYPE);
   dt->type_enum = type_enum;
 
-  if (type_enum == PT_TYPE_NUMERIC) {
-    dt->info.data_type.precision = db_domain_precision(domain);
-    dt->info.data_type.dec_precision = db_domain_scale(domain);
-  } else if (type_enum == PT_TYPE_CHAR || type_enum == PT_TYPE_VARCHAR) {
-    dt->info.data_type.precision = db_domain_precision(domain);
-  }
+  if (type_enum == PT_TYPE_NUMERIC)
+    {
+      dt->info.data_type.precision = db_domain_precision (domain);
+      dt->info.data_type.dec_precision = db_domain_scale (domain);
+    }
+  else if (type_enum == PT_TYPE_CHAR || type_enum == PT_TYPE_VARCHAR)
+    {
+      dt->info.data_type.precision = db_domain_precision (domain);
+    }
 
   data_type->data_type = dt;
 
@@ -9504,7 +9507,7 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (pt_is_type_supported_by_sp (parser, param->type_enum, param->data_type))
 	{
-	  assert (param->type_enum != PT_TYPE_NONE); // even if it was, it is updated in pt_is_type_supported_by_sp()
+	  assert (param->type_enum != PT_TYPE_NONE);	// even if it was, it is updated in pt_is_type_supported_by_sp()
 	}
       else
 	{
@@ -9534,7 +9537,7 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (pt_is_type_supported_by_sp (parser, node->info.sp.ret_type, node->info.sp.ret_data_type))
 	{
-	  assert (node->info.sp.ret_type != PT_TYPE_NONE); // even if it was, it is updated in pt_is_type_supported_by_sp()
+	  assert (node->info.sp.ret_type != PT_TYPE_NONE);	// even if it was, it is updated in pt_is_type_supported_by_sp()
 	}
       else
 	{

@@ -733,8 +733,8 @@ extern "C"
     DB_TYPE_LAST = DB_TYPE_JSON
   } DB_TYPE;
 
-  extern int db_get_db_type_of_name(const char *name);
-  extern const char* db_get_name_of_db_type(const int db_type);
+  extern int db_get_db_type_of_name (const char *name);
+  extern const char *db_get_name_of_db_type (const int db_type);
 
 
   /* Domain information stored in DB_VALUE structures. */

@@ -3893,10 +3893,10 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 
 			      if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
 				{
-                                  int db_type;
-                                  const char *arg_type_str = db_get_string(&arg_type);
-                                  const int arg_type_str_len = db_get_string_size(&arg_type);
-                                  jsp_parse_data_type_str(&db_type, NULL, NULL, arg_type_str, arg_type_str_len);
+				  int db_type;
+				  const char *arg_type_str = db_get_string (&arg_type);
+				  const int arg_type_str_len = db_get_string_size (&arg_type);
+				  jsp_parse_data_type_str (&db_type, NULL, NULL, arg_type_str, arg_type_str_len);
 
 				  (*tail)->arg_info.arg_type[i] = db_type;
 				}
@@ -3921,10 +3921,10 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  DB_VALUE result_type;
 		  if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type) == NO_ERROR)
 		    {
-                      int db_type;
-                      const char *res_type_str = db_get_string(&result_type);
-                      const int res_type_str_len = db_get_string_size(&result_type);
-                      jsp_parse_data_type_str(&db_type, NULL, NULL, res_type_str, res_type_str_len);
+		      int db_type;
+		      const char *res_type_str = db_get_string (&result_type);
+		      const int res_type_str_len = db_get_string_size (&result_type);
+		      jsp_parse_data_type_str (&db_type, NULL, NULL, res_type_str, res_type_str_len);
 
 		      (*tail)->arg_info.result_type = db_type;
 		      pr_clear_value (&result_type);

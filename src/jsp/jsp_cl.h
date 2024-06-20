@@ -75,8 +75,8 @@ typedef enum
 } SP_LANG_ENUM;
 
 
-extern void jsp_parse_data_type_str(int *db_type, int *precision, int *scale,
-    const char *data_type_str, const int data_type_str_len);
+extern void jsp_parse_data_type_str (int *db_type, int *precision, int *scale,
+				     const char *data_type_str, const int data_type_str_len);
 
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);

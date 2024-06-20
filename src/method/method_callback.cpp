@@ -645,9 +645,9 @@ namespace cubmethod
 
 		  if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
 		    {
-                      const char *arg_type_str = db_get_string(&arg_type);
-                      const int arg_type_str_len = db_get_string_size(&arg_type);
-                      jsp_parse_data_type_str(&param_info.type, NULL, NULL, arg_type_str, arg_type_str_len);
+		      const char *arg_type_str = db_get_string (&arg_type);
+		      const int arg_type_str_len = db_get_string_size (&arg_type);
+		      jsp_parse_data_type_str (&param_info.type, NULL, NULL, arg_type_str, arg_type_str_len);
 		    }
 
 		  pr_clear_value (&mode);
@@ -665,9 +665,9 @@ namespace cubmethod
 
       if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type) == NO_ERROR)
 	{
-          const char *rtn_type_str = db_get_string(&return_type);
-          const int rtn_type_str_len = db_get_string_size(&return_type);
-          jsp_parse_data_type_str(&res.ret.type, NULL, NULL, rtn_type_str, rtn_type_str_len);
+	  const char *rtn_type_str = db_get_string (&return_type);
+	  const int rtn_type_str_len = db_get_string_size (&return_type);
+	  jsp_parse_data_type_str (&res.ret.type, NULL, NULL, rtn_type_str, rtn_type_str_len);
 	  pr_clear_value (&return_type);
 	}
     }

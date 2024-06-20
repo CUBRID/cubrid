@@ -99,7 +99,7 @@ static int server_port = -1;
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT] = { false, };
 
-static void jsp_stringify_data_type(char *buf, PT_TYPE_ENUM type_enum, PT_NODE *data_type);
+static void jsp_stringify_data_type (char *buf, PT_TYPE_ENUM type_enum, PT_NODE * data_type);
 
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static int jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
@@ -307,9 +307,9 @@ jsp_get_return_type (const char *name)
   AU_ENABLE (save);
 
   int ret_type;
-  const char *ret_type_str = db_get_string(&return_type);
-  const int ret_type_str_len = db_get_string_size(&return_type);
-  jsp_parse_data_type_str(&ret_type, NULL, NULL, ret_type_str, ret_type_str_len);
+  const char *ret_type_str = db_get_string (&return_type);
+  const int ret_type_str_len = db_get_string_size (&return_type);
+  jsp_parse_data_type_str (&ret_type, NULL, NULL, ret_type_str, ret_type_str_len);
   return ret_type;
 }
 
@@ -675,7 +675,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  jsp_stringify_data_type(ret_type_str, statement->info.sp.ret_type, statement->info.sp.ret_data_type);
+  jsp_stringify_data_type (ret_type_str, statement->info.sp.ret_type, statement->info.sp.ret_data_type);
   err = jsp_add_stored_procedure (name, type, ret_type_str, param_list, decl, comment);
   if (err != NO_ERROR)
     {
@@ -1120,9 +1120,9 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const char 
 
       arg_comment = (char *) PT_NODE_SP_ARG_COMMENT (node_p);
 
-      jsp_stringify_data_type(data_type_buf, node_p->type_enum, node_p->data_type);
+      jsp_stringify_data_type (data_type_buf, node_p->type_enum, node_p->data_type);
       err = jsp_add_stored_procedure_argument (&mop, checked_name, name_info.original, i, data_type_buf,
-					   node_p->info.sp_param.mode, arg_comment);
+					       node_p->info.sp_param.mode, arg_comment);
       if (err != NO_ERROR)
 	{
 	  goto error;
@@ -1455,11 +1455,11 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 		error = db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type);
 		if (error == NO_ERROR)
 		  {
-                    int type_val;
+		    int type_val;
 
-                    const char *arg_type_str = db_get_string(&arg_type);
-                    const int arg_type_str_len = db_get_string_size(&arg_type);
-                    jsp_parse_data_type_str(&type_val, NULL, NULL, arg_type_str, arg_type_str_len);
+		    const char *arg_type_str = db_get_string (&arg_type);
+		    const int arg_type_str_len = db_get_string_size (&arg_type);
+		    jsp_parse_data_type_str (&type_val, NULL, NULL, arg_type_str, arg_type_str_len);
 
 		    if (type_val == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
 		      {
@@ -1488,11 +1488,11 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 	    goto end;
 	  }
 
-        {
-            const char *res_type_str = db_get_string(&result_type);
-            const int res_type_str_len = db_get_string_size(&result_type);
-            jsp_parse_data_type_str(&sig_result_type, NULL, NULL, res_type_str, res_type_str_len);
-        }
+	{
+	  const char *res_type_str = db_get_string (&result_type);
+	  const int res_type_str_len = db_get_string_size (&result_type);
+	  jsp_parse_data_type_str (&sig_result_type, NULL, NULL, res_type_str, res_type_str_len);
+	}
 
 	if (sig_result_type == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
 	  {
@@ -1632,125 +1632,152 @@ jsp_make_method_arglist (PARSER_CONTEXT * parser, PT_NODE * node_list)
 }
 
 static void
-jsp_get_prec_scale_from_data_type(int *prec, int *scale, PT_NODE *data_type)
+jsp_get_prec_scale_from_data_type (int *prec, int *scale, PT_NODE * data_type)
 {
-    assert (prec);
-    assert (data_type);
+  assert (prec);
+  assert (data_type);
 
-    if (data_type->type_enum == PT_TYPE_TABLE_COLUMN) {
-        data_type = data_type->data_type;
+  if (data_type->type_enum == PT_TYPE_TABLE_COLUMN)
+    {
+      data_type = data_type->data_type;
     }
 
-    if (scale) {
-        assert (data_type->type_enum == PT_TYPE_NUMERIC);
-        *scale = data_type->info.data_type.dec_precision;
-    } else {
-        assert (data_type->type_enum == PT_TYPE_CHAR || data_type->type_enum == PT_TYPE_VARCHAR);
+  if (scale)
+    {
+      assert (data_type->type_enum == PT_TYPE_NUMERIC);
+      *scale = data_type->info.data_type.dec_precision;
+    }
+  else
+    {
+      assert (data_type->type_enum == PT_TYPE_CHAR || data_type->type_enum == PT_TYPE_VARCHAR);
     }
 
-    *prec = data_type->info.data_type.precision;
+  *prec = data_type->info.data_type.precision;
 }
 
 static void
-jsp_stringify_data_type(char *buf, PT_TYPE_ENUM type_enum, PT_NODE *data_type)
+jsp_stringify_data_type (char *buf, PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 {
-    switch (type_enum) {
+  switch (type_enum)
+    {
     case PT_TYPE_NONE:
-        strcpy(buf, "void");
-        return;
+      strcpy (buf, "void");
+      return;
     case PT_TYPE_RESULTSET:
-        strcpy(buf, "CURSOR");
-        return;
+      strcpy (buf, "CURSOR");
+      return;
     default:
-        ;   // do nothing
+      ;				// do nothing
     }
 
-    int db_type = pt_type_enum_to_db(type_enum);
-    strcpy(buf, db_get_name_of_db_type(db_type));
+  int db_type = pt_type_enum_to_db (type_enum);
+  strcpy (buf, db_get_name_of_db_type (db_type));
 
-    switch (db_type) {
+  switch (db_type)
+    {
     case DB_TYPE_NUMERIC:
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    {
-        char *prec_pos = buf + strlen(buf);
-        if (db_type == DB_TYPE_NUMERIC) {
-            int prec, scale;
-            jsp_get_prec_scale_from_data_type(&prec, &scale, data_type);
-            sprintf(prec_pos, "(%d, %d)", prec, scale);
-        } else {
-            // char or varchar
-            int prec;
-            jsp_get_prec_scale_from_data_type(&prec, NULL, data_type);
-            sprintf(prec_pos, "(%d)", prec);
-        }
-        break;
-    }
+      {
+	char *prec_pos = buf + strlen (buf);
+	if (db_type == DB_TYPE_NUMERIC)
+	  {
+	    int prec, scale;
+	    jsp_get_prec_scale_from_data_type (&prec, &scale, data_type);
+	    sprintf (prec_pos, "(%d, %d)", prec, scale);
+	  }
+	else
+	  {
+	    // char or varchar
+	    int prec;
+	    jsp_get_prec_scale_from_data_type (&prec, NULL, data_type);
+	    sprintf (prec_pos, "(%d)", prec);
+	  }
+	break;
+      }
     default:
-        ;   // do nothing
+      ;				// do nothing
     }
 }
 
 void
-jsp_parse_data_type_str(int *db_type, int *precision, int *scale, const char *data_type_str, const int data_type_str_len)
+jsp_parse_data_type_str (int *db_type, int *precision, int *scale, const char *data_type_str,
+			 const int data_type_str_len)
 {
 
-    // The way this function parses the data type string depends on
-    // the way the string was built in jsp_stringify_data_type()
+  // The way this function parses the data type string depends on
+  // the way the string was built in jsp_stringify_data_type()
 
-    bool has_precision, need_precision;
-    assert(db_type);
+  bool has_precision, need_precision;
+  assert (db_type);
 
-    char buf[SP_DATA_TYPE_STR_LEN_MAX + 1];
-    memcpy(buf, data_type_str, data_type_str_len);
-    buf[data_type_str_len] = '\0';
+  char buf[SP_DATA_TYPE_STR_LEN_MAX + 1];
+  memcpy (buf, data_type_str, data_type_str_len);
+  buf[data_type_str_len] = '\0';
 
-    char *lparen_pos = strchr(buf, '(');
-    if (lparen_pos) {
-        has_precision = true;
-        *lparen_pos = '\0';
-    } else {
-        has_precision = false;
+  char *lparen_pos = strchr (buf, '(');
+  if (lparen_pos)
+    {
+      has_precision = true;
+      *lparen_pos = '\0';
+    }
+  else
+    {
+      has_precision = false;
     }
 
-    int ty;
-    if (strcmp(buf, "void") == 0) {
-        ty = DB_TYPE_NULL;
-    } else if (strcmp(buf, "CURSOR") == 0) {
-        ty = DB_TYPE_RESULTSET;
-    } else {
-        ty = db_get_db_type_of_name(buf); // it returns -1 when no match
+  int ty;
+  if (strcmp (buf, "void") == 0)
+    {
+      ty = DB_TYPE_NULL;
     }
-    assert (ty >= 0);
-    *db_type = ty;
-    need_precision = (ty == DB_TYPE_NUMERIC) || (ty == DB_TYPE_CHAR) || (ty == DB_TYPE_VARCHAR);
+  else if (strcmp (buf, "CURSOR") == 0)
+    {
+      ty = DB_TYPE_RESULTSET;
+    }
+  else
+    {
+      ty = db_get_db_type_of_name (buf);	// it returns -1 when no match
+    }
+  assert (ty >= 0);
+  *db_type = ty;
+  need_precision = (ty == DB_TYPE_NUMERIC) || (ty == DB_TYPE_CHAR) || (ty == DB_TYPE_VARCHAR);
 
-    assert (has_precision == need_precision);
+  assert (has_precision == need_precision);
 
-    if (precision && scale) {
-        if (need_precision) {
-            char *token= lparen_pos + 1, *delim;
-            if (ty == DB_TYPE_NUMERIC) {
-                delim = strchr(token, ',');
-                *delim = '\0';
-                *precision = atoi(token);
+  if (precision && scale)
+    {
+      if (need_precision)
+	{
+	  char *token = lparen_pos + 1, *delim;
+	  if (ty == DB_TYPE_NUMERIC)
+	    {
+	      delim = strchr (token, ',');
+	      *delim = '\0';
+	      *precision = atoi (token);
 
-                token = delim + 2;      // 2: a space after the comma
-                delim = strchr(token, ')');
-                *delim = '\0';
-                *scale = atoi(token);
-            } else {
-                // char or varchar
-                delim = strchr(token, ')');
-                *delim = '\0';
-                *precision = atoi(token);
-            }
-        } else {
-            *precision = *scale = 0;    // neither precioson nor scale can be given for this type
-        }
-    } else {
-        // in this case, both must be null: restriction of using this function
-        assert(!precision);
-        assert(!scale);
+	      token = delim + 2;	// 2: a space after the comma
+	      delim = strchr (token, ')');
+	      *delim = '\0';
+	      *scale = atoi (token);
+	    }
+	  else
+	    {
+	      // char or varchar
+	      delim = strchr (token, ')');
+	      *delim = '\0';
+	      *precision = atoi (token);
+	    }
+	}
+      else
+	{
+	  *precision = *scale = 0;	// neither precioson nor scale can be given for this type
+	}
+    }
+  else
+    {
+      // in this case, both must be null: restriction of using this function
+      assert (!precision);
+      assert (!scale);
     }
 }

@@ -4314,9 +4314,9 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
       output_ctx ("%s ", arg_mode == SP_MODE_IN ? "IN" : arg_mode == SP_MODE_OUT ? "OUT" : "INOUT");
 
       {
-          const char *arg_type_str = db_get_string(&arg_type_val);
-          const int arg_type_str_len = db_get_string_size(&arg_type_val);
-          jsp_parse_data_type_str(&arg_type, NULL, NULL, arg_type_str, arg_type_str_len);
+	const char *arg_type_str = db_get_string (&arg_type_val);
+	const int arg_type_str_len = db_get_string_size (&arg_type_val);
+	jsp_parse_data_type_str (&arg_type, NULL, NULL, arg_type_str, arg_type_str_len);
       }
 
       if (arg_type == DB_TYPE_RESULTSET)
@@ -4429,9 +4429,9 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 
       if (sp_type == SP_TYPE_FUNCTION)
 	{
-          const char *rtn_type_str = db_get_string(&rtn_type_val);
-          const int rtn_type_str_len = db_get_string_size(&rtn_type_val);
-          jsp_parse_data_type_str(&rtn_type, NULL, NULL, rtn_type_str, rtn_type_str_len);
+	  const char *rtn_type_str = db_get_string (&rtn_type_val);
+	  const int rtn_type_str_len = db_get_string_size (&rtn_type_val);
+	  jsp_parse_data_type_str (&rtn_type, NULL, NULL, rtn_type_str, rtn_type_str_len);
 
 	  if (rtn_type == DB_TYPE_RESULTSET)
 	    {

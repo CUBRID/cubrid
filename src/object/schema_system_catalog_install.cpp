@@ -49,7 +49,7 @@ catcls_add_data_type (struct db_object *class_mop)
 
   for (i = 0; i <= DB_TYPE_LAST; i++)
     {
-      const char* type_name = db_get_name_of_db_type(i);
+      const char *type_name = db_get_name_of_db_type (i);
       if (type_name != NULL)
 	{
 	  obj = db_create_internal (class_mop);
