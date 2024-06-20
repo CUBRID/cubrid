@@ -5237,26 +5237,26 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
  * disk_vhdr_set_next_vol_fullname () -
  *   return: 
  *   vhdr(in): disk volume header
- *   new_next_vol_fullname(in): new next volume full name
+ *   next_vol_fullname(in): new next volume full name
  */
 static int
-disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_next_vol_fullname)
+disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol_fullname)
 {
   int name_length_diff;
   int ret = NO_ERROR;
-  int next_vol_fullname_size = 0;
+  int old_next_vol_fullname_size = 0;
   int new_next_vol_fullname_size = 0;
   int remarks_size = 0;
   int trim_size = 0;
 
-  if (new_next_vol_fullname == NULL)
+  if (next_vol_fullname == NULL)
     {
-      new_next_vol_fullname = "";
+      next_vol_fullname = "";
       new_next_vol_fullname_size = 1;
     }
   else
     {
-      new_next_vol_fullname_size = (int) strlen (new_next_vol_fullname) + 1;
+      new_next_vol_fullname_size = (int) strlen (next_vol_fullname) + 1;
 
       if (new_next_vol_fullname_size > PATH_MAX)
 	{
@@ -5264,10 +5264,10 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_next
 	}
     }
 
-  next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
+  old_next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
 
   /* Difference in length between new name and old name */
-  name_length_diff = (new_next_vol_fullname_size - next_vol_fullname_size);
+  name_length_diff = (new_next_vol_fullname_size - old_next_vol_fullname_size);
 
   /* When the new_vol_fullname is too long, causing other var_fields to overflow beyond the page. */
   if (DB_PAGESIZE < (offsetof (DISK_VOLUME_HEADER, var_fields) + vhdr->offset_to_vol_remarks + name_length_diff))
@@ -5297,7 +5297,7 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *new_next
 	}
     }
 
-  (void) memcpy (disk_vhdr_get_next_vol_fullname (vhdr), new_next_vol_fullname, new_next_vol_fullname_size);
+  (void) memcpy (disk_vhdr_get_next_vol_fullname (vhdr), next_vol_fullname, new_next_vol_fullname_size);
 
   return ret;
 }
