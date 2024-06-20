@@ -170,6 +170,9 @@ struct xasl_state
     } \
   while (0)
 
+#define QEXEC_IS_SUBQUERY_CACHE(n) \
+  ( (n) && ((n)->sub_xasl_id != NULL) )
+
 #if 0
 /* Note: the following macro is used just for replacement of a repetitive
  * text in order to improve the readability.
@@ -2198,19 +2201,16 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   lock_abort_composite_lock (&xasl->composite_lock);
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
 
+  /* clear subquery's result-cache */
+  if (xasl->sub_xasl_id)
+    {
+      qfile_clear_list_id (xasl->list_id);
+    }
+
   /* clear the body node */
   if (xasl->aptr_list)
     {
-      XASL_NODE *xptr;
-
       XASL_SET_FLAG (xasl->aptr_list, decache_clone_flag);
-      for (xptr = xasl->aptr_list; xptr; xptr = xptr->next)
-	{
-	  if (xptr->sub_xasl_id)
-	    {
-	      qfile_clear_list_id (xptr->list_id);
-	    }
-	}
       pg_cnt += qexec_clear_xasl (thread_p, xasl->aptr_list, is_final);
     }
   if (xasl->bptr_list)
@@ -14154,7 +14154,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	      if (xptr2->status == XASL_CLEARED || xptr2->status == XASL_INITIALIZED)
 		{
-		  if (xptr2->sub_xasl_id == NULL ||
+		  if (!QEXEC_IS_SUBQUERY_CACHE (xptr2) ||
 		      (qexec_execute_subquery_for_result_cache (thread_p, xptr2, xasl_state) != NO_ERROR))
 		    {
 		      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)

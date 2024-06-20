@@ -13558,8 +13558,6 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 		  xasl->sub_xasl_id = node->xasl_id;
 		  xasl->sub_host_var_count = node->sub_host_var_count;
 		  xasl->sub_host_var_index = node->sub_host_var_index;
-
-		  node->info.query.xasl = xasl;
 		}
 
 	      /* order is important. we are on the way up, so putting things at the tail of the list will end up deeper
