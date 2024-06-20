@@ -5180,24 +5180,19 @@ disk_type_to_string (DB_VOLTYPE voltype)
 static int
 disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
 {
-  int name_length_diff = 0;
   int length_to_move = 0;
-  int old_vol_fullname_size = 0;
-  int next_vol_fullname_size = 0;
-  int remarks_size = 0;
-  int new_vol_fullname_size = 0;
   int ret = NO_ERROR;
   int trim_size = 0;
-
+  int remarks_size = 0;
 
   /* Contains null characters ( 1 byte ) */
-  old_vol_fullname_size = disk_vhdr_get_vol_fullname_size (vhdr);
-  next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
+  const int new_vol_fullname_size = (int) strlen (vol_fullname) + 1;
+  const int old_vol_fullname_size = disk_vhdr_get_vol_fullname_size (vhdr);
+  const int next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
   remarks_size = disk_vhdr_get_vol_remarks_size (vhdr);
-  new_vol_fullname_size = (int) strlen (vol_fullname) + 1;
 
   /* Difference in length between new name and old name */
-  name_length_diff = (new_vol_fullname_size - old_vol_fullname_size);
+  const int name_length_diff = (new_vol_fullname_size - old_vol_fullname_size);
 
   /* When the new_vol_fullname is too long, causing other var_fields to overflow beyond the page. */
   if (DB_PAGESIZE < (offsetof (DISK_VOLUME_HEADER, var_fields) + vhdr->offset_to_vol_remarks + name_length_diff))
@@ -5242,9 +5237,7 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
 static int
 disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol_fullname)
 {
-  int name_length_diff;
   int ret = NO_ERROR;
-  int old_next_vol_fullname_size = 0;
   int new_next_vol_fullname_size = 0;
   int remarks_size = 0;
   int trim_size = 0;
@@ -5264,10 +5257,10 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
 	}
     }
 
-  old_next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
+  const int old_next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
 
   /* Difference in length between new name and old name */
-  name_length_diff = (new_next_vol_fullname_size - old_next_vol_fullname_size);
+  const int name_length_diff = (new_next_vol_fullname_size - old_next_vol_fullname_size);
 
   /* When the new_vol_fullname is too long, causing other var_fields to overflow beyond the page. */
   if (DB_PAGESIZE < (offsetof (DISK_VOLUME_HEADER, var_fields) + vhdr->offset_to_vol_remarks + name_length_diff))
