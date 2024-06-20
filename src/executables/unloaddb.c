@@ -49,6 +49,17 @@
 #include <sys/time.h>
 #endif
 #endif
+
+//#define SUPPORT_FORK_PROCESS // ctshim 
+#define MAX_PROCESS_COUNT (36)
+
+#if !defined (WINDOWS) && defined(SUPPORT_FORK_PROCESS)
+#include <sys/types.h>
+#include <sys/wait.h>
+
+int do_multi_processing (int processes, bool * is_main_process);
+#endif
+
 //#endif
 
 char *database_name = NULL;
@@ -129,6 +140,10 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   EMIT_STORAGE_ORDER order;
   extract_context unload_context;
 
+  bool is_main_process = true;	// ctshim
+
+  db_set_use_utility_thread (true);
+
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
       unload_usage (arg->argv0);
@@ -169,16 +184,18 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
   if (datafile_per_class)
     {
-      if (do_objects)
+#if defined(CS_MODE) || defined(SUPPORT_MTP_UNLOAD_TEST)
+      if (!do_schema)
 	{
 	  g_modular = utility_get_option_int_value (arg_map, UNLOAD_MODULAR_VALUE_S);
 	  g_accept = utility_get_option_int_value (arg_map, UNLOAD_REMAINDER_VALUE_S);
-	  if ((g_modular > 1) && (g_accept < 0 || g_accept >= g_modular))
+	  if ((g_modular > MAX_PROCESS_COUNT) || ((g_modular > 1) && (g_accept < 0 || g_accept >= g_modular)))
 	    {
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);	// todo: ctshim
 	      goto end;
 	    }
 	}
+#endif
 
       thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
       if (thread_count == 999)
@@ -235,6 +252,19 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       unload_context.output_dirname = output_dirname;
     }
 
+#if defined(SUPPORT_THREAD_UNLOAD)
+  if (!input_filename)
+    {
+      required_class_only = false;
+    }
+  if (required_class_only && include_references)
+    {
+      include_references = false;
+      fprintf (stderr, "warning: '-ir' option is ignored.\n");
+      fflush (stderr);
+    }
+#endif
+
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, exec_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
@@ -244,6 +274,24 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   sysprm_set_force (prm_get_name (PRM_ID_PRINT_INDEX_DETAIL),
 		    utility_get_option_bool_value (arg_map, UNLOAD_SKIP_INDEX_DETAIL_S) ? "no" : "yes");
+
+#if !defined (WINDOWS) && defined(SUPPORT_FORK_PROCESS)
+#if defined(CS_MODE)  || defined(SUPPORT_MTP_UNLOAD_TEST)
+  if (g_modular > 1)
+    {
+      error = do_multi_processing (g_modular, &is_main_process);
+      if (error != NO_ERROR || is_main_process == true)
+	{
+	  status = error;
+	  goto end;
+	}
+#if defined(SUPPORT_MTP_UNLOAD_TEST)
+      status = error;
+      goto end;
+#endif
+    }
+#endif
+#endif
 
   /*
    * Open db
@@ -286,6 +334,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       db_set_lock_timeout (prm_get_integer_value (PRM_ID_UNLOADDB_LOCK_TIMEOUT));
     }
 
+#if !defined(SUPPORT_THREAD_UNLOAD)	// moved
   if (!input_filename)
     {
       required_class_only = false;
@@ -293,9 +342,10 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   if (required_class_only && include_references)
     {
       include_references = false;
-      fprintf (stderr, "warning: '-ir' option is ignored.\n");
-      fflush (stderr);
+      fprintf (stdout, "warning: '-ir' option is ignored.\n");
+      fflush (stdout);
     }
+#endif
 
   class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_READ, NULL);
   if (input_filename)
@@ -383,43 +433,50 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       char indexes_output_filename[PATH_MAX * 2] = { '\0' };
       char trigger_output_filename[PATH_MAX * 2] = { '\0' };
 
-      if (create_filename_trigger (output_dirname, output_prefix, trigger_output_filename,
-				   sizeof (trigger_output_filename)) != 0)
+#if defined(SUPPORT_THREAD_UNLOAD)
+      if (g_modular <= 1 || g_accept == 0)
 	{
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-	  goto end;
+#endif
+	  if (create_filename_trigger (output_dirname, output_prefix, trigger_output_filename,
+				       sizeof (trigger_output_filename)) != 0)
+	    {
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	      goto end;
+	    }
+
+	  if (create_filename_indexes (output_dirname, output_prefix, indexes_output_filename,
+				       sizeof (indexes_output_filename)) != 0)
+	    {
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	      goto end;
+	    }
+
+	  /* do authorization as well in extractschema () */
+	  unload_context.do_auth = 1;
+	  unload_context.storage_order = order;
+	  unload_context.exec_name = exec_name;
+	  unload_context.login_user = user;
+	  unload_context.output_prefix = output_prefix;
+
+	  if (extract_classes_to_file (unload_context) != 0)
+	    {
+	      status = 1;
+	    }
+
+	  if (!status && extract_triggers_to_file (unload_context, trigger_output_filename) != 0)
+	    {
+	      status = 1;
+	    }
+
+	  if (!status && extract_indexes_to_file (unload_context, indexes_output_filename) != 0)
+	    {
+	      status = 1;
+	    }
+
+	  unload_context.clear_schema_workspace ();
+#if defined(SUPPORT_THREAD_UNLOAD)
 	}
-
-      if (create_filename_indexes (output_dirname, output_prefix, indexes_output_filename,
-				   sizeof (indexes_output_filename)) != 0)
-	{
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-	  goto end;
-	}
-
-      /* do authorization as well in extractschema () */
-      unload_context.do_auth = 1;
-      unload_context.storage_order = order;
-      unload_context.exec_name = exec_name;
-      unload_context.login_user = user;
-      unload_context.output_prefix = output_prefix;
-
-      if (extract_classes_to_file (unload_context) != 0)
-	{
-	  status = 1;
-	}
-
-      if (!status && extract_triggers_to_file (unload_context, trigger_output_filename) != 0)
-	{
-	  status = 1;
-	}
-
-      if (!status && extract_indexes_to_file (unload_context, indexes_output_filename) != 0)
-	{
-	  status = 1;
-	}
-
-      unload_context.clear_schema_workspace ();
+#endif
     }
 
   AU_SAVE_AND_ENABLE (au_save);
@@ -479,3 +536,212 @@ end:
 
   return status;
 }
+
+
+#if !defined (WINDOWS) && defined(SUPPORT_FORK_PROCESS)
+typedef struct
+{
+  pid_t child_pid;
+  bool is_running;
+} CHILD_PROC;
+
+#define SET_PROC_TERMINATE(proc, count, wpid, runnign_cnt) do { \
+   for(int i = 0; i < (count); i++) {                           \
+        if((proc)[i].child_pid == (wpid)) {                     \
+           if((proc)[i].is_running)                             \
+               (runnign_cnt)--;                                 \
+           (proc)[i].is_running = false;                        \
+           break;                                               \
+        }                                                       \
+   }                                                            \
+} while(0)
+
+static void
+do_kill_multi_processing (CHILD_PROC * proc, int count)
+{
+  int pno;
+
+  for (pno = 0; pno < count; pno++)
+    {
+      if (proc[pno].is_running)
+	{
+	  fprintf (stdout, "kill to pid=%d\n", proc[pno].child_pid);
+	  fflush (stdout);
+	  kill (proc[pno].child_pid, SIGTERM);
+	}
+    }
+}
+
+int
+do_multi_processing (int processes, bool * is_main_process)
+{
+  pid_t pid;
+  CHILD_PROC zchild_proc[MAX_PROCESS_COUNT];
+  int exit_status = NO_ERROR;
+  bool do_kill = false;
+
+  memset (zchild_proc, 0x00, sizeof (zchild_proc));
+
+  *is_main_process = true;
+  signal (SIGCHLD, SIG_DFL);
+
+  for (int pno = 0; pno < processes; pno++)
+    {
+      g_accept = pno;
+      pid = fork ();
+      if (pid < 0)
+	{
+	  exit_status = ER_FAILED;	// ctshim
+	  goto ret_pos;
+	}
+      else if (pid == 0)
+	{			// child
+	  *is_main_process = false;
+
+#if defined(SUPPORT_MTP_UNLOAD_TEST)
+	  fprintf (stdout, "C) pid=%ld g_accept=%d\n", getpid (), g_accept);
+
+	  sleep (10 * (pno + 1));
+	  if (g_accept == 2)
+	    {
+	      char *px;
+	      memcpy (px, "hhhgggssss", 9);
+	      //free(px);              
+	    }
+	  else if (g_accept == 0)
+	    return NO_ERROR;
+
+	  sleep (10 * (pno + 1));
+
+	  fprintf (stdout, "Quit Child pid=%d ***\n", getpid ());
+	  fflush (stdout);
+	  sleep (1);
+
+	  if (g_accept == 1)
+	    return ER_FAILED;
+#endif
+
+	  return NO_ERROR;
+	}
+      else
+	{			// parents             
+	  zchild_proc[pno].child_pid = pid;
+	  zchild_proc[pno].is_running = true;
+	}
+    }
+
+  if (*is_main_process)
+    {
+      int status, runnign_cnt;
+      pid_t wpid;
+
+      fprintf (stdout, "P) pid=%ld \n", getpid ());
+
+      runnign_cnt = processes;
+      do
+	{
+	  do
+	    {
+	      status = 0;
+	      //wpid = waitpid (WAIT_ANY, &status, WNOHANG |WUNTRACED);
+	      wpid = waitpid (WAIT_ANY, &status, 0);
+	    }
+	  while (wpid <= 0 && errno == EINTR);
+	  if (wpid == -1)
+	    {
+	      if (errno == ECHILD)
+		{
+		  fprintf (stdout, "ECHILD !!!  \n");
+		  goto ret_pos;
+		}		//
+
+	      perror ("waitpid");	//---------------------------------
+	      exit_status = ER_GENERIC_ERROR;
+	      if (do_kill == false)
+		{
+		  do_kill_multi_processing (zchild_proc, processes);
+		  do_kill = true;
+		}
+	    }
+
+	  if (WIFEXITED (status))
+	    {
+	      fprintf (stdout, "exited, status=%d [%d]\n", WEXITSTATUS (status), wpid);
+	      fflush (stdout);
+	      SET_PROC_TERMINATE (zchild_proc, processes, wpid, runnign_cnt);
+	      if (WEXITSTATUS (status) != 0)
+		{
+		  if (do_kill == false)
+		    {
+		      do_kill_multi_processing (zchild_proc, processes);
+		      do_kill = true;
+		    }
+		}
+	    }
+	  else if (WIFSIGNALED (status))
+	    {
+	      fprintf (stdout, "killed by signal %d [%d]\n", WTERMSIG (status), wpid);
+	      fflush (stdout);
+
+#ifdef WCOREDUMP
+	      if (WCOREDUMP (status))
+		;		// core dunmp
+#endif
+
+	      switch (WTERMSIG (status))
+		{
+		case SIGCHLD:
+		  fprintf (stdout, "killed by signal SIGCHLD %d [%d]\n", WTERMSIG (status), wpid);
+		  fflush (stdout);
+
+		  break;
+		  // core dump
+		case SIGFPE:
+		case SIGILL:
+		case SIGSEGV:
+		case SIGBUS:
+		case SIGABRT:
+		case SIGPIPE:
+		case SIGTRAP:
+		case SIGQUIT:
+		  // terminate
+		case SIGHUP:
+		case SIGINT:
+		case SIGTERM:
+		case SIGKILL:
+
+		  fprintf (stdout, "killed by signal %d [%d]\n", WTERMSIG (status), wpid);
+		  fflush (stdout);
+		  SET_PROC_TERMINATE (zchild_proc, processes, wpid, runnign_cnt);
+		  if (do_kill == false)
+		    {
+		      do_kill_multi_processing (zchild_proc, processes);
+		      do_kill = true;
+		    }
+		  break;
+
+		default:
+		  break;
+		}
+	    }
+	}
+      while (runnign_cnt > 0);
+    }
+
+// PRINT_AND_LOG_ERR_MSG ("%s: %s\n", exec_name, db_error_string (3));
+
+ret_pos:
+  if (do_kill)
+    exit_status = ER_FAILED;
+
+  if (exit_status != NO_ERROR)
+    fprintf (stdout, "Quit Parent FAIL pid=%d ***\n", getpid ());
+  else
+    fprintf (stdout, "Quit Parent SUCCESS pid=%d ***\n", getpid ());
+
+  fflush (stdout);
+  sleep (1);
+
+  return exit_status;
+}
+#endif

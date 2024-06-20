@@ -171,6 +171,10 @@ static const char *prohibited_classes[] = {
   NULL
 };
 
+// ctshim
+//#include <atomic>
+//std::atomic<int64_t> class_objects_atom = 0;
+//std::atomic<int64_t> class_objects = 0;
 static int64_t class_objects = 0;
 static int64_t total_objects = 0;
 static int failed_objects = 0;
@@ -1362,13 +1366,16 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 	      num_unload_classes++;
 	    }
 
-	  hfid = sm_ch_heap ((MOBJ) class_ptr);
-	  if (!HFID_IS_NULL (hfid))
+	  if (IS_CLASS_REQUESTED (i))	// ctshim bug-fix
 	    {
-	      if (get_estimated_objs (hfid, &est_objects) < 0)
+	      hfid = sm_ch_heap ((MOBJ) class_ptr);
+	      if (!HFID_IS_NULL (hfid))
 		{
-		  status = 1;
-		  goto end;
+		  if (get_estimated_objs (hfid, &est_objects) < 0)
+		    {
+		      status = 1;
+		      goto end;
+		    }
 		}
 	    }
 	}
@@ -2049,6 +2056,7 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 #endif
   int total;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  bool enabled_alarm = false;
 
   LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
 
@@ -2066,7 +2074,7 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
    */
   if (IS_CLASS_PROCESSED (cl_no))
     {
-      goto exit_on_end;		/* do nothing successfully */
+      return NO_ERROR;		/* do nothing successfully */
     }
 
   if (IS_CLASS_REQUESTED (cl_no))
@@ -2076,7 +2084,7 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 
   if (!requested_class && !referenced_class)
     {
-      goto exit_on_end;		/* do nothing successfully */
+      return NO_ERROR;		/* do nothing successfully */
     }
 
   class_objects = 0;
@@ -2101,7 +2109,8 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 	    case DB_TYPE_OBJECT:
 	      fprintf (stderr, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
 	      fflush (stderr);
-	      goto exit_on_end;	// ctshim
+	      //goto exit_on_end;       // ctshim
+	      return error;	// TODO: 에러처리가 필요함
 	      break;
 
 	    default:
@@ -2281,6 +2290,7 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
   hfid = sm_ch_heap ((MOBJ) class_ptr);
   if (hfid->vfid.fileid == NULL_FILEID)
     {
+#if 0				// ctshim
       if (total_objects == total_approximate_class_objects)
 	{
 	  total = 100;
@@ -2296,13 +2306,14 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
 	  fflush (stdout);
 	}
+#endif
       goto exit_on_end;
     }
 
   /* Flush all the instances */
-
   if (locator_flush_all_instances (class_, DONT_DECACHE) != NO_ERROR)
     {
+#if 0				// ctshim
       if (total_objects == total_approximate_class_objects)
 	{
 	  total = 100;
@@ -2318,6 +2329,7 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
 	  fflush (stdout);
 	}
+#endif
       goto exit_on_end;
     }
 
@@ -2340,6 +2352,7 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 #if !defined (WINDOWS)
       prev_handler = os_set_signal_handler (SIGALRM, gauge_alarm_handler);
       prev_alarm = alarm (GAUGE_INTERVAL);
+      enabled_alarm = true;
 #endif
     }
 
@@ -2521,6 +2534,8 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
     }
 
   total_approximate_class_objects += (class_objects - approximate_class_objects);
+
+exit_on_end:
   if (total_objects == total_approximate_class_objects)
     {
       total = 100;
@@ -2532,8 +2547,11 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
   if (verbose_flag)
     {
 #if !defined(WINDOWS)
-      alarm (prev_alarm);
-      (void) os_set_signal_handler (SIGALRM, prev_handler);
+      if (enabled_alarm)
+	{
+	  alarm (prev_alarm);
+	  (void) os_set_signal_handler (SIGALRM, prev_handler);
+	}
 #endif
 
       fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
@@ -2541,13 +2559,12 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
     }
   fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
 
-exit_on_end:
   return error;
 
 exit_on_error:
 
   CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
+  return error;
 
 }
 
@@ -3147,7 +3164,7 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
 
   if (g_modular > 1)
     {
-      total += sprintf (proc_name, "p%d(%d)", g_accept, g_modular);
+      total += sprintf (proc_name, "p%d-%d", g_modular, g_accept);
     }
 #endif
 

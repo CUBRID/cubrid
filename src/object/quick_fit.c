@@ -42,20 +42,32 @@ static HL_HEAPID ws_Heap_id = 0;
 #error "Not support SERVER_MODE"
 #endif
 
-pthread_t ws_Heap_Owner_id = (pthread_t) - 1;
-//db_get_client_type
-//extern int db_get_client_type (void);
+static pthread_t ws_Heap_Owner_id = (pthread_t) (-1);
+static int use_utility_theads = 0;
+
+#define DB_IS_UTILITY_THREAD() ((ws_Heap_id == 0 || use_utility_theads == 0) ? false : (pthread_self () != ws_Heap_Owner_id))
+
 bool
 db_is_utility_thread ()
 {
-  if (ws_Heap_id != 0)
+#if 1
+  return DB_IS_UTILITY_THREAD ();
+#else
+  if (ws_Heap_id == 0 || use_utility_theads == 0)
     {
-      pthread_t tid = pthread_self ();
-      return (ws_Heap_Owner_id != tid);
-      //return (ws_Heap_Owner_id != pthread_self());
+      return false;
     }
 
-  return false;
+  //pthread_t tid = pthread_self ();
+  //return (ws_Heap_Owner_id != tid);
+  return (pthread_self () != ws_Heap_Owner_id);
+#endif
+}
+
+void
+db_set_use_utility_thread (bool use)
+{
+  use_utility_theads = use ? 1 : 0;
 }
 
 #endif // #if defined(SUPPORT_THREAD_UNLOAD)
@@ -106,7 +118,7 @@ void *
 db_ws_alloc (size_t size)
 {
 #if defined(SUPPORT_THREAD_UNLOAD)
-  if (db_is_utility_thread ())
+  if (DB_IS_UTILITY_THREAD ())
     {
       return malloc (size);
     }
@@ -163,7 +175,7 @@ void *
 db_ws_realloc (void *ptr, size_t size)
 {
 #if defined(SUPPORT_THREAD_UNLOAD)
-  if (db_is_utility_thread ())
+  if (DB_IS_UTILITY_THREAD ())
     {
       return (ptr) ? realloc (ptr, size) : malloc (size);
     }
@@ -241,7 +253,7 @@ void
 db_ws_free (void *ptr)
 {
 #if defined(SUPPORT_THREAD_UNLOAD)
-  if (db_is_utility_thread ())
+  if (DB_IS_UTILITY_THREAD ())
     {
       if (ptr)
 	{
