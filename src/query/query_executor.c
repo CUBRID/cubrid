@@ -7028,10 +7028,7 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
 
 	  if (context_p->need_compare_dbvalues == true)
 	    {
-	      if (DB_NEED_CLEAR (key->values[key_index]))
-		{
-		  pr_clear_value (key->values[key_index]);
-		}
+	      pr_clear_value (key->values[key_index]);
 
 	      if (context_p->need_coerce_domains == true && context_p->coerce_domains[key_index] != NULL
 		  && context_p->coerce_domains[key_index] != domains[key_index])
@@ -7047,10 +7044,7 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_r
 		  domain_status =
 		    tp_value_coerce (&pre_coerce_value, key->values[key_index], context_p->coerce_domains[key_index]);
 
-		  if (DB_NEED_CLEAR (&pre_coerce_value))
-		    {
-		      pr_clear_value (&pre_coerce_value);
-		    }
+		  pr_clear_value (&pre_coerce_value);
 
 		  if (domain_status != DOMAIN_COMPATIBLE)
 		    {
