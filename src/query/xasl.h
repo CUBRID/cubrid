@@ -522,11 +522,11 @@ struct cte_proc_node
 		      if (qexec_execute_subquery_for_result_cache ((thread_p), _x, (v)->xasl_state) != NO_ERROR) \
 			{ \
 			  /* execute without result-cache */ \
-			  _x->sub_xasl_id = NULL; \
+			  free_and_init (_x->sub_xasl_id); \
 		  	  if (qexec_execute_mainblock ((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR) \
-		    	  { \
-		      	    (_x)->status = XASL_FAILURE; \
-			  } \
+		    	    { \
+		      	      (_x)->status = XASL_FAILURE; \
+			    } \
 			} \
 		      /* fetch the single tuple from list_id */ \
 		      else if (_x->status == XASL_SUCCESS) \
