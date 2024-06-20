@@ -232,6 +232,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
   ${QUERY_DIR}/show_scan.c
+  ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -521,7 +522,7 @@ if(WIN32)
   set_target_properties(cubrid PROPERTIES OUTPUT_NAME libcubrid)
 endif(WIN32)
 
-target_compile_definitions(cubrid PRIVATE SERVER_MODE CUBRID_EXPORTING ${COMMON_DEFS})
+target_compile_definitions(cubrid PRIVATE SERVER_MODE EnableThreadMonitoring CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubrid PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)
@@ -560,6 +561,7 @@ if(AT_LEAST_ONE_UNIT_TEST)
 
   target_compile_definitions(cubrid-win-lib PRIVATE
     SERVER_MODE
+    EnableThreadMonitoring
     ${COMMON_DEFS}
     )
 

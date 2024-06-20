@@ -32,9 +32,7 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
-import java.sql.Date;
 import java.sql.Time;
-import java.sql.Timestamp;
 import java.util.Calendar;
 
 public class TimeValue extends Value {
@@ -64,20 +62,8 @@ public class TimeValue extends Value {
         assert time.getTime() % 1000L == 0;
     }
 
-    public Date toDate() throws TypeMismatchException {
-        return new Date(time.getTime());
-    }
-
     public Time toTime() throws TypeMismatchException {
         return time;
-    }
-
-    public Timestamp toTimestamp() throws TypeMismatchException {
-        return new Timestamp(time.getTime());
-    }
-
-    public Timestamp toDatetime() throws TypeMismatchException {
-        return new Timestamp(time.getTime());
     }
 
     public Object toObject() throws TypeMismatchException {
@@ -88,20 +74,8 @@ public class TimeValue extends Value {
         return time.toString();
     }
 
-    public Date[] toDateArray() throws TypeMismatchException {
-        return new Date[] {toDate()};
-    }
-
     public Time[] toTimeArray() throws TypeMismatchException {
         return new Time[] {toTime()};
-    }
-
-    public Timestamp[] toTimestampArray() throws TypeMismatchException {
-        return new Timestamp[] {toTimestamp()};
-    }
-
-    public Timestamp[] toDatetimeArray() throws TypeMismatchException {
-        return new Timestamp[] {toDatetime()};
     }
 
     public Object[] toObjectArray() throws TypeMismatchException {

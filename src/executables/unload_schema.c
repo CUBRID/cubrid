@@ -140,6 +140,24 @@ typedef enum
 
 typedef enum
 {
+  ALTER_SERIAL_UNIQUE_NAME,
+  ALTER_SERIAL_NAME,
+  ALTER_SERIAL_OWNER_NAME,
+  ALTER_SERIAL_CURRENT_VAL,
+  ALTER_SERIAL_INCREMENT_VAL,
+  ALTER_SERIAL_MAX_VAL,
+  ALTER_SERIAL_MIN_VAL,
+  ALTER_SERIAL_CYCLIC,
+  ALTER_SERIAL_STARTED,
+  ALTER_SERIAL_CACHED_NUM,
+  ALTER_SERIAL_CLASS_NAME,
+  ALTER_SERIAL_COMMENT,
+
+  ALTER_SERIAL_VALUE_INDEX_MAX
+} ALTER_SERIAL_VALUE_INDEX;
+
+typedef enum
+{
   SYNONYM_NAME,
   SYNONYM_OWNER,
   SYNONYM_OWNER_NAME,
@@ -806,58 +824,6 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 		}
 	    }
 
-	  if (db_get_int (&values[SERIAL_STARTED]) == 1)
-	    {
-	      /* Calculate next value of serial */
-	      db_make_null (&diff_value);
-	      error = numeric_db_value_sub (&values[SERIAL_MAX_VAL], &values[SERIAL_CURRENT_VAL], &diff_value);
-	      if (error == ER_IT_DATA_OVERFLOW)
-		{
-		  // max - curr might be flooded.
-		  diff_value = values[SERIAL_MAX_VAL];
-		  er_clear ();
-		}
-	      else if (error != NO_ERROR)
-		{
-		  goto err;
-		}
-
-	      error = numeric_db_value_compare (&values[SERIAL_INCREMENT_VAL], &diff_value, &answer_value);
-	      if (error != NO_ERROR)
-		{
-		  goto err;
-		}
-	      /* increment > diff */
-	      if (db_get_int (&answer_value) > 0)
-		{
-		  /* no cyclic case */
-		  if (db_get_int (&values[SERIAL_CYCLIC]) == 0)
-		    {
-		      domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-			      pr_type_name (TP_DOMAIN_TYPE (domain)));
-		      error = ER_IT_DATA_OVERFLOW;
-		      goto err;
-		    }
-
-		  db_value_clear (&values[SERIAL_CURRENT_VAL]);
-		  values[SERIAL_CURRENT_VAL] = values[SERIAL_MIN_VAL];
-		}
-	      /* increment <= diff */
-	      else
-		{
-		  error =
-		    numeric_db_value_add (&values[SERIAL_CURRENT_VAL], &values[SERIAL_INCREMENT_VAL], &answer_value);
-		  if (error != NO_ERROR)
-		    {
-		      goto err;
-		    }
-
-		  db_value_clear (&values[SERIAL_CURRENT_VAL]);
-		  values[SERIAL_CURRENT_VAL] = answer_value;
-		}
-	    }
-
 	  output_ctx ("\ncreate serial %s%s%s\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
 	  output_ctx ("\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
 	  output_ctx ("\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
@@ -878,6 +844,11 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 	      desc_value_print (output_ctx, &values[SERIAL_COMMENT]);
 	    }
 	  output_ctx (";\n");
+
+	  if (db_get_int (&values[SERIAL_STARTED]) == 1)
+	    {
+	      output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+	    }
 
 	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
 	    {
@@ -912,7 +883,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   int i;
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
-  DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
+  DB_VALUE values[ALTER_SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
   DB_DOMAIN *domain;
   char str_buf[NUMERIC_MAX_STRING_SIZE] = { '\0' };
   char *uppercase_user = NULL;
@@ -920,18 +891,24 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   size_t query_size = 0;
   char *query = NULL;
 
+  DB_OBJLIST *cl = NULL;
+  const char *schema_name = NULL;
+  char temp_schema[DB_MAX_CLASS_LENGTH] = { '\0' };
+  const char *serial_owner_name = NULL;
+  const char *serial_class_name = NULL;
+
   /*
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
    * when changing the following query. Notice the order of the result.
    */
   const char *query_all =
-    "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
-    "[cyclic], " "[started], " "[cached_num], " "[comment] "
+    "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
+    "[cyclic], [started], [cached_num], [class_name], [comment] "
     "from [db_serial] where [class_name] is not null and [att_name] is not null";
 
   const char *query_user =
-    "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
-    "[cyclic], " "[started], " "[cached_num], " "[comment] "
+    "select [unique_name], [name], [owner].[name], [class_name], [current_val], [increment_val], [max_val], [min_val], "
+    "[cyclic], [started], [cached_num], [class_name], [comment] "
     "from [db_serial] where [class_name] is not null and [att_name] is not null and owner.name='%s'";
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
@@ -977,7 +954,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
     {
       do
 	{
-	  for (i = 0; i < SERIAL_VALUE_INDEX_MAX; i++)
+	  for (i = 0; i < ALTER_SERIAL_VALUE_INDEX_MAX; i++)
 	    {
 	      error = db_query_get_tuple_value (query_result, i, &values[i]);
 	      if (error != NO_ERROR)
@@ -988,7 +965,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 	      /* Validation of the result value */
 	      switch (i)
 		{
-		case SERIAL_OWNER_NAME:
+		case ALTER_SERIAL_OWNER_NAME:
 		  {
 		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
 		      {
@@ -997,8 +974,8 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 		  }
 		  break;
 
-		case SERIAL_UNIQUE_NAME:
-		case SERIAL_NAME:
+		case ALTER_SERIAL_UNIQUE_NAME:
+		case ALTER_SERIAL_NAME:
 		  {
 		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
 		      {
@@ -1009,10 +986,10 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 		  }
 		  break;
 
-		case SERIAL_CURRENT_VAL:
-		case SERIAL_INCREMENT_VAL:
-		case SERIAL_MAX_VAL:
-		case SERIAL_MIN_VAL:
+		case ALTER_SERIAL_CURRENT_VAL:
+		case ALTER_SERIAL_INCREMENT_VAL:
+		case ALTER_SERIAL_MAX_VAL:
+		case ALTER_SERIAL_MIN_VAL:
 		  {
 		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_NUMERIC)
 		      {
@@ -1023,9 +1000,9 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 		  }
 		  break;
 
-		case SERIAL_CYCLIC:
-		case SERIAL_STARTED:
-		case SERIAL_CACHED_NUM:
+		case ALTER_SERIAL_CYCLIC:
+		case ALTER_SERIAL_STARTED:
+		case ALTER_SERIAL_CACHED_NUM:
 		  {
 		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
 		      {
@@ -1036,7 +1013,18 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 		  }
 		  break;
 
-		case SERIAL_COMMENT:
+		case ALTER_SERIAL_CLASS_NAME:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		case ALTER_SERIAL_COMMENT:
 		  {
 		    if (DB_IS_NULL (&values[i]) == false && DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
 		      {
@@ -1054,34 +1042,60 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 		}
 	    }
 
+	  if (required_class_only == true)
+	    {
+	      int same_schema = 0;
+	      for (cl = ctxt.classes; cl != NULL; cl = cl->next)
+		{
+		  schema_name = db_get_class_name (cl->op);
+
+		  serial_owner_name = db_get_string (&values[ALTER_SERIAL_OWNER_NAME]);
+		  serial_class_name = db_get_string (&values[ALTER_SERIAL_CLASS_NAME]);
+
+		  str_tolower ((char *) serial_owner_name);
+		  snprintf (temp_schema, DB_MAX_CLASS_LENGTH, "%s%s%s", (serial_owner_name), ".", serial_class_name);
+
+		  if (strcmp (temp_schema, schema_name) == 0)
+		    {
+		      same_schema++;
+		    }
+		}
+
+	      if (same_schema == 0)
+		{
+		  continue;
+		}
+	    }
+
 	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
 	    {
 	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
-			  PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])),
-			  numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
+			  PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_NAME])),
+			  numeric_db_value_print (&values[ALTER_SERIAL_CURRENT_VAL], str_buf));
 
-	      if (db_get_int (&values[SERIAL_STARTED]) == 1)
+	      if (db_get_int (&values[ALTER_SERIAL_STARTED]) == 1)
 		{
 
-		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ",
+			      PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_NAME])));
 		}
 	    }
 	  else
 	    {
 	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
-			  PRINT_IDENTIFIER (db_get_string (&values[SERIAL_UNIQUE_NAME])),
-			  numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
+			  PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_UNIQUE_NAME])),
+			  numeric_db_value_print (&values[ALTER_SERIAL_CURRENT_VAL], str_buf));
 
-	      if (db_get_int (&values[SERIAL_STARTED]) == 1)
+	      if (db_get_int (&values[ALTER_SERIAL_STARTED]) == 1)
 		{
 		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ",
-			      PRINT_IDENTIFIER (db_get_string (&values[SERIAL_UNIQUE_NAME])));
+			      PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_UNIQUE_NAME])));
 		}
 	    }
 
 	  db_value_clear (&diff_value);
 	  db_value_clear (&answer_value);
-	  for (i = 0; i < SERIAL_VALUE_INDEX_MAX; i++)
+	  for (i = 0; i < ALTER_SERIAL_VALUE_INDEX_MAX; i++)
 	    {
 	      db_value_clear (&values[i]);
 	    }
@@ -1416,6 +1430,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	{
 	  fprintf (stderr, " Check the value of db_serial object.\n");
 	}
+      err_count++;
     }
 
   if (required_class_only == false && emit_stored_procedure (ctxt, schema_output_ctx) != NO_ERROR)

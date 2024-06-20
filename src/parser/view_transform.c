@@ -56,6 +56,17 @@
     || (s)->next->info.spec.join_type == PT_JOIN_RIGHT_OUTER)) \
     )
 
+#define MQ_FIX_SPEC_ID(tmp_hint, hint, info)                               \
+     tmp_hint = hint;			\
+     while (tmp_hint)						\
+	{							\
+	  if (tmp_hint->info.name.spec_id == info->old_id)		\
+	    {							\
+	      tmp_hint->info.name.spec_id = info->new_id;		\
+	    }							\
+	  tmp_hint = tmp_hint->next;					\
+	}
+
 typedef enum
 { FIND_ID_INLINE_VIEW = 0, FIND_ID_VCLASS } FIND_ID_TYPE;
 
@@ -196,8 +207,8 @@ static PT_NODE *mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, 
 						       PT_NODE * derived_table, PT_NODE ** new_spec);
 static PT_NODE *mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 							PT_NODE * subquery, PT_NODE * derived_spec, PT_NODE * order_by);
-static PT_NODE *mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
-						    int *continue_walk);
+static PT_NODE *mq_substitute_spec_in_method_and_hints (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
+							int *continue_walk);
 static PT_NODE *mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
 						     PT_NODE * class_, PT_NODE * order_by, int what_for);
 static PT_NODE *mq_substitute_subquery_list_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
@@ -1253,10 +1264,10 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
       return NULL;
     }
 
-  /* fix up resolution of any method calls in the statement */
+  /* fix spec_id for method calls and sql hints in the statement */
   info.old_id = class_->info.name.spec_id;
   info.new_id = query_spec_from->info.spec.id;
-  (void) parser_walk_tree (parser, statement, mq_substitute_spec_in_method_names, &info, NULL, NULL);
+  (void) parser_walk_tree (parser, statement, mq_substitute_spec_in_method_and_hints, &info, NULL, NULL);
 
   /* get vclass spec attrs */
   attributes = mq_fetch_attributes (parser, class_);
@@ -1368,10 +1379,10 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
       return NULL;
     }
 
-  /* fix up resolution of any method calls in the statement */
+  /* fix spec_id for method calls and sql hints in the statement */
   info.old_id = derived_spec->info.spec.id;
   info.new_id = query_spec_from->info.spec.id;
-  (void) parser_walk_tree (parser, statement, mq_substitute_spec_in_method_names, &info, NULL, NULL);
+  (void) parser_walk_tree (parser, statement, mq_substitute_spec_in_method_and_hints, &info, NULL, NULL);
 
   /* get vclass spec attrs */
   attributes = derived_spec->info.spec.as_attr_list;
@@ -1602,7 +1613,7 @@ exit_on_error:
 }
 
 /*
- * mq_substitute_spec_in_method_names() - substitue spec id in method names
+ * mq_substitute_spec_in_method_and_hints() - substitue spec id in method and hints
  *   return:
  *   parser(in):
  *   node(in):
@@ -1610,14 +1621,31 @@ exit_on_error:
  *   continue_walk(in):
  */
 static PT_NODE *
-mq_substitute_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
+mq_substitute_spec_in_method_and_hints (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
 {
   PT_RESOLVE_METHOD_NAME_INFO *info = (PT_RESOLVE_METHOD_NAME_INFO *) void_arg;
+  PT_NODE *tmp_hint = NULL;
 
-  if ((node->node_type == PT_METHOD_CALL) && (node->info.method_call.method_name)
-      && (node->info.method_call.method_name->info.name.spec_id == info->old_id))
+  switch (node->node_type)
     {
-      node->info.method_call.method_name->info.name.spec_id = info->new_id;
+    case PT_METHOD_CALL:
+      if ((node->info.method_call.method_name)
+	  && (node->info.method_call.method_name->info.name.spec_id == info->old_id))
+	{
+	  node->info.method_call.method_name->info.name.spec_id = info->new_id;
+	}
+      break;
+    case PT_SELECT:
+      MQ_FIX_SPEC_ID (tmp_hint, node->info.query.q.select.leading, info);
+      MQ_FIX_SPEC_ID (tmp_hint, node->info.query.q.select.use_nl, info);
+      MQ_FIX_SPEC_ID (tmp_hint, node->info.query.q.select.use_idx, info);
+      MQ_FIX_SPEC_ID (tmp_hint, node->info.query.q.select.index_ss, info);
+      MQ_FIX_SPEC_ID (tmp_hint, node->info.query.q.select.index_ls, info);
+      MQ_FIX_SPEC_ID (tmp_hint, node->info.query.q.select.use_merge, info);
+      break;
+    default:
+      /* do nothing */
+      break;
     }
 
   return node;
@@ -3516,7 +3544,7 @@ pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query
 		    cinfo.method_found = true;
 		    break;
 		  }
-
+		[[fallthrough]];
 	      default:		/* do traverse */
 		parser_walk_leaves (parser, list, pt_check_pushable, &cinfo, NULL, NULL);
 		break;
