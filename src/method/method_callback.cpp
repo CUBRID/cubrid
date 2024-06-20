@@ -647,7 +647,8 @@ namespace cubmethod
 		    {
 		      const char *arg_type_str = db_get_string (&arg_type);
 		      const int arg_type_str_len = db_get_string_size (&arg_type);
-		      jsp_parse_data_type_str (&param_info.type, NULL, NULL, arg_type_str, arg_type_str_len);
+		      jsp_parse_data_type_str (&param_info.type, &param_info.precision, &param_info.scale,
+					       arg_type_str, arg_type_str_len);
 		    }
 
 		  pr_clear_value (&mode);
@@ -667,7 +668,7 @@ namespace cubmethod
 	{
 	  const char *rtn_type_str = db_get_string (&return_type);
 	  const int rtn_type_str_len = db_get_string_size (&return_type);
-	  jsp_parse_data_type_str (&res.ret.type, NULL, NULL, rtn_type_str, rtn_type_str_len);
+	  jsp_parse_data_type_str (&res.ret.type, &res.ret.precision, &res.ret.scale, rtn_type_str, rtn_type_str_len);
 	  pr_clear_value (&return_type);
 	}
     }
