@@ -816,6 +816,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Ausgangsdatei '%1$s' konnte nicht geöffnet werden \n
+16 Unbekannte Klasse "%1$s"\n
 60 \
 diagdb: Database exportieren.\n\
 Anwendung: %1$s diagdb [OPTION] Datenbanknamen\n\
