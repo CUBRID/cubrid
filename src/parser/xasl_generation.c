@@ -3997,6 +3997,8 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		    {
 		      break;
 		    }
+
+		  (*tail)->oid = *WS_OID (mop_p);
 		}
 	      else
 		{
