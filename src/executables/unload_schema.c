@@ -4308,13 +4308,14 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
-  DB_VALUE sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, generated_val, args_val, rtn_type_val, method_val,
-    comment_val;
+  DB_VALUE unique_name_val, sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, generated_val, args_val, rtn_type_val,
+    method_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
   int sp_type, rtn_type, arg_cnt, save;
   DB_SET *arg_set;
   int err;
   int err_count = 0;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
 
   AU_DISABLE (save);
 
@@ -4331,6 +4332,7 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
       obj = cur_sp->op;
 
       if ((err = db_get (obj, SP_ATTR_SP_TYPE, &sp_type_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_UNIQUE_NAME, &unique_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_NAME, &sp_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_PKG, &pkg_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
@@ -4350,7 +4352,9 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 	  continue;
 	}
 
+      const char *unique_name = db_get_string (&unique_name_val);
       const char *sp_name = db_get_string (&sp_name_val);
+      sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH);
 
       if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
 	{
@@ -4378,7 +4382,7 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 	}
       else
 	{
-	  output_ctx (" %s%s%s (", PRINT_IDENTIFIER (sp_name));
+	  output_ctx (" %s%s%s.%s%s%s (", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (sp_name));
 	}
 
       arg_cnt = db_get_int (&arg_cnt_val);
@@ -4425,7 +4429,7 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 
       if (ctxt.is_dba_user || ctxt.is_dba_group_member)
 	{
-	  output_ctx ("call [change_sp_owner]('%s', '%s') on class [db_root];\n", db_get_string (&sp_name_val),
+	  output_ctx ("call [change_sp_owner]('%s', '%s') on class [db_root];\n", db_get_string (&unique_name_val),
 		      db_get_string (&owner_name_val));
 	}
 
