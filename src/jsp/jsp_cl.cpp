@@ -1329,6 +1329,8 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
   int sig_result_type;
   int param_cnt = 0;
 
+  OID sig_oid = OID_INITIALIZER;
+
   METHOD_SIG *sig = nullptr;
 
   db_make_null (&method);
@@ -1611,6 +1613,18 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 		sig->arg_info->arg_type = nullptr;
 		sig->arg_info->default_value = nullptr;
 		sig->arg_info->default_value_size = nullptr;
+	      }
+
+	    std::string cname = get_class_name (std::string (method_name));
+
+	    MOP code_mop = jsp_find_stored_procedure_code (cname.c_str ());
+	    if (code_mop)
+	      {
+		sig->oid = *WS_OID (code_mop);
+	      }
+	    else
+	      {
+		sig->oid = OID_INITIALIZER;
 	      }
 
 	    sig_list.num_methods = 1;
