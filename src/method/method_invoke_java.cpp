@@ -73,8 +73,19 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
+    auto dummy = [&] (const cubmem::block & b)
+    {
+      return NO_ERROR;
+    };
+
     error = method_send_data_to_client (thread_p, m_client_header, METHOD_CALLBACK_CHANGE_RIGHTS, 0,
 					m_method_sig->auth_name);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    error = xs_receive (thread_p, dummy);
     if (error != NO_ERROR)
       {
 	return error;
@@ -86,6 +97,12 @@ namespace cubmethod
     error = mcon_send_data_to_java (m_group->get_socket (), header, arg);
 
     error = method_send_data_to_client (thread_p, m_client_header, METHOD_CALLBACK_CHANGE_RIGHTS, 1, std::string (""));
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    error = xs_receive (thread_p, dummy);
     if (error != NO_ERROR)
       {
 	return error;
