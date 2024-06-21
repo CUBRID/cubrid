@@ -1620,6 +1620,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
       fprintf (fp, "ACCESS_LOG_DIR\t\t=%s\n", br_info[i].access_log_dir);
       fprintf (fp, "ACCESS_LIST\t\t=%s\n", br_info[i].acl_file);
       fprintf (fp, "MAX_STRING_LENGTH\t=%d\n", br_info[i].max_string_length);
+      fprintf (fp, "NET_BUF_SIZE\t\t=%dK\n", br_info[i].net_buf_size);
       tmp_str = get_conf_string (br_info[i].keep_connection, tbl_keep_connection);
       if (tmp_str)
 	{
