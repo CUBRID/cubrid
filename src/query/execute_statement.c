@@ -3511,7 +3511,7 @@ end:
   return error;
 }
 
-PT_NODE *
+static PT_NODE *
 do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int *err = (int *) arg;
@@ -3537,6 +3537,20 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
   return stmt;
 }
 
+static int
+do_check_subquery_cache (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int err = NO_ERROR;
+
+  /* All CTE and sub-queries included in the query must be prepared first. */
+  if (pt_is_allowed_result_cache ())
+    {
+      parser_walk_tree (parser, statement, do_prepare_subquery_pre, &err, NULL, NULL);
+    }
+
+  return err;
+}
+
 /*
  * do_prepare_statement() - Prepare a given statement for execution
  *   return: Error code
@@ -3558,16 +3572,6 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   init_compile_context (parser);
 
-  /* All CTE and sub-queries included in the query must be prepared first. */
-  if (pt_is_allowed_result_cache ())
-    {
-      parser_walk_tree (parser, statement, do_prepare_subquery_pre, &err, NULL, NULL);
-      if (err != NO_ERROR)
-	{
-	  goto err_exit;
-	}
-    }
-
   switch (statement->node_type)
     {
     case PT_DELETE:
@@ -3586,13 +3590,30 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_UNION:
-      err = do_prepare_select (parser, statement);
+      /* All CTE and sub-queries included in the query must be prepared first. */
+      err = do_check_subquery_cache (parser, statement);
+      if (err == NO_ERROR)
+	{
+	  err = do_prepare_select (parser, statement);
+	}
       break;
     case PT_EXECUTE_PREPARE:
       err = do_prepare_session_statement (parser, statement);
       break;
     default:
       /* there are no actions for other types of statements */
+      break;
+    }
+
+  switch (statement->node_type)
+    {
+    case PT_DELETE:
+    case PT_INSERT:
+    case PT_UPDATE:
+      /* All CTE and sub-queries included in DML query must be prepared after the query.
+         because that the select subqueries of DML should be transformed first */
+      err = do_check_subquery_cache (parser, statement);
+    default:
       break;
     }
 

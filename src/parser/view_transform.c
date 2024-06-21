@@ -4274,6 +4274,12 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       return 0;
     }
 
+  /* do NOT copy-push for a cached query */
+  if (subquery->info.query.q.select.hint & PT_HINT_QUERY_CACHE)
+    {
+      return 0;
+    }
+
   /* check inst num or orderby_num */
   if (pt_has_inst_in_where_and_select_list (parser, subquery))
     {
