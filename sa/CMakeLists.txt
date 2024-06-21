@@ -331,6 +331,7 @@ set(JSP_SOURCES
   ${JSP_DIR}/jsp_file.c
   ${JSP_DIR}/jsp_sr.c
   ${JSP_DIR}/sp_catalog.cpp
+  ${JSP_DIR}/sp_code.cpp
   )
 
 set(METHOD_SOURCES
