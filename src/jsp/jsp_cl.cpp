@@ -676,7 +676,14 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
-  sp_info.sp_name = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));
+  sp_info.unique_name = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));
+  if (sp_info.unique_name.empty ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
+      return er_errid ();
+    }
+
+  sp_info.sp_name = sm_remove_qualifier_name (sp_info.unique_name.data ());
   if (sp_info.sp_name.empty ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
@@ -698,7 +705,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   param_list = PT_NODE_SP_ARGS (statement);
   for (p = param_list; p != NULL; p = p->next)
     {
-      SP_ARG_INFO arg_info (sp_info.sp_name, sp_info.pkg_name);
+      SP_ARG_INFO arg_info (sp_info.unique_name, sp_info.pkg_name);
 
       arg_info.index_of = param_count++;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
@@ -723,7 +730,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       // check # of args constraint
       if (param_count > MAX_ARG_COUNT)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, sp_info.sp_name.data ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, sp_info.unique_name.data ());
 	  goto error_exit;
 	}
 
@@ -774,7 +781,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
     }
   sp_info.target = decl ? decl : "";
-  if (sm_qualifier_name (sp_info.sp_name.data (), owner_name, DB_MAX_USER_LENGTH) == NULL)
+  if (sm_qualifier_name (sp_info.unique_name.data (), owner_name, DB_MAX_USER_LENGTH) == NULL)
     {
       ASSERT_ERROR ();
       return NULL;
@@ -788,7 +795,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
 
   /* check already exists */
-  if (jsp_is_exist_stored_procedure (sp_info.sp_name.data ()))
+  if (jsp_is_exist_stored_procedure (sp_info.unique_name.data ()))
     {
       if (statement->info.sp.or_replace)
 	{
@@ -800,7 +807,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	    }
 	  has_savepoint = true;
 
-	  err = drop_stored_procedure (sp_info.sp_name.data (), sp_info.sp_type);
+	  err = drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -808,7 +815,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, sp_info.sp_name.data ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, sp_info.unique_name.data ());
 	  goto error_exit;
 	}
     }

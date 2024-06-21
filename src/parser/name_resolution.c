@@ -3419,7 +3419,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
     case PT_FUNCTION:
       if (node->info.function.function_type == PT_GENERIC)
 	{
-	  const char *generic_name = node->info.function.generic_name;
+	  char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
+	  sm_user_specified_name (node->info.function.generic_name, buffer, SM_MAX_IDENTIFIER_LENGTH);
+	  const char *generic_name = strdup (buffer);
 	  node->info.function.function_type = pt_find_function_type (node->info.function.generic_name);
 
 	  if (node->info.function.function_type == PT_GENERIC)
@@ -3487,12 +3489,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		      else if (parser_function_code != PT_EMPTY)
 			{
 			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				      MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, node->info.function.generic_name);
+				      MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, generic_name);
 			}
 		      else
 			{
 			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNKNOWN_FUNCTION,
-				      node->info.function.generic_name);
+				      generic_name);
 			}
 
 		    }
