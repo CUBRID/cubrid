@@ -80,6 +80,7 @@
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
+#include "subquery_cache.h"
 
 #include <vector>
 
@@ -2246,6 +2247,11 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   if (xasl->type == BUILDVALUE_PROC)
     {
       pg_cnt += qexec_clear_agg_orderby_const_list (thread_p, xasl, is_final);
+    }
+
+  if (xasl->sq_cache != NULL)
+    {
+      sq_cache_destroy (thread_p, xasl->sq_cache);
     }
 
   if (is_final)
