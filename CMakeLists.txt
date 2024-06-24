@@ -100,6 +100,23 @@ else()
   message(FATAL_ERROR "Failed to parse a version string from ${VERSION_FILE} file")
 endif()
 
+# Define a function to read the actual Git directory
+function(set_git_dir_from_worktree git_dir)
+    file(READ ${CMAKE_SOURCE_DIR}/.git git_dir_content)
+    string(REGEX MATCH "gitdir: (.*)/worktrees" _ ${git_dir_content})
+    set(${git_dir} ${CMAKE_MATCH_1} PARENT_SCOPE)
+endfunction()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git") # Regular Git project
+    if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/.git")
+        set(GIT_DIR "${CMAKE_SOURCE_DIR}/.git")
+  else() # Git Worktree
+        set_git_dir_from_worktree(GIT_DIR)
+    endif()
+else()
+    message(FATAL_ERROR "Not a git repository")
+endif()
+
 if(VERSION_MATCHES_LENGTH GREATER 3)
   list(GET VERSION_MATCHES 3 CUBRID_EXTRA_VERSION)
   if(VERSION_MATCHES_LENGTH GREATER 4)
@@ -150,7 +167,7 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
     endif(git_result)
     set(CUBRID_HASH_TAG -${commit_hash})
     # Generate the same file in other directory to trigger cmake re-configure when the HEAD changes
-    configure_file(".git/HEAD" ${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache COPYONLY)
+    configure_file("${GIT_DIR}/HEAD" "${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache" COPYONLY)
   else(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
     set(CUBRID_EXTRA_VERSION 0)
   endif(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
