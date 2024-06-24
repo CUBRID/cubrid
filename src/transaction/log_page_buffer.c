@@ -2649,6 +2649,9 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
     {
       /* The log must be archived */
       logpb_archive_active_log (thread_p);
+
+      /* Initialize the vol_creation_time value in the log header because the active log has been archived. */
+      log_Gl.hdr.vol_creation_time = time (NULL);
     }
 
   /*
@@ -8065,6 +8068,9 @@ loop:
   if (LSA_LT (&chkpt_lsa, &log_Gl.hdr.append_lsa) || log_Gl.hdr.append_lsa.pageid > LOGPB_NEXT_ARCHIVE_PAGE_ID)
     {
       logpb_archive_active_log (thread_p);
+
+      /* Initialize the vol_creation_time value in the log header because the active log has been archived. */
+      log_Gl.hdr.vol_creation_time = time (NULL);
     }
 
   last_arv_needed = log_Gl.hdr.nxarv_num - 1;

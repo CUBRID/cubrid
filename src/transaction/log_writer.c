@@ -1562,6 +1562,9 @@ logwr_write_log_pages (void)
 	{
 	  return error;
 	}
+
+      /* Initialize the vol_creation_time value in the log header because the active log has been archived. */
+      logwr_Gl.hdr.vol_creation_time = time (NULL);
     }
 
   error = logwr_flush_all_append_pages ();
