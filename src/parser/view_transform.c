@@ -4839,8 +4839,10 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
     }
 
   /* move hint, from, where, group_by, using_index part over */
-  derived->info.query.q.select.hint = agg_sel->info.query.q.select.hint & (~PT_HINT_NO_MERGE);
-  agg_sel->info.query.q.select.hint &= PT_HINT_NO_MERGE;
+  
+  /* NO_MERGE and QUERY_CACHE hints are excluded because unnecessary hints may appear duplicated or may be ignored. */
+  derived->info.query.q.select.hint = agg_sel->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE);
+  agg_sel->info.query.q.select.hint &= (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE);
 
   derived->info.query.q.select.leading = agg_sel->info.query.q.select.leading;
   agg_sel->info.query.q.select.leading = NULL;
