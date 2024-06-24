@@ -531,6 +531,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   DKNPAGES extend_npages = DISK_SECTS_NPAGES (ext_info->nsect_total);
   INT16 prev_volid;
   const int vol_fullname_size = strlen (vol_fullname) + 1;
+  const int remarks_size = strlen (remarks) + 1;
   int error_code = NO_ERROR;
 
   assert ((int) sizeof (DISK_VOLUME_HEADER) <= DB_PAGESIZE);
@@ -545,6 +546,12 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
     }
 
+  if (remarks_size > DISK_VOLUME_REMARKS_MAX_LENGTH)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_REMARKS_LENGTH_TOO_LONG, 2, NULL, remarks_size,
+	      DISK_VOLUME_REMARKS_MAX_LENGTH);
+      return ER_DISK_REMARKS_LENGTH_TOO_LONG;
+    }
   /* make sure that this is a valid purpose */
   if (vol_purpose != DB_PERMANENT_DATA_PURPOSE && vol_purpose != DB_TEMPORARY_DATA_PURPOSE)
     {
@@ -5270,12 +5277,12 @@ static int
 disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks)
 {
   int ret = NO_ERROR;
+  const int remarks_size = (int) (strlen (vol_remarks) + 1);
+
+  assert (remarks_size <= DISK_VOLUME_REMARKS_MAX_LENGTH);
 
   if (vol_remarks != NULL)
     {
-      const int remarks_size = (int) (strlen (vol_remarks) + 1);
-      assert (remarks_size <= DISK_VOLUME_REMARKS_MAX_LENGTH);
-
       memcpy (disk_vhdr_get_vol_remarks (vhdr), vol_remarks, remarks_size);
     }
   else
