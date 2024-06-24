@@ -225,8 +225,6 @@ typedef UINT64 DISK_STAB_UNIT;
 #define DISK_VOLUME_MAX_PATH_LENGTH DB_MAX_PATH_LENGTH
 #define DISK_VOLUME_REMARKS_MAX_LENGTH (DB_PAGESIZE - (offsetof(DISK_VOLUME_HEADER, var_fields) + DISK_VOLUME_MAX_PATH_LENGTH + DISK_VOLUME_MAX_PATH_LENGTH))
 
-
-
 /* Disk allocation table cursor. Used to iterate through table bits. */
 typedef struct disk_stab_cursor DISK_STAB_CURSOR;
 struct disk_stab_cursor
@@ -5228,7 +5226,6 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
   int ret = NO_ERROR;
   int new_next_vol_fullname_size = 0;
   int name_length_diff = 0;
-  int remarks_size = 0;
   const int old_next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
 
   if (next_vol_fullname == NULL)
@@ -5250,7 +5247,7 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
   if (name_length_diff != 0)
     {
       /* length to move */
-      remarks_size = disk_vhdr_get_vol_remarks_size (vhdr);
+      const int remarks_size = disk_vhdr_get_vol_remarks_size (vhdr);
 
       /* We need to either move to right(expand) or left(shrink) the rest of the variable length fields */
       memmove (disk_vhdr_get_vol_remarks (vhdr) + name_length_diff, disk_vhdr_get_vol_remarks (vhdr), remarks_size);
@@ -5375,7 +5372,7 @@ disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr)
 {
   assert (vhdr != NULL);
 
-  char *remarks = disk_vhdr_get_vol_remarks (vhdr);
+  const char *remarks = disk_vhdr_get_vol_remarks (vhdr);
 
   return (size_t) ((remarks + disk_vhdr_get_vol_remarks_size (vhdr)) - ((char *) vhdr));
 }
