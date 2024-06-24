@@ -84,8 +84,7 @@
 #define OPEN_MODE_VALUE   0666
 
 #if !defined(WINDOWS)
-#include <unistd.h>
-#include <sys/mman.h>
+#include <sys/sendfile.h>
 #endif
 extern int merge_type;
 #endif
@@ -811,11 +810,6 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
   //off_t length, offset;
   ssize_t size, r_size, w_size, wb;
 
-#if 1
-  char *pmap, *pin;
-  off_t pa_offset;
-  size_t map_size;
-#endif
 
   if (thread_count <= 0 || (merge_type == 0))
     {
@@ -840,16 +834,17 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
 
   if (thread_count > 1)
     {
-      newfd = open (new_fname, O_WRONLY | O_APPEND, OPEN_MODE_VALUE);
+      newfd = open (new_fname, O_WRONLY, OPEN_MODE_VALUE);
       if (newfd == INVALID_FILE_NO)
 	{
 	  return false;
 	}
+      lseek64 (newfd, (__off64_t) 0, SEEK_END);
     }
 
   // merge_type 1:  no use mmap
-  //            2:  use mmap, multiple
-  //            3:  use mmap, once 
+  //            2:  sendfile
+  //            3:  copy_file_range
 #if defined(WINDOWS)
   merge_type = 1;
 #endif
@@ -900,55 +895,36 @@ merge_and_remove_files (extract_context & ctxt, const char *output_dirname, cons
 #endif
 #endif
 
-      offset = 0;
-      while (offset < length)
+#if !defined(WINDOWS)
+      if (merge_type != 1)
 	{
-	  size = length - offset;
-	  if (size > alloc_sz && (merge_type != 3))
+	  int erno;
+	  //ssize_t tlen = copy_file_range(oldfd, NULL, newfd, NULL, length, 0);         
+	  ssize_t tlen = sendfile (newfd, oldfd, NULL, length);
+	  erno = errno;
+	  if (tlen == -1)
 	    {
-	      size = alloc_sz;
+	      fprintf (stdout, "%d: %s\n", erno, strerror (erno));
 	    }
-
-	  if (merge_type == 1)
+	}
+      else
+#endif
+	{
+	  offset = 0;
+	  while (offset < length)
 	    {
+	      size = length - offset;
+	      if (size > alloc_sz && (merge_type != 3))
+		{
+		  size = alloc_sz;
+		}
+
 	      r_size = read (oldfd, buf, size);
 	      w_size = write (newfd, buf, size);
 	      assert (r_size == w_size);
-	    }
-#if !defined(WINDOWS)
-	  else
-	    {
-	      pa_offset = offset & ~(sysconf (_SC_PAGE_SIZE) - 1);
-	      map_size = size + (offset - pa_offset);
 
-	      pmap = (char *) mmap (NULL, map_size, PROT_READ, MAP_PRIVATE, oldfd, pa_offset);
-	      if (pmap != MAP_FAILED)
-		{
-		  pin = pmap + (offset - pa_offset);
-		  w_size = 0;
-		  while (w_size < size)
-		    {
-		      wb = write (newfd, pin, (size - w_size));
-		      assert (wb > 0);
-		      pin += wb;
-		      w_size += wb;
-		    }
-		  munmap (pmap, map_size);
-		}
-	      else
-		{
-		  if (buf == NULL)
-		    {
-		      buf = (char *) malloc (alloc_sz);
-		    }
-		  r_size = read (oldfd, buf, size);
-		  w_size = write (newfd, buf, size);
-		  assert (r_size == w_size);
-		}
+	      offset += size;
 	    }
-#endif
-
-	  offset += size;
 	}
 
       close (oldfd);
@@ -2113,6 +2089,15 @@ process_class (extract_context & ctxt, int cl_no, TEXT_OUTPUT * obj_out)
 	      return error;	// TODO: 에러처리가 필요함
 	      break;
 
+	    case DB_TYPE_SET:
+	    case DB_TYPE_MULTISET:
+	    case DB_TYPE_SEQUENCE:
+	      fprintf (stderr, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+	      fflush (stderr);
+	      //goto exit_on_end;       // ctshim
+	      return error;	// TODO: 에러처리가 필요함
+	      break;
+
 	    default:
 	      break;
 	    }
@@ -2808,33 +2793,22 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 	    if (!input_filename || include_references || (IS_CLASS_REQUESTED (cls_no)))
 	      {
 		update_hash (ref_oid, &ref_class_oid, &ref_data);
-		if (debug_flag)
+
+		int *temp;
+		error = fh_get (cl_table, &ref_class_oid, (FH_DATA *) (&temp));
+		if (error != NO_ERROR || temp == NULL)
 		  {
-		    int *temp;
-		    error = fh_get (cl_table, &ref_class_oid, (FH_DATA *) (&temp));
-		    if (error != NO_ERROR || temp == NULL)
-		      {
-			CHECK_PRINT_ERROR (text_print (obj_out, "NULL", 4, NULL));
-		      }
-		    else
-		      {
-			CHECK_PRINT_ERROR (text_print
-					   (obj_out, NULL, 0, "@%d|%d/*%d.%d.%d*/", *temp, ref_data, ref_oid->volid,
-					    ref_oid->pageid, ref_oid->slotid));
-		      }
+		    CHECK_PRINT_ERROR (text_print (obj_out, "NULL", 4, NULL));
+		  }
+		else if (debug_flag)
+		  {
+		    CHECK_PRINT_ERROR (text_print
+				       (obj_out, NULL, 0, "@%d|%d/*%d.%d.%d*/", *temp, ref_data, ref_oid->volid,
+					ref_oid->pageid, ref_oid->slotid));
 		  }
 		else
 		  {
-		    int *temp;
-		    error = fh_get (cl_table, &ref_class_oid, (FH_DATA *) (&temp));
-		    if (error != NO_ERROR || temp == NULL)
-		      {
-			CHECK_PRINT_ERROR (text_print (obj_out, "NULL", 4, NULL));
-		      }
-		    else
-		      {
-			CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, "@%d|%d", *temp, ref_data));
-		      }
+		    CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, "@%d|%d", *temp, ref_data));
 		  }
 	      }
 	    else
