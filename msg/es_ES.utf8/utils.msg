@@ -816,6 +816,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 No se puede abrir archivo de salida '%1$s'\n
+16 Clase desconocida "%1$s"\n
 60 \
 diagdb: Imprimir una base de datos.\n\
 uso: %1$s diagdb [OPTION] database-name\n\
