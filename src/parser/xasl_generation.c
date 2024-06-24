@@ -14563,19 +14563,15 @@ ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * 
 
 
 XASL_NODE *
-ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * right, JOIN_TYPE join_type)
+ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl)
 {
   XASL_NODE *xasl;
 
   assert (parser != NULL);
-
-  if (left == NULL || right == NULL)
-    {
-      return NULL;
-    }
+  assert (outer_xasl != NULL);
+  assert (inner_xasl != NULL);
 
   xasl = regu_xasl_node_alloc (HASHJOIN_PROC);
-
   if (!xasl)
     {
       PT_NODE dummy;
@@ -14586,11 +14582,11 @@ ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * r
       return NULL;
     }
 
-  xasl->proc.hashjoin.outer_xasl = left;
-  xasl->proc.hashjoin.inner_xasl = right;
+  xasl->proc.hashjoin.outer_xasl = outer_xasl;
+  xasl->proc.hashjoin.inner_xasl = inner_xasl;
 
-  left->next = right;
-  xasl->aptr_list = left;
+  outer_xasl->next = inner_xasl;
+  xasl->aptr_list = outer_xasl;
 
   return xasl;
 }

@@ -3152,60 +3152,112 @@ qo_mjoin_cost (QO_PLAN * planp)
  *   planp(in):
  */
 static void
-qo_hjoin_cost (QO_PLAN * planp)
+qo_hjoin_cost (QO_PLAN * plan_p)
 {
-  QO_PLAN *inner;
-  QO_PLAN *outer;
-  QO_ENV *env;
-  double outer_cardinality = 0.0, inner_cardinality = 0.0;
+  QO_PLAN *inner_plan_p, *outer_plan_p;
+  double inner_cardinality, outer_cardinality;
 
   static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
-  inner = planp->plan_un.join.inner;
+  inner_plan_p = plan_p->plan_un.join.inner;
 
   /* for worst cost */
-  if (inner->fixed_cpu_cost == QO_INFINITY || inner->fixed_io_cost == QO_INFINITY
-      || inner->variable_cpu_cost == QO_INFINITY || inner->variable_io_cost == QO_INFINITY)
+  if (inner_plan_p->fixed_cpu_cost == QO_INFINITY || inner_plan_p->fixed_io_cost == QO_INFINITY
+      || inner_plan_p->variable_cpu_cost == QO_INFINITY || inner_plan_p->variable_io_cost == QO_INFINITY)
     {
-      qo_worst_cost (planp);
+      qo_worst_cost (plan_p);
       return;
     }
 
-  outer = planp->plan_un.join.outer;
+  outer_plan_p = plan_p->plan_un.join.outer;
 
   /* for worst cost */
-  if (outer->fixed_cpu_cost == QO_INFINITY || outer->fixed_io_cost == QO_INFINITY
-      || outer->variable_cpu_cost == QO_INFINITY || outer->variable_io_cost == QO_INFINITY)
+  if (outer_plan_p->fixed_cpu_cost == QO_INFINITY || outer_plan_p->fixed_io_cost == QO_INFINITY
+      || outer_plan_p->variable_cpu_cost == QO_INFINITY || outer_plan_p->variable_io_cost == QO_INFINITY)
     {
-      qo_worst_cost (planp);
+      qo_worst_cost (plan_p);
       return;
     }
 
-  env = outer->info->env;
-  outer_cardinality = outer->info->cardinality;
-  inner_cardinality = inner->info->cardinality;
+  inner_cardinality = inner_plan_p->info->cardinality;
+  outer_cardinality = outer_plan_p->info->cardinality;
 
-  /* CPU and IO costs which are fixed against join */
-  planp->fixed_cpu_cost = outer->fixed_cpu_cost + inner->fixed_cpu_cost;
-  planp->fixed_io_cost = outer->fixed_io_cost + inner->fixed_io_cost;
+  /**
+   * STEP 1: Sum up the fixed and variable costs from both the outer and inner.
+   */
+  plan_p->fixed_cpu_cost = outer_plan_p->fixed_cpu_cost + inner_plan_p->fixed_cpu_cost;
+  plan_p->fixed_io_cost = outer_plan_p->fixed_io_cost + inner_plan_p->fixed_io_cost;
 
-  /* CPU and IO costs which are variable according to the join plan */
-  planp->variable_cpu_cost = outer->variable_cpu_cost + inner->variable_cpu_cost;
-  planp->variable_cpu_cost += (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-  planp->variable_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+  plan_p->variable_cpu_cost = outer_plan_p->variable_cpu_cost + inner_plan_p->variable_cpu_cost;
+  plan_p->variable_io_cost = outer_plan_p->variable_io_cost + inner_plan_p->variable_io_cost;
 
-  planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
-
-  if (inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ ) > mem_limit)
+  /**
+   * STEP 2:
+   */
+  if (plan_p->plan_un.join.join_type == JOIN_INNER)
     {
-      planp->variable_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-      planp->variable_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+      double inner_build_cpu_cost, outer_build_cpu_cost;
+      double inner_build_io_cost, outer_build_io_cost;
+
+      /**
+       * STEP 2-1: Calculate the cost when inner is used as build input.
+       */
+      inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
+      inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+
+      inner_build_io_cost = 0.0;
+      if (inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ ) > mem_limit)
+	{
+	  inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
+	  inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+	}
+
+      /**
+       * STEP 2-2: Calculate the cost when outer is used as build input.
+       */
+      outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+      outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
+
+      outer_build_io_cost = 0.0;
+      if (outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ ) > mem_limit)
+	{
+	  outer_build_io_cost = (inner_cardinality * HJ_FILE_IO_WEIGHT);
+	  outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+	}
+
+      /**
+       * STEP 2-3: Choose the lowest cost.
+       */
+      if (inner_build_cpu_cost + inner_build_io_cost <= outer_build_cpu_cost + outer_build_io_cost)
+	{
+	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
+	  plan_p->variable_io_cost += inner_build_io_cost;
+	}
+      else
+	{
+	  plan_p->variable_cpu_cost += outer_build_cpu_cost;
+	  plan_p->variable_io_cost += outer_build_io_cost;
+	}
+    }
+  else
+    {
+      /**
+       * STEP 2-1: Calculate the cost when inner is used as build input.
+       */
+      plan_p->variable_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
+      plan_p->variable_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+
+      if (inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ ) > mem_limit)
+	{
+	  plan_p->variable_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
+	  plan_p->variable_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+	}
     }
 
 #if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
   fprintf (stdout, "\n[DEBUG] Hash Join Cost: \n");
-  fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
-  fprintf (stdout, "  - Variable I/O Cost: %lf\n\n", planp->variable_io_cost);
+  fprintf (stdout, "  - Variable CPU Cost: %lf\n", plan_p->variable_cpu_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n\n", plan_p->variable_io_cost);
 #endif
 }
 
@@ -3230,21 +3282,27 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
       break;
 
     case JOIN_RIGHT:
+      /* RIGHT OUTER JOIN is changed to LEFT OUTER JOIN and executed. */
+      assert (false);
       fputs (" (right outer join)", f);
       break;
 
-    case JOIN_OUTER:		/* not used */
+    case JOIN_OUTER:
+      /* Not supported. */
       assert (false);
       fputs (" (full outer join)", f);
       break;
 
     case JOIN_CSELECT:
+      /* Not supported. */
       assert (false);
       fputs (" (cselect join)", f);
       break;
 
     case NO_JOIN:
     default:
+      /* Impossible. */
+      assert (false);
       fputs (" (unknown join type)", f);
       break;
     }
@@ -3255,8 +3313,8 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
       qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.join_terms), f);
     }
 
-  qo_plan_fprint (plan->plan_un.join.inner, f, howfar, "build: ");
-  qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "probe: ");
+  qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "outer: ");
+  qo_plan_fprint (plan->plan_un.join.inner, f, howfar, "inner: ");
   qo_plan_print_outer_join_terms (plan, f, howfar);
 }
 
@@ -9905,6 +9963,7 @@ qo_classify (PT_NODE * attr)
 	{
 	  return PC_ATTR;
 	}
+      /* fall through */
 
     default:
       return PC_OTHER;

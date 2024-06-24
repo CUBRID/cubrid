@@ -335,8 +335,12 @@ qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * node_p)
       fprintf (foutput, "\n");
     }
 
-  qdump_print_list_merge_info (&node_p->ls_merge);
+  qdump_print_list_merge_info (&node_p->merge_info);
   fprintf (foutput, "\n");
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  /* TODO: &node_p->merge_info */
+#endif
 
   return true;
 }
@@ -3353,34 +3357,46 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case HASHJOIN_PROC:
-      char *type;
-      if (xasl_p->proc.hashjoin.hash_method == HASH_METH_IN_MEM)
-	{
-	  type = "memory";
-	}
-      else if (xasl_p->proc.hashjoin.hash_method == HASH_METH_HYBRID)
-	{
-	  type = "hybrid";
-	}
-      else if (xasl_p->proc.hashjoin.hash_method == HASH_METH_HASH_FILE)
-	{
-	  type = "file";
-	}
-      else
-	{
-	  type = "none";
-	}
+      {
+	const char *hash_method_string;
 
-      fprintf (fp, "%s (%s) (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
-	       type, TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
-	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
-      indent += 2;
-      fprintf (fp, "%*cBUILD (time: %d)\n", indent, ' ', TO_MSEC (xasl_p->proc.hashjoin.build_time));
-      qdump_print_stats_text (fp, xasl_p->proc.hashjoin.inner_xasl, indent);
-      fprintf (fp, "%*cPROBE (time: %d)\n", indent, ' ', TO_MSEC (xasl_p->proc.hashjoin.probe_time));
-      qdump_print_stats_text (fp, xasl_p->proc.hashjoin.outer_xasl, indent);
-      indent -= 2;
-      break;
+	switch (xasl_p->proc.hashjoin.hash_scan.hash_list_scan_type)
+	  {
+	  case HASH_METH_IN_MEM:
+	    hash_method_string = "memory";
+	    break;
+
+	  case HASH_METH_HYBRID:
+	    hash_method_string = "hybrid";
+	    break;
+
+	  case HASH_METH_HASH_FILE:
+	    hash_method_string = "file";
+	    break;
+
+	  default:
+	    assert (false);
+	    hash_method_string = "none";
+	    break;
+	  }
+
+	fprintf (fp, "%s (%s) (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		 qdump_xasl_type_string (xasl_p), hash_method_string, TO_MSEC (xasl_p->xasl_stats.elapsed_time),
+		 (long long int) xasl_p->xasl_stats.fetches, (long long int) xasl_p->xasl_stats.fetch_time,
+		 (long long int) xasl_p->xasl_stats.ioreads);
+
+	indent += 2;
+
+	fprintf (fp, "%*cBUILD (time: %d)\n", indent, ' ', TO_MSEC (xasl_p->proc.hashjoin.stats.build_time));
+	qdump_print_stats_text (fp, xasl_p->proc.hashjoin.build_xasl, indent);
+
+	fprintf (fp, "%*cPROBE (time: %d)\n", indent, ' ', TO_MSEC (xasl_p->proc.hashjoin.stats.probe_time));
+	qdump_print_stats_text (fp, xasl_p->proc.hashjoin.probe_xasl, indent);
+
+	indent -= 2;
+
+	break;
+      }
 
     case MERGE_PROC:
       fprintf (fp, "MERGE\n");

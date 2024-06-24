@@ -92,8 +92,8 @@ static char *stx_build_fetch_proc (THREAD_ENTRY * thread_p, char *tmp, FETCH_PRO
 static char *stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDLIST_PROC_NODE * ptr);
 static char *stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDVALUE_PROC_NODE * ptr);
 static char *stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *tmp, MERGELIST_PROC_NODE * ptr);
+static char *stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * node_p);
 static char *stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *tmp, QFILE_LIST_MERGE_INFO * ptr);
-static char *stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *tmp, HASHJOIN_PROC_NODE * ptr);
 static char *stx_build_update_class_info (THREAD_ENTRY * thread_p, char *tmp, UPDDEL_CLASS_INFO * ptr);
 static char *stx_build_update_assignment (THREAD_ENTRY * thread_p, char *tmp, UPDATE_ASSIGNMENT * ptr);
 static char *stx_build_update_proc (THREAD_ENTRY * thread_p, char *tmp, UPDATE_PROC_NODE * ptr);
@@ -3186,6 +3186,92 @@ error:
 }
 
 static char *
+stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * node_p)
+{
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      node_p->outer_xasl = NULL;
+    }
+  else
+    {
+      node_p->outer_xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->outer_xasl == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  node_p->outer_spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
+  if (ptr == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+      return NULL;
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      node_p->outer_val_list = NULL;
+    }
+  else
+    {
+      node_p->outer_val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->outer_val_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      node_p->inner_xasl = NULL;
+    }
+  else
+    {
+      node_p->inner_xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->inner_xasl == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  node_p->inner_spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      node_p->inner_val_list = NULL;
+    }
+  else
+    {
+      node_p->inner_val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->inner_val_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = stx_build_ls_merge_info (thread_p, ptr, &node_p->merge_info);
+
+  memset (&node_p->hash_scan, 0, sizeof (HASH_LIST_SCAN));
+
+  node_p->build_domains = NULL;
+  node_p->probe_domains = NULL;
+  node_p->coerce_domains = NULL;
+
+  return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
+}
+
+static char *
 stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *ptr, QFILE_LIST_MERGE_INFO * list_merge_info)
 {
   int tmp, offset;
@@ -3291,88 +3377,6 @@ stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *ptr, QFILE_LIST_MERGE_IN
 	  goto error;
 	}
     }
-
-  return ptr;
-
-error:
-  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-  return NULL;
-}
-
-static char *
-stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * hash_join_info)
-{
-  int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      hash_join_info->outer_xasl = NULL;
-    }
-  else
-    {
-      hash_join_info->outer_xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (hash_join_info->outer_xasl == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  hash_join_info->outer_spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
-  if (ptr == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
-      return NULL;
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      hash_join_info->outer_val_list = NULL;
-    }
-  else
-    {
-      hash_join_info->outer_val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (hash_join_info->outer_val_list == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      hash_join_info->inner_xasl = NULL;
-    }
-  else
-    {
-      hash_join_info->inner_xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (hash_join_info->inner_xasl == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  hash_join_info->inner_spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      hash_join_info->inner_val_list = NULL;
-    }
-  else
-    {
-      hash_join_info->inner_val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (hash_join_info->inner_val_list == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  ptr = stx_build_ls_merge_info (thread_p, ptr, &hash_join_info->ls_merge);
-
-  hash_join_info->hash_method = HASH_METH_NOT_USE;
 
   return ptr;
 

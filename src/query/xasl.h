@@ -373,15 +373,51 @@ struct hashjoin_proc_node
   XASL_NODE *outer_xasl;	/* xasl node containing the outer list file */
   ACCESS_SPEC_TYPE *outer_spec_list;	/* access spec. list for outer */
   VAL_LIST *outer_val_list;	/* output-value list for outer */
+
   XASL_NODE *inner_xasl;	/* xasl node containing the inner list file */
   ACCESS_SPEC_TYPE *inner_spec_list;	/* access spec. list for inner */
   VAL_LIST *inner_val_list;	/* output-value list for inner */
 
-  QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
+  QFILE_LIST_MERGE_INFO merge_info;
 
-  HASH_METHOD hash_method;
-  struct timeval build_time;
-  struct timeval probe_time;
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  HASH_LIST_SCAN hash_scan;
+
+  XASL_NODE *build_xasl;
+  ACCESS_SPEC_TYPE *build_spec_list;
+  VAL_LIST *build_val_list;
+
+  XASL_NODE *probe_xasl;
+  ACCESS_SPEC_TYPE *probe_spec_list;
+  VAL_LIST *probe_val_list;
+
+  /* Indexes of the values ​​used in the build input. */
+  int *build_indexes;
+
+  /* Indexes of the values ​​used in the probe input. */
+  int *probe_indexes;
+
+  /* Domains of the values ​​used in the build input. */
+  TP_DOMAIN **build_domains;
+
+  /* Domains of the values ​​used in the probe input. */
+  TP_DOMAIN **probe_domains;
+
+  /* The common domains between the domains of values used in the build input and those used in the probe input. */
+  TP_DOMAIN **coerce_domains;
+
+  /* Whether there is a need to use a coerce domain. */
+  bool need_coerce_domains;
+
+  /* Whether there is a need to make and compare with DB_VALUE. */
+  bool need_compare_dbvalues;
+
+  struct
+  {
+    struct timeval build_time;
+    struct timeval probe_time;
+  } stats;
+#endif
 };
 
 typedef struct update_proc_node UPDATE_PROC_NODE;

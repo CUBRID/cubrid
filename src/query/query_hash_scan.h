@@ -124,25 +124,25 @@ struct hash_join_context
 {
   HASH_LIST_SCAN hash_scan;
 
-  /* Indexes of the values ​​used in the build input */
+  /* Indexes of the values ​​used in the build input. */
   int *build_indexes;
 
-  /* Indexes of the values ​​used in the probe input */
+  /* Indexes of the values ​​used in the probe input. */
   int *probe_indexes;
 
-  /* Domains of the values ​​used in the build input */
+  /* Domains of the values ​​used in the build input. */
   TP_DOMAIN **build_domains;
 
-  /* Domains of the values ​​used in the probe input */
+  /* Domains of the values ​​used in the probe input. */
   TP_DOMAIN **probe_domains;
 
   /* The common domains between the domains of values used in the build input and those used in the probe input. */
   TP_DOMAIN **coerce_domains;
 
-  /* Whether there is a need to use a coerce domain */
+  /* Whether there is a need to use a coerce domain. */
   bool need_coerce_domains;
 
-  /* Whether there is a need to make and compare with DB_VALUE */
+  /* Whether there is a need to make and compare with DB_VALUE. */
   bool need_compare_dbvalues;
 };
 
