@@ -2544,7 +2544,11 @@ public class SpLib {
             return null;
         }
 
-        return String.format("%.15e", e);
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return detachTrailingZeros(String.format("%.15f", e));
+        } else {
+            return String.format("%.15e", e);
+        }
     }
 
     public static Float convDoubleToFloat(Double e) {
@@ -2611,7 +2615,12 @@ public class SpLib {
             return null;
         }
 
-        return String.format("%.6e", e);
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return detachTrailingZeros(String.format("%.6f", e));
+        } else {
+            return String.format("%.6e", e);
+        }
+
     }
 
     public static Double convFloatToDouble(Float e) {
@@ -2669,7 +2678,11 @@ public class SpLib {
             return null;
         }
 
-        return e.toPlainString();
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return detachTrailingZeros(e.toPlainString());
+        } else {
+            return e.toPlainString();
+        }
     }
 
     public static Double convNumericToDouble(BigDecimal e) {
@@ -3991,5 +4004,28 @@ public class SpLib {
 
     private static boolean isEmptyStr(String s) {
         return s == null || s.length() == 0;
+    }
+
+    private static String detachTrailingZeros(String f) {
+        if (f.indexOf('.') < 0) {
+            // f does not represent a floating point number
+            return f;
+        }
+
+        int len = f.length();
+        for (int i = len - 1; i>= 0; i--) {
+            char c = f.charAt(i);
+
+            if (c == '.') {
+                return f.substring(0, i);
+            }
+
+            if (c != '0') {
+                return f.substring(0, i + 1);
+            }
+        }
+
+        assert false;   // unreachable
+        return null;
     }
 }
