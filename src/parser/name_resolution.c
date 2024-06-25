@@ -9196,8 +9196,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 
 	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
 		{
-		  if (sm_check_system_class_by_name (entity->info.name.original)
-		      && (db_get_client_type () != DB_CLIENT_TYPE_ADMIN_CSQL))
+		  if (sm_check_system_class_by_name (entity->info.name.original))
 		    {
 		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
 				   "UPDATE", entity->info.name.original);
@@ -9217,8 +9216,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
 		{
-		  if (sm_check_system_class_by_name (entity->info.name.original)
-		      && (db_get_client_type () != DB_CLIENT_TYPE_ADMIN_CSQL))
+		  if (sm_check_system_class_by_name (entity->info.name.original))
 		    {
 		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
 				   "UPDATE", entity->info.name.original);
