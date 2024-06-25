@@ -14567,9 +14567,11 @@ ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NO
 {
   XASL_NODE *xasl;
 
-  assert (parser != NULL);
-  assert (outer_xasl != NULL);
-  assert (inner_xasl != NULL);
+  if ((parser == NULL) || (outer_xasl == NULL) || (inner_xasl == NULL))
+    {
+      assert (false);
+      return NULL;
+    }
 
   xasl = regu_xasl_node_alloc (HASHJOIN_PROC);
   if (!xasl)
@@ -14579,14 +14581,15 @@ ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NO
       memset (&dummy, 0, sizeof (dummy));
       PT_ERROR (parser, &dummy,
 		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+
       return NULL;
     }
 
-  xasl->proc.hashjoin.outer_xasl = outer_xasl;
-  xasl->proc.hashjoin.inner_xasl = inner_xasl;
-
-  outer_xasl->next = inner_xasl;
   xasl->aptr_list = outer_xasl;
+  xasl->aptr_list->next = inner_xasl;
+
+  xasl->proc.hashjoin.outer.xasl = outer_xasl;
+  xasl->proc.hashjoin.inner.xasl = inner_xasl;
 
   return xasl;
 }

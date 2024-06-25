@@ -3288,13 +3288,13 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
       break;
 
     case JOIN_OUTER:
-      /* Not supported. */
+      /* Unsupported. */
       assert (false);
       fputs (" (full outer join)", f);
       break;
 
     case JOIN_CSELECT:
-      /* Not supported. */
+      /* Unsupported. */
       assert (false);
       fputs (" (cselect join)", f);
       break;

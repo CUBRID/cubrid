@@ -119,33 +119,6 @@ struct hash_list_scan
   bool need_coerce_type;	/* Are the types of probe and build different? */
 };
 
-typedef struct hash_join_context HASH_JOIN_CONTEXT;
-struct hash_join_context
-{
-  HASH_LIST_SCAN hash_scan;
-
-  /* Indexes of the values ​​used in the build input. */
-  int *build_indexes;
-
-  /* Indexes of the values ​​used in the probe input. */
-  int *probe_indexes;
-
-  /* Domains of the values ​​used in the build input. */
-  TP_DOMAIN **build_domains;
-
-  /* Domains of the values ​​used in the probe input. */
-  TP_DOMAIN **probe_domains;
-
-  /* The common domains between the domains of values used in the build input and those used in the probe input. */
-  TP_DOMAIN **coerce_domains;
-
-  /* Whether there is a need to use a coerce domain. */
-  bool need_coerce_domains;
-
-  /* Whether there is a need to make and compare with DB_VALUE. */
-  bool need_compare_dbvalues;
-};
-
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
 HASH_SCAN_VALUE *qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, QFILE_TUPLE tpl);
 HASH_SCAN_VALUE *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p);

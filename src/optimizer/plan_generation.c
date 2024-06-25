@@ -704,10 +704,10 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
   /* make outer_spec_list, outer_val_list, inner_spec_list, and inner_val_list */
   if (merge_info_p->join_type == JOIN_INNER)
     {
-      hashjoin->proc.hashjoin.outer_spec_list = NULL;
-      hashjoin->proc.hashjoin.outer_val_list = NULL;
-      hashjoin->proc.hashjoin.inner_spec_list = NULL;
-      hashjoin->proc.hashjoin.inner_val_list = NULL;
+      hashjoin->proc.hashjoin.outer.spec_list = NULL;
+      hashjoin->proc.hashjoin.outer.val_list = NULL;
+      hashjoin->proc.hashjoin.inner.spec_list = NULL;
+      hashjoin->proc.hashjoin.inner.val_list = NULL;
     }
   else
     {
@@ -750,8 +750,8 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
 	  goto exit_on_error;
 	}
 
-      hashjoin->proc.hashjoin.outer_spec_list = hashjoin->spec_list;
-      hashjoin->proc.hashjoin.outer_val_list = hashjoin->val_list;
+      hashjoin->proc.hashjoin.outer.spec_list = hashjoin->spec_list;
+      hashjoin->proc.hashjoin.outer.val_list = hashjoin->val_list;
 
       /* set poslist of inner XASL node */
       pos_list = NULL;		/* init */
@@ -790,8 +790,8 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * le
 	  goto exit_on_error;
 	}
 
-      hashjoin->proc.hashjoin.inner_spec_list = hashjoin->spec_list;
-      hashjoin->proc.hashjoin.inner_val_list = hashjoin->val_list;
+      hashjoin->proc.hashjoin.inner.spec_list = hashjoin->spec_list;
+      hashjoin->proc.hashjoin.inner.val_list = hashjoin->val_list;
 
       hashjoin->spec_list = NULL;
       hashjoin->val_list = NULL;
@@ -1835,63 +1835,73 @@ check_merge_xasl (QO_ENV * env, XASL_NODE * xasl)
 static XASL_NODE *
 check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
 {
-  XASL_NODE *hashjoin;
-  int i, ncols;
+  XASL_NODE *hashjoin_xasl;
+  int value_count, value_index;
 
-  /*
-   * NULL is actually a semi-common case; it can arise under timeout
-   * conditions, etc.
-   */
+  /* NULL is actually a semi-common case; it can arise under timeout conditions, etc. */
   if (xasl == NULL)
     {
       return NULL;
     }
 
-  /*
-   * The hashjoin proc isn't necessarily the first thing on the
-   * aptr_list; some other procs may have found their way in front of
-   * it, and that's not incorrect.  Search until we find a hashjoin
-   * proc; is there any way to have more than one?
+  /**
+   * The hashjoin proc isn't necessarily the first thing on the aptr_list;
+   * some other procs may have found their way in front of it, and that's not incorrect.
+   * Search until we find a hashjoin proc; is there any way to have more than one?
    */
-  for (hashjoin = xasl->aptr_list; hashjoin && hashjoin->type != HASHJOIN_PROC; hashjoin = hashjoin->next)
-    ;
-
-  if (hashjoin == NULL
-      /*
-       * Make sure there are two things on the aptr list.
-       */
-      || hashjoin->type != HASHJOIN_PROC || hashjoin->aptr_list == NULL	/* left */
-      || hashjoin->aptr_list->next == NULL	/* right */
-      /*
-       * Make sure both buildlist gadgets look well-formed.
-       */
-      || xasl->spec_list == NULL || xasl->val_list == NULL || xasl->outptr_list == NULL
-      /*
-       * Make sure the merge_list_info looks plausible.
-       */
-      || hashjoin->proc.hashjoin.outer_xasl == NULL || hashjoin->proc.hashjoin.inner_xasl == NULL
-      || hashjoin->proc.hashjoin.merge_info.ls_column_cnt <= 0)
+  for (hashjoin_xasl = xasl->aptr_list; hashjoin_xasl != NULL; hashjoin_xasl = hashjoin_xasl->next)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "false");
-      xasl = NULL;
-    }
-
-  if (hashjoin != NULL)
-    {
-      ncols = hashjoin->proc.hashjoin.merge_info.ls_column_cnt;
-      for (i = 0; i < ncols; i++)
+      if (hashjoin_xasl->type == HASHJOIN_PROC)
 	{
-	  if (hashjoin->proc.hashjoin.merge_info.ls_outer_column[i] < 0
-	      || hashjoin->proc.hashjoin.merge_info.ls_inner_column[i] < 0)
-	    {
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "false");
-	      xasl = NULL;
-	      break;
-	    }
+	  break;
 	}
     }
 
+  if (hashjoin_xasl == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  /* Make sure there are two things on the aptr list. */
+  if ((hashjoin_xasl->type != HASHJOIN_PROC) && (hashjoin_xasl->aptr_list == NULL) /* outer */ 
+      && (hashjoin_xasl->aptr_list->next == NULL) /* inner */ )
+    {
+      goto exit_on_error;
+    }
+
+  /* Make sure both buildlist gadgets look well-formed. */
+  if ((xasl->spec_list == NULL) || (xasl->val_list == NULL) || (xasl->outptr_list == NULL))
+    {
+      goto exit_on_error;
+    }
+
+  /* Make sure the merge_info looks plausible. */
+  if ((hashjoin_xasl->proc.hashjoin.outer.xasl == NULL) && (hashjoin_xasl->proc.hashjoin.inner.xasl == NULL)
+      && (hashjoin_xasl->proc.hashjoin.merge_info.ls_column_cnt <= 0))
+    {
+      goto exit_on_error;
+    }
+
+  value_count = hashjoin_xasl->proc.hashjoin.merge_info.ls_column_cnt;
+
+  for (value_index = 0; value_index < value_count; value_index++)
+    {
+      if ((hashjoin_xasl->proc.hashjoin.merge_info.ls_outer_column[value_index] < 0)
+	  || (hashjoin_xasl->proc.hashjoin.merge_info.ls_inner_column[value_index] < 0))
+	{
+	  goto exit_on_error;
+	}
+    }
+
+
+exit_on_end:
   return xasl;
+
+exit_on_error:
+  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "false");
+  xasl = NULL;
+
+  goto exit_on_end;
 }
 
 /*

@@ -304,34 +304,41 @@ qdump_print_merge_list_proc_node (MERGELIST_PROC_NODE * node_p)
 static bool
 qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * node_p)
 {
-  fprintf (foutput, "[outer xasl:%p]\n", node_p->outer_xasl);
-  if (node_p->outer_spec_list)
+  /**
+   * outer
+   */
+  fprintf (foutput, "[outer xasl:%p]\n", node_p->outer.xasl);
+
+  if (node_p->outer.spec_list)
     {
       fprintf (foutput, "-->outer access spec:");
-      qdump_print_access_spec (node_p->outer_spec_list);
+      qdump_print_access_spec (node_p->outer.spec_list);
       fprintf (foutput, "\n");
     }
 
-  if (node_p->outer_val_list)
+  if (node_p->outer.val_list)
     {
       fprintf (foutput, "-->outer val_list:");
-      qdump_print_value_list (node_p->outer_val_list);
+      qdump_print_value_list (node_p->outer.val_list);
       fprintf (foutput, "\n");
     }
 
-  fprintf (foutput, "[inner xasl:%p]\n", node_p->inner_xasl);
+  /**
+   * inner
+   */
+  fprintf (foutput, "[inner xasl:%p]\n", node_p->inner.xasl);
 
-  if (node_p->inner_spec_list)
+  if (node_p->inner.spec_list)
     {
       fprintf (foutput, "-->inner access spec:");
-      qdump_print_access_spec (node_p->inner_spec_list);
+      qdump_print_access_spec (node_p->inner.spec_list);
       fprintf (foutput, "\n");
     }
 
-  if (node_p->inner_val_list)
+  if (node_p->inner.val_list)
     {
       fprintf (foutput, "-->inner val_list:");
-      qdump_print_value_list (node_p->inner_val_list);
+      qdump_print_value_list (node_p->inner.val_list);
       fprintf (foutput, "\n");
     }
 
@@ -339,7 +346,17 @@ qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * node_p)
   fprintf (foutput, "\n");
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  /* TODO: &node_p->merge_info */
+  /* TODO: */
+
+  /**
+   * build
+   */
+  fprintf (foutput, "[build xasl:%p]\n", node_p->build->xasl);
+
+  /**
+   * probe
+   */
+  fprintf (foutput, "[probe xasl:%p]\n", node_p->probe->xasl);
 #endif
 
   return true;
@@ -2032,13 +2049,13 @@ qdump_check_node (XASL_NODE * xasl_p, QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUM
       break;
 
     case HASHJOIN_PROC:
-      check_node1_p = qdump_find_check_node_for (xasl_p->proc.hashjoin.outer_xasl, chk_nodes);
+      check_node1_p = qdump_find_check_node_for (xasl_p->proc.hashjoin.outer.xasl, chk_nodes);
       if (check_node1_p)
 	{
 	  check_node1_p->referenced = 1;
 	}
 
-      check_node1_p = qdump_find_check_node_for (xasl_p->proc.hashjoin.inner_xasl, chk_nodes);
+      check_node1_p = qdump_find_check_node_for (xasl_p->proc.hashjoin.inner.xasl, chk_nodes);
       if (check_node1_p)
 	{
 	  check_node1_p->referenced = 1;
@@ -2691,8 +2708,8 @@ qdump_print_xasl (xasl_node * xasl_p)
       break;
 
     case HASHJOIN_PROC:
-      fprintf (foutput, "outer xasl:%p\n", xasl_p->proc.hashjoin.outer_xasl);
-      fprintf (foutput, "inner xasl:%p\n", xasl_p->proc.hashjoin.inner_xasl);
+      fprintf (foutput, "outer xasl:%p\n", xasl_p->proc.hashjoin.outer.xasl);
+      fprintf (foutput, "inner xasl:%p\n", xasl_p->proc.hashjoin.inner.xasl);
       qdump_print_hash_join_proc_node (&xasl_p->proc.hashjoin);
       break;
 
@@ -2976,6 +2993,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   json_t *proc, *scan = NULL;
   json_t *subquery, *groupby, *orderby;
   json_t *outer, *inner;
+  json_t *build, *probe;
   json_t *cte_non_recursive_part, *cte_recursive_part;
   json_t *temp;
   xasl_node *xptr;
@@ -3040,14 +3058,14 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       break;
 
     case HASHJOIN_PROC:
-      outer = json_object ();
-      inner = json_object ();
+      build = json_object ();
+      probe = json_object ();
 
-      qdump_print_stats_json (xasl_p->proc.hashjoin.outer_xasl, outer);
-      qdump_print_stats_json (xasl_p->proc.hashjoin.inner_xasl, inner);
+      qdump_print_stats_json (xasl_p->proc.hashjoin.build->xasl, build);
+      qdump_print_stats_json (xasl_p->proc.hashjoin.probe->xasl, probe);
 
-      json_object_set_new (proc, "outer", outer);
-      json_object_set_new (proc, "inner", inner);
+      json_object_set_new (proc, "build", build);
+      json_object_set_new (proc, "probe", probe);
       break;
 
     case MERGE_PROC:
@@ -3360,7 +3378,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       {
 	const char *hash_method_string;
 
-	switch (xasl_p->proc.hashjoin.hash_scan.hash_list_scan_type)
+	switch (xasl_p->proc.hashjoin.stats.hash_method)
 	  {
 	  case HASH_METH_IN_MEM:
 	    hash_method_string = "memory";
@@ -3375,7 +3393,6 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	    break;
 
 	  default:
-	    assert (false);
 	    hash_method_string = "none";
 	    break;
 	  }
@@ -3388,12 +3405,14 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	indent += 2;
 
 	fprintf (fp, "%*cBUILD (time: %d)\n", indent, ' ', TO_MSEC (xasl_p->proc.hashjoin.stats.build_time));
-	qdump_print_stats_text (fp, xasl_p->proc.hashjoin.build_xasl, indent);
+	qdump_print_stats_text (fp, xasl_p->proc.hashjoin.build->xasl, indent);
 
 	fprintf (fp, "%*cPROBE (time: %d)\n", indent, ' ', TO_MSEC (xasl_p->proc.hashjoin.stats.probe_time));
-	qdump_print_stats_text (fp, xasl_p->proc.hashjoin.probe_xasl, indent);
+	qdump_print_stats_text (fp, xasl_p->proc.hashjoin.probe->xasl, indent);
 
 	indent -= 2;
+
+	/* TODO: qdump_print_stats_json */
 
 	break;
       }

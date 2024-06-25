@@ -3653,60 +3653,82 @@ xts_process_mergelist_proc (char *ptr, const MERGELIST_PROC_NODE * merge_list_in
   return xts_process_ls_merge_info (ptr, &merge_list_info->ls_merge);
 }
 
+/*
+ * xts_process_hashjoin_proc () -
+ *   return: The buffer pointer after the packed XASL node.
+ *   ptr(in): The buffer pointer where the XASL node should be packed.
+ *   node_p(in): The pointer to the XASL node that should be packed.
+ */
 static char *
 xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
 {
-  int offset;
-  int cnt;
-  ACCESS_SPEC_TYPE *access_spec = NULL;
+  ACCESS_SPEC_TYPE *spec = NULL;
+  int offset, spec_count;
 
-  offset = xts_save_xasl_node (node_p->outer_xasl);
+  /**
+   * outer
+   */
+  offset = xts_save_xasl_node (node_p->outer.xasl);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  for (cnt = 0, access_spec = node_p->outer_spec_list; access_spec; access_spec = access_spec->next, cnt++)
-    ;				/* empty */
-  ptr = or_pack_int (ptr, cnt);
-
-  for (access_spec = node_p->outer_spec_list; access_spec; access_spec = access_spec->next)
+  spec_count = 0;
+  for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
     {
-      ptr = xts_process_access_spec_type (ptr, access_spec);
+      spec_count++;
+    }
+  ptr = or_pack_int (ptr, spec_count);
+
+  for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
+    {
+      ptr = xts_process_access_spec_type (ptr, spec);
     }
 
-  offset = xts_save_val_list (node_p->outer_val_list);
+  offset = xts_save_val_list (node_p->outer.val_list);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_xasl_node (node_p->inner_xasl);
+  /**
+   * inner
+   */
+  offset = xts_save_xasl_node (node_p->inner.xasl);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  for (cnt = 0, access_spec = node_p->inner_spec_list; access_spec; access_spec = access_spec->next, cnt++)
-    ;				/* empty */
-  ptr = or_pack_int (ptr, cnt);
-
-  for (access_spec = node_p->inner_spec_list; access_spec; access_spec = access_spec->next)
+  spec_count = 0;
+  for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
     {
-      ptr = xts_process_access_spec_type (ptr, access_spec);
+      spec_count++;
+    }
+  ptr = or_pack_int (ptr, spec_count);
+
+  for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
+    {
+      ptr = xts_process_access_spec_type (ptr, spec);
     }
 
-  offset = xts_save_val_list (node_p->inner_val_list);
+  offset = xts_save_val_list (node_p->inner.val_list);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  return xts_process_ls_merge_info (ptr, &node_p->merge_info);
+  /**
+   * merge_info
+   */
+  ptr = xts_process_ls_merge_info (ptr, &node_p->merge_info);
+
+  return ptr;
 }
 
 static char *
@@ -6395,32 +6417,43 @@ xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * merge_list_info)
 
 /*
  * xts_sizeof_hashjoin_proc () -
- *   return:
- *   ptr(in)    :
+ *   return: The size required for the XASL node to be packed.
+ *   node_p(in): The pointer to the XASL node that should be packed.
  */
 static int
 xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
 {
+  ACCESS_SPEC_TYPE *spec = NULL;
   int size = 0;
-  ACCESS_SPEC_TYPE *access_spec = NULL;
 
-  size += (PTR_SIZE		/* outer_xasl */
-	   + PTR_SIZE		/* outer_val_list */
-	   + PTR_SIZE		/* inner_xasl */
-	   + PTR_SIZE		/* inner_val_list */
-	   + xts_sizeof_ls_merge_info (&node_p->merge_info));
+  /**
+   * outer
+   */
+  size += (PTR_SIZE		/* Offset of `outer.xasl`.    */
+	   + PTR_SIZE		/* Offset of `outer.val_list` */
+	   + OR_INT_SIZE);	/* The count of access specs in `outer.spec_list`. */
 
-  size += OR_INT_SIZE;		/* count of access specs in outer_spec_list */
-  for (access_spec = node_p->outer_spec_list; access_spec; access_spec = access_spec->next)
+  for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
     {
-      size += xts_sizeof_access_spec_type (access_spec);
+      size += xts_sizeof_access_spec_type (spec);
     }
 
-  size += OR_INT_SIZE;		/* count of access specs in inner_spec_list */
-  for (access_spec = node_p->inner_spec_list; access_spec; access_spec = access_spec->next)
+  /**
+   * inner
+   */
+  size += (PTR_SIZE		/* Offset of `inner.xasl`     */
+	   + PTR_SIZE		/* Offset of `inner.val_list` */
+	   + OR_INT_SIZE);	/* The count of access specs in `inner.spec_list`. */
+
+  for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
     {
-      size += xts_sizeof_access_spec_type (access_spec);
+      size += xts_sizeof_access_spec_type (spec);
     }
+
+  /**
+   * merge_info
+   */
+  size += xts_sizeof_ls_merge_info (&node_p->merge_info);
 
   return size;
 }

@@ -367,56 +367,54 @@ struct mergelist_proc_node
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
 };
 
+typedef struct hashjoin_input HASHJOIN_INPUT;
+struct hashjoin_input
+{
+  XASL_NODE *xasl;
+  ACCESS_SPEC_TYPE *spec_list;
+  VAL_LIST *val_list;
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  TP_DOMAIN **domains;
+  int *value_indexes;
+#endif
+};
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+typedef struct hashjoin_stats HASHJOIN_STATS;
+struct hashjoin_stats
+{
+  HASH_METHOD hash_method;
+
+  struct timeval build_time;
+  struct timeval probe_time;
+};
+#endif
+
 typedef struct hashjoin_proc_node HASHJOIN_PROC_NODE;
 struct hashjoin_proc_node
 {
-  XASL_NODE *outer_xasl;	/* xasl node containing the outer list file */
-  ACCESS_SPEC_TYPE *outer_spec_list;	/* access spec. list for outer */
-  VAL_LIST *outer_val_list;	/* output-value list for outer */
-
-  XASL_NODE *inner_xasl;	/* xasl node containing the inner list file */
-  ACCESS_SPEC_TYPE *inner_spec_list;	/* access spec. list for inner */
-  VAL_LIST *inner_val_list;	/* output-value list for inner */
+  HASHJOIN_INPUT outer;
+  HASHJOIN_INPUT inner;
 
   QFILE_LIST_MERGE_INFO merge_info;
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+  HASHJOIN_STATS stats;
+
   HASH_LIST_SCAN hash_scan;
 
-  XASL_NODE *build_xasl;
-  ACCESS_SPEC_TYPE *build_spec_list;
-  VAL_LIST *build_val_list;
+  HASHJOIN_INPUT *build;
+  HASHJOIN_INPUT *probe;
 
-  XASL_NODE *probe_xasl;
-  ACCESS_SPEC_TYPE *probe_spec_list;
-  VAL_LIST *probe_val_list;
-
-  /* Indexes of the values ​​used in the build input. */
-  int *build_indexes;
-
-  /* Indexes of the values ​​used in the probe input. */
-  int *probe_indexes;
-
-  /* Domains of the values ​​used in the build input. */
-  TP_DOMAIN **build_domains;
-
-  /* Domains of the values ​​used in the probe input. */
-  TP_DOMAIN **probe_domains;
-
-  /* The common domains between the domains of values used in the build input and those used in the probe input. */
+  /* The common domains between the domains of values used in the build and probe inputs. */
   TP_DOMAIN **coerce_domains;
 
-  /* Whether there is a need to use a coerce domain. */
+  /* Whether there is a need to use the coerce domain. */
   bool need_coerce_domains;
 
   /* Whether there is a need to make and compare with DB_VALUE. */
   bool need_compare_dbvalues;
-
-  struct
-  {
-    struct timeval build_time;
-    struct timeval probe_time;
-  } stats;
 #endif
 };
 

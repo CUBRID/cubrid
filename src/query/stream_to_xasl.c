@@ -1692,8 +1692,6 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   /* initialize query_in_progress flag */
   xasl->query_in_progress = false;
 
-  xasl->n_oid_list = 0;
-
   /* XASL node header is packed first */
   ptr = stx_build_xasl_header (thread_p, ptr, &xasl->header);
 
@@ -2262,6 +2260,9 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     {
       return NULL;
     }
+
+  /* Prevent faults when `qdump_print_xasl` is called */
+  xasl->n_oid_list = 0;
 
   ptr = or_unpack_int (ptr, &tmp);
   xasl->iscan_oid_order = (bool) tmp;
@@ -3185,27 +3186,39 @@ error:
   return NULL;
 }
 
+/*
+ * stx_build_hashjoin_proc () -
+ *   return: The buffer pointer after the unpacked XASL node.
+ *   thread_p(in): The current thread entry.
+ *   ptr(in): The buffer pointer where the XASL node is packed.
+ *   node_p(in): The pointer to the unpacked XASL node.
+ */
 static char *
 stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * node_p)
 {
-  int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  int offset;
 
+  memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
+
+  /**
+   * outer
+   */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      node_p->outer_xasl = NULL;
+      node_p->outer.xasl = NULL;
     }
   else
     {
-      node_p->outer_xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (node_p->outer_xasl == NULL)
+      node_p->outer.xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->outer.xasl == NULL)
 	{
 	  goto error;
 	}
     }
 
-  node_p->outer_spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
+  node_p->outer.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
   if (ptr == NULL)
     {
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
@@ -3215,54 +3228,54 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      node_p->outer_val_list = NULL;
+      node_p->outer.val_list = NULL;
     }
   else
     {
-      node_p->outer_val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (node_p->outer_val_list == NULL)
+      node_p->outer.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->outer.val_list == NULL)
 	{
 	  goto error;
 	}
     }
+
+  /**
+   * inner
+   */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      node_p->inner.xasl = NULL;
+    }
+  else
+    {
+      node_p->inner.xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->inner.xasl == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  node_p->inner.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      node_p->inner_xasl = NULL;
+      node_p->inner.val_list = NULL;
     }
   else
     {
-      node_p->inner_xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (node_p->inner_xasl == NULL)
+      node_p->inner.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->inner.val_list == NULL)
 	{
 	  goto error;
 	}
     }
 
-  node_p->inner_spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      node_p->inner_val_list = NULL;
-    }
-  else
-    {
-      node_p->inner_val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (node_p->inner_val_list == NULL)
-	{
-	  goto error;
-	}
-    }
-
+  /**
+   * merge_info
+   */
   ptr = stx_build_ls_merge_info (thread_p, ptr, &node_p->merge_info);
-
-  memset (&node_p->hash_scan, 0, sizeof (HASH_LIST_SCAN));
-
-  node_p->build_domains = NULL;
-  node_p->probe_domains = NULL;
-  node_p->coerce_domains = NULL;
 
   return ptr;
 
