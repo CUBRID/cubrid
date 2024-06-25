@@ -1788,18 +1788,19 @@ public class SpLib {
         int p2 = r.precision();
         int s2 = r.scale();
 
-        int maxPrecision = (p1 - s1) + s2 + Math.max(9, Math.max(s1, s2));
-        int scale = Math.max(9, Math.max(s1, s2));
-        if (maxPrecision > 38) {
-            scale = Math.min(9, scale - (maxPrecision - 38));
-            maxPrecision = 38;
+        int scale;
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_COMPAT_NUMERIC_DIVISION_SCALE)) {
+            scale = Math.max(s1, s2);
+        } else {
+            scale = Math.max(9, Math.max(s1, s2));
         }
+        int maxPrecision = (p1 - s1) + s2 + scale;
 
         BigDecimal ret =
                 l.divide(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
                         .setScale(scale, RoundingMode.HALF_UP);
         if (ret.precision() > 38) {
-            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+            throw new VALUE_ERROR("data overflow");
         }
 
         return ret;
