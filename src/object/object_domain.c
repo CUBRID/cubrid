@@ -2687,12 +2687,11 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
 	  /* we MUST perform exact matches here */
 	  if (dom->precision == precision && dom->is_desc == is_desc)
 	    {
-	      if (type == DB_TYPE_VARBIT)
+	      if (type == DB_TYPE_VARBIT && dom->codeset == codeset)
 		{
 		  break;	/* found */
 		}
-	      else if (dom->collation_id == collation_id && dom->collation_flag == collation_flag
-		       && dom->codeset == codeset)
+	      if (dom->collation_id == collation_id && dom->collation_flag == collation_flag && dom->codeset == codeset)
 		{
 		  /* codeset should be the same if collations are equal */
 		  assert (dom->codeset == codeset);
@@ -9219,44 +9218,65 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARNCHAR:
 	  {
 	    DB_VALUE temp;
-	    char *bit_char_string;
-	    int src_size = db_get_string_size (src);
-	    int dst_size = (src_size + 1) / 2;
-
-	    bit_char_string = (char *) db_private_alloc (NULL, dst_size + 1);
-	    if (bit_char_string)
+	    if (desired_domain->codeset == INTL_CODESET_LOB)
 	      {
-		if (qstr_hex_to_bin (bit_char_string, dst_size, db_get_string (src), src_size) != src_size)
+		DB_CONST_C_CHAR cs;
+		int length;
+
+		db_make_null (&temp);
+		cs = db_get_string (src);
+		length = db_get_string_length (src);
+
+		err = db_make_varbit (&temp, length * 8, cs, length * 8);
+		temp.need_clear = true;
+
+		if (err == NO_ERROR)
 		  {
-		    status = DOMAIN_ERROR;
-		    db_private_free_and_init (NULL, bit_char_string);
-		  }
-		else
-		  {
-		    db_make_bit (&temp, TP_FLOATING_PRECISION_VALUE, bit_char_string, src_size * 4);
-		    temp.need_clear = true;
-		    if (db_bit_string_coerce (&temp, target, &data_stat) != NO_ERROR)
-		      {
-			status = DOMAIN_INCOMPATIBLE;
-		      }
-		    else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode != TP_FORCE_COERCION &&
-			     (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false
-			      || coercion_mode == TP_IMPLICIT_COERCION))
-		      {
-			status = DOMAIN_OVERFLOW;
-			pr_clear_value (target);
-		      }
-		    else
-		      {
-			status = DOMAIN_COMPATIBLE;
-		      }
-		    pr_clear_value (&temp);
+		    err =
+		      tp_value_cast_internal (&temp, target, desired_domain, coercion_mode, do_domain_select, false);
 		  }
 	      }
 	    else
 	      {
-		/* Couldn't allocate space for bit_char_string */
-		status = DOMAIN_INCOMPATIBLE;
+		char *bit_char_string;
+		int src_size = db_get_string_size (src);
+		int dst_size = (src_size + 1) / 2;
+
+		bit_char_string = (char *) db_private_alloc (NULL, dst_size + 1);
+		if (bit_char_string)
+		  {
+		    if (qstr_hex_to_bin (bit_char_string, dst_size, db_get_string (src), src_size) != src_size)
+		      {
+			status = DOMAIN_ERROR;
+			db_private_free_and_init (NULL, bit_char_string);
+		      }
+		    else
+		      {
+			db_make_bit (&temp, TP_FLOATING_PRECISION_VALUE, bit_char_string, src_size * 4);
+			temp.need_clear = true;
+			if (db_bit_string_coerce (&temp, target, &data_stat) != NO_ERROR)
+			  {
+			    status = DOMAIN_INCOMPATIBLE;
+			  }
+			else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode != TP_FORCE_COERCION &&
+				 (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false
+				  || coercion_mode == TP_IMPLICIT_COERCION))
+			  {
+			    status = DOMAIN_OVERFLOW;
+			    pr_clear_value (target);
+			  }
+			else
+			  {
+			    status = DOMAIN_COMPATIBLE;
+			  }
+			pr_clear_value (&temp);
+		      }
+		  }
+		else
+		  {
+		    /* Couldn't allocate space for bit_char_string */
+		    status = DOMAIN_INCOMPATIBLE;
+		  }
 	      }
 	  }
 	  break;
@@ -11778,19 +11798,29 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const i
     {
     case DOMAIN_INCOMPATIBLE:
       error = ER_TP_CANT_COERCE;
+      if ((domain->type->id == DB_TYPE_VARBIT || domain->type->id == DB_TYPE_VARCHAR)
+	  && domain->codeset == INTL_CODESET_LOB)
+	{
+	  er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
+		  "LOB INTERNAL");
+	  break;
+	}
       er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
 	      pr_type_name (TP_DOMAIN_TYPE (domain)));
       break;
-
     case DOMAIN_OVERFLOW:
       error = ER_IT_DATA_OVERFLOW;
+      if ((domain->type->id == DB_TYPE_VARBIT || domain->type->id == DB_TYPE_VARCHAR)
+	  && domain->codeset == INTL_CODESET_LOB)
+	{
+	  er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 1, "LOB INTERNAL");
+	  break;
+	}
       er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
       break;
-
     case DOMAIN_ERROR:
       assert (false);		/* is impossible */
       break;
-
     default:
       assert (false);		/* is impossible */
       break;
@@ -11814,22 +11844,20 @@ int
 tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
 			   DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
-  char str[64] = { 0 };
+  char str[64] = {
+    0
+  };
   const char *p = NULL;
   const char *strp = NULL, *stre = NULL;
   size_t n_digits = 0;
   DB_BIGINT bigint = 0;
   bool round = false;
   bool truncated = false;
-
   assert (start != NULL && end != NULL && num_value != NULL && data_stat != NULL);
-
   strp = start;
   stre = end;
-
   /* count number of significant digits */
   p = strp;
-
   while (p != stre && char_isdigit (*p))
     {
       p++;
@@ -11846,7 +11874,6 @@ tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET code
   if (p != stre && *p == '.')
     {
       p++;
-
       if (p != stre)
 	{
 	  if (char_isdigit (*p))
@@ -11868,7 +11895,6 @@ tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET code
 
   /* skip trailing whitespace characters */
   p = (char *) intl_skip_spaces (p, stre, codeset);
-
   if (p != stre)
     {
       /* trailing characters in string */
@@ -11906,7 +11932,6 @@ tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET code
 
       errno = 0;
       bigint = strtoll (strp, NULL, 10);
-
       if (errno == ERANGE)
 	{
 	  *data_stat = DATA_STATUS_TRUNCATED;
@@ -11945,7 +11970,6 @@ tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET code
     }
 
   *num_value = bigint;
-
   return NO_ERROR;
 }
 
@@ -11961,8 +11985,8 @@ tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET code
  *                    DATA_STATUS_TRUNCATED
  */
 int
-tp_hex_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
-		  DB_DATA_STATUS * data_stat)
+tp_hex_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
+		  DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
 #define HIGHEST_4BITS_OF_UBI 0xF000000000000000
 
@@ -11972,11 +11996,8 @@ tp_hex_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool
   unsigned int tmp_ui = 0;
   bool round = false;
   bool truncated = false;
-
   assert (start != NULL && end != NULL && num_value != NULL && data_stat != NULL);
-
   *data_stat = DATA_STATUS_OK;
-
   /* convert */
   p = start;
   while (p != end)
@@ -12010,9 +12031,7 @@ tp_hex_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool
 		    }
 
 		  /* check the rest chars */
-		  while (++p != end && char_isxdigit (*p))
-		    ;
-
+		  while (++p != end && char_isxdigit (*p));
 		  /* skip trailing whitespace characters */
 		  p = (char *) intl_skip_spaces (p, end, codeset);
 		  if (p != end)
@@ -12055,19 +12074,15 @@ tp_hex_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool
 	}
 
       ubi = ubi << 4;
-
       /* never overflow */
       ubi += tmp_ui;
-
       ++p;
     }
 
   *num_value = tp_ubi_to_bi_with_args (ubi, is_negative, truncated, round, data_stat);
-
 end:
 
   return error;
-
 #undef HIGHEST_4BITS_OF_UBI
 }
 
@@ -12099,11 +12114,8 @@ tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codese
   const char *exp_start = NULL, *exp_end = NULL;
   bool is_exp_negative = false;
   int exp = 0;			/* at most 308 */
-
   assert (start != NULL && end != NULL && num_value != NULL && data_stat != NULL);
-
   *data_stat = DATA_STATUS_OK;
-
   base_int_start = start;
   p = base_int_start;
   while (p != end && char_isdigit (*p))
@@ -12112,7 +12124,6 @@ tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codese
     }
 
   base_int_end = p;
-
   /* no int part */
   if (base_int_start == base_int_end)
     {
@@ -12132,7 +12143,6 @@ tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codese
 	    }
 
 	  base_float_end = p;
-
 	  /* no float part */
 	  if (base_float_start == base_float_end)
 	    {
@@ -12171,7 +12181,6 @@ tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codese
 	    }
 
 	  exp_end = p;
-
 	  /* no exp part */
 	  if (exp_start == exp_end)
 	    {
@@ -12212,7 +12221,6 @@ tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codese
   if (base_int_start != NULL)
     {
       assert (base_int_end != NULL);
-
       if (exp < 0)
 	{
 	  if (base_int_end - base_int_start >= -exp)
@@ -12236,7 +12244,6 @@ tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codese
 
 	  /* never overflow */
 	  ubi = ubi + *p - '0';
-
 	  ++p;
 	}
 
@@ -12255,7 +12262,6 @@ tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codese
 	  if (base_float_start != NULL)
 	    {
 	      assert (base_float_end != NULL);
-
 	      p = base_float_start;
 	      while (p != base_float_end && exp > 0)
 		{
@@ -12267,7 +12273,6 @@ tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codese
 
 		  /* never overflow */
 		  ubi = ubi + *p - '0';
-
 		  ++p;
 		  --exp;
 		}
@@ -12302,7 +12307,6 @@ tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codese
 
 
   *num_value = tp_ubi_to_bi_with_args (ubi, is_negative, truncated, round, data_stat);
-
 end:
 
   return error;
@@ -12326,9 +12330,7 @@ tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool truncated, bool round
 #define HIGHEST_BIT_OF_UINT64 0x8000000000000000
 
   DB_BIGINT bigint = 0;
-
   assert (data_stat != NULL);
-
   if (!truncated)
     {
       if (is_negative)
@@ -12401,7 +12403,6 @@ tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool truncated, bool round
     }
 
   return bigint;
-
 #undef HIGHEST_BIT_OF_UINT64
 }
 
@@ -12418,13 +12419,10 @@ tp_ubi_times_ten (UINT64 ubi, bool * truncated)
 #define HIGHEST_3BITS_OF_UBI 0xE000000000000000
 
   UINT64 tmp_ubi = 0;
-
   assert (truncated != NULL);
-
   if (ubi & HIGHEST_3BITS_OF_UBI)
     {
       *truncated = true;
-
       goto end;
     }
 
@@ -12434,13 +12432,11 @@ tp_ubi_times_ten (UINT64 ubi, bool * truncated)
   if (ubi < tmp_ubi)
     {
       *truncated = true;
-
       goto end;
     }
 
 end:
 
   return ubi;
-
 #undef HIGHEST_3BITS_OF_UBI
 }

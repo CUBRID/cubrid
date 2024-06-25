@@ -4072,6 +4072,12 @@ pt_show_priv (PT_PRIV_TYPE t)
 const char *
 pt_show_type_enum (PT_TYPE_ENUM t)
 {
+  /* for LOB INTERNAL type */
+  if (t == PT_TYPE_LOB_INTERNAL)
+    {
+      return "lob internal";
+    }
+
   if (t <= PT_TYPE_NONE || t >= PT_TYPE_MAX)
     {
       return "unknown data type";

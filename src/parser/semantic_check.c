@@ -1300,6 +1300,11 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
+  if (node->info.expr.cast_type->info.data_type.units == INTL_CODESET_LOB)
+    {
+      cast_type = PT_TYPE_LOB_INTERNAL;
+    }
+
   switch (cast_is_valid)
     {
     case PT_CAST_VALID:

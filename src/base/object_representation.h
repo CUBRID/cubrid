@@ -86,7 +86,7 @@ struct setobj;
 #define OR_CHECK_DOUBLE_OVERFLOW(i)        ((i) > DBL_MAX || (-(i)) > DBL_MAX)
 
 /* simple macro to calculate minimum bytes to contain given bits */
-#define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)
+#define BITS_TO_BYTES(bit_cnt)		((((long long) (bit_cnt)) + 7) / 8)
 
 /* PACK/UNPACK MACROS */
 

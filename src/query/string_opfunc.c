@@ -17867,16 +17867,18 @@ lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lo
 	}
       if (max_length < 0 || max_length > DB_MAX_STRING_LENGTH)
 	{
-	  max_length = DB_MAX_STRING_LENGTH;
+	  max_length = DB_MAX_BIT_LENGTH;
 	}
       if (lob_type == DB_TYPE_BLOB)
 	{
 	  /* convert max_length, which is a number of bits, to number of bytes to read */
 	  max_length = QSTR_NUM_BYTES (max_length);
 	}
-      if (max_length > size)
+
+      if (size > max_length)
 	{
-	  max_length = (int) size;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, "LOB INTERNAL");
+	  return ER_IT_DATA_OVERFLOW;
 	}
 
       cs = (char *) db_private_alloc (NULL, max_length + 1);

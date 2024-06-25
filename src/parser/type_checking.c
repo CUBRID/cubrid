@@ -12646,7 +12646,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     }
 
   typ = TP_DOMAIN_TYPE (domain);
-  rTyp = pt_db_to_type_enum (typ);
+  if (domain->codeset == INTL_CODESET_LOB)
+    {
+      rTyp = PT_TYPE_LOB_INTERNAL;
+    }
+  else
+    {
+      rTyp = pt_db_to_type_enum (typ);
+    }
 
   /* do not coerce arg1, arg2 for STRCAT */
   if (op == PT_PLUS && PT_IS_STRING_TYPE (rTyp))
@@ -16969,6 +16976,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  if (er_errid () != NO_ERROR)
 	    {
 	      PT_ERRORc (parser, o1, er_msg ());
+	      if (domain && domain->codeset == INTL_CODESET_LOB)
+		{
+		  return 0;
+		}
 	    }
 	  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 		       pt_short_print (parser, o1), pt_show_type_enum (rTyp));
