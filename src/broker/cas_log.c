@@ -66,7 +66,7 @@ typedef int mode_t;
 #define SQL_LOG_BUFFER_SIZE 163840
 #define ACCESS_LOG_IS_DENIED_TYPE(T)  ((T)==ACL_REJECTED)
 
-#define CAS_LOG_NOT_HIDE_PW    0
+#define CAS_LOG_VISIBLE_PW     0
 #define CAS_LOG_HIDE_PW        1
 
 static const char *get_access_log_type_string (ACCESS_LOG_TYPE type);
@@ -710,7 +710,7 @@ cas_log_compile_begin_write_query_string (char *query, int size, HIDE_PWD_INFO_P
       saved_temp_stmt_fpos = cas_ftell (log_fp);
     }
 
-  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_NOT_HIDE_PW);
+  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
 }
 
 void
@@ -744,7 +744,7 @@ cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_I
       saved_temp_stmt_fpos = cas_ftell (log_fp);
     }
 
-  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_NOT_HIDE_PW);
+  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
 }
 
 void
