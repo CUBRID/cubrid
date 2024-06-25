@@ -221,9 +221,13 @@ static DKNSECTS disk_Temp_max_sects = -2;
 typedef UINT64 DISK_STAB_UNIT;
 #define DISK_STAB_UNIT_SIZE_OF sizeof (DISK_STAB_UNIT)
 
-/* The maximum size of the variable field in the disk volume header. */
-#define DISK_VOLUME_MAX_PATH_LENGTH DB_MAX_PATH_LENGTH
-#define DISK_VOLUME_REMARKS_MAX_LENGTH (DB_PAGESIZE - (offsetof(DISK_VOLUME_HEADER, var_fields) + DISK_VOLUME_MAX_PATH_LENGTH + DISK_VOLUME_MAX_PATH_LENGTH))
+/*
+ * Previously, when a user entered excessively long remarks, the remarks would be trimmed to avoid exceeding the page size. 
+ * This trimming could occur at unwanted positions, potentially removing important content. 
+ * To address this, we have removed the trimming functionality and defined a maximum length for remarks. 
+ * Now, remarks longer than this defined maximum length will be restricted from being entered. 
+ */
+#define DISK_VOLUME_REMARKS_MAX_LENGTH (DB_PAGESIZE - (offsetof(DISK_VOLUME_HEADER, var_fields) + DB_MAX_PATH_LENGTH + DB_MAX_PATH_LENGTH))
 
 /* Disk allocation table cursor. Used to iterate through table bits. */
 typedef struct disk_stab_cursor DISK_STAB_CURSOR;
@@ -5193,13 +5197,15 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
   int length_to_move = 0;
   int name_length_diff = 0;
 
+  assert (vhdr != NULL);
+
   /* Contains null characters ( 1 byte ) */
   const int new_vol_fullname_size = (int) strlen (vol_fullname) + 1;
   const int old_vol_fullname_size = disk_vhdr_get_vol_fullname_size (vhdr);
   const int next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
   const int remarks_size = disk_vhdr_get_vol_remarks_size (vhdr);
 
-  assert (new_vol_fullname_size <= DISK_VOLUME_MAX_PATH_LENGTH);
+  assert (new_vol_fullname_size <= DB_MAX_PATH_LENGTH);
 
   /* Difference in length between new name and old name */
   name_length_diff = (new_vol_fullname_size - old_vol_fullname_size);
@@ -5233,6 +5239,9 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
   int ret = NO_ERROR;
   int new_next_vol_fullname_size = 0;
   int name_length_diff = 0;
+
+  assert (vhdr != NULL);
+
   const int old_next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
 
   if (next_vol_fullname == NULL)
@@ -5244,7 +5253,7 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
     {
       new_next_vol_fullname_size = (int) strlen (next_vol_fullname) + 1;
 
-      assert (new_next_vol_fullname_size <= DISK_VOLUME_MAX_PATH_LENGTH);
+      assert (new_next_vol_fullname_size <= DB_MAX_PATH_LENGTH);
     }
 
 
@@ -5279,6 +5288,7 @@ disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks)
   int ret = NO_ERROR;
   const int remarks_size = (int) (strlen (vol_remarks) + 1);
 
+  assert (vhdr != NULL);
   assert (remarks_size <= DISK_VOLUME_REMARKS_MAX_LENGTH);
 
   if (vol_remarks != NULL)
