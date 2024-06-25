@@ -1863,7 +1863,7 @@ check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
     }
 
   /* Make sure there are two things on the aptr list. */
-  if ((hashjoin_xasl->type != HASHJOIN_PROC) && (hashjoin_xasl->aptr_list == NULL) /* outer */ 
+  if ((hashjoin_xasl->type != HASHJOIN_PROC) && (hashjoin_xasl->aptr_list == NULL)	/* outer */
       && (hashjoin_xasl->aptr_list->next == NULL) /* inner */ )
     {
       goto exit_on_error;

@@ -6597,14 +6597,14 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
    * coerce_domains
    */
   {
-  hashjoin_proc->coerce_domains = NULL;
+    hashjoin_proc->coerce_domains = NULL;
     hashjoin_coerce_domains = NULL;
 
     need_coerce_domains = false;
     need_compare_dbvalues = false;
 
-  for (domain_index = 0; domain_index < value_count; domain_index++)
-    {
+    for (domain_index = 0; domain_index < value_count; domain_index++)
+      {
 	hashjoin_outer_domains[domain_index] = outer_domains[hashjoin_outer_value_indexes[domain_index]];
 	hashjoin_inner_domains[domain_index] = inner_domains[hashjoin_inner_value_indexes[domain_index]];
 
@@ -6612,7 +6612,7 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
 	inner_type = TP_DOMAIN_TYPE (hashjoin_inner_domains[domain_index]);
 
 	if (outer_type == inner_type)
-	{
+	  {
 	    outer_precision = hashjoin_outer_domains[domain_index]->precision;
 	    outer_scale = hashjoin_outer_domains[domain_index]->scale;
 
@@ -6620,55 +6620,55 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
 	    inner_scale = hashjoin_inner_domains[domain_index]->scale;
 
 	    if ((outer_precision == inner_precision) && (outer_scale == inner_scale))
-	    {
+	      {
 		if (hashjoin_coerce_domains != NULL)
-		{
+		  {
 		    hashjoin_coerce_domains[domain_index] = NULL;
-		}
+		  }
 
 		switch (outer_type)
-		{
-		case DB_TYPE_SMALLINT:
-		case DB_TYPE_INTEGER:
-		case DB_TYPE_BIGINT:
-		case DB_TYPE_FLOAT:
-		case DB_TYPE_DOUBLE:
-		case DB_TYPE_NUMERIC:
-		case DB_TYPE_TIME:
-		case DB_TYPE_TIMESTAMP:
-		case DB_TYPE_TIMESTAMPLTZ:
-		case DB_TYPE_TIMESTAMPTZ:
-		case DB_TYPE_DATE:
-		case DB_TYPE_DATETIME:
-		case DB_TYPE_DATETIMELTZ:
-		case DB_TYPE_DATETIMETZ:
-		case DB_TYPE_OID:
-		case DB_TYPE_ENUMERATION:
-		case DB_TYPE_BIT:
-		case DB_TYPE_VARBIT:
-		  break;
+		  {
+		  case DB_TYPE_SMALLINT:
+		  case DB_TYPE_INTEGER:
+		  case DB_TYPE_BIGINT:
+		  case DB_TYPE_FLOAT:
+		  case DB_TYPE_DOUBLE:
+		  case DB_TYPE_NUMERIC:
+		  case DB_TYPE_TIME:
+		  case DB_TYPE_TIMESTAMP:
+		  case DB_TYPE_TIMESTAMPLTZ:
+		  case DB_TYPE_TIMESTAMPTZ:
+		  case DB_TYPE_DATE:
+		  case DB_TYPE_DATETIME:
+		  case DB_TYPE_DATETIMELTZ:
+		  case DB_TYPE_DATETIMETZ:
+		  case DB_TYPE_OID:
+		  case DB_TYPE_ENUMERATION:
+		  case DB_TYPE_BIT:
+		  case DB_TYPE_VARBIT:
+		    break;
 
-		case DB_TYPE_MONETARY:
-		case DB_TYPE_CHAR:
-		case DB_TYPE_VARCHAR:
-		case DB_TYPE_NCHAR:
-		case DB_TYPE_VARNCHAR:
-		case DB_TYPE_SET:
-		case DB_TYPE_MULTISET:
-		case DB_TYPE_SEQUENCE:
-		case DB_TYPE_VOBJ:
-		case DB_TYPE_JSON:
-		default:
+		  case DB_TYPE_MONETARY:
+		  case DB_TYPE_CHAR:
+		  case DB_TYPE_VARCHAR:
+		  case DB_TYPE_NCHAR:
+		  case DB_TYPE_VARNCHAR:
+		  case DB_TYPE_SET:
+		  case DB_TYPE_MULTISET:
+		  case DB_TYPE_SEQUENCE:
+		  case DB_TYPE_VOBJ:
+		  case DB_TYPE_JSON:
+		  default:
 		    need_compare_dbvalues = true;
-		  break;
-		}
-	    }
-	  else
-	    {
+		    break;
+		  }
+	      }
+	    else
+	      {
 		/* outer_type == inner_type && (outer_precision != inner_precision || outer_scale != inner_scale) */
 
 		if (need_coerce_domains == true)
-		{
+		  {
 		    assert (hashjoin_coerce_domains != NULL);
 		  }
 		else
@@ -6676,75 +6676,75 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
 		    need_coerce_domains = true;
 		    need_compare_dbvalues = true;
 
-		  hashjoin_proc->coerce_domains =
-		    (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
-		  if (hashjoin_proc->coerce_domains == NULL)
-		    {
-		      error = ER_OUT_OF_VIRTUAL_MEMORY;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
-		      goto exit_on_error;
-		    }
+		    hashjoin_proc->coerce_domains =
+		      (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
+		    if (hashjoin_proc->coerce_domains == NULL)
+		      {
+			error = ER_OUT_OF_VIRTUAL_MEMORY;
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
+			goto exit_on_error;
+		      }
 
 		    hashjoin_coerce_domains = hashjoin_proc->coerce_domains;
 
-		  for (skip_index = 0; skip_index < domain_index; skip_index++)
-		    {
+		    for (skip_index = 0; skip_index < domain_index; skip_index++)
+		      {
 			hashjoin_coerce_domains[skip_index] = NULL;
-		    }
-		}
+		      }
+		  }
 
 		if (outer_type == DB_TYPE_NUMERIC)
-		{
+		  {
 		    common_scale = MAX (outer_scale, inner_scale);
 
 		    outer_integral = outer_precision - outer_scale;
 		    inner_integral = inner_precision - inner_scale;
 
 		    common_precision = MAX (outer_integral, inner_integral) + common_scale;
-		  common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
+		    common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
 
 		    if (common_precision == outer_precision && common_scale == outer_scale)
-		    {
+		      {
 			hashjoin_coerce_domains[domain_index] = hashjoin_outer_domains[domain_index];
-		    }
+		      }
 		    else if (common_precision == inner_precision && common_scale == inner_scale)
-		    {
+		      {
 			hashjoin_coerce_domains[domain_index] = hashjoin_inner_domains[domain_index];
-		    }
-		  else
-		    {
+		      }
+		    else
+		      {
 			hashjoin_coerce_domains[domain_index] =
 			  tp_domain_copy (hashjoin_outer_domains[domain_index], false);
 			if (hashjoin_coerce_domains[domain_index] == NULL)
-			{
-			  goto exit_on_error;
-			}
+			  {
+			    goto exit_on_error;
+			  }
 
 			hashjoin_coerce_domains[domain_index]->precision = common_precision;
 			hashjoin_coerce_domains[domain_index]->scale = common_scale;
-		    }
-		}
-	      else
-		{
+		      }
+		  }
+		else
+		  {
 		    common_precision = MAX (outer_precision, inner_precision);
 		    if (common_precision == outer_precision)
-		    {
+		      {
 			hashjoin_coerce_domains[domain_index] = hashjoin_outer_domains[domain_index];
-		    }
-		  else
-		    {
+		      }
+		    else
+		      {
 			assert (common_precision == inner_precision);
 			hashjoin_coerce_domains[domain_index] = hashjoin_inner_domains[domain_index];
-		    }
-		}
-	    }
-	}
-      else
-	{
+		      }
+		  }
+	      }
+	  }
+	else
+	  {
 	    /* outer_type != inner_type */
 
 	    if (need_coerce_domains == true)
-	    {
+	      {
 		assert (hashjoin_coerce_domains != NULL);
 	      }
 	    else
@@ -6752,41 +6752,41 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
 		need_coerce_domains = true;
 		need_compare_dbvalues = true;
 
-	      hashjoin_proc->coerce_domains =
-		(TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
-	      if (hashjoin_proc->coerce_domains == NULL)
-		{
-		  error = ER_OUT_OF_VIRTUAL_MEMORY;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
-		  goto exit_on_error;
-		}
+		hashjoin_proc->coerce_domains =
+		  (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
+		if (hashjoin_proc->coerce_domains == NULL)
+		  {
+		    error = ER_OUT_OF_VIRTUAL_MEMORY;
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
+		    goto exit_on_error;
+		  }
 
 		hashjoin_coerce_domains = hashjoin_proc->coerce_domains;
 
-	      for (skip_index = 0; skip_index < domain_index; skip_index++)
-		{
+		for (skip_index = 0; skip_index < domain_index; skip_index++)
+		  {
 		    hashjoin_coerce_domains[skip_index] = NULL;
-		}
-	    }
+		  }
+	      }
 
 	    if (tp_more_general_type (outer_type, inner_type) > 0)
-	    {
+	      {
 		hashjoin_coerce_domains[domain_index] = hashjoin_outer_domains[domain_index];
-	    }
-	  else
-	    {
+	      }
+	    else
+	      {
 		hashjoin_coerce_domains[domain_index] = hashjoin_inner_domains[domain_index];
-	    }
-	}
-    }
+	      }
+	  }
+      }
 
     assert ((need_coerce_domains == false) || (hashjoin_coerce_domains != NULL));
 
 #if !defined(NDEBUG)
     if (need_coerce_domains == true)
-    {
+      {
 	assert (need_compare_dbvalues == true);
-    }
+      }
 #endif
   }
 
@@ -6920,9 +6920,9 @@ qexec_hash_join_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 
       hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
       if (hash_scan->memory.hash_table == NULL)
-		    {
-		      goto exit_on_error;
-		    }
+	{
+	  goto exit_on_error;
+	}
 
       hash_scan->memory.curr_hash_entry = NULL;
     }
@@ -6944,9 +6944,9 @@ qexec_hash_join_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 	}
 
       hash_scan->memory.curr_hash_entry = NULL;
-		}
-	      else
-		{
+    }
+  else
+    {
 #if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_BUILD)
       fprintf (stdout, "\n[DEBUG] Hash Join Method: File\n");
       fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
@@ -6958,9 +6958,9 @@ qexec_hash_join_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 
       hash_scan->file.hash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
       if (hash_scan->file.hash_table == NULL)
-		    {
-		      goto exit_on_error;
-		    }
+	{
+	  goto exit_on_error;
+	}
 
       if (fhs_create (thread_p, hash_scan->file.hash_table, list_id->tuple_cnt) == NULL)
 	{
@@ -7007,7 +7007,7 @@ qexec_hash_join_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
     }
 
   if (hash_scan->temp_new_key != NULL)
-		{
+    {
       qdata_free_hscan_key (thread_p, hash_scan->temp_new_key, hash_scan->temp_new_key->val_count);
       hash_scan->temp_new_key = NULL;
     }
@@ -7026,7 +7026,7 @@ qexec_hash_join_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
 
 	hash_scan->hash_list_scan_type == HASH_METH_NOT_USE;
 
-		      break;
+	break;
       }
 
     case HASH_METH_HASH_FILE:
@@ -7039,13 +7039,13 @@ qexec_hash_join_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
 
 	hash_scan->hash_list_scan_type == HASH_METH_NOT_USE;
 
-		      break;
+	break;
       }
 
     case HASH_METH_NOT_USE:
     default:
       /* nothing to do */
-		      break;
+      break;
     }
 }
 
@@ -7089,17 +7089,17 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
   if (outer_list_id->type_list.type_cnt == 0)
     {
       error = qexec_start_mainblock_iterations (thread_p, outer_xasl, xasl_state);
-			if (error != NO_ERROR)
-			  {
+      if (error != NO_ERROR)
+	{
 	  GOTO_EXIT_ON_ERROR;
 	}
-			  }
+    }
 
   if (inner_list_id->type_list.type_cnt == 0)
-			  {
+    {
       error = qexec_start_mainblock_iterations (thread_p, inner_xasl, xasl_state);
-			    if (error != NO_ERROR)
-			      {
+      if (error != NO_ERROR)
+	{
 	  GOTO_EXIT_ON_ERROR;
 	}
     }
@@ -7107,7 +7107,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
   if (outer_list_id->tuple_cnt == 0)
     {
       goto exit_on_end;
-			      }
+    }
 
   if ((inner_list_id->tuple_cnt == 0) && (is_outer_join == false))
     {
@@ -7161,7 +7161,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
       {
 	free_and_init (type_list.domp);
       }
-		}
+  }
 
   if (inner_list_id->tuple_cnt == 0 && is_outer_join == true)
     {
@@ -7175,8 +7175,8 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
     }
 
   error = qexec_hash_join_init (thread_p, hashjoin_proc);
-      if (error != NO_ERROR)
-	{
+  if (error != NO_ERROR)
+    {
       GOTO_EXIT_ON_ERROR;
     }
 
@@ -7274,9 +7274,9 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
    */
   error = qfile_open_list_scan (build_list_id, &build_list_scan_id);
   if (error != NO_ERROR)
-	  {
+    {
       GOTO_EXIT_ON_ERROR;
-	  }
+    }
 
   if (on_trace)
     {
@@ -7406,15 +7406,15 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
    * build
    */
   error = qfile_open_list_scan (build_list_id, &build_list_scan_id);
-      if (error != NO_ERROR)
-	{
+  if (error != NO_ERROR)
+    {
       GOTO_EXIT_ON_ERROR;
     }
 
   if (on_trace)
-	    {
+    {
       tsc_getticks (&start_tick);
-	    }
+    }
 
   error = qexec_hash_join_build (thread_p, hashjoin_proc, &build_list_scan_id);
 
@@ -7445,10 +7445,10 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
   error = qexec_open_scan (thread_p, probe_spec, probe_val_list, &(xasl_state->vd), false,
 			   probe_spec->fixed_scan, probe_spec->grouped_scan, true, &(probe_spec->s_id),
 			   xasl_state->query_id, S_SELECT, false, NULL);
-      if (error != NO_ERROR)
-	{
+  if (error != NO_ERROR)
+    {
       GOTO_EXIT_ON_ERROR;
-	}
+    }
 
   if (on_trace)
     {
@@ -7556,8 +7556,8 @@ qexec_hash_outer_join_fill_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       error = qexec_merge_tuple_add_list (thread_p, list_id, &tuple_record, NULL, merge_info, &result_tuple_record);
       if (error != NO_ERROR)
 	{
-	break;
-      }
+	  break;
+	}
     }
 
   if (on_trace)
@@ -7595,8 +7595,8 @@ exit_on_error:
 	}
     }
 
-	    goto exit_on_end;
-	  }
+  goto exit_on_end;
+}
 
 static int
 qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_proc, QFILE_LIST_SCAN_ID * list_scan_id)
@@ -7617,8 +7617,8 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   if ((thread_p == NULL) || (hashjoin_proc == NULL) || (list_scan_id == NULL))
     {
       assert (false);
-	    goto exit_on_error;
-	  }
+      goto exit_on_error;
+    }
 
   if ((hashjoin_proc->build == NULL) || (hashjoin_proc->probe == NULL))
     {
@@ -7652,18 +7652,18 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	  if (error < 0)
 	    {
 	      goto exit_on_error;
-	  }
-	else
-	  {
+	    }
+	  else
+	    {
 	      error = NO_ERROR;
 
 	      /* Give up and read the next tuple. */
 	      continue;
-	  }
+	    }
 	}
 
       if (need_compare_dbvalues == true)
-	  {
+	{
 	  hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
 	}
       else
@@ -7673,15 +7673,15 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
       error = qexec_hash_join_build_key (thread_p, hash_scan, &tuple_record, list_scan_id);
       if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
+	{
+	  goto exit_on_error;
+	}
     }
 
   if (qp_scan == S_ERROR)
     {
       goto exit_on_error;
-	    }
+    }
 
   assert (qp_scan == S_END);
 
@@ -7713,14 +7713,14 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	  case HASH_METH_HASH_FILE:
 	    {
 	      fhs_dump (thread_p, hash_scan->file.hash_table);
-	break;
-      }
+	      break;
+	    }
 
-    case HASH_METH_NOT_USE:
-    default:
+	  case HASH_METH_NOT_USE:
+	  default:
 	    /* nothing to do */
 	    break;
-    }
+	  }
       }
   }
 #endif
@@ -8281,7 +8281,7 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 	  if (value_indexes[key_index] != value_index)
 	    {
 	      continue;
-    }
+	    }
 
 	  /* If any of the tuple values ​​are null, exit this routine and read the next tuple. */
 	  if (QFILE_GET_TUPLE_VALUE_FLAG (iterator.ptr) == V_UNBOUND)
@@ -8306,10 +8306,10 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 		  error =
 		    domains[key_index]->type->data_readval (&buf, &pre_coerce_value, domains[key_index], -1, false,
 							    NULL, 0);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+		  if (error != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
 
 		  domain_status =
 		    tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
@@ -8327,10 +8327,10 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 		  error =
 		    domains[key_index]->type->data_readval (&buf, key->values[key_index], domains[key_index], -1, false,
 							    NULL, 0);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+		  if (error != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
 		}
 
 	      if (compare_key != NULL)
@@ -8338,10 +8338,10 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 		  /* If any of the tuple values ​​are not equal, exit this routine and read the next tuple. */
 		  compare_result = tp_value_compare (key->values[key_index], compare_key->values[key_index], 0, 0);
 		  if (compare_result != DB_EQ)
-	{
+		    {
 		      /* Give up and read the next tuple. */
 		      goto exit_on_next;
-}
+		    }
 		}
 	    }
 	  else
@@ -8417,10 +8417,10 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 		      {
 			unsigned int size_prefix, net_size, size;
 			size_prefix = or_get_byte (&buf, &error);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+			if (error != NO_ERROR)
+			  {
+			    goto exit_on_error;
+			  }
 
 			if (size_prefix == OR_MAX_BYTE_UNSIGNED)
 			  {
@@ -8439,8 +8439,8 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 			    compare_size = OR_BYTE_SIZE;
 			  }
 			compare_size += BITS_TO_BYTES (size);
-	    break;
-	  }
+			break;
+		      }
 
 		    case DB_TYPE_MONETARY:
 		    case DB_TYPE_CHAR:
@@ -8452,11 +8452,11 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 		    case DB_TYPE_SEQUENCE:
 		    case DB_TYPE_VOBJ:
 		    case DB_TYPE_JSON:
-	default:
+		    default:
 		      assert (false);
 		      compare_size = key->tuples[key_index]->size;
-	  break;
-	}
+		      break;
+		    }
 
 		  assert (compare_size > 0);
 
@@ -8465,17 +8465,17 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 		    {
 		      /* Give up and read the next tuple. */
 		      goto exit_on_next;
-    }
+		    }
 		}
 	    }
 	}
 
       /* Skip the current tuple. */
       error = or_advance (&iterator, QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (iterator.ptr));
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
 
       /* When ptr reaches endptr, exit this routine. */
     }
@@ -8527,9 +8527,9 @@ qexec_hash_join_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 
 	if (mht_put_hls (hash_scan->memory.hash_table, (void *) &(hash_scan->curr_hash_key), (void *) hash_value) ==
 	    NULL)
-    {
-      goto exit_on_error;
-    }
+	  {
+	    goto exit_on_error;
+	  }
 
 	break;
       }
@@ -8540,18 +8540,18 @@ qexec_hash_join_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 
 	hash_value = qdata_alloc_hscan_value_OID (thread_p, list_scan_id);
 	if (hash_value == NULL)
-    {
-      goto exit_on_error;
-    }
+	  {
+	    goto exit_on_error;
+	  }
 
 	if (mht_put_hls (hash_scan->memory.hash_table, (void *) &(hash_scan->curr_hash_key), (void *) hash_value) ==
 	    NULL)
-    {
+	  {
 	    goto exit_on_error;
-    }
+	  }
 
-	  break;
-	}
+	break;
+      }
 
     case HASH_METH_HASH_FILE:
       {
@@ -8562,9 +8562,9 @@ qexec_hash_join_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 	SET_TFTID (tftid, list_scan_id->curr_vpid.volid, list_scan_id->curr_vpid.pageid, list_scan_id->curr_offset);
 
 	if (fhs_insert (thread_p, hash_scan->file.hash_table, (void *) &(hash_scan->curr_hash_key), &tftid) == NULL)
-    {
-      goto exit_on_error;
-    }
+	  {
+	    goto exit_on_error;
+	  }
 
 	break;
       }
@@ -8613,7 +8613,7 @@ qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 	assert (hash_scan->memory.hash_table != NULL);
 
 	if (tuple_record->tpl == NULL)
-    {
+	  {
 	    hash_value =
 	      (HASH_SCAN_VALUE *) mht_get_hls (hash_scan->memory.hash_table, (void *) &(hash_scan->curr_hash_key),
 					       (void **) &(hash_scan->memory.curr_hash_entry));
@@ -8633,7 +8633,7 @@ qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 
 	    /* The hash value was not found, so read the next tuple. */
 	    goto exit_on_end;
-    }
+	  }
 
 	tuple_record->tpl = ((HASH_SCAN_VALUE *) hash_scan->memory.curr_hash_entry->data)->tuple;
 	tuple_record->size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_record->tpl);
@@ -8716,8 +8716,8 @@ qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 	      tuple_record->size = 0;
 
 	      /* The hash value was not found, so read the next tuple. */
-      goto exit_on_end;
-    }
+	      goto exit_on_end;
+	    }
 
 	  case EH_ERROR_OCCURRED:
 	  default:
