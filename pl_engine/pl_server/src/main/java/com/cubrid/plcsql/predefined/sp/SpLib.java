@@ -131,6 +131,7 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     //
 
+    private static final String EMPTY_STRING = "";
     private static final int[] UNKNOWN_LINE_COLUMN = new int[] {-1, -1};
 
     public static int[] getPlcLineColumn(
@@ -598,6 +599,12 @@ public class SpLib {
     // is null
     @Operator(coercionScheme = CoercionScheme.ObjectOp)
     public static Boolean opIsNull(Object l) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+        }
+
         return (l == null);
     }
 
@@ -653,6 +660,12 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opNeg(Object l) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+        }
+
         if (l == null) {
             return null;
         }
@@ -687,6 +700,12 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opBitCompli(Object l) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+        }
+
         if (l == null) {
             return null;
         }
@@ -733,10 +752,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpEq(l, r);
     }
 
     public static Boolean opEqChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -811,6 +848,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -827,10 +873,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpNullSafeEq(l, r);
     }
 
     public static Boolean opNullSafeEqChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null) {
             return (r == null);
         } else if (r == null) {
@@ -917,6 +981,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null) {
             return (r == null);
         } else if (r == null) {
@@ -936,6 +1009,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpNeq(l, r);
     }
 
@@ -1014,6 +1096,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1031,10 +1122,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpLe(l, r);
     }
 
     public static Boolean opLeChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1109,6 +1218,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1124,10 +1242,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpGe(l, r);
     }
 
     public static Boolean opGeChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1202,6 +1338,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1217,10 +1362,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpLt(l, r);
     }
 
     public static Boolean opLtChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1295,6 +1458,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1311,10 +1483,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpGt(l, r);
     }
 
     public static Boolean opGtChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1389,6 +1579,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1408,6 +1607,18 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(String o, String lower, String upper) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+            if (EMPTY_STRING.equals(lower)) {
+                lower = null;
+            }
+            if (EMPTY_STRING.equals(upper)) {
+                upper = null;
+            }
+        }
+
         if (o == null || lower == null || upper == null) {
             return null;
         }
@@ -1415,6 +1626,18 @@ public class SpLib {
     }
 
     public static Boolean opBetweenChar(String o, String lower, String upper) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+            if (EMPTY_STRING.equals(lower)) {
+                lower = null;
+            }
+            if (EMPTY_STRING.equals(upper)) {
+                upper = null;
+            }
+        }
+
         if (o == null || lower == null || upper == null) {
             return null;
         }
@@ -1518,6 +1741,18 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Object o, Object lower, Object upper) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+            if (EMPTY_STRING.equals(lower)) {
+                lower = null;
+            }
+            if (EMPTY_STRING.equals(upper)) {
+                upper = null;
+            }
+        }
+
         if (o == null || lower == null || upper == null) {
             return null;
         }
@@ -1544,6 +1779,12 @@ public class SpLib {
     public static Boolean opInChar(String o, String... arr) {
         assert arr != null;
 
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+        }
+
         if (o == null) {
             return null;
         }
@@ -1551,6 +1792,12 @@ public class SpLib {
 
         boolean nullFound = false;
         for (String p : arr) {
+            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+                if (EMPTY_STRING.equals(p)) {
+                    p = null;
+                }
+            }
+
             if (p == null) {
                 nullFound = true;
             } else {
@@ -1650,11 +1897,23 @@ public class SpLib {
     public static Boolean opIn(Object o, Object... arr) {
         assert arr != null;
 
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+        }
+
         if (o == null) {
             return null;
         }
         boolean nullFound = false;
         for (Object p : arr) {
+            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+                if (EMPTY_STRING.equals(p)) {
+                    p = null;
+                }
+            }
+
             if (p == null) {
                 nullFound = true;
             } else {
@@ -1733,6 +1992,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opMult(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1830,6 +2098,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opDiv(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1873,6 +2150,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opDivInt(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1916,6 +2202,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opMod(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -2071,6 +2366,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opAdd(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -2263,6 +2567,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opSubtract(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -2273,6 +2586,15 @@ public class SpLib {
     // ||
     @Operator(coercionScheme = CoercionScheme.StringOp)
     public static String opConcat(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (l == null) {
+                l = EMPTY_STRING;
+            }
+            if (r == null) {
+                r = EMPTY_STRING;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -3449,11 +3771,23 @@ public class SpLib {
     private static Boolean commonOpIn(Object o, Object... arr) {
         assert arr != null;
 
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+        }
+
         if (o == null) {
             return null;
         }
         boolean nullFound = false;
         for (Object p : arr) {
+            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+                if (EMPTY_STRING.equals(p)) {
+                    p = null;
+                }
+            }
+
             if (p == null) {
                 nullFound = true;
             } else {
