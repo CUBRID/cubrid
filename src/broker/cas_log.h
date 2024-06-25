@@ -64,7 +64,10 @@ extern void cas_log_write_client_ip (const unsigned char *ip_addr);
 extern void cas_log_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 extern void cas_log_open_and_write (char *br_name, unsigned int seq_num, bool unit_start, const char *fmt, ...);
 extern CAS_LOG_FD_STATUS cas_log_get_fd_status (void);
-
+extern void cas_log_compile_begin_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
+extern void cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
+extern void cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
+extern void cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 
 #define ARG_FILE_LINE   __FILE__, __LINE__
 #if defined (NDEBUG)
