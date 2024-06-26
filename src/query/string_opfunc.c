@@ -1153,7 +1153,8 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 		  /* long long type casting is needed
 		     becasue precision would be overflown as the result of plus op. */
 		  result_domain_length =
-		    MIN (DB_MAX_BIT_LENGTH, (long long)DB_VALUE_PRECISION (string1) + (long long)DB_VALUE_PRECISION (string2));
+		    MIN (DB_MAX_BIT_LENGTH,
+			 (long long) DB_VALUE_PRECISION (string1) + (long long) DB_VALUE_PRECISION (string2));
 		}
 
 	      qstr_make_typed_string (r_type, result, result_domain_length, (char *) r, r_length,
