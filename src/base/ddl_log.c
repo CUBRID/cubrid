@@ -797,7 +797,14 @@ logddl_write ()
     }
 
   dbname = db_get_database_name ();
-  logddl_set_db_name (dbname);
+  if (dbname)
+    {
+      logddl_set_db_name (dbname);
+    }
+  else
+    {
+      logddl_set_db_name ("");
+    }
 
   user_name = db_get_user_name ();
   logddl_set_user_name (user_name);
@@ -869,7 +876,14 @@ logddl_write_tran_str (const char *fmt, ...)
     }
 
   dbname = db_get_database_name ();
-  logddl_set_db_name (dbname);
+  if (dbname)
+    {
+      logddl_set_db_name (dbname);
+    }
+  else
+    {
+      logddl_set_db_name ("");
+    }
 
   user_name = db_get_user_name ();
   logddl_set_user_name (user_name);
@@ -985,7 +999,14 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
     }
 
   dbname = db_get_database_name ();
-  logddl_set_db_name (dbname);
+  if (dbname)
+    {
+      logddl_set_db_name (dbname);
+    }
+  else
+    {
+      logddl_set_db_name ("");
+    }
 
   user_name = db_get_user_name ();
   logddl_set_user_name (user_name);
