@@ -708,9 +708,8 @@ cas_log_compile_begin_write_query_string (char *query, int size, HIDE_PWD_INFO_P
   if (log_fp != NULL && query != NULL)
     {
       saved_temp_stmt_fpos = cas_ftell (log_fp);
+      cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
     }
-
-  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
 }
 
 void
@@ -723,10 +722,13 @@ cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR
 
   if (log_fp != NULL && query != NULL)
     {
-      saved_temp_stmt_fpos = cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
+      /* If password exists in query */
+      if (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->used > 0)
+	{
+	  cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
+	  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
+	}
     }
-
-  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
 
   saved_temp_stmt_fpos = 0;
 }
@@ -742,9 +744,8 @@ cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_I
   if (log_fp != NULL && query != NULL)
     {
       saved_temp_stmt_fpos = cas_ftell (log_fp);
+      cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
     }
-
-  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
 }
 
 void
@@ -757,10 +758,13 @@ cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INF
 
   if (log_fp != NULL && query != NULL)
     {
-      saved_temp_stmt_fpos = cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
+      /* If password exists in query */
+      if (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->used > 0)
+	{
+	  cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
+	  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
+	}
     }
-
-  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
 
   saved_temp_stmt_fpos = 0;
 }
@@ -787,7 +791,6 @@ static void
 cas_log_write_query_string_internal (char *query, int size, bool newline, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
 				     bool ishidepw)
 {
-
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
       cas_log_open (shm_appl->broker_name);
