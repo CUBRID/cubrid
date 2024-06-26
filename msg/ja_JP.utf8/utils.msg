@@ -816,6 +816,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 出力ファイル「%1$s」が開けません。\n
+16 不明なクラス "%1$s"\n
 60 \
 diagdb: データベース情報をダンプ\n\
 使い方: %1$s diagdb [オプション] <データベース名>\n\
