@@ -526,7 +526,7 @@ extern "C"
 #define DB_MAX_STRING_LENGTH	0x3fffffff
 
 /* This constant defines the maximum length of a bit string that can be used as the value of an attribute. */
-#define DB_MAX_BIT_LENGTH 0x7ffffff8
+#define DB_MAX_BIT_LENGTH 0x7fffffff
 
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 38
