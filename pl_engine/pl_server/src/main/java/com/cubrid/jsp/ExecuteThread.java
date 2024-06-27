@@ -320,7 +320,6 @@ public class ExecuteThread extends Thread {
         StoredProcedure procedure = makeStoredProcedure(unpacker);
 
         Value result = procedure.invoke();
-        // popUser();
 
         /* send results */
         sendResult(result, procedure);
@@ -445,8 +444,6 @@ public class ExecuteThread extends Thread {
 
         boolean transactionControl = unpacker.unpackBool();
         getCurrentContext().setTransactionControl(transactionControl);
-
-        // pushUser(authUser);
 
         storedProcedure = new StoredProcedure(methodSig, lang, authUser, methodArgs, returnType);
         return storedProcedure;
