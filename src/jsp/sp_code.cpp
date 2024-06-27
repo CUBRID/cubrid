@@ -23,6 +23,7 @@
 #include "sp_code.hpp"
 
 #include <unordered_map>
+#include <string>
 
 #include "dbtype.h"
 #include "heap_file.h"

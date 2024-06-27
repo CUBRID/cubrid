@@ -20,8 +20,8 @@
 // sp_code.hpp
 //
 
-#ifndef _METHOD_QUERY_CODE_HPP_
-#define _METHOD_QUERY_CODE_HPP_
+#ifndef _SP_CODE_HPP_
+#define _SP_CODE_HPP_
 
 #ident "$Id$"
 
@@ -52,4 +52,4 @@ enum SP_CODE_ATTRIBUTES
 };
 
 int sp_get_code_attr (THREAD_ENTRY *thread_p, const std::string &attr_name, const OID *sp_oidp, DB_VALUE *result);
-#endif				/* _METHOD_QUERY_CODE_HPP_ */
+#endif				/* _SP_CODE_HPP_ */
