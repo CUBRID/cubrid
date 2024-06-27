@@ -3446,7 +3446,7 @@ of_select_lp
 char exec_echo[10] = "";
 static char *outfile_name = NULL;
 bool need_line_directive;
-FILE *esql_yyin, *esql_yyout;
+extern FILE *esql_yyin, *esql_yyout;
 char *esql_yyfilename;
 int esql_yyendcol = 0;
 int errors = 0;
