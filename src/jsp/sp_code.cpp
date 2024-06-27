@@ -17,7 +17,7 @@
  */
 
 //
-// method_query_code.cpp
+// sp_code.cpp
 //
 
 #include "sp_code.hpp"

@@ -17,7 +17,7 @@
  */
 
 //
-// method_query_code.hpp
+// sp_code.hpp
 //
 
 #ifndef _METHOD_QUERY_CODE_HPP_
