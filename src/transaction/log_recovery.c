@@ -3080,7 +3080,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	       * The log record pointed to by end_redo_lsa is not a target for redo
 	       */
 	      LSA_COPY (end_redo_lsa, &prev_lsa);
-	      (*num_redo_log_records)--;
 
 	      LSA_SET_NULL (&lsa);
 	      break;
