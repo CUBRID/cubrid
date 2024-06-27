@@ -226,8 +226,12 @@ typedef UINT64 DISK_STAB_UNIT;
  * This trimming could occur at unwanted positions, potentially removing important content. 
  * To address this, we have removed the trimming functionality and defined a maximum length for remarks. 
  * Now, remarks longer than this defined maximum length will be restricted from being entered. 
+ * 
+ * DISK_VOLUME_HEADER = fixed fields + variable fields
+ * variable fields = volume fullname + next volume fullname + remarks
+ * volume fullname & next volume fullname max length = DB_MAX_PATH_LENGTH (include null charactor)
  */
-#define DISK_VOLUME_REMARKS_MAX_LENGTH (DB_PAGESIZE - (offsetof(DISK_VOLUME_HEADER, var_fields) + DB_MAX_PATH_LENGTH + DB_MAX_PATH_LENGTH))
+#define DISK_VOLUME_HEADER_REMARKS_MAX_SIZE (DB_PAGESIZE - (offsetof(DISK_VOLUME_HEADER, var_fields) + DB_MAX_PATH_LENGTH + DB_MAX_PATH_LENGTH))
 
 /* Disk allocation table cursor. Used to iterate through table bits. */
 typedef struct disk_stab_cursor DISK_STAB_CURSOR;
@@ -358,11 +362,11 @@ static bool disk_Logging = false;
 STATIC_INLINE char *disk_vhdr_get_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *disk_vhdr_get_next_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE size_t disk_vhdr_get_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE size_t disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
+STATIC_INLINE int disk_vhdr_get_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE size_t disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE size_t disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 static int disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname);
 static int disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol_fullname);
 static int disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks);
@@ -542,20 +546,21 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   addr.vfid = NULL;
 
-  if ((vol_fullname_size > DB_MAX_PATH_LENGTH) ||
-      ((offsetof (DISK_VOLUME_HEADER, var_fields) + vol_fullname_size) > DB_PAGESIZE))
+  if ((vol_fullname_size > (int) DB_MAX_PATH_LENGTH) ||
+      ((int) (offsetof (DISK_VOLUME_HEADER, var_fields) + vol_fullname_size) > DB_PAGESIZE))
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, NULL, vol_fullname,
 	      vol_fullname_size, DB_MAX_PATH_LENGTH);
       return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
     }
 
-  if (remarks_size > DISK_VOLUME_REMARKS_MAX_LENGTH)
+  if (remarks_size > (int) DISK_VOLUME_HEADER_REMARKS_MAX_SIZE)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_REMARKS_LENGTH_TOO_LONG, 2, NULL, remarks_size,
-	      DISK_VOLUME_REMARKS_MAX_LENGTH);
+	      DISK_VOLUME_HEADER_REMARKS_MAX_SIZE);
       return ER_DISK_REMARKS_LENGTH_TOO_LONG;
     }
+
   /* make sure that this is a valid purpose */
   if (vol_purpose != DB_PERMANENT_DATA_PURPOSE && vol_purpose != DB_TEMPORARY_DATA_PURPOSE)
     {
@@ -995,9 +1000,19 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
   DISK_RECV_LINK_PERM_VOLUME *undo_recv;
   DISK_RECV_LINK_PERM_VOLUME *redo_recv;
   int error_code = NO_ERROR;
+  const int next_vol_fullname_size = strlen (next_volext_fullname) + 1;
 
   addr.vfid = NULL;
   addr.offset = 0;
+
+  if ((next_vol_fullname_size > DB_MAX_PATH_LENGTH) ||
+      ((offsetof (DISK_VOLUME_HEADER, var_fields) + next_vol_fullname_size) > DB_PAGESIZE))
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, NULL,
+	      next_volext_fullname, next_vol_fullname_size, DB_MAX_PATH_LENGTH);
+      return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
+    }
+
 
   /* Get the header of the previous permanent volume */
 
@@ -1024,7 +1039,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
 	  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid), &vpid);
 	}
 
-      undo_size = (sizeof (*undo_recv) + (int) strlen (disk_vhdr_get_next_vol_fullname (vhdr)));
+      undo_size = (sizeof (*undo_recv) + next_vol_fullname_size);
       undo_recv = (DISK_RECV_LINK_PERM_VOLUME *) malloc (undo_size);
       if (undo_recv == NULL)
 	{
@@ -1032,7 +1047,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
 	  goto error;
 	}
 
-      redo_size = sizeof (*redo_recv) + (int) strlen (next_volext_fullname);
+      redo_size = sizeof (*redo_recv) + next_vol_fullname_size;
       redo_recv = (DISK_RECV_LINK_PERM_VOLUME *) malloc (redo_size);
       if (redo_recv == NULL)
 	{
@@ -5196,16 +5211,20 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
   int ret = NO_ERROR;
   int length_to_move = 0;
   int name_length_diff = 0;
+  int new_vol_fullname_size = 0;
+  int old_vol_fullname_size = 0;
+  int next_vol_fullname_size = 0;
+  int remarks_size = 0;
 
   assert (vhdr != NULL);
 
   /* Contains null characters ( 1 byte ) */
-  const int new_vol_fullname_size = (int) strlen (vol_fullname) + 1;
-  const int old_vol_fullname_size = disk_vhdr_get_vol_fullname_size (vhdr);
-  const int next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
-  const int remarks_size = disk_vhdr_get_vol_remarks_size (vhdr);
+  new_vol_fullname_size = (int) strlen (vol_fullname) + 1;
+  old_vol_fullname_size = disk_vhdr_get_vol_fullname_size (vhdr);
+  next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
+  remarks_size = disk_vhdr_get_vol_remarks_size (vhdr);
 
-  assert (new_vol_fullname_size <= DB_MAX_PATH_LENGTH);
+  assert (new_vol_fullname_size <= (int) DB_MAX_PATH_LENGTH);
 
   /* Difference in length between new name and old name */
   name_length_diff = (new_vol_fullname_size - old_vol_fullname_size);
@@ -5239,10 +5258,9 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
   int ret = NO_ERROR;
   int new_next_vol_fullname_size = 0;
   int name_length_diff = 0;
+  int old_next_vol_fullname_size = 0;
 
   assert (vhdr != NULL);
-
-  const int old_next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
 
   if (next_vol_fullname == NULL)
     {
@@ -5253,9 +5271,10 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
     {
       new_next_vol_fullname_size = (int) strlen (next_vol_fullname) + 1;
 
-      assert (new_next_vol_fullname_size <= DB_MAX_PATH_LENGTH);
+      assert (new_next_vol_fullname_size <= (int) DB_MAX_PATH_LENGTH);
     }
 
+  old_next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
 
   /* Difference in length between new name and old name */
   name_length_diff = (new_next_vol_fullname_size - old_next_vol_fullname_size);
@@ -5286,13 +5305,15 @@ static int
 disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks)
 {
   int ret = NO_ERROR;
-  const int remarks_size = (int) (strlen (vol_remarks) + 1);
 
   assert (vhdr != NULL);
-  assert (remarks_size <= DISK_VOLUME_REMARKS_MAX_LENGTH);
 
   if (vol_remarks != NULL)
     {
+      const int remarks_size = (int) (strlen (vol_remarks) + 1);
+
+      assert (remarks_size <= (int) DISK_VOLUME_HEADER_REMARKS_MAX_SIZE);
+
       memcpy (disk_vhdr_get_vol_remarks (vhdr), vol_remarks, remarks_size);
     }
   else
@@ -5346,22 +5367,22 @@ disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr)
  * return    : volume fullname size
  * vhdr (in) : volume header
  */
-STATIC_INLINE size_t
+STATIC_INLINE int
 disk_vhdr_get_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
 {
-  return (size_t) (strlen (disk_vhdr_get_vol_fullname (vhdr)) + 1);
+  return (int) (strlen (disk_vhdr_get_vol_fullname (vhdr)) + 1);
 }
 
 /*
- * disk_vhdr_get_next_vol_fullname_size () - get next_vol_fullname_size from volume header
+ * disk_vhdr_get_next_vol_fullname_size () - get the size of volume's next volume fullname from volume header
  *
  * return    : next volume fullname size
  * vhdr (in) : volume header
  */
-STATIC_INLINE size_t
+STATIC_INLINE int
 disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
 {
-  return (size_t) (strlen (disk_vhdr_get_next_vol_fullname (vhdr)) + 1);
+  return (int) (strlen (disk_vhdr_get_next_vol_fullname (vhdr)) + 1);
 }
 
 /*
@@ -5370,10 +5391,10 @@ disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
  * return    : the size of remarks
  * vhdr (in) : volume header
  */
-STATIC_INLINE size_t
+STATIC_INLINE int
 disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr)
 {
-  return (size_t) (strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1);
+  return (int) (strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1);
 }
 
 
@@ -5384,14 +5405,14 @@ disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr)
  * return    : total size
  * vhdr (in) : volume header
  */
-STATIC_INLINE size_t
+STATIC_INLINE int
 disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr)
 {
   assert (vhdr != NULL);
 
   const char *remarks = disk_vhdr_get_vol_remarks (vhdr);
 
-  return (size_t) ((remarks + disk_vhdr_get_vol_remarks_size (vhdr)) - ((char *) vhdr));
+  return (int) ((remarks + disk_vhdr_get_vol_remarks_size (vhdr)) - ((char *) vhdr));
 }
 
 /*
