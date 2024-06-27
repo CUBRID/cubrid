@@ -116,6 +116,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/perf_monitor.c
+  ${BASE_DIR}/perf_monitor_trackers.cpp
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/printer.cpp
   ${BASE_DIR}/process_util.c
@@ -157,6 +158,8 @@ set (BASE_HEADERS
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/perf_monitor.h
+  ${BASE_DIR}/perf_monitor_trackers.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/porting_inline.hpp
@@ -315,7 +318,6 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
-  ${TRANSACTION_DIR}/log_reader.cpp
   ${TRANSACTION_DIR}/log_recovery.c
   ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
@@ -342,6 +344,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_reader.hpp
   ${TRANSACTION_DIR}/log_recovery.h
+  ${TRANSACTION_DIR}/log_recovery_redo_perf.hpp
   ${TRANSACTION_DIR}/log_recovery_redo.hpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp
   ${TRANSACTION_DIR}/log_record.hpp

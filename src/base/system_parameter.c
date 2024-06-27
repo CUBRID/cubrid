@@ -726,6 +726,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PL_TRANSACTION_CONTROL "pl_transaction_control"
 
+#define PRM_NAME_RECOVERY_PARALLEL_COUNT "recovery_parallel_count"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2092,8 +2094,10 @@ bool PRM_FORCE_RESTART_TO_SKIP_RECOVERY = false;
 static bool prm_force_restart_to_skip_recovery_default = false;
 static unsigned int prm_force_restart_to_skip_recovery_flag = 0;
 
-int PRM_EXTENDED_STATISTICS = 15;
-static int prm_extended_statistics_default = 15;
+static int prm_extended_statistics_default =
+  PERFMON_ACTIVATION_FLAG_DETAILED_BTREE_PAGE | PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT |
+  PERFMON_ACTIVATION_FLAG_LOCK_OBJECT | PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR;
+int PRM_EXTENDED_STATISTICS = prm_extended_statistics_default;
 static int prm_extended_statistics_lower = 0;
 static int prm_extended_statistics_upper = PERFMON_ACTIVATION_FLAG_MAX_VALUE;
 static unsigned int prm_extended_statistics_flag = 0;
@@ -2322,12 +2326,6 @@ bool PRM_DDL_AUDIT_LOG = false;
 static bool prm_ddl_audit_log_default = false;
 static unsigned int prm_ddl_audit_log_flag = 0;
 
-static unsigned int prm_recovery_parallel_count_flag = 0;
-static int prm_recovery_parallel_count_default = 8;
-int PRM_RECOVERY_PARALLEL_COUNT_CURRENT_VALUE = 8;
-static int prm_recovery_parallel_count_upper_value = 32;
-static int prm_recovery_parallel_count_lower_value = 0;
-
 UINT64 PRM_DDL_AUDIT_LOG_SIZE = 10485760ULL;
 static UINT64 prm_ddl_audit_log_size_default = 10485760ULL;	/* 10M */
 static UINT64 prm_ddl_audit_log_size_lower = 10485760ULL;	/* 10M */
@@ -2343,6 +2341,12 @@ static unsigned int prm_supplemental_log_flag = 0;
 bool PRM_CDC_LOGGING_DEBUG = false;
 static bool prm_cdc_logging_debug_default = false;
 static unsigned int prm_cdc_logging_debug_flag = 0;
+
+static unsigned int prm_recovery_parallel_count_flag = 0;
+static int prm_recovery_parallel_count_default = 8;
+int PRM_RECOVERY_PARALLEL_COUNT_CURRENT_VALUE = 8;
+static int prm_recovery_parallel_count_upper_value = 32;
+static int prm_recovery_parallel_count_lower_value = 0;
 
 int PRM_RECOVERY_PROGRESS_LOGGING_INTERVAL = 0;
 static int prm_recovery_progress_logging_interval_default = 0;
@@ -6382,7 +6386,7 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_recovery_parallel_count_lower_value,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
 };
 
 static int num_session_parameters = 0;

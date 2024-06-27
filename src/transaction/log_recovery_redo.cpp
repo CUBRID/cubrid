@@ -18,30 +18,49 @@
 
 #include "log_recovery_redo.hpp"
 
-#if !defined(NDEBUG)
-vpid_lsa_consistency_check log_Gl_recovery_redo_consistency_check;
-#endif
+#include "log_impl.h"
 
+#if !defined(NDEBUG)
 void
 vpid_lsa_consistency_check::check (const vpid &a_vpid, const log_lsa &a_log_lsa)
 {
-#if !defined(NDEBUG)
   std::lock_guard<std::mutex> lck (mtx);
   const vpid_key_t key {a_vpid.volid, a_vpid.pageid};
   const auto map_it =  consistency_check_map.find (key);
-  if (map_it != consistency_check_map.cend())
+  if (map_it != consistency_check_map.cend ())
     {
       assert ((*map_it).second < a_log_lsa);
     }
   consistency_check_map.emplace (key, a_log_lsa);
-#endif
 }
 
 void
 vpid_lsa_consistency_check::cleanup ()
 {
-#if !defined(NDEBUG)
   std::lock_guard<std::mutex> lck (mtx);
   consistency_check_map.clear ();
+}
 #endif
+
+#if !defined(NDEBUG)
+vpid_lsa_consistency_check log_Gl_recovery_redo_consistency_check;
+#endif
+
+log_rv_redo_context::log_rv_redo_context (const log_lsa &end_redo_lsa, log_reader::fetch_mode fetch_mode)
+  : m_end_redo_lsa { end_redo_lsa }
+  , m_reader_fetch_page_mode { fetch_mode }
+{
+  log_zip_realloc_if_needed (m_undo_zip, LOGAREA_SIZE);
+  log_zip_realloc_if_needed (m_redo_zip, LOGAREA_SIZE);
+}
+
+log_rv_redo_context::log_rv_redo_context (const log_rv_redo_context &o)
+  : log_rv_redo_context (o.m_end_redo_lsa, o.m_reader_fetch_page_mode)
+{
+}
+
+log_rv_redo_context::~log_rv_redo_context ()
+{
+  log_zip_free_data (m_undo_zip);
+  log_zip_free_data (m_redo_zip);
 }

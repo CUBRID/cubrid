@@ -28,7 +28,7 @@
 
 extern bool log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
 						      LOG_RCVINDEX rcvindex, const log_lsa & rcv_lsa,
-						      const LOG_LSA * end_redo_lsa);
+						      const LOG_LSA & end_redo_lsa);
 extern int log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log_pgptr_reader,
 				      LOG_ZIP * unzip_ptr, bool & is_zip);
 extern int log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
@@ -44,5 +44,9 @@ extern char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int
 					      char *new_data);
 extern char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
 					      char *old_data);
+extern bool log_rv_need_sync_redo (const vpid & a_rcv_vpid, LOG_RCVINDEX a_rcvindex);
+void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+			 int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
+			 const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data, LOG_ZIP & redo_unzip);
 
 #endif // _LOG_RECOVERY_H_

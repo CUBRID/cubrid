@@ -60,6 +60,7 @@
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #include "log_comm.h"
+#include "log_reader.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
 #include "lock_manager.h"
@@ -744,14 +745,16 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 
   /*
    * Flush any append dirty buffers at this moment.
-   * Then, invalidate any buffer that it is not fixed and dirty
    */
   logpb_flush_pages_direct (thread_p);
 
+  /*
+   * Invalidate all buffers.
+   */
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
       log_bufptr = LOGPB_FIND_BUFPTR (i);
-      if (log_bufptr->pageid != NULL_PAGEID && !log_bufptr->dirty == false)
+      if (log_bufptr->pageid != NULL_PAGEID)
 	{
 	  logpb_initialize_log_buffer (log_bufptr, log_bufptr->logpage);
 	}
@@ -1935,6 +1938,19 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       rv = ER_FAILED;
       goto exit;
     }
+
+  // Optimize log page fetching by caching
+  // for now, only used to optimize recovery phase
+  if (log_bufptr->pageid < pageid && !LOG_ISRESTARTED ())
+    {
+      // invalidate previous page
+      log_bufptr->pageid = NULL_PAGEID;
+      // cache new page
+      std::memcpy (log_bufptr->logpage, log_pgptr, LOG_PAGESIZE);
+      log_bufptr->pageid = pageid;
+      log_bufptr->phy_pageid = logpb_to_physical_pageid (pageid);
+    }
+
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 
   /* Always exit through here */
