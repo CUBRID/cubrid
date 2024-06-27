@@ -32,7 +32,6 @@
 ATTR_ID spcode_Attrs_id[SPC_ATTR_MAX_INDEX];
 int spcode_Num_attrs = -1;
 
-static void sp_code_clear_value (sp_code_entry *entry);
 static int sp_load_sp_code_attribute_info (THREAD_ENTRY *thread_p);
 static void sp_code_attr_init ();
 static int sp_get_attrid (THREAD_ENTRY *thread_p, int attr_index, ATTR_ID &attrid);
@@ -72,94 +71,6 @@ sp_get_attr_idx (const std::string &attr_name)
     {
       return idx_it->second;
     }
-}
-
-static void
-sp_code_clear_value (sp_code_entry *entry)
-{
-  pr_clear_value (&entry->name);                // STRING
-  pr_clear_value (&entry->created_time);        // STRING
-  pr_clear_value (&entry->owner);               // OBJECT
-  pr_clear_value (&entry->is_static);           // INTEGER
-  pr_clear_value (&entry->is_system_generated); // INTEGER
-  pr_clear_value (&entry->stype);               // INTEGER
-  pr_clear_value (&entry->scode);               // STRING
-  pr_clear_value (&entry->otype);               // INTEGER
-  pr_clear_value (&entry->ocode);               // STRING
-}
-
-int
-sp_get_source_code (THREAD_ENTRY *thread_p, const OID *sp_oidp, DB_VALUE *result)
-{
-  int ret = NO_ERROR;
-  HEAP_SCANCACHE scan_cache;
-  SCAN_CODE scan;
-  RECDES recdesc = RECDES_INITIALIZER;
-  HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
-  ATTR_ID attrid;
-  DB_VALUE *cur_val;
-  OID *sp_class_oid = oid_Sp_code_class_oid;
-
-  heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, sp_class_oid);
-  /* get record into record desc */
-  scan = heap_get_visible_version (thread_p, sp_oidp, sp_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
-  if (scan != S_SUCCESS)
-    {
-      if (er_errid () == ER_PB_BAD_PAGEID)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, sp_oidp->volid, sp_oidp->pageid,
-		  sp_oidp->slotid);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
-	}
-      goto exit_on_error;
-    }
-
-  /* retrieve attribute */
-  if (sp_get_attrid (thread_p, SPC_ATTR_SCODE_INDEX, attrid) != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  assert (attrid != -1);
-
-  ret = heap_attrinfo_start (thread_p, sp_class_oid, 1, &attrid, &attr_info);
-  if (ret != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  attr_info_p = &attr_info;
-
-  ret = heap_attrinfo_read_dbvalues (thread_p, sp_oidp, &recdesc, attr_info_p);
-  if (ret != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  cur_val = heap_attrinfo_access (attrid, attr_info_p);
-
-  pr_share_value (cur_val, result);
-
-  heap_attrinfo_end (thread_p, attr_info_p);
-
-  heap_scancache_end (thread_p, &scan_cache);
-
-  return NO_ERROR;
-
-exit_on_error:
-
-  if (attr_info_p != NULL)
-    {
-      heap_attrinfo_end (thread_p, attr_info_p);
-    }
-
-  heap_scancache_end (thread_p, &scan_cache);
-
-  ret = (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
-  return ret;
 }
 
 int

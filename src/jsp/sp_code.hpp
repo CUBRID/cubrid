@@ -51,21 +51,5 @@ enum SP_CODE_ATTRIBUTES
   SPC_ATTR_MAX_INDEX
 };
 
-struct sp_code_entry
-{
-  OID oid;			/* stored procedure code object identifier */
-
-  /* stored procedure code object values */
-  DB_VALUE name;                // STRING
-  DB_VALUE created_time;        // STRING
-  DB_VALUE owner;               // OBJECT
-  DB_VALUE is_static;           // INTEGER
-  DB_VALUE is_system_generated; // INTEGER
-  DB_VALUE stype;               // INTEGER
-  DB_VALUE scode;               // STRING
-  DB_VALUE otype;               // INTEGER
-  DB_VALUE ocode;               // STRING
-};
-
 int sp_get_code_attr (THREAD_ENTRY *thread_p, const std::string &attr_name, const OID *sp_oidp, DB_VALUE *result);
 #endif				/* _METHOD_QUERY_CODE_HPP_ */
