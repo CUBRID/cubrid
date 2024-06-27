@@ -3097,8 +3097,8 @@ create_stmt
                         expecting_pl_lang_spec = 1;
 		}
 	  identifier opt_sp_param_list	                /* 5, 6 */
-          opt_authid                                    /* 7 */
-	  RETURN sp_return_type		                /* 8, 9 */
+	  RETURN sp_return_type		                /* 7, 8 */
+          opt_authid                                    /* 9 */
 	  is_or_as pl_language_spec		        /* 10, 11 */
 	  opt_comment_spec				/* 12 */
 		{ pop_msg(); }
@@ -3109,10 +3109,10 @@ create_stmt
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_FUNCTION;
-                            node->info.sp.auth_id = $7;
+                            node->info.sp.auth_id = $9;
 			    node->info.sp.param_list = $6;
-			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($9));
-			    node->info.sp.ret_data_type = CONTAINER_AT_1($9);
+			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
+			    node->info.sp.ret_data_type = CONTAINER_AT_1($8);
 			    node->info.sp.body = $11;
 			    node->info.sp.comment = $12;
 			  }
