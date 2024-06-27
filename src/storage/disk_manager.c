@@ -546,15 +546,15 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   addr.vfid = NULL;
 
-  if ((vol_fullname_size > (int) DB_MAX_PATH_LENGTH) ||
-      ((int) (offsetof (DISK_VOLUME_HEADER, var_fields) + vol_fullname_size) > DB_PAGESIZE))
+  if (vol_fullname_size > DB_MAX_PATH_LENGTH ||
+      (offsetof (DISK_VOLUME_HEADER, var_fields) + vol_fullname_size) > DB_PAGESIZE)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, NULL, vol_fullname,
 	      vol_fullname_size, DB_MAX_PATH_LENGTH);
       return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
     }
 
-  if (remarks_size > (int) DISK_VOLUME_HEADER_REMARKS_MAX_SIZE)
+  if (remarks_size > DISK_VOLUME_HEADER_REMARKS_MAX_SIZE)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_REMARKS_LENGTH_TOO_LONG, 2, NULL, remarks_size,
 	      DISK_VOLUME_HEADER_REMARKS_MAX_SIZE);
