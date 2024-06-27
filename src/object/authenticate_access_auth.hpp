@@ -17,11 +17,11 @@
  */
 
 /*
- * authenticate_auth_access.hpp -
+ * authenticate_access_auth.hpp -
  */
 
-#ifndef _AUTHENTICATE_AUTH_ACCESS_HPP_
-#define _AUTHENTICATE_AUTH_ACCESS_HPP_
+#ifndef _authenticate_access_auth_HPP_
+#define _authenticate_access_auth_HPP_
 
 #define AU_AUTH_ATTR_OWNER     "owner"
 #define AU_AUTH_ATTR_GRANTS    "grants"
@@ -39,6 +39,9 @@
 #include "error_manager.h"
 #include "object_accessor.h"
 
+/*
+* access _db_auth through db_obj interface
+*/
 class au_auth_accessor
 {
   private:
@@ -79,4 +82,12 @@ class au_auth_accessor
     }
 };
 
-#endif // _AUTHENTICATE_AUTH_ACCESS_HPP_
+/*
+* access _db_auth through executing query
+*/
+extern int au_delete_auth_of_dropping_user (MOP user);
+
+// delete _db_auth records refers to the given table
+extern int au_delete_auth_of_dropping_table (const char *class_name);
+
+#endif // _authenticate_access_auth_HPP_

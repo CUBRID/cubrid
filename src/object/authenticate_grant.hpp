@@ -25,6 +25,8 @@
 
 #include "dbtype_def.h" /* MOP */
 
+#include <stdio.h> // FILE
+
 /*
  * AU_GRANT
  *
@@ -68,6 +70,9 @@ struct au_grant
 
 extern int apply_grants (MOP auth, MOP class_mop, unsigned int *bits);
 extern int get_grants (MOP auth, DB_SET **grant_ptr, int filter);
+
+// debugging purpose
+extern void au_print_grants (MOP auth, FILE *fp);
 
 extern int appropriate_error (unsigned int bits, unsigned int requested);
 

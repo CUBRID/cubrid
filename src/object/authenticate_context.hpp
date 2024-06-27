@@ -24,12 +24,13 @@
 #ifndef _AUTHENTICATE_CONTEXT_HPP_
 #define _AUTHENTICATE_CONTEXT_HPP_
 
+#include "porting.h"
 #include "dbtype_def.h"
 
 #include "authenticate_cache.hpp"
 #include "authenticate_password.hpp" /* AU_MAX_PASSWORD_BUF */
 
-class authenticate_context
+class EXPORT_IMPORT authenticate_context
 {
   public:
 
@@ -152,8 +153,8 @@ class authenticate_context
 
     int set_user (MOP newuser); // au_set_user ()
 
-    int set_password (MOP user, const char *password); // au_set_password ()
-    int set_password (MOP user, const char *password, int encode, char encrypt_prefix); // au_set_password ()
+    int set_password (MOP user, const char *password); // au_set_password_encrypt ()
+    int set_password (MOP user, const char *password, int encode, char encrypt_prefix); // au_set_password_encrypt ()
 
     void disable_passwords (void); // au_disable_passwords ()
 

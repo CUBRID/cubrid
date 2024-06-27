@@ -17,12 +17,12 @@
  */
 
 /*
- * authenticate_user_access.cpp -
+ * authenticate_access_user.cpp -
  */
 
 #include "authenticate.h"
 #include "authenticate_cache.hpp"
-#include "authenticate_auth_access.hpp"
+#include "authenticate_access_auth.hpp"
 
 #include "set_object.h"
 #include "dbtype.h"
@@ -1065,6 +1065,22 @@ au_drop_member (MOP group, MOP member)
   return (error);
 }
 
+/*
+ * AU_OBJECT_CLASS_NAME
+ *
+ * This is list of class names that CUBRID manages as database objects
+ * Their existence is checked when dropping an user
+ */
+static const char *AU_OBJECT_CLASS_NAME[] =
+{
+  CT_CLASS_NAME,		/* AU_OBJECT_CLASS */
+  CT_TRIGGER_NAME,		/* AU_OBJECT_TRIGGER */
+  CT_SERIAL_NAME,		/* AU_OBJECT_SERIAL */
+  CT_DB_SERVER_NAME,		/* AU_OBJECT_SERVER */
+  CT_SYNONYM_NAME,		/* AU_OBJECT_SYNONYM */
+  CT_STORED_PROC_NAME,		/* AU_OBJECT_PROCEDURE */
+  NULL
+};
 
 /*
  * au_drop_user - Drop a user from the database.
@@ -1332,6 +1348,12 @@ au_drop_user (MOP user)
 	{
 	  goto error;
 	}
+    }
+
+  error = au_delete_auth_of_dropping_user (user);
+  if (error != NO_ERROR)
+    {
+      goto error;
     }
 
   /*

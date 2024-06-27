@@ -69,6 +69,10 @@ struct au_user_cache
   int index;
 };
 
+/*
+ * AUTHORIZATION CACHING
+ */
+
 class authenticate_cache
 {
   public:
