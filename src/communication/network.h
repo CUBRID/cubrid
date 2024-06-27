@@ -163,6 +163,7 @@ enum net_server_request
   NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE,
   NET_SERVER_QM_QUERY_END,
   NET_SERVER_QM_QUERY_DROP_ALL_PLANS,
+  NET_SERVER_QM_QUERY_DROP_SHA1_PLANS,
   NET_SERVER_QM_QUERY_DUMP_PLANS,
   NET_SERVER_QM_QUERY_DUMP_CACHE,
 
@@ -270,6 +271,9 @@ enum net_server_request
   /* flashback */
   NET_SERVER_FLASHBACK_GET_SUMMARY,
   NET_SERVER_FLASHBACK_GET_LOGINFO,
+
+  /* plcsql */
+  NET_SERVER_PLCSQL_TRANSFER_FILE,
 
   /*
    * This is the last entry. It is also used for the end of an

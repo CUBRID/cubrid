@@ -586,6 +586,7 @@ EXPORTS
     db_objlist_next
     db_objlist_object
     db_objlist_print
+    db_init_lexer_lineno
     db_open_buffer
     db_open_file
     db_open_file_name

@@ -918,6 +918,7 @@ Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
   -y, --overwrite              remplace le fichier de classe si lui existe, par défaut non\n\
+  -p, --package                nom du package java, vide s'il n'est pas spécifié\n\
   -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
@@ -930,6 +931,7 @@ usage: %1$s plandump [OPTION] database-name\n\
 options valids:\n\
   -d, --drop                   supprime tous les plans dans le cache du serveur\n\
   -o, --output-file=FICHIER    redirige les messages de sortie à FICHIER; par défaut: aucun\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Impossible d'ouvrir le fichier de sortie '%1$s'\n

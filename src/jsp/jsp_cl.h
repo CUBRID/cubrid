@@ -68,6 +68,7 @@ typedef enum
 
 typedef enum
 {
+  SP_LANG_PLCSQL = 0,
   SP_LANG_JAVA = 1
 } SP_LANG_ENUM;
 

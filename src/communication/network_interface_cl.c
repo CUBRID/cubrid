@@ -7577,6 +7577,68 @@ qmgr_drop_all_query_plans (void)
 }
 
 /*
+ * qmgr_drop_query_plans_by_sha1 - Send a SERVER_QM_DROP_BY_SHA1 request to the server
+ *
+ * Request the server to clear sha1 XASL cache entires out. When the client
+ * want to delete cached query plans for sha1, this function will be used.
+ * This function is a counter part to sqmgr_drop_all_query_plans().
+ */
+/*
+ * qmgr_drop_query_plans_by_sha1 -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+int
+qmgr_drop_query_plans_by_sha1 (char *sha1)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED;
+  int request_size, strlen1;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  int req_error;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (sha1, &strlen1);
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_FAILED;
+    }
+
+  pack_const_string_with_length (request, sha1, strlen1);
+
+  req_error = net_client_request (NET_SERVER_QM_QUERY_DROP_SHA1_PLANS, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &success);
+    }
+
+  free_and_init (request);
+
+  return success;
+#else /* CS_MODE */
+  int status;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  /* call the server routine of query drop plan */
+  status = xqmgr_drop_query_plans_by_sha1 (thread_p, sha1);
+
+  exit_server (*thread_p);
+
+  return status;
+#endif /* !CS_MODE */
+}
+
+/*
  * qmgr_dump_query_plans -
  *
  * return:
@@ -11215,4 +11277,62 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
   return error_code;
 #endif // CS_MODE
   return ER_NOT_IN_STANDALONE;
+}
+
+int
+plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCSQL_COMPILE_INFO & compile_info)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  char *ptr = NULL;
+
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+
+  packer.set_buffer_and_pack_all (eb, verbose, input_file);
+
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
+						      (int) packer.get_current_size (),
+						      reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply,
+						      &data_reply_size);
+  if (req_error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* consumes dummy reply */
+  int dummy;
+  ptr = or_unpack_int (reply, &dummy);
+  ptr = or_unpack_int (ptr, &dummy);
+  ptr = or_unpack_int (ptr, &dummy);
+
+  /* receive result values / error */
+  if (data_reply != NULL)
+    {
+      packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+      unpacker.unpack_all (compile_info);
+      rc = NO_ERROR;
+    }
+
+error:
+  // TODO error handling
+  if (req_error != NO_ERROR)
+    {
+      // TODO: er_set (...): set proper error
+      rc = req_error;
+    }
+
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
 }

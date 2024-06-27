@@ -143,11 +143,7 @@ static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * syn
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
-static int do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
-static int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag);
 static PT_NODE *do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
-static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
-
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
 
@@ -2318,7 +2314,13 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE abs_inc_val, range_val;
   int cached_num;
   int ret_msg_id = 0;
+
+  const char *serial_name = NULL, *serial_owner_name = NULL;
+  char user_specified_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+  MOP serial_mop = NULL, owner_mop = NULL;
   const char *comment = NULL;
+
+  const PT_ALTER_CODE alter_serial_code = statement->info.serial.code;
 
   int new_inc_val_flag = 0, new_cyclic;
   bool cur_val_change, inc_val_change, max_val_change, min_val_change, cyclic_change, cached_num_change;
@@ -2762,90 +2764,128 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  /* current_val */
-  if (cur_val_change)
+  switch (alter_serial_code)
     {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, &start_val);
-      if (error < 0)
+    case PT_SERIAL_OPTION:
+      /* current_val */
+      if (cur_val_change)
 	{
-	  goto end;
-	}
-      /* reset started flag because current_val changed */
-      db_make_int (&value, 0);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &value);
-      if (error < 0)
-	{
-	  goto end;
-	}
-      pr_clear_value (&value);
-    }
-
-  /* increment_val */
-  if (inc_val_change)
-    {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_INCREMENT_VAL, &new_inc_val);
-      if (error < 0)
-	{
-	  goto end;
-	}
-    }
-
-  /* max_val */
-  if (max_val_change)
-    {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, &new_max_val);
-      if (error < 0)
-	{
-	  goto end;
-	}
-    }
-
-  /* min_val */
-  if (min_val_change)
-    {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MIN_VAL, &new_min_val);
-      if (error < 0)
-	{
-	  goto end;
-	}
-    }
-
-  /* cyclic */
-  if (cyclic_change)
-    {
-      db_make_int (&value, new_cyclic);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CYCLIC, &value);
-      if (error < 0)
-	{
-	  goto end;
-	}
-      pr_clear_value (&value);
-    }
-
-  /* cached num */
-  if (cached_num_change)
-    {
-
-      /* Here we need class_name and att_name to see if this serial is auto_increment. Cause for an auto_increment
-       * serial, it is not allowed to change the cached_num for it. */
-      if (!DB_IS_NULL (&class_name_val))
-	{
-
-	  error = MSGCAT_RUNTIME_INVALID_AUTO_INCREMENT_ALTER;
-
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, name);
-
-	  goto end;
-
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, &start_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  /* reset started flag because current_val changed */
+	  db_make_int (&value, 0);
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &value);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  pr_clear_value (&value);
 	}
 
-      db_make_int (&value, cached_num);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
-      if (error < 0)
+      /* increment_val */
+      if (inc_val_change)
 	{
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_INCREMENT_VAL, &new_inc_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	}
+
+      /* max_val */
+      if (max_val_change)
+	{
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, &new_max_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	}
+
+      /* min_val */
+      if (min_val_change)
+	{
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MIN_VAL, &new_min_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	}
+
+      /* cyclic */
+      if (cyclic_change)
+	{
+	  db_make_int (&value, new_cyclic);
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CYCLIC, &value);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  pr_clear_value (&value);
+	}
+
+      /* cached num */
+      if (cached_num_change)
+	{
+
+	  /* Here we need class_name and att_name to see if this serial is auto_increment. Cause for an auto_increment
+	   * serial, it is not allowed to change the cached_num for it. */
+	  if (!DB_IS_NULL (&class_name_val))
+	    {
+
+	      error = MSGCAT_RUNTIME_INVALID_AUTO_INCREMENT_ALTER;
+
+	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, name);
+
+	      goto end;
+
+	    }
+
+	  db_make_int (&value, cached_num);
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  pr_clear_value (&value);
+	}
+      break;
+
+    case PT_CHANGE_OWNER:
+      /* owner to */
+      assert (statement->info.serial.owner_name != NULL);
+      serial_name = (char *) PT_NODE_SR_NAME (statement);
+      serial_owner_name = statement->info.serial.owner_name->info.name.original;
+
+      sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
+      serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, user_specified_serial_name);
+      if (serial_mop == NULL)
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_QPROC_SERIAL_NOT_FOUND, user_specified_serial_name);
 	  goto end;
 	}
-      pr_clear_value (&value);
+
+      owner_mop = au_find_user (serial_owner_name);
+      if (owner_mop == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
+
+      error = au_change_serial_owner (serial_mop, owner_mop, false);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+      break;
+
+    default:
+      assert (false);
+      break;
     }
 
   /* comment */
@@ -3471,6 +3511,30 @@ end:
   return error;
 }
 
+PT_NODE *
+do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  int *err = (int *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
+    {
+      return stmt;
+    }
+
+  if (stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
+    {
+      *err = do_prepare_cte (parser, stmt);
+      if (*err != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return stmt;
+}
+
 /*
  * do_prepare_statement() - Prepare a given statement for execution
  *   return: Error code
@@ -3491,6 +3555,16 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
 
   init_compile_context (parser);
+
+  /* All CTE sub-queries included in the query must be prepared first. */
+  if (pt_is_allowed_result_cache ())
+    {
+      parser_walk_tree (parser, statement, do_prepare_cte_pre, &err, NULL, NULL);
+      if (err != NO_ERROR)
+	{
+	  goto err_exit;
+	}
+    }
 
   switch (statement->node_type)
     {
@@ -3520,6 +3594,7 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
+err_exit:
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_prepare_statement() */
 
@@ -14216,92 +14291,22 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 static PT_NODE *
 pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PARSER_CONTEXT *query = (PARSER_CONTEXT *) arg;
+  int i = parser->host_var_count;
 
-  if (node->node_type == PT_HOST_VAR)
+  if (node->node_type == PT_HOST_VAR && node->info.host_var.index >= 0)
     {
-      if (node->info.host_var.index >= 0)
+      /* to exclude already setting host variable */
+      if (parser->cte_host_var_index[node->info.host_var.index] < 0)
 	{
-	  pr_clone_value (&query->host_variables[node->info.host_var.index],
-			  &parser->host_variables[parser->host_var_count]);
-	  parser->cte_host_var_index[parser->host_var_count] = node->info.host_var.index;
+	  parser->cte_host_var_index[i] = node->info.host_var.index;
 	  node->info.host_var.index = parser->host_var_count;
-	  parser->dbval_cnt++;
+	  parser->host_var_count++;
 	}
-
-      parser->host_var_count++;
     }
 
   *continue_walk = PT_CONTINUE_WALK;
 
   return node;
-}
-
-static bool
-pt_is_allowed_result_cache ()
-{
-  int is_list_cache_disabled =
-    ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
-     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
-
-  if (is_list_cache_disabled)
-    {
-      return false;
-    }
-
-  return true;
-}
-
-static PT_NODE *
-do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
-{
-  int query_flag = *(int *) arg;
-
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (stmt->node_type != PT_SELECT)
-    {
-      return stmt;
-    }
-
-  if (stmt->info.query.with && pt_is_allowed_result_cache ())
-    {
-      int err;
-
-      err = do_execute_cte (parser, stmt, query_flag);
-      if (err != NO_ERROR)
-	{
-	  *continue_walk = PT_STOP_WALK;
-	}
-    }
-
-  return stmt;
-}
-
-static PT_NODE *
-do_prepare_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
-{
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (stmt->node_type != PT_SELECT)
-    {
-      return stmt;
-    }
-
-  if (stmt->info.query.with && pt_is_allowed_result_cache ())
-    {
-      int err;
-
-      PT_NODE *cte_list = stmt->info.query.with->info.with_clause.cte_definition_list;
-
-      err = do_prepare_cte (parser, cte_list);
-      if (err != NO_ERROR)
-	{
-	  *continue_walk = PT_STOP_WALK;
-	}
-    }
-
-  return stmt;
 }
 
 /*
@@ -14378,9 +14383,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       statement->flag.cannot_prepare = 1;
       return NO_ERROR;
     }
-
-  /* All CTE sub-queries included in the query must be prepared first. */
-  parser_walk_tree (parser, statement, do_prepare_cte_pre, NULL, NULL, NULL);
 
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
   contextp->recompile_xasl = statement->flag.recompile;
@@ -14532,118 +14534,155 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
  * do_prepare_cte () - prepare CTE statements in WITH clause for query cache
  * return : Error code
  * parser (in)	  : parser context
- * statement (in) : statement to prepare
+ * stmt (in) : statement to prepare
  */
-static int
-do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
+int
+do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  int error = NO_ERROR;
-  PT_NODE *cte_statement;
-  PT_NODE *cte_def_list;
+  int err = NO_ERROR;
   PARSER_CONTEXT cte_context;
-  int var_count;
+  int i, var_count;
 
-  for (cte_def_list = statement; cte_def_list; cte_def_list = cte_def_list->next)
+  cte_context = *parser;
+
+  cte_context.host_var_count = 0;
+  var_count = parser->host_var_count + parser->auto_param_count;
+
+  stmt->info.query.flag.cte_query_cached = 1;
+
+  if (var_count > 0)
     {
-      if (cte_def_list->info.cte.non_recursive_part->info.query.hint & PT_HINT_QUERY_CACHE)
+      cte_context.cte_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+      if (cte_context.cte_host_var_index == NULL)
 	{
-	  cte_statement = cte_def_list->info.cte.non_recursive_part;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      /* to ininitialize empty index */
+      memset ((void *) cte_context.cte_host_var_index, -1, var_count * sizeof (int));
+    }
 
-	  cte_context = *parser;
-	  cte_context.dbval_cnt = 0;
-	  cte_context.host_var_count = cte_context.auto_param_count = 0;
+  parser_walk_tree (&cte_context, stmt, pt_cte_host_vars_index, NULL, NULL, NULL);
 
-	  var_count = parser->host_var_count + parser->auto_param_count;
+  stmt->cte_host_var_count = cte_context.host_var_count;
+  stmt->cte_host_var_index = cte_context.cte_host_var_index;
 
-	  cte_context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
-	  if (cte_context.host_variables == NULL)
+  err = do_prepare_select (&cte_context, stmt);
+
+  return err;
+}
+
+/*
+ * do_execute_prepared_cte () - execute CTE statements as prepared statement for result-cache
+ * return : Error code
+ * parser (in)	 : parser context
+ * cte_num_query : the number of CTE queries
+ * cte_info (in) : prepare info. for CTE query 
+ */
+int
+do_execute_prepared_cte (PARSER_CONTEXT * parser, PT_NODE * stmt, int cte_num_query, DB_PREPARE_CTE_INFO * cte_info)
+{
+  int i, k, err = NO_ERROR;
+  DB_VALUE *host_variables;
+  QUERY_ID query_id;
+  QFILE_LIST_ID *list_id;
+
+  for (i = 0; i < cte_num_query; i++)
+    {
+      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * cte_info[i].cte_host_var_count);
+
+      if (host_variables == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (DB_VALUE) * cte_info[i].cte_host_var_count);
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto clear_and_exit;
+	}
+
+      for (k = 0; k < cte_info[i].cte_host_var_count; k++)
+	{
+	  pr_clone_value (&parser->host_variables[cte_info[i].cte_host_var_index[k]], &host_variables[k]);
+	}
+
+      err =
+	execute_query (&cte_info[i].cte_xasl_id, &query_id, cte_info[i].cte_host_var_count, host_variables,
+		       &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
+
+      free (host_variables);
+
+      if (err != NO_ERROR)
+	{
+	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      /* set the flag to recompile from it's main query */
+	      stmt->info.execute.recompile = 1;
+	      er_clearid ();
+	      err = NO_ERROR;
 	    }
-
-	  cte_context.cte_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
-	  if (cte_context.cte_host_var_index == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  cte_context.host_var_count = 0;
-
-	  parser_walk_tree (&cte_context, cte_statement, pt_cte_host_vars_index, parser, NULL, NULL);
-
-	  cte_statement->cte_host_var_count = cte_context.host_var_count;
-	  cte_statement->cte_host_var_index = cte_context.cte_host_var_index;
-
-	  error = do_prepare_select (&cte_context, cte_statement);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
+	  break;
 	}
     }
 
-  return error;
+clear_and_exit:
+  /* clear prepare info. */
+  if (cte_info)
+    {
+      for (i = 0; i < cte_num_query; i++)
+	{
+	  free_and_init (cte_info[i].cte_host_var_index);
+	}
+      free_and_init (cte_info);
+    }
+
+  return err;
 }
 
 /*
  * do_execute_cte () - execute CTE statements in WITH clause for query cache
  * return : Error code
- * parser (in)	  : parser context
- * statement (in) : statement to execute
- * query_flag     : query flag for execution
+ * parser (in) : parser context
+ * stmt (in)   : statement to execute
  */
-static int
-do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
+int
+do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  PT_NODE *stmt;
-  PT_NODE *cte_list;
   QUERY_ID query_id;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables;
   CACHE_TIME clt_cache_time;
-  int err, i, flag = query_flag & ~EXECUTE_QUERY_WITH_COMMIT;
-
-  assert (statement && statement->info.query.with);
-
-  cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
+  int err, i, flag = RESULT_CACHE_REQUIRED;
 
   CACHE_TIME_RESET (&clt_cache_time);
 
-  while (cte_list)
+  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
+  if (host_variables == NULL)
     {
-      stmt = cte_list->info.cte.non_recursive_part;
-      if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
-	{
-	  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
-	  if (host_variables == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (DB_VALUE) * stmt->cte_host_var_count);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  for (i = 0; i < stmt->cte_host_var_count; i++)
-	    {
-	      pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
-	    }
-
-	  err =
-	    execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
-			   flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
-
-	  free (host_variables);
-
-	  if (err != NO_ERROR)
-	    {
-	      return err;
-	    }
-	}
-      cte_list = cte_list->next;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (DB_VALUE) * stmt->cte_host_var_count);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  return NO_ERROR;
+  for (i = 0; i < stmt->cte_host_var_count; i++)
+    {
+      pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
+    }
+
+  err =
+    execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id, flag, &clt_cache_time,
+		   &stmt->cache_time);
+
+  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+    {
+      /* retry the statement once */
+      if (do_prepare_statement (parser, stmt) == NO_ERROR)
+	{
+	  err = do_execute_statement (parser, stmt);
+	}
+    }
+
+  free (host_variables);
+
+  return err;
 }
 
 /*
@@ -14905,9 +14944,6 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
-
-  /* All CTE sub-queries included in the query must be executed first. */
-  parser_walk_tree (parser, statement, do_execute_cte_pre, (void *) &query_flag, NULL, NULL);
 
   /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the host
    * variables given by users as parameter values for the query. As a result, query id and result file id
@@ -21442,4 +21478,19 @@ err:
     }
 
   return server_obj;
+}
+
+bool
+pt_is_allowed_result_cache ()
+{
+  int is_list_cache_disabled =
+    ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
+     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
+
+  if (is_list_cache_disabled)
+    {
+      return false;
+    }
+
+  return true;
 }

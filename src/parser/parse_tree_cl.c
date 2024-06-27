@@ -54,6 +54,7 @@
 #include "dbtype.h"
 #include "parser_allocator.hpp"
 #include "tde.h"
+#include "jsp_cl.h"
 
 #include <malloc.h>
 
@@ -194,6 +195,7 @@ static PT_NODE *pt_apply_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p, v
 static PT_NODE *pt_apply_set_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_set_xaction (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_prepare (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_timeout (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -276,6 +278,7 @@ static PT_NODE *pt_apply_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p, vo
 static PT_NODE *pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_sp_body (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -437,6 +440,7 @@ static PARSER_VARCHAR *pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE 
 static PARSER_VARCHAR *pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -5022,7 +5026,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_ZZ_ERROR_MSG] = pt_apply_error_msg;
   pt_apply_func_array[PT_CONSTRAINT] = pt_apply_constraint;
   pt_apply_func_array[PT_NODE_POINTER] = pt_apply_pointer;
-  pt_apply_func_array[PT_CREATE_STORED_PROCEDURE] = pt_apply_stored_procedure;
+  pt_apply_func_array[PT_CREATE_STORED_PROCEDURE] = pt_apply_create_stored_procedure;
   pt_apply_func_array[PT_ALTER_STORED_PROCEDURE] = pt_apply_stored_procedure;
   pt_apply_func_array[PT_DROP_STORED_PROCEDURE] = pt_apply_stored_procedure;
   pt_apply_func_array[PT_PREPARE_STATEMENT] = pt_apply_prepare;
@@ -5058,6 +5062,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_CREATE_SYNONYM] = pt_apply_create_synonym;
   pt_apply_func_array[PT_DROP_SYNONYM] = pt_apply_drop_synonym;
   pt_apply_func_array[PT_RENAME_SYNONYM] = pt_apply_rename_synonym;
+  pt_apply_func_array[PT_SP_BODY] = pt_apply_sp_body;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5192,6 +5197,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_CREATE_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_DROP_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_RENAME_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_SP_BODY] = pt_init_func_null_function;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5319,6 +5325,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_CREATE_SYNONYM] = pt_print_create_synonym;
   pt_print_func_array[PT_DROP_SYNONYM] = pt_print_drop_synonym;
   pt_print_func_array[PT_RENAME_SYNONYM] = pt_print_rename_synonym;
+  pt_print_func_array[PT_SP_BODY] = pt_print_sp_body;
 
   pt_print_f = pt_print_func_array;
 }
@@ -7552,6 +7559,22 @@ pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 }
 
 /*
+ * pt_apply_create_stored_procedure () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   g(in):
+ *   arg(in):
+ */
+static PT_NODE *
+pt_apply_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.sp.param_list, arg);
+  PT_APPLY_WALK (parser, p->info.sp.ret_data_type, arg);
+  return p;
+}
+
+/*
  * pt_apply_stored_procedure () -
  *   return:
  *   parser(in):
@@ -7594,11 +7617,17 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.sp.type == PT_SP_FUNCTION)
     {
       q = pt_append_nulstring (parser, q, " return ");
-      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->info.sp.ret_type));
+      if (p->info.sp.ret_data_type)
+	{
+	  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.sp.ret_data_type));
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, pt_show_type_enum (p->info.sp.ret_type));
+	}
     }
 
-  r3 = pt_print_bytes (parser, p->info.sp.java_method);
-  q = pt_append_nulstring (parser, q, " as language java name ");
+  r3 = pt_print_bytes (parser, p->info.sp.body);
   q = pt_append_varchar (parser, q, r3);
 
   if (p->info.sp.comment != NULL)
@@ -7857,7 +7886,14 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, " ");
   q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp_param.mode));
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+  if (p->data_type)
+    {
+      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->data_type));
+    }
+  else
+    {
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+    }
 
   if (p->info.sp_param.comment != NULL)
     {
@@ -7868,6 +7904,76 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return q;
 }
+
+/*
+ * pt_apply_sp_body () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   g(in):
+ *   arg(in):
+ */
+static PT_NODE *
+pt_apply_sp_body (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  return p;
+}
+
+/*
+ * pt_print_sp_parameter () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ */
+static PARSER_VARCHAR *
+pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1 = NULL;
+
+  q = pt_append_nulstring (parser, q, " as ");
+  if (p->info.sp_body.lang == SP_LANG_PLCSQL)
+    {
+      // TODO: PL/CSQL compiler should permit it.
+      // q = pt_append_nulstring (parser, q, "language plcsql ");
+      r1 = pt_append_varchar (parser, r1, p->info.sp_body.impl->info.value.data_value.str);
+    }
+  else				/* (p->info.sp_body.lang == SP_LANG_JAVA) */
+    {
+      q = pt_append_nulstring (parser, q, "language java ");
+
+      // TODO: CBRD-24641
+      /*
+         if (p->info.sp_body.direct)
+         {
+         q = pt_append_nulstring (parser, q, " begin ");
+         r1 = pt_print_bytes (parser, p->info.sp_body.impl);
+         }
+       */
+
+      if (p->info.sp_body.direct == false)
+	{
+	  q = pt_append_nulstring (parser, q, " name ");
+	  r1 = pt_print_bytes (parser, p->info.sp_body.decl);
+	}
+      else
+	{
+	  r1 = pt_append_varchar (parser, r1, p->info.sp_body.impl->info.value.data_value.str);
+	}
+
+      // TODO: CBRD-24641
+      /*
+         if (p->info.sp_body.direct)
+         {
+         q = pt_append_nulstring (parser, q, " end ");
+         }
+       */
+    }
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ";");
+
+  return q;
+}
+
 
 /* PARTITION */
 /*
@@ -8103,67 +8209,92 @@ pt_print_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, "alter serial ");
   q = pt_append_varchar (parser, q, r1);
 
-  if (p->info.serial.start_val != NULL)
+  switch (p->info.serial.code)
     {
-      r1 = pt_print_bytes (parser, p->info.serial.start_val);
-      q = pt_append_nulstring (parser, q, " start with ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+    case PT_SERIAL_OPTION:
+      if (p->info.serial.start_val != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.start_val);
+	  q = pt_append_nulstring (parser, q, " start with ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
 
-  if (p->info.serial.increment_val)
-    {
-      r1 = pt_print_bytes (parser, p->info.serial.increment_val);
-      q = pt_append_nulstring (parser, q, " increment by ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+      if (p->info.serial.increment_val)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.increment_val);
+	  q = pt_append_nulstring (parser, q, " increment by ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
 
-  if (p->info.serial.min_val)
-    {
-      r1 = pt_print_bytes (parser, p->info.serial.min_val);
-      q = pt_append_nulstring (parser, q, " minvalue ");
-      q = pt_append_varchar (parser, q, r1);
-    }
-  else if (p->info.serial.no_min == 1)
-    {
-      q = pt_append_nulstring (parser, q, " nomaxvalue ");
-    }
+      if (p->info.serial.min_val)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.min_val);
+	  q = pt_append_nulstring (parser, q, " minvalue ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      else if (p->info.serial.no_min == 1)
+	{
+	  q = pt_append_nulstring (parser, q, " nomaxvalue ");
+	}
 
-  if (p->info.serial.max_val)
-    {
-      r1 = pt_print_bytes (parser, p->info.serial.max_val);
-      q = pt_append_nulstring (parser, q, " maxvalue ");
-      q = pt_append_varchar (parser, q, r1);
-    }
-  else if (p->info.serial.no_max == 1)
-    {
-      q = pt_append_nulstring (parser, q, " nomaxvalue ");
-    }
+      if (p->info.serial.max_val)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.max_val);
+	  q = pt_append_nulstring (parser, q, " maxvalue ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      else if (p->info.serial.no_max == 1)
+	{
+	  q = pt_append_nulstring (parser, q, " nomaxvalue ");
+	}
 
-  if (p->info.serial.cyclic)
-    {
-      q = pt_append_nulstring (parser, q, " cycle ");
-    }
-  else if (p->info.serial.no_cyclic == 1)
-    {
-      q = pt_append_nulstring (parser, q, " nocycle ");
-    }
+      if (p->info.serial.cyclic)
+	{
+	  q = pt_append_nulstring (parser, q, " cycle ");
+	}
+      else if (p->info.serial.no_cyclic == 1)
+	{
+	  q = pt_append_nulstring (parser, q, " nocycle ");
+	}
 
-  if (p->info.serial.cached_num_val && p->info.serial.no_cache != 1)
-    {
-      r1 = pt_print_bytes (parser, p->info.serial.cached_num_val);
-      q = pt_append_nulstring (parser, q, " cache ");
-      q = pt_append_varchar (parser, q, r1);
-    }
-  else if (p->info.serial.no_cache != 0)
-    {
-      q = pt_append_nulstring (parser, q, " nocache ");
-    }
+      if (p->info.serial.cached_num_val && p->info.serial.no_cache != 1)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.cached_num_val);
+	  q = pt_append_nulstring (parser, q, " cache ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      else if (p->info.serial.no_cache != 0)
+	{
+	  q = pt_append_nulstring (parser, q, " nocache ");
+	}
 
-  if (p->info.serial.comment != NULL)
-    {
-      r1 = pt_print_bytes (parser, p->info.serial.comment);
-      q = pt_append_nulstring (parser, q, " comment ");
-      q = pt_append_varchar (parser, q, r1);
+      if (p->info.serial.comment != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.comment);
+	  q = pt_append_nulstring (parser, q, " comment ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      break;
+
+    case PT_CHANGE_OWNER:
+      if (p->info.serial.owner_name != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.owner_name);
+	  q = pt_append_nulstring (parser, q, " owner to ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (p->info.serial.comment != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.serial.comment);
+	  q = pt_append_nulstring (parser, q, " comment ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      break;
+
+    default:
+      assert (false);
+      break;
     }
 
   return q;
@@ -8273,6 +8404,7 @@ pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.serial.increment_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.min_val, arg);
   PT_APPLY_WALK (parser, p->info.serial.max_val, arg);
+  PT_APPLY_WALK (parser, p->info.serial.owner_name, arg);
   return p;
 }
 
@@ -8369,7 +8501,7 @@ static PT_NODE *
 pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.data_type.entity, arg);
-  PT_APPLY_WALK (parser, p->info.data_type.virt_data_type, arg);
+  PT_APPLY_WALK (parser, p->info.data_type.table_column, arg);
   PT_APPLY_WALK (parser, p->info.data_type.enumeration, arg);
   return p;
 }
@@ -8509,6 +8641,13 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       break;
 
+    case PT_TYPE_TABLE_COLUMN:
+      r1 = pt_print_bytes (parser, p->info.data_type.table_column);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, "%type");
+
+      break;
+
     default:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       if (p->data_type)
@@ -8581,8 +8720,11 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1, *r2;
 
+  unsigned int save_custom = parser->custom_print;
+  parser->custom_print |= PT_SUPPRESS_RESOLVED;
   r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
+  parser->custom_print = save_custom;
 
   if (p->info.delete_.with != NULL)
     {
@@ -12721,8 +12863,18 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
   PT_NODE *crt_list = NULL;
   bool is_first_list = true, multiple_values_insert = false;
 
+  // TODO: [PL/CSQL] need refactoring
+  unsigned int save_custom = parser->custom_print;
+  if (parser->flag.is_parsing_static_sql == 1)
+    {
+      parser->custom_print |= PT_SUPPRESS_RESOLVED;
+      parser->custom_print & ~PT_PRINT_ALIAS;
+    }
+
   r1 = pt_print_bytes (parser, p->info.insert.spec);
   r2 = pt_print_bytes_l (parser, p->info.insert.attr_list);
+
+  parser->custom_print = save_custom;
 
   if (p->info.insert.is_subinsert == PT_IS_SUBINSERT)
     {
@@ -15467,6 +15619,7 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, "object ");
       b = pt_append_varchar (parser, b, r1);
     }
+
   r1 = pt_print_bytes_l (parser, p->info.update.assignment);
   b = pt_append_nulstring (parser, b, " set ");
   b = pt_append_varchar (parser, b, r1);

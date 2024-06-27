@@ -385,7 +385,9 @@ tran_commit (bool retain_lock)
 
   tran_reset_latest_query_status ();
 
-  tran_reset_libcas_function ();
+  // FIXME: If SP supports TCL, the libcas depth should not be reset. 
+  // A nested SP can perform commit/rollback
+  // tran_reset_libcas_function ();
 
   return error_code;
 }
@@ -501,7 +503,9 @@ tran_abort (void)
 
   tran_reset_latest_query_status ();
 
-  tran_reset_libcas_function ();
+  // FIXME: If SP supports TCL, the libcas depth should not be reset. 
+  // A nested SP can perform commit/rollback
+  // tran_reset_libcas_function ();
 
   return error_code;
 }
@@ -1329,6 +1333,7 @@ void
 tran_end_libcas_function (void)
 {
   tm_libcas_depth--;
+
   assert (tm_libcas_depth >= 0);
 }
 

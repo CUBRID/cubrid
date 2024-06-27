@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <unordered_set>
 
 #include "dbtype.h"
 
@@ -522,13 +523,37 @@ namespace cubmethod
 	return -1;
       }
 
+    std::unordered_set<int> numbered_markers;
+
     int num_markers = 0;
     int sql_len = sql.size ();
     for (int i = 0; i < sql_len; i++)
       {
 	if (sql[i] == '?')
 	  {
-	    num_markers++;
+	    if (i + 1 < sql_len && sql[++i] == ':')
+	      {
+		// read ?:<number> form
+		int begin_idx = i + 1;
+		int idx = begin_idx;
+
+		while (idx < sql_len && sql[idx] >= '0' && sql[idx] <= '9')
+		  {
+		    idx++;
+		  }
+
+		if (idx > begin_idx)
+		  {
+		    std::string number (&sql[begin_idx], idx - begin_idx);
+		    numbered_markers.insert (stoi (number));
+		  }
+
+		i = idx;
+	      }
+	    else
+	      {
+		num_markers++;
+	      }
 	  }
 	else if (sql[i] == '-' && sql[i + 1] == '-')
 	  {
@@ -551,6 +576,8 @@ namespace cubmethod
 	    i = consume_tokens (sql, i + 1, DOUBLE_QUOTED_STRING);
 	  }
       }
+
+    num_markers += numbered_markers.size ();
 
     return num_markers;
   }

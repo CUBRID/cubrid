@@ -1075,6 +1075,7 @@ enum pt_node_type
   PT_JSON_TABLE_COLUMN,
   PT_DBLINK_TABLE,
   PT_DBLINK_TABLE_DML,
+  PT_SP_BODY,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -1135,6 +1136,9 @@ enum pt_type_enum
   PT_TYPE_DATETIMELTZ,
 
   PT_TYPE_MAX,
+
+  PT_TYPE_TABLE_COLUMN,		/* not a real type but a type specification of the form <table>.<column>%TYPE */
+  /* which can be used only in SP parameter and return types */
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
 
@@ -1443,7 +1447,8 @@ typedef enum
   PT_CHANGE_INDEX_COMMENT,
   PT_CHANGE_INDEX_STATUS,
   PT_ADD_MEMBERS,		/* alter user type */
-  PT_DROP_MEMBERS
+  PT_DROP_MEMBERS,
+  PT_SERIAL_OPTION		/* alter serial type */
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -1828,6 +1833,7 @@ typedef struct pt_stored_proc_info PT_STORED_PROC_INFO;
 typedef struct pt_prepare_info PT_PREPARE_INFO;
 typedef struct pt_execute_info PT_EXECUTE_INFO;
 typedef struct pt_stored_proc_param_info PT_STORED_PROC_PARAM_INFO;
+typedef struct pt_stored_proc_body_info PT_SP_BODY_INFO;
 typedef struct pt_truncate_info PT_TRUNCATE_INFO;
 typedef struct pt_do_info PT_DO_INFO;
 typedef union pt_statement_info PT_STATEMENT_INFO;
@@ -2178,7 +2184,9 @@ struct pt_serial_info
   PT_NODE *max_val;		/* PT_VALUE */
   PT_NODE *min_val;		/* PT_VALUE */
   PT_NODE *cached_num_val;	/* PT_VALUE */
+  PT_NODE *owner_name;		/* PT_NAME */
   PT_NODE *comment;		/* PT_VALUE */
+  PT_ALTER_CODE code;		/* PT_SERIAL_OPTION, PT_CHANGE_OWNER */
   int cyclic;
   int no_max;
   int no_min;
@@ -2227,7 +2235,7 @@ struct pt_data_type_info
   PT_NODE *entity;		/* class PT_NAME list for PT_TYPE_OBJECT */
   PT_NODE *enumeration;		/* values list for PT_TYPE_ENUMERATION */
   DB_OBJECT *virt_object;	/* virt class object if a vclass */
-  PT_NODE *virt_data_type;	/* for non-primitive types- sets, etc. */
+  PT_NODE *table_column;	/* for type specification of the form <table>.<column>%TYPE */
   PT_TYPE_ENUM virt_type_enum;	/* type enumeration tage PT_TYPE_??? */
   int precision;		/* for float and int, length of char */
   int dec_precision;		/* decimal precision for float */
@@ -2508,6 +2516,7 @@ struct pt_host_var_info
   const char *str;		/* ??? */
   PT_MISC_TYPE var_type;	/* PT_HOST_IN, PT_HOST_OUT, */
   int index;			/* for PT_HOST_VAR ordering */
+  const char *label;
 };
 
 /* Info for lists of PT_NODE */
@@ -2962,6 +2971,7 @@ struct pt_query_info
     unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
+    unsigned cte_query_cached:1;	/* for CTE result-cached */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
@@ -3338,11 +3348,19 @@ struct pt_pointer_info
   bool do_walk;			/* apply walk on node bool */
 };
 
+struct pt_stored_proc_body_info
+{
+  int lang;
+  PT_NODE *decl;		/* PT_VALUE */
+  PT_NODE *impl;		/* PT_VALUE */
+  bool direct;			/* whether the body has implementation (direct) or points to a implementation file (indirect) */
+};
+
 struct pt_stored_proc_info
 {
   PT_NODE *name;
   PT_NODE *param_list;
-  PT_NODE *java_method;
+  PT_NODE *body;
   PT_NODE *comment;
   PT_NODE *owner;		/* for ALTER PROCEDURE/FUNCTION name OWNER TO new_owner */
   PT_MISC_TYPE type;
@@ -3667,6 +3685,7 @@ union pt_statement_info
   PT_TRACE_INFO trace;
   PT_KILLSTMT_INFO killstmt;
   PT_WITH_CLAUSE_INFO with_clause;
+  PT_SP_BODY_INFO sp_body;
 };
 
 /*
@@ -3891,6 +3910,7 @@ struct parser_context
 						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
+
   int dbval_cnt;		/* to be assigned to XASL */
   int *cte_host_var_index;	/* CTE host variable index in non_recursive CTE node */
   int line, column;		/* current input line and column */
@@ -3926,6 +3946,8 @@ struct parser_context
 
   int max_print_len;		/* for pt_short_print */
 
+  char **external_into_label;
+  int external_into_label_cnt;
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;
@@ -3955,6 +3977,7 @@ struct parser_context
     unsigned return_generated_keys:1;
     unsigned is_system_generated_stmt:1;
     unsigned is_auto_commit:1;	/* set to true, if auto commit. */
+    unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
   } flag;
 };
 

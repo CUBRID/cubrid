@@ -18,6 +18,7 @@
 
 #include "method_connection_sr.hpp"
 
+#include "porting.h"
 #if defined (SERVER_MODE)
 #include "network.h" /* METHOD_CALL */
 #include "network_interface_sr.h" /* xs_receive_data_from_client() */
@@ -36,7 +37,7 @@ namespace cubmethod
 // General interface to communicate with CAS
 //////////////////////////////////////////////////////////////////////////
 #if defined (SERVER_MODE)
-  int xs_send (cubthread::entry *thread_p, cubmem::extensible_block &mem)
+  int xs_send (cubthread::entry *thread_p, const cubmem::extensible_block &mem)
   {
     OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
     char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -58,7 +59,7 @@ namespace cubmethod
     /* send */
     unsigned int rid = css_get_comm_request_id (thread_p);
     return css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-	   mem.get_ptr(), (int) mem.get_size ());
+	   (char * )mem.get_read_ptr(), (int) mem.get_size ());
   }
 
   int xs_receive (cubthread::entry *thread_p, const xs_callback_func &func)
@@ -103,9 +104,9 @@ namespace cubmethod
     return error;
   }
 #else // SA_MODE
-  int xs_send (cubthread::entry *thread_p, cubmem::extensible_block &ext_blk)
+  int xs_send (cubthread::entry *thread_p, const cubmem::extensible_block &ext_blk)
   {
-    packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
+    packing_unpacker unpacker (ext_blk.get_read_ptr (), ext_blk.get_size ());
     return method_dispatch (unpacker);
   }
 
@@ -138,35 +139,4 @@ namespace cubmethod
     return error;
   }
 #endif
-
-  //////////////////////////////////////////////////////////////////////////
-  // Interface to communicate with Java SP Server
-  //////////////////////////////////////////////////////////////////////////
-
-  int mcon_send_buffer_to_java (SOCKET socket, cubmem::block &blk)
-  {
-    int error = NO_ERROR;
-    OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-    char *request = OR_ALIGNED_BUF_START (a_request);
-
-    int request_size = (int) blk.dim;
-    or_pack_int (request, request_size);
-
-    int nbytes = jsp_writen (socket, request, OR_INT_SIZE);
-    if (nbytes != OR_INT_SIZE)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	error = er_errid ();
-	return error;
-      }
-
-    nbytes = jsp_writen (socket, blk.ptr, blk.dim);
-    if (nbytes != (int) blk.dim)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	error = er_errid ();
-      }
-    return error;
-  }
-
 } // namespace cubmethod

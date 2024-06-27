@@ -301,6 +301,40 @@ make_valid_page_size (int *v)
     }
 }
 
+static int
+execute_query (const char *str)
+{
+  DB_SESSION *session = NULL;
+  STATEMENT_ID stmt_id;
+  int error = NO_ERROR;
+
+  session = db_open_buffer (str);
+  if (session == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, NULL);
+
+exit:
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+  return error;
+}
+
 /*
  * createdb() - createdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -657,6 +691,26 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
 
   db_commit_transaction ();
+
+  {
+    /* FIXME!! Register Built-in Packages, The following lines should be moved */
+    char built_in_package_spec[7][1024] = {
+      "CREATE OR REPLACE PROCEDURE enable (s INT) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.enable(int)';",
+      "CREATE OR REPLACE PROCEDURE disable () AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.disable()';",
+      "CREATE OR REPLACE PROCEDURE put (str String) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.put(java.lang.String)';",
+      "CREATE OR REPLACE PROCEDURE put_line (str STRING) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.putLine(java.lang.String)';",
+      "CREATE OR REPLACE PROCEDURE new_line () AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.newLine()';",
+      "CREATE OR REPLACE PROCEDURE get_line (line OUT STRING, status OUT INT) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.getLine(java.lang.String[], int[])';",
+      "CREATE OR REPLACE PROCEDURE get_lines (lines OUT STRING, cnt OUT INT) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.getLines(java.lang.String[], int[])';"
+    };
+
+    for (int i = 0; i < 7; i++)
+      {
+	execute_query (built_in_package_spec[i]);
+      }
+
+    db_commit_transaction ();
+  }
 
   if (user_define_file != NULL)
     {
@@ -1477,6 +1531,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *db_name;
   const char *output_file = NULL;
+  const char *class_name;
   FILE *outfp = NULL;
   bool is_emergency = false;
   DIAGDUMP_TYPE diag;
@@ -1511,9 +1566,15 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
+  class_name = utility_get_option_string_value (arg_map, DIAG_CLASS_NAME_S, 0);
   diag = (DIAGDUMP_TYPE) utility_get_option_int_value (arg_map, DIAG_DUMP_TYPE_S);
 
   if (diag != DIAGDUMP_LOG && utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_diag_usage;
+    }
+
+  if (diag != DIAGDUMP_HEAP && class_name != NULL)
     {
       goto print_diag_usage;
     }
@@ -1662,10 +1723,25 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP)
     {
       bool dump_records;
-      /* this dumps the contents of all heaps */
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
-      fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
-      (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
+
+      if (class_name == NULL)
+	{
+	  fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
+	  (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
+	}
+      else
+	{
+	  if (!sm_check_system_class_by_name (class_name))
+	    {
+	      if (utility_check_class_name (class_name) != NO_ERROR)
+		{
+		  goto error_exit;
+		}
+	    }
+	  fprintf (outfp, "\n*** DUMP HEAP OF %s ***\n", class_name);
+	  heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
+	}
     }
 
   db_shutdown ();

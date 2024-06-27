@@ -913,6 +913,7 @@ Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
   -y, --overwrite              클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음\n\
+  -p, --package                Java 패키지 이름; 지정하지 않으면 빈 문자열\n\
   -j, --jni                    JNI 사용을 위해 정적 로딩 영역에 클래스 또는 Jar를 추가함\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
@@ -924,7 +925,8 @@ plandump: 쿼리 플랜 표시 및 관리\n\
 \n\
 옵션:\n\
   -d, --drop                   서버 케시에 있는 모든 플랜 삭제\n\
-  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
+  -s, --sha1=SHA1              서버 케시에 있는 sha1 플랜 삭제; 기본값: 없음\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 출력 파일 '%1$s'을 열 수 없습니다.\n

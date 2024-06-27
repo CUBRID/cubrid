@@ -54,6 +54,7 @@
 #include "method_def.hpp"
 #include "dynamic_array.h"
 #include "flashback_cl.h"
+#include "method_compile_def.hpp"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -264,6 +265,7 @@ extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_stream, int xas
 						      int query_timeout);
 extern int qmgr_end_query (QUERY_ID query_id);
 extern int qmgr_drop_all_query_plans (void);
+extern int qmgr_drop_query_plans_by_sha1 (char *sha1);
 extern void qmgr_dump_query_plans (FILE * outfp);
 extern void qmgr_dump_query_cache (FILE * outfp);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -451,5 +453,10 @@ extern int flashback_get_and_show_summary (dynamic_array * class_list, const cha
 extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa,
 				  LOG_LSA * end_lsa, int *num_item, bool forward, char **info_list,
 				  int *invalid_class_idx);
+
+/* PL/CSQL */
+EXPORT_IMPORT extern int plcsql_transfer_file (const std::string & input_file, const bool & verbose,
+					       PLCSQL_COMPILE_INFO & compile_info);
+
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */
