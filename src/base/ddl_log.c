@@ -807,7 +807,14 @@ logddl_write ()
     }
 
   user_name = db_get_user_name ();
-  logddl_set_user_name (user_name);
+  if (user_name)
+    {
+      logddl_set_user_name (user_name);
+    }
+  else
+    {
+      logddl_set_user_name ("unknown");
+    }
 
   fp = logddl_open (ddl_audit_handle.app_name);
 
@@ -886,7 +893,14 @@ logddl_write_tran_str (const char *fmt, ...)
     }
 
   user_name = db_get_user_name ();
-  logddl_set_user_name (user_name);
+  if (user_name)
+    {
+      logddl_set_user_name (user_name);
+    }
+  else
+    {
+      logddl_set_user_name ("unknown");
+    }
 
   fp = logddl_open (ddl_audit_handle.app_name);
 
@@ -1009,7 +1023,14 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
     }
 
   user_name = db_get_user_name ();
-  logddl_set_user_name (user_name);
+  if (user_name)
+    {
+      logddl_set_user_name (user_name);
+    }
+  else
+    {
+      logddl_set_user_name ("unknown");
+    }
 
   fp = logddl_open (ddl_audit_handle.app_name);
 
