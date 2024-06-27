@@ -44,13 +44,11 @@ public class ExprTimestamp extends Expr {
     }
 
     public final ZonedDateTime time;
-    public final String originType;
 
-    public ExprTimestamp(ParserRuleContext ctx, ZonedDateTime time, String originType) {
+    public ExprTimestamp(ParserRuleContext ctx, ZonedDateTime time) {
         super(ctx);
 
         this.time = time;
-        this.originType = originType;
     }
 
     public String javaCode(Set<String> javaTypesUsed) {

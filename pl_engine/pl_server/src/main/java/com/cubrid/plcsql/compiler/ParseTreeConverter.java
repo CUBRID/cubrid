@@ -645,7 +645,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public ExprTimestamp visitTimestamp_exp(Timestamp_expContext ctx) {
 
         String s = ctx.quoted_string().getText();
-        return parseZonedDateTime(ctx, s, false, "TIMESTAMP");
+        s = unquoteStr(s);
+        ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, false);
+        if (timestamp == null) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), // s052
+                    String.format("invalid TIMESTAMP string: %s", s));
+        }
+        return new ExprTimestamp(ctx, timestamp);
     }
 
     @Override
@@ -662,32 +669,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         // System.out.println("[temp] datetime=" + datetime);
         return new ExprDatetime(ctx, datetime);
     }
-
-    /* TODO: restore the following four methods
-    @Override
-    public Expr visitTimestamptz_exp(Timestamptz_expContext ctx) {
-        String s = ctx.quoted_string().getText();
-        return parseZonedDateTime(ctx, s, false, "TIMESTAMPTZ");
-    }
-
-    @Override
-    public Expr visitTimestampltz_exp(Timestampltz_expContext ctx) {
-        String s = ctx.quoted_string().getText();
-        return parseZonedDateTime(ctx, s, false, "TIMESTAMPLTZ");
-    }
-
-    @Override
-    public Expr visitDatetimetz_exp(Datetimetz_expContext ctx) {
-        String s = ctx.quoted_string().getText();
-        return parseZonedDateTime(ctx, s, true, "DATETIMETZ");
-    }
-
-    @Override
-    public Expr visitDatetimeltz_exp(Datetimeltz_expContext ctx) {
-        String s = ctx.quoted_string().getText();
-        return parseZonedDateTime(ctx, s, true, "DATETIMELTZ");
-    }
-     */
 
     @Override
     public ExprUint visitUint_exp(Uint_expContext ctx) {
@@ -2326,19 +2307,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         } else {
             return (Expr) visit(ctx);
         }
-    }
-
-    private ExprTimestamp parseZonedDateTime(
-            ParserRuleContext ctx, String s, boolean forDatetime, String originType) {
-
-        s = unquoteStr(s);
-        ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, forDatetime);
-        if (timestamp == null) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx), // s052
-                    String.format("invalid %s string: %s", originType, s));
-        }
-        return new ExprTimestamp(ctx, timestamp, originType);
     }
 
     private boolean within(ParserRuleContext ctx, Class ctxClass) {
