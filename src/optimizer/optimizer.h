@@ -36,7 +36,6 @@
 #include "memory_alloc.h"
 #include "parser.h"
 #include "release_string.h"
-#include "parser.h"
 
 // forward definitions
 struct xasl_node;

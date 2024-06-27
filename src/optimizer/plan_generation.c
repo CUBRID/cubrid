@@ -44,9 +44,8 @@ static XASL_NODE *make_scan_proc (QO_ENV * env);
 static XASL_NODE *make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * left_list,
 				       BITSET * left_exprs, PT_NODE * left_elist, XASL_NODE * rght, PT_NODE * rght_list,
 				       BITSET * rght_exprs, PT_NODE * rght_elist);
-static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * left_list,
-				      BITSET * left_exprs, PT_NODE * left_elist, XASL_NODE * rght, PT_NODE * rght_list,
-				      BITSET * rght_exprs, PT_NODE * rght_elist);
+static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
+				      PROJECTION_INFO * projection_info);
 static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
 static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist);
 
@@ -533,287 +532,321 @@ exit_on_error:
 }
 
 static XASL_NODE *
-make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * left_list, BITSET * left_exprs,
-		    PT_NODE * left_elist, XASL_NODE * rght, PT_NODE * rght_list, BITSET * rght_exprs,
-		    PT_NODE * rght_elist)
+make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
+		    PROJECTION_INFO * projection_info)
 {
-  XASL_NODE *hashjoin = NULL;
   PARSER_CONTEXT *parser = NULL;
-  QFILE_LIST_MERGE_INFO *merge_info_p;
-  PT_NODE *outer_spec, *inner_spec;
-  PT_NODE *outer_attr, *inner_attr;
-  PT_NODE *hash_pred, *during_join_pred;
-  int i, left_epos, rght_epos, cnt, seg_idx, ncols;
-  int left_nlen, left_elen, rght_nlen, rght_elen, nlen;
-  SORT_LIST *order, *prev_order;
+  PT_NODE *outer_part, *inner_part;
+  PT_NODE *outer_expr, *inner_expr;
+  int outer_expr_pos, inner_expr_pos;
+
+  QO_PLAN *outer_plan, *inner_plan;
   QO_TERM *term;
-  BITSET_ITERATOR bi;
-  BITSET term_segs;
+  BITSET term_segs_set;
+  BITSET_ITERATOR bitset_iter;
+  int bitset_index;
 
-  bitset_init (&term_segs, env);
+  PROJECTION_PART_INFO *outer_info;
+  PROJECTION_PART_INFO *inner_info;
 
-  if (env == NULL || plan == NULL)
+  XASL_NODE *xasl = NULL;
+
+  QFILE_LIST_MERGE_INFO *merge_info;
+  PT_NODE *during_join_pred;
+
+  int value_index, found_index, pos_index;
+
+  if ((env == NULL) || (plan == NULL) || (outer_xasl == NULL) || (inner_xasl == NULL) || (projection_info == NULL))
     {
+      assert (false);
+      goto exit_on_error;
+    }
+
+  if ((projection_info->outer.name_list == NULL) || (projection_info->outer.expr_name_list == NULL)
+      || (projection_info->inner.name_list == NULL) || (projection_info->inner.expr_name_list == NULL))
+    {
+      assert (false);
       goto exit_on_error;
     }
 
   parser = QO_ENV_PARSER (env);
+  if (parser == NULL)
+    {
+      assert (false);
+      goto exit_on_error;
+    }
 
-  hashjoin = ptqo_to_hash_join_proc (parser, left, rght);
+  outer_plan = plan->plan_un.join.outer;
+  inner_plan = plan->plan_un.join.inner;
+  assert (outer_plan != NULL);
+  assert (inner_plan != NULL);
 
-  if (hashjoin == NULL || left == NULL || left_list == NULL || rght == NULL || rght_list == NULL)
+  outer_info = &(projection_info->outer);
+  inner_info = &(projection_info->inner);
+
+  assert (outer_info->name_count > 0);
+  assert (outer_info->expr_name_count == (outer_info->name_count + outer_info->expr_count));
+  assert (outer_info->expr_count == bitset_cardinality (outer_info->exprs_set));
+
+  assert (inner_info->name_count > 0);
+  assert (inner_info->expr_name_count == (inner_info->name_count + inner_info->expr_count));
+  assert (inner_info->expr_count == bitset_cardinality (inner_info->exprs_set));
+
+  bitset_init (&term_segs_set, env);
+
+  xasl = ptqo_to_hash_join_proc (parser, outer_xasl, inner_xasl);
+  if (xasl == NULL)
     {
       goto exit_on_error;
     }
 
-  merge_info_p = &hashjoin->proc.hashjoin.merge_info;
+  merge_info = &(xasl->proc.hashjoin.merge_info);
+  merge_info->join_type = plan->plan_un.join.join_type;
+  merge_info->ls_column_cnt = bitset_cardinality (&(plan->plan_un.join.join_terms));
+  assert (merge_info->ls_column_cnt > 0);
 
-  merge_info_p->join_type = plan->plan_un.join.join_type;
-
-  ncols = merge_info_p->ls_column_cnt = bitset_cardinality (&(plan->plan_un.join.join_terms));
-  assert (ncols > 0);
-
-  merge_info_p->ls_outer_column = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
-  if (merge_info_p->ls_outer_column == NULL)
+  merge_info->ls_outer_column = (int *) pt_alloc_packing_buf (merge_info->ls_column_cnt * sizeof (int));
+  if (merge_info->ls_outer_column == NULL)
     {
       goto exit_on_error;
     }
 
-  merge_info_p->ls_outer_unique = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
-  if (merge_info_p->ls_outer_unique == NULL)
+  merge_info->ls_inner_column = (int *) pt_alloc_packing_buf (merge_info->ls_column_cnt * sizeof (int));
+  if (merge_info->ls_inner_column == NULL)
     {
       goto exit_on_error;
     }
 
-  merge_info_p->ls_inner_column = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
-  if (merge_info_p->ls_inner_column == NULL)
+  assert (merge_info->ls_outer_unique == NULL);	/* Unused. */
+  assert (merge_info->ls_inner_unique == NULL);	/* Unused. */
+
+  outer_expr = outer_info->expr_list;
+  inner_expr = inner_info->expr_list;
+  outer_expr_pos = 0;
+  inner_expr_pos = 0;
+
+  for (value_index = 0, bitset_index = bitset_iterate (&(plan->plan_un.join.join_terms), &bitset_iter);
+       bitset_index != -1; bitset_index = bitset_next_member (&bitset_iter), value_index++)
     {
-      goto exit_on_error;
-    }
+      term = QO_ENV_TERM (env, bitset_index);
 
-  merge_info_p->ls_inner_unique = (int *) pt_alloc_packing_buf (ncols * sizeof (int));
-  if (merge_info_p->ls_inner_unique == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  left->orderby_list = NULL;
-  rght->orderby_list = NULL;
-
-  cnt = 0;			/* init */
-  left_epos = rght_epos = 0;	/* init */
-  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi); i != -1; i = bitset_next_member (&bi))
-    {
-      term = QO_ENV_TERM (env, i);
-
-      if (merge_info_p->join_type == JOIN_INNER && QO_IS_PATH_TERM (term))
+      if (QO_IS_PATH_TERM (term) || merge_info->join_type == JOIN_INNER)
 	{
-	  /* mark hash join spec as single-fetch */
-	  merge_info_p->single_fetch = QPROC_SINGLE_OUTER;
+	  merge_info->single_fetch = QPROC_SINGLE_OUTER;
 	}
 
-      if (BITSET_MEMBER (*left_exprs, i) && left_elist != NULL)
+      if (BITSET_MEMBER (*(outer_info->exprs_set), bitset_index) && outer_expr != NULL)
 	{
-	  /* Then we added an "extra" column for the expression to the left_elist.  We want to treat that expression as
-	   * the outer expression, but we want to leave it off of the list of segments that are projected out of the
-	   * merge. Take it off, but remember it in "outer_attr" so that we can fix up domain info in a little while. */
-	  merge_info_p->ls_outer_column[cnt] = left_epos++;
-	  outer_attr = left_elist;
-	  left_elist = left_elist->next;
-	}
-      else
-	{
-	  /* Determine which attributes are involved in this predicate. */
-	  bitset_assign (&term_segs, &(QO_TERM_SEGS (term)));
-	  bitset_intersect (&term_segs, &((plan->plan_un.join.outer)->info->projected_segs));
-	  seg_idx = bitset_first_member (&term_segs);
-	  if (seg_idx == -1)
-	    {
-	      goto exit_on_error;
-	    }
+	  /**
+	   * Then we added an "extra" column for the expression to the outer_expr_list.
+	   * We want to treat that expression as the outer expression,
+	   * but we want to leave it off of the list of segments that are projected out of the merge.
+	   * Take it off, but remember it in `outer_part` so that we can fix up domain info in a little while.
+	   */
+	  merge_info->ls_outer_column[value_index] = outer_expr_pos;
+	  assert (outer_expr_pos < outer_info->expr_count);
 
-	  outer_attr = QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_idx));
+	  outer_part = outer_expr;
+	  assert (outer_part != NULL);
 
-	  merge_info_p->ls_outer_column[cnt] = pt_find_attribute (parser, outer_attr, left_list);
-	}
-      merge_info_p->ls_outer_unique[cnt] = false;	/* currently, unused */
-
-      if (BITSET_MEMBER (*rght_exprs, i) && rght_elist != NULL)
-	{
-	  /* This situation is exactly analogous to the one above, except that we're concerned with the right (inner)
-	   * side this time. */
-	  merge_info_p->ls_inner_column[cnt] = rght_epos++;
-	  inner_attr = rght_elist;
-	  rght_elist = rght_elist->next;
+	  outer_expr = outer_expr->next;
+	  outer_expr_pos++;
 	}
       else
 	{
-	  /* Determine which attributes are involved in this predicate. */
-	  bitset_assign (&term_segs, &(QO_TERM_SEGS (term)));
-	  bitset_intersect (&term_segs, &((plan->plan_un.join.inner)->info->projected_segs));
-	  seg_idx = bitset_first_member (&term_segs);
-	  if (seg_idx == -1)
+	  bitset_assign (&term_segs_set, &(QO_TERM_SEGS (term)));
+	  bitset_intersect (&term_segs_set, &(outer_plan->info->projected_segs));
+
+	  found_index = bitset_first_member (&term_segs_set);
+	  if (found_index == -1)
 	    {
+	      assert (false);
 	      goto exit_on_error;
 	    }
 
-	  inner_attr = QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_idx));
+	  outer_part = QO_SEG_PT_NODE (QO_ENV_SEG (env, found_index));
 
-	  merge_info_p->ls_inner_column[cnt] = pt_find_attribute (parser, inner_attr, rght_list);
+	  found_index = pt_find_attribute (parser, outer_part, outer_info->expr_name_list);
+	  if (found_index == -1)
+	    {
+	      assert (false);
+	      goto exit_on_error;
+	    }
+
+	  merge_info->ls_outer_column[value_index] = found_index;
 	}
-      merge_info_p->ls_inner_unique[cnt] = false;	/* currently, unused */
 
-      cnt++;
-    }				/* for (i = ... ) */
-  assert (cnt == ncols);
+      if (BITSET_MEMBER (*(inner_info->exprs_set), bitset_index) && inner_expr != NULL)
+	{
+	  /**
+	   * This situation is exactly analogous to the one above,
+	   * except that we're concerned with the right (inner) side this time.
+	   */
+	  merge_info->ls_inner_column[value_index] = inner_expr_pos;
+	  assert (inner_expr_pos < inner_info->expr_count);
 
-  left_elen = bitset_cardinality (left_exprs);
-  left_nlen = pt_length_of_list (left_list) - left_elen;
-  rght_elen = bitset_cardinality (rght_exprs);
-  rght_nlen = pt_length_of_list (rght_list) - rght_elen;
+	  inner_part = inner_expr;
+	  assert (inner_part != NULL);
 
-  nlen = merge_info_p->ls_pos_cnt = left_nlen + rght_nlen;
-  merge_info_p->ls_outer_inner_list = (int *) pt_alloc_packing_buf (nlen * sizeof (int));
-  if (merge_info_p->ls_outer_inner_list == NULL)
+	  inner_expr = inner_expr->next;
+	  inner_expr_pos++;
+	}
+      else
+	{
+	  bitset_assign (&term_segs_set, &(QO_TERM_SEGS (term)));
+	  bitset_intersect (&term_segs_set, &(inner_plan->info->projected_segs));
+
+	  found_index = bitset_first_member (&term_segs_set);
+	  if (found_index == -1)
+	    {
+	      assert (false);
+	      goto exit_on_error;
+	    }
+
+	  inner_part = QO_SEG_PT_NODE (QO_ENV_SEG (env, found_index));
+
+	  found_index = pt_find_attribute (parser, inner_part, inner_info->expr_name_list);
+	  if (found_index == -1)
+	    {
+	      assert (false);
+	      goto exit_on_error;
+	    }
+
+	  merge_info->ls_inner_column[value_index] = found_index;
+	}
+    }
+
+  assert (value_index == merge_info->ls_column_cnt);
+
+  merge_info->ls_pos_cnt = outer_info->name_count + inner_info->name_count;
+
+  merge_info->ls_outer_inner_list = (int *) pt_alloc_packing_buf (merge_info->ls_pos_cnt * sizeof (int));
+  if (merge_info->ls_outer_inner_list == NULL)
     {
       goto exit_on_error;
     }
 
-  merge_info_p->ls_pos_list = (int *) pt_alloc_packing_buf (nlen * sizeof (int));
-  if (merge_info_p->ls_pos_list == NULL)
+  merge_info->ls_pos_list = (int *) pt_alloc_packing_buf (merge_info->ls_pos_cnt * sizeof (int));
+  if (merge_info->ls_pos_list == NULL)
     {
       goto exit_on_error;
     }
 
-  /* these could be sorted out arbitrily. This could make it easier to avoid the wrapper buildlist_proc, when no
-   * expressions, predicates, subqueries, fetches, or aggregation is involved. For now, we always build the same thing,
-   * with simple column concatenation. */
+  /**
+   * these could be sorted out arbitrily.
+   * This could make it easier to avoid the wrapper buildlist_proc,
+   * when no expressions, predicates, subqueries, fetches, or aggregation is involved.
+   * For now, we always build the same thing, with simple column concatenation.
+   */
 
-  for (i = 0; i < left_nlen; i++)
+  for (pos_index = 0; pos_index < outer_info->name_count; pos_index++)
     {
-      merge_info_p->ls_outer_inner_list[i] = QFILE_OUTER_LIST;
-      merge_info_p->ls_pos_list[i] = i + left_elen;
+      merge_info->ls_outer_inner_list[pos_index] = QFILE_OUTER_LIST;
+      merge_info->ls_pos_list[pos_index] = outer_info->expr_count + pos_index;
     }
 
-  for (i = 0; i < nlen - left_nlen; i++)
+  for (pos_index = 0; pos_index < inner_info->name_count; pos_index++)
     {
-      merge_info_p->ls_outer_inner_list[left_nlen + i] = QFILE_INNER_LIST;
-      merge_info_p->ls_pos_list[left_nlen + i] = i + rght_elen;
+      merge_info->ls_outer_inner_list[outer_info->name_count + pos_index] = QFILE_INNER_LIST;
+      merge_info->ls_pos_list[outer_info->name_count + pos_index] = inner_info->expr_count + pos_index;
     }
 
   /* make outer_spec_list, outer_val_list, inner_spec_list, and inner_val_list */
-  if (merge_info_p->join_type == JOIN_INNER)
+  if (merge_info->join_type == JOIN_INNER)
     {
-      hashjoin->proc.hashjoin.outer.spec_list = NULL;
-      hashjoin->proc.hashjoin.outer.val_list = NULL;
-      hashjoin->proc.hashjoin.inner.spec_list = NULL;
-      hashjoin->proc.hashjoin.inner.val_list = NULL;
+      xasl->proc.hashjoin.outer.spec_list = NULL;
+      xasl->proc.hashjoin.outer.val_list = NULL;
+
+      xasl->proc.hashjoin.inner.spec_list = NULL;
+      xasl->proc.hashjoin.inner.val_list = NULL;
     }
   else
     {
-      int *pos_list;
+      int *pos_list = NULL;
 
-      /* set poslist of outer XASL node */
-      pos_list = NULL;		/* init */
-      if (left_elen > 0)
+      if (outer_info->expr_count > 0)
 	{
-	  /* proceed to name list and skip out join edge exprs */
-	  for (i = 0; i < left_elen; i++)
-	    {
-	      left_list = left_list->next;
-	    }
-
-	  pos_list = (int *) malloc (left_nlen * sizeof (int));
+	  pos_list = (int *) malloc (outer_info->name_count * sizeof (int));
 	  if (pos_list == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, left_nlen * sizeof (int));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      outer_info->name_count * sizeof (int));
 	      goto exit_on_error;
 	    }
 
-	  for (i = 0; i < left_nlen; i++)
+	  for (pos_index = 0; pos_index < outer_info->name_count; pos_index++)
 	    {
-	      pos_list[i] = i + left_elen;
+	      pos_list[pos_index] = outer_info->expr_count + pos_index;
 	    }
 	}
 
-      /* sets xasl->spec_list and xasl->val_list */
-      hashjoin = ptqo_to_list_scan_proc (parser, hashjoin, SCAN_PROC, left, left_list, NULL, pos_list);
+      xasl = ptqo_to_list_scan_proc (parser, xasl, SCAN_PROC, outer_xasl, outer_info->expr_name_list, NULL, pos_list);
 
-      /* dealloc */
       if (pos_list != NULL)
 	{
 	  free_and_init (pos_list);
 	}
 
-      if (hashjoin == NULL)
+      if (xasl == NULL)
 	{
 	  goto exit_on_error;
 	}
 
-      hashjoin->proc.hashjoin.outer.spec_list = hashjoin->spec_list;
-      hashjoin->proc.hashjoin.outer.val_list = hashjoin->val_list;
+      xasl->proc.hashjoin.outer.spec_list = xasl->spec_list;
+      xasl->proc.hashjoin.outer.val_list = xasl->val_list;
 
-      /* set poslist of inner XASL node */
-      pos_list = NULL;		/* init */
-      if (rght_elen > 0)
+      xasl->spec_list = NULL;
+      xasl->val_list = NULL;
+
+      if (inner_info->expr_count > 0)
 	{
-	  /* proceed to name list and skip out join edge exprs */
-	  for (i = 0; i < rght_elen; i++)
-	    {
-	      rght_list = rght_list->next;
-	    }
-
-	  pos_list = (int *) malloc (rght_nlen * sizeof (int));
+	  pos_list = (int *) malloc (inner_info->name_count * sizeof (int));
 	  if (pos_list == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, rght_nlen * sizeof (int));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      inner_info->name_count * sizeof (int));
 	      goto exit_on_error;
 	    }
 
-	  for (i = 0; i < rght_nlen; i++)
+	  for (pos_index = 0; pos_index < inner_info->name_count; pos_index++)
 	    {
-	      pos_list[i] = i + rght_elen;
+	      pos_list[pos_index] = inner_info->expr_count + pos_index;
 	    }
 	}
 
-      /* sets xasl->spec_list and xasl->val_list */
-      hashjoin = ptqo_to_list_scan_proc (parser, hashjoin, SCAN_PROC, rght, rght_list, NULL, pos_list);
+      xasl = ptqo_to_list_scan_proc (parser, xasl, SCAN_PROC, inner_xasl, inner_info->expr_name_list, NULL, pos_list);
 
-      /* dealloc */
       if (pos_list)
 	{
 	  free_and_init (pos_list);
 	}
 
-      if (hashjoin == NULL)
+      if (xasl == NULL)
 	{
 	  goto exit_on_error;
 	}
 
-      hashjoin->proc.hashjoin.inner.spec_list = hashjoin->spec_list;
-      hashjoin->proc.hashjoin.inner.val_list = hashjoin->val_list;
+      xasl->proc.hashjoin.inner.spec_list = xasl->spec_list;
+      xasl->proc.hashjoin.inner.val_list = xasl->val_list;
 
-      hashjoin->spec_list = NULL;
-      hashjoin->val_list = NULL;
+      xasl->spec_list = NULL;
+      xasl->val_list = NULL;
 
-      /* add outer join terms */
       during_join_pred = make_pred_from_bitset (env, &(plan->plan_un.join.during_join_terms), is_always_true);
-      if (during_join_pred)
+      if (during_join_pred != NULL)
 	{
-	  hashjoin = add_after_join_predicate (env, hashjoin, during_join_pred);
-
-	  /* free pointer node list */
-	  parser_free_tree (QO_ENV_PARSER (env), during_join_pred);
+	  xasl = add_after_join_predicate (env, xasl, during_join_pred);
+	  parser_free_tree (parser, during_join_pred);
 	}
     }
 
 exit_on_end:
-  bitset_delset (&term_segs);
+  bitset_delset (&term_segs_set);
 
-  return hashjoin;
+  return xasl;
 
 exit_on_error:
-  hashjoin = NULL;
+  xasl = NULL;
 
   goto exit_on_end;
 }
@@ -1893,7 +1926,6 @@ check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
 	}
     }
 
-
 exit_on_end:
   return xasl;
 
@@ -1946,7 +1978,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	   XASL_NODE * xasl)
 {
   PARSER_CONTEXT *parser;
-  XASL_NODE *scan, *listfile, *fetch;
+  XASL_NODE *scan, *listfile, *merge, *fetch;
   QO_PLAN *outer, *inner;
   JOIN_TYPE join_type = NO_JOIN;
   QO_TERM *term;
@@ -2223,7 +2255,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	   */
 	  {
 
-	    XASL_NODE *merge, *left_xasl, *rght_xasl;
+	    XASL_NODE *left_xasl, *rght_xasl;
 	    PT_NODE *left_elist, *left_nlist, *left_list, *left;
 	    PT_NODE *rght_elist, *rght_nlist, *rght_list, *rght;
 	    PT_NODE *seg_nlist, *pt_expr;
@@ -2589,54 +2621,69 @@ static XASL_NODE *
 gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueries, XASL_NODE * inner_scans,
 		     XASL_NODE * fetches, XASL_NODE * xasl)
 {
-  PARSER_CONTEXT *parser;
-  PT_NODE *pt_expr = NULL;
+  PARSER_CONTEXT *parser = NULL;
+  PT_NODE *outer_part, *inner_part;
+  PT_NODE *term_expr;
 
   QO_PLAN *outer_plan, *inner_plan;
   QO_TERM *term;
-  BITSET plan_segs, temp_segs;
+  BITSET temp_segs_set;
   BITSET_ITERATOR bitset_iter;
   int bitset_index;
 
-  PT_NODE *outer_part = NULL, *outer_expr_list = NULL, *outer_segs_list = NULL, *outer_list = NULL;
-  BITSET outer_expr_set;
-  int outer_segs_len;
+  PROJECTION_INFO projection_info;
+  PROJECTION_PART_INFO *outer_info;
+  PROJECTION_PART_INFO *inner_info;
+  BITSET outer_exprs_set, inner_exprs_set;
 
-  PT_NODE *inner_part = NULL, *inner_expr_list = NULL, *inner_segs_list = NULL, *inner_list = NULL;
-  BITSET inner_expr_set;
-  int inner_segs_len;
+  XASL_NODE *hashjoin_xasl = NULL;
+  XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
 
-  PT_NODE *seg = NULL, *segs_list = NULL;
-  int segs_len;
-
-  int *segs_pos_list = NULL;
-  int seg_pos;
-  int seg_index, pos_index;
-
-  XASL_NODE *hashjoin_xasl, *outer_xasl, *inner_xasl;
   QFILE_LIST_MERGE_INFO *merge_info;
-  int outer_or_inner;
+  int is_outer_or_inner;
 
-  assert (env != NULL);
-  assert (plan != NULL);
-  assert (pred_set != NULL);
-  assert (xasl != NULL);
+  BITSET plan_segs_set;
+  PT_NODE *plan_seg_list = NULL, *plan_seg = NULL;
+  int plan_seg_count;
+  int *plan_seg_pos_list = NULL;
+  int seg_index, seg_pos, pos_index;
+
+  if ((env == NULL) || (plan == NULL) || (pred_set == NULL) || (xasl == NULL))
+    {
+      assert (false);
+      goto exit_on_error;
+    }
 
   parser = QO_ENV_PARSER (env);
-
-  bitset_init (&plan_segs, env);
-  bitset_init (&temp_segs, env);
-  bitset_init (&outer_expr_set, env);
-  bitset_init (&inner_expr_set, env);
+  if (parser == NULL)
+    {
+      assert (false);
+      goto exit_on_error;
+    }
 
   outer_plan = plan->plan_un.join.outer;
   inner_plan = plan->plan_un.join.inner;
+  assert (outer_plan != NULL);
+  assert (inner_plan != NULL);
+
+  memset (&projection_info, 0, sizeof (PROJECTION_INFO));
+
+  outer_info = &(projection_info.outer);
+  inner_info = &(projection_info.inner);
+
+  outer_info->exprs_set = &outer_exprs_set;
+  inner_info->exprs_set = &inner_exprs_set;
+
+  bitset_init (&temp_segs_set, env);
+  bitset_init (&outer_exprs_set, env);
+  bitset_init (&inner_exprs_set, env);
+  bitset_init (&plan_segs_set, env);
 
   /**
    * STEP 1: Distinguish the left and right parts in the join terms as outer and inner,
    *         and make separate lists of parts that are expressions or functions for each.
    */
-  bitset_assign (&plan_segs, &plan->info->projected_segs);
+  bitset_assign (&plan_segs_set, &(plan->info->projected_segs));
 
   for (bitset_index = bitset_iterate (pred_set, &bitset_iter); bitset_index != -1;
        bitset_index = bitset_next_member (&bitset_iter))
@@ -2645,30 +2692,30 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 
       if (BITSET_MEMBER (plan->plan_un.join.join_terms, bitset_index))
 	{
-	  BITSET_CLEAR (temp_segs);
+	  BITSET_CLEAR (temp_segs_set);
 
 	  /**
 	   * STEP 1-1: Distinguish the left and right parts in the join terms as outer and inner.
 	   */
-	  pt_expr = QO_TERM_PT_EXPR (term);
-	  qo_expr_segs (env, pt_left_part (pt_expr), &temp_segs);	/* TODO: Could it be replaced with pt_expr->info.expr.arg1? */
+	  term_expr = QO_TERM_PT_EXPR (term);
+	  qo_expr_segs (env, pt_left_part (term_expr), &temp_segs_set);	/* TODO: Could it be replaced with term_expr->info.expr.arg1? */
 
-	  if (bitset_intersects (&temp_segs, &outer_plan->info->projected_segs))
+	  if (bitset_intersects (&temp_segs_set, &(outer_plan->info->projected_segs)))
 	    {
-	      outer_part = pt_left_part (pt_expr);
-	      inner_part = pt_right_part (pt_expr);
-	      if (pt_expr->info.expr.op == PT_RANGE && inner_part != NULL)
+	      outer_part = pt_left_part (term_expr);
+	      inner_part = pt_right_part (term_expr);
+	      if (term_expr->info.expr.op == PT_RANGE && inner_part != NULL)
 		{
 		  inner_part = inner_part->info.expr.arg1;
 		}
 	    }
 	  else
 	    {
-	      assert (bitset_intersects (&temp_segs, &inner_plan->info->projected_segs));
+	      assert (bitset_intersects (&temp_segs_set, &(inner_plan->info->projected_segs)));
 
-	      inner_part = pt_left_part (pt_expr);
-	      outer_part = pt_right_part (pt_expr);
-	      if (pt_expr->info.expr.op == PT_RANGE && outer_part != NULL)
+	      inner_part = pt_left_part (term_expr);
+	      outer_part = pt_right_part (term_expr);
+	      if (term_expr->info.expr.op == PT_RANGE && outer_part != NULL)
 		{
 		  outer_part = outer_part->info.expr.arg1;
 		}
@@ -2679,42 +2726,45 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 	   */
 	  if (pt_is_expr_node (outer_part) || pt_is_function (outer_part))
 	    {
-	      outer_expr_list = parser_append_node (pt_point (parser, outer_part), outer_expr_list);
-	      bitset_add (&outer_expr_set, bitset_index);
+	      outer_info->expr_list = parser_append_node (pt_point (parser, outer_part), outer_info->expr_list);
+	      bitset_add (outer_info->exprs_set, bitset_index);
 	    }
 	  else
 	    {
-	      bitset_union (&plan_segs, &(QO_TERM_SEGS (term)));
+	      bitset_union (&plan_segs_set, &(QO_TERM_SEGS (term)));
 	    }
 
 	  if (pt_is_expr_node (inner_part) || pt_is_function (inner_part))
 	    {
-	      inner_expr_list = parser_append_node (pt_point (parser, inner_part), inner_expr_list);
-	      bitset_add (&inner_expr_set, bitset_index);
+	      inner_info->expr_list = parser_append_node (pt_point (parser, inner_part), inner_info->expr_list);
+	      bitset_add (inner_info->exprs_set, bitset_index);
 	    }
 	  else
 	    {
-	      bitset_union (&plan_segs, &(QO_TERM_SEGS (term)));
+	      bitset_union (&plan_segs_set, &(QO_TERM_SEGS (term)));
 	    }
 	}
       else
 	{
-	  bitset_union (&plan_segs, &(QO_TERM_SEGS (term)));
+	  bitset_union (&plan_segs_set, &(QO_TERM_SEGS (term)));
 	}
     }
 
   /**
    * STEP 2: Make XASL for the outer plan.
    */
-  bitset_assign (&temp_segs /* save */ , &outer_plan->info->projected_segs);
-  bitset_intersect (&outer_plan->info->projected_segs, &plan_segs);
+  bitset_assign (&temp_segs_set /* save */ , &(outer_plan->info->projected_segs));
+  bitset_intersect (&(outer_plan->info->projected_segs), &plan_segs_set);
 
-  outer_segs_list = make_namelist_from_projected_segs (env, outer_plan);
-  outer_segs_len = pt_length_of_list (outer_segs_list);
+  outer_info->name_list = make_namelist_from_projected_segs (env, outer_plan);
+  outer_info->expr_name_list =
+    parser_append_node (outer_info->name_list /* node */ , outer_info->expr_list /* list */ );
+  outer_info->name_count = pt_length_of_list (outer_info->name_list);
+  outer_info->expr_name_count = pt_length_of_list (outer_info->expr_name_list);
+  outer_info->expr_count = outer_info->expr_name_count - outer_info->name_count;
+  assert (outer_info->expr_count == bitset_cardinality (outer_info->exprs_set));
 
-  outer_list = parser_append_node (outer_segs_list /* node */ , outer_expr_list /* list */ );
-
-  outer_xasl = make_buildlist_proc (env, outer_list);
+  outer_xasl = make_buildlist_proc (env, outer_info->expr_name_list);
   if (outer_xasl == NULL)
     {
       goto exit_on_error;
@@ -2726,20 +2776,24 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
       goto exit_on_error;
     }
 
-  bitset_assign (&outer_plan->info->projected_segs, &temp_segs /* restore */ );
+  bitset_assign (&(outer_plan->info->projected_segs), &temp_segs_set /* restore */ );
+  assert (outer_xasl->orderby_list = NULL);
 
   /**
    * STEP 3: Make XASL for the inner plan.
    */
-  bitset_assign (&temp_segs /* save */ , &inner_plan->info->projected_segs);
-  bitset_intersect (&inner_plan->info->projected_segs, &plan_segs);
+  bitset_assign (&temp_segs_set /* save */ , &(inner_plan->info->projected_segs));
+  bitset_intersect (&(inner_plan->info->projected_segs), &plan_segs_set);
 
-  inner_segs_list = make_namelist_from_projected_segs (env, inner_plan);
-  inner_segs_len = pt_length_of_list (inner_segs_list);
+  inner_info->name_list = make_namelist_from_projected_segs (env, inner_plan);
+  inner_info->expr_name_list =
+    parser_append_node (inner_info->name_list /* node */ , inner_info->expr_list /* list */ );
+  inner_info->name_count = pt_length_of_list (inner_info->name_list);
+  inner_info->expr_name_count = pt_length_of_list (inner_info->expr_name_list);
+  inner_info->expr_count = inner_info->expr_name_count - inner_info->name_count;
+  assert (inner_info->expr_count == bitset_cardinality (inner_info->exprs_set));
 
-  inner_list = parser_append_node (inner_segs_list /* node */ , inner_expr_list /* list */ );
-
-  inner_xasl = make_buildlist_proc (env, inner_list);
+  inner_xasl = make_buildlist_proc (env, inner_info->expr_name_list);
   if (inner_xasl == NULL)
     {
       goto exit_on_error;
@@ -2751,14 +2805,13 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
       goto exit_on_error;
     }
 
-  bitset_assign (&inner_plan->info->projected_segs, &temp_segs /* restore */ );
+  bitset_assign (&(inner_plan->info->projected_segs), &temp_segs_set /* restore */ );
+  assert (inner_xasl->orderby_list = NULL);
 
   /**
    * STEP 4: Make XASL for the hash join plan.
    */
-  hashjoin_xasl =
-    make_hashjoin_proc (env, plan, outer_xasl, outer_list, &outer_expr_set, outer_expr_list, inner_xasl, inner_list,
-			&inner_expr_set, inner_expr_list);
+  hashjoin_xasl = make_hashjoin_proc (env, plan, outer_xasl, inner_xasl, &projection_info);
   if (hashjoin_xasl == NULL)
     {
       goto exit_on_error;
@@ -2773,43 +2826,45 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
   /**
    * STEP 6: Filter out predicates used in the hash join plan.
    */
-  bitset_difference (pred_set, &plan->plan_un.join.join_terms);
+  bitset_difference (pred_set, &(plan->plan_un.join.join_terms));
   if (IS_OUTER_JOIN_TYPE (plan->plan_un.join.join_type))
     {
-      bitset_difference (pred_set, &plan->plan_un.join.during_join_terms);
+      bitset_difference (pred_set, &(plan->plan_un.join.during_join_terms));
     }
 
   /**
    * STEP 7: Add the segments referenced by the remaining predicates to the final projected segments.
    */
-  bitset_assign (&plan_segs, &plan->info->projected_segs);
+  bitset_assign (&plan_segs_set, &(plan->info->projected_segs));
   for (bitset_index = bitset_iterate (pred_set, &bitset_iter); bitset_index != -1;
        bitset_index = bitset_next_member (&bitset_iter))
     {
       term = QO_ENV_TERM (env, bitset_index);
-      bitset_union (&plan_segs, &(QO_TERM_SEGS (term)));
+      bitset_union (&plan_segs_set, &(QO_TERM_SEGS (term)));
     }
 
   /**
    * STEP 8: Make a list of merged segments from the projected segments of the outer and inner plans.
    */
-  bitset_assign (&temp_segs, &outer_plan->info->projected_segs);
-  bitset_intersect (&temp_segs, &plan_segs);
-  for (bitset_index = bitset_iterate (&temp_segs, &bitset_iter); bitset_index != -1;
+  bitset_assign (&temp_segs_set, &(outer_plan->info->projected_segs));
+  bitset_intersect (&temp_segs_set, &plan_segs_set);
+  for (bitset_index = bitset_iterate (&temp_segs_set, &bitset_iter); bitset_index != -1;
        bitset_index = bitset_next_member (&bitset_iter))
     {
-      segs_list = parser_append_node (pt_point (parser, QO_SEG_PT_NODE (QO_ENV_SEG (env, bitset_index))), segs_list);
+      plan_seg_list =
+	parser_append_node (pt_point (parser, QO_SEG_PT_NODE (QO_ENV_SEG (env, bitset_index))), plan_seg_list);
     }
 
-  bitset_assign (&temp_segs, &inner_plan->info->projected_segs);
-  bitset_intersect (&temp_segs, &plan_segs);
-  for (bitset_index = bitset_iterate (&temp_segs, &bitset_iter); bitset_index != -1;
+  bitset_assign (&temp_segs_set, &(inner_plan->info->projected_segs));
+  bitset_intersect (&temp_segs_set, &plan_segs_set);
+  for (bitset_index = bitset_iterate (&temp_segs_set, &bitset_iter); bitset_index != -1;
        bitset_index = bitset_next_member (&bitset_iter))
     {
-      segs_list = parser_append_node (pt_point (parser, QO_SEG_PT_NODE (QO_ENV_SEG (env, bitset_index))), segs_list);
+      plan_seg_list =
+	parser_append_node (pt_point (parser, QO_SEG_PT_NODE (QO_ENV_SEG (env, bitset_index))), plan_seg_list);
     }
 
-  segs_len = pt_length_of_list (segs_list);
+  plan_seg_count = pt_length_of_list (plan_seg_list);
 
   /**
    * STEP 9: Filter out unnecessary join edge segments from the projected segments of the outer and inner plans.
@@ -2824,31 +2879,31 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
    *        select --+ recompile use_hash
    *          b.c1 from prove_input a, build_input b where a.c1 = b.c1;
    */
-  if (segs_len > 0 && segs_len < outer_segs_len + inner_segs_len)
+  if (plan_seg_count > 0 && plan_seg_count < (outer_info->name_count + inner_info->name_count))
     {
-      merge_info = &hashjoin_xasl->proc.hashjoin.merge_info;
+      merge_info = &(hashjoin_xasl->proc.hashjoin.merge_info);
 
-      segs_pos_list = (int *) malloc (segs_len * sizeof (int));
-      if (segs_pos_list == NULL)
+      plan_seg_pos_list = (int *) malloc (plan_seg_count * sizeof (int));
+      if (plan_seg_pos_list == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, segs_len * sizeof (int));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, plan_seg_count * sizeof (int));
 	  goto exit_on_error;
 	}
 
-      for (seg_index = 0, seg = segs_list; seg != NULL; seg = seg->next, seg_index++)
+      for (seg_index = 0, plan_seg = plan_seg_list; plan_seg != NULL; plan_seg = plan_seg->next, seg_index++)
 	{
-	  seg_pos = pt_find_attribute (parser, seg, outer_list);	/* TODO: Could it be replaced with outer_segs_list? */
+	  seg_pos = pt_find_attribute (parser, plan_seg, outer_info->expr_name_list);	/* TODO: Could it be replaced with outer_segs_list? */
 	  if (seg_pos != -1)
 	    {
-	      outer_or_inner = QFILE_OUTER_LIST;
+	      is_outer_or_inner = QFILE_OUTER_LIST;
 	    }
 	  else
 	    {
 	      /* Not found. */
-	      seg_pos = pt_find_attribute (parser, seg, inner_list);
+	      seg_pos = pt_find_attribute (parser, plan_seg, inner_info->expr_name_list);
 	      if (seg_pos != -1)
 		{
-		  outer_or_inner = QFILE_INNER_LIST;
+		  is_outer_or_inner = QFILE_INNER_LIST;
 		}
 	      else
 		{
@@ -2860,10 +2915,10 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 
 	  for (pos_index = 0; pos_index < merge_info->ls_pos_cnt; pos_index++)
 	    {
-	      if (merge_info->ls_outer_inner_list[pos_index] == outer_or_inner
+	      if (merge_info->ls_outer_inner_list[pos_index] == is_outer_or_inner
 		  && merge_info->ls_pos_list[pos_index] == seg_pos)
 		{
-		  segs_pos_list[seg_index] = pos_index;
+		  plan_seg_pos_list[seg_index] = pos_index;
 		  break;
 		}
 	    }
@@ -2875,7 +2930,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 	}
     }
 
-  xasl = init_list_scan_proc (env, xasl, hashjoin_xasl, segs_list, pred_set, segs_pos_list);
+  xasl = init_list_scan_proc (env, xasl, hashjoin_xasl, plan_seg_list, pred_set, plan_seg_pos_list);
   xasl = add_scan_proc (env, xasl, inner_scans);
   xasl = add_fetch_proc (env, xasl, fetches);
   xasl = add_subqueries (env, xasl, subqueries);
@@ -2884,30 +2939,30 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
   assert (xasl != NULL);
 
 exit_on_end:
-  if (outer_list)
+  if (outer_info && outer_info->expr_name_list)
     {
-      parser_free_tree (parser, outer_list);
+      parser_free_tree (parser, outer_info->expr_name_list);
     }
 
-  if (inner_list)
+  if (inner_info && inner_info->expr_name_list)
     {
-      parser_free_tree (parser, inner_list);
+      parser_free_tree (parser, inner_info->expr_name_list);
     }
 
-  if (segs_list)
+  if (plan_seg_list)
     {
-      parser_free_tree (parser, segs_list);
+      parser_free_tree (parser, plan_seg_list);
     }
 
-  if (segs_pos_list)
+  if (plan_seg_pos_list)
     {
-      free_and_init (segs_pos_list);
+      free_and_init (plan_seg_pos_list);
     }
 
-  bitset_delset (&plan_segs);
-  bitset_delset (&temp_segs);
-  bitset_delset (&outer_expr_set);
-  bitset_delset (&inner_expr_set);
+  bitset_delset (&plan_segs_set);
+  bitset_delset (&temp_segs_set);
+  bitset_delset (&outer_exprs_set);
+  bitset_delset (&inner_exprs_set);
 
   return xasl;
 

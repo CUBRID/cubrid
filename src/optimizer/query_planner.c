@@ -2599,7 +2599,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 	     BITSET * join_terms, BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms,
 	     BITSET * pinned_subqueries, BITSET * hash_terms)
 {
-  QO_PLAN *plan = NULL, *swap = NULL;
+  QO_PLAN *plan = NULL;
   QO_NODE *node = NULL;
   PT_NODE *spec = NULL;
   BITSET sarg_out_terms;
@@ -2666,8 +2666,8 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
       break;
 
     case QO_JOINMETHOD_MERGE_JOIN:
-      plan->vtbl = &qo_merge_join_plan_vtbl;
 
+      plan->vtbl = &qo_merge_join_plan_vtbl;
 #if 0
       /* Don't do this anymore; it relies on symmetry, which definitely doesn't apply anymore with the advent of outer
        * joins.
@@ -3073,8 +3073,18 @@ qo_nljoin_cost (QO_PLAN * planp)
 
 #if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
   fprintf (stdout, "\n[DEBUG] Nested Loop Cost: \n");
+  fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
+  fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
-  fprintf (stdout, "  - Variable I/O Cost: %lf\n\n", planp->variable_io_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+  fprintf (stdout, "  -    Total     Cost: %lf\n",
+	   planp->fixed_cpu_cost + planp->fixed_io_cost + planp->variable_cpu_cost + planp->variable_io_cost);
+  if (planp->vtbl != NULL)
+    {
+      qo_plan_lite_print (planp, stdout, 0);
+      fprintf (stdout, "\n");
+    }
+  fprintf (stdout, "\n");
 #endif
 }
 
@@ -3141,8 +3151,18 @@ qo_mjoin_cost (QO_PLAN * planp)
 
 #if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
   fprintf (stdout, "\n[DEBUG] Sort Merge Cost: \n");
+  fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
+  fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
-  fprintf (stdout, "  - Variable I/O Cost: %lf\n\n", planp->variable_io_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+  fprintf (stdout, "  -    Total     Cost: %lf\n",
+	   planp->fixed_cpu_cost + planp->fixed_io_cost + planp->variable_cpu_cost + planp->variable_io_cost);
+  if (planp->vtbl != NULL)
+    {
+      qo_plan_lite_print (planp, stdout, 0);
+      fprintf (stdout, "\n");
+    }
+  fprintf (stdout, "\n");
 #endif
 }
 
@@ -3162,8 +3182,8 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   inner_plan_p = plan_p->plan_un.join.inner;
 
   /* for worst cost */
-  if (inner_plan_p->fixed_cpu_cost == QO_INFINITY || inner_plan_p->fixed_io_cost == QO_INFINITY
-      || inner_plan_p->variable_cpu_cost == QO_INFINITY || inner_plan_p->variable_io_cost == QO_INFINITY)
+  if ((inner_plan_p->fixed_cpu_cost == QO_INFINITY) || (inner_plan_p->fixed_io_cost == QO_INFINITY)
+      || (inner_plan_p->variable_cpu_cost == QO_INFINITY) || (inner_plan_p->variable_io_cost == QO_INFINITY))
     {
       qo_worst_cost (plan_p);
       return;
@@ -3172,8 +3192,8 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   outer_plan_p = plan_p->plan_un.join.outer;
 
   /* for worst cost */
-  if (outer_plan_p->fixed_cpu_cost == QO_INFINITY || outer_plan_p->fixed_io_cost == QO_INFINITY
-      || outer_plan_p->variable_cpu_cost == QO_INFINITY || outer_plan_p->variable_io_cost == QO_INFINITY)
+  if ((outer_plan_p->fixed_cpu_cost == QO_INFINITY) || (outer_plan_p->fixed_io_cost == QO_INFINITY)
+      || (outer_plan_p->variable_cpu_cost == QO_INFINITY) || (outer_plan_p->variable_io_cost == QO_INFINITY))
     {
       qo_worst_cost (plan_p);
       return;
@@ -3206,7 +3226,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
 
       inner_build_io_cost = 0.0;
-      if (inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ ) > mem_limit)
+      if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
 	{
 	  inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
 	  inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
@@ -3219,7 +3239,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
 
       outer_build_io_cost = 0.0;
-      if (outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ ) > mem_limit)
+      if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
 	{
 	  outer_build_io_cost = (inner_cardinality * HJ_FILE_IO_WEIGHT);
 	  outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
@@ -3228,7 +3248,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       /**
        * STEP 2-3: Choose the lowest cost.
        */
-      if (inner_build_cpu_cost + inner_build_io_cost <= outer_build_cpu_cost + outer_build_io_cost)
+      if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
 	{
 	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
 	  plan_p->variable_io_cost += inner_build_io_cost;
@@ -3247,7 +3267,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       plan_p->variable_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
       plan_p->variable_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
 
-      if (inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ ) > mem_limit)
+      if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
 	{
 	  plan_p->variable_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
 	  plan_p->variable_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
@@ -3256,8 +3276,18 @@ qo_hjoin_cost (QO_PLAN * plan_p)
 
 #if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
   fprintf (stdout, "\n[DEBUG] Hash Join Cost: \n");
+  fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", plan_p->fixed_cpu_cost);
+  fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", plan_p->fixed_io_cost);
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", plan_p->variable_cpu_cost);
-  fprintf (stdout, "  - Variable I/O Cost: %lf\n\n", plan_p->variable_io_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n", plan_p->variable_io_cost);
+  fprintf (stdout, "  -    Total     Cost: %lf\n",
+	   plan_p->fixed_cpu_cost + plan_p->fixed_io_cost + plan_p->variable_cpu_cost + plan_p->variable_io_cost);
+  if (plan_p->vtbl != NULL)
+    {
+      qo_plan_lite_print (plan_p, stdout, 0);
+      fprintf (stdout, "\n");
+    }
+  fprintf (stdout, "\n");
 #endif
 }
 
@@ -9963,7 +9993,6 @@ qo_classify (PT_NODE * attr)
 	{
 	  return PC_ATTR;
 	}
-      /* fall through */
 
     default:
       return PC_OTHER;

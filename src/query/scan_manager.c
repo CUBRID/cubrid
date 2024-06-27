@@ -4907,7 +4907,6 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM
 	  || llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	{
-
 #if !defined(NDEBUG) && defined(DEBUG_HASH_LIST_SCAN_DUMP_HASH_TABLE)
 	  if (llsidp->list_id->tuple_cnt <= 100)
 	    {

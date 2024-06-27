@@ -590,14 +590,22 @@ configure_file(cmake/config.h.cmake config.h)
 configure_file(cmake/version.h.cmake version.h)
 
 
+##########
+# Others #
+##########
 # add_definitions(-DCUBRID_DEBUG_TEST)
 # add_definitions(-DCUBRID_DEBUG_DUMP_PLAN_COST)
+# add_definitions(-DTEST_SKIP_GET_STRING_LENGTH)
 
-# Hash List Scan
+##################
+# Hash List Scan #
+##################
 # add_definitions(-DDEBUG_HASH_LIST_SCAN_DUMP_HASH_TABLE)
 # add_definitions(-DDEBUG_HASH_LIST_SCAN_DUMP_FILE_HASH)
 
-# Hash Join
+#############
+# Hash Join #
+#############
 # add_definitions(-DTEST_HASH_JOIN_ENABLE)
 # add_definitions(-DTEST_HASH_JOIN_FORCE_ENABLE)
 # add_definitions(-DDEBUG_HASH_JOIN_DUMP_HASH_TABLE)

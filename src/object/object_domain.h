@@ -262,6 +262,8 @@ typedef enum tp_match
 
 #define TP_IS_STRING_TYPE(typeid) TP_IS_CHAR_BIT_TYPE((typeid))
 
+#define TP_IS_STRING_COMPRESSION_TYPE(typeid) TP_IS_VAR_LEN_CHAR_TYPE((typeid))
+
 #define TP_IS_NUMERIC_TYPE(typeid) \
   (((typeid) == DB_TYPE_INTEGER) || ((typeid) == DB_TYPE_FLOAT) \
    || ((typeid) == DB_TYPE_DOUBLE)  || ((typeid) == DB_TYPE_SMALLINT) \

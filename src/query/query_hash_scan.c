@@ -498,7 +498,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     }
 
   type_list_p = (QFILE_TUPLE_VALUE_TYPE_LIST *) type_list;
-  if (type_list_p == NULL || type_list_p->type_cnt <= 0)
+  if (type_list_p->type_cnt <= 0)
     {
       return false;
     }

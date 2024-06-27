@@ -29,9 +29,9 @@
 
 #include "access_json_table.hpp"
 #include "access_spec.hpp"
-#include "query_hash_scan_constants.h"
 #include "memory_hash.h"
 #include "method_def.hpp"
+#include "query_hash_scan_constants.h"
 #include "query_list.h"
 #include "regu_var.hpp"
 #include "storage_common.h"
