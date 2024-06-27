@@ -803,7 +803,7 @@ logddl_write ()
     }
   else
     {
-      logddl_set_db_name ("");
+      logddl_set_db_name ("unknown");
     }
 
   user_name = db_get_user_name ();
@@ -882,7 +882,7 @@ logddl_write_tran_str (const char *fmt, ...)
     }
   else
     {
-      logddl_set_db_name ("");
+      logddl_set_db_name ("unknown");
     }
 
   user_name = db_get_user_name ();
@@ -1005,7 +1005,7 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
     }
   else
     {
-      logddl_set_db_name ("");
+      logddl_set_db_name ("unknown");
     }
 
   user_name = db_get_user_name ();
