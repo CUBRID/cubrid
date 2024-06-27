@@ -13541,6 +13541,7 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
       info->level--;
       xasl = (XASL_NODE *) node->info.query.xasl;
 
+      /* subquery or cached subquery */
       if (xasl && pt_is_subquery (node))
 	{
 	  if (node->info.query.correlation_level == 0)
@@ -13551,6 +13552,14 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 
 	  if (node->info.query.correlation_level == info->level)
 	    {
+	      if (node->info.query.flag.subquery_cached)
+		{
+		  /* save the subquery cache info */
+		  xasl->sub_xasl_id = node->xasl_id;
+		  xasl->sub_host_var_count = node->sub_host_var_count;
+		  xasl->sub_host_var_index = node->sub_host_var_index;
+		}
+
 	      /* order is important. we are on the way up, so putting things at the tail of the list will end up deeper
 	       * nested queries being first, which is required. */
 	      info->xasl = pt_append_xasl (info->xasl, xasl);
@@ -17300,9 +17309,9 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   /* checking false query */
   if (non_recursive_part_xasl)
     {
-      non_recursive_part_xasl->cte_xasl_id = non_recursive_part->xasl_id;
-      non_recursive_part_xasl->cte_host_var_count = non_recursive_part->cte_host_var_count;
-      non_recursive_part_xasl->cte_host_var_index = non_recursive_part->cte_host_var_index;
+      non_recursive_part_xasl->sub_xasl_id = non_recursive_part->xasl_id;
+      non_recursive_part_xasl->sub_host_var_count = non_recursive_part->sub_host_var_count;
+      non_recursive_part_xasl->sub_host_var_index = non_recursive_part->sub_host_var_index;
     }
 
   if (recursive_part)
@@ -21605,8 +21614,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
     }
 
 cleanup:
-  /* postphoned freeing for CTE query execution */
-  if (aptr_statement != NULL && !pt_is_allowed_result_cache ())
+  if (aptr_statement != NULL)
     {
       parser_free_tree (parser, aptr_statement);
     }

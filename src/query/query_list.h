@@ -440,6 +440,7 @@ struct qfile_list_id
   struct qmgr_temp_file *tfile_vfid;	/* Create a tmp file per list */
   QFILE_TUPLE_DESCRIPTOR tpl_descr;	/* tuple descriptor */
   bool is_domain_resolved;	/* domains for host var is resolved or not */
+  bool is_result_cached;	/* for subquery result cache */
 };
 
 #define QFILE_CLEAR_LIST_ID(list_id) \
@@ -473,6 +474,7 @@ struct qfile_list_id
       (list_id)->tpl_descr.tplrec2 = NULL; \
       (list_id)->tpl_descr.merge_info = NULL; \
       (list_id)->is_domain_resolved = false; \
+      (list_id)->is_result_cached = false; \
     } \
   while (0)
 
