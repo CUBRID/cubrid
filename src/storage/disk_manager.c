@@ -230,6 +230,10 @@ typedef UINT64 DISK_STAB_UNIT;
  * DISK_VOLUME_HEADER = fixed fields + variable fields
  * variable fields = volume fullname + next volume fullname + remarks
  * volume fullname & next volume fullname max length = DB_MAX_PATH_LENGTH (include null charactor)
+ *
+ * TODO : The case when DB_PAGESIZE is less than 8317 bytes is not considered.
+ * This issue is not addressed in all parts of the implementation.
+ * In the future, when adjusting the lengths of each member according to DB_PAGESIZE, this calculation should also be revised.
  */
 #define DISK_VOLUME_HEADER_REMARKS_MAX_SIZE (DB_PAGESIZE - (offsetof(DISK_VOLUME_HEADER, var_fields) + DB_MAX_PATH_LENGTH + DB_MAX_PATH_LENGTH))
 
@@ -5209,7 +5213,6 @@ static int
 disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
 {
   int ret = NO_ERROR;
-  int length_to_move = 0;
   int name_length_diff = 0;
   int new_vol_fullname_size = 0;
   int old_vol_fullname_size = 0;
@@ -5217,6 +5220,7 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
   int remarks_size = 0;
 
   assert (vhdr != NULL);
+  assert (vol_fullname != NULL);
 
   /* Contains null characters ( 1 byte ) */
   new_vol_fullname_size = (int) strlen (vol_fullname) + 1;
@@ -5231,7 +5235,7 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
 
   if (name_length_diff != 0)
     {
-      length_to_move = (next_vol_fullname_size + remarks_size);
+      const int length_to_move = (next_vol_fullname_size + remarks_size);
 
       /* We need to either move to right(expand) or left(shrink) the rest of the variable length fields */
       memmove (disk_vhdr_get_next_vol_fullname (vhdr) + name_length_diff,
