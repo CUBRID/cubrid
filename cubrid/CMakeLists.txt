@@ -266,11 +266,11 @@ set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set(JSP_SOURCES
-  ${JSP_DIR}/jsp_comm.c
-  ${JSP_DIR}/jsp_file.c
-  ${JSP_DIR}/jsp_sr.c
-  ${JSP_DIR}/sp_code.cpp
+set(SP_SOURCES
+  ${SP_DIR}/jsp_comm.c
+  ${SP_DIR}/jsp_file.c
+  ${SP_DIR}/jsp_sr.c
+  ${SP_DIR}/sp_code.cpp
   )
 
 set(METHOD_SOURCES
@@ -461,7 +461,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}
@@ -486,7 +486,7 @@ set (CUBRID_LIB_SOURCES
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}

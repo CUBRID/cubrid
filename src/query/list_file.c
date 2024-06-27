@@ -2650,9 +2650,13 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
   act_right_func = NULL;
   act_both_func = NULL;
 
-  if (QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL))
+  /* result cached list_id cannot be used to append the union of results */
+  if (!lhs_file_p->is_result_cached && !rhs_file_p->is_result_cached)
     {
-      return qfile_union_list (thread_p, lhs_file_p, rhs_file_p, flag);
+      if (QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL))
+	{
+	  return qfile_union_list (thread_p, lhs_file_p, rhs_file_p, flag);
+	}
     }
 
   if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_DISTINCT))
@@ -2664,7 +2668,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
       distinct_or_all = Q_ALL;
     }
 
-  if (lhs_file_p->tuple_cnt > 1)
+  /* for using result-cache */
+  if (!QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL) && lhs_file_p->tuple_cnt > 1)
     {
       lhs_file_p = qfile_sort_list (thread_p, lhs_file_p, NULL, distinct_or_all, true);
       if (lhs_file_p == NULL)
@@ -2681,7 +2686,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
 
   if (rhs_file_p)
     {
-      if (rhs_file_p->tuple_cnt > 1)
+      /* for using result-cache */
+      if (!QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL) && rhs_file_p->tuple_cnt > 1)
 	{
 	  rhs_file_p = qfile_sort_list (thread_p, rhs_file_p, NULL, distinct_or_all, true);
 	  if (rhs_file_p == NULL)
@@ -4042,7 +4048,14 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
       qfile_clear_sort_info (&info);
 #endif /* not SortCache */
       qfile_close_list (thread_p, list_id_p);
-      qfile_destroy_list (thread_p, list_id_p);
+      if (list_id_p->is_result_cached)
+	{
+	  qfile_clear_list_id (list_id_p);
+	}
+      else
+	{
+	  qfile_destroy_list (thread_p, list_id_p);
+	}
       qfile_close_and_free_list_file (thread_p, srlist_id);
       return NULL;
     }
@@ -4059,9 +4072,15 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   qfile_close_scan (thread_p, &t_scan_id);
   qfile_clear_sort_info (&info);
 #endif /* not SortCache */
-
   qfile_close_list (thread_p, list_id_p);
-  qfile_destroy_list (thread_p, list_id_p);
+  if (list_id_p->is_result_cached)
+    {
+      qfile_clear_list_id (list_id_p);
+    }
+  else
+    {
+      qfile_destroy_list (thread_p, list_id_p);
+    }
   qfile_copy_list_id (list_id_p, srlist_id, true);
   QFILE_FREE_AND_INIT_LIST_ID (srlist_id);
 

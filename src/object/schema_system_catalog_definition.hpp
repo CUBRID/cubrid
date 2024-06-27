@@ -24,6 +24,7 @@
 #ifndef _SCHEMA_SYSTEM_CATALOG_DEFINITION_HPP_
 #define _SCHEMA_SYSTEM_CATALOG_DEFINITION_HPP_
 
+#include <string>
 #include <string_view>
 #include <vector>
 #include <optional>
