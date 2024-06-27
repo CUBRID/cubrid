@@ -711,7 +711,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
 
 #define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
-#define PRM_NAME_RECOVERY_PARALLEL_COUNT "recovery_parallel_count"
+#define PRM_NAME_RECOVERY_PARALLEL "recovery_parallel"
 
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
 #define PRM_NAME_FLASHBACK_MAX_TRANSACTION "flashback_max_transaction"
@@ -725,8 +725,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR "oracle_compat_number_behavior"
 
 #define PRM_NAME_PL_TRANSACTION_CONTROL "pl_transaction_control"
-
-#define PRM_NAME_RECOVERY_PARALLEL_COUNT "recovery_parallel_count"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2342,11 +2340,9 @@ bool PRM_CDC_LOGGING_DEBUG = false;
 static bool prm_cdc_logging_debug_default = false;
 static unsigned int prm_cdc_logging_debug_flag = 0;
 
-static unsigned int prm_recovery_parallel_count_flag = 0;
-static int prm_recovery_parallel_count_default = 8;
-int PRM_RECOVERY_PARALLEL_COUNT_CURRENT_VALUE = 8;
-static int prm_recovery_parallel_count_upper_value = 32;
-static int prm_recovery_parallel_count_lower_value = 0;
+static unsigned int prm_recovery_parallel_flag = 0;
+static bool prm_recovery_parallel_default = true;
+bool PRM_RECOVERY_PARALLEL_CURRENT_VALUE = true;
 
 int PRM_RECOVERY_PROGRESS_LOGGING_INTERVAL = 0;
 static int prm_recovery_progress_logging_interval_default = 0;
@@ -6375,15 +6371,14 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_RECOVERY_PARALLEL_COUNT,
-   PRM_NAME_RECOVERY_PARALLEL_COUNT,
+  {PRM_ID_RECOVERY_PARALLEL,
+   PRM_NAME_RECOVERY_PARALLEL,
    (PRM_FOR_SERVER),
-   PRM_INTEGER,
-   &prm_recovery_parallel_count_flag,
-   (void *) &prm_recovery_parallel_count_default,
-   (void *) &PRM_RECOVERY_PARALLEL_COUNT_CURRENT_VALUE,
-   (void *) &prm_recovery_parallel_count_upper_value,
-   (void *) &prm_recovery_parallel_count_lower_value,
+   PRM_BOOLEAN,
+   &prm_recovery_parallel_flag,
+   (void *) &prm_recovery_parallel_default,
+   (void *) &PRM_RECOVERY_PARALLEL_CURRENT_VALUE,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

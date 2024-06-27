@@ -3180,11 +3180,12 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
 static int
 log_recovery_get_redo_parallel_count ()
 {
-  int recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
   const int num_cpus = fileio_os_sysconf ();
+  // This is arbitrary number
+  const int threads_per_cpu = 4;
+  const int maximum_threads_to_redo = 32;
 
-  recovery_redo_parallel_count = MIN (recovery_redo_parallel_count, num_cpus * 2);
-  return recovery_redo_parallel_count;
+  return MIN (num_cpus * threads_per_cpu, maximum_threads_to_redo);
 }
 #endif
 
@@ -3248,18 +3249,19 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   // *INDENT-ON*
 
 #if defined(SERVER_MODE)
-  const int log_recovery_redo_parallel_count = log_recovery_get_redo_parallel_count ();
+  const bool redo_parallel = prm_get_bool_value (PRM_ID_RECOVERY_PARALLEL);
+  int log_recovery_redo_parallel_count = 0;
 
-  {
-    assert (log_recovery_redo_parallel_count >= 0);
-    if (log_recovery_redo_parallel_count > 0)
-      {
-	reusable_jobs.initialize (log_recovery_redo_parallel_count);
-        // *INDENT-OFF*
-	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
-        // *INDENT-ON*
-      }
-  }
+  if (redo_parallel)
+    {
+      log_recovery_redo_parallel_count = log_recovery_get_redo_parallel_count ();
+      assert (log_recovery_redo_parallel_count > 0);
+
+      reusable_jobs.initialize (log_recovery_redo_parallel_count);
+      // *INDENT-OFF*
+      parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+      // *INDENT-ON*
+    }
 #endif
 
   // *INDENT-OFF*
