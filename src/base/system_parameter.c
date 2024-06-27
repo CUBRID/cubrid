@@ -726,6 +726,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PL_TRANSACTION_CONTROL "pl_transaction_control"
 
+#define PRM_NAME_RECOVERY_PARALLEL_COUNT "recovery_parallel_count"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
