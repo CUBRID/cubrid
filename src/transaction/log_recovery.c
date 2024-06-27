@@ -2916,6 +2916,11 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 				  &may_use_checkpoint, &may_need_synch_checkpoint_2pc);
 	  if (*did_incom_recovery == true)
 	    {
+	      /* The end_redo_lsa needs to be reverted to the prev_lsa value.
+	       * The log record pointed to by end_redo_lsa is not a target for redo
+	       */
+	      LSA_COPY (end_redo_lsa, &prev_lsa);
+
 	      LSA_SET_NULL (&lsa);
 	      break;
 	    }
