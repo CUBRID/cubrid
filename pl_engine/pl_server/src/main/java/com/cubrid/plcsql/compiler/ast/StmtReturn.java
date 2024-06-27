@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -42,12 +41,12 @@ public class StmtReturn extends Stmt {
     }
 
     public final Expr retVal;
-    public final Type retType;
+    public final TypeSpec retTypeSpec;
 
-    public StmtReturn(ParserRuleContext ctx, Expr retVal, Type retType) {
+    public StmtReturn(ParserRuleContext ctx, Expr retVal, TypeSpec retTypeSpec) {
         super(ctx);
 
         this.retVal = retVal;
-        this.retType = retType;
+        this.retTypeSpec = retTypeSpec;
     }
 }

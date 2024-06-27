@@ -1134,7 +1134,7 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitStmtReturn(StmtReturn node) {
         if (node.retVal != null) {
             Type valType = visit(node.retVal);
-            Coercion c = Coercion.getCoercion(valType, node.retType);
+            Coercion c = Coercion.getCoercion(valType, node.retTypeSpec.type);
             if (c == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.retVal.ctx), // s217
