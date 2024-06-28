@@ -3246,7 +3246,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  /* don't revisit leaves */
 	  *continue_walk = PT_LIST_WALK;
 	}
-      else if (node->info.method_call.on_call_target)
+      else
 	{
 	  /*
 	   * Class methods are system tables and do not require user_schema.
@@ -3295,11 +3295,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  node->info.method_call.method_name->info.name.spec_id = entity->info.spec.id;
 		}
 	    }
-	}
-      else
-	{
-	  assert (false);
-	  break;
 	}
 
       break;
