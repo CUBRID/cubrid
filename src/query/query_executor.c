@@ -25496,6 +25496,9 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
 
   if (list_id == NULL)
     {
+      xasl->status = XASL_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_RESULT_CACHE_INVALID, 0);
+
       return ER_FAILED;
     }
 

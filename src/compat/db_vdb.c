@@ -1664,10 +1664,13 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 
   if (stmt->info.query.flag.subquery_cached)
     {
-      *err = do_execute_subquery (parser, stmt);
-      if (*err != NO_ERROR)
+      if (*err == NO_ERROR)
 	{
-	  *continue_walk = PT_STOP_WALK;
+	  *err = do_execute_subquery (parser, stmt);
+	  if (*err != NO_ERROR)
+	    {
+	      *continue_walk = PT_STOP_WALK;
+	    }
 	}
     }
 
@@ -1820,7 +1823,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   /* All CTE sub-queries included in the query must be executed first. */
   if (pt_is_allowed_result_cache ())
     {
-      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &statement->flag, NULL, NULL);
+      err = NO_ERROR;
+      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &err, NULL, NULL);
       if (err != NO_ERROR)
 	{
 	  return err;
