@@ -325,11 +325,11 @@ set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set(JSP_SOURCES
-  ${JSP_DIR}/jsp_cl.c
-  ${JSP_DIR}/jsp_comm.c
-  ${JSP_DIR}/jsp_file.c
-  ${JSP_DIR}/jsp_sr.c
+set(SP_SOURCES
+  ${SP_DIR}/jsp_cl.c
+  ${SP_DIR}/jsp_comm.c
+  ${SP_DIR}/jsp_file.c
+  ${SP_DIR}/jsp_sr.c
   )
 
 set(METHOD_SOURCES
@@ -572,7 +572,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -608,7 +608,7 @@ add_library(cubridsa SHARED
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${MONITOR_HEADERS}
   ${MONITOR_SOURCES}

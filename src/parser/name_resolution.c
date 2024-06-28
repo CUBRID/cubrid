@@ -9180,7 +9180,6 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
       PT_NODE *node = statement->info.query.q.select.for_update;
       PT_NODE *spec = NULL;
       PT_NODE *entity;
-      DB_OBJECT *db;
 
       if (statement->info.query.q.select.for_update != NULL)
 	{
@@ -9197,8 +9196,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 
 	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
 		{
-		  db = entity->info.name.db_object;
-		  if (db_is_system_class (db) && (db_check_authorization (db, DB_AUTH_UPDATE) != NO_ERROR))
+		  if (sm_check_system_class_by_name (entity->info.name.original))
 		    {
 		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
 				   "UPDATE", entity->info.name.original);
@@ -9218,8 +9216,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
 		{
-		  db = entity->info.name.db_object;
-		  if (db_is_system_class (db) && (db_check_authorization (db, DB_AUTH_UPDATE) != NO_ERROR))
+		  if (sm_check_system_class_by_name (entity->info.name.original))
 		    {
 		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
 				   "UPDATE", entity->info.name.original);

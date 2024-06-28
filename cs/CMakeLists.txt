@@ -287,10 +287,10 @@ set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set(JSP_SOURCES
-  ${JSP_DIR}/jsp_cl.c
-  ${JSP_DIR}/jsp_comm.c
-  ${JSP_DIR}/jsp_file.c
+set(SP_SOURCES
+  ${SP_DIR}/jsp_cl.c
+  ${SP_DIR}/jsp_comm.c
+  ${SP_DIR}/jsp_file.c
   )
 
 set(METHOD_SOURCES
@@ -460,7 +460,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
@@ -500,7 +500,7 @@ add_library(cubridcs SHARED
   ${PROBES_OBJECT}
   ${QUERY_HEADERS}
   ${QUERY_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${TRANSACTION_HEADERS}
   ${TRANSACTION_SOURCES}
