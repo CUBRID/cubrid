@@ -483,7 +483,6 @@ static KEYWORD_RECORD keywords[] = {
   {TRIGGERS, "TRIGGERS", 1},
   {TRIM, "TRIM", 0},
   {TRUNCATE, "TRUNCATE", 0},
-  {TYPE, "TYPE", 1},
   {True, "TRUE", 0},
   {UCASE, "UCASE", 1},
   {UNDER, "UNDER", 0},

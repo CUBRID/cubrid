@@ -32,7 +32,6 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
-import org.apache.commons.text.StringEscapeUtils;
 
 public class ExprStr extends Expr {
 
@@ -52,23 +51,29 @@ public class ExprStr extends Expr {
     public String javaCode() {
 
         int len = val.length();
-        if (len <= STR_LITERAL_CUT_LEN) {
-            return "(\"" + StringEscapeUtils.escapeJava(val) + "\")";
+        if (len <= MAX_STR_LITERAL_LEN) {
+            return "(\"" + val + "\")";
         } else {
             StringBuilder sbuilder = new StringBuilder();
             boolean first = true;
-            sbuilder.append("String.join(\"\", new String[] {");
+            sbuilder.append("String.join(\"\", new String[] { ");
 
-            for (int b = 0; b < len; b += STR_LITERAL_CUT_LEN) {
+            int b;
+            for (b = 0; b + MAX_STR_LITERAL_LEN < len; b += MAX_STR_LITERAL_LEN) {
                 if (first) {
                     first = false;
                 } else {
                     sbuilder.append(", ");
                 }
-                int e = Math.min(len, b + STR_LITERAL_CUT_LEN);
-                sbuilder.append('"' + StringEscapeUtils.escapeJava(val.substring(b, e)) + '"');
+                sbuilder.append('"' + val.substring(b, b + MAX_STR_LITERAL_LEN) + '"');
             }
-            sbuilder.append("})");
+            if (!first) {
+                sbuilder.append(", ");
+            }
+            sbuilder.append('"' + val.substring(b, len) + '"');
+
+            sbuilder.append(" })");
+
             return sbuilder.toString();
         }
     }
@@ -77,8 +82,5 @@ public class ExprStr extends Expr {
     // Private
     // -------------------------------------------------------------------
 
-    // 16383 * 4 = 65532 <= 65534 where
-    //   65534: maximum byte length of a Java string literal,
-    //   4: maximum byte length of a character in UTF-8
-    private static final int STR_LITERAL_CUT_LEN = 16383;
+    private static final int MAX_STR_LITERAL_LEN = 65535;
 }

@@ -947,8 +947,7 @@ utilizare: %1$s plandump [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
   -d, --drop                   şterge toate planurile din memoria cache a serverului\n\
-  -o, --output-file=FIŞIER     redirecţionează mesajele de ieşire către FIŞIER; implicit: nul\n\
-  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
+  -o, --output-file=FIŞIER     redirecţionează mesajele de ieşire către FIŞIER; implicit: nul\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Fişierul de ieşire '%1$s' nu a putut fi deschis\n
