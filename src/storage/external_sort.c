@@ -262,7 +262,8 @@ static void sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * so
 static int sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc,
 			      bool tde_encrypted);
 
-static int sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start);
+static int sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start,
+			    bool tde_encrypted);
 static int sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start);
 
 static int sort_get_num_half_tmpfiles (int tot_buffers, int input_pages);
@@ -2736,7 +2737,9 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int out_file, 
 	  if (sort_spage_insert (output_buffer, &out_recdes) == NULL_SLOTID)
 	    {
 	      /* Output buffer is full */
-	      error = sort_write_area (thread_p, &sort_param->temp[out_file], cur_page[out_file], 1, output_buffer);
+	      error =
+		sort_write_area (thread_p, &sort_param->temp[out_file], cur_page[out_file], 1, output_buffer,
+				 sort_param->tde_encrypted);
 	      if (error != NO_ERROR)
 		{
 		  return error;
@@ -2762,7 +2765,9 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int out_file, 
   if (sort_spage_get_numrecs (output_buffer))
     {
       /* Flush the partially full output page */
-      error = sort_write_area (thread_p, &sort_param->temp[out_file], cur_page[out_file], 1, output_buffer);
+      error =
+	sort_write_area (thread_p, &sort_param->temp[out_file], cur_page[out_file], 1, output_buffer,
+			 sort_param->tde_encrypted);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -3062,7 +3067,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  cur_page[act] += read_pages;
 			  error =
 			    sort_write_area (thread_p, &sort_param->temp[cur_outfile], cur_page[cur_outfile],
-					     read_pages, sort_param->internal_memory);
+					     read_pages, sort_param->internal_memory, sort_param->tde_encrypted);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -3320,7 +3325,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			      /* Flush output section */
 			      error =
 				sort_write_area (thread_p, &sort_param->temp[cur_outfile], cur_page[cur_outfile],
-						 out_sectsize, out_sectaddr);
+						 out_sectsize, out_sectaddr, sort_param->tde_encrypted);
 			      if (error != NO_ERROR)
 				{
 				  goto bailout;
@@ -3555,7 +3560,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 	      error =
 		sort_write_area (thread_p, &sort_param->temp[cur_outfile], cur_page[cur_outfile], out_act_bufno,
-				 out_sectaddr);
+				 out_sectaddr, sort_param->tde_encrypted);
 	      if (error != NO_ERROR)
 		{
 		  goto bailout;
@@ -3846,7 +3851,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  cur_page[act] += read_pages;
 			  error =
 			    sort_write_area (thread_p, &sort_param->temp[cur_outfile], cur_page[cur_outfile],
-					     read_pages, sort_param->internal_memory);
+					     read_pages, sort_param->internal_memory, sort_param->tde_encrypted);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -4084,7 +4089,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  /* Flush output section */
 			  error =
 			    sort_write_area (thread_p, &sort_param->temp[cur_outfile], cur_page[cur_outfile],
-					     out_sectsize, out_sectaddr);
+					     out_sectsize, out_sectaddr, sort_param->tde_encrypted);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -4303,7 +4308,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      out_act_bufno++;	/* Since 0 refers to the first active buffer */
 	      error =
 		sort_write_area (thread_p, &sort_param->temp[cur_outfile], cur_page[cur_outfile], out_act_bufno,
-				 out_sectaddr);
+				 out_sectaddr, sort_param->tde_encrypted);
 	      if (error != NO_ERROR)
 		{
 		  goto bailout;
@@ -4539,7 +4544,8 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
  *       returned.
  */
 static int
-sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start)
+sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start,
+		 bool tde_encrypted)
 {
   PAGE_PTR page_ptr = NULL;
   VPID vpid;
@@ -4548,11 +4554,15 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
   int ret = NO_ERROR;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
-  ret = file_get_tde_algorithm (thread_p, vfid, PGBUF_UNCONDITIONAL_LATCH, &tde_algo);
-  if (ret != NO_ERROR)
+  if (tde_encrypted)
     {
-      return ret;
+      ret = file_get_tde_algorithm (thread_p, vfid, PGBUF_UNCONDITIONAL_LATCH, &tde_algo);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
     }
+
   /* initializations */
   page_no = first_page;
 
