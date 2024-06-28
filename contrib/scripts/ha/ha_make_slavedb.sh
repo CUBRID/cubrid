@@ -149,7 +149,7 @@ function ssh_cubrid()
 	if $verbose; then
 		echo "[$cubrid_user@$host]$ $command"
 	fi
-	ssh -p $ssh_port -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; $command"
+	ssh -p $ssh_port -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; export CUBRID_TMP=$CUBRID_TMP; export TMPDIR=$TMPDIR; $command"
 }
 
 function ssh_expect()

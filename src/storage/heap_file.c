@@ -667,8 +667,10 @@ static int heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE 
 static int heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * hfid);
 static int heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 static int heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool scan_state);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
 				       bool ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen);
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
@@ -1529,8 +1531,8 @@ heap_classrepr_finalize_cache (void)
 #endif /* DEBUG_CLASSREPR_CACHE */
 
   /* finalize hash entries table */
-  cache_entry = heap_Classrepr_cache.area;
-  for (i = 0; cache_entry != NULL && i < heap_Classrepr_cache.num_entries; i++)
+  cache_entry = heap_Classrepr->area;
+  for (i = 0; cache_entry != NULL && i < heap_Classrepr->num_entries; i++)
     {
       pthread_mutex_destroy (&cache_entry[i].mutex);
 
@@ -1550,36 +1552,36 @@ heap_classrepr_finalize_cache (void)
 	}
       free_and_init (cache_entry[i].repr);
     }
-  if (heap_Classrepr_cache.area != NULL)
+  if (heap_Classrepr->area != NULL)
     {
-      free_and_init (heap_Classrepr_cache.area);
+      free_and_init (heap_Classrepr->area);
     }
-  heap_Classrepr_cache.num_entries = -1;
+  heap_Classrepr->num_entries = -1;
 
   /* finalize hash bucket table */
-  hash_entry = heap_Classrepr_cache.hash_table;
-  for (i = 0; hash_entry != NULL && i < heap_Classrepr_cache.num_hash; i++)
+  hash_entry = heap_Classrepr->hash_table;
+  for (i = 0; hash_entry != NULL && i < heap_Classrepr->num_hash; i++)
     {
       pthread_mutex_destroy (&hash_entry[i].hash_mutex);
     }
-  heap_Classrepr_cache.num_hash = -1;
-  if (heap_Classrepr_cache.hash_table != NULL)
+  heap_Classrepr->num_hash = -1;
+  if (heap_Classrepr->hash_table != NULL)
     {
-      free_and_init (heap_Classrepr_cache.hash_table);
+      free_and_init (heap_Classrepr->hash_table);
     }
 
   /* finalize hash lock table */
-  if (heap_Classrepr_cache.lock_table != NULL)
+  if (heap_Classrepr->lock_table != NULL)
     {
-      free_and_init (heap_Classrepr_cache.lock_table);
+      free_and_init (heap_Classrepr->lock_table);
     }
 
   /* finalize LRU list */
 
-  pthread_mutex_destroy (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+  pthread_mutex_destroy (&heap_Classrepr->LRU_list.LRU_mutex);
 
   /* initialize free list */
-  pthread_mutex_destroy (&heap_Classrepr_cache.free_list.free_mutex);
+  pthread_mutex_destroy (&heap_Classrepr->free_list.free_mutex);
 
   heap_Classrepr = NULL;
 
@@ -1651,18 +1653,18 @@ heap_classrepr_entry_remove_from_LRU (HEAP_CLASSREPR_ENTRY * cache_entry)
 {
   if (cache_entry)
     {
-      if (cache_entry == heap_Classrepr_cache.LRU_list.LRU_top)
+      if (cache_entry == heap_Classrepr->LRU_list.LRU_top)
 	{
-	  heap_Classrepr_cache.LRU_list.LRU_top = cache_entry->next;
+	  heap_Classrepr->LRU_list.LRU_top = cache_entry->next;
 	}
       else
 	{
 	  cache_entry->prev->next = cache_entry->next;
 	}
 
-      if (cache_entry == heap_Classrepr_cache.LRU_list.LRU_bottom)
+      if (cache_entry == heap_Classrepr->LRU_list.LRU_bottom)
 	{
-	  heap_Classrepr_cache.LRU_list.LRU_bottom = cache_entry->prev;
+	  heap_Classrepr->LRU_list.LRU_bottom = cache_entry->prev;
 	}
       else
 	{
@@ -1785,9 +1787,9 @@ heap_classrepr_decache_guessed_last (const OID * class_oid)
       /* Remove from LRU list */
       if (cache_entry->zone == ZONE_LRU)
 	{
-	  rv = pthread_mutex_lock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+	  rv = pthread_mutex_lock (&heap_Classrepr->LRU_list.LRU_mutex);
 	  (void) heap_classrepr_entry_remove_from_LRU (cache_entry);
-	  pthread_mutex_unlock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+	  pthread_mutex_unlock (&heap_Classrepr->LRU_list.LRU_mutex);
 	  cache_entry->zone = ZONE_VOID;
 	}
       cache_entry->prev = NULL;
@@ -1915,7 +1917,7 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
       return NO_ERROR;
     }
 
-  cache_entry = &heap_Classrepr_cache.area[*idx_incache];
+  cache_entry = &heap_Classrepr->area[*idx_incache];
 
   rv = pthread_mutex_lock (&cache_entry->mutex);
   cache_entry->fcnt--;
@@ -1925,9 +1927,9 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
        * Is this entry declared to be decached
        */
 #ifdef DEBUG_CLASSREPR_CACHE
-      rv = pthread_mutex_lock (&heap_Classrepr_cache.num_fix_entries_mutex);
-      heap_Classrepr_cache.num_fix_entries--;
-      pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
+      rv = pthread_mutex_lock (&heap_Classrepr->num_fix_entries_mutex);
+      heap_Classrepr->num_fix_entries--;
+      pthread_mutex_unlock (&heap_Classrepr->num_fix_entries_mutex);
 #endif /* DEBUG_CLASSREPR_CACHE */
       if (cache_entry->force_decache)
 	{
@@ -1943,9 +1945,9 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
       else
 	{
 	  /* relocate entry to the top of LRU list */
-	  if (cache_entry != heap_Classrepr_cache.LRU_list.LRU_top)
+	  if (cache_entry != heap_Classrepr->LRU_list.LRU_top)
 	    {
-	      rv = pthread_mutex_lock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+	      rv = pthread_mutex_lock (&heap_Classrepr->LRU_list.LRU_mutex);
 	      if (cache_entry->zone == ZONE_LRU)
 		{
 		  /* remove from LRU list */
@@ -1954,19 +1956,19 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
 
 	      /* insert into LRU top */
 	      cache_entry->prev = NULL;
-	      cache_entry->next = heap_Classrepr_cache.LRU_list.LRU_top;
-	      if (heap_Classrepr_cache.LRU_list.LRU_top == NULL)
+	      cache_entry->next = heap_Classrepr->LRU_list.LRU_top;
+	      if (heap_Classrepr->LRU_list.LRU_top == NULL)
 		{
-		  heap_Classrepr_cache.LRU_list.LRU_bottom = cache_entry;
+		  heap_Classrepr->LRU_list.LRU_bottom = cache_entry;
 		}
 	      else
 		{
-		  heap_Classrepr_cache.LRU_list.LRU_top->prev = cache_entry;
+		  heap_Classrepr->LRU_list.LRU_top->prev = cache_entry;
 		}
-	      heap_Classrepr_cache.LRU_list.LRU_top = cache_entry;
+	      heap_Classrepr->LRU_list.LRU_top = cache_entry;
 	      cache_entry->zone = ZONE_LRU;
 
-	      pthread_mutex_unlock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+	      pthread_mutex_unlock (&heap_Classrepr->LRU_list.LRU_mutex);
 	    }
 	}
     }
@@ -2028,7 +2030,7 @@ heap_classrepr_lock_class (THREAD_ENTRY * thread_p, HEAP_CLASSREPR_HASH * hash_a
 	}
     }
 
-  cur_lock_entry = &heap_Classrepr_cache.lock_table[cur_thrd_entry->index];
+  cur_lock_entry = &heap_Classrepr->lock_table[cur_thrd_entry->index];
   cur_lock_entry->class_oid = *class_oid;
   cur_lock_entry->next_wait_thrd = NULL;
   cur_lock_entry->lock_next = hash_anchor->lock_next;
@@ -2118,23 +2120,23 @@ heap_classrepr_entry_alloc (void)
 /* check_free_list: */
 
   /* 1. Get entry from free list */
-  if (heap_Classrepr_cache.free_list.free_top == NULL)
+  if (heap_Classrepr->free_list.free_top == NULL)
     {
       goto check_LRU_list;
     }
 
-  rv = pthread_mutex_lock (&heap_Classrepr_cache.free_list.free_mutex);
-  if (heap_Classrepr_cache.free_list.free_top == NULL)
+  rv = pthread_mutex_lock (&heap_Classrepr->free_list.free_mutex);
+  if (heap_Classrepr->free_list.free_top == NULL)
     {
-      pthread_mutex_unlock (&heap_Classrepr_cache.free_list.free_mutex);
+      pthread_mutex_unlock (&heap_Classrepr->free_list.free_mutex);
       cache_entry = NULL;
     }
   else
     {
-      cache_entry = heap_Classrepr_cache.free_list.free_top;
-      heap_Classrepr_cache.free_list.free_top = cache_entry->next;
-      heap_Classrepr_cache.free_list.free_cnt--;
-      pthread_mutex_unlock (&heap_Classrepr_cache.free_list.free_mutex);
+      cache_entry = heap_Classrepr->free_list.free_top;
+      heap_Classrepr->free_list.free_top = cache_entry->next;
+      heap_Classrepr->free_list.free_cnt--;
+      pthread_mutex_unlock (&heap_Classrepr->free_list.free_mutex);
 
       rv = pthread_mutex_lock (&cache_entry->mutex);
       cache_entry->next = NULL;
@@ -2145,13 +2147,13 @@ heap_classrepr_entry_alloc (void)
 
 check_LRU_list:
   /* 2. Get entry from LRU list */
-  if (heap_Classrepr_cache.LRU_list.LRU_bottom == NULL)
+  if (heap_Classrepr->LRU_list.LRU_bottom == NULL)
     {
       goto expand_list;
     }
 
-  rv = pthread_mutex_lock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
-  for (cache_entry = heap_Classrepr_cache.LRU_list.LRU_bottom; cache_entry != NULL; cache_entry = cache_entry->prev)
+  rv = pthread_mutex_lock (&heap_Classrepr->LRU_list.LRU_mutex);
+  for (cache_entry = heap_Classrepr->LRU_list.LRU_bottom; cache_entry != NULL; cache_entry = cache_entry->prev)
     {
       if (cache_entry->fcnt == 0)
 	{
@@ -2162,7 +2164,7 @@ check_LRU_list:
 	  break;
 	}
     }
-  pthread_mutex_unlock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
+  pthread_mutex_unlock (&heap_Classrepr->LRU_list.LRU_mutex);
 
   if (cache_entry == NULL)
     {
@@ -2234,14 +2236,14 @@ static int
 heap_classrepr_entry_free (HEAP_CLASSREPR_ENTRY * cache_entry)
 {
   int rv;
-  rv = pthread_mutex_lock (&heap_Classrepr_cache.free_list.free_mutex);
+  rv = pthread_mutex_lock (&heap_Classrepr->free_list.free_mutex);
 
-  cache_entry->next = heap_Classrepr_cache.free_list.free_top;
-  heap_Classrepr_cache.free_list.free_top = cache_entry;
+  cache_entry->next = heap_Classrepr->free_list.free_top;
+  heap_Classrepr->free_list.free_top = cache_entry;
   cache_entry->zone = ZONE_FREE;
-  heap_Classrepr_cache.free_list.free_cnt++;
+  heap_Classrepr->free_list.free_cnt++;
 
-  pthread_mutex_unlock (&heap_Classrepr_cache.free_list.free_mutex);
+  pthread_mutex_unlock (&heap_Classrepr->free_list.free_mutex);
 
   return NO_ERROR;
 }
@@ -2523,9 +2525,9 @@ search_begin:
       cache_entry->fcnt = 1;
       cache_entry->class_oid = *class_oid;
 #ifdef DEBUG_CLASSREPR_CACHE
-      r = pthread_mutex_lock (&heap_Classrepr_cache.num_fix_entries_mutex);
-      heap_Classrepr_cache.num_fix_entries++;
-      pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
+      r = pthread_mutex_lock (&heap_Classrepr->num_fix_entries_mutex);
+      heap_Classrepr->num_fix_entries++;
+      pthread_mutex_unlock (&heap_Classrepr->num_fix_entries_mutex);
 
 #endif /* DEBUG_CLASSREPR_CACHE */
       *idx_incache = cache_entry->idx;
@@ -7332,6 +7334,7 @@ heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_get_if_diff_chn () - Get specified object of the given slotted page when
  *                       its cache coherency number is different
@@ -7446,6 +7449,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
 
   return scan;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_prepare_get_context () - Prepare for obtaining/processing heap object.
@@ -12053,8 +12057,8 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
   int *num_btids;
   OR_INDEX *indexp;
 
-  idx_info->has_single_col = 0;
-  idx_info->has_multi_col = 0;
+  idx_info->has_single_col = false;
+  idx_info->has_multi_col = false;
   idx_info->num_btids = 0;
 
   num_btids = &idx_info->num_btids;
@@ -12098,22 +12102,22 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	{
 	  if (indexp->n_atts == 2)
 	    {
-	      idx_info->has_single_col = 1;
+	      idx_info->has_single_col = true;
 	    }
 	  else
 	    {
-	      idx_info->has_multi_col = 1;
+	      idx_info->has_multi_col = true;
 	    }
 	}
       else
 	{
 	  if (indexp->n_atts == 1)
 	    {
-	      idx_info->has_single_col = 1;
+	      idx_info->has_single_col = true;
 	    }
 	  else if (indexp->n_atts > 1)
 	    {
-	      idx_info->has_multi_col = 1;
+	      idx_info->has_multi_col = true;
 	    }
 	}
 
@@ -12161,7 +12165,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	}			/* for (i = 0 ...) */
     }
 
-  if (idx_info->has_multi_col == 0 && num_found_attrs == 0)
+  if (!idx_info->has_multi_col && num_found_attrs == 0)
     {
       /* initialize the attrinfo cache and return, there is nothing else to do */
       /* (void) memset(attr_info, '\0', sizeof (HEAP_CACHE_ATTRINFO)); */
@@ -15214,8 +15218,8 @@ heap_chnguess_realloc (void)
   /*
    * Save current information, so we can copy them at a alater point
    */
-  save_bitindex = heap_Guesschn_area.bitindex;
-  save_nbytes = heap_Guesschn_area.nbytes;
+  save_bitindex = heap_Guesschn->bitindex;
+  save_nbytes = heap_Guesschn->nbytes;
 
   /*
    * Find the number of clients that need to be supported. Avoid small
@@ -15232,18 +15236,17 @@ heap_chnguess_realloc (void)
     }
 
   /* Make sure every single bit is used */
-  heap_Guesschn_area.nbytes = HEAP_NBITS_TO_NBYTES (heap_Guesschn_area.num_clients);
-  heap_Guesschn_area.num_clients = HEAP_NBYTES_TO_NBITS (heap_Guesschn_area.nbytes);
+  heap_Guesschn->nbytes = HEAP_NBITS_TO_NBYTES (heap_Guesschn->num_clients);
+  heap_Guesschn->num_clients = HEAP_NBYTES_TO_NBITS (heap_Guesschn->nbytes);
 
-  heap_Guesschn_area.bitindex = (unsigned char *) malloc (heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries);
-  if (heap_Guesschn_area.bitindex == NULL)
+  heap_Guesschn->bitindex = (unsigned char *) malloc (heap_Guesschn->nbytes * heap_Guesschn->num_entries);
+  if (heap_Guesschn->bitindex == NULL)
     {
       ret = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
-	      (size_t) (heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries));
-      heap_Guesschn_area.bitindex = save_bitindex;
-      heap_Guesschn_area.nbytes = save_nbytes;
-      heap_Guesschn_area.num_clients = HEAP_NBYTES_TO_NBITS (save_nbytes);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, (size_t) (heap_Guesschn->nbytes * heap_Guesschn->num_entries));
+      heap_Guesschn->bitindex = save_bitindex;
+      heap_Guesschn->nbytes = save_nbytes;
+      heap_Guesschn->num_clients = HEAP_NBYTES_TO_NBITS (save_nbytes);
       goto exit_on_error;
     }
 
@@ -15251,15 +15254,15 @@ heap_chnguess_realloc (void)
    * Now reset the bits for each entry
    */
 
-  for (i = 0; i < heap_Guesschn_area.num_entries; i++)
+  for (i = 0; i < heap_Guesschn->num_entries; i++)
     {
-      entry = &heap_Guesschn_area.entries[i];
-      entry->bits = &heap_Guesschn_area.bitindex[i * heap_Guesschn_area.nbytes];
+      entry = &heap_Guesschn->entries[i];
+      entry->bits = &heap_Guesschn->bitindex[i * heap_Guesschn->nbytes];
       /*
        * Copy the bits
        */
       memcpy (entry->bits, &save_bitindex[i * save_nbytes], save_nbytes);
-      HEAP_NBYTES_CLEARED (&entry->bits[save_nbytes], heap_Guesschn_area.nbytes - save_nbytes);
+      HEAP_NBYTES_CLEARED (&entry->bits[save_nbytes], heap_Guesschn->nbytes - save_nbytes);
     }
   /*
    * Now throw previous storage
@@ -15470,7 +15473,7 @@ heap_chnguess_remove_entry (const void *oid_key, void *ent, void *xignore)
   OID_SET_NULL (&entry->oid);
   entry->chn = NULL_CHN;
   entry->recently_accessed = false;
-  heap_Guesschn_area.clock_hand = entry->idx;
+  heap_Guesschn->clock_hand = entry->idx;
 
   return NO_ERROR;
 }
@@ -15501,7 +15504,7 @@ heap_chnguess_dump (FILE * fp)
       max_tranindex = logtb_get_number_of_total_tran_indices ();
       for (i = 0; i < heap_Guesschn->num_entries; i++)
 	{
-	  entry = &heap_Guesschn_area.entries[i];
+	  entry = &heap_Guesschn->entries[i];
 
 	  if (!OID_ISNULL (&entry->oid))
 	    {
@@ -15626,7 +15629,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
        */
       if (entry->chn != chn)
 	{
-	  HEAP_NBYTES_CLEARED (entry->bits, heap_Guesschn_area.nbytes);
+	  HEAP_NBYTES_CLEARED (entry->bits, heap_Guesschn->nbytes);
 	  entry->chn = chn;
 	}
     }
@@ -15666,7 +15669,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
 		{
 		  entry->oid = *oid;
 		  entry->chn = chn;
-		  HEAP_NBYTES_CLEARED (entry->bits, heap_Guesschn_area.nbytes);
+		  HEAP_NBYTES_CLEARED (entry->bits, heap_Guesschn->nbytes);
 		  break;
 		}
 	    }
@@ -15714,7 +15717,7 @@ heap_chnguess_clear (THREAD_ENTRY * thread_p, int tran_index)
     {
       for (i = 0; i < heap_Guesschn->num_entries; i++)
 	{
-	  entry = &heap_Guesschn_area.entries[i];
+	  entry = &heap_Guesschn->entries[i];
 	  if (!OID_ISNULL (&entry->oid))
 	    {
 	      HEAP_BIT_CLEAR (entry->bits, (unsigned int) tran_index);
