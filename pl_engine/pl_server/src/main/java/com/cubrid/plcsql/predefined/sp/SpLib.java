@@ -46,14 +46,14 @@ import java.math.RoundingMode;
 import java.sql.*;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.time.ZoneOffset;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -67,7 +67,8 @@ public class SpLib {
         // parse again at runtime in order to use the runtime value of timezone setting
         ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, false);
         if (timestamp == null) {
-            // The string was valid at the compile time (see ParseTreeConverter.visitTimestamp_exp()).
+            // The string was valid at the compile time (see
+            // ParseTreeConverter.visitTimestamp_exp()).
             // But, this error can happen due to a timezone setting change after the compilation
             throw new VALUE_ERROR(String.format("invalid TIMESTAMP string: %s", s));
         }
@@ -2964,7 +2965,6 @@ public class SpLib {
         } else {
             return String.format("%.6e", e);
         }
-
     }
 
     public static Double convFloatToDouble(Float e) {
@@ -4369,7 +4369,7 @@ public class SpLib {
         }
 
         int len = f.length();
-        for (int i = len - 1; i>= 0; i--) {
+        for (int i = len - 1; i >= 0; i--) {
             char c = f.charAt(i);
 
             if (c == '.') {
@@ -4381,7 +4381,7 @@ public class SpLib {
             }
         }
 
-        assert false;   // unreachable
+        assert false; // unreachable
         return null;
     }
 }

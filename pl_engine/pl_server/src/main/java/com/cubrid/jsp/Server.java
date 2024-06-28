@@ -276,26 +276,27 @@ public class Server {
 
     public static boolean getSystemParameterBool(int code) {
         switch (code) {
-        case SYS_PARAM_COMPAT_NUMERIC_DIVISION_SCALE:
-            return false;
-        case SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR:
-            return false;
-        case SYS_PARAM_ORACLE_STYLE_EMPTY_STRING:
-            return false;
-        default:
-            assert (false);
-            return false;
+            case SYS_PARAM_COMPAT_NUMERIC_DIVISION_SCALE:
+                return false;
+            case SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR:
+                return false;
+            case SYS_PARAM_ORACLE_STYLE_EMPTY_STRING:
+                return false;
+            default:
+                assert (false);
+                return false;
         }
     }
 
     private static final ZoneOffset tz = ZoneOffset.of("+09:00");
+
     public static ZoneOffset getSystemParameterTimezone(int code) {
         switch (code) {
-        case SYS_PARAM_TIMEZONE:
-            return tz;
-        default:
-            assert (false);
-            return null;
+            case SYS_PARAM_TIMEZONE:
+                return tz;
+            default:
+                assert (false);
+                return null;
         }
     }
 

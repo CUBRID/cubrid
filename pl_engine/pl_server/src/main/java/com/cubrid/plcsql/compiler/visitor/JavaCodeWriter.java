@@ -954,7 +954,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitExprTimestamp(ExprTimestamp node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprTimestamp", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
+        CodeTemplate tmpl =
+                new CodeTemplate("ExprTimestamp", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
