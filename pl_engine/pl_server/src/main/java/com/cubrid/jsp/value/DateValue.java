@@ -61,7 +61,6 @@ public class DateValue extends Value {
 
     public DateValue(Date date) {
         this.date = date;
-        assert date.getTime() % 1000L == 0; // millisecond value must be zero
     }
 
     public Date toDate() throws TypeMismatchException {
@@ -101,7 +100,7 @@ public class DateValue extends Value {
     }
 
     public Timestamp[] toDatetimeArray() throws TypeMismatchException {
-        return new Timestamp[] {toDatetime()};
+        return new Timestamp[] {toTimestamp()};
     }
 
     public Object[] toObjectArray() throws TypeMismatchException {

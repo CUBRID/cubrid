@@ -21596,8 +21596,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
     }
 
 cleanup:
-  /* postphoned freeing for CTE query execution */
-  if (aptr_statement != NULL && !pt_is_allowed_result_cache ())
+  if (aptr_statement != NULL)
     {
       parser_free_tree (parser, aptr_statement);
     }

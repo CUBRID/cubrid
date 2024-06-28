@@ -34,7 +34,6 @@
 #include "memory_alloc.h"
 #include "jsp_cl.h"
 #include "execute_schema.h"
-#include "execute_statement.h"
 #include "set_object.h"
 #include "schema_manager.h"
 #include "release_string.h"
@@ -203,7 +202,6 @@ static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node);
-static void pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_update_stats (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -9321,7 +9319,7 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 static bool
-pt_is_defined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
+pt_is_undefined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
 {
   if (data_type && data_type->node_type == PT_DATA_TYPE && data_type->type_enum == PT_TYPE_OBJECT)
     {
@@ -9332,57 +9330,20 @@ pt_is_defined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
 	    {
 	      PT_ERRORmf (parser, data_type, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED,
 			  name->info.name.original);
-	      return false;
+	      return true;
 	    }
 	}
     }
 
-  return true;
-}
-
-static PT_TYPE_ENUM
-pt_get_type_enum_of_table_column (PARSER_CONTEXT * parser, PT_NODE * data_type)
-{
-  PT_NODE *table_column = data_type->info.data_type.table_column;
-  assert (PT_IS_DOT_NODE (table_column));
-  PT_NODE *table_name = table_column->info.dot.arg1;
-  PT_NODE *column_name = table_column->info.dot.arg2;
-  assert (PT_IS_NAME_NODE (table_name));
-  assert (PT_IS_NAME_NODE (column_name));
-  const char *table_name_cstr = table_name->info.name.original;
-  const char *column_name_cstr = column_name->info.name.original;
-
-  DB_ATTRIBUTE *attr = db_get_attribute_by_name (table_name_cstr, column_name_cstr);
-  if (attr == NULL)
-    {
-      PT_ERRORmf2 (parser, table_column, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNDEFINED_TABLE_COLUMN,
-		   table_name_cstr, column_name_cstr);
-      return PT_TYPE_NONE;
-    }
-
-  DB_DOMAIN *domain = db_attribute_domain (attr);
-  assert (domain);
-  int db_type = TP_DOMAIN_TYPE (domain);
-
-  return pt_db_to_type_enum ((DB_TYPE) db_type);
+  return false;
 }
 
 static bool
-pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM & type_enum, PT_NODE * data_type)
+pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 {
-
-  if (type_enum == PT_TYPE_NONE && data_type && data_type->type_enum == PT_TYPE_TABLE_COLUMN)
-    {
-      // type specification of the form <table>.<column>%type
-      type_enum = pt_get_type_enum_of_table_column (parser, data_type);
-      if (type_enum == PT_TYPE_NONE)
-	{
-	  return false;
-	}
-    }
-
   switch (type_enum)
     {
+
     case PT_TYPE_SMALLINT:
     case PT_TYPE_INTEGER:
     case PT_TYPE_BIGINT:
@@ -9399,7 +9360,7 @@ pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM & type_enum, P
       return true;
 
     case PT_TYPE_OBJECT:
-      return pt_is_defined_class (parser, data_type);
+      return !pt_is_undefined_class (parser, data_type);
 
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
@@ -9408,7 +9369,7 @@ pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM & type_enum, P
 	PT_NODE *dt;
 	for (dt = data_type; dt; dt = dt->next)
 	  {
-	    if (!pt_is_defined_class (parser, dt))
+	    if (pt_is_undefined_class (parser, dt))
 	      {
 		return false;
 	      }
@@ -9451,32 +9412,13 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *param;
 
-  bool is_plcsql = (node->info.sp.body->info.sp_body.lang == SP_LANG_PLCSQL);
-
   for (param = node->info.sp.param_list; param; param = param->next)
     {
-      if (param->type_enum == PT_TYPE_NONE)
-	{
-
-	  // only when the param type is of the form <table>.<column>%TYPE
-	  assert (param->data_type->type_enum == PT_TYPE_TABLE_COLUMN);
-
-	  if (!is_plcsql)
-	    {
-	      PT_ERRORm (parser, param, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_PERCENT_TYPE);
-	      return;
-	    }
-	}
-
-      if (pt_is_type_supported_by_sp (parser, param->type_enum, param->data_type))
-	{
-	  assert (param->type_enum != PT_TYPE_NONE);
-	}
-      else
+      if (!pt_is_type_supported_by_sp (parser, param->type_enum, param->data_type))
 	{
 	  if (!pt_has_error (parser))
 	    {
-	      PT_ERRORmf (parser, param, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SUPPORTED_SP_ARG_TYPE,
+	      PT_ERRORmf (parser, param, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_ARG_TYPE),
 			  pt_get_type_name (param->type_enum, param->data_type));
 	    }
 	  return;
@@ -9485,31 +9427,12 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (node->info.sp.type == PT_SP_FUNCTION)
     {
-      if (node->info.sp.ret_type == PT_TYPE_NONE)
-	{
-
-	  // only when the return type is of the form <table>.<column>%TYPE
-	  assert (node->info.sp.ret_data_type->type_enum == PT_TYPE_TABLE_COLUMN);
-
-	  if (!is_plcsql)
-	    {
-	      PT_ERRORm (parser, node->info.sp.ret_data_type, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_NOT_ALLOWED_PERCENT_TYPE);
-	      return;
-	    }
-	}
-
-      if (pt_is_type_supported_by_sp (parser, node->info.sp.ret_type, node->info.sp.ret_data_type))
-	{
-	  assert (node->info.sp.ret_type != PT_TYPE_NONE);
-	}
-      else
+      if (!pt_is_type_supported_by_sp (parser, node->info.sp.ret_type, node->info.sp.ret_data_type))
 	{
 	  if (!pt_has_error (parser))
 	    {
-	      PT_ERRORmf (parser, node->info.sp.ret_data_type, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_NOT_SUPPORTED_SP_RET_TYPE, pt_get_type_name (node->info.sp.ret_type,
-										       node->info.sp.ret_data_type));
+	      PT_ERRORmf (parser, node, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_RETURN_TYPE),
+			  pt_get_type_name (node->info.sp.ret_type, node->info.sp.ret_data_type));
 	    }
 	  return;
 	}
@@ -10002,113 +9925,6 @@ pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node)
 	  PT_ERRORm (parser, tran_id, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_TRANSACTION_ID_WANT_INTEGER);
 	  break;
 	}
-    }
-}
-
-/*
- * pt_check_alter_serial () - do semantic checks on the alter serial statement
- *   return:  none
- *   parser(in): the parser context used to derive the statement
- *   node(in): a statement
- */
-static void
-pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
-{
-  DB_OBJECT *serial_class = NULL, *serial_object = NULL;
-  DB_IDENTIFIER serial_obj_id;
-  DB_OBJECT *owner_object = NULL;
-  PT_NODE *start_val = NULL;
-  PT_NODE *increment_val = NULL;
-  PT_NODE *max_val = NULL;
-  PT_NODE *min_val = NULL;
-  int cyclic;
-  int no_max;
-  int no_min;
-  int no_cyclic;
-  PT_NODE *cached_num_val = NULL;
-  int no_cache;
-  const char *name = NULL;
-  const char *owner_name = NULL;
-
-  OID_SET_NULL (&serial_obj_id);
-
-  assert (node->node_type == PT_ALTER_SERIAL);
-
-  /* find db_serial_class */
-  serial_class = sm_find_class (CT_SERIAL_NAME);
-  if (serial_class == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DB_SERIAL_NOT_FOUND, 0);
-      return;
-    }
-
-  /* serial_name */
-  name = node->info.serial.serial_name->info.name.original;
-  if (name == NULL)
-    {
-      assert (sm_check_system_class_by_name (name));
-    }
-
-  /* Check if a serial object exists. */
-  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class, name);
-  if (serial_object == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, name);
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, name);
-      return;
-    }
-
-  assert (node->info.serial.code != NULL);
-  switch (node->info.serial.code)
-    {
-    case PT_SERIAL_OPTION:
-      start_val = node->info.serial.start_val;
-      increment_val = node->info.serial.increment_val;
-      max_val = node->info.serial.max_val;
-      min_val = node->info.serial.min_val;
-      cyclic = node->info.serial.cyclic;
-      no_max = node->info.serial.no_max;
-      no_min = node->info.serial.no_min;
-      no_cyclic = node->info.serial.no_cyclic;
-      cached_num_val = node->info.serial.cached_num_val;
-      no_cache = node->info.serial.no_cache;
-
-      if (!start_val && !increment_val && !max_val && !min_val
-	  && cyclic == 0 && no_max == 0 && no_min == 0
-	  && no_cyclic == 0 && !cached_num_val && no_cache == 0 && node->info.serial.comment == NULL)
-	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
-	  return;
-	}
-      break;
-
-    case PT_CHANGE_OWNER:
-      if (node->info.serial.owner_name == NULL && node->info.serial.comment == NULL)
-	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
-	  return;
-	}
-
-      /* serial_owner_name */
-      owner_name = node->info.serial.owner_name->info.name.original;
-      assert (owner_name != NULL && *owner_name != '\0');
-      owner_object = db_find_user (owner_name);
-      if (owner_object == NULL)
-	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
-	  return;
-	}
-
-      if (au_is_dba_group_member (Au_user) == false)
-	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_NOT_OWNER);
-	  return;
-	}
-      break;
-
-    default:
-      assert (false);
-      break;
     }
 }
 
@@ -12073,8 +11889,6 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
       break;
 
     case PT_ALTER_SERIAL:
-      pt_check_alter_serial (parser, node);
-      break;
     case PT_ALTER_TRIGGER:
     case PT_ALTER_USER:
     case PT_CREATE_SERIAL:

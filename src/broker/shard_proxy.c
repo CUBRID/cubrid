@@ -42,7 +42,6 @@
 /* SHARD SHM */
 int appl_server_shm_id = -1;
 T_SHM_APPL_SERVER *shm_as_p = NULL;
-T_SHM_APPL_SERVER *shm_appl = NULL;
 
 int proxy_id = -1;
 int proxy_shm_id = -1;
