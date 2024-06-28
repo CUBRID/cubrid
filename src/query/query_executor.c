@@ -6521,11 +6521,10 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
 {
   XASL_NODE *outer_xasl, *inner_xasl;
   QFILE_LIST_ID *outer_list_id, *inner_list_id;
+
   TP_DOMAIN **outer_domains, **inner_domains;
   TP_DOMAIN **hashjoin_outer_domains, **hashjoin_inner_domains, **hashjoin_coerce_domains;
   int *hashjoin_outer_value_indexes, *hashjoin_inner_value_indexes;
-  QFILE_LIST_MERGE_INFO *merge_info;
-  int value_count;
 
   DB_TYPE outer_type, inner_type;
   int outer_precision, inner_precision;
@@ -6535,6 +6534,9 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
 
   bool need_coerce_domains;
   bool need_compare_dbvalues;
+
+  QFILE_LIST_MERGE_INFO *merge_info;
+  int value_count;
 
   int domain_index, skip_index;
   int error = NO_ERROR;
@@ -6800,9 +6802,11 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
   hashjoin_proc->need_compare_dbvalues = need_compare_dbvalues;
 
   /**
-   * build input
+   * The build input may need to be changed even if the cached xasl is reused,
+   * if the value of the bind variable changes.
    */
-  if ((outer_list_id->page_cnt < inner_list_id->page_cnt) || (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt))
+  if ((merge_info->join_type == JOIN_INNER)
+      && ((outer_list_id->page_cnt < inner_list_id->page_cnt) || (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt)))
     {
       /**
        * build input: outer 
@@ -6813,7 +6817,7 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
   else
     {
       /**
-       * build input: inner  
+       * build input: inner
        */
       hashjoin_proc->build = &(hashjoin_proc->inner);
       hashjoin_proc->probe = &(hashjoin_proc->outer);
@@ -7058,13 +7062,19 @@ qexec_hash_join_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
 static int
 qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {
+  XASL_NODE *outer_xasl, *inner_xasl;
+  QFILE_LIST_ID *outer_list_id, *inner_list_id;
   QFILE_LIST_ID *list_id = NULL;
 
   HASHJOIN_PROC_NODE *hashjoin_proc;
-  XASL_NODE *outer_xasl, *inner_xasl;
-  QFILE_LIST_ID *outer_list_id, *inner_list_id;
   QFILE_LIST_MERGE_INFO *merge_info;
   bool is_outer_join;
+
+  HASHJOIN_STATS *stats;
+
+  bool on_trace = thread_is_on_trace (thread_p);
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 
   int error = NO_ERROR;
 
@@ -7092,6 +7102,12 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
   is_outer_join = IS_OUTER_JOIN_TYPE (merge_info->join_type);
   assert ((is_outer_join == false) || (merge_info->join_type == JOIN_LEFT));
 
+  if (on_trace)
+    {
+      stats = &(hashjoin_proc->stats);
+      stats->hash_method = HASH_METH_NOT_USE;
+    }
+
   if (outer_list_id->type_list.type_cnt == 0)
     {
       error = qexec_start_mainblock_iterations (thread_p, outer_xasl, xasl_state);
@@ -7112,11 +7128,23 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
   if (outer_list_id->tuple_cnt == 0)
     {
+      if (on_trace)
+	{
+	  TSC_ADD_TIMEVAL (stats->build.elapsed_time, inner_xasl->xasl_stats.elapsed_time);
+	  TSC_ADD_TIMEVAL (stats->probe.elapsed_time, outer_xasl->xasl_stats.elapsed_time);
+	}
+
       goto exit_on_end;
     }
 
   if ((inner_list_id->tuple_cnt == 0) && (is_outer_join == false))
     {
+      if (on_trace)
+	{
+	  TSC_ADD_TIMEVAL (stats->build.elapsed_time, inner_xasl->xasl_stats.elapsed_time);
+	  TSC_ADD_TIMEVAL (stats->probe.elapsed_time, outer_xasl->xasl_stats.elapsed_time);
+	}
+
       goto exit_on_end;
     }
 
@@ -7171,6 +7199,11 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
   if (inner_list_id->tuple_cnt == 0 && is_outer_join == true)
     {
+      if (on_trace)
+	{
+	  TSC_ADD_TIMEVAL (stats->build.elapsed_time, inner_xasl->xasl_stats.elapsed_time);
+	}
+
       error = qexec_hash_outer_join_fill_outer (thread_p, xasl, xasl_state, hashjoin_proc, list_id);
       if (error != NO_ERROR)
 	{
@@ -7235,11 +7268,13 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   XASL_NODE *build_xasl, *probe_xasl;
   QFILE_LIST_ID *build_list_id, *probe_list_id;
   QFILE_LIST_SCAN_ID build_list_scan_id, probe_list_scan_id;
+
   HASHJOIN_STATS *stats;
 
   bool on_trace = thread_is_on_trace (thread_p);
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
+  UINT64 old_fetches = 0, old_ioreads = 0, old_fetch_time = 0;
 
   int error = NO_ERROR;
 
@@ -7271,7 +7306,7 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
   if (on_trace)
     {
-      stats = &(xasl->proc.hashjoin.stats);
+      stats = &(hashjoin_proc->stats);
       stats->hash_method = hashjoin_proc->hash_scan.hash_list_scan_type;
     }
 
@@ -7287,6 +7322,10 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (on_trace)
     {
       tsc_getticks (&start_tick);
+
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
     }
 
   error = qexec_hash_join_build (thread_p, hashjoin_proc, &build_list_scan_id);
@@ -7295,8 +7334,15 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (stats->build_time, tv_diff);
-      TSC_ADD_TIMEVAL (stats->build_time, build_xasl->xasl_stats.elapsed_time);
+      TSC_ADD_TIMEVAL (stats->build.build_time, tv_diff);
+      TSC_ADD_TIMEVAL (stats->build.elapsed_time, tv_diff);
+      TSC_ADD_TIMEVAL (stats->build.elapsed_time, build_xasl->xasl_stats.elapsed_time);
+
+      stats->build.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      stats->build.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      stats->build.fetch_time +=
+	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
+		   old_fetch_time) / 1000);
     }
 
   if (error != NO_ERROR)
@@ -7316,6 +7362,10 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (on_trace)
     {
       tsc_getticks (&start_tick);
+
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
     }
 
   error = qexec_hash_join_probe (thread_p, hashjoin_proc, &build_list_scan_id, &probe_list_scan_id, list_id);
@@ -7324,8 +7374,15 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (stats->probe_time, tv_diff);
-      TSC_ADD_TIMEVAL (stats->probe_time, probe_xasl->xasl_stats.elapsed_time);
+      TSC_ADD_TIMEVAL (stats->probe.probe_time, tv_diff);
+      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, tv_diff);
+      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, probe_xasl->xasl_stats.elapsed_time);
+
+      stats->probe.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      stats->probe.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      stats->probe.fetch_time +=
+	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
+		   old_fetch_time) / 1000);
     }
 
   if (error != NO_ERROR)
@@ -7361,11 +7418,13 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
   QFILE_LIST_SCAN_ID build_list_scan_id;
   ACCESS_SPEC_TYPE *build_spec, *probe_spec;
   VAL_LIST *build_val_list, *probe_val_list;
+
   HASHJOIN_STATS *stats;
 
   bool on_trace = thread_is_on_trace (thread_p);
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
+  UINT64 old_fetches = 0, old_ioreads = 0, old_fetch_time = 0;
 
   int error = NO_ERROR;
 
@@ -7404,7 +7463,7 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 
   if (on_trace)
     {
-      stats = &(xasl->proc.hashjoin.stats);
+      stats = &(hashjoin_proc->stats);
       stats->hash_method = hashjoin_proc->hash_scan.hash_list_scan_type;
     }
 
@@ -7420,6 +7479,10 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
   if (on_trace)
     {
       tsc_getticks (&start_tick);
+
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
     }
 
   error = qexec_hash_join_build (thread_p, hashjoin_proc, &build_list_scan_id);
@@ -7428,8 +7491,15 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (stats->build_time, tv_diff);
-      TSC_ADD_TIMEVAL (stats->build_time, build_xasl->xasl_stats.elapsed_time);
+      TSC_ADD_TIMEVAL (stats->build.build_time, tv_diff);
+      TSC_ADD_TIMEVAL (stats->build.elapsed_time, tv_diff);
+      TSC_ADD_TIMEVAL (stats->build.elapsed_time, build_xasl->xasl_stats.elapsed_time);
+
+      stats->build.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      stats->build.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      stats->build.fetch_time +=
+	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
+		   old_fetch_time) / 1000);
     }
 
   if (error != NO_ERROR)
@@ -7459,6 +7529,10 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
   if (on_trace)
     {
       tsc_getticks (&start_tick);
+
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
     }
 
   error = qexec_hash_outer_join_probe (thread_p, hashjoin_proc, &(build_spec->s_id),
@@ -7468,8 +7542,15 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (stats->probe_time, tv_diff);
-      TSC_ADD_TIMEVAL (stats->probe_time, probe_xasl->xasl_stats.elapsed_time);
+      TSC_ADD_TIMEVAL (stats->probe.probe_time, tv_diff);
+      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, tv_diff);
+      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, probe_xasl->xasl_stats.elapsed_time);
+
+      stats->probe.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      stats->probe.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      stats->probe.fetch_time +=
+	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
+		   old_fetch_time) / 1000);
     }
 
   if (error != NO_ERROR)
@@ -7505,16 +7586,19 @@ qexec_hash_outer_join_fill_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   XASL_NODE *outer_xasl;
   QFILE_LIST_ID *outer_list_id;
   QFILE_LIST_SCAN_ID outer_list_scan_id;
+
   QFILE_LIST_MERGE_INFO *merge_info;
-  HASHJOIN_STATS *stats;
 
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD result_tuple_record = { NULL, 0 };
 
+  HASHJOIN_STATS *stats;
+
   bool on_trace = thread_is_on_trace (thread_p);
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
+  UINT64 old_fetches = 0, old_ioreads = 0, old_fetch_time = 0;
 
   int error = NO_ERROR;
 
@@ -7538,8 +7622,8 @@ qexec_hash_outer_join_fill_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
   if (on_trace)
     {
-      stats = &(xasl->proc.hashjoin.stats);
-      stats->hash_method = HASH_METH_NOT_USE;
+      stats = &(hashjoin_proc->stats);
+      assert (stats->hash_method == HASH_METH_NOT_USE);
     }
 
   if (qfile_reallocate_tuple (&result_tuple_record, DB_PAGESIZE) != NO_ERROR)
@@ -7555,6 +7639,10 @@ qexec_hash_outer_join_fill_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   if (on_trace)
     {
       tsc_getticks (&start_tick);
+
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
     }
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &outer_list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
@@ -7570,8 +7658,15 @@ qexec_hash_outer_join_fill_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (stats->probe_time, tv_diff);
-      TSC_ADD_TIMEVAL (stats->probe_time, outer_xasl->xasl_stats.elapsed_time);
+      TSC_ADD_TIMEVAL (stats->probe.probe_time, tv_diff);
+      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, tv_diff);
+      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, outer_xasl->xasl_stats.elapsed_time);
+
+      stats->probe.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      stats->probe.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      stats->probe.fetch_time +=
+	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
+		   old_fetch_time) / 1000);
     }
 
   if (error != NO_ERROR)
@@ -7754,8 +7849,9 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 {
   TP_DOMAIN **build_domains, **probe_domains;
   int *build_value_indexes, *probe_value_indexes;
-  QFILE_LIST_MERGE_INFO *merge_info;
   bool need_compare_dbvalues;
+
+  QFILE_LIST_MERGE_INFO *merge_info;
 
   HASH_LIST_SCAN *hash_scan;
   HASH_METHOD hash_method;
@@ -7765,7 +7861,6 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD found_tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD result_tuple_record = { NULL, 0 };
-
   QFILE_TUPLE_RECORD *outer_tuple_record;
   QFILE_TUPLE_RECORD *inner_tuple_record;
 
@@ -7947,9 +8042,9 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 			     SCAN_ID * probe_scan_id, PRED_EXPR * during_join_pred, XASL_STATE * xasl_state,
 			     QFILE_LIST_ID * list_id)
 {
+  QFILE_LIST_MERGE_INFO *merge_info;
   TP_DOMAIN **build_domains, **probe_domains;
   int *build_value_indexes, *probe_value_indexes;
-  QFILE_LIST_MERGE_INFO *merge_info;
   bool need_compare_dbvalues;
 
   HASH_LIST_SCAN *hash_scan;
@@ -8231,12 +8326,12 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 			   int *value_indexes, QFILE_TUPLE_RECORD * tuple_record, HASH_SCAN_KEY * key,
 			   HASH_SCAN_KEY * compare_key)
 {
+  OR_BUF iterator, buf;
+  int value_size;
+
   TP_DOMAIN **coerce_domains;
   bool need_coerce_domains;
   bool need_compare_dbvalues;
-
-  OR_BUF iterator, buf;
-  int value_size;
 
   TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
   DB_VALUE pre_coerce_value;

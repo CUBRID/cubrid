@@ -351,11 +351,19 @@ qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * node_p)
   /**
    * build
    */
+  if (node_p->build == NULL)
+    {
+      node_p->build = &(node_p->inner);
+    }
   fprintf (foutput, "[build xasl:%p]\n", node_p->build->xasl);
 
   /**
    * probe
    */
+  if (node_p->probe == NULL)
+    {
+      node_p->probe = &(node_p->outer);
+    }
   fprintf (foutput, "[probe xasl:%p]\n", node_p->probe->xasl);
 #endif
 
@@ -2990,13 +2998,12 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
+  xasl_node *xptr;
   json_t *proc, *scan = NULL;
   json_t *subquery, *groupby, *orderby;
   json_t *outer, *inner;
-  json_t *build, *probe;
   json_t *cte_non_recursive_part, *cte_recursive_part;
   json_t *temp;
-  xasl_node *xptr;
   json_t *sq_cache;
 
   if (xasl_p == NULL || parent == NULL)
@@ -3058,15 +3065,82 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       break;
 
     case HASHJOIN_PROC:
-      build = json_object ();
-      probe = json_object ();
+      {
+	json_t *build, *probe;
+	json_t *build_input, *probe_input;
 
-      qdump_print_stats_json (xasl_p->proc.hashjoin.build->xasl, build);
-      qdump_print_stats_json (xasl_p->proc.hashjoin.probe->xasl, probe);
+	HASHJOIN_PROC_NODE *hashjoin_proc;
+	const char *hash_method_string;
 
-      json_object_set_new (proc, "build", build);
-      json_object_set_new (proc, "probe", probe);
-      break;
+	assert (xasl_p->aptr_list != NULL /* outer */ );
+	assert (xasl_p->aptr_list->next != NULL /* inner */ );
+	assert (xasl_p->aptr_list->next->next == NULL);
+
+	hashjoin_proc = &(xasl_p->proc.hashjoin);
+
+	switch (hashjoin_proc->stats.hash_method)
+	  {
+	  case HASH_METH_IN_MEM:
+	    hash_method_string = "memory";
+	    break;
+
+	  case HASH_METH_HYBRID:
+	    hash_method_string = "hybrid";
+	    break;
+
+	  case HASH_METH_HASH_FILE:
+	    hash_method_string = "file";
+	    break;
+
+	  default:
+	    {
+	      hash_method_string = "none";
+
+	      assert (hashjoin_proc->build == NULL);
+	      assert (hashjoin_proc->probe == NULL);
+
+	      hashjoin_proc->build = &(hashjoin_proc->inner);
+	      hashjoin_proc->probe = &(hashjoin_proc->outer);
+
+	      break;
+	    }
+	  }
+
+	assert (hashjoin_proc->build != NULL);
+	assert (hashjoin_proc->probe != NULL);
+
+	build_input = json_object ();
+	qdump_print_stats_json (hashjoin_proc->build->xasl, build_input);
+
+	build = json_object ();
+	json_object_set_new (build, "time", json_integer (TO_MSEC (hashjoin_proc->stats.build.elapsed_time)));
+	json_object_set_new (build, "build_time", json_integer (TO_MSEC (hashjoin_proc->stats.build.build_time)));
+	json_object_set_new (build, "built_type", json_string (hash_method_string));
+	json_object_set_new (build, "fetch", json_integer (hashjoin_proc->stats.build.fetches));
+	json_object_set_new (build, "fetch_time", json_integer (hashjoin_proc->stats.build.fetch_time));
+	json_object_set_new (build, "ioread", json_integer (hashjoin_proc->stats.build.ioreads));
+	json_object_set_new (build, "input", build_input);
+
+	probe_input = json_object ();
+	qdump_print_stats_json (hashjoin_proc->probe->xasl, probe_input);
+
+	probe = json_object ();
+	json_object_set_new (probe, "time", json_integer (TO_MSEC (hashjoin_proc->stats.probe.elapsed_time)));
+	json_object_set_new (probe, "probe_time", json_integer (TO_MSEC (hashjoin_proc->stats.probe.probe_time)));
+	json_object_set_new (probe, "fetch", json_integer (hashjoin_proc->stats.probe.fetches));
+	json_object_set_new (probe, "fetch_time", json_integer (hashjoin_proc->stats.probe.fetch_time));
+	json_object_set_new (probe, "ioread", json_integer (hashjoin_proc->stats.probe.ioreads));
+	json_object_set_new (probe, "input", probe_input);
+
+	json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+	json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
+	json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
+	json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+	json_object_set_new (proc, "build", build);
+	json_object_set_new (proc, "probe", probe);
+
+	break;
+      }
 
     case MERGE_PROC:
       inner = json_object ();
@@ -3199,13 +3273,24 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
       subquery = json_array ();
+      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
+
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  temp = json_object ();
-	  qdump_print_stats_json (xptr, temp);
-	  json_array_append_new (subquery, temp);
+	  if (HAVE_SUBQUERY_PROC (xptr))
+	    {
+	      temp = json_object ();
+	      qdump_print_stats_json (xptr, temp);
+	      json_array_append_new (subquery, temp);
+	    }
+	  else
+	    {
+	      /**
+	       * It is expected to be output at the same indentation as uncorrelated SUBQUERY.
+	       */
+	      qdump_print_stats_json (xptr, proc);
+	    }
 	}
-      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
     }
 
   if (xasl_p->dptr_list != NULL)
@@ -3325,6 +3410,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
   xasl_node *xptr;
+  bool is_header_printed;
 
   if (xasl_p == NULL)
     {
@@ -3376,9 +3462,16 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
     case HASHJOIN_PROC:
       {
+	HASHJOIN_PROC_NODE *hashjoin_proc;
 	const char *hash_method_string;
 
-	switch (xasl_p->proc.hashjoin.stats.hash_method)
+	assert (xasl_p->aptr_list != NULL /* outer */ );
+	assert (xasl_p->aptr_list->next != NULL /* inner */ );
+	assert (xasl_p->aptr_list->next->next == NULL);
+
+	hashjoin_proc = &(xasl_p->proc.hashjoin);
+
+	switch (hashjoin_proc->stats.hash_method)
 	  {
 	  case HASH_METH_IN_MEM:
 	    hash_method_string = "memory";
@@ -3393,26 +3486,47 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	    break;
 
 	  default:
-	    hash_method_string = "none";
-	    break;
+	    {
+	      hash_method_string = "none";
+
+	      assert (hashjoin_proc->build == NULL);
+	      assert (hashjoin_proc->probe == NULL);
+
+	      hashjoin_proc->build = &(hashjoin_proc->inner);
+	      hashjoin_proc->probe = &(hashjoin_proc->outer);
+
+	      break;
+	    }
 	  }
 
-	fprintf (fp, "%s (%s) (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
-		 qdump_xasl_type_string (xasl_p), hash_method_string, TO_MSEC (xasl_p->xasl_stats.elapsed_time),
+	assert (hashjoin_proc->build != NULL);
+	assert (hashjoin_proc->probe != NULL);
+
+	fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		 qdump_xasl_type_string (xasl_p), TO_MSEC (xasl_p->xasl_stats.elapsed_time),
 		 (long long int) xasl_p->xasl_stats.fetches, (long long int) xasl_p->xasl_stats.fetch_time,
 		 (long long int) xasl_p->xasl_stats.ioreads);
 
 	indent += 2;
 
-	fprintf (fp, "%*cBUILD (time: %d)\n", indent, ' ', TO_MSEC (xasl_p->proc.hashjoin.stats.build_time));
-	qdump_print_stats_text (fp, xasl_p->proc.hashjoin.build->xasl, indent);
+	fprintf (fp,
+		 "%*cBUILD (time: %d, build_time: %d, build_type: %s, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		 indent, ' ', TO_MSEC (hashjoin_proc->stats.build.elapsed_time),
+		 TO_MSEC (hashjoin_proc->stats.build.build_time), hash_method_string,
+		 (long long int) hashjoin_proc->stats.build.fetches,
+		 (long long int) hashjoin_proc->stats.build.fetch_time,
+		 (long long int) hashjoin_proc->stats.build.ioreads);
+	qdump_print_stats_text (fp, hashjoin_proc->build->xasl, indent);
 
-	fprintf (fp, "%*cPROBE (time: %d)\n", indent, ' ', TO_MSEC (xasl_p->proc.hashjoin.stats.probe_time));
-	qdump_print_stats_text (fp, xasl_p->proc.hashjoin.probe->xasl, indent);
+	fprintf (fp, "%*cPROBE (time: %d, probe_time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", indent, ' ',
+		 TO_MSEC (hashjoin_proc->stats.probe.elapsed_time),
+		 TO_MSEC (hashjoin_proc->stats.probe.probe_time),
+		 (long long int) hashjoin_proc->stats.probe.fetches,
+		 (long long int) hashjoin_proc->stats.probe.fetch_time,
+		 (long long int) hashjoin_proc->stats.probe.ioreads);
+	qdump_print_stats_text (fp, hashjoin_proc->probe->xasl, indent);
 
 	indent -= 2;
-
-	/* TODO: qdump_print_stats_json */
 
 	break;
       }
@@ -3518,14 +3632,31 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
-      if (HAVE_SUBQUERY_PROC (xasl_p->aptr_list))
-	{
-	  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
-	}
+      is_header_printed = false;
 
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  qdump_print_stats_text (fp, xptr, indent);
+	  if (HAVE_SUBQUERY_PROC (xptr))
+	    {
+	      if (is_header_printed == false)
+		{
+		  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
+		  is_header_printed = true;
+		}
+
+	      qdump_print_stats_text (fp, xptr, indent);
+	    }
+	  else
+	    {
+	      /**
+	       * It is expected to be output at the same indentation as uncorrelated SUBQUERY.
+	       */
+	      indent -= 2;
+	      qdump_print_stats_text (fp, xptr, indent);
+	      indent += 2;
+
+	      is_header_printed = false;
+	    }
 	}
     }
 

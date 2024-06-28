@@ -493,6 +493,11 @@ qo_plan_malloc (QO_ENV * env)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_PLAN));
 	  return NULL;
 	}
+
+#if !defined(NDEBUG)
+      /* Prevent faults when `qo_plan_fprint` or `qo_plan_lite_print` is called. */
+      plan->vtbl = NULL;
+#endif
     }
 
   bitset_init (&(plan->sarged_terms), env);

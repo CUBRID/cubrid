@@ -551,6 +551,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
   XASL_NODE *xasl = NULL;
 
+  HASHJOIN_PROC_NODE *hashjoin_proc;
   QFILE_LIST_MERGE_INFO *merge_info;
   PT_NODE *during_join_pred;
 
@@ -600,7 +601,9 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       goto exit_on_error;
     }
 
-  merge_info = &(xasl->proc.hashjoin.merge_info);
+  hashjoin_proc = &(xasl->proc.hashjoin);
+
+  merge_info = &(hashjoin_proc->merge_info);
   merge_info->join_type = plan->plan_un.join.join_type;
   merge_info->ls_column_cnt = bitset_cardinality (&(plan->plan_un.join.join_terms));
   assert (merge_info->ls_column_cnt > 0);
@@ -619,6 +622,9 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
   assert (merge_info->ls_outer_unique == NULL);	/* Unused. */
   assert (merge_info->ls_inner_unique == NULL);	/* Unused. */
+
+  outer_xasl->orderby_list = NULL;
+  inner_xasl->orderby_list = NULL;
 
   outer_expr = outer_info->expr_list;
   inner_expr = inner_info->expr_list;
@@ -754,11 +760,11 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   /* make outer_spec_list, outer_val_list, inner_spec_list, and inner_val_list */
   if (merge_info->join_type == JOIN_INNER)
     {
-      xasl->proc.hashjoin.outer.spec_list = NULL;
-      xasl->proc.hashjoin.outer.val_list = NULL;
+      hashjoin_proc->outer.spec_list = NULL;
+      hashjoin_proc->outer.val_list = NULL;
 
-      xasl->proc.hashjoin.inner.spec_list = NULL;
-      xasl->proc.hashjoin.inner.val_list = NULL;
+      hashjoin_proc->inner.spec_list = NULL;
+      hashjoin_proc->inner.val_list = NULL;
     }
   else
     {
@@ -780,7 +786,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    }
 	}
 
-      xasl = ptqo_to_list_scan_proc (parser, xasl, SCAN_PROC, outer_xasl, outer_info->expr_name_list, NULL, pos_list);
+      xasl = ptqo_to_list_scan_proc (parser, xasl, SCAN_PROC, outer_xasl, outer_info->name_list, NULL, pos_list);
 
       if (pos_list != NULL)
 	{
@@ -792,8 +798,8 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	  goto exit_on_error;
 	}
 
-      xasl->proc.hashjoin.outer.spec_list = xasl->spec_list;
-      xasl->proc.hashjoin.outer.val_list = xasl->val_list;
+      hashjoin_proc->outer.spec_list = xasl->spec_list;
+      hashjoin_proc->outer.val_list = xasl->val_list;
 
       xasl->spec_list = NULL;
       xasl->val_list = NULL;
@@ -814,7 +820,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    }
 	}
 
-      xasl = ptqo_to_list_scan_proc (parser, xasl, SCAN_PROC, inner_xasl, inner_info->expr_name_list, NULL, pos_list);
+      xasl = ptqo_to_list_scan_proc (parser, xasl, SCAN_PROC, inner_xasl, inner_info->name_list, NULL, pos_list);
 
       if (pos_list)
 	{
@@ -826,8 +832,8 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	  goto exit_on_error;
 	}
 
-      xasl->proc.hashjoin.inner.spec_list = xasl->spec_list;
-      xasl->proc.hashjoin.inner.val_list = xasl->val_list;
+      hashjoin_proc->inner.spec_list = xasl->spec_list;
+      hashjoin_proc->inner.val_list = xasl->val_list;
 
       xasl->spec_list = NULL;
       xasl->val_list = NULL;
@@ -1868,7 +1874,8 @@ check_merge_xasl (QO_ENV * env, XASL_NODE * xasl)
 static XASL_NODE *
 check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
 {
-  XASL_NODE *hashjoin_xasl;
+  XASL_NODE *hashjoin_xasl, *aptr_xasl;
+  HASHJOIN_PROC_NODE *hashjoin_proc;
   int value_count, value_index;
 
   /* NULL is actually a semi-common case; it can arise under timeout conditions, etc. */
@@ -1896,11 +1903,13 @@ check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
     }
 
   /* Make sure there are two things on the aptr list. */
-  if ((hashjoin_xasl->type != HASHJOIN_PROC) && (hashjoin_xasl->aptr_list == NULL)	/* outer */
-      && (hashjoin_xasl->aptr_list->next == NULL) /* inner */ )
+  if ((hashjoin_xasl->type != HASHJOIN_PROC) || (hashjoin_xasl->aptr_list == NULL /* outer */ )
+      || (hashjoin_xasl->aptr_list->next == NULL /* inner */ ))
     {
       goto exit_on_error;
     }
+
+  assert (hashjoin_xasl->aptr_list->next->next == NULL);
 
   /* Make sure both buildlist gadgets look well-formed. */
   if ((xasl->spec_list == NULL) || (xasl->val_list == NULL) || (xasl->outptr_list == NULL))
@@ -1908,19 +1917,21 @@ check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
       goto exit_on_error;
     }
 
+  hashjoin_proc = &(hashjoin_xasl->proc.hashjoin);
+
   /* Make sure the merge_info looks plausible. */
-  if ((hashjoin_xasl->proc.hashjoin.outer.xasl == NULL) && (hashjoin_xasl->proc.hashjoin.inner.xasl == NULL)
-      && (hashjoin_xasl->proc.hashjoin.merge_info.ls_column_cnt <= 0))
+  if ((hashjoin_proc->outer.xasl == NULL) || (hashjoin_proc->inner.xasl == NULL)
+      || (hashjoin_proc->merge_info.ls_column_cnt <= 0))
     {
       goto exit_on_error;
     }
 
-  value_count = hashjoin_xasl->proc.hashjoin.merge_info.ls_column_cnt;
+  value_count = hashjoin_proc->merge_info.ls_column_cnt;
 
   for (value_index = 0; value_index < value_count; value_index++)
     {
-      if ((hashjoin_xasl->proc.hashjoin.merge_info.ls_outer_column[value_index] < 0)
-	  || (hashjoin_xasl->proc.hashjoin.merge_info.ls_inner_column[value_index] < 0))
+      if ((hashjoin_proc->merge_info.ls_outer_column[value_index] < 0)
+	  || (hashjoin_proc->merge_info.ls_inner_column[value_index] < 0))
 	{
 	  goto exit_on_error;
 	}
@@ -2777,7 +2788,6 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
     }
 
   bitset_assign (&(outer_plan->info->projected_segs), &temp_segs_set /* restore */ );
-  assert (outer_xasl->orderby_list = NULL);
 
   /**
    * STEP 3: Make XASL for the inner plan.
@@ -2806,7 +2816,6 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
     }
 
   bitset_assign (&(inner_plan->info->projected_segs), &temp_segs_set /* restore */ );
-  assert (inner_xasl->orderby_list = NULL);
 
   /**
    * STEP 4: Make XASL for the hash join plan.

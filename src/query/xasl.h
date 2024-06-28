@@ -386,8 +386,23 @@ struct hashjoin_stats
 {
   HASH_METHOD hash_method;
 
-  struct timeval build_time;
-  struct timeval probe_time;
+  struct
+  {
+    struct timeval elapsed_time;
+    struct timeval build_time;
+    UINT64 fetches;
+    UINT64 ioreads;
+    UINT64 fetch_time;
+  } build;
+
+  struct
+  {
+    struct timeval elapsed_time;
+    struct timeval probe_time;
+    UINT64 fetches;
+    UINT64 ioreads;
+    UINT64 fetch_time;
+  } probe;
 };
 #endif
 
