@@ -231,9 +231,11 @@ typedef UINT64 DISK_STAB_UNIT;
  * variable fields = volume fullname + next volume fullname + remarks
  * volume fullname & next volume fullname max length = DB_MAX_PATH_LENGTH (include null charactor)
  *
- * TODO : The case when DB_PAGESIZE is less than 8317 bytes is not considered.
- * This issue is not addressed in all parts of the implementation.
- * In the future, when adjusting the lengths of each member according to DB_PAGESIZE, this calculation should also be revised.
+ * TODO : The current maximum size for volume fullname is 4K.
+ * This will cause bugs if PAGESIZE is set to 4K or 8K.
+ * While the max size is 4K when PAGESIZE is 16K, it should decrease proportionally as PAGESIZE decreases.
+ * Setting the volume fullname size to 2K for an 8K PAGESIZE and 1K for a 4K PAGESIZE should work without bugs.
+ * This issue will be created and handled in a separate issue.
  */
 #define DISK_VOLUME_HEADER_REMARKS_MAX_SIZE (DB_PAGESIZE - (offsetof(DISK_VOLUME_HEADER, var_fields) + DB_MAX_PATH_LENGTH + DB_MAX_PATH_LENGTH))
 
@@ -366,11 +368,11 @@ static bool disk_Logging = false;
 STATIC_INLINE char *disk_vhdr_get_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *disk_vhdr_get_next_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int disk_vhdr_get_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
+STATIC_INLINE size_t disk_vhdr_get_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE size_t disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE size_t disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE size_t disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 static int disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname);
 static int disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol_fullname);
 static int disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks);
@@ -5224,11 +5226,11 @@ disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname)
 
   /* Contains null characters ( 1 byte ) */
   new_vol_fullname_size = (int) strlen (vol_fullname) + 1;
-  old_vol_fullname_size = disk_vhdr_get_vol_fullname_size (vhdr);
-  next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
-  remarks_size = disk_vhdr_get_vol_remarks_size (vhdr);
+  old_vol_fullname_size = (int) disk_vhdr_get_vol_fullname_size (vhdr);
+  next_vol_fullname_size = (int) disk_vhdr_get_next_vol_fullname_size (vhdr);
+  remarks_size = (int) disk_vhdr_get_vol_remarks_size (vhdr);
 
-  assert (new_vol_fullname_size <= (int) DB_MAX_PATH_LENGTH);
+  assert (new_vol_fullname_size <= DB_MAX_PATH_LENGTH);
 
   /* Difference in length between new name and old name */
   name_length_diff = (new_vol_fullname_size - old_vol_fullname_size);
@@ -5260,9 +5262,9 @@ static int
 disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol_fullname)
 {
   int ret = NO_ERROR;
-  int new_next_vol_fullname_size = 0;
   int name_length_diff = 0;
   int old_next_vol_fullname_size = 0;
+  int new_next_vol_fullname_size = 0;
 
   assert (vhdr != NULL);
 
@@ -5275,10 +5277,10 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
     {
       new_next_vol_fullname_size = (int) strlen (next_vol_fullname) + 1;
 
-      assert (new_next_vol_fullname_size <= (int) DB_MAX_PATH_LENGTH);
+      assert (new_next_vol_fullname_size <= DB_MAX_PATH_LENGTH);
     }
 
-  old_next_vol_fullname_size = disk_vhdr_get_next_vol_fullname_size (vhdr);
+  old_next_vol_fullname_size = (int) disk_vhdr_get_next_vol_fullname_size (vhdr);
 
   /* Difference in length between new name and old name */
   name_length_diff = (new_next_vol_fullname_size - old_next_vol_fullname_size);
@@ -5286,7 +5288,7 @@ disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol
   if (name_length_diff != 0)
     {
       /* length to move */
-      const int remarks_size = disk_vhdr_get_vol_remarks_size (vhdr);
+      const int remarks_size = (int) disk_vhdr_get_vol_remarks_size (vhdr);
 
       /* We need to either move to right(expand) or left(shrink) the rest of the variable length fields */
       memmove (disk_vhdr_get_vol_remarks (vhdr) + name_length_diff, disk_vhdr_get_vol_remarks (vhdr), remarks_size);
@@ -5316,7 +5318,7 @@ disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks)
     {
       const int remarks_size = (int) (strlen (vol_remarks) + 1);
 
-      assert (remarks_size <= (int) DISK_VOLUME_HEADER_REMARKS_MAX_SIZE);
+      assert (remarks_size <= DISK_VOLUME_HEADER_REMARKS_MAX_SIZE);
 
       memcpy (disk_vhdr_get_vol_remarks (vhdr), vol_remarks, remarks_size);
     }
@@ -5337,6 +5339,8 @@ disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks)
 STATIC_INLINE char *
 disk_vhdr_get_vol_fullname (const DISK_VOLUME_HEADER * vhdr)
 {
+  assert (vhdr != NULL);
+
   return ((char *) (vhdr->var_fields + vhdr->offset_to_vol_fullname));
 }
 
@@ -5349,6 +5353,8 @@ disk_vhdr_get_vol_fullname (const DISK_VOLUME_HEADER * vhdr)
 STATIC_INLINE char *
 disk_vhdr_get_next_vol_fullname (const DISK_VOLUME_HEADER * vhdr)
 {
+  assert (vhdr != NULL);
+
   return ((char *) (vhdr->var_fields + vhdr->offset_to_next_vol_fullname));
 }
 
@@ -5361,6 +5367,8 @@ disk_vhdr_get_next_vol_fullname (const DISK_VOLUME_HEADER * vhdr)
 STATIC_INLINE char *
 disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr)
 {
+  assert (vhdr != NULL);
+
   return ((char *) (vhdr->var_fields + vhdr->offset_to_vol_remarks));
 }
 
@@ -5371,10 +5379,12 @@ disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr)
  * return    : volume fullname size
  * vhdr (in) : volume header
  */
-STATIC_INLINE int
+STATIC_INLINE size_t
 disk_vhdr_get_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
 {
-  return (int) (strlen (disk_vhdr_get_vol_fullname (vhdr)) + 1);
+  assert (vhdr != NULL);
+
+  return (size_t) (strlen (disk_vhdr_get_vol_fullname (vhdr)) + 1);
 }
 
 /*
@@ -5383,10 +5393,12 @@ disk_vhdr_get_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
  * return    : next volume fullname size
  * vhdr (in) : volume header
  */
-STATIC_INLINE int
+STATIC_INLINE size_t
 disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
 {
-  return (int) (strlen (disk_vhdr_get_next_vol_fullname (vhdr)) + 1);
+  assert (vhdr != NULL);
+
+  return (size_t) (strlen (disk_vhdr_get_next_vol_fullname (vhdr)) + 1);
 }
 
 /*
@@ -5395,10 +5407,12 @@ disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
  * return    : the size of remarks
  * vhdr (in) : volume header
  */
-STATIC_INLINE int
+STATIC_INLINE size_t
 disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr)
 {
-  return (int) (strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1);
+  assert (vhdr != NULL);
+
+  return (size_t) (strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1);
 }
 
 
@@ -5409,14 +5423,14 @@ disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr)
  * return    : total size
  * vhdr (in) : volume header
  */
-STATIC_INLINE int
+STATIC_INLINE size_t
 disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr)
 {
   assert (vhdr != NULL);
 
   const char *remarks = disk_vhdr_get_vol_remarks (vhdr);
 
-  return (int) ((remarks + disk_vhdr_get_vol_remarks_size (vhdr)) - ((char *) vhdr));
+  return (size_t) ((remarks + disk_vhdr_get_vol_remarks_size (vhdr)) - ((char *) vhdr));
 }
 
 /*
