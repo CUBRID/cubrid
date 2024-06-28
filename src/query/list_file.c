@@ -1024,7 +1024,7 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 
 	  db_fprint_value (stdout, &dbval);
 
-	  if (pr_is_clear_needed_with_peek (pr_type_p->id))
+	  if (pr_is_clear_needed_type_with_peek (pr_type_p->id))
 	    {
 	      pr_clear_value (&dbval);
 	    }

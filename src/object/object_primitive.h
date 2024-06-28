@@ -395,13 +395,13 @@ pr_is_string_compression_type (DB_TYPE type)
 }
 
 /*
- * pr_is_clear_needed_with_peek - Test to see if a type identifier is needed for this type even with peek
+ * pr_is_clear_needed_type_with_peek - Test to see if a type identifier is needed for this type even with peek
  * types.
  *    return: non-zero if clear is needed for this type even with peek
  *    type(in):  type to check
  */
 STATIC_INLINE int
-pr_is_clear_needed_with_peek (DB_TYPE type)
+pr_is_clear_needed_type_with_peek (DB_TYPE type)
 {
   int status = 0;
 

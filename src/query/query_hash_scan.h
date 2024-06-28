@@ -79,7 +79,7 @@ struct hash_scan_key
   int val_count;		/* key size */
   bool free_values;		/* true if values need to be freed */
   db_value **values;		/* value array */
-  QFILE_TUPLE_RECORD **tuples;
+  QFILE_TUPLE_RECORD **tuples;	/* tuple array */
 };
 
 typedef struct file_hash_scan_id FHSID;
