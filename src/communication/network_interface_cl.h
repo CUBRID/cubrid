@@ -94,7 +94,7 @@ extern int locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_T
 			      OID * class_oidp, int *nobjects, int *nfetched, OID * last_oidp,
 			      LC_COPYAREA ** fetch_copyarea
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
-			      , int modular_val, int accept_val
+			      , int request_datasize, int modular_val, int accept_val
 #endif
   );
 extern int locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, int class_chn, int need_fetching,

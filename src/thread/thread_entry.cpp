@@ -190,6 +190,7 @@ namespace cubthread
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
     unload_modular = UNLOAD_MODULAR_UNDEFINED;
     unload_accept = UNLOAD_MODULAR_UNDEFINED;
+    request_datasize = 1;
 #endif
 
 #if !defined (NDEBUG)

@@ -39,6 +39,7 @@
 #include "locator_cl.h"
 #include "unloaddb.h"
 #include "load_object.h"
+#include "unload_object_file.h"
 #include "utility.h"
 #include "util_func.h"
 
@@ -67,20 +68,11 @@ const char *output_dirname = NULL;
 char *input_filename = NULL;
 FILE *output_file = NULL;
 #if defined(SUPPORT_THREAD_UNLOAD)
-TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, INVALID_FILE_NO };
-#else
-TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, NULL };
-#endif
-
-//TEXT_OUTPUT *obj_out = &object_output;
-TEXT_OUTPUT *g_obj_out = &object_output;
-#if defined(SUPPORT_THREAD_UNLOAD)
-int thread_count = 0;
-bool check_fetch_time = false;	// ctshim,  test only
-int merge_type = 0;
+int g_thread_count = 0;
 int varchar_alloc_size = 0;
 int g_modular = UNLOAD_MODULAR_UNDEFINED;
 int g_accept = UNLOAD_MODULAR_UNDEFINED;
+int g_request_datasize = 200;
 #endif
 
 int page_size = 4096;
@@ -180,8 +172,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
 #if !defined (WINDOWS) && defined(SUPPORT_THREAD_UNLOAD)
-  thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
-
   if (datafile_per_class)
     {
 #if defined(CS_MODE) || defined(SUPPORT_MTP_UNLOAD_TEST)
@@ -197,33 +187,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	}
 #endif
 
-      thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
-      if (thread_count == 999)
-	{
-	  check_fetch_time = true;
-	  merge_type = 0;
-	  thread_count = 0;
-	  varchar_alloc_size = 0;
-	  datafile_per_class = false;
-	}
-      else if (thread_count >= 300)
-	{
-	  check_fetch_time = false;
-	  merge_type = 3;
-	  thread_count -= 300;
-	}
-      else if (thread_count >= 200)
-	{
-	  check_fetch_time = false;
-	  merge_type = 2;
-	  thread_count -= 200;
-	}
-      else if (thread_count >= 100)
-	{
-	  check_fetch_time = false;
-	  merge_type = 1;
-	  thread_count -= 100;
-	}
+      g_thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
     }
 
   varchar_alloc_size = utility_get_option_int_value (arg_map, UNLOAD_VARCHAR_ALLOC_SIZE_S);
@@ -491,10 +455,19 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
       gettimeofday (&startTime, NULL);
 #endif
+
+#if defined(SUPPORT_THREAD_UNLOAD)
+      init_text_output_mem (((g_thread_count > 0) ? g_thread_count : 1) * 2);
+#endif
+
       if (extract_objects (unload_context, output_dirname))
 	{
 	  status = 1;
 	}
+#if defined(SUPPORT_THREAD_UNLOAD)
+      quit_text_output_mem ();
+#endif
+
 #if 1
       gettimeofday (&endTime, NULL);
       diffTime = (endTime.tv_sec - startTime.tv_sec) + ((double) (endTime.tv_usec - startTime.tv_usec) / 1000000);

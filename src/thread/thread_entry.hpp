@@ -282,6 +282,7 @@ namespace cubthread
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
       int unload_modular;
       int unload_accept;
+      int request_datasize;
 #endif
 
 #if !defined(NDEBUG)

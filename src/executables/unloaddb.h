@@ -35,14 +35,12 @@ class print_output;
 
 extern char *database_name;
 extern char *input_filename;
-//extern struct text_output *obj_out;
-extern struct text_output *g_obj_out;
 #if defined(SUPPORT_THREAD_UNLOAD)
-extern int thread_count;
-extern bool check_fetch_time;
+extern int g_thread_count;
 extern int varchar_alloc_size;
 extern int g_modular;
 extern int g_accept;
+extern int g_request_datasize;
 #endif
 extern int page_size;
 extern int cached_pages;

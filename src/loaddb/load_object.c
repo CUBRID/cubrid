@@ -67,19 +67,6 @@ static void get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, i
 static SM_ATTRIBUTE *find_current_attribute (SM_CLASS * class_, int id);
 static void get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bound_bit_flag,
 			  int offset_size);
-static void print_set (print_output & output_ctx, DB_SET * set);
-static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
-static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
-static const char *strnchr (const char *str, char ch, int nbytes);
-static int print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len);
-static void itoa_strreverse (char *begin, char *end);
-#if defined(UNUSED_FUNCTION) && !defined(SUPPORT_THREAD_UNLOAD)
-static int itoa_print (TEXT_OUTPUT * tout, DB_BIGINT value, int base);
-#else
-static int itoa_print_base10 (TEXT_OUTPUT * tout, DB_BIGINT value);
-#define itoa_print(o, v, b)  itoa_print_base10((o), (v))
-#endif
-static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 static void init_load_err_filter (void);
 static void default_clear_err_filter (void);
 
@@ -491,166 +478,6 @@ error:
     }
   or_abort (buf);
 }
-
-/*
- * text_print_flush - flush TEXT_OUTPUT contents to file
- *    return: NO_ERROR if successful, ER_IO_WRITE if file I/O error occurred
- *    tout(in/out): TEXT_OUTPUT structure
- */
-int
-text_print_flush (TEXT_OUTPUT * tout)
-{
-  /* flush to disk */
-#if defined(SUPPORT_THREAD_UNLOAD)
-  if (tout->count != write (tout->fd, tout->buffer, tout->count))
-#else
-  if (tout->count != (int) fwrite (tout->buffer, 1, tout->count, tout->fp))
-#endif
-    {
-      return ER_IO_WRITE;
-    }
-
-  /* re-init */
-  tout->ptr = tout->buffer;
-  tout->count = 0;
-  return NO_ERROR;
-}
-
-/*
- * text_print - print formatted text to TEXT_OUTPUT
- *    return: NO_ERROR if successful, error code otherwise
- *    tout(out): TEXT_OUTPUT
- *    buf(in): source buffer
- *    buflen(in): length of buffer
- *    fmt(in): format string
- *    ...(in): arguments
- */
-int
-text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...)
-{
-  int error = NO_ERROR;
-  int nbytes, size;
-  va_list ap;
-  assert (buflen >= 0);
-
-start:
-  size = tout->iosize - tout->count;	/* free space size */
-  if (buflen)
-    {
-      nbytes = buflen;		/* unformatted print */
-    }
-  else
-    {
-      va_start (ap, fmt);
-      nbytes = vsnprintf (tout->ptr, size, fmt, ap);
-      va_end (ap);
-    }
-
-  if (nbytes > 0)
-    {
-      if (nbytes < size)
-	{			/* OK */
-	  if (buflen > 0)
-	    {			/* unformatted print */
-	      assert (buf != NULL);
-	      memcpy (tout->ptr, buf, buflen);
-	      *(tout->ptr + buflen) = '\0';	/* Null terminate */
-	    }
-	  tout->ptr += nbytes;
-	  tout->count += nbytes;
-	}
-      else
-	{			/* need more buffer */
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	  goto start;		/* retry */
-	}
-    }
-
-exit_on_end:
-  return error;
-exit_on_error:
-  CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
-}
-
-#if 0				// ctshim
-int
-text_string_print (TEXT_OUTPUT * tout, const char *buf, int buflen)
-{
-  int error = NO_ERROR;
-  int avail = tout->iosize - tout->count;	/* free space size */
-  assert (buflen >= 0);
-  assert (buf != NULL);
-  if (buflen < avail)
-    {				/* OK */
-      memcpy (tout->ptr, buf, buflen);
-      tout->ptr += buflen;
-      tout->count += buflen;
-      return NO_ERROR;
-    }
-
-  tout->ptr[0] = '\0';
-  CHECK_PRINT_ERROR (text_print_flush (tout));
-  avail = tout->iosize;
-  while (buflen >= avail)
-    {				/* OK */
-      memcpy (tout->ptr, buf, avail);
-      buflen -= avail;
-      buf += avail;
-      tout->ptr += avail;
-      tout->count += avail;
-      CHECK_PRINT_ERROR (text_print_flush (tout));
-    }
-
-  if (buflen > 0)
-    {
-      memcpy (tout->ptr, buf, buflen);
-      tout->ptr += buflen;
-      tout->count += buflen;
-    }
-exit_on_end:
-  return error;
-exit_on_error:
-  CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
-}
-
-int
-text_formatted_print (TEXT_OUTPUT * tout, char const *fmt, ...)
-{
-  int error = NO_ERROR;
-  int nbytes, avail;
-  va_list ap;
-
-start:
-  avail = tout->iosize - tout->count;	/* free space size */
-  assert (avali > 0);
-
-  va_start (ap, fmt);
-  nbytes = vsnprintf (tout->ptr, avail, fmt, ap);
-  va_end (ap);
-  if (nbytes > 0)
-    {
-      assert (nbytes < tout->iosize);
-      if (nbytes < avail)
-	{			/* OK */
-	  tout->ptr += nbytes;
-	  tout->count += nbytes;
-	}
-      else
-	{			/* need more buffer */
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	  goto start;		/* retry */
-	}
-    }
-
-exit_on_end:
-  return error;
-exit_on_error:
-  CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
-}
-#endif
 
 /*
  * desc_obj_to_disk - transforms the object into a disk record for eventual
@@ -1241,6 +1068,7 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
   return error;
 }
 
+#if 0				//------------------------------------------------------------------------
 /*
  * print_set - Print the contents of a real DB_SET (not a set descriptor).
  *    return: void
@@ -1412,7 +1240,7 @@ strnchr (const char *str, char ch, int nbytes)
 }
 
 
-int
+static int
 flush_quoted_str (TEXT_OUTPUT * tout, const char *st, int tlen)
 {
   int ret = NO_ERROR;
@@ -1428,6 +1256,7 @@ flush_quoted_str (TEXT_OUTPUT * tout, const char *st, int tlen)
       tlen -= cpsize;
       assert (tout->count == tout->iosize);
       ret = text_print_flush (tout);
+      JUMP_TAIL_PTR (tout);
       if ((ret == NO_ERROR) && (tlen > 0))
 	{
 	  memcpy (tout->ptr, st + cpsize, tlen);
@@ -1466,10 +1295,13 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
   int write_len = 0;
   const char *st;
 
+  JUMP_TAIL_PTR (tout);
+
   if (tout->iosize <= tout->count)
     {
       assert (tout->iosize == tout->count);
       CHECK_PRINT_ERROR (text_print_flush (tout));
+      JUMP_TAIL_PTR (tout);
     }
 
   /* opening quote */
@@ -1523,6 +1355,7 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
   if (tout->iosize <= tout->count)
     {
       CHECK_PRINT_ERROR (text_print_flush (tout));
+      JUMP_TAIL_PTR (tout);
     }
 
   /* closing quote */
@@ -1665,6 +1498,8 @@ itoa_print_base10 (TEXT_OUTPUT * tout, DB_BIGINT value)
 {
   int nbytes;
 
+  JUMP_TAIL_PTR (tout);
+
   nbytes = sprintf (tout->ptr, "%" PRId64, value);
   if (nbytes < 0)
     {
@@ -1696,6 +1531,9 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
   DB_DATETIMETZ *dt_tz;
   DB_TIMESTAMPTZ *ts_tz;
   type = DB_VALUE_TYPE (value);
+
+  JUMP_TAIL_PTR (tout);
+
   switch (type)
     {
     case DB_TYPE_NULL:
@@ -1706,6 +1544,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	{
 	  /* flush remaining buffer */
 	  CHECK_PRINT_ERROR (text_print_flush (tout));
+	  JUMP_TAIL_PTR (tout);
 	}
       CHECK_PRINT_ERROR (itoa_print (tout, db_get_bigint (value), 10 /* base */ ));
       break;
@@ -1714,6 +1553,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	{
 	  /* flush remaining buffer */
 	  CHECK_PRINT_ERROR (text_print_flush (tout));
+	  JUMP_TAIL_PTR (tout);
 	}
       CHECK_PRINT_ERROR (itoa_print (tout, db_get_int (value), 10 /* base */ ));
       break;
@@ -1722,6 +1562,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	{
 	  /* flush remaining buffer */
 	  CHECK_PRINT_ERROR (text_print_flush (tout));
+	  JUMP_TAIL_PTR (tout);
 	}
       CHECK_PRINT_ERROR (itoa_print (tout, db_get_short (value), 10 /* base */ ));
       break;
@@ -1745,6 +1586,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	{
 	  /* flush remaining buffer */
 	  CHECK_PRINT_ERROR (text_print_flush (tout));
+	  JUMP_TAIL_PTR (tout);
 	}
       CHECK_PRINT_ERROR (itoa_print (tout, db_get_enum_short (value), 10 /* base */ ));
       break;
@@ -1878,6 +1720,7 @@ int
 desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
 {
   int error = NO_ERROR;
+  JUMP_TAIL_PTR (tout);
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_SET:
@@ -1930,6 +1773,8 @@ desc_value_print (print_output & output_ctx, DB_VALUE * value)
       break;
     }
 }
+
+#endif // #if 0 //------------------------------------------------------------------------
 
 static bool filter_ignore_errors[-ER_LAST_ERROR] = {
   false,

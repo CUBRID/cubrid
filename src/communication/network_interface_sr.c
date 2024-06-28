@@ -845,6 +845,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
   int modular_val = UNLOAD_MODULAR_UNDEFINED;
   int accept_val = UNLOAD_MODULAR_UNDEFINED;
+  int request_datasize = 1;
   int server_endian = get_endian_type ();
   int client_endian;
   int encode_endian = 0;
@@ -858,6 +859,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_int (ptr, &nfetched);
   ptr = or_unpack_oid (ptr, &last_oid);
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
+  ptr = or_unpack_int (ptr, &request_datasize);
   ptr = or_unpack_int (ptr, &modular_val);
   ptr = or_unpack_int (ptr, &accept_val);
   ptr = or_unpack_int (ptr, &client_endian);
@@ -875,6 +877,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
   thread_p->unload_modular = modular_val;
   thread_p->unload_accept = accept_val;
+  thread_p->request_datasize = request_datasize;
 #endif
 
   copy_area = NULL;

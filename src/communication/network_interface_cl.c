@@ -401,7 +401,7 @@ int
 locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oidp,
 		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
-		   , int modular_val, int accept_val
+		   , int request_datasize, int modular_val, int accept_val
 #endif
   )
 {
@@ -433,6 +433,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   ptr = or_pack_int (ptr, *nfetched);
   ptr = or_pack_oid (ptr, last_oidp);
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
+  ptr = or_pack_int (ptr, request_datasize);
   ptr = or_pack_int (ptr, modular_val);
   ptr = or_pack_int (ptr, accept_val);
   int client_endian = get_endian_type ();
@@ -475,6 +476,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 #if defined(SUPPORT_THREAD_UNLOAD_MTP)
   thread_p->unload_modular = modular_val;
   thread_p->unload_accept = accept_val;
+  thread_p->request_datasize = 0;
 #endif
 
   success =
