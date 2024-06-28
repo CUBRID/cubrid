@@ -14154,18 +14154,22 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	      if (xptr2->status == XASL_CLEARED || xptr2->status == XASL_INITIALIZED)
 		{
-		  if (!QEXEC_IS_SUBQUERY_CACHE (xptr2) ||
-		      (qexec_execute_subquery_for_result_cache (thread_p, xptr2, xasl_state) != NO_ERROR))
+		  if (QEXEC_IS_SUBQUERY_CACHE (xptr2))
 		    {
-		      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
+		      if (qexec_execute_subquery_for_result_cache (thread_p, xptr2, xasl_state) != NO_ERROR)
 			{
-			  if (tplrec.tpl)
-			    {
-			      db_private_free_and_init (thread_p, tplrec.tpl);
-			    }
 			  qexec_failure_line (__LINE__, xasl_state);
 			  GOTO_EXIT_ON_ERROR;
 			}
+		    }
+		  else if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
+		    {
+		      if (tplrec.tpl)
+			{
+			  db_private_free_and_init (thread_p, tplrec.tpl);
+			}
+		      qexec_failure_line (__LINE__, xasl_state);
+		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
 	      else
