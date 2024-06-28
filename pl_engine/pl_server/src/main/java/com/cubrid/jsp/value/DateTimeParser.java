@@ -149,7 +149,7 @@ public class DateTimeParser {
         if (delim < 0) {
             // no timezone offset
             localPart = parseDateAndTime(s, forDatetime);
-            zone = Server.getSystemParameterTimeZone(Server.SYS_PARAM_TIMEZONE);
+            zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
         } else {
             String dt = s.substring(0, delim);
             String z = s.substring(delim + 1);
@@ -159,7 +159,7 @@ public class DateTimeParser {
             } catch (DateTimeException e) {
                 // z turn out not to be a timezone offset. try timezone omitted string
                 localPart = parseDateAndTime(s, forDatetime);
-                zone = Server.getSystemParameterTimeZone(Server.SYS_PARAM_TIMEZONE);
+                zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
             }
         }
 

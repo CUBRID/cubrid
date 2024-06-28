@@ -46,11 +46,14 @@ import java.math.RoundingMode;
 import java.sql.*;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.time.ZoneOffset;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -59,6 +62,22 @@ import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
+
+    public static Timestamp parseTimestampStr(String s) {
+        // parse again at runtime in order to use the runtime value of timezone setting
+        ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, false);
+        if (timestamp == null) {
+            // The string was valid at the compile time (see ParseTreeConverter.visitTimestamp_exp()).
+            // But, this error can happen due to a timezone setting change after the compilation
+            throw new VALUE_ERROR(String.format("invalid TIMESTAMP string: %s", s));
+        }
+
+        if (timestamp.equals(DateTimeParser.nullDatetimeUTC)) {
+            return ValueUtilities.NULL_TIMESTAMP;
+        } else {
+            return new Timestamp(timestamp.toEpochSecond() * 1000);
+        }
+    }
 
     public static Object getFieldWithIndex(ResultSet rs, int idx) throws SQLException {
         Object o = rs.getObject(idx);
@@ -2815,15 +2834,18 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        assert e.getNanos() == 0;
 
         if (e.equals(ValueUtilities.NULL_TIMESTAMP)) {
             // must be calculated everytime because the AM/PM indicator can change according to the
             // locale change
             return String.format("00:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
         }
-        assert e.getNanos() == 0;
 
-        return TIMESTAMP_FORMAT.format(e);
+        Instant instant = Instant.ofEpochMilli(e.getTime());
+        ZoneOffset timezone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+        ZonedDateTime zdt = ZonedDateTime.ofInstant(instant, timezone);
+        return zdt.format(TIMESTAMP_FORMAT);
     }
 
     // from double
@@ -3697,8 +3719,8 @@ public class SpLib {
     private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a", Locale.US);
     private static final DateFormat DATETIME_FORMAT =
             new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy", Locale.US);
-    private static final DateFormat TIMESTAMP_FORMAT =
-            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy", Locale.US);
+    private static final DateTimeFormatter TIMESTAMP_FORMAT =
+            DateTimeFormatter.ofPattern("hh:mm:ss a MM/dd/yyyy").withLocale(Locale.US);
 
     private static final DateFormat AM_PM = new SimpleDateFormat("a", Locale.US);
     private static final Date ZERO_DATE = new Date(0L);

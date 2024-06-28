@@ -289,7 +289,7 @@ public class Server {
     }
 
     private static final ZoneOffset tz = ZoneOffset.of("+09:00");
-    public static ZoneOffset getSystemParameterTimeZone(int code) {
+    public static ZoneOffset getSystemParameterTimezone(int code) {
         switch (code) {
         case SYS_PARAM_TIMEZONE:
             return tz;

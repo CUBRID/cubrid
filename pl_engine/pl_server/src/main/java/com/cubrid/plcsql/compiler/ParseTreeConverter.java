@@ -652,7 +652,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     Misc.getLineColumnOf(ctx), // s052
                     String.format("invalid TIMESTAMP string: %s", s));
         }
-        return new ExprTimestamp(ctx, timestamp);
+        return new ExprTimestamp(ctx, s);
     }
 
     @Override

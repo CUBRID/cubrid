@@ -43,31 +43,15 @@ public class ExprTimestamp extends Expr {
         return visitor.visitExprTimestamp(this);
     }
 
-    public final ZonedDateTime time;
+    public final String timestampStr;
 
-    public ExprTimestamp(ParserRuleContext ctx, ZonedDateTime time) {
+    public ExprTimestamp(ParserRuleContext ctx, String timestampStr) {
         super(ctx);
 
-        this.time = time;
+        this.timestampStr = timestampStr;
     }
 
-    public String javaCode(Set<String> javaTypesUsed) {
-
-        javaTypesUsed.add("java.sql.Timestamp");
-
-        if (time.equals(DateTimeParser.nullDatetimeUTC)) {
-            return "new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0)";
-            // server
-        } else {
-            return String.format(
-                    "new Timestamp(%d - 1900, %d - 1, %d, %d, %d, %d, %d)",
-                    time.getYear(),
-                    time.getMonthValue(),
-                    time.getDayOfMonth(),
-                    time.getHour(),
-                    time.getMinute(),
-                    time.getSecond(),
-                    time.getNano());
-        }
+    public String javaCode() {
+        return "parseTimestampStr(\"" + timestampStr + "\")";
     }
 }
