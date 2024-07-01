@@ -1311,7 +1311,7 @@ logwr_archive_active_log (void)
   arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
   strncpy (arvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
   arvhdr->db_creation_time = logwr_Gl.hdr.db_creation_time;
-  arvhdr->vol_creation_time = logwr_Gl.hdr.vol_creation_time;
+  arvhdr->vol_creation_time = time (NULL);
   arvhdr->next_trid = NULL_TRANID;
   arvhdr->fpageid = logwr_Gl.last_arv_fpageid;
   arvhdr->arv_num = logwr_Gl.last_arv_num;
@@ -1562,9 +1562,6 @@ logwr_write_log_pages (void)
 	{
 	  return error;
 	}
-
-      /* Initialize the vol_creation_time value in the log header because the active log has been archived. */
-      logwr_Gl.hdr.vol_creation_time = time (NULL);
     }
 
   error = logwr_flush_all_append_pages ();

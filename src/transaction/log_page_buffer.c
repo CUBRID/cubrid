@@ -2649,9 +2649,6 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
     {
       /* The log must be archived */
       logpb_archive_active_log (thread_p);
-
-      /* Initialize the vol_creation_time value in the log header because the active log has been archived. */
-      log_Gl.hdr.vol_creation_time = time (NULL);
     }
 
   /*
@@ -5689,7 +5686,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
   strncpy (arvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
   arvhdr->db_creation_time = log_Gl.hdr.db_creation_time;
-  arvhdr->vol_creation_time = log_Gl.hdr.vol_creation_time;
+  arvhdr->vol_creation_time = time (NULL);
   arvhdr->next_trid = log_Gl.hdr.next_trid;
   arvhdr->arv_num = log_Gl.hdr.nxarv_num;
 
@@ -8068,9 +8065,6 @@ loop:
   if (LSA_LT (&chkpt_lsa, &log_Gl.hdr.append_lsa) || log_Gl.hdr.append_lsa.pageid > LOGPB_NEXT_ARCHIVE_PAGE_ID)
     {
       logpb_archive_active_log (thread_p);
-
-      /* Initialize the vol_creation_time value in the log header because the active log has been archived. */
-      log_Gl.hdr.vol_creation_time = time (NULL);
     }
 
   last_arv_needed = log_Gl.hdr.nxarv_num - 1;
