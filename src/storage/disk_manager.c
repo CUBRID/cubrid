@@ -221,6 +221,7 @@ static DKNSECTS disk_Temp_max_sects = -2;
 typedef UINT64 DISK_STAB_UNIT;
 #define DISK_STAB_UNIT_SIZE_OF sizeof (DISK_STAB_UNIT)
 
+#define DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE (offsetof(DISK_VOLUME_HEADER, var_fields));
 /*
  * Previously, when a user entered excessively long remarks, the remarks would be trimmed to avoid exceeding the page size. 
  * This trimming could occur at unwanted positions, potentially removing important content. 
@@ -237,7 +238,8 @@ typedef UINT64 DISK_STAB_UNIT;
  * Setting the volume fullname size to 2K for an 8K PAGESIZE and 1K for a 4K PAGESIZE should work without bugs.
  * This issue will be created and handled in a separate issue.
  */
-#define DISK_VOLUME_HEADER_REMARKS_MAX_SIZE (DB_PAGESIZE - (offsetof(DISK_VOLUME_HEADER, var_fields) + DB_MAX_PATH_LENGTH + DB_MAX_PATH_LENGTH))
+#define DISK_VOLUME_HEADER_REMARKS_MAX_SIZE (DB_PAGESIZE - (DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE + DB_MAX_PATH_LENGTH + DB_MAX_PATH_LENGTH))
+
 
 /* Disk allocation table cursor. Used to iterate through table bits. */
 typedef struct disk_stab_cursor DISK_STAB_CURSOR;
@@ -552,8 +554,9 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   addr.vfid = NULL;
 
-  if (vol_fullname_size > DB_MAX_PATH_LENGTH ||
-      (offsetof (DISK_VOLUME_HEADER, var_fields) + vol_fullname_size) > DB_PAGESIZE)
+  // The condition will be modified when the TODO is addressed.
+  if (vol_fullname_size > DB_MAX_PATH_LENGTH
+      || (DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE + vol_fullname_size) > DB_PAGESIZE)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, NULL, vol_fullname,
 	      vol_fullname_size, DB_MAX_PATH_LENGTH);
@@ -1011,22 +1014,23 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
   addr.vfid = NULL;
   addr.offset = 0;
 
-  if ((next_vol_fullname_size > DB_MAX_PATH_LENGTH) ||
-      ((offsetof (DISK_VOLUME_HEADER, var_fields) + next_vol_fullname_size) > DB_PAGESIZE))
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, NULL,
-	      next_volext_fullname, next_vol_fullname_size, DB_MAX_PATH_LENGTH);
-      return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
-    }
 
 
   /* Get the header of the previous permanent volume */
-
   error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_WRITE, &addr.pgptr, &vhdr);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
+    }
+
+  // The condition will be modified when the TODO is addressed.
+  if ((next_vol_fullname_size > DB_MAX_PATH_LENGTH) ||
+      (DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE + next_vol_fullname_size > DB_PAGESIZE))
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, NULL,
+	      next_volext_fullname, next_vol_fullname_size, DB_MAX_PATH_LENGTH);
+      return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
     }
 
   vpid.volid = volid;
@@ -5384,7 +5388,7 @@ disk_vhdr_get_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
 {
   assert (vhdr != NULL);
 
-  return (size_t) (strlen (disk_vhdr_get_vol_fullname (vhdr)) + 1);
+  return strlen (disk_vhdr_get_vol_fullname (vhdr)) + 1;
 }
 
 /*
@@ -5398,7 +5402,7 @@ disk_vhdr_get_next_vol_fullname_size (const DISK_VOLUME_HEADER * vhdr)
 {
   assert (vhdr != NULL);
 
-  return (size_t) (strlen (disk_vhdr_get_next_vol_fullname (vhdr)) + 1);
+  return strlen (disk_vhdr_get_next_vol_fullname (vhdr)) + 1;
 }
 
 /*
@@ -5412,7 +5416,7 @@ disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr)
 {
   assert (vhdr != NULL);
 
-  return (size_t) (strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1);
+  return strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1;
 }
 
 
