@@ -4845,8 +4845,11 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
     }
 
   /* move hint, from, where, group_by, using_index part over */
-  
-  /* NO_MERGE and QUERY_CACHE hints are excluded because unnecessary hints may appear duplicated or may be ignored. */
+
+  /* If the NO_MERGE hint moves to the derived subquery, it will not affect the agg_sel subquery.
+   * Therefore, the NO_MERGE hint is not moved to the derived subquery. 
+   * Additionally, if the subquery has the QUERY_CACHE hint, it should not be merged, so it is treated together with the NO_MERGE hint.
+   * All hints except for NO_MERGE and QUERY_CACHE are moved to the derived subquery. */
   derived->info.query.q.select.hint = agg_sel->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE);
   agg_sel->info.query.q.select.hint &= (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE);
 
