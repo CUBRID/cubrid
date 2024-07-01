@@ -1169,6 +1169,8 @@ sm_define_view_stored_procedure_spec (void)
 	    /* CT_DATATYPE_NAME */
 	    "ELSE (SELECT [t].[type_name] FROM [%s] AS [t] WHERE [sp].[return_type] = [t].[type_id]) "
 	    "END AS [return_type], "
+	  "[sp].[prec] AS [prec], "
+	  "[sp].[scale] AS [scale], "
 	  "[sp].[arg_count] AS [arg_count], "
 	  "CASE [sp].[lang] WHEN 1 THEN 'JAVA' ELSE '' END AS [lang], "
 	  "[sp].[target] AS [target], "
@@ -1200,6 +1202,8 @@ sm_define_view_stored_procedure_arguments_spec (void)
 	    /* CT_DATATYPE_NAME */
 	    "ELSE (SELECT [t].[type_name] FROM [%s] AS [t] WHERE [sp].[data_type] = [t].[type_id]) "
 	    "END AS [data_type], "
+	  "[sp].[prec] AS [prec], "
+	  "[sp].[scale] AS [scale], "
 	  "CASE [sp].[mode] WHEN 1 THEN 'IN' WHEN 2 THEN 'OUT' ELSE 'INOUT' END AS [mode], "
 	  "[sp].[comment] AS [comment] "
 	"FROM "

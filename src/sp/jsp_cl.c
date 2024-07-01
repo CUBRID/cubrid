@@ -99,15 +99,19 @@ static int server_port = -1;
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT] = { false, };
 
+static void jsp_get_prec_scale_from_data_type (int *prec, int *scale, PT_NODE * data_type);
+
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static int jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static PT_MISC_TYPE jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type);
 
 static int jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
-					      PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment);
+                                              PT_TYPE_ENUM data_type, int data_type_prec, int data_type_scale,
+                                              PT_MISC_TYPE mode, const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
-static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
-				     PT_NODE * param_list, const char *java_method, const char *comment);
+static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
+                                     const PT_TYPE_ENUM ret_type, int ret_type_prec, int ret_type_scale,
+                                     PT_NODE * param_list, const char *java_method, const char *comment);
 static int drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type);
 
 static int jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, method_sig_list & sig_list);
@@ -225,47 +229,6 @@ jsp_check_param_type_supported (PT_NODE * node)
   return er_errid ();
 }
 
-
-/*
- * jsp_check_return_type_supported
- *
- * Note:
- */
-
-int
-jsp_check_return_type_supported (DB_TYPE type)
-{
-  switch (type)
-    {
-    case DB_TYPE_NULL:
-    case DB_TYPE_INTEGER:
-    case DB_TYPE_FLOAT:
-    case DB_TYPE_DOUBLE:
-    case DB_TYPE_STRING:
-    case DB_TYPE_OBJECT:
-    case DB_TYPE_SET:
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-    case DB_TYPE_TIME:
-    case DB_TYPE_TIMESTAMP:
-    case DB_TYPE_DATE:
-    case DB_TYPE_MONETARY:
-    case DB_TYPE_SHORT:
-    case DB_TYPE_NUMERIC:
-    case DB_TYPE_CHAR:
-    case DB_TYPE_BIGINT:
-    case DB_TYPE_DATETIME:
-    case DB_TYPE_RESULTSET:
-      return NO_ERROR;
-      break;
-
-    default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_RETURN_TYPE, 1, pr_type_name (type));
-      break;
-    }
-
-  return er_errid ();
-}
 
 /*
  * jsp_get_return_type - Return Java Stored Procedure Type
@@ -551,6 +514,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_MISC_TYPE type;
   PT_NODE *param_list, *p;
   PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
+  int ret_type_prec = 0, ret_type_scale = 0;
   int param_count;
   int lang;
   int err = NO_ERROR;
@@ -576,6 +540,20 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (type == PT_SP_FUNCTION)
     {
       ret_type = statement->info.sp.ret_type;
+
+      switch (ret_type) {
+      case PT_TYPE_NUMERIC:
+        jsp_get_prec_scale_from_data_type(&ret_type_prec, &ret_type_scale, statement->info.sp.ret_data_type);
+        break;
+
+      case PT_TYPE_CHAR:
+      case PT_TYPE_VARCHAR:
+        jsp_get_prec_scale_from_data_type(&ret_type_prec, NULL, statement->info.sp.ret_data_type);
+        break;
+
+      default:
+        ;
+      }
     }
 
   param_list = statement->info.sp.param_list;
@@ -667,7 +645,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  err = jsp_add_stored_procedure (name, type, ret_type, param_list, decl, comment);
+  err = jsp_add_stored_procedure (name, type, ret_type, ret_type_prec, ret_type_scale, param_list, decl, comment);
   if (err != NO_ERROR)
     {
       goto error_exit;
@@ -875,7 +853,8 @@ jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum)
 
 static int
 jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
-				   PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment)
+				   PT_TYPE_ENUM data_type, int data_type_prec, int data_type_scale,
+                                   PT_MISC_TYPE mode, const char *arg_comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -931,7 +910,21 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_int (&value, jsp_map_pt_misc_to_sp_mode (mode));
+  db_make_int (&value, data_type_prec);
+  err = dbt_put_internal (obt_p, SP_ATTR_DATA_TYPE_PREC, &value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_int (&value, data_type_scale);
+  err = dbt_put_internal (obt_p, SP_ATTR_DATA_TYPE_SCALE, &value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+ db_make_int (&value, jsp_map_pt_misc_to_sp_mode (mode));
   err = dbt_put_internal (obt_p, SP_ATTR_MODE, &value);
   if (err != NO_ERROR)
     {
@@ -1013,8 +1006,8 @@ jsp_check_stored_procedure_name (const char *str)
  */
 
 static int
-jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM return_type,
-			  PT_NODE * param_list, const char *java_method, const char *comment)
+jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM return_type, int return_type_prec,
+                          int return_type_scale, PT_NODE * param_list, const char *java_method, const char *comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -1080,14 +1073,22 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
     }
 
   return_type_value = pt_type_enum_to_db (return_type);
-  if (jsp_check_return_type_supported (return_type_value) != NO_ERROR)
+  db_make_int (&value, (int) return_type_value);
+  err = dbt_put_internal (obt_p, SP_ATTR_RETURN_TYPE, &value);
+  if (err != NO_ERROR)
     {
-      err = er_errid ();
       goto error;
     }
 
-  db_make_int (&value, (int) return_type_value);
-  err = dbt_put_internal (obt_p, SP_ATTR_RETURN_TYPE, &value);
+  db_make_int (&value, return_type_prec);
+  err = dbt_put_internal (obt_p, SP_ATTR_RETURN_TYPE_PREC, &value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_int (&value, return_type_scale);
+  err = dbt_put_internal (obt_p, SP_ATTR_RETURN_TYPE_SCALE, &value);
   if (err != NO_ERROR)
     {
       goto error;
@@ -1103,6 +1104,8 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
 
   for (node_p = param_list, i = 0; node_p != NULL; node_p = node_p->next)
     {
+      PT_TYPE_ENUM type_enum;
+      int prec, scale;
       MOP mop = NULL;
 
       if (jsp_check_param_type_supported (node_p) != NO_ERROR)
@@ -1115,9 +1118,26 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
 
       arg_comment = (char *) PT_NODE_SP_ARG_COMMENT (node_p);
 
+      type_enum = node_p->type_enum;
+
+      prec = scale = 0;
+      switch (type_enum) {
+      case PT_TYPE_NUMERIC:
+        jsp_get_prec_scale_from_data_type(&prec, &scale, node_p->data_type);
+        break;
+
+      case PT_TYPE_CHAR:
+      case PT_TYPE_VARCHAR:
+        jsp_get_prec_scale_from_data_type(&prec, NULL, node_p->data_type);
+        break;
+
+      default:
+        ;
+      }
+
       err =
-	jsp_add_stored_procedure_argument (&mop, checked_name, name_info.original, i, node_p->type_enum,
-					   node_p->info.sp_param.mode, arg_comment);
+	jsp_add_stored_procedure_argument (&mop, checked_name, name_info.original, i, type_enum,
+					   prec, scale, node_p->info.sp_param.mode, arg_comment);
       if (err != NO_ERROR)
 	{
 	  goto error;
@@ -1614,3 +1634,29 @@ jsp_make_method_arglist (PARSER_CONTEXT * parser, PT_NODE * node_list)
 
   return arg_list;
 }
+
+static void
+jsp_get_prec_scale_from_data_type (int *prec, int *scale, PT_NODE * data_type)
+{
+  assert (prec);
+  assert (data_type);
+
+  if (data_type->type_enum == PT_TYPE_TABLE_COLUMN)
+    {
+      data_type = data_type->data_type;
+    }
+
+  if (scale)
+    {
+      assert (data_type->type_enum == PT_TYPE_NUMERIC);
+      *scale = data_type->info.data_type.dec_precision;
+    }
+  else
+    {
+      assert (data_type->type_enum == PT_TYPE_CHAR || data_type->type_enum == PT_TYPE_VARCHAR);
+    }
+
+  *prec = data_type->info.data_type.precision;
+}
+
+
