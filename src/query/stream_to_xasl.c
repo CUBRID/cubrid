@@ -3277,6 +3277,9 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
    */
   ptr = stx_build_ls_merge_info (thread_p, ptr, &node_p->merge_info);
 
+  node_p->build = NULL;
+  node_p->probe = NULL;
+
   return ptr;
 
 error:

@@ -280,7 +280,6 @@ extern PR_TYPE *pr_find_type (const char *name);
 extern const char *pr_type_name (DB_TYPE id);
 
 STATIC_INLINE bool pr_is_set_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int pr_is_string_compression_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pr_is_string_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pr_is_prefix_key_type (DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
 extern int pr_is_variable_type (DB_TYPE type);
@@ -380,37 +379,6 @@ STATIC_INLINE int
 pr_is_string_type (DB_TYPE type)
 {
   return TP_IS_STRING_TYPE (type);
-}
-
-/*
- * pr_is_string_compression_type - Test to see if a type identifier is one of the string compression
- * types.
- *    return: non-zero if type is one of the string compression types
- *    type(in):  type to check
- */
-STATIC_INLINE int
-pr_is_string_compression_type (DB_TYPE type)
-{
-  return TP_IS_STRING_COMPRESSION_TYPE (type);
-}
-
-/*
- * pr_is_clear_needed_type_with_peek - Test to see if a type identifier is needed for this type even with peek
- * types.
- *    return: non-zero if clear is needed for this type even with peek
- *    type(in):  type to check
- */
-STATIC_INLINE int
-pr_is_clear_needed_type_with_peek (DB_TYPE type)
-{
-  int status = 0;
-
-  if (pr_is_string_compression_type (type) || pr_is_set_type (type))
-    {
-      status = 1;
-    }
-
-  return status;
 }
 
 /*

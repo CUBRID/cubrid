@@ -563,8 +563,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       goto exit_on_error;
     }
 
-  if ((projection_info->outer.name_list == NULL) || (projection_info->outer.expr_name_list == NULL)
-      || (projection_info->inner.name_list == NULL) || (projection_info->inner.expr_name_list == NULL))
+  if ((projection_info->outer.expr_name_list == NULL) || (projection_info->inner.expr_name_list == NULL))
     {
       assert (false);
       goto exit_on_error;
@@ -585,11 +584,11 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   outer_info = &(projection_info->outer);
   inner_info = &(projection_info->inner);
 
-  assert (outer_info->name_count > 0);
+  assert (outer_info->expr_name_count > 0);
   assert (outer_info->expr_name_count == (outer_info->name_count + outer_info->expr_count));
   assert (outer_info->expr_count == bitset_cardinality (outer_info->exprs_set));
 
-  assert (inner_info->name_count > 0);
+  assert (inner_info->expr_name_count > 0);
   assert (inner_info->expr_name_count == (inner_info->name_count + inner_info->expr_count));
   assert (inner_info->expr_count == bitset_cardinality (inner_info->exprs_set));
 
@@ -614,14 +613,25 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       goto exit_on_error;
     }
 
+  /* Not used, but necessary to prevent a fault when `qdump_print_list_merge_info` is called. */
+  merge_info->ls_outer_unique = (int *) pt_alloc_packing_buf (merge_info->ls_column_cnt * sizeof (int));
+  if (merge_info->ls_outer_unique == NULL)
+    {
+      goto exit_on_error;
+    }
+
   merge_info->ls_inner_column = (int *) pt_alloc_packing_buf (merge_info->ls_column_cnt * sizeof (int));
   if (merge_info->ls_inner_column == NULL)
     {
       goto exit_on_error;
     }
 
-  assert (merge_info->ls_outer_unique == NULL);	/* Unused. */
-  assert (merge_info->ls_inner_unique == NULL);	/* Unused. */
+  /* Not used, but necessary to prevent a fault when `qdump_print_list_merge_info` is called. */
+  merge_info->ls_inner_unique = (int *) pt_alloc_packing_buf (merge_info->ls_column_cnt * sizeof (int));
+  if (merge_info->ls_inner_unique == NULL)
+    {
+      goto exit_on_error;
+    }
 
   outer_xasl->orderby_list = NULL;
   inner_xasl->orderby_list = NULL;

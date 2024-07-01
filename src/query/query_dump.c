@@ -351,6 +351,7 @@ qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * node_p)
   /**
    * build
    */
+  assert ((node_p->build == NULL) || (node_p->build == &(node_p->inner)) || (node_p->build == &(node_p->outer)));
   if (node_p->build == NULL)
     {
       node_p->build = &(node_p->inner);
@@ -360,6 +361,7 @@ qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * node_p)
   /**
    * probe
    */
+  assert ((node_p->probe == NULL) || (node_p->probe == &(node_p->inner)) || (node_p->probe == &(node_p->outer)));
   if (node_p->probe == NULL)
     {
       node_p->probe = &(node_p->outer);
@@ -2998,12 +3000,12 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
-  xasl_node *xptr;
   json_t *proc, *scan = NULL;
   json_t *subquery, *groupby, *orderby;
   json_t *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
   json_t *temp;
+  xasl_node *xptr;
   json_t *sq_cache;
 
   if (xasl_p == NULL || parent == NULL)
@@ -3095,9 +3097,6 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	  default:
 	    {
 	      hash_method_string = "none";
-
-	      assert (hashjoin_proc->build == NULL);
-	      assert (hashjoin_proc->probe == NULL);
 
 	      hashjoin_proc->build = &(hashjoin_proc->inner);
 	      hashjoin_proc->probe = &(hashjoin_proc->outer);
@@ -3273,24 +3272,13 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
       subquery = json_array ();
-      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
-
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  if (HAVE_SUBQUERY_PROC (xptr))
-	    {
-	      temp = json_object ();
-	      qdump_print_stats_json (xptr, temp);
-	      json_array_append_new (subquery, temp);
-	    }
-	  else
-	    {
-	      /**
-	       * It is expected to be output at the same indentation as uncorrelated SUBQUERY.
-	       */
-	      qdump_print_stats_json (xptr, proc);
-	    }
+	  temp = json_object ();
+	  qdump_print_stats_json (xptr, temp);
+	  json_array_append_new (subquery, temp);
 	}
+      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
     }
 
   if (xasl_p->dptr_list != NULL)
@@ -3410,7 +3398,6 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
   xasl_node *xptr;
-  bool is_header_printed;
 
   if (xasl_p == NULL)
     {
@@ -3488,9 +3475,6 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  default:
 	    {
 	      hash_method_string = "none";
-
-	      assert (hashjoin_proc->build == NULL);
-	      assert (hashjoin_proc->probe == NULL);
 
 	      hashjoin_proc->build = &(hashjoin_proc->inner);
 	      hashjoin_proc->probe = &(hashjoin_proc->outer);
@@ -3632,31 +3616,14 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
-      is_header_printed = false;
+      if (HAVE_SUBQUERY_PROC (xasl_p->aptr_list))
+	{
+	  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
+	}
 
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  if (HAVE_SUBQUERY_PROC (xptr))
-	    {
-	      if (is_header_printed == false)
-		{
-		  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
-		  is_header_printed = true;
-		}
-
-	      qdump_print_stats_text (fp, xptr, indent);
-	    }
-	  else
-	    {
-	      /**
-	       * It is expected to be output at the same indentation as uncorrelated SUBQUERY.
-	       */
-	      indent -= 2;
-	      qdump_print_stats_text (fp, xptr, indent);
-	      indent += 2;
-
-	      is_header_printed = false;
-	    }
+	  qdump_print_stats_text (fp, xptr, indent);
 	}
     }
 
