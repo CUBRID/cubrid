@@ -824,58 +824,6 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 		}
 	    }
 
-	  if (db_get_int (&values[SERIAL_STARTED]) == 1)
-	    {
-	      /* Calculate next value of serial */
-	      db_make_null (&diff_value);
-	      error = numeric_db_value_sub (&values[SERIAL_MAX_VAL], &values[SERIAL_CURRENT_VAL], &diff_value);
-	      if (error == ER_IT_DATA_OVERFLOW)
-		{
-		  // max - curr might be flooded.
-		  diff_value = values[SERIAL_MAX_VAL];
-		  er_clear ();
-		}
-	      else if (error != NO_ERROR)
-		{
-		  goto err;
-		}
-
-	      error = numeric_db_value_compare (&values[SERIAL_INCREMENT_VAL], &diff_value, &answer_value);
-	      if (error != NO_ERROR)
-		{
-		  goto err;
-		}
-	      /* increment > diff */
-	      if (db_get_int (&answer_value) > 0)
-		{
-		  /* no cyclic case */
-		  if (db_get_int (&values[SERIAL_CYCLIC]) == 0)
-		    {
-		      domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-			      pr_type_name (TP_DOMAIN_TYPE (domain)));
-		      error = ER_IT_DATA_OVERFLOW;
-		      goto err;
-		    }
-
-		  db_value_clear (&values[SERIAL_CURRENT_VAL]);
-		  values[SERIAL_CURRENT_VAL] = values[SERIAL_MIN_VAL];
-		}
-	      /* increment <= diff */
-	      else
-		{
-		  error =
-		    numeric_db_value_add (&values[SERIAL_CURRENT_VAL], &values[SERIAL_INCREMENT_VAL], &answer_value);
-		  if (error != NO_ERROR)
-		    {
-		      goto err;
-		    }
-
-		  db_value_clear (&values[SERIAL_CURRENT_VAL]);
-		  values[SERIAL_CURRENT_VAL] = answer_value;
-		}
-	    }
-
 	  output_ctx ("\ncreate serial %s%s%s\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
 	  output_ctx ("\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
 	  output_ctx ("\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
@@ -896,6 +844,11 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 	      desc_value_print (output_ctx, &values[SERIAL_COMMENT]);
 	    }
 	  output_ctx (";\n");
+
+	  if (db_get_int (&values[SERIAL_STARTED]) == 1)
+	    {
+	      output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+	    }
 
 	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
 	    {
@@ -1477,6 +1430,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	{
 	  fprintf (stderr, " Check the value of db_serial object.\n");
 	}
+      err_count++;
     }
 
   if (required_class_only == false && emit_stored_procedure (ctxt, schema_output_ctx) != NO_ERROR)

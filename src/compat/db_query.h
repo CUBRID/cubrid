@@ -137,14 +137,14 @@ extern "C"
     int statement_type;
   };
 
-  /* for CTE result-cache */
-  typedef struct db_prepare_cte_info DB_PREPARE_CTE_INFO;
+  /* for subquery result-cache */
+  typedef struct db_prepare_subquery_info DB_PREPARE_SUBQUERY_INFO;
 
-  struct db_prepare_cte_info
+  struct db_prepare_subquery_info
   {
-    XASL_ID cte_xasl_id;
-    int cte_host_var_count;
-    int *cte_host_var_index;
+    XASL_ID xasl_id;
+    int host_var_count;
+    int *host_var_index;
   };
 
   typedef struct db_prepare_info DB_PREPARE_INFO;
@@ -162,8 +162,8 @@ extern "C"
     char **into_list;		/* names of the "into" variables */
     int into_count;		/* count of elements from the into array */
 
-    int cte_num_query;		/* the number of CTE queries */
-    DB_PREPARE_CTE_INFO *cte_info;	/* CTE info for result-cache */
+    int subquery_num;		/* the number of subqueries */
+    DB_PREPARE_SUBQUERY_INFO *subquery_info;	/* subquery info for result-cache */
   };
 
   extern SM_DOMAIN *db_query_format_src_domain (DB_QUERY_TYPE * query_type);
@@ -186,8 +186,8 @@ extern "C"
   extern int db_query_get_value_to_space (DB_QUERY_RESULT * result, int index, unsigned char *ptr, int maxlength,
 					  bool * truncated, DB_TYPE user_type, bool * null_flag);
 
-  extern int db_query_get_value_to_pointer (DB_QUERY_RESULT * result, int index, unsigned char **ptr, DB_TYPE user_type,
-					    bool * null_flag);
+  extern int db_query_get_value_to_pointer (DB_QUERY_RESULT * result, int index, unsigned char **ptr,
+					    DB_TYPE user_type, bool * null_flag);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern DB_TYPE db_query_get_value_type (DB_QUERY_RESULT * result, int index);
@@ -221,8 +221,8 @@ extern "C"
   extern char **db_cp_colname_list (char **colname_list, int cnt);
   extern SM_DOMAIN **db_cp_domain_list (SM_DOMAIN ** domain_list, int cnt);
   extern DB_QUERY_TYPE *db_get_query_type (DB_TYPE * type_list, int *size_list, char **colname_list,
-					   char **attrname_list, SM_DOMAIN ** domain_list, SM_DOMAIN ** src_domain_list,
-					   int cnt, bool oid_included);
+					   char **attrname_list, SM_DOMAIN ** domain_list,
+					   SM_DOMAIN ** src_domain_list, int cnt, bool oid_included);
   extern int db_query_execute_immediate (const char *CSQL_query, DB_QUERY_RESULT ** result,
 					 DB_QUERY_ERROR * query_error);
   extern DB_QUERY_RESULT *db_get_objfetch_query_result (DB_VALUE * val_list, int val_cnt, int *size_list,

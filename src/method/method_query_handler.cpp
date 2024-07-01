@@ -771,6 +771,7 @@ namespace cubmethod
       {
 	g_open_buffer_control_flags |= PARSER_FOR_PLCSQL_STATIC_SQL;
       }
+
     db_init_lexer_lineno();
     m_session = db_open_buffer (m_sql_stmt.c_str());
     g_open_buffer_control_flags = 0;
@@ -1041,6 +1042,12 @@ namespace cubmethod
 		      col_name_string, default_value_string,
 		      auto_increment, unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared,
 		      attr_name_string, class_name_string, is_non_null);
+
+    if (er_errid () == ER_OBJ_INVALID_ATTRIBUTE || er_errid () == ER_OBJ_INVALID_ARGUMENTS)
+      {
+	// do not check
+	er_clear ();
+      }
 
     return info;
   }
