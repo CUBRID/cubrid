@@ -2693,6 +2693,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		      node = NULL;
 		      goto select_end;
 		    }
+
+		  PT_EXPR_INFO_CLEAR_FLAG (node->info.query.q.select.where,
+					   (PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER));
 		  spec->info.spec.join_type = join_type;
 		}
 	      else
