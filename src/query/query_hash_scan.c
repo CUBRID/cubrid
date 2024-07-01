@@ -204,31 +204,36 @@ static int fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, FHS_H
 HASH_SCAN_KEY *
 qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals)
 {
-  HASH_SCAN_KEY *key;
+  HASH_SCAN_KEY *key = NULL;
   int i;
 
   key = (HASH_SCAN_KEY *) db_private_alloc (thread_p, sizeof (HASH_SCAN_KEY));
   if (key == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HASH_SCAN_KEY));
-      return NULL;
+      goto exit_on_error;
     }
+
+  memset (key, 0, sizeof (HASH_SCAN_KEY));
 
   key->values = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * val_cnt);
   if (key->values == NULL)
     {
-      db_private_free (thread_p, key);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *) * val_cnt);
-      return NULL;
+      goto exit_on_error;
     }
 
+  memset (key->values, 0, sizeof (DB_VALUE *) * val_cnt);
+
+  /* TODO: It is only used in hash joins. */
   key->tuples = (QFILE_TUPLE_RECORD **) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_RECORD *) * val_cnt);
   if (key->tuples == NULL)
     {
-      db_private_free (thread_p, key);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_TUPLE_RECORD *) * val_cnt);
-      return NULL;
+      goto exit_on_error;
     }
+
+  memset (key->tuples, 0, sizeof (QFILE_TUPLE_RECORD *) * val_cnt);
 
   if (alloc_vals)
     {
@@ -238,18 +243,17 @@ qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals
 	  if (key->values[i] == NULL)
 	    {
 	      key->free_values = true;
-	      qdata_free_hscan_key (thread_p, key, i);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
-	      return NULL;
+	      goto exit_on_error;
 	    }
 
+	  /* TODO: It is only used in hash joins. */
 	  key->tuples[i] = (QFILE_TUPLE_RECORD *) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_RECORD));
 	  if (key->tuples[i] == NULL)
 	    {
 	      key->free_values = true;
-	      qdata_free_hscan_key (thread_p, key, i);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
-	      return NULL;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_TUPLE_RECORD));
+	      goto exit_on_error;
 	    }
 
 	  key->tuples[i]->tpl = NULL;
@@ -257,9 +261,17 @@ qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals
 	}
     }
 
+  assert (i == val_cnt);
+
   key->val_count = val_cnt;
   key->free_values = alloc_vals;
+
   return key;
+
+exit_on_error:
+  qdata_free_hscan_key (thread_p, key, i);
+
+  return NULL;
 }
 
 /*
@@ -275,38 +287,36 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
       return;
     }
 
-  if (key->values != NULL)
+  if (key->free_values)
     {
-      if (key->free_values)
+      if (key->values != NULL)
 	{
 	  for (int i = 0; i < val_count; i++)
 	    {
-	      if (key->values[i])
+	      if (key->values[i] != NULL)
 		{
 		  pr_free_value (key->values[i]);
 		}
 	    }
+
+	  /* free values array */
+	  db_private_free (thread_p, key->values);
 	}
 
-      /* free values array */
-      db_private_free (thread_p, key->values);
-    }
-
-  if (key->tuples != NULL)
-    {
-      if (key->free_values)
+      /* TODO: It is only used in hash joins. */
+      if (key->tuples != NULL)
 	{
 	  for (int i = 0; i < val_count; i++)
 	    {
-	      if (key->tuples[i])
+	      if (key->tuples[i] != NULL)
 		{
 		  db_private_free (thread_p, key->tuples[i]);
 		}
 	    }
-	}
 
-      /* free values array */
-      db_private_free (thread_p, key->tuples);
+	  /* free values array */
+	  db_private_free (thread_p, key->tuples);
+	}
     }
 
   /* free structure */

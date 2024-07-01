@@ -6147,7 +6147,7 @@ exit:
  *   join_type(in):
  *   outer(in):
  *   inner(in):
- *   sm_join_terms(in):
+ *   hash_join_terms(in):
  *   duj_terms(in):
  *   afj_terms(in):
  *   sarged_terms(in):

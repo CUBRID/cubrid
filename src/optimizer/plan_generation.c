@@ -958,7 +958,7 @@ init_class_scan_proc (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
   /* free pointer node list */
   parser_free_tree (parser, key_pred);
   parser_free_tree (parser, access_pred);
-  /* parser_free_tree (parser, hash_pred); *//* need ? */
+  parser_free_tree (parser, hash_pred);
 
   if (xasl)
     {
