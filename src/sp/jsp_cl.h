@@ -32,63 +32,13 @@
 #error Does not belong to server module.
 #endif /* SERVER_MODE */
 
-#include "parse_tree.h"
-
 #ifdef  __cplusplus
 #include <vector>
 #include <string>
 #endif
 
-#define SP_CLASS_NAME           "_db_stored_procedure"
-#define SP_ARG_CLASS_NAME       "_db_stored_procedure_args"
-#define SP_CODE_CLASS_NAME      "_db_stored_procedure_code"
-
-#define SP_ATTR_NAME                    "sp_name"
-#define SP_ATTR_SP_TYPE                 "sp_type"
-#define SP_ATTR_RETURN_TYPE             "return_type"
-#define SP_ATTR_ARGS                    "args"
-#define SP_ATTR_ARG_COUNT               "arg_count"
-#define SP_ATTR_LANG                    "lang"
-#define SP_ATTR_PKG                     "pkg_name"
-#define SP_ATTR_IS_SYSTEM_GENERATED     "is_system_generated"
-#define SP_ATTR_TARGET                  "target"
-#define SP_ATTR_DIRECTIVE               "directive"
-#define SP_ATTR_OWNER                   "owner"
-#define SP_ATTR_COMMENT                 "comment"
-
-#define SP_ATTR_ARG_NAME                "arg_name"
-#define SP_ATTR_INDEX_OF_NAME           "index_of"
-#define SP_ATTR_DATA_TYPE               "data_type"
-#define SP_ATTR_MODE                    "mode"
-#define SP_ATTR_DEFAULT_VALUE           "default_value"
-#define SP_ATTR_IS_OPTIONAL             "is_optional"
-#define SP_ATTR_ARG_COMMENT             "comment"
-
-#define SP_ATTR_CLS_NAME                "name"
-#define SP_ATTR_TIMESTAMP               "created_time"
-#define SP_ATTR_SOURCE_TYPE             "stype"
-#define SP_ATTR_SOURCE_CODE             "scode"
-#define SP_ATTR_OBJECT_TYPE             "otype"
-#define SP_ATTR_OBJECT_CODE             "ocode"
-
-typedef enum
-{
-  SP_TYPE_PROCEDURE = 1,
-  SP_TYPE_FUNCTION
-} SP_TYPE_ENUM;
-
-typedef enum
-{
-  SP_MODE_IN = 1,
-  SP_MODE_OUT,
-  SP_MODE_INOUT
-} SP_MODE_ENUM;
-
-typedef enum
-{
-  SP_LANG_PLCSQL = 0,
-  SP_LANG_JAVA = 1
-} SP_LANG_ENUM;
+#include "parse_tree.h"
+#include "sp_constants.hpp"
 
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);

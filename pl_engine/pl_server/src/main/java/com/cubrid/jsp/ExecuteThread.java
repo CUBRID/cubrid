@@ -320,18 +320,9 @@ public class ExecuteThread extends Thread {
         StoredProcedure procedure = makeStoredProcedure(unpacker);
 
         Value result = procedure.invoke();
-        popUser();
 
         /* send results */
         sendResult(result, procedure);
-    }
-
-    private void pushUser(String user) throws Exception {
-        sendAuthCommand(0, user);
-    }
-
-    private void popUser() throws Exception {
-        sendAuthCommand(1, "");
     }
 
     private void writeJar(CompiledCodeSet codeSet, OutputStream jarStream) throws IOException {
@@ -453,8 +444,6 @@ public class ExecuteThread extends Thread {
 
         boolean transactionControl = unpacker.unpackBool();
         getCurrentContext().setTransactionControl(transactionControl);
-
-        pushUser(authUser);
 
         storedProcedure = new StoredProcedure(methodSig, lang, authUser, methodArgs, returnType);
         return storedProcedure;

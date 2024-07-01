@@ -19,6 +19,7 @@
 #include "method_def.hpp"
 
 #include "memory_private_allocator.hpp"
+#include "oid.h"
 
 method_sig_node::method_sig_node ()
 {
@@ -30,6 +31,7 @@ method_sig_node::method_sig_node ()
   method_arg_pos = nullptr;
   class_name = nullptr;
   arg_info = nullptr;
+  oid = OID_INITIALIZER;
 }
 
 method_sig_node::~method_sig_node ()
@@ -215,6 +217,8 @@ method_sig_node::pack (cubpacking::packer &serializator) const
     {
       serializator.pack_bool (false);
     }
+
+  serializator.pack_oid (oid);
 }
 
 size_t
@@ -266,6 +270,8 @@ method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t 
 	    }
 	}
     }
+
+  size += serializator.get_packed_oid_size (size); /* method_sig->arg_info->arg_type[i] */
 
   return size;
 }
@@ -357,6 +363,8 @@ method_sig_node::operator= (const method_sig_node &obj)
 	{
 	  arg_info = nullptr;
 	}
+
+      oid = obj.oid;
     }
   return *this;
 }
@@ -457,7 +465,7 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
       arg_info = nullptr;
     }
 
-
+  deserializator.unpack_oid (oid);
 }
 
 void

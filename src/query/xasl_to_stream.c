@@ -7635,7 +7635,8 @@ xts_sizeof_method_sig (const METHOD_SIG * method_sig)
 	   + OR_INT_SIZE	/* num_method_args */
 	   + (OR_INT_SIZE)	/* result type */
 	   + (OR_INT_SIZE * (method_sig->num_method_args + 1))	/* method_arg_pos */
-	   + PTR_SIZE);		/* next */
+	   + PTR_SIZE		/* next */
+	   + OR_OID_SIZE);	/* code OID */
 
   size += PTR_SIZE;		/* class_name */
   size += PTR_SIZE;		/* arg_list */
