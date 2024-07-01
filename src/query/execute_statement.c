@@ -9970,6 +9970,13 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID
 		  flush_to_server[idx] = 0;
 		}
 	    }
+
+	  // In has_unique_constraint (mop) is just for checking whether flushing to server is required, an error should be ignored.
+	  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+	    {
+	      er_clear ();
+	    }
+
 	  error = delete_object_tuple (mop);
 	  if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
 	    {
