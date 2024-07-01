@@ -221,7 +221,7 @@ static DKNSECTS disk_Temp_max_sects = -2;
 typedef UINT64 DISK_STAB_UNIT;
 #define DISK_STAB_UNIT_SIZE_OF sizeof (DISK_STAB_UNIT)
 
-#define DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE (offsetof(DISK_VOLUME_HEADER, var_fields));
+#define DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE (offsetof(DISK_VOLUME_HEADER, var_fields))
 /*
  * Previously, when a user entered excessively long remarks, the remarks would be trimmed to avoid exceeding the page size. 
  * This trimming could occur at unwanted positions, potentially removing important content. 
@@ -565,9 +565,9 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   if (remarks_size > DISK_VOLUME_HEADER_REMARKS_MAX_SIZE)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_REMARKS_LENGTH_TOO_LONG, 2, NULL, remarks_size,
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_REMARKS_LENGTH_IS_TOO_LONG, 2, NULL, remarks_size,
 	      DISK_VOLUME_HEADER_REMARKS_MAX_SIZE);
-      return ER_DISK_REMARKS_LENGTH_TOO_LONG;
+      return ER_DISK_REMARKS_LENGTH_IS_TOO_LONG;
     }
 
   /* make sure that this is a valid purpose */
