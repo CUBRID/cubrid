@@ -145,11 +145,21 @@ function ssh_cubrid()
 	
 	host=$1
 	command=$2
+    	envvar="export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABAES=$CUBRID_DATABASES;"
+
+        if [ "__${CUBRID_TMP}__" != "____" ]; then
+                envvar+=" export CUBRID_TMP=$CUBRID_TMP;"
+        fi
+
+        if [ "__${TMPDIR}__" != "____" ]; then
+                envvar+=" export TMPDIR=$TMPDIR;"
+        fi
 
 	if $verbose; then
 		echo "[$cubrid_user@$host]$ $command"
 	fi
-	ssh -p $ssh_port -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; export CUBRID_TMP=$CUBRID_TMP; export TMPDIR=$TMPDIR; $command"
+
+	ssh -p $ssh_port -t $cubrid_user@$host "$envvar $command"
 }
 
 function ssh_expect()
