@@ -176,6 +176,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/client_support.c
   ${CONNECTION_DIR}/connection_support.c
   ${CONNECTION_DIR}/host_lookup.c
+  ${CONNECTION_DIR}/server_revive.cpp
   )
 
 set(COMMUNICATION_SOURCES
