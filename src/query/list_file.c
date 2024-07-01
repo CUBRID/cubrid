@@ -4030,7 +4030,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
 
   sort_result =
     sort_listfile (thread_p, NULL_VOLID, estimated_pages, get_func, &info, put_func, &info, cmp_func, &info.key_info,
-		   dup_option, limit, srlist_id->tfile_vfid->tde_encrypted);
+		   dup_option, limit, srlist_id->tfile_vfid->tde_encrypted, true);
 
   if (sort_result < 0)
     {

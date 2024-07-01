@@ -91,6 +91,8 @@
         }                         \
     } while (0)
 
+#define IS_PARALLEL_EXECUTION(t) ((t)->px_max_index > 1)
+
 typedef struct file_contents FILE_CONTENTS;
 struct file_contents
 {				/* node of the file_contents linked list */
@@ -115,30 +117,6 @@ struct vol_list
   int vol_ent_cnt;		/* number of array entries */
   int vol_cnt;			/* number of temporary volumes */
   VOL_INFO *vol_info;		/* array of volume information */
-};
-
-/* Parallel eXecution and communition node */
-typedef struct px_tree_node PX_TREE_NODE;
-struct px_tree_node
-{
-  int px_id;			/* node ID */
-#if defined(SERVER_MODE)
-  int px_status;		/* node status; access through px_mtx */
-#endif				/* SERVER_MODE */
-
-  int px_height;		/* tournament tree: node level */
-  int px_myself;		/* tournament tree: node ID */
-
-  int px_tran_index;
-
-  void *px_arg;			/* operation info */
-
-  char **px_buff;
-  char **px_vector;
-  long px_vector_size;
-
-  char **px_result;		/* output */
-  long px_result_size;		/* output */
 };
 
 typedef struct sort_param SORT_PARAM;
@@ -166,6 +144,10 @@ struct sort_param
   void *cmp_arg;
   SORT_DUP_OPTION option;
 
+  /* input function to apply on temporary records */
+  SORT_GET_FUNC *get_fn;
+  void *get_arg;
+
   /* output function to apply on temporary records */
   SORT_PUT_FUNC *put_fn;
   void *put_arg;
@@ -176,13 +158,18 @@ struct sort_param
   /* Details about the "limit" clause */
   int limit;
 
+  /* total number of recordes */
+  unsigned int total_numrecs;
+
   /* support parallelism */
 #if defined(SERVER_MODE)
   pthread_mutex_t px_mtx;	/* px_node status mutex */
 #endif
-  int px_height_max;		/* px_node tournament tree max level */
-  int px_array_size;		/* px_node array size */
-  PX_TREE_NODE *px_array;	/* px_node array */
+  int px_max_index;
+  int px_index;
+  bool px_status[32];
+  int px_result_file_idx;
+  int px_tran_index;
 };
 
 typedef struct sort_rec_list SORT_REC_LIST;
@@ -244,17 +231,16 @@ typedef void MERGE_RUN_FN (char **, char **, SORT_STACK *, SORT_CMP_FUNC *, void
 #if !defined(NDEBUG)
 static int sort_validate (char **vector, long size, SORT_CMP_FUNC * compare, void *comp_arg);
 #endif
-static PX_TREE_NODE *px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int px_id, char **px_buff,
-				     char **px_vector, long px_vector_size, int px_height, int px_myself);
-static int px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node);
-#if defined(SERVER_MODE)
-static int px_sort_communicate (PX_TREE_NODE * px_node);
-#endif
 
+#if defined(SERVER_MODE)
+static void sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
+#endif
+static int sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FUNC * get_next,
 			      void *arguments, unsigned int *total_numrecs);
 static int sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
+static int sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_get_avg_numpages_of_nonempty_tmpfile (SORT_PARAM * sort_param);
 static void sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc,
@@ -1345,19 +1331,13 @@ sort_run_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, char **base, lo
 int
 sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn, void *get_arg,
 	       SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg, SORT_DUP_OPTION option,
-	       int limit, bool includes_tde_class)
+	       int limit, bool includes_tde_class, bool is_parallel)
 {
+
   int error = NO_ERROR;
   SORT_PARAM *sort_param = NULL;
-  bool prm_enable_sort_parallel = false;	/* TODO - PRM_SORT_PARALLEL_SORT */
   INT32 input_pages;
   int i;
-  int file_pg_cnt_est;
-  unsigned int total_numrecs = 0;
-#if defined(SERVER_MODE)
-  int num_cpus;
-  int rv;
-#endif /* SERVER_MODE */
 
   thread_set_sort_stats_active (thread_p, true);
 
@@ -1373,22 +1353,12 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       return error;
     }
 
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_init (&(sort_param->px_mtx), NULL);
-  if (rv != 0)
-    {
-      error = ER_CSS_PTHREAD_MUTEX_INIT;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-
-      free_and_init (sort_param);
-
-      return error;
-    }
-#endif /* SERVER_MODE */
-
   sort_param->cmp_fn = cmp_fn;
   sort_param->cmp_arg = cmp_arg;
   sort_param->option = option;
+
+  sort_param->get_fn = get_fn;
+  sort_param->get_arg = get_arg;
 
   sort_param->put_fn = put_fn;
   sort_param->put_arg = put_arg;
@@ -1403,8 +1373,6 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       sort_param->file_contents[i].num_pages = NULL;
     }
   sort_param->internal_memory = NULL;
-  sort_param->px_height_max = sort_param->px_array_size = 0;
-  sort_param->px_array = NULL;
 
   /* initialize temp. overflow file. Real value will be assigned in sort_inphase_sort function, if long size sorting
    * records are encountered. */
@@ -1476,35 +1444,113 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
   sort_param->tde_encrypted = includes_tde_class;
 
-  sort_param->px_height_max = 0;	/* init */
-  sort_param->px_array_size = 1;	/* init */
+cleanup:
+  if (error != NO_ERROR)
+    {
+#if defined(ENABLE_SYSTEMTAP)
+      CUBRID_SORT_END (sort_param->total_numrecs, error);
+#endif /* ENABLE_SYSTEMTAP */
 
-  /* TODO - currently, disable parallelism */
-  prm_enable_sort_parallel = false;
-
-  tde_er_log ("sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
+      sort_return_used_resources (thread_p, sort_param);
+      sort_param = NULL;
+      thread_set_sort_stats_active (thread_p, false);
+      return error;
+    }
 
 #if defined(SERVER_MODE)
-  if (prm_enable_sort_parallel == true)
+  SORT_INFO *sort_info_p = (SORT_INFO *) put_arg;
+  QFILE_LIST_ID *outlist_id, *orglist_id;
+
+  /* TODO : add to routines to copy sort_param */
+
+  /* temporarily, no parallelism when creating an index. */
+  if (!is_parallel)
     {
-      /* TODO - calc n, 2^^n get the number of CPUs TODO - fileio_os_sysconf really get #cores instead of #CPUs -
-       * NEED MORE CONSIDERATION */
-      num_cpus = fileio_os_sysconf ();
-
-      sort_param->px_height_max = (int) sqrt ((double) num_cpus);	/* n */
-      sort_param->px_array_size = num_cpus;	/* 2^^n */
-
-      assert_release (sort_param->px_array_size == pow ((double) 2, (double) sort_param->px_height_max));
+      sort_param->px_max_index = 1;
+      error = sort_listfile_internal (thread_p, sort_param);
     }
-#endif /* SERVER_MODE */
-
-  sort_param->px_array = (PX_TREE_NODE *) malloc (sort_param->px_array_size * sizeof (PX_TREE_NODE));
-  if (sort_param->px_array == NULL)
+  else
     {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (sort_param->px_array_size * sizeof (PX_TREE_NODE)));
-      goto cleanup;
+      /* init px variable */
+      sort_param->px_status[0] = 0;
+      sort_param->px_max_index = 2;
+      sort_param->px_index = 1;
+      sort_param->px_result_file_idx = 0;
+      sort_param->px_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+      cubthread::entry_callable_task * task =
+	new cubthread::entry_callable_task (std::bind (sort_listfile_execute, std::placeholders::_1, sort_param));
+      css_push_external_task (css_get_current_conn_entry (), task);
+
+      /* wait for threads */
+      /* TO_DO : no busy wait. need to block and wake up */
+      do
+	{
+	  thread_sleep (10);	/* 10 msec */
+	  if (sort_param->px_status[0] == 1)
+	    {
+	      break;
+	    }
+	}
+      while (1);
+
+      /* TO_DO : need routines for merging parallel processed temp files into a local sort_param */
+
+      /* Merge the parallel processed results. */
+      sort_param->px_max_index = 1;
+      if (sort_param->option == SORT_ELIM_DUP)
+	{
+	  error = sort_exphase_merge_elim_dup (thread_p, sort_param);
+	}
+      else
+	{
+	  /* SORT_DUP */
+	  error = sort_exphase_merge (thread_p, sort_param);
+	}
     }
+
+#else
+  /* no parallel */
+  sort_param->px_max_index = 1;
+  error = sort_listfile_internal (thread_p, sort_param);
+#endif
+
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_SORT_END (sort_param->total_numrecs, error);
+#endif /* ENABLE_SYSTEMTAP */
+
+  sort_return_used_resources (thread_p, sort_param);
+  sort_param = NULL;
+  thread_set_sort_stats_active (thread_p, false);
+
+  return error;
+}
+
+#if defined(SERVER_MODE)
+// *INDENT-OFF*
+static void
+sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
+{
+  thread_ref.tran_index = sort_param->px_tran_index;
+  pthread_mutex_unlock (&thread_ref.tran_index_lock);
+
+  sort_listfile_internal (&thread_ref, sort_param);
+
+  sort_param->px_status[0] = 1;
+}
+// *INDENT-ON*
+#endif
+
+/*
+ * sort_listfile_internal () - Perform sorting
+ *   return:
+ */
+int
+sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
+{
+  int error = NO_ERROR;
+  int file_pg_cnt_est;
+  int i;
 
   /*
    * Don't allocate any temp files yet, since we may not need them.
@@ -1514,14 +1560,15 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
    * space that is going to be needed.
    */
 
-  error = sort_inphase_sort (thread_p, sort_param, get_fn, get_arg, &total_numrecs);
+  error = sort_inphase_sort (thread_p, sort_param, sort_param->get_fn, sort_param->get_arg, &sort_param->total_numrecs);
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      return error;
     }
 
-  if (sort_param->tot_runs > 1)
+  if (sort_param->tot_runs > 1 || IS_PARALLEL_EXECUTION (sort_param))
     {
+      assert (sort_param->tot_runs > 0);
       /* Create output temporary files make file and temporary volume page count estimates */
       file_pg_cnt_est = sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
       file_pg_cnt_est = MAX (1, file_pg_cnt_est);
@@ -1532,7 +1579,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	    sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
 	  if (error != NO_ERROR)
 	    {
-	      goto cleanup;
+	      return error;
 	    }
 	}
 
@@ -1546,16 +1593,6 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	  error = sort_exphase_merge (thread_p, sort_param);
 	}
     }				/* if (sort_param->tot_runs > 1) */
-
-cleanup:
-
-#if defined(ENABLE_SYSTEMTAP)
-  CUBRID_SORT_END (total_numrecs, error);
-#endif /* ENABLE_SYSTEMTAP */
-
-  sort_return_used_resources (thread_p, sort_param);
-  sort_param = NULL;
-  thread_set_sort_stats_active (thread_p, false);
 
   return error;
 }
@@ -1600,549 +1637,6 @@ sort_validate (char **vector, long size, SORT_CMP_FUNC * compare, void *comp_arg
 #endif
 
 /*
- * px_sort_assign() -
- *   return:
- *   thread_p(in):
- *   sort_param(in): sort parameters
- *   px_id(in):
- *   px_buff(in):
- *   px_vector(in):
- *   px_vector_size(in):
- *   px_height(in):
- *   px_myself(in):
- *
- * NOTE: support parallelism
- */
-static PX_TREE_NODE *
-px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int px_id, char **px_buff, char **px_vector,
-		long px_vector_size, int px_height, int px_myself)
-{
-  PX_TREE_NODE *px_node;
-#if defined(SERVER_MODE)
-  int rv = NO_ERROR;
-#endif
-
-  assert (sort_param != NULL);
-
-  if (px_height < 0 || px_height > sort_param->px_height_max)
-    {
-      assert_release (false);
-      return NULL;
-    }
-
-  if (px_id < 0 || px_id >= sort_param->px_array_size)
-    {
-      assert_release (false);
-      return NULL;
-    }
-
-  if (px_myself < 0 || px_myself > px_id)
-    {
-      assert_release (false);
-      return NULL;
-    }
-
-  px_node = &(sort_param->px_array[px_id]);
-
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-  assert (rv == NO_ERROR);
-
-#if !defined(NDEBUG)
-  if (px_node->px_status != 0)
-    {
-      assert (false);
-      pthread_mutex_unlock (&(sort_param->px_mtx));
-      return NULL;
-    }
-#endif
-
-  px_node->px_status = 0;
-
-  pthread_mutex_unlock (&(sort_param->px_mtx));
-#else /* SERVER_MODE */
-  assert (sort_param->px_height_max == 0);
-  assert (sort_param->px_array_size == 1);
-
-  assert (px_id == 0);
-  assert (px_height == 0);
-  assert (px_myself == 0);
-#endif /* SERVER_MODE */
-
-  /* set node info */
-
-  px_node->px_id = px_id;
-
-  px_node->px_height = px_height;
-  px_node->px_myself = px_myself;
-
-  px_node->px_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  /* set operation info */
-
-  px_node->px_arg = (void *) sort_param;
-
-  px_node->px_buff = px_buff;
-  px_node->px_vector = px_vector;
-  px_node->px_vector_size = px_vector_size;
-
-  px_node->px_result = px_node->px_vector;	/* init */
-  px_node->px_result_size = px_node->px_vector_size;	/* init */
-
-  return px_node;
-}
-
-#if defined(SERVER_MODE)
-// *INDENT-OFF*
-static void
-px_sort_myself_execute (cubthread::entry &thread_ref, PX_TREE_NODE * px_node)
-{
-  (void) px_sort_myself (&thread_ref, px_node);
-}
-
-/*
- * px_sort_communicate() -
- *   return:
- *   thread_p(in):
- *   px_node(in):
- *
- * NOTE: support parallelism
- */
-static int
-px_sort_communicate (PX_TREE_NODE * px_node)
-{
-  SORT_PARAM *sort_param;
-
-  assert_release (px_node != NULL);
-  assert_release (px_node->px_arg != NULL);
-
-  sort_param = (SORT_PARAM *) (px_node->px_arg);
-  assert_release (px_node->px_height <= sort_param->px_height_max);
-  assert_release (px_node->px_id < sort_param->px_array_size);
-  assert_release (px_node->px_vector_size > 1);
-
-  cubthread::entry_callable_task *task =
-    new cubthread::entry_callable_task (std::bind (px_sort_myself_execute, std::placeholders::_1, px_node));
-  css_push_external_task (css_get_current_conn_entry (), task);
-
-  return NO_ERROR;
-}
-// *INDENT-ON*
-#endif /* SERVER_MODE */
-
-/*
- * px_sort_myself() -
- *   return:
- *   thread_p(in):
- *   px_node(in):
- *
- * NOTE: support parallelism
- *
- * Partitioned merge logic
- *
- * The working core: each internal node recurses on this function
- * both for its left side and its right side, as nodes one closer to
- * the leaf level.  It then merges the results into the vector
- *
- * Leaf level nodes just sort the vector.
- */
-static int
-px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
-{
-#define SORT_PARTITION_RUN_SIZE_MIN (ONE_M)
-
-  int ret = NO_ERROR;
-  bool old_check_interrupt;
-
-#if defined(SERVER_MODE)
-  int parent;
-  int child_right = 0;
-  int child_height;
-
-  int cmp;
-
-  int rv = NO_ERROR;
-#endif /* SERVER_MODE */
-
-  SORT_PARAM *sort_param;
-
-  char **buff;
-  char **vector;
-  long vector_size;
-
-  char **result = NULL;
-  long result_size = -1;
-
-  assert_release (px_node != NULL);
-  assert_release (px_node->px_id >= 0);
-  assert_release (px_node->px_arg != NULL);
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  sort_param = (SORT_PARAM *) (px_node->px_arg);
-
-#if defined(SERVER_MODE)
-  if (px_node->px_id > 0)
-    {
-      /* is new childs */
-      thread_p->tran_index = px_node->px_tran_index;
-      pthread_mutex_unlock (&thread_p->tran_index_lock);
-    }
-
-#if !defined(NDEBUG)
-  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-  assert (rv == NO_ERROR);
-
-  assert (px_node->px_status == 0);
-
-  pthread_mutex_unlock (&(sort_param->px_mtx));
-#endif
-#endif /* SERVER_MODE */
-
-  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-
-  buff = px_node->px_buff;
-  vector = px_node->px_vector;
-  vector_size = px_node->px_vector_size;
-
-  assert_release (px_node->px_result == vector);
-  assert_release (px_node->px_result_size == vector_size);
-
-  result = px_node->px_result;
-  result_size = px_node->px_result_size;
-
-  assert_release (vector_size > 0);
-
-#if defined(SERVER_MODE)
-  parent = px_node->px_id & ~(1 << px_node->px_height);
-  child_height = px_node->px_height - 1;
-  if (child_height >= 0)
-    {
-      child_right = px_node->px_myself | (1 << child_height);
-      assert_release (child_right > 0);
-    }
-
-  if (vector_size <= 1)
-    {
-      assert_release (px_node->px_result == vector);
-      assert_release (px_node->px_result_size == vector_size);
-
-      result = px_node->px_result = vector;
-      result_size = px_node->px_result_size = vector_size;
-
-      /* mark as finished */
-
-      rv = pthread_mutex_lock (&(sort_param->px_mtx));
-      assert (rv == NO_ERROR);
-
-      assert_release (px_node->px_status == 0);
-      px_node->px_status = 1;	/* done */
-
-      pthread_mutex_unlock (&(sort_param->px_mtx));
-
-      goto exit_on_end;
-    }
-
-  if (px_node->px_height > 0 && vector_size > SORT_PARTITION_RUN_SIZE_MIN)
-    {
-      long left_vector_size, right_vector_size;
-      char **left_vector, **right_vector;
-      PX_TREE_NODE *left_px_node, *right_px_node;
-      int i, j, k;		/* Used in the merge logic */
-
-      assert_release (child_right > 0);
-
-      left_vector_size = vector_size / 2;
-      right_vector_size = vector_size - left_vector_size;
-
-      assert_release (vector_size == left_vector_size + right_vector_size);
-
-      /* do new child first */
-      right_vector = vector + left_vector_size;
-      right_px_node = px_sort_assign (thread_p, sort_param, px_node->px_id + child_right, buff + left_vector_size,
-				      right_vector, right_vector_size, child_height, 0 /* px_myself: set as root */ );
-      if (right_px_node == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      if (right_vector_size > 1)
-	{
-	  /* launch new worker */
-	  if (px_sort_communicate (right_px_node) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-      else
-	{
-	  /* mark as finished */
-
-	  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-	  assert (rv == NO_ERROR);
-
-	  assert_release (right_px_node->px_status == 0);
-	  right_px_node->px_status = 1;	/* done */
-
-	  pthread_mutex_unlock (&(sort_param->px_mtx));
-	}
-
-      left_vector = vector;
-      left_px_node =
-	px_sort_assign (thread_p, sort_param, px_node->px_id, buff, left_vector, left_vector_size, child_height,
-			px_node->px_myself);
-      if (left_px_node == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      assert_release (px_node == left_px_node);
-#if !defined(NDEBUG)
-      rv = pthread_mutex_lock (&(sort_param->px_mtx));
-      assert (rv == NO_ERROR);
-
-      assert (px_node->px_status == 0);
-
-      pthread_mutex_unlock (&(sort_param->px_mtx));
-#endif
-
-      if (left_vector_size > 1)
-	{
-	  if (px_sort_myself (thread_p, left_px_node) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-
-      /* wait for right-child finished */
-      do
-	{
-	  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-	  assert (rv == NO_ERROR);
-
-	  if (right_px_node->px_status != 0)
-	    {
-	      assert (right_px_node->px_status == 1);
-	      pthread_mutex_unlock (&(sort_param->px_mtx));
-	      break;
-	    }
-
-	  pthread_mutex_unlock (&(sort_param->px_mtx));
-	  thread_sleep (10);	/* 10 msec */
-	}
-      while (1);
-
-      assert_release (px_node == left_px_node);
-#if !defined(NDEBUG)
-      rv = pthread_mutex_lock (&(sort_param->px_mtx));
-      assert (rv == NO_ERROR);
-
-      assert (right_px_node->px_status == 1);
-      assert (px_node->px_status == 0);
-
-      pthread_mutex_unlock (&(sort_param->px_mtx));
-#endif
-
-      right_vector = right_px_node->px_result;
-      right_vector_size = right_px_node->px_result_size;
-      if (right_vector == NULL || right_vector_size < 0)
-	{
-	  goto exit_on_error;
-	}
-
-      left_vector = left_px_node->px_result;
-      left_vector_size = left_px_node->px_result_size;
-      if (left_vector == NULL || left_vector_size < 0)
-	{
-	  goto exit_on_error;
-	}
-
-      assert_release (vector_size >= left_vector_size + right_vector_size);
-
-      result_size = px_node->px_result_size = left_vector_size + right_vector_size;
-      if (left_vector < vector)
-	{
-	  assert_release (left_vector + left_vector_size <= vector);
-	  result = px_node->px_result = vector;
-	}
-      else
-	{
-	  result = px_node->px_result = buff;
-	}
-
-      /* Merge the two sub-results back into upper result */
-
-      i = j = k = 0;
-
-      /* STEP 2: check CON conditions if (left_max < right_min) do FORWARD-CON. we use '<' instead of '<=' */
-      cmp = (*(sort_param->cmp_fn)) (&(left_vector[left_vector_size - 1]), &(right_vector[0]), sort_param->cmp_arg);
-
-      if (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT)
-	{
-	  ;			/* ok */
-	}
-      else
-	{
-	  assert_release (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT);
-	  goto exit_on_error;
-	}
-
-      if (cmp == DB_LT)
-	{
-	  while (i < left_vector_size)
-	    {
-	      result[k++] = left_vector[i++];
-	    }
-	  while (j < right_vector_size)
-	    {
-	      result[k++] = right_vector[j++];
-	    }
-	}
-      else
-	{
-	  /* STEP 3: check CON conditions if (right_max < left_min) do BACKWARD-CON. we use '<' instead of '<=' */
-	  cmp =
-	    (*(sort_param->cmp_fn)) (&(right_vector[right_vector_size - 1]), &(left_vector[0]), sort_param->cmp_arg);
-
-	  if (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT)
-	    {
-	      ;			/* ok */
-	    }
-	  else
-	    {
-	      assert_release (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT);
-	      goto exit_on_error;
-	    }
-
-	  if (cmp == DB_LT)
-	    {
-	      while (j < right_vector_size)
-		{
-		  result[k++] = right_vector[j++];
-		}
-	      while (i < left_vector_size)
-		{
-		  result[k++] = left_vector[i++];
-		}
-	    }
-	  else
-	    {
-	      /* STEP 4: do the actual merge */
-	      while (i < left_vector_size && j < right_vector_size)
-		{
-		  cmp = (*(sort_param->cmp_fn)) (&(left_vector[i]), &(right_vector[j]), sort_param->cmp_arg);
-
-		  if (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT)
-		    {
-		      ;		/* ok */
-		    }
-		  else
-		    {
-		      assert_release (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT);
-		      goto exit_on_error;
-		    }
-
-		  if (cmp == DB_EQ)
-		    {
-		      if (sort_param->option == SORT_DUP)	/* allow duplicate */
-			{
-			  sort_append (&(left_vector[i]), &(right_vector[j]));
-			}
-
-		      result[k++] = right_vector[j++];	/* temp */
-		      i++;	/* skip left-side dup */
-		    }
-		  else if (cmp == DB_GT)
-		    {
-		      result[k++] = right_vector[j++];
-		    }
-		  else
-		    {
-		      assert_release (cmp == DB_LT);
-		      result[k++] = left_vector[i++];
-		    }
-		}
-	      while (i < left_vector_size)
-		{
-		  result[k++] = left_vector[i++];
-		}
-	      while (j < right_vector_size)
-		{
-		  result[k++] = right_vector[j++];
-		}
-	    }			/* else */
-	}			/* else */
-
-      assert_release (result_size >= k);
-
-      result_size = px_node->px_result_size = k;
-
-#if !defined(NDEBUG)
-      if (sort_validate (result, result_size, sort_param->cmp_fn, sort_param->cmp_arg) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-#endif
-    }
-  else
-    {
-      result = px_node->px_result = sort_run_sort (thread_p, sort_param, vector, vector_size, 0 /* dummy */ ,
-						   buff, &(px_node->px_result_size));
-      result_size = px_node->px_result_size;
-    }
-
-#else /* SERVER_MODE */
-
-  result = px_node->px_result = sort_run_sort (thread_p, sort_param, vector, vector_size, 0 /* dummy */ ,
-					       buff, &(px_node->px_result_size));
-  result_size = px_node->px_result_size;
-
-#endif /* SERVER_MODE */
-
-  if (result == NULL || result_size < 0)
-    {
-      assert_release (false);
-      goto exit_on_error;
-    }
-
-exit_on_end:
-
-  assert_release (result == px_node->px_result);
-  assert_release (result_size == px_node->px_result_size);
-
-#if defined(SERVER_MODE)
-  if (parent != px_node->px_id)
-    {
-      /* mark as finished */
-
-      rv = pthread_mutex_lock (&(sort_param->px_mtx));
-      assert (rv == NO_ERROR);
-
-      assert_release (px_node->px_status == 0);
-      px_node->px_status = 1;	/* done */
-
-      pthread_mutex_unlock (&(sort_param->px_mtx));
-    }
-#endif /* SERVER_MODE */
-
-  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
-
-  return ret;
-
-exit_on_error:
-
-  result = px_node->px_result = NULL;
-  result_size = px_node->px_result_size = -1;
-
-  ret = (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
-
-  goto exit_on_end;
-}
-
-/*
  * sort_inphase_sort () - Internal sorting phase
  *   return:
  *   sort_param(in): sort parameters
@@ -2178,15 +1672,11 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
   int i;
   int error = NO_ERROR;
 
-  PX_TREE_NODE *px_node;
 #if defined (SERVER_MODE)
   int rv = NO_ERROR;
 #endif /* SERVER_MODE */
 
   assert (sort_param->half_files <= SORT_MAX_HALF_FILES);
-
-  assert (sort_param->px_height_max >= 0);
-  assert (sort_param->px_array_size >= 1);
 
   /* Initialize the current pages of all temp files to 0 */
   for (i = 0; i < sort_param->half_files; i++)
@@ -2260,46 +1750,9 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 
 	      index_area++;
 
-	      if (sort_numrecs == 0)
-		{
-		  assert (sort_param->px_height_max >= 0);
-		  assert (sort_param->px_array_size >= 1);
-#if defined(SERVER_MODE)
-		  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-		  assert (rv == NO_ERROR);
-
-		  for (i = 0; i < sort_param->px_array_size; i++)
-		    {
-		      sort_param->px_array[i].px_status = 0;	/* init */
-		    }
-
-		  pthread_mutex_unlock (&(sort_param->px_mtx));
-#endif /* SERVER_MODE */
-
-		  px_node = px_sort_assign (thread_p, sort_param, 0, index_buff, index_area, numrecs,
-					    sort_param->px_height_max, 0 /* px_myself: set as root */ );
-		  if (px_node == NULL)
-		    {
-		      error = ER_FAILED;
-		      goto exit_on_error;
-		    }
-
-		  error = px_sort_myself (thread_p, px_node);
-		  if (error != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
-
-		  index_area = px_node->px_result;
-		  numrecs = px_node->px_result_size;
-		  *total_numrecs += numrecs;
-		}
-	      else
-		{
-		  index_area =
-		    sort_run_sort (thread_p, sort_param, index_area, numrecs, sort_numrecs, index_buff, &numrecs);
-		  *total_numrecs += numrecs;
-		}
+	      index_area =
+		sort_run_sort (thread_p, sort_param, index_area, numrecs, sort_numrecs, index_buff, &numrecs);
+	      *total_numrecs += numrecs;
 
 	      if (index_area == NULL || numrecs < 0)
 		{
@@ -2515,45 +1968,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 
       index_area++;
 
-      if (sort_numrecs == 0)
-	{
-	  assert (sort_param->px_height_max >= 0);
-	  assert (sort_param->px_array_size >= 1);
-#if defined(SERVER_MODE)
-	  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-	  assert (rv == NO_ERROR);
-
-	  for (i = 0; i < sort_param->px_array_size; i++)
-	    {
-	      sort_param->px_array[i].px_status = 0;	/* init */
-	    }
-
-	  pthread_mutex_unlock (&(sort_param->px_mtx));
-#endif /* SERVER_MODE */
-
-	  px_node = px_sort_assign (thread_p, sort_param, 0, index_buff, index_area, numrecs, sort_param->px_height_max,
-				    0 /* px_myself: set as root */ );
-	  if (px_node == NULL)
-	    {
-	      error = ER_FAILED;
-	      goto exit_on_error;
-	    }
-
-	  if (px_sort_myself (thread_p, px_node) != NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      goto exit_on_error;
-	    }
-
-	  index_area = px_node->px_result;
-	  numrecs = px_node->px_result_size;
-	  *total_numrecs += numrecs;
-	}
-      else
-	{
-	  index_area = sort_run_sort (thread_p, sort_param, index_area, numrecs, sort_numrecs, index_buff, &numrecs);
-	  *total_numrecs += numrecs;
-	}
+      index_area = sort_run_sort (thread_p, sort_param, index_area, numrecs, sort_numrecs, index_buff, &numrecs);
+      *total_numrecs += numrecs;
 
       if (index_area == NULL || numrecs < 0)
 	{
@@ -2561,7 +1977,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	  goto exit_on_error;
 	}
 
-      if (sort_param->tot_runs > 0)
+      if (sort_param->tot_runs > 0 || IS_PARALLEL_EXECUTION (sort_param))
 	{
 	  /* There has been other runs produced already */
 
@@ -2595,7 +2011,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	    }
 	}
     }
-  else if (sort_param->tot_runs == 1)
+  else if (sort_param->tot_runs == 1 && !IS_PARALLEL_EXECUTION (sort_param))
     {
       if (once_flushed)
 	{
@@ -2942,6 +2358,12 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
   /* OUTER LOOP */
 
+  /* for one temporary file, put result from the temp file instead of merging it. */
+  if (!IS_PARALLEL_EXECUTION (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
+    {
+      sort_put_result_from_tmpfile (thread_p, sort_param);
+    }
+
   /* While there are more than one input files with different runs to merge */
   while ((act_infiles = sort_get_numpages_of_active_infiles (sort_param)) > 1)
     {
@@ -3253,6 +2675,12 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  /* Initialize the size of next run to zero */
 	  out_runsize = 0;
 
+	  /* In parallel sort, put_fn will be performed by the parent thread. save last file index. */
+	  if (very_last_run && IS_PARALLEL_EXECUTION (sort_param))
+	    {
+	      sort_param->px_result_file_idx = cur_outfile;
+	    }
+
 	  for (;;)
 	    {
 	      /* OUTPUT A RECORD */
@@ -3265,7 +2693,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		{
 		  /* we found first unique sort_key record */
 
-		  if (very_last_run)
+		  if (very_last_run && !IS_PARALLEL_EXECUTION (sort_param))
 		    {
 		      /* OUTPUT THE RECORD */
 		      /* Obtain the output record for this temporary record */
@@ -3551,7 +2979,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		}
 	    }
 
-	  if (!very_last_run)
+	  if (!(very_last_run && !IS_PARALLEL_EXECUTION (sort_param)))
 	    {
 	      /* Flush whatever is left on the output section */
 	      out_act_bufno++;	/* Since 0 refers to the first active buffer */
@@ -3614,6 +3042,100 @@ bailout:
     }
 
   return (error == SORT_PUT_STOP) ? NO_ERROR : error;
+}
+
+/*
+ * sort_put_result_from_tmpfile () - put result from last temp file
+ *   return:
+ *   sort_param(in): sort parameters
+ *
+ */
+static int
+sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
+{
+  int tot_pages;
+  int current_pages = 0, read_pages = 0, cur_read_pages = 0;
+  int slot_num = 0;
+  char *cur_pgptr;
+  int result_file_idx = sort_param->px_result_file_idx;
+  RECDES record;
+  RECDES long_record;
+  int error;
+  SORT_REC *sort_rec;
+  int tot_rows = 0;
+
+  tot_pages = sort_param->file_contents[result_file_idx].num_pages[0];
+  while (tot_pages > 0)
+    {
+      read_pages = (tot_pages > sort_param->tot_buffers) ? sort_param->tot_buffers : tot_pages;
+
+      error =
+	sort_read_area (thread_p, &sort_param->temp[result_file_idx], current_pages, read_pages,
+			sort_param->internal_memory);
+      if (error != NO_ERROR)
+	{
+	  goto bailout;
+	}
+
+      cur_pgptr = sort_param->internal_memory;
+      cur_read_pages = read_pages;
+      while (cur_read_pages > 0)
+	{
+	  /* read record from sort temp file */
+	  slot_num = sort_spage_get_numrecs (cur_pgptr);
+	  tot_rows += slot_num;
+	  for (int i = 0; i < slot_num; i++)
+	    {
+	      if (sort_spage_get_record (cur_pgptr, i, &record, PEEK) != S_SUCCESS)
+		{
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_SORT_TEMP_PAGE_CORRUPTED, 0);
+		  error = ER_SORT_TEMP_PAGE_CORRUPTED;
+		  goto bailout;
+		}
+
+	      /* If this is a long record retrieve it */
+	      if (record.type == REC_BIGONE)
+		{
+		  if (sort_retrieve_longrec (thread_p, &record, &long_record) == NULL)
+		    {
+		      ASSERT_ERROR ();
+		      error = er_errid ();
+		      goto bailout;
+		    }
+		}
+	      /* write data by put_fn */
+	      if (record.type == REC_BIGONE)
+		{
+		  error = (*sort_param->put_fn) (thread_p, &long_record, sort_param->put_arg);
+		  if (error != NO_ERROR)
+		    {
+		      goto bailout;
+		    }
+		}
+	      else
+		{
+		  sort_rec = (SORT_REC *) (record.data);
+		  /* cut-off link used in Internal Sort */
+		  sort_rec->next = NULL;
+		  error = (*sort_param->put_fn) (thread_p, &record, sort_param->put_arg);
+		  if (error != NO_ERROR)
+		    {
+		      goto bailout;
+		    }
+		}
+	    }
+
+	  /* Switch to the next page */
+	  cur_pgptr += DB_PAGESIZE;
+
+	  cur_read_pages--;
+	  current_pages++;
+	}
+      tot_pages -= read_pages;
+    }
+
+bailout:
+  return error;
 }
 
 /*
@@ -3720,6 +3242,12 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   else
     {
       out_half = 0;
+    }
+
+  /* for one temporary file, put result from the temp file instead of merging it. */
+  if (!IS_PARALLEL_EXECUTION (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
+    {
+      sort_put_result_from_tmpfile (thread_p, sort_param);
     }
 
   /* OUTER LOOP */
@@ -4023,6 +3551,12 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  /* Initialize the size of next run to zero */
 	  out_runsize = 0;
 
+	  /* In parallel sort, put_fn will be performed by the parent thread. save last file index. */
+	  if (very_last_run && IS_PARALLEL_EXECUTION (sort_param))
+	    {
+	      sort_param->px_result_file_idx = cur_outfile;
+	    }
+
 	  for (;;)
 	    {
 	      /* OUTPUT A RECORD */
@@ -4030,7 +3564,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      /* FIND MINIMUM RECORD IN THE INPUT AREA */
 	      min = min_p->rec_pos;
 
-	      if (very_last_run)
+	      if (very_last_run && !IS_PARALLEL_EXECUTION (sort_param))
 		{
 		  /* OUTPUT THE RECORD */
 		  /* Obtain the output record for this temporary record */
@@ -4299,7 +3833,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		}
 	    }
 
-	  if (!very_last_run)
+	  if (!(very_last_run && !IS_PARALLEL_EXECUTION (sort_param)))
 	    {
 	      /* Flush whatever is left on the output section */
 
@@ -4443,12 +3977,6 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  db_private_free_and_init (thread_p, sort_param->file_contents[k].num_pages);
 	}
     }
-
-  if (sort_param->px_array)
-    {
-      free_and_init (sort_param->px_array);
-    }
-  sort_param->px_height_max = sort_param->px_array_size = 0;
 
 #if defined(SERVER_MODE)
   rv = pthread_mutex_destroy (&(sort_param->px_mtx));
