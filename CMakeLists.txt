@@ -415,7 +415,7 @@ set(COMPAT_DIR               ${CMAKE_SOURCE_DIR}/src/compat)
 set(CONNECTION_DIR           ${CMAKE_SOURCE_DIR}/src/connection)
 set(EXECUTABLES_DIR          ${CMAKE_SOURCE_DIR}/src/executables)
 set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
-set(JSP_DIR                  ${CMAKE_SOURCE_DIR}/src/jsp)
+set(SP_DIR                   ${CMAKE_SOURCE_DIR}/src/sp)
 set(LOADDB_DIR               ${CMAKE_SOURCE_DIR}/src/loaddb)
 set(METHOD_DIR               ${CMAKE_SOURCE_DIR}/src/method)
 set(MONITOR_DIR              ${CMAKE_SOURCE_DIR}/src/monitor)
@@ -445,7 +445,7 @@ include_directories(
   src/connection
   src/executables
   src/heaplayers
-  src/jsp
+  src/sp
   src/loaddb
   src/method
   src/monitor
