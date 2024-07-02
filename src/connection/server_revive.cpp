@@ -135,7 +135,8 @@ MASTER_MONITOR_LIST::remove_server_entry (SERVER_ENTRY * sentry)
 {
   auto it = std::find_if (server_entry_list.begin (), server_entry_list.end (),
 			  [sentry] (SERVER_ENTRY * entry) {
-			  return entry->conn->fd == sentry->conn->fd;}
+			  return entry->conn->fd == sentry->conn->fd;
+			  }
   );
   if (it != server_entry_list.end ())
     {
