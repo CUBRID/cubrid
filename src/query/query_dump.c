@@ -3296,7 +3296,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   if (xasl_p->sub_xasl_id && xasl_p->sub_cache_ref_count > 0)
     {
-      fprintf (fp, "%*cRESULT CACHE (reference count : %d)\n", indent, ' ', xasl_p->sub_cache_ref_count);
+      fprintf (fp, "%*cRESULT CACHE (reference count: %d)\n", indent, ' ', xasl_p->sub_cache_ref_count);
     }
   else
     {
