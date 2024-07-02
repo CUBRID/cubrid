@@ -25,8 +25,8 @@
 #include <thread>
 
 static
-  std::thread
-  master_monitoring_thread;
+std::thread
+master_monitoring_thread;
 static void
 proc_make_arg (char **arg, char *args);
 static void
@@ -44,7 +44,7 @@ proc_make_arg (char **arg, char *args)
 {
   char *
   tok, *
-    save;
+  save;
 
   tok = strtok_r (args, " \t\n", &save);
 
@@ -57,7 +57,7 @@ proc_make_arg (char **arg, char *args)
   return;
 }
 
-SERVER_ENTRY::SERVER_ENTRY (int pid, const char *server_name, const char *exec_path, char *args, CSS_CONN_ENTRY * conn)
+SERVER_ENTRY::SERVER_ENTRY (int pid, const char *server_name, const char *exec_path, char *args, CSS_CONN_ENTRY *conn)
 {
   char *argv[HB_MAX_NUM_PROC_ARGV] = { NULL, };
 
@@ -105,7 +105,7 @@ MASTER_MONITOR_LIST::MASTER_MONITOR_LIST ()
 
 MASTER_MONITOR_LIST::~MASTER_MONITOR_LIST ()
 {
-for (SERVER_ENTRY * sentry:server_entry_list)
+  for (SERVER_ENTRY *sentry:server_entry_list)
     {
       delete sentry;
     }
@@ -120,7 +120,7 @@ for (SERVER_ENTRY * sentry:server_entry_list)
  *   sentry(in): server_entry which wants to insert in master_monitoring_list.
  */
 void
-MASTER_MONITOR_LIST::push_server_entry (SERVER_ENTRY * sentry)
+MASTER_MONITOR_LIST::push_server_entry (SERVER_ENTRY *sentry)
 {
   server_entry_list.push_back (sentry);
 }
@@ -131,13 +131,14 @@ MASTER_MONITOR_LIST::push_server_entry (SERVER_ENTRY * sentry)
  *   sentry(in): server_entry which wants to remove from master_monitoring_list.
  */
 void
-MASTER_MONITOR_LIST::remove_server_entry (SERVER_ENTRY * sentry)
+MASTER_MONITOR_LIST::remove_server_entry (SERVER_ENTRY *sentry)
 {
   auto it = std::find_if (server_entry_list.begin (), server_entry_list.end (),
-			  [sentry] (SERVER_ENTRY * entry) {
-			  return entry->conn->fd == sentry->conn->fd;
-			  }
-  );
+			  [sentry] (SERVER_ENTRY * entry)
+  {
+    return entry->conn->fd == sentry->conn->fd;
+  }
+			 );
   if (it != server_entry_list.end ())
     {
       // Free the memory of the found entry
@@ -154,9 +155,9 @@ MASTER_MONITOR_LIST::remove_server_entry (SERVER_ENTRY * sentry)
  *   conn(in): socket that corresoponds to server_entry that want to find.
  */
 SERVER_ENTRY *
-MASTER_MONITOR_LIST::get_server_entry_by_conn (CSS_CONN_ENTRY * conn)
+MASTER_MONITOR_LIST::get_server_entry_by_conn (CSS_CONN_ENTRY *conn)
 {
-for (SERVER_ENTRY * sentry:server_entry_list)
+  for (SERVER_ENTRY *sentry:server_entry_list)
     {
       if (sentry->conn->fd == conn->fd)
 	{
@@ -172,7 +173,7 @@ for (SERVER_ENTRY * sentry:server_entry_list)
  *   sentry(in): server_entry which wants to revive the server.
  */
 void
-MASTER_MONITOR_LIST::revive_server (SERVER_ENTRY * sentry)
+MASTER_MONITOR_LIST::revive_server (SERVER_ENTRY *sentry)
 {
   // Revive routine for master monitoring thread. (TOBE)
   return;

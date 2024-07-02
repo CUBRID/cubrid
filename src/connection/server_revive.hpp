@@ -36,41 +36,41 @@ extern "C"
 {
 #endif
 
-  extern void create_monitor_thread ();
-  extern void finalize_monitor_thread ();
+extern void create_monitor_thread ();
+extern void finalize_monitor_thread ();
 
-  struct SERVER_ENTRY
-  {
-    int pid;
-    char *server_name;
-    char *exec_path;
-    char **argv;
-    CSS_CONN_ENTRY *conn;
-    timeval last_revive_time;
-    bool need_revive;
+struct SERVER_ENTRY
+{
+  int pid;
+  char *server_name;
+  char *exec_path;
+  char **argv;
+  CSS_CONN_ENTRY *conn;
+  timeval last_revive_time;
+  bool need_revive;
 
-      SERVER_ENTRY (int pid, const char *server_name, const char *exec_path, char *args, CSS_CONN_ENTRY * conn);
-     ~SERVER_ENTRY ();
-  };
+  SERVER_ENTRY (int pid, const char *server_name, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
+  ~SERVER_ENTRY ();
+};
 
-  class MASTER_MONITOR_LIST
-  {
+class MASTER_MONITOR_LIST
+{
   public:
 
     MASTER_MONITOR_LIST ();
     ~MASTER_MONITOR_LIST ();
 
-    void push_server_entry (SERVER_ENTRY * sentry);
-    void remove_server_entry (SERVER_ENTRY * sentry);
-    SERVER_ENTRY *get_server_entry_by_conn (CSS_CONN_ENTRY * conn);
-    void revive_server (SERVER_ENTRY * sentry);
+    void push_server_entry (SERVER_ENTRY *sentry);
+    void remove_server_entry (SERVER_ENTRY *sentry);
+    SERVER_ENTRY *get_server_entry_by_conn (CSS_CONN_ENTRY *conn);
+    void revive_server (SERVER_ENTRY *sentry);
 
   private:
 
-      std::vector < SERVER_ENTRY * >server_entry_list;
+    std::vector < SERVER_ENTRY * >server_entry_list;
     int unacceptable_proc_restart_timediff;
     int max_process_start_confirm;
-  };
+};
 
 #ifdef __cplusplus
 }
