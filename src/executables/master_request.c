@@ -745,7 +745,6 @@ css_process_shutdown (char *time_buffer)
     }
   MASTER_ER_SET (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_MINFO_MESSAGE, 1, buffer);
   finalize_monitor_thread ();
-  printf ("Master monitoring thread is successfuly finalized.\n");
 }
 
 /*

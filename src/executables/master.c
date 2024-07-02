@@ -1232,14 +1232,12 @@ main (int argc, char **argv)
   css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1], READ_WRITE, 0,
 				   &css_Master_socket_anchor);
   create_monitor_thread ();
-  printf ("Master monitoring thread is successfuly created.\n");
   css_master_loop ();
   css_master_cleanup (SIGINT);
   css_master_error (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_EXITING));
 
 cleanup:
   finalize_monitor_thread ();
-  printf ("Master monitoring thread is successfuly finalized.\n");
 #if defined(WINDOWS)
   /* make sure Winsock is properly closed */
   css_windows_shutdown ();
