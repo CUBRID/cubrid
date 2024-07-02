@@ -594,6 +594,9 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
   bitset_init (&term_segs_set, env);
 
+  /**
+   * STEP 1: Make XASL for the hash join procedure.
+   */
   xasl = ptqo_to_hash_join_proc (parser, outer_xasl, inner_xasl);
   if (xasl == NULL)
     {
@@ -603,10 +606,25 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   hashjoin_proc = &(xasl->proc.hashjoin);
 
   merge_info = &(hashjoin_proc->merge_info);
+
+  /**
+   * STEP 2: Set the necessary information in QFILE_LIST_MERGE_INFO.
+   */
+
+  /**
+   * STEP 2-1: Set the join type.
+   */
   merge_info->join_type = plan->plan_un.join.join_type;
+
+  /**
+   * STEP 2-2: Set the number of columns used in the join predicate.
+   */
   merge_info->ls_column_cnt = bitset_cardinality (&(plan->plan_un.join.join_terms));
   assert (merge_info->ls_column_cnt > 0);
 
+  /**
+   * STEP 2-3: Set the positions of the outer and inner columns used in the join predicate.
+   */
   merge_info->ls_outer_column = (int *) pt_alloc_packing_buf (merge_info->ls_column_cnt * sizeof (int));
   if (merge_info->ls_outer_column == NULL)
     {
@@ -734,8 +752,14 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
   assert (value_index == merge_info->ls_column_cnt);
 
+  /**
+   * STEP 2-4: Set the number of columns for the merged tuple.
+   */
   merge_info->ls_pos_cnt = outer_info->name_count + inner_info->name_count;
 
+  /**
+   * STEP 2-5: Set the positions of the outer and inner columns for the merged tuple.
+   */
   merge_info->ls_outer_inner_list = (int *) pt_alloc_packing_buf (merge_info->ls_pos_cnt * sizeof (int));
   if (merge_info->ls_outer_inner_list == NULL)
     {
@@ -767,7 +791,10 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       merge_info->ls_pos_list[outer_info->name_count + pos_index] = inner_info->expr_count + pos_index;
     }
 
-  /* make outer_spec_list, outer_val_list, inner_spec_list, and inner_val_list */
+  /**
+   * STEP 3: If the join type is outer join, make XASL for the list scan procedure of the outer and inner.
+   *         If there are join predicates, add them in the XASL for the hash join procedure.
+   */
   if (merge_info->join_type == JOIN_INNER)
     {
       hashjoin_proc->outer.spec_list = NULL;
@@ -2949,11 +2976,17 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 	}
     }
 
+  /**
+   * STEP 10: Make XASL for the list scan procedure of the hash-joined result.
+   */
   xasl = init_list_scan_proc (env, xasl, hashjoin_xasl, plan_seg_list, pred_set, plan_seg_pos_list);
   xasl = add_scan_proc (env, xasl, inner_scans);
   xasl = add_fetch_proc (env, xasl, fetches);
   xasl = add_subqueries (env, xasl, subqueries);
 
+  /**
+   * STEP 11: Check if the XASL for the hash join procedure is valid.
+   */
   xasl = check_hash_join_xasl (env, xasl);
   assert (xasl != NULL);
 

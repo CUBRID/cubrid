@@ -282,41 +282,46 @@ exit_on_error:
 void
 qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_count)
 {
+  int i;
+
   if (key == NULL)
     {
       return;
     }
 
-  if (key->free_values)
+  if (key->values != NULL)
     {
-      if (key->values != NULL)
+      if (key->free_values)
 	{
-	  for (int i = 0; i < val_count; i++)
+	  for (i = 0; i < val_count; i++)
 	    {
 	      if (key->values[i] != NULL)
 		{
 		  pr_free_value (key->values[i]);
 		}
 	    }
-
-	  /* free values array */
-	  db_private_free (thread_p, key->values);
 	}
 
-      /* TODO: It is only used in hash joins. */
-      if (key->tuples != NULL)
+      /* free values array */
+      db_private_free (thread_p, key->values);
+    }
+
+  /* TODO: It is only used in hash joins. */
+  if (key->tuples != NULL)
+    {
+      if (key->free_values)
 	{
-	  for (int i = 0; i < val_count; i++)
+	  for (i = 0; i < val_count; i++)
 	    {
 	      if (key->tuples[i] != NULL)
 		{
 		  db_private_free (thread_p, key->tuples[i]);
 		}
 	    }
-
-	  /* free values array */
-	  db_private_free (thread_p, key->tuples);
 	}
+
+      /* free values array */
+      db_private_free (thread_p, key->tuples);
     }
 
   /* free structure */
