@@ -45,6 +45,7 @@
 #include "server_interface.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
+#include "optimizer.h"
 #include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
@@ -2723,6 +2724,16 @@ db_set_system_parameters (const char *data)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "db_set_system_parameters");
       error = ER_AU_DBA_ONLY;
       goto cleanup;
+    }
+  /* check value of optimization_level */
+  if (rc == PRM_ERR_NO_ERROR && assignments->prm_id == PRM_ID_OPTIMIZATION_LEVEL)
+    {
+      int level = assignments->value.i;
+
+      if (!(CHECK_VALID_EXECUTION (level) && CHECK_VALID_PLAN (level)))
+	{
+	  rc = PRM_ERR_BAD_VALUE;
+	}
     }
   if (rc == PRM_ERR_NOT_FOR_CLIENT || rc == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
     {

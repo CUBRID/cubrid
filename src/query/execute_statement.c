@@ -5090,7 +5090,16 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
   switch (statement->info.set_opt_lvl.option)
     {
     case PT_OPT_LVL:
-      qo_set_optimization_param (NULL, QO_PARAM_LEVEL, (int) db_get_int (&val1));
+      {
+	int level = db_get_int (&val1);
+	if (!(CHECK_VALID_EXECUTION (level) && CHECK_VALID_PLAN (level)))
+	  {
+	    pr_clear_value (&val1);
+	    er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__, ER_OBJ_INVALID_ARGUMENTS, 0);
+	    return ER_OBJ_INVALID_ARGUMENTS;
+	  }
+	qo_set_optimization_param (NULL, QO_PARAM_LEVEL, (int) db_get_int (&val1));
+      }
       break;
     case PT_OPT_COST:
       plan = db_get_string (&val1);
