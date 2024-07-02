@@ -56,7 +56,7 @@ public class DateTimeParser {
     public static final LocalDateTime minDatetimeLocal = LocalDateTime.of(1, 1, 1, 0, 0, 0, 0);
     // max datetime: 9999-12-31 23:59:59.999
     public static final LocalDateTime maxDatetimeLocal =
-            LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999);
+            LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999000000);
 
     private static final ZoneOffset TIMEZONE_0 = ZoneOffset.of("Z");
     // TODO: update the following value along with the server
