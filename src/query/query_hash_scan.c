@@ -493,11 +493,11 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
   HASH_SCAN_VALUE *data_p;
   HASH_METHOD hash_list_scan_type;
   QFILE_TUPLE_VALUE_TYPE_LIST *type_list_p;
+  DB_VALUE dbval;
+  PR_TYPE *pr_type_p;
+  int i;
   char *tuple_p;
   OR_BUF buf;
-  PR_TYPE *pr_type_p;
-  DB_VALUE dbval;
-  int i;
 
   if (data == NULL || type_list == NULL || args == NULL)
     {
@@ -543,7 +543,11 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
 	      pr_type_p->data_readval (&buf, &dbval, type_list_p->domp[i], -1, false /* Don't copy */ , NULL, 0);
 
 	      db_fprint_value (fp, &dbval);
-	      pr_clear_value (&dbval);
+
+	      if (db_value_need_clear (&dbval))
+		{
+		  pr_clear_value (&dbval);
+		}
 	    }
 	  else
 	    {

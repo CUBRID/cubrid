@@ -2261,7 +2261,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       return NULL;
     }
 
-  /* Prevent faults when `qdump_print_xasl` is called. */
+  /* Prevent faults when qdump_print_xasl is called. */
   xasl->n_oid_list = 0;
 
   ptr = or_unpack_int (ptr, &tmp);

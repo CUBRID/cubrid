@@ -7180,7 +7180,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 	  }
       }
 
-    /* TODO: There is a need to analyze why `outer_list_id->query_id`. */
+    /* TODO: There is a need to analyze why outer_list_id->query_id. */
     list_id = qfile_open_list (thread_p, &type_list, NULL, outer_list_id->query_id, ls_flag, NULL);
     if (list_id == NULL)
       {
@@ -7296,7 +7296,7 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   assert (build_list_id != NULL);
   assert (probe_list_id != NULL);
 
-  /* Prevent faults when `qfile_close_scan` is called */
+  /* Prevent faults when qfile_close_scan is called */
   build_list_scan_id.status = S_CLOSED;
   probe_list_scan_id.status = S_CLOSED;
 
@@ -7444,7 +7444,7 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
   build_list_id = build_xasl->list_id;
   assert (build_list_id != NULL);
 
-  /* Prevent faults when `qfile_close_scan` is called */
+  /* Prevent faults when qfile_close_scan is called */
   build_list_scan_id.status = S_CLOSED;
 
   build_spec = hashjoin_proc->build->spec_list;
@@ -7610,7 +7610,7 @@ qexec_hash_outer_join_fill_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   outer_list_id = outer_xasl->list_id;
   assert (outer_list_id != NULL);
 
-  /* Prevent faults when `qfile_close_scan` is called */
+  /* Prevent faults when qfile_close_scan is called */
   outer_list_scan_id.status = S_CLOSED;
 
   merge_info = &(hashjoin_proc->merge_info);

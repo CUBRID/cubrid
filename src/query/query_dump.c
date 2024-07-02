@@ -346,7 +346,7 @@ qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * node_p)
   fprintf (foutput, "\n");
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  /* TODO: */
+  /* TODO: Print in more detail. */
 
   /**
    * build

@@ -2215,18 +2215,18 @@ db_value_need_clear (const DB_VALUE * value)
   type = db_value_domain_type (value);
 
   /**
-   * `TP_IS_SET_TYPE` and `DB_TYPE_VOBJ` types must be cleared even when `need_clear` is false.
+   * TP_IS_SET_TYPE and DB_TYPE_VOBJ types must be cleared even when need_clear is false.
    * 
    * 1. DB_TYPE_SET     : db_set_create_basic -> set_create_basic    -> set_create
    * 2. DB_TYPE_MULTISET: db_set_create_multi -> set_create_multi    -> set_create
    * 3. DB_TYPE_SEQUENCE: db_seq_create       -> set_create_sequence -> set_create
    * 4. DB_TYPE_VOBJ    : db_seq_create       -> set_create_sequence -> set_create
    * 
-   * Memory is allocated in `area_alloc`.
+   * Memory is allocated in area_alloc.
    *   - set_create -> setobj_create -> col_new -> area_alloc
    * 
-   * However, need_clear is set to false in `db_make_set`, `db_make_multiset`, and `db_make_sequence`.
-   * In the case of `DB_TYPE_VOBJ` type, it is altered by `db_value_alter_type` after `db_make_sequence`.
+   * However, need_clear is set to false in db_make_set, db_make_multiset, and db_make_sequence.
+   * In the case of DB_TYPE_VOBJ type, it is altered by db_value_alter_type after db_make_sequence.
    */
   if (TP_IS_SET_TYPE (type) || (type == DB_TYPE_VOBJ))
     {
@@ -2238,20 +2238,19 @@ db_value_need_clear (const DB_VALUE * value)
       return false;
     }
 
-  /* This code refers to `pr_clear_value`. */
+  /* This code refers to pr_clear_value. */
   if (db_value_is_null (value))
     {
-      /* TODO: Why are `TP_IS_BIT_TYPE` and `DB_TYPE_ENUMERATION` types being targeted? */
+      /* TODO: Why are TP_IS_BIT_TYPE and DB_TYPE_ENUMERATION types being targeted? */
       if ((TP_IS_CHAR_BIT_TYPE (type) && value->data.ch.medium.buf != NULL) || (type == DB_TYPE_ENUMERATION))
 	{
 	  /**
-	   * TODO: static variables cannot be used.
+	   * TODO: The use of static variables is not allowed.
+	   *       I think there are very few cases where db_value_is_null is true and data.ch.medium.buf is not NULL.
+	   *       So I expect the value of PRM_ID_ORACLE_STYLE_EMPTY_STRING to be checked infrequently.
 	   * 
-	   * error: initializer element is not constant
-	   *   static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
-	   * 
-	   * I think there are very few cases where `db_value_is_null` is true and `data.ch.medium.buf` is not NULL.
-	   * So I expect the value of PRM_ID_ORACLE_STYLE_EMPTY_STRING to be checked infrequently.
+	   *   error: initializer element is not constant
+	   *     static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
 	   */
 	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 	    {

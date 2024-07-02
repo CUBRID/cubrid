@@ -6429,9 +6429,9 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
   /**
    * outer
    */
-  size += (PTR_SIZE		/* Offset of `outer.xasl`.    */
-	   + PTR_SIZE		/* Offset of `outer.val_list` */
-	   + OR_INT_SIZE);	/* The count of access specs in `outer.spec_list`. */
+  size += (PTR_SIZE		/* Offset of outer.xasl. */
+	   + PTR_SIZE		/* Offset of outer.val_list */
+	   + OR_INT_SIZE);	/* The count of access specs in outer.spec_list. */
 
   for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
     {
@@ -6441,9 +6441,9 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
   /**
    * inner
    */
-  size += (PTR_SIZE		/* Offset of `inner.xasl`     */
-	   + PTR_SIZE		/* Offset of `inner.val_list` */
-	   + OR_INT_SIZE);	/* The count of access specs in `inner.spec_list`. */
+  size += (PTR_SIZE		/* Offset of inner.xasl */
+	   + PTR_SIZE		/* Offset of inner.val_list */
+	   + OR_INT_SIZE);	/* The count of access specs in inner.spec_list. */
 
   for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
     {

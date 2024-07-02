@@ -631,7 +631,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       goto exit_on_error;
     }
 
-  /* Not used, but necessary to prevent a fault when `qdump_print_list_merge_info` is called. */
+  /* Not used, but necessary to prevent a fault when qdump_print_list_merge_info is called. */
   merge_info->ls_outer_unique = (int *) pt_alloc_packing_buf (merge_info->ls_column_cnt * sizeof (int));
   if (merge_info->ls_outer_unique == NULL)
     {
@@ -644,7 +644,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       goto exit_on_error;
     }
 
-  /* Not used, but necessary to prevent a fault when `qdump_print_list_merge_info` is called. */
+  /* Not used, but necessary to prevent a fault when qdump_print_list_merge_info is called. */
   merge_info->ls_inner_unique = (int *) pt_alloc_packing_buf (merge_info->ls_column_cnt * sizeof (int));
   if (merge_info->ls_inner_unique == NULL)
     {
@@ -675,7 +675,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	   * Then we added an "extra" column for the expression to the outer_expr_list.
 	   * We want to treat that expression as the outer expression,
 	   * but we want to leave it off of the list of segments that are projected out of the merge.
-	   * Take it off, but remember it in `outer_part` so that we can fix up domain info in a little while.
+	   * Take it off, but remember it in outer_part so that we can fix up domain info in a little while.
 	   */
 	  merge_info->ls_outer_column[value_index] = outer_expr_pos;
 	  assert (outer_expr_pos < outer_info->expr_count);
@@ -793,7 +793,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
   /**
    * STEP 3: If the join type is outer join, make XASL for the list scan procedure of the outer and inner.
-   *         If there are join predicates, add them in the XASL for the hash join procedure.
+   *         If there are during join predicates, add them in the XASL for the hash join procedure.
    */
   if (merge_info->join_type == JOIN_INNER)
     {
@@ -875,6 +875,11 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       xasl->spec_list = NULL;
       xasl->val_list = NULL;
 
+      /**
+       * TODO: XASL_NODE has ordbynum_pred, after_join_pred, if_pred, and instnum_pred as pointers to PRED_EXPR.
+       *       There is no pointer to PRED_EXPR for during_join_pred.
+       *       In case of nested loop join, during_join_pred is used as sarged_terms of inner.
+       */
       during_join_pred = make_pred_from_bitset (env, &(plan->plan_un.join.during_join_terms), is_always_true);
       if (during_join_pred != NULL)
 	{

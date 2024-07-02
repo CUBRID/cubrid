@@ -495,7 +495,7 @@ qo_plan_malloc (QO_ENV * env)
 	}
 
 #if !defined(NDEBUG)
-      /* Prevent faults when `qo_plan_fprint` or `qo_plan_lite_print` is called. */
+      /* Prevent faults when qo_plan_fprint or qo_plan_lite_print is called. */
       plan->vtbl = NULL;
 #endif
     }
@@ -7636,7 +7636,7 @@ planner_nodeset_join_cost (QO_PLANNER * planner, BITSET * nodeset)
       /* apply join cost; add to the total cost */
       total_cost += pages;
 
-      /* TO DO - Consider the priority of hints */
+      /* TODO: Consider the priority of hints */
       if (QO_NODE_HINT (node) & (PT_HINT_USE_IDX | PT_HINT_USE_NL))
 	{
 	  /* join hint: force idx-join, nl-join */
