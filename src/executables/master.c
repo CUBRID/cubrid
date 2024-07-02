@@ -1245,7 +1245,7 @@ cleanup:
   msgcat_final ();
 
   er_final (ER_ALL_FINAL);
-  
+
   return status;
 }
 
