@@ -100,7 +100,6 @@ MASTER_MONITOR_LIST::MASTER_MONITOR_LIST ()
   //need to change to Non-ha parameters (make new parameter)
   unacceptable_proc_restart_timediff = prm_get_integer_value (PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS);
   max_process_start_confirm = prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_START_CONFIRM);
-  PRINT_AND_LOG_ERR_MSG ("Master monitoring list is successfuly constructed.\n");
 }
 
 MASTER_MONITOR_LIST::~MASTER_MONITOR_LIST ()
@@ -109,8 +108,6 @@ MASTER_MONITOR_LIST::~MASTER_MONITOR_LIST ()
     {
       delete sentry;
     }
-  server_entry_list.clear ();
-  PRINT_AND_LOG_ERR_MSG ("Master monitoring list is successfuly destucted.\n");
 }
 
 
