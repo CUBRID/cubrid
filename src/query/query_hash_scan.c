@@ -259,9 +259,9 @@ qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals
 	  key->tuples[i]->tpl = NULL;
 	  key->tuples[i]->size = 0;
 	}
-    }
 
-  assert (i == val_cnt);
+      assert (i == val_cnt);
+    }
 
   key->val_count = val_cnt;
   key->free_values = alloc_vals;
