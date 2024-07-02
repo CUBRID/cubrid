@@ -135,16 +135,15 @@ class EXPORT_IMPORT authenticate_context
 
     authenticate_cache caches;
 
-    bool is_started;
-
     // ================================================================
     // public member functions
     // ================================================================
 
-    authenticate_context (void); // au_init ()
-    ~authenticate_context (); // au_final ()
+    authenticate_context (void);
+    ~authenticate_context ();
 
-    void reset (void);
+    void init_ctx (void); // au_init ()
+    void final_ctx (void); // au_final ()
 
     int install (void); // au_install ()
     int start (void); // au_start ()
@@ -173,6 +172,8 @@ class EXPORT_IMPORT authenticate_context
 
   private:
     int perform_login (const char *name, const char *password, bool ignore_dba_privilege);
+
+    void reset (void);
 };
 
 #endif // _AUTHENTICATE_CONTEXT_HPP_

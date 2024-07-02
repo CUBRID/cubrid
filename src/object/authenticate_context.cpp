@@ -68,11 +68,23 @@ authenticate_context::reset (void)
 authenticate_context::authenticate_context (void) // au_init ()
   : caches {}
 {
-  reset ();
-  is_started = false;
+  init_ctx ();
 }
 
 authenticate_context::~authenticate_context ()
+{
+  final_ctx ();
+}
+
+void
+authenticate_context::init_ctx (void)
+{
+  reset ();
+  caches.init ();
+}
+
+void
+authenticate_context::final_ctx (void)
 {
   reset ();
 
@@ -95,10 +107,6 @@ int
 authenticate_context::start (void)
 {
   int error = NO_ERROR;
-  if (is_started == true)
-    {
-      return error;
-    }
 
   MOPLIST mops;
   MOP class_mop;
@@ -192,7 +200,7 @@ authenticate_context::start (void)
 	   */
 	  if (strlen (user_name) == 0)
 	    {
-	      strcpy (user_name, "PUBLIC");
+	      strcpy (user_name, AU_PUBLIC_USER_NAME);
 	    }
 
 	  error = perform_login (user_name, user_password_sha2_512, false);
@@ -201,11 +209,6 @@ authenticate_context::start (void)
 
   /* make sure this is off */
   disable_auth_check = false;
-
-  if (error == NO_ERROR)
-    {
-      is_started = true;
-    }
 
   return (error);
 }
@@ -479,7 +482,7 @@ authenticate_context::install (void)
     }
 
   /* create the DBA user and assign ownership of the system classes */
-  dba_user = au_add_user ("DBA", &exists);
+  dba_user = au_add_user (AU_DBA_USER_NAME, &exists);
   if (dba_user == NULL)
     {
       goto exit_on_error;
@@ -502,7 +505,7 @@ authenticate_context::install (void)
   au_change_owner (auth_cls, current_user);
 
   /* create the PUBLIC user */
-  public_user = au_add_user ("PUBLIC", &exists);
+  public_user = au_add_user (AU_PUBLIC_USER_NAME, &exists);
   if (public_user == NULL)
     {
       goto exit_on_error;
@@ -521,11 +524,6 @@ authenticate_context::install (void)
   au_add_method_check_authorization ();
 
   AU_ENABLE (save);
-
-  this->authorizations_class = root_cls;
-  this->authorization_class = auth_cls;
-  this->user_class = user_cls;
-  this->password_class = pass_cls;
 
   return NO_ERROR;
 
@@ -696,7 +694,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 
 	      if (error == NO_ERROR)
 		{
-		  error = AU_SET_USER (user);
+		  error = set_user (user);
 
 		  /* necessary to invalidate vclass cache */
 		  sm_bump_local_schema_version ();

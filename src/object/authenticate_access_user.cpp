@@ -608,7 +608,7 @@ au_add_user (const char *name, int *exists)
 		       */
 		      if (au_add_member_internal (Au_public_user, user, 1) != NO_ERROR)
 			{
-			  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_AU_CANT_ADD_MEMBER, 2, name, "PUBLIC");
+			  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_AU_CANT_ADD_MEMBER, 2, name, AU_PUBLIC_USER_NAME);
 			}
 		    }
 
