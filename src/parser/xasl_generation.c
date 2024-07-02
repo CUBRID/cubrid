@@ -25594,6 +25594,14 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
       goto cleanup;
     }
 
+  /* for subquery cache */
+  if (aptr_statement->xasl_id)
+    {
+      xasl->sub_xasl_id = aptr_statement->xasl_id;
+      xasl->sub_host_var_count = aptr_statement->sub_host_var_count;
+      xasl->sub_host_var_index = aptr_statement->sub_host_var_index;
+    }
+
   /* flush all classes */
   p = from;
   while (p != NULL)
@@ -26087,6 +26095,14 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
       goto cleanup;
+    }
+
+  /* for subquery cache */
+  if (aptr_statement->xasl_id)
+    {
+      xasl->sub_xasl_id = aptr_statement->xasl_id;
+      xasl->sub_host_var_count = aptr_statement->sub_host_var_count;
+      xasl->sub_host_var_index = aptr_statement->sub_host_var_index;
     }
 
   insert = &xasl->proc.insert;

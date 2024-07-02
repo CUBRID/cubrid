@@ -3584,8 +3584,6 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_prepare_update (parser, statement);
       break;
     case PT_MERGE:
-      err = do_prepare_merge (parser, statement);
-      break;
     case PT_SELECT:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
@@ -3594,7 +3592,14 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_check_subquery_cache (parser, statement);
       if (err == NO_ERROR)
 	{
-	  err = do_prepare_select (parser, statement);
+	  if (statement->node_type == PT_MERGE)
+	    {
+	      err = do_prepare_merge (parser, statement);
+	    }
+	  else
+	    {
+	      err = do_prepare_select (parser, statement);
+	    }
 	}
       break;
     case PT_EXECUTE_PREPARE:
