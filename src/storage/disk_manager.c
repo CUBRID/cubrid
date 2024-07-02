@@ -221,7 +221,7 @@ static DKNSECTS disk_Temp_max_sects = -2;
 typedef UINT64 DISK_STAB_UNIT;
 #define DISK_STAB_UNIT_SIZE_OF sizeof (DISK_STAB_UNIT)
 
-#define DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE (offsetof(DISK_VOLUME_HEADER, var_fields))
+#define DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE (int) (offsetof(DISK_VOLUME_HEADER, var_fields))
 /*
  * Previously, when a user entered excessively long remarks, the remarks would be trimmed to avoid exceeding the page size. 
  * This trimming could occur at unwanted positions, potentially removing important content. 
@@ -230,7 +230,7 @@ typedef UINT64 DISK_STAB_UNIT;
  * 
  * DISK_VOLUME_HEADER = fixed fields + variable fields
  * variable fields = volume fullname + next volume fullname + remarks
- * volume fullname & next volume fullname max length = DB_MAX_PATH_LENGTH (include null charactor)
+ * volume fullname & next volume fullname max length = DB_MAX_PATH_LENGTH (include null character)
  *
  * TODO : The current maximum size for volume fullname is 4K.
  * This will cause bugs if PAGESIZE is set to 4K or 8K.
@@ -238,8 +238,7 @@ typedef UINT64 DISK_STAB_UNIT;
  * Setting the volume fullname size to 2K for an 8K PAGESIZE and 1K for a 4K PAGESIZE should work without bugs.
  * This issue will be created and handled in a separate issue.
  */
-#define DISK_VOLUME_HEADER_REMARKS_MAX_SIZE (DB_PAGESIZE - (DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE + DB_MAX_PATH_LENGTH + DB_MAX_PATH_LENGTH))
-
+#define DISK_VOLUME_HEADER_REMARKS_MAX_SIZE (int) (DB_PAGESIZE - (DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE + DB_MAX_PATH_LENGTH + DB_MAX_PATH_LENGTH))
 
 /* Disk allocation table cursor. Used to iterate through table bits. */
 typedef struct disk_stab_cursor DISK_STAB_CURSOR;
@@ -547,14 +546,22 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   DKNPAGES extend_npages = DISK_SECTS_NPAGES (ext_info->nsect_total);
   INT16 prev_volid;
   const int vol_fullname_size = strlen (vol_fullname) + 1;
-  const int remarks_size = strlen (remarks) + 1;
   int error_code = NO_ERROR;
 
   assert ((int) sizeof (DISK_VOLUME_HEADER) <= DB_PAGESIZE);
 
   addr.vfid = NULL;
 
-  // The condition will be modified when the TODO is addressed.
+  if ( remarks != NULL )
+  {
+    const int remarks_size = strlen (remarks) + 1;
+  }
+  else
+  {
+    const int remarks_size = 1;
+  }
+
+  // The second condition will be modified when the TODO(235 line, var_fields max size issue by page size) is addressed.
   if (vol_fullname_size > DB_MAX_PATH_LENGTH
       || (DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE + vol_fullname_size) > DB_PAGESIZE)
     {
@@ -1024,7 +1031,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
       return error_code;
     }
 
-  // The condition will be modified when the TODO is addressed.
+  // The second condition will be modified when the TODO(235 line, var_fields max size issue by page size) is addressed.
   if ((next_vol_fullname_size > DB_MAX_PATH_LENGTH) ||
       (DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE + next_vol_fullname_size > DB_PAGESIZE))
     {

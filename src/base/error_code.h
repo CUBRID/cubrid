@@ -1739,7 +1739,7 @@
 #define ER_SP_SERVER_CRASHED                        -1359
 #define ER_SP_COMPILE_ERROR                         -1360
 
-#define ER_DISK_REMARKS_LENGTH_IS_TOO_LONG             -1361
+#define ER_DISK_REMARKS_LENGTH_IS_TOO_LONG          -1361
 
 #define ER_LAST_ERROR                               -1362
 
