@@ -84,25 +84,6 @@ extern bool catcls_Enable;
  */
 static authenticate_context *au_ctx_obj = nullptr;
 
-void
-au_init (void)
-{
-  if (au_ctx_obj == nullptr)
-    {
-      au_ctx_obj = new authenticate_context ();
-    }
-}
-
-void
-au_final (void)
-{
-  if (au_ctx_obj != nullptr)
-    {
-      delete au_ctx_obj;
-      au_ctx_obj = nullptr;
-    }
-}
-
 int
 au_login (const char *name, const char *password, bool ignore_dba_privilege)
 {
@@ -112,7 +93,10 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
 authenticate_context *
 au_ctx (void)
 {
-  au_init ();
+  if (au_ctx_obj == nullptr)
+    {
+      au_ctx_obj = new authenticate_context ();
+    }
   return au_ctx_obj;
 }
 

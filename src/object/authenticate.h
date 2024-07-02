@@ -75,6 +75,8 @@ class print_output;
 #define Au_cache                        au_ctx ()->caches
 
 /* Functions */
+#define au_init                         au_ctx ()->init_ctx
+#define au_final                        au_ctx ()->final_ctx
 #define au_install                      au_ctx ()->install
 #define au_start                        au_ctx ()->start
 
@@ -131,8 +133,6 @@ class print_output;
 
 extern EXPORT_IMPORT authenticate_context *au_ctx (void);
 
-extern void au_init (void);
-extern void au_final (void);
 extern int au_login (const char *name, const char *password, bool ignore_dba_privilege);
 
 /*
