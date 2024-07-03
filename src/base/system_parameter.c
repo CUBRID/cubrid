@@ -8046,9 +8046,9 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
       /* get parameter name and value */
       err = (SYSPRM_ERR) prm_get_next_param_value (&p, &name, &value);
       if (err != PRM_ERR_NO_ERROR || name == NULL || value == NULL)
-        {
-          break;
-        }
+	{
+	  break;
+	}
 
       prm = prm_find (name, NULL);
       if (prm == NULL)
