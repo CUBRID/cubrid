@@ -125,8 +125,6 @@ static int drop_stored_procedure_code (const char *name);
 static int jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node_list, method_sig_list &sig_list);
 static int *jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list);
 
-static std::string get_class_name (const std::string &target);
-
 extern bool ssl_client;
 
 /*
@@ -822,7 +820,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       std::stringstream stm;
       stm << std::put_time (localtime (&converted_timep), "%Y%m%d%H%M%S");
 
-      code_info.name = get_class_name (sp_info.target);
+      code_info.name = jsp_get_class_name_of_target (sp_info.target);
       code_info.created_time = stm.str ();
       code_info.stype = (sp_info.lang == SP_LANG_PLCSQL) ? SPSC_PLCSQL : SPSC_JAVA;
       code_info.scode = pl_code;
@@ -1147,7 +1145,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	}
 
       target = db_get_string (&target_val);
-      class_name = get_class_name (std::string (target));
+      class_name = jsp_get_class_name_of_target (std::string (target));
 
       err = drop_stored_procedure_code (class_name.c_str ());
       if (err != NO_ERROR)
@@ -1317,7 +1315,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
   int error = NO_ERROR;
   int save;
   DB_VALUE method, auth, param_cnt_val, mode, arg_type, optional_val, default_val, temp, lang_val, directive_val,
-	   result_type;
+	   result_type, target_val;
 
   int sig_num_args = pt_length_of_list (node->info.method_call.arg_list);
   std::vector <int> sig_arg_mode;
@@ -1328,6 +1326,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 
   int sig_result_type;
   int param_cnt = 0;
+  MOP code_mop = NULL;
 
   METHOD_SIG *sig = nullptr;
 
@@ -1339,6 +1338,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
   db_make_null (&default_val);
   db_make_null (&temp);
   db_make_null (&result_type);
+  db_make_null (&target_val);
 
   {
     char *parsed_method_name = (char *) node->info.method_call.method_name->info.name.original;
@@ -1486,6 +1486,22 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	    error = er_errid ();
 	    goto end;
 	  }
+
+	/* OID */
+	error = db_get (mop_p, SP_ATTR_TARGET, &target_val);
+	if (error != NO_ERROR)
+	  {
+	    goto end;
+	  }
+
+	const char *target_c = db_get_string (&target_val);
+	if (target_c != NULL)
+	  {
+	    std::string target (target_c);
+	    std::string cls_name = jsp_get_class_name_of_target (target);
+	    code_mop = jsp_find_stored_procedure_code (cls_name.c_str ());
+	  }
+	pr_clear_value (&target_val);
       }
     else
       {
@@ -1620,6 +1636,15 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
+
+	if (code_mop)
+	  {
+	    sig->oid  = *WS_OID (code_mop);
+	  }
+	else
+	  {
+	    sig->oid  = OID_INITIALIZER;
+	  }
       }
   }
 
@@ -1682,8 +1707,9 @@ jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list)
   return arg_list;
 }
 
-static std::string
-get_class_name (const std::string &target)
+#ifdef  __cplusplus
+std::string
+jsp_get_class_name_of_target (const std::string &target)
 {
   auto pos = target.find_last_of ('(');
   std::string name_part = target.substr (0, pos);
@@ -1691,3 +1717,4 @@ get_class_name (const std::string &target)
   pos = name_part.find_last_of ('.');
   return name_part.substr (0, pos);
 }
+#endif

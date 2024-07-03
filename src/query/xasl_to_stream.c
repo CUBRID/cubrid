@@ -5863,6 +5863,8 @@ xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = or_pack_oid (ptr, &method_sig->oid);
+
   offset = xts_save_method_arg_info (method_sig->arg_info, method_sig->num_method_args);
   if (offset == ER_FAILED)
     {
