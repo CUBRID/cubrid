@@ -2729,21 +2729,22 @@ db_set_system_parameters (const char *data)
   if (rc == PRM_ERR_NO_ERROR && assignments)
     {
       int level;
-      for (SYSPRM_ASSIGN_VALUE *ptr = assignments; ptr != NULL; ptr = ptr->next)
-        {
-           if (ptr->prm_id != PRM_ID_OPTIMIZATION_LEVEL) 
-             {
-               continue;
-	     }
+      for (SYSPRM_ASSIGN_VALUE * ptr = assignments; ptr != NULL; ptr = ptr->next)
+	{
+	  if (ptr->prm_id != PRM_ID_OPTIMIZATION_LEVEL)
+	    {
+	      continue;
+	    }
 
-           /* check value of optimization_level */
-           level = ptr->value.i;
+	  /* check value of optimization_level */
+	  level = ptr->value.i;
 
-           if (!(CHECK_VALID_EXECUTION (level) && CHECK_VALID_PLAN (level)))
-	     {
-	       rc = PRM_ERR_BAD_VALUE;
-	     }
-        }
+	  if (!(CHECK_VALID_EXECUTION (level) && CHECK_VALID_PLAN (level)))
+	    {
+	      rc = PRM_ERR_BAD_VALUE;
+	      break;
+	    }
+	}
     }
   if (rc == PRM_ERR_NOT_FOR_CLIENT || rc == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
     {
