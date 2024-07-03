@@ -1980,7 +1980,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   short i, k, lhs_location, rhs_location, level;
   PT_JOIN_TYPE join_type;
   void *save_etc = NULL;
-  DB_VALUE value;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3228,15 +3227,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        * first parameter to the on_call_target.  If there is no parameter,
        * it will be caught in pt_semantic_check_local()
        */
-      if (!node->info.method_call.on_call_target && node->info.method_call.arg_list
-	  && !jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
-	{
-	  node->info.method_call.on_call_target = node->info.method_call.arg_list;
-	  node->info.method_call.arg_list = node->info.method_call.arg_list->next;
-	  node->info.method_call.on_call_target->next = NULL;
-	}
-
-      if (!node->info.method_call.on_call_target)
+      if (!node->info.method_call.on_call_target
+	  && jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
 	{
 	  PT_NODE *method_name = node->info.method_call.method_name;
 	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) method_name;
@@ -3248,13 +3240,23 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	}
       else
 	{
-	  /*
-	   * Class methods are system tables and do not require user_schema.
-	   * Therefore, remove [schema_name.] from schema_name.method_name.
-	   * ex) CALL 'add_user()', 'drop_user()', 'find_user()'
-	   */
-	  node->info.method_call.method_name->info.name.original =
-	    sm_remove_qualifier_name (node->info.method_call.method_name->info.name.original);
+	  if (!node->info.method_call.on_call_target && node->info.method_call.arg_list)
+	    {
+	      node->info.method_call.on_call_target = node->info.method_call.arg_list;
+	      node->info.method_call.arg_list = node->info.method_call.arg_list->next;
+	      node->info.method_call.on_call_target->next = NULL;
+	    }
+
+	  if (node->info.method_call.on_call_target)
+	    {
+	      /*
+	       * Class methods are system tables and do not require user_schema.
+	       * Therefore, remove [schema_name.] from schema_name.method_name.
+	       * ex) CALL 'add_user()', 'drop_user()', 'find_user()'
+	       */
+	      node->info.method_call.method_name->info.name.original =
+		sm_remove_qualifier_name (node->info.method_call.method_name->info.name.original);
+	    }
 
 	  /* make method name look resolved */
 	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) node->info.method_call.method_name;
@@ -3296,7 +3298,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		}
 	    }
 	}
-
       break;
 
     case PT_DATA_TYPE:

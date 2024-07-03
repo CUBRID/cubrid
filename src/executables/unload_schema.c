@@ -4331,6 +4331,7 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
   int err;
   int err_count = 0;
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   AU_DISABLE (save);
 
@@ -4371,6 +4372,9 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
       const char *sp_name = db_get_string (&sp_name_val);
       sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH);
 
+      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			sizeof (output_owner));
+
       if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
 	{
 	  owner = db_get_object (&owner_val);
@@ -4397,7 +4401,7 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 	}
       else
 	{
-	  output_ctx (" %s%s%s.%s%s%s (", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (sp_name));
+	  output_ctx (" %s%s%s%s (", output_owner, PRINT_IDENTIFIER (sp_name));
 	}
 
       arg_cnt = db_get_int (&arg_cnt_val);
@@ -4444,7 +4448,7 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 
       if (ctxt.is_dba_user || ctxt.is_dba_group_member)
 	{
-	  output_ctx ("call [change_sp_owner]('%s', '%s') on class [db_root];\n", db_get_string (&unique_name_val),
+	  output_ctx ("call [change_sp_owner]('%s', '%s') on class [db_root];\n", unique_name,
 		      db_get_string (&owner_name_val));
 	}
 
