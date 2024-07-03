@@ -3115,6 +3115,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	json_object_set_new (build, "time", json_integer (TO_MSEC (hashjoin_proc->stats.build.elapsed_time)));
 	json_object_set_new (build, "build_time", json_integer (TO_MSEC (hashjoin_proc->stats.build.build_time)));
 	json_object_set_new (build, "built_type", json_string (hash_method_string));
+	json_object_set_new (build, "ncollisions", json_integer (hashjoin_proc->stats.build.ncollisions));
 	json_object_set_new (build, "fetch", json_integer (hashjoin_proc->stats.build.fetches));
 	json_object_set_new (build, "fetch_time", json_integer (hashjoin_proc->stats.build.fetch_time));
 	json_object_set_new (build, "ioread", json_integer (hashjoin_proc->stats.build.ioreads));
@@ -3494,9 +3495,10 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	indent += 2;
 
 	fprintf (fp,
-		 "%*cBUILD (time: %d, build_time: %d, build_type: %s, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		 "%*cBUILD (time: %d, build_time: %d, build_type: %s, ncollisions: %ld, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
 		 indent, ' ', TO_MSEC (hashjoin_proc->stats.build.elapsed_time),
 		 TO_MSEC (hashjoin_proc->stats.build.build_time), hash_method_string,
+		 (unsigned int) hashjoin_proc->stats.build.ncollisions,
 		 (long long int) hashjoin_proc->stats.build.fetches,
 		 (long long int) hashjoin_proc->stats.build.fetch_time,
 		 (long long int) hashjoin_proc->stats.build.ioreads);

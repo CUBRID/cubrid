@@ -3182,7 +3182,8 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   QO_PLAN *inner_plan_p, *outer_plan_p;
   double inner_cardinality, outer_cardinality;
 
-  static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+  /* TODO: Check the system parameters of the server on the client. */
+  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
   inner_plan_p = plan_p->plan_un.join.inner;
 

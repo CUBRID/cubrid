@@ -6886,7 +6886,7 @@ qexec_hash_join_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 {
   int error = NO_ERROR;
 
-  static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
   if ((thread_p == NULL) || (list_id == NULL) || (hash_scan == NULL) || (value_count <= 0))
     {
@@ -7339,6 +7339,20 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       stats->build.fetch_time +=
 	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
 		   old_fetch_time) / 1000);
+
+      switch (stats->hash_method)
+	{
+	case HASH_METH_IN_MEM:
+	case HASH_METH_HYBRID:
+	  stats->build.ncollisions = hashjoin_proc->hash_scan.memory.hash_table->ncollisions;
+	  break;
+
+	case HASH_METH_HASH_FILE:
+	default:
+	  /* TODO: */
+	  stats->build.ncollisions = 0;
+	  break;
+	}
     }
 
   if (error != NO_ERROR)
@@ -7496,6 +7510,20 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
       stats->build.fetch_time +=
 	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
 		   old_fetch_time) / 1000);
+
+      switch (stats->hash_method)
+	{
+	case HASH_METH_IN_MEM:
+	case HASH_METH_HYBRID:
+	  stats->build.ncollisions = hashjoin_proc->hash_scan.memory.hash_table->ncollisions;
+	  break;
+
+	case HASH_METH_HASH_FILE:
+	default:
+	  /* TODO: */
+	  stats->build.ncollisions = 0;
+	  break;
+	}
     }
 
   if (error != NO_ERROR)
