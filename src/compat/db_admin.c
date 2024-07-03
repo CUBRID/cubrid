@@ -2726,7 +2726,7 @@ db_set_system_parameters (const char *data)
       goto cleanup;
     }
   /* check value of optimization_level */
-  if (rc == PRM_ERR_NO_ERROR && assignments->prm_id == PRM_ID_OPTIMIZATION_LEVEL)
+  if (rc == PRM_ERR_NO_ERROR && assignments && assignments->prm_id == PRM_ID_OPTIMIZATION_LEVEL)
     {
       int level = assignments->value.i;
 
