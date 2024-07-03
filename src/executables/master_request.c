@@ -56,7 +56,6 @@
 #include "master_util.h"
 #include "master_request.h"
 #include "master_heartbeat.h"
-#include "server_revive.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -744,7 +743,6 @@ css_process_shutdown (char *time_buffer)
       css_Master_timeout->tv_sec += timeout * 60;
     }
   MASTER_ER_SET (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_MINFO_MESSAGE, 1, buffer);
-  finalize_monitor_thread ();
 }
 
 /*

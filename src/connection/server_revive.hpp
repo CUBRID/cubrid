@@ -1,5 +1,4 @@
 /*
- * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,11 +21,11 @@
  */
 
 
-
-#include <time.h>
 #include <cstring>
 #include <thread>
 #include <algorithm>
+#include <memory>
+#include <time.h>
 #include "heartbeat.h"
 #include "system_parameter.h"
 #include "connection_defs.h"
@@ -36,40 +35,70 @@ extern "C"
 {
 #endif
 
-extern void create_monitor_thread ();
-extern void finalize_monitor_thread ();
+void proc_make_arg (char **arg, char *args);
 
-struct SERVER_ENTRY
-{
-  int pid;
-  char *server_name;
-  char *exec_path;
-  char **argv;
-  CSS_CONN_ENTRY *conn;
-  timeval last_revive_time;
-  bool need_revive;
-
-  SERVER_ENTRY (int pid, const char *server_name, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
-  ~SERVER_ENTRY ();
-};
-
-class MASTER_MONITOR_LIST
+class master_monitor
 {
   public:
+    master_monitor ();
+    ~master_monitor ();
 
-    MASTER_MONITOR_LIST ();
-    ~MASTER_MONITOR_LIST ();
+    master_monitor (const master_monitor &) = delete;
+    master_monitor (master_monitor &&) = delete;
 
-    void push_server_entry (SERVER_ENTRY *sentry);
-    void remove_server_entry (SERVER_ENTRY *sentry);
-    SERVER_ENTRY *get_server_entry_by_conn (CSS_CONN_ENTRY *conn);
-    void revive_server (SERVER_ENTRY *sentry);
+    master_monitor &operator = (const master_monitor &) = delete;
+    master_monitor &operator = (master_monitor &&) = delete;
+
+    void make_and_insert_server_entry (int pid, const char *server_name, const char *exec_path, char *args,
+				       CSS_CONN_ENTRY *conn);
+    void master_monitor_worker (void);
+
+    class server_entry
+    {
+      public:
+	server_entry (int pid, const char *server_name, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
+	~server_entry ();
+
+	server_entry (const server_entry &) = delete;
+	server_entry (server_entry &&) = delete;
+
+	server_entry &operator = (const server_entry &) = delete;
+	server_entry &operator = (server_entry &&) = delete;
+
+	int pid;
+	char *server_name;
+	char *exec_path;
+	char **argv;
+	CSS_CONN_ENTRY *conn;
+	timeval last_revive_time;
+	bool need_revive;
+    };
+
+    class master_monitor_list
+    {
+      public:
+
+	master_monitor_list ();
+	~master_monitor_list () {};
+
+	master_monitor_list (const master_monitor_list &) = delete;
+	master_monitor_list (master_monitor_list &&) = delete;
+
+	master_monitor_list &operator = (const master_monitor_list &) = delete;
+	master_monitor_list &operator = (master_monitor_list &&) = delete;
+
+	std::vector <std::unique_ptr<server_entry>>server_entry_list;
+	int unacceptable_proc_restart_timediff;
+	int max_process_start_confirm;
+    };
+
+    void remove_server_entry (std::unique_ptr<server_entry> entry);
+    std::unique_ptr<server_entry> get_server_entry_by_conn (CSS_CONN_ENTRY *conn);
+    void revive_server (std::unique_ptr<server_entry> entry);
 
   private:
-
-    std::vector < SERVER_ENTRY * >server_entry_list;
-    int unacceptable_proc_restart_timediff;
-    int max_process_start_confirm;
+    std::unique_ptr<std::thread> m_monitoring_thread;
+    std::unique_ptr<master_monitor_list> m_monitor_list;
 };
 
 #ifdef __cplusplus

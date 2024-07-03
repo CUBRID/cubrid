@@ -22,6 +22,8 @@
 
 #ident "$Id$"
 
+#include <memory>
+
 #include "config.h"
 
 #include <stdio.h>
@@ -1130,7 +1132,10 @@ main (int argc, char **argv)
   int status = EXIT_SUCCESS;
   const char *msg_format;
   bool util_config_ret;
-  static MASTER_MONITOR_LIST mml;
+
+// *INDENT-OFF*
+  auto monitor = std::make_unique<master_monitor>();
+// *INDENT-ON*
 
   if (utility_initialize () != NO_ERROR)
     {
@@ -1231,13 +1236,11 @@ main (int argc, char **argv)
   conn = css_make_conn (css_Master_socket_fd[1]);
   css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1], READ_WRITE, 0,
 				   &css_Master_socket_anchor);
-  create_monitor_thread ();
   css_master_loop ();
   css_master_cleanup (SIGINT);
   css_master_error (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_EXITING));
 
 cleanup:
-  finalize_monitor_thread ();
 #if defined(WINDOWS)
   /* make sure Winsock is properly closed */
   css_windows_shutdown ();
