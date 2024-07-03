@@ -3998,7 +3998,33 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		      break;
 		    }
 
-		  (*tail)->oid = *WS_OID (mop_p);
+		  /* OID */
+		  DB_VALUE target_val;
+		  if (db_get (mop_p, SP_ATTR_TARGET, &target_val) == NO_ERROR)
+		    {
+		      const char *target_c = db_get_string (&target_val);
+		      MOP code_mop = NULL;
+		      if (target_c != NULL)
+			{
+			  std::string target (target_c);
+			  std::string cls_name = jsp_get_class_name_of_target (target);
+			  code_mop = jsp_find_stored_procedure_code (cls_name.c_str ());
+			}
+		      pr_clear_value (&target_val);
+
+		      if (code_mop)
+			{
+			  (*tail)->oid = *WS_OID (code_mop);
+			}
+		      else
+			{
+			  (*tail)->oid = OID_INITIALIZER;
+			}
+		    }
+		  else
+		    {
+		      break;
+		    }
 		}
 	      else
 		{
