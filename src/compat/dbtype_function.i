@@ -2258,6 +2258,16 @@ db_value_need_clear (const DB_VALUE * value)
 	    }
 	}
     }
+  else
+    {
+      /**
+       * If the copy_buf is reused, the need_clear flag may be false.
+       */
+      if (TP_IS_VAR_LEN_CHAR_TYPE (type) && (value->data.ch.info.compressed_need_clear == true))
+        {
+	  return true;
+	}
+    }
 
   return false;
 }
