@@ -112,7 +112,10 @@ enum METHOD_CALLBACK_RESPONSE
   METHOD_CALLBACK_GET_GLOBAL_SEMANTICS = 101,
 
   // AUTH
-  METHOD_CALLBACK_CHANGE_RIGHTS = 200
+  METHOD_CALLBACK_CHANGE_RIGHTS = 200,
+
+  // CLASS ACCESS
+  METHOD_CALLBACK_GET_CODE_ATTR = 201
 };
 
 enum METHOD_ARG_MODE
@@ -148,6 +151,7 @@ struct method_sig_node
 
   char *class_name;		/* class name for the class method */
   METHOD_ARG_INFO *arg_info;    /* argument info */
+  OID oid;                      /* instance OID */
 
   void pack (cubpacking::packer &serializator) const;
   void unpack (cubpacking::unpacker &deserializator);

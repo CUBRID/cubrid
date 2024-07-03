@@ -587,6 +587,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		{
 		  node->info.query.flag.do_cache = 1;
 		}
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	    }
 	  break;
 #if 0

@@ -372,7 +372,6 @@ struct qo_node
   /* NULL if no USING INDEX clause in the query */
 
   BITSET outer_dep_set;		/* outer join dependency; to preserve join sequence */
-  BITSET right_dep_set;		/* outer join dependency for right outer join; to preserve join sequence */
   PT_HINT_ENUM hint;		/* hint comment contained in given */
   bool sargable;		/* whether sargs are applicable to this node */
   bool sort_limit_candidate;	/* whether this node is a candidate for a SORT_LIMIT plan */
@@ -396,7 +395,6 @@ struct qo_node
 #define QO_NODE_USING_INDEX(node)       (node)->using_index
 
 #define QO_NODE_OUTER_DEP_SET(node)     (node)->outer_dep_set
-#define QO_NODE_RIGHT_DEP_SET(node)     (node)->right_dep_set
 #define QO_NODE_SARGABLE(node)          (node)->sargable
 
 #define QO_NODE_NAME(node)		(node)->class_name
@@ -425,16 +423,16 @@ struct qo_node
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER)
 
+#define QO_NODE_IS_ANSI_JOIN(node) \
+  (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_LEFT_OUTER  || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER  || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_NATURAL     || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_INNER)
+
 #define QO_ADD_OUTER_DEP_SET(tail,head) \
    bitset_union (&(QO_NODE_OUTER_DEP_SET (tail)), &(QO_NODE_OUTER_DEP_SET (head))); \
    bitset_add (&(QO_NODE_OUTER_DEP_SET (tail)), QO_NODE_IDX (head));
-
-#define QO_ADD_RIGHT_DEP_SET(tail,head) \
-   bitset_union (&(QO_NODE_RIGHT_DEP_SET (tail)), &(QO_NODE_RIGHT_DEP_SET (head))); \
-   bitset_add (&(QO_NODE_RIGHT_DEP_SET (tail)), QO_NODE_IDX (head));
-
-#define QO_ADD_RIGHT_TO_OUTER(tail,head) \
-   bitset_union (&(QO_NODE_OUTER_DEP_SET (tail)), &(QO_NODE_RIGHT_DEP_SET (head)));
 
 struct qo_segment
 {

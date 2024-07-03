@@ -30,6 +30,15 @@
  */
 package com.cubrid.jsp.code;
 
+import com.cubrid.jsp.context.Context;
+import com.cubrid.jsp.data.CUBRIDPacker;
+import com.cubrid.jsp.data.CUBRIDUnpacker;
+import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.protocol.Header;
+import com.cubrid.jsp.protocol.RequestCode;
+import com.cubrid.jsp.value.Value;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -52,33 +61,32 @@ public class ClassAccess {
         return ts;
     }
 
-    public static String getTransactionKey(Connection conn, String name) throws SQLException {
+    public static String getTransactionKey(Connection conn, String name)
+            throws IOException, TypeMismatchException {
         String ts = null;
-        String sql = "SELECT created_time FROM _db_stored_procedure_code WHERE name = ?";
-        PreparedStatement prepStmt = conn.prepareStatement(sql);
-        prepStmt.setString(1, name);
 
-        ResultSet rs = prepStmt.executeQuery();
-        if (rs.next()) {
-            ts = rs.getString(1);
+        sendGetCodeAttr("created_time");
+
+        Value val = receiveCodeAttrValue();
+        if (val != null) {
+            ts = val.toString();
         }
-        rs.close();
+
         return ts;
     }
 
-    public static byte[] getObjectCodeBytes(Connection conn, String name) throws SQLException {
+    public static byte[] getObjectCodeBytes(Connection conn, String name)
+            throws IOException, TypeMismatchException {
         byte[] jar = null;
 
-        String sql = "SELECT ocode FROM _db_stored_procedure_code WHERE name = ?";
-        PreparedStatement prepStmt = conn.prepareStatement(sql);
-        prepStmt.setString(1, name);
+        sendGetCodeAttr("ocode");
 
-        ResultSet rs = prepStmt.executeQuery();
-        if (rs.next()) {
-            String str = rs.getString(1);
-            jar = Base64.getDecoder().decode(str);
+        Value val = receiveCodeAttrValue();
+        if (val != null) {
+            String base64Str = val.toString();
+            jar = Base64.getDecoder().decode(base64Str);
         }
-        rs.close();
+
         return jar;
     }
 
@@ -89,7 +97,7 @@ public class ClassAccess {
         String tKey = null;
         try {
             tKey = getTransactionKey(conn, className);
-        } catch (SQLException e) {
+        } catch (Exception e) {
         }
 
         if (tKey == null) {
@@ -103,5 +111,31 @@ public class ClassAccess {
         }
 
         return code;
+    }
+
+    private static void sendGetCodeAttr(String attr_name) throws IOException {
+        CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+        packer.packInt(RequestCode.REQUEST_CODE_ATTR);
+        packer.packString(attr_name);
+        Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
+    }
+
+    private static Value receiveCodeAttrValue() throws IOException, TypeMismatchException {
+        ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+        CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+
+        Header header = new Header(unpacker);
+        ByteBuffer payload = unpacker.unpackBuffer();
+
+        unpacker.setBuffer(payload);
+
+        int error = unpacker.unpackInt();
+        if (error == 0) {
+            int param_type = unpacker.unpackInt();
+            Value val = unpacker.unpackValue(param_type);
+            return val;
+        }
+
+        return null;
     }
 }

@@ -201,6 +201,7 @@ enum
   OID_CACHE_DB_ROOT_CLASS_ID,
   OID_CACHE_DB_SERVER_CLASS_ID,
   OID_CACHE_SYNONYM_CLASS_ID,
+  OID_CACHE_STORED_PROC_CODE_CLASS_ID,
 
   OID_CACHE_SIZE
 };
@@ -209,6 +210,8 @@ extern const OID oid_Null_oid;
 extern OID *oid_Root_class_oid;
 extern OID *oid_Serial_class_oid;
 extern OID *oid_User_class_oid;
+extern OID *oid_Sp_code_class_oid;
+
 extern PAGEID oid_Next_tempid;
 
 extern void oid_set_root (const OID * oid);

@@ -39,6 +39,8 @@
 
 #include "log_impl.h"
 
+#include "sp_code.hpp"
+
 #if !defined (SERVER_MODE)
 #include "method_callback.hpp"
 #endif
@@ -71,10 +73,41 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
+    auto dummy = [&] (const cubmem::block & b)
+    {
+      return NO_ERROR;
+    };
+
+    error = method_send_data_to_client (thread_p, m_client_header, METHOD_CALLBACK_CHANGE_RIGHTS, 0,
+					m_method_sig->auth_name);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    error = xs_receive (thread_p, dummy);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
     cubmethod::header header (m_group->get_session_id (), SP_CODE_INVOKE, m_group->get_and_increment_request_id ());
     cubmethod::invoke_java arg (m_group->get_id (), m_group->get_tran_id (), m_method_sig, m_transaction_control);
 
     error = mcon_send_data_to_java (m_group->get_socket (), header, arg);
+
+    error = method_send_data_to_client (thread_p, m_client_header, METHOD_CALLBACK_CHANGE_RIGHTS, 1, std::string (""));
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    error = xs_receive (thread_p, dummy);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
     return error;
   }
 
@@ -302,6 +335,9 @@ namespace cubmethod
 	break;
       case METHOD_CALLBACK_CHANGE_RIGHTS:
 	error = callback_change_auth_rights (thread_ref, unpacker);
+	break;
+      case METHOD_CALLBACK_GET_CODE_ATTR:
+	error = callback_get_code_attr (thread_ref, unpacker);
 	break;
       default:
 	// TODO: not implemented yet, do we need error handling?
@@ -720,6 +756,53 @@ namespace cubmethod
     };
 
     error = xs_receive (&thread_ref, java_lambda);
+
+    return error;
+  }
+
+  int
+  method_invoke_java::callback_get_code_attr (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_GET_CODE_ATTR;
+
+    std::string attr_name;
+
+    DB_VALUE res;
+    db_make_null (&res);
+    unpacker.unpack_all (attr_name);
+
+    if (OID_ISNULL (&m_method_sig->oid))
+      {
+	error = ER_FAILED;
+      }
+
+    if (error == NO_ERROR)
+      {
+	error = sp_get_code_attr (&thread_ref, attr_name, &m_method_sig->oid, &res);
+      }
+
+    cubmem::block blk;
+    if (error == NO_ERROR)
+      {
+	dbvalue_java java_packer;
+	java_packer.value = &res;
+
+	blk = std::move (mcon_pack_data_block (error, java_packer));
+      }
+    else
+      {
+	blk = std::move (mcon_pack_data_block (error));
+      }
+
+    db_value_clear (&res);
+
+    error = mcon_send_data_to_java (m_group->get_socket(), get_next_java_header (m_java_header), blk);
+
+    if (blk.is_valid ())
+      {
+	delete[]  blk.ptr;
+      }
 
     return error;
   }

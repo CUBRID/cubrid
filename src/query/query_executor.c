@@ -170,6 +170,9 @@ struct xasl_state
     } \
   while (0)
 
+#define QEXEC_IS_SUBQUERY_CACHE(n) \
+  ( (n) && ((n)->sub_xasl_id != NULL) )
+
 #if 0
 /* Note: the following macro is used just for replacement of a repetitive
  * text in order to improve the readability.
@@ -1380,18 +1383,8 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   QPROC_DB_VALUE_LIST value_list;
   int i;
 
-  QFILE_LIST_ID *cte_cached_list_id = NULL;
-
-  if (xasl->type == CTE_PROC)
-    {
-      if (xasl->proc.cte.non_recursive_part && xasl->proc.cte.non_recursive_part->cte_xasl_id)
-	{
-	  cte_cached_list_id = xasl->proc.cte.non_recursive_part->list_id;
-	}
-    }
-
-  if (xasl->list_id && cte_cached_list_id == NULL)
-    {				/* destroy list file */
+  if (xasl->list_id && !xasl->list_id->is_result_cached)
+    {				/* destroy list file except for result-cached */
       (void) qfile_close_list (thread_p, xasl->list_id);
       qfile_destroy_list (thread_p, xasl->list_id);
     }
@@ -2207,6 +2200,12 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   assert (xasl->composite_lock.lockcomp.class_list == NULL);
   lock_abort_composite_lock (&xasl->composite_lock);
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
+
+  /* clear subquery's result-cache */
+  if (xasl->sub_xasl_id)
+    {
+      qfile_clear_list_id (xasl->list_id);
+    }
 
   /* clear the body node */
   if (xasl->aptr_list)
@@ -14155,14 +14154,18 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	      if (xptr2->status == XASL_CLEARED || xptr2->status == XASL_INITIALIZED)
 		{
-		  if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
+		  if (!QEXEC_IS_SUBQUERY_CACHE (xptr2) ||
+		      (qexec_execute_subquery_for_result_cache (thread_p, xptr2, xasl_state) != NO_ERROR))
 		    {
-		      if (tplrec.tpl)
+		      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 			{
-			  db_private_free_and_init (thread_p, tplrec.tpl);
+			  if (tplrec.tpl)
+			    {
+			      db_private_free_and_init (thread_p, tplrec.tpl);
+			    }
+			  qexec_failure_line (__LINE__, xasl_state);
+			  GOTO_EXIT_ON_ERROR;
 			}
-		      qexec_failure_line (__LINE__, xasl_state);
-		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
 	      else
@@ -16034,64 +16037,15 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
   /* first the non recursive part from the CTE shall be executed */
   if (non_recursive_part->status == XASL_CLEARED || non_recursive_part->status == XASL_INITIALIZED)
     {
-      if (non_recursive_part->cte_xasl_id)
+      if (non_recursive_part->sub_xasl_id == NULL
+	  || (qexec_execute_subquery_for_result_cache (thread_p, non_recursive_part, xasl_state) != NO_ERROR))
 	{
-	  int i;
-	  int host_var_count = non_recursive_part->cte_host_var_count;
-	  int *host_var_index = non_recursive_part->cte_host_var_index;
-
-	  QFILE_LIST_ID *list_id = NULL;	/* list-id of cached result */
-	  DB_VALUE *dbval_p;	/* db values' pointer for searching cached query */
-	  XASL_CACHE_ENTRY *ent = NULL;	/* xasl for cached query */
-	  QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
-
-	  xcache_find_sha1 (thread_p, &non_recursive_part->cte_xasl_id->sha1, XASL_CACHE_SEARCH_GENERIC, &ent, NULL);
-	  if (ent)
+	  /* re-execute CTE without resut-cache */
+	  if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
 	    {
-	      DB_VALUE_ARRAY params;
-	      bool cached_result;
-
-	      dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * host_var_count);
-	      for (i = 0; i < host_var_count; i++)
-		{
-		  db_value_clone (&xasl_state->vd.dbval_ptr[host_var_index[i]], &dbval_p[i]);
-		}
-
-	      params.size = host_var_count;
-	      params.vals = dbval_p;
-
-	      list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, ent, &params, &cached_result);
-	      if (cached_result && list_cache_entry_p)
-		{
-		  list_id = &list_cache_entry_p->list_id;
-		}
-
-	      for (i = 0; i < host_var_count; i++)
-		{
-		  pr_clear_value (&dbval_p[i]);
-		}
-
-	      xcache_unfix (thread_p, ent);
+	      qexec_failure_line (__LINE__, xasl_state);
+	      GOTO_EXIT_ON_ERROR;
 	    }
-
-	  if (list_id == NULL)
-	    {
-	      /* re-execute CTE without resut-cache */
-	      if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
-		{
-		  qexec_failure_line (__LINE__, xasl_state);
-		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
-	  else
-	    {
-	      qfile_copy_list_id (non_recursive_part->list_id, list_id, false);
-	    }
-	}
-      else if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
-	{
-	  qexec_failure_line (__LINE__, xasl_state);
-	  GOTO_EXIT_ON_ERROR;
 	}
     }
   else
@@ -25491,4 +25445,67 @@ qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT
   /* reached end of scan, no match */
   *found = false;
   return (context->part_scan_code == S_ERROR ? ER_FAILED : NO_ERROR);
+}
+
+int
+qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  assert (xasl != NULL);
+  assert (xasl->sub_xasl_id != NULL);
+
+  int i;
+  int host_var_count = xasl->sub_host_var_count;
+  int *host_var_index = xasl->sub_host_var_index;
+
+  QFILE_LIST_ID *list_id = NULL;	/* list-id of cached result */
+  DB_VALUE *dbval_p = NULL;	/* db values' pointer for searching cached query */
+  XASL_CACHE_ENTRY *ent = NULL;	/* xasl for cached query */
+  QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
+
+  xcache_find_sha1 (thread_p, &xasl->sub_xasl_id->sha1, XASL_CACHE_SEARCH_GENERIC, &ent, NULL);
+  if (ent)
+    {
+      DB_VALUE_ARRAY params;
+      bool cached_result;
+
+      if (host_var_count > 0)
+	{
+	  dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * host_var_count);
+	  for (i = 0; i < host_var_count; i++)
+	    {
+	      dbval_p[i] = xasl_state->vd.dbval_ptr[host_var_index[i]];
+	    }
+	}
+
+      params.size = host_var_count;
+      params.vals = dbval_p;
+
+      list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, ent, &params, &cached_result);
+      if (cached_result && list_cache_entry_p)
+	{
+	  list_id = &list_cache_entry_p->list_id;
+	}
+
+      if (host_var_count > 0)
+	{
+	  free (dbval_p);
+	}
+
+      xcache_unfix (thread_p, ent);
+    }
+
+  if (list_id == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  xasl->status = XASL_SUCCESS;
+
+  qfile_copy_list_id (xasl->list_id, list_id, false);
+
+  /* for checking the cached list file */
+  xasl->list_id->is_result_cached = true;
+  xasl->list_id->query_id = xasl_state->query_id;
+
+  return NO_ERROR;
 }
