@@ -772,7 +772,7 @@ namespace cubmethod
     db_make_null (&res);
     unpacker.unpack_all (attr_name);
 
-    if (OID_ISNULL (&m_method_sig->oid) || m_method_sig->oid.pageid == -1)
+    if (OID_ISNULL (&m_method_sig->oid))
       {
 	error = ER_FAILED;
       }
