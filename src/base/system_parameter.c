@@ -8045,11 +8045,10 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
 
       /* get parameter name and value */
       err = (SYSPRM_ERR) prm_get_next_param_value (&p, &name, &value);
-      if (err != PRM_ERR_NO_ERROR || name == NULL || value == NULL)
-	{
-	  err = PRM_ERR_BAD_VALUE;
-	  break;
-	}
+      if (err != PRM_ERR_NO_ERROR || name == NULL && value == NULL)
+        {
+          break;
+        }
 
       prm = prm_find (name, NULL);
       if (prm == NULL)
@@ -11224,7 +11223,7 @@ prm_get_next_param_value (char **data, char **prm, char **val)
     }
   if (*p == '\0')
     {
-      err = PRM_ERR_NO_ERROR;
+      err = PRM_ERR_BAD_VALUE;
       goto cleanup;
     }
 
