@@ -471,8 +471,6 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = method_invoke_fold_constants (sig_list, args, ret_value);
 	}
       sig_list.freemem ();
-
-      error = er_errid ();
     }
 
   if (error == NO_ERROR)
