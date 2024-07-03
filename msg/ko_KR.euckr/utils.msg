@@ -816,6 +816,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 출력 파일 '%1$s'을 열 수 없습니다.\n
+16 알 수 없는 클래스 "%1$s"\n
 60 \
 diagdb: 데이터베이스 정보 덤프\n\
 사용법: %1$s diagdb [옵션] <데이터베이스 이름>\n\

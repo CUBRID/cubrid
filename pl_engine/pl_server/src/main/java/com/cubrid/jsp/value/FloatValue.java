@@ -33,6 +33,8 @@ package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
 import java.math.BigDecimal;
+import java.sql.Time;
+import java.sql.Timestamp;
 
 public class FloatValue extends Value {
     private float value;
@@ -102,6 +104,26 @@ public class FloatValue extends Value {
 
     public Object toObject() throws TypeMismatchException {
         return toFloatObject();
+    }
+
+    public Time toTime() throws TypeMismatchException {
+        BigDecimal bd = BigDecimal.valueOf(new Float(value).doubleValue());
+        long l = ValueUtilities.bigDecimalToLong(bd);
+        return ValueUtilities.longToTime(l);
+    }
+
+    public Time[] toTimeArray() throws TypeMismatchException {
+        return new Time[] {toTime()};
+    }
+
+    public Timestamp toTimestamp() throws TypeMismatchException {
+        BigDecimal bd = BigDecimal.valueOf(new Float(value).doubleValue());
+        long l = ValueUtilities.bigDecimalToLong(bd);
+        return ValueUtilities.longToTimestamp(l);
+    }
+
+    public Timestamp[] toTimestampArray() throws TypeMismatchException {
+        return new Timestamp[] {toTimestamp()};
     }
 
     public String toString() {
