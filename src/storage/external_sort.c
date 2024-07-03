@@ -163,7 +163,7 @@ struct sort_param
 
   /* support parallelism */
 #if defined(SERVER_MODE)
-  /* pthread_mutex_t px_mtx;	/* px_node status mutex */
+  /* pthread_mutex_t px_mtx;    /* px_node status mutex */
 #endif
   int px_max_index;
   int px_index;
@@ -3981,11 +3981,11 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 #if defined(SERVER_MODE)
   /* temporary disable */
   /*  rv = pthread_mutex_destroy (&(sort_param->px_mtx));
-  if (rv != 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
-    }
-  */
+     if (rv != 0)
+     {
+     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
+     }
+   */
 #endif
 
   free_and_init (sort_param);
