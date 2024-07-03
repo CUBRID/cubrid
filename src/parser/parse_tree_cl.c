@@ -1018,10 +1018,7 @@ parser_walk_leaves (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTI
 
       (*apply) (parser, walk, &walk_argument);
 
-      if (walk->data_type)
-	{
-	  PT_APPLY_WALK (parser, walk->data_type, &walk_argument);
-	}
+      PT_APPLY_WALK (parser, walk->data_type, &walk_argument);
     }
 
   return node;
