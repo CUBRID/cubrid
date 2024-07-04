@@ -29,22 +29,6 @@
 #include "class_object.h"
 #include <vector>
 
-class print_output;
-
-#define CHECK_PRINT_ERROR(print_fnc)            \
-  do {                                          \
-    if ((error = print_fnc) != NO_ERROR)        \
-      goto exit_on_error;                       \
-  } while (0)
-
-#define CHECK_EXIT_ERROR(e)                     \
-  do {                                          \
-    if ((e) == NO_ERROR) {                      \
-      if (((e) = er_errid()) == NO_ERROR)       \
-        (e) = ER_GENERIC_ERROR;                 \
-    }                                           \
-  } while (0)
-
 /*
  * DESC_OBJ
  *    This is a simplified description of an object that is used in cases
@@ -54,14 +38,12 @@ class print_output;
  *    well.
  */
 
-#if defined(SUPPORT_THREAD_UNLOAD)
 
-typedef struct dbval_buf
+typedef struct dbvalue_buf
 {
   char *buf;
   int buf_size;
-} DBVAL_BUF;
-#endif
+} DBVALUE_BUF;
 
 typedef struct desc_obj
 {
@@ -71,23 +53,15 @@ typedef struct desc_obj
   int count;
   SM_ATTRIBUTE **atts;
   DB_VALUE *values;
-#if defined(SUPPORT_THREAD_UNLOAD)
-  DBVAL_BUF *dbval_bufs;
-#endif
+  DBVALUE_BUF *dbvalue_buf_ptr;	// Area for copying data of VARCHAR column
 } DESC_OBJ;
 
-#if defined(SUPPORT_THREAD_UNLOAD)
-extern DESC_OBJ *make_desc_obj (SM_CLASS * class_, int alloc_size);
-#else
-extern DESC_OBJ *make_desc_obj (SM_CLASS * class_);
-#endif
 
+extern DESC_OBJ *make_desc_obj (SM_CLASS * class_, int string_buf_size);
 extern int desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag);
-extern int desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj);
+extern int desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj, bool is_unloaddb);
 extern void desc_free (DESC_OBJ * obj);
 
-//extern int desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value);
-//extern void desc_value_print (print_output & output_ctx, DB_VALUE * value);
 extern int er_filter_fileset (FILE * ef);
 extern int er_filter_errid (bool ignore_warning);
 

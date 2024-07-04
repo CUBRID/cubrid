@@ -22,47 +22,59 @@
 #ifndef _LOAD_OBJECT_THREADING_H_
 #define _LOAD_OBJECT_THREADING_H_
 
-#include "load_object.h"
+class print_output;
+
+#define INVALID_FILE_NO  (-1)
+
+#if 1
+#include <thread>
+#define YIELD_THREAD()   std::this_thread::yield ()
+#else
+#define YIELD_THREAD()   usleep (10)
+#endif
+
+#define CHECK_PRINT_ERROR(print_fnc)            \
+  do {                                          \
+    if ((error = print_fnc) != NO_ERROR)        \
+      goto exit_on_error;                       \
+  } while (0)
+
+#define CHECK_EXIT_ERROR(e)                     \
+  do {                                          \
+    if ((e) == NO_ERROR) {                      \
+      if (((e) = er_errid()) == NO_ERROR)       \
+        (e) = ER_GENERIC_ERROR;                 \
+    }                                           \
+  } while (0)
+
+
+typedef struct text_buffer_block TEXT_BUFFER_BLK;
+struct text_buffer_block
+{
+  char *buffer;			/* pointer to the buffer */
+  char *ptr;			/* pointer to the next byte to buffer when writing */
+  int iosize;			/* optimal I/O pagesize for device */
+  int count;			/* number of current buffered bytes */
+  TEXT_BUFFER_BLK *next;
+};
 
 
 typedef struct text_output
 {
-  /* pointer to the buffer */
-  char *buffer;
-  /* pointer to the next byte to buffer when writing */
-  char *ptr;
-  /* optimal I/O pagesize for device */
-  int iosize;
-  /* number of current buffered bytes */
-  int count;
-  /* output file */
+  int io_size;
+  int *fd_ref;
 
-#define INVALID_FILE_NO  (-1)
-  int fd;
-  struct text_output *next;
-  struct text_output *head;
+  TEXT_BUFFER_BLK *head_ptr;
+  TEXT_BUFFER_BLK *tail_ptr;
 } TEXT_OUTPUT;
 
-extern int g_fd_handle;
-void init_blk_queue (int size);
-bool put_blk_queue (TEXT_OUTPUT * tout);
-TEXT_OUTPUT *get_blk_queue ();
+extern bool init_queue_n_list_for_object_file (int q_size, int blk_size);
 
-extern int text_print_flush (TEXT_OUTPUT * tout);
-extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...);
-
-#if defined(SUPPORT_THREAD_UNLOAD)
-extern int text_print_end (TEXT_OUTPUT * tout);
-
-extern bool init_text_output_mem (int size);
-extern void quit_text_output_mem ();
-extern TEXT_OUTPUT *get_text_output_mem (TEXT_OUTPUT * head_ptr);
-extern void release_text_output_mem (TEXT_OUTPUT * to);
-#endif
-
-
+extern bool flushing_write_blk_queue (int fd);
 
 extern int desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value);
 extern void desc_value_print (print_output & output_ctx, DB_VALUE * value);
+extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...);
+extern int text_print_request_flush (TEXT_OUTPUT * tout, bool force);
 
 #endif // _LOAD_OBJECT_THREADING_H_

@@ -425,11 +425,7 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
   OID_SET_NULL (&last_oid);
 
   /* Now start fetching all the instances */
-#if defined(SUPPORT_THREAD_UNLOAD)
   desc_obj = make_desc_obj (class_ptr, -1);
-#else
-  desc_obj = make_desc_obj (class_ptr);
-#endif
   while (nobjects != nfetched)
     {
       if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area
@@ -448,7 +444,7 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
 		  class_objects++;
 		  total_objects++;
 		  LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
-		  if (desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj) == NO_ERROR)
+		  if (desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj, false) == NO_ERROR)
 		    {
 		      process_object (thread_p, desc_obj, &obj->oid, verbose_flag);
 		    }

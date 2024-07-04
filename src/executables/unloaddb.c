@@ -38,7 +38,6 @@
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "unloaddb.h"
-#include "load_object.h"
 #include "unload_object_file.h"
 #include "utility.h"
 #include "util_func.h"
@@ -68,11 +67,17 @@ const char *output_dirname = NULL;
 char *input_filename = NULL;
 FILE *output_file = NULL;
 #if defined(SUPPORT_THREAD_UNLOAD)
+#define DFLT_VARCHAR_BUFFER_SIZE (1)	// 1K
+#define MAX_VARCHAR_BUFFER_SIZE  (1024)	// 1M
+#define DFLT_REQ_DATASIZE        (1)	// 1 page size
+#define MAX_REQ_DATASIZE         (1024)	//
+#define MAX_THREAD_COUNT         (127)
+
 int g_thread_count = 0;
-int varchar_alloc_size = 0;
+int varchar_buffer_size = DFLT_VARCHAR_BUFFER_SIZE;
+int g_request_datasize = DFLT_REQ_DATASIZE;
 int g_modular = UNLOAD_MODULAR_UNDEFINED;
 int g_accept = UNLOAD_MODULAR_UNDEFINED;
-int g_request_datasize = 200;
 #endif
 
 int page_size = 4096;
@@ -90,8 +95,6 @@ bool split_schema_files = false;
 bool is_as_dba = false;
 LIST_MOPS *class_table = NULL;
 DB_OBJECT **req_class_table = NULL;
-
-int lo_count = 0;
 
 char *output_prefix = NULL;
 bool do_schema = false;
@@ -146,7 +149,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   include_references = utility_get_option_bool_value (arg_map, UNLOAD_INCLUDE_REFERENCE_S);
   required_class_only = utility_get_option_bool_value (arg_map, UNLOAD_INPUT_CLASS_ONLY_S);
   datafile_per_class = utility_get_option_bool_value (arg_map, UNLOAD_DATAFILE_PER_CLASS_S);
-  lo_count = utility_get_option_int_value (arg_map, UNLOAD_LO_COUNT_S);
   est_size = utility_get_option_int_value (arg_map, UNLOAD_ESTIMATED_SIZE_S);
   cached_pages = utility_get_option_int_value (arg_map, UNLOAD_CACHED_PAGES_S);
   output_dirname = utility_get_option_string_value (arg_map, UNLOAD_OUTPUT_PATH_S, 0);
@@ -171,32 +173,60 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   split_schema_files = utility_get_option_string_value (arg_map, UNLOAD_SPLIT_SCHEMA_FILES_S, 0);
   is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
-#if !defined (WINDOWS) && defined(SUPPORT_THREAD_UNLOAD)
-  if (datafile_per_class)
+  varchar_buffer_size = utility_get_option_int_value (arg_map, UNLOAD_STRING_BUFFER_SIZE_S);
+  if (varchar_buffer_size < 0)
     {
+      varchar_buffer_size = 0;
+    }
+  else if (varchar_buffer_size > MAX_VARCHAR_BUFFER_SIZE)
+    {
+      varchar_buffer_size = MAX_VARCHAR_BUFFER_SIZE;
+    }
+  varchar_buffer_size *= 1024;	// to KB  
+
+  g_request_datasize = utility_get_option_int_value (arg_map, UNLOAD_REQUEST_DATASIZE_S);
+  if (g_request_datasize < 0)
+    {
+      g_request_datasize = 0;
+    }
+  else if (g_request_datasize > MAX_REQ_DATASIZE)
+    {
+      g_request_datasize = MAX_REQ_DATASIZE;
+    }
+
+#if !defined (WINDOWS)
+  if (!do_schema)
+    {
+      g_thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
+      g_thread_count =
+	(g_thread_count < 0) ? 0 : ((g_thread_count > MAX_THREAD_COUNT) ? MAX_THREAD_COUNT : g_thread_count);
+
 #if defined(CS_MODE) || defined(SUPPORT_MTP_UNLOAD_TEST)
-      if (!do_schema)
+      if (datafile_per_class)
 	{
-	  g_modular = utility_get_option_int_value (arg_map, UNLOAD_MODULAR_VALUE_S);
-	  g_accept = utility_get_option_int_value (arg_map, UNLOAD_REMAINDER_VALUE_S);
-	  if ((g_modular > MAX_PROCESS_COUNT) || ((g_modular > 1) && (g_accept < 0 || g_accept >= g_modular)))
+	  char *_pstr = NULL;
+	  _pstr = utility_get_option_string_value (arg_map, UNLOAD_MT_PROCESS_S, 0);
+	  if (_pstr)
 	    {
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);	// todo: ctshim
-	      goto end;
+	      if (sscanf (_pstr, "%d/%d", &g_accept, &g_modular) != 2)
+		{
+		  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
+		  fflush (stderr);
+		}
+	      else if ((g_modular > MAX_PROCESS_COUNT) || ((g_modular > 1) && (g_accept < 0 || g_accept >= g_modular)))
+		{
+		  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
+		  fflush (stderr);
+		  goto end;
+		}
 	    }
 	}
 #endif
-
-      g_thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
     }
-
-  varchar_alloc_size = utility_get_option_int_value (arg_map, UNLOAD_VARCHAR_ALLOC_SIZE_S);
-  varchar_alloc_size *= 1024;	// to KB  
 #endif
 
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
-
 
   if (database_name == NULL)
     {
@@ -216,7 +246,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       unload_context.output_dirname = output_dirname;
     }
 
-#if defined(SUPPORT_THREAD_UNLOAD)
   if (!input_filename)
     {
       required_class_only = false;
@@ -227,7 +256,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, "warning: '-ir' option is ignored.\n");
       fflush (stderr);
     }
-#endif
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, exec_name);
@@ -297,19 +325,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     {
       db_set_lock_timeout (prm_get_integer_value (PRM_ID_UNLOADDB_LOCK_TIMEOUT));
     }
-
-#if !defined(SUPPORT_THREAD_UNLOAD)	// moved
-  if (!input_filename)
-    {
-      required_class_only = false;
-    }
-  if (required_class_only && include_references)
-    {
-      include_references = false;
-      fprintf (stdout, "warning: '-ir' option is ignored.\n");
-      fflush (stdout);
-    }
-#endif
 
   class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_READ, NULL);
   if (input_filename)
@@ -456,18 +471,10 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       gettimeofday (&startTime, NULL);
 #endif
 
-#if defined(SUPPORT_THREAD_UNLOAD)
-      init_text_output_mem (((g_thread_count > 0) ? g_thread_count : 1) * 2);
-#endif
-
-      if (extract_objects (unload_context, output_dirname))
+      if (extract_objects (unload_context, output_dirname, g_thread_count))
 	{
 	  status = 1;
 	}
-#if defined(SUPPORT_THREAD_UNLOAD)
-      quit_text_output_mem ();
-#endif
-
 #if 1
       gettimeofday (&endTime, NULL);
       diffTime = (endTime.tv_sec - startTime.tv_sec) + ((double) (endTime.tv_usec - startTime.tv_usec) / 1000000);

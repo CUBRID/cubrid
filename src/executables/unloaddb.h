@@ -36,8 +36,7 @@ class print_output;
 extern char *database_name;
 extern char *input_filename;
 #if defined(SUPPORT_THREAD_UNLOAD)
-extern int g_thread_count;
-extern int varchar_alloc_size;
+extern int varchar_buffer_size;
 extern int g_modular;
 extern int g_accept;
 extern int g_request_datasize;
@@ -60,8 +59,6 @@ extern LIST_MOPS *class_table;
 extern DB_OBJECT **req_class_table;
 extern int is_req_class (DB_OBJECT * class_);
 extern int get_requested_classes (const char *input_filename, DB_OBJECT * class_list[]);
-
-extern int lo_count;
 
 #define PRINT_IDENTIFIER(s) "[", (s), "]"
 #define PRINT_IDENTIFIER_WITH_QUOTE(s) "\"", (s), "\""
@@ -99,7 +96,7 @@ extern int extract_triggers (extract_context & ctxt, print_output & output_ctx);
 extern int extract_triggers_to_file (extract_context & ctxt, const char *output_filename);
 extern int extract_indexes_to_file (extract_context & ctxt, const char *output_filename);
 
-extern int extract_objects (extract_context & ctxt, const char *output_dirname);
+extern int extract_objects (extract_context & ctxt, const char *output_dirname, int nthreads);
 
 extern int create_filename_schema (const char *output_dirname, const char *output_prefix,
 				   char *output_filename_p, const size_t filename_size);

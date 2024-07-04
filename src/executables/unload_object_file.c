@@ -63,50 +63,183 @@
 static void print_set (print_output & output_ctx, DB_SET * set);
 static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
-static const char *strnchr (const char *str, char ch, int nbytes);
 static int print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len);
-static void itoa_strreverse (char *begin, char *end);
-#if defined(UNUSED_FUNCTION) && !defined(SUPPORT_THREAD_UNLOAD)
-static int itoa_print (TEXT_OUTPUT * tout, DB_BIGINT value, int base);
-#else
-static int itoa_print_base10 (TEXT_OUTPUT * tout, DB_BIGINT value);
-#define itoa_print(o, v, b)  itoa_print_base10((o), (v))
-#endif
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 
+static int write_block_list (int fd, TEXT_BUFFER_BLK * head);
 
-class text_block_queue
+class text_buffer_mgr
 {
 private:
   pthread_mutex_t m_cs_lock;
-  TEXT_OUTPUT **m_q_blk;
+  TEXT_BUFFER_BLK *m_free_list;
+  int m_max_cnt_free_list;
+  int m_cnt_free_list;
+
+
+  void quit_text_buffer_mgr ()
+  {
+    TEXT_BUFFER_BLK *tp;
+
+      pthread_mutex_lock (&m_cs_lock);
+    while (m_free_list)
+      {
+	tp = m_free_list;
+	m_free_list = tp->next;
+
+	if (tp->buffer)
+	  {
+	    free (tp->buffer);
+	  }
+	free (tp);
+	m_cnt_free_list--;
+      }
+    pthread_mutex_unlock (&m_cs_lock);
+  }
+
+public:
+  text_buffer_mgr ()
+  {
+    //m_cs_lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_init (&m_cs_lock, NULL);
+    m_free_list = NULL;
+    m_max_cnt_free_list = m_cnt_free_list = 0;
+  }
+  ~text_buffer_mgr ()
+  {
+    quit_text_buffer_mgr ();
+    (void) pthread_mutex_destroy (&m_cs_lock);
+  }
+
+  bool init_text_buffer_mgr (int count)
+  {
+    TEXT_BUFFER_BLK *tp;
+
+    pthread_mutex_lock (&m_cs_lock);
+    assert (m_free_list == NULL);
+    m_max_cnt_free_list = count;
+    pthread_mutex_unlock (&m_cs_lock);
+    return true;
+  }
+
+  TEXT_BUFFER_BLK *get_text_buffer ()
+  {
+    TEXT_BUFFER_BLK *tp = NULL;
+
+    pthread_mutex_lock (&m_cs_lock);
+    if (m_free_list)
+      {
+	tp = m_free_list;
+	m_free_list = tp->next;
+	m_cnt_free_list--;
+      }
+    pthread_mutex_unlock (&m_cs_lock);
+
+    if (!tp)
+      {
+	tp = (TEXT_BUFFER_BLK *) calloc (sizeof (TEXT_BUFFER_BLK), 1);
+	if (tp == NULL)
+	  {
+	    assert (false);
+	    return NULL;
+	  }
+      }
+
+    tp->next = NULL;
+    return tp;
+  }
+
+  void release_text_buffer (TEXT_BUFFER_BLK * tp)
+  {
+    /* re-init */
+    tp->ptr = tp->buffer;
+    tp->count = 0;
+
+    pthread_mutex_lock (&m_cs_lock);
+    if (m_cnt_free_list < m_max_cnt_free_list)
+      {
+	tp->next = m_free_list;
+	m_free_list = tp;
+	m_cnt_free_list++;
+	pthread_mutex_unlock (&m_cs_lock);
+
+	return;
+      }
+    pthread_mutex_unlock (&m_cs_lock);
+
+    if (tp->buffer)
+      {
+	free (tp->buffer);
+      }
+    free (tp);
+  }
+};
+
+class write_block_queue
+{
+private:
+  pthread_mutex_t m_cs_lock;
+  TEXT_BUFFER_BLK **m_q_blk;
   int m_q_size;
   int m_front;
   int m_rear;
 
 public:
-    text_block_queue ()
+    write_block_queue ()
   {
-    m_cs_lock = PTHREAD_MUTEX_INITIALIZER;
+    //m_cs_lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_init (&m_cs_lock, NULL);
     m_q_blk = NULL;
     m_q_size = 0;
     m_front = m_rear = 0;
   }
-   ~text_block_queue ()
+   ~write_block_queue ()
   {
     if (m_q_blk)
-      free (m_q_blk);
+      {
+	TEXT_BUFFER_BLK *head, *pt;
+	assert (m_front == m_rear);
+	while (m_front != m_rear)
+	  {
+	    ++m_front %= m_q_size;
+	    head = m_q_blk[m_front];
+	    m_q_blk[m_front] = NULL;
+	    while (head)
+	      {
+		pt = head;
+		head = head->next;
+		if (pt->buffer)
+		  {
+		    free (pt->buffer);
+		  }
+		free (pt);
+	      }
+	  }
+
+	free (m_q_blk);
+      }
+
+    (void) pthread_mutex_destroy (&m_cs_lock);
   }
 
-  void initqueue (int size)
+  bool init_queue (int size)
   {
     assert (m_q_blk == NULL);
-    m_q_blk = (TEXT_OUTPUT **) calloc (size, sizeof (TEXT_OUTPUT *));
-    m_q_size = size;
     m_front = m_rear = 0;
+    m_q_blk = (TEXT_BUFFER_BLK **) calloc (size, sizeof (TEXT_BUFFER_BLK *));
+    if (m_q_blk)
+      {
+	m_q_size = size;
+	return true;
+      }
+    else
+      {
+	m_q_size = 0;
+	return false;
+      }
   }
 
-  bool enqueue (TEXT_OUTPUT * tout)
+  bool enqueue (TEXT_BUFFER_BLK * tout)
   {
     pthread_mutex_lock (&m_cs_lock);
     assert (m_q_blk != NULL);
@@ -123,9 +256,9 @@ public:
     return true;
   }
 
-  TEXT_OUTPUT *dequeue ()
+  TEXT_BUFFER_BLK *dequeue ()
   {
-    TEXT_OUTPUT *pt = NULL;
+    TEXT_BUFFER_BLK *pt = NULL;
 
     pthread_mutex_lock (&m_cs_lock);
     assert (m_q_blk != NULL);
@@ -144,179 +277,72 @@ public:
   }
 };
 
-pthread_mutex_t g_cs_lock_text_output_free = PTHREAD_MUTEX_INITIALIZER;
-TEXT_OUTPUT *g_text_output_freenode = NULL;
-class text_block_queue g_text_blk_queue;
-int g_fd_handle = -1;
-
-void
-init_blk_queue (int size)
-{
-  g_text_blk_queue.initqueue (size);
-}
+// define 
+static class write_block_queue c_write_blk_queue;
+static class text_buffer_mgr c_text_buf_mgr;
 
 bool
-put_blk_queue (TEXT_OUTPUT * tout)
+init_queue_n_list_for_object_file (int q_size, int blk_size)
 {
-  return g_text_blk_queue.enqueue (tout);
+  if (c_write_blk_queue.init_queue (q_size))
+    {
+      return c_text_buf_mgr.init_text_buffer_mgr (blk_size);
+    }
 
+  return false;
 }
 
-TEXT_OUTPUT *
-get_blk_queue ()
+static int
+get_text_output_mem (TEXT_OUTPUT * tout)
 {
-  return g_text_blk_queue.dequeue ();
-}
+  TEXT_BUFFER_BLK *pt = c_text_buf_mgr.get_text_buffer ();
+  if (pt == NULL)
+    return ER_FAILED;
 
-
-#define JUMP_TAIL_PTR(p)  while((p)->next) (p) = (p)->next
-#if defined(SUPPORT_THREAD_UNLOAD)
-
-int
-text_print_end (TEXT_OUTPUT * tout)
-{
-#if 0
-  TEXT_OUTPUT *tp;
-  TEXT_OUTPUT *head = tout->head;
-  for (tp = head; tp && tp->count > 0; tp = head->next)
+  if (tout->head_ptr == NULL)
     {
-      /* flush to disk */
-#if defined(SUPPORT_THREAD_UNLOAD)
-      if (tp->count != write (head->fd, tp->buffer, tp->count))
-#else
-      if (tout->count != (int) fwrite (tout->buffer, 1, tout->count, tout->fp))
-#endif
-	{
-	  return ER_IO_WRITE;
-	}
-
-      /* re-init */
-      tp->ptr = tp->buffer;
-      tp->count = 0;
-
-      if (head != tp)
-	{
-	  head->next = tp->next;
-	  release_text_output_mem (tp);
-	}
+      tout->head_ptr = pt;
     }
-  head->next = NULL;
-
-#else
-  if (tout && tout->head)
+  else
     {
-      TEXT_OUTPUT *tp;
-      TEXT_OUTPUT *head = tout->head;
-
-      if (head->count <= 0)
-	{
-	  for (tp = head; tp; tp = head->next)
-	    {
-	      /* re-init */
-	      tp->ptr = tp->buffer;
-	      tp->count = 0;
-	      head->next = tp->next;
-	      release_text_output_mem (tp);
-	    }
-
-	  return NO_ERROR;
-	}
-
-      do
-	{
-	  if (put_blk_queue (tout->head))
-	    break;
-	  usleep (100);
-	}
-      while (true);
+      tout->tail_ptr->next = pt;
     }
-#endif
+  tout->tail_ptr = pt;
+
+  if (pt->buffer == NULL)
+    {
+      pt->buffer = (char *) malloc (tout->io_size + 1);
+      if (pt->buffer == NULL)
+	{
+	  assert (false);
+	  return false;
+	}
+
+      pt->ptr = pt->buffer;
+      pt->count = 0;
+      pt->iosize = tout->io_size;
+    }
 
   return NO_ERROR;
 }
 
 bool
-init_text_output_mem (int size)
+flushing_write_blk_queue (int fd)
 {
-  int i;
-  TEXT_OUTPUT *tp;
+  TEXT_BUFFER_BLK *head;
+  TEXT_BUFFER_BLK *tp;
 
-  pthread_mutex_lock (&g_cs_lock_text_output_free);
-  assert (g_text_output_freenode == NULL);
-  for (i = 0; i < size; i++)
+  head = c_write_blk_queue.dequeue ();
+  while (head)
     {
-      tp = (TEXT_OUTPUT *) calloc (sizeof (TEXT_OUTPUT), 1);
-      if (tp == NULL)
+      if (write_block_list (fd, head) != NO_ERROR)
 	return false;
 
-      if (g_text_output_freenode)
-	tp->next = g_text_output_freenode;
-      else
-	tp->next = NULL;
-
-      g_text_output_freenode = tp;
+      head = c_write_blk_queue.dequeue ();
     }
-  pthread_mutex_unlock (&g_cs_lock_text_output_free);
 
   return true;
 }
-
-void
-quit_text_output_mem ()
-{
-  TEXT_OUTPUT *tp;
-  pthread_mutex_lock (&g_cs_lock_text_output_free);
-  assert (g_text_output_freenode != NULL);
-  while (g_text_output_freenode)
-    {
-      tp = g_text_output_freenode;
-      g_text_output_freenode = tp->next;
-
-      if (tp->buffer)
-	{
-	  free (tp->buffer);
-	}
-      free (tp);
-    }
-  pthread_mutex_unlock (&g_cs_lock_text_output_free);
-}
-
-TEXT_OUTPUT *
-get_text_output_mem (TEXT_OUTPUT * head_ptr)
-{
-  TEXT_OUTPUT *tp = NULL;
-
-  pthread_mutex_lock (&g_cs_lock_text_output_free);
-  if (g_text_output_freenode)
-    {
-      tp = g_text_output_freenode;
-      g_text_output_freenode = tp->next;
-    }
-  pthread_mutex_unlock (&g_cs_lock_text_output_free);
-
-  if (!tp)
-    {
-      tp = (TEXT_OUTPUT *) calloc (sizeof (TEXT_OUTPUT), 1);
-      assert (tp);
-    }
-
-  tp->head = head_ptr ? head_ptr : tp;
-  tp->next = NULL;
-  return tp;
-}
-
-void
-release_text_output_mem (TEXT_OUTPUT * to)
-{
-  pthread_mutex_lock (&g_cs_lock_text_output_free);
-  to->next = g_text_output_freenode;
-  to->head = NULL;
-  g_text_output_freenode = to;
-  pthread_mutex_unlock (&g_cs_lock_text_output_free);
-}
-
-
-#endif
 
 /*
  * print_set - Print the contents of a real DB_SET (not a set descriptor).
@@ -468,56 +494,36 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
   return error;
 }
 
-/*
- * strnchr - strchr with string length constraints
- *    return: a pointer to the given 'ch', or a null pointer if not found
- *    str(in): string
- *    ch(in): character to find
- *    nbytes(in): length of string
- */
-const static char *
-strnchr (const char *str, char ch, int nbytes)
-{
-  for (; nbytes; str++, nbytes--)
-    {
-      if (*str == ch)
-	{
-	  return str;
-	}
-    }
-  return NULL;
-}
-
 
 static int
 flush_quoted_str (TEXT_OUTPUT * tout, const char *st, int tlen)
 {
   int ret = NO_ERROR;
   int cpsize;
-  int capacity = tout->iosize - tout->count;
+  int capacity = tout->tail_ptr->iosize - tout->tail_ptr->count;
 
   if (capacity <= tlen)
     {
       cpsize = (capacity < tlen) ? capacity : tlen;
-      memcpy (tout->ptr, st, cpsize);
-      tout->ptr += cpsize;
-      tout->count += cpsize;
+      memcpy (tout->tail_ptr->ptr, st, cpsize);
+      tout->tail_ptr->ptr += cpsize;
+      tout->tail_ptr->count += cpsize;
       tlen -= cpsize;
-      assert (tout->count == tout->iosize);
-      ret = text_print_flush (tout);
-      JUMP_TAIL_PTR (tout);
+      assert (tout->tail_ptr->count == tout->tail_ptr->iosize);
+
+      ret = get_text_output_mem (tout);
       if ((ret == NO_ERROR) && (tlen > 0))
 	{
-	  memcpy (tout->ptr, st + cpsize, tlen);
-	  tout->ptr += tlen;
-	  tout->count += tlen;
+	  memcpy (tout->tail_ptr->ptr, st + cpsize, tlen);
+	  tout->tail_ptr->ptr += tlen;
+	  tout->tail_ptr->count += tlen;
 	}
     }
   else
     {
-      memcpy (tout->ptr, st, tlen);
-      tout->ptr += tlen;
-      tout->count += tlen;
+      memcpy (tout->tail_ptr->ptr, st, tlen);
+      tout->tail_ptr->ptr += tlen;
+      tout->tail_ptr->count += tlen;
     }
 
   return ret;
@@ -538,25 +544,21 @@ flush_quoted_str (TEXT_OUTPUT * tout, const char *st, int tlen)
 static int
 print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len)
 {
-#if defined(SUPPORT_THREAD_UNLOAD)
   int error = NO_ERROR;
   const char *end;
   int write_len = 0;
   const char *st;
 
-  JUMP_TAIL_PTR (tout);
-
-  if (tout->iosize <= tout->count)
+  if (tout->tail_ptr->iosize <= tout->tail_ptr->count)
     {
-      assert (tout->iosize == tout->count);
-      CHECK_PRINT_ERROR (text_print_flush (tout));
-      JUMP_TAIL_PTR (tout);
+      assert (tout->tail_ptr->iosize == tout->tail_ptr->count);
+      CHECK_PRINT_ERROR (get_text_output_mem (tout));
     }
 
   /* opening quote */
-  tout->ptr[0] = '\'';
-  tout->ptr++;
-  tout->count++;
+  tout->tail_ptr->ptr[0] = '\'';
+  tout->tail_ptr->ptr++;
+  tout->tail_ptr->count++;
 
   end = str + len;
   for (st = str; str < end && *str; str++)
@@ -601,59 +603,15 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
 	}
     }
 
-  if (tout->iosize <= tout->count)
+  if (tout->tail_ptr->iosize <= tout->tail_ptr->count)
     {
-      CHECK_PRINT_ERROR (text_print_flush (tout));
-      JUMP_TAIL_PTR (tout);
+      CHECK_PRINT_ERROR (get_text_output_mem (tout));
     }
 
   /* closing quote */
-  tout->ptr[0] = '\'';
-  tout->ptr++;
-  tout->count++;
-
-#else // #if defined(SUPPORT_THREAD_UNLOAD)
-  int error = NO_ERROR;
-  const char *p, *end;
-  int partial_len, write_len, left_nbytes;
-  const char *internal_quote_p;
-  /* opening quote */
-  CHECK_PRINT_ERROR (text_print (tout, "'", 1, NULL));
-  left_nbytes = 0;
-  internal_quote_p = strnchr (str, '\'', len);	/* first found single-quote */
-  for (p = str, end = str + len, partial_len = len; p < end; p += write_len, partial_len -= write_len)
-    {
-      write_len = MIN (partial_len, left_nbytes > 0 ? left_nbytes : max_token_len);
-      if (internal_quote_p == NULL || (p + write_len <= internal_quote_p))
-	{
-	  /* not found single-quote in write_len */
-	  CHECK_PRINT_ERROR (text_print (tout, p, write_len, NULL));
-	  if (p + write_len < end)	/* still has something to work */
-	    {
-	      CHECK_PRINT_ERROR (text_print (tout, "\'+\n \'", 5, NULL));
-	    }
-	  left_nbytes = 0;
-	}
-      else
-	{
-	  left_nbytes = write_len;
-	  write_len = CAST_STRLEN (internal_quote_p - p + 1);
-	  CHECK_PRINT_ERROR (text_print (tout, p, write_len, NULL));
-	  left_nbytes -= (write_len + 1);
-	  /*
-	   * write internal "'" as "''", check for still has something to
-	   * work
-	   */
-	  CHECK_PRINT_ERROR (text_print
-			     (tout, (left_nbytes <= 0) ? "'\'+\n \'" : "'", (left_nbytes <= 0) ? 6 : 1, NULL));
-	  /* found the next single-quote */
-	  internal_quote_p = strnchr (p + write_len, '\'', partial_len - write_len);
-	}
-    }
-
-  /* closing quote */
-  CHECK_PRINT_ERROR (text_print (tout, "'", 1, NULL));
-#endif // #if defined(SUPPORT_THREAD_UNLOAD)
+  tout->tail_ptr->ptr[0] = '\'';
+  tout->tail_ptr->ptr++;
+  tout->tail_ptr->count++;
 
 exit_on_end:
   return error;
@@ -663,103 +621,6 @@ exit_on_error:
 }
 
 #define INTERNAL_BUFFER_SIZE (400)	/* bigger than DBL_MAX_DIGITS */
-
-#if defined(UNUSED_FUNCTION) && !defined(SUPPORT_THREAD_UNLOAD)
-/*
- * itoa_strreverse - reverse a string
- *    return: void
- *    begin(in/out): begin position of a string
- *    end(in/out): end position of a string
- */
-static void
-itoa_strreverse (char *begin, char *end)
-{
-  char aux;
-  while (end > begin)
-    {
-      aux = *end;
-      *end-- = *begin;
-      *begin++ = aux;
-    }
-}
-
-/*
- * itoa_print - 'itoa' print to TEXT_OUTPUT
- *    return: NO_ERROR, if successful, error number, if not successful.
- *    tout(out): output
- *    value(in): value container
- *    base(in): radix
- * Note:
- *     Ansi C "itoa" based on Kernighan & Ritchie's "Ansi C"
- *     with slight modification to optimize for specific architecture:
- */
-static int
-itoa_print (TEXT_OUTPUT * tout, DB_BIGINT value, int base)
-{
-  int error = NO_ERROR;
-  char *wstr;
-  bool is_negative;
-  DB_BIGINT quotient;
-  DB_BIGINT remainder;
-  int nbytes;
-  static const char itoa_digit[] = "0123456789abcdefghijklmnopqrstuvwxyz";
-  wstr = tout->ptr;
-  /* Validate base */
-  if (base < 2 || base > 35)
-    {
-      goto exit_on_error;	/* give up */
-    }
-
-  /* Take care of sign - in case of INT_MIN, it remains as it is */
-  is_negative = (value < 0) ? true : false;
-  if (is_negative)
-    {
-      value = -value;		/* change to the positive number */
-    }
-
-  /* Conversion. Number is reversed. */
-  do
-    {
-      quotient = value / base;
-      remainder = value % base;
-      *wstr++ = itoa_digit[(remainder >= 0) ? remainder : -remainder];
-    }
-  while ((value = quotient) != 0);
-  if (is_negative)
-    {
-      *wstr++ = '-';
-    }
-  *wstr = '\0';			/* Null terminate */
-  /* Reverse string */
-  itoa_strreverse (tout->ptr, wstr - 1);
-  nbytes = CAST_STRLEN (wstr - tout->ptr);
-  tout->ptr += nbytes;
-  tout->count += nbytes;
-exit_on_end:
-  return error;
-exit_on_error:
-  CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
-}
-#else
-static int
-itoa_print_base10 (TEXT_OUTPUT * tout, DB_BIGINT value)
-{
-  int nbytes;
-
-  JUMP_TAIL_PTR (tout);
-
-  nbytes = sprintf (tout->ptr, "%" PRId64, value);
-  if (nbytes < 0)
-    {
-      return ER_GENERIC_ERROR;
-    }
-
-  tout->ptr += nbytes;
-  tout->count += nbytes;
-  return NO_ERROR;
-}
-#endif
 
 /*
  * fprint_special_strings - print special DB_VALUE to TEXT_OUTPUT
@@ -781,96 +642,71 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
   DB_TIMESTAMPTZ *ts_tz;
   type = DB_VALUE_TYPE (value);
 
-  JUMP_TAIL_PTR (tout);
-
   switch (type)
     {
     case DB_TYPE_NULL:
       CHECK_PRINT_ERROR (text_print (tout, "NULL", 4, NULL));
       break;
     case DB_TYPE_BIGINT:
-      if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
-	{
-	  /* flush remaining buffer */
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	  JUMP_TAIL_PTR (tout);
-	}
-      CHECK_PRINT_ERROR (itoa_print (tout, db_get_bigint (value), 10 /* base */ ));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, db_get_bigint (value)));
       break;
     case DB_TYPE_INTEGER:
-      if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
-	{
-	  /* flush remaining buffer */
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	  JUMP_TAIL_PTR (tout);
-	}
-      CHECK_PRINT_ERROR (itoa_print (tout, db_get_int (value), 10 /* base */ ));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, db_get_int (value)));
       break;
     case DB_TYPE_SMALLINT:
-      if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
-	{
-	  /* flush remaining buffer */
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	  JUMP_TAIL_PTR (tout);
-	}
-      CHECK_PRINT_ERROR (itoa_print (tout, db_get_short (value), 10 /* base */ ));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, db_get_short (value)));
       break;
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
       {
 	char *pos;
-	pos = tout->ptr;
+	pos = tout->tail_ptr->ptr;
 	CHECK_PRINT_ERROR (text_print
 			   (tout, NULL, 0, "%.*g", (type == DB_TYPE_FLOAT) ? 10 : 17,
 			    (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_double (value)));
 	/* if tout flushed, then this float/double should be the first content */
-	if ((pos < tout->ptr && !strchr (pos, '.')) || (pos > tout->ptr && !strchr (tout->buffer, '.')))
+	if ((pos < tout->tail_ptr->ptr && !strchr (pos, '.'))
+	    || (pos > tout->tail_ptr->ptr && !strchr (tout->tail_ptr->buffer, '.')))
 	  {
 	    CHECK_PRINT_ERROR (text_print (tout, ".", 1, NULL));
 	  }
       }
       break;
     case DB_TYPE_ENUMERATION:
-      if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
-	{
-	  /* flush remaining buffer */
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	  JUMP_TAIL_PTR (tout);
-	}
-      CHECK_PRINT_ERROR (itoa_print (tout, db_get_enum_short (value), 10 /* base */ ));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, db_get_enum_short (value)));
       break;
     case DB_TYPE_DATE:
-      db_date_to_string (buf, MAX_DISPLAY_COLUMN, db_get_date (value));
+      db_date_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_date (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "date '%s'", buf));
       break;
     case DB_TYPE_TIME:
-      db_time_to_string (buf, MAX_DISPLAY_COLUMN, db_get_time (value));
+      db_time_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_time (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "time '%s'", buf));
       break;
     case DB_TYPE_TIMESTAMP:
-      db_timestamp_to_string (buf, MAX_DISPLAY_COLUMN, db_get_timestamp (value));
+      db_timestamp_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_timestamp (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestamp '%s'", buf));
       break;
     case DB_TYPE_TIMESTAMPLTZ:
-      db_timestampltz_to_string (buf, MAX_DISPLAY_COLUMN, db_get_timestamp (value));
+      db_timestampltz_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_timestamp (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestampltz '%s'", buf));
       break;
     case DB_TYPE_TIMESTAMPTZ:
       ts_tz = db_get_timestamptz (value);
-      db_timestamptz_to_string (buf, MAX_DISPLAY_COLUMN, &ts_tz->timestamp, &ts_tz->tz_id);
+      db_timestamptz_to_string (buf, INTERNAL_BUFFER_SIZE, &ts_tz->timestamp, &ts_tz->tz_id);
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestamptz '%s'", buf));
       break;
     case DB_TYPE_DATETIME:
-      db_datetime_to_string (buf, MAX_DISPLAY_COLUMN, db_get_datetime (value));
+      db_datetime_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_datetime (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetime '%s'", buf));
       break;
     case DB_TYPE_DATETIMELTZ:
-      db_datetimeltz_to_string (buf, MAX_DISPLAY_COLUMN, db_get_datetime (value));
+      db_datetimeltz_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_datetime (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetimeltz '%s'", buf));
       break;
     case DB_TYPE_DATETIMETZ:
       dt_tz = db_get_datetimetz (value);
-      db_datetimetz_to_string (buf, MAX_DISPLAY_COLUMN, &dt_tz->datetime, &dt_tz->tz_id);
+      db_datetimetz_to_string (buf, INTERNAL_BUFFER_SIZE, &dt_tz->datetime, &dt_tz->tz_id);
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetimetz '%s'", buf));
       break;
     case DB_TYPE_MONETARY:
@@ -969,7 +805,7 @@ int
 desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  JUMP_TAIL_PTR (tout);
+
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_SET:
@@ -1025,50 +861,6 @@ desc_value_print (print_output & output_ctx, DB_VALUE * value)
 
 
 /*
- * text_print_flush - flush TEXT_OUTPUT contents to file
- *    return: NO_ERROR if successful, ER_IO_WRITE if file I/O error occurred
- *    tout(in/out): TEXT_OUTPUT structure
- */
-int
-text_print_flush (TEXT_OUTPUT * tout)
-{
-#if 1
-  TEXT_OUTPUT *tp;
-  JUMP_TAIL_PTR (tout);
-  tp = get_text_output_mem (tout->head);
-  if (tp->buffer == NULL)
-    {				// alloc_text_output (TEXT_OUTPUT * obj_out, int blk_size)
-
-      tp->iosize = tout->iosize;
-      tp->buffer = (char *) malloc (tout->iosize + 1);
-      tp->ptr = tp->buffer;	/* init */
-      tp->count = 0;		/* init */
-      tp->next = NULL;
-    }
-
-  tout->next = tp;
-
-
-  //tout = tout->next;
-#else /////////////////////////////////////////////////////////////////////////
-  /* flush to disk */
-#if defined(SUPPORT_THREAD_UNLOAD)
-  if (tout->count != write (tout->fd, tout->buffer, tout->count))
-#else
-  if (tout->count != (int) fwrite (tout->buffer, 1, tout->count, tout->fp))
-#endif
-    {
-      return ER_IO_WRITE;
-    }
-
-  /* re-init */
-  tout->ptr = tout->buffer;
-  tout->count = 0;
-#endif
-  return NO_ERROR;
-}
-
-/*
  * text_print - print formatted text to TEXT_OUTPUT
  *    return: NO_ERROR if successful, error code otherwise
  *    tout(out): TEXT_OUTPUT
@@ -1085,10 +877,14 @@ text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ..
   va_list ap;
   assert (buflen >= 0);
 
-start:
-  JUMP_TAIL_PTR (tout);
+  if (tout->tail_ptr == NULL)
+    {
+      assert (tout->head_ptr == NULL);
+      CHECK_PRINT_ERROR (get_text_output_mem (tout));
+    }
 
-  size = tout->iosize - tout->count;	/* free space size */
+start:
+  size = tout->tail_ptr->iosize - tout->tail_ptr->count;	/* free space size */
   if (buflen)
     {
       nbytes = buflen;		/* unformatted print */
@@ -1096,7 +892,7 @@ start:
   else
     {
       va_start (ap, fmt);
-      nbytes = vsnprintf (tout->ptr, size, fmt, ap);
+      nbytes = vsnprintf (tout->tail_ptr->ptr, size, fmt, ap);
       va_end (ap);
     }
 
@@ -1107,15 +903,15 @@ start:
 	  if (buflen > 0)
 	    {			/* unformatted print */
 	      assert (buf != NULL);
-	      memcpy (tout->ptr, buf, buflen);
-	      *(tout->ptr + buflen) = '\0';	/* Null terminate */
+	      memcpy (tout->tail_ptr->ptr, buf, buflen);
+	      *(tout->tail_ptr->ptr + buflen) = '\0';	/* Null terminate */
 	    }
-	  tout->ptr += nbytes;
-	  tout->count += nbytes;
+	  tout->tail_ptr->ptr += nbytes;
+	  tout->tail_ptr->count += nbytes;
 	}
       else
 	{			/* need more buffer */
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
+	  CHECK_PRINT_ERROR (get_text_output_mem (tout));
 	  goto start;		/* retry */
 	}
     }
@@ -1125,4 +921,83 @@ exit_on_end:
 exit_on_error:
   CHECK_EXIT_ERROR (error);
   goto exit_on_end;
+}
+
+int
+text_print_request_flush (TEXT_OUTPUT * tout, bool force)
+{
+  TEXT_BUFFER_BLK *tp, *head;
+
+  if (tout == NULL || tout->head_ptr == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  head = tout->head_ptr;
+  if (head->count <= 0)
+    {
+      // empty block
+      while (head)
+	{
+	  tp = head;
+	  head = head->next;
+	  c_text_buf_mgr.release_text_buffer (tp);
+	}
+
+      tout->head_ptr = NULL;
+      tout->tail_ptr = NULL;
+      return NO_ERROR;
+    }
+
+  if (tout->fd_ref && *tout->fd_ref != INVALID_FILE_NO)
+    {
+      tout->head_ptr = NULL;
+      tout->tail_ptr = NULL;
+      return write_block_list (*tout->fd_ref, head);
+    }
+
+  if (force || head->next || (((double) head->count / head->iosize) > 0.999))	// ctshim
+    {
+      do
+	{
+	  if (c_write_blk_queue.enqueue (head))
+	    {
+	      break;
+	    }
+	  YIELD_THREAD ();	//ctshim 발생 여부 확인
+	}
+      while (true);
+
+      tout->head_ptr = NULL;
+      tout->tail_ptr = NULL;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+write_block_list (int fd, TEXT_BUFFER_BLK * head)
+{
+  TEXT_BUFFER_BLK *tp;
+  int error = NO_ERROR;
+
+  for (tp = head; tp && tp->count > 0; tp = head)
+    {
+      head = tp->next;
+      /* write to disk */
+      if (error == NO_ERROR)
+	{
+	  if (tp->count != write (fd, tp->buffer, tp->count))
+	    {
+	      // TOD-DO: if interrupt ?
+	      // EAGAIN, EINTR
+	      assert (false);
+	      error = ER_IO_WRITE;
+	    }
+	}
+
+      c_text_buf_mgr.release_text_buffer (tp);
+    }
+
+  return error;
 }

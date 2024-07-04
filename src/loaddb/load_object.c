@@ -63,24 +63,25 @@ static char migration_buffer[MIGRATION_CHUNK];
 static int object_disk_size (DESC_OBJ * obj, int *offset_size_ptr);
 static void put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size);
 static void put_attributes (OR_BUF * buf, DESC_OBJ * obj);
-static void get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit_flag, int offset_size);
+static void get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit_flag, int offset_size,
+			      bool is_unloaddb);
 static SM_ATTRIBUTE *find_current_attribute (SM_CLASS * class_, int id);
 static void get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bound_bit_flag,
-			  int offset_size);
+			  int offset_size, bool is_unloaddb);
 static void init_load_err_filter (void);
 static void default_clear_err_filter (void);
+
+extern int data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+				int copy_buf_len);
 
 /*
  * make_desc_obj - Makes an object descriptor for a particular class.
  *    return: object descriptor
  *    class(in): class structure
+ *    string_buf_size(in): Specifies the size of the memory space to copy the data of the varchar column
  */
 DESC_OBJ *
-#if defined(SUPPORT_THREAD_UNLOAD)
-make_desc_obj (SM_CLASS * class_, int alloc_size)
-#else
-make_desc_obj (SM_CLASS * class_)
-#endif
+make_desc_obj (SM_CLASS * class_, int string_buf_size)
 {
   DESC_OBJ *obj;
   SM_ATTRIBUTE *att;
@@ -101,9 +102,8 @@ make_desc_obj (SM_CLASS * class_)
   obj->count = class_->att_count;
   obj->atts = NULL;
   obj->values = NULL;
-#if defined(SUPPORT_THREAD_UNLOAD)
-  obj->dbval_bufs = NULL;
-#endif
+  obj->dbvalue_buf_ptr = NULL;
+
   if (class_->att_count)
     {
       obj->values = (DB_VALUE *) malloc (sizeof (DB_VALUE) * class_->att_count);
@@ -119,12 +119,12 @@ make_desc_obj (SM_CLASS * class_)
 	  free_and_init (obj);
 	  return NULL;
 	}
-#if defined(SUPPORT_THREAD_UNLOAD)
-      // In the case of compactdb, the analysis is not complete, so the existing operation is maintained.
-      if (alloc_size > 0)
+
+      // Until now, string_buf_size is set to -1 when calling from compatdb.
+      if (string_buf_size > 0)
 	{
-	  obj->dbval_bufs = (DBVAL_BUF *) malloc (sizeof (DBVAL_BUF) * class_->att_count);
-	  if (obj->dbval_bufs == NULL)
+	  obj->dbvalue_buf_ptr = (DBVALUE_BUF *) calloc (class_->att_count, sizeof (DBVALUE_BUF));
+	  if (obj->dbvalue_buf_ptr == NULL)
 	    {
 	      free_and_init (obj->values);
 	      free_and_init (obj->atts);
@@ -132,42 +132,31 @@ make_desc_obj (SM_CLASS * class_)
 	      return NULL;
 	    }
 	}
-#endif
 
       for (i = 0, att = class_->attributes; i < class_->att_count; i++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
 	  db_make_null (&obj->values[i]);
 	  obj->atts[i] = att;
 
-#if defined(SUPPORT_THREAD_UNLOAD)
-	  if (obj->dbval_bufs)
+	  if (obj->dbvalue_buf_ptr && att->type->get_id () == DB_TYPE_VARCHAR)
 	    {
-	      if (att->type->get_id () == DB_TYPE_VARCHAR)
+	      int sz;
+	      if (att->domain->precision == DB_MAX_VARCHAR_PRECISION || att->domain->precision <= 0)
 		{
-		  int sz;
-		  if (att->domain->precision == DB_MAX_VARCHAR_PRECISION || att->domain->precision <= 0)
-		    {
-		      sz = alloc_size;
-		    }
-		  else if (alloc_size > ((INT64) att->domain->precision * INTL_CODESET_MULT (att->domain->codeset)))
-		    {
-		      sz = alloc_size;
-		    }
-		  else
-		    {
-		      sz = (int) ((INT64) att->domain->precision * INTL_CODESET_MULT (att->domain->codeset));
-		    }
-
-		  obj->dbval_bufs[i].buf = (char *) malloc (sz + 1);
-		  obj->dbval_bufs[i].buf_size = (obj->dbval_bufs[i].buf == NULL) ? 0 : sz;
+		  sz = string_buf_size;
 		}
 	      else
 		{
-		  obj->dbval_bufs[i].buf = NULL;
-		  obj->dbval_bufs[i].buf_size = 0;
+		  sz = (int) ((INT64) att->domain->precision * INTL_CODESET_MULT (att->domain->codeset));
+		  if (string_buf_size < sz)
+		    {
+		      sz = string_buf_size;
+		    }
 		}
+
+	      obj->dbvalue_buf_ptr[i].buf = (char *) malloc (sz + 1);
+	      obj->dbvalue_buf_ptr[i].buf_size = (obj->dbvalue_buf_ptr[i].buf == NULL) ? 0 : sz;
 	    }
-#endif
 	}
     }
 
@@ -188,19 +177,17 @@ desc_free (DESC_OBJ * obj)
       return;
     }
 
-#if defined(SUPPORT_THREAD_UNLOAD)
-  if (obj->dbval_bufs != NULL)
+  if (obj->dbvalue_buf_ptr != NULL)
     {
       for (i = 0; i < obj->count; i++)
 	{
-	  if (obj->dbval_bufs[i].buf != NULL)
+	  if (obj->dbvalue_buf_ptr[i].buf != NULL)
 	    {
-	      free (obj->dbval_bufs[i].buf);
+	      free (obj->dbvalue_buf_ptr[i].buf);
 	    }
 	}
-      free (obj->dbval_bufs);
+      free (obj->dbvalue_buf_ptr);
     }
-#endif
 
   if (obj->count && obj->values != NULL)
     {
@@ -575,27 +562,25 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
  *    The most current representation of the class is expected.
  */
 static void
-get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit_flag, int offset_size)
+get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit_flag, int offset_size,
+		  bool is_unloaddb)
 {
   SM_ATTRIBUTE *att;
   int *vars = NULL;
   int i, j, offset, offset2, pad;
   char *bits, *start;
   int rc = NO_ERROR;
-#if defined(SUPPORT_THREAD_UNLOAD)
+  bool do_copy = is_unloaddb ? false : true;
   int zvar[32];
-  //bool do_copy = (obj->dbval_bufs == NULL);   // If do_copy is false, it is called from unloaddb.
-#endif
+
   /* need nicer way to store these */
   if (class_->variable_count)
     {
-#if defined(SUPPORT_THREAD_UNLOAD)
-      if (class_->variable_count <= 32)
+      if (class_->variable_count <= (sizeof (zvar) / sizeof (zvar[0])))
 	{
 	  vars = zvar;
 	}
       else
-#endif
 	{
 	  vars = (int *) malloc (sizeof (int) * class_->variable_count);
 	  if (vars == NULL)
@@ -634,18 +619,7 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       else
 	{
 	  /* read the disk value into the db_value */
-#if defined(SUPPORT_THREAD_UNLOAD)
-	  if (obj->dbval_bufs == NULL)
-	    {			// compactdb
-	      att->type->data_readval (buf, &obj->values[i], att->domain, -1, true, NULL, 0);
-	    }
-	  else
-	    {			// unloaddb
-	      att->type->data_readval (buf, &obj->values[i], att->domain, -1, false, NULL, 0);
-	    }
-#else
-	  att->type->data_readval (buf, &obj->values[i], att->domain, -1, true, NULL, 0);
-#endif
+	  att->type->data_readval (buf, &obj->values[i], att->domain, -1, do_copy, NULL, 0);
 	}
     }
 
@@ -668,34 +642,21 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       for (i = class_->fixed_count, j = 0; i < class_->att_count && j < class_->variable_count;
 	   i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
-#if defined(SUPPORT_THREAD_UNLOAD)
-	  if (obj->dbval_bufs == NULL)
-	    {			// compact
-	      att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], true, NULL, 0);
+	  if (is_unloaddb && obj->dbvalue_buf_ptr && att->type->get_id () == DB_TYPE_VARCHAR)
+	    {
+	      data_readval_string (buf, &obj->values[i], att->domain, vars[j], false, obj->dbvalue_buf_ptr[i].buf,
+				   obj->dbvalue_buf_ptr[i].buf_size);
 	    }
 	  else
-	    {			// unloaddb
-	      if (att->type->get_id () == DB_TYPE_VARCHAR)
-		{
-		  extern int data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size,
-						  bool copy, char *copy_buf, int copy_buf_len);
-		  data_readval_string (buf, &obj->values[i], att->domain, vars[j], false, obj->dbval_bufs[i].buf,
-				       obj->dbval_bufs[i].buf_size);
-		}
-	      else
-		{
-		  att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], false, NULL, 0);
-		}
+	    {
+	      att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], do_copy, NULL, 0);
 	    }
-#else
-	  att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], true, NULL, 0);
-#endif
 	}
 
-#if defined(SUPPORT_THREAD_UNLOAD)
       if (vars != zvar)
-#endif
-	free (vars);
+	{
+	  free (vars);
+	}
     }
 }
 
@@ -735,7 +696,8 @@ find_current_attribute (SM_CLASS * class_, int id)
  *    newest representation.
  */
 static void
-get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bound_bit_flag, int offset_size)
+get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bound_bit_flag, int offset_size,
+	      bool is_unloaddb)
 {
   SM_REPRESENTATION *oldrep;
   SM_REPR_ATTRIBUTE *rat, *found;
@@ -746,11 +708,10 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
   SM_ATTRIBUTE **attmap = NULL;
   char *bits, *start;
   int rc = NO_ERROR;
-#if defined(SUPPORT_THREAD_UNLOAD)
   int storage_order;
+  bool do_copy = is_unloaddb ? false : true;
   int zvar[32];
-  vars = zvar;
-#endif
+
   oldrep = classobj_find_representation (class_, repid);
   if (oldrep == NULL)
     {
@@ -761,9 +722,11 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
   if (oldrep->variable_count)
     {
       /* need nicer way to store these */
-#if defined(SUPPORT_THREAD_UNLOAD)
-      if (class_->variable_count > 32)
-#endif
+      if (class_->variable_count <= (sizeof (zvar) / sizeof (zvar[0])))
+	{
+	  vars = zvar;
+	}
+      else
 	{
 	  vars = (int *) malloc (sizeof (int) * oldrep->variable_count);
 	  if (vars == NULL)
@@ -807,23 +770,12 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
       if (attmap[i] == NULL)
 	{
 	  /* its gone, skip over it */
-	  type->data_readval (buf, NULL, rat->domain, -1, true, NULL, 0);
+	  type->data_readval (buf, NULL, rat->domain, -1, do_copy, NULL, 0);
 	}
       else
 	{
 	  /* its real, get it into the proper value */
-#if defined(SUPPORT_THREAD_UNLOAD)
-	  if (obj->dbval_bufs == NULL)
-	    {			// compactdb
-	      type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, true, NULL, 0);
-	    }
-	  else
-	    {			// unloaddb
-	      type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, false, NULL, 0);
-	    }
-#else
-	  type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, true, NULL, 0);
-#endif
+	  type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, do_copy, NULL, 0);
 	}
     }
 
@@ -874,24 +826,22 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
       if (attmap[att_index] == NULL)
 	{
 	  /* its null, skip over it */
-	  type->data_readval (buf, NULL, rat->domain, vars[i], true, NULL, 0);
+	  type->data_readval (buf, NULL, rat->domain, vars[i], do_copy, NULL, 0);
 	}
       else
 	{
 	  /* read it into the proper value */
-#if defined(SUPPORT_THREAD_UNLOAD)
 	  storage_order = attmap[att_index]->storage_order;
-	  if (obj->dbval_bufs == NULL)
-	    {			// compactdb
-	      type->data_readval (buf, &obj->values[storage_order], rat->domain, vars[i], true, NULL, 0);
+	  if (is_unloaddb && obj->dbvalue_buf_ptr && type->get_id () == DB_TYPE_VARCHAR)
+	    {
+	      data_readval_string (buf, &obj->values[storage_order], rat->domain, vars[i], false,
+				   obj->dbvalue_buf_ptr[storage_order].buf,
+				   obj->dbvalue_buf_ptr[storage_order].buf_size);
 	    }
 	  else
-	    {			// unloaddb
-	      type->data_readval (buf, &obj->values[storage_order], rat->domain, vars[i], false, NULL, 0);
+	    {
+	      type->data_readval (buf, &obj->values[storage_order], rat->domain, vars[i], do_copy, NULL, 0);
 	    }
-#else
-	  type->data_readval (buf, &obj->values[attmap[att_index]->storage_order], rat->domain, vars[i], true, NULL, 0);
-#endif
 	}
     }
 
@@ -922,19 +872,12 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
     {
       free_and_init (attmap);
     }
-#if defined(SUPPORT_THREAD_UNLOAD)
+
   if (vars != zvar)
     {
       assert (vars != NULL);
       free (vars);
     }
-#else
-  if (vars != NULL)
-    {
-      free (vars);
-    }
-#endif
-
 
   obj->updated_flag = 1;
   return;
@@ -943,18 +886,12 @@ abort_on_error:
     {
       free (attmap);
     }
-#if defined(SUPPORT_THREAD_UNLOAD)
+
   if (vars != zvar)
     {
       assert (vars != NULL);
       free (vars);
     }
-#else
-  if (vars != NULL)
-    {
-      free (vars);
-    }
-#endif
 
   or_abort (buf);
 }
@@ -969,7 +906,7 @@ abort_on_error:
  *    obj(out): object descriptor
  */
 int
-desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj)
+desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj, bool is_unloaddb)
 {
   volatile int error = NO_ERROR;
   OR_BUF orep, *buf;
@@ -1010,7 +947,7 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
       repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
       repid = repid_bits & OR_MVCC_REPID_MASK;
       mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
-#if defined(SUPPORT_THREAD_UNLOAD)
+
       i = OR_INT_SIZE;		/* skip chn */
       if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
 	{
@@ -1026,36 +963,15 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
 	}
 
       or_advance (buf, i);
-#else
-      /* skip chn */
-      or_advance (buf, OR_INT_SIZE);
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
-	{
-	  /* skip insert id */
-	  or_advance (buf, OR_MVCCID_SIZE);
-	}
-
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-	{
-	  /* skip delete id */
-	  or_advance (buf, OR_MVCCID_SIZE);
-	}
-
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
-	{
-	  /* skip prev version lsa */
-	  or_advance (buf, OR_MVCC_PREV_VERSION_LSA_SIZE);
-	}
-#endif
 
       bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
       if (repid == class_->repid)
 	{
-	  get_desc_current (buf, class_, obj, bound_bit_flag, offset_size);
+	  get_desc_current (buf, class_, obj, bound_bit_flag, offset_size, is_unloaddb);
 	}
       else
 	{
-	  get_desc_old (buf, class_, repid, obj, bound_bit_flag, offset_size);
+	  get_desc_old (buf, class_, repid, obj, bound_bit_flag, offset_size, is_unloaddb);
 	}
     }
   else
@@ -1067,714 +983,6 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
   pr_Inhibit_oid_promotion = save;
   return error;
 }
-
-#if 0				//------------------------------------------------------------------------
-/*
- * print_set - Print the contents of a real DB_SET (not a set descriptor).
- *    return: void
- *    output_ctx(in): output context
- *    set(in): set reference
- */
-static void
-print_set (print_output & output_ctx, DB_SET * set)
-{
-  DB_VALUE element_value;
-  int len, i;
-  len = set_size (set);
-  output_ctx ("{");
-  for (i = 0; i < len; i++)
-    {
-      if (set_get_element (set, i, &element_value) == NO_ERROR)
-	{
-	  desc_value_print (output_ctx, &element_value);
-	  if (i < len - 1)
-	    {
-	      output_ctx (", ");
-	    }
-	}
-    }
-  output_ctx ("}");
-}
-
-/*
- * fprint_special_set - Print the contents of a real DB_SET (not a set
- * descriptor).
- *    return: NO_ERROR, if successful, error code otherwise
- *    tout(in/out): TEXT_OUTPUT structure
- *    set(in): set reference
- */
-static int
-fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set)
-{
-  int error = NO_ERROR;
-  DB_VALUE element_value;
-  int len, i;
-  len = set_size (set);
-  CHECK_PRINT_ERROR (text_print (tout, "{", 1, NULL));
-  for (i = 0; i < len; i++)
-    {
-      if (set_get_element (set, i, &element_value) == NO_ERROR)
-	{
-	  CHECK_PRINT_ERROR (desc_value_special_fprint (tout, &element_value));
-	  if (i < len - 1)
-	    {
-	      CHECK_PRINT_ERROR (text_print (tout, ",\n ", 2, NULL));
-	    }
-	}
-    }
-  CHECK_PRINT_ERROR (text_print (tout, "}", 1, NULL));
-exit_on_end:
-  return error;
-exit_on_error:
-  CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
-}
-
-/*
- * bfmt_print - Change the given string to a representation of the given bit
- * string value in the given format.
- *    return: -1 if max_size too small, 0 if successful
- *    bfmt(in): format of bit string (binary or hex format)
- *    the_db_bit(in): input DB_VALUE
- *    string(out): output buffer
- *    max_size(in): size of string
- * Note:
- *   max_size specifies the maximum number of chars that can be stored in
- *   the string (including final '\0' char); if this is not long enough to
- *   contain the new string, then an error is returned.
- */
-#define  MAX_DISPLAY_COLUMN    70
-#define DBL_MAX_DIGITS    ((int)ceil(DBL_MAX_EXP * log10(FLT_RADIX)))
-
-#define BITS_IN_BYTE            8
-#define HEX_IN_BYTE             2
-#define BITS_IN_HEX             4
-#define BYTE_COUNT(bit_cnt)     (((bit_cnt)+BITS_IN_BYTE-1)/BITS_IN_BYTE)
-#define BYTE_COUNT_HEX(bit_cnt) (((bit_cnt)+BITS_IN_HEX-1)/BITS_IN_HEX)
-
-static int
-bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
-{
-  /*
-   * Description:
-   */
-  int length = 0;
-  int string_index = 0;
-  int byte_index;
-  int bit_index;
-  const char *bstring;
-  int error = NO_ERROR;
-  static char digits[16] = {
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'
-  };
-  /* Get the buffer and the length from the_db_bit */
-  bstring = db_get_bit (the_db_bit, &length);
-  switch (bfmt)
-    {
-    case 0:			/* BIT_STRING_BINARY */
-      if (length + 1 > max_size)
-	{
-	  error = -1;
-	}
-      else
-	{
-	  for (byte_index = 0; byte_index < BYTE_COUNT (length); byte_index++)
-	    {
-	      for (bit_index = 7; bit_index >= 0 && string_index < length; bit_index--)
-		{
-		  *string = digits[((bstring[byte_index] >> bit_index) & 0x1)];
-		  string++;
-		  string_index++;
-		}
-	    }
-	  *string = '\0';
-	}
-      break;
-    case 1:			/* BIT_STRING_HEX */
-      if (BYTE_COUNT_HEX (length) + 1 > max_size)
-	{
-	  error = -1;
-	}
-      else
-	{
-	  for (byte_index = 0; byte_index < BYTE_COUNT (length); byte_index++)
-	    {
-	      *string = digits[((bstring[byte_index] >> BITS_IN_HEX) & 0x0f)];
-	      string++;
-	      string_index++;
-	      if (string_index < BYTE_COUNT_HEX (length))
-		{
-		  *string = digits[((bstring[byte_index] & 0x0f))];
-		  string++;
-		  string_index++;
-		}
-	    }
-	  *string = '\0';
-	}
-      break;
-    default:
-      break;
-    }
-
-  return error;
-}
-
-/*
- * strnchr - strchr with string length constraints
- *    return: a pointer to the given 'ch', or a null pointer if not found
- *    str(in): string
- *    ch(in): character to find
- *    nbytes(in): length of string
- */
-const static char *
-strnchr (const char *str, char ch, int nbytes)
-{
-  for (; nbytes; str++, nbytes--)
-    {
-      if (*str == ch)
-	{
-	  return str;
-	}
-    }
-  return NULL;
-}
-
-
-static int
-flush_quoted_str (TEXT_OUTPUT * tout, const char *st, int tlen)
-{
-  int ret = NO_ERROR;
-  int cpsize;
-  int capacity = tout->iosize - tout->count;
-
-  if (capacity <= tlen)
-    {
-      cpsize = (capacity < tlen) ? capacity : tlen;
-      memcpy (tout->ptr, st, cpsize);
-      tout->ptr += cpsize;
-      tout->count += cpsize;
-      tlen -= cpsize;
-      assert (tout->count == tout->iosize);
-      ret = text_print_flush (tout);
-      JUMP_TAIL_PTR (tout);
-      if ((ret == NO_ERROR) && (tlen > 0))
-	{
-	  memcpy (tout->ptr, st + cpsize, tlen);
-	  tout->ptr += tlen;
-	  tout->count += tlen;
-	}
-    }
-  else
-    {
-      memcpy (tout->ptr, st, tlen);
-      tout->ptr += tlen;
-      tout->count += tlen;
-    }
-
-  return ret;
-}
-
-
-/*
- * print_quoted_str - print quoted string sequences separated by new line to
- * TEXT_OUTPUT given
- *    return: NO_ERROR if successful, error code otherwise
- *    tout(out): destination buffer
- *    str(in) : string input
- *    len(in): length of string
- *    max_token_len(in): width of string to format
- * Note:
- *  FIXME :: return error in fwrite...
- */
-static int
-print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len)
-{
-#if defined(SUPPORT_THREAD_UNLOAD)
-  int error = NO_ERROR;
-  const char *end;
-  int write_len = 0;
-  const char *st;
-
-  JUMP_TAIL_PTR (tout);
-
-  if (tout->iosize <= tout->count)
-    {
-      assert (tout->iosize == tout->count);
-      CHECK_PRINT_ERROR (text_print_flush (tout));
-      JUMP_TAIL_PTR (tout);
-    }
-
-  /* opening quote */
-  tout->ptr[0] = '\'';
-  tout->ptr++;
-  tout->count++;
-
-  end = str + len;
-  for (st = str; str < end && *str; str++)
-    {
-      if (*str == '\'')
-	{
-	  if ((error = flush_quoted_str (tout, st, (int) (str - st))) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	  if ((error = flush_quoted_str (tout, "''", 2)) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  write_len += 2;
-	  st = str + 1;		// reset start point
-	}
-      else if (++write_len >= max_token_len)
-	{
-	  if ((error = flush_quoted_str (tout, st, ((int) (str - st) + 1))) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  error = ((str + 1) < end && str[1]) ? flush_quoted_str (tout, "'+\n '", 5) : flush_quoted_str (tout, "'", 1);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  write_len = 0;	// reset the number of characters written per line.
-	  st = str + 1;		// reset start point
-	}
-    }
-
-  if (st < str)
-    {
-      if ((error = flush_quoted_str (tout, st, ((int) (str - st)))) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-    }
-
-  if (tout->iosize <= tout->count)
-    {
-      CHECK_PRINT_ERROR (text_print_flush (tout));
-      JUMP_TAIL_PTR (tout);
-    }
-
-  /* closing quote */
-  tout->ptr[0] = '\'';
-  tout->ptr++;
-  tout->count++;
-
-#else // #if defined(SUPPORT_THREAD_UNLOAD)
-  int error = NO_ERROR;
-  const char *p, *end;
-  int partial_len, write_len, left_nbytes;
-  const char *internal_quote_p;
-  /* opening quote */
-  CHECK_PRINT_ERROR (text_print (tout, "'", 1, NULL));
-  left_nbytes = 0;
-  internal_quote_p = strnchr (str, '\'', len);	/* first found single-quote */
-  for (p = str, end = str + len, partial_len = len; p < end; p += write_len, partial_len -= write_len)
-    {
-      write_len = MIN (partial_len, left_nbytes > 0 ? left_nbytes : max_token_len);
-      if (internal_quote_p == NULL || (p + write_len <= internal_quote_p))
-	{
-	  /* not found single-quote in write_len */
-	  CHECK_PRINT_ERROR (text_print (tout, p, write_len, NULL));
-	  if (p + write_len < end)	/* still has something to work */
-	    {
-	      CHECK_PRINT_ERROR (text_print (tout, "\'+\n \'", 5, NULL));
-	    }
-	  left_nbytes = 0;
-	}
-      else
-	{
-	  left_nbytes = write_len;
-	  write_len = CAST_STRLEN (internal_quote_p - p + 1);
-	  CHECK_PRINT_ERROR (text_print (tout, p, write_len, NULL));
-	  left_nbytes -= (write_len + 1);
-	  /*
-	   * write internal "'" as "''", check for still has something to
-	   * work
-	   */
-	  CHECK_PRINT_ERROR (text_print
-			     (tout, (left_nbytes <= 0) ? "'\'+\n \'" : "'", (left_nbytes <= 0) ? 6 : 1, NULL));
-	  /* found the next single-quote */
-	  internal_quote_p = strnchr (p + write_len, '\'', partial_len - write_len);
-	}
-    }
-
-  /* closing quote */
-  CHECK_PRINT_ERROR (text_print (tout, "'", 1, NULL));
-#endif // #if defined(SUPPORT_THREAD_UNLOAD)
-
-exit_on_end:
-  return error;
-exit_on_error:
-  CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
-}
-
-#define INTERNAL_BUFFER_SIZE (400)	/* bigger than DBL_MAX_DIGITS */
-
-#if defined(UNUSED_FUNCTION) && !defined(SUPPORT_THREAD_UNLOAD)
-/*
- * itoa_strreverse - reverse a string
- *    return: void
- *    begin(in/out): begin position of a string
- *    end(in/out): end position of a string
- */
-static void
-itoa_strreverse (char *begin, char *end)
-{
-  char aux;
-  while (end > begin)
-    {
-      aux = *end;
-      *end-- = *begin;
-      *begin++ = aux;
-    }
-}
-
-/*
- * itoa_print - 'itoa' print to TEXT_OUTPUT
- *    return: NO_ERROR, if successful, error number, if not successful.
- *    tout(out): output
- *    value(in): value container
- *    base(in): radix
- * Note:
- *     Ansi C "itoa" based on Kernighan & Ritchie's "Ansi C"
- *     with slight modification to optimize for specific architecture:
- */
-static int
-itoa_print (TEXT_OUTPUT * tout, DB_BIGINT value, int base)
-{
-  int error = NO_ERROR;
-  char *wstr;
-  bool is_negative;
-  DB_BIGINT quotient;
-  DB_BIGINT remainder;
-  int nbytes;
-  static const char itoa_digit[] = "0123456789abcdefghijklmnopqrstuvwxyz";
-  wstr = tout->ptr;
-  /* Validate base */
-  if (base < 2 || base > 35)
-    {
-      goto exit_on_error;	/* give up */
-    }
-
-  /* Take care of sign - in case of INT_MIN, it remains as it is */
-  is_negative = (value < 0) ? true : false;
-  if (is_negative)
-    {
-      value = -value;		/* change to the positive number */
-    }
-
-  /* Conversion. Number is reversed. */
-  do
-    {
-      quotient = value / base;
-      remainder = value % base;
-      *wstr++ = itoa_digit[(remainder >= 0) ? remainder : -remainder];
-    }
-  while ((value = quotient) != 0);
-  if (is_negative)
-    {
-      *wstr++ = '-';
-    }
-  *wstr = '\0';			/* Null terminate */
-  /* Reverse string */
-  itoa_strreverse (tout->ptr, wstr - 1);
-  nbytes = CAST_STRLEN (wstr - tout->ptr);
-  tout->ptr += nbytes;
-  tout->count += nbytes;
-exit_on_end:
-  return error;
-exit_on_error:
-  CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
-}
-#else
-static int
-itoa_print_base10 (TEXT_OUTPUT * tout, DB_BIGINT value)
-{
-  int nbytes;
-
-  JUMP_TAIL_PTR (tout);
-
-  nbytes = sprintf (tout->ptr, "%" PRId64, value);
-  if (nbytes < 0)
-    {
-      return ER_GENERIC_ERROR;
-    }
-
-  tout->ptr += nbytes;
-  tout->count += nbytes;
-  return NO_ERROR;
-}
-#endif
-
-/*
- * fprint_special_strings - print special DB_VALUE to TEXT_OUTPUT
- *    return: NO_ERROR if successful, error code otherwise
- *    tout(out): output
- *    value(in): DB_VALUE
- */
-static int
-fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
-{
-  int error = NO_ERROR;
-  char buf[INTERNAL_BUFFER_SIZE];
-  char *ptr;
-  const char *str_ptr = NULL;
-  char *json_body = NULL;
-  DB_TYPE type;
-  int len;
-  DB_DATETIMETZ *dt_tz;
-  DB_TIMESTAMPTZ *ts_tz;
-  type = DB_VALUE_TYPE (value);
-
-  JUMP_TAIL_PTR (tout);
-
-  switch (type)
-    {
-    case DB_TYPE_NULL:
-      CHECK_PRINT_ERROR (text_print (tout, "NULL", 4, NULL));
-      break;
-    case DB_TYPE_BIGINT:
-      if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
-	{
-	  /* flush remaining buffer */
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	  JUMP_TAIL_PTR (tout);
-	}
-      CHECK_PRINT_ERROR (itoa_print (tout, db_get_bigint (value), 10 /* base */ ));
-      break;
-    case DB_TYPE_INTEGER:
-      if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
-	{
-	  /* flush remaining buffer */
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	  JUMP_TAIL_PTR (tout);
-	}
-      CHECK_PRINT_ERROR (itoa_print (tout, db_get_int (value), 10 /* base */ ));
-      break;
-    case DB_TYPE_SMALLINT:
-      if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
-	{
-	  /* flush remaining buffer */
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	  JUMP_TAIL_PTR (tout);
-	}
-      CHECK_PRINT_ERROR (itoa_print (tout, db_get_short (value), 10 /* base */ ));
-      break;
-    case DB_TYPE_FLOAT:
-    case DB_TYPE_DOUBLE:
-      {
-	char *pos;
-	pos = tout->ptr;
-	CHECK_PRINT_ERROR (text_print
-			   (tout, NULL, 0, "%.*g", (type == DB_TYPE_FLOAT) ? 10 : 17,
-			    (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_double (value)));
-	/* if tout flushed, then this float/double should be the first content */
-	if ((pos < tout->ptr && !strchr (pos, '.')) || (pos > tout->ptr && !strchr (tout->buffer, '.')))
-	  {
-	    CHECK_PRINT_ERROR (text_print (tout, ".", 1, NULL));
-	  }
-      }
-      break;
-    case DB_TYPE_ENUMERATION:
-      if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
-	{
-	  /* flush remaining buffer */
-	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	  JUMP_TAIL_PTR (tout);
-	}
-      CHECK_PRINT_ERROR (itoa_print (tout, db_get_enum_short (value), 10 /* base */ ));
-      break;
-    case DB_TYPE_DATE:
-      db_date_to_string (buf, MAX_DISPLAY_COLUMN, db_get_date (value));
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "date '%s'", buf));
-      break;
-    case DB_TYPE_TIME:
-      db_time_to_string (buf, MAX_DISPLAY_COLUMN, db_get_time (value));
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "time '%s'", buf));
-      break;
-    case DB_TYPE_TIMESTAMP:
-      db_timestamp_to_string (buf, MAX_DISPLAY_COLUMN, db_get_timestamp (value));
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestamp '%s'", buf));
-      break;
-    case DB_TYPE_TIMESTAMPLTZ:
-      db_timestampltz_to_string (buf, MAX_DISPLAY_COLUMN, db_get_timestamp (value));
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestampltz '%s'", buf));
-      break;
-    case DB_TYPE_TIMESTAMPTZ:
-      ts_tz = db_get_timestamptz (value);
-      db_timestamptz_to_string (buf, MAX_DISPLAY_COLUMN, &ts_tz->timestamp, &ts_tz->tz_id);
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestamptz '%s'", buf));
-      break;
-    case DB_TYPE_DATETIME:
-      db_datetime_to_string (buf, MAX_DISPLAY_COLUMN, db_get_datetime (value));
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetime '%s'", buf));
-      break;
-    case DB_TYPE_DATETIMELTZ:
-      db_datetimeltz_to_string (buf, MAX_DISPLAY_COLUMN, db_get_datetime (value));
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetimeltz '%s'", buf));
-      break;
-    case DB_TYPE_DATETIMETZ:
-      dt_tz = db_get_datetimetz (value);
-      db_datetimetz_to_string (buf, MAX_DISPLAY_COLUMN, &dt_tz->datetime, &dt_tz->tz_id);
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetimetz '%s'", buf));
-      break;
-    case DB_TYPE_MONETARY:
-      /* Always print symbol before value, even if for turkish lira the user format is after value :
-       * intl_get_currency_symbol_position */
-      CHECK_PRINT_ERROR (text_print
-			 (tout, NULL, 0, "%s%.*f", intl_get_money_esc_ISO_symbol (db_get_monetary (value)->type), 2,
-			  db_get_monetary (value)->amount));
-      break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      CHECK_PRINT_ERROR (text_print (tout, "N", 1, NULL));
-      /* fall through */
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-      str_ptr = db_get_string (value);
-      len = db_get_string_size (value);
-      if (len < 0)
-	{
-	  len = (int) strlen (str_ptr);
-	}
-
-      CHECK_PRINT_ERROR (print_quoted_str (tout, str_ptr, len, MAX_DISPLAY_COLUMN));
-      break;
-    case DB_TYPE_NUMERIC:
-      ptr = numeric_db_value_print (value, buf);
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, !strchr (ptr, '.') ? "%s." : "%s", ptr));
-      break;
-    case DB_TYPE_BIT:
-    case DB_TYPE_VARBIT:
-      {
-	int max_size = ((db_get_string_length (value) + 3) / 4) + 1;
-	if (max_size > INTERNAL_BUFFER_SIZE)
-	  {
-	    ptr = (char *) malloc (max_size);
-	    if (ptr == NULL)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) max_size);
-		break;		/* FIXME */
-	      }
-	  }
-	else
-	  {
-	    ptr = buf;
-	  }
-
-	if (bfmt_print (1 /* BIT_STRING_HEX */ , value, ptr, max_size) ==
-	    NO_ERROR)
-	  {
-	    CHECK_PRINT_ERROR (text_print (tout, "X", 1, NULL));
-	    CHECK_PRINT_ERROR (print_quoted_str (tout, ptr, max_size - 1, MAX_DISPLAY_COLUMN));
-	  }
-
-	if (ptr != buf)
-	  {
-	    free_and_init (ptr);
-	  }
-	break;
-      }
-
-      /* other stubs */
-    case DB_TYPE_ERROR:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", db_get_error (value)));
-      break;
-    case DB_TYPE_POINTER:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%p", db_get_pointer (value)));
-      break;
-    case DB_TYPE_JSON:
-      json_body = db_get_json_raw_body (value);
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "'%s'", json_body));
-      db_private_free (NULL, json_body);
-      break;
-    default:
-      /* the others are handled by callers or internal-use only types */
-      break;
-    }
-
-exit_on_end:
-  return error;
-exit_on_error:
-  CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
-}
-
-/*
- * desc_value_special_fprint - Print a description of the given value.
- *    return: NO_ERROR, if successful, error number, if not successful.
- *    tout(out):  TEXT_OUTPUT
- *    value(in): value container
- * Note:
- *    This is based on db_value_print() but has extensions for the
- *    handling of set descriptors, and ELO's used by the desc_ module.
- *    String printing is also hacked for "unprintable" characters.
- */
-int
-desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
-{
-  int error = NO_ERROR;
-  JUMP_TAIL_PTR (tout);
-  switch (DB_VALUE_TYPE (value))
-    {
-    case DB_TYPE_SET:
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-      CHECK_PRINT_ERROR (fprint_special_set (tout, db_get_set (value)));
-      break;
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
-      break;
-    default:
-      CHECK_PRINT_ERROR (fprint_special_strings (tout, value));
-      break;
-    }
-
-exit_on_end:
-  return error;
-exit_on_error:
-  CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
-}
-
-/*
- * desc_value_print - Print a description of the given value.
- *    return: void
- *    output_ctx(in): output context
- *    value(in): value container
- * Note:
- *    This is based on db_value_print() but has extensions for the
- *    handling of set descriptors, and ELO's used by the desc_ module.
- *    String printing is also hacked for "unprintable" characters.
- */
-void
-desc_value_print (print_output & output_ctx, DB_VALUE * value)
-{
-  switch (DB_VALUE_TYPE (value))
-    {
-    case DB_TYPE_SET:
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-      print_set (output_ctx, db_get_set (value));
-      break;
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
-      break;
-    default:
-      db_print_value (output_ctx, value);
-      break;
-    }
-}
-
-#endif // #if 0 //------------------------------------------------------------------------
 
 static bool filter_ignore_errors[-ER_LAST_ERROR] = {
   false,

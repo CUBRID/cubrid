@@ -1376,12 +1376,13 @@ typedef struct _ha_config
 #define UNLOAD_SKIP_INDEX_DETAIL_L              "skip-index-detail"	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 #define UNLOAD_THREAD_COUNT_S                   't'
 #define UNLOAD_THREAD_COUNT_L                   "thread-count"
-#define UNLOAD_VARCHAR_ALLOC_SIZE_S             'm'
-#define UNLOAD_VARCHAR_ALLOC_SIZE_L             "memory_alloc_size"
-#define UNLOAD_MODULAR_VALUE_S                  11923
-#define UNLOAD_MODULAR_VALUE_L                  "modular"
-#define UNLOAD_REMAINDER_VALUE_S                11924
-#define UNLOAD_REMAINDER_VALUE_L                "remainder"
+#define UNLOAD_STRING_BUFFER_SIZE_S             'b'
+#define UNLOAD_STRING_BUFFER_SIZE_L             "use-string-buffer"
+#define UNLOAD_REQUEST_DATASIZE_S               11923
+#define UNLOAD_REQUEST_DATASIZE_L               "use-request-datasize"
+#define UNLOAD_MT_PROCESS_S                     11924
+#define UNLOAD_MT_PROCESS_L                     "process"
+
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'
