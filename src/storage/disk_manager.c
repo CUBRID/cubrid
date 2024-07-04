@@ -546,20 +546,21 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   DKNPAGES extend_npages = DISK_SECTS_NPAGES (ext_info->nsect_total);
   INT16 prev_volid;
   const int vol_fullname_size = strlen (vol_fullname) + 1;
+  int remarks_size = 0;
   int error_code = NO_ERROR;
 
   assert ((int) sizeof (DISK_VOLUME_HEADER) <= DB_PAGESIZE);
 
   addr.vfid = NULL;
 
-  if ( remarks != NULL )
-  {
-    const int remarks_size = strlen (remarks) + 1;
-  }
+  if (remarks != NULL)
+    {
+      remarks_size = strlen (remarks) + 1;
+    }
   else
-  {
-    const int remarks_size = 1;
-  }
+    {
+      remarks_size = 1;
+    }
 
   // The second condition will be modified when the TODO(235 line, var_fields max size issue by page size) is addressed.
   if (vol_fullname_size > DB_MAX_PATH_LENGTH
@@ -572,7 +573,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   if (remarks_size > DISK_VOLUME_HEADER_REMARKS_MAX_SIZE)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_REMARKS_LENGTH_IS_TOO_LONG, 2, NULL, remarks_size,
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_REMARKS_LENGTH_IS_TOO_LONG, 2, remarks_size,
 	      DISK_VOLUME_HEADER_REMARKS_MAX_SIZE);
       return ER_DISK_REMARKS_LENGTH_IS_TOO_LONG;
     }
