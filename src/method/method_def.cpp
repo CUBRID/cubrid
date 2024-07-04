@@ -49,10 +49,13 @@ method_sig_node::method_sig_node (method_sig_node &&obj)
   method_arg_pos = obj.method_arg_pos;
   num_method_args = obj.num_method_args;
   result_type = obj.result_type;
+  oid = obj.oid;
 
   obj.method_name = nullptr;
   obj.auth_name = nullptr;
   obj.method_arg_pos = nullptr;
+  obj.oid = OID_INITIALIZER;
+
 
   if (obj.class_name != nullptr)
     {
@@ -103,6 +106,7 @@ method_sig_node::method_sig_node (const method_sig_node &obj)
 
   method_type = obj.method_type;
   num_method_args = obj.num_method_args;
+  oid = obj.oid;
 
   if (obj.num_method_args > 0)
     {
@@ -271,7 +275,7 @@ method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t 
 	}
     }
 
-  size += serializator.get_packed_oid_size (size); /* method_sig->arg_info->arg_type[i] */
+  size += serializator.get_packed_oid_size (size); /* OID */
 
   return size;
 }

@@ -2612,6 +2612,8 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
 /* is can be null */
   method_sig->class_name = stx_restore_string (thread_p, ptr);
 
+  ptr = or_unpack_oid (ptr, &method_sig->oid);
+
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {

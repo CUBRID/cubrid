@@ -59,4 +59,10 @@ extern void jsp_set_prepare_call (void);
 extern void jsp_unset_prepare_call (void);
 extern bool jsp_is_prepare_call (void);
 
+#ifdef  __cplusplus
+extern
+  std::string
+jsp_get_class_name_of_target (const std::string & target);
+#endif
+
 #endif /* _JSP_CL_H_ */
