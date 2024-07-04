@@ -1939,7 +1939,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 320 Unsupported return type '%1$s' of the stored procedure
 321 %TYPE type specification is allowed only for PL/CSQL
 322 Table column '%1$s.%2$s' has not been defined
-323 저장 프로시저/함수 "$1$s"이(가) 존재하지 않습니다.
+323 저장 프로시저/함수 "%1$s"이(가) 존재하지 않습니다.
 324 Out 매개변수에 DEFAULT를 할당하는 것은 허용되지 않습니다: '%1$s'.
 325 오직 후행 기본 인수만 허용합니다: '%1$s' 에서 유효하지 않음.
 
