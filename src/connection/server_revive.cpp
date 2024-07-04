@@ -122,8 +122,8 @@ server_entry (int pid, const char *server_name, const char *exec_path, char *arg
 
 master_monitor::server_entry::~server_entry()
 {
-  delete[]server_name;
-  delete[]exec_path;
+  delete[] server_name;
+  delete[] exec_path;
 
   if (argv)
     {
@@ -131,7 +131,7 @@ master_monitor::server_entry::~server_entry()
 	{
 	  delete[] * arg;
 	}
-      delete[]argv;
+      delete[] argv;
     }
 }
 
