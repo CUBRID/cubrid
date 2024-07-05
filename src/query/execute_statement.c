@@ -14716,10 +14716,10 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
     execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id, flag, &clt_cache_time,
 		   &stmt->cache_time);
 
-  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+  if (err == ER_QPROC_RESULT_CACHE_INVALID)
     {
       /* retry the statement once */
-      if (do_prepare_statement (parser, stmt) == NO_ERROR)
+      if ((err = do_prepare_statement (parser, stmt)) == NO_ERROR)
 	{
 	  err = do_execute_statement (parser, stmt);
 	}

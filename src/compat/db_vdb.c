@@ -1664,13 +1664,10 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 
   if (stmt->info.query.flag.subquery_cached)
     {
-      if (*err == NO_ERROR)
+      *err = do_execute_subquery (parser, stmt);
+      if (*err != NO_ERROR)
 	{
-	  *err = do_execute_subquery (parser, stmt);
-	  if (*err != NO_ERROR)
-	    {
-	      *continue_walk = PT_STOP_WALK;
-	    }
+	  *continue_walk = PT_STOP_WALK;
 	}
     }
 
@@ -1891,8 +1888,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
-      if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
-	   && session->stage[stmt_ndx] == StatementPreparedStage)
+      if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE
+	    || err == ER_QPROC_RESULT_CACHE_INVALID) && session->stage[stmt_ndx] == StatementPreparedStage)
 	  || (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && session->stage[stmt_ndx] == StatementExecutedStage))
 	{
 	  /* The cache entry was deleted before 'execute' */
@@ -1902,7 +1899,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	    }
 
 	  cls_status = pt_has_modified_class (parser, statement);
-	  if (cls_status == DB_CLASS_NOT_MODIFIED)
+	  if (cls_status == DB_CLASS_NOT_MODIFIED || err == ER_QPROC_RESULT_CACHE_INVALID)
 	    {
 	      /* forget all errors */
 	      er_clear ();
