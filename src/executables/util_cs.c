@@ -4380,15 +4380,15 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	{
 	case ER_FLASHBACK_INVALID_TIME:
 	  {
-	    char db_creation_time[20];
+	    char db_creation[20];
 	    char current_time_buf[20];
 
-	    strftime (db_creation_time, 20, "%d-%m-%Y:%H:%M:%S", localtime (&invalid_time));
+	    strftime (db_creation, 20, "%d-%m-%Y:%H:%M:%S", localtime (&invalid_time));
 	    strftime (current_time_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
 
 	    PRINT_AND_LOG_ERR_MSG (msgcat_message
 				   (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TIME),
-				   current_time_buf, db_creation_time);
+				   current_time_buf, db_creation);
 	    break;
 	  }
 	case ER_FLASHBACK_INVALID_CLASS:

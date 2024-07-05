@@ -76,13 +76,13 @@ struct log_bgarv_header
   char magic[CUBRID_MAGIC_MAX_LENGTH];
 
   INT32 dummy;
-  INT64 db_creation_time;
+  INT64 db_creation;
 
   LOG_PAGEID start_page_id;
   LOG_PAGEID current_page_id;
   LOG_PAGEID last_sync_pageid;
 
-  INT64 vol_creation_time;
+  INT64 vol_creation;
 };
 
 enum HEADER_FETCH_MODE
@@ -728,7 +728,7 @@ logwr_set_hdr_and_flush_info (void)
 	  return ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
 	}
 
-      if (difftime64 (hdr.db_creation_time, logwr_Gl.hdr.db_creation_time) != 0)
+      if (difftime64 (hdr.db_creation, logwr_Gl.hdr.db_creation) != 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DOESNT_CORRESPOND_TO_DATABASE, 1, logwr_Gl.active_name);
 	  return ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
@@ -1170,8 +1170,8 @@ logwr_flush_bgarv_header_page (void)
   /* Construct the bg archive log header */
   bgarvhdr = (LOG_BGARV_HEADER *) log_pgptr->area;
   strncpy (bgarvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
-  bgarvhdr->db_creation_time = logwr_Gl.hdr.db_creation_time;
-  bgarvhdr->vol_creation_time = time (NULL);
+  bgarvhdr->db_creation = logwr_Gl.hdr.db_creation;
+  bgarvhdr->vol_creation = time (NULL);
   bgarvhdr->start_page_id = bg_arv_info->start_page_id;
   bgarvhdr->current_page_id = bg_arv_info->current_page_id;
   bgarvhdr->last_sync_pageid = bg_arv_info->last_sync_pageid;
@@ -1310,8 +1310,8 @@ logwr_archive_active_log (void)
   /* Construct the archive log header */
   arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
   strncpy (arvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
-  arvhdr->db_creation_time = logwr_Gl.hdr.db_creation_time;
-  arvhdr->vol_creation_time = time (NULL);
+  arvhdr->db_creation = logwr_Gl.hdr.db_creation;
+  arvhdr->vol_creation = time (NULL);
   arvhdr->next_trid = NULL_TRANID;
   arvhdr->fpageid = logwr_Gl.last_arv_fpageid;
   arvhdr->arv_num = logwr_Gl.last_arv_num;

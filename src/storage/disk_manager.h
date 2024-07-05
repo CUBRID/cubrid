@@ -90,7 +90,7 @@ extern void disk_lock_extend (void);
 extern void disk_unlock_extend (void);
 extern int disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname);
 extern int disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_fullname,
-			      const INT64 * new_dbcreation, const LOG_LSA * new_chkptlsa, bool logchange,
+			      const INT64 * new_db_creation, const LOG_LSA * new_chkptlsa, bool logchange,
 			      bool is_new_db_creation, DISK_FLUSH_TYPE flush_page);
 extern int disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const char *next_volext_fullname,
 			  bool logchange, DISK_FLUSH_TYPE flush);
@@ -108,7 +108,7 @@ extern DISK_ISVALID disk_check_sectors_are_reserved (THREAD_ENTRY * thread_p, VS
 extern INT16 xdisk_get_purpose_and_sys_lastpage (THREAD_ENTRY * thread_p, INT16 volid, DISK_VOLPURPOSE * vol_purpose,
 						 INT32 * sys_lastpage);
 extern int disk_get_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, LOG_LSA * vol_lsa);
-extern int disk_get_creation_time (THREAD_ENTRY * thread_p, INT16 volid, INT64 * db_creation_time);
+extern int disk_get_creation_time (THREAD_ENTRY * thread_p, INT16 volid, INT64 * db_creation);
 extern INT32 disk_get_total_numsectors (THREAD_ENTRY * thread_p, INT16 volid);
 extern HFID *disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, HFID * hfid);
 extern char *disk_get_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 * next_volid, char *next_volext_fullname);

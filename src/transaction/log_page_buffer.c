@@ -312,7 +312,7 @@ static int logpb_next_where_path (const char *to_db_fullname, const char *toext_
 				  char *ext_path, const char *fileof_vols_and_wherepaths, FILE * where_paths_fp,
 				  int num_perm_vols, VOLID volid, char *from_volname, char *to_volname);
 static int logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *tonew_volname,
-			      INT64 * db_creation_time, LOG_LSA * vol_chkpt_lsa);
+			      INT64 * db_creation, LOG_LSA * vol_chkpt_lsa);
 static bool logpb_check_if_exists (const char *fname, char *first_vol);
 #if defined(SERVER_MODE)
 static int logpb_backup_needed_archive_logs (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session,
@@ -1298,13 +1298,13 @@ logpb_initialize_backup_info (LOG_HEADER * log_hdr)
  *                      Log_information = db_loginfo
  *                      Database Backup = db_backup
  *   npages(in): Size of active log in pages
- *   db_creation_time(in): Database creation time.
+ *   db_creation(in): Database creation time.
  *
  * NOTE:Initialize a log header structure.
  */
 int
 logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const char *prefix_logname,
-			 DKNPAGES npages, INT64 * db_creation_time)
+			 DKNPAGES npages, INT64 * db_creation)
 {
   int i;
 
@@ -1316,15 +1316,15 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
 
   strncpy (loghdr->magic, CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH);
 
-  if (db_creation_time != NULL)
+  if (db_creation != NULL)
     {
-      loghdr->db_creation_time = *db_creation_time;
-      loghdr->vol_creation_time = time (NULL);
+      loghdr->db_creation = *db_creation;
+      loghdr->vol_creation = time (NULL);
     }
   else
     {
-      loghdr->db_creation_time = -1;
-      loghdr->vol_creation_time = -1;
+      loghdr->db_creation = -1;
+      loghdr->vol_creation = -1;
     }
 
   if (strlen (rel_release_string ()) >= REL_MAX_RELEASE_LENGTH)
@@ -2337,7 +2337,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
  *                      Log_information = db_loginfo
  *                      Database Backup = db_backup
  *   db_iopagesize(in): Set as a side effect to iopagesize
- *   db_creation_time(in): Set as a side effect to time of database creation
+ *   db_creation(in): Set as a side effect to time of database creation
  *   db_compatibility(in): Set as a side effect to database disk compatibility
  *   db_charset(in): Set as a side effect to database charset
  *
@@ -2346,7 +2346,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
 PGLENGTH
 logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log_header, const char *db_fullname,
 			      const char *logpath, const char *prefix_logname, PGLENGTH * io_page_size,
-			      PGLENGTH * log_page_size, INT64 * db_creation_time, INT64 * vol_creation_time,
+			      PGLENGTH * log_page_size, INT64 * db_creation, INT64 * vol_creation,
 			      float *db_compatibility, int *db_charset)
 {
   static LOG_HEADER hdr;	/* Log header */
@@ -2371,8 +2371,8 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
     {
       *io_page_size = log_Gl.hdr.db_iopagesize;
       *log_page_size = log_Gl.hdr.db_logpagesize;
-      *db_creation_time = log_Gl.hdr.db_creation_time;
-      *vol_creation_time = log_Gl.hdr.vol_creation_time;
+      *db_creation = log_Gl.hdr.db_creation;
+      *vol_creation = log_Gl.hdr.vol_creation;
       *db_compatibility = log_Gl.hdr.db_compatibility;
 
       if (IO_PAGESIZE != *io_page_size || LOG_PAGESIZE != *log_page_size)
@@ -2415,8 +2415,8 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
 
   *io_page_size = hdr.db_iopagesize;
   *log_page_size = hdr.db_logpagesize;
-  *db_creation_time = hdr.db_creation_time;
-  *vol_creation_time = hdr.vol_creation_time;
+  *db_creation = hdr.db_creation;
+  *vol_creation = hdr.vol_creation;
   *db_compatibility = hdr.db_compatibility;
   *db_charset = (int) hdr.db_charset;
 
@@ -2460,8 +2460,8 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
 error:
   *io_page_size = -1;
   *log_page_size = -1;
-  *db_creation_time = 0;
-  *vol_creation_time = 0;
+  *db_creation = 0;
+  *vol_creation = 0;
   *db_compatibility = -1.0;
 
   return *io_page_size;
@@ -5242,7 +5242,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	      arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
 	      if (log_Gl.append.vdes != NULL_VOLDES)
 		{
-		  if (difftime64 ((time_t) arv_hdr->db_creation_time, (time_t) log_Gl.hdr.db_creation_time) != 0)
+		  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
 		    {
 		      /*
 		       * This volume does not belong to the database. For now, assume
@@ -5563,7 +5563,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	      arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
 	      if (log_Gl.append.vdes != NULL_VOLDES)
 		{
-		  if (difftime64 ((time_t) arv_hdr->db_creation_time, (time_t) log_Gl.hdr.db_creation_time) != 0)
+		  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
 		    {
 		      /*
 		       * This volume does not belong to the database. For now, assume
@@ -5685,8 +5685,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   /* Construct the archive log header */
   arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
   strncpy (arvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
-  arvhdr->db_creation_time = log_Gl.hdr.db_creation_time;
-  arvhdr->vol_creation_time = time (NULL);
+  arvhdr->db_creation = log_Gl.hdr.db_creation;
+  arvhdr->vol_creation = time (NULL);
   arvhdr->next_trid = log_Gl.hdr.next_trid;
   arvhdr->arv_num = log_Gl.hdr.nxarv_num;
 
@@ -7946,7 +7946,7 @@ loop:
       fprintf (session.verbose_fp, "- number of permanent volumes: %d\n\n", num_perm_vols);
 
       fprintf (session.verbose_fp, "- HA apply info: %s %lld %lld %d\n\n", log_Gl.hdr.prefix_name,
-	       (long long int) log_Gl.hdr.db_creation_time,
+	       (long long int) log_Gl.hdr.db_creation,
 	       (long long int) log_Gl.hdr.smallest_lsa_at_last_chkpt.pageid,
 	       (int) log_Gl.hdr.smallest_lsa_at_last_chkpt.offset);
 
@@ -7960,7 +7960,7 @@ loop:
   assert (!skip_activelog);
   session.bkup.bkuphdr->skip_activelog = skip_activelog;
 
-  if (fileio_start_backup (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation_time, backup_level, &bkup_start_lsa,
+  if (fileio_start_backup (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation, backup_level, &bkup_start_lsa,
 			   &chkpt_lsa, all_bkup_info, &session, zip_method, zip_level) == NULL)
     {
       error_code = ER_FAILED;
@@ -8390,8 +8390,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   VOLID to_volid;
   FILE *backup_volinfo_fp = NULL;	/* Pointer to backup information/directory file */
   int another_vol;
-  INT64 db_creation_time;
-  INT64 vol_creation_time;
+  INT64 db_creation;
+  INT64 vol_creation;
   INT64 bkup_match_time = 0;
   PGLENGTH db_iopagesize;
   PGLENGTH log_page_size;
@@ -8437,13 +8437,12 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   LOG_CS_ENTER (thread_p);
 
   if (logpb_find_header_parameters (thread_p, true, db_fullname, logpath, prefix_logname, &db_iopagesize,
-				    &log_page_size, &db_creation_time, &vol_creation_time, &db_compatibility,
-				    &dummy) == -1)
+				    &log_page_size, &db_creation, &vol_creation, &db_compatibility, &dummy) == -1)
     {
       db_iopagesize = IO_PAGESIZE;
       log_page_size = LOG_PAGESIZE;
-      db_creation_time = 0;
-      vol_creation_time = 0;
+      db_creation = 0;
+      vol_creation = 0;
       db_compatibility = rel_disk_compatible ();
     }
 
@@ -8505,7 +8504,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	}
 
       printtoc = (r_args->printtoc) ? false : true;
-      if (fileio_start_restore (thread_p, db_fullname, from_volbackup, db_creation_time, &bkdb_iopagesize,
+      if (fileio_start_restore (thread_p, db_fullname, from_volbackup, db_creation, &bkdb_iopagesize,
 				&bkdb_compatibility, &session_storage, try_level, printtoc, bkup_match_time,
 				r_args->verbose_file, r_args->newvolpath) == NULL)
 	{
@@ -9257,13 +9256,13 @@ logpb_next_where_path (const char *to_db_fullname, const char *toext_path, const
  *
  *   from_volid(in): The identifier of the volume to be copied
  *   to_volname(in): Name of the new volume
- *   db_creation_time(in): Creation timestamp for the volume
+ *   db_creation(in): Creation timestamp for the volume
  *   to_volchkpt_lsa(in): Checkpoint location to be used in the new volume
  *
  * NOTE: Copy the volume identified by "from_volid" to "tonew_volname".
  */
 static int
-logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *to_volname, INT64 * db_creation_time,
+logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *to_volname, INT64 * db_creation,
 		   LOG_LSA * to_volchkpt_lsa)
 {
   int from_vdes, to_vdes;	/* Descriptor for "from" and "to" volumes */
@@ -9303,7 +9302,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *to_vol
    * checkpoint lsa
    */
 
-  (void) disk_set_creation (thread_p, LOG_DBCOPY_VOLID, to_volname, db_creation_time, to_volchkpt_lsa, false, true,
+  (void) disk_set_creation (thread_p, LOG_DBCOPY_VOLID, to_volname, db_creation, to_volchkpt_lsa, false, true,
 			    DISK_DONT_FLUSH);
 
   logpb_flush_pages_direct (thread_p);
@@ -9385,7 +9384,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   const char *ext_name;
   char *ext_path;
   VOLID volid;
-  INT64 db_creation_time;
+  INT64 db_creation;
   LOG_PHY_PAGEID phy_pageid;
   bool stop_eof = false;
   const char *catmsg;
@@ -9395,7 +9394,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   char from_mk_path[PATH_MAX] = { 0, };
   char to_mk_path[PATH_MAX] = { 0, };
 
-  db_creation_time = time (NULL);
+  db_creation = time (NULL);
 
   /*
    * Make sure that the length name of the volumes are OK
@@ -9540,7 +9539,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   to_malloc_log_pgptr->hdr.flags = 0;
 
   to_hdr = (LOG_HEADER *) to_malloc_log_pgptr->area;
-  error_code = logpb_initialize_header (thread_p, to_hdr, to_prefix_logname, log_Gl.hdr.npages + 1, &db_creation_time);
+  error_code = logpb_initialize_header (thread_p, to_hdr, to_prefix_logname, log_Gl.hdr.npages + 1, &db_creation);
   if (error_code != NO_ERROR)
     {
       fileio_dismount (thread_p, to_vdes);
@@ -9597,7 +9596,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 	{
 	  goto error;
 	}
-      error_code = logpb_copy_volume (thread_p, volid, to_volname, &to_hdr->db_creation_time, &to_hdr->chkpt_lsa);
+      error_code = logpb_copy_volume (thread_p, volid, to_volname, &to_hdr->db_creation, &to_hdr->chkpt_lsa);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -10083,7 +10082,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	}
 
       error_code =
-	disk_set_creation (thread_p, volid, to_volname, &log_Gl.hdr.db_creation_time, &log_Gl.hdr.chkpt_lsa, true,
+	disk_set_creation (thread_p, volid, to_volname, &log_Gl.hdr.db_creation, &log_Gl.hdr.chkpt_lsa, true,
 			   false, DISK_DONT_FLUSH);
       if (error_code != NO_ERROR)
 	{
@@ -11294,7 +11293,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
       arv_hdr = (LOG_ARV_HEADER *) arv_hdr_pgptr->area;
       if (log_Gl.append.vdes != NULL_VOLDES)
 	{
-	  if (difftime64 ((time_t) arv_hdr->db_creation_time, (time_t) log_Gl.hdr.db_creation_time) != 0)
+	  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
 	    {
 	      fileio_dismount (thread_p, vdes);
 

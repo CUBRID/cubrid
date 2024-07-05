@@ -524,14 +524,14 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 
   /* 1. Check time value statically */
 
-  if (*start_time > current_time || *end_time <= log_Gl.hdr.db_creation_time)
+  if (*start_time > current_time || *end_time <= log_Gl.hdr.db_creation)
     {
       char start_date[20];
       char db_creation_date[20];
       char cur_date[20];
 
       strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
-      strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation_time));
+      strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
       strftime (cur_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date, db_creation_date,
@@ -540,15 +540,15 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
       return ER_FLASHBACK_INVALID_TIME;
     }
 
-  if (*start_time < log_Gl.hdr.db_creation_time)
+  if (*start_time < log_Gl.hdr.db_creation)
     {
-      /* If the start time received from the user is earlier than the db_creation_time,
-       * set the start time to log_Gl.hdr.db_creation_time.
-       * Since it was checked above that end_time must be greater than db_creation_time, even if start_time is set to db_creation_time,
+      /* If the start time received from the user is earlier than the db_creation,
+       * set the start time to log_Gl.hdr.db_creation.
+       * Since it was checked above that end_time must be greater than db_creation, even if start_time is set to db_creation,
        * it can be confirmed that start_time is greater than end_time.
        */
 
-      *start_time = log_Gl.hdr.db_creation_time;
+      *start_time = log_Gl.hdr.db_creation;
     }
 
   /* 2. Check if there is log record at start_time */
@@ -567,7 +567,7 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 	  char db_creation_date[20];
 
 	  strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
-	  strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation_time));
+	  strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
 
 	  /* out of range : start_time (ret_time) can not be greater than end_time */
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date,

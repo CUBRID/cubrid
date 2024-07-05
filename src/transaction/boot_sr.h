@@ -102,7 +102,7 @@ struct bo_restart_arg
 
   bool restore_slave;		/* restore slave */
   bool is_restore_from_backup;
-  INT64 db_creation_time;	/* database creation time */
+  INT64 db_creation;		/* database creation time */
   LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
   char keys_file_path[PATH_MAX];	/* Master Key File (_keys) path for TDE. If it is not NULL, it is used, not the keys spcified system parameter or from default path */
 };
