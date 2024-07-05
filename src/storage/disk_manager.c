@@ -1022,8 +1022,6 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
   addr.vfid = NULL;
   addr.offset = 0;
 
-
-
   /* Get the header of the previous permanent volume */
   error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_WRITE, &addr.pgptr, &vhdr);
   if (error_code != NO_ERROR)
