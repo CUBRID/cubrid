@@ -3294,8 +3294,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
     }
 
-  qdump_print_access_spec_stats_text (fp, xasl_p->spec_list, indent);
-  qdump_print_access_spec_stats_text (fp, xasl_p->merge_spec, indent);
+  if (xasl_p->sub_xasl_id && xasl_p->sub_cache_ref_count > 0)
+    {
+      fprintf (fp, "%*cRESULT CACHE (reference count: %d)\n", indent, ' ', xasl_p->sub_cache_ref_count);
+    }
+  else
+    {
+      qdump_print_access_spec_stats_text (fp, xasl_p->spec_list, indent);
+      qdump_print_access_spec_stats_text (fp, xasl_p->merge_spec, indent);
+    }
 
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
   qdump_print_stats_text (fp, xasl_p->connect_by_ptr, indent);
