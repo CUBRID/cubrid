@@ -1963,14 +1963,14 @@ la_get_last_ha_applied_info (void)
   LA_ACT_LOG *act_log;
   LA_HA_APPLY_INFO apply_info;
   time_t log_db_creation;
-  DB_DATETIME log_db_creation;
+  DB_DATETIME log_db_creation_datetime;
   bool insert_apply_info = false;
   char err_msg[LINE_MAX];
 
   act_log = &la_Info.act_log;
 
   log_db_creation = act_log->log_hdr->db_creation;
-  db_localdatetime (&log_db_creation, &log_db_creation);
+  db_localdatetime (&log_db_creation, &log_db_creation_datetime);
 
   res = la_get_ha_apply_info (la_Info.log_path, act_log->log_hdr->prefix_name, &apply_info);
   if (res > 0)
@@ -1989,8 +1989,8 @@ la_get_last_ha_applied_info (void)
       la_Info.commit_counter = apply_info.commit_counter;
       la_Info.fail_counter = apply_info.fail_counter;
 
-      if ((log_db_creation.date != apply_info.db_creation.date)
-	  || (log_db_creation.time != apply_info.db_creation.time))
+      if ((log_db_creation_datetime.date != apply_info.db_creation.date)
+	  || (log_db_creation_datetime.time != apply_info.db_creation.time))
 	{
 	  return ER_FAILED;
 	}
@@ -2033,7 +2033,7 @@ la_get_last_ha_applied_info (void)
 
   if (insert_apply_info == true)
     {
-      res = la_insert_ha_apply_info (&log_db_creation);
+      res = la_insert_ha_apply_info (&log_db_creation_datetime);
     }
   else
     {
@@ -7098,20 +7098,26 @@ la_shutdown (void)
 void
 la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose)
 {
+  time_t db_creation = hdr->db_creation;
+  time_t vol_creation = hdr->vol_creation;
   time_t tloc;
   DB_DATETIME datetime;
   char timebuf[1024];
-
-  tloc = hdr->vol_creation;
-  db_localdatetime (&tloc, &datetime);
-  db_datetime_to_string ((char *) timebuf, 1024, &datetime);
 
   if (verbose)
     {
       printf ("%-30s : %s\n", "Magic", hdr->magic);
     }
   printf ("%-30s : %s\n", "DB name", database_name);
-  printf ("%-30s : %s (%ld)\n", "Creation time", timebuf, tloc);
+
+  db_localdatetime (&db_creation, &datetime);
+  db_datetime_to_string ((char *) timebuf, 1024, &datetime);
+  printf ("%-30s : %s (%ld)\n", "DB Creation time", timebuf, db_creation);
+
+  db_localdatetime (&vol_creation, &datetime);
+  db_datetime_to_string ((char *) timebuf, 1024, &datetime);
+  printf ("%-30s : %s (%ld)\n", "Volume Creation time", timebuf, vol_creation);
+
   printf ("%-30s : %lld | %d\n", "EOF LSA", (long long int) hdr->eof_lsa.pageid, (int) hdr->eof_lsa.offset);
   printf ("%-30s : %lld | %d\n", "Append LSA", (long long int) hdr->append_lsa.pageid, (int) hdr->append_lsa.offset);
   printf ("%-30s : %s\n", "HA server state", css_ha_server_state_string ((HA_SERVER_STATE) hdr->ha_server_state));
@@ -7156,16 +7162,21 @@ la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose)
 void
 la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool verbose)
 {
-  time_t tloc;
+  time_t db_creation = hdr->db_creation;
+  time_t vol_creation = hdr->vol_creation;
   DB_DATETIME datetime;
   char timebuf[1024];
 
-  tloc = hdr->vol_creation;
-  db_localdatetime (&tloc, &datetime);
-  db_datetime_to_string ((char *) timebuf, 1024, &datetime);
-
   printf ("%-30s : %s\n", "DB name ", database_name);
-  printf ("%-30s : %s (%ld)\n", "Creation time ", timebuf, tloc);
+
+  db_localdatetime (&db_creation, &datetime);
+  db_datetime_to_string ((char *) timebuf, 1024, &datetime);
+  printf ("%-30s : %s (%ld)\n", "DB Creation time", timebuf, db_creation);
+
+  db_localdatetime (&vol_creation, &datetime);
+  db_datetime_to_string ((char *) timebuf, 1024, &datetime);
+  printf ("%-30s : %s (%ld)\n", "Volume Creation time", timebuf, vol_creation);
+
   if (verbose)
     {
       printf ("%-30s : %d\n", "Next transaction identifier", hdr->next_trid);
