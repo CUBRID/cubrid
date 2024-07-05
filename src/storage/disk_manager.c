@@ -916,13 +916,13 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
    */
   if (is_new_db_create == true)
     {
-      assert (*new_db_creation != vhdr->db_creation);
+      assert (vhdr->db_creation != *new_db_creation);
       vhdr->vol_creation = time (NULL);
       memcpy (&vhdr->db_creation, new_db_creation, sizeof (*new_db_creation));
     }
   else
     {
-      assert (*new_db_creation == vhdr->db_creation);
+      assert (vhdr->db_creation == *new_db_creation);
     }
 
   if ((vhdr->chkpt_lsa.pageid != new_chkptlsa->pageid) || (vhdr->chkpt_lsa.offset != new_chkptlsa->offset))
