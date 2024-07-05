@@ -917,7 +917,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
     {
       int undo_size, redo_size;
 
-      undo_size = (sizeof (*undo_recv) + (int) strlen (disk_vhdr_get_vol_fullname (vhdr)));
+      undo_size = (int) (offsetof (DISK_RECV_CHANGE_CREATION, chkpt_lsa) + disk_vhdr_get_vol_fullname_size (vhdr));
       undo_recv = (DISK_RECV_CHANGE_CREATION *) malloc (undo_size);
       if (undo_recv == NULL)
 	{
@@ -925,7 +925,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
 	  goto error;
 	}
 
-      redo_size = sizeof (*redo_recv) + (int) strlen (new_vol_fullname);
+      redo_size = (int) (offsetof (DISK_RECV_CHANGE_CREATION, chkpt_lsa) + strlen (new_vol_fullname) + 1);
       redo_recv = (DISK_RECV_CHANGE_CREATION *) malloc (redo_size);
       if (redo_recv == NULL)
 	{
@@ -1017,7 +1017,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
   DISK_RECV_LINK_PERM_VOLUME *undo_recv;
   DISK_RECV_LINK_PERM_VOLUME *redo_recv;
   int error_code = NO_ERROR;
-  const int next_vol_fullname_size = strlen (next_volext_fullname) + 1;
+  const int new_next_vol_fullname_size = strlen (next_volext_fullname) + 1;
 
   addr.vfid = NULL;
   addr.offset = 0;
@@ -1033,11 +1033,11 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
     }
 
   // The second condition will be modified when the TODO(235 line, var_fields max size issue by page size) is addressed.
-  if ((next_vol_fullname_size > DB_MAX_PATH_LENGTH) ||
-      (DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE + next_vol_fullname_size > DB_PAGESIZE))
+  if ((new_next_vol_fullname_size > DB_MAX_PATH_LENGTH) ||
+      (DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE + new_next_vol_fullname_size > DB_PAGESIZE))
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, NULL,
-	      next_volext_fullname, next_vol_fullname_size, DB_MAX_PATH_LENGTH);
+	      next_volext_fullname, new_next_vol_fullname_size, DB_MAX_PATH_LENGTH);
       return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
     }
 
@@ -1057,7 +1057,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
 	  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid), &vpid);
 	}
 
-      undo_size = (sizeof (*undo_recv) + next_vol_fullname_size);
+      undo_size = (int) (offsetof (DISK_RECV_CHANGE_CREATION, chkpt_lsa) + disk_vhdr_get_next_vol_fullname_size (vhdr));
       undo_recv = (DISK_RECV_LINK_PERM_VOLUME *) malloc (undo_size);
       if (undo_recv == NULL)
 	{
@@ -1065,7 +1065,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
 	  goto error;
 	}
 
-      redo_size = sizeof (*redo_recv) + next_vol_fullname_size;
+      redo_size = (int) (offsetof (DISK_RECV_CHANGE_CREATION, chkpt_lsa) + new_next_vol_fullname_size);
       redo_recv = (DISK_RECV_LINK_PERM_VOLUME *) malloc (redo_size);
       if (redo_recv == NULL)
 	{
