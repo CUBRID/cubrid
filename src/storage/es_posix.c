@@ -540,9 +540,9 @@ xes_posix_delete_file (const char *path)
   char buf[PATH_MAX];
 
   if (es_make_abs_path (buf, path) > 0)
-  {
-    abs_path = buf;
-  }
+    {
+      abs_path = buf;
+    }
 
   es_log ("xes_posix_delete_file(%s)\n", abs_path);
 
@@ -696,14 +696,14 @@ os_rename_file_abs (const char *src, const char *dst)
   char dst_buf[PATH_MAX], src_buf[PATH_MAX];
 
   if (es_make_abs_path (src_buf, src) > 0)
-  {
-    abs_src_path = src_buf;
-  }
+    {
+      abs_src_path = src_buf;
+    }
 
   if (es_make_abs_path (dst_buf, dst) > 0)
-  {
-    abs_dst_path = dst_buf;
-  }
+    {
+      abs_dst_path = dst_buf;
+    }
 
   return os_rename_file (abs_src_path, abs_dst_path);
 }
