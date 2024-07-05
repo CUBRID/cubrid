@@ -6801,25 +6801,51 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
    * The build input may need to be changed even if the cached xasl is reused,
    * if the value of the bind variable changes.
    */
-  if ((merge_info->join_type == JOIN_INNER)
-      && ((outer_list_id->page_cnt < inner_list_id->page_cnt) || (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt)))
+  switch (merge_info->join_type)
     {
-      /**
-       * build input: outer 
-       */
-      hashjoin_proc->build = &(hashjoin_proc->outer);
-      hashjoin_proc->probe = &(hashjoin_proc->inner);
-    }
-  else
-    {
-      /**
-       * build input: inner
-       */
-      hashjoin_proc->build = &(hashjoin_proc->inner);
-      hashjoin_proc->probe = &(hashjoin_proc->outer);
+    case JOIN_LEFT:
+      {
+	/* build input: inner */
+	hashjoin_proc->build = &(hashjoin_proc->inner);
+	hashjoin_proc->probe = &(hashjoin_proc->outer);
+
+	break;
+      }
+
+    case JOIN_RIGHT:
+      {
+	/* build input: outer */
+	hashjoin_proc->build = &(hashjoin_proc->outer);
+	hashjoin_proc->probe = &(hashjoin_proc->inner);
+
+	break;
+      }
+
+    case JOIN_INNER:
+      {
+	if ((outer_list_id->page_cnt < inner_list_id->page_cnt)
+	    || (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt))
+	  {
+	    /* build input: outer */
+	    hashjoin_proc->build = &(hashjoin_proc->outer);
+	    hashjoin_proc->probe = &(hashjoin_proc->inner);
+	  }
+	else
+	  {
+	    /* build input: inner */
+	    hashjoin_proc->build = &(hashjoin_proc->inner);
+	    hashjoin_proc->probe = &(hashjoin_proc->outer);
+	  }
+
+	break;
+      }
+
+    default:
+      assert (false);
+      goto exit_on_error;
     }
 
-  /**
+  /*
    * hash_scan
    */
   error =
@@ -7880,6 +7906,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   HASH_LIST_SCAN *hash_scan;
   HASH_METHOD hash_method;
   HASH_SCAN_KEY *key, *found_key;
+  int max_entry;
 
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
@@ -7887,6 +7914,12 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   QFILE_TUPLE_RECORD result_tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD *outer_tuple_record;
   QFILE_TUPLE_RECORD *inner_tuple_record;
+
+  HASHJOIN_STATS *stats;
+
+  bool on_trace = thread_is_on_trace (thread_p);
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 
   int error = NO_ERROR;
 
@@ -7926,6 +7959,11 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   found_key = hash_scan->temp_new_key;
   assert (key != NULL);
   assert (found_key != NULL);
+
+  if (on_trace)
+    {
+      stats = &(hashjoin_proc->stats);
+    }
 
   if (hashjoin_proc->build == &(hashjoin_proc->inner))
     {
@@ -7980,6 +8018,11 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	  hash_scan->curr_hash_key = qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_method, probe_domains);
 	}
 
+      if (on_trace)
+	{
+	  max_entry = 0;
+	}
+
       do
 	{
 	  error = qexec_hash_join_probe_key (thread_p, hash_scan, &found_tuple_record, build_list_scan_id);
@@ -7992,6 +8035,11 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	    {
 	      /* The hash value was not found, so read the next tuple. */
 	      break;
+	    }
+
+	  if (on_trace)
+	    {
+	      max_entry++;
 	    }
 
 	  error =
@@ -8031,6 +8079,11 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	    }
 	}
       while (true);
+
+      if (on_trace)
+	{
+	  stats->probe.max_entry = MAX (stats->probe.max_entry, max_entry);
+	}
     }
 
   if (qp_scan == S_ERROR)
@@ -8074,12 +8127,19 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
   HASH_LIST_SCAN *hash_scan;
   HASH_METHOD hash_method;
   HASH_SCAN_KEY *key, *found_key;
+  int max_entry;
 
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD found_tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD result_tuple_record = { NULL, 0 };
   bool is_outer_filled;
+
+  HASHJOIN_STATS *stats;
+
+  bool on_trace = thread_is_on_trace (thread_p);
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
 
   int error = NO_ERROR;
 
@@ -8119,6 +8179,11 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
   found_key = hash_scan->temp_new_key;
   assert (key != NULL);
   assert (found_key != NULL);
+
+  if (on_trace)
+    {
+      stats = &(hashjoin_proc->stats);
+    }
 
   error = qfile_reallocate_tuple (&result_tuple_record, DB_PAGESIZE);
   if (error != NO_ERROR)
@@ -8207,6 +8272,11 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 
       is_outer_filled = false;
 
+      if (on_trace)
+	{
+	  max_entry = 0;
+	}
+
       do
 	{
 	  error = qexec_hash_join_probe_key (thread_p, hash_scan, &found_tuple_record, &(build_scan_id->s.llsid.lsid));
@@ -8219,6 +8289,11 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 	    {
 	      /* The hash value was not found, so read the next tuple. */
 	      break;
+	    }
+
+	  if (on_trace)
+	    {
+	      max_entry++;
 	    }
 
 	  error =
@@ -8295,6 +8370,11 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 	    }
 	}
       while (true);
+
+      if (on_trace)
+	{
+	  stats->probe.max_entry = MAX (stats->probe.max_entry, max_entry);
+	}
 
       if (is_outer_filled == false)
 	{

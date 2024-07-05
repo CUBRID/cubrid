@@ -3220,64 +3220,93 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   /**
    * STEP 2:
    */
-  if (plan_p->plan_un.join.join_type == JOIN_INNER)
+  switch (plan_p->plan_un.join.join_type)
     {
-      double inner_build_cpu_cost, outer_build_cpu_cost;
-      double inner_build_io_cost, outer_build_io_cost;
+    case JOIN_LEFT:
+      {
+	/**
+	 * STEP 2-1: Calculate the cost when inner is used as build input.
+	 */
+	plan_p->variable_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
+	plan_p->variable_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
 
-      /**
-       * STEP 2-1: Calculate the cost when inner is used as build input.
-       */
-      inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-      inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+	if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+	  {
+	    plan_p->variable_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
+	    plan_p->variable_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+	  }
 
-      inner_build_io_cost = 0.0;
-      if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-	{
-	  inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-	  inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-	}
+	break;
+      }
 
-      /**
-       * STEP 2-2: Calculate the cost when outer is used as build input.
-       */
-      outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
-      outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
+    case JOIN_RIGHT:
+      {
+	/**
+	 * STEP 2-1: Calculate the cost when outer is used as build input.
+	 */
+	plan_p->variable_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+	plan_p->variable_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
 
-      outer_build_io_cost = 0.0;
-      if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-	{
-	  outer_build_io_cost = (inner_cardinality * HJ_FILE_IO_WEIGHT);
-	  outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-	}
+	if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+	  {
+	    plan_p->variable_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
+	    plan_p->variable_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+	  }
 
-      /**
-       * STEP 2-3: Choose the lowest cost.
-       */
-      if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
-	{
-	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
-	  plan_p->variable_io_cost += inner_build_io_cost;
-	}
-      else
-	{
-	  plan_p->variable_cpu_cost += outer_build_cpu_cost;
-	  plan_p->variable_io_cost += outer_build_io_cost;
-	}
-    }
-  else
-    {
-      /**
-       * STEP 2-1: Calculate the cost when inner is used as build input.
-       */
-      plan_p->variable_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-      plan_p->variable_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+	break;
+      }
 
-      if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-	{
-	  plan_p->variable_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-	  plan_p->variable_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-	}
+    case JOIN_INNER:
+      {
+	double inner_build_cpu_cost, outer_build_cpu_cost;
+	double inner_build_io_cost, outer_build_io_cost;
+
+	/**
+	 * STEP 2-1: Calculate the cost when inner is used as build input.
+	 */
+	inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
+	inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+
+	inner_build_io_cost = 0.0;
+	if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+	  {
+	    inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
+	    inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+	  }
+
+	/**
+	 * STEP 2-2: Calculate the cost when outer is used as build input.
+	 */
+	outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+	outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
+
+	outer_build_io_cost = 0.0;
+	if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+	  {
+	    outer_build_io_cost = (inner_cardinality * HJ_FILE_IO_WEIGHT);
+	    outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+	  }
+
+	/**
+	 * STEP 2-3: Choose the lowest cost.
+	 */
+	if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
+	  {
+	    plan_p->variable_cpu_cost += inner_build_cpu_cost;
+	    plan_p->variable_io_cost += inner_build_io_cost;
+	  }
+	else
+	  {
+	    plan_p->variable_cpu_cost += outer_build_cpu_cost;
+	    plan_p->variable_io_cost += outer_build_io_cost;
+	  }
+
+	break;
+      }
+
+    default:
+      qo_worst_cost (plan_p);
+      assert (false);
     }
 
 #if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
@@ -6206,106 +6235,43 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	}
     }
 
-  if (join_type == JOIN_RIGHT)
+  /* At here, inner is single class spec */
+  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+
+  if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
     {
-      /* converse outer join type */
-      join_type = JOIN_LEFT;
-
-      for (t = bitset_iterate (hash_join_terms, &iter); t != -1; t = bitset_next_member (&iter))
-	{
-	  term = QO_ENV_TERM (info->env, t);
-	  if (QO_TERM_CLASS (term) == QO_TC_DEP_LINK)
-	    {
-	      goto exit;
-	    }
-	}
-
-      if (bitset_cardinality (&(outer->nodes)) == 1)
-	{			/* single class spec */
-	  inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
-	  if (QO_NODE_HINT (inner_node) & PT_HINT_ORDERED)
-	    {
-	      /* join hint: force join left-to-right; skip hash-join because, these are only support left outer join */
-	      goto exit;
-	    }
-
-	  if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
-	    {
-	      /* join hint: disable hash-join */
-	      goto exit;
-	    }
-	  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-	    {
-	      /* join hint: force hash-join */
-	    }
-	  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-	    {
-	      /* join hint: force nl-join, idx-join, m-join; skip hash-join */
-	      goto exit;
-	    }
-	  else
-	    {
-	      /* default: disable hash-join */
-#if defined(TEST_HASH_JOIN_ENABLE)
-	      /* fall through */
-#else
-	      goto exit;
-#endif
-	    }
-	}
-
-      outer_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
-      if (outer_plan == NULL)
-	{
-	  goto exit;
-	}
-
-      inner_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
-      if (inner_plan == NULL)
-	{
-	  goto exit;
-	}
+      /* join hint: disable hash-join */
+      goto exit;
+    }
+  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
+    {
+      /* join hint: force hash-join */
+    }
+  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+    {
+      /* join hint: force nl-join, idx-join, m-join; skip hash-join */
+      goto exit;
     }
   else
     {
-      /* At here, inner is single class spec */
-      inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
-
-      if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
-	{
-	  /* join hint: disable hash-join */
-	  goto exit;
-	}
-      else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-	{
-	  /* join hint: force hash-join */
-	}
-      else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-	{
-	  /* join hint: force nl-join, idx-join, m-join; skip hash-join */
-	  goto exit;
-	}
-      else
-	{
-	  /* default: disable hash-join */
+      /* default: disable hash-join */
 #if defined(TEST_HASH_JOIN_ENABLE)
-	  /* fall through */
+      /* fall through */
 #else
-	  goto exit;
+      goto exit;
 #endif
-	}
+    }
 
-      outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
-      if (outer_plan == NULL)
-	{
-	  goto exit;
-	}
+  outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
+  if (outer_plan == NULL)
+    {
+      goto exit;
+    }
 
-      inner_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
-      if (inner_plan == NULL)
-	{
-	  goto exit;
-	}
+  inner_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
+  if (inner_plan == NULL)
+    {
+      goto exit;
     }
 
   n =

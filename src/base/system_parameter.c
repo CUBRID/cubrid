@@ -4940,7 +4940,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_MAX_HASH_LIST_SCAN_SIZE,
    PRM_NAME_MAX_HASH_LIST_SCAN_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT),
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_SIZE_UNIT),
    PRM_BIGINT,
    &prm_max_hash_list_scan_size_flag,
    (void *) &prm_max_hash_list_scan_size_default,

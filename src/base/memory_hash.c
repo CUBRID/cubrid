@@ -2582,7 +2582,7 @@ mht_get_hash_number_with_tuple (unsigned int ht_size, char *value, int value_siz
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATETIMETZ:
       {
-	DB_DATETIME datetime;
+	DB_DATETIME datetime = { 0, 0 };
 	error = or_get_datetime (&buf, &datetime);
 	hash = mht_get_shiftmult32 (datetime.date ^ datetime.time, ht_size);
 	break;
@@ -2590,7 +2590,7 @@ mht_get_hash_number_with_tuple (unsigned int ht_size, char *value, int value_siz
 
     case DB_TYPE_OID:
       {
-	OID oid;
+	OID oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 	unsigned int x, y;
 	error = or_get_oid (&buf, &oid);
 	x = (oid.volid << 16) | (oid.slotid);
