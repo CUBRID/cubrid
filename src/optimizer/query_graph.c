@@ -437,7 +437,7 @@ qo_optimize_helper (QO_ENV * env)
   QO_TERM *term;
   QO_NODE *node, *p_node;
   BITSET nodeset;
-  int n;
+  int n, k;
 
   parser = QO_ENV_PARSER (env);
   tree = QO_ENV_PT_TREE (env);
@@ -517,12 +517,7 @@ qo_optimize_helper (QO_ENV * env)
 	      if (QO_TERM_CLASS (term) == QO_TC_JOIN)
 		{
 		  QO_ASSERT (env, QO_ON_COND_TERM (term));
-
-		  n = QO_TERM_LOCATION (term);
-		  if (QO_NODE_LOCATION (QO_TERM_HEAD (term)) == n - 1 && QO_NODE_LOCATION (QO_TERM_TAIL (term)) == n)
-		    {
-		      bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
-		    }
+		  bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
 		}
 
 	      conj->next = next;
@@ -540,19 +535,30 @@ qo_optimize_helper (QO_ENV * env)
       conj->next = next;
     }
 
+  /* check join-edge for ansi(explicit) join */
   for (n = 1; n < env->nnodes; n++)
     {
       node = QO_ENV_NODE (env, n);
-
-      /* check join-edge for explicit join */
-      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_NONE && QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_CROSS
-	  && !BITSET_MEMBER (nodeset, n))
+      /* In case of ansi join without join-edge, a dummy join term is added to maintain the outer join. */
+      if (QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (nodeset, n))
 	{
 	  p_node = QO_ENV_NODE (env, n - 1);
 	  (void) qo_add_dummy_join_term (env, p_node, node);
-	  /* Is it safe to pass node[n-1] as head node? Yes, because the sequence of QO_NODEs corresponds to the
-	   * sequence of PT_SPEC list
-	   */
+	}
+
+      /* set dep set for right outer join */
+      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER)
+	{
+	  /* In the case of right outer join, dependency is set on the entire preceding table connected by ANSI join. */
+	  k = n - 1;
+	  p_node = QO_ENV_NODE (env, k);
+	  QO_ADD_OUTER_DEP_SET (node, p_node);
+
+	  while (k > 0 && QO_NODE_IS_ANSI_JOIN (p_node))
+	    {
+	      p_node = QO_ENV_NODE (env, --k);
+	      QO_ADD_OUTER_DEP_SET (node, p_node);
+	    }
 	}
     }
 
@@ -1929,11 +1935,9 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
     {
     case PT_JOIN_INNER:
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
       break;
     case PT_JOIN_LEFT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
-      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
       for (i = 0; i < env->nterms; i++)
 	{
 	  temp_term = QO_ENV_TERM (env, i);
@@ -1951,9 +1955,7 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
       break;
     case PT_JOIN_RIGHT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
-      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
       QO_ADD_OUTER_DEP_SET (on_node, p_node);
-      QO_ADD_RIGHT_TO_OUTER (on_node, p_node);
       break;
     case PT_JOIN_FULL_OUTER:	/* not used */
       QO_TERM_JOIN_TYPE (term) = JOIN_OUTER;
@@ -2664,15 +2666,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
-		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
 		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
 		}
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_RIGHT_OUTER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
-		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
 		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
-		  QO_ADD_RIGHT_TO_OUTER (on_node, head_node);
 		}
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_FULL_OUTER)
 		{		/* not used */
@@ -2681,7 +2680,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
 		}
 	    }
 	  else
@@ -4377,7 +4375,28 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 
   if (!(hint & PT_HINT_ORDERED) && (hint & PT_HINT_LEADING))
     {
-      if (tree->info.query.q.select.leading)
+      /* check if spec_id of LEADING match spec_id of tables. */
+      bool found = true;
+      for (arg = tree->info.query.q.select.leading; arg; arg = arg->next)
+	{
+	  for (i = 0; i < env->nnodes; i++)
+	    {
+	      node = QO_ENV_NODE (env, i);
+	      spec = QO_NODE_ENTITY_SPEC (node);
+	      if (spec->info.spec.id == arg->info.name.spec_id)
+		{
+		  break;
+		}
+	    }
+	  if (i == env->nnodes)
+	    {
+	      /* not found */
+	      found = false;
+	      break;
+	    }
+	}
+
+      if (found && tree->info.query.q.select.leading)
 	{
 	  /* find last leading node */
 	  for (arg = tree->info.query.q.select.leading; arg->next; arg = arg->next)
@@ -8195,7 +8214,6 @@ qo_node_clear (QO_ENV * env, int idx)
   bitset_init (&(QO_NODE_SUBQUERIES (node)), env);
   bitset_init (&(QO_NODE_SEGS (node)), env);
   bitset_init (&(QO_NODE_OUTER_DEP_SET (node)), env);
-  bitset_init (&(QO_NODE_RIGHT_DEP_SET (node)), env);
 
   QO_NODE_HINT (node) = PT_HINT_NONE;
 }
@@ -8214,7 +8232,6 @@ qo_node_free (QO_NODE * node)
   bitset_delset (&(QO_NODE_SEGS (node)));
   bitset_delset (&(QO_NODE_SUBQUERIES (node)));
   bitset_delset (&(QO_NODE_OUTER_DEP_SET (node)));
-  bitset_delset (&(QO_NODE_RIGHT_DEP_SET (node)));
   qo_free_class_info (QO_NODE_ENV (node), QO_NODE_INFO (node));
   if (QO_NODE_INDEXES (node))
     {
@@ -8333,12 +8350,6 @@ qo_node_dump (QO_NODE * node, FILE * f)
     {
       fputs (" (dep-set ", f);
       bitset_print (&(QO_NODE_DEP_SET (node)), f);
-      fputs (")", f);
-    }
-  if (!bitset_is_empty (&(QO_NODE_RIGHT_DEP_SET (node))))
-    {
-      fputs (" (right-dep-set ", f);
-      bitset_print (&(QO_NODE_RIGHT_DEP_SET (node)), f);
       fputs (")", f);
     }
 
