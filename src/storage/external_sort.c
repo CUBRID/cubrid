@@ -3058,8 +3058,8 @@ sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   int slot_num = 0;
   char *cur_pgptr;
   int result_file_idx = sort_param->px_result_file_idx;
-  RECDES record;
-  RECDES long_record;
+  RECDES record = RECDES_INITIALIZER;
+  RECDES long_record = RECDES_INITIALIZER;
   int error;
   SORT_REC *sort_rec;
   int tot_rows = 0;
