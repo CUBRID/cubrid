@@ -5442,6 +5442,8 @@ disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr)
 
   const char *remarks = disk_vhdr_get_vol_remarks (vhdr);
 
+  assert (((remarks + disk_vhdr_get_vol_remarks_size (vhdr)) - ((char *) vhdr)) >= 0);
+
   return (size_t) ((remarks + disk_vhdr_get_vol_remarks_size (vhdr)) - ((char *) vhdr));
 }
 
