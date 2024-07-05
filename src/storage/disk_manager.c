@@ -599,8 +599,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   vhdr->db_charset = lang_charset ();
   vhdr->hint_allocsect = NULL_SECTID;
   vhdr->vol_creation_time = time (NULL);
-  vhdr->dummy1 = vhdr->dummy2 = vhdr->dummy3 = 0;	/* alignment. You may use it. */
-  vhdr->reserved0 = 0;		/* for future extension */
+  vhdr->dummy1 = vhdr->dummy2 = vhdr->dummy3 = 0;
+  vhdr->reserved0 = 0;
 
   /* set sector table info in volume header */
   disk_volume_header_set_stab (vol_purpose, vhdr);

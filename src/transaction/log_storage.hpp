@@ -174,7 +174,7 @@ struct log_header
   bool was_active_log_reset;
   /* Here exists 5 bytes */
 
-  INT64 vol_creation_time; /* Volume creation time */
+  INT64 vol_creation_time;
 
   log_header ()
     : magic {'0'}
