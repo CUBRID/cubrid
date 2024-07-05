@@ -835,19 +835,19 @@ disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname)
  *   new_db_creation(in): New database creation time
  *   new_chkptlsa(in): New checkpoint
  *   logchange(in): Whether or not to log the change
- *   is_new_db_creation(in): Whether or not to volume creation time update
  *   flush_page(in): true for flush dirty page. otherwise, false
  *
  * Note: This function is targeted for the log and recovery manager. It is used when a database is copied or renamed.
  */
 int
 disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_fullname, const INT64 * new_db_creation,
-		   const LOG_LSA * new_chkptlsa, bool logchange, bool is_new_db_creation, DISK_FLUSH_TYPE flush)
+		   const LOG_LSA * new_chkptlsa, bool logchange, DISK_FLUSH_TYPE flush)
 {
   DISK_VOLUME_HEADER *vhdr = NULL;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   DISK_RECV_CHANGE_CREATION *undo_recv;
   DISK_RECV_CHANGE_CREATION *redo_recv;
+  bool is_new_db_create = false;
   int error_code = NO_ERROR;
 
   if ((int) strlen (new_vol_fullname) + 1 > DB_MAX_PATH_LENGTH)
@@ -863,6 +863,8 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
       ASSERT_ERROR ();
       return error_code;
     }
+
+  is_new_db_create = (vhdr->db_creation != *new_db_creation);
 
   /* Do I need to log anything ? */
   if (logchange != false)
@@ -912,7 +914,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
    * However, the existing code performs a memcpy even when the new_db_creation value is the same as vhdr->db_creation, regardless of whether the database is being created.
    * For now, the code has been changed as below, but it seems necessary to determine whether to refactor and improve this in the future.
    */
-  if (is_new_db_creation == true)
+  if (is_new_db_create == true)
     {
       assert (*new_db_creation != vhdr->db_creation);
       vhdr->vol_creation = time (NULL);

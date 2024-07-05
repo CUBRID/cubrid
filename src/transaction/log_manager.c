@@ -8886,7 +8886,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
 	}
 
       (void) disk_set_creation (thread_p, volid, vlabel, &log_Gl.hdr.db_creation, &log_Gl.hdr.chkpt_lsa, false,
-				false, DISK_DONT_FLUSH);
+				DISK_DONT_FLUSH);
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
       LOG_CS_EXIT (thread_p);
