@@ -200,7 +200,7 @@ std::atomic<std::int64_t> log_Clock_msec = {0};
 // *INDENT-ON*
 #endif /* SERVER_MODE */
 
-static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_db_creation);
+static bool log_verify_db_creation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * db_creation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation);
 static int log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -652,12 +652,12 @@ log_get_final_restored_lsa (void)
  */
 
 /*
- * log_verify_dbcreation - verify database creation time
+ * log_verify_db_creation - verify database creation time
  *
  * return:
  *
  *   volid(in): Volume identifier
- *   log_db_creation(in): Database creation time according to the log.
+ *   db_creation(in): Database creation time according to the log.
  *
  * NOTE:Verify if database creation time according to the log matches
  *              the one according to the database volume. If they do not, it
@@ -665,16 +665,16 @@ log_get_final_restored_lsa (void)
  *              the same database.
  */
 static bool
-log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_db_creation)
+log_verify_db_creation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * db_creation)
 {
-  INT64 db_creation;		/* Database creation time in volume */
+  INT64 db_creation_temp;	/* Database creation time in volume */
 
-  if (disk_get_creation_time (thread_p, volid, &db_creation) != NO_ERROR)
+  if (disk_get_creation_time (thread_p, volid, &db_creation_temp) != NO_ERROR)
     {
       return false;
     }
 
-  if (difftime ((time_t) db_creation, (time_t) (*log_db_creation)) == 0)
+  if (difftime ((time_t) db_creation_temp, (time_t) (*db_creation)) == 0)
     {
       return true;
     }
@@ -1340,7 +1340,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
-      if (fileio_map_mounted (thread_p, (bool (*)(THREAD_ENTRY *, VOLID, void *)) log_verify_dbcreation,
+      if (fileio_map_mounted (thread_p, (bool (*)(THREAD_ENTRY *, VOLID, void *)) log_verify_db_creation,
 			      &log_Gl.hdr.db_creation) != true)
 	{
 	  /* The log does not belong to the given database */
