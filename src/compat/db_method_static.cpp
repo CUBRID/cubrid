@@ -976,7 +976,7 @@ au_change_sp_owner_method (MOP obj, DB_VALUE *returnval, DB_VALUE *sp, DB_VALUE 
     {
       if (owner != NULL && DB_IS_STRING (owner) && !DB_IS_NULL (owner) && db_get_string (owner) != NULL)
 	{
-	  sp_mop = jsp_find_stored_procedure (db_get_string (sp));
+	  sp_mop = jsp_find_stored_procedure (db_get_string (sp), DB_AUTH_NONE);
 	  if (sp_mop != NULL)
 	    {
 	      user = au_find_user (db_get_string (owner));
