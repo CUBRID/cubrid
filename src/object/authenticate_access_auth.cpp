@@ -83,7 +83,8 @@ au_auth_accessor::create_new_auth ()
 }
 
 int
-au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type, bool grant_option)
+au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor, MOP user, MOP obj_mop,
+				DB_AUTH auth_type, bool grant_option)
 {
   DB_VALUE value, class_name_val, name_val;
   MOP db_class = nullptr, inst_mop = nullptr;
@@ -163,10 +164,9 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
   STATEMENT_ID stmt_id;
   const char *name;
   const char *sql_query =
-    "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
-    " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?" " AND %s = ? AND [au].[auth_type] = ?";
-  
-  char sql_query_by_obj_type[256];
+	  "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
+	  " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?" " AND [au].[class_of] = ? AND [au].[auth_type] = ?";
+
   for (i = 0; i < COUNT_FOR_VARIABLES; i++)
     {
       db_make_null (&val[i]);
@@ -202,15 +202,27 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
       goto exit;
     }
 
+  /*
+  name = db_get_class_name (obj_mop);
+  if (name == NULL)
+  {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
+          goto exit;
+  }
+  */
+
+  db_make_object (&val[INDEX_FOR_OBJECT_NAME], obj_mop);
+
+  /*
   if (obj_type == DB_OBJECT_CLASS)
     {
       sprintf (sql_query_by_obj_type, sql_query, "[au].[class_of].[unique_name]");
       name = db_get_class_name (obj_mop);
       if (name == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
-	  goto exit;
-	}
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
+    goto exit;
+  }
       db_make_string (&val[INDEX_FOR_OBJECT_NAME], name);
     }
   else
@@ -219,12 +231,13 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
       sprintf (sql_query_by_obj_type, sql_query, "[au].[class_of].[sp_name]");
       name = jsp_get_name (obj_mop);
       if (name == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
-	  goto exit;
-	}
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
+    goto exit;
+  }
       db_make_string (&val[INDEX_FOR_OBJECT_NAME], name);
     }
+  */
 
   /*
   class_name = db_get_class_name (obj_mop);
@@ -327,7 +340,8 @@ exit:
 }
 
 int
-au_auth_accessor::insert_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type, int grant_option)
+au_auth_accessor::insert_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type,
+			       int grant_option)
 {
   int error = NO_ERROR;
   for (int index = DB_AUTH_EXECUTE; index; index >>= 1)
@@ -347,7 +361,8 @@ au_auth_accessor::insert_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, M
 }
 
 int
-au_auth_accessor::update_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type, int grant_option)
+au_auth_accessor::update_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type,
+			       int grant_option)
 {
   int error = NO_ERROR;
   for (int index = DB_AUTH_EXECUTE; index; index >>= 1)
