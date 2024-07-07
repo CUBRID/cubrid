@@ -143,8 +143,8 @@ extern int au_login (const char *name, const char *password, bool ignore_dba_pri
  * GRANT/REVOKE OPERATIONS (authenticate_grant.cpp)
  */
 
-extern int au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
-extern int au_revoke (MOP user, MOP class_mop, DB_AUTH type);
+extern int au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
+extern int au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type);
 
 #if defined (SA_MODE)
 extern int au_force_write_new_auth (void);

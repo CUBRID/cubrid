@@ -80,13 +80,14 @@ parse_argument (int argc, char *argv[])
     {"overwrite", 0, 0, 'y'},
     {"package", 1, 0, 'p'},
     {"jni", 0, 0, 'j'},
+    {"user", 0, 0, 'u'},
     {0, 0, 0, 0}
   };
 
   while (1)
     {
       int option_index = 0;
-      int option_key = getopt_long (argc, argv, "yp:jh", loadjava_option, &option_index);
+      int option_key = getopt_long (argc, argv, "yp:u:jh", loadjava_option, &option_index);
       if (option_key == -1)
 	{
 	  break;
@@ -124,6 +125,9 @@ parse_argument (int argc, char *argv[])
 	case 'j':
 	  Path = STATIC_PATH;
 	  break;
+        case 'u':
+          
+          break;
 	case 'h':
 	/* fall through */
 	default:
