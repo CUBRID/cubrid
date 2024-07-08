@@ -3249,9 +3249,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   // *INDENT-ON*
 
 #if defined(SERVER_MODE)
-  int log_recovery_redo_parallel_count = 0;
-
-  log_recovery_redo_parallel_count = log_recovery_get_redo_parallel_count ();
+  const int log_recovery_redo_parallel_count = log_recovery_get_redo_parallel_count ();
 
   reusable_jobs.initialize (log_recovery_redo_parallel_count);
   // *INDENT-OFF*
