@@ -94,7 +94,7 @@ static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
 						  LOG_RCVINDEX rcv_index, const LOG_LSA * lsa);
 #if defined (SERVER_MODE)
-static int log_recovery_get_redo_parallel_count (THREAD_ENTRY * thread_p);
+static int log_recovery_get_redo_parallel_count ();
 #endif
 
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
@@ -3182,10 +3182,10 @@ log_recovery_get_redo_parallel_count ()
 {
   const int num_cpus = fileio_os_sysconf ();
   // This is arbitrary number
-  const int threads_per_cpu = 4;
-  const int maximum_threads_to_redo = 32;
+  const int threads_per_cpu = 2;
+  const int minimum_threads_to_redo = 16;
 
-  return MIN (num_cpus * threads_per_cpu, maximum_threads_to_redo);
+  return MAX (num_cpus * threads_per_cpu, minimum_threads_to_redo);
 }
 #endif
 
@@ -3249,19 +3249,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   // *INDENT-ON*
 
 #if defined(SERVER_MODE)
-  const bool redo_parallel = prm_get_bool_value (PRM_ID_RECOVERY_PARALLEL);
   int log_recovery_redo_parallel_count = 0;
 
-  if (redo_parallel)
-    {
-      log_recovery_redo_parallel_count = log_recovery_get_redo_parallel_count ();
-      assert (log_recovery_redo_parallel_count > 0);
+  log_recovery_redo_parallel_count = log_recovery_get_redo_parallel_count ();
 
-      reusable_jobs.initialize (log_recovery_redo_parallel_count);
-      // *INDENT-OFF*
-      parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
-      // *INDENT-ON*
-    }
+  reusable_jobs.initialize (log_recovery_redo_parallel_count);
+  // *INDENT-OFF*
+  parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+  // *INDENT-ON*
 #endif
 
   // *INDENT-OFF*
