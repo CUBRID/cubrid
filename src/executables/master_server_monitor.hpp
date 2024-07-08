@@ -23,7 +23,6 @@
 #ifndef _MASTER_SERVER_MONITOR_HPP_
 #define _MASTER_SERVER_MONITOR_HPP_
 
-
 #include <cstring>
 #include <thread>
 #include <algorithm>
