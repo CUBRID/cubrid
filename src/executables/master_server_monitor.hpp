@@ -20,6 +20,9 @@
  * master_server_monitor.hpp -
  */
 
+#ifndef _MASTER_SERVER_MONITOR_HPP_
+#define _MASTER_SERVER_MONITOR_HPP_
+
 
 #include <cstring>
 #include <thread>
@@ -38,9 +41,10 @@ extern "C"
 class server_monitor
 {
   public:
-
     class server_entry;
     class server_monitor_list;
+
+    using server_entry_uptr_t = std::unique_ptr<server_monitor::server_entry>;
 
     static server_monitor &get_instance ()
     {
@@ -54,13 +58,11 @@ class server_monitor
     server_monitor &operator = (const server_monitor &) = delete;
     server_monitor &operator = (server_monitor &&) = delete;
 
-    using server_entry_uptr_t = std::unique_ptr<server_monitor::server_entry>;
-
     class server_entry
     {
       public:
 	server_entry (int pid, const char *server_name, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
-	~server_entry ();
+	~server_entry () {};
 
 	server_entry (const server_entry &) = delete;
 	server_entry (server_entry &&) = delete;
@@ -69,22 +71,21 @@ class server_monitor
 	server_entry &operator = (server_entry &&) = delete;
 
       private:
-	int m_pid;
-	std::string m_server_name;
-	std::string m_exec_path;
-	char **m_argv;
+	const int m_pid;
+	const std::string m_server_name;
+	const std::string m_exec_path;
+	std::vector<std::string> m_argv;
 	CSS_CONN_ENTRY *m_conn;
 	timeval m_last_revive_time;
 	bool m_need_revive;
 
       private:
-	void proc_make_arg (char **argv, char *args);
+	void proc_make_arg (char *args);
     };
 
     class server_monitor_list
     {
       public:
-
 	server_monitor_list ();
 	~server_monitor_list () {};
 
@@ -111,4 +112,6 @@ class server_monitor
 
 #ifdef __cplusplus
 }
+#endif
+
 #endif

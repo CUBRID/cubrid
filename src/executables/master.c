@@ -22,8 +22,6 @@
 
 #ident "$Id$"
 
-
-
 #include "config.h"
 
 #include <stdio.h>
@@ -1134,16 +1132,16 @@ main (int argc, char **argv)
   const char *msg_format;
   bool util_config_ret;
 
-  // TODO : When non-HA server do not exists in HA environment, server_monitor should not be initialized.
-  //        In this issue, server_monitor is initialized only when HA is disabled. After all sub-tasks of
-  //        CBRD-24741 is done, this condition will be removed. And server_monitor will be initialized wh
+  // TODO : When no non-HA server exists in HA environment, server_monitor should not be initialized.
+  //        In this issue, server_monitor is initialized only when HA is disabled. Once all sub-tasks of
+  //        CBRD-24741 are done, this condition will be removed. And server_monitor will be initialized wh
   //        en first non-HA server is started in HA environment. (server_monitor will be finalized when last
   //        non-HA server is stopped in HA environment.)
   if (HA_DISABLED ())
     {
-// *INDENT-OFF*
-  server_monitor& server_monitoring_manager = server_monitor::get_instance();
-// *INDENT-ON*
+    // *INDENT-OFF*
+      server_monitor& server_monitoring_manager = server_monitor::get_instance();
+    // *INDENT-ON*
     }
   if (utility_initialize () != NO_ERROR)
     {

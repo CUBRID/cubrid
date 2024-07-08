@@ -21,6 +21,8 @@
 //
 
 #include "master_server_monitor.hpp"
+#include <sstream>
+#include <unistd.h>
 
 #include "util_func.h"
 
@@ -28,7 +30,7 @@ server_monitor::server_monitor ()
 {
   m_thread_shutdown = false;
   m_monitor_list = std::make_unique<server_monitor_list>();
-  fprintf (stdout, "server_monitor_list is created.\n");
+  fprintf (stdout, "server_monitor_list is created. \n");
 
   m_monitoring_thread = std::make_unique<std::thread> ([this]()
   {
@@ -37,9 +39,9 @@ server_monitor::server_monitor ()
 	// TODO: Server_entry selection which need_revive value is true. (Will be implemented in CBRD-25438 issue.)
       }
   });
-  fprintf (stdout, "server_monitor_thread is created.\n");
+  fprintf (stdout, "server_monitor_thread is created. \n");
+  fflush (stdout);
 }
-
 
 // When server_monitor is deleted, it should guerentee that
 // monitoring_thread is terminated before monitor_list is deleted.
@@ -50,9 +52,8 @@ server_monitor::~server_monitor ()
     {
       m_monitoring_thread->join();
     }
-  fprintf (stdout, "server_monitor_thread is deleted.\n");
-  m_monitor_list.reset();
-  fprintf (stdout, "server_monitor_list is deleted.\n");
+  fprintf (stdout, "server_monitor_thread is terminated. \n");
+  fprintf (stdout, "server_monitor_list is deleted. \n");
   fflush (stdout);
 }
 
@@ -65,38 +66,20 @@ server_entry (int pid, const char *server_name, const char *exec_path, char *arg
   , m_last_revive_time {0, 0}
   , m_need_revive {false}
 {
-  this->m_argv = new char *[HB_MAX_NUM_PROC_ARGV];
-  proc_make_arg (this->m_argv, args);
+  proc_make_arg (args);
 }
-
-server_monitor::server_entry::~server_entry()
-{
-  if (m_argv)
-    {
-      for (char **arg = m_argv; *arg; ++arg)
-	{
-	  delete[] * arg;
-	}
-      delete[] m_argv;
-    }
-}
-
 
 void
-server_monitor::server_entry::proc_make_arg (char **arg, char *args)
+server_monitor::server_entry::proc_make_arg (char *args)
 {
-  char *tok, *save;
-
-  tok = strtok_r (args, " \t\n", &save);
-
-  while (tok)
+  std::istringstream iss (args);
+  std::string tok;
+  while (iss >> tok)
     {
-      (*arg++) = tok;
-      tok = strtok_r (NULL, " \t\n", &save);
+      m_argv.push_back (tok);
     }
-  return;
-}
 
+}
 
 server_monitor::server_monitor_list::server_monitor_list()
 {
