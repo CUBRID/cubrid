@@ -816,6 +816,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Impossibile aprire il file di output '%1$s'\n
+16 Classe sconosciuta "%1$s"\n
 60 \
 diagdb: Discarica database.\n\
 uso: %1$s diagdb [OPZIONE] nome-database\n\

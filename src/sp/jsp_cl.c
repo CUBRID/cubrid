@@ -56,6 +56,7 @@
 #include "dbtype.h"
 #include "jsp_comm.h"
 #include "method_compile_def.hpp"
+#include "parser_message.h"
 
 #define PT_NODE_SP_NAME(node) \
   ((node)->info.sp.name->info.name.original)
@@ -172,6 +173,27 @@ jsp_is_exist_stored_procedure (const char *name)
   er_clear ();
 
   return mop != NULL;
+}
+
+int
+jsp_check_out_param_in_query (PARSER_CONTEXT * parser, PT_NODE * node, int arg_mode)
+{
+  int error = NO_ERROR;
+
+  assert ((node) && (node)->node_type == PT_METHOD_CALL);
+
+  if (node->info.method_call.call_or_expr != PT_IS_CALL_STMT)
+    {
+      // check out parameters
+      if (arg_mode != SP_MODE_IN)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_OUT_ARGS_EXISTS_IN_QUERY,
+		      node->info.method_call.method_name->info.name.original);
+	  error = ER_PT_SEMANTIC;
+	}
+    }
+
+  return error;
 }
 
 /*
@@ -449,18 +471,23 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = method_invoke_fold_constants (sig_list, args, ret_value);
 	}
       sig_list.freemem ();
+
+      error = er_errid ();
     }
 
-  vc = statement->info.method_call.arg_list;
-  for (int i = 0; i < (int) args.size () && vc; i++)
+  if (error == NO_ERROR)
     {
-      if (!PT_IS_CONST (vc))
+      vc = statement->info.method_call.arg_list;
+      for (int i = 0; i < (int) args.size () && vc; i++)
 	{
-	  DB_VALUE & arg = args[i];
-	  db_value_clear (&arg);
-	  free (&arg);
+	  if (!PT_IS_CONST (vc))
+	    {
+	      DB_VALUE & arg = args[i];
+	      db_value_clear (&arg);
+	      free (&arg);
+	    }
+	  vc = vc->next;
 	}
-      vc = vc->next;
     }
 
   if (error == NO_ERROR)
@@ -1438,9 +1465,13 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 	    if (arg_mop_p)
 	      {
 		error = db_get (arg_mop_p, SP_ATTR_MODE, &mode);
+		int arg_mode = db_get_int (&mode);
+
+		error = jsp_check_out_param_in_query (parser, node, arg_mode);
+
 		if (error == NO_ERROR)
 		  {
-		    sig_arg_mode.push_back (db_get_int (&mode));
+		    sig_arg_mode.push_back (arg_mode);
 		  }
 		else
 		  {
