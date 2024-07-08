@@ -36,15 +36,15 @@ server_monitor::server_monitor ()
   {
     while (!m_thread_shutdown)
       {
-	// TODO: Server_entry selection which need_revive value is true. (Will be implemented in CBRD-25438 issue.)
+	// TODO: select server_entry whose m_need_revive value is true. (Will be implemented in CBRD-25438 issue.)
       }
   });
   fprintf (stdout, "server_monitor_thread is created. \n");
   fflush (stdout);
 }
 
-// When server_monitor is deleted, it should guerentee that
-// monitoring_thread is terminated before monitor_list is deleted.
+// In server_monitor destructor, it should guerentee that
+// m_monitoring_thread is terminated before m_monitor_list is deleted.
 server_monitor::~server_monitor ()
 {
   m_thread_shutdown = true;
