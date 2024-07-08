@@ -1094,9 +1094,12 @@ add_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grant
   DB_VALUE value;
   int index;
 
+  DB_VALUE class_name_val, name_val;
+  MOP db_class = nullptr, inst_mop = nullptr;
+
   index = set_size (grants);
 
-  db_make_int (&value, obj_type);
+  db_make_int (&value, (int) obj_type);
   set_put_element (grants, GRANT_ENTRY_TYPE (index), &value);
 
   db_make_object (&value, obj_mop);
@@ -1346,6 +1349,13 @@ get_grants (MOP auth, DB_SET **grant_ptr, int filter)
 
 	      if (existing == -1)
 		{
+		  db_make_int (&value, obj_type);
+		  error = set_put_element (grants, GRANT_ENTRY_TYPE (i), &value);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
+
 		  /*
 		   * no previous entry for the owner,
 		   * use the current one
