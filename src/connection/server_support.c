@@ -1377,6 +1377,10 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 	      fprintf (stderr, "failed to heartbeat register.\n");
 	    }
 	}
+      else
+        {
+          statu
+        }
 #endif
 
       if (status == NO_ERROR)
