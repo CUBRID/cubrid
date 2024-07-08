@@ -1094,9 +1094,6 @@ add_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grant
   DB_VALUE value;
   int index;
 
-  DB_VALUE class_name_val, name_val;
-  MOP db_class = nullptr, inst_mop = nullptr;
-
   index = set_size (grants);
 
   db_make_int (&value, (int) obj_type);

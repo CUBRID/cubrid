@@ -106,24 +106,6 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
 
   if (obj_type == DB_OBJECT_CLASS)
     {
-      /*
-      db_class = sm_find_class (CT_CLASS_NAME);
-      if (db_class == NULL)
-      {
-        assert (er_errid () != NO_ERROR);
-        return er_errid ();
-      }
-
-      db_make_string (&name_val, sm_get_ch_name (obj_mop));
-      inst_mop = obj_find_unique (db_class, "unique_name", &name_val, AU_FETCH_READ);
-      if (inst_mop == NULL)
-      {
-        assert (er_errid () != NO_ERROR);
-        pr_clear_value (&name_val);
-        return er_errid ();
-      }
-      */
-
       inst_mop = obj_mop;
     }
   else
@@ -206,52 +188,7 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
       goto exit;
     }
 
-  /*
-  name = db_get_class_name (obj_mop);
-  if (name == NULL)
-  {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
-          goto exit;
-  }
-  */
-
   db_make_object (&val[INDEX_FOR_OBJECT_NAME], obj_mop);
-
-  /*
-  if (obj_type == DB_OBJECT_CLASS)
-    {
-      sprintf (sql_query_by_obj_type, sql_query, "[au].[class_of].[unique_name]");
-      name = db_get_class_name (obj_mop);
-      if (name == NULL)
-  {
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
-    goto exit;
-  }
-      db_make_string (&val[INDEX_FOR_OBJECT_NAME], name);
-    }
-  else
-    {
-      // TODO: only procedure, add more objects
-      sprintf (sql_query_by_obj_type, sql_query, "[au].[class_of].[sp_name]");
-      name = jsp_get_name (obj_mop);
-      if (name == NULL)
-  {
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
-    goto exit;
-  }
-      db_make_string (&val[INDEX_FOR_OBJECT_NAME], name);
-    }
-  */
-
-  /*
-  class_name = db_get_class_name (obj_mop);
-  if (class_name == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
-      goto exit;
-    }
-  db_make_string (&val[INDEX_FOR_OBJECT_NAME], class_name);
-  */
 
   i = 0;
   for (DB_AUTH type = DB_AUTH_SELECT; type != auth_type; type = (DB_AUTH) (type << 1))
