@@ -3322,4 +3322,3 @@ css_start_all_threads (void)
                 start_workers ? "true" : "false",
                 std::chrono::duration_cast<std::chrono::microseconds> (end_time - start_time).count ());
 }
-// *INDENT-ON*
