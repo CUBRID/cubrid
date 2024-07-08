@@ -1446,7 +1446,9 @@ $ LOADDB
 1359 Java VM 에 장애가 발생함. : %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
-1361 마지막 에러
+1361 데이터 볼륨의 comment 길이(%1$d)가 너무 깁니다. comment의 최대 크기는 %2$d 바이트입니다.
+
+1362 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

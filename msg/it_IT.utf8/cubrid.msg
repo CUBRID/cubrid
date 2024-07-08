@@ -1446,7 +1446,9 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1359 Java VM crashed: %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
-1361 Ultimo errore
+1361 La lunghezza del commento (%1$d) per il volume dei dati è troppo lunga. La dimensione massima consentita per il commento è di %2$d byte.
+
+1362 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

@@ -1446,7 +1446,9 @@ $ LOADDB
 1359 Java VM crashed: %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
-1361 Letzter Fehler
+1361 Die Länge des Kommentars (%1$d) für das Datenvolumen ist zu lang. Die maximal zulässige Größe für den Kommentar beträgt %2$d Bytes.
+
+1362 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
