@@ -135,6 +135,7 @@ struct SORT_INFO
   SORTKEY_INFO key_info;	/* All of the interesting key information. */
   QFILE_SORT_SCAN_ID *s_id;	/* A SCAN_ID for the input list file.  This is stateful, and records the current
 				 * location of the scan between calls to ls_sort_get_next(). */
+  QFILE_LIST_ID *input_file;
   QFILE_LIST_ID *output_file;	/* The name of the output file.  This is where ls_sort_put_next_*() deposits its stuff.
 				 */
   RECDES output_recdes;		/* A working buffer for output of tuples; used only when we're using

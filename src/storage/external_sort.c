@@ -50,6 +50,7 @@
 #include "server_support.h"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
+#include "list_file.h"
 
 #include <functional>
 
@@ -1471,6 +1472,24 @@ cleanup:
     }
   else
     {
+
+      if (get_fn == qfile_get_next_sort_item)
+	{
+	  SORT_INFO *sort_info_p;
+	  QFILE_LIST_SCAN_ID *scan_id_p;
+
+	  sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	  scan_id_p = sort_info_p->s_id->s_id;
+
+	  /* temporarily, close file for read */
+	  qfile_close_scan (thread_p, scan_id_p);
+	}
+      else
+	{
+	  assert(0);
+	  return -1;
+	}
+
       /* init px variable */
       sort_param->px_status[0] = 0;
       sort_param->px_max_index = 2;
@@ -1531,11 +1550,46 @@ cleanup:
 static void
 sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
 {
+  QFILE_LIST_SCAN_ID t_scan_id;
+
   thread_ref.tran_index = sort_param->px_tran_index;
   pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
+  if (sort_param->get_fn == qfile_get_next_sort_item)
+    {
+      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+
+      /* temporarily, open file for read */
+      if (qfile_open_list_scan (sort_info_p->input_file, &t_scan_id) != NO_ERROR)
+	{
+	  /* need to put error into sort_param */
+	  return;
+	}
+      sort_info_p->s_id->s_id = &t_scan_id;
+    }
+  else
+    {
+      /* need to put error into sort_param */
+      assert(0);
+      return;
+    }
+
   sort_listfile_internal (&thread_ref, sort_param);
 
+  /* temporarily, close file for read */
+  if (sort_param->get_fn == qfile_get_next_sort_item)
+    {
+      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+
+      /* temporarily, open file for read */
+      qfile_close_scan (&thread_ref, &t_scan_id);
+    }
+  else
+    {
+      /* need to put error into sort_param */
+      assert(0);
+      return;
+    }
   sort_param->px_status[0] = 1;
 }
 // *INDENT-ON*
