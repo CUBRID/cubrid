@@ -621,7 +621,8 @@ retry:
 #if defined (WINDOWS)
 	  wr_fd = es_abs_open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
 #else /* WINDOWS */
-	  wr_fd = es_abs_open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
+	  wr_fd =
+	    es_abs_open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
 #endif /* !WINDOWS */
 	}
     }
