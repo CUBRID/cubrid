@@ -7109,7 +7109,7 @@ fileio_abort_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
  *       session.
  */
 FILEIO_BACKUP_SESSION *
-fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 * db_creation_p,
+fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 * db_creation_time_p,
 		     FILEIO_BACKUP_LEVEL backup_level, LOG_LSA * backup_start_lsa_p, LOG_LSA * backup_checkpoint_lsa_p,
 		     FILEIO_BACKUP_RECORD_INFO * all_levels_info_p, FILEIO_BACKUP_SESSION * session_p,
 		     FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level)
@@ -7142,7 +7142,7 @@ fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 
   strncpy (backup_header_p->magic, CUBRID_MAGIC_DATABASE_BACKUP, CUBRID_MAGIC_MAX_LENGTH);
   strncpy_bufsize (backup_header_p->db_release, rel_release_string ());
   strncpy_bufsize (backup_header_p->db_fullname, db_full_name_p);
-  backup_header_p->db_creation = *db_creation_p;
+  backup_header_p->db_creation = *db_creation_time_p;
   backup_header_p->db_iopagesize = IO_PAGESIZE;
   backup_header_p->db_compatibility = rel_disk_compatible ();
   backup_header_p->level = backup_level;
@@ -9219,7 +9219,7 @@ fileio_read_restore_header (FILEIO_BACKUP_SESSION * session_p)
  */
 FILEIO_BACKUP_SESSION *
 fileio_start_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, char *backup_source_p,
-		      INT64 match_db_creation, PGLENGTH * db_io_page_size_p, float *db_compatibility_p,
+		      INT64 match_db_creation_time, PGLENGTH * db_io_page_size_p, float *db_compatibility_p,
 		      FILEIO_BACKUP_SESSION * session_p, FILEIO_BACKUP_LEVEL level, bool is_authenticate,
 		      INT64 match_backup_creation_time, const char *restore_verbose_file_path, bool is_new_vol_path)
 {
@@ -9233,7 +9233,7 @@ fileio_start_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, char 
     }
 
   temp_session_p =
-    fileio_continue_restore (thread_p, db_full_name_p, match_db_creation, session_p, true, is_authenticate,
+    fileio_continue_restore (thread_p, db_full_name_p, match_db_creation_time, session_p, true, is_authenticate,
 			     match_backup_creation_time);
   if (temp_session_p != NULL)
     {
@@ -9289,7 +9289,7 @@ fileio_make_error_message (THREAD_ENTRY * thread_p, char *error_message_p)
  *       the next is required. A zero for this variable will ignore the test.
  */
 static FILEIO_BACKUP_SESSION *
-fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 db_creation,
+fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 db_creation_time,
 			 FILEIO_BACKUP_SESSION * session_p, bool is_first_time, bool is_authenticate,
 			 INT64 match_backup_creation_time)
 {
@@ -9527,7 +9527,7 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 
 	  /* NOTE: This could mess with restoring to a new location */
 	  if (strcmp (backup_header_p->db_fullname, db_full_name_p) != 0
-	      || (db_creation > 0 && difftime ((time_t) db_creation, (time_t) backup_header_p->db_creation)))
+	      || (db_creation_time > 0 && difftime ((time_t) db_creation_time, (time_t) backup_header_p->db_creation)))
 	    {
 	      if (is_first_time)
 		{
@@ -9537,7 +9537,7 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 		  fileio_ctime (&backup_header_p->db_creation, io_timeval);
 		  strcpy (save_time1, io_timeval);
 
-		  fileio_ctime (&db_creation, io_timeval);
+		  fileio_ctime (&db_creation_time, io_timeval);
 		  strcpy (save_time2, io_timeval);
 
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_NOT_A_BACKUP_OF_GIVEN_DATABASE, 5,
@@ -9667,12 +9667,12 @@ fileio_list_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, char *
   PGLENGTH db_iopagesize;
   float db_compatibility;
   int nbytes, i;
-  INT64 db_creation = 0;
+  INT64 db_creation_time = 0;
   char file_name[PATH_MAX];
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
-  if (fileio_start_restore (thread_p, db_full_name_p, backup_source_p, db_creation, &db_iopagesize,
+  if (fileio_start_restore (thread_p, db_full_name_p, backup_source_p, db_creation_time, &db_iopagesize,
 			    &db_compatibility, session_p, level, false, 0, NULL, is_new_vol_path) == NULL)
     {
       /* Cannot access backup file.. Restore from backup is cancelled */

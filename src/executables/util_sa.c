@@ -4411,7 +4411,7 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
 
   snprintf (query_buf, sizeof (query_buf), "INSERT INTO %s "	/* INSERT */
 	    "( db_name, "	/* 1 */
-	    "  db_creation, "	/* 2 */
+	    "  db_creation_time, "	/* 2 */
 	    "  copied_log_path, "	/* 3 */
 	    "  committed_lsa_pageid, "	/* 4 */
 	    "  committed_lsa_offset, "	/* 5 */
@@ -4437,7 +4437,7 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
 	    "  fail_counter, "	/* 25 */
 	    "  start_time ) "	/* 26 */
 	    " VALUES ( ?, "	/* 1. db_name */
-	    "   ?, "		/* 2. db_creation */
+	    "   ?, "		/* 2. db_creation_time */
 	    "   ?, "		/* 3. copied_log_path */
 	    "   ?, "		/* 4. committed_lsa_pageid */
 	    "   ?, "		/* 5. committed_lsa_offset */
@@ -4640,7 +4640,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   bool init_ha_catalog;
   int status, error_code;
   char er_msg_file[PATH_MAX];
-  char db_creation[LINE_MAX];
+  char db_creation_time[LINE_MAX];
   char *database_name;
   char *source_state;
   char *master_host_name;
@@ -4747,14 +4747,14 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
     }
 
   db_localdatetime (&restart_arg.db_creation, &datetime);
-  db_datetime_to_string (db_creation, LINE_MAX, &datetime);
+  db_datetime_to_string (db_creation_time, LINE_MAX, &datetime);
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       fprintf (stderr,
 	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE, RESTORESLAVE_MSG_HA_CATALOG_FAIL),
-	       db_creation, restart_arg.restart_repl_lsa.pageid, restart_arg.restart_repl_lsa.offset);
+	       db_creation_time, restart_arg.restart_repl_lsa.pageid, restart_arg.restart_repl_lsa.offset);
       return EXIT_FAILURE;
     }
 
@@ -4766,7 +4766,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  fprintf (stderr,
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE,
-				   RESTORESLAVE_MSG_HA_CATALOG_FAIL), db_creation,
+				   RESTORESLAVE_MSG_HA_CATALOG_FAIL), db_creation_time,
 		   restart_arg.restart_repl_lsa.pageid, restart_arg.restart_repl_lsa.offset);
 	  db_shutdown ();
 	  return EXIT_FAILURE;
@@ -4780,7 +4780,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  fprintf (stderr,
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE,
-				   RESTORESLAVE_MSG_HA_CATALOG_FAIL), db_creation,
+				   RESTORESLAVE_MSG_HA_CATALOG_FAIL), db_creation_time,
 		   restart_arg.restart_repl_lsa.pageid, restart_arg.restart_repl_lsa.offset);
 	  db_shutdown ();
 	  return EXIT_FAILURE;
@@ -4794,7 +4794,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  fprintf (stderr,
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE,
-				   RESTORESLAVE_MSG_HA_CATALOG_FAIL), db_creation,
+				   RESTORESLAVE_MSG_HA_CATALOG_FAIL), db_creation_time,
 		   restart_arg.restart_repl_lsa.pageid, restart_arg.restart_repl_lsa.offset);
 	  db_shutdown ();
 	  return EXIT_FAILURE;

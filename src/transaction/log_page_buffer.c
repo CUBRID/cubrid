@@ -311,8 +311,8 @@ static int logpb_start_where_path (const char *to_db_fullname, const char *toext
 static int logpb_next_where_path (const char *to_db_fullname, const char *toext_path, const char *ext_name,
 				  char *ext_path, const char *fileof_vols_and_wherepaths, FILE * where_paths_fp,
 				  int num_perm_vols, VOLID volid, char *from_volname, char *to_volname);
-static int logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *tonew_volname,
-			      INT64 * db_creation, LOG_LSA * vol_chkpt_lsa);
+static int logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *tonew_volname, INT64 * db_creation,
+			      LOG_LSA * vol_chkpt_lsa);
 static bool logpb_check_if_exists (const char *fname, char *first_vol);
 #if defined(SERVER_MODE)
 static int logpb_backup_needed_archive_logs (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session,
@@ -7942,8 +7942,7 @@ loop:
       fprintf (session.verbose_fp, "- number of permanent volumes: %d\n\n", num_perm_vols);
 
       fprintf (session.verbose_fp, "- HA apply info: %s %lld %lld %d\n\n", log_Gl.hdr.prefix_name,
-	       (long long int) log_Gl.hdr.db_creation,
-	       (long long int) log_Gl.hdr.smallest_lsa_at_last_chkpt.pageid,
+	       (long long int) log_Gl.hdr.db_creation, (long long int) log_Gl.hdr.smallest_lsa_at_last_chkpt.pageid,
 	       (int) log_Gl.hdr.smallest_lsa_at_last_chkpt.offset);
 
       fprintf (session.verbose_fp, "- backup progress status\n\n");

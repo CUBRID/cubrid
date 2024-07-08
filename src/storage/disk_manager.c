@@ -832,7 +832,7 @@ disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname)
  *   return: NO_ERROR
  *   volid(in): Volume identifier
  *   new_vol_fullname(in): New volume label/name
- *   new_db_creation(in): New database creation time
+ *   new_dbcreation(in): New database creation time
  *   new_chkptlsa(in): New checkpoint
  *   logchange(in): Whether or not to log the change
  *   flush_page(in): true for flush dirty page. otherwise, false
@@ -840,7 +840,7 @@ disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname)
  * Note: This function is targeted for the log and recovery manager. It is used when a database is copied or renamed.
  */
 int
-disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_fullname, const INT64 * new_db_creation,
+disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_fullname, const INT64 * new_dbcreation,
 		   const LOG_LSA * new_chkptlsa, bool logchange, DISK_FLUSH_TYPE flush)
 {
   DISK_VOLUME_HEADER *vhdr = NULL;
@@ -864,7 +864,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
       return error_code;
     }
 
-  is_new_db_create = (vhdr->db_creation != *new_db_creation);
+  is_new_db_create = (vhdr->db_creation != *new_dbcreation);
 
   /* Do I need to log anything ? */
   if (logchange != false)
@@ -894,7 +894,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
       (void) strcpy (undo_recv->vol_fullname, disk_vhdr_get_vol_fullname (vhdr));
 
       /* Redo stuff */
-      memcpy (&redo_recv->db_creation, new_db_creation, sizeof (*new_db_creation));
+      memcpy (&redo_recv->db_creation, new_dbcreation, sizeof (*new_dbcreation));
       memcpy (&redo_recv->chkpt_lsa, new_chkptlsa, sizeof (*new_chkptlsa));
       (void) strcpy (redo_recv->vol_fullname, new_vol_fullname);
 
@@ -911,14 +911,14 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
 
   /* TODO #
    * Currently, the volume creation time and database creation time are updated only when the new database file is created.
-   * However, the existing code performs a memcpy even when the new_db_creation value is the same as vhdr->db_creation, regardless of whether the database is being created.
+   * However, the existing code performs a memcpy even when the new_dbcreation value is the same as vhdr->db_creation, regardless of whether the database is being created.
    * For now, the code has been changed as below, but it seems necessary to determine whether to refactor and improve this in the future.
    */
   if (is_new_db_create == true)
     {
-      assert (vhdr->db_creation != *new_db_creation);
+      assert (vhdr->db_creation != *new_dbcreation);
       vhdr->vol_creation = time (NULL);
-      memcpy (&vhdr->db_creation, new_db_creation, sizeof (*new_db_creation));
+      memcpy (&vhdr->db_creation, new_dbcreation, sizeof (*new_dbcreation));
 
       if (!LSA_EQ (&vhdr->chkpt_lsa, new_chkptlsa))
 	{
@@ -928,7 +928,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
   else
     {
       assert (LSA_EQ (&vhdr->chkpt_lsa, new_chkptlsa));
-      assert (vhdr->db_creation == *new_db_creation);
+      assert (vhdr->db_creation == *new_dbcreation);
     }
 
   if (disk_vhdr_set_vol_fullname (vhdr, new_vol_fullname) != NO_ERROR)
@@ -1509,7 +1509,7 @@ disk_rv_dump_set_creation_time (FILE * fp, int length_ignore, void *data)
 
   change = (DISK_RECV_CHANGE_CREATION *) data;
 
-  fprintf (fp, "Label = %s, db_creation = %lld, chkpt = %lld|%lld\n", change->vol_fullname,
+  fprintf (fp, "Label = %s, Db_creation = %lld, chkpt = %lld|%lld\n", change->vol_fullname,
 	   (long long) change->db_creation, (long long) change->chkpt_lsa.pageid, (long long) change->chkpt_lsa.offset);
 }
 
