@@ -3179,7 +3179,10 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
 static int
 log_recovery_get_redo_parallel_count ()
 {
+  // *INDENT-OFF*
   const int num_cpus = cubthread::system_core_count ();
+  // *INDENT-ON*
+
   // This is arbitrary number
   const int threads_per_cpu = 2;
 
