@@ -22141,8 +22141,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
 
       vpid_ptr = recp->data + recp->length - vpid_size;
       OR_GET_VPID (vpid_ptr, &first_overflow_vpid);
-      if (!log_is_in_crash_recovery ()
-	  && pgbuf_is_valid_page (thread_p, &first_overflow_vpid, true, NULL, NULL) == DISK_INVALID)
+      if (!log_is_in_crash_recovery () && pgbuf_is_valid_page (thread_p, &first_overflow_vpid, true) == DISK_INVALID)
 	{
 	  assert (false);
 	  return ER_FAILED;
