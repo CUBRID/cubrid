@@ -25484,6 +25484,7 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
       if (cached_result && list_cache_entry_p)
 	{
 	  list_id = &list_cache_entry_p->list_id;
+	  xasl->sub_cache_ref_count = list_cache_entry_p->ref_count;
 	}
 
       if (host_var_count > 0)
