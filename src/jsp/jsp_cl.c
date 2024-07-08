@@ -56,7 +56,6 @@
 #include "dbtype.h"
 #include "jsp_comm.h"
 #include "method_compile_def.hpp"
-#include "sp_catalog.hpp"
 #include "authenticate_access_auth.hpp"
 
 #define PT_NODE_SP_NAME(node) \
@@ -163,7 +162,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
       mop = NULL;
     }
 
-  free_and_init (checked_name);  
+  free_and_init (checked_name);
   AU_ENABLE (save);
 
   return mop;
@@ -1145,6 +1144,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
   char *checked_name;
   const char *arg_comment;
   DB_TYPE return_type_value;
+  MOP sp_mop;
 
   if (java_method == NULL)
     {
@@ -1362,7 +1362,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
   db_make_null (&args_val);
   db_make_null (&owner_val);
 
-  sp_mop = jsp_find_stored_procedure (name);
+  sp_mop = jsp_find_stored_procedure (name, DB_AUTH_SELECT);
   if (sp_mop == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -1765,7 +1765,7 @@ check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 
 #ifdef  __cplusplus
 std::string
-jsp_get_class_name_of_target (const std::string &target)
+jsp_get_class_name_of_target (const std::string & target)
 {
   auto pos = target.find_last_of ('(');
   std::string name_part = target.substr (0, pos);
