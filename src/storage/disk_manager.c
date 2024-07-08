@@ -221,7 +221,7 @@ static DKNSECTS disk_Temp_max_sects = -2;
 typedef UINT64 DISK_STAB_UNIT;
 #define DISK_STAB_UNIT_SIZE_OF sizeof (DISK_STAB_UNIT)
 
-#define DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE (int) (offsetof(DISK_VOLUME_HEADER, var_fields))
+#define DISK_VOLUME_HEADER_FIXED_FIELDS_SIZE ((int) offsetof(DISK_VOLUME_HEADER, var_fields))
 /*
  * Previously, when a user entered excessively long remarks, the remarks would be trimmed to avoid exceeding the page size. 
  * This trimming could occur at unwanted positions, potentially removing important content. 
@@ -5425,8 +5425,6 @@ disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr)
   return strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1;
 }
 
-
-
 /*
  * disk_vhdr_get_vol_header_size () - get the size of volume header including variable fields
  *
@@ -5441,7 +5439,7 @@ disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr)
   const char *remarks = disk_vhdr_get_vol_remarks (vhdr);
   const int volume_header_size = remarks + disk_vhdr_get_vol_remarks_size (vhdr) - (char *) vhdr;
 
-  assert (volume_header_size >= 0);
+  assert (volume_header_size >= 0 && volume_header_size <= DB_PAGESIZE);
 
   return (size_t) volume_header_size;
 }
