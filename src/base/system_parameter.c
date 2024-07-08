@@ -6365,7 +6365,7 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_sql_log_max_count_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
+   (DUP_PRM_FUNC) NULL}
 };
 
 static int num_session_parameters = 0;

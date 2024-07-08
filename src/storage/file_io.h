@@ -611,7 +611,7 @@ extern int fileio_set_permission (const char *vlabel);
 #endif /* !WINDOWS */
 
 #if defined(SERVER_MODE)
-extern int fileio_os_sysconf (void);
+int fileio_os_sysconf (void);
 #endif /* SERVER_MODE */
 
 /* flush control related */

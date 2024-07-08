@@ -25,7 +25,6 @@
 #include "log_recovery.h"
 
 #include "boot_sr.h"
-#include "file_io.h"
 #include "locator_sr.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
@@ -3180,9 +3179,17 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
 static int
 log_recovery_get_redo_parallel_count ()
 {
-  const int num_cpus = fileio_os_sysconf ();
+  const int num_cpus = cubthread::system_core_count ();
   // This is arbitrary number
   const int threads_per_cpu = 2;
+
+  /* 'minimum_threads_to_redo' was determined experimentally.
+   * The redo performance was measured for a set of experiments involving
+   * multiple single record insertions (redo log records: 6,971,675).
+   * The best performance was observed when the number of redo threads was set to 16
+   * under 1, 2, 4, and 8 core conditions. Therefore, the minimum number of threads was set to 16.
+   * If a more appropriate value is found through further experiments with diverse sets, this value can be adjusted accordingly
+   */
   const int minimum_threads_to_redo = 16;
 
   return MAX (num_cpus * threads_per_cpu, minimum_threads_to_redo);
