@@ -61,7 +61,8 @@ class au_auth_accessor
     };
 
     int create_new_auth ();
-    int set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_object, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type, bool grant_option);
+    int set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_object, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type,
+		      bool grant_option);
     int get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type);
 
   public:
@@ -89,8 +90,5 @@ extern int au_delete_auth_of_dropping_user (MOP user);
 
 // delete _db_auth records refers to the given table
 extern int au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char *name);
-
-extern int au_delete_auth_of_dropping_table (const char *class_name);
-
 
 #endif // _authenticate_access_auth_HPP_

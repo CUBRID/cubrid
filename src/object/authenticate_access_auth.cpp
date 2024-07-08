@@ -106,21 +106,25 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
 
   if (obj_type == DB_OBJECT_CLASS)
     {
+      /*
       db_class = sm_find_class (CT_CLASS_NAME);
       if (db_class == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
+      {
+        assert (er_errid () != NO_ERROR);
+        return er_errid ();
+      }
 
       db_make_string (&name_val, sm_get_ch_name (obj_mop));
       inst_mop = obj_find_unique (db_class, "unique_name", &name_val, AU_FETCH_READ);
       if (inst_mop == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  pr_clear_value (&name_val);
-	  return er_errid ();
-	}
+      {
+        assert (er_errid () != NO_ERROR);
+        pr_clear_value (&name_val);
+        return er_errid ();
+      }
+      */
+
+      inst_mop = obj_mop;
     }
   else
     {
@@ -527,7 +531,7 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [sp_name] = ?");
