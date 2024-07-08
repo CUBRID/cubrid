@@ -3572,6 +3572,13 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   init_compile_context (parser);
 
+  /* All CTE and sub-queries included in the query must be prepared first. */
+  err = do_check_subquery_cache (parser, statement);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
   switch (statement->node_type)
     {
     case PT_DELETE:
@@ -3584,41 +3591,19 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_prepare_update (parser, statement);
       break;
     case PT_MERGE:
+      err = do_prepare_merge (parser, statement);
+      break;
     case PT_SELECT:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_UNION:
-      /* All CTE and sub-queries included in the query must be prepared first. */
-      err = do_check_subquery_cache (parser, statement);
-      if (err == NO_ERROR)
-	{
-	  if (statement->node_type == PT_MERGE)
-	    {
-	      err = do_prepare_merge (parser, statement);
-	    }
-	  else
-	    {
-	      err = do_prepare_select (parser, statement);
-	    }
-	}
+      err = do_prepare_select (parser, statement);
       break;
     case PT_EXECUTE_PREPARE:
       err = do_prepare_session_statement (parser, statement);
       break;
     default:
       /* there are no actions for other types of statements */
-      break;
-    }
-
-  switch (statement->node_type)
-    {
-    case PT_DELETE:
-    case PT_INSERT:
-    case PT_UPDATE:
-      /* All CTE and sub-queries included in DML query must be prepared after the query.
-         because that the select subqueries of DML should be transformed first */
-      err = do_check_subquery_cache (parser, statement);
-    default:
       break;
     }
 
