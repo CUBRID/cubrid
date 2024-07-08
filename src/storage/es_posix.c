@@ -60,7 +60,7 @@ static void es_rename_path (char *src, char *tgt, char *metaname);
 static int es_abs_open (const char *abs_path, int flags);
 static int es_abs_open (const char *abs_path, int flags, mode_t mode);
 static int es_make_abs_path (char *abs_path, const char *src_path);
-static int os_rename_file_abs (const char *src, const char *dst);
+static int es_os_rename_file_abs (const char *src, const char *dst);
 
 
 /*
@@ -685,13 +685,13 @@ xes_posix_rename_file (const char *src_path, const char *metaname, char *new_pat
 
   es_log ("xes_posix_rename_file(%s, %s): %s\n", src_path, metaname, new_path);
 
-  ret = os_rename_file_abs (src_path, new_path);
+  ret = es_os_rename_file_abs (src_path, new_path);
 
   return (ret < 0) ? ER_ES_GENERAL : NO_ERROR;
 }
 
 static int
-os_rename_file_abs (const char *src, const char *dst)
+es_os_rename_file_abs (const char *src, const char *dst)
 {
   const char *abs_dst_path = dst, *abs_src_path = src;
   char dst_buf[PATH_MAX], src_buf[PATH_MAX];
