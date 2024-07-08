@@ -39,6 +39,7 @@
 #include "xasl.h"
 #include "dbtype.h"
 #include "query_executor.h"
+#include "query_opfunc.h"
 #include "dbtype.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"

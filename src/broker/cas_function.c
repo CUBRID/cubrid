@@ -373,6 +373,8 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 
   cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
+  cas_log_compile_begin_write_query_string (sql_stmt, sql_size - 1, NULL);
+
   SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, ((const char *) sql_stmt));
 
   /* append query string to as_info->log_msg */
@@ -412,11 +414,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       assert (((DB_SESSION *) srv_handle->session)->parser);
       PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
-      cas_log_write_query_string (sql_stmt, sql_size - 1, &psr->hide_pwd_info);
-    }
-  else
-    {
-      cas_log_write_query_string (sql_stmt, sql_size - 1, NULL);
+      cas_log_compile_end_write_query_string (sql_stmt, sql_size - 1, &psr->hide_pwd_info);
     }
 
   cas_log_write (query_seq_num_current_value (), false, "prepare srv_h_id %s%d%s%s", (srv_h_id < 0) ? "error:" : "",

@@ -85,8 +85,8 @@ static int values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * value
 static int set_prepare_info_into_list (DB_PREPARE_INFO * prepare_info, PT_NODE * statement);
 static PT_NODE *char_array_to_name_list (PARSER_CONTEXT * parser, char **names, int length);
 static int do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement);
-static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *cte_num_query,
-					   DB_PREPARE_CTE_INFO ** cte_info);
+static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquery_num,
+					   DB_PREPARE_SUBQUERY_INFO ** subquery_info);
 static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list);
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
@@ -99,6 +99,8 @@ static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser, PT_NODE * st
 static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement);
+static PT_NODE *do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg,
+						 int *continue_walk);
 
 static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
@@ -628,9 +630,9 @@ db_compile_statement_local (DB_SESSION * session)
     {
       /* we don't actually have the statement which will be executed and we need to get some information about it from
        * the server */
-      DB_PREPARE_CTE_INFO *cte_info;
-      int i, cte_num_query;
-      int err = do_get_prepared_statement_info (session, stmt_ndx, &cte_num_query, &cte_info);
+      DB_PREPARE_SUBQUERY_INFO *subquery_info;
+      int i, num_query;
+      int err = do_get_prepared_statement_info (session, stmt_ndx, &num_query, &subquery_info);
 
       QUERY_ID query_id;
       QFILE_LIST_ID *list_id;
@@ -640,10 +642,10 @@ db_compile_statement_local (DB_SESSION * session)
 	  return err;
 	}
 
-      /* execute CTE queries first */
-      if (cte_info)
+      /* execute subqueries first */
+      if (subquery_info)
 	{
-	  err = do_execute_prepared_cte (parser, statement, cte_num_query, cte_info);
+	  err = do_execute_prepared_subquery (parser, statement, num_query, subquery_info);
 
 	  if (err != NO_ERROR)
 	    {
@@ -1649,7 +1651,7 @@ db_get_lock_classes (DB_SESSION * session)
 }
 
 static PT_NODE *
-do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int *err = (int *) arg;
 
@@ -1660,9 +1662,9 @@ do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *con
       return stmt;
     }
 
-  if (stmt->info.query.flag.cte_query_cached)
+  if (stmt->info.query.flag.subquery_cached)
     {
-      *err = do_execute_cte (parser, stmt);
+      *err = do_execute_subquery (parser, stmt);
       if (*err != NO_ERROR)
 	{
 	  *continue_walk = PT_STOP_WALK;
@@ -1818,7 +1820,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   /* All CTE sub-queries included in the query must be executed first. */
   if (pt_is_allowed_result_cache ())
     {
-      parser_walk_tree (parser, statement, do_execute_cte_pre, &err, NULL, NULL);
+      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &statement->flag, NULL, NULL);
       if (err != NO_ERROR)
 	{
 	  return err;
@@ -2365,58 +2367,57 @@ char_array_to_name_list (PARSER_CONTEXT * parser, char **names, int length)
   return list;
 }
 
-static DB_PREPARE_CTE_INFO *
-set_prepare_cte_info (PT_NODE * cte_query, DB_PREPARE_CTE_INFO * cte_info, int cte_num_query)
+static DB_PREPARE_SUBQUERY_INFO *
+set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int num_query)
 {
-  int i, q = cte_num_query;
-  int alloc_size = sizeof (DB_PREPARE_CTE_INFO) * (cte_num_query / 4 + 1) * 4;
+  int i, q = num_query;
 
-  if (cte_num_query % 4 == 0)	/* need to realloc cte info every 4 */
+  if (num_query % 4 == 0)	/* need to realloc subquery info every 4 */
     {
-      DB_PREPARE_CTE_INFO *cte_realloc = (DB_PREPARE_CTE_INFO *) realloc (cte_info, alloc_size);
+      int alloc_size = sizeof (DB_PREPARE_SUBQUERY_INFO) * (num_query / 4 + 1) * 4;
 
-      if (cte_realloc == NULL)
+      DB_PREPARE_SUBQUERY_INFO *alloc = (DB_PREPARE_SUBQUERY_INFO *) realloc (info, alloc_size);
+
+      if (alloc == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
 	  goto err_exit;
 	}
 
-      cte_info = cte_realloc;
+      info = alloc;
     }
 
-  XASL_ID_COPY (&cte_info[q].cte_xasl_id, cte_query->xasl_id);
-  cte_info[q].cte_host_var_count = cte_query->cte_host_var_count;
-  cte_info[q].cte_host_var_index = (int *) malloc (sizeof (int) * cte_query->cte_host_var_count);
-  if (cte_info[q].cte_host_var_index == NULL)
+  XASL_ID_COPY (&info[q].xasl_id, query->xasl_id);
+  info[q].host_var_count = query->sub_host_var_count;
+  info[q].host_var_index = (int *) malloc (sizeof (int) * query->sub_host_var_count);
+  if (info[q].host_var_index == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (int) * cte_query->cte_host_var_count);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * query->sub_host_var_count);
       goto err_exit;
     }
 
-  if (cte_query->cte_host_var_count > 0)
+  if (query->sub_host_var_count > 0)
     {
-      memcpy (cte_info[q].cte_host_var_index, cte_query->cte_host_var_index,
-	      cte_query->cte_host_var_count * sizeof (int));
+      memcpy (info[q].host_var_index, query->sub_host_var_index, query->sub_host_var_count * sizeof (int));
     }
 
-  return cte_info;
+  return info;
 
 err_exit:
-  if (cte_info != NULL)
+  if (info != NULL)
     {
-      for (i = 0; i < cte_num_query; i++)
+      for (i = 0; i < num_query; i++)
 	{
-	  free_and_init (cte_info[i].cte_host_var_index);
+	  free_and_init (info[i].host_var_index);
 	}
-      free_and_init (cte_info);
+      free_and_init (info);
     }
 
   return NULL;
 }
 
 static PT_NODE *
-do_process_prepare_cte_query_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   DB_PREPARE_INFO *prepare_info;
 
@@ -2431,16 +2432,17 @@ do_process_prepare_cte_query_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void 
 
   prepare_info = (DB_PREPARE_INFO *) arg;
 
-  if (stmt->info.query.flag.cte_query_cached)
+  if (stmt->info.query.flag.subquery_cached)
     {
-      prepare_info->cte_info = set_prepare_cte_info (stmt, prepare_info->cte_info, prepare_info->cte_num_query);
-      if (prepare_info->cte_info == NULL)
+      prepare_info->subquery_info =
+	set_prepare_subquery_info (stmt, prepare_info->subquery_info, prepare_info->subquery_num);
+      if (prepare_info->subquery_info == NULL)
 	{
 	  *continue_walk = PT_STOP_WALK;
 	  return stmt;
 	}
 
-      prepare_info->cte_num_query++;
+      prepare_info->subquery_num++;
     }
 
   return stmt;
@@ -2542,7 +2544,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
       goto cleanup;
     }
 
-  parser_walk_tree (prepared_session->parser, prepared_stmt, do_process_prepare_cte_query_pre, &prepare_info, NULL,
+  parser_walk_tree (prepared_session->parser, prepared_stmt, do_process_prepare_subquery_pre, &prepare_info, NULL,
 		    NULL);
   if ((err = er_errid ()) != NO_ERROR)
     {
@@ -2587,13 +2589,13 @@ cleanup:
       free_and_init (prepare_info.into_list);
     }
 
-  if (prepare_info.cte_info != NULL)
+  if (prepare_info.subquery_info != NULL)
     {
-      for (i = 0; i < prepare_info.cte_num_query; i++)
+      for (i = 0; i < prepare_info.subquery_num; i++)
 	{
-	  free_and_init (prepare_info.cte_info[i].cte_host_var_index);
+	  free_and_init (prepare_info.subquery_info[i].host_var_index);
 	}
-      free_and_init (prepare_info.cte_info);
+      free_and_init (prepare_info.subquery_info);
     }
 
   return err;
@@ -2606,7 +2608,8 @@ cleanup:
  * stmt_idx (in) : statement index
  */
 static int
-do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *cte_num_query, DB_PREPARE_CTE_INFO ** cte_info)
+do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquery_num,
+				DB_PREPARE_SUBQUERY_INFO ** subquery_info)
 {
   const char *name = NULL;
   char *stmt_info = NULL;
@@ -2630,8 +2633,8 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *cte_num
     }
 
   db_unpack_prepare_info (&prepare_info, stmt_info);
-  *cte_num_query = prepare_info.cte_num_query;
-  *cte_info = prepare_info.cte_info;
+  *subquery_num = prepare_info.subquery_num;
+  *subquery_info = prepare_info.subquery_info;
 
   statement->info.execute.column_count = 0;
   col = prepare_info.columns;

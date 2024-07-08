@@ -1812,7 +1812,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
       /* Suppress errors if fetch mode is OLD_PAGE_IF_IN_BUFFER. */
-      if (pgbuf_is_valid_page (thread_p, vpid, fetch_mode == OLD_PAGE_IF_IN_BUFFER, NULL, NULL) != DISK_VALID)
+      if (pgbuf_is_valid_page (thread_p, vpid, fetch_mode == OLD_PAGE_IF_IN_BUFFER) != DISK_VALID)
 	{
 	  return NULL;
 	}
@@ -4111,7 +4111,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	   */
 	  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
-	      if (pgbuf_is_valid_page (thread_p, vpid, false NULL, NULL) != DISK_VALID)
+	      if (pgbuf_is_valid_page (thread_p, vpid, false) != DISK_VALID)
 		{
 		  return NULL;
 		}
@@ -4209,7 +4209,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 	  /* Do not cache the page in the page buffer pool. Write the desired portion of the page directly to disk */
 	  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
-	      if (pgbuf_is_valid_page (thread_p, vpid, false NULL, NULL) != DISK_VALID)
+	      if (pgbuf_is_valid_page (thread_p, vpid, false) != DISK_VALID)
 		{
 		  return NULL;
 		}
@@ -10167,9 +10167,6 @@ pgbuf_get_check_page_validation_level (int page_validation_level)
  * pgbuf_is_valid_page () - Verify if given page is a valid one
  *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
  *   vpid(in): Complete Page identifier
- *   fun(in): A second function to call to verify if the above page is valid
- *            The function is called on vpid, and arguments
- *   args(in): Additional argument for fun
  *
  * Note: Verify that the given page is valid according to functions:
  *         1) disk_isvalid_page
@@ -10178,12 +10175,9 @@ pgbuf_get_check_page_validation_level (int page_validation_level)
  *       capabilities.
  */
 DISK_ISVALID
-pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
-		     DISK_ISVALID (*fun) (const VPID * vpid, void *args), void *args)
+pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error)
 {
   DISK_ISVALID valid;
-
-  /* TODO: fix me */
 
   if (fileio_get_volume_label (vpid->volid, PEEK) == NULL || VPID_ISNULL (vpid))
     {
@@ -10194,15 +10188,12 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
 
   /*valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid); */
   valid = disk_is_page_sector_reserved_with_debug_crash (thread_p, vpid->volid, vpid->pageid, !no_error);
-  if (valid != DISK_VALID || (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
+  if (valid == DISK_INVALID && !no_error)
     {
-      if (valid != DISK_ERROR && !no_error)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
-		  fileio_get_volume_label (vpid->volid, PEEK));
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
+	      fileio_get_volume_label (vpid->volid, PEEK));
 
-	  assert (false);
-	}
+      assert (false);
     }
 
   return valid;
@@ -11583,7 +11574,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       else if (VPID_EQ (req_vpid, &(holder->bufptr->vpid)))
 	{
 	  /* already have a fix on this page, should not be here */
-	  if (pgbuf_is_valid_page (thread_p, req_vpid, false, NULL, NULL) != DISK_VALID)
+	  if (pgbuf_is_valid_page (thread_p, req_vpid, false) != DISK_VALID)
 	    {
 #if defined(PGBUF_ORDERED_DEBUG)
 	      _er_log_debug (__FILE__, __LINE__,

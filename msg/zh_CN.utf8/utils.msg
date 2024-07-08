@@ -815,6 +815,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 无法打开输出文件 '%1$s'\n
+16 未知类 "%1$s"\n
 60 \
 diagdb: 转储一个数据库.\n\
 用法: %1$s diagdb [选项] 数据库名\n\
