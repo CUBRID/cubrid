@@ -66,7 +66,10 @@ server_entry (int pid, const char *server_name, const char *exec_path, char *arg
   , m_last_revive_time {0, 0}
   , m_need_revive {false}
 {
-  proc_make_arg (args);
+  if (args != nullptr)
+    {
+      proc_make_arg (args);
+    }
 }
 
 void
@@ -78,7 +81,6 @@ server_monitor::server_entry::proc_make_arg (char *args)
     {
       m_argv.push_back (tok);
     }
-
 }
 
 server_monitor::server_monitor_list::server_monitor_list()

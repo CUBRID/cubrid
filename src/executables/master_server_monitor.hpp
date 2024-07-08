@@ -32,30 +32,9 @@
 #include "system_parameter.h"
 #include "connection_defs.h"
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 class server_monitor
 {
   public:
-    class server_entry;
-    class server_monitor_list;
-
-    using server_entry_uptr_t = std::unique_ptr<server_monitor::server_entry>;
-
-    static server_monitor &get_instance ()
-    {
-      static server_monitor instance;
-      return instance;
-    }
-
-    server_monitor (const server_monitor &) = delete;
-    server_monitor (server_monitor &&) = delete;
-
-    server_monitor &operator = (const server_monitor &) = delete;
-    server_monitor &operator = (server_monitor &&) = delete;
 
     class server_entry
     {
@@ -70,17 +49,18 @@ class server_monitor
 	server_entry &operator = (server_entry &&) = delete;
 
       private:
-	const int m_pid;
-	const std::string m_server_name;
-	const std::string m_exec_path;
-	std::vector<std::string> m_argv;
-	CSS_CONN_ENTRY *m_conn;
-	timeval m_last_revive_time;
-	bool m_need_revive;
-
-      private:
 	void proc_make_arg (char *args);
+
+	const int m_pid;                              // process ID
+	const std::string m_server_name;              // server name
+	const std::string m_exec_path;                // executable path of server process
+	std::vector<std::string> m_argv;              // arguments of server process
+	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
+	timeval m_last_revive_time;                   // latest revive time
+	bool m_need_revive;                           // need to revive (true if the server is abnormally terminated)
     };
+
+    using server_entry_uptr_t = std::unique_ptr<server_monitor::server_entry>;
 
     class server_monitor_list
     {
@@ -95,22 +75,30 @@ class server_monitor
 	server_monitor_list &operator = (server_monitor_list &&) = delete;
 
       private:
-	std::vector <server_entry_uptr_t> server_entry_list;
-	int m_unacceptable_proc_restart_timediff;
-	int m_max_process_start_confirm;
+	std::vector <server_entry_uptr_t> server_entry_list;      // list of server entries
+	int m_unacceptable_proc_restart_timediff;                 // unacceptable time difference between process restart
+	int m_max_process_start_confirm;                          // Maximum number of process restart confirmations
     };
+
+    static server_monitor &get_instance ()
+    {
+      static server_monitor instance;
+      return instance;
+    }
 
   private:
     server_monitor ();
     ~server_monitor ();
 
-    std::unique_ptr<std::thread> m_monitoring_thread;
-    std::unique_ptr<server_monitor_list> m_monitor_list;
-    bool m_thread_shutdown;
-};
+    server_monitor (const server_monitor &) = delete;
+    server_monitor (server_monitor &&) = delete;
 
-#ifdef __cplusplus
-}
-#endif
+    server_monitor &operator = (const server_monitor &) = delete;
+    server_monitor &operator = (server_monitor &&) = delete;
+
+    std::unique_ptr<std::thread> m_monitoring_thread;         // monitoring thread
+    std::unique_ptr<server_monitor_list> m_monitor_list;      // list of server entries
+    bool m_thread_shutdown;                                   // flag to shutdown monitoring thread
+};
 
 #endif
