@@ -847,7 +847,6 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   DISK_RECV_CHANGE_CREATION *undo_recv;
   DISK_RECV_CHANGE_CREATION *redo_recv;
-  bool is_new_db_create = false;
   int error_code = NO_ERROR;
 
   if ((int) strlen (new_vol_fullname) + 1 > DB_MAX_PATH_LENGTH)
@@ -863,8 +862,6 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
       ASSERT_ERROR ();
       return error_code;
     }
-
-  is_new_db_create = (vhdr->db_creation != *new_dbcreation);
 
   /* Do I need to log anything ? */
   if (logchange != false)
@@ -914,9 +911,8 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
    * However, the existing code performs a memcpy even when the new_dbcreation value is the same as vhdr->db_creation, regardless of whether the database is being created.
    * For now, the code has been changed as below, but it seems necessary to determine whether to refactor and improve this in the future.
    */
-  if (is_new_db_create == true)
+  if (vhdr->db_creation != *new_dbcreation)
     {
-      assert (vhdr->db_creation != *new_dbcreation);
       vhdr->vol_creation = time (NULL);
       memcpy (&vhdr->db_creation, new_dbcreation, sizeof (*new_dbcreation));
 
@@ -928,7 +924,6 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
   else
     {
       assert (LSA_EQ (&vhdr->chkpt_lsa, new_chkptlsa));
-      assert (vhdr->db_creation == *new_dbcreation);
     }
 
   if (disk_vhdr_set_vol_fullname (vhdr, new_vol_fullname) != NO_ERROR)
