@@ -32,7 +32,7 @@ server_monitor::server_monitor ()
 
   m_monitoring_thread = std::make_unique<std::thread> ([this]()
   {
-    while (m_thread_shutdown)
+    while (!m_thread_shutdown)
       {
 	// TODO: Server_entry selection which need_revive value is true. (Will be implemented in CBRD-25438 issue.)
       }
