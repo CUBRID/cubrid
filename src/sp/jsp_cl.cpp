@@ -62,6 +62,7 @@
 #include "jsp_comm.h"
 #include "method_compile_def.hpp"
 #include "sp_catalog.hpp"
+#include "authenticate_access_auth.hpp"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
