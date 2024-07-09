@@ -80,24 +80,21 @@ class server_monitor
 	int m_max_process_start_confirm;                          // Maximum number of process restart confirmations
     };
 
-    ~server_monitor ();
-
-    static server_monitor *get_instance ()
+    static server_monitor &get_instance ()
     {
-      if (!m_instance)
-	{
-	  m_instance = std::make_unique<server_monitor>();
-	}
-      return m_instance.get();
+      static server_monitor instance;
+      return instance;
     }
 
     static void delete_instance ()
     {
-      m_instance.reset ();
+      server_monitor &instance = get_instance ();
+      delete &instance;
     }
 
   private:
     server_monitor ();
+    ~server_monitor ();
 
     server_monitor (const server_monitor &) = delete;
     server_monitor (server_monitor &&) = delete;
@@ -108,8 +105,6 @@ class server_monitor
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     std::unique_ptr<server_monitor_list> m_monitor_list;                // list of server entries
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
-
-    static inline std::unique_ptr<server_monitor> m_instance;           // singleton instance
 };
 
 #endif
