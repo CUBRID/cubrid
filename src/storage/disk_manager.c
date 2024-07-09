@@ -905,12 +905,6 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
     }
 
   /* Modify volume creation information */
-
-  /* TODO #
-   * Currently, the volume creation time and database creation time are updated only when the new database file is created.
-   * However, the existing code performs a memcpy even when the new_dbcreation value is the same as vhdr->db_creation, regardless of whether the database is being created.
-   * For now, the code has been changed as below, but it seems necessary to determine whether to refactor and improve this in the future.
-   */
   if (vhdr->db_creation != *new_dbcreation)
     {
       assert (!LSA_EQ (&vhdr->chkpt_lsa, new_chkptlsa));

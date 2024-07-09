@@ -90,7 +90,7 @@ extern void disk_lock_extend (void);
 extern void disk_unlock_extend (void);
 extern int disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname);
 extern int disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_fullname,
-			      const INT64 * new_db_creation, const LOG_LSA * new_chkptlsa, bool logchange,
+			      const INT64 * new_dbcreation, const LOG_LSA * new_chkptlsa, bool logchange,
 			      DISK_FLUSH_TYPE flush_page);
 extern int disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const char *next_volext_fullname,
 			  bool logchange, DISK_FLUSH_TYPE flush);

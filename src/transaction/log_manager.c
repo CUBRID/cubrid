@@ -8948,13 +8948,13 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const ch
 {
   PGLENGTH db_iopagesize;
   PGLENGTH log_page_size;
-  INT64 ignore_db_creation;
+  INT64 ignore_dbcreation;
   float ignore_dbcomp;
   int dummy;
 
   LOG_CS_ENTER (thread_p);
   if (logpb_find_header_parameters (thread_p, false, db_fullname, logpath, prefix_logname, &db_iopagesize,
-				    &log_page_size, &ignore_db_creation, &ignore_dbcomp, &dummy) == -1)
+				    &log_page_size, &ignore_dbcreation, &ignore_dbcomp, &dummy) == -1)
     {
       /*
        * For case where active log could not be found, user still needs
@@ -9022,13 +9022,13 @@ log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullna
 {
   PGLENGTH dummy_db_iopagesize;
   PGLENGTH dummy_ignore_log_page_size;
-  INT64 dummy_ignore_db_creation;
+  INT64 dummy_ignore_dbcreation;
   float dummy_ignore_dbcomp;
   int db_charset = INTL_CODESET_NONE;
 
   LOG_CS_ENTER (thread_p);
   if (logpb_find_header_parameters (thread_p, false, db_fullname, logpath, prefix_logname, &dummy_db_iopagesize,
-				    &dummy_ignore_log_page_size, &dummy_ignore_db_creation, &dummy_ignore_dbcomp,
+				    &dummy_ignore_log_page_size, &dummy_ignore_dbcreation, &dummy_ignore_dbcomp,
 				    &db_charset) == -1)
     {
       /*

@@ -1528,7 +1528,7 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
     }
 
   snprintf (query_buf, sizeof (query_buf), "SELECT "	/* SELECT */
-	    "   db_creation, "	/* 2 */
+	    "   db_creation_time, "	/* 2 */
 	    "   committed_lsa_pageid, "	/* 4 */
 	    "   committed_lsa_offset, "	/* 5 */
 	    "   committed_rep_pageid, "	/* 6 */
@@ -1725,7 +1725,7 @@ la_insert_ha_apply_info (DB_DATETIME * db_creation)
 
   snprintf (query_buf, sizeof (query_buf), "INSERT INTO %s "	/* INSERT */
 	    "( db_name, "	/* 1 */
-	    "  db_creation, "	/* 2 */
+	    "  db_creation_time, "	/* 2 */
 	    "  copied_log_path, "	/* 3 */
 	    "  committed_lsa_pageid, "	/* 4 */
 	    "  committed_lsa_offset, "	/* 5 */
@@ -1751,7 +1751,7 @@ la_insert_ha_apply_info (DB_DATETIME * db_creation)
 	    "  fail_counter, "	/* 25 */
 	    "  start_time ) "	/* 26 */
 	    " VALUES ( ?, "	/* 1. db_name */
-	    "   ?, "		/* 2. db_creation */
+	    "   ?, "		/* 2. db_creation_time */
 	    "   ?, "		/* 3. copied_log_path */
 	    "   ?, "		/* 4. committed_lsa_pageid */
 	    "   ?, "		/* 5. committed_lsa_offset */
@@ -1924,11 +1924,11 @@ la_update_ha_apply_info_log_record_time (time_t new_time)
   if (res == 0)
     {
       /* it means db_ha_apply_info was deleted */
-      DB_DATETIME log_db_creation;
+      DB_DATETIME log_db_creation_time;
 
-      db_localdatetime (&la_Info.act_log.log_hdr->db_creation, &log_db_creation);
+      db_localdatetime (&la_Info.act_log.log_hdr->db_creation, &log_db_creation_time);
 
-      res = la_insert_ha_apply_info (&log_db_creation);
+      res = la_insert_ha_apply_info (&log_db_creation_time);
       if (res > 0)
 	{
 	  res = la_update_query_execute_with_values (query_buf, in_value_idx, &in_value[0], true);
