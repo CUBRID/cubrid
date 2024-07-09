@@ -3247,17 +3247,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      node->info.method_call.on_call_target->next = NULL;
 	    }
 
-	  if (node->info.method_call.on_call_target)
-	    {
-	      /*
-	       * Class methods are system tables and do not require user_schema.
-	       * Therefore, remove [schema_name.] from schema_name.method_name.
-	       * ex) CALL 'add_user()', 'drop_user()', 'find_user()'
-	       */
-	      node->info.method_call.method_name->info.name.original =
-		sm_remove_qualifier_name (node->info.method_call.method_name->info.name.original);
-	    }
-
 	  /* make method name look resolved */
 	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) node->info.method_call.method_name;
 	  node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
@@ -3356,24 +3345,44 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  }
 	else if (PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION (node))
 	  {
+	    /*
+	     * jsp_is_exist_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
+	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
+	     */
 	    PT_NODE *tmp_node = parser_new_node (parser, PT_NAME);
-	    if (tmp_node)
+	    if (!tmp_node)
 	      {
-		tmp_node->info.name.original = pt_append_string (parser, node->info.dot.arg1->info.name.original, ".");
-		tmp_node->info.name.original =
-		  pt_append_string (parser, tmp_node->info.name.original,
-				    node->info.dot.arg2->info.function.generic_name);
+		PT_ERROR (parser, tmp_node, "allocation error");
+		parser_free_tree (parser, tmp_node);
+
+		*continue_walk = PT_STOP_WALK;
+		return NULL;
 	      }
+
+	    if (node->alias_print)
+	      {
+		node->info.dot.arg2->alias_print =
+		  pt_append_string (parser, node->info.dot.arg2->alias_print, node->alias_print);
+	      }
+
+	    tmp_node->info.name.original = pt_append_string (parser, node->info.dot.arg1->info.name.original, ".");
+	    tmp_node->info.name.original =
+	      pt_append_string (parser, tmp_node->info.name.original, node->info.dot.arg2->info.function.generic_name);
 
 	    if (jsp_is_exist_stored_procedure (tmp_node->info.name.original))
 	      {
 		node->info.dot.arg2->info.function.generic_name = tmp_node->info.name.original;
+		/*
+		 * If (dot.arg1->node_type == PT_NAME) & (dot.arg2->node_type == PT_FUNCTION), pt_bind_name_or_path_in_scope() always returns NULL and has an er_errid() value.
+		 * Therefore, er_errid() that occurs in pt_bind_name_or_path_in_scope must be reset.
+		 */
 		if (er_errid () == NO_ERROR)
 		  {
 		    pt_reset_error (parser);
 		  }
-		node = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		PT_NODE_INIT_OUTERLINK (node);
+		parser_free_tree (parser, tmp_node);
+		node = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		*continue_walk = PT_LIST_WALK;
 	      }
 	    else if (pt_has_error (parser))
@@ -3429,6 +3438,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	       */
 	      if (jsp_is_exist_stored_procedure (generic_name))
 		{
+		  node->info.function.generic_name = strdup (generic_name);
 		  node1 = pt_resolve_stored_procedure (parser, node, bind_arg);
 		}
 	      else

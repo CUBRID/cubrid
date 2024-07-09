@@ -19419,7 +19419,7 @@ generic_function
 	;
 
 generic_function_for_call        
-	: procedure_name_without_dot 
+	: procedure_name 
         {
             if(pwd_info.parser_call_check)
             {
@@ -19434,8 +19434,7 @@ generic_function_for_call
             }
         }
         '(' opt_expression_list_for_call ')' opt_on_target
-		{{ DBG_TRACE_GRAMMAR(generic_function_for_call, : procedure_name_without_dot '(' opt_expression_list ')' opt_on_target );
-
+		{{ DBG_TRACE_GRAMMAR(generic_function_for_call, : procedure_name '(' opt_expression_list_for_call ')' opt_on_target );
 			PT_NODE *node = NULL;
 
 			if ($6 == NULL)
@@ -19452,6 +19451,17 @@ generic_function_for_call
 				node->info.method_call.method_name = $1;
 				node->info.method_call.arg_list = $4;
 				node->info.method_call.on_call_target = $6;
+                                if (node->info.method_call.on_call_target != NULL)
+				  {
+				    PT_NAME_INFO_CLEAR_FLAG (node->info.method_call.method_name, PT_NAME_INFO_USER_SPECIFIED);
+				  }
+				else
+				  {
+				    if (node->info.method_call.arg_list != NULL && node->info.method_call.arg_list->node_type == PT_NAME && node->info.method_call.arg_list->info.name.meta_class == PT_META_CLASS)
+				      {
+					PT_NAME_INFO_CLEAR_FLAG (node->info.method_call.method_name, PT_NAME_INFO_USER_SPECIFIED);
+				      }
+				  }
 				node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
 			      }
 

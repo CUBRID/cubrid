@@ -1844,7 +1844,7 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
 
   do
     {
-      errors = csql_execute_query ("CALL get_line (:pl_output_str, :pl_output_status);");
+      errors = csql_execute_query ("CALL dbms_output.get_line (:pl_output_str, :pl_output_status);");
       if (errors != 0)
 	{
 	  break;
