@@ -3192,7 +3192,7 @@ log_recovery_get_redo_parallel_count ()
    */
   const int minimum_threads_to_redo = 16;
 
-  return MAX (num_cpus, minimum_threads_to_redo);
+  return MAX (minimum_threads_to_redo, num_cpus);
 }
 #endif
 
