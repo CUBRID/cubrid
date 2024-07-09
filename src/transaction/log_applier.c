@@ -1963,14 +1963,14 @@ la_get_last_ha_applied_info (void)
   LA_ACT_LOG *act_log;
   LA_HA_APPLY_INFO apply_info;
   time_t log_db_creation;
-  DB_DATETIME log_db_creation_datetime;
+  DB_DATETIME log_db_creation_time;
   bool insert_apply_info = false;
   char err_msg[LINE_MAX];
 
   act_log = &la_Info.act_log;
 
   log_db_creation = act_log->log_hdr->db_creation;
-  db_localdatetime (&log_db_creation, &log_db_creation_datetime);
+  db_localdatetime (&log_db_creation, &log_db_creation_time);
 
   res = la_get_ha_apply_info (la_Info.log_path, act_log->log_hdr->prefix_name, &apply_info);
   if (res > 0)
@@ -1989,8 +1989,8 @@ la_get_last_ha_applied_info (void)
       la_Info.commit_counter = apply_info.commit_counter;
       la_Info.fail_counter = apply_info.fail_counter;
 
-      if ((log_db_creation_datetime.date != apply_info.db_creation.date)
-	  || (log_db_creation_datetime.time != apply_info.db_creation.time))
+      if ((log_db_creation_time.date != apply_info.db_creation.date)
+	  || (log_db_creation_time.time != apply_info.db_creation.time))
 	{
 	  return ER_FAILED;
 	}
@@ -2033,7 +2033,7 @@ la_get_last_ha_applied_info (void)
 
   if (insert_apply_info == true)
     {
-      res = la_insert_ha_apply_info (&log_db_creation_datetime);
+      res = la_insert_ha_apply_info (&log_db_creation_time);
     }
   else
     {
@@ -2189,11 +2189,11 @@ la_update_ha_last_applied_info (void)
   if (res == 0)
     {
       /* it means db_ha_apply_info was deleted */
-      DB_DATETIME log_db_creation;
+      DB_DATETIME log_db_creation_time;
 
-      db_localdatetime (&la_Info.act_log.log_hdr->db_creation, &log_db_creation);
+      db_localdatetime (&la_Info.act_log.log_hdr->db_creation, &log_db_creation_time);
 
-      res = la_insert_ha_apply_info (&log_db_creation);
+      res = la_insert_ha_apply_info (&log_db_creation_time);
       if (res > 0)
 	{
 	  res = la_update_query_execute_with_values (query_buf, in_value_idx, &in_value[0], true);
