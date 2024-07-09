@@ -669,7 +669,7 @@ log_verify_db_creation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * db_c
 {
   INT64 db_creation_temp;	/* Database creation time in volume */
 
-  if (disk_get_creation_time (thread_p, volid, &db_creation_temp) != NO_ERROR)
+  if (disk_get_db_creation (thread_p, volid, &db_creation_temp) != NO_ERROR)
     {
       return false;
     }
@@ -8833,7 +8833,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
   LOG_LSA init_nontemp_lsa;
   int ret = NO_ERROR;
 
-  ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &db_creation);
+  ret = disk_get_db_creation (thread_p, LOG_DBFIRST_VOLID, &db_creation);
   if (ret != NO_ERROR)
     {
       return ret;

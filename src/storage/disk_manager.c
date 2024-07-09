@@ -5423,13 +5423,13 @@ disk_get_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, LOG_LSA * vol_lsa)
 }
 
 /*
- * disk_get_creation_time () - Get the database creation time according to the volume header
+ * disk_get_db_creation () - Get the database creation time according to the volume header
  *   return: void
  *   volid(in): Permanent volume identifier
  *   db_creation(out): Database creation time according to the volume
  */
 int
-disk_get_creation_time (THREAD_ENTRY * thread_p, INT16 volid, INT64 * db_creation)
+disk_get_db_creation (THREAD_ENTRY * thread_p, INT16 volid, INT64 * db_creation)
 {
   DISK_VOLUME_HEADER *vhdr;
   PAGE_PTR hdr_pgptr = NULL;
