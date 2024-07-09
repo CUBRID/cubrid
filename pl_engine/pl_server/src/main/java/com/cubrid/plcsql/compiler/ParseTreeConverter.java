@@ -168,9 +168,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " as its return type");
                 }
 
-                Type retType =
-                        DBTypeAdapter.getDeclType(
-                                fs.retType.type, fs.retType.prec, fs.retType.scale);
+                Type retType = DBTypeAdapter.getValueType(fs.retType.type);
 
                 gfc.decl = new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(retType));
 
@@ -2521,8 +2519,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
             }
 
-            Type paramType =
-                    DBTypeAdapter.getDeclType(params[i].type, params[i].prec, params[i].scale);
+            Type paramType = DBTypeAdapter.getValueType(params[i].type);
 
             TypeSpec tySpec = TypeSpec.getBogus(paramType);
             if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) != 0) {
