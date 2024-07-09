@@ -1368,6 +1368,13 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * System was involved in a crash.
        * Execute the recovery process
        */
+
+      /* The actions of flushing the page buffer and double write buffer are currently designed to operate in a single thread.
+       * As we parallelize the log recovery redo process, this flush operation can also run in multiple threads.
+       * To prevent this, daemons performing the flush should be activated to flush the pages in single thread.
+       * If recovery is not being performed, these daemons will run after completing the log_initialize () */
+      BO_ENABLE_FLUSH_DAEMONS ();
+
       log_recovery (thread_p, ismedia_crash, stopat);
     }
   else

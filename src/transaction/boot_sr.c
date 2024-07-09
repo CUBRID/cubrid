@@ -146,6 +146,8 @@ extern void boot_client_all_finalize (bool is_er_final);
 
 BOOT_SERVER_STATUS boot_Server_status = BOOT_SERVER_DOWN;
 
+bool boot_Enabled_flush_daemons = false;
+
 #if defined(SERVER_MODE)
 /* boot_cl.c:boot_Host_name[] if CS_MODE and SA_MODE */
 char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";
@@ -2477,8 +2479,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       ASSERT_ERROR ();
       goto error;
     }
+
 #if defined(SERVER_MODE)
   dwb_daemons_init ();
+  pgbuf_daemons_init ();
 #endif /* SERVER_MODE */
 
   /*
@@ -2495,6 +2499,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
+  BO_ENABLE_FLUSH_DAEMONS ();
   cdc_daemons_init ();
 #endif /* SERVER_MODE */
 
@@ -2808,7 +2813,10 @@ error:
 
 #if defined(SERVER_MODE)
   cdc_daemons_destroy ();
+
+  assert (BO_IS_FLUSH_DAEMON_AVAILABLE ());
   dwb_daemons_destroy ();
+  pgbuf_daemons_destroy ();
 #endif
 
   log_final (thread_p);
