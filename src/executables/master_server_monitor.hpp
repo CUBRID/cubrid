@@ -106,12 +106,12 @@ class server_monitor
     server_monitor &operator = (const server_monitor &) = delete;
     server_monitor &operator = (server_monitor &&) = delete;
 
-    std::unique_ptr<std::thread> m_monitoring_thread;         // monitoring thread
-    std::unique_ptr<server_monitor_list> m_monitor_list;      // list of server entries
-    volatile bool m_thread_shutdown;                                   // flag to shutdown monitoring thread
+    std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
+    std::unique_ptr<server_monitor_list> m_monitor_list;                // list of server entries
+    volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
 
-    static inline std::unique_ptr<server_monitor> m_instance;        // singleton instance
-    static inline std::mutex m_mutex;                                // mutex for singleton instance
+    static inline std::unique_ptr<server_monitor> m_instance;           // singleton instance
+    static inline std::mutex m_mutex;                                   // mutex for singleton instance
 };
 
 #endif
