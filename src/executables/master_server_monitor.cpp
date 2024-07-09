@@ -22,7 +22,6 @@
 
 #include "master_server_monitor.hpp"
 #include <sstream>
-#include <unistd.h>
 
 #include "util_func.h"
 

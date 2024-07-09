@@ -1232,7 +1232,7 @@ main (int argc, char **argv)
   if (HA_DISABLED ())
     {
       // *INDENT-OFF*
-      server_monitor& server_monitoring_manager = server_monitor::get_instance();
+      server_monitor* server_monitoring_manager = server_monitor::get_instance();
       // *INDENT-ON*
     }
 

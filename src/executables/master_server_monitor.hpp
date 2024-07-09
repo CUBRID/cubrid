@@ -27,6 +27,7 @@
 #include <thread>
 #include <algorithm>
 #include <memory>
+#include <mutex>
 #include <time.h>
 #include "heartbeat.h"
 #include "system_parameter.h"
@@ -35,7 +36,6 @@
 class server_monitor
 {
   public:
-
     class server_entry
     {
       public:
@@ -80,16 +80,26 @@ class server_monitor
 	int m_max_process_start_confirm;                          // Maximum number of process restart confirmations
     };
 
-    static server_monitor &get_instance ()
-    {
-      static server_monitor instance;
-      return instance;
-    }
-
-  private:
     server_monitor ();
     ~server_monitor ();
 
+    static server_monitor *get_instance ()
+    {
+      std::lock_guard<std::mutex> lock (m_mutex);
+      if (!m_instance)
+	{
+	  m_instance = std::make_unique<server_monitor>();
+	}
+      return m_instance.get();
+    }
+
+    static void delete_instance ()
+    {
+      std::lock_guard<std::mutex> lock (m_mutex);
+      m_instance.reset ();
+    }
+
+  private:
     server_monitor (const server_monitor &) = delete;
     server_monitor (server_monitor &&) = delete;
 
@@ -98,7 +108,10 @@ class server_monitor
 
     std::unique_ptr<std::thread> m_monitoring_thread;         // monitoring thread
     std::unique_ptr<server_monitor_list> m_monitor_list;      // list of server entries
-    bool m_thread_shutdown;                                   // flag to shutdown monitoring thread
+    volatile bool m_thread_shutdown;                                   // flag to shutdown monitoring thread
+
+    static inline std::unique_ptr<server_monitor> m_instance;        // singleton instance
+    static inline std::mutex m_mutex;                                // mutex for singleton instance
 };
 
 #endif
