@@ -3183,9 +3183,6 @@ log_recovery_get_redo_parallel_count ()
   const int num_cpus = cubthread::system_core_count ();
   // *INDENT-ON*
 
-  // This is arbitrary number
-  const int threads_per_cpu = 2;
-
   /* 'minimum_threads_to_redo' was determined experimentally.
    * The redo performance was measured for a set of experiments involving
    * multiple single record insertions (redo log records: 6,971,675).
@@ -3195,7 +3192,7 @@ log_recovery_get_redo_parallel_count ()
    */
   const int minimum_threads_to_redo = 16;
 
-  return MAX (num_cpus * threads_per_cpu, minimum_threads_to_redo);
+  return MAX (num_cpus, minimum_threads_to_redo);
 }
 #endif
 
