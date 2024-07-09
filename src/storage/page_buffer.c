@@ -10969,7 +10969,6 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
   forward = true;
   search_nondirty = false;
   abort_reason = 0;
-
   for (i = 1; i < PGBUF_NEIGHBOR_PAGES;)
     {
       if (forward == true)
