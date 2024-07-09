@@ -913,13 +913,11 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
    */
   if (vhdr->db_creation != *new_dbcreation)
     {
+      assert (!LSA_EQ (&vhdr->chkpt_lsa, new_chkptlsa));
+
       vhdr->vol_creation = time (NULL);
       memcpy (&vhdr->db_creation, new_dbcreation, sizeof (*new_dbcreation));
-
-      if (!LSA_EQ (&vhdr->chkpt_lsa, new_chkptlsa))
-	{
-	  memcpy (&vhdr->chkpt_lsa, new_chkptlsa, sizeof (*new_chkptlsa));
-	}
+      memcpy (&vhdr->chkpt_lsa, new_chkptlsa, sizeof (*new_chkptlsa));
     }
   else
     {
