@@ -92,6 +92,10 @@ static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
 static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
 						  LOG_RCVINDEX rcv_index, const LOG_LSA * lsa);
+#if defined (SERVER_MODE)
+static int log_recovery_get_redo_parallel_count ();
+#endif
+
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
@@ -3176,6 +3180,27 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
   return false;
 }
 
+#if defined (SERVER_MODE)
+static int
+log_recovery_get_redo_parallel_count ()
+{
+  // *INDENT-OFF*
+  const int num_cpus = cubthread::system_core_count ();
+  // *INDENT-ON*
+
+  /* 'minimum_threads_to_redo' was determined experimentally.
+   * The redo performance was measured for a set of experiments involving
+   * multiple single record insertions (redo log records: 6,971,675).
+   * The best performance was observed when the number of redo threads was set to 16
+   * under 1, 2, 4, and 8 core conditions. Therefore, the minimum number of threads was set to 16.
+   * If a more appropriate value is found through further experiments with diverse sets, this value can be adjusted accordingly
+   */
+  const int minimum_threads_to_redo = 16;
+
+  return MAX (minimum_threads_to_redo, num_cpus);
+}
+#endif
+
 /*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
  *
@@ -3234,18 +3259,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   // *INDENT-OFF*
   std::unique_ptr<cublog::redo_parallel> parallel_recovery_redo;
   // *INDENT-ON*
+
 #if defined(SERVER_MODE)
-  {
-    const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
-    assert (log_recovery_redo_parallel_count >= 0);
-    if (log_recovery_redo_parallel_count > 0)
-      {
-	reusable_jobs.initialize (log_recovery_redo_parallel_count);
-        // *INDENT-OFF*
-	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
-        // *INDENT-ON*
-      }
-  }
+  const int log_recovery_redo_parallel_count = log_recovery_get_redo_parallel_count ();
+
+  reusable_jobs.initialize (log_recovery_redo_parallel_count);
+  // *INDENT-OFF*
+  parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, false, MAX_LSA, redo_context));
+  // *INDENT-ON*
 #endif
 
   // *INDENT-OFF*
@@ -3850,7 +3871,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	parallel_recovery_redo->wait_for_termination_and_stop_execution ();
 	rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_WAIT_FOR_PARALLEL);
       }
-    const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
     /* 'async' measures the time taken by the main thread to execute sync log records, dispatch async ones
      * and wait for the async infrastructure to finish */
     const auto duration_async_ms = std::chrono::duration_cast <std::chrono::milliseconds> (
