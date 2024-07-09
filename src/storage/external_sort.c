@@ -1459,8 +1459,8 @@ cleanup:
     }
 
 #if defined(SERVER_MODE)
-  SORT_INFO *sort_info_p = (SORT_INFO *) put_arg;
-  QFILE_LIST_ID *outlist_id, *orglist_id;
+  SORT_INFO *sort_info_p;
+  QFILE_LIST_SCAN_ID *scan_id_p;
 
   /* TODO : add to routines to copy sort_param */
 
@@ -1472,12 +1472,8 @@ cleanup:
     }
   else
     {
-
-      if (get_fn == qfile_get_next_sort_item)
+      if (sort_param->get_fn == qfile_get_next_sort_item)
 	{
-	  SORT_INFO *sort_info_p;
-	  QFILE_LIST_SCAN_ID *scan_id_p;
-
 	  sort_info_p = (SORT_INFO *) sort_param->get_arg;
 	  scan_id_p = sort_info_p->s_id->s_id;
 
@@ -1514,6 +1510,24 @@ cleanup:
       while (1);
 
       /* TO_DO : need routines for merging parallel processed temp files into a local sort_param */
+
+      if (sort_param->get_fn == qfile_get_next_sort_item)
+	{
+	  sort_info_p = (SORT_INFO *) sort_param->get_arg;
+
+	  /* temporarily, open file for read */
+	  if (qfile_open_list_scan (sort_info_p->input_file, scan_id_p) != NO_ERROR)
+	    {
+	      assert(0);
+	      return -1;
+	    }
+	  sort_info_p->s_id->s_id = scan_id_p;
+	}
+      else
+	{
+	  assert(0);
+	  return -1;
+	}
 
       /* Merge the parallel processed results. */
       sort_param->px_max_index = 1;
@@ -1581,8 +1595,8 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
     {
       SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
-      /* temporarily, open file for read */
-      qfile_close_scan (&thread_ref, &t_scan_id);
+      /* temporarily, close file for read */
+      qfile_close_scan (&thread_ref, sort_info_p->s_id->s_id);
     }
   else
     {
@@ -2415,7 +2429,12 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   /* for one temporary file, put result from the temp file instead of merging it. */
   if (!IS_PARALLEL_EXECUTION (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
     {
-      sort_put_result_from_tmpfile (thread_p, sort_param);
+      error = sort_put_result_from_tmpfile (thread_p, sort_param);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto bailout;
+	}
     }
 
   /* While there are more than one input files with different runs to merge */
@@ -3301,7 +3320,12 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   /* for one temporary file, put result from the temp file instead of merging it. */
   if (!IS_PARALLEL_EXECUTION (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
     {
-      sort_put_result_from_tmpfile (thread_p, sort_param);
+      error = sort_put_result_from_tmpfile (thread_p, sort_param);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto bailout;
+	}
     }
 
   /* OUTER LOOP */
