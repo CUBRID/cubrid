@@ -77,12 +77,11 @@ struct log_bgarv_header
 
   INT32 dummy;
   INT64 db_creation;
+  INT64 vol_creation;
 
   LOG_PAGEID start_page_id;
   LOG_PAGEID current_page_id;
   LOG_PAGEID last_sync_pageid;
-
-  INT64 vol_creation;
 };
 
 enum HEADER_FETCH_MODE
