@@ -84,7 +84,6 @@ class server_monitor
 
     static server_monitor *get_instance ()
     {
-      std::lock_guard<std::mutex> lock (m_mutex);
       if (!m_instance)
 	{
 	  m_instance = std::make_unique<server_monitor>();
@@ -94,7 +93,6 @@ class server_monitor
 
     static void delete_instance ()
     {
-      std::lock_guard<std::mutex> lock (m_mutex);
       m_instance.reset ();
     }
 
@@ -112,7 +110,6 @@ class server_monitor
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
 
     static inline std::unique_ptr<server_monitor> m_instance;           // singleton instance
-    static inline std::mutex m_mutex;                                 // mutex for singleton instance
 };
 
 #endif
