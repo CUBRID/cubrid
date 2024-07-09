@@ -80,7 +80,6 @@ class server_monitor
 	int m_max_process_start_confirm;                          // Maximum number of process restart confirmations
     };
 
-    server_monitor ();
     ~server_monitor ();
 
     static server_monitor *get_instance ()
@@ -100,6 +99,8 @@ class server_monitor
     }
 
   private:
+    server_monitor ();
+
     server_monitor (const server_monitor &) = delete;
     server_monitor (server_monitor &&) = delete;
 
@@ -111,7 +112,7 @@ class server_monitor
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
 
     static inline std::unique_ptr<server_monitor> m_instance;           // singleton instance
-    static inline std::mutex m_mutex;                                   // mutex for singleton instance
+    static inline std::mutex m_mutex;                                 // mutex for singleton instance
 };
 
 #endif
