@@ -80,13 +80,18 @@ tsc_init (void)
 void
 tsc_getticks (TSC_TICKS * tck)
 {
+  struct timespec ts;
+
   if (power_Savings == 0)
     {
       tck->tc = getticks ();
     }
   else
     {
-      gettimeofday (&(tck->tv), NULL);
+      /* replace gettimeofday with clock_gettime for performance */
+      clock_gettime (CLOCK_REALTIME_COARSE, &ts);
+      tck->tv.tv_sec = ts.tv_sec;
+      tck->tv.tv_usec = ts.tv_nsec / 1000;
     }
   return;
 }

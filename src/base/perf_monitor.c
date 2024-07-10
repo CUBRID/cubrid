@@ -978,7 +978,14 @@ perfmon_server_get_stats (THREAD_ENTRY * thread_p)
       return NULL;
     }
 
+  /* no need peek stats at TRACE ON */
+  if (thread_is_on_trace (thread_p))
+    {
+      return pstat_Global.tran_stats[tran_index];
+    }
+
   perfmon_get_peek_stats (pstat_Global.tran_stats[tran_index]);
+
   return pstat_Global.tran_stats[tran_index];
 }
 
