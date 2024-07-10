@@ -1941,6 +1941,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 323 Stored procedure/function "%1$s" does not exist.
 324 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
 325 Only trailing default parameter is allowed: invalid at '%1$s'.
+326 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.
