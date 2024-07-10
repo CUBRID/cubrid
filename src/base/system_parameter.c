@@ -7299,7 +7299,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	  if (value != NULL)
 	    {
 	      int level;
-	      if (parse_int (&level, value, 10) < 0 || !(CHECK_VALID_EXECUTION (level) && CHECK_VALID_PLAN (level)))
+	      if (parse_int (&level, value, 10) < 0 || CHECK_INVALID_OPTIMIZATION_LEVEL (level))
 		{
 		  error = PRM_ERR_BAD_VALUE;
 		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);

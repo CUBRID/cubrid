@@ -2450,7 +2450,7 @@ csql_set_sys_param (const char *arg_str)
     }
   else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level %d", &level) == 1)
     {
-      if (!(CHECK_VALID_EXECUTION (level) && CHECK_VALID_PLAN (level)))
+      if (CHECK_INVALID_OPTIMIZATION_LEVEL (level))
 	{
 	  snprintf (ans, len - 1, "error: wrong value %d", level);
 	}

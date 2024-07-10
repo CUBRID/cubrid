@@ -2726,9 +2726,10 @@ db_set_system_parameters (const char *data)
       goto cleanup;
     }
 
-  if (rc == PRM_ERR_NO_ERROR && assignments)
+  if (assignments)
     {
       int level;
+
       for (SYSPRM_ASSIGN_VALUE * ptr = assignments; ptr != NULL; ptr = ptr->next)
 	{
 	  if (ptr->prm_id != PRM_ID_OPTIMIZATION_LEVEL)
@@ -2739,18 +2740,20 @@ db_set_system_parameters (const char *data)
 	  /* check value of optimization_level */
 	  level = ptr->value.i;
 
-	  if (!(CHECK_VALID_EXECUTION (level) && CHECK_VALID_PLAN (level)))
+	  if (CHECK_INVALID_OPTIMIZATION_LEVEL (level))
 	    {
 	      rc = PRM_ERR_BAD_VALUE;
 	      break;
 	    }
 	}
     }
+
   if (rc == PRM_ERR_NOT_FOR_CLIENT || rc == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
     {
       /* set system parameters on server */
       rc = sysprm_change_server_parameters (assignments);
     }
+
   if (rc == PRM_ERR_NO_ERROR)
     {
       /* values were successfully set on server, set them on client too */

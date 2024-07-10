@@ -86,6 +86,7 @@ class regu_variable_node;
 #define DETAILED_DUMP(level)		((level) & 0x200)
 #define CHECK_VALID_EXECUTION(level)	((level & 0x00ff) > 0 && (level & 0x00ff) < 3)
 #define CHECK_VALID_PLAN(level)		(((level>>8) & 0x00ff) >= 0 && ((level>>8) & 0x00ff) < 3)
+#define CHECK_INVALID_OPTIMIZATION_LEVEL(level) (!(CHECK_VALID_EXECUTION(level) && CHECK_VALID_PLAN(level)))
 
 typedef struct qo_env QO_ENV;
 typedef struct qo_node QO_NODE;
