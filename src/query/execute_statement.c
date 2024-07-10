@@ -5092,7 +5092,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_OPT_LVL:
       {
 	int level = db_get_int (&val1);
-	if (!(CHECK_VALID_EXECUTION (level) && CHECK_VALID_PLAN (level)))
+	if (CHECK_INVALID_OPTIMIZATION_LEVEL (level))
 	  {
 	    pr_clear_value (&val1);
 	    er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__, ER_OBJ_INVALID_ARGUMENTS, 0);
