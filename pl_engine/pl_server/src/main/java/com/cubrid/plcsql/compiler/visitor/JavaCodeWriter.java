@@ -34,7 +34,6 @@ import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.type.Type;
-import org.antlr.v4.runtime.ParserRuleContext;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -42,6 +41,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
@@ -2368,14 +2368,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             return exprCode;
         } else {
 
-            int[] exprPlcsqlPos = Misc.getLineColumnOf(ctx);
-            exprCode.plcsqlPos = Misc.UNKNOWN_LINE_COLUMN; // to reduce code range markers
-
             if (c instanceof Coercion.Cast) {
                 Coercion.Cast cast = (Coercion.Cast) c;
                 return new CodeTemplate(
                         "cast coercion",
-                        exprPlcsqlPos,
+                        Misc.UNKNOWN_LINE_COLUMN,
                         tmplCastCoercion,
                         "%'TYPE'%",
                         getJavaCodeOfType(cast.dst),
@@ -2383,6 +2380,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         exprCode);
             } else if (c instanceof Coercion.Conversion) {
                 Coercion.Conversion conv = (Coercion.Conversion) c;
+                int[] exprPlcsqlPos = Misc.getLineColumnOf(ctx);
+
                 return new CodeTemplate(
                         "conversion coercion",
                         exprPlcsqlPos,
@@ -2395,6 +2394,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         exprCode);
             } else if (c instanceof Coercion.CoerceAndCheckPrecision) {
                 Coercion.CoerceAndCheckPrecision checkPrec = (Coercion.CoerceAndCheckPrecision) c;
+                int[] exprPlcsqlPos = Misc.getLineColumnOf(ctx);
+
                 return new CodeTemplate(
                         "coerce and check precision",
                         exprPlcsqlPos,
@@ -2407,6 +2408,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         applyCoercion(checkPrec.c, exprCode, ctx));
             } else if (c instanceof Coercion.CoerceAndCheckStrLength) {
                 Coercion.CoerceAndCheckStrLength checkStrLen = (Coercion.CoerceAndCheckStrLength) c;
+                int[] exprPlcsqlPos = Misc.getLineColumnOf(ctx);
+
                 return new CodeTemplate(
                         "coerce and check precision",
                         exprPlcsqlPos,
