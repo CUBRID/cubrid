@@ -50,8 +50,8 @@ server_monitor::~server_monitor ()
   if (m_monitoring_thread->joinable())
     {
       m_monitoring_thread->join();
+      fprintf (stdout, "server_monitor_thread is terminated. \n");
     }
-  fprintf (stdout, "server_monitor_thread is terminated. \n");
   fprintf (stdout, "server_monitor_list is deleted. \n");
   fflush (stdout);
 }

@@ -105,6 +105,8 @@ static int css_check_master_socket_exception (fd_set * fd_var);
 static void css_master_loop (void);
 static void css_free_entry (SOCKET_QUEUE_ENTRY * entry_p);
 
+std::unique_ptr < server_monitor > master_server_monitor = nullptr;
+
 #if !defined(WINDOWS)
 static void css_daemon_start (void);
 #endif
@@ -1232,7 +1234,7 @@ main (int argc, char **argv)
   if (HA_DISABLED ())
     {
       // *INDENT-OFF*
-      server_monitor& server_monitoring_manager = server_monitor::get_instance();
+      master_server_monitor.reset(new server_monitor());
       // *INDENT-ON*
     }
 

@@ -80,22 +80,10 @@ class server_monitor
 	int m_max_process_start_confirm;                          // Maximum number of process restart confirmations
     };
 
-    static server_monitor &get_instance ()
-    {
-      static server_monitor instance;
-      return instance;
-    }
-
-    static void delete_instance ()
-    {
-      server_monitor &instance = get_instance ();
-      delete &instance;
-    }
-
-  private:
     server_monitor ();
     ~server_monitor ();
 
+  private:
     server_monitor (const server_monitor &) = delete;
     server_monitor (server_monitor &&) = delete;
 
@@ -107,4 +95,5 @@ class server_monitor
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
 };
 
+extern std::unique_ptr<server_monitor> master_server_monitor;
 #endif
