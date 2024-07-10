@@ -3245,6 +3245,19 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      node->info.method_call.on_call_target = node->info.method_call.arg_list;
 	      node->info.method_call.arg_list = node->info.method_call.arg_list->next;
 	      node->info.method_call.on_call_target->next = NULL;
+
+	      /*
+	       * When using a session variable in the first arg_list,
+	       * It is unknown whether the session variable contains a class, object, or constant value.
+	       * So, if it's not a Java stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
+	       * 
+	       * ex) create class x (xint int, xstr string, class cint int) method add_int(int, int) int function add_int file '$METHOD_FILE';
+	       *     insert into x values (4, 'string 4');
+	       *     select x into p1 from x where xint = 4;
+	       *     call add_int(p1, 1, 2);
+	       */
+	      node->info.method_call.method_name->info.name.original =
+		sm_remove_qualifier_name (node->info.method_call.method_name->info.name.original);
 	    }
 
 	  /* make method name look resolved */
@@ -3352,7 +3365,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    PT_NODE *tmp_node = parser_new_node (parser, PT_NAME);
 	    if (!tmp_node)
 	      {
-		PT_ERROR (parser, tmp_node, "allocation error");
+		PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		parser_free_tree (parser, tmp_node);
 
 		*continue_walk = PT_STOP_WALK;
