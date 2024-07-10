@@ -393,7 +393,7 @@ typedef struct la_ha_apply_info LA_HA_APPLY_INFO;
 struct la_ha_apply_info
 {
   char db_name[256];
-  DB_DATETIME db_creation;
+  DB_DATETIME creation_time;
   char copied_log_path[4096];
   LOG_LSA committed_lsa;	/* last committed commit log lsa */
   LOG_LSA committed_rep_lsa;	/* last committed replication log lsa */
@@ -455,7 +455,7 @@ static void la_decache_page_buffers (LOG_PAGEID from, LOG_PAGEID to);
 static int la_find_required_lsa (LOG_LSA * required_lsa);
 
 static int la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY_INFO * ha_apply_info);
-static int la_insert_ha_apply_info (DB_DATETIME * db_creation);
+static int la_insert_ha_apply_info (DB_DATETIME * creation_time);
 static int la_update_ha_apply_info_start_time (void);
 static int la_get_last_ha_applied_info (void);
 static int la_update_ha_last_applied_info (void);
@@ -1589,8 +1589,8 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 
 	  /* 2. creation time */
 	  db_time = db_get_datetime (&out_value[out_value_idx++]);
-	  ha_apply_info->db_creation.date = db_time->date;
-	  ha_apply_info->db_creation.time = db_time->time;
+	  ha_apply_info->creation_time.date = db_time->date;
+	  ha_apply_info->creation_time.time = db_time->time;
 
 	  /* 4 ~ 5. committed_lsa */
 	  if (DB_IS_NULL (&out_value[out_value_idx]) || DB_IS_NULL (&out_value[out_value_idx + 1]))
@@ -1708,7 +1708,7 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 }
 
 static int
-la_insert_ha_apply_info (DB_DATETIME * db_creation)
+la_insert_ha_apply_info (DB_DATETIME * creation_time)
 {
 #define LA_IN_VALUE_COUNT       15
 
@@ -1785,7 +1785,7 @@ la_insert_ha_apply_info (DB_DATETIME * db_creation)
 		   strlen (act_log->log_hdr->prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
   /* 2. db_creation time */
-  db_make_datetime (&in_value[in_value_idx++], db_creation);
+  db_make_datetime (&in_value[in_value_idx++], creation_time);
 
   /* 3. copied_log_path */
   db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
@@ -1989,8 +1989,8 @@ la_get_last_ha_applied_info (void)
       la_Info.commit_counter = apply_info.commit_counter;
       la_Info.fail_counter = apply_info.fail_counter;
 
-      if ((log_db_creation_time.date != apply_info.db_creation.date)
-	  || (log_db_creation_time.time != apply_info.db_creation.time))
+      if ((log_db_creation_time.date != apply_info.creation_time.date)
+	  || (log_db_creation_time.time != apply_info.creation_time.time))
 	{
 	  return ER_FAILED;
 	}
@@ -7219,7 +7219,7 @@ la_get_applied_log_info (const char *database_name, const char *log_path, bool c
   la_init_ha_apply_info (&ha_apply_info);
 
   res = la_get_ha_apply_info (log_path, database_name, &ha_apply_info);
-  if ((res <= 0) || (ha_apply_info.db_creation.date == 0 && ha_apply_info.db_creation.time == 0))
+  if ((res <= 0) || (ha_apply_info.creation_time.date == 0 && ha_apply_info.creation_time.time == 0))
     {
       if (res < 0)
 	{
@@ -7239,7 +7239,7 @@ la_get_applied_log_info (const char *database_name, const char *log_path, bool c
 
   if (verbose)
     {
-      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.db_creation);
+      db_datetime_to_string ((char *) timebuf, 1024, &ha_apply_info.creation_time);
       printf ("%-30s : %s\n", "DB creation time", timebuf);
 
       printf ("%-30s : %lld | %d\n", "Last committed LSA", LSA_AS_ARGS (&ha_apply_info.committed_lsa));

@@ -1029,7 +1029,7 @@ extern int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const ch
 extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log_header,
 					      const char *db_fullname, const char *logpath,
 					      const char *prefix_logname, PGLENGTH * io_page_size,
-					      PGLENGTH * log_page_size, INT64 * db_creation, float *db_compatibility,
+					      PGLENGTH * log_page_size, INT64 * creation_time, float *db_compatibility,
 					      int *db_charset);
 extern int logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p);

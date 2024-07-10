@@ -2337,7 +2337,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
  *                      Log_information = db_loginfo
  *                      Database Backup = db_backup
  *   db_iopagesize(in): Set as a side effect to iopagesize
- *   db_creation(in): Set as a side effect to time of database creation
+ *   creation_time(in): Set as a side effect to time of database creation
  *   db_compatibility(in): Set as a side effect to database disk compatibility
  *   db_charset(in): Set as a side effect to database charset
  *
@@ -2346,7 +2346,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
 PGLENGTH
 logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log_header, const char *db_fullname,
 			      const char *logpath, const char *prefix_logname, PGLENGTH * io_page_size,
-			      PGLENGTH * log_page_size, INT64 * db_creation, float *db_compatibility, int *db_charset)
+			      PGLENGTH * log_page_size, INT64 * creation_time, float *db_compatibility, int *db_charset)
 {
   static LOG_HEADER hdr;	/* Log header */
   static bool is_header_read_from_file = false;
@@ -2370,7 +2370,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
     {
       *io_page_size = log_Gl.hdr.db_iopagesize;
       *log_page_size = log_Gl.hdr.db_logpagesize;
-      *db_creation = log_Gl.hdr.db_creation;
+      *creation_time = log_Gl.hdr.db_creation;
       *db_compatibility = log_Gl.hdr.db_compatibility;
 
       if (IO_PAGESIZE != *io_page_size || LOG_PAGESIZE != *log_page_size)
@@ -2413,7 +2413,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
 
   *io_page_size = hdr.db_iopagesize;
   *log_page_size = hdr.db_logpagesize;
-  *db_creation = hdr.db_creation;
+  *creation_time = hdr.db_creation;
   *db_compatibility = hdr.db_compatibility;
   *db_charset = (int) hdr.db_charset;
 
@@ -2457,7 +2457,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
 error:
   *io_page_size = -1;
   *log_page_size = -1;
-  *db_creation = 0;
+  *creation_time = 0;
   *db_compatibility = -1.0;
 
   return *io_page_size;
