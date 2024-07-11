@@ -11076,7 +11076,7 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 
 	  db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
 			   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
-	  value->need_clear = true;
+	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
 	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
 	}
       else
@@ -11136,7 +11136,6 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	  db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
 			   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
-
 	  db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
 	}
     }

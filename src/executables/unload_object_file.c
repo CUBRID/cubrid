@@ -564,7 +564,12 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
   int write_len = 0;
   const char *st;
 
-  if (tout->tail_ptr->iosize <= tout->tail_ptr->count)
+  if (tout->tail_ptr == NULL)
+    {
+      assert (tout->head_ptr == NULL);
+      CHECK_PRINT_ERROR (get_text_output_mem (tout));
+    }
+  else if (tout->tail_ptr->iosize <= tout->tail_ptr->count)
     {
       assert (tout->tail_ptr->iosize == tout->tail_ptr->count);
       CHECK_PRINT_ERROR (get_text_output_mem (tout));
