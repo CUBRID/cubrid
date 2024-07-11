@@ -3362,6 +3362,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	     * jsp_is_exist_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
 	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
 	     */
+	    char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
+	    sm_downcase_name (node->info.dot.arg2->info.function.generic_name, buffer, SM_MAX_IDENTIFIER_LENGTH);
+	    const char *generic_name = strdup (buffer);
+
 	    PT_NODE *tmp_node = parser_new_node (parser, PT_NAME);
 	    if (!tmp_node)
 	      {
@@ -3379,8 +3383,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      }
 
 	    tmp_node->info.name.original = pt_append_string (parser, node->info.dot.arg1->info.name.original, ".");
-	    tmp_node->info.name.original =
-	      pt_append_string (parser, tmp_node->info.name.original, node->info.dot.arg2->info.function.generic_name);
+	    tmp_node->info.name.original = pt_append_string (parser, tmp_node->info.name.original, generic_name);
 
 	    if (jsp_is_exist_stored_procedure (tmp_node->info.name.original))
 	      {
