@@ -3362,9 +3362,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	     * jsp_is_exist_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
 	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
 	     */
-	    char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
-	    sm_downcase_name (node->info.dot.arg2->info.function.generic_name, buffer, SM_MAX_IDENTIFIER_LENGTH);
-	    const char *generic_name = strdup (buffer);
+	    char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+	    sm_downcase_name (node->info.dot.arg1->info.name.original, downcase_owner_name, DB_MAX_USER_LENGTH);
 
 	    PT_NODE *tmp_node = parser_new_node (parser, PT_NAME);
 	    if (!tmp_node)
@@ -3382,8 +3381,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  pt_append_string (parser, node->info.dot.arg2->alias_print, node->alias_print);
 	      }
 
-	    tmp_node->info.name.original = pt_append_string (parser, node->info.dot.arg1->info.name.original, ".");
-	    tmp_node->info.name.original = pt_append_string (parser, tmp_node->info.name.original, generic_name);
+	    tmp_node->info.name.original = pt_append_string (parser, downcase_owner_name, ".");
+	    tmp_node->info.name.original =
+	      pt_append_string (parser, tmp_node->info.name.original, node->info.dot.arg2->info.function.generic_name);
 
 	    if (jsp_is_exist_stored_procedure (tmp_node->info.name.original))
 	      {
@@ -3440,9 +3440,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
     case PT_FUNCTION:
       if (node->info.function.function_type == PT_GENERIC)
 	{
-	  char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
-	  sm_user_specified_name (node->info.function.generic_name, buffer, SM_MAX_IDENTIFIER_LENGTH);
-	  const char *generic_name = strdup (buffer);
+	  const char *dot = NULL;
+	  const char *current_schema_name = NULL;
+	  char buffer[SM_MAX_IDENTIFIER_LENGTH];
+
+	  dot = strchr (node->info.function.generic_name, '.');
+	  if (dot == NULL)
+	    {
+	      current_schema_name = sc_current_schema_name ();
+	      sprintf (buffer, "%s.%s", current_schema_name, node->info.function.generic_name);
+	      node->info.function.generic_name = strdup (buffer);
+	    }
+
 	  node->info.function.function_type = pt_find_function_type (node->info.function.generic_name);
 
 	  if (node->info.function.function_type == PT_GENERIC)
@@ -3452,9 +3461,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
 	       * translate it into a method_call.
 	       */
-	      if (jsp_is_exist_stored_procedure (generic_name))
+	      if (jsp_is_exist_stored_procedure (node->info.function.generic_name))
 		{
-		  node->info.function.generic_name = strdup (generic_name);
+		  node->info.function.generic_name = strdup (node->info.function.generic_name);
 		  node1 = pt_resolve_stored_procedure (parser, node, bind_arg);
 		}
 	      else
@@ -3511,12 +3520,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		      else if (parser_function_code != PT_EMPTY)
 			{
 			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				      MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, generic_name);
+				      MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, node->info.function.generic_name);
 			}
 		      else
 			{
 			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNKNOWN_FUNCTION,
-				      generic_name);
+				      node->info.function.generic_name);
 			}
 
 		    }
