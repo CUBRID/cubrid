@@ -29,7 +29,7 @@ std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 server_monitor::server_monitor ()
 {
   m_server_entry_list = std::make_unique<std::vector<server_entry>> ();
-  fprintf (stdout, "server_monitor_list is created. \n");
+  fprintf (stdout, "server_entry_list is created. \n");
 
   m_thread_shutdown = false;
   m_monitoring_thread = std::make_unique<std::thread> ([this]()
@@ -56,7 +56,7 @@ server_monitor::~server_monitor ()
     }
 
   assert (m_server_entry_list->size () == 0);
-  fprintf (stdout, "server_monitor_list is deleted. \n");
+  fprintf (stdout, "server_entry_list is deleted. \n");
   fflush (stdout);
 }
 
