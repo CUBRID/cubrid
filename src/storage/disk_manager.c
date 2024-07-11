@@ -600,7 +600,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   vhdr->nsect_max = ext_info->nsect_max;
   vhdr->db_charset = lang_charset ();
   vhdr->hint_allocsect = NULL_SECTID;
-  vhdr->vol_creation = time (NULL);
   vhdr->dummy1 = vhdr->dummy2 = 0;	/* alignment. You may use it. */
   vhdr->reserved0 = vhdr->reserved1 = vhdr->reserved2 = vhdr->reserved3 = 0;	/* for future extension */
 
@@ -614,14 +613,14 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       goto exit;
     }
 
-  /* Find the time of the creation of the database and the current LSA checkpoint. */
-
+  /* Find the time of the creation of the database, volume and the current LSA checkpoint. */
   error_code = log_get_db_start_parameters (&vhdr->db_creation, &vhdr->chkpt_lsa);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto exit;
     }
+  vhdr->vol_creation = time (NULL);
 
   /* Initialize the system heap file for booting purposes. This field is reseted after the heap file is created by the
    * boot manager */
@@ -909,8 +908,8 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
   /* Modify volume creation information */
   if (vhdr->db_creation != *new_dbcreation)
     {
-      vhdr->vol_creation = time (NULL);
       memcpy (&vhdr->db_creation, new_dbcreation, sizeof (*new_dbcreation));
+      vhdr->vol_creation = time (NULL);
     }
 
   if (!LSA_EQ (&vhdr->chkpt_lsa, new_chkptlsa))
