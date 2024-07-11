@@ -27,6 +27,7 @@
 
 #include "porting.h"
 #include "cycle.h"
+#include "time.h"
 
 #define TSC_ADD_TIMEVAL(total, diff) \
 do { \
