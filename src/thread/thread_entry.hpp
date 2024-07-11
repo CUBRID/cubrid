@@ -279,11 +279,12 @@ namespace cubthread
       bool trigger_involved;
       bool is_cdc_daemon;
 
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-      int unload_modular;
-      int unload_accept;
-      int request_datasize;
-#endif
+      /* support multi-process unloaddb
+       * _unload_selection_key is only valid when (_unload_split_process > 1).
+       * At this time, _unload_selection_key can have values ​​between 0 and (_unload_split_process-1).
+       */
+      int _unload_selection_key;
+      int _unload_split_process;
 
 #if !defined(NDEBUG)
       fi_test_item *fi_test_array;

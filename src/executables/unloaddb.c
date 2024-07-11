@@ -27,6 +27,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#if !defined (WINDOWS)
+#include <sys/time.h>
+#if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
+#include <sys/types.h>
+#include <sys/wait.h>
+#endif
+#endif
 
 #include "porting.h"
 #include "authenticate.h"
@@ -43,20 +50,9 @@
 #include "util_func.h"
 
 
-//#if defined(SUPPORT_THREAD_UNLOAD)
-#if 1				// time check  ctshim
-#if !defined(WINDOWS)
-#include <sys/time.h>
-#endif
-#endif
-
-//#define SUPPORT_FORK_PROCESS // ctshim 
 #define MAX_PROCESS_COUNT (36)
 
-#if !defined (WINDOWS) && defined(SUPPORT_FORK_PROCESS)
-#include <sys/types.h>
-#include <sys/wait.h>
-
+#if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
 int do_multi_processing (int processes, bool * is_main_process);
 #endif
 
@@ -66,19 +62,19 @@ char *database_name = NULL;
 const char *output_dirname = NULL;
 char *input_filename = NULL;
 FILE *output_file = NULL;
-#if defined(SUPPORT_THREAD_UNLOAD)
+
 #define DFLT_VARCHAR_BUFFER_SIZE (1)	// 1K
 #define MAX_VARCHAR_BUFFER_SIZE  (1024)	// 1M
 #define DFLT_REQ_DATASIZE        (1)	// 1 page size
 #define MAX_REQ_DATASIZE         (1024)	//
 #define MAX_THREAD_COUNT         (127)
 
+int g_varchar_buffer_size = DFLT_VARCHAR_BUFFER_SIZE;
+int g_request_pages = DFLT_REQ_DATASIZE;
 int g_thread_count = 0;
-int varchar_buffer_size = DFLT_VARCHAR_BUFFER_SIZE;
-int g_request_datasize = DFLT_REQ_DATASIZE;
-int g_modular = UNLOAD_MODULAR_UNDEFINED;
-int g_accept = UNLOAD_MODULAR_UNDEFINED;
-#endif
+int g_split_process_cnt = -1;
+int g_selection_key = -1;
+int g_time_test_records = -1;
 
 int page_size = 4096;
 int cached_pages = 100;
@@ -173,47 +169,56 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   split_schema_files = utility_get_option_string_value (arg_map, UNLOAD_SPLIT_SCHEMA_FILES_S, 0);
   is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
-  varchar_buffer_size = utility_get_option_int_value (arg_map, UNLOAD_STRING_BUFFER_SIZE_S);
-  if (varchar_buffer_size < 0)
+  g_varchar_buffer_size = utility_get_option_int_value (arg_map, UNLOAD_STRING_BUFFER_SIZE_S);
+  if (g_varchar_buffer_size < 0)
     {
-      varchar_buffer_size = 0;
+      g_varchar_buffer_size = 0;
     }
-  else if (varchar_buffer_size > MAX_VARCHAR_BUFFER_SIZE)
+  else if (g_varchar_buffer_size > MAX_VARCHAR_BUFFER_SIZE)
     {
-      varchar_buffer_size = MAX_VARCHAR_BUFFER_SIZE;
+      g_varchar_buffer_size = MAX_VARCHAR_BUFFER_SIZE;
     }
-  varchar_buffer_size *= 1024;	// to KB  
+  g_varchar_buffer_size *= 1024;	// to KB  
 
-  g_request_datasize = utility_get_option_int_value (arg_map, UNLOAD_REQUEST_DATASIZE_S);
-  if (g_request_datasize < 0)
+  g_request_pages = utility_get_option_int_value (arg_map, UNLOAD_REQUEST_DATASIZE_S);
+  if (g_request_pages < 0)
     {
-      g_request_datasize = 0;
+      g_request_pages = 0;
     }
-  else if (g_request_datasize > MAX_REQ_DATASIZE)
+  else if (g_request_pages > MAX_REQ_DATASIZE)
     {
-      g_request_datasize = MAX_REQ_DATASIZE;
+      g_request_pages = MAX_REQ_DATASIZE;
     }
 
-#if !defined (WINDOWS)
+#if defined (SUPPORT_MULTIPLE_UNLOADDB)
   if (!do_schema)
     {
+      g_time_test_records = utility_get_option_int_value (arg_map, UNLOAD_TIME_TEST_S);
+      if (g_time_test_records >= 0 && !verbose_flag)
+	{
+	  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
+	  fflush (stderr);
+	  g_time_test_records = -1;	// ctshim
+	}
       g_thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
       g_thread_count =
 	(g_thread_count < 0) ? 0 : ((g_thread_count > MAX_THREAD_COUNT) ? MAX_THREAD_COUNT : g_thread_count);
 
-#if defined(CS_MODE) || defined(SUPPORT_MTP_UNLOAD_TEST)
       if (datafile_per_class)
 	{
 	  char *_pstr = NULL;
 	  _pstr = utility_get_option_string_value (arg_map, UNLOAD_MT_PROCESS_S, 0);
 	  if (_pstr)
 	    {
-	      if (sscanf (_pstr, "%d/%d", &g_accept, &g_modular) != 2)
+	      if (sscanf (_pstr, "%d/%d", &g_selection_key, &g_split_process_cnt) != 2)
 		{
 		  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
 		  fflush (stderr);
+		  goto end;
 		}
-	      else if ((g_modular > MAX_PROCESS_COUNT) || ((g_modular > 1) && (g_accept < 0 || g_accept >= g_modular)))
+	      else if ((g_split_process_cnt > MAX_PROCESS_COUNT)
+		       || ((g_split_process_cnt > 1)
+			   && (g_selection_key <= 0 || g_selection_key > g_split_process_cnt)))
 		{
 		  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
 		  fflush (stderr);
@@ -221,7 +226,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 		}
 	    }
 	}
-#endif
     }
 #endif
 
@@ -267,22 +271,16 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   sysprm_set_force (prm_get_name (PRM_ID_PRINT_INDEX_DETAIL),
 		    utility_get_option_bool_value (arg_map, UNLOAD_SKIP_INDEX_DETAIL_S) ? "no" : "yes");
 
-#if !defined (WINDOWS) && defined(SUPPORT_FORK_PROCESS)
-#if defined(CS_MODE)  || defined(SUPPORT_MTP_UNLOAD_TEST)
-  if (g_modular > 1)
+#if defined(SUPPORT_MULTIPLE_UNLOADDB) && defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
+  if (g_split_process_cnt > 1)
     {
-      error = do_multi_processing (g_modular, &is_main_process);
+      error = do_multi_processing (g_split_process_cnt, &is_main_process);
       if (error != NO_ERROR || is_main_process == true)
 	{
 	  status = error;
 	  goto end;
 	}
-#if defined(SUPPORT_MTP_UNLOAD_TEST)
-      status = error;
-      goto end;
-#endif
     }
-#endif
 #endif
 
   /*
@@ -412,10 +410,12 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       char indexes_output_filename[PATH_MAX * 2] = { '\0' };
       char trigger_output_filename[PATH_MAX * 2] = { '\0' };
 
-#if defined(SUPPORT_THREAD_UNLOAD)
-      if (g_modular <= 1 || g_accept == 0)
+      /* 
+       *  If you are in multi-process mode, this part must be done only in the first process.
+       */
+
+      if (g_split_process_cnt <= 1 || g_selection_key == 1)
 	{
-#endif
 	  if (create_filename_trigger (output_dirname, output_prefix, trigger_output_filename,
 				       sizeof (trigger_output_filename)) != 0)
 	    {
@@ -453,9 +453,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	    }
 
 	  unload_context.clear_schema_workspace ();
-#if defined(SUPPORT_THREAD_UNLOAD)
 	}
-#endif
     }
 
   AU_SAVE_AND_ENABLE (au_save);
@@ -464,22 +462,34 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       unload_context.exec_name = exec_name;
       unload_context.login_user = user;
       unload_context.output_prefix = output_prefix;
-#if 1				// time check
+
       struct timeval startTime, endTime;
       double diffTime;
-
-      gettimeofday (&startTime, NULL);
-#endif
+      if (g_time_test_records >= 0)
+	{
+	  gettimeofday (&startTime, NULL);
+	}
 
       if (extract_objects (unload_context, output_dirname, g_thread_count))
 	{
 	  status = 1;
 	}
-#if 1
-      gettimeofday (&endTime, NULL);
-      diffTime = (endTime.tv_sec - startTime.tv_sec) + ((double) (endTime.tv_usec - startTime.tv_usec) / 1000000);
-      fprintf (stdout, "Elapsed= %.6f s\n", diffTime);
-#endif
+
+      if (g_time_test_records >= 0)
+	{
+	  gettimeofday (&endTime, NULL);
+	  int elapsed_sec = 0, elapsed_usec = 0;
+
+	  elapsed_sec = endTime.tv_sec - startTime.tv_sec;
+	  elapsed_usec = endTime.tv_usec - startTime.tv_usec;
+	  if (endTime.tv_usec < startTime.tv_usec)
+	    {
+	      elapsed_usec += 1000000;
+	      elapsed_sec--;
+	    }
+
+	  fprintf (stdout, "Elapsed= %.6f sec\n", elapsed_sec + ((double) elapsed_usec / 1000000));
+	}
     }
   AU_RESTORE (au_save);
 
@@ -518,7 +528,7 @@ end:
 }
 
 
-#if !defined (WINDOWS) && defined(SUPPORT_FORK_PROCESS)
+#if defined(SUPPORT_MULTIPLE_UNLOADDB) && defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
 typedef struct
 {
   pid_t child_pid;
@@ -567,7 +577,7 @@ do_multi_processing (int processes, bool * is_main_process)
 
   for (int pno = 0; pno < processes; pno++)
     {
-      g_accept = pno;
+      g_selection_key = pno + 1;
       pid = fork ();
       if (pid < 0)
 	{
@@ -577,30 +587,6 @@ do_multi_processing (int processes, bool * is_main_process)
       else if (pid == 0)
 	{			// child
 	  *is_main_process = false;
-
-#if defined(SUPPORT_MTP_UNLOAD_TEST)
-	  fprintf (stdout, "C) pid=%ld g_accept=%d\n", getpid (), g_accept);
-
-	  sleep (10 * (pno + 1));
-	  if (g_accept == 2)
-	    {
-	      char *px;
-	      memcpy (px, "hhhgggssss", 9);
-	      //free(px);              
-	    }
-	  else if (g_accept == 0)
-	    return NO_ERROR;
-
-	  sleep (10 * (pno + 1));
-
-	  fprintf (stdout, "Quit Child pid=%d ***\n", getpid ());
-	  fflush (stdout);
-	  sleep (1);
-
-	  if (g_accept == 1)
-	    return ER_FAILED;
-#endif
-
 	  return NO_ERROR;
 	}
       else

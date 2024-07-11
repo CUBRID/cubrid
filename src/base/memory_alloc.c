@@ -482,7 +482,6 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
   return ptr;
 #else /* SA_MODE */
 
-#if defined(SUPPORT_THREAD_UNLOAD)
   if (db_is_utility_thread ())
     {
       ptr = malloc (size);
@@ -492,7 +491,6 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 	}
       return ptr;
     }
-#endif
 
   if (!db_on_server)
     {
@@ -626,7 +624,6 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
       return db_private_alloc (thrd, size);
     }
 
-#if defined(SUPPORT_THREAD_UNLOAD)
   if (db_is_utility_thread ())
     {
       new_ptr = realloc (ptr, size);
@@ -636,7 +633,6 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
 	}
       return new_ptr;
     }
-#endif
 
   if (!db_on_server)
     {
@@ -787,13 +783,11 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 
 #else /* SA_MODE */
 
-#if defined(SUPPORT_THREAD_UNLOAD)
   if (db_is_utility_thread ())
     {
       free (ptr);
       return;
     }
-#endif
 
   if (!db_on_server)
     {

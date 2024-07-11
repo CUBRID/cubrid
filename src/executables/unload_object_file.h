@@ -22,16 +22,19 @@
 #ifndef _LOAD_OBJECT_THREADING_H_
 #define _LOAD_OBJECT_THREADING_H_
 
+#if !defined(WINDOWS) && defined(CS_MODE)
+#define SUPPORT_MULTIPLE_UNLOADDB
+//#  define MULTI_PROCESSING_UNLOADDB_WITH_FORK // TODO: ctshim  
+#endif
+
 class print_output;
 
 #define INVALID_FILE_NO  (-1)
 
-#if 1
+
 #include <thread>
 #define YIELD_THREAD()   std::this_thread::yield ()
-#else
-#define YIELD_THREAD()   usleep (10)
-#endif
+//#define YIELD_THREAD()   usleep (10)
 
 #define CHECK_PRINT_ERROR(print_fnc)            \
   do {                                          \
@@ -47,6 +50,33 @@ class print_output;
     }                                           \
   } while (0)
 
+
+#if defined(WINDOWS)
+#define TIMER_CLEAR(pwi)
+#define TIMER_BEGIN(pwi)
+#define TIMER_END(pwi)
+#else
+typedef struct _waiting_info
+{
+  struct timespec ts_beging;
+  struct timespec ts_wait_sum;
+  int64_t cnt;
+} S_WAITING_INFO;
+
+#define TIMER_CLEAR(pwi)   memset((pwi), 0x00, sizeof(S_WAITING_INFO))
+#define TIMER_BEGIN(pwi)   if(g_time_test_records >= 0) clock_gettime (CLOCK_MONOTONIC /* CLOCK_REALTIME */, &((pwi)->ts_beging))
+#define TIMER_END(pwi)   do {                                                   \
+    if(g_time_test_records >= 0)  {                                             \
+         timespec_accumulate (&((pwi)->ts_wait_sum), &((pwi)->ts_beging));      \
+         (pwi)->cnt++;                                                          \
+      }                                                                         \
+  } while(0);
+#define ALIGN_SPACE_FMT "    %-25s  | "
+#define NANO_PREC_VAL  (1000000000L)
+
+extern void timespec_diff (struct timespec *start, struct timespec *end, struct timespec *diff);
+extern void timespec_accumulate (struct timespec *ts_sum, struct timespec *ts_start);
+#endif
 
 typedef struct text_buffer_block TEXT_BUFFER_BLK;
 struct text_buffer_block
@@ -76,5 +106,8 @@ extern int desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value);
 extern void desc_value_print (print_output & output_ctx, DB_VALUE * value);
 extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...);
 extern int text_print_request_flush (TEXT_OUTPUT * tout, bool force);
+
+
+extern volatile bool error_occurred;
 
 #endif // _LOAD_OBJECT_THREADING_H_

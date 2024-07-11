@@ -1382,6 +1382,9 @@ typedef struct _ha_config
 #define UNLOAD_REQUEST_DATASIZE_L               "use-request-datasize"
 #define UNLOAD_MT_PROCESS_S                     11924
 #define UNLOAD_MT_PROCESS_L                     "process"
+#define UNLOAD_TIME_TEST_S                      11925
+#define UNLOAD_TIME_TEST_L                      "time-test"
+
 
 
 /* compactdb option list */

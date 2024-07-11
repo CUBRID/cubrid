@@ -2772,7 +2772,8 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn, con
  */
 int
 xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type,
-		    OID * class_oid, int *nobjects, int *nfetched, OID * last_oid, LC_COPYAREA ** fetch_area)
+		    OID * class_oid, int *nobjects, int *nfetched, OID * last_oid, LC_COPYAREA ** fetch_area,
+		    int request_pages)
 {
   LC_COPYAREA_DESC prefetch_des;	/* Descriptor for decache of objects related to transaction isolation level */
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
@@ -2873,12 +2874,11 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
     }
 
   /* Assume that the next object can fit in one page */
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-  copyarea_length = (thread_p->unload_modular == UNLOAD_MODULAR_UNDEFINED) ? DB_PAGESIZE : (DB_PAGESIZE * 200);
-  //request_datasize
-#else
   copyarea_length = DB_PAGESIZE;
-#endif
+  if (request_pages > 1)
+    {
+      copyarea_length *= request_pages;	// ctshim
+    }
 
   while (true)
     {

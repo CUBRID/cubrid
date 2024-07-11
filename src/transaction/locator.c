@@ -616,7 +616,7 @@ locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *d
  *              copyarea is large enough to hold the unpacked data.
  */
 char *
-locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc)
+locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc, int packed_desc_size)
 {
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
@@ -625,18 +625,30 @@ locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char 
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copyarea);
   mobjs->num_objs = num_objs;
-  for (i = 0, obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs); i < num_objs;
-       i++, obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj))
+
+  if (packed_desc_size > 0)
     {
-      desc = or_unpack_int (desc, &ope);
-      obj->operation = (LC_COPYAREA_OPERATION) ope;
-      desc = or_unpack_int (desc, &obj->flag);
-      desc = or_unpack_hfid (desc, &obj->hfid);
-      desc = or_unpack_oid (desc, &obj->class_oid);
-      desc = or_unpack_oid (desc, &obj->oid);
-      desc = or_unpack_int (desc, &obj->length);
-      desc = or_unpack_int (desc, &obj->offset);
+      obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
+      obj -= num_objs;
+      obj++;
+      memcpy (obj, desc, packed_desc_size);
     }
+  else
+    {
+      for (i = 0, obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs); i < num_objs;
+	   i++, obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj))
+	{
+	  desc = or_unpack_int (desc, &ope);
+	  obj->operation = (LC_COPYAREA_OPERATION) ope;
+	  desc = or_unpack_int (desc, &obj->flag);
+	  desc = or_unpack_hfid (desc, &obj->hfid);
+	  desc = or_unpack_oid (desc, &obj->class_oid);
+	  desc = or_unpack_oid (desc, &obj->oid);
+	  desc = or_unpack_int (desc, &obj->length);
+	  desc = or_unpack_int (desc, &obj->offset);
+	}
+    }
+
   return desc;
 }
 
@@ -662,7 +674,7 @@ locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char 
  */
 int
 locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *contents_length, char **desc_ptr,
-			int *desc_length)
+			int *desc_length, bool encode_endian)
 {
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
@@ -674,12 +686,14 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *conten
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copyarea);
   *desc_length = DB_ALIGN (LC_AREA_ONEOBJ_PACKED_SIZE, MAX_ALIGNMENT) * mobjs->num_objs;
-  *desc_ptr = (char *) malloc (*desc_length);
-
-  if (*desc_ptr == NULL)
+  if (encode_endian)
     {
-      *desc_length = 0;
-      return 0;
+      *desc_ptr = (char *) malloc (*desc_length);
+      if (*desc_ptr == NULL)
+	{
+	  *desc_length = 0;
+	  return 0;
+	}
     }
 
   /* Find the length of the content area and pack the descriptor area */
@@ -721,111 +735,28 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *conten
 	}
     }
 
-  end = locator_pack_copy_area_descriptor (mobjs->num_objs, copyarea, *desc_ptr, *desc_length);
-
-  len = CAST_BUFLEN (end - *desc_ptr);
-  assert (len <= *desc_length);
-  *desc_length = len;
-
-  return mobjs->num_objs;
-}
-
-#if defined(SUPPORT_THREAD_UNLOAD)
-void
-locator_unpack_copy_area_descriptor2 (int num_objs, LC_COPYAREA * copyarea, char *desc, int packed_desc_size)
-{
-  LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
-  LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
-  int ope;
-  int i;
-
-  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copyarea);
-  mobjs->num_objs = num_objs;
-
-  obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
-  obj -= num_objs;
-  obj++;
-  memcpy (obj, desc, packed_desc_size);
-}
-
-int
-locator_send_copy_area2 (LC_COPYAREA * copyarea, char **contents_ptr, int *contents_length, char **desc_ptr,
-			 int *desc_length)
-{
-  LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
-  LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
-  int offset = -1;
-  int i, len;
-  char *end;
-
-  *contents_ptr = copyarea->mem;
-
-  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copyarea);
-  *desc_length = DB_ALIGN (LC_AREA_ONEOBJ_PACKED_SIZE, MAX_ALIGNMENT) * mobjs->num_objs;
-
-  /* Find the length of the content area and pack the descriptor area */
-
-  if (contents_length != NULL)
+  if (encode_endian)
     {
-      *contents_length = 0;
-      if (mobjs->num_objs > 0)
-	{
-	  obj = &mobjs->objs;
-	  obj++;
-	  for (i = 0; i < mobjs->num_objs; i++)
-	    {
-	      obj--;
-	      if (obj->offset > offset)
-		{
-		  /* To the right */
-		  *contents_length = obj->length;
-		  offset = obj->offset;
-		}
-	    }
+      end = locator_pack_copy_area_descriptor (mobjs->num_objs, copyarea, *desc_ptr, *desc_length);
 
-	  if (offset != -1)
-	    {
-	      int len = *contents_length;
-	      int aligned_len = DB_ALIGN (len, MAX_ALIGNMENT);
+      len = CAST_BUFLEN (end - *desc_ptr);
+    }
+  else
+    {
+      // ctshim
+      // 검증을 하자!!! 정밀하게
+      obj = &mobjs->objs;
+      obj -= mobjs->num_objs;
 
-	      *contents_length = aligned_len + offset;	// total len
-
-#if !defined (NDEBUG)
-	      int padded_len = aligned_len - len;
-	      if (padded_len > 0)
-		{
-		  // make valgrind silent
-		  memset (*contents_ptr + *contents_length - padded_len, 0, padded_len);
-		}
-#endif /* DEBUG */
-	    }
-	}
+      *desc_ptr = (char *) (obj + 1);
+      len = CAST_BUFLEN ((char *) &mobjs->objs - (char *) obj);
     }
 
-  LC_COPYAREA_ONEOBJ *obj2;
-  obj2 = &mobjs->objs;
-  obj2 -= mobjs->num_objs;
-
-  int len2 = (char *) &mobjs->objs - (char *) obj2;
-  *desc_ptr = (char *) (obj2 + 1);
-  len = CAST_BUFLEN (len2);
-
-#if 0
-  end = locator_pack_copy_area_descriptor (mobjs->num_objs, copyarea, ptr, *desc_length);
-  len2 = CAST_BUFLEN (end - ptr);
-  free_and_init (ptr);
-  assert (len2 == len);
-#endif
-///////////////////////////////////////////  
-
   assert (len <= *desc_length);
   *desc_length = len;
 
-  //assert(len == len2);
-
   return mobjs->num_objs;
 }
-#endif
 
 /*
  * locator_recv_allocate_copyarea: allocate a copy area for reciving a "copy area"

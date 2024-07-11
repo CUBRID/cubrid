@@ -41,14 +41,14 @@
 #endif /* WINDOWS */
 
 #if defined (WINDOWS)
-#include <io.h>
+//#include <io.h>
 #endif
 #include <thread>
 
 #include "authenticate.h"
 #include "utility.h"
 #include "load_object.h"
-#include "unload_object_file.h"	// ctshim
+#include "unload_object_file.h"
 #include "log_lsa.hpp"
 #include "file_hash.h"
 #include "db.h"
@@ -176,15 +176,27 @@ static char *gauge_class_name;
 
 static int g_fd_handle = INVALID_FILE_NO;
 static volatile bool writer_thread_proc_terminate = false;
-static volatile bool error_occurs = false;	// ctshim
+static volatile bool printer_thread_proc_terminate = false;
+static int max_lc_copyarea_list = 1;
+#if !defined(WINDOWS)
+static S_WAITING_INFO wi_unload_class;
+#endif
 
 #define OBJECT_SUFFIX "_objects"
 
 #define HEADER_FORMAT 	"-------------------------------+--------------------------------\n""    %-25s  |  %23s \n""-------------------------------+--------------------------------\n"
 #define MSG_FORMAT 		"    %-25s  |  %10ld (%3d%% / %5d%%)"
+
+#if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
 static FILE *unloadlog_file = NULL;
+#else
+static char *p_unloadlog_filename = NULL;
+static void unload_log_write (char *log_file_name, const char *fmt, ...);
+#endif
+
 
 typedef struct _unloaddb_class_info UNLD_CLASS_PARAM;
+static void print_monitoring_info (int nthreads, UNLD_CLASS_PARAM * unld_cls_info);
 struct _unloaddb_class_info
 {
   HFID *hfid;
@@ -192,8 +204,11 @@ struct _unloaddb_class_info
   OID *class_oid;
   SM_CLASS *class_ptr;
   int referenced_class;
-  volatile bool is_terminate;
   extract_context *pctxt;
+
+#if !defined(WINDOWS)
+  S_WAITING_INFO wi_fetch;
+#endif
 
   pthread_mutex_t mtx;
   pthread_cond_t cond;
@@ -207,6 +222,9 @@ struct _unloaddb_thread_param
   int thread_idx;
   pthread_t tid;
 
+#if !defined(WINDOWS)
+  S_WAITING_INFO wi_get_list;
+#endif
   TEXT_OUTPUT text_output;
   UNLD_CLASS_PARAM *uci;
 };
@@ -252,13 +270,19 @@ private:
   }
 
 public:
-    copyarea_list (int max = 64)
+#if !defined(WINDOWS)
+    S_WAITING_INFO m_wi_add_list;
+#endif
+
+public:
+  copyarea_list (int max = 64)
   {
     pthread_mutex_init (&m_cs_lock, NULL);
     m_root = m_tail = NULL;
     m_free = NULL;
     m_max = max;
     m_used = 0;
+    TIMER_CLEAR (&m_wi_add_list);
   }
   ~copyarea_list ()
   {
@@ -299,6 +323,7 @@ public:
   void add (LC_COPYAREA * fetch_area, bool try_clear)
   {
     LC_COPYAREA_NODE *pt;
+    bool tm_chk_flag = false;
 
     if (try_clear)
       {
@@ -314,7 +339,19 @@ public:
       {
 	pthread_mutex_unlock (&m_cs_lock);
 	YIELD_THREAD ();
+
+	if (!tm_chk_flag)
+	  {
+	    TIMER_BEGIN (&m_wi_add_list);
+	    tm_chk_flag = true;
+	  }
+
 	pthread_mutex_lock (&m_cs_lock);
+      }
+
+    if (tm_chk_flag)
+      {
+	TIMER_END (&m_wi_add_list);
       }
 
     if (m_root == NULL)
@@ -373,8 +410,8 @@ static bool close_object_file ();
 static bool open_object_file (extract_context & ctxt, const char *output_dirname, const char *class_name);
 static bool init_thread_param (const char *output_dirname, int nthreads);
 static void quit_thread_param ();
-static int unload_writer (UNLD_CLASS_PARAM * unld_class_param, LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj,
-			  TEXT_OUTPUT * obj_out);
+static int unload_printer (UNLD_CLASS_PARAM * unld_class_param, LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj,
+			   TEXT_OUTPUT * obj_out);
 /*
  * get_estimated_objs - get the estimated number of object reside in file heap
  *    return: NO_ERROR if success, error code otherwise
@@ -563,6 +600,12 @@ extractobjects_cleanup ()
 static void
 extractobjects_term_handler (int sig)
 {
+  error_occurred = true;
+  printer_thread_proc_terminate = true;
+  usleep (1000);
+  writer_thread_proc_terminate = true;
+  usleep (1000);
+
   extractobjects_cleanup ();
   /* terminate a program */
   _exit (1);
@@ -1055,17 +1098,23 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
       status = 1;
       goto end;
     }
-
+#if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
   unloadlog_file = fopen (unloadlog_filename, "w+");
   if (unloadlog_file != NULL)
     {
       fprintf (unloadlog_file, HEADER_FORMAT, "Class Name", "Total Instances");
     }
+#else
+  p_unloadlog_filename = unloadlog_filename;
+  unload_log_write (p_unloadlog_filename, HEADER_FORMAT, "Class Name", "Total Instances");
+#endif
+
   if (verbose_flag)
     {
       fprintf (stdout, HEADER_FORMAT, "Class Name", "Total Instances");
     }
 
+  error_occurred = false;
   error = text_print_request_flush (&(thr_param[0].text_output), true);
   if (error != NO_ERROR)
     {
@@ -1128,12 +1177,18 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
       status = 1;
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
 	       total_objects - failed_objects, total_objects);
+#if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
       if (unloadlog_file != NULL)
 	{
 	  fprintf (unloadlog_file,
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
 		   total_objects - failed_objects, total_objects);
 	}
+#else
+      unload_log_write (p_unloadlog_filename,
+			msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
+			total_objects - failed_objects, total_objects);
+#endif
     }
   else if (verbose_flag)
     {
@@ -1141,6 +1196,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 	       total_objects);
     }
 
+#if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
   if (unloadlog_file != NULL)
     {
       if (failed_objects == 0)
@@ -1152,6 +1208,17 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
       fprintf (unloadlog_file, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_LOG_LSA),
 	       lsa.pageid, lsa.offset);
     }
+#else
+  if (failed_objects == 0)
+    {
+      unload_log_write (p_unloadlog_filename,
+			msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_DUMPED),
+			total_objects);
+    }
+  unload_log_write (p_unloadlog_filename,
+		    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_LOG_LSA), lsa.pageid,
+		    lsa.offset);
+#endif
 
   /* flush remaining buffer */
 
@@ -1165,10 +1232,12 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 
 /* in case of both normal and error */
 end:
+#if 0
   if (unloadlog_file != NULL)
     {
       fclose (unloadlog_file);
     }
+#endif
   /*
    * Cleanup
    */
@@ -1234,22 +1303,23 @@ unload_fetcher (UNLD_CLASS_PARAM * unld_class_param, LC_FETCH_VERSION_TYPE fetch
   if (is_direct)
     {
       obj_out = &(thr_param[0].text_output);
-      desc_obj = make_desc_obj (unld_class_param->class_ptr, varchar_buffer_size);
+      desc_obj = make_desc_obj (unld_class_param->class_ptr, g_varchar_buffer_size);
     }
 
-  while (nobjects != nfetched)
+  while ((nobjects != nfetched) && (error_occurred == false))
     {
-      if (locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-			     , g_request_datasize, g_modular, g_accept
-#endif
-	  ) == NO_ERROR)
+      TIMER_BEGIN (&(unld_class_param->wi_fetch));
+      if (locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area,
+			     g_request_pages, g_split_process_cnt,
+			     (g_selection_key - 1) /* to zero base */ ) == NO_ERROR)
 	{
+	  TIMER_END (&(unld_class_param->wi_fetch));
+
 	  if (fetch_area != NULL)
 	    {
 	      if (is_direct)
 		{
-		  error = unload_writer (unld_class_param, fetch_area, desc_obj, obj_out);
+		  error = unload_printer (unld_class_param, fetch_area, desc_obj, obj_out);
 		  locator_free_copy_area (fetch_area);
 		  if (error != NO_ERROR)
 		    {
@@ -1258,11 +1328,17 @@ unload_fetcher (UNLD_CLASS_PARAM * unld_class_param, LC_FETCH_VERSION_TYPE fetch
 		}
 	      else
 		{
-		  unld_class_param->cparea_lst_ref->add (fetch_area, true);	// ctshim
+		  unld_class_param->cparea_lst_ref->add (fetch_area, true);
 		  fetch_area = NULL;
-		  //pthread_mutex_lock (&unld_class_param->mtx);  // ctshim
+		  pthread_mutex_lock (&unld_class_param->mtx);
 		  pthread_cond_signal (&unld_class_param->cond);
-		  //pthread_mutex_unlock (&unld_class_param->mtx);                
+		  pthread_mutex_unlock (&unld_class_param->mtx);
+		}
+
+	      if (g_time_test_records > 0)
+		{
+		  if (nfetched >= g_time_test_records)
+		    break;
 		}
 	    }
 	  else
@@ -1290,15 +1366,15 @@ unload_fetcher (UNLD_CLASS_PARAM * unld_class_param, LC_FETCH_VERSION_TYPE fetch
 
   if (error != NO_ERROR)
     {
-      error_occurs = true;
+      error_occurred = true;
     }
 
   return error;
 }
 
 static int
-unload_writer (UNLD_CLASS_PARAM * unld_class_param, LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj,
-	       TEXT_OUTPUT * obj_out)
+unload_printer (UNLD_CLASS_PARAM * unld_class_param, LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj,
+		TEXT_OUTPUT * obj_out)
 {
   int i, error;
   RECDES recdes;		/* Record descriptor */
@@ -1373,7 +1449,7 @@ unload_thread_proc (void *param)
   int thr_ret = NO_ERROR;
   pthread_t tid = pthread_self ();
   TEXT_OUTPUT *obj_out = &(parg->text_output);
-  DESC_OBJ *desc_obj = make_desc_obj (parg->uci->class_ptr, varchar_buffer_size);
+  DESC_OBJ *desc_obj = make_desc_obj (parg->uci->class_ptr, g_varchar_buffer_size);
   if (desc_obj == NULL)
     {
       thr_ret = ER_FAILED;
@@ -1387,23 +1463,27 @@ unload_thread_proc (void *param)
       er_context_p = new cuberr::context ();
       er_context_p->register_thread_local ();
 
-      while (parg->uci->is_terminate == false)
+      while (printer_thread_proc_terminate == false)
 	{
 	  node = parg->uci->cparea_lst_ref->get ();
 	  if (node)
 	    {
-	      thr_ret = unload_writer (parg->uci, node->lc_copy_area, desc_obj, obj_out);
+	      thr_ret = unload_printer (parg->uci, node->lc_copy_area, desc_obj, obj_out);
 	      parg->uci->cparea_lst_ref->add_freelist (node);
 	      if (thr_ret != NO_ERROR)
 		{
 		  break;
 		}
 	    }
-	  else if (parg->uci->is_terminate == false)
+	  else if (printer_thread_proc_terminate == false)
 	    {
+	      TIMER_BEGIN (&(parg->wi_get_list));
+
 	      pthread_mutex_lock (&parg->uci->mtx);
 	      pthread_cond_wait (&parg->uci->cond, &parg->uci->mtx);
 	      pthread_mutex_unlock (&parg->uci->mtx);
+
+	      TIMER_END (&(parg->wi_get_list));
 	    }
 	}
 
@@ -1412,7 +1492,7 @@ unload_thread_proc (void *param)
 	{
 	  if (thr_ret == NO_ERROR)
 	    {
-	      thr_ret = unload_writer (parg->uci, node->lc_copy_area, desc_obj, obj_out);
+	      thr_ret = unload_printer (parg->uci, node->lc_copy_area, desc_obj, obj_out);
 	    }
 	  parg->uci->cparea_lst_ref->add_freelist (node);
 	  node = parg->uci->cparea_lst_ref->get ();
@@ -1427,7 +1507,7 @@ unload_thread_proc (void *param)
 
   if (thr_ret != NO_ERROR)
     {
-      error_occurs = true;
+      error_occurred = true;
     }
 
   pthread_exit ((void *) thr_ret);
@@ -1435,13 +1515,10 @@ unload_thread_proc (void *param)
 }
 
 static THREAD_RET_T THREAD_CALLING_CONVENTION
-write_thread_proc (void *param)
+writer_thread_proc (void *param)
 {
-  bool *terminate_ptr = (bool *) param;
   pthread_t tid = pthread_self ();
   int thr_ret = NO_ERROR;
-  TEXT_OUTPUT *head;
-  TEXT_OUTPUT *tp;
 
   while (writer_thread_proc_terminate == false)
     {
@@ -1464,7 +1541,7 @@ write_thread_proc (void *param)
 
   if (thr_ret != NO_ERROR)
     {
-      error_occurs = true;
+      error_occurred = true;
     }
 
   pthread_exit ((void *) thr_ret);
@@ -1642,10 +1719,10 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   int total;
   bool enabled_alarm = false;
   LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
-  class copyarea_list c_cparea_lst_class;
   UNLD_CLASS_PARAM unld_cls_info;
   pthread_t writer_tid;
   int *retval = NULL;
+  class copyarea_list c_cparea_lst_class;
 
   /*
    * Only process classes that were requested or classes that were
@@ -1727,11 +1804,10 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       goto exit_on_end;
     }
 
-  //nobjects = 0;
-  //nfetched = -1;
-  //OID_SET_NULL (&last_oid);
-
   /* Now start fetching all the instances */
+
+  TIMER_CLEAR (&wi_unload_class);
+  TIMER_BEGIN (&wi_unload_class);
 
   approximate_class_objects = 0;
   if (get_estimated_objs (hfid, &approximate_class_objects) < 0)
@@ -1750,100 +1826,114 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 #endif
     }
 
-  {
-    error_occurs = false;
-    error = text_print_request_flush (&(thr_param[0].text_output), true);
-    if (error != NO_ERROR)
-      ;
-    // ctshim
+  error_occurred = false;
+  error = text_print_request_flush (&(thr_param[0].text_output), true);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_end;
+    }
 
-    thr_param[0].text_output.fd_ref = (nthreads <= 1) ? &g_fd_handle : NULL;
+  printer_thread_proc_terminate = false;
+  writer_thread_proc_terminate = false;
+  thr_param[0].text_output.fd_ref = (nthreads <= 1) ? &g_fd_handle : NULL;
 
-    unld_cls_info.hfid = hfid;
-    unld_cls_info.class_oid = class_oid;
-    unld_cls_info.class_ptr = class_ptr;
-    unld_cls_info.class_ = class_;
-    unld_cls_info.pctxt = &ctxt;
-    unld_cls_info.referenced_class = referenced_class;
-    unld_cls_info.is_terminate = false;
+  unld_cls_info.hfid = hfid;
+  unld_cls_info.class_oid = class_oid;
+  unld_cls_info.class_ptr = class_ptr;
+  unld_cls_info.class_ = class_;
+  unld_cls_info.pctxt = &ctxt;
+  unld_cls_info.referenced_class = referenced_class;
+#if !defined(WINDOWS)
+  memset (&(unld_cls_info.wi_fetch), 0x00, sizeof (S_WAITING_INFO));
+#endif
 
-    if (pthread_mutex_init (&unld_cls_info.mtx, NULL) == 0)
-      {
-	error = pthread_cond_init (&unld_cls_info.cond, NULL);
-      }
+  if (pthread_mutex_init (&unld_cls_info.mtx, NULL) == 0)
+    {
+      if (pthread_cond_init (&unld_cls_info.cond, NULL) != 0)
+	{
+	  pthread_mutex_destroy (&unld_cls_info.mtx);
+	  error = ER_FAILED;
+	  goto exit_on_end;
+	}
+    }
 
-    c_cparea_lst_class.set_max_list (nthreads * 4);	// ctshim
-    //c_cparea_lst_class.set_max_list (thread_count);
-    unld_cls_info.cparea_lst_ref = &c_cparea_lst_class;
+  c_cparea_lst_class.set_max_list (max_lc_copyarea_list);
+  unld_cls_info.cparea_lst_ref = &c_cparea_lst_class;
 
-    //pthread_mutex_lock (&unld_cls_info.mtx);  // ctshim
+  if (nthreads > 0)
+    {
+      for (i = 0; i < nthreads; i++)
+	{
+	  thr_param[i].thread_idx = i;
+	  thr_param[i].tid = (pthread_t) - 1;
+	  TIMER_CLEAR (&(thr_param[i].wi_get_list));
 
-    //thr_param[0].text_output.fd_ref = (nthreads <= 1) ? &g_fd_handle : NULL;
+	  thr_param[i].uci = &unld_cls_info;
 
-    for (i = 0; i < nthreads; i++)
-      {
-	thr_param[i].thread_idx = i;
-	thr_param[i].uci = &unld_cls_info;
+	  if (pthread_create (&(thr_param[i].tid), NULL, unload_thread_proc, (void *) (thr_param + i)) != 0)
+	    {
+	      perror ("pthread_create()\n");
+	      exit (1);
+	    }
+	}
 
-	if (pthread_create (&(thr_param[i].tid), NULL, unload_thread_proc, (void *) (thr_param + i)) != 0)
-	  {
-	    perror ("pthread_create()\n");	// ctshim
-	    exit (1);
-	  }
-      }
+      if (nthreads > 1)
+	{
+	  if (pthread_create (&writer_tid, NULL, writer_thread_proc, NULL) != 0)
+	    {
+	      perror ("pthread_create()\n");
+	      exit (1);
+	    }
+	}
+    }
 
-    if (nthreads > 1)
-      {
-	writer_thread_proc_terminate = false;
-	if (pthread_create (&writer_tid, NULL, write_thread_proc, (void *) (&unld_cls_info.is_terminate)) != 0)
-	  {
-	    perror ("pthread_create()\n");
-	    exit (1);
-	  }
-      }
-    //pthread_mutex_unlock (&unld_cls_info.mtx);
-    YIELD_THREAD ();
-    unload_fetcher (&unld_cls_info, fetch_type, ((nthreads == 0) ? true : false));
+  YIELD_THREAD ();
+  unload_fetcher (&unld_cls_info, fetch_type, ((nthreads == 0) ? true : false));
 
-    if (nthreads <= 0)
-      {
-	error = text_print_request_flush (&(thr_param[0].text_output), true);
-      }
-    else
-      {
-	unld_cls_info.is_terminate = true;
-	pthread_cond_broadcast (&unld_cls_info.cond);
-	YIELD_THREAD ();
+  if (nthreads <= 0)
+    {
+      error = text_print_request_flush (&(thr_param[0].text_output), true);
+    }
+  else
+    {
+      printer_thread_proc_terminate = true;
 
-	for (i = 0; i < nthreads; i++)
-	  {
-	    int _err;
-	    void *retval;
+      pthread_mutex_lock (&unld_cls_info.mtx);
+      pthread_cond_broadcast (&unld_cls_info.cond);
+      pthread_mutex_unlock (&unld_cls_info.mtx);
 
-	    pthread_join (thr_param[i].tid, &retval);
-	    if (error_occurs)
-	      ;
+      pthread_cond_broadcast (&unld_cls_info.cond);
+      YIELD_THREAD ();
 
-	    if ((_err = text_print_request_flush (&(thr_param[i].text_output), true)) != NO_ERROR)
-	      {
-		error = _err;
-	      }
-	  }
-      }
+      for (i = 0; i < nthreads; i++)
+	{
+	  int _err;
+	  void *retval;
 
-    if (nthreads > 1)
-      {
-	void *retval;
-	writer_thread_proc_terminate = true;
-	pthread_join (writer_tid, &retval);
-	if (error_occurs)
-	  ;
+	  pthread_join (thr_param[i].tid, &retval);
+	  if ((_err = text_print_request_flush (&(thr_param[i].text_output), true)) != NO_ERROR)
+	    {
+	      error = _err;
+	    }
+	}
+    }
 
-      }
+  if (nthreads > 1)
+    {
+      void *retval;
+      writer_thread_proc_terminate = true;
+      pthread_join (writer_tid, &retval);
+    }
 
-    pthread_cond_destroy (&unld_cls_info.cond);
-    //unld_cls_info.cparea_lst_ref->clear_freelist ();
-  }
+  pthread_cond_destroy (&unld_cls_info.cond);
+  pthread_mutex_destroy (&unld_cls_info.mtx);
+
+  TIMER_END (&wi_unload_class);
+
+  if (error_occurred && error == NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
 
   class_objects = class_objects_atomic;
   total_approximate_class_objects += (class_objects - approximate_class_objects);
@@ -1872,8 +1962,14 @@ exit_on_end:
       fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
       fflush (stdout);
     }
-  fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
 
+#if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
+  fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
+#else
+  unload_log_write (p_unloadlog_filename, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
+#endif
+
+  print_monitoring_info (nthreads, &unld_cls_info);
   return error;
 
 exit_on_error:
@@ -2436,11 +2532,12 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
 
   size_t total = strlen (output_dirname) + strlen (output_prefix) + strlen (suffix) + 8;
 
-  if (g_modular > 1)
+#if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
+  if (g_split_process_cnt > 1)
     {
       char proc_name[32];
 
-      total += sprintf (proc_name, "p%d-%d", g_modular, g_accept);
+      total += sprintf (proc_name, "p%d-%d", g_split_process_cnt, g_selection_key);
       if (total > filename_size)
 	{
 	  return -1;
@@ -2448,6 +2545,7 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
       snprintf (output_filename_p, filename_size - 1, "%s/%s_%s%s", output_dirname, output_prefix, proc_name, suffix);
     }
   else
+#endif
     {
       if (total > filename_size)
 	{
@@ -2481,10 +2579,10 @@ open_object_file (extract_context & ctxt, const char *output_dirname, const char
   char tmp_name[DB_MAX_IDENTIFIER_LENGTH * 2];
   char *name_ptr = (char *) class_name;
 
-  if (g_modular > 1)
+  if (g_split_process_cnt > 1)
     {
       assert (class_name && *class_name);
-      sprintf (tmp_name, "p%d-%d_%s", g_modular, g_accept, class_name);
+      sprintf (tmp_name, "p%d-%d_%s", g_split_process_cnt, g_selection_key, class_name);
       name_ptr = tmp_name;
     }
 
@@ -2549,7 +2647,23 @@ init_thread_param (const char *output_dirname, int nthreads)
    */
   thr_param[0].text_output.fd_ref = &g_fd_handle;
 
-  return init_queue_n_list_for_object_file (100, (thr_max * 4));	// ctshim
+  int buffer_block_list_sz = 10;
+  int write_block_q_size = 100;
+
+  // Approximately (iosize *  buffer_block_list_sz) bytes of memory space is required. 
+  if (buffer_block_list_sz < (thr_max * 4))
+    {
+      buffer_block_list_sz = thr_max * 4;
+    }
+
+  // Up to ((iosize * buffer_block_list_sz) * write_block_q_size) bytes of memory may be required.
+  if (write_block_q_size < (thr_max * 2))
+    {
+      write_block_q_size = thr_max * 2;
+    }
+
+  max_lc_copyarea_list = (thr_max * 4);	// TODO: ctshim 결정 필요     
+  return init_queue_n_list_for_object_file (write_block_q_size, buffer_block_list_sz);	// TODO: ctshim 결정 필요
 }
 
 static void
@@ -2560,3 +2674,87 @@ quit_thread_param ()
       free_and_init (thr_param);
     }
 }
+
+static void
+print_monitoring_info (int nthreads, UNLD_CLASS_PARAM * puci)
+{
+#if !defined(WINDOWS)
+  if (g_time_test_records < 0)
+    return;
+
+  FILE *fp = stdout;
+
+  fprintf (fp, ALIGN_SPACE_FMT "Elapsed: %12.6f sec\n", "",
+	   wi_unload_class.ts_wait_sum.tv_sec + ((double) wi_unload_class.ts_wait_sum.tv_nsec / NANO_PREC_VAL));
+  fprintf (fp, ALIGN_SPACE_FMT "Fetch  : %12.6f sec, count= %" PRId64 "\n", "",
+	   puci->wi_fetch.ts_wait_sum.tv_sec + ((double) puci->wi_fetch.ts_wait_sum.tv_nsec / NANO_PREC_VAL),
+	   puci->wi_fetch.cnt);
+
+  if (nthreads <= 0)
+    return;
+
+  fprintf (fp, ALIGN_SPACE_FMT "Add Q  : %12.6f sec, waiting count= %" PRId64 "\n", "",
+	   puci->cparea_lst_ref->m_wi_add_list.ts_wait_sum.tv_sec +
+	   ((double) puci->cparea_lst_ref->m_wi_add_list.ts_wait_sum.tv_nsec / NANO_PREC_VAL),
+	   puci->cparea_lst_ref->m_wi_add_list.cnt);
+
+
+  struct timespec ts_wait_sum = { 0, 0 };
+  int64_t waiting_cnt_sum = 0;
+
+  for (int i = 0; i < nthreads; i++)
+    {
+#if 0
+      fprintf (fp, ALIGN_SPACE_FMT "Get Q  : %12.6f sec, waiting count= %" PRId64 "\n", "",
+	       thr_param[i].wi_get_list.ts_wait_sum.tv_sec +
+	       ((double) thr_param[i].wi_get_list.ts_wait_sum.tv_nsec / NANO_PREC_VAL), thr_param[i].wi_get_list.cnt);
+#endif
+      waiting_cnt_sum += thr_param[i].wi_get_list.cnt;
+      timespec_accumulate (&ts_wait_sum, &(thr_param[i].wi_get_list.ts_wait_sum));
+    }
+
+  fprintf (fp, ALIGN_SPACE_FMT "Get Q  : %12.6f sec, waiting count= %" PRId64 "\n", "",
+	   (ts_wait_sum.tv_sec + ((double) ts_wait_sum.tv_nsec / NANO_PREC_VAL)) / nthreads,
+	   (int64_t) (waiting_cnt_sum / nthreads));
+#endif
+}
+
+#if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
+static void
+unload_log_write (char *log_file_name, const char *fmt, ...)
+{
+#define MAX_RETRY_COUNT 10
+  int retry_count = 0;
+  FILE *fp;
+
+  if (log_file_name == NULL || *log_file_name == '\0')
+    return;
+
+retry:
+  fp = fopen (log_file_name, "a+");
+  if (fp != NULL)
+    {
+      if (lockf (fileno (fp), F_TLOCK, 0) < 0)
+	{
+	  fclose (fp);
+
+	  if (retry_count < MAX_RETRY_COUNT)
+	    {
+	      SLEEP_MILISEC (0, 100);
+	      retry_count++;
+	      goto retry;
+	    }
+
+	  return;
+	}
+    }
+
+  va_list ap;
+
+  va_start (ap, fmt);
+  int result = vfprintf (fp, fmt, ap);
+  va_end (ap);
+
+  fclose (fp);
+}
+#endif

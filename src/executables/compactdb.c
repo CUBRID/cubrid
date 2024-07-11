@@ -428,11 +428,8 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
   desc_obj = make_desc_obj (class_ptr, -1);
   while (nobjects != nfetched)
     {
-      if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-			     , 1, UNLOAD_MODULAR_UNDEFINED, UNLOAD_MODULAR_UNDEFINED
-#endif
-	  ) == NO_ERROR)
+      if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid,
+			     &fetch_area, 1, -1, -1) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {

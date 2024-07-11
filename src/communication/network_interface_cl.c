@@ -289,7 +289,7 @@ locator_fetch (OID * oidp, int chn, LOCK lock, LC_FETCH_VERSION_TYPE fetch_versi
 
   req_error =
     net_client_request_recv_copyarea (NET_SERVER_LC_FETCH, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea, false);
+				      OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
   if (!req_error)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
@@ -355,7 +355,7 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
 
   req_error =
     net_client_request_recv_copyarea (NET_SERVER_LC_GET_CLASS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea, false);
+				      OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
   if (!req_error)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
@@ -399,27 +399,17 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
  */
 int
 locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oidp,
-		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-		   , int request_datasize, int modular_val, int accept_val
-#endif
-  )
+		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea,
+		   int request_pages, int nsplit_process, int nselection_key)
 {
 #if defined(CS_MODE)
   int req_error;
   char *ptr;
   int return_value = ER_FAILED;
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
+  int client_endian = get_endian_type ();
   OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 7) + (OR_OID_SIZE * 2)) a_request;
-#else
-  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 4) + (OR_OID_SIZE * 2)) a_request;
-#endif
   char *request;
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 5) + OR_OID_SIZE) a_reply;
-#else
-  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 4) + OR_OID_SIZE) a_reply;
-#endif
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -432,30 +422,19 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   ptr = or_pack_int (ptr, *nobjects);
   ptr = or_pack_int (ptr, *nfetched);
   ptr = or_pack_oid (ptr, last_oidp);
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-  ptr = or_pack_int (ptr, request_datasize);
-  ptr = or_pack_int (ptr, modular_val);
-  ptr = or_pack_int (ptr, accept_val);
-  int client_endian = get_endian_type ();
+  ptr = or_pack_int (ptr, request_pages);
+  ptr = or_pack_int (ptr, nsplit_process);
+  ptr = or_pack_int (ptr, nselection_key);
   ptr = or_pack_int (ptr, client_endian);
-#endif
   *fetch_copyarea = NULL;
 
   req_error =
     net_client_request_recv_copyarea (NET_SERVER_LC_FETCHALL, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea,
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-				      (modular_val != UNLOAD_MODULAR_UNDEFINED)
-#else
-				      false
-#endif
-    );
+				      OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
   if (req_error == NO_ERROR)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-      ptr += OR_INT_SIZE;	//  or_unpack_int (ptr, &client_endian); // ignore
-#endif
+      ptr += OR_INT_SIZE;	//  or_unpack_int (ptr, &client_endian); // ignore  ctshim
       ptr = or_unpack_lock (ptr, lock);
       ptr = or_unpack_int (ptr, nobjects);
       ptr = or_unpack_int (ptr, nfetched);
@@ -473,15 +452,12 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-  thread_p->unload_modular = modular_val;
-  thread_p->unload_accept = accept_val;
-  thread_p->request_datasize = 0;
-#endif
+  thread_p->_unload_split_process = nsplit_process;
+  thread_p->_unload_selection_key = nselection_key;
 
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
-			fetch_copyarea);
+			fetch_copyarea, request_pages);
 
   exit_server (*thread_p);
 
@@ -538,7 +514,7 @@ locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, int class_c
 
   req_error =
     net_client_request_recv_copyarea (NET_SERVER_LC_DOESEXIST, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea, false);
+				      OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
   if (!req_error)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
@@ -594,7 +570,7 @@ locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea)
   *synch_copyarea = NULL;
   req_error =
     net_client_request_recv_copyarea (NET_SERVER_LC_NOTIFY_ISOLATION_INCONS, NULL, 0, reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), synch_copyarea, false);
+				      OR_ALIGNED_BUF_SIZE (a_reply), synch_copyarea);
 
   if (!req_error)
     {
@@ -650,7 +626,7 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
 
   request_ptr = or_pack_int (request, num_objs);
   request_ptr = or_pack_int (request_ptr, desc_size);
@@ -724,7 +700,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  num_objs = locator_send_copy_area (copy_area, &content_ptr, NULL, &desc_ptr, &desc_size);
+  num_objs = locator_send_copy_area (copy_area, &content_ptr, NULL, &desc_ptr, &desc_size, true);
 
   request_ptr = or_pack_int (request, num_objs);
   request_ptr = or_pack_int (request_ptr, mobjs->multi_update_flags);
@@ -751,7 +727,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
       (void) or_unpack_int (reply, &error_code);
       if (error_code == NO_ERROR)
 	{
-	  locator_unpack_copy_area_descriptor (num_objs, copy_area, desc_ptr);
+	  locator_unpack_copy_area_descriptor (num_objs, copy_area, desc_ptr, -1);
 	}
     }
   if (desc_ptr)

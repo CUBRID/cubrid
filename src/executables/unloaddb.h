@@ -28,19 +28,16 @@
 
 #include "locator_cl.h"
 
-
-
 struct extract_context;
 class print_output;
 
 extern char *database_name;
 extern char *input_filename;
-#if defined(SUPPORT_THREAD_UNLOAD)
-extern int varchar_buffer_size;
-extern int g_modular;
-extern int g_accept;
-extern int g_request_datasize;
-#endif
+extern int g_varchar_buffer_size;
+extern int g_split_process_cnt;
+extern int g_selection_key;
+extern int g_request_pages;
+extern int g_time_test_records;
 extern int page_size;
 extern int cached_pages;
 extern int64_t est_size;

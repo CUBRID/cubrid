@@ -697,7 +697,7 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -774,7 +774,7 @@ slocator_get_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -831,25 +831,17 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   int success;
   char *ptr;
   int fetch_version_type;
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 5) + OR_OID_SIZE) a_reply;
-#else
-  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 4) + OR_OID_SIZE) a_reply;
-#endif
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *desc_ptr = NULL;
   int desc_size;
   char *content_ptr;
   int content_size;
   int num_objs = 0;
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-  int modular_val = UNLOAD_MODULAR_UNDEFINED;
-  int accept_val = UNLOAD_MODULAR_UNDEFINED;
-  int request_datasize = 1;
+  int nsplit_process, nselection_key, request_pages;
   int server_endian = get_endian_type ();
   int client_endian;
-  int encode_endian = 0;
-#endif
+  int encode_endian = 1;
 
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_lock (ptr, &lock);
@@ -858,32 +850,23 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_int (ptr, &nobjects);
   ptr = or_unpack_int (ptr, &nfetched);
   ptr = or_unpack_oid (ptr, &last_oid);
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-  ptr = or_unpack_int (ptr, &request_datasize);
-  ptr = or_unpack_int (ptr, &modular_val);
-  ptr = or_unpack_int (ptr, &accept_val);
+  ptr = or_unpack_int (ptr, &request_pages);
+  ptr = or_unpack_int (ptr, &nsplit_process);
+  ptr = or_unpack_int (ptr, &nselection_key);
   ptr = or_unpack_int (ptr, &client_endian);
 
-  if (client_endian != server_endian || server_endian == 0)
+  if (client_endian == server_endian && server_endian != 0 && (nsplit_process > 0))
     {
-      encode_endian = 1;
+      encode_endian = 0;
     }
-  else if (modular_val == UNLOAD_MODULAR_UNDEFINED)
-    {
-      encode_endian = 1;
-    }
-#endif
 
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
-  thread_p->unload_modular = modular_val;
-  thread_p->unload_accept = accept_val;
-  thread_p->request_datasize = request_datasize;
-#endif
+  thread_p->_unload_split_process = nsplit_process;
+  thread_p->_unload_selection_key = nselection_key;
 
   copy_area = NULL;
   success =
     xlocator_fetch_all (thread_p, &hfid, &lock, (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, &nobjects,
-			&nfetched, &last_oid, &copy_area);
+			&nfetched, &last_oid, &copy_area, request_pages);
 
   if (success != NO_ERROR)
     {
@@ -892,16 +875,8 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   if (copy_area != NULL)
     {
-#if defined(SUPPORT_THREAD_UNLOAD)	// ctshim
-      extern int locator_send_copy_area2 (LC_COPYAREA * copyarea, char **contents_ptr, int *contents_length,
-					  char **desc_ptr, int *desc_length);
-      if (encode_endian == 0)
-	num_objs = locator_send_copy_area2 (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
-      else
-	num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
-#else
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
-#endif
+      num_objs =
+	locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, (bool) encode_endian);
     }
   else
     {
@@ -916,9 +891,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_pack_int (reply, num_objs);
   ptr = or_pack_int (ptr, desc_size);
   ptr = or_pack_int (ptr, content_size);
-#if defined(SUPPORT_THREAD_UNLOAD_MTP)
   ptr = or_pack_int (ptr, encode_endian);
-#endif
   ptr = or_pack_lock (ptr, lock);
   ptr = or_pack_int (ptr, nobjects);
   ptr = or_pack_int (ptr, nfetched);
@@ -936,13 +909,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       locator_free_copy_area (copy_area);
     }
 
-#if defined(SUPPORT_THREAD_UNLOAD)	// ctshim
-  if (encode_endian == 0)
-    {
-      return;
-    }
-#endif
-  if (desc_ptr)
+  if (encode_endian && desc_ptr)
     {
       free_and_init (desc_ptr);
     }
@@ -998,7 +965,7 @@ slocator_does_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -1066,7 +1033,7 @@ slocator_notify_isolation_incons (THREAD_ENTRY * thread_p, unsigned int rid, cha
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -1153,7 +1120,7 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
       else
 	{
-	  locator_unpack_copy_area_descriptor (num_objs, copy_area, packed_desc);
+	  locator_unpack_copy_area_descriptor (num_objs, copy_area, packed_desc, -1);
 	  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
 
 	  if (content_size > 0)
@@ -1186,7 +1153,8 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	   * Send the descriptor and content to handle errors
 	   */
 
-	  num_objs = locator_send_copy_area (reply_copy_area, &reply_content_ptr, &content_size, &desc_ptr, &desc_size);
+	  num_objs =
+	    locator_send_copy_area (reply_copy_area, &reply_content_ptr, &content_size, &desc_ptr, &desc_size, true);
 
 	  ptr = or_pack_int (reply, num_objs);
 	  ptr = or_pack_int (ptr, desc_size);
@@ -1285,7 +1253,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 	}
       else
 	{
-	  locator_unpack_copy_area_descriptor (num_objs, copy_area, packed_desc);
+	  locator_unpack_copy_area_descriptor (num_objs, copy_area, packed_desc, -1);
 	  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
 	  mobjs->multi_update_flags = multi_update_flags;
 
@@ -1419,7 +1387,7 @@ slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
       if (copy_area != NULL)
 	{
-	  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+	  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
 	}
       else
 	{
@@ -1545,7 +1513,7 @@ slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -6919,7 +6887,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, ch
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -7041,7 +7009,7 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid, char
 
       if (copy_area != NULL)
 	{
-	  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+	  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
 	}
       else
 	{

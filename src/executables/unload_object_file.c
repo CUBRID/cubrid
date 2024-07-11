@@ -60,6 +60,8 @@
 #include "porting.h"
 #endif
 
+volatile bool error_occurred = false;
+
 static void print_set (print_output & output_ctx, DB_SET * set);
 static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
@@ -964,7 +966,12 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 	    {
 	      break;
 	    }
-	  YIELD_THREAD ();	//ctshim 발생 여부 확인
+//S_WAITING_INFO
+	  YIELD_THREAD ();
+	  if (error_occurred)
+	    {
+	      return ER_FAILED;
+	    }
 	}
       while (true);
 
@@ -980,6 +987,7 @@ write_block_list (int fd, TEXT_BUFFER_BLK * head)
 {
   TEXT_BUFFER_BLK *tp;
   int error = NO_ERROR;
+  int _errno;
 
   for (tp = head; tp && tp->count > 0; tp = head)
     {
@@ -989,9 +997,9 @@ write_block_list (int fd, TEXT_BUFFER_BLK * head)
 	{
 	  if (tp->count != write (fd, tp->buffer, tp->count))
 	    {
-	      // TOD-DO: if interrupt ?
-	      // EAGAIN, EINTR
-	      assert (false);
+	      _errno = errno;
+	      // TODDO: EAGAIN, EINTR ?
+	      assert (_errno == EINTR || _errno == EBADF);
 	      error = ER_IO_WRITE;
 	    }
 	}
@@ -1001,3 +1009,34 @@ write_block_list (int fd, TEXT_BUFFER_BLK * head)
 
   return error;
 }
+
+#if !defined(WINDOWS)
+void
+timespec_diff (struct timespec *start, struct timespec *end, struct timespec *diff)
+{
+  diff->tv_sec = end->tv_sec - start->tv_sec;
+  diff->tv_nsec = end->tv_nsec - start->tv_nsec;
+  if (diff->tv_nsec < 0)
+    {
+      diff->tv_sec--;
+      diff->tv_nsec += NANO_PREC_VAL;
+    }
+}
+
+void
+timespec_accumulate (struct timespec *ts_sum, struct timespec *ts_start)
+{
+  struct timespec te, tdiff;
+
+  clock_gettime (CLOCK_MONOTONIC /* CLOCK_REALTIME */ , &te);
+  timespec_diff (ts_start, &te, &tdiff);
+
+  ts_sum->tv_sec += tdiff.tv_sec;
+  ts_sum->tv_nsec += tdiff.tv_nsec;
+  while (ts_sum->tv_nsec >= NANO_PREC_VAL)
+    {
+      ts_sum->tv_sec++;
+      ts_sum->tv_nsec -= NANO_PREC_VAL;
+    }
+}
+#endif
