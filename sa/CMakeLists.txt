@@ -682,6 +682,7 @@ if(UNIX)
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridsa LINK_PUBLIC ${CMAKE_DL_LIBS})
   target_link_libraries(cubridsa PUBLIC stdc++fs)
+  target_link_libraries(cubridsa PUBLIC rt)
 endif(UNIX)
 # for dblink
 target_link_libraries(cubridsa cascci)

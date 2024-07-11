@@ -80,8 +80,6 @@ tsc_init (void)
 void
 tsc_getticks (TSC_TICKS * tck)
 {
-  struct timespec ts;
-
   if (power_Savings == 0)
     {
       tck->tc = getticks ();
@@ -91,6 +89,7 @@ tsc_getticks (TSC_TICKS * tck)
 #if defined (WINDOWS)
       gettimeofday (&(tck->tv), NULL);
 #else
+      struct timespec ts;
       /* replace gettimeofday with clock_gettime for performance */
       clock_gettime (CLOCK_REALTIME_COARSE, &ts);
       tck->tv.tv_sec = ts.tv_sec;
