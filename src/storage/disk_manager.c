@@ -613,13 +613,13 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       goto exit;
     }
 
-  /* Find the time of the creation of the database, volume and the current LSA checkpoint. */
   error_code = log_get_db_start_parameters (&vhdr->db_creation, &vhdr->chkpt_lsa);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto exit;
     }
+
   vhdr->vol_creation = time (NULL);
 
   /* Initialize the system heap file for booting purposes. This field is reseted after the heap file is created by the
@@ -3030,10 +3030,8 @@ disk_volume_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 static void
 disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
 {
-  char db_creation_val[CTIME_MAX];
-  char vol_creation_val[CTIME_MAX];
-  time_t db_creation = (time_t) vhdr->db_creation;
-  time_t vol_creation = (time_t) vhdr->vol_creation;
+  char time_val[CTIME_MAX];
+  time_t tmp_time;
 
   (void) fprintf (fp, " MAGIC SYMBOL = %s at disk location = %lld\n", vhdr->magic,
 		  offsetof (FILEIO_PAGE, page) + (long long) offsetof (DISK_VOLUME_HEADER, magic));
@@ -3050,12 +3048,9 @@ disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
   (void) fprintf (fp, " SECTOR TABLE:    SIZE IN PAGES = %10d, FIRST_PAGE = %5d\n", vhdr->stab_npages,
 		  vhdr->stab_first_page);
 
-  (void) ctime_r (&db_creation, db_creation_val);
-  (void) ctime_r (&vol_creation, vol_creation_val);
-
-  (void) fprintf (fp,
-		  " Database creation time = %s\n Volume creation time = %s\n Lowest Checkpoint for recovery = %lld|%lld\n",
-		  db_creation_val, vol_creation_val,
+  tmp_time = (time_t) vhdr->db_creation;
+  (void) ctime_r (&tmp_time, time_val);
+  (void) fprintf (fp, " Database creation time = %s\n Lowest Checkpoint for recovery = %lld|%lld\n", time_val,
 		  (long long) vhdr->chkpt_lsa.pageid, (long long) vhdr->chkpt_lsa.offset);
   (void) fprintf (fp, "Boot_hfid: volid %d, fileid %d header_pageid %d\n", vhdr->boot_hfid.vfid.volid,
 		  vhdr->boot_hfid.vfid.fileid, vhdr->boot_hfid.hpgid);

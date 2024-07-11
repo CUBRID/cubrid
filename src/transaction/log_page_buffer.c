@@ -2337,7 +2337,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
  *                      Log_information = db_loginfo
  *                      Database Backup = db_backup
  *   db_iopagesize(in): Set as a side effect to iopagesize
- *   creation_time(in): Set as a side effect to time of database creation
+ *   db_creation(in): Set as a side effect to time of database creation
  *   db_compatibility(in): Set as a side effect to database disk compatibility
  *   db_charset(in): Set as a side effect to database charset
  *
