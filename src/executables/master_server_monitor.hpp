@@ -25,12 +25,9 @@
 
 #include <cstring>
 #include <thread>
-#include <algorithm>
+#include <vector>
 #include <memory>
-#include <mutex>
 #include <time.h>
-#include "heartbeat.h"
-#include "system_parameter.h"
 #include "connection_defs.h"
 
 class server_monitor
@@ -70,8 +67,8 @@ class server_monitor
     server_monitor &operator = (server_monitor &&) = delete;
 
   private:
-    std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     std::unique_ptr<std::vector <server_entry>> m_server_entry_list;    // list of server entries
+    std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
 };
 

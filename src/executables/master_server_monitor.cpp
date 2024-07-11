@@ -20,20 +20,18 @@
 // master_server_monitor.cpp - Server Revive monitoring module
 //
 
-#include "master_server_monitor.hpp"
 #include <sstream>
 
-#include "util_func.h"
+#include "master_server_monitor.hpp"
 
-std::unique_ptr <server_monitor> master_Server_monitor = nullptr;
+std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 
 server_monitor::server_monitor ()
 {
-  m_thread_shutdown = false;
-
   m_server_entry_list = std::make_unique<std::vector<server_entry>> ();
   fprintf (stdout, "server_monitor_list is created. \n");
 
+  m_thread_shutdown = false;
   m_monitoring_thread = std::make_unique<std::thread> ([this]()
   {
     while (!m_thread_shutdown)
@@ -41,6 +39,7 @@ server_monitor::server_monitor ()
 	// TODO: select server_entry whose m_need_revive value is true. (Will be implemented in CBRD-25438 issue.)
       }
   });
+
   fprintf (stdout, "server_monitor_thread is created. \n");
   fflush (stdout);
 }
@@ -55,6 +54,8 @@ server_monitor::~server_monitor ()
       m_monitoring_thread->join();
       fprintf (stdout, "server_monitor_thread is terminated. \n");
     }
+
+  assert (m_server_entry_list->size () == 0);
   fprintf (stdout, "server_monitor_list is deleted. \n");
   fflush (stdout);
 }
