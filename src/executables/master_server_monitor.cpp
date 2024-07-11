@@ -25,6 +25,8 @@
 
 #include "util_func.h"
 
+std::unique_ptr <server_monitor> master_Server_monitor = nullptr;
+
 server_monitor::server_monitor ()
 {
   m_thread_shutdown = false;

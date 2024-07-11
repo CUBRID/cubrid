@@ -105,10 +105,6 @@ static int css_check_master_socket_exception (fd_set * fd_var);
 static void css_master_loop (void);
 static void css_free_entry (SOCKET_QUEUE_ENTRY * entry_p);
 
-// *INDENT-OFF*
-std::unique_ptr <server_monitor> master_Server_monitor = nullptr;
-// *INDENT-ON*
-
 #if !defined(WINDOWS)
 static void css_daemon_start (void);
 #endif
