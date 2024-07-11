@@ -45,9 +45,9 @@
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "unloaddb.h"
-#include "unload_object_file.h"
 #include "utility.h"
 #include "util_func.h"
+#include "unload_object_file.h"	// ctshim  SUPPORT_MULTIPLE_UNLOADDB only
 
 
 #define MAX_PROCESS_COUNT (36)
@@ -196,7 +196,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       g_time_test_records = utility_get_option_int_value (arg_map, UNLOAD_TIME_TEST_S);
       if (g_time_test_records >= 0 && !verbose_flag)
 	{
-	  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
+	  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_TIME_TEST_L);
 	  fflush (stderr);
 	  g_time_test_records = -1;	// ctshim
 	}

@@ -61,6 +61,14 @@
 #endif
 
 volatile bool error_occurred = false;
+int g_io_buffer_size = 4096;
+int g_fd_handle = INVALID_FILE_NO;
+bool g_is_direct_flush = false;
+UNLD_THR_PARAM *g_thr_param = NULL;
+
+
+extern int g_time_test_records;	// ctshim
+
 
 static void print_set (print_output & output_ctx, DB_SET * set);
 static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
@@ -68,7 +76,7 @@ static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int 
 static int print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len);
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 
-static int write_block_list (int fd, TEXT_BUFFER_BLK * head);
+static int write_block_list (TEXT_BUFFER_BLK * head);
 
 class text_buffer_mgr
 {
@@ -313,7 +321,7 @@ get_text_output_mem (TEXT_OUTPUT * tout)
 
   if (pt->buffer == NULL)
     {
-      pt->buffer = (char *) malloc (tout->io_size + 1);
+      pt->buffer = (char *) malloc (g_io_buffer_size + 1);
       if (pt->buffer == NULL)
 	{
 	  assert (false);
@@ -321,29 +329,34 @@ get_text_output_mem (TEXT_OUTPUT * tout)
 	}
 
       pt->ptr = pt->buffer;
+      pt->iosize = g_io_buffer_size;
       pt->count = 0;
-      pt->iosize = tout->io_size;
     }
 
   return NO_ERROR;
 }
 
-bool
-flushing_write_blk_queue (int fd)
+int
+flushing_write_blk_queue ()
 {
   TEXT_BUFFER_BLK *head;
   TEXT_BUFFER_BLK *tp;
 
   head = c_write_blk_queue.dequeue ();
+  if (head == NULL)
+    {
+      return 0;
+    }
+
   while (head)
     {
-      if (write_block_list (fd, head) != NO_ERROR)
-	return false;
+      if (write_block_list (head) != NO_ERROR)
+	return -1;
 
       head = c_write_blk_queue.dequeue ();
     }
 
-  return true;
+  return 1;
 }
 
 /*
@@ -951,12 +964,14 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
       return NO_ERROR;
     }
 
-  if (tout->fd_ref && *tout->fd_ref != INVALID_FILE_NO)
+  if (g_is_direct_flush && g_fd_handle != INVALID_FILE_NO)
     {
       tout->head_ptr = NULL;
       tout->tail_ptr = NULL;
-      return write_block_list (*tout->fd_ref, head);
+      return write_block_list (head);
     }
+
+  int flag = 0;
 
   if (force || head->next || (((double) head->count / head->iosize) > 0.999))	// ctshim
     {
@@ -966,14 +981,26 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 	    {
 	      break;
 	    }
-//S_WAITING_INFO
+
+	  if (flag == 0)
+	    {
+	      TIMER_BEGIN (&(g_thr_param[tout->ref_thread_param_idx].wi_add_Q));
+	      flag++;
+	    }
+
 	  YIELD_THREAD ();
 	  if (error_occurred)
 	    {
 	      return ER_FAILED;
 	    }
+
+
 	}
       while (true);
+      if (flag)
+	{
+	  TIMER_END (&(g_thr_param[tout->ref_thread_param_idx].wi_add_Q));
+	}
 
       tout->head_ptr = NULL;
       tout->tail_ptr = NULL;
@@ -983,7 +1010,7 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 }
 
 static int
-write_block_list (int fd, TEXT_BUFFER_BLK * head)
+write_block_list (TEXT_BUFFER_BLK * head)
 {
   TEXT_BUFFER_BLK *tp;
   int error = NO_ERROR;
@@ -995,7 +1022,7 @@ write_block_list (int fd, TEXT_BUFFER_BLK * head)
       /* write to disk */
       if (error == NO_ERROR)
 	{
-	  if (tp->count != write (fd, tp->buffer, tp->count))
+	  if (tp->count != write (g_fd_handle, tp->buffer, tp->count))
 	    {
 	      _errno = errno;
 	      // TODDO: EAGAIN, EINTR ?
@@ -1033,6 +1060,18 @@ timespec_accumulate (struct timespec *ts_sum, struct timespec *ts_start)
 
   ts_sum->tv_sec += tdiff.tv_sec;
   ts_sum->tv_nsec += tdiff.tv_nsec;
+  while (ts_sum->tv_nsec >= NANO_PREC_VAL)
+    {
+      ts_sum->tv_sec++;
+      ts_sum->tv_nsec -= NANO_PREC_VAL;
+    }
+}
+
+void
+timespec_addup (struct timespec *ts_sum, struct timespec *ts_add)
+{
+  ts_sum->tv_sec += ts_add->tv_sec;
+  ts_sum->tv_nsec += ts_add->tv_nsec;
   while (ts_sum->tv_nsec >= NANO_PREC_VAL)
     {
       ts_sum->tv_sec++;

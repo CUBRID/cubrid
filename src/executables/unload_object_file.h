@@ -76,6 +76,7 @@ typedef struct _waiting_info
 
 extern void timespec_diff (struct timespec *start, struct timespec *end, struct timespec *diff);
 extern void timespec_accumulate (struct timespec *ts_sum, struct timespec *ts_start);
+extern void timespec_addup (struct timespec *ts_sum, struct timespec *ts_add);
 #endif
 
 typedef struct text_buffer_block TEXT_BUFFER_BLK;
@@ -88,26 +89,40 @@ struct text_buffer_block
   TEXT_BUFFER_BLK *next;
 };
 
-
 typedef struct text_output
 {
-  int io_size;
-  int *fd_ref;
-
+  int ref_thread_param_idx;
   TEXT_BUFFER_BLK *head_ptr;
   TEXT_BUFFER_BLK *tail_ptr;
 } TEXT_OUTPUT;
 
+typedef struct _unloaddb_thread_param
+{
+  int thread_idx;
+  pthread_t tid;
+
+#if !defined(WINDOWS)
+  S_WAITING_INFO wi_get_list;
+  S_WAITING_INFO wi_add_Q;
+
+  S_WAITING_INFO wi_to_obj_str[2];
+#endif
+  TEXT_OUTPUT text_output;
+} UNLD_THR_PARAM;
+
 extern bool init_queue_n_list_for_object_file (int q_size, int blk_size);
 
-extern bool flushing_write_blk_queue (int fd);
+extern int flushing_write_blk_queue ();
 
 extern int desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value);
 extern void desc_value_print (print_output & output_ctx, DB_VALUE * value);
 extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...);
 extern int text_print_request_flush (TEXT_OUTPUT * tout, bool force);
 
-
 extern volatile bool error_occurred;
+extern int g_io_buffer_size;
+extern int g_fd_handle;
+extern bool g_is_direct_flush;
+extern UNLD_THR_PARAM *g_thr_param;
 
 #endif // _LOAD_OBJECT_THREADING_H_
