@@ -44,6 +44,15 @@ endif()
 
 project(CUBRID)
 
+# Append rt to CMAKE_DL_LIBS for Unix-like systems
+if(UNIX)
+  list(APPEND CMAKE_DL_LIBS rt)
+endif()
+
+# Print the value of CMAKE_DL_LIBS for debugging
+message(STATUS "CMAKE_DL_LIBS = ${CMAKE_DL_LIBS}")
+
+
 #TODO: see why the lines below have no effect
 #list(APPEND CMAKE_CXX_SOURCE_FILE_EXTENSIONS "c")
 #list(REMOVE_ITEM CMAKE_C_SOURCE_FILE_EXTENSIONS "c")
