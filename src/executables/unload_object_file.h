@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,7 @@
  */
 
 /*
- * load_object_threading.h: simplified object definitions
+ * unload_object_file.h:
  */
 #ifndef _LOAD_OBJECT_THREADING_H_
 #define _LOAD_OBJECT_THREADING_H_

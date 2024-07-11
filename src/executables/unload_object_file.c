@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,8 +17,7 @@
  */
 
 /*
- * unload_object.c: Utility that emits database object definitions in database
- *               object loader format.
+ * unload_object_file.c: 
  */
 
 #ident "$Id$"
