@@ -45,7 +45,7 @@ server_monitor::server_monitor ()
   fflush (stdout);
 }
 
-// In server_monitor destructor, it should guerentee that
+// In server_monitor destructor, it should guarentee that
 // m_monitoring_thread is terminated before m_monitor_list is deleted.
 server_monitor::~server_monitor ()
 {
