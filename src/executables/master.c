@@ -106,7 +106,7 @@ static void css_master_loop (void);
 static void css_free_entry (SOCKET_QUEUE_ENTRY * entry_p);
 
 // *INDENT-OFF*
-std::unique_ptr < server_monitor > master_server_monitor = nullptr;
+std::unique_ptr <server_monitor> master_Server_monitor = nullptr;
 // *INDENT-ON*
 
 #if !defined(WINDOWS)
@@ -1236,7 +1236,7 @@ main (int argc, char **argv)
   if (HA_DISABLED ())
     {
       // *INDENT-OFF*
-      master_server_monitor.reset(new server_monitor());
+      master_Server_monitor.reset (new server_monitor ());
       // *INDENT-ON*
     }
 

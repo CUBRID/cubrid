@@ -60,40 +60,20 @@ class server_monitor
 	bool m_need_revive;                           // need to revive (true if the server is abnormally terminated)
     };
 
-    using server_entry_uptr_t = std::unique_ptr<server_monitor::server_entry>;
-
-    class server_monitor_list
-    {
-      public:
-	server_monitor_list ();
-	~server_monitor_list () {};
-
-	server_monitor_list (const server_monitor_list &) = delete;
-	server_monitor_list (server_monitor_list &&) = delete;
-
-	server_monitor_list &operator = (const server_monitor_list &) = delete;
-	server_monitor_list &operator = (server_monitor_list &&) = delete;
-
-      private:
-	std::vector <server_entry_uptr_t> server_entry_list;      // list of server entries
-	int m_unacceptable_proc_restart_timediff;                 // unacceptable time difference between process restart
-	int m_max_process_start_confirm;                          // Maximum number of process restart confirmations
-    };
-
     server_monitor ();
     ~server_monitor ();
 
-  private:
     server_monitor (const server_monitor &) = delete;
     server_monitor (server_monitor &&) = delete;
 
     server_monitor &operator = (const server_monitor &) = delete;
     server_monitor &operator = (server_monitor &&) = delete;
 
+  private:
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
-    std::unique_ptr<server_monitor_list> m_monitor_list;                // list of server entries
+    std::unique_ptr<std::vector <server_entry>> m_server_entry_list;    // list of server entries
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
 };
 
-extern std::unique_ptr<server_monitor> master_server_monitor;
+extern std::unique_ptr<server_monitor> master_Server_monitor;
 #endif

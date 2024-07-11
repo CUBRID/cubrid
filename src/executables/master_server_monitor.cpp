@@ -28,7 +28,8 @@
 server_monitor::server_monitor ()
 {
   m_thread_shutdown = false;
-  m_monitor_list = std::make_unique<server_monitor_list>();
+
+  m_server_entry_list = std::make_unique<std::vector<server_entry>> ();
   fprintf (stdout, "server_monitor_list is created. \n");
 
   m_monitoring_thread = std::make_unique<std::thread> ([this]()
@@ -80,10 +81,4 @@ server_monitor::server_entry::proc_make_arg (char *args)
     {
       m_argv.push_back (tok);
     }
-}
-
-server_monitor::server_monitor_list::server_monitor_list()
-{
-  m_unacceptable_proc_restart_timediff = prm_get_integer_value (PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS);
-  m_max_process_start_confirm = prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_START_CONFIRM);
 }
