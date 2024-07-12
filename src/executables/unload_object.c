@@ -407,13 +407,16 @@ static void print_monitoring_info (int nthreads);
  *    est_objects(out): estimated number of object
  */
 static int
-get_estimated_objs (HFID * hfid, int64_t * est_objects)
+get_estimated_objs (HFID * hfid, int64_t * est_objects, bool enhnnced)
 {
   int ignore_npages;
   int nobjs = 0;
   int error = NO_ERROR;
+  int approximation = 1;
 
-  error = heap_get_class_num_objects_pages (hfid, 1, &nobjs, &ignore_npages);
+  approximation = enhnnced ? 1 : 0;
+
+  error = heap_get_class_num_objects_pages (hfid, approximation, &nobjs, &ignore_npages);
   if (error < 0)
     return error;
 
@@ -649,7 +652,8 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
  *    exec_name(in): utility name
  */
 int
-extract_objects (extract_context & ctxt, const char *output_dirname, int nthreads)
+extract_objects (extract_context & ctxt, const char *output_dirname, int nthreads, int sampling_records,
+		 bool enhanced_estimates)
 {
   int i, error;
   HFID *hfid;
@@ -675,6 +679,9 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
   char *class_name = NULL;
   char owner_str[DB_MAX_USER_LENGTH + 4] = { '\0' };
   TEXT_OUTPUT *obj_out = NULL;
+
+  // set sampling mode
+  g_sampling_records = sampling_records;
 
   /* register new signal handlers */
   prev_intr_handler = os_set_signal_handler (SIGINT, extractobjects_term_handler);
@@ -935,7 +942,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 	      hfid = sm_ch_heap ((MOBJ) class_ptr);
 	      if (!HFID_IS_NULL (hfid))
 		{
-		  if (get_estimated_objs (hfid, &est_objects) < 0)
+		  if (get_estimated_objs (hfid, &est_objects, enhanced_estimates) < 0)
 		    {
 		      status = 1;
 		      goto end;
@@ -1256,10 +1263,21 @@ gauge_alarm_handler (int sig)
       int64_t class_objects = class_objects_atomic;
       int64_t total_objects = total_objects_atomic;
 
+      int64_t total_approximate_class_objects_tmp = total_approximate_class_objects;
+      int64_t approximate_class_objects_tmp = approximate_class_objects;
+
+      int64_t v_class_objects = (int64_t) (class_objects * 1.1);
+
+      if (v_class_objects > total_approximate_class_objects)
+	{
+	  total_approximate_class_objects_tmp += (v_class_objects - total_approximate_class_objects);
+	  approximate_class_objects_tmp = v_class_objects;
+	}
+
       fprintf (stdout, MSG_FORMAT "\r", gauge_class_name, class_objects,
-	       (class_objects > 0 && approximate_class_objects >= class_objects)
-	       ? (int) (100 * ((float) class_objects / (float) approximate_class_objects)) : 100,
-	       (int) (100 * ((float) total_objects / (float) total_approximate_class_objects)));
+	       (class_objects > 0 && approximate_class_objects_tmp >= class_objects)
+	       ? (int) (100 * ((float) class_objects / (float) approximate_class_objects_tmp)) : 100,
+	       (int) (100 * ((float) total_objects / (float) total_approximate_class_objects_tmp)));
       fflush (stdout);
     }
   else
@@ -1323,9 +1341,9 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type, bool non_threading)
 		  pthread_mutex_unlock (&g_uci->mtx);
 		}
 
-	      if (g_time_test_records > 0)
+	      if (g_sampling_records > 0)
 		{
-		  if (nfetched >= g_time_test_records)
+		  if (nfetched >= g_sampling_records)
 		    break;
 		}
 	    }
@@ -1815,7 +1833,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   TIMER_BEGIN (&wi_w_blk_getQ);
 
   approximate_class_objects = 0;
-  if (get_estimated_objs (hfid, &approximate_class_objects) < 0)
+  if (get_estimated_objs (hfid, &approximate_class_objects, false) < 0)
     {
       if (!ignore_err_flag)
 	goto exit_on_error;
@@ -1957,7 +1975,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 exit_on_end:
   class_objects = class_objects_atomic;
   total_objects = total_objects_atomic;
-  if (total_objects == total_approximate_class_objects)
+  if (total_objects >= total_approximate_class_objects)
     {
       total = 100;
     }
@@ -2693,7 +2711,7 @@ static void
 print_monitoring_info (int nthreads)
 {
 #if !defined(WINDOWS)
-  if (g_time_test_records < 0)
+  if (g_sampling_records < 0)
     return;
 
   FILE *fp = stdout;
@@ -2707,7 +2725,7 @@ print_monitoring_info (int nthreads)
   if (nthreads <= 0)
     return;
 
-  fprintf (fp, ALIGN_SPACE_FMT "Add L  : %12.6f sec, waiting count= %" PRId64 "\n", "",
+  fprintf (fp, ALIGN_SPACE_FMT "Add L  : %12.6f sec, count= %" PRId64 "\n", "",
 	   g_uci->cparea_lst_ref->m_wi_add_list.ts_wait_sum.tv_sec +
 	   ((double) g_uci->cparea_lst_ref->m_wi_add_list.ts_wait_sum.tv_nsec / NANO_PREC_VAL),
 	   g_uci->cparea_lst_ref->m_wi_add_list.cnt);
@@ -2719,7 +2737,7 @@ print_monitoring_info (int nthreads)
   for (int i = 0; i < nthreads; i++)
     {
 #if 0
-      fprintf (fp, ALIGN_SPACE_FMT "Get L  : %12.6f sec, waiting count= %" PRId64 "\n", "",
+      fprintf (fp, ALIGN_SPACE_FMT "Get L  : %12.6f sec, count= %" PRId64 "\n", "",
 	       g_thr_param[i].wi_get_list.ts_wait_sum.tv_sec +
 	       ((double) g_thr_param[i].wi_get_list.ts_wait_sum.tv_nsec / NANO_PREC_VAL),
 	       g_thr_param[i].wi_get_list.cnt);

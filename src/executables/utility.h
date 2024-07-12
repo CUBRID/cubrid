@@ -1382,8 +1382,10 @@ typedef struct _ha_config
 #define UNLOAD_REQUEST_DATASIZE_L               "use-request-datasize"
 #define UNLOAD_MT_PROCESS_S                     11924
 #define UNLOAD_MT_PROCESS_L                     "process"
-#define UNLOAD_TIME_TEST_S                      11925
-#define UNLOAD_TIME_TEST_L                      "time-test"
+#define UNLOAD_SAMPLING_TEST_S                  11925
+#define UNLOAD_SAMPLING_TEST_L                  "sampling-test"
+#define UNLOAD_ENHANCED_ESTIMATES_S             11926
+#define UNLOAD_ENHANCED_ESTIMATES_L             "enhanced-estimates"
 
 
 

@@ -64,9 +64,9 @@ typedef struct _waiting_info
 } S_WAITING_INFO;
 
 #define TIMER_CLEAR(pwi)   memset((pwi), 0x00, sizeof(S_WAITING_INFO))
-#define TIMER_BEGIN(pwi)   if(g_time_test_records >= 0) clock_gettime (CLOCK_MONOTONIC /* CLOCK_REALTIME */, &((pwi)->ts_beging))
+#define TIMER_BEGIN(pwi)   if(g_sampling_records >= 0) clock_gettime (CLOCK_MONOTONIC /* CLOCK_REALTIME */, &((pwi)->ts_beging))
 #define TIMER_END(pwi)   do {                                                   \
-    if(g_time_test_records >= 0)  {                                             \
+    if(g_sampling_records >= 0)  {                                             \
          timespec_accumulate (&((pwi)->ts_wait_sum), &((pwi)->ts_beging));      \
          (pwi)->cnt++;                                                          \
       }                                                                         \
@@ -120,6 +120,7 @@ extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char con
 extern int text_print_request_flush (TEXT_OUTPUT * tout, bool force);
 
 extern volatile bool error_occurred;
+extern int g_sampling_records;
 extern int g_io_buffer_size;
 extern int g_fd_handle;
 extern bool g_is_direct_flush;

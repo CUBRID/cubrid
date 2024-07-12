@@ -65,9 +65,7 @@ int g_io_buffer_size = 4096;
 int g_fd_handle = INVALID_FILE_NO;
 bool g_is_direct_flush = false;
 UNLD_THR_PARAM *g_thr_param = NULL;
-
-
-extern int g_time_test_records;	// ctshim
+int g_sampling_records = -1;
 
 
 static void print_set (print_output & output_ctx, DB_SET * set);

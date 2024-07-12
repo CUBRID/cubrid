@@ -37,7 +37,6 @@ extern int g_varchar_buffer_size;
 extern int g_split_process_cnt;
 extern int g_selection_key;
 extern int g_request_pages;
-extern int g_time_test_records;
 extern int page_size;
 extern int cached_pages;
 extern int64_t est_size;
@@ -93,7 +92,8 @@ extern int extract_triggers (extract_context & ctxt, print_output & output_ctx);
 extern int extract_triggers_to_file (extract_context & ctxt, const char *output_filename);
 extern int extract_indexes_to_file (extract_context & ctxt, const char *output_filename);
 
-extern int extract_objects (extract_context & ctxt, const char *output_dirname, int nthreads);
+extern int extract_objects (extract_context & ctxt, const char *output_dirname, int nthreads, int sampling_records,
+			    bool enhanced_estimates);
 
 extern int create_filename_schema (const char *output_dirname, const char *output_prefix,
 				   char *output_filename_p, const size_t filename_size);

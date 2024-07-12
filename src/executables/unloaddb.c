@@ -74,7 +74,6 @@ int g_request_pages = DFLT_REQ_DATASIZE;
 int g_thread_count = 0;
 int g_split_process_cnt = -1;
 int g_selection_key = -1;
-int g_time_test_records = -1;
 
 int page_size = 4096;
 int cached_pages = 100;
@@ -132,6 +131,9 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   extract_context unload_context;
 
   bool is_main_process = true;	// ctshim
+  bool enhanced_estimates = false;
+  int thread_count = 0;
+  int sampling_records = -1;
 
   db_set_use_utility_thread (true);
 
@@ -190,19 +192,21 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       g_request_pages = MAX_REQ_DATASIZE;
     }
 
+  enhanced_estimates = utility_get_option_bool_value (arg_map, UNLOAD_ENHANCED_ESTIMATES_S);
+
 #if defined (SUPPORT_MULTIPLE_UNLOADDB)
   if (!do_schema)
     {
-      g_time_test_records = utility_get_option_int_value (arg_map, UNLOAD_TIME_TEST_S);
-      if (g_time_test_records >= 0 && !verbose_flag)
+      // sampling
+      sampling_records = utility_get_option_int_value (arg_map, UNLOAD_SAMPLING_TEST_S);
+      if (sampling_records >= 0 && !verbose_flag)
 	{
-	  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_TIME_TEST_L);
+	  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_SAMPLING_TEST_L);
 	  fflush (stderr);
-	  g_time_test_records = -1;	// ctshim
+	  sampling_records = -1;	// ctshim
 	}
-      g_thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
-      g_thread_count =
-	(g_thread_count < 0) ? 0 : ((g_thread_count > MAX_THREAD_COUNT) ? MAX_THREAD_COUNT : g_thread_count);
+      thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
+      thread_count = (thread_count < 0) ? 0 : ((thread_count > MAX_THREAD_COUNT) ? MAX_THREAD_COUNT : thread_count);
 
       if (datafile_per_class)
 	{
@@ -465,17 +469,17 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
       struct timeval startTime, endTime;
       double diffTime;
-      if (g_time_test_records >= 0)
+      if (sampling_records >= 0)
 	{
 	  gettimeofday (&startTime, NULL);
 	}
 
-      if (extract_objects (unload_context, output_dirname, g_thread_count))
+      if (extract_objects (unload_context, output_dirname, thread_count, sampling_records, enhanced_estimates))
 	{
 	  status = 1;
 	}
 
-      if (g_time_test_records >= 0)
+      if (sampling_records >= 0)
 	{
 	  gettimeofday (&endTime, NULL);
 	  int elapsed_sec = 0, elapsed_usec = 0;
