@@ -1379,8 +1379,8 @@ typedef struct _ha_config
 #define UNLOAD_THREAD_COUNT_L                   "thread-count"
 #define UNLOAD_STRING_BUFFER_SIZE_S             'b'
 #define UNLOAD_STRING_BUFFER_SIZE_L             "use-string-buffer"
-#define UNLOAD_REQUEST_DATASIZE_S               11923
-#define UNLOAD_REQUEST_DATASIZE_L               "use-request-datasize"
+#define UNLOAD_REQUEST_PAGES_S                  11923
+#define UNLOAD_REQUEST_PAGES_L                  "use-request-pages"
 #define UNLOAD_MT_PROCESS_S                     11924
 #define UNLOAD_MT_PROCESS_L                     "process"
 #define UNLOAD_SAMPLING_TEST_S                  11925

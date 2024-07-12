@@ -434,7 +434,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   if (req_error == NO_ERROR)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
-      ptr += OR_INT_SIZE;	//  or_unpack_int (ptr, &client_endian); // ignore  ctshim
+      ptr += OR_INT_SIZE;	//  or_unpack_int (ptr, &client_endian);
       ptr = or_unpack_lock (ptr, lock);
       ptr = or_unpack_int (ptr, nobjects);
       ptr = or_unpack_int (ptr, nfetched);

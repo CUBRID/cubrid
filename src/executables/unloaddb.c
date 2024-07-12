@@ -47,7 +47,8 @@
 #include "unloaddb.h"
 #include "utility.h"
 #include "util_func.h"
-#include "unload_object_file.h"	// ctshim  SUPPORT_MULTIPLE_UNLOADDB only
+
+#include "unload_object_file.h"	// MULTI_PROCESSING_UNLOADDB_WITH_FORK only, will be deleted
 
 
 #define MAX_PROCESS_COUNT (36)
@@ -66,7 +67,7 @@ FILE *output_file = NULL;
 #define DFLT_VARCHAR_BUFFER_SIZE (1)	// 1K
 #define MAX_VARCHAR_BUFFER_SIZE  (1024)	// 1M
 #define DFLT_REQ_DATASIZE        (1)	// 1 page size
-#define MAX_REQ_DATASIZE         (1024)	//
+#define MAX_REQ_DATA_PAGES       (1024)	//
 #define MAX_THREAD_COUNT         (127)
 
 int g_varchar_buffer_size = DFLT_VARCHAR_BUFFER_SIZE;
@@ -130,7 +131,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   EMIT_STORAGE_ORDER order;
   extract_context unload_context;
 
-  bool is_main_process = true;	// ctshim
+  bool is_main_process = true;
   bool enhanced_estimates = false;
   int thread_count = 0;
   int sampling_records = -1;
@@ -182,29 +183,28 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     }
   g_varchar_buffer_size *= 1024;	// to KB  
 
-  g_request_pages = utility_get_option_int_value (arg_map, UNLOAD_REQUEST_DATASIZE_S);
+  g_request_pages = utility_get_option_int_value (arg_map, UNLOAD_REQUEST_PAGES_S);
   if (g_request_pages < 0)
     {
       g_request_pages = 0;
     }
-  else if (g_request_pages > MAX_REQ_DATASIZE)
+  else if (g_request_pages > MAX_REQ_DATA_PAGES)
     {
-      g_request_pages = MAX_REQ_DATASIZE;
+      g_request_pages = MAX_REQ_DATA_PAGES;
     }
 
   enhanced_estimates = utility_get_option_bool_value (arg_map, UNLOAD_ENHANCED_ESTIMATES_S);
 
-#if defined (SUPPORT_MULTIPLE_UNLOADDB)
   if (!do_schema)
     {
-      // sampling
       sampling_records = utility_get_option_int_value (arg_map, UNLOAD_SAMPLING_TEST_S);
       if (sampling_records >= 0 && !verbose_flag)
 	{
 	  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_SAMPLING_TEST_L);
 	  fflush (stderr);
-	  sampling_records = -1;	// ctshim
+	  sampling_records = -1;
 	}
+
       thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
       thread_count = (thread_count < 0) ? 0 : ((thread_count > MAX_THREAD_COUNT) ? MAX_THREAD_COUNT : thread_count);
 
@@ -231,7 +231,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	    }
 	}
     }
-#endif
 
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
@@ -275,7 +274,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   sysprm_set_force (prm_get_name (PRM_ID_PRINT_INDEX_DETAIL),
 		    utility_get_option_bool_value (arg_map, UNLOAD_SKIP_INDEX_DETAIL_S) ? "no" : "yes");
 
-#if defined(SUPPORT_MULTIPLE_UNLOADDB) && defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
+#if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
   if (g_split_process_cnt > 1)
     {
       error = do_multi_processing (g_split_process_cnt, &is_main_process);
@@ -532,7 +531,7 @@ end:
 }
 
 
-#if defined(SUPPORT_MULTIPLE_UNLOADDB) && defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
+#if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
 typedef struct
 {
   pid_t child_pid;
@@ -559,8 +558,8 @@ do_kill_multi_processing (CHILD_PROC * proc, int count)
     {
       if (proc[pno].is_running)
 	{
-	  fprintf (stdout, "kill to pid=%d\n", proc[pno].child_pid);
-	  fflush (stdout);
+	  fprintf (stderr, "kill to pid=%d\n", proc[pno].child_pid);
+	  fflush (stderr);
 	  kill (proc[pno].child_pid, SIGTERM);
 	}
     }
@@ -585,7 +584,7 @@ do_multi_processing (int processes, bool * is_main_process)
       pid = fork ();
       if (pid < 0)
 	{
-	  exit_status = ER_FAILED;	// ctshim
+	  exit_status = ER_FAILED;
 	  goto ret_pos;
 	}
       else if (pid == 0)
@@ -605,7 +604,7 @@ do_multi_processing (int processes, bool * is_main_process)
       int status, runnign_cnt;
       pid_t wpid;
 
-      fprintf (stdout, "P) pid=%ld \n", getpid ());
+      fprintf (stderr, "P) pid=%ld \n", getpid ());
 
       runnign_cnt = processes;
       do
@@ -621,7 +620,7 @@ do_multi_processing (int processes, bool * is_main_process)
 	    {
 	      if (errno == ECHILD)
 		{
-		  fprintf (stdout, "ECHILD !!!  \n");
+		  fprintf (stderr, "ECHILD !!!  \n");
 		  goto ret_pos;
 		}		//
 
@@ -636,8 +635,8 @@ do_multi_processing (int processes, bool * is_main_process)
 
 	  if (WIFEXITED (status))
 	    {
-	      fprintf (stdout, "exited, status=%d [%d]\n", WEXITSTATUS (status), wpid);
-	      fflush (stdout);
+	      fprintf (stderr, "exited, status=%d [%d]\n", WEXITSTATUS (status), wpid);
+	      fflush (stderr);
 	      SET_PROC_TERMINATE (zchild_proc, processes, wpid, runnign_cnt);
 	      if (WEXITSTATUS (status) != 0)
 		{
@@ -650,8 +649,8 @@ do_multi_processing (int processes, bool * is_main_process)
 	    }
 	  else if (WIFSIGNALED (status))
 	    {
-	      fprintf (stdout, "killed by signal %d [%d]\n", WTERMSIG (status), wpid);
-	      fflush (stdout);
+	      fprintf (stderr, "killed by signal %d [%d]\n", WTERMSIG (status), wpid);
+	      fflush (stderr);
 
 #ifdef WCOREDUMP
 	      if (WCOREDUMP (status))
@@ -661,8 +660,8 @@ do_multi_processing (int processes, bool * is_main_process)
 	      switch (WTERMSIG (status))
 		{
 		case SIGCHLD:
-		  fprintf (stdout, "killed by signal SIGCHLD %d [%d]\n", WTERMSIG (status), wpid);
-		  fflush (stdout);
+		  fprintf (stderr, "killed by signal SIGCHLD %d [%d]\n", WTERMSIG (status), wpid);
+		  fflush (stderr);
 
 		  break;
 		  // core dump
@@ -680,8 +679,8 @@ do_multi_processing (int processes, bool * is_main_process)
 		case SIGTERM:
 		case SIGKILL:
 
-		  fprintf (stdout, "killed by signal %d [%d]\n", WTERMSIG (status), wpid);
-		  fflush (stdout);
+		  fprintf (stderr, "killed by signal %d [%d]\n", WTERMSIG (status), wpid);
+		  fflush (stderr);
 		  SET_PROC_TERMINATE (zchild_proc, processes, wpid, runnign_cnt);
 		  if (do_kill == false)
 		    {
@@ -705,11 +704,11 @@ ret_pos:
     exit_status = ER_FAILED;
 
   if (exit_status != NO_ERROR)
-    fprintf (stdout, "Quit Parent FAIL pid=%d ***\n", getpid ());
+    fprintf (stderr, "Quit Parent FAIL pid=%d ***\n", getpid ());
   else
-    fprintf (stdout, "Quit Parent SUCCESS pid=%d ***\n", getpid ());
+    fprintf (stderr, "Quit Parent SUCCESS pid=%d ***\n", getpid ());
 
-  fflush (stdout);
+  fflush (stderr);
   sleep (1);
 
   return exit_status;

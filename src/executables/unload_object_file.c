@@ -49,7 +49,7 @@
 #include "schema_manager.h"
 #include "server_interface.h"
 #include "load_object.h"
-#include "unload_object_file.h"	// ctshim
+#include "unload_object_file.h"
 #include "db_value_printer.hpp"
 #include "network_interface_cl.h"
 #include "printer.hpp"
@@ -74,7 +74,7 @@ static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int 
 static int print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len);
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 
-static int write_block_list (TEXT_BUFFER_BLK * head);
+static int write_object_file (TEXT_BUFFER_BLK * head);
 
 class text_buffer_mgr
 {
@@ -121,8 +121,6 @@ public:
 
   bool init_text_buffer_mgr (int count)
   {
-    TEXT_BUFFER_BLK *tp;
-
     pthread_mutex_lock (&m_cs_lock);
     assert (m_free_list == NULL);
     m_max_cnt_free_list = count;
@@ -338,7 +336,6 @@ int
 flushing_write_blk_queue ()
 {
   TEXT_BUFFER_BLK *head;
-  TEXT_BUFFER_BLK *tp;
 
   head = c_write_blk_queue.dequeue ();
   if (head == NULL)
@@ -348,7 +345,7 @@ flushing_write_blk_queue ()
 
   while (head)
     {
-      if (write_block_list (head) != NO_ERROR)
+      if (write_object_file (head) != NO_ERROR)
 	return -1;
 
       head = c_write_blk_queue.dequeue ();
@@ -971,12 +968,12 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
     {
       tout->head_ptr = NULL;
       tout->tail_ptr = NULL;
-      return write_block_list (head);
+      return write_object_file (head);
     }
 
   int flag = 0;
 
-  if (force || head->next || (((double) head->count / head->iosize) > 0.999))	// ctshim
+  if (force || head->next || (((double) head->count / head->iosize) > 0.999))	// TODO: ctshim
     {
       do
 	{
@@ -1013,7 +1010,7 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 }
 
 static int
-write_block_list (TEXT_BUFFER_BLK * head)
+write_object_file (TEXT_BUFFER_BLK * head)
 {
   TEXT_BUFFER_BLK *tp;
   int error = NO_ERROR;
@@ -1027,7 +1024,11 @@ write_block_list (TEXT_BUFFER_BLK * head)
 	{
 	  if (tp->count != write (g_fd_handle, tp->buffer, tp->count))
 	    {
+#if defined(WINDOWS)
+	      _errno = _doserrno;
+#else
 	      _errno = errno;
+#endif
 	      // TODDO: EAGAIN, EINTR ?
 	      assert (_errno == EINTR || _errno == EBADF);
 	      error = ER_IO_WRITE;

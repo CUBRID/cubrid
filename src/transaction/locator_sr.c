@@ -2875,9 +2875,10 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
 
   /* Assume that the next object can fit in one page */
   copyarea_length = DB_PAGESIZE;
+
   if (request_pages > 1)
     {
-      copyarea_length *= request_pages;	// ctshim
+      copyarea_length *= request_pages;	/* reset multiple pages size */
     }
 
   while (true)

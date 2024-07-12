@@ -23,8 +23,7 @@
 #define _LOAD_OBJECT_THREADING_H_
 
 #if !defined(WINDOWS) && defined(CS_MODE)
-#define SUPPORT_MULTIPLE_UNLOADDB
-//#  define MULTI_PROCESSING_UNLOADDB_WITH_FORK // TODO: ctshim  
+#define SUPPORT_MULTIPLE_UNLOADDB	// MULTI_PROCESSING_UNLOADDB_WITH_FORK // TODO: ctshim
 #endif
 
 class print_output;

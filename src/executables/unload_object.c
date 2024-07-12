@@ -34,15 +34,13 @@
 
 #include <sys/stat.h>
 #if defined(WINDOWS)
+#include <io.h>
 #include <sys/timeb.h>
 #include <time.h>
 #include <direct.h>
 #define	SIGALRM	14
 #endif /* WINDOWS */
 
-#if defined (WINDOWS)
-//#include <io.h>
-#endif
 #include <thread>
 
 #include "authenticate.h"
@@ -937,7 +935,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 	      num_unload_classes++;
 	    }
 
-	  if (IS_CLASS_REQUESTED (i))	// ctshim bug-fix
+	  if (IS_CLASS_REQUESTED (i))
 	    {
 	      hfid = sm_ch_heap ((MOBJ) class_ptr);
 	      if (!HFID_IS_NULL (hfid))
@@ -1520,7 +1518,7 @@ unload_thread_proc (void *param)
       error_occurred = true;
     }
 
-  pthread_exit ((void *) thr_ret);
+  pthread_exit ((THREAD_RET_T) thr_ret);
   return (THREAD_RET_T) thr_ret;
 }
 
@@ -1544,10 +1542,12 @@ writer_thread_proc (void *param)
       usleep (100);
       TIMER_END (&wi_w_blk_getQ);
 
+#if !defined(WINDOWS)
       if (ret == 0)
 	{
 	  wi_w_blk_getQ.cnt--;
 	}
+#endif
     }
 
   if (thr_ret == NO_ERROR)
@@ -1564,7 +1564,7 @@ writer_thread_proc (void *param)
       error_occurred = true;
     }
 
-  pthread_exit ((void *) thr_ret);
+  pthread_exit ((THREAD_RET_T) thr_ret);
   return (THREAD_RET_T) thr_ret;
 }
 
@@ -2694,8 +2694,8 @@ init_thread_param (const char *output_dirname, int nthreads)
       write_block_q_size = thr_max * 2;
     }
 
-  max_lc_copyarea_list = (thr_max * 4);	// TODO: ctshim 결정 필요     
-  return init_queue_n_list_for_object_file (write_block_q_size, buffer_block_list_sz);	// TODO: ctshim 결정 필요
+  max_lc_copyarea_list = (thr_max * 4);	// TODO: ctshim
+  return init_queue_n_list_for_object_file (write_block_q_size, buffer_block_list_sz);	// TODO: ctshim 
 }
 
 static void

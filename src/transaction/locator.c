@@ -743,8 +743,6 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *conten
     }
   else
     {
-      // ctshim
-      // 검증을 하자!!! 정밀하게
       obj = &mobjs->objs;
       obj -= mobjs->num_objs;
 
