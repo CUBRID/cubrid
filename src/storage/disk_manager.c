@@ -905,7 +905,11 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
       log_skip_logging (thread_p, &addr);
     }
 
-  /* Modify volume creation information */
+  /*
+   * 1. The values of vhdr->db_creation and new_dbcreation differ only when a new database volume is being created. (ex: copydb)
+   * 2. The value of new_chkptlsa differs from vhdr->chkpt_lsa only when a new database is created
+   *    or when the active log header's chkpt_lsa value is changed due to a call to the log_final() function.
+   */
   if (vhdr->db_creation != *new_dbcreation)
     {
       memcpy (&vhdr->db_creation, new_dbcreation, sizeof (*new_dbcreation));
