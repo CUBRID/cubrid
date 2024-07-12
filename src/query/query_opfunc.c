@@ -6260,6 +6260,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
       if (type_p)
 	{
 	  val_size = type_p->get_disk_size_of_value (dbval_p);
+#if 0
 	  if (type_p->is_size_computed ())
 	    {
 	      if (pr_is_string_type (dbval_type))
@@ -6293,6 +6294,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 		    }
 		}
 	    }
+#endif
 
 	  align = DB_ALIGN (val_size, MAX_ALIGNMENT);	/* to align for the next field */
 	  tuple_value_size = QFILE_TUPLE_VALUE_HEADER_SIZE + align;
