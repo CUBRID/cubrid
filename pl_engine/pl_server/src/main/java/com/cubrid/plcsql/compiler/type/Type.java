@@ -83,24 +83,25 @@ public class Type {
     // types used only by the typechecker
     public static final int IDX_CURSOR = 1;
     public static final int IDX_NULL = 2;
+    public static final int IDX_RECORD = 3;
     // types used by users and SpLib
-    public static final int IDX_OBJECT = 3;
-    public static final int IDX_BOOLEAN = 4;
-    public static final int IDX_STRING = 5;
-    public static final int IDX_SHORT = 6;
-    public static final int IDX_INT = 7;
-    public static final int IDX_BIGINT = 8;
-    public static final int IDX_NUMERIC = 9;
-    public static final int IDX_FLOAT = 10;
-    public static final int IDX_DOUBLE = 11;
-    public static final int IDX_DATE = 12;
-    public static final int IDX_TIME = 13;
-    public static final int IDX_DATETIME = 14;
-    public static final int IDX_TIMESTAMP = 15;
-    public static final int IDX_SYS_REFCURSOR = 16;
+    public static final int IDX_OBJECT = 4;
+    public static final int IDX_BOOLEAN = 5;
+    public static final int IDX_STRING = 6;
+    public static final int IDX_SHORT = 7;
+    public static final int IDX_INT = 8;
+    public static final int IDX_BIGINT = 9;
+    public static final int IDX_NUMERIC = 10;
+    public static final int IDX_FLOAT = 11;
+    public static final int IDX_DOUBLE = 12;
+    public static final int IDX_DATE = 13;
+    public static final int IDX_TIME = 14;
+    public static final int IDX_DATETIME = 15;
+    public static final int IDX_TIMESTAMP = 16;
+    public static final int IDX_SYS_REFCURSOR = 17;
+    public static final int BOUND_OF_IDX = 18;
 
     public static final int FIRST_IDX = IDX_CURSOR;
-    public static final int BOUND_OF_IDX = IDX_SYS_REFCURSOR + 1;
 
     // the following two are not actual Java types but only for internal type checking
     public static Type CURSOR = new Type(IDX_CURSOR, "Cursor", "Cursor", null);
@@ -192,7 +193,6 @@ public class Type {
 
         // normal types
         String[] split = fullJavaType.split("\\.");
-        assert split.length > 2;
         return split[split.length - 1];
     }
 

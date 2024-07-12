@@ -38,6 +38,8 @@ import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
+import com.cubrid.plcsql.compiler.error.SemanticError;
+import com.cubrid.plcsql.compiler.error.SyntaxError;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
@@ -215,7 +217,7 @@ public class PlcsqlCompilerMain {
                 if (ss.errCode == 0) {
                     staticSqls.put(ctx, ss);
                 } else {
-                    throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s410
+                    throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s435
                 }
             }
         }

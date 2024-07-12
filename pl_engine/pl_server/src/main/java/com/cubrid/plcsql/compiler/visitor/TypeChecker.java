@@ -36,7 +36,6 @@ import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.DBTypeAdapter;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
-import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
@@ -44,6 +43,7 @@ import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
+import com.cubrid.plcsql.compiler.error.SemanticError;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -269,7 +269,6 @@ public class TypeChecker extends AstVisitor<Type> {
         Type leftType = visit(node.left);
         Type rightType = visit(node.right);
 
-        // in the following line, s210 (no match)
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc binOp =
                 symbolStack.getOperator(outCoercions, "op" + node.opStr, leftType, rightType);
@@ -624,7 +623,7 @@ public class TypeChecker extends AstVisitor<Type> {
             return ret;
         } else {
             throw new SemanticError(
-                    Misc.getLineColumnOf(node.ctx), // s230
+                    Misc.getLineColumnOf(node.ctx), // s235
                     "function "
                             + node.name
                             + " is undefined or given wrong number or types of arguments");
@@ -1225,7 +1224,7 @@ public class TypeChecker extends AstVisitor<Type> {
             String typicalValueStr = argType.typicalValueStr;
             if (typicalValueStr == null) {
                 throw new SemanticError(
-                        Misc.getLineColumnOf(arg.ctx), // s229
+                        Misc.getLineColumnOf(arg.ctx), // s234
                         String.format(
                                 "argument %d to the built-in function %s has an invalid type",
                                 i + 1, funcName));
@@ -1260,7 +1259,7 @@ public class TypeChecker extends AstVisitor<Type> {
             } else {
                 if (declParam instanceof DeclParamOut && c.getReversion() == null) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(arg.ctx), // s232
+                            Misc.getLineColumnOf(arg.ctx), // s236
                             String.format(
                                     "OUT/INOUT parameter %d has a type %s which is incompatible with the argument type %s",
                                     i + 1, paramType.plcName, argType.plcName));

@@ -34,9 +34,11 @@ import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.type.Type;
+import com.cubrid.plcsql.compiler.type.TypeRecord;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -66,6 +68,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeToResolve ctr = visitUnit(unit);
         ctr.resolve(0, codeLines, codeRangeMarkers);
+
+        for (TypeRecord rec: TypeRecord.instances.values()) {
+            codeLines.add("  private static class " + rec.javaCode + " { }");   // temporarily a empty class
+        }
+        TypeRecord.instances = new HashMap<>(); // clear the old accumulation
 
         codeLines.add(
                 "  private static List<CodeRangeMarker> codeRangeMarkerList = buildCodeRangeMarkerList(\""
@@ -185,6 +192,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             } else if (javaType.startsWith("Null")) {
                 // NULL type is not a java type but an internal type for convenience in
                 // typechecking.
+            } else if (javaType.startsWith("$Record_of_")) {
+                // no need to import record types: they are defined in the generated Java code
             } else {
                 importsArray[i] = "import " + javaType + ";";
                 i++;

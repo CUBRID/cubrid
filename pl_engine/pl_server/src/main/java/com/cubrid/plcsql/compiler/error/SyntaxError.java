@@ -28,50 +28,16 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.error;
 
-import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
-import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseListener;
-import java.util.LinkedHashMap;
-import org.antlr.v4.runtime.ParserRuleContext;
-import org.antlr.v4.runtime.tree.TerminalNode;
+public class SyntaxError extends RuntimeException {
 
-public class StaticSqlCollector extends PlcParserBaseListener {
+    public final int line;
+    public final int column;
 
-    public LinkedHashMap<ParserRuleContext, String> staticSqlTexts = new LinkedHashMap<>();
-
-    @Override
-    public void visitTerminal(TerminalNode node) {
-
-        if (collecting) {
-            sbuf.append(node.getSymbol().getText());
-        }
-    }
-
-    @Override
-    public void enterStatic_sql(PlcParser.Static_sqlContext ctx) {
-        startCollect();
-    }
-
-    @Override
-    public void exitStatic_sql(PlcParser.Static_sqlContext ctx) {
-        stopCollect(ctx);
-    }
-
-    // -----------------------------------------------
-    // Private
-    // -----------------------------------------------
-
-    private boolean collecting;
-    private StringBuffer sbuf;
-
-    private void startCollect() {
-        sbuf = new StringBuffer();
-        collecting = true;
-    }
-
-    private void stopCollect(ParserRuleContext ctx) {
-        collecting = false;
-        staticSqlTexts.put(ctx, sbuf.toString());
+    public SyntaxError(int line, int column, String msg) {
+        super(msg);
+        this.line = line;
+        this.column = column;
     }
 }

@@ -39,6 +39,9 @@ import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
+import com.cubrid.plcsql.compiler.error.SemanticError;
+import com.cubrid.plcsql.compiler.error.UndeclaredId;
+import com.cubrid.plcsql.compiler.error.SyntaxError;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
@@ -279,7 +282,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public TypeSpec visitPercent_type_spec(Percent_type_specContext ctx) {
+    public TypeSpec visitPercent_type(Percent_typeContext ctx) {
 
         if (ctx.table_name() == null) {
             // case <variable>%TYPE
@@ -306,6 +309,58 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             semanticQuestions.put(ret, new ServerAPI.ColumnType(table, column));
             return ret;
         }
+    }
+
+    @Override
+    public TypeSpec visitPercent_rowtype(Percent_rowtypeContext ctx) {
+
+        List<Misc.Pair<String, Type>> selectList = null;
+        boolean ofTable = true;
+
+        String row = Misc.getNormalizedText(ctx.row_name());
+        if (row.indexOf(".") < 0) {
+            // 'row' can actually be a cursor name
+            // If it actually is, and is also a table name, then it is considered to be a cursor.
+            // That is, a cursor definition overrides a table definition.
+            ExprId id;
+            try {
+                id = visitNonFuncIdentifier(ctx.row_name().name);
+                if (id.decl instanceof DeclCursor) {
+                    ofTable = false;    // of a cursor
+                    selectList = ((DeclCursor) id.decl).staticSql.selectList;
+                } else {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx),  // s076
+                            "%ROWTYPE cannot be applied to a non-cursor variable " + row);
+                }
+            } catch (UndeclaredId e) {
+                // OK: 'row' is not a local variable
+            }
+        } else {
+            row = row.replaceAll(" ", "");  // it can have spaces
+        }
+
+        if (selectList == null) {
+            // row can be a table name
+            List<SqlSemantics> answer = ServerAPI.getSqlSemantics(Arrays.asList("select * from " + row));
+            if (answer == null) {
+                throw new RuntimeException("internal error: failed to get the semantics of " + row);
+            }
+            assert answer.size() == 1;
+
+            SqlSemantics sws = answer.get(0);
+            if (sws.errCode != 0) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx),  // s077
+                        row + " is neither a table nor a cursor");
+            }
+
+            StaticSql staticSql = checkAndConvertStaticSql(sws, ctx);
+            selectList = staticSql.selectList;
+            assert selectList != null;
+        }
+
+        return new TypeSpec(ctx, TypeRecord.getInstance(ofTable, row, selectList));
     }
 
     @Override
@@ -2252,7 +2307,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         if (ret == null && throwIfNotFound) {
-            throw new SemanticError(Misc.getLineColumnOf(ctx), "undeclared id " + name);
+            throw new UndeclaredId(Misc.getLineColumnOf(ctx), "undeclared id " + name);
         } else {
             return ret;
         }

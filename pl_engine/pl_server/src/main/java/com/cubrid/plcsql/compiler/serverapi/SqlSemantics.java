@@ -59,8 +59,6 @@ public class SqlSemantics {
     public List<ColumnInfo> selectList; // (only for select statements) columns and their SQL types
     public List<String> intoVars; // (only for select stetements with an into-clause) into variables
 
-    public List<ColumnInfo> columnInfos;
-
     public SqlSemantics(
             int seqNo,
             int kind,

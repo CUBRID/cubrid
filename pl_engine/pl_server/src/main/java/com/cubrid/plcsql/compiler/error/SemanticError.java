@@ -28,7 +28,7 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.error;
 
 public class SemanticError extends RuntimeException {
 

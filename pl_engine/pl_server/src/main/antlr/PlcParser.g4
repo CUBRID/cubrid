@@ -473,6 +473,11 @@ table_name
     : (identifier '.')? identifier
     ;
 
+/* row name: table name or cursor name to which %ROWTYPE can be applied */
+row_name
+    : (user=identifier '.')? name=identifier
+    ;
+
 column_name
     : identifier
     ;
@@ -486,8 +491,9 @@ argument
     ;
 
 type_spec
-    : native_datatype                               # native_type_spec
-    | (table_name '.')? identifier PERCENT_TYPE     # percent_type_spec
+    : native_datatype
+    | percent_type
+    | percent_rowtype
     ;
 
 native_datatype
@@ -495,6 +501,14 @@ native_datatype
     | char_type
     | varchar_type
     | simple_type
+    ;
+
+percent_type
+    : (table_name '.')? identifier PERCENT_TYPE
+    ;
+
+percent_rowtype
+    : row_name PERCENT_ROWTYPE
     ;
 
 numeric_type

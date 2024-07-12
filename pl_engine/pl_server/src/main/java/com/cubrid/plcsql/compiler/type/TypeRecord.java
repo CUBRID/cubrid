@@ -28,16 +28,52 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.type;
 
-public class SyntaxError extends RuntimeException {
+import com.cubrid.plcsql.compiler.Misc;
+import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
-    public final int line;
-    public final int column;
+public class TypeRecord extends Type {
 
-    public SyntaxError(int line, int column, String msg) {
-        super(msg);
-        this.line = line;
-        this.column = column;
+    public static Map<List<Misc.Pair<String, Type>>, TypeRecord> instances = new HashMap<>();
+
+    public final List<Misc.Pair<String, Type>> selectList;
+
+    public static synchronized TypeRecord getInstance(boolean ofTable, String rowName,
+            List<Misc.Pair<String, Type>> selectList) {
+
+        TypeRecord ret = instances.get(selectList);
+        if (ret == null) {
+            ret = new TypeRecord(ofTable, rowName, selectList);
+            instances.put(selectList, ret);
+        }
+
+        return ret;
+    }
+
+    @Override
+    public String toString() {
+        return plcName + selectList.toString();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Private
+    // ---------------------------------------------------------------------------
+
+    // keys are select lists.
+
+    private static String getPlcName(String rowName) {
+        return String.format("%s%%ROWTYPE", rowName);
+    }
+
+    private static String getJavaName(boolean ofTable, String rowName) {
+        return String.format("$Record_of_%s_%s", (ofTable ? "Table" : "Cursor"), rowName.replace('.', '_'));
+    }
+
+    private TypeRecord(boolean ofTable, String rowName, List<Misc.Pair<String, Type>> selectList) {
+        super(IDX_RECORD, getPlcName(rowName), getJavaName(ofTable, rowName), null);
+        this.selectList = selectList;
     }
 }
