@@ -73,6 +73,7 @@
 #include "message_catalog.h"
 #include "dbi.h"
 #include "util_func.h"
+#include "master_server_monitor.hpp"
 
 static void css_master_error (const char *error_string);
 static int css_master_timeout (void);
@@ -1222,6 +1223,18 @@ main (int argc, char **argv)
 	}
     }
 #endif
+
+  // TODO : When no non-HA server exists in HA environment, server_monitor should not be initialized.
+  //        In this issue, server_monitor is initialized only when HA is disabled. Once all sub-tasks of
+  //        CBRD-24741 are done, this condition will be removed. And server_monitor will be initialized wh
+  //        en first non-HA server is started in HA environment. (server_monitor will be finalized when last
+  //        non-HA server is stopped in HA environment.)
+  if (HA_DISABLED ())
+    {
+      // *INDENT-OFF*
+      master_Server_monitor.reset (new server_monitor ());
+      // *INDENT-ON*
+    }
 
   conn = css_make_conn (css_Master_socket_fd[0]);
   css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0], READ_WRITE, 0,
