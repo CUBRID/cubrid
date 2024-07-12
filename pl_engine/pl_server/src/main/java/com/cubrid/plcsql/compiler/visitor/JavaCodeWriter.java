@@ -893,6 +893,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         (node.mode == ExprSerialVal.SerialVal.CURR_VAL)
                                 ? "CURRENT_VALUE"
                                 : "NEXT_VALUE");
+        javaTypesUsed.add("java.math.BigDecimal");
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -954,8 +955,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public CodeToResolve visitExprTimestamp(ExprTimestamp node) {
 
         CodeTemplate tmpl =
-                new CodeTemplate(
-                        "ExprTimestamp", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
+                new CodeTemplate("ExprTimestamp", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
