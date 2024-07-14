@@ -31,12 +31,16 @@
 #include <io.h>
 #endif
 
+#define	CUBRID_TMP_ENV	"CUBRID_TMP"
+
 namespace
 {
   std::string unique_tmp_filename (const char *prefix="cub_") //generates an unique filename in tmp folder
   {
 #ifdef LINUX
-    std::string filename = std::filesystem::temp_directory_path ();
+    const char *cubrid_tmp = std::getenv (CUBRID_TMP_ENV);
+    std::string filename = cubrid_tmp != nullptr ? cubrid_tmp : std::filesystem::temp_directory_path ();
+
     filename += "/";
     filename += prefix;
     filename += "XXXXXX"; //used with mkstemp()
@@ -47,6 +51,7 @@ namespace
     auto pos = filename.rfind ('\\');
     filename.insert (pos+1, prefix);
 #endif
+
     return filename;
   }
 }
