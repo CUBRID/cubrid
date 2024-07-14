@@ -89,6 +89,8 @@
 #include "crypt_opfunc.h"
 #include "flashback.h"
 #include "method_compile.hpp"
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1988,7 +1990,6 @@ slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 void
 slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -2005,7 +2006,7 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("dump_logpb_stat_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2013,6 +2014,8 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
       db_private_free_and_init (NULL, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xlogpb_dump_stat (outfp);
   file_size = ftell (outfp);
@@ -2301,7 +2304,6 @@ sacl_reload (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
 void
 sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -2318,7 +2320,7 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("dump_acl_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2327,6 +2329,7 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
       return;
     }
 
+  filesys::auto_delete_file file_del (filename.c_str ());
   xacl_dump (thread_p, outfp);
   file_size = ftell (outfp);
 
@@ -2379,7 +2382,6 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 void
 slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -2399,7 +2401,7 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("dump_lock_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2407,6 +2409,8 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xlock_dump (thread_p, outfp, is_contention);
   file_size = ftell (outfp);
@@ -6077,7 +6081,6 @@ sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, unsigned int rid, char 
 void
 sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -6094,7 +6097,7 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("dump_qplan_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -6102,6 +6105,8 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xqmgr_dump_query_plans (thread_p, outfp);
   file_size = ftell (outfp);
@@ -6156,7 +6161,6 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 void
 sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -6173,7 +6177,7 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("dump_qcache_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -6181,6 +6185,8 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xqmgr_dump_query_cache (thread_p, outfp);
   file_size = ftell (outfp);
@@ -7154,7 +7160,6 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, unsigned int rid, char 
 void
 sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -7171,7 +7176,7 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("dump_thread_cs_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7270,7 +7275,6 @@ slogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 void
 slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -7287,7 +7291,7 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("dump_logtb_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7295,6 +7299,8 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xlogtb_dump_trantable (thread_p, outfp);
   file_size = ftell (outfp);
@@ -7903,7 +7909,6 @@ sprm_server_obtain_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *
 void
 sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -7920,7 +7925,7 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *re
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("dump_prm_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7928,6 +7933,8 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *re
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xsysprm_dump_server_parameters (outfp);
   file_size = ftell (outfp);
@@ -9590,7 +9597,6 @@ svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 void
 svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -9607,7 +9613,7 @@ svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("dump_vacuum_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -9615,6 +9621,8 @@ svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xvacuum_dump (thread_p, outfp);
   file_size = ftell (outfp);
