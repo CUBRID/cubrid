@@ -940,10 +940,23 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 	      hfid = sm_ch_heap ((MOBJ) class_ptr);
 	      if (!HFID_IS_NULL (hfid))
 		{
+		  int64_t bk;
+		  if (g_sampling_records > 1)
+		    {
+		      bk = est_objects;
+		      est_objects = 0;
+		    }
+
 		  if (get_estimated_objs (hfid, &est_objects, enhanced_estimates) < 0)
 		    {
 		      status = 1;
 		      goto end;
+		    }
+
+		  if (g_sampling_records > 1)
+		    {
+		      est_objects = (est_objects > g_sampling_records) ? est_objects : g_sampling_records;
+		      est_objects += bk;
 		    }
 		}
 	    }
@@ -1837,6 +1850,11 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
     {
       if (!ignore_err_flag)
 	goto exit_on_error;
+    }
+
+  if ((g_sampling_records > 1) && (g_sampling_records < approximate_class_objects))
+    {
+      approximate_class_objects = g_sampling_records;
     }
 
   if (verbose_flag)
