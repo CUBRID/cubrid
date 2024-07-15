@@ -35,6 +35,10 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <math.h>
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
 
 #include "utility.h"
 #include "misc_string.h"

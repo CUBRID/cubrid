@@ -40,8 +40,11 @@
 #include <direct.h>
 #define	SIGALRM	14
 #endif /* WINDOWS */
-
 #include <thread>
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
 
 #include "authenticate.h"
 #include "utility.h"
