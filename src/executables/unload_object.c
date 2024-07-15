@@ -23,6 +23,11 @@
 
 #ident "$Id$"
 
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "config.h"
 
 #include <stdio.h>
@@ -41,10 +46,6 @@
 #define	SIGALRM	14
 #endif /* WINDOWS */
 #include <thread>
-#if !defined(WINDOWS)
-#define __STDC_FORMAT_MACROS
-#include <inttypes.h>
-#endif
 
 #include "authenticate.h"
 #include "utility.h"
