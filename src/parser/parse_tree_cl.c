@@ -950,23 +950,20 @@ pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg)
 
 	  (*apply) (parser, node, walk);
 
-	  if (node->data_type)
-	    {
-	      node->data_type = pt_walk_private (parser, node->data_type, walk);
-	    }
+	  PT_APPLY_WALK (parser, node->data_type, walk);
+
 	}
 
       /* visit rest of list first, follow 'or_next' list */
-      if (node->or_next
-	  && (save_continue == PT_CONTINUE_WALK || save_continue == PT_LEAF_WALK || save_continue == PT_LIST_WALK))
+      if (save_continue == PT_CONTINUE_WALK || save_continue == PT_LEAF_WALK || save_continue == PT_LIST_WALK)
 	{
-	  node->or_next = pt_walk_private (parser, node->or_next, walk);
+	  PT_APPLY_WALK (parser, node->or_next, walk);
 	}
 
       /* then, follow 'next' list */
-      if (node->next && (save_continue == PT_CONTINUE_WALK || save_continue == PT_LIST_WALK))
+      if (save_continue == PT_CONTINUE_WALK || save_continue == PT_LIST_WALK)
 	{
-	  node->next = pt_walk_private (parser, node->next, walk);
+	  PT_APPLY_WALK (parser, node->next, walk);
 	}
 
       if (walk->continue_walk != PT_STOP_WALK)
@@ -1021,10 +1018,7 @@ parser_walk_leaves (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTI
 
       (*apply) (parser, walk, &walk_argument);
 
-      if (walk->data_type)
-	{
-	  walk->data_type = pt_walk_private (parser, walk->data_type, &walk_argument);
-	}
+      PT_APPLY_WALK (parser, walk->data_type, &walk_argument);
     }
 
   return node;
@@ -1059,7 +1053,8 @@ parser_walk_tree (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTION
   walk_argument.post_function = post_function;
   walk_argument.post_argument = post_argument;
 
-  return pt_walk_private (parser, node, &walk_argument);
+  PT_APPLY_WALK (parser, node, &walk_argument);
+  return node;
 }
 
 /*
