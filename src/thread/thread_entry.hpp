@@ -283,6 +283,7 @@ namespace cubthread
        * _unload_parallel_process_idx is only valid when (_unload_cnt_parallel_process > 1).
        * At this time, _unload_parallel_process_idx can have values ​​between 0 and (_unload_cnt_parallel_process-1).
        */
+#define  NO_UNLOAD_PARALLEL_PROCESSIING (-1)
       int _unload_parallel_process_idx;
       int _unload_cnt_parallel_process;
 

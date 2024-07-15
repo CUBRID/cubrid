@@ -10995,6 +10995,7 @@ cleanup:
 }
 
 
+#if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 /* data_readval_string() was written separately to read varchar columns 
  * from HEAP records to support unloaddb.
  * TO-DO: After applying [CBRD-25293], decide whether to consolidate and rewrite the function.
@@ -11157,6 +11158,7 @@ cleanup:
 
   return rc;
 }
+#endif // #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 
 static DB_VALUE_COMPARE_RESULT
 mr_index_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)

@@ -860,13 +860,24 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       encode_endian = 0;
     }
 
-  thread_p->_unload_cnt_parallel_process = nparallel_process;
-  thread_p->_unload_parallel_process_idx = nparallel_process_idx;
+  assert ((nparallel_process <= 1) || (nparallel_process_idx >= 0 && nparallel_process_idx < nparallel_process));
+
+  if (nparallel_process > 1)
+    {
+      thread_p->_unload_cnt_parallel_process = nparallel_process;
+      thread_p->_unload_parallel_process_idx = nparallel_process_idx;
+    }
 
   copy_area = NULL;
   success =
     xlocator_fetch_all (thread_p, &hfid, &lock, (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, &nobjects,
 			&nfetched, &last_oid, &copy_area, request_pages);
+
+  if (nparallel_process > 1)
+    {
+      thread_p->_unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+      thread_p->_unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
+    }
 
   if (success != NO_ERROR)
     {

@@ -71,8 +71,10 @@ static void get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ *
 static void init_load_err_filter (void);
 static void default_clear_err_filter (void);
 
+#if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 extern int data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 				int copy_buf_len);
+#endif
 
 /*
  * make_desc_obj - Makes an object descriptor for a particular class.
@@ -124,13 +126,6 @@ make_desc_obj (SM_CLASS * class_, int string_buf_size)
       if (string_buf_size > 0)
 	{
 	  obj->dbvalue_buf_ptr = (DBVALUE_BUF *) calloc (class_->att_count, sizeof (DBVALUE_BUF));
-	  if (obj->dbvalue_buf_ptr == NULL)
-	    {
-	      free_and_init (obj->values);
-	      free_and_init (obj->atts);
-	      free_and_init (obj);
-	      return NULL;
-	    }
 	}
 
       for (i = 0, att = class_->attributes; i < class_->att_count; i++, att = (SM_ATTRIBUTE *) att->header.next)
@@ -642,12 +637,14 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       for (i = class_->fixed_count, j = 0; i < class_->att_count && j < class_->variable_count;
 	   i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
+#if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 	  if (is_unloaddb && obj->dbvalue_buf_ptr && att->type->get_id () == DB_TYPE_VARCHAR)
 	    {
 	      data_readval_string (buf, &obj->values[i], att->domain, vars[j], false, obj->dbvalue_buf_ptr[i].buf,
 				   obj->dbvalue_buf_ptr[i].buf_size);
 	    }
 	  else
+#endif
 	    {
 	      att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], do_copy, NULL, 0);
 	    }
@@ -832,6 +829,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	{
 	  /* read it into the proper value */
 	  storage_order = attmap[att_index]->storage_order;
+#if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 	  if (is_unloaddb && obj->dbvalue_buf_ptr && type->get_id () == DB_TYPE_VARCHAR)
 	    {
 	      data_readval_string (buf, &obj->values[storage_order], rat->domain, vars[i], false,
@@ -839,6 +837,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 				   obj->dbvalue_buf_ptr[storage_order].buf_size);
 	    }
 	  else
+#endif
 	    {
 	      type->data_readval (buf, &obj->values[storage_order], rat->domain, vars[i], do_copy, NULL, 0);
 	    }

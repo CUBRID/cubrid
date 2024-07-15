@@ -452,12 +452,23 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  thread_p->_unload_cnt_parallel_process = nparallel_process;
-  thread_p->_unload_parallel_process_idx = nparallel_process_idx;
+  assert ((nparallel_process <= 1) || (nparallel_process_idx >= 0 && nparallel_process_idx < nparallel_process));
+
+  if (nparallel_process > 1)
+    {
+      thread_p->_unload_cnt_parallel_process = nparallel_process;
+      thread_p->_unload_parallel_process_idx = nparallel_process_idx;
+    }
 
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
 			fetch_copyarea, request_pages);
+
+  if (nparallel_process > 1)
+    {
+      thread_p->_unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+      thread_p->_unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
+    }
 
   exit_server (*thread_p);
 
