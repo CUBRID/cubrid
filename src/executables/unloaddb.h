@@ -45,8 +45,6 @@ extern int debug_flag;
 extern bool verbose_flag;
 extern bool latest_image_flag;
 extern bool include_references;
-extern bool do_schema;
-//extern bool do_objects;
 extern bool ignore_err_flag;
 extern bool required_class_only;
 extern bool datafile_per_class;

@@ -280,11 +280,11 @@ namespace cubthread
       bool is_cdc_daemon;
 
       /* support multi-process unloaddb
-       * _unload_selection_key is only valid when (_unload_split_process > 1).
-       * At this time, _unload_selection_key can have values ​​between 0 and (_unload_split_process-1).
+       * _unload_parallel_process_idx is only valid when (_unload_cnt_parallel_process > 1).
+       * At this time, _unload_parallel_process_idx can have values ​​between 0 and (_unload_cnt_parallel_process-1).
        */
-      int _unload_selection_key;
-      int _unload_split_process;
+      int _unload_parallel_process_idx;
+      int _unload_cnt_parallel_process;
 
 #if !defined(NDEBUG)
       fi_test_item *fi_test_array;

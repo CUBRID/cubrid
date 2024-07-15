@@ -400,7 +400,7 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
 int
 locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oidp,
 		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea,
-		   int request_pages, int nsplit_process, int nselection_key)
+		   int request_pages, int nparallel_process, int nparallel_process_idx)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -423,8 +423,8 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   ptr = or_pack_int (ptr, *nfetched);
   ptr = or_pack_oid (ptr, last_oidp);
   ptr = or_pack_int (ptr, request_pages);
-  ptr = or_pack_int (ptr, nsplit_process);
-  ptr = or_pack_int (ptr, nselection_key);
+  ptr = or_pack_int (ptr, nparallel_process);
+  ptr = or_pack_int (ptr, nparallel_process_idx);
   ptr = or_pack_int (ptr, client_endian);
   *fetch_copyarea = NULL;
 
@@ -452,8 +452,8 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  thread_p->_unload_split_process = nsplit_process;
-  thread_p->_unload_selection_key = nselection_key;
+  thread_p->_unload_cnt_parallel_process = nparallel_process;
+  thread_p->_unload_parallel_process_idx = nparallel_process_idx;
 
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,

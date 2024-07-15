@@ -93,8 +93,6 @@ LIST_MOPS *class_table = NULL;
 DB_OBJECT **req_class_table = NULL;
 
 char *output_prefix = NULL;
-bool do_schema = false;
-bool do_objects = false;
 bool ignore_err_flag = false;
 
 /*
@@ -131,6 +129,8 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   EMIT_STORAGE_ORDER order;
   extract_context unload_context;
 
+  bool do_objects = false;
+  bool do_schema = false;
   bool is_main_process = true;
   bool enhanced_estimates = false;
   int thread_count = 0;

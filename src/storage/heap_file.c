@@ -8029,11 +8029,12 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      break;
 		    }
 
-		  if (thread_p->_unload_split_process > 1)
+		  if (thread_p->_unload_cnt_parallel_process > 1)
 		    {
-		      assert (thread_p->_unload_selection_key >= 0
-			      && thread_p->_unload_selection_key < thread_p->_unload_split_process);
-		      if ((oid.pageid % thread_p->_unload_split_process) != thread_p->_unload_selection_key)
+		      assert (thread_p->_unload_parallel_process_idx >= 0
+			      && thread_p->_unload_parallel_process_idx < thread_p->_unload_cnt_parallel_process);
+		      if ((oid.pageid % thread_p->_unload_cnt_parallel_process) !=
+			  thread_p->_unload_parallel_process_idx)
 			{
 			  scan = S_END;
 			  oid.slotid = -1;

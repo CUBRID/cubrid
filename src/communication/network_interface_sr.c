@@ -838,7 +838,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   char *content_ptr;
   int content_size;
   int num_objs = 0;
-  int nsplit_process, nselection_key, request_pages;
+  int nparallel_process, nparallel_process_idx, request_pages;
   int server_endian = get_endian_type ();
   int client_endian;
   int encode_endian = 1;
@@ -851,17 +851,17 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_int (ptr, &nfetched);
   ptr = or_unpack_oid (ptr, &last_oid);
   ptr = or_unpack_int (ptr, &request_pages);
-  ptr = or_unpack_int (ptr, &nsplit_process);
-  ptr = or_unpack_int (ptr, &nselection_key);
+  ptr = or_unpack_int (ptr, &nparallel_process);
+  ptr = or_unpack_int (ptr, &nparallel_process_idx);
   ptr = or_unpack_int (ptr, &client_endian);
 
-  if (client_endian == server_endian && server_endian != 0 && (nsplit_process > 0))
+  if (client_endian == server_endian && server_endian != 0 && (nparallel_process > 0))
     {
       encode_endian = 0;
     }
 
-  thread_p->_unload_split_process = nsplit_process;
-  thread_p->_unload_selection_key = nselection_key;
+  thread_p->_unload_cnt_parallel_process = nparallel_process;
+  thread_p->_unload_parallel_process_idx = nparallel_process_idx;
 
   copy_area = NULL;
   success =
