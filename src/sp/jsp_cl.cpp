@@ -576,9 +576,13 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       vc = statement->info.method_call.arg_list;
       for (int i = 0; i < (int) args.size () && vc; i++)
 	{
-	  DB_VALUE &arg = args[i];
-	  db_value_clear (&arg);
-	  free (&arg);
+	  if (!PT_IS_CONST (vc))
+	    {
+	      DB_VALUE &arg = args[i];
+	      db_value_clear (&arg);
+	      free (&arg);
+	    }
+	  vc = vc->next;
 	}
     }
 
