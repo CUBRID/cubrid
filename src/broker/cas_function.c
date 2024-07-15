@@ -416,6 +416,10 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
       cas_log_compile_end_write_query_string (sql_stmt, sql_size - 1, &psr->hide_pwd_info);
     }
+  else
+    {
+      cas_log_compile_end_write_query_string (sql_stmt, sql_size - 1, NULL);
+    }
 
   cas_log_write (query_seq_num_current_value (), false, "prepare srv_h_id %s%d%s%s", (srv_h_id < 0) ? "error:" : "",
 		 (srv_h_id < 0) ? err_info.err_number : srv_h_id, (srv_handle != NULL
