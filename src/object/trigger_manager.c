@@ -5023,16 +5023,18 @@ execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * cur
 {
   int rstatus;
   bool execute_action;
-  DB_OBJECT *save_user;
 
-  save_user = NULL;
+  // save_user = NULL;
   if (trigger->owner != NULL)
     {
+      au_perform_push_user (trigger->owner);
+      /*
       save_user = Au_user;
       if (AU_SET_USER (trigger->owner))
 	{
 	  return TR_RETURN_ERROR;
 	}
+        */
     }
 
   rstatus = TR_RETURN_TRUE;
@@ -5095,13 +5097,16 @@ execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * cur
 	}
     }
 
-  if (save_user != NULL)
+  //if (save_user != NULL)
     {
+      au_perform_pop_user ();
+      /*
       if (AU_SET_USER (save_user))
 	{
-	  /* what can this mean ? */
+	  // what can this mean ?
 	  rstatus = TR_RETURN_ERROR;
 	}
+       */
     }
 
   return rstatus;

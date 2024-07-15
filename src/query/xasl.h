@@ -1060,6 +1060,7 @@ struct xasl_node
   XASL_ID *sub_xasl_id;		/* for cached subquery */
   int sub_host_var_count;	/* for subquery's host variable count */
   int *sub_host_var_index;	/* for subquery's host variable index */
+  int sub_cache_ref_count;	/* for subquery's result-cache ref. count */
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */

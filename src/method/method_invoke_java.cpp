@@ -78,14 +78,7 @@ namespace cubmethod
       return NO_ERROR;
     };
 
-    error = method_send_data_to_client (thread_p, m_client_header, METHOD_CALLBACK_CHANGE_RIGHTS, 0,
-					m_method_sig->auth_name);
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
-    error = xs_receive (thread_p, dummy);
+    error = send_data_to_client (thread_p, METHOD_CALLBACK_CHANGE_RIGHTS, 0, std::string (m_method_sig->auth_name));
     if (error != NO_ERROR)
       {
 	return error;
@@ -95,19 +88,6 @@ namespace cubmethod
     cubmethod::invoke_java arg (m_group->get_id (), m_group->get_tran_id (), m_method_sig, m_transaction_control);
 
     error = mcon_send_data_to_java (m_group->get_socket (), header, arg);
-
-    error = method_send_data_to_client (thread_p, m_client_header, METHOD_CALLBACK_CHANGE_RIGHTS, 1, std::string (""));
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
-    error = xs_receive (thread_p, dummy);
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
     return error;
   }
 
@@ -186,6 +166,8 @@ namespace cubmethod
 	  }
       }
     while (error_code == NO_ERROR && start_code == SP_CODE_INTERNAL_JDBC);
+
+    error_code = send_data_to_client (thread_p, METHOD_CALLBACK_CHANGE_RIGHTS, 1, std::string (""));
 
     return error_code;
   }

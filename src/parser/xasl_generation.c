@@ -3915,8 +3915,8 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  if (db_get (mop_p, SP_ATTR_ARGS, &args) == NO_ERROR)
 		    {
 		      DB_SET *param_set = db_get_set (&args);
-		      DB_VALUE mode, arg_type, temp, optional_val, default_val;
-		      int i;
+		      DB_VALUE mode, type, temp, optional_val, default_val;
+		      int i, arg_mode, arg_type;
 		      for (i = 0; i < num_args; i++)
 			{
 			  set_get_element (param_set, i, &temp);
@@ -3925,12 +3925,12 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 			    {
 			      if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
 				{
-				  (*tail)->arg_info->arg_mode[i] = db_get_int (&mode);
+				  arg_mode = db_get_int (&mode);
 				}
 
-			      if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
+			      if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &type) == NO_ERROR)
 				{
-				  (*tail)->arg_info->arg_type[i] = db_get_int (&arg_type);
+				  arg_type = db_get_int (&type);
 				}
 
 			      if (db_get (arg_mop_p, SP_ATTR_IS_OPTIONAL, &optional_val) == NO_ERROR)
@@ -3968,8 +3968,11 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 				  break;
 				}
 
+			      (*tail)->arg_info->arg_mode[i] = arg_mode;
+			      (*tail)->arg_info->arg_type[i] = arg_type;
+
 			      pr_clear_value (&mode);
-			      pr_clear_value (&arg_type);
+			      pr_clear_value (&type);
 			      pr_clear_value (&temp);
 			      pr_clear_value (&optional_val);
 			      pr_clear_value (&default_val);
@@ -3977,6 +3980,13 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 			  else
 			    {
 			      break;
+			    }
+
+
+			  if (jsp_check_out_param_in_query (parser, node, arg_mode) != NO_ERROR)
+			    {
+			      pr_clear_value (&args);
+			      return NULL;
 			    }
 			}
 		      pr_clear_value (&args);
@@ -12996,7 +13006,10 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   subquery_proc = (XASL_NODE *) src_derived_tbl->info.spec.derived_table->info.query.xasl;
 
   method_sig_list = pt_to_method_sig_list (parser, cselect, src_derived_tbl->info.spec.as_attr_list);
-
+  if (method_sig_list == NULL)
+    {
+      return NULL;
+    }
   /* This generates a list of TYPE_POSITION regu_variables There information is stored in a QFILE_TUPLE_VALUE_POSITION,
    * which describes a type and index into a list file. */
 
