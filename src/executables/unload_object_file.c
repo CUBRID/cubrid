@@ -56,9 +56,7 @@
 
 #include "message_catalog.h"
 #include "string_opfunc.h"
-#if defined(WINDOWS)
 #include "porting.h"
-#endif
 
 volatile bool error_occurred = false;
 int g_io_buffer_size = 4096;

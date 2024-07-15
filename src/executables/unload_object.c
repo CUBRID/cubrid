@@ -75,9 +75,6 @@
 
 #include "error_context.hpp"
 
-#if defined (WINDOWS)
-#include "porting.h"
-#endif
 
 #define OPEN_MODE_VALUE   0666
 
