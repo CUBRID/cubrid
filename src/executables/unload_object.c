@@ -175,7 +175,7 @@ static char *gauge_class_name;
 
 static volatile bool writer_thread_proc_terminate = false;
 static volatile bool printer_thread_proc_terminate = false;
-static int max_lc_copyarea_list = 1;
+static int max_fetched_copyarea_list = 1;
 #if !defined(WINDOWS)
 static S_WAITING_INFO wi_unload_class;
 static S_WAITING_INFO wi_w_blk_getQ;
@@ -395,7 +395,6 @@ static bool close_object_file ();
 static bool open_object_file (extract_context & ctxt, const char *output_dirname, const char *class_name);
 static bool init_thread_param (const char *output_dirname, int nthreads);
 static void quit_thread_param ();
-static int unload_printer (LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj, TEXT_OUTPUT * obj_out);
 static void print_monitoring_info (int nthreads);
 
 /*
@@ -1301,6 +1300,154 @@ gauge_alarm_handler (int sig)
   return;
 }
 
+
+static int
+unload_printer (LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj, TEXT_OUTPUT * obj_out)
+{
+  int i, error;
+  RECDES recdes;		/* Record descriptor */
+  LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
+  LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
+#if defined(WINDOWS)
+  struct _timeb timebuffer;
+  time_t start = 0;
+#endif
+
+  error = NO_ERROR;
+  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (fetch_area);
+  obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
+
+  for (i = 0; i < mobjs->num_objs; ++i)
+    {
+      /*
+       * Process all objects for a requested class, but
+       * only referenced objects for a referenced class.
+       */
+      ++class_objects_atomic;
+      ++total_objects_atomic;
+      LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
+      TIMER_BEGIN (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
+      error = desc_disk_to_obj (g_uci->class_, g_uci->class_ptr, &recdes, desc_obj, true);
+      TIMER_END (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
+      if (error == NO_ERROR)
+	{
+	  TIMER_BEGIN (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
+	  error = process_object (desc_obj, &obj->oid, g_uci->referenced_class, obj_out);
+	  TIMER_END (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
+	  if (error != NO_ERROR)
+	    {
+	      if (!ignore_err_flag)
+		{
+		  break;
+		}
+	      error = NO_ERROR;
+	    }
+	}
+      else
+	{
+	  if (error == ER_TF_BUFFER_UNDERFLOW)
+	    {
+	      break;
+	    }
+	  ++failed_objects_atomic;
+	}
+      obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
+#if defined(WINDOWS)
+      if (verbose_flag && (i % 10 == 0))
+	{
+	  _ftime (&timebuffer);
+	  if (start == 0)
+	    {
+	      start = timebuffer.time;
+	    }
+	  else
+	    {
+	      if ((timebuffer.time - start) > GAUGE_INTERVAL)
+		{
+		  gauge_alarm_handler (SIGALRM);
+		  start = timebuffer.time;
+		}
+	    }
+	}
+#endif
+    }
+
+  return error;
+}
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+unload_extractor_thread (void *param)
+{
+  UNLD_THR_PARAM *parg = (UNLD_THR_PARAM *) param;
+  int thr_ret = NO_ERROR;
+  pthread_t tid = pthread_self ();
+  TEXT_OUTPUT *obj_out = &(parg->text_output);
+  DESC_OBJ *desc_obj = make_desc_obj (g_uci->class_ptr, g_varchar_buffer_size);
+  if (desc_obj == NULL)
+    {
+      thr_ret = ER_FAILED;
+    }
+  else
+    {
+      LC_COPYAREA_NODE *node = NULL;
+      cuberr::context * er_context_p;
+
+      // we need to register a context
+      er_context_p = new cuberr::context ();
+      er_context_p->register_thread_local ();
+
+      while (printer_thread_proc_terminate == false)
+	{
+	  node = g_uci->cparea_lst_ref->get ();
+	  if (node)
+	    {
+	      thr_ret = unload_printer (node->lc_copy_area, desc_obj, obj_out);
+	      g_uci->cparea_lst_ref->add_freelist (node);
+	      if (thr_ret != NO_ERROR)
+		{
+		  break;
+		}
+	    }
+	  else if (printer_thread_proc_terminate == false)
+	    {
+	      TIMER_BEGIN (&(parg->wi_get_list));
+
+	      pthread_mutex_lock (&g_uci->mtx);
+	      pthread_cond_wait (&g_uci->cond, &g_uci->mtx);
+	      pthread_mutex_unlock (&g_uci->mtx);
+
+	      TIMER_END (&(parg->wi_get_list));
+	    }
+	}
+
+      node = g_uci->cparea_lst_ref->get ();
+      while (node)
+	{
+	  if (thr_ret == NO_ERROR)
+	    {
+	      thr_ret = unload_printer (node->lc_copy_area, desc_obj, obj_out);
+	    }
+	  g_uci->cparea_lst_ref->add_freelist (node);
+	  node = g_uci->cparea_lst_ref->get ();
+	}
+
+      er_context_p->deregister_thread_local ();
+      delete er_context_p;
+      er_context_p = NULL;
+
+      desc_free (desc_obj);
+    }
+
+  if (thr_ret != NO_ERROR)
+    {
+      error_occurred = true;
+    }
+
+  pthread_exit ((THREAD_RET_T) thr_ret);
+  return (THREAD_RET_T) thr_ret;
+}
+
+
 int
 unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type, bool non_threading)
 {
@@ -1389,154 +1536,8 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type, bool non_threading)
   return error;
 }
 
-static int
-unload_printer (LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj, TEXT_OUTPUT * obj_out)
-{
-  int i, error;
-  RECDES recdes;		/* Record descriptor */
-  LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
-  LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
-#if defined(WINDOWS)
-  struct _timeb timebuffer;
-  time_t start = 0;
-#endif
-
-  error = NO_ERROR;
-  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (fetch_area);
-  obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
-
-  for (i = 0; i < mobjs->num_objs; ++i)
-    {
-      /*
-       * Process all objects for a requested class, but
-       * only referenced objects for a referenced class.
-       */
-      ++class_objects_atomic;
-      ++total_objects_atomic;
-      LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
-      TIMER_BEGIN (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
-      error = desc_disk_to_obj (g_uci->class_, g_uci->class_ptr, &recdes, desc_obj, true);
-      TIMER_END (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
-      if (error == NO_ERROR)
-	{
-	  TIMER_BEGIN (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
-	  error = process_object (desc_obj, &obj->oid, g_uci->referenced_class, obj_out);
-	  TIMER_END (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
-	  if (error != NO_ERROR)
-	    {
-	      if (!ignore_err_flag)
-		{
-		  break;
-		}
-	      error = NO_ERROR;
-	    }
-	}
-      else
-	{
-	  if (error == ER_TF_BUFFER_UNDERFLOW)
-	    {
-	      break;
-	    }
-	  ++failed_objects_atomic;
-	}
-      obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
-#if defined(WINDOWS)
-      if (verbose_flag && (i % 10 == 0))
-	{
-	  _ftime (&timebuffer);
-	  if (start == 0)
-	    {
-	      start = timebuffer.time;
-	    }
-	  else
-	    {
-	      if ((timebuffer.time - start) > GAUGE_INTERVAL)
-		{
-		  gauge_alarm_handler (SIGALRM);
-		  start = timebuffer.time;
-		}
-	    }
-	}
-#endif
-    }
-
-  return error;
-}
-
 static THREAD_RET_T THREAD_CALLING_CONVENTION
-unload_thread_proc (void *param)
-{
-  UNLD_THR_PARAM *parg = (UNLD_THR_PARAM *) param;
-  int thr_ret = NO_ERROR;
-  pthread_t tid = pthread_self ();
-  TEXT_OUTPUT *obj_out = &(parg->text_output);
-  DESC_OBJ *desc_obj = make_desc_obj (g_uci->class_ptr, g_varchar_buffer_size);
-  if (desc_obj == NULL)
-    {
-      thr_ret = ER_FAILED;
-    }
-  else
-    {
-      LC_COPYAREA_NODE *node = NULL;
-      cuberr::context * er_context_p;
-
-      // we need to register a context
-      er_context_p = new cuberr::context ();
-      er_context_p->register_thread_local ();
-
-      while (printer_thread_proc_terminate == false)
-	{
-	  node = g_uci->cparea_lst_ref->get ();
-	  if (node)
-	    {
-	      thr_ret = unload_printer (node->lc_copy_area, desc_obj, obj_out);
-	      g_uci->cparea_lst_ref->add_freelist (node);
-	      if (thr_ret != NO_ERROR)
-		{
-		  break;
-		}
-	    }
-	  else if (printer_thread_proc_terminate == false)
-	    {
-	      TIMER_BEGIN (&(parg->wi_get_list));
-
-	      pthread_mutex_lock (&g_uci->mtx);
-	      pthread_cond_wait (&g_uci->cond, &g_uci->mtx);
-	      pthread_mutex_unlock (&g_uci->mtx);
-
-	      TIMER_END (&(parg->wi_get_list));
-	    }
-	}
-
-      node = g_uci->cparea_lst_ref->get ();
-      while (node)
-	{
-	  if (thr_ret == NO_ERROR)
-	    {
-	      thr_ret = unload_printer (node->lc_copy_area, desc_obj, obj_out);
-	    }
-	  g_uci->cparea_lst_ref->add_freelist (node);
-	  node = g_uci->cparea_lst_ref->get ();
-	}
-
-      er_context_p->deregister_thread_local ();
-      delete er_context_p;
-      er_context_p = NULL;
-
-      desc_free (desc_obj);
-    }
-
-  if (thr_ret != NO_ERROR)
-    {
-      error_occurred = true;
-    }
-
-  pthread_exit ((THREAD_RET_T) thr_ret);
-  return (THREAD_RET_T) thr_ret;
-}
-
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-writer_thread_proc (void *param)
+unload_writer_thread (void *param)
 {
   pthread_t tid = pthread_self ();
   int thr_ret = NO_ERROR;
@@ -1903,7 +1904,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	}
     }
 
-  c_cparea_lst_class.set_max_list (max_lc_copyarea_list);
+  c_cparea_lst_class.set_max_list (max_fetched_copyarea_list);
   unld_cls_info.cparea_lst_ref = &c_cparea_lst_class;
   g_uci = &unld_cls_info;
 
@@ -1921,7 +1922,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	  TIMER_CLEAR (&(g_thr_param[i].wi_to_obj_str[0]));
 	  TIMER_CLEAR (&(g_thr_param[i].wi_to_obj_str[1]));
 
-	  if (pthread_create (&(g_thr_param[i].tid), NULL, unload_thread_proc, (void *) (g_thr_param + i)) != 0)
+	  if (pthread_create (&(g_thr_param[i].tid), NULL, unload_extractor_thread, (void *) (g_thr_param + i)) != 0)
 	    {
 	      perror ("pthread_create()\n");
 	      exit (1);
@@ -1930,7 +1931,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 
       if (nthreads > 1)
 	{
-	  if (pthread_create (&writer_tid, NULL, writer_thread_proc, NULL) != 0)
+	  if (pthread_create (&writer_tid, NULL, unload_writer_thread, NULL) != 0)
 	    {
 	      perror ("pthread_create()\n");
 	      exit (1);
@@ -2699,21 +2700,18 @@ init_thread_param (const char *output_dirname, int nthreads)
    */
   g_io_buffer_size -= (g_io_buffer_size % _blksize);
 
-  int buffer_block_list_sz = 10;
-  int write_block_q_size = 100;
-  // Approximately (g_io_buffer_size *  buffer_block_list_sz) bytes of memory space is required. 
-  if (buffer_block_list_sz < (thr_max * 4))
-    {
-      buffer_block_list_sz = thr_max * 4;
-    }
-  // Up to ((g_io_buffer_size * buffer_block_list_sz) * write_block_q_size) bytes of memory may be required.
-  if (write_block_q_size < (thr_max * 2))
-    {
-      write_block_q_size = thr_max * 2;
-    }
+  int buffer_block_list_sz = thr_max * 2;
+  int writer_q_size = 100;
 
-  max_lc_copyarea_list = (thr_max * 4);	// TODO: ctshim
-  return init_queue_n_list_for_object_file (write_block_q_size, buffer_block_list_sz);	// TODO: ctshim 
+  // Up to ((g_io_buffer_size * buffer_block_list_sz) * writer_q_size) bytes of memory may be required.
+  if (writer_q_size < (thr_max * 4))
+    {
+      writer_q_size = thr_max * 4;
+    }
+  buffer_block_list_sz *= writer_q_size;
+
+  max_fetched_copyarea_list = (thr_max * 4);	// TODO: ctshim
+  return init_queue_n_list_for_object_file (writer_q_size, buffer_block_list_sz);	// TODO: ctshim 
 }
 
 static void
@@ -2784,17 +2782,14 @@ print_monitoring_info (int nthreads)
 	   (wi_w_blk_getQ.ts_wait_sum.tv_sec + ((double) wi_w_blk_getQ.ts_wait_sum.tv_nsec / NANO_PREC_VAL)),
 	   (int64_t) (wi_w_blk_getQ.cnt));
 
-//===================================================  
-
   memset (&winfo, 0x00, sizeof (S_WAITING_INFO));
   for (int i = 0; i < nthreads; i++)
     {
       timespec_addup (&(winfo.ts_wait_sum), &(g_thr_param[i].wi_to_obj_str[0].ts_wait_sum));
       winfo.cnt += g_thr_param[i].wi_to_obj_str[0].cnt;
     }
-  fprintf (fp, ALIGN_SPACE_FMT "to obj : %12.6f sec, count= %" PRId64 "\n", "",
-	   (winfo.ts_wait_sum.tv_sec + ((double) winfo.ts_wait_sum.tv_nsec / NANO_PREC_VAL)) / nthreads,
-	   (int64_t) (winfo.cnt / nthreads));
+  fprintf (fp, ALIGN_SPACE_FMT "to obj : %12.6f sec\n", "",
+	   (winfo.ts_wait_sum.tv_sec + ((double) winfo.ts_wait_sum.tv_nsec / NANO_PREC_VAL)) / nthreads);
 
   memset (&winfo, 0x00, sizeof (S_WAITING_INFO));
   for (int i = 0; i < nthreads; i++)
@@ -2802,9 +2797,8 @@ print_monitoring_info (int nthreads)
       timespec_addup (&(winfo.ts_wait_sum), &(g_thr_param[i].wi_to_obj_str[1].ts_wait_sum));
       winfo.cnt += g_thr_param[i].wi_to_obj_str[1].cnt;
     }
-  fprintf (fp, ALIGN_SPACE_FMT "to str : %12.6f sec, count= %" PRId64 "\n", "",
-	   (winfo.ts_wait_sum.tv_sec + ((double) winfo.ts_wait_sum.tv_nsec / NANO_PREC_VAL)) / nthreads,
-	   (int64_t) (winfo.cnt / nthreads));
+  fprintf (fp, ALIGN_SPACE_FMT "to str : %12.6f sec\n", "",
+	   (winfo.ts_wait_sum.tv_sec + ((double) winfo.ts_wait_sum.tv_nsec / NANO_PREC_VAL)) / nthreads);
 #endif
 }
 
