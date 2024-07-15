@@ -29,6 +29,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "perf_monitor.h"
@@ -89,8 +91,6 @@
 #include "crypt_opfunc.h"
 #include "flashback.h"
 #include "method_compile.hpp"
-#include "filesys.hpp"
-#include "filesys_temp.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
