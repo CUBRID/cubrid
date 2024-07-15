@@ -28,6 +28,7 @@
 #include <vector>
 #include <memory>
 #include <time.h>
+#include <heartbeat.h>
 #include "connection_defs.h"
 
 class server_monitor
@@ -36,20 +37,13 @@ class server_monitor
     class server_entry
     {
       public:
-	server_entry (int pid, const char *server_name, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
+	server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
 	~server_entry () {};
-
-	server_entry (const server_entry &) = delete;
-	server_entry (server_entry &&) = delete;
-
-	server_entry &operator = (const server_entry &) = delete;
-	server_entry &operator = (server_entry &&) = delete;
 
       private:
 	void proc_make_arg (char *args);
 
 	const int m_pid;                              // process ID
-	const std::string m_server_name;              // server name
 	const std::string m_exec_path;                // executable path of server process
 	std::vector<std::string> m_argv;              // arguments of server process
 	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
@@ -66,10 +60,27 @@ class server_monitor
     server_monitor &operator = (const server_monitor &) = delete;
     server_monitor &operator = (server_monitor &&) = delete;
 
+    void make_and_insert_server_entry (int pid, const char *exec_path, char *args,
+                                       CSS_CONN_ENTRY *conn);
+
   private:
     std::unique_ptr<std::vector <server_entry>> m_server_entry_list;    // list of server entries
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
+};
+
+/*
+ * non-HA server register message body
+ */
+
+/* process register */
+typedef struct css_proc_register CSS_PROC_REGISTER;
+struct css_proc_register
+{
+  int pid;
+  int type;
+  char exec_path[HB_MAX_SZ_PROC_EXEC_PATH];
+  char args[HB_MAX_SZ_PROC_ARGS];
 };
 
 extern std::unique_ptr<server_monitor> master_Server_monitor;

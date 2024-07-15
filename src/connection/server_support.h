@@ -68,6 +68,9 @@ css_initialize_server_interfaces (int (*request_handler)
 extern char *css_pack_server_name (const char *server_name, int *name_length);
 extern int css_init (THREAD_ENTRY * thread_p, char *server_name, int server_name_length, int connection_id);
 extern char *css_add_client_version_string (THREAD_ENTRY * thread_p, const char *version_string);
+
+extern void css_set_exec_path (char *exec_path);
+extern void css_set_argv (char **argv);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern char *css_get_client_version_string (void);
 #endif

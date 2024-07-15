@@ -32,6 +32,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "master_server_monitor.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -133,6 +134,9 @@ static int ha_Log_applier_state_num = 0;
 // *INDENT-OFF*
 static cubthread::entry_workpool *css_Server_request_worker_pool = NULL;
 static cubthread::entry_workpool *css_Connection_worker_pool = NULL;
+
+static char css_Exec_path[PATH_MAX];
+static char **css_Argv;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -257,6 +261,9 @@ static bool css_get_server_request_thread_pooling_configuration (void);
 static int css_get_server_request_thread_core_count_configruation (void);
 static cubthread::wait_seconds css_get_server_request_thread_timeout_configuration (void);
 static void css_start_all_threads (void);
+
+static int css_register_to_master (CSS_CONN_ENTRY * conn);
+static CSS_PROC_REGISTER * css_make_set_proc_register (void);
 // *INDENT-ON*
 
 #if defined (SERVER_MODE)
@@ -1377,6 +1384,16 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 	      fprintf (stderr, "failed to heartbeat register.\n");
 	    }
 	}
+      else
+      {
+        fprintf(stdout, "HA is disabled.\n");
+        status = css_register_to_master (css_Master_conn);
+        fprintf(stdout, "register to master.\n");
+        if (status != NO_ERROR)
+        {
+          fprintf (stderr, "failed to register.\n");
+        }        
+      }
 #endif
 
       if (status == NO_ERROR)
@@ -1442,6 +1459,105 @@ shutdown:
 #endif /* WINDOWS */
 
   return status;
+}
+
+/*
+* css_register_to_master() - register non-HA server info to master
+*   return: NO_ERROR or ER_FAILED
+*   conn(in): connection to master
+*/
+static int
+css_register_to_master (CSS_CONN_ENTRY * conn)
+{
+  int error = NO_ERROR;
+  CSS_PROC_REGISTER *proc_register = NULL;
+  unsigned short request_id;
+  fprintf(stdout, "register to master.\n");
+  if (conn == NULL)
+  {
+    er_log_debug (ARG_FILE_LINE, "invalid conn. (conn:NULL).\n");
+    return (ER_FAILED);
+  }
+  fprintf(stdout, "conn is not NULL.\n");
+  proc_register = css_make_set_proc_register ();
+  if (proc_register == NULL)
+  {
+    er_log_debug (ARG_FILE_LINE, "failed to make proc register.\n");
+    return (ER_FAILED);
+  }
+  fprintf(stdout, "proc_register is not NULL.\n");
+  if (!IS_INVALID_SOCKET (conn->fd))
+    {
+      error = css_send_request (conn, REGISTER_SERVER, &request_id, NULL, 0);
+      if (error != NO_ERRORS)
+	{
+          fprintf(stdout, "failed to send request.\n");
+	  goto error_return;
+	}
+    }
+  free_and_init (proc_register);
+  return (NO_ERROR);
+
+error_return:
+  free_and_init (proc_register);
+  return (ER_FAILED);
+}
+
+/*
+* css_make_set_proc_register () -
+*   return:
+*
+*/
+static CSS_PROC_REGISTER *
+css_make_set_proc_register ()
+{
+  CSS_PROC_REGISTER *proc_register;
+  char *p, *last;
+  char **argv;
+  fprintf(stdout, "make set proc register.\n");
+  proc_register = (CSS_PROC_REGISTER *) malloc (sizeof (CSS_PROC_REGISTER));
+  if (NULL == proc_register)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CSS_PROC_REGISTER));
+      return (NULL);
+    }
+  fprintf(stdout, "proc_register is not NULL.\n");
+  memset ((void *) proc_register, 0, sizeof (CSS_PROC_REGISTER));
+  proc_register->pid = htonl (getpid ());
+  strncpy_bufsize (proc_register->exec_path, css_Exec_path);
+  fprintf(stdout, "exec path is %s.\n", proc_register->exec_path);
+  p = (char *) &proc_register->args[0];
+  last = (char *) (p + sizeof (proc_register->args));
+  for (argv = css_Argv; *argv; argv++)
+    {
+      p += snprintf (p, MAX ((last - p), 0), "%s ", *argv);
+    }
+  fprintf(stdout, "args is %s.\n", proc_register->args);
+  return (proc_register);
+}
+
+/*
+ * css_set_exec_path () -
+ *   return: none
+ *
+ *   exec_path(in):
+ */
+void
+css_set_exec_path (char *exec_path)
+{
+  strncpy (css_Exec_path, exec_path, sizeof (css_Exec_path) - 1);
+}
+
+/*
+ * css_set_argv () -
+ *   return: none
+ *
+ *   argv(in):
+ */
+void
+css_set_argv (char **argv)
+{
+  css_Argv = argv;
 }
 
 /*

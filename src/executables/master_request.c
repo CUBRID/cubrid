@@ -56,6 +56,7 @@
 #include "master_util.h"
 #include "master_request.h"
 #include "master_heartbeat.h"
+#include "master_server_monitor.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -595,6 +596,22 @@ css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id, ch
     {
       css_cleanup_info_connection (conn);
     }
+}
+
+/*
+ * css_process_register_server() - register a server
+ *  return: none
+ *  conn(in)
+ *  request_id(in)
+ *  proc_register(in) 
+ */
+static void
+css_process_register_server (CSS_CONN_ENTRY * conn, unsigned short request_id, char* buffer)
+{
+  CSS_PROC_REGISTER *proc_register = (CSS_PROC_REGISTER *) buffer;
+  fprintf(stdout, "type converted \n");
+  master_Server_monitor->make_and_insert_server_entry(proc_register->pid, proc_register->exec_path, proc_register->args, conn);
+  fprintf(stdout, "Server registered: %d %s %s\n", proc_register->pid, proc_register->exec_path, proc_register->args);
 }
 
 /*
@@ -1870,8 +1887,10 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
   rc = css_receive_request (conn, &request_id, &request, &buffer_size);
   if (rc == NO_ERRORS)
     {
+      fprintf(stdout, "request_id: %d, request: %d, buffer_size: %d\n", request_id, request, buffer_size);
       if (buffer_size && css_receive_data (conn, request_id, &buffer, &buffer_size, -1) != NO_ERRORS)
 	{
+          fprintf(stdout, "css_receive_data failed\n");
 	  if (buffer != NULL)
 	    {
 	      free_and_init (buffer);
@@ -1919,6 +1938,15 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	  if (buffer != NULL)
 	    {
 	      css_process_kill_immediate (conn, request_id, buffer);
+	    }
+	  break;
+	case REGISTER_SERVER:
+          fprintf(stdout, "register server\n");
+	  if (buffer != NULL)
+	    {
+              fprintf(stdout, "buffer is not null.\n");
+	      css_process_register_server (conn, request_id, buffer);
+              fprintf(stdout, "register server done\n");
 	    }
 	  break;
 	case GET_ALL_COUNT:
