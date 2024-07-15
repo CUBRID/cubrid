@@ -6262,7 +6262,6 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 	  val_size = type_p->get_disk_size_of_value (dbval_p);
 	  if (type_p->is_size_computed ())
 	    {
-#if !defined(TEST_SKIP_GET_STRING_LENGTH)
 	      if (pr_is_string_type (dbval_type))
 		{
 		  int precision = DB_VALUE_PRECISION (dbval_p);
@@ -6293,7 +6292,6 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 		      val_size = type_p->get_disk_size_of_value (dbval_p);
 		    }
 		}
-#endif
 	    }
 
 	  align = DB_ALIGN (val_size, MAX_ALIGNMENT);	/* to align for the next field */

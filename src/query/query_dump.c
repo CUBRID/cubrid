@@ -3458,7 +3458,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       {
 	HASHJOIN_PROC_NODE *hashjoin_proc;
 	const char *hash_method_string;
-	bool is_hash_file;
+	bool is_hash_file = false;
 
 	assert (xasl_p->aptr_list != NULL /* outer */ );
 	assert (xasl_p->aptr_list->next != NULL /* inner */ );
@@ -3522,7 +3522,16 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		     (long long int) hashjoin_proc->stats.build.fetches,
 		     (long long int) hashjoin_proc->stats.build.fetch_time,
 		     (long long int) hashjoin_proc->stats.build.ioreads);
+
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+	    fprintf (fp,
+		     "%*cBUILD (test_time1: %d, test_time2: %d, test_time3: %d)\n",
+		     indent, ' ',
+		     TO_MSEC (hashjoin_proc->stats.build.test_time1),
+		     TO_MSEC (hashjoin_proc->stats.build.test_time2), TO_MSEC (hashjoin_proc->stats.build.test_time3));
+#endif
 	  }
+
 	qdump_print_stats_text (fp, hashjoin_proc->build->xasl, indent);
 
 	fprintf (fp,
@@ -3533,6 +3542,17 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		 (long long int) hashjoin_proc->stats.probe.fetches,
 		 (long long int) hashjoin_proc->stats.probe.fetch_time,
 		 (long long int) hashjoin_proc->stats.probe.ioreads);
+
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+	fprintf (fp,
+		 "%*cPROBE (test_time1: %d, test_time2: %d, test_time3: %d, test_time4: %d, test_time5: %d)\n",
+		 indent, ' ',
+		 TO_MSEC (hashjoin_proc->stats.probe.test_time1),
+		 TO_MSEC (hashjoin_proc->stats.probe.test_time2),
+		 TO_MSEC (hashjoin_proc->stats.probe.test_time3),
+		 TO_MSEC (hashjoin_proc->stats.probe.test_time4), TO_MSEC (hashjoin_proc->stats.probe.test_time5));
+#endif
+
 	qdump_print_stats_text (fp, hashjoin_proc->probe->xasl, indent);
 
 	indent -= 2;

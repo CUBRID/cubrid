@@ -614,7 +614,6 @@ configure_file(cmake/version.h.cmake version.h)
 ##########
 # add_definitions(-DCUBRID_DEBUG_TEST)
 # add_definitions(-DCUBRID_DEBUG_DUMP_PLAN_COST)
-# add_definitions(-DTEST_SKIP_GET_STRING_LENGTH)
 
 ##################
 # Hash List Scan #
@@ -627,6 +626,7 @@ configure_file(cmake/version.h.cmake version.h)
 #############
 # add_definitions(-DTEST_HASH_JOIN_ENABLE)
 # add_definitions(-DTEST_HASH_JOIN_FORCE_ENABLE)
+# add_definitions(-DTEST_HASH_JOIN_TEST_TIME)
 # add_definitions(-DDEBUG_HASH_JOIN_DUMP_HASH_TABLE)
 # add_definitions(-DDEBUG_HASH_JOIN_DUMP_BUILD)
 # add_definitions(-DDEBUG_HASH_JOIN_DUMP_PROBE)

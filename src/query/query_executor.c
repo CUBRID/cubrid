@@ -7763,6 +7763,14 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
 
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+  HASHJOIN_STATS *stats;
+
+  bool on_trace = thread_is_on_trace (thread_p);
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+#endif
+
   int error = NO_ERROR;
 
   if ((thread_p == NULL) || (hashjoin_proc == NULL) || (list_scan_id == NULL))
@@ -7793,8 +7801,22 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   key = hash_scan->temp_key;
   assert (key != NULL);
 
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+  if (on_trace)
+    {
+      stats = &(hashjoin_proc->stats);
+    }
+#endif
+
   while ((qp_scan = qfile_scan_list_next (thread_p, list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+      if (on_trace)
+	{
+	  tsc_getticks (&start_tick);
+	}
+#endif
+
       error =
 	qexec_hash_join_fetch_key (thread_p, hashjoin_proc, build_domains, build_value_indexes, &tuple_record, key,
 				   NULL /* compare_key */ );
@@ -7813,6 +7835,17 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	    }
 	}
 
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+      if (on_trace)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (stats->build.test_time1, tv_diff);
+
+	  tsc_getticks (&start_tick);
+	}
+#endif
+
       if (need_compare_dbvalues == true)
 	{
 	  hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
@@ -7822,11 +7855,31 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	  hash_scan->curr_hash_key = qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_method, build_domains);
 	}
 
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+      if (on_trace)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (stats->build.test_time2, tv_diff);
+
+	  tsc_getticks (&start_tick);
+	}
+#endif
+
       error = qexec_hash_join_build_key (thread_p, hash_scan, &tuple_record, list_scan_id);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
+
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+      if (on_trace)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (stats->build.test_time3, tv_diff);
+	}
+#endif
     }
 
   if (qp_scan == S_ERROR)
@@ -7991,6 +8044,13 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
       qfile_print_tuple (&(probe_list_scan_id->list_id.type_list), tuple_record.tpl);
 #endif
 
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+      if (on_trace)
+	{
+	  tsc_getticks (&start_tick);
+	}
+#endif
+
       error =
 	qexec_hash_join_fetch_key (thread_p, hashjoin_proc, probe_domains, probe_value_indexes, &tuple_record, key,
 				   NULL /* compare_key */ );
@@ -8009,6 +8069,17 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	    }
 	}
 
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+      if (on_trace)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (stats->probe.test_time1, tv_diff);
+
+	  tsc_getticks (&start_tick);
+	}
+#endif
+
       if (need_compare_dbvalues == true)
 	{
 	  hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
@@ -8020,11 +8091,24 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
       if (on_trace)
 	{
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (stats->probe.test_time2, tv_diff);
+#endif
+
 	  max_entry = 0;
 	}
 
       do
 	{
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&start_tick);
+	    }
+#endif
+
 	  error = qexec_hash_join_probe_key (thread_p, hash_scan, &found_tuple_record, build_list_scan_id);
 	  if (error != NO_ERROR)
 	    {
@@ -8039,6 +8123,14 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
 	  if (on_trace)
 	    {
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (stats->probe.test_time3, tv_diff);
+
+	      tsc_getticks (&start_tick);
+#endif
+
 	      max_entry++;
 	    }
 
@@ -8065,6 +8157,17 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 		}
 	    }
 
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (stats->probe.test_time4, tv_diff);
+
+	      tsc_getticks (&start_tick);
+	    }
+#endif
+
 #if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_PROBE)
 	  fprintf (stdout, "\n[DEBUG] Matched Key: ");
 	  qfile_print_tuple (&(build_list_scan_id->list_id.type_list), found_tuple_record.tpl);
@@ -8077,6 +8180,15 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	    {
 	      goto exit_on_error;
 	    }
+
+#if defined(TEST_HASH_JOIN_TEST_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (stats->probe.test_time5, tv_diff);
+	    }
+#endif
 	}
       while (true);
 

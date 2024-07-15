@@ -3181,6 +3181,8 @@ qo_hjoin_cost (QO_PLAN * plan_p)
 {
   QO_PLAN *inner_plan_p, *outer_plan_p;
   double inner_cardinality, outer_cardinality;
+  double inner_build_cpu_cost, outer_build_cpu_cost;
+  double inner_build_io_cost, outer_build_io_cost;
 
   /* TODO: Check the system parameters of the server on the client. */
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
@@ -3218,91 +3220,58 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   plan_p->variable_io_cost = outer_plan_p->variable_io_cost + inner_plan_p->variable_io_cost;
 
   /**
-   * STEP 2:
+   * STEP 2: Calculate the cost when inner is used as build input.
+   */
+  inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
+  inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+
+  inner_build_io_cost = 0.0;
+  if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+    {
+      inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
+      inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+    }
+
+  /**
+   * STEP 3: Calculate the cost when outer is used as build input.
+   */
+  outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
+  outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
+
+  outer_build_io_cost = 0.0;
+  if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+    {
+      outer_build_io_cost = (inner_cardinality * HJ_FILE_IO_WEIGHT);
+      outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+    }
+
+  /**
+   * STEP 4: Choose the lowest cost.
    */
   switch (plan_p->plan_un.join.join_type)
     {
     case JOIN_LEFT:
-      {
-	/**
-	 * STEP 2-1: Calculate the cost when inner is used as build input.
-	 */
-	plan_p->variable_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-	plan_p->variable_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
-
-	if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-	  {
-	    plan_p->variable_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-	    plan_p->variable_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-	  }
-
-	break;
-      }
+      plan_p->variable_cpu_cost += inner_build_cpu_cost;
+      plan_p->variable_io_cost += inner_build_io_cost;
+      break;
 
     case JOIN_RIGHT:
-      {
-	/**
-	 * STEP 2-1: Calculate the cost when outer is used as build input.
-	 */
-	plan_p->variable_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
-	plan_p->variable_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-
-	if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-	  {
-	    plan_p->variable_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-	    plan_p->variable_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-	  }
-
-	break;
-      }
+      plan_p->variable_cpu_cost += outer_build_cpu_cost;
+      plan_p->variable_io_cost += outer_build_io_cost;
+      break;
 
     case JOIN_INNER:
-      {
-	double inner_build_cpu_cost, outer_build_cpu_cost;
-	double inner_build_io_cost, outer_build_io_cost;
-
-	/**
-	 * STEP 2-1: Calculate the cost when inner is used as build input.
-	 */
-	inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-	inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
-
-	inner_build_io_cost = 0.0;
-	if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-	  {
-	    inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-	    inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-	  }
-
-	/**
-	 * STEP 2-2: Calculate the cost when outer is used as build input.
-	 */
-	outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
-	outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-
-	outer_build_io_cost = 0.0;
-	if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-	  {
-	    outer_build_io_cost = (inner_cardinality * HJ_FILE_IO_WEIGHT);
-	    outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-	  }
-
-	/**
-	 * STEP 2-3: Choose the lowest cost.
-	 */
-	if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
-	  {
-	    plan_p->variable_cpu_cost += inner_build_cpu_cost;
-	    plan_p->variable_io_cost += inner_build_io_cost;
-	  }
-	else
-	  {
-	    plan_p->variable_cpu_cost += outer_build_cpu_cost;
-	    plan_p->variable_io_cost += outer_build_io_cost;
-	  }
-
-	break;
-      }
+      if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
+	{
+	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
+	  plan_p->variable_io_cost += inner_build_io_cost;
+	}
+      else
+	{
+	  plan_p->variable_cpu_cost += outer_build_cpu_cost;
+	  plan_p->variable_io_cost += outer_build_io_cost;
+	}
+      break;
 
     default:
       qo_worst_cost (plan_p);
@@ -7452,6 +7421,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	/* STEP 5-5: examine hash-join */
 	if (!bitset_is_empty (&sm_join_terms))
 	  {
+	    /**
+	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
+	     * The mergeable term and the hash join term have the same characteristics. If the characteristics
+	     * for mergeable terms are changed, the logic for hash join terms should be separated.
+	     *
+	     * mergeable term: equi-term, symmetrical term, e.g. TBL1.a = TBL2.a, function(TAB1.a) = function(TAB2.a)
+	     */
 	    kept +=
 	      qo_examine_hash_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
 				    &sarged_terms, &pinned_subqueries);

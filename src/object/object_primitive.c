@@ -1915,6 +1915,8 @@ pr_clear_value (DB_VALUE * value)
   bool need_clear;
   DB_TYPE db_type;
 
+  static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
+
   if (value == NULL)
     {
       return NO_ERROR;		/* do nothing */
@@ -1929,12 +1931,11 @@ pr_clear_value (DB_VALUE * value)
       need_clear = false;
       if (value->need_clear)
 	{
-	  if ((QSTR_IS_ANY_CHAR_OR_BIT (db_type) && (value->data.ch.medium.buf != NULL))
-	      || (db_type == DB_TYPE_ENUMERATION))
-	    {
-	      /* I think it is more expensive to check PRM_ID_ORACLE_STYLE_EMPTY_STRING. */
-	      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
-		{		/* need to check */
+	  if (oracle_style_empty_string)
+	    {			/* need to check */
+	      if ((QSTR_IS_ANY_CHAR_OR_BIT (db_type) && value->data.ch.medium.buf != NULL)
+		  || db_type == DB_TYPE_ENUMERATION)
+		{
 		  need_clear = true;	/* need to free Empty-string */
 		}
 	    }
