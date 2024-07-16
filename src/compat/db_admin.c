@@ -45,6 +45,7 @@
 #include "server_interface.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
+#include "optimizer.h"
 #include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
@@ -2724,11 +2725,35 @@ db_set_system_parameters (const char *data)
       error = ER_AU_DBA_ONLY;
       goto cleanup;
     }
+
+  if (assignments)
+    {
+      int level;
+
+      for (SYSPRM_ASSIGN_VALUE * ptr = assignments; ptr != NULL; ptr = ptr->next)
+	{
+	  if (ptr->prm_id != PRM_ID_OPTIMIZATION_LEVEL)
+	    {
+	      continue;
+	    }
+
+	  /* check value of optimization_level */
+	  level = ptr->value.i;
+
+	  if (CHECK_INVALID_OPTIMIZATION_LEVEL (level))
+	    {
+	      rc = PRM_ERR_BAD_VALUE;
+	      break;
+	    }
+	}
+    }
+
   if (rc == PRM_ERR_NOT_FOR_CLIENT || rc == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
     {
       /* set system parameters on server */
       rc = sysprm_change_server_parameters (assignments);
     }
+
   if (rc == PRM_ERR_NO_ERROR)
     {
       /* values were successfully set on server, set them on client too */
