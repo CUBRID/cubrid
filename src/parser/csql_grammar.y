@@ -12872,7 +12872,7 @@ sp_param_list
 sp_param_def
 	: identifier
 	  opt_sp_in_out
-	  data_type
+	  sp_param_type
           opt_sp_default_value
 	  opt_comment_spec
 		{{ DBG_TRACE_GRAMMAR(sp_param_def, : identifier opt_sp_in_out sp_param_type opt_comment_spec);
