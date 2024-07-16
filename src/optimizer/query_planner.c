@@ -3316,8 +3316,6 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
       break;
 
     case JOIN_RIGHT:
-      /* RIGHT OUTER JOIN is changed to LEFT OUTER JOIN and executed. */
-      assert (false);
       fputs (" (right outer join)", f);
       break;
 
