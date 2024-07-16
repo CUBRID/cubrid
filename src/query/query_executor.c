@@ -7122,7 +7122,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
   /* In OUTER JOIN, only JOIN_LEFT is supported. */
   is_outer_join = IS_OUTER_JOIN_TYPE (merge_info->join_type);
-  assert ((is_outer_join == false) || (merge_info->join_type == JOIN_LEFT));
+  assert ((is_outer_join == false) || (merge_info->join_type != JOIN_OUTER));
 
   if (on_trace)
     {
