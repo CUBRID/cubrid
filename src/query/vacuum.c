@@ -1510,7 +1510,7 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	  vacuum_check_shutdown_interruption (thread_p, error_code);
 
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Vacuum heap page %d|%d, error_code=%d.",
-			       page_ptr->oid.volid, page_ptr->oid.pageid);
+			       page_ptr->oid.volid, page_ptr->oid.pageid, error_code);
 
 #if defined (NDEBUG)
 	  if (!thread_p->shutdown)
@@ -1991,7 +1991,7 @@ retry_prepare:
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      vacuum_check_shutdown_interruption (thread_p, error_code);
-	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|d.", VPID_AS_ARGS (&forward_vpid));
+	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.", VPID_AS_ARGS (&forward_vpid));
 	      return error_code;
 	    }
 	  /* Both pages fixed. */
