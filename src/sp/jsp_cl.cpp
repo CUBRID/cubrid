@@ -867,7 +867,8 @@ error_exit:
     {
       tran_abort_upto_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
     }
-  return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+
+  return (err == NO_ERROR) ? er_errid () : err;
 }
 
 /*
