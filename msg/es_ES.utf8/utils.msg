@@ -543,7 +543,6 @@ opciones validas:\n\
   -i, --input-class-file=FILE entrar ARCHIVO de nombres de tablas; estandar: botar todas clases\n\
       --include-reference     incluir tablas referenciadas; con opcion -i; estandar: inhabilitado\n\
       --input-class-only      incluir solo la clase especificada; con opcion -i; estandar: inhabilitado\n\
-      --lo-count=COUNT        lo file COUNT para un directorio: estandar: 0\n\
       --estimated-size=NUMBER NUMERO estimado de instancias; estandar: auto calculado\n\
       --cached-pages=NUMBER   NUMERO de paginas almacenadas; estandar: 100\n\
   -O, --output-path=PATH      RUTA de directorio de salida; estandar: directorio de trabajo\n\

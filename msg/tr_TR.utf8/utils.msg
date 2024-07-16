@@ -543,7 +543,6 @@ geçerli seçenekler:\n\
   -i, --input-class-file=FILE tablo adlarının giriş FILE varsayılan: tüm sınıflar dökümü\n\
       --include-reference     başvurulan tablolar arasında; ile-i seçeneği; varsayılan: Engelli\n\
       --input-class-only      sadece belirtilen sınıf arasında; ile-i seçeneği; varsayılan: devre dışı\n\
-      --lo-count=COUNT        Bir dizin başına lo dosya COUNT; varsayılan: 0\n\
       --estimated-size=NUMBER örnekleri tahmini NUMBER; varsayılan: otomatik bilgisayarlı\n\
       --cached-pages=NUMBER   Önbelleğe alınmış sayfaları NUMBER; varsayılan: 100\n\
   -O, --output-path=PATH      Çıktı dizininin PATH; varsayılan: çalışma dizini\n\

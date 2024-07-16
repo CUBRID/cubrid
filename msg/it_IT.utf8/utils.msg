@@ -543,7 +543,6 @@ opzioni valide:\n\
   -i, --input-class-file=FILE FILE di input di nomi di tabelle; predefinito: dump tutte le classi\n\
       --include-reference     includi le tabelle di riferimento, con opzione -i; predefinito: non attivo\n\
       --input-class-only      includi solo le classe specificate, con opzione-i; predefinito: non attivo\n\
-      --lo-count=COUNT        file COUNT per directory; predefinito: 0\n\
       --estimated-size=NUMBER stima del NUMERO di instanze; predefinito: auto computed\n\
       --cached-pages=NUMBERO  NUMERO di pagine memorizzate nella cache; predefinito: 100\n\
   -O, --output-path=PATH      PATH della directory di output; predefinito: directory di lavoro\n\
