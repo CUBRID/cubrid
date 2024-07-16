@@ -49,6 +49,7 @@ import com.cubrid.jsp.value.LongValue;
 import com.cubrid.jsp.value.OidValue;
 import com.cubrid.jsp.value.ResultSetValue;
 import com.cubrid.jsp.value.SetValue;
+import com.cubrid.jsp.value.NumericValue;
 import com.cubrid.jsp.value.ShortValue;
 import com.cubrid.jsp.value.StringValue;
 import com.cubrid.jsp.value.TimeValue;
