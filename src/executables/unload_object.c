@@ -1238,7 +1238,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 
 /* in case of both normal and error */
 end:
-#if 0
+#if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
   if (unloadlog_file != NULL)
     {
       fclose (unloadlog_file);
