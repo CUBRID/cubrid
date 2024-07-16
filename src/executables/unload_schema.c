@@ -58,6 +58,7 @@
 #include "object_print.h"
 #include "dbtype.h"
 #include "tde.h"
+#include "sp_catalog.hpp"
 
 #define CLASS_NAME_MAX 80
 
@@ -231,8 +232,11 @@ static void emit_method_def (extract_context & ctxt, print_output & output_ctx, 
 static void emit_methfile_def (print_output & output_ctx, DB_METHFILE * methfile);
 static void emit_partition_parts (print_output & output_ctx, SM_PARTITION * partition_info, int partcnt);
 static void emit_partition_info (extract_context & ctxt, print_output & output_ctx, MOP clsobj);
+
 static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg_set);
 static int emit_stored_procedure (extract_context & ctxt, print_output & output_ctx);
+static int emit_stored_procedure_code (print_output & output_ctx, const char *name);
+
 static int emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static void emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
@@ -4323,10 +4327,10 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
-  DB_VALUE sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, generated_val, args_val, rtn_type_val, method_val,
-    comment_val;
+  DB_VALUE sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, lang_val, generated_val, args_val, rtn_type_val,
+    method_val, directive_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
-  int sp_type, rtn_type, arg_cnt, save;
+  int sp_type, rtn_type, arg_cnt, directive, save;
   DB_SET *arg_set;
   int err;
   int err_count = 0;
@@ -4345,16 +4349,11 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
     {
       obj = cur_sp->op;
 
-      if ((err = db_get (obj, SP_ATTR_SP_TYPE, &sp_type_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_NAME, &sp_name_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_PKG, &pkg_name_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_ARGS, &args_val)) != NO_ERROR
-	  || ((err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val)) != NO_ERROR)
+      if ((err = db_get (obj, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_LANG, &lang_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_TARGET, &method_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
+	  || (err = db_get (obj, SP_ATTR_NAME, &sp_name_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
@@ -4365,77 +4364,109 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 	  continue;
 	}
 
-      const char *sp_name = db_get_string (&sp_name_val);
-
-      if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
-	{
-	  owner = db_get_object (&owner_val);
-	  err = db_get (owner, "name", &owner_name_val);
-	  if (err != NO_ERROR)
-	    {
-	      err_count++;
-	      continue;
-	    }
-
-	  if (strcasecmp (ctxt.login_user, db_get_string (&owner_name_val)) != 0)
-	    {
-	      continue;
-	    }
-	}
-
-      sp_type = db_get_int (&sp_type_val);
-      output_ctx ("\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
-
-      if (!DB_IS_NULL (&pkg_name_val))
-	{
-	  const char *pkg_name = db_get_string (&pkg_name_val);
-	  output_ctx (" %s%s%s.%s%s%s (", PRINT_IDENTIFIER (pkg_name), PRINT_IDENTIFIER (sp_name));
-	}
-      else
-	{
-	  output_ctx (" %s%s%s (", PRINT_IDENTIFIER (sp_name));
-	}
-
-      arg_cnt = db_get_int (&arg_cnt_val);
-      arg_set = db_get_set (&args_val);
-      if (emit_stored_procedure_args (output_ctx, arg_cnt, arg_set) > 0)
-	{
-	  err_count++;
-	  output_ctx (";\n");
-	  continue;
-	}
-      output_ctx (") ");
-
-      if (sp_type == SP_TYPE_FUNCTION)
-	{
-	  rtn_type = db_get_int (&rtn_type_val);
-
-	  if (rtn_type == DB_TYPE_RESULTSET)
-	    {
-	      output_ctx ("RETURN CURSOR ");
-	    }
-	  else
-	    {
-	      output_ctx ("RETURN %s ", db_get_type_name ((DB_TYPE) rtn_type));
-	    }
-	}
-
-      output_ctx ("AS LANGUAGE JAVA NAME '%s'", db_get_string (&method_val));
-
-      if (!DB_IS_NULL (&comment_val))
-	{
-	  output_ctx (" COMMENT ");
-	  desc_value_print (output_ctx, &comment_val);
-	}
-
-      output_ctx (";\n");
-
+      // owner
       owner = db_get_object (&owner_val);
       err = db_get (owner, "name", &owner_name_val);
       if (err != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
+	}
+
+      if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	{
+	  if (strcasecmp (ctxt.login_user, db_get_string (&owner_name_val)) != 0)
+	    {
+	      continue;
+	    }
+	}
+
+      const char *sp_name = db_get_string (&sp_name_val);
+      const char *target = db_get_string (&method_val);
+      int sp_lang = db_get_int (&lang_val);
+
+      if (sp_lang == SP_LANG_PLCSQL)
+	{
+	  std::string class_name = jsp_get_class_name_of_target (std::string (target));
+	  err = emit_stored_procedure_code (output_ctx, class_name.data ());
+	  output_ctx (";\n");
+	  if (err > 0)
+	    {
+	      err_count++;
+	      continue;
+	    }
+	}
+      else
+	{
+	  if ((err = db_get (obj, SP_ATTR_SP_TYPE, &sp_type_val)) != NO_ERROR
+	      || (err = db_get (obj, SP_ATTR_PKG, &pkg_name_val)) != NO_ERROR
+	      || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
+	      || (err = db_get (obj, SP_ATTR_ARGS, &args_val)) != NO_ERROR
+	      || (err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val)) != NO_ERROR
+	      || (err = db_get (obj, SP_ATTR_DIRECTIVE, &directive_val)) != NO_ERROR
+	      || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
+	    {
+	      err_count++;
+	      continue;
+	    }
+
+	  sp_type = db_get_int (&sp_type_val);
+	  output_ctx ("\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
+
+	  if (!DB_IS_NULL (&pkg_name_val))
+	    {
+	      const char *pkg_name = db_get_string (&pkg_name_val);
+	      output_ctx (" %s%s%s.%s%s%s (", PRINT_IDENTIFIER (pkg_name), PRINT_IDENTIFIER (sp_name));
+	    }
+	  else
+	    {
+	      output_ctx (" %s%s%s (", PRINT_IDENTIFIER (sp_name));
+	    }
+
+	  arg_cnt = db_get_int (&arg_cnt_val);
+	  arg_set = db_get_set (&args_val);
+	  if (emit_stored_procedure_args (output_ctx, arg_cnt, arg_set) > 0)
+	    {
+	      err_count++;
+	      output_ctx (";\n");
+	      continue;
+	    }
+	  output_ctx (") ");
+
+	  if (sp_type == SP_TYPE_FUNCTION)
+	    {
+	      rtn_type = db_get_int (&rtn_type_val);
+
+	      if (rtn_type == DB_TYPE_RESULTSET)
+		{
+		  output_ctx ("RETURN CURSOR ");
+		}
+	      else
+		{
+		  output_ctx ("RETURN %s ", db_get_type_name ((DB_TYPE) rtn_type));
+		}
+	    }
+
+	  // authid
+	  directive = db_get_int (&directive_val);
+	  if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_CALLER)
+	    {
+	      output_ctx ("AUTHID CALLER ");
+	    }
+	  else
+	    {
+	      output_ctx ("AUTHID OWNER ");
+	    }
+
+	  output_ctx ("AS LANGUAGE JAVA NAME '%s'", db_get_string (&method_val));
+
+	  if (!DB_IS_NULL (&comment_val))
+	    {
+	      output_ctx (" COMMENT ");
+	      desc_value_print (output_ctx, &comment_val);
+	    }
+
+	  output_ctx (";\n");
 	}
 
       if (ctxt.is_dba_user || ctxt.is_dba_group_member)
@@ -4448,6 +4479,53 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
     }
 
   db_objlist_free (sp_list);
+  AU_ENABLE (save);
+
+  return err_count;
+}
+
+/*
+ * emit_stored_procedure_code - emit stored procedure code
+ *    return: 0 if success, error count otherwise
+ *    name(in): code name
+ */
+static int
+emit_stored_procedure_code (print_output & output_ctx, const char *name)
+{
+  MOP obj;
+  int save, err, err_count = 0;
+  DB_VALUE value, stype_val, scode_val;
+  int stype;
+
+  AU_DISABLE (save);
+
+  db_make_string (&value, name);
+  obj = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_ATTR_CLS_NAME, &value);
+  if (obj == NULL)
+    {
+      err_count++;
+      goto exit;
+    }
+
+
+  if ((err = db_get (obj, SP_ATTR_SOURCE_TYPE, &stype_val)) != NO_ERROR
+      || (err = db_get (obj, SP_ATTR_SOURCE_CODE, &scode_val)) != NO_ERROR)
+    {
+      err_count++;
+      goto exit;
+    }
+
+  stype = db_get_int (&stype_val);
+  if (stype == SPSC_PLCSQL)
+    {
+      const char *scode = db_get_string (&scode_val);
+      output_ctx ("%s", scode);
+    }
+
+exit:
+
+  db_value_clear (&value);
+  db_value_clear (&scode_val);
   AU_ENABLE (save);
 
   return err_count;
@@ -5862,11 +5940,6 @@ extract_split_schema_files (extract_context & ctxt)
       err_count++;
     }
 
-  if (extract_procedure (ctxt) != NO_ERROR)
-    {
-      err_count++;
-    }
-
   if (extract_server (ctxt) != NO_ERROR)
     {
       err_count++;
@@ -5893,6 +5966,11 @@ extract_split_schema_files (extract_context & ctxt)
     }
 
   if (extract_class (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_procedure (ctxt) != NO_ERROR)
     {
       err_count++;
     }
