@@ -443,7 +443,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplExprBinaryOp =
             new String[] {
-                "op%'OPERATION'%%'OP-EXTENSION'%(",
+                "%'OPT-NEGATE'%op%'OPERATION'%%'OP-EXTENSION'%(",
                 "  %'+LEFT-OPERAND'%,",
                 "  %'+RIGHT-OPERAND'%",
                 ")"
@@ -451,19 +451,44 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitExprBinaryOp(ExprBinaryOp node) {
-        CodeTemplate tmpl =
-                new CodeTemplate(
-                        "ExprBinaryOp",
-                        Misc.getLineColumnOf(node.ctx),
-                        tmplExprBinaryOp,
-                        "%'OPERATION'%",
-                        node.opStr,
-                        "%'OP-EXTENSION'%",
-                        node.opExtension,
-                        "%'+LEFT-OPERAND'%",
-                        visit(node.left),
-                        "%'+RIGHT-OPERAND'%",
-                        visit(node.right));
+
+        CodeTemplate tmpl;
+        if (node.recordTypeOfOperands == null) {
+            tmpl = new CodeTemplate(
+                "ExprBinaryOp - for non-records",
+                Misc.getLineColumnOf(node.ctx),
+                tmplExprBinaryOp,
+                "%'OPT-NEGATE'%",
+                "",
+                "%'OPERATION'%",
+                node.opStr,
+                "%'OP-EXTENSION'%",
+                node.opExtension,
+                "%'+LEFT-OPERAND'%",
+                visit(node.left),
+                "%'+RIGHT-OPERAND'%",
+                visit(node.right));
+        } else {
+
+            javaTypesUsed.add("java.util.Objects");
+
+            boolean isEq = node.opStr.equals("Eq");
+
+            tmpl = new CodeTemplate(
+                "ExprBinaryOp - for records",
+                Misc.getLineColumnOf(node.ctx),
+                tmplExprBinaryOp,
+                "%'OPT-NEGATE'%",
+                (isEq ? "" : "!"),
+                "%'OPERATION'%",
+                "Eq",
+                "%'OP-EXTENSION'%",
+                node.recordTypeOfOperands.javaCode,
+                "%'+LEFT-OPERAND'%",
+                visit(node.left),
+                "%'+RIGHT-OPERAND'%",
+                visit(node.right));
+        }
 
         return applyCoercion(node.coercion, tmpl);
     }
@@ -3071,6 +3096,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         lines.add("  }");
 
         lines.add("}");
+
+        if (rec.generateEq) {
+            lines.add(String.format("private static boolean opEq%1$s(%1$s l, %1$s r) {", rec.javaCode));
+            int i = 0;
+            for (Misc.Pair<String, Type> f: rec.selectList) {
+                lines.add(String.format("  %1$s Objects.equals(l.%2$s, r.%2$s)", (i == 0 ? "return" : "  &&"), f.e1));
+                i++;
+            }
+            lines.add("  ;");
+            lines.add("}");
+        }
 
         return lines;
     }

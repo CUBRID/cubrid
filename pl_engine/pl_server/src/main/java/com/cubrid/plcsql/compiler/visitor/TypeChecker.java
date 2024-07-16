@@ -43,6 +43,7 @@ import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
+import com.cubrid.plcsql.compiler.type.TypeRecord;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -268,6 +269,23 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitExprBinaryOp(ExprBinaryOp node) {
         Type leftType = visit(node.left);
         Type rightType = visit(node.right);
+
+        // check if it is = or != for two records of the same type
+        if (leftType.idx == Type.IDX_RECORD || rightType.idx == Type.IDX_RECORD) {
+            if (!"Eq".equals(node.opStr) && !"Neq".equals(node.opStr)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(node.ctx), // s237
+                        "only = and != are allowed for a record");
+            }
+            if (leftType != rightType) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(node.ctx), // s238
+                        "= and != are allowed only for records of the same type");
+            }
+            node.recordTypeOfOperands = (TypeRecord) leftType;
+            node.recordTypeOfOperands.generateEq = true;
+            return Type.BOOLEAN;
+        }
 
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc binOp =

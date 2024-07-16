@@ -76,31 +76,38 @@ public abstract class Coercion {
                 return new NullToRecord(src, dst);
             } else if (src instanceof TypeRecord) {
 
+                if (src == dst) {
+                    return Identity.getInstance(src);
+                }
+
                 TypeRecord srcRec = (TypeRecord) src;
                 TypeRecord dstRec = (TypeRecord) dst;
 
-                if (srcRec.selectList.size() == dstRec.selectList.size()) {
+                // conditions of compatibility of two different record types
+                // 1. number of fields must be equal
+                // 2. corresponding fields must be assign comapatible
 
-                    int len = srcRec.selectList.size();
-                    Coercion[] fieldCoercions = new Coercion[len];
-
-                    for (int i = 0; i < len; i++) {
-                        Misc.Pair<String, Type> srcField = srcRec.selectList.get(i);
-                        Misc.Pair<String, Type> dstField = dstRec.selectList.get(i);
-
-                        Coercion c = getCoercion(srcField.e2, dstField.e2);
-                        if (c == null) {
-                            return null;    // coercion is not available for this field
-                        } else {
-                            fieldCoercions[i] = c;
-                        }
-                    }
-
-                    return RecordToRecord.getInstance(srcRec, dstRec, fieldCoercions);
-
-                } else {
+                if (srcRec.selectList.size() != dstRec.selectList.size()) {
                     return null;    // the numbers of fields do not match
                 }
+
+                int len = srcRec.selectList.size();
+                Coercion[] fieldCoercions = new Coercion[len];
+
+                for (int i = 0; i < len; i++) {
+                    Misc.Pair<String, Type> srcField = srcRec.selectList.get(i);
+                    Misc.Pair<String, Type> dstField = dstRec.selectList.get(i);
+
+                    Coercion c = getCoercion(srcField.e2, dstField.e2);
+                    if (c == null) {
+                        return null;    // coercion is not available for this field
+                    } else {
+                        fieldCoercions[i] = c;
+                    }
+                }
+
+                return RecordToRecord.getInstance(srcRec, dstRec, fieldCoercions);
+
             }
 
             return null;

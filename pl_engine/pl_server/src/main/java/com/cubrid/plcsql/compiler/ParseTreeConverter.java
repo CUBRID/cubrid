@@ -360,6 +360,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             assert selectList != null;
         }
 
+        if (selectList.size() == 0) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx),  // s078
+                    row + " has no columns");  // unlikely ...
+        }
+
         return new TypeSpec(ctx, TypeRecord.getInstance(ofTable, row, selectList));
     }
 
