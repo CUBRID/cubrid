@@ -3388,6 +3388,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    if (jsp_is_exist_stored_procedure (tmp_node->info.name.original))
 	      {
 		node->info.dot.arg2->info.function.generic_name = tmp_node->info.name.original;
+		node->info.dot.arg2->next = node->next;
 		/*
 		 * If (dot.arg1->node_type == PT_NAME) & (dot.arg2->node_type == PT_FUNCTION), pt_bind_name_or_path_in_scope() always returns NULL and has an er_errid() value.
 		 * Therefore, er_errid() that occurs in pt_bind_name_or_path_in_scope must be reset.
@@ -3396,7 +3397,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  {
 		    pt_reset_error (parser);
 		  }
-		PT_NODE_INIT_OUTERLINK (node);
 		parser_free_tree (parser, tmp_node);
 		node = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		*continue_walk = PT_LIST_WALK;
