@@ -43,7 +43,7 @@ public class StmtForExecImmeLoop extends StmtForSqlLoop {
     public StmtForExecImmeLoop(
             ParserRuleContext ctx,
             String label,
-            DeclForRecord record,
+            DeclVar record,
             Expr dynamicSql,
             NodeList<? extends Expr> usedExprList,
             NodeList<Stmt> stmts) {

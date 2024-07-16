@@ -816,6 +816,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return new ExprFalse(ctx);
     }
 
+    private static boolean isRecordVar(ExprId id) {
+        return (id != null &&
+            id.decl instanceof DeclVar &&
+            ((DeclVar) id.decl).typeSpec.type.idx == Type.IDX_RECORD);
+    }
+
     @Override
     public Expr visitField_exp(Field_expContext ctx) {
 
@@ -823,7 +829,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         try {
             ExprId record = visitNonFuncIdentifier(ctx.record);
-            if (!(record.decl instanceof DeclForRecord)) {
+            if (!isRecordVar(record)) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx.record), // s008
                         "field lookup is only allowed for records");
@@ -831,35 +837,31 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             return new ExprField(ctx, record, fieldName);
 
-        } catch (SemanticError e) {
+        } catch (UndeclaredId e) {
 
             String msg = e.getMessage();
-            if (msg.startsWith("undeclared id")) {
 
-                if (fieldName.equals("CURRENT_VALUE")
-                        || fieldName.equals("NEXT_VALUE")
-                        || fieldName.equals("CURRVAL")
-                        || fieldName.equals("NEXTVAL")) {
+            if (fieldName.equals("CURRENT_VALUE")
+                    || fieldName.equals("NEXT_VALUE")
+                    || fieldName.equals("CURRVAL")
+                    || fieldName.equals("NEXTVAL")) {
 
-                    connectionRequired = true;
+                connectionRequired = true;
 
-                    String recordText = Misc.getNormalizedText(ctx.record);
-                    // do not push a symbol table: no nested structure
-                    Expr ret =
-                            new ExprSerialVal(
-                                    ctx,
-                                    recordText,
-                                    (fieldName.equals("CURRENT_VALUE")
-                                                    || fieldName.equals("CURRVAL"))
-                                            ? ExprSerialVal.SerialVal.CURR_VAL
-                                            : ExprSerialVal.SerialVal.NEXT_VAL);
-                    semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
-                    return ret;
-                } else {
-                    throw e; // s007: undeclared id ...
-                }
+                String recordText = Misc.getNormalizedText(ctx.record);
+                // do not push a symbol table: no nested structure
+                Expr ret =
+                        new ExprSerialVal(
+                                ctx,
+                                recordText,
+                                (fieldName.equals("CURRENT_VALUE")
+                                                || fieldName.equals("CURRVAL"))
+                                        ? ExprSerialVal.SerialVal.CURR_VAL
+                                        : ExprSerialVal.SerialVal.NEXT_VAL);
+                semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
+                return ret;
             } else {
-                throw e;
+                throw e; // s007: undeclared id ...
             }
         }
     }
@@ -1595,9 +1597,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             symbolStack.putDeclLabel(label, declLabel);
         }
 
-        DeclForRecord declForRecord =
-                new DeclForRecord(
-                        ctx.for_cursor().record_name(), record, declCursor.staticSql.selectList);
+        TypeRecord recTy = TypeRecord.getInstance(false, declCursor.name, declCursor.staticSql.selectList);
+        DeclVar declForRecord =
+                new DeclVar(ctx.for_cursor().record_name(), record, new TypeSpec(null, recTy), false, null);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1644,7 +1646,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             symbolStack.putDeclLabel(label, declLabel);
         }
 
-        DeclForRecord declForRecord = new DeclForRecord(recNameCtx, record, staticSql.selectList);
+        TypeRecord recTy = TypeRecord.getInstance(false, record, staticSql.selectList);
+        DeclVar declForRecord = new DeclVar(recNameCtx, record, new TypeSpec(null, recTy), false, null);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1686,8 +1689,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             symbolStack.putDeclLabel(label, declLabel);
         }
 
-        DeclForRecord declForRecord =
-                new DeclForRecord(recNameCtx, record, null); // null: unknown field types
+        DeclVar declForRecord = new DeclVar(recNameCtx, record, new TypeSpec(null, Type.RECORD_ANY), false, null);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -2444,7 +2446,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                         ExprId record =
                                 visitNonFuncIdentifier(split[0], ctx); // s432: undeclared id ...
-                        if (!(record.decl instanceof DeclForRecord)) {
+                        if (!isRecordVar(record)) {
                             throw new SemanticError(
                                     Misc.getLineColumnOf(ctx), // s433
                                     split[0] + " is not a record");
@@ -2483,14 +2485,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         DeclId decl = id.decl;
                         if (decl instanceof DeclIdTyped) {
                             ty = ((DeclIdTyped) decl).typeSpec().type;
+                            if (ty.idx == Type.IDX_RECORD) {
+                                throw new SemanticError(
+                                        Misc.getLineColumnOf(ctx), // s423
+                                        "record " + id.name + " cannot be used in a select list");
+                            }
                         } else if (decl instanceof DeclForIter) {
                             ty = Type.INT;
-                        } else if (decl instanceof DeclForRecord) {
-                            throw new SemanticError(
-                                    Misc.getLineColumnOf(ctx), // s423
-                                    "for-loop iterator record "
-                                            + id.name
-                                            + " cannot be used in a select list");
                         } else if (decl instanceof DeclCursor) {
                             throw new SemanticError(
                                     Misc.getLineColumnOf(ctx), // s424

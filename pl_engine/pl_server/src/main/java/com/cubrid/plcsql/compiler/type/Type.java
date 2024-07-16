@@ -106,6 +106,7 @@ public class Type {
     // the following two are not actual Java types but only for internal type checking
     public static Type CURSOR = new Type(IDX_CURSOR, "Cursor", "Cursor", null);
     public static Type NULL = new Type(IDX_NULL, "Null", "Null", "null");
+    public static Type RECORD_ANY = new Type(IDX_RECORD, "Record", "Record", null);
 
     // (1) used as an argument type of some operators in SpLib
     // (2) used as an expression type when a specific Java type cannot be given
@@ -187,7 +188,7 @@ public class Type {
         // internal types
         if (fullJavaType.equals("Null")) {
             return "Object";
-        } else if (fullJavaType.equals("Cursor")) {
+        } else if (fullJavaType.equals("Cursor") || fullJavaType.equals("Record")) {
             return "%ERROR%";
         }
 

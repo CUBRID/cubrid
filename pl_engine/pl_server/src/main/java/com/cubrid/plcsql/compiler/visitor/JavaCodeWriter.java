@@ -181,9 +181,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
         TypeRecord.instances = new HashMap<>(); // clear the old accumulation
         String[] recordDefs = recordLines.toArray(DUMMY_STRING_ARRAY);
-        recordLines.clear();
 
         // add all Java code of record-to-record coercion functions
+        recordLines.clear();
         recordLines.addAll(Coercion.RecordToRecord.getAllJavaCode());
         Coercion.RecordToRecord.clearMemoized();
         String[] recordAssignFuncs = recordLines.toArray(DUMMY_STRING_ARRAY);

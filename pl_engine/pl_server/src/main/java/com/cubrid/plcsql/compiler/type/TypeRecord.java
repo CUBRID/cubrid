@@ -48,7 +48,8 @@ public class TypeRecord extends Type {
 
         TypeRecord ret = instances.get(selectList);
         if (ret == null) {
-            ret = new TypeRecord(ofTable, rowName, selectList);
+            int seq = instances.size();
+            ret = new TypeRecord(ofTable, rowName + seq, selectList);
             instances.put(selectList, ret);
         }
 
