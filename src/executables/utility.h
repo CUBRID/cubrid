@@ -1335,6 +1335,8 @@ typedef struct _ha_config
 #define UNLOAD_INCLUDE_REFERENCE_L              "include-reference"
 #define UNLOAD_INPUT_CLASS_ONLY_S               11902
 #define UNLOAD_INPUT_CLASS_ONLY_L               "input-class-only"
+/* "--lo-count" is a deprecated option that has been removed.
+ * Let's delete it through a separate issue.*/
 #define UNLOAD_LO_COUNT_S                       11903
 #define UNLOAD_LO_COUNT_L                       "lo-count"
 #define UNLOAD_ESTIMATED_SIZE_S                 11904

@@ -73,8 +73,8 @@ FILE *output_file = NULL;
 int g_varchar_buffer_size = DFLT_VARCHAR_BUFFER_SIZE;
 int g_request_pages = DFLT_REQ_DATASIZE;
 int g_thread_count = 0;
-int g_split_process_cnt = -1;
-int g_selection_key = -1;
+int g_parallel_process_cnt = -1;
+int g_parallel_process_idx = -1;
 
 int page_size = 4096;
 int cached_pages = 100;
@@ -214,15 +214,15 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	  _pstr = utility_get_option_string_value (arg_map, UNLOAD_MT_PROCESS_S, 0);
 	  if (_pstr)
 	    {
-	      if (sscanf (_pstr, "%d/%d", &g_selection_key, &g_split_process_cnt) != 2)
+	      if (sscanf (_pstr, "%d/%d", &g_parallel_process_idx, &g_parallel_process_cnt) != 2)
 		{
 		  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
 		  fflush (stderr);
 		  goto end;
 		}
-	      else if ((g_split_process_cnt > MAX_PROCESS_COUNT)
-		       || ((g_split_process_cnt > 1)
-			   && (g_selection_key <= 0 || g_selection_key > g_split_process_cnt)))
+	      else if ((g_parallel_process_cnt > MAX_PROCESS_COUNT)
+		       || ((g_parallel_process_cnt > 1)
+			   && (g_parallel_process_idx <= 0 || g_parallel_process_idx > g_parallel_process_cnt)))
 		{
 		  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
 		  fflush (stderr);
@@ -275,9 +275,9 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 		    utility_get_option_bool_value (arg_map, UNLOAD_SKIP_INDEX_DETAIL_S) ? "no" : "yes");
 
 #if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
-  if (g_split_process_cnt > 1)
+  if (g_parallel_process_cnt > 1)
     {
-      error = do_multi_processing (g_split_process_cnt, &is_main_process);
+      error = do_multi_processing (g_parallel_process_cnt, &is_main_process);
       if (error != NO_ERROR || is_main_process == true)
 	{
 	  status = error;
@@ -417,7 +417,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
        *  If you are in multi-process mode, this part must be done only in the first process.
        */
 
-      if (g_split_process_cnt <= 1 || g_selection_key == 1)
+      if (g_parallel_process_cnt <= 1 || g_parallel_process_idx == 1)
 	{
 	  if (create_filename_trigger (output_dirname, output_prefix, trigger_output_filename,
 				       sizeof (trigger_output_filename)) != 0)
@@ -580,7 +580,7 @@ do_multi_processing (int processes, bool * is_main_process)
 
   for (int pno = 0; pno < processes; pno++)
     {
-      g_selection_key = pno + 1;
+      g_parallel_process_idx = pno + 1;
       pid = fork ();
       if (pid < 0)
 	{

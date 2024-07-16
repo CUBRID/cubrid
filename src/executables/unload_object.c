@@ -1475,8 +1475,8 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type, bool non_threading)
     {
       TIMER_BEGIN (&(g_uci->wi_fetch));
       if (locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area,
-			     g_request_pages, g_split_process_cnt,
-			     (g_selection_key - 1) /* to zero base */ ) == NO_ERROR)
+			     g_request_pages, g_parallel_process_cnt,
+			     (g_parallel_process_idx - 1) /* to zero base */ ) == NO_ERROR)
 	{
 	  TIMER_END (&(g_uci->wi_fetch));
 
@@ -2587,11 +2587,11 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
   size_t total = strlen (output_dirname) + strlen (output_prefix) + strlen (suffix) + 8;
 
 #if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
-  if (g_split_process_cnt > 1)
+  if (g_parallel_process_cnt > 1)
     {
       char proc_name[32];
 
-      total += sprintf (proc_name, "p%d-%d", g_split_process_cnt, g_selection_key);
+      total += sprintf (proc_name, "p%d-%d", g_parallel_process_cnt, g_parallel_process_idx);
       if (total > filename_size)
 	{
 	  return -1;
@@ -2633,10 +2633,10 @@ open_object_file (extract_context & ctxt, const char *output_dirname, const char
   char tmp_name[DB_MAX_IDENTIFIER_LENGTH * 2];
   char *name_ptr = (char *) class_name;
 
-  if (g_split_process_cnt > 1)
+  if (g_parallel_process_cnt > 1)
     {
       assert (class_name && *class_name);
-      sprintf (tmp_name, "p%d-%d_%s", g_split_process_cnt, g_selection_key, class_name);
+      sprintf (tmp_name, "p%d-%d_%s", g_parallel_process_cnt, g_parallel_process_idx, class_name);
       name_ptr = tmp_name;
     }
 
