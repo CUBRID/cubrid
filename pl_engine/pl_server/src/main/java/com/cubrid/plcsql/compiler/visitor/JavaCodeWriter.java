@@ -69,18 +69,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeToResolve ctr = visitUnit(unit);
         ctr.resolve(0, codeLines, codeRangeMarkers);
 
-        for (TypeRecord rec: TypeRecord.instances.values()) {
-            codeLines.add("  private static class " + rec.javaCode + " { }");   // temporarily a empty class
-        }
-        TypeRecord.instances = new HashMap<>(); // clear the old accumulation
-
         codeLines.add(
                 "  private static List<CodeRangeMarker> codeRangeMarkerList = buildCodeRangeMarkerList(\""
                         + codeRangeMarkers
                         + "\");");
         codeLines.add("}");
 
-        return String.join("\n", codeLines.toArray(DUMMY_STRING_ARRAY));
+        return String.join("\n", codeLines);
     }
 
     // -----------------------------------------------------------------
@@ -130,7 +125,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
                 "      throw new PROGRAM_ERROR().setPlcLineColumn(pos);",
                 "    }",
-                "  }"
+                "  }",
+                "  %'+RECORD-DEFS'%",
+                "  %'+RECORD-ASSIGN-FUNCS'%"
             };
 
     @Override
@@ -177,6 +174,20 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         // body
         CodeToResolve bodyCode = visit(node.routine.body);
 
+        // record definitions
+        List<String> recordLines = new LinkedList<>();
+        for (TypeRecord rec: TypeRecord.instances.values()) {
+            recordLines.addAll(getRecordDeclCode(rec));
+        }
+        TypeRecord.instances = new HashMap<>(); // clear the old accumulation
+        String[] recordDefs = recordLines.toArray(DUMMY_STRING_ARRAY);
+        recordLines.clear();
+
+        // add all Java code of record-to-record coercion functions
+        recordLines.addAll(Coercion.RecordToRecord.getAllJavaCode());
+        Coercion.RecordToRecord.clearMemoized();
+        String[] recordAssignFuncs = recordLines.toArray(DUMMY_STRING_ARRAY);
+
         // imports
         // CAUTION: importsArray must be made after visiting all the subnodes of this Unit node
         // because javaTypesUsed,
@@ -192,7 +203,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             } else if (javaType.startsWith("Null")) {
                 // NULL type is not a java type but an internal type for convenience in
                 // typechecking.
-            } else if (javaType.startsWith("$Record_of_")) {
+            } else if (javaType.startsWith("$Record_")) {
                 // no need to import record types: they are defined in the generated Java code
             } else {
                 importsArray[i] = "import " + javaType + ";";
@@ -222,7 +233,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+DECL-CLASS'%",
                 codeDeclClass,
                 "%'+BODY'%",
-                bodyCode);
+                bodyCode,
+                "%'+RECORD-DEFS'%",
+                recordDefs,
+                "%'+RECORD-ASSIGN-FUNCS'%",
+                recordAssignFuncs);
     }
 
     // -----------------------------------------------------------------
@@ -314,9 +329,16 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitDeclVar(DeclVar node) {
 
-        String ty = getJavaCodeOfType(node.typeSpec);
+        Type ty = node.typeSpec.type;
+        String tyJava = getJavaCodeOfType(ty);
         if (node.val == null) {
-            String code = String.format("%s[] %s = new %s[] { null };", ty, node.name, ty);
+
+            String code;
+            if (ty instanceof TypeRecord) {
+                code = String.format("%1$s[] %2$s = new %1$s[] { new %1$s() };", tyJava, node.name);
+            } else {
+                code = String.format("%1$s[] %2$s = new %1$s[] { null };", tyJava, node.name);
+            }
             return new CodeTemplate("DeclVar", Misc.UNKNOWN_LINE_COLUMN, code);
         } else {
             return new CodeTemplate(
@@ -324,7 +346,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     node.notNull ? Misc.getLineColumnOf(node.ctx) : Misc.UNKNOWN_LINE_COLUMN,
                     node.notNull ? tmplNotNullVar : tmplNullableVar,
                     "%'TYPE'%",
-                    ty,
+                    tyJava,
                     "%'NAME'%",
                     node.name,
                     "%'+VAL'%",
@@ -997,21 +1019,68 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // StmtAssign
     //
 
-    private static final String[] tmplAssignNotNull =
-            new String[] {
-                "%'VAR'% = checkNotNull(", "  %'+VAL'%, \"NOT NULL constraint violated\");"
-            };
-    private static final String[] tmplAssignNullable = new String[] {"%'VAR'% =", "  %'+VAL'%;"};
+    private static final String[] tmplAssignNullToRecord = new String[] {
+        "(",
+        "%'+DST-EXPR'%).setNull(",
+        "  %'+SRC-EXPR'%);"
+    };
+
+    private static final String[] tmplAssignRecordToRecord = new String[] {
+        "setFieldsOf%'SRC-RECORD'%_To_%'DST-RECORD'%(",
+        "  %'+SRC-EXPR'%,",
+        "  %'+DST-EXPR'%);"
+    };
+
+    private static final String[] tmplAssignNotNull = new String[] {
+        "%'VAR'% = checkNotNull(",
+        "  %'+VAL'%, \"NOT NULL constraint violated\");"
+    };
+    private static final String[] tmplAssignNullable = new String[] {
+        "%'VAR'% =",
+        "  %'+VAL'%;"
+    };
 
     @Override
     public CodeToResolve visitStmtAssign(StmtAssign node) {
+
+        if (node.val.coercion instanceof Coercion.NullToRecord) {
+
+            node.val.coercion = null;   // small optimization: suppressing null record creation
+
+            return new CodeTemplate(
+                    "StmtAssign - null to record",
+                    Misc.getLineColumnOf(node.ctx),
+                    tmplAssignNullToRecord,
+                    "%'+SRC-EXPR'%",
+                    visit(node.val),
+                    "%'+DST-EXPR'%",
+                    node.var.javaCode());
+
+        } else if (node.val.coercion instanceof Coercion.RecordToRecord) {
+
+            Coercion c = node.val.coercion;
+            node.val.coercion = null;   // small optimization: suppressing null record creation
+
+            return new CodeTemplate(
+                    "StmtAssign - record to record",
+                    Misc.getLineColumnOf(node.ctx),
+                    tmplAssignRecordToRecord,
+                    "%'SRC-RECORD'%",
+                    c.src.javaCode,
+                    "%'DST-RECORD'%",
+                    c.dst.javaCode,
+                    "%'+SRC-EXPR'%",
+                    visit(node.val),
+                    "%'+DST-EXPR'%",
+                    node.var.javaCode());
+        }
 
         boolean checkNotNull =
                 (node.var.decl instanceof DeclVar) && ((DeclVar) node.var.decl).notNull;
         if (checkNotNull) {
 
             return new CodeTemplate(
-                    "ExprBinaryOp",
+                    "StmtAssign - not null",
                     Misc.getLineColumnOf(node.ctx),
                     tmplAssignNotNull,
                     "%'VAR'%",
@@ -1021,7 +1090,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         } else {
 
             return new CodeTemplate(
-                    "ExprBinaryOp",
+                    "StmtAssign - nullable",
                     Misc.UNKNOWN_LINE_COLUMN,
                     tmplAssignNullable,
                     "%'VAR'%",
@@ -2362,13 +2431,31 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();"
             };
 
-    private static final String[] tmplCastCoercion = new String[] {"(%'TYPE'%)", "  %'+EXPR'%"};
-    private static final String[] tmplConvCoercion =
-            new String[] {"conv%'SRC-TYPE'%To%'DST-TYPE'%(", "  %'+EXPR'%)"};
-    private static final String[] tmplCoerceAndCheckPrec =
-            new String[] {"checkPrecision(%'PREC'%, (short) %'SCALE'%,", "  %'+EXPR'%)"};
-    private static final String[] tmplCoerceAndCheckStrLength =
-            new String[] {"checkStrLength(%'IS-CHAR'%, %'LENGTH'%,", "  %'+EXPR'%)"};
+    private static final String[] tmplCastCoercion = new String[] {
+        "(%'TYPE'%)",
+        "  %'+EXPR'%"
+    };
+    private static final String[] tmplConvCoercion = new String[] {
+        "conv%'SRC-TYPE'%To%'DST-TYPE'%(",
+        "  %'+EXPR'%)"
+    };
+    private static final String[] tmplCoerceAndCheckPrec = new String[] {
+        "checkPrecision(%'PREC'%, (short) %'SCALE'%,",
+        "  %'+EXPR'%)"
+    };
+    private static final String[] tmplCoerceAndCheckStrLength = new String[] {
+        "checkStrLength(%'IS-CHAR'%, %'LENGTH'%,",
+        "  %'+EXPR'%)"
+    };
+    private static final String[] tmplNullToRecord = new String[] {
+        "new %'DST-RECORD'%().setNull(",
+        "  %'+EXPR'%)",
+    };
+    private static final String[] tmplRecordToRecord = new String[] {
+        "setFieldsOf%'SRC-RECORD'%_To_%'DST-RECORD'%(",
+        "  %'+EXPR'%,",
+        "  new %'DST-RECORD'%())"
+    };
 
     private CodeToResolve applyCoercion(Coercion c, CodeTemplate exprCode) {
 
@@ -2425,6 +2512,28 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "" + checkStrLen.length,
                         "%'+EXPR'%",
                         applyCoercion(checkStrLen.c, exprCode));
+            } else if (c instanceof Coercion.NullToRecord) {
+                Coercion.NullToRecord nullToRec = (Coercion.NullToRecord) c;
+                return new CodeTemplate(
+                        "null to record coercion",
+                        exprPlcsqlPos,
+                        tmplNullToRecord,
+                        "%'DST-RECORD'%",
+                        nullToRec.dst.javaCode,
+                        "%'+EXPR'%",
+                        exprCode);
+            } else if (c instanceof Coercion.RecordToRecord) {
+                Coercion.RecordToRecord recToRec = (Coercion.RecordToRecord) c;
+                return new CodeTemplate(
+                        "record to record coercion",
+                        exprPlcsqlPos,
+                        tmplRecordToRecord,
+                        "%'SRC-RECORD'%",
+                        recToRec.src.javaCode,
+                        "%'DST-RECORD'%",
+                        recToRec.dst.javaCode,
+                        "%'+EXPR'%",
+                        exprCode);
             } else {
                 throw new RuntimeException("unreachable");
             }
@@ -2920,5 +3029,49 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             return null;
         }
+    }
+
+    private List<String> getRecordFieldsDeclCode(List<Misc.Pair<String, Type>> selectList) {
+
+        List<String> lines = new LinkedList<> ();
+        for (Misc.Pair<String, Type> f: selectList) {
+            lines.add(getJavaCodeOfType(f.e2) + " " + f.e1);
+        }
+
+        return lines;
+    }
+
+    private List<String> getRecordDeclCode(TypeRecord rec) {
+
+        List<String> lines = new LinkedList<> ();
+
+        lines.add("private static class " + rec.javaCode + " {");
+
+        List<String> fieldDecls = getRecordFieldsDeclCode(rec.selectList);
+
+        // field declarations
+        for (String line: fieldDecls) {
+            lines.add(String.format("  %s;", line));
+        }
+
+        // set method
+        lines.add(String.format("  %s set(%s) {", rec.javaCode, String.join(", ", fieldDecls)));
+        for (Misc.Pair<String, Type> f: rec.selectList) {
+            lines.add(String.format("    this.%1$s = %1$s;", f.e1));
+        }
+        lines.add(String.format("    return this;"));
+        lines.add("  }");
+
+        // setNull method
+        lines.add(String.format("  %s setNull(Object dummy) {", rec.javaCode));   // o: to take null expression
+        for (Misc.Pair<String, Type> f: rec.selectList) {
+            lines.add(String.format("    this.%s = null;", f.e1));
+        }
+        lines.add(String.format("    return this;"));
+        lines.add("  }");
+
+        lines.add("}");
+
+        return lines;
     }
 }

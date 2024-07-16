@@ -69,7 +69,7 @@ public class TypeRecord extends Type {
     }
 
     private static String getJavaName(boolean ofTable, String rowName) {
-        return String.format("$Record_of_%s_%s", (ofTable ? "Table" : "Cursor"), rowName.replace('.', '_'));
+        return String.format("$Record_%s_%s", (ofTable ? "T" : "C"), rowName.replace('.', '_'));
     }
 
     private TypeRecord(boolean ofTable, String rowName, List<Misc.Pair<String, Type>> selectList) {
