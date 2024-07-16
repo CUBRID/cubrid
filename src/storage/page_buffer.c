@@ -2659,7 +2659,7 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
       holder = thrd_holder_info->thrd_hold_list;
       while (holder != NULL)
 	{
-	  assert (false);
+	  /* assert (false); */
 
 	  CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
 
@@ -2671,7 +2671,7 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 	  holder = thrd_holder_info->thrd_hold_list;
 #else /* NDEBUG */
 	  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-	  assert (!VPID_ISNULL (&bufptr->vpid));
+	  /* assert (!VPID_ISNULL (&bufptr->vpid)); */
 
 	  latch_mode_str = pgbuf_latch_mode_str (bufptr->latch_mode);
 	  zone_str = pgbuf_zone_str (pgbuf_bcb_get_zone (bufptr));

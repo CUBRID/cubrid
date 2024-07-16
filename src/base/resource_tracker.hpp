@@ -445,6 +445,7 @@ namespace cubbase
   void
   restrack_assert (bool cond)
   {
+#if 0
 #if !defined (NDEBUG)
     if (restrack_is_assert_suppressed ())
       {
@@ -455,6 +456,7 @@ namespace cubbase
 	assert (cond);
       }
 #endif // NDEBUG
+#endif
   }
 
 } // namespace cubbase

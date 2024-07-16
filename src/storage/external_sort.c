@@ -51,6 +51,8 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 #include "list_file.h"
+#include "query_manager.h" //임시
+#include "object_representation.h" //임시
 
 #include <functional>
 
@@ -1337,6 +1339,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
   int error = NO_ERROR;
   SORT_PARAM *sort_param = NULL;
+  SORT_PARAM px_sort_param[2];
   INT32 input_pages;
   int i;
 
@@ -1462,8 +1465,6 @@ cleanup:
   SORT_INFO *sort_info_p;
   QFILE_LIST_SCAN_ID *scan_id_p;
 
-  /* TODO : add to routines to copy sort_param */
-
   /* temporarily, no parallelism when creating an index. */
   if (!is_parallel)
     {
@@ -1479,6 +1480,41 @@ cleanup:
 
 	  /* temporarily, close file for read */
 	  qfile_close_scan (thread_p, scan_id_p);
+
+	  /* split input temp file */
+	  /* 두개 파일로 분리하는 로직 ==> 분리하고 바로 합치기? */
+	  PAGE_PTR page_p;
+	  VPID next_vpid, prev_vpid;
+	  QFILE_LIST_ID * in_file = sort_info_p->input_file;
+	  int half_num_page = in_file->page_cnt / 2;
+	  in_file->tuple_cnt = in_file->tuple_cnt / 2;
+	  in_file->page_cnt = half_num_page;
+	  in_file->first_vpid = in_file->first_vpid;
+	  
+	  prev_vpid = in_file->first_vpid;
+	  int j = 0;
+	  /* skip pages */
+	  while (true)
+	    {
+	      page_p = qmgr_get_old_page (thread_p, &prev_vpid, in_file->tfile_vfid);
+	      QFILE_GET_NEXT_VPID (&next_vpid, page_p);
+	      if (VPID_ISNULL (&next_vpid))
+		{
+	 	  break;
+		}
+	      if (++j > half_num_page)
+	        {
+	          QFILE_PUT_NEXT_VPID_NULL (page_p);
+	          qmgr_free_old_page_and_init (thread_p, page_p, in_file->tfile_vfid);
+	          break;
+	        }
+	      prev_vpid = next_vpid;
+	      qmgr_free_old_page_and_init (thread_p, page_p, in_file->tfile_vfid);
+	    }
+	  
+	  /* in_file->last_vpid = prev_vpid; */
+	  /* sort_info_p->input_file.tfile_vfid = ??; */
+
 	}
       else
 	{
@@ -1486,30 +1522,63 @@ cleanup:
 	  return -1;
 	}
 
-      /* init px variable */
+      /* copy sort_param for parallel sort */
+/*      for (int i = 0; i < 1; i++)
+	{
+	  memcpy (&px_sort_param[i], sort_param, sizeof (SORT_PARAM));
+	  px_sort_param[i].internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
+	  if (px_sort_param[i].internal_memory == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (sort_param->tot_buffers * DB_PAGESIZE));
+	      /* goto cleanup; */
+/*	    }
+	  for (int j = 0; j < px_sort_param[i].tot_tempfiles; j++)
+	    {
+	      /* Initilize file contents list */
+/*	      px_sort_param[i].file_contents[j].num_pages =
+	      (int *) db_private_alloc (thread_p, SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
+	      if (px_sort_param[i].file_contents[j].num_pages == NULL)
+		{
+		  sort_param->tot_tempfiles = j;
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  /* goto cleanup; */
+/*		}
+	    }
+	  /* init px variable */
+/*	  px_sort_param[i].px_status[0] = 0;
+	  px_sort_param[i].px_max_index = 2;
+	  px_sort_param[i].px_index = i + 1;
+	  px_sort_param[i].px_result_file_idx = 0;
+	  px_sort_param[i].px_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	}
+*/
       sort_param->px_status[0] = 0;
       sort_param->px_max_index = 2;
       sort_param->px_index = 1;
       sort_param->px_result_file_idx = 0;
       sort_param->px_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-      cubthread::entry_callable_task * task =
-	new cubthread::entry_callable_task (std::bind (sort_listfile_execute, std::placeholders::_1, sort_param));
-      css_push_external_task (css_get_current_conn_entry (), task);
 
+      /* parallel execute */
+      for (int i = 0; i < 1; i++)
+	{
+	  cubthread::entry_callable_task * task =
+	    new cubthread::entry_callable_task (std::bind (sort_listfile_execute, std::placeholders::_1, sort_param));
+	  css_push_external_task (css_get_current_conn_entry (), task);
+	}
+      
       /* wait for threads */
       /* TO_DO : no busy wait. need to block and wake up */
       do
 	{
 	  thread_sleep (10);	/* 10 msec */
-	  if (sort_param->px_status[0] == 1)
+	  if (sort_param->px_status[0] == 1 /* && px_sort_param[1].px_status[0] == 1 */)
 	    {
 	      break;
 	    }
 	}
       while (1);
-
-      /* TO_DO : need routines for merging parallel processed temp files into a local sort_param */
 
       if (sort_param->get_fn == qfile_get_next_sort_item)
 	{
@@ -1529,6 +1598,18 @@ cleanup:
 	  return -1;
 	}
 
+      /* TO_DO : need routines for merging parallel processed temp files into a local sort_param */
+      /* sort_param의 file content를 sort param으로 복사해야함. 단순 복사 가능? */
+      /* file_contents와 sort_param->temp[out_file] */
+/*      sort_param->temp[0] = px_sort_param[0].temp[px_sort_param[0].px_result_file_idx];
+      sort_param->file_contents[0] = px_sort_param[0].file_contents[px_sort_param[0].px_result_file_idx];
+
+      sort_param->px_result_file_idx = 0;
+
+/*      sort_param->temp[1] = px_sort_param[1].temp[px_sort_param[1].px_result_file_idx];
+      sort_param->file_contents[1] = px_sort_param[1].file_contents[px_sort_param[1].px_result_file_idx]; */
+
+
       /* Merge the parallel processed results. */
       sort_param->px_max_index = 1;
       if (sort_param->option == SORT_ELIM_DUP)
@@ -1540,6 +1621,11 @@ cleanup:
 	  /* SORT_DUP */
 	  error = sort_exphase_merge (thread_p, sort_param);
 	}
+
+/*      for (int i = 0;i < 1; i++)
+	{
+	  sort_return_used_resources (thread_p, &sort_param[i]);
+	} */
     }
 
 #else
