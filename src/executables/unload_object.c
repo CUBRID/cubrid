@@ -1121,11 +1121,18 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
     }
 
   error_occurred = false;
-  error = text_print_request_flush (&(g_thr_param[0].text_output), true);
-  if (error != NO_ERROR)
+  if (!datafile_per_class)
     {
-      status = 1;
-      goto end;
+      error = text_print_request_flush (&(g_thr_param[0].text_output), true);
+      if (error != NO_ERROR)
+	{
+	  status = 1;
+	  goto end;
+	}
+    }
+  else
+    {
+      assert (g_thr_param[0].text_output.head_ptr == NULL || g_thr_param[0].text_output.head_ptr->count <= 0);
     }
 
   do
@@ -2053,7 +2060,7 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
 
   class_ptr = desc_obj->class_;
   class_oid = ws_oid (desc_obj->classop);
-  if (!datafile_per_class && referenced_class)
+  if (!datafile_per_class && referenced_class)  
     {				/* need to hash OID */
       update_hash (obj_oid, class_oid, &data);
       if (debug_flag)
@@ -2586,7 +2593,7 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
 
   size_t total = strlen (output_dirname) + strlen (output_prefix) + strlen (suffix) + 8;
 
-#if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
+#if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
   if (g_parallel_process_cnt > 1)
     {
       char proc_name[32];
@@ -2633,12 +2640,14 @@ open_object_file (extract_context & ctxt, const char *output_dirname, const char
   char tmp_name[DB_MAX_IDENTIFIER_LENGTH * 2];
   char *name_ptr = (char *) class_name;
 
+#if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
   if (g_parallel_process_cnt > 1)
     {
       assert (class_name && *class_name);
       sprintf (tmp_name, "p%d-%d_%s", g_parallel_process_cnt, g_parallel_process_idx, class_name);
       name_ptr = tmp_name;
     }
+#endif
 
   out_fname[0] = '\0';
   if (class_name && *class_name)
