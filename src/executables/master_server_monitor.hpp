@@ -45,14 +45,33 @@ class server_monitor
 	server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
 	~server_entry () {};
 
+	server_entry (const server_entry &) = delete;
+	server_entry (server_entry &&) = delete;
+
+	server_entry &operator= (const server_entry &other)
+	{
+	  if (this != &other)
+	    {
+	      m_server_name = other.m_server_name;
+	      m_exec_path = other.m_exec_path;
+	      m_argv = other.m_argv;
+	      m_conn = other.m_conn;
+	      m_last_revive_time = other.m_last_revive_time;
+	      m_need_revive = other.m_need_revive;
+	    }
+	  return *this;
+	}
+	server_entry &operator= (server_entry &&other) = delete;
+
+	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
+
       private:
 	void proc_make_arg (char *args);
 
-	const int m_pid;                              // process ID
-	const std::string m_server_name;              // server name
-	const std::string m_exec_path;                // executable path of server process
+	int m_pid;                              // process ID
+	std::string m_server_name;              // server name
+	std::string m_exec_path;                // executable path of server process
 	std::vector<std::string> m_argv;              // arguments of server process
-	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
 	timeval m_last_revive_time;                   // latest revive time
 	bool m_need_revive;                           // need to revive (true if the server is abnormally terminated)
     };
@@ -68,6 +87,7 @@ class server_monitor
 
     void make_and_insert_server_entry (int pid, const char *exec_path, char *args,
 				       CSS_CONN_ENTRY *conn);
+    void remove_server_entry_by_conn (CSS_CONN_ENTRY *conn);
 
   private:
     std::unique_ptr<std::vector <server_entry>> m_server_entry_list;    // list of server entries

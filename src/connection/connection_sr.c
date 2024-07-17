@@ -1143,7 +1143,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 
   /* select the connection protocol */
 
-  // TODO : Following code is changed to register server to master_Server_monitor for monitoring abnormally 
+  // Note : Following code is changed to register server in master_Server_monitor for monitoring abnormally 
   //        terminated server. (Check CBRD-24741 for details.) This issue will be handle for Linux/Unix first
   //        and then for Windows. Therefore, data which sends to the master is different between Windows and Linux/Unix.
   //        When Windows is supported, both of them will send proc_register as register data.

@@ -56,6 +56,7 @@
 #include "master_util.h"
 #include "master_request.h"
 #include "master_heartbeat.h"
+#include "master_server_monitor.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -531,6 +532,7 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
 			    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_STATUS),
 			    server_name, timeout);
 		  css_process_start_shutdown (temp, timeout * 60, buffer);
+		  master_Server_monitor->remove_server_entry_by_conn (temp->conn_ptr);
 		}
 	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
 			msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_NOTIFIED),
@@ -718,7 +720,7 @@ css_process_shutdown (char *time_buffer)
 	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 	  css_process_start_shutdown (temp, timeout * 60, buffer);
-
+	  master_Server_monitor->remove_server_entry_by_conn (temp->conn_ptr);
 	  /* wait process terminated */
 	  master_util_wait_proc_terminate (temp->pid);
 	}

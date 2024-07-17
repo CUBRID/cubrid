@@ -319,8 +319,8 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
  *   return: none
  *   conn(in)
  *   rid(in)
- *   proc_register(in)
- *   server_name_length(in)
+ *   buffer(in)
+ * 
  */
 static void
 css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
@@ -337,10 +337,10 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
   datagram_length = 0;
 
   css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED);
-  fprintf (stdout, "css_accept_new_request\n");
+
   if (css_receive_data (conn, rid, &datagram, &datagram_length, -1) == NO_ERRORS)
     {
-      fprintf (stdout, "datagram: %s\n", datagram);
+
       if (datagram != NULL && css_tcp_master_datagram (datagram, &server_fd))
 	{
 	  datagram_conn = css_make_conn (server_fd);
@@ -454,7 +454,13 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   char *data = NULL;
   SOCKET_QUEUE_ENTRY *entry;
 
-  /* read server name */
+  // Note : css_register_new_server () is used at two situations.
+  //        1. When client request for connect a cub_server to cub_master which already registered.
+  //        2. When a new cub_server requests to register itself to cub_master.
+  //        For first situation, css_register_new_server receives server name as data,
+  //        For second situation, css_register_new_server receives SERVER_PROC_REGISTER as data.
+  //        css_register_new_server judge which case is by checking entry is NULL or not.
+
   if (css_receive_data (conn, rid, &data, &data_length, -1) == NO_ERRORS)
     {
       entry = css_return_entry_of_server (data, css_Master_socket_anchor);
