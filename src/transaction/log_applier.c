@@ -21,8 +21,6 @@
  *
  */
 
-#include "connection_defs.h"
-#include "system_parameter.h"
 #ident "$Id$"
 
 #if !defined (WINDOWS)
@@ -6747,6 +6745,8 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
   int diff_msec;
   bool need_commit = false;
 
+  static int ha_mode = -1;
+
   assert (time_commit);
 
   /* check interval time for commit */
@@ -6774,7 +6774,12 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
 	  need_commit = true;
 	}
 
-      if (la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_STANDBY)
+      if (ha_mode < HA_MODE_OFF)
+	{
+	  ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
+	}
+
+      if (ha_mode == HA_MODE_REPLICA && la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_STANDBY)
 	{
 	  /*
 	   * 'db_ha_apply_info' catalog is updated by la_log_commit, and the HA service uses the updated
@@ -6794,30 +6799,7 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
 	   *   - The probability of applying the end of log decreases if ha_replica_delay is set.
 	   */
 
-	  static int ha_mode = HA_MODE_OFF;
-
-	  if (ha_mode != HA_MODE_OFF)
-	    {
-	      ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
-
-	      assert (ha_mode != HA_MODE_OFF);
-	    }
-
-	  if (ha_mode == HA_MODE_REPLICA)
-	    {
-	      /*
-	       * TODO:
-	       * The issue of not updating db_ha_apply_info is a potential problem that can occur on all nodes applying logs
-	       * replicated from the standby server. In other words, this problem is not limited to replica nodes.
-	       * However, if not limited to replica nodes, la_log_commit would be called redundantly, causing duplicate commit logs.
-	       * (la_log_commit can be called redundantly in la_change_state)
-	       * These logs are then replicated to other nodes, increasing replication costs.
-	       * Since the logs on the replica node are not replicated to other nodes, it does not matter for replica nodes.
-	       * Once the issue of redundant la_log_commit calls is resolved, the conditional statements based on ha_mode should be removed
-	       */
-
-	      need_commit = true;
-	    }
+	  need_commit = true;
 	}
 
       if (need_commit == true || la_Info.is_apply_info_updated == true)
