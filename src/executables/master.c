@@ -81,8 +81,7 @@ static int css_master_init (int cport, SOCKET * clientfd);
 static void css_reject_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason);
 static void css_reject_server_request (CSS_CONN_ENTRY * conn, int reason);
 static void css_accept_server_request (CSS_CONN_ENTRY * conn, int reason);
-static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_name,
-				    int server_name_length);
+static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer);
 static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry,
 				    char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
@@ -320,11 +319,11 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
  *   return: none
  *   conn(in)
  *   rid(in)
- *   server_name(in)
+ *   proc_register(in)
  *   server_name_length(in)
  */
 static void
-css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_name, int server_name_length)
+css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 {
   char *datagram;
   int datagram_length;
@@ -332,27 +331,31 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_
   int length;
   CSS_CONN_ENTRY *datagram_conn;
   SOCKET_QUEUE_ENTRY *entry;
+  SERVER_PROC_REGISTER *proc_register = (SERVER_PROC_REGISTER *) buffer;
 
   datagram = NULL;
   datagram_length = 0;
+
   css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED);
+  fprintf (stdout, "css_accept_new_request\n");
   if (css_receive_data (conn, rid, &datagram, &datagram_length, -1) == NO_ERRORS)
     {
+      fprintf (stdout, "datagram: %s\n", datagram);
       if (datagram != NULL && css_tcp_master_datagram (datagram, &server_fd))
 	{
 	  datagram_conn = css_make_conn (server_fd);
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (datagram_conn, false, server_name, server_fd, READ_WRITE, 0,
+	  css_add_request_to_socket_queue (datagram_conn, false, proc_register->server_name, server_fd, READ_WRITE, 0,
 					   &css_Master_socket_anchor);
-	  length = (int) strlen (server_name) + 1;
-	  if (length < server_name_length)
+	  length = (int) strlen (proc_register->server_name) + 1;
+	  if (length < proc_register->server_name_length)
 	    {
-	      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+	      entry = css_return_entry_of_server (proc_register->server_name, css_Master_socket_anchor);
 	      if (entry != NULL)
 		{
-		  server_name += length;
+		  char *server_name = proc_register->server_name + length;
 		  entry->version_string = (char *) malloc (strlen (server_name) + 1);
 		  if (entry->version_string != NULL)
 		    {
@@ -374,6 +377,12 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_
 		      entry->env_var = NULL;
 		    }
 		}
+	    }
+	  if (!entry->ha_mode)
+	    {
+              /* *INDENT-OFF* */
+              master_Server_monitor->make_and_insert_server_entry (proc_register->pid, proc_register->exec_path, proc_register->args, datagram_conn);
+              /* *INDENT-ON* */
 	    }
 	}
     }
@@ -441,20 +450,20 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
 static void
 css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 {
-  int name_length;
-  char *server_name = NULL;
+  int data_length;
+  char *data = NULL;
   SOCKET_QUEUE_ENTRY *entry;
 
   /* read server name */
-  if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS)
+  if (css_receive_data (conn, rid, &data, &data_length, -1) == NO_ERRORS)
     {
-      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+      entry = css_return_entry_of_server (data, css_Master_socket_anchor);
       if (entry != NULL)
 	{
 	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server that was auto-started */
-	      css_accept_old_request (conn, rid, entry, server_name, name_length);
+	      css_accept_old_request (conn, rid, entry, data, data_length);
 	    }
 	  else
 	    {
@@ -474,13 +483,13 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 
 #else /* ! WINDOWS */
 	  /* accept a request from a new server */
-	  css_accept_new_request (conn, rid, server_name, name_length);
+	  css_accept_new_request (conn, rid, data);
 #endif /* ! WINDOWS */
 	}
     }
-  if (server_name != NULL)
+  if (data != NULL)
     {
-      free_and_init (server_name);
+      free_and_init (data);
     }
 
 #if !defined(WINDOWS)

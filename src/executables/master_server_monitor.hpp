@@ -30,20 +30,20 @@
 #include <time.h>
 #include "connection_defs.h"
 
+#define SERVER_MAX_SZ_SERVER_NAME           (256)
+#define SERVER_MAX_SZ_PROC_EXEC_PATH        (128)
+#define SERVER_MAX_SZ_PROC_ARGV             (64)
+#define SERVER_MAX_NUM_PROC_ARGV            (16)
+#define SERVER_MAX_SZ_PROC_ARGS             (SERVER_MAX_NUM_PROC_ARGV*SERVER_MAX_SZ_PROC_ARGV)
+
 class server_monitor
 {
   public:
     class server_entry
     {
       public:
-	server_entry (int pid, const char *server_name, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
+	server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
 	~server_entry () {};
-
-	server_entry (const server_entry &) = delete;
-	server_entry (server_entry &&) = delete;
-
-	server_entry &operator = (const server_entry &) = delete;
-	server_entry &operator = (server_entry &&) = delete;
 
       private:
 	void proc_make_arg (char *args);
@@ -66,10 +66,28 @@ class server_monitor
     server_monitor &operator = (const server_monitor &) = delete;
     server_monitor &operator = (server_monitor &&) = delete;
 
+    void make_and_insert_server_entry (int pid, const char *exec_path, char *args,
+				       CSS_CONN_ENTRY *conn);
+
   private:
     std::unique_ptr<std::vector <server_entry>> m_server_entry_list;    // list of server entries
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
+};
+
+/*
+ * server register resource message body
+ */
+
+/* process register */
+typedef struct server_proc_register SERVER_PROC_REGISTER;
+struct server_proc_register
+{
+  char server_name[SERVER_MAX_SZ_SERVER_NAME];
+  int server_name_length;
+  int pid;
+  char exec_path[SERVER_MAX_SZ_PROC_EXEC_PATH];
+  char args[SERVER_MAX_SZ_PROC_ARGS];
 };
 
 extern std::unique_ptr<server_monitor> master_Server_monitor;

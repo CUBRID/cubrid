@@ -60,10 +60,19 @@ server_monitor::~server_monitor ()
   fflush (stdout);
 }
 
+void
+server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, char *args,
+    CSS_CONN_ENTRY *conn)
+{
+  server_entry temp (pid, exec_path, args, conn);
+  m_server_entry_list->push_back (temp);
+  fprintf (stdout, "server_entry is registerd in server_entry_list : pid : %d, exec_path : %s, args : %s\n", pid,
+	   exec_path, args);
+}
+
 server_monitor::server_entry::
-server_entry (int pid, const char *server_name, const char *exec_path, char *args, CSS_CONN_ENTRY *conn)
+server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn)
   : m_pid {pid}
-  , m_server_name {server_name}
   , m_exec_path {exec_path}
   , m_conn {conn}
   , m_last_revive_time {0, 0}
