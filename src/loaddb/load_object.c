@@ -872,9 +872,8 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
       free_and_init (attmap);
     }
 
-  if (vars != zvar)
+  if (vars && vars != zvar)
     {
-      assert (vars != NULL);
       free (vars);
     }
 
@@ -886,9 +885,8 @@ abort_on_error:
       free (attmap);
     }
 
-  if (vars != zvar)
+  if (vars && vars != zvar)
     {
-      assert (vars != NULL);
       free (vars);
     }
 
