@@ -3363,32 +3363,15 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
 	     */
 	    char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+	    char *generic_name = NULL;
+
 	    sm_downcase_name (node->info.dot.arg1->info.name.original, downcase_owner_name, DB_MAX_USER_LENGTH);
+	    generic_name = pt_append_string (parser, downcase_owner_name, ".");
+	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
+	    node->info.dot.arg2->info.function.generic_name = generic_name;
 
-	    PT_NODE *tmp_node = parser_new_node (parser, PT_NAME);
-	    if (!tmp_node)
+	    if (jsp_is_exist_stored_procedure (node->info.dot.arg2->info.function.generic_name))
 	      {
-		PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		parser_free_tree (parser, tmp_node);
-
-		*continue_walk = PT_STOP_WALK;
-		return NULL;
-	      }
-
-	    if (node->alias_print)
-	      {
-		node->info.dot.arg2->alias_print =
-		  pt_append_string (parser, node->info.dot.arg2->alias_print, node->alias_print);
-	      }
-
-	    tmp_node->info.name.original = pt_append_string (parser, downcase_owner_name, ".");
-	    tmp_node->info.name.original =
-	      pt_append_string (parser, tmp_node->info.name.original, node->info.dot.arg2->info.function.generic_name);
-
-	    if (jsp_is_exist_stored_procedure (tmp_node->info.name.original))
-	      {
-		node->info.dot.arg2->info.function.generic_name = tmp_node->info.name.original;
-		node->info.dot.arg2->next = node->next;
 		/*
 		 * If (dot.arg1->node_type == PT_NAME) & (dot.arg2->node_type == PT_FUNCTION), pt_bind_name_or_path_in_scope() always returns NULL and has an er_errid() value.
 		 * Therefore, er_errid() that occurs in pt_bind_name_or_path_in_scope must be reset.
@@ -3397,8 +3380,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  {
 		    pt_reset_error (parser);
 		  }
-		parser_free_tree (parser, tmp_node);
-		node = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
+
+		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
+		if (node1 == NULL)
+		  {
+		    break;	// FIXME: something wrong
+		  }
+		PT_NODE_COPY_NUMBER_OUTERLINK (node1, node);
+
+		PT_NODE_INIT_OUTERLINK (node);
+		parser_free_tree (parser, node);
+		node = node1;	/* return the new node */
+		/* don't revisit leaves */
 		*continue_walk = PT_LIST_WALK;
 	      }
 	    else if (pt_has_error (parser))
