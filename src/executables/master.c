@@ -326,6 +326,7 @@ static void
 css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 {
   char *datagram;
+  char *server_name;
   int datagram_length;
   SOCKET server_fd = INVALID_SOCKET;
   int length;
@@ -355,7 +356,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	      entry = css_return_entry_of_server (proc_register->server_name, css_Master_socket_anchor);
 	      if (entry != NULL)
 		{
-		  char *server_name = proc_register->server_name + length;
+		  server_name = proc_register->server_name + length;
 		  entry->version_string = (char *) malloc (strlen (server_name) + 1);
 		  if (entry->version_string != NULL)
 		    {
@@ -389,6 +390,10 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
   if (datagram)
     {
       free_and_init (datagram);
+    }
+  if (proc_register)
+    {
+      free_and_init (proc_register);
     }
 }
 
@@ -454,12 +459,12 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   char *data = NULL;
   SOCKET_QUEUE_ENTRY *entry;
 
-  // Note : css_register_new_server () is used at two situations.
-  //        1. When client request for connect a cub_server to cub_master which already registered.
-  //        2. When a new cub_server requests to register itself to cub_master.
-  //        For first situation, css_register_new_server receives server name as data,
-  //        For second situation, css_register_new_server receives SERVER_PROC_REGISTER as data.
-  //        css_register_new_server judge which case is by checking entry is NULL or not.
+  //  Note: css_register_new_server() is used in two situations:
+  //  1. When a client requests to connect a cub_server to cub_master, which is already registered.
+  //  2. When a new cub_server requests to register itself to cub_master.
+  //  For the first situation, css_register_new_server() receives the server name as data.
+  //  For the second situation, css_register_new_server() receives SERVER_PROC_REGISTER as data.
+  //  css_register_new_server determines which case it is by checking if the entry is NULL or not.
 
   if (css_receive_data (conn, rid, &data, &data_length, -1) == NO_ERRORS)
     {

@@ -52,7 +52,6 @@ class server_monitor
 	{
 	  if (this != &other)
 	    {
-	      m_server_name = other.m_server_name;
 	      m_exec_path = other.m_exec_path;
 	      m_argv = other.m_argv;
 	      m_conn = other.m_conn;
@@ -68,9 +67,8 @@ class server_monitor
       private:
 	void proc_make_arg (char *args);
 
-	int m_pid;                              // process ID
-	std::string m_server_name;              // server name
-	std::string m_exec_path;                // executable path of server process
+	int m_pid;                                    // process ID of server process
+	std::string m_exec_path;                      // executable path of server process
 	std::vector<std::string> m_argv;              // arguments of server process
 	timeval m_last_revive_time;                   // latest revive time
 	bool m_need_revive;                           // need to revive (true if the server is abnormally terminated)
@@ -95,11 +93,6 @@ class server_monitor
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
 };
 
-/*
- * server register resource message body
- */
-
-/* process register */
 typedef struct server_proc_register SERVER_PROC_REGISTER;
 struct server_proc_register
 {

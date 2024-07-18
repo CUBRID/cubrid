@@ -150,6 +150,9 @@ CSS_THREAD_FN css_Request_handler = NULL;
 /* This will handle closed connection errors */
 CSS_THREAD_FN css_Connection_error_handler = NULL;
 
+static char css_Exec_path[PATH_MAX];
+static char **css_Argv;
+
 #define CSS_CONN_IDX(conn_arg) ((conn_arg) - css_Conn_array)
 
 #define CSS_FREE_CONN_MSG "Free count = %d, head = %d"
@@ -218,9 +221,6 @@ static int css_remove_and_free_wait_queue_entry (void *data, void *arg);
 
 static int css_increment_num_conn_internal (CSS_CONN_RULE_INFO * conn_rule_info);
 static void css_decrement_num_conn_internal (CSS_CONN_RULE_INFO * conn_rule_info);
-
-static char css_Exec_path[PATH_MAX];
-static char **css_Argv;
 
 /*
  * get_next_client_id() -
@@ -1060,6 +1060,7 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
   if (!IS_INVALID_SOCKET (fd))
     {
       conn->fd = fd;
+
       if (css_send_magic (conn) != NO_ERRORS)
 	{
 	  return NULL;
@@ -1074,6 +1075,12 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
   return NULL;
 }
 
+/*
+ * css_make_set_proc_register() - make a server proc register.
+ *   return: server proc register
+ *   server_name(in):
+ *   server_name_lenth(in):
+ */
 static SERVER_PROC_REGISTER *
 css_make_set_proc_register (const char *server_name, int server_name_length)
 {
@@ -1125,7 +1132,6 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
   std::string pname;
   int datagram_fd, socket_fd;
 #endif
-
   SERVER_PROC_REGISTER *proc_register = NULL;
 
   css_Service_id = master_port_id;
@@ -1143,10 +1149,12 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 
   /* select the connection protocol */
 
-  // Note : Following code is changed to register server in master_Server_monitor for monitoring abnormally 
-  //        terminated server. (Check CBRD-24741 for details.) This issue will be handle for Linux/Unix first
-  //        and then for Windows. Therefore, data which sends to the master is different between Windows and Linux/Unix.
-  //        When Windows is supported, both of them will send proc_register as register data.
+  //  The following code is changed to register the server in the master_Server_monitor for monitoring
+  //  abnormally terminated servers (Check CBRD-24741 for details). This issue will be handled for
+  //  Linux/Unix first, and then for Windows. Therefore, the data sent to the master is different
+  //  between Windows and Linux/Unix. When Windows is supported, both of them will send proc_register
+  //  as register data.
+
   if (css_Server_use_new_connection_protocol)
     {
       // Windows
@@ -1252,30 +1260,6 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 fail_end:
   css_free_conn (conn);
   return NULL;
-}
-
-/*
- * css_set_exec_path () -
- *   return: none
- *
- *   exec_path(in):
- */
-void
-css_set_exec_path (char *exec_path)
-{
-  strncpy (css_Exec_path, exec_path, sizeof (css_Exec_path) - 1);
-}
-
-/*
- * css_set_argv () -
- *   return: none
- *
- *   argv(in):
- */
-void
-css_set_argv (char **argv)
-{
-  css_Argv = argv;
 }
 
 /*
@@ -3194,4 +3178,28 @@ css_free_user_access_status (void)
   csect_exit (NULL, CSECT_ACCESS_STATUS);
 
   return;
+}
+
+/*
+ * css_set_exec_path () -
+ *   return: none
+ *
+ *   exec_path(in):
+ */
+void
+css_set_exec_path (char *exec_path)
+{
+  strncpy (css_Exec_path, exec_path, sizeof (css_Exec_path) - 1);
+}
+
+/*
+ * css_set_argv () -
+ *   return: none
+ *
+ *   argv(in):
+ */
+void
+css_set_argv (char **argv)
+{
+  css_Argv = argv;
 }

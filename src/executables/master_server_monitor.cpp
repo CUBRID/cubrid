@@ -67,7 +67,7 @@ server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, ch
 {
   server_entry temp (pid, exec_path, args, conn);
   m_server_entry_list->push_back (temp);
-  fprintf (stdout, "server_entry is registerd in server_entry_list : pid : %d, exec_path : %s, args : %s\n", pid,
+  fprintf (stdout, "server has been registered into master_Server_monitor : pid : %d, exec_path : %s, args : %s\n", pid,
 	   exec_path, args);
 }
 
@@ -77,7 +77,7 @@ server_monitor::remove_server_entry_by_conn (CSS_CONN_ENTRY *conn)
   m_server_entry_list->erase (remove_if (m_server_entry_list->begin(),
 					 m_server_entry_list->end(), [conn] (auto e) -> bool {return e.m_conn == conn;}));
 
-  fprintf (stdout, "server_entry is removed from server_entry_list, Current monitoring server in list: %d\n",
+  fprintf (stdout, "server has been removed from master_Server_monitor. Number of monitoring server in monitor: %d\n",
 	   m_server_entry_list->size ());
 }
 
