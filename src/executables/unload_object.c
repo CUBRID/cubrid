@@ -176,6 +176,7 @@ static char *gauge_class_name;
 
 static volatile bool writer_thread_proc_terminate = false;
 static volatile bool printer_thread_proc_terminate = false;
+static volatile bool multi_thread_mode = false;
 static int max_fetched_copyarea_list = 1;
 #if !defined(WINDOWS)
 static S_WAITING_INFO wi_unload_class;
@@ -194,6 +195,7 @@ static char *p_unloadlog_filename = NULL;
 static void unload_log_write (char *log_file_name, const char *fmt, ...);
 #endif
 
+pthread_mutex_t g_update_hash_cs_lock = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct _unloaddb_class_info UNLD_CLASS_PARAM;
 struct _unloaddb_class_info
@@ -551,6 +553,37 @@ check_referenced_domain (DB_DOMAIN * dom_list, bool set_cls_ref, int *num_cls_re
 	}
     }
   return found_object_dom;
+}
+
+
+static bool
+check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type)
+{
+  DB_DOMAIN *dom;
+
+  for (dom = dom_list; dom; dom = db_domain_next (dom))
+    {
+      switch (TP_DOMAIN_TYPE (dom))
+	{
+	case DB_TYPE_OID:
+	case DB_TYPE_OBJECT:
+	  *db_type = TP_DOMAIN_TYPE (dom);
+	  return true;
+
+	case DB_TYPE_SET:
+	case DB_TYPE_MULTISET:
+	case DB_TYPE_SEQUENCE:
+	  if (check_include_object_domain (db_domain_set (dom), db_type))
+	    {
+	      return true;
+	    }
+	  break;
+
+	default:
+	  break;
+	}
+    }
+  return false;
 }
 
 
@@ -1457,7 +1490,7 @@ unload_extractor_thread (void *param)
 
 
 int
-unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type, bool non_threading)
+unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
 {
   int i, error = NO_ERROR;
   int nobjects = 0;
@@ -1472,7 +1505,7 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type, bool non_threading)
 
   OID_SET_NULL (&last_oid);
 
-  if (non_threading)
+  if (!multi_thread_mode)
     {
       obj_out = &(g_thr_param[0].text_output);
       desc_obj = make_desc_obj (g_uci->class_ptr, g_varchar_buffer_size);
@@ -1489,7 +1522,7 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type, bool non_threading)
 
 	  if (fetch_area != NULL)
 	    {
-	      if (non_threading)
+	      if (!multi_thread_mode)
 		{
 		  error = unload_printer (fetch_area, desc_obj, obj_out);
 		  locator_free_copy_area (fetch_area);
@@ -1799,19 +1832,35 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
     {
       for (i = 0; i < class_ptr->att_count; i++)
 	{
+	  DB_TYPE db_type_in;
 	  DB_TYPE db_type = class_ptr->attributes[i].type->get_id ();
 	  switch (db_type)
 	    {
 	    case DB_TYPE_OID:
 	    case DB_TYPE_OBJECT:
-	    case DB_TYPE_SET:
-	    case DB_TYPE_MULTISET:
-	    case DB_TYPE_SEQUENCE:
-	      fprintf (stderr, "%s%s%s has %s type.\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
+	      fprintf (stderr, "warning: %s%s%s has %s type.\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
 		       db_get_type_name (db_type));
+	      fprintf (stderr, "So for class %s%s%s, '--thread-count' option is ignored.\n",
+		       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
 	      fflush (stderr);
 	      // Notice: In this case, Do NOT use multi-threading!
 	      nthreads = 0;
+	      break;
+
+	    case DB_TYPE_SET:
+	    case DB_TYPE_MULTISET:
+	    case DB_TYPE_SEQUENCE:
+	      if (check_include_object_domain (class_ptr->attributes[i].domain, &db_type_in))
+		{
+		  fprintf (stderr, "warning: %s%s%s has %s type with %s type.\n",
+			   PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_get_type_name (db_type),
+			   db_get_type_name (db_type_in));
+		  fprintf (stderr, "So for class %s%s%s, '--thread-count' option is ignored.\n",
+			   PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+		  fflush (stderr);
+		  // Notice: In this case, Do NOT use multi-threading!
+		  nthreads = 0;
+		}
 	      break;
 
 	    default:
@@ -1886,6 +1935,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   printer_thread_proc_terminate = false;
   writer_thread_proc_terminate = false;
   g_is_direct_flush = (nthreads <= 1) ? true : false;
+  multi_thread_mode = (nthreads > 0) ? true : false;
   TIMER_CLEAR (&(g_thr_param[0].wi_get_list));
   TIMER_CLEAR (&(g_thr_param[0].wi_add_Q));
 
@@ -1916,7 +1966,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   unld_cls_info.cparea_lst_ref = &c_cparea_lst_class;
   g_uci = &unld_cls_info;
 
-  if (nthreads > 0)
+  if (multi_thread_mode)
     {
       for (i = 0; i < nthreads; i++)
 	{
@@ -1948,9 +1998,9 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
     }
 
   YIELD_THREAD ();
-  unload_fetcher (fetch_type, ((nthreads == 0) ? true : false));
+  unload_fetcher (fetch_type);
 
-  if (nthreads <= 0)
+  if (!multi_thread_mode)
     {
       assert (g_thr_param[0].text_output.ref_thread_param_idx == 0);
       error = text_print_request_flush (&(g_thr_param[0].text_output), true);
@@ -2060,9 +2110,19 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
 
   class_ptr = desc_obj->class_;
   class_oid = ws_oid (desc_obj->classop);
-  if (!datafile_per_class && referenced_class)  
+  if (!datafile_per_class && referenced_class)
     {				/* need to hash OID */
-      update_hash (obj_oid, class_oid, &data);
+      if (multi_thread_mode)
+	{
+	  pthread_mutex_lock (&g_update_hash_cs_lock);
+	  update_hash (obj_oid, class_oid, &data);
+	  pthread_mutex_unlock (&g_update_hash_cs_lock);
+	}
+      else
+	{
+	  update_hash (obj_oid, class_oid, &data);
+	}
+
       if (debug_flag)
 	{
 	  CHECK_PRINT_ERROR (text_print
