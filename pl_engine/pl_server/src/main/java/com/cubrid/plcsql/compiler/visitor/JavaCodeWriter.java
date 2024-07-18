@@ -648,8 +648,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public CodeToResolve visitExprField(ExprField node) {
 
         CodeTemplate tmpl =
-                new CodeTemplate(
-                        "ExprField", Misc.getLineColumnOf(node.ctx), node.javaCode());
+                new CodeTemplate("ExprField", Misc.getLineColumnOf(node.ctx), node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -1310,7 +1309,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         assert node.coercions.size() == node.intoTargetList.size();
 
         int i = 0;
-        for (Expr target: node.intoTargetList) {
+        for (Expr target : node.intoTargetList) {
 
             assert target instanceof AssignTarget;
 
@@ -1473,7 +1472,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         assert node.dynamic || (node.columnTypeList != null && node.columnTypeList.size() == size);
 
         int i = 0;
-        for (Expr target: node.intoTargetList) {
+        for (Expr target : node.intoTargetList) {
 
             assert target instanceof AssignTarget;
 
@@ -1505,7 +1504,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 if ((id.decl instanceof DeclVar) && ((DeclVar) id.decl).notNull) {
                     ret.add(
                             String.format(
-                                    "checkNotNull(%s, \"NOT NULL constraint violated\");", targetCode));
+                                    "checkNotNull(%s, \"NOT NULL constraint violated\");",
+                                    targetCode));
                 }
             }
 
