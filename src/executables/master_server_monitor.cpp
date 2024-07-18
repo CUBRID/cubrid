@@ -25,7 +25,7 @@
 
 #include "master_server_monitor.hpp"
 
-std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
+
 
 server_monitor::server_monitor ()
 {
