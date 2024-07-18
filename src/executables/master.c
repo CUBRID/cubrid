@@ -486,8 +486,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (conn, false, data, conn->fd, READ_WRITE, 0,
-					   &css_Master_socket_anchor);
+	  css_add_request_to_socket_queue (conn, false, data, conn->fd, READ_WRITE, 0, &css_Master_socket_anchor);
 
 #else /* ! WINDOWS */
 	  /* accept a request from a new server */
