@@ -59,6 +59,7 @@
 #include "error_manager.h"
 #include "connection_globals.h"
 #include "connection_cl.h"
+#include "connection_defs.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* ! WINDOWS */
@@ -485,7 +486,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (conn, false, server_name, conn->fd, READ_WRITE, 0,
+	  css_add_request_to_socket_queue (conn, false, data, conn->fd, READ_WRITE, 0,
 					   &css_Master_socket_anchor);
 
 #else /* ! WINDOWS */
