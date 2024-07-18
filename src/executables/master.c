@@ -131,6 +131,9 @@ pthread_mutex_t css_Master_er_log_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t css_Master_er_log_enable_lock = PTHREAD_MUTEX_INITIALIZER;
 bool css_Master_er_log_enabled = true;
 
+/* *INDENT-OFF* */
+std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
+/* *INDENT-ON* */
 /*
  * css_master_error() - print error message to syslog or console
  *   return: none
