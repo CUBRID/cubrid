@@ -59,7 +59,6 @@
 #include "error_manager.h"
 #include "connection_globals.h"
 #include "connection_cl.h"
-#include "connection_defs.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* ! WINDOWS */
@@ -67,6 +66,7 @@
 #endif /* ! WINDOWS */
 #include "master_util.h"
 #include "master_request.h"
+#include "system_parameter.h"
 #if !defined(WINDOWS)
 #include "master_heartbeat.h"
 #endif
