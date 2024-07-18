@@ -25,8 +25,6 @@
 
 #include "master_server_monitor.hpp"
 
-
-
 server_monitor::server_monitor ()
 {
   m_server_entry_list = std::make_unique<std::vector<server_entry>> ();
