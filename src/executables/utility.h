@@ -953,6 +953,7 @@ typedef struct _ha_config
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
 #define MASK_JAVASP             0x80
+#define MASK_PL                 0x80
 
 /* utility option list */
 #define UTIL_OPTION_CREATEDB                    "createdb"

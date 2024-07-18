@@ -69,8 +69,8 @@ typedef enum
   UTIL_HELP = 6,
   UTIL_VERSION = 7,
   ADMIN = 8,
-  JAVASP_UTIL = 20,
-  GATEWAY = 21
+  PL_UTIL = 20,			// JAVASP_UTIL
+  GATEWAY = 21,
 } UTIL_SERVICE_INDEX_E;
 
 typedef enum
@@ -143,7 +143,8 @@ typedef struct
 #define UTIL_TYPE_MANAGER       "manager"
 #define UTIL_TYPE_HEARTBEAT     "heartbeat"
 #define UTIL_TYPE_HB_SHORT      "hb"
-#define UTIL_TYPE_JAVASP        "javasp"
+#define UTIL_TYPE_PL            "pl"
+#define UTIL_TYPE_JAVASP        "javasp"	// for backward compatibility
 #define UTIL_TYPE_GATEWAY       "gateway"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
@@ -153,7 +154,8 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {MANAGER, UTIL_TYPE_MANAGER, MASK_MANAGER},
   {HEARTBEAT, UTIL_TYPE_HEARTBEAT, MASK_HEARTBEAT},
   {HEARTBEAT, UTIL_TYPE_HB_SHORT, MASK_HEARTBEAT},
-  {JAVASP_UTIL, UTIL_TYPE_JAVASP, MASK_JAVASP},
+  {PL_UTIL, UTIL_TYPE_PL, MASK_PL},
+  {PL_UTIL, UTIL_TYPE_JAVASP, MASK_JAVASP},
   {GATEWAY, UTIL_TYPE_GATEWAY, MASK_GATEWAY},
   {UTIL_HELP, "--help", MASK_ALL},
   {UTIL_VERSION, "--version", MASK_ALL},
@@ -269,11 +271,11 @@ static int process_server (int command_type, int argc, char **argv, bool show_us
 static int process_broker (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_gateway (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_manager (int command_type, bool process_window_service);
-static int process_javasp (int command_type, int argc, const char **argv, bool show_usage, bool suppress_message,
-			   bool process_window_service, bool ha_mode);
-static int process_javasp_start (const char *db_name, bool suppress_message, bool process_window_service);
-static int process_javasp_stop (const char *db_name, bool suppress_message, bool process_window_service);
-static int process_javasp_status (const char *db_name, bool suppress_message);
+static int process_pl (int command_type, int argc, const char **argv, bool show_usage, bool suppress_message,
+		       bool process_window_service, bool ha_mode);
+static int process_pl_start (const char *db_name, bool suppress_message, bool process_window_service);
+static int process_pl_stop (const char *db_name, bool suppress_message, bool process_window_service);
+static int process_pl_status (const char *db_name, bool suppress_message);
 static int process_heartbeat (int command_type, int argc, const char **argv);
 static int process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv);
 static int process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv);
@@ -656,7 +658,7 @@ main (int argc, char *argv[])
     {
       process_window_service = false;
     }
-  else if ((util_type == SERVER || util_type == BROKER || util_type == GATEWAY || util_type == JAVASP_UTIL)
+  else if ((util_type == SERVER || util_type == BROKER || util_type == GATEWAY || util_type == PL_UTIL)
 	   && (argc > 4) && strcmp ((char *) argv[4], "--for-windows-service") == 0)
     {
       process_window_service = false;
@@ -689,9 +691,9 @@ main (int argc, char *argv[])
       status = process_heartbeat (command_type, argc - 3, (const char **) &argv[3]);
 #endif /* !WINDOWs */
       break;
-    case JAVASP_UTIL:
+    case PL_UTIL:		// JAVASP_UTIL
       status =
-	process_javasp (command_type, argc - 3, (const char **) &argv[3], true, false, process_window_service, false);
+	process_pl (command_type, argc - 3, (const char **) &argv[3], true, false, process_window_service, false);
       break;
     case GATEWAY:
       status = process_gateway (command_type, argc - 3, (const char **) &argv[3], process_window_service);
@@ -1358,7 +1360,7 @@ process_service (int command_type, bool process_window_service)
 	{
 	  if (!are_all_services_stopped (0, process_window_service))
 	    {
-	      (void) process_javasp (command_type, 0, NULL, false, false, process_window_service, false);
+	      (void) process_pl (command_type, 0, NULL, false, false, process_window_service, false);
 
 	      if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0
 		  && us_Property_map[SERVER_START_LIST].property_value != NULL
@@ -1415,7 +1417,7 @@ process_service (int command_type, bool process_window_service)
 	const char *args[] = { "-b" };
 
 	(void) process_server (command_type, 0, NULL, false, true, false);
-	(void) process_javasp (command_type, 0, NULL, true, false, false, false);
+	(void) process_pl (command_type, 0, NULL, true, false, false, false);
 	(void) process_broker (command_type, 1, args, false);
 	(void) process_gateway (command_type, 1, args, false);
 	(void) process_manager (command_type, false);
@@ -1773,8 +1775,8 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		  /* run javasp server if DB server is started successfully */
 		  if (status == NO_ERROR)
 		    {
-		      (void) process_javasp (command_type, 1, (const char **) &token, false, true,
-					     process_window_service, false);
+		      (void) process_pl (command_type, 1, (const char **) &token, false, true,
+					 process_window_service, false);
 		    }
 		}
 	    }
@@ -1792,8 +1794,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	  /* try to stop javasp server first */
 	  if (is_javasp_running (token) == JAVASP_SERVER_RUNNING)
 	    {
-	      (void) process_javasp (command_type, 1, (const char **) &token, false, true, process_window_service,
-				     false);
+	      (void) process_pl (command_type, 1, (const char **) &token, false, true, process_window_service, false);
 	    }
 
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_STOP, token);
@@ -2827,7 +2828,7 @@ is_javasp_running (const char *server_name)
 }
 
 static int
-process_javasp_start (const char *db_name, bool suppress_message, bool process_window_service)
+process_pl_start (const char *db_name, bool suppress_message, bool process_window_service)
 {
   static const int wait_timeout = 30;
   int waited_secs = 0;
@@ -2912,7 +2913,7 @@ process_javasp_start (const char *db_name, bool suppress_message, bool process_w
 }
 
 static int
-process_javasp_stop (const char *db_name, bool suppress_message, bool process_window_service)
+process_pl_stop (const char *db_name, bool suppress_message, bool process_window_service)
 {
   int status = NO_ERROR;
   static const int wait_timeout = 5;
@@ -2966,7 +2967,7 @@ process_javasp_stop (const char *db_name, bool suppress_message, bool process_wi
 }
 
 static int
-process_javasp_status (const char *db_name)
+process_pl_status (const char *db_name)
 {
   int status = NO_ERROR;
   UTIL_JAVASP_SERVER_STATUS_E javasp_status = is_javasp_running (db_name);
@@ -2986,8 +2987,8 @@ process_javasp_status (const char *db_name)
 }
 
 static int
-process_javasp (int command_type, int argc, const char **argv, bool show_usage, bool suppress_message,
-		bool process_window_service, bool ha_mode)
+process_pl (int command_type, int argc, const char **argv, bool show_usage, bool suppress_message,
+	    bool process_window_service, bool ha_mode)
 {
   const int buf_size = 4096;
   char *buf = NULL;
@@ -3017,7 +3018,7 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
     {
       if (show_usage)
 	{
-	  util_service_usage (JAVASP_UTIL);
+	  util_service_usage (PL_UTIL);
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
 	}
       status = ER_GENERIC_ERROR;
@@ -3040,17 +3041,17 @@ process_javasp (int command_type, int argc, const char **argv, bool show_usage, 
       switch (command_type)
 	{
 	case START:
-	  status = process_javasp_start (db_name, suppress_message, process_window_service);
+	  status = process_pl_start (db_name, suppress_message, process_window_service);
 	  break;
 	case STOP:
-	  status = process_javasp_stop (db_name, suppress_message, process_window_service);
+	  status = process_pl_stop (db_name, suppress_message, process_window_service);
 	  break;
 	case RESTART:
-	  status = process_javasp_stop (db_name, suppress_message, process_window_service);
-	  status = process_javasp_start (db_name, suppress_message, process_window_service);
+	  status = process_pl_stop (db_name, suppress_message, process_window_service);
+	  status = process_pl_start (db_name, suppress_message, process_window_service);
 	  break;
 	case STATUS:
-	  status = process_javasp_status (db_name);
+	  status = process_pl_status (db_name);
 	  break;
 	default:
 	  status = ER_GENERIC_ERROR;
@@ -3982,7 +3983,7 @@ us_hb_deactivate (const char *hostname, bool immediate_stop)
     }
 
   /* stop javasp server */
-  (void) process_javasp (STOP, 0, NULL, false, true, false, true);
+  (void) process_pl (STOP, 0, NULL, false, true, false, true);
 
   /* stop all HA processes including cub_server */
   args[opt_idx] = COMMDB_HA_DEACT_STOP_ALL;
@@ -4033,7 +4034,7 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_STOP);
 
   /* stop javasp server */
-  (void) process_javasp (STOP, 1, (const char **) &db_name, false, true, false, true);
+  (void) process_pl (STOP, 1, (const char **) &db_name, false, true, false, true);
 
   status = us_hb_copylogdb_stop (ha_conf, db_name, NULL, NULL);
   if (status != NO_ERROR)
