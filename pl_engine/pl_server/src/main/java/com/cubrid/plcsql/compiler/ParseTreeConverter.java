@@ -886,33 +886,21 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 connectionRequired = true;
                 return new ExprBuiltinFuncCall(ctx, name, args);
             } else {
-                if (decl.paramList.nodes.size() != args.nodes.size()) {
+                int res = checkArguments(args, decl.paramList);
+                if (res < 0) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s009
                             "the number of arguments to function "
                                     + name
                                     + " does not match the number of its formal parameters");
-                }
-
-                int i = 0;
-                for (Expr arg : args.nodes) {
-                    DeclParam dp = decl.paramList.nodes.get(i);
-
-                    if (dp instanceof DeclParamOut) {
-                        if (arg instanceof ExprId && isAssignableTo((ExprId) arg)) {
-                            // OK
-                        } else {
-                            throw new SemanticError(
-                                    Misc.getLineColumnOf(arg.ctx), // s010
-                                    "argument "
-                                            + (i + 1)
-                                            + " to the function "
-                                            + name
-                                            + " must be assignable to because it is to an OUT parameter");
-                        }
-                    }
-
-                    i++;
+                } else if (res > 0) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(args.nodes.get(res - 1).ctx), // s010
+                            "argument "
+                                    + res
+                                    + " to the function "
+                                    + name
+                                    + " must be assignable to because it is to an OUT parameter");
                 }
 
                 return new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
@@ -1328,6 +1316,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     Misc.getLineColumnOf(ctx.record_field()), // s081
                     Misc.getNormalizedText(ctx.record_field())
                             + " is a serial value and not assignable to");
+        } else {
+            throw new RuntimeException("unreachable");
         }
 
         Expr val = visitExpression(ctx.expression());
@@ -1969,16 +1959,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             + " may not be fetched becaused it is neither a cursor nor a cursor reference");
         }
 
-        NodeList<ExprId> intoVars = new NodeList<>();
-        for (IdentifierContext v : ctx.identifier()) {
-            ExprId id = visitNonFuncIdentifier(v); // s060: undeclared id ...
-            if (!isAssignableTo(id)) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(v), // s039
-                        "variables to store fetch results must be assignable to");
-            }
-            intoVars.addNode(id);
-        }
+        // s060: undeclared id ...
+        // s039: variables to store fetch results must be assignable to
+        NodeList<ExprId> intoVars = visitInto_clause(ctx.into_clause());
 
         List<Type> columnTypeList;
         if (cursor.decl instanceof DeclCursor) {
@@ -2069,33 +2052,21 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             return ret;
         } else {
-            if (decl.paramList.nodes.size() != args.nodes.size()) {
+            int res = checkArguments(args, decl.paramList);
+            if (res < 0) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s044
                         "the number of arguments to procedure "
                                 + Misc.detachPkgName(name)
                                 + " does not match the number of its formal parameters");
-            }
-
-            int i = 0;
-            for (Expr arg : args.nodes) {
-                DeclParam dp = decl.paramList.nodes.get(i);
-
-                if (dp instanceof DeclParamOut) {
-                    if (arg instanceof ExprId && isAssignableTo((ExprId) arg)) {
-                        // OK
-                    } else {
-                        throw new SemanticError(
-                                Misc.getLineColumnOf(arg.ctx), // s045
-                                "argument "
-                                        + (i + 1)
-                                        + " to the procedure "
-                                        + Misc.detachPkgName(name)
-                                        + " must be assignable to because it is to an OUT parameter");
-                    }
-                }
-
-                i++;
+            } else if (res > 0) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(args.nodes.get(res - 1).ctx), // s045
+                        "argument "
+                                + res
+                                + " to the procedure "
+                                + Misc.detachPkgName(name)
+                                + " must be assignable to because it is to an OUT parameter");
             }
 
             return new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
@@ -2616,7 +2587,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             DeclParam dp = params.nodes.get(i);
 
             if (dp instanceof DeclParamOut) {
-                if (arg instanceof ExprId && isAssignableTo((ExprId) arg)) {
+                if (arg instanceof ExprId && isAssignableTo((ExprId) arg)
+                        || arg instanceof ExprField && isAssignableTo(((ExprField) arg).record)) {
                     // OK
                 } else {
                     return (i + 1);

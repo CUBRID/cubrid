@@ -135,6 +135,11 @@ assignment_statement
     | record_field ':=' expression      # assign_to_field
     ;
 
+assign_target
+    : identifier
+    | record_field
+    ;
+
 continue_statement
     : CONTINUE label_name? (WHEN expression)?
     ;
@@ -258,7 +263,7 @@ open_statement
     ;
 
 fetch_statement
-    : FETCH cursor_exp INTO identifier (',' identifier)*
+    : FETCH cursor_exp into_clause
     ;
 
 open_for_statement
@@ -466,7 +471,6 @@ index_name
     ;
 
 cursor_exp
-    //: function_call   TODO
     : identifier
     ;
 
