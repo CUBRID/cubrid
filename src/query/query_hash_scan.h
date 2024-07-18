@@ -79,7 +79,6 @@ struct hash_scan_key
   int val_count;		/* key size */
   bool free_values;		/* true if values need to be freed */
   db_value **values;		/* value array */
-  QFILE_TUPLE_RECORD **tuples;	/* tuple array */
 };
 
 typedef struct file_hash_scan_id FHSID;
@@ -131,10 +130,8 @@ int qdata_hscan_key_eq (const void *key1, const void *key2);
 
 int qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
-unsigned int qdata_hash_scan_key_with_tuple (const void *key, unsigned int ht_size, HASH_METHOD hash_method,
-					     TP_DOMAIN ** domains);
-HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, REGU_VARIABLE_LIST probe_regu_list,
-				     val_descr * vd);
+HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
+				     REGU_VARIABLE_LIST probe_regu_list, val_descr * vd);
 HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
 						   REGU_VARIABLE_LIST probe_regu_list, HASH_SCAN_KEY * new_key);
 

@@ -204,36 +204,23 @@ static int fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, FHS_H
 HASH_SCAN_KEY *
 qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals)
 {
-  HASH_SCAN_KEY *key = NULL;
+  HASH_SCAN_KEY *key;
   int i;
 
   key = (HASH_SCAN_KEY *) db_private_alloc (thread_p, sizeof (HASH_SCAN_KEY));
   if (key == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HASH_SCAN_KEY));
-      goto exit_on_error;
+      return NULL;
     }
-
-  memset (key, 0, sizeof (HASH_SCAN_KEY));
 
   key->values = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * val_cnt);
   if (key->values == NULL)
     {
+      db_private_free (thread_p, key);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *) * val_cnt);
-      goto exit_on_error;
+      return NULL;
     }
-
-  memset (key->values, 0, sizeof (DB_VALUE *) * val_cnt);
-
-  /* TODO: It is only used in hash joins. */
-  key->tuples = (QFILE_TUPLE_RECORD **) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_RECORD *) * val_cnt);
-  if (key->tuples == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_TUPLE_RECORD *) * val_cnt);
-      goto exit_on_error;
-    }
-
-  memset (key->tuples, 0, sizeof (QFILE_TUPLE_RECORD *) * val_cnt);
 
   if (alloc_vals)
     {
@@ -243,35 +230,16 @@ qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals
 	  if (key->values[i] == NULL)
 	    {
 	      key->free_values = true;
+	      qdata_free_hscan_key (thread_p, key, i);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
-	      goto exit_on_error;
+	      return NULL;
 	    }
-
-	  /* TODO: It is only used in hash joins. */
-	  key->tuples[i] = (QFILE_TUPLE_RECORD *) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_RECORD));
-	  if (key->tuples[i] == NULL)
-	    {
-	      key->free_values = true;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_TUPLE_RECORD));
-	      goto exit_on_error;
-	    }
-
-	  key->tuples[i]->tpl = NULL;
-	  key->tuples[i]->size = 0;
 	}
-
-      assert (i == val_cnt);
     }
 
   key->val_count = val_cnt;
   key->free_values = alloc_vals;
-
   return key;
-
-exit_on_error:
-  qdata_free_hscan_key (thread_p, key, i);
-
-  return NULL;
 }
 
 /*
@@ -282,8 +250,6 @@ exit_on_error:
 void
 qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_count)
 {
-  int i;
-
   if (key == NULL)
     {
       return;
@@ -293,9 +259,9 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
     {
       if (key->free_values)
 	{
-	  for (i = 0; i < val_count; i++)
+	  for (int i = 0; i < val_count; i++)
 	    {
-	      if (key->values[i] != NULL)
+	      if (key->values[i])
 		{
 		  pr_free_value (key->values[i]);
 		}
@@ -304,24 +270,6 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
 
       /* free values array */
       db_private_free (thread_p, key->values);
-    }
-
-  /* TODO: It is only used in hash joins. */
-  if (key->tuples != NULL)
-    {
-      if (key->free_values)
-	{
-	  for (i = 0; i < val_count; i++)
-	    {
-	      if (key->tuples[i] != NULL)
-		{
-		  db_private_free (thread_p, key->tuples[i]);
-		}
-	    }
-	}
-
-      /* free values array */
-      db_private_free (thread_p, key->tuples);
     }
 
   /* free structure */
@@ -345,34 +293,6 @@ qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_met
   for (i = 0; i < ckey->val_count; i++)
     {
       tmp_hash_val = mht_get_hash_number (ht_size, ckey->values[i]);
-      hash_val = hash_val ^ tmp_hash_val;
-      if (hash_val == 0)
-	{
-	  hash_val = tmp_hash_val;
-	}
-    }
-
-  if (hash_method == HASH_METH_HASH_FILE)
-    {
-      hash_val = fhs_hash (&hash_val);
-    }
-
-  return hash_val;
-}
-
-unsigned int
-qdata_hash_scan_key_with_tuple (const void *key, unsigned int ht_size, HASH_METHOD hash_method, TP_DOMAIN ** domains)
-{
-  HASH_SCAN_KEY *ckey = (HASH_SCAN_KEY *) key;
-  unsigned int hash_val = 0, tmp_hash_val;
-  int i;
-
-  /* build hash value */
-  for (i = 0; i < ckey->val_count; i++)
-    {
-      tmp_hash_val =
-	mht_get_hash_number_with_tuple (ht_size, ckey->tuples[i]->tpl, ckey->tuples[i]->size,
-					TP_DOMAIN_TYPE (domains[i]), domains[i]->precision);
       hash_val = hash_val ^ tmp_hash_val;
       if (hash_val == 0)
 	{

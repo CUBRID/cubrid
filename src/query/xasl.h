@@ -445,9 +445,6 @@ struct hashjoin_proc_node
 
   /* Whether there is a need to use the coerce domain. */
   bool need_coerce_domains;
-
-  /* Whether there is a need to make and compare with DB_VALUE. */
-  bool need_compare_dbvalues;
 #endif
 };
 

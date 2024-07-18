@@ -6529,7 +6529,6 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
   int common_precision, common_scale;
 
   bool need_coerce_domains;
-  bool need_compare_dbvalues;
 
   QFILE_LIST_MERGE_INFO *merge_info;
   int value_count;
@@ -6591,7 +6590,6 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
     hashjoin_coerce_domains = NULL;
 
     need_coerce_domains = false;
-    need_compare_dbvalues = false;
 
     for (domain_index = 0; domain_index < value_count; domain_index++)
       {
@@ -6615,43 +6613,6 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
 		  {
 		    hashjoin_coerce_domains[domain_index] = NULL;
 		  }
-
-		switch (outer_type)
-		  {
-		  case DB_TYPE_SMALLINT:
-		  case DB_TYPE_INTEGER:
-		  case DB_TYPE_BIGINT:
-		  case DB_TYPE_FLOAT:
-		  case DB_TYPE_DOUBLE:
-		  case DB_TYPE_NUMERIC:
-		  case DB_TYPE_TIME:
-		  case DB_TYPE_TIMESTAMP:
-		  case DB_TYPE_TIMESTAMPLTZ:
-		  case DB_TYPE_TIMESTAMPTZ:
-		  case DB_TYPE_DATE:
-		  case DB_TYPE_DATETIME:
-		  case DB_TYPE_DATETIMELTZ:
-		  case DB_TYPE_DATETIMETZ:
-		  case DB_TYPE_OID:
-		  case DB_TYPE_ENUMERATION:
-		  case DB_TYPE_BIT:
-		  case DB_TYPE_VARBIT:
-		    break;
-
-		  case DB_TYPE_MONETARY:
-		  case DB_TYPE_CHAR:
-		  case DB_TYPE_VARCHAR:
-		  case DB_TYPE_NCHAR:
-		  case DB_TYPE_VARNCHAR:
-		  case DB_TYPE_SET:
-		  case DB_TYPE_MULTISET:
-		  case DB_TYPE_SEQUENCE:
-		  case DB_TYPE_VOBJ:
-		  case DB_TYPE_JSON:
-		  default:
-		    need_compare_dbvalues = true;
-		    break;
-		  }
 	      }
 	    else
 	      {
@@ -6664,7 +6625,6 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
 		else
 		  {
 		    need_coerce_domains = true;
-		    need_compare_dbvalues = true;
 
 		    hashjoin_proc->coerce_domains =
 		      (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
@@ -6740,7 +6700,6 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
 	    else
 	      {
 		need_coerce_domains = true;
-		need_compare_dbvalues = true;
 
 		hashjoin_proc->coerce_domains =
 		  (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
@@ -6771,17 +6730,9 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
       }
 
     assert ((need_coerce_domains == false) || (hashjoin_coerce_domains != NULL));
-
-#if !defined(NDEBUG)
-    if (need_coerce_domains == true)
-      {
-	assert (need_compare_dbvalues == true);
-      }
-#endif
   }
 
   hashjoin_proc->need_coerce_domains = need_coerce_domains;
-  hashjoin_proc->need_compare_dbvalues = need_compare_dbvalues;
 
   /**
    * The build input may need to be changed even if the cached xasl is reused,
@@ -7763,7 +7714,6 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 {
   TP_DOMAIN **build_domains;
   int *build_value_indexes;
-  bool need_compare_dbvalues;
 
   HASH_LIST_SCAN *hash_scan;
   HASH_METHOD hash_method;
@@ -7799,8 +7749,6 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
   build_value_indexes = hashjoin_proc->build->value_indexes;
   assert (build_value_indexes != NULL);
-
-  need_compare_dbvalues = hashjoin_proc->need_compare_dbvalues;
 
   hash_scan = &(hashjoin_proc->hash_scan);
 
@@ -7855,14 +7803,7 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	}
 #endif
 
-      if (need_compare_dbvalues == true)
-	{
-	  hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
-	}
-      else
-	{
-	  hash_scan->curr_hash_key = qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_method, build_domains);
-	}
+      hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
 
 #if defined(TEST_HASH_JOIN_TEST_TIME)
       if (on_trace)
@@ -7961,7 +7902,6 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 {
   TP_DOMAIN **build_domains, **probe_domains;
   int *build_value_indexes, *probe_value_indexes;
-  bool need_compare_dbvalues;
 
   QFILE_LIST_MERGE_INFO *merge_info;
 
@@ -8009,8 +7949,6 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   assert (probe_value_indexes != NULL);
 
   merge_info = &(hashjoin_proc->merge_info);
-
-  need_compare_dbvalues = hashjoin_proc->need_compare_dbvalues;
 
   hash_scan = &(hashjoin_proc->hash_scan);
 
@@ -8089,14 +8027,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	}
 #endif
 
-      if (need_compare_dbvalues == true)
-	{
-	  hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
-	}
-      else
-	{
-	  hash_scan->curr_hash_key = qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_method, probe_domains);
-	}
+      hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
 
       if (on_trace)
 	{
@@ -8243,7 +8174,6 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
   QFILE_LIST_MERGE_INFO *merge_info;
   TP_DOMAIN **build_domains, **probe_domains;
   int *build_value_indexes, *probe_value_indexes;
-  bool need_compare_dbvalues;
 
   HASH_LIST_SCAN *hash_scan;
   HASH_METHOD hash_method;
@@ -8290,8 +8220,6 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 
   merge_info = &(hashjoin_proc->merge_info);
   is_right_outer_join = (merge_info->join_type == JOIN_RIGHT);
-
-  need_compare_dbvalues = hashjoin_proc->need_compare_dbvalues;
 
   hash_scan = &(hashjoin_proc->hash_scan);
 
@@ -8395,14 +8323,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 	    }
 	}
 
-      if (need_compare_dbvalues == true)
-	{
-	  hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
-	}
-      else
-	{
-	  hash_scan->curr_hash_key = qdata_hash_scan_key_with_tuple (key, UINT_MAX, hash_method, probe_domains);
-	}
+      hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
 
       is_outer_filled = false;
 
@@ -8590,7 +8511,6 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 
   TP_DOMAIN **coerce_domains;
   bool need_coerce_domains;
-  bool need_compare_dbvalues;
 
   TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
   DB_VALUE pre_coerce_value;
@@ -8612,8 +8532,6 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
   coerce_domains = hashjoin_proc->coerce_domains;
   need_coerce_domains = hashjoin_proc->need_coerce_domains;
   assert ((need_coerce_domains == false) || (coerce_domains != NULL));
-
-  need_compare_dbvalues = hashjoin_proc->need_compare_dbvalues;
 
   db_make_null (&pre_coerce_value);
 
@@ -8656,175 +8574,47 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 	  /* Skip the header of the tuple value. */
 	  or_init (&buf, iterator.ptr + QFILE_TUPLE_VALUE_HEADER_SIZE, value_size);
 
-	  if (need_compare_dbvalues == true)
+	  pr_clear_value (key->values[key_index]);
+
+	  if (need_coerce_domains == true && coerce_domains[key_index] != NULL
+	      && coerce_domains[key_index] != domains[key_index])
 	    {
-	      pr_clear_value (key->values[key_index]);
-
-	      if (need_coerce_domains == true && coerce_domains[key_index] != NULL
-		  && coerce_domains[key_index] != domains[key_index])
+	      error =
+		domains[key_index]->type->data_readval (&buf, &pre_coerce_value, domains[key_index], -1, false,
+							NULL, 0);
+	      if (error != NO_ERROR)
 		{
-		  error =
-		    domains[key_index]->type->data_readval (&buf, &pre_coerce_value, domains[key_index], -1, false,
-							    NULL, 0);
-		  if (error != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
-
-		  domain_status =
-		    tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
-
-		  pr_clear_value (&pre_coerce_value);
-
-		  if (domain_status != DOMAIN_COMPATIBLE)
-		    {
-		      goto exit_on_error;
-		    }
-		}
-	      else
-		{
-		  error =
-		    domains[key_index]->type->data_readval (&buf, key->values[key_index], domains[key_index], -1, false,
-							    NULL, 0);
-		  if (error != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
+		  goto exit_on_error;
 		}
 
-	      if (compare_key != NULL)
+	      domain_status = tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
+
+	      pr_clear_value (&pre_coerce_value);
+
+	      if (domain_status != DOMAIN_COMPATIBLE)
 		{
-		  /* If any of the tuple values ​​are not equal, exit this routine and read the next tuple. */
-		  compare_result = tp_value_compare (key->values[key_index], compare_key->values[key_index], 0, 0);
-		  if (compare_result != DB_EQ)
-		    {
-		      /* Give up and read the next tuple. */
-		      goto exit_on_next;
-		    }
+		  goto exit_on_error;
 		}
 	    }
 	  else
 	    {
-	      /* need_dbvalue_compare == false */
-
-	      /* We want to compare the tuple value as-is. */
-	      key->tuples[key_index]->tpl = buf.ptr;
-	      key->tuples[key_index]->size = value_size;
-
-	      if (compare_key != NULL)
+	      error =
+		domains[key_index]->type->data_readval (&buf, key->values[key_index], domains[key_index], -1, false,
+							NULL, 0);
+	      if (error != NO_ERROR)
 		{
-		  if (key->tuples[key_index]->size != compare_key->tuples[key_index]->size)
-		    {
-		      /* Give up and read the next tuple. */
-		      goto exit_on_next;
-		    }
+		  goto exit_on_error;
+		}
+	    }
 
-		  /* The size of the tuple value includes the size for alignment. */
-		  switch (TP_DOMAIN_TYPE (domains[key_index]))
-		    {
-		    case DB_TYPE_SMALLINT:
-		      compare_size = OR_SHORT_SIZE;
-		      break;
-
-		    case DB_TYPE_INTEGER:
-		      compare_size = OR_INT_SIZE;
-		      break;
-
-		    case DB_TYPE_BIGINT:
-		      compare_size = OR_BIGINT_SIZE;
-		      break;
-
-		    case DB_TYPE_FLOAT:
-		      compare_size = OR_FLOAT_SIZE;
-		      break;
-
-		    case DB_TYPE_DOUBLE:
-		      compare_size = OR_DOUBLE_SIZE;
-		      break;
-
-		    case DB_TYPE_NUMERIC:
-		      compare_size = DB_NUMERIC_BUF_SIZE;
-		      break;
-
-		    case DB_TYPE_TIME:
-		    case DB_TYPE_TIMESTAMP:
-		    case DB_TYPE_TIMESTAMPLTZ:
-		    case DB_TYPE_TIMESTAMPTZ:
-		    case DB_TYPE_DATE:
-		      compare_size = OR_INT_SIZE;
-		      break;
-
-		    case DB_TYPE_DATETIME:
-		    case DB_TYPE_DATETIMELTZ:
-		    case DB_TYPE_DATETIMETZ:
-		      compare_size = OR_DATETIME_SIZE;
-		      break;
-
-		    case DB_TYPE_OID:
-		      compare_size = OR_OID_SIZE;
-		      break;
-
-		    case DB_TYPE_ENUMERATION:
-		      compare_size = OR_SHORT_SIZE;
-		      break;
-
-		    case DB_TYPE_BIT:
-		      compare_size = BITS_TO_BYTES (domains[key_index]->precision);
-		      break;
-
-		    case DB_TYPE_VARBIT:
-		      {
-			unsigned int size_prefix, net_size, size;
-			size_prefix = or_get_byte (&buf, &error);
-			if (error != NO_ERROR)
-			  {
-			    goto exit_on_error;
-			  }
-
-			if (size_prefix == OR_MAX_BYTE_UNSIGNED)
-			  {
-			    error = or_get_data (&buf, (char *) &net_size, OR_INT_SIZE);
-			    if (error != NO_ERROR)
-			      {
-				goto exit_on_error;
-			      }
-
-			    size = OR_GET_INT (&net_size);
-			    compare_size = OR_BYTE_SIZE + OR_INT_SIZE;
-			  }
-			else
-			  {
-			    size = size_prefix;
-			    compare_size = OR_BYTE_SIZE;
-			  }
-			compare_size += BITS_TO_BYTES (size);
-			break;
-		      }
-
-		    case DB_TYPE_MONETARY:
-		    case DB_TYPE_CHAR:
-		    case DB_TYPE_VARCHAR:
-		    case DB_TYPE_NCHAR:
-		    case DB_TYPE_VARNCHAR:
-		    case DB_TYPE_SET:
-		    case DB_TYPE_MULTISET:
-		    case DB_TYPE_SEQUENCE:
-		    case DB_TYPE_VOBJ:
-		    case DB_TYPE_JSON:
-		    default:
-		      assert (false);
-		      compare_size = key->tuples[key_index]->size;
-		      break;
-		    }
-
-		  assert (compare_size > 0);
-
-		  /* If any of the tuple values ​​are not equal, exit this routine and read the next tuple. */
-		  if (memcmp (key->tuples[key_index]->tpl, compare_key->tuples[key_index]->tpl, compare_size) != 0)
-		    {
-		      /* Give up and read the next tuple. */
-		      goto exit_on_next;
-		    }
+	  if (compare_key != NULL)
+	    {
+	      /* If any of the tuple values ​​are not equal, exit this routine and read the next tuple. */
+	      compare_result = tp_value_compare (key->values[key_index], compare_key->values[key_index], 0, 0);
+	      if (compare_result != DB_EQ)
+		{
+		  /* Give up and read the next tuple. */
+		  goto exit_on_next;
 		}
 	    }
 	}
