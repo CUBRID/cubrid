@@ -62,8 +62,6 @@ public class ExprId extends Expr {
             return name;
         } else if (decl instanceof DeclForIter) {
             return String.format("%s_i%d[0]", name, decl.scope().level);
-        } else if (decl instanceof DeclForRecord) {
-            return String.format("%s_r%d", name, decl.scope().level);
         } else if (decl instanceof DeclConst || decl instanceof DeclCursor) {
             if (prefixDeclBlock) {
                 return String.format("%s.%s", decl.scope().block, name);

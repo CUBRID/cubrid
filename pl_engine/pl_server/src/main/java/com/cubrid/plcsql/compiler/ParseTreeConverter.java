@@ -37,11 +37,11 @@ import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.error.SemanticError;
+import com.cubrid.plcsql.compiler.error.SyntaxError;
+import com.cubrid.plcsql.compiler.error.UndeclaredId;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
-import com.cubrid.plcsql.compiler.error.SemanticError;
-import com.cubrid.plcsql.compiler.error.UndeclaredId;
-import com.cubrid.plcsql.compiler.error.SyntaxError;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
@@ -326,23 +326,24 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             try {
                 id = visitNonFuncIdentifier(ctx.row_name().name);
                 if (id.decl instanceof DeclCursor) {
-                    ofTable = false;    // of a cursor
+                    ofTable = false; // of a cursor
                     selectList = ((DeclCursor) id.decl).staticSql.selectList;
                 } else {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx),  // s076
+                            Misc.getLineColumnOf(ctx), // s076
                             "%ROWTYPE cannot be applied to a non-cursor variable " + row);
                 }
             } catch (UndeclaredId e) {
                 // OK: 'row' is not a local variable
             }
         } else {
-            row = row.replaceAll(" ", "");  // it can have spaces
+            row = row.replaceAll(" ", ""); // it can have spaces
         }
 
         if (selectList == null) {
             // row can be a table name
-            List<SqlSemantics> answer = ServerAPI.getSqlSemantics(Arrays.asList("select * from " + row));
+            List<SqlSemantics> answer =
+                    ServerAPI.getSqlSemantics(Arrays.asList("select * from " + row));
             if (answer == null) {
                 throw new RuntimeException("internal error: failed to get the semantics of " + row);
             }
@@ -351,7 +352,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             SqlSemantics sws = answer.get(0);
             if (sws.errCode != 0) {
                 throw new SemanticError(
-                        Misc.getLineColumnOf(ctx),  // s077
+                        Misc.getLineColumnOf(ctx), // s077
                         row + " is neither a table nor a cursor");
             }
 
@@ -362,8 +363,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         if (selectList.size() == 0) {
             throw new SemanticError(
-                    Misc.getLineColumnOf(ctx),  // s078
-                    row + " has no columns");  // unlikely ...
+                    Misc.getLineColumnOf(ctx), // s078
+                    row + " has no columns"); // unlikely ...
         }
 
         return new TypeSpec(ctx, TypeRecord.getInstance(ofTable, row, selectList));
@@ -816,20 +817,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return new ExprFalse(ctx);
     }
 
-    private static boolean isRecordVar(ExprId id) {
-        return (id != null &&
-            id.decl instanceof DeclVar &&
-            ((DeclVar) id.decl).typeSpec.type.idx == Type.IDX_RECORD);
-    }
-
     @Override
-    public Expr visitField_exp(Field_expContext ctx) {
+    public Expr visitRecord_field(Record_fieldContext ctx) {
 
         String fieldName = Misc.getNormalizedText(ctx.field);
 
         try {
             ExprId record = visitNonFuncIdentifier(ctx.record);
-            if (!isRecordVar(record)) {
+            if (!isRecordId(record)) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx.record), // s008
                         "field lookup is only allowed for records");
@@ -854,8 +849,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         new ExprSerialVal(
                                 ctx,
                                 recordText,
-                                (fieldName.equals("CURRENT_VALUE")
-                                                || fieldName.equals("CURRVAL"))
+                                (fieldName.equals("CURRENT_VALUE") || fieldName.equals("CURRVAL"))
                                         ? ExprSerialVal.SerialVal.CURR_VAL
                                         : ExprSerialVal.SerialVal.NEXT_VAL);
                 semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
@@ -1304,7 +1298,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public StmtAssign visitAssignment_statement(Assignment_statementContext ctx) {
+    public StmtAssign visitAssign_to_id(Assign_to_idContext ctx) {
 
         ExprId var = visitNonFuncIdentifier(ctx.identifier()); // s018: undeclared id ...
         if (!isAssignableTo(var)) {
@@ -1316,6 +1310,29 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Expr val = visitExpression(ctx.expression());
 
         return new StmtAssign(ctx, var, val);
+    }
+
+    @Override
+    public StmtAssign visitAssign_to_field(Assign_to_fieldContext ctx) {
+
+        Expr e = visitRecord_field(ctx.record_field()); // s079: undeclared id ...
+        if (e instanceof ExprField) {
+            ExprField recordField = (ExprField) e;
+            if (!isAssignableTo(recordField.record)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.record_field()), // s080
+                        Misc.getNormalizedText(ctx.record_field()) + " is not assignable to");
+            }
+        } else if (e instanceof ExprSerialVal) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx.record_field()), // s081
+                    Misc.getNormalizedText(ctx.record_field())
+                            + " is a serial value and not assignable to");
+        }
+
+        Expr val = visitExpression(ctx.expression());
+
+        return new StmtAssign(ctx, e, val);
     }
 
     @Override
@@ -1597,10 +1614,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             symbolStack.putDeclLabel(label, declLabel);
         }
 
-        TypeRecord recTy = TypeRecord.getInstance(false, declCursor.name, declCursor.staticSql.selectList);
-        DeclVar declForRecord =
-                new DeclVar(ctx.for_cursor().record_name(), record, new TypeSpec(null, recTy), false, null);
-        symbolStack.putDecl(record, declForRecord);
+        TypeRecord recTy =
+                TypeRecord.getInstance(false, declCursor.name, declCursor.staticSql.selectList);
+        DeclVar recDecl =
+                new DeclVar(
+                        ctx.for_cursor().record_name(),
+                        record,
+                        new TypeSpec(null, recTy),
+                        false,
+                        null);
+        symbolStack.putDecl(record, recDecl);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
         controlFlowBlocked =
@@ -1608,7 +1631,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtForCursorLoop(ctx, cursor, args, label, record, stmts);
+        return new StmtForCursorLoop(ctx, cursor, args, label, record, recTy, stmts);
     }
 
     @Override
@@ -1647,7 +1670,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         TypeRecord recTy = TypeRecord.getInstance(false, record, staticSql.selectList);
-        DeclVar declForRecord = new DeclVar(recNameCtx, record, new TypeSpec(null, recTy), false, null);
+        DeclVar declForRecord =
+                new DeclVar(recNameCtx, record, new TypeSpec(null, recTy), false, null);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1689,7 +1713,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             symbolStack.putDeclLabel(label, declLabel);
         }
 
-        DeclVar declForRecord = new DeclVar(recNameCtx, record, new TypeSpec(null, Type.RECORD_ANY), false, null);
+        DeclVar declForRecord =
+                new DeclVar(recNameCtx, record, new TypeSpec(null, Type.RECORD_ANY), false, null);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -2194,6 +2219,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private static final NodeList<DeclParam> EMPTY_PARAMS = new NodeList<>();
     private static final NodeList<Expr> EMPTY_ARGS = new NodeList<>();
 
+    private static boolean isRecordId(ExprId id) {
+        return (id != null
+                && id.decl instanceof DeclIdTyped
+                && ((DeclIdTyped) id.decl).typeSpec().type.idx == Type.IDX_RECORD);
+    }
+
     private static boolean isCursorOrRefcursor(ExprId id) {
 
         DeclId decl = id.decl;
@@ -2235,7 +2266,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private static boolean isAssignableTo(ExprId id) {
-        return (id.decl instanceof DeclVar || id.decl instanceof DeclParamOut);
+        if (id.decl instanceof DeclParamOut) {
+            return true;
+        }
+
+        if (id.decl instanceof DeclVar) {
+            DeclVar varDecl = (DeclVar) id.decl;
+            return (varDecl.typeSpec.type != Type.RECORD_ANY);
+        }
+
+        return false;
     }
 
     private static String unquoteStr(String val) {
@@ -2446,7 +2486,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                         ExprId record =
                                 visitNonFuncIdentifier(split[0], ctx); // s432: undeclared id ...
-                        if (!isRecordVar(record)) {
+                        if (!isRecordId(record)) {
                             throw new SemanticError(
                                     Misc.getLineColumnOf(ctx), // s433
                                     split[0] + " is not a record");

@@ -37,8 +37,8 @@ import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -176,7 +176,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         // record definitions
         List<String> recordLines = new LinkedList<>();
-        for (TypeRecord rec: TypeRecord.instances.values()) {
+        for (TypeRecord rec : TypeRecord.instances.values()) {
             recordLines.addAll(getRecordDeclCode(rec));
         }
         TypeRecord.instances = new HashMap<>(); // clear the old accumulation
@@ -454,40 +454,42 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl;
         if (node.recordTypeOfOperands == null) {
-            tmpl = new CodeTemplate(
-                "ExprBinaryOp - for non-records",
-                Misc.getLineColumnOf(node.ctx),
-                tmplExprBinaryOp,
-                "%'OPT-NEGATE'%",
-                "",
-                "%'OPERATION'%",
-                node.opStr,
-                "%'OP-EXTENSION'%",
-                node.opExtension,
-                "%'+LEFT-OPERAND'%",
-                visit(node.left),
-                "%'+RIGHT-OPERAND'%",
-                visit(node.right));
+            tmpl =
+                    new CodeTemplate(
+                            "ExprBinaryOp - for non-records",
+                            Misc.getLineColumnOf(node.ctx),
+                            tmplExprBinaryOp,
+                            "%'OPT-NEGATE'%",
+                            "",
+                            "%'OPERATION'%",
+                            node.opStr,
+                            "%'OP-EXTENSION'%",
+                            node.opExtension,
+                            "%'+LEFT-OPERAND'%",
+                            visit(node.left),
+                            "%'+RIGHT-OPERAND'%",
+                            visit(node.right));
         } else {
 
             javaTypesUsed.add("java.util.Objects");
 
             boolean isEq = node.opStr.equals("Eq");
 
-            tmpl = new CodeTemplate(
-                "ExprBinaryOp - for records",
-                Misc.getLineColumnOf(node.ctx),
-                tmplExprBinaryOp,
-                "%'OPT-NEGATE'%",
-                (isEq ? "" : "!"),
-                "%'OPERATION'%",
-                "Eq",
-                "%'OP-EXTENSION'%",
-                node.recordTypeOfOperands.javaCode,
-                "%'+LEFT-OPERAND'%",
-                visit(node.left),
-                "%'+RIGHT-OPERAND'%",
-                visit(node.right));
+            tmpl =
+                    new CodeTemplate(
+                            "ExprBinaryOp - for records",
+                            Misc.getLineColumnOf(node.ctx),
+                            tmplExprBinaryOp,
+                            "%'OPT-NEGATE'%",
+                            (isEq ? "" : "!"),
+                            "%'OPERATION'%",
+                            "Eq",
+                            "%'OP-EXTENSION'%",
+                            node.recordTypeOfOperands.javaCode,
+                            "%'+LEFT-OPERAND'%",
+                            visit(node.left),
+                            "%'+RIGHT-OPERAND'%",
+                            visit(node.right));
         }
 
         return applyCoercion(node.coercion, tmpl);
@@ -1044,33 +1046,29 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // StmtAssign
     //
 
-    private static final String[] tmplAssignNullToRecord = new String[] {
-        "(",
-        "%'+DST-EXPR'%).setNull(",
-        "  %'+SRC-EXPR'%);"
-    };
+    private static final String[] tmplAssignNullToRecord =
+            new String[] {"(", "%'+DST-EXPR'%).setNull(", "  %'+SRC-EXPR'%);"};
 
-    private static final String[] tmplAssignRecordToRecord = new String[] {
-        "setFieldsOf%'SRC-RECORD'%_To_%'DST-RECORD'%(",
-        "  %'+SRC-EXPR'%,",
-        "  %'+DST-EXPR'%);"
-    };
+    private static final String[] tmplAssignRecordToRecord =
+            new String[] {
+                "setFieldsOf%'SRC-RECORD'%_To_%'DST-RECORD'%(",
+                "  %'+SRC-EXPR'%,",
+                "  %'+DST-EXPR'%);"
+            };
 
-    private static final String[] tmplAssignNotNull = new String[] {
-        "%'VAR'% = checkNotNull(",
-        "  %'+VAL'%, \"NOT NULL constraint violated\");"
-    };
-    private static final String[] tmplAssignNullable = new String[] {
-        "%'VAR'% =",
-        "  %'+VAL'%;"
-    };
+    private static final String[] tmplAssignNotNull =
+            new String[] {
+                "%'+TARGET'% = checkNotNull(", "  %'+VAL'%, \"NOT NULL constraint violated\");"
+            };
+    private static final String[] tmplAssignNullable =
+            new String[] {"%'+TARGET'% =", "  %'+VAL'%;"};
 
     @Override
     public CodeToResolve visitStmtAssign(StmtAssign node) {
 
         if (node.val.coercion instanceof Coercion.NullToRecord) {
 
-            node.val.coercion = null;   // small optimization: suppressing null record creation
+            node.val.coercion = null; // small optimization: suppressing null record creation
 
             return new CodeTemplate(
                     "StmtAssign - null to record",
@@ -1079,12 +1077,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'+SRC-EXPR'%",
                     visit(node.val),
                     "%'+DST-EXPR'%",
-                    node.var.javaCode());
+                    visit(node.target));
 
         } else if (node.val.coercion instanceof Coercion.RecordToRecord) {
 
             Coercion c = node.val.coercion;
-            node.val.coercion = null;   // small optimization: suppressing null record creation
+            node.val.coercion = null; // small optimization: suppressing null record creation
 
             return new CodeTemplate(
                     "StmtAssign - record to record",
@@ -1097,19 +1095,24 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'+SRC-EXPR'%",
                     visit(node.val),
                     "%'+DST-EXPR'%",
-                    node.var.javaCode());
+                    visit(node.target));
         }
 
-        boolean checkNotNull =
-                (node.var.decl instanceof DeclVar) && ((DeclVar) node.var.decl).notNull;
+        boolean checkNotNull = false;
+        if (node.target instanceof ExprId) {
+            ExprId targetId = (ExprId) node.target;
+            if (targetId.decl instanceof DeclVar && ((DeclVar) targetId.decl).notNull) {
+                checkNotNull = true;
+            }
+        }
         if (checkNotNull) {
 
             return new CodeTemplate(
                     "StmtAssign - not null",
                     Misc.getLineColumnOf(node.ctx),
                     tmplAssignNotNull,
-                    "%'VAR'%",
-                    node.var.javaCode(),
+                    "%'+TARGET'%",
+                    visit(node.target),
                     "%'+VAL'%",
                     visit(node.val));
         } else {
@@ -1118,8 +1121,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "StmtAssign - nullable",
                     Misc.UNKNOWN_LINE_COLUMN,
                     tmplAssignNullable,
-                    "%'VAR'%",
-                    node.var.javaCode(),
+                    "%'+TARGET'%",
+                    visit(node.target),
                     "%'+VAL'%",
                     visit(node.val));
         }
@@ -1559,10 +1562,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplStmtForCursorLoopWithoutHostExprs =
             new String[] {
                 "try { // for loop with a cursor",
+                "  %'RECORD-CLASS'%[] %'RECORD'% = new %'RECORD-CLASS'%[] { new %'RECORD-CLASS'%() };",
                 "  %'CURSOR'%.open(conn);",
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
                 "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
+                "    %'RECORD'%[0].set(",
+                "      %'+RECORD-FIELD-VALUES'%",
+                "    );",
                 "    %'+STATEMENTS'%",
                 "  }",
                 "  %'CURSOR'%.close();",
@@ -1575,12 +1582,16 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplStmtForCursorLoopWithHostExprs =
             new String[] {
                 "try { // for loop with a cursor",
+                "  %'RECORD-CLASS'%[] %'RECORD'% = new %'RECORD-CLASS'%[] { new %'RECORD-CLASS'%() };",
                 "  %'+DUPLICATE-CURSOR-ARG'%",
                 "  %'CURSOR'%.open(conn,",
                 "    %'+HOST-EXPRS'%);",
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
                 "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
+                "    %'RECORD'%[0].set(",
+                "      %'+RECORD-FIELD-VALUES'%",
+                "    );",
                 "    %'+STATEMENTS'%",
                 "  }",
                 "  %'CURSOR'%.close();",
@@ -1590,8 +1601,27 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
+    private String[] getRecordSetArgs(String record, TypeRecord recTy, int level) {
+
+        int i = 1;
+
+        List<String> ret = new LinkedList<>();
+        for (Misc.Pair<String, Type> field : recTy.selectList) {
+            ret.add(
+                    String.format(
+                            "%s(%s) getFieldWithIndex(%s_r%d, %d)",
+                            (i > 1 ? ", " : ""), getJavaCodeOfType(field.e2), record, level, i));
+            i++;
+        }
+
+        return ret.toArray(DUMMY_STRING_ARRAY);
+    }
+
     @Override
     public CodeToResolve visitStmtForCursorLoop(StmtForCursorLoop node) {
+
+        String[] recordSetArgs =
+                getRecordSetArgs(node.record, node.recordType, node.cursor.scope.level);
 
         DeclCursor decl = (DeclCursor) node.cursor.decl;
         if (decl.paramNumOfHostExpr.length == 0) {
@@ -1600,6 +1630,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "StmtForCursorLoop",
                     Misc.getLineColumnOf(node.ctx),
                     tmplStmtForCursorLoopWithoutHostExprs,
+                    "%'RECORD-CLASS'%",
+                    node.recordType.javaCode,
+                    "%'+RECORD-FIELD-VALUES'%",
+                    recordSetArgs,
                     "%'CURSOR'%",
                     node.cursor.javaCode(),
                     "%'RECORD'%",
@@ -1620,6 +1654,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "StmtForCursorLoop",
                     Misc.getLineColumnOf(node.ctx),
                     tmplStmtForCursorLoopWithHostExprs,
+                    "%'RECORD-CLASS'%",
+                    node.recordType.javaCode,
+                    "%'+RECORD-FIELD-VALUES'%",
+                    recordSetArgs,
                     "%'+DUPLICATE-CURSOR-ARG'%",
                     dupCursorArgs,
                     "%'CURSOR'%",
@@ -1701,12 +1739,78 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     }
 
     // -------------------------------------------------------------------------
-    // StmtForSqlLoop (StmtForStaticSqlLoop, StmtForExecImmeLoop)
+    // StmtForStaticSqlLoop
     //
 
-    private static String[] tmplStmtForSqlLoop =
+    private static String[] tmplStmtForStaticSqlLoop =
             new String[] {
-                "{ // for loop with %'KIND'% SQL",
+                "{ // for loop with static SQL",
+                "  PreparedStatement stmt_%'LEVEL'% = null;",
+                "  try {",
+                "    %'RECORD-CLASS'%[] %'RECORD'% = new %'RECORD-CLASS'%[] { new %'RECORD-CLASS'%() };",
+                "    String sql_%'LEVEL'% =",
+                "      %'+SQL'%;",
+                "    stmt_%'LEVEL'% = conn.prepareStatement(sql_%'LEVEL'%);",
+                "    %'+SET-USED-EXPR'%",
+                "    ResultSet %'RECORD'%_r%'LEVEL'% = stmt_%'LEVEL'%.executeQuery();", // never
+                // null
+                "    %'LABEL'%",
+                "    while (%'RECORD'%_r%'LEVEL'%.next()) {",
+                "      %'RECORD'%[0].set(",
+                "        %'+RECORD-FIELD-VALUES'%",
+                "      );",
+                "      %'+STATEMENTS'%",
+                "    }",
+                "  } catch (SQLException e) {",
+                "    Server.log(e);",
+                "    throw new SQL_ERROR(e.getMessage());",
+                "  } finally {",
+                "    if (stmt_%'LEVEL'% != null) {",
+                "      stmt_%'LEVEL'%.close();",
+                "    }",
+                "  }",
+                "}"
+            };
+
+    @Override
+    public CodeToResolve visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
+
+        Type recTy = node.record.typeSpec.type;
+        assert recTy instanceof TypeRecord;
+
+        String[] recordSetArgs =
+                getRecordSetArgs(node.record.name, (TypeRecord) recTy, node.record.scope.level);
+        Object setUsedExpr = getSetUsedExpr(node.usedExprList);
+
+        return new CodeTemplate(
+                "StmtForSqlLoop",
+                Misc.getLineColumnOf(node.ctx),
+                tmplStmtForStaticSqlLoop,
+                "%'RECORD-CLASS'%",
+                node.record.typeSpec.type.javaCode,
+                "%'+SQL'%",
+                visit(node.sql),
+                "%'+SET-USED-EXPR'%",
+                setUsedExpr,
+                "%'RECORD'%",
+                node.record.name,
+                "%'LABEL'%",
+                node.label == null ? "" : node.label + "_%'LEVEL'%:",
+                "%'+RECORD-FIELD-VALUES'%",
+                recordSetArgs,
+                "%'LEVEL'%",
+                Integer.toString(node.record.scope.level),
+                "%'+STATEMENTS'%",
+                visitNodeList(node.stmts));
+    }
+
+    // -------------------------------------------------------------------------
+    // StmtForExecImmeLoop
+    //
+
+    private static String[] tmplStmtForExecImmeLoop =
+            new String[] {
+                "{ // for loop with dynamic SQL",
                 "  PreparedStatement stmt_%'LEVEL'% = null;",
                 "  try {",
                 "    String sql_%'LEVEL'% = checkNotNull(",
@@ -1740,16 +1844,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
-    private CodeToResolve visitStmtForSqlLoop(StmtForSqlLoop node) {
+    @Override
+    public CodeToResolve visitStmtForExecImmeLoop(StmtForExecImmeLoop node) {
 
         Object setUsedExpr = getSetUsedExpr(node.usedExprList);
 
         return new CodeTemplate(
                 "StmtForSqlLoop",
                 Misc.getLineColumnOf(node.ctx),
-                tmplStmtForSqlLoop,
-                "%'KIND'%",
-                node.dynamic ? "dynamic" : "static",
+                tmplStmtForExecImmeLoop,
                 "%'+SQL'%",
                 visit(node.sql),
                 "%'+SET-USED-EXPR'%",
@@ -1762,16 +1865,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 Integer.toString(node.record.scope.level),
                 "%'+STATEMENTS'%",
                 visitNodeList(node.stmts));
-    }
-
-    @Override
-    public CodeToResolve visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
-        return visitStmtForSqlLoop(node);
-    }
-
-    @Override
-    public CodeToResolve visitStmtForExecImmeLoop(StmtForExecImmeLoop node) {
-        return visitStmtForSqlLoop(node);
     }
 
     // -------------------------------------------------------------------------
@@ -2456,31 +2549,23 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();"
             };
 
-    private static final String[] tmplCastCoercion = new String[] {
-        "(%'TYPE'%)",
-        "  %'+EXPR'%"
-    };
-    private static final String[] tmplConvCoercion = new String[] {
-        "conv%'SRC-TYPE'%To%'DST-TYPE'%(",
-        "  %'+EXPR'%)"
-    };
-    private static final String[] tmplCoerceAndCheckPrec = new String[] {
-        "checkPrecision(%'PREC'%, (short) %'SCALE'%,",
-        "  %'+EXPR'%)"
-    };
-    private static final String[] tmplCoerceAndCheckStrLength = new String[] {
-        "checkStrLength(%'IS-CHAR'%, %'LENGTH'%,",
-        "  %'+EXPR'%)"
-    };
-    private static final String[] tmplNullToRecord = new String[] {
-        "new %'DST-RECORD'%().setNull(",
-        "  %'+EXPR'%)",
-    };
-    private static final String[] tmplRecordToRecord = new String[] {
-        "setFieldsOf%'SRC-RECORD'%_To_%'DST-RECORD'%(",
-        "  %'+EXPR'%,",
-        "  new %'DST-RECORD'%())"
-    };
+    private static final String[] tmplCastCoercion = new String[] {"(%'TYPE'%)", "  %'+EXPR'%"};
+    private static final String[] tmplConvCoercion =
+            new String[] {"conv%'SRC-TYPE'%To%'DST-TYPE'%(", "  %'+EXPR'%)"};
+    private static final String[] tmplCoerceAndCheckPrec =
+            new String[] {"checkPrecision(%'PREC'%, (short) %'SCALE'%,", "  %'+EXPR'%)"};
+    private static final String[] tmplCoerceAndCheckStrLength =
+            new String[] {"checkStrLength(%'IS-CHAR'%, %'LENGTH'%,", "  %'+EXPR'%)"};
+    private static final String[] tmplNullToRecord =
+            new String[] {
+                "new %'DST-RECORD'%().setNull(", "  %'+EXPR'%)",
+            };
+    private static final String[] tmplRecordToRecord =
+            new String[] {
+                "setFieldsOf%'SRC-RECORD'%_To_%'DST-RECORD'%(",
+                "  %'+EXPR'%,",
+                "  new %'DST-RECORD'%())"
+            };
 
     private CodeToResolve applyCoercion(Coercion c, CodeTemplate exprCode) {
 
@@ -2876,7 +2961,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     if (substitute instanceof String) {
                         line = line.replace(hole, (String) substitute);
                     } else {
-                        throw new RuntimeException("unreachable");
+                        throw new RuntimeException(
+                                String.format(
+                                        "unreachable: non-string (%s) substitute for a small hole '%s'",
+                                        substitute.getClass().getSimpleName(), hole));
                     }
                 }
             }
@@ -3058,8 +3146,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private List<String> getRecordFieldsDeclCode(List<Misc.Pair<String, Type>> selectList) {
 
-        List<String> lines = new LinkedList<> ();
-        for (Misc.Pair<String, Type> f: selectList) {
+        List<String> lines = new LinkedList<>();
+        for (Misc.Pair<String, Type> f : selectList) {
             lines.add(getJavaCodeOfType(f.e2) + " " + f.e1);
         }
 
@@ -3068,28 +3156,31 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private List<String> getRecordDeclCode(TypeRecord rec) {
 
-        List<String> lines = new LinkedList<> ();
+        List<String> lines = new LinkedList<>();
 
         lines.add("private static class " + rec.javaCode + " {");
 
         List<String> fieldDecls = getRecordFieldsDeclCode(rec.selectList);
 
         // field declarations
-        for (String line: fieldDecls) {
+        for (String line : fieldDecls) {
             lines.add(String.format("  %s;", line));
         }
 
         // set method
         lines.add(String.format("  %s set(%s) {", rec.javaCode, String.join(", ", fieldDecls)));
-        for (Misc.Pair<String, Type> f: rec.selectList) {
+        for (Misc.Pair<String, Type> f : rec.selectList) {
             lines.add(String.format("    this.%1$s = %1$s;", f.e1));
         }
         lines.add(String.format("    return this;"));
         lines.add("  }");
 
         // setNull method
-        lines.add(String.format("  %s setNull(Object dummy) {", rec.javaCode));   // o: to take null expression
-        for (Misc.Pair<String, Type> f: rec.selectList) {
+        lines.add(
+                String.format(
+                        "  %s setNull(Object dummy) {",
+                        rec.javaCode)); // o: to take null expression
+        for (Misc.Pair<String, Type> f : rec.selectList) {
             lines.add(String.format("    this.%s = null;", f.e1));
         }
         lines.add(String.format("    return this;"));
@@ -3098,10 +3189,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         lines.add("}");
 
         if (rec.generateEq) {
-            lines.add(String.format("private static boolean opEq%1$s(%1$s l, %1$s r) {", rec.javaCode));
+            lines.add(
+                    String.format(
+                            "private static boolean opEq%1$s(%1$s l, %1$s r) {", rec.javaCode));
             int i = 0;
-            for (Misc.Pair<String, Type> f: rec.selectList) {
-                lines.add(String.format("  %1$s Objects.equals(l.%2$s, r.%2$s)", (i == 0 ? "return" : "  &&"), f.e1));
+            for (Misc.Pair<String, Type> f : rec.selectList) {
+                lines.add(
+                        String.format(
+                                "  %1$s Objects.equals(l.%2$s, r.%2$s)",
+                                (i == 0 ? "return" : "  &&"), f.e1));
                 i++;
             }
             lines.add("  ;");

@@ -131,7 +131,8 @@ into_clause
     ;
 
 assignment_statement
-    : identifier ':=' expression
+    : identifier ':=' expression        # assign_to_id
+    | record_field ':=' expression      # assign_to_field
     ;
 
 continue_statement
@@ -337,7 +338,7 @@ unary_expression
 
 atom
     : literal                                   # literal_exp
-    | record=identifier '.' field=identifier    # field_exp
+    | record_field                              # field_exp
     | function_call                             # call_exp
     | identifier                                # id_exp
     | case_expression                           # case_exp
@@ -346,6 +347,10 @@ atom
     | LPAREN expression RPAREN                  # paren_exp
     | SQLCODE                                   # sqlcode_exp
     | SQLERRM                                   # sqlerrm_exp
+    ;
+
+record_field
+    : record=identifier '.' field=identifier
     ;
 
 function_call

@@ -67,15 +67,15 @@ public class ExprField extends Expr {
             // record is for a Static SQL
             //
             assert type != null;
-            javaTypesUsed.add(type.fullJavaType);
-            return String.format(
-                    "(%s) getFieldWithIndex(%s, %d)", type.javaCode, record.javaCode(), colIndex);
+            return String.format("(%s.%s)", record.javaCode(), fieldName);
         } else {
 
             // record is for a Dynamic SQL
             //
             assert type == null;
-            return String.format("getFieldWithName(%s, \"%s\")", record.javaCode(), fieldName);
+            return String.format(
+                    "getFieldWithName(%s_r%d, \"%s\")",
+                    record.name, record.decl.scope.level, fieldName);
         }
     }
 

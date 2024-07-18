@@ -39,12 +39,12 @@ import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
-import com.cubrid.plcsql.compiler.error.SemanticError;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -471,14 +471,20 @@ public class TypeChecker extends AstVisitor<Type> {
         Type ret = null;
 
         DeclId declId = node.record.decl;
-        assert declId instanceof DeclForRecord;
-        DeclForRecord declForRecord = (DeclForRecord) declId;
-        if (declForRecord.fieldTypes != null) {
-            // this record is for a static SQL
+        assert declId instanceof DeclIdTyped;
+        Type recTy = ((DeclIdTyped) declId).typeSpec().type;
+        assert recTy.idx == Type.IDX_RECORD;
+        if (recTy == Type.RECORD_ANY) {
+            // This record is for a dynamic SQL
+            // It cannot be a specific Java type: type unknown at compile time
+            ret = Type.OBJECT;
+        } else {
+            // This record is for a static SQL
+            assert recTy instanceof TypeRecord;
+            TypeRecord recTy2 = (TypeRecord) recTy;
 
-            // ret = declForRecord.fieldTypes.get(node.fieldName);
             int i = 1, found = -1;
-            for (Misc.Pair<String, Type> p : declForRecord.fieldTypes) {
+            for (Misc.Pair<String, Type> p : recTy2.selectList) {
                 if (node.fieldName.equals(p.e1)) {
                     if (found > 0) {
                         throw new SemanticError(
@@ -501,11 +507,6 @@ public class TypeChecker extends AstVisitor<Type> {
                 node.setType(ret);
                 node.setColIndex(found);
             }
-        } else {
-            // this record is for a dynamic SQL
-
-            // it cannot be a specific Java type: type unknown at compile time
-            ret = Type.OBJECT;
         }
 
         return ret;
@@ -526,9 +527,6 @@ public class TypeChecker extends AstVisitor<Type> {
             return Type.CURSOR;
         } else if (node.decl instanceof DeclForIter) {
             return Type.INT;
-        } else if (node.decl instanceof DeclForRecord) {
-            assert false : "unreachable";
-            throw new RuntimeException("unreachable");
         } else {
             assert false : "unreachable";
             throw new RuntimeException("unreachable");
@@ -736,17 +734,20 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitStmtAssign(StmtAssign node) {
         Type valType = visit(node.val);
-        Type varType = ((DeclIdTyped) node.var.decl).typeSpec().type;
+        Type targetType = visit(node.target);
 
-        boolean checkNotNull =
-                (node.var.decl instanceof DeclVar) && ((DeclVar) node.var.decl).notNull;
-        if (checkNotNull && valType == Type.NULL) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(node.val.ctx), // s231
-                    "NOT NULL constraint violation");
+        if (node.target instanceof ExprId) {
+            ExprId targetId = (ExprId) node.target;
+            boolean checkNotNull =
+                    (targetId.decl instanceof DeclVar) && ((DeclVar) targetId.decl).notNull;
+            if (checkNotNull && valType == Type.NULL) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(node.val.ctx), // s231
+                        "NOT NULL constraint violation");
+            }
         }
 
-        Coercion c = Coercion.getCoercion(valType, varType);
+        Coercion c = Coercion.getCoercion(valType, targetType);
         if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.val.ctx), // s216

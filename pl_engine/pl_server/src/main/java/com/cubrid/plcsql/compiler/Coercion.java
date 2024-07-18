@@ -33,15 +33,15 @@ package com.cubrid.plcsql.compiler;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
 import com.cubrid.plcsql.compiler.type.TypeNumeric;
-import com.cubrid.plcsql.compiler.type.TypeVarchar;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
+import com.cubrid.plcsql.compiler.type.TypeVarchar;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.List;
-import java.util.LinkedList;
 
 public abstract class Coercion {
 
@@ -88,7 +88,7 @@ public abstract class Coercion {
                 // 2. corresponding fields must be assign comapatible
 
                 if (srcRec.selectList.size() != dstRec.selectList.size()) {
-                    return null;    // the numbers of fields do not match
+                    return null; // the numbers of fields do not match
                 }
 
                 int len = srcRec.selectList.size();
@@ -100,14 +100,13 @@ public abstract class Coercion {
 
                     Coercion c = getCoercion(srcField.e2, dstField.e2);
                     if (c == null) {
-                        return null;    // coercion is not available for this field
+                        return null; // coercion is not available for this field
                     } else {
                         fieldCoercions[i] = c;
                     }
                 }
 
                 return RecordToRecord.getInstance(srcRec, dstRec, fieldCoercions);
-
             }
 
             return null;
@@ -179,9 +178,10 @@ public abstract class Coercion {
 
         @Override
         public String javaCode(String exprJavaCode) {
-            assert false;   // maybe, unreachable
-            return String.format("setFieldsOf%1$s_To_%2$s(%3$s, new %2$s())",
-                src.javaCode, dst.javaCode, exprJavaCode);
+            assert false; // maybe, unreachable
+            return String.format(
+                    "setFieldsOf%1$s_To_%2$s(%3$s, new %2$s())",
+                    src.javaCode, dst.javaCode, exprJavaCode);
         }
 
         @Override
@@ -201,8 +201,8 @@ public abstract class Coercion {
 
             List<String> lines = new LinkedList<>();
 
-            for (Map<Type, Coercion> inner: memoized.store.values()) {
-                for (Coercion c: inner.values()) {
+            for (Map<Type, Coercion> inner : memoized.store.values()) {
+                for (Coercion c : inner.values()) {
                     RecordToRecord rtr = (RecordToRecord) c;
                     lines.addAll(rtr.getCoercionFuncCode());
                 }
@@ -231,8 +231,10 @@ public abstract class Coercion {
 
             List<String> lines = new LinkedList<>();
 
-            lines.add(String.format("private static %2$s setFieldsOf%1$s_To_%2$s(%1$s src, %2$s dst) {",
-                src.javaCode, dst.javaCode));
+            lines.add(
+                    String.format(
+                            "private static %2$s setFieldsOf%1$s_To_%2$s(%1$s src, %2$s dst) {",
+                            src.javaCode, dst.javaCode));
             lines.add("  if (src == null) {");
             lines.add("    return dst.setNull(null);");
             lines.add("  }");
@@ -242,8 +244,11 @@ public abstract class Coercion {
             assert srcRec.selectList.size() == fieldCoercions.length;
 
             int i = 0;
-            for (Misc.Pair<String, Type> field: srcRec.selectList) {
-                lines.add("    " + (i == 0 ? "" : ",") + fieldCoercions[i].javaCode("src." + field.e1));
+            for (Misc.Pair<String, Type> field : srcRec.selectList) {
+                lines.add(
+                        "    "
+                                + (i == 0 ? "" : ",")
+                                + fieldCoercions[i].javaCode("src." + field.e1));
                 i++;
             }
 
