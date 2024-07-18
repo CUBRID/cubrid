@@ -751,7 +751,7 @@ public class TypeChecker extends AstVisitor<Type> {
         if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.val.ctx), // s216
-                    "type of the value is not compatible with the variable's type");
+                    "type of the assigned value is not compatible with the type of the variable");
         } else {
             node.val.setCoercion(c);
         }

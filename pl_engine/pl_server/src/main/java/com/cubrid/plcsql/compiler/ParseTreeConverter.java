@@ -1156,7 +1156,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (sws.intoTargetStrs != null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx.static_sql()), // s015
-                    "SQL in a cursor definition may not have an into-clause");
+                    "SQL in a cursor definition may not have an INTO clause");
         }
         StaticSql staticSql = checkAndConvertStaticSql(sws, ctx.static_sql());
 
@@ -1650,7 +1650,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (sws.intoTargetStrs != null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(selectCtx), // s027
-                    "SELECT in a FOR loop may not have an into-clause");
+                    "SELECT in a FOR loop may not have an INTO clause");
         }
         StaticSql staticSql = checkAndConvertStaticSql(sws, selectCtx);
 
@@ -1873,7 +1873,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             if (staticSql.intoTargetList == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s055
-                        "SELECT statement must have an into-clause");
+                        "SELECT statement must have an INTO clause");
             }
         }
 
@@ -2004,7 +2004,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (sws.intoTargetStrs != null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx.static_sql()), // s043
-                    "SQL in an OPEN-FOR statement may not have an into-clause");
+                    "SQL in an OPEN-FOR statement may not have an INTO clause");
         }
         StaticSql staticSql = checkAndConvertStaticSql(sws, ctx.static_sql());
 
@@ -2523,7 +2523,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx), // s056
                                 ((AssignTarget) target).name()
-                                        + " in an into-clause must be assignable to");
+                                        + " in the INTO clause is not assignable to");
                     }
                     intoTargetList.add(target);
                 }
