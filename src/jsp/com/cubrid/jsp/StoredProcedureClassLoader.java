@@ -67,6 +67,9 @@ public class StoredProcedureClassLoader extends URLClassLoader {
 
     private void init() {
         try {
+            if (!Files.exists(root)) {
+                Files.createDirectories(root);
+            }
             addURL(root.toUri().toURL());
             initJar();
             lastModified = getLastModifiedTime(root);
