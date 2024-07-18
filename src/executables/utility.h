@@ -877,6 +877,7 @@ typedef struct _ha_config
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
 #define UTIL_JAVASP_NAME        "cub_javasp" UTIL_EXE_EXT
+#define UTIL_PL_NAME            "cub_pl" UTIL_EXE_EXT
 #define UTIL_PLCSQL_HELPER_NAME "plcsql_helper" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
@@ -891,6 +892,7 @@ typedef struct _ha_config
 #define PRINT_MANAGER_NAME      "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
 #define PRINT_JAVASP_NAME       "cubrid javasp"
+#define PRINT_PL_NAME           "cubrid pl"
 #define PRINT_HA_PROCS_NAME     "HA processes"
 
 #define PRINT_CMD_SERVICE       "service"

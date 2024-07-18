@@ -2792,7 +2792,7 @@ is_javasp_running (const char *server_name)
   char buf[PATH_MAX] = { 0 };
   char cmd[PATH_MAX] = { 0 };
 
-  (void) envvar_bindir_file (cmd, PATH_MAX, UTIL_JAVASP_NAME);
+  (void) envvar_bindir_file (cmd, PATH_MAX, UTIL_PL_NAME);
 
   strcat (cmd, PING_CMD);
   strcat (cmd, server_name);
@@ -2837,7 +2837,7 @@ process_pl_start (const char *db_name, bool suppress_message, bool process_windo
 
   if (!suppress_message)
     {
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_JAVASP_NAME, PRINT_CMD_START, db_name);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_PL_NAME, PRINT_CMD_START, db_name);
     }
 
   UTIL_JAVASP_SERVER_STATUS_E javasp_status = is_javasp_running (db_name);
@@ -2845,9 +2845,9 @@ process_pl_start (const char *db_name, bool suppress_message, bool process_windo
     {
       if (!suppress_message)
 	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_PL_NAME, db_name);
 	}
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_PL_NAME, db_name);
     }
   else
     {
@@ -2862,8 +2862,8 @@ process_pl_start (const char *db_name, bool suppress_message, bool process_windo
 	}
       else
 	{
-	  const char *args[] = { UTIL_JAVASP_NAME, db_name, NULL };
-	  status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, &pid);
+	  const char *args[] = { UTIL_PL_NAME, db_name, NULL };
+	  status = proc_execute (UTIL_PL_NAME, args, false, false, false, &pid);
 	}
 
       status = ER_GENERIC_ERROR;
@@ -2902,7 +2902,7 @@ process_pl_start (const char *db_name, bool suppress_message, bool process_windo
 	}
       if (!suppress_message)
 	{
-	  print_result (PRINT_JAVASP_NAME, status, START);
+	  print_result (PRINT_PL_NAME, status, START);
 	}
       else
 	{
@@ -2921,7 +2921,7 @@ process_pl_stop (const char *db_name, bool suppress_message, bool process_window
 
   if (!suppress_message)
     {
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_JAVASP_NAME, PRINT_CMD_STOP, db_name);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_PL_NAME, PRINT_CMD_STOP, db_name);
     }
   UTIL_JAVASP_SERVER_STATUS_E javasp_status = is_javasp_running (db_name);
   if (javasp_status == JAVASP_SERVER_RUNNING)
@@ -2938,8 +2938,8 @@ process_pl_stop (const char *db_name, bool suppress_message, bool process_window
 	}
       else
 	{
-	  const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STOP, db_name, NULL };
-	  status = proc_execute (UTIL_JAVASP_NAME, args, true, false, false, NULL);
+	  const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STOP, db_name, NULL };
+	  status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
 	  do
 	    {
 	      status = (is_javasp_running (db_name) == JAVASP_SERVER_RUNNING) ? ER_GENERIC_ERROR : NO_ERROR;
@@ -2950,7 +2950,7 @@ process_pl_stop (const char *db_name, bool suppress_message, bool process_window
 	}
       if (!suppress_message)
 	{
-	  print_result (PRINT_JAVASP_NAME, status, STOP);
+	  print_result (PRINT_PL_NAME, status, STOP);
 	}
     }
   else
@@ -2958,9 +2958,9 @@ process_pl_stop (const char *db_name, bool suppress_message, bool process_window
       status = ER_GENERIC_ERROR;
       if (!suppress_message)
 	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
 	}
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
     }
 
   return status;
@@ -2973,14 +2973,14 @@ process_pl_status (const char *db_name)
   UTIL_JAVASP_SERVER_STATUS_E javasp_status = is_javasp_running (db_name);
   if (javasp_status == JAVASP_SERVER_RUNNING)
     {
-      const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
-      status = proc_execute (UTIL_JAVASP_NAME, args, true, false, false, NULL);
+      const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
+      status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
     }
   else
     {
       status = ER_GENERIC_ERROR;
-      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
     }
 
   return status;
@@ -3027,7 +3027,7 @@ process_pl (int command_type, int argc, const char **argv, bool show_usage, bool
 
   if (command_type == STATUS && !suppress_message)
     {
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_JAVASP_NAME, PRINT_CMD_STATUS);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_PL_NAME, PRINT_CMD_STATUS);
     }
 
   list = buf;
@@ -3040,14 +3040,11 @@ process_pl (int command_type, int argc, const char **argv, bool show_usage, bool
 	}
       switch (command_type)
 	{
-	case START:
-	  status = process_pl_start (db_name, suppress_message, process_window_service);
-	  break;
-	case STOP:
-	  status = process_pl_stop (db_name, suppress_message, process_window_service);
-	  break;
 	case RESTART:
 	  status = process_pl_stop (db_name, suppress_message, process_window_service);
+#if defined (WINDOWS)
+	  Sleep (500);
+#endif
 	  status = process_pl_start (db_name, suppress_message, process_window_service);
 	  break;
 	case STATUS:

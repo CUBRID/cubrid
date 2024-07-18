@@ -219,7 +219,7 @@ else(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridcs)
 endif(UNIX)
 
-set(JAVASP_SERVER_SOURCES 
+set(JAVASP_SERVER_SOURCES
   ${EXECUTABLES_DIR}/javasp.cpp
 )
 SET_SOURCE_FILES_PROPERTIES(
@@ -229,8 +229,11 @@ SET_SOURCE_FILES_PROPERTIES(
 if(WIN32)
   list(APPEND JAVASP_SERVER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
-add_executable(cub_javasp ${JAVASP_SERVER_SOURCES})
-target_link_libraries(cub_javasp LINK_PRIVATE cubridsa)
+add_executable(cub_pl ${JAVASP_SERVER_SOURCES})
+target_include_directories(cub_pl PRIVATE ${JAVA_INC} ${CMAKE_BINARY_DIR} ${EP_INCLUDES})
+target_compile_definitions(cub_pl PRIVATE ${COMMON_DEFS})
+target_link_libraries(cub_pl LINK_PRIVATE cubridcs)
+add_dependencies(cubridesql cubridcs)
 
 set(CUB_ADMIN_SOURCES
   ${EXECUTABLES_DIR}/util_admin.c
@@ -376,7 +379,7 @@ install(TARGETS
   cub_commdb
   cubrid_rel
   loadjava
-  cub_javasp
+  cub_pl
   cub_admin
   cubrid_esql
   plcsql_helper
