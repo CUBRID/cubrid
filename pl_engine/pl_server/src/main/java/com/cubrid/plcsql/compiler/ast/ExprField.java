@@ -32,7 +32,6 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprField extends Expr implements AssignTarget {
@@ -68,7 +67,7 @@ public class ExprField extends Expr implements AssignTarget {
             // record is for a Static SQL
             //
             assert type != null;
-            return String.format("(%s.%s)", record.javaCode(), fieldName);
+            return String.format("(%s.%s[0])", record.javaCode(), fieldName);
         } else {
 
             // record is for a Dynamic SQL
@@ -96,7 +95,6 @@ public class ExprField extends Expr implements AssignTarget {
             assert type == null;
             throw new RuntimeException("unreachable");
         }
-
     }
 
     @Override

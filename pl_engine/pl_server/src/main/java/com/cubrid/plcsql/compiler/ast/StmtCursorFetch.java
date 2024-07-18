@@ -50,7 +50,10 @@ public class StmtCursorFetch extends Stmt {
     public List<Coercion> coercions;
 
     public StmtCursorFetch(
-            ParserRuleContext ctx, ExprId id, List<Type> columnTypeList, List<Expr> intoTargetList) {
+            ParserRuleContext ctx,
+            ExprId id,
+            List<Type> columnTypeList,
+            List<Expr> intoTargetList) {
         super(ctx);
 
         this.id = id;

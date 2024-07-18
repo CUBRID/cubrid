@@ -57,7 +57,8 @@ public class SqlSemantics {
             hostExprs; // host variables and auto parameters and their SQL types required in their
     // locations
     public List<ColumnInfo> selectList; // (only for select statements) columns and their SQL types
-    public List<String> intoTargetStrs; // (only for select stetements with an into-clause) into variables
+    public List<String>
+            intoTargetStrs; // (only for select stetements with an into-clause) into variables
 
     public SqlSemantics(
             int seqNo,

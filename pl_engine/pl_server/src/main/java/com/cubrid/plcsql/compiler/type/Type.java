@@ -213,6 +213,6 @@ public class Type {
     }
 
     public static boolean isUserType(Type ty) {
-        return (ty.idx >= IDX_BOOLEAN);
+        return (ty instanceof TypeRecord) || (ty.idx >= IDX_BOOLEAN);
     }
 }

@@ -33,7 +33,10 @@ package com.cubrid.plcsql.compiler.ast;
 public interface AssignTarget {
 
     public String javaCode();
+
     public String javaCodeForOutParam();
+
     public String name();
+
     public boolean isAssignableTo();
 }

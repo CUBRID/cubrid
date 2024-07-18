@@ -248,7 +248,7 @@ public abstract class Coercion {
                 lines.add(
                         "    "
                                 + (i == 0 ? "" : ",")
-                                + fieldCoercions[i].javaCode("src." + field.e1));
+                                + fieldCoercions[i].javaCode("src." + field.e1 + "[0]"));
                 i++;
             }
 

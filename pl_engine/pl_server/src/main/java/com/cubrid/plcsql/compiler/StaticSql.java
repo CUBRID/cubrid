@@ -31,7 +31,6 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.Expr;
-import com.cubrid.plcsql.compiler.ast.ExprId;
 import com.cubrid.plcsql.compiler.type.Type;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

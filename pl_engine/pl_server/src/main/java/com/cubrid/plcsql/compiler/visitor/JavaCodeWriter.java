@@ -648,8 +648,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public CodeToResolve visitExprField(ExprField node) {
 
         CodeTemplate tmpl =
-                new CodeTemplate(
-                        "ExprField", Misc.getLineColumnOf(node.ctx), node.javaCode());
+                new CodeTemplate("ExprField", Misc.getLineColumnOf(node.ctx), node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -1310,7 +1309,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         assert node.coercions.size() == node.intoTargetList.size();
 
         int i = 0;
-        for (Expr target: node.intoTargetList) {
+        for (Expr target : node.intoTargetList) {
 
             assert target instanceof AssignTarget;
 
@@ -1473,7 +1472,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         assert node.dynamic || (node.columnTypeList != null && node.columnTypeList.size() == size);
 
         int i = 0;
-        for (Expr target: node.intoTargetList) {
+        for (Expr target : node.intoTargetList) {
 
             assert target instanceof AssignTarget;
 
@@ -1505,7 +1504,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 if ((id.decl instanceof DeclVar) && ((DeclVar) id.decl).notNull) {
                     ret.add(
                             String.format(
-                                    "checkNotNull(%s, \"NOT NULL constraint violated\");", targetCode));
+                                    "checkNotNull(%s, \"NOT NULL constraint violated\");",
+                                    targetCode));
                 }
             }
 
@@ -3157,7 +3157,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         List<String> lines = new LinkedList<>();
         for (Misc.Pair<String, Type> f : selectList) {
-            lines.add(getJavaCodeOfType(f.e2) + " " + f.e1);
+            String tyJava = getJavaCodeOfType(f.e2);
+            lines.add(String.format("  %1$s[] %2$s = new %1$s[1];", tyJava, f.e1));
+        }
+
+        return lines;
+    }
+
+    private List<String> getSetParamCode(List<Misc.Pair<String, Type>> selectList) {
+
+        List<String> lines = new LinkedList<>();
+        for (Misc.Pair<String, Type> f : selectList) {
+            lines.add(f.e2.javaCode + " " + f.e1);
         }
 
         return lines;
@@ -3170,16 +3181,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         lines.add("private static class " + rec.javaCode + " {");
 
         List<String> fieldDecls = getRecordFieldsDeclCode(rec.selectList);
-
-        // field declarations
-        for (String line : fieldDecls) {
-            lines.add(String.format("  %s;", line));
-        }
+        lines.addAll(fieldDecls);
 
         // set method
-        lines.add(String.format("  %s set(%s) {", rec.javaCode, String.join(", ", fieldDecls)));
+        List<String> setParams = getSetParamCode(rec.selectList);
+        lines.add(String.format("  %s set(%s) {", rec.javaCode, String.join(", ", setParams)));
         for (Misc.Pair<String, Type> f : rec.selectList) {
-            lines.add(String.format("    this.%1$s = %1$s;", f.e1));
+            lines.add(String.format("    this.%1$s[0] = %1$s;", f.e1));
         }
         lines.add(String.format("    return this;"));
         lines.add("  }");
@@ -3190,7 +3198,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "  %s setNull(Object dummy) {",
                         rec.javaCode)); // o: to take null expression
         for (Misc.Pair<String, Type> f : rec.selectList) {
-            lines.add(String.format("    this.%s = null;", f.e1));
+            lines.add(String.format("    this.%s[0] = null;", f.e1));
         }
         lines.add(String.format("    return this;"));
         lines.add("  }");
@@ -3205,7 +3213,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             for (Misc.Pair<String, Type> f : rec.selectList) {
                 lines.add(
                         String.format(
-                                "  %1$s Objects.equals(l.%2$s, r.%2$s)",
+                                "  %1$s Objects.equals(l.%2$s[0], r.%2$s[0])",
                                 (i == 0 ? "return" : "  &&"), f.e1));
                 i++;
             }

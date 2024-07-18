@@ -989,7 +989,8 @@ public class TypeChecker extends AstVisitor<Type> {
                 if (c == null) {
                     throw new SemanticError( // s405
                             Misc.getLineColumnOf(staticSql.ctx),
-                            ((AssignTarget) intoTarget).name() + " in the INTO clause has an incompatible type");
+                            ((AssignTarget) intoTarget).name()
+                                    + " in the INTO clause has an incompatible type");
                 } else {
                     coercions.add(c);
                 }

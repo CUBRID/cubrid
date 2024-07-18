@@ -1962,7 +1962,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         List<Type> columnTypeList;
         if (cursor.decl instanceof DeclCursor) {
-            if (intoTargetList.nodes.size() != ((DeclCursor) cursor.decl).staticSql.selectList.size()) {
+            if (intoTargetList.nodes.size()
+                    != ((DeclCursor) cursor.decl).staticSql.selectList.size()) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(cursor.ctx), // s059
                         "the number of columns of the cursor must be equal to the number of into-variables");
@@ -2521,7 +2522,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     if (!((AssignTarget) target).isAssignableTo()) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx), // s056
-                                ((AssignTarget) target).name() + " in an into-clause must be assignable to");
+                                ((AssignTarget) target).name()
+                                        + " in an into-clause must be assignable to");
                     }
                     intoTargetList.add(target);
                 }
@@ -2570,8 +2572,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             DeclParam dp = params.nodes.get(i);
 
             if (dp instanceof DeclParamOut) {
-                if (arg instanceof ExprId && ((ExprId) arg).isAssignableTo() ||
-                    arg instanceof ExprField && (((ExprField) arg).record).isAssignableTo()) {
+                if (arg instanceof ExprId && ((ExprId) arg).isAssignableTo()
+                        || arg instanceof ExprField
+                                && (((ExprField) arg).record).isAssignableTo()) {
                     // OK
                 } else {
                     return (i + 1);
