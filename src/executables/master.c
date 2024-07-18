@@ -391,10 +391,6 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
     {
       free_and_init (datagram);
     }
-  if (proc_register)
-    {
-      free_and_init (proc_register);
-    }
 }
 
 /*

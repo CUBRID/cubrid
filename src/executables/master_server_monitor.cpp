@@ -77,7 +77,7 @@ server_monitor::remove_server_entry_by_conn (CSS_CONN_ENTRY *conn)
   m_server_entry_list->erase (remove_if (m_server_entry_list->begin(),
 					 m_server_entry_list->end(), [conn] (auto e) -> bool {return e.m_conn == conn;}));
 
-  fprintf (stdout, "server has been removed from master_Server_monitor. Number of monitoring server in monitor: %d\n",
+  fprintf (stdout, "server has been removed from master_Server_monitor. Number of server in master_Server_monitor: %d\n",
 	   m_server_entry_list->size ());
 }
 

@@ -44,10 +44,6 @@ class server_monitor
       public:
 	server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
 	~server_entry () {};
-
-	server_entry (const server_entry &) = delete;
-	server_entry (server_entry &&) = delete;
-
 	server_entry &operator= (const server_entry &other)
 	{
 	  if (this != &other)
@@ -60,7 +56,6 @@ class server_monitor
 	    }
 	  return *this;
 	}
-	server_entry &operator= (server_entry &&other) = delete;
 
 	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
 
@@ -93,6 +88,11 @@ class server_monitor
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
 };
 
+/*
+ * server register resource message body
+ */
+
+/* process register */
 typedef struct server_proc_register SERVER_PROC_REGISTER;
 struct server_proc_register
 {
