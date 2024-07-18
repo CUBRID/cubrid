@@ -30,12 +30,6 @@
 #include <time.h>
 #include "connection_defs.h"
 
-#define SERVER_MAX_SZ_SERVER_NAME           (256)
-#define SERVER_MAX_SZ_PROC_EXEC_PATH        (128)
-#define SERVER_MAX_SZ_PROC_ARGV             (64)
-#define SERVER_MAX_NUM_PROC_ARGV            (16)
-#define SERVER_MAX_SZ_PROC_ARGS             (SERVER_MAX_NUM_PROC_ARGV*SERVER_MAX_SZ_PROC_ARGV)
-
 class server_monitor
 {
   public:
@@ -44,18 +38,12 @@ class server_monitor
       public:
 	server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
 	~server_entry () {};
-	server_entry &operator= (const server_entry &other)
-	{
-	  if (this != &other)
-	    {
-	      m_exec_path = other.m_exec_path;
-	      m_argv = other.m_argv;
-	      m_conn = other.m_conn;
-	      m_last_revive_time = other.m_last_revive_time;
-	      m_need_revive = other.m_need_revive;
-	    }
-	  return *this;
-	}
+
+	server_entry &operator= (const server_entry &) = default;
+	server_entry &operator= (server_entry &&) = default;
+
+	server_entry (const server_entry &) = default;
+	server_entry (server_entry &&) = delete;
 
 	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
 
@@ -96,12 +84,28 @@ class server_monitor
 typedef struct server_proc_register SERVER_PROC_REGISTER;
 struct server_proc_register
 {
+  static constexpr int SERVER_MAX_SZ_SERVER_NAME = 256;
+  static constexpr int SERVER_MAX_SZ_PROC_EXEC_PATH = 128;
+  static constexpr int SERVER_MAX_SZ_PROC_ARGS = 1024;
+
   char server_name[SERVER_MAX_SZ_SERVER_NAME];
   int server_name_length;
   int pid;
   char exec_path[SERVER_MAX_SZ_PROC_EXEC_PATH];
   char args[SERVER_MAX_SZ_PROC_ARGS];
+
+  inline server_proc_register ();
 };
 
 extern std::unique_ptr<server_monitor> master_Server_monitor;
+
+server_proc_register::server_proc_register ()
+  : server_name_length (0)
+  , pid (0)
+{
+  memset (server_name, 0, SERVER_MAX_SZ_SERVER_NAME);
+  memset (exec_path, 0, SERVER_MAX_SZ_PROC_EXEC_PATH);
+  memset (args, 0, SERVER_MAX_SZ_PROC_ARGS);
+}
+
 #endif

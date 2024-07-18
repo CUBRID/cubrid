@@ -1077,25 +1077,16 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
 
 /*
  * css_make_set_proc_register() - make a server proc register.
- *   return: server proc register
+ *   return:
  *   server_name(in):
  *   server_name_lenth(in):
+ *   proc_register(out):
  */
-static SERVER_PROC_REGISTER *
-css_make_set_proc_register (const char *server_name, int server_name_length)
+static void
+css_make_set_proc_register (const char *server_name, int server_name_length, SERVER_PROC_REGISTER * proc_register)
 {
-  SERVER_PROC_REGISTER *proc_register;
   char *p, *last;
   char **argv;
-
-  proc_register = (SERVER_PROC_REGISTER *) malloc (sizeof (SERVER_PROC_REGISTER));
-  if (proc_register == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SERVER_PROC_REGISTER));
-      return (NULL);
-    }
-
-  memset ((void *) proc_register, 0, sizeof (SERVER_PROC_REGISTER));
 
   strncpy_bufsize (proc_register->server_name, server_name);
   proc_register->server_name_length = htonl (server_name_length);
@@ -1108,8 +1099,6 @@ css_make_set_proc_register (const char *server_name, int server_name_length)
     {
       p += snprintf (p, MAX ((last - p), 0), "%s ", *argv);
     }
-
-  return (proc_register);
 }
 
 /*
@@ -1132,7 +1121,9 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
   std::string pname;
   int datagram_fd, socket_fd;
 #endif
-  SERVER_PROC_REGISTER *proc_register = NULL;
+  const char *data;
+  int data_length;
+  SERVER_PROC_REGISTER proc_register;
 
   css_Service_id = master_port_id;
   if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
@@ -1149,37 +1140,27 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 
   /* select the connection protocol */
 
-  //  The following code is changed to register the server in the master_Server_monitor for monitoring
-  //  abnormally terminated servers (Check CBRD-24741 for details). This issue will be handled for
-  //  Linux/Unix first, and then for Windows. Therefore, the data sent to the master is different
-  //  between Windows and Linux/Unix. When Windows is supported, both of them will send proc_register
-  //  as register data.
+  //  When supporting the Windows environment, It will be modified to send the same data
+  //  (proc_register) for the Windows protocol (SERVER_REQUEST_NEW) as well.
 
   if (css_Server_use_new_connection_protocol)
     {
       // Windows
       connection_protocol = SERVER_REQUEST_NEW;
-      if (css_common_connect (conn, &rid, hname, connection_protocol, server_name, name_length, master_port_id) == NULL)
-	{
-	  goto fail_end;
-	}
+      data = server_name;
+      data_length = name_length;
     }
   else
     {
       // Linux and Unix
       connection_protocol = SERVER_REQUEST;
-      proc_register = css_make_set_proc_register (server_name, name_length);
-      if (proc_register == NULL)
-	{
-	  er_log_debug (ARG_FILE_LINE, "failed to make server proc register.\n");
-	  goto fail_end;
-	}
-      if (css_common_connect
-	  (conn, &rid, hname, connection_protocol, (const char *) proc_register, sizeof (*proc_register),
-	   master_port_id) == NULL)
-	{
-	  goto fail_end;
-	}
+      css_make_set_proc_register (server_name, name_length, &proc_register);
+      data = (const char *) &proc_register;
+      data_length = sizeof (proc_register);
+    }
+  if (css_common_connect (conn, &rid, hname, connection_protocol, data, data_length, master_port_id) == NULL)
+    {
+      goto fail_end;
     }
   if (css_readn (conn->fd, (char *) &response_buff, sizeof (int), -1) != sizeof (int))
     {
