@@ -44,4 +44,5 @@ public abstract class Expr extends AstNode {
     public void setCoercion(Coercion c) {
         this.coercion = c;
     }
+
 }

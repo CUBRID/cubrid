@@ -649,7 +649,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl =
                 new CodeTemplate(
-                        "ExprField", Misc.getLineColumnOf(node.ctx), node.javaCode(javaTypesUsed));
+                        "ExprField", Misc.getLineColumnOf(node.ctx), node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -1302,15 +1302,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
-    private String[] getSetIntoVarsCode(StmtCursorFetch node) {
+    private String[] getSetIntoTargetsCode(StmtCursorFetch node) {
 
         List<String> ret = new LinkedList<>();
 
         assert node.coercions != null;
-        assert node.coercions.size() == node.intoVarList.size();
+        assert node.coercions.size() == node.intoTargetList.size();
 
         int i = 0;
-        for (ExprId id : node.intoVarList) {
+        for (Expr target: node.intoTargetList) {
+
+            assert target instanceof AssignTarget;
 
             String resultStr;
             if (node.columnTypeList == null) {
@@ -1323,7 +1325,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             }
 
             Coercion c = node.coercions.get(i);
-            String idCode = id.javaCode();
+            String idCode = ((AssignTarget) target).javaCode();
             ret.add(String.format("%s = %s;", idCode, c.javaCode(resultStr)));
             ret.add(String.format("if (%1$s != null && rs.wasNull()) { %1$s = null; }", idCode));
 
@@ -1336,7 +1338,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitStmtCursorFetch(StmtCursorFetch node) {
 
-        String[] setIntoVars = getSetIntoVarsCode(node);
+        String[] setIntoTargets = getSetIntoTargetsCode(node);
         return new CodeTemplate(
                 "StmtCursorFetch",
                 Misc.getLineColumnOf(node.ctx),
@@ -1344,7 +1346,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'CURSOR'%",
                 node.id.javaCode(),
                 "%'+SET-INTO-VARIABLES'%",
-                setIntoVars);
+                setIntoTargets);
     }
 
     // -------------------------------------------------------------------------
@@ -1462,19 +1464,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
-    private String[] getSetResultsCode(StmtSql node, List<ExprId> intoVarList) {
+    private String[] getSetResultsCode(StmtSql node, List<Expr> intoTargetList) {
 
         List<String> ret = new LinkedList<>();
 
-        int size = intoVarList.size();
+        int size = intoTargetList.size();
         assert node.coercions.size() == size;
         assert node.dynamic || (node.columnTypeList != null && node.columnTypeList.size() == size);
 
         int i = 0;
-        for (ExprId id : node.intoVarList) {
+        for (Expr target: node.intoTargetList) {
 
-            assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
-                    : "only variables or out-parameters can be used in into-clauses";
+            assert target instanceof AssignTarget;
 
             String resultStr;
             if (node.dynamic) {
@@ -1487,17 +1488,25 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             }
 
             Coercion c = node.coercions.get(i);
-            String idCode = id.javaCode();
-            ret.add(String.format("%s = %s;", idCode, c.javaCode(resultStr)));
+            String targetCode = ((AssignTarget) target).javaCode();
+            ret.add(String.format("%s = %s;", targetCode, c.javaCode(resultStr)));
             ret.add(
                     String.format(
                             "if (%1$s != null && r%%'LEVEL'%%.wasNull()) { %1$s = null; }",
-                            idCode));
+                            targetCode));
 
-            if ((id.decl instanceof DeclVar) && ((DeclVar) id.decl).notNull) {
-                ret.add(
-                        String.format(
-                                "checkNotNull(%s, \"NOT NULL constraint violated\");", idCode));
+            if (target instanceof ExprId) {
+
+                ExprId id = (ExprId) target;
+
+                assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
+                        : "only variables or out-parameters can be used in into-clauses";
+
+                if ((id.decl instanceof DeclVar) && ((DeclVar) id.decl).notNull) {
+                    ret.add(
+                            String.format(
+                                    "checkNotNull(%s, \"NOT NULL constraint violated\");", targetCode));
+                }
             }
 
             i++;
@@ -1511,12 +1520,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         Object setUsedExpr = getSetUsedExpr(node.usedExprList);
 
         Object handleIntoClause, banIntoClause;
-        if (node.intoVarList == null) {
+        if (node.intoTargetList == null) {
             assert node.coercions == null;
             handleIntoClause = banIntoClause = "";
         } else {
             assert node.coercions != null;
-            String[] setResults = getSetResultsCode(node, node.intoVarList);
+            String[] setResults = getSetResultsCode(node, node.intoTargetList);
             handleIntoClause =
                     new CodeTemplate(
                             "into clause in SQL",

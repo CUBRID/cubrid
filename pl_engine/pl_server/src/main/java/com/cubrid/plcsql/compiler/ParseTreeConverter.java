@@ -1153,7 +1153,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         SqlSemantics sws = staticSqls.get(ctx.static_sql());
         assert sws != null;
         assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
-        if (sws.intoVars != null) {
+        if (sws.intoTargetStrs != null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx.static_sql()), // s015
                     "SQL in a cursor definition may not have an into-clause");
@@ -1286,43 +1286,47 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public StmtAssign visitAssign_to_id(Assign_to_idContext ctx) {
+    public StmtAssign visitAssignment_statement(Assignment_statementContext ctx) {
 
-        ExprId var = visitNonFuncIdentifier(ctx.identifier()); // s018: undeclared id ...
-        if (!isAssignableTo(var)) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx.identifier()), // s019
-                    Misc.getNormalizedText(ctx.identifier()) + " is not assignable to");
-        }
-
+        Expr target = visitExpression(ctx.assign_target());
         Expr val = visitExpression(ctx.expression());
 
-        return new StmtAssign(ctx, var, val);
+        return new StmtAssign(ctx, target, val);
     }
 
     @Override
-    public StmtAssign visitAssign_to_field(Assign_to_fieldContext ctx) {
+    public Expr visitAssign_target(Assign_targetContext ctx) {
 
-        Expr e = visitRecord_field(ctx.record_field()); // s079: undeclared id ...
-        if (e instanceof ExprField) {
-            ExprField recordField = (ExprField) e;
-            if (!isAssignableTo(recordField.record)) {
+        if (ctx.identifier() != null) {
+            ExprId id = visitNonFuncIdentifier(ctx.identifier()); // s018: undeclared id ...
+            if (!id.isAssignableTo()) {
                 throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.record_field()), // s080
-                        Misc.getNormalizedText(ctx.record_field()) + " is not assignable to");
+                        Misc.getLineColumnOf(ctx.identifier()), // s019
+                        Misc.getNormalizedText(ctx.identifier()) + " is not assignable to");
             }
-        } else if (e instanceof ExprSerialVal) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx.record_field()), // s081
-                    Misc.getNormalizedText(ctx.record_field())
-                            + " is a serial value and not assignable to");
+
+            return id;
         } else {
-            throw new RuntimeException("unreachable");
+            assert ctx.record_field() != null;
+
+            Expr e = visitRecord_field(ctx.record_field()); // s079: undeclared id ...
+            if (e instanceof ExprField) {
+                if (!((ExprField) e).isAssignableTo()) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.record_field()), // s080
+                            Misc.getNormalizedText(ctx.record_field()) + " is not assignable to");
+                }
+
+                return (ExprField) e;
+            } else if (e instanceof ExprSerialVal) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.record_field()), // s081
+                        Misc.getNormalizedText(ctx.record_field())
+                                + " is a serial value and not assignable to");
+            } else {
+                throw new RuntimeException("unreachable");
+            }
         }
-
-        Expr val = visitExpression(ctx.expression());
-
-        return new StmtAssign(ctx, e, val);
     }
 
     @Override
@@ -1643,7 +1647,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     Misc.getLineColumnOf(selectCtx), // s066
                     "Static SQLs in FOR loop iterators must be SELECT statements");
         }
-        if (sws.intoVars != null) {
+        if (sws.intoTargetStrs != null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(selectCtx), // s027
                     "SELECT in a FOR loop may not have an into-clause");
@@ -1866,17 +1870,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         assert sws != null;
         StaticSql staticSql = checkAndConvertStaticSql(sws, ctx);
         if (staticSql.kind == ServerConstants.CUBRID_STMT_SELECT) {
-            if (staticSql.intoVars == null) {
+            if (staticSql.intoTargetList == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s055
                         "SELECT statement must have an into-clause");
-            }
-            for (ExprId var : staticSql.intoVars) {
-                if (!isAssignableTo(var)) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(ctx), // s056
-                            "variable " + var.name + " in an into-clause must be assignable to");
-                }
             }
         }
 
@@ -1961,11 +1958,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         // s060: undeclared id ...
         // s039: variables to store fetch results must be assignable to
-        NodeList<ExprId> intoVars = visitInto_clause(ctx.into_clause());
+        NodeList<Expr> intoTargetList = visitInto_clause(ctx.into_clause());
 
         List<Type> columnTypeList;
         if (cursor.decl instanceof DeclCursor) {
-            if (intoVars.nodes.size() != ((DeclCursor) cursor.decl).staticSql.selectList.size()) {
+            if (intoTargetList.nodes.size() != ((DeclCursor) cursor.decl).staticSql.selectList.size()) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(cursor.ctx), // s059
                         "the number of columns of the cursor must be equal to the number of into-variables");
@@ -1980,7 +1977,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             columnTypeList = null;
         }
 
-        return new StmtCursorFetch(ctx, cursor, columnTypeList, intoVars.nodes);
+        return new StmtCursorFetch(ctx, cursor, columnTypeList, intoTargetList.nodes);
     }
 
     @Override
@@ -1989,7 +1986,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         connectionRequired = true;
 
         ExprId refCursor = visitNonFuncIdentifier(ctx.identifier()); // s040: undeclared id ...
-        if (!isAssignableTo(refCursor)) {
+        if (!refCursor.isAssignableTo()) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx.identifier()), // s041
                     "identifier in an OPEN-FOR statement must be assignable to");
@@ -2003,7 +2000,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         SqlSemantics sws = staticSqls.get(ctx.static_sql());
         assert sws != null;
         assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
-        if (sws.intoVars != null) {
+        if (sws.intoTargetStrs != null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx.static_sql()), // s043
                     "SQL in an OPEN-FOR statement may not have an into-clause");
@@ -2080,12 +2077,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         Expr dynSql = visitExpression(ctx.dyn_sql().expression());
 
-        NodeList<ExprId> intoVarList;
+        NodeList<Expr> intoTargetList;
         Into_clauseContext intoClause = ctx.into_clause();
         if (intoClause == null) {
-            intoVarList = null;
+            intoTargetList = null;
         } else {
-            intoVarList = visitInto_clause(intoClause);
+            intoTargetList = visitInto_clause(intoClause);
         }
 
         NodeList<Expr> usedExprList;
@@ -2097,7 +2094,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
-        return new StmtExecImme(ctx, level, dynSql, intoVarList, usedExprList);
+        return new StmtExecImme(ctx, level, dynSql, intoTargetList, usedExprList);
     }
 
     @Override
@@ -2113,20 +2110,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public NodeList<ExprId> visitInto_clause(Into_clauseContext ctx) {
+    public NodeList<Expr> visitInto_clause(Into_clauseContext ctx) {
 
-        NodeList<ExprId> ret = new NodeList<>();
+        NodeList<Expr> ret = new NodeList<>();
 
-        for (IdentifierContext c : ctx.identifier()) {
-            ExprId id = visitNonFuncIdentifier(c); // s047: undeclared id ...
-            if (!isAssignableTo(id)) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(c), // s048
-                        "variable "
-                                + Misc.getNormalizedText(c)
-                                + " may not be used there in the INTO clause because it is not assignable to");
-            }
-            ret.addNode(id);
+        for (Assign_targetContext c : ctx.assign_target()) {
+            ret.addNode((Expr) visitAssign_target(c));
         }
 
         return ret;
@@ -2234,19 +2223,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         nameToType.put("TIMESTAMP", Type.TIMESTAMP);
 
         nameToType.put("SYS_REFCURSOR", Type.SYS_REFCURSOR);
-    }
-
-    private static boolean isAssignableTo(ExprId id) {
-        if (id.decl instanceof DeclParamOut) {
-            return true;
-        }
-
-        if (id.decl instanceof DeclVar) {
-            DeclVar varDecl = (DeclVar) id.decl;
-            return (varDecl.typeSpec.type != Type.RECORD_ANY);
-        }
-
-        return false;
     }
 
     private static String unquoteStr(String val) {
@@ -2417,11 +2393,38 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return colName;
     }
 
+    private Expr getHostExprFromText(String s, ParserRuleContext ctx) {
+
+        String hostExpr = Misc.getNormalizedText(s);
+        hostExpr = hostExpr.replaceAll(" ", "");
+        String[] split = hostExpr.split("\\.");
+        if (split.length == 1) {
+
+            return visitNonFuncIdentifier(hostExpr, ctx); // s408: undeclared id ...
+
+        } else if (split.length == 2) {
+
+            ExprId record = visitNonFuncIdentifier(split[0], ctx); // s432: undeclared id ...
+            if (!isRecordId(record)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s433
+                        split[0] + " is not a record");
+            }
+
+            return new ExprField(ctx, record, split[1]);
+
+        } else {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), // s431
+                    "invalid form of a host expression " + hostExpr);
+        }
+    }
+
     private StaticSql checkAndConvertStaticSql(SqlSemantics sws, ParserRuleContext ctx) {
 
         LinkedHashMap<Expr, Type> hostExprs = new LinkedHashMap<>();
         List<Misc.Pair<String, Type>> selectList = null;
-        ArrayList<ExprId> intoVars = null;
+        ArrayList<Expr> intoTargetList = null;
 
         // check (name-binding) and convert host variables used in the SQL
         if (sws.hostExprs != null) {
@@ -2441,35 +2444,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             null); // null: type check is not necessary for auto parameters
                 } else {
                     // host variable
-                    String hostExpr = Misc.getNormalizedText(pi.name);
-                    String[] split = hostExpr.split("\\.");
-                    if (split.length == 1) {
-
-                        ExprId id =
-                                visitNonFuncIdentifier(hostExpr, ctx); // s408: undeclared id ...
-
-                        // TODO: replace the following null with meaningful type information
-                        // (type required in the location of this host var) after augmenting server
-                        // API
-                        hostExprs.put(id, null);
-
-                    } else if (split.length == 2) {
-
-                        ExprId record =
-                                visitNonFuncIdentifier(split[0], ctx); // s432: undeclared id ...
-                        if (!isRecordId(record)) {
-                            throw new SemanticError(
-                                    Misc.getLineColumnOf(ctx), // s433
-                                    split[0] + " is not a record");
-                        }
-
-                        hostExprs.put(new ExprField(ctx, record, split[1]), null);
-
-                    } else {
-                        throw new SemanticError(
-                                Misc.getLineColumnOf(ctx), // s431
-                                "invalid form of a host expression " + hostExpr);
-                    }
+                    Expr hostExpr = getHostExprFromText(pi.name, ctx);
+                    // TODO: replace the following null with meaningful type information
+                    // (type required in the location of this host var) after augmenting server API
+                    hostExprs.put(hostExpr, null);
                 }
             }
         }
@@ -2528,25 +2506,30 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
 
             // check (name-binding) and convert into-variables used in the SQL
-            if (sws.intoVars != null) {
+            if (sws.intoTargetStrs != null) {
 
-                if (sws.intoVars.size() != sws.selectList.size()) {
+                if (sws.intoTargetStrs.size() != sws.selectList.size()) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s402
                             "the length of select list is different from the length of into-variables");
                 }
 
-                intoVars = new ArrayList<>();
-                for (String var : sws.intoVars) {
-                    var = Misc.getNormalizedText(var);
-                    ExprId id = visitNonFuncIdentifier(var, ctx); // s409: undeclared id ...
-                    intoVars.add(id);
+                intoTargetList = new ArrayList<>();
+                for (String t : sws.intoTargetStrs) {
+                    Expr target = getHostExprFromText(t, ctx); // s409: undeclared id ...
+                    assert target instanceof AssignTarget;
+                    if (!((AssignTarget) target).isAssignableTo()) {
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(ctx), // s056
+                                ((AssignTarget) target).name() + " in an into-clause must be assignable to");
+                    }
+                    intoTargetList.add(target);
                 }
             }
         }
 
         String rewritten = StringEscapeUtils.escapeJava(sws.rewritten);
-        return new StaticSql(ctx, sws.kind, rewritten, hostExprs, selectList, intoVars);
+        return new StaticSql(ctx, sws.kind, rewritten, hostExprs, selectList, intoTargetList);
     }
 
     private String makeParamList(NodeList<DeclParam> paramList, String name, PlParamInfo[] params) {
@@ -2587,8 +2570,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             DeclParam dp = params.nodes.get(i);
 
             if (dp instanceof DeclParamOut) {
-                if (arg instanceof ExprId && isAssignableTo((ExprId) arg)
-                        || arg instanceof ExprField && isAssignableTo(((ExprField) arg).record)) {
+                if (arg instanceof ExprId && ((ExprId) arg).isAssignableTo() ||
+                    arg instanceof ExprField && (((ExprField) arg).record).isAssignableTo()) {
                     // OK
                 } else {
                     return (i + 1);

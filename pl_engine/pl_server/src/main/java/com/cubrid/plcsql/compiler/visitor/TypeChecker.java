@@ -203,7 +203,7 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitDeclCursor(DeclCursor node) {
 
-        assert node.staticSql.intoVars == null; // by earlier check
+        assert node.staticSql.intoTargetList == null; // by earlier check
 
         visitNodeList(node.paramList);
         typeCheckHostExprs(node.staticSql); // s400
@@ -861,17 +861,20 @@ public class TypeChecker extends AstVisitor<Type> {
         List<Coercion> coercions = new ArrayList<>();
 
         int i = 0;
-        for (ExprId intoVar : node.intoVarList) {
+        for (Expr intoTarget : node.intoTargetList) {
+
+            assert intoTarget instanceof AssignTarget;
+
             Type srcTy = (node.columnTypeList == null) ? Type.OBJECT : node.columnTypeList.get(i);
-            Type dstTy = ((DeclIdTyped) intoVar.decl).typeSpec().type;
+            Type dstTy = visit(intoTarget);
 
             Coercion c = Coercion.getCoercion(srcTy, dstTy);
             if (c == null) {
                 throw new SemanticError(
-                        Misc.getLineColumnOf(intoVar.ctx), // s403
+                        Misc.getLineColumnOf(intoTarget.ctx), // s403
                         String.format(
                                 "type of column %d of the cursor is not compatible with the type of variable %s",
-                                i + 1, intoVar.name));
+                                i + 1, ((AssignTarget) intoTarget).name()));
             } else {
                 coercions.add(c);
             }
@@ -936,21 +939,24 @@ public class TypeChecker extends AstVisitor<Type> {
             }
         }
 
-        if (node.intoVarList != null) {
+        if (node.intoTargetList != null) {
 
             List<Coercion> coercions = new ArrayList<>();
 
             // check types of into-variables
-            for (ExprId intoVar : node.intoVarList) {
-                Type tyIntoVar = visitExprId(intoVar);
-                Coercion c = Coercion.getCoercion(Type.OBJECT, tyIntoVar);
+            for (Expr intoTarget : node.intoTargetList) {
+
+                assert intoTarget instanceof AssignTarget;
+
+                Type tyIntoTarget = visit(intoTarget);
+                Coercion c = Coercion.getCoercion(Type.OBJECT, tyIntoTarget);
                 if (c == null) {
                     throw new SemanticError( // s421
-                            Misc.getLineColumnOf(intoVar.ctx),
+                            Misc.getLineColumnOf(intoTarget.ctx),
                             "into-variable "
-                                    + intoVar.name
+                                    + ((AssignTarget) intoTarget).name()
                                     + " has an incompatible type "
-                                    + tyIntoVar.plcName);
+                                    + tyIntoTarget.plcName);
                 } else {
                     coercions.add(c);
                 }
@@ -968,23 +974,22 @@ public class TypeChecker extends AstVisitor<Type> {
 
         typeCheckHostExprs(staticSql); // s404
 
-        if (node.intoVarList != null) {
+        if (node.intoTargetList != null) {
 
             List<Coercion> coercions = new ArrayList<>();
 
-            // check types of into-variables
+            // check types of into-targets
             int i = 0;
             for (Misc.Pair<String, Type> p : staticSql.selectList) {
                 Type tyColumn = p.e2;
-                ExprId intoVar = node.intoVarList.get(i);
-                Type tyIntoVar = visitExprId(intoVar);
-                Coercion c = Coercion.getCoercion(tyColumn, tyIntoVar);
+                Expr intoTarget = node.intoTargetList.get(i);
+                assert intoTarget instanceof AssignTarget;
+                Type tyIntoTarget = visit(intoTarget);
+                Coercion c = Coercion.getCoercion(tyColumn, tyIntoTarget);
                 if (c == null) {
                     throw new SemanticError( // s405
                             Misc.getLineColumnOf(staticSql.ctx),
-                            "into-variable "
-                                    + intoVar.name
-                                    + " cannot be used there due to its incompatible type");
+                            ((AssignTarget) intoTarget).name() + " in the INTO clause has an incompatible type");
                 } else {
                     coercions.add(c);
                 }
@@ -1116,7 +1121,7 @@ public class TypeChecker extends AstVisitor<Type> {
         assert ty == Type.SYS_REFCURSOR; // by earlier check
 
         assert node.staticSql != null;
-        assert node.staticSql.intoVars == null; // by earlier check
+        assert node.staticSql.intoTargetList == null; // by earlier check
 
         typeCheckHostExprs(node.staticSql); // s407
         return null;

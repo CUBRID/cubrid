@@ -31,10 +31,11 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Scope;
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprId extends Expr {
+public class ExprId extends Expr implements AssignTarget {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -55,6 +56,7 @@ public class ExprId extends Expr {
         prefixDeclBlock = decl.scope().declDone;
     }
 
+    @Override
     public String javaCode() {
         if (decl instanceof DeclParamOut) {
             return String.format("%s[0]", name);
@@ -80,6 +82,7 @@ public class ExprId extends Expr {
         }
     }
 
+    @Override
     public String javaCodeForOutParam() {
         if (decl instanceof DeclParamOut) {
             return name;
@@ -93,5 +96,25 @@ public class ExprId extends Expr {
             assert false;
             return null;
         }
+    }
+
+    @Override
+    public String name() {
+        return name;
+    }
+
+    @Override
+    public boolean isAssignableTo() {
+
+        if (decl instanceof DeclParamOut) {
+            return true;
+        }
+
+        if (decl instanceof DeclVar) {
+            DeclVar varDecl = (DeclVar) decl;
+            return (varDecl.typeSpec.type != Type.RECORD_ANY);
+        }
+
+        return false;
     }
 }

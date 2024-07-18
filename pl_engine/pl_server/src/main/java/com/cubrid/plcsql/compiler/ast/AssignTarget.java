@@ -30,44 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Coercion;
-import com.cubrid.plcsql.compiler.type.Type;
-import java.util.List;
-import org.antlr.v4.runtime.ParserRuleContext;
+public interface AssignTarget {
 
-public abstract class StmtSql extends Stmt {
-
-    public final boolean dynamic;
-    public final int level;
-    public final Expr sql;
-    public final List<Type> columnTypeList;
-    public final List<Expr> intoTargetList;
-    public final List<? extends Expr> usedExprList;
-
-    public List<Coercion> coercions;
-
-    public StmtSql(
-            ParserRuleContext ctx,
-            boolean dynamic,
-            int level,
-            Expr sql,
-            List<Type> columnTypeList,
-            List<Expr> intoTargetList,
-            List<? extends Expr> usedExprList) {
-        super(ctx);
-
-        // if static and a SELECT statement, then columnTypeList must be given
-        assert dynamic || intoTargetList == null || columnTypeList != null;
-
-        this.dynamic = dynamic;
-        this.level = level;
-        this.sql = sql;
-        this.columnTypeList = columnTypeList;
-        this.intoTargetList = intoTargetList;
-        this.usedExprList = usedExprList;
-    }
-
-    public void setCoercions(List<Coercion> coercions) {
-        this.coercions = coercions;
-    }
+    public String javaCode();
+    public String javaCodeForOutParam();
+    public String name();
+    public boolean isAssignableTo();
 }

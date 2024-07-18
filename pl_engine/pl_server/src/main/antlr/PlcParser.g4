@@ -127,12 +127,11 @@ dyn_sql
     ;
 
 into_clause
-    : INTO identifier (',' identifier)*
+    : INTO assign_target (',' assign_target)*
     ;
 
 assignment_statement
-    : identifier ':=' expression        # assign_to_id
-    | record_field ':=' expression      # assign_to_field
+    : assign_target ':=' expression
     ;
 
 assign_target
