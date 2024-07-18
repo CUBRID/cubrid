@@ -3040,6 +3040,12 @@ process_pl (int command_type, int argc, const char **argv, bool show_usage, bool
 	}
       switch (command_type)
 	{
+	case START:
+	  status = process_pl_start (db_name, suppress_message, process_window_service);
+	  break;
+	case STOP:
+	  status = process_pl_stop (db_name, suppress_message, process_window_service);
+	  break;
 	case RESTART:
 	  status = process_pl_stop (db_name, suppress_message, process_window_service);
 #if defined (WINDOWS)
