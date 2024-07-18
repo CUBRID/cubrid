@@ -233,7 +233,6 @@ add_executable(cub_pl ${JAVASP_SERVER_SOURCES})
 target_include_directories(cub_pl PRIVATE ${JAVA_INC} ${CMAKE_BINARY_DIR} ${EP_INCLUDES})
 target_compile_definitions(cub_pl PRIVATE ${COMMON_DEFS})
 target_link_libraries(cub_pl LINK_PRIVATE cubridcs)
-add_dependencies(cubridesql cubridcs)
 
 set(CUB_ADMIN_SOURCES
   ${EXECUTABLES_DIR}/util_admin.c
