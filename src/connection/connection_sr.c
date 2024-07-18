@@ -1140,7 +1140,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 
   /* select the connection protocol */
 
-  //  When supporting the Windows environment, It will be modified to send the same data
+  //  TODO : When supporting the Windows environment, It will be modified to send the same data
   //  (proc_register) for the Windows protocol (SERVER_REQUEST_NEW) as well.
 
   if (css_Server_use_new_connection_protocol)
