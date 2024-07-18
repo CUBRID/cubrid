@@ -6534,6 +6534,8 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
   QFILE_LIST_MERGE_INFO *merge_info;
   int value_count;
 
+  bool on_trace = thread_is_on_trace (thread_p);
+
   int domain_index, skip_index;
   int error = NO_ERROR;
 
@@ -6566,15 +6568,7 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
   /**
    * outer
    */
-  hashjoin_proc->outer.domains = (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
-  if (hashjoin_proc->outer.domains == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
-      goto exit_on_error;
-    }
-
-  hashjoin_proc->outer.value_indexes = merge_info->ls_outer_column;
+  assert (hashjoin_proc->outer.domains != NULL);
   assert (hashjoin_proc->outer.value_indexes != NULL);
 
   hashjoin_outer_domains = hashjoin_proc->outer.domains;
@@ -6583,15 +6577,7 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
   /**
    * inner
    */
-  hashjoin_proc->inner.domains = (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
-  if (hashjoin_proc->inner.domains == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
-      goto exit_on_error;
-    }
-
-  hashjoin_proc->inner.value_indexes = merge_info->ls_inner_column;
+  assert (hashjoin_proc->inner.domains != NULL);
   assert (hashjoin_proc->inner.value_indexes != NULL);
 
   hashjoin_inner_domains = hashjoin_proc->inner.domains;
@@ -6860,7 +6846,10 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
   /**
    * stats
    */
-  memset (&(hashjoin_proc->stats), 0, sizeof (HASHJOIN_STATS));
+  if (on_trace)
+    {
+      memset (&(hashjoin_proc->stats), 0, sizeof (HASHJOIN_STATS));
+    }
 
   return NO_ERROR;
 
@@ -6886,16 +6875,6 @@ qexec_hash_join_clear (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
     {
       assert (false);
       return;
-    }
-
-  if (hashjoin_proc->outer.domains != NULL)
-    {
-      db_private_free_and_init (thread_p, hashjoin_proc->outer.domains);
-    }
-
-  if (hashjoin_proc->inner.domains != NULL)
-    {
-      db_private_free_and_init (thread_p, hashjoin_proc->inner.domains);
     }
 
   if (hashjoin_proc->coerce_domains != NULL)
@@ -8699,8 +8678,7 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
 
 		  if (domain_status != DOMAIN_COMPATIBLE)
 		    {
-		      /* Give up and read the next tuple. */
-		      goto exit_on_next;
+		      goto exit_on_error;
 		    }
 		}
 	      else

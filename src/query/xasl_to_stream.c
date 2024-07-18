@@ -3714,6 +3714,10 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
   for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
     {
       ptr = xts_process_access_spec_type (ptr, spec);
+      if (ptr == NULL)
+	{
+	  return NULL;
+	}
     }
 
   offset = xts_save_val_list (node_p->inner.val_list);
@@ -3727,6 +3731,10 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
    * merge_info
    */
   ptr = xts_process_ls_merge_info (ptr, &node_p->merge_info);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
 
   return ptr;
 }
@@ -6425,6 +6433,7 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
 {
   ACCESS_SPEC_TYPE *spec = NULL;
   int size = 0;
+  int tmp_size = 0;
 
   /**
    * outer
@@ -6435,7 +6444,12 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
 
   for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
     {
-      size += xts_sizeof_access_spec_type (spec);
+      tmp_size = xts_sizeof_access_spec_type (spec);
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
     }
 
   /**
@@ -6447,13 +6461,23 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
 
   for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
     {
-      size += xts_sizeof_access_spec_type (spec);
+      tmp_size = xts_sizeof_access_spec_type (spec);
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
     }
 
   /**
    * merge_info
    */
-  size += xts_sizeof_ls_merge_info (&node_p->merge_info);
+  tmp_size = xts_sizeof_ls_merge_info (&node_p->merge_info);
+  if (tmp_size == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+  size += tmp_size;
 
   return size;
 }

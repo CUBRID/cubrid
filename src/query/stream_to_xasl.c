@@ -3199,6 +3199,8 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
   int offset;
 
+  int error = NO_ERROR;
+
   memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
 
   /**
@@ -3207,22 +3209,23 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      node_p->outer.xasl = NULL;
+      error = ER_QPROC_INVALID_XASLNODE;
+      stx_set_xasl_errcode (thread_p, error);
+      goto exit_on_error;
     }
   else
     {
       node_p->outer.xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (node_p->outer.xasl == NULL)
 	{
-	  goto error;
+	  goto exit_on_error;
 	}
     }
 
   node_p->outer.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
   if (ptr == NULL)
     {
-      stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
-      return NULL;
+      goto exit_on_error;
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -3235,7 +3238,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
       node_p->outer.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (node_p->outer.val_list == NULL)
 	{
-	  goto error;
+	  goto exit_on_error;
 	}
     }
 
@@ -3245,18 +3248,24 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      node_p->inner.xasl = NULL;
+      error = ER_QPROC_INVALID_XASLNODE;
+      stx_set_xasl_errcode (thread_p, error);
+      goto exit_on_error;
     }
   else
     {
       node_p->inner.xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (node_p->inner.xasl == NULL)
 	{
-	  goto error;
+	  goto exit_on_error;
 	}
     }
 
   node_p->inner.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
+  if (ptr == NULL)
+    {
+      goto exit_on_error;
+    }
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -3268,7 +3277,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
       node_p->inner.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (node_p->inner.val_list == NULL)
 	{
-	  goto error;
+	  goto exit_on_error;
 	}
     }
 
@@ -3276,14 +3285,60 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
    * merge_info
    */
   ptr = stx_build_ls_merge_info (thread_p, ptr, &node_p->merge_info);
+  if (ptr == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  /**
+   * domains, value_indexes
+   */
+  if (node_p->merge_info.ls_column_cnt == 0)
+    {
+      error = ER_QPROC_INVALID_XASLNODE;
+      stx_set_xasl_errcode (thread_p, error);
+      goto exit_on_error;
+    }
+  else
+    {
+      node_p->outer.domains =
+	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
+      if (node_p->outer.domains == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  stx_set_xasl_errcode (thread_p, error);
+	  return NULL;
+	}
+
+      node_p->outer.value_indexes = node_p->merge_info.ls_outer_column;
+
+      node_p->inner.domains =
+	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
+      if (node_p->inner.domains == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  stx_set_xasl_errcode (thread_p, error);
+	  return NULL;
+	}
+
+      node_p->inner.value_indexes = node_p->merge_info.ls_inner_column;
+    }
 
   node_p->build = NULL;
   node_p->probe = NULL;
 
   return ptr;
 
-error:
-  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+exit_on_error:
+  if (error == NO_ERROR)
+    {
+      error = stx_get_xasl_errcode (thread_p);
+      if (error == NO_ERROR)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+	}
+    }
+
   return NULL;
 }
 

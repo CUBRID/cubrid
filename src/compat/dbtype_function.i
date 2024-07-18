@@ -2209,6 +2209,11 @@ db_value_need_clear (const DB_VALUE * value)
 
   if (value == NULL)
     {
+      return false;
+    }
+
+  if (value->need_clear == true)
+    {
       return true;
     }
 
@@ -2231,11 +2236,6 @@ db_value_need_clear (const DB_VALUE * value)
   if (TP_IS_SET_TYPE (type) || (type == DB_TYPE_VOBJ))
     {
       return true;
-    }
-
-  if (value->need_clear == false)
-    {
-      return false;
     }
 
   /* This code refers to pr_clear_value. */
