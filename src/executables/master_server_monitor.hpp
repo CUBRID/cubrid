@@ -43,7 +43,7 @@ class server_monitor
 	server_entry &operator= (server_entry &&) = default;
 
 	server_entry (const server_entry &) = default;
-	server_entry (server_entry &&) = delete;
+	server_entry (server_entry &&) = default;
 
 	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
 
