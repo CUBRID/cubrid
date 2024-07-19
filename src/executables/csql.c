@@ -1540,11 +1540,11 @@ csql_set_server_output (CSQL_ARGUMENT * csql_arg, bool server_output)
   csql_arg->pl_server_output = server_output;
   if (server_output)
     {
-      csql_execute_query ("CALL enable (50000);");
+      csql_execute_query ("CALL dbms_output.enable (50000);");
     }
   else
     {
-      csql_execute_query ("CALL disable ();");
+      csql_execute_query ("CALL dbms_output.disable ();");
     }
 }
 
