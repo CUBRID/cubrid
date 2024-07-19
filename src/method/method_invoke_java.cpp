@@ -167,7 +167,7 @@ namespace cubmethod
       }
     while (error_code == NO_ERROR && start_code == SP_CODE_INTERNAL_JDBC);
 
-    error_code = send_data_to_client (thread_p, METHOD_CALLBACK_CHANGE_RIGHTS, 1, std::string (""));
+    send_data_to_client (thread_p, METHOD_CALLBACK_CHANGE_RIGHTS, 1, std::string (""));
 
     return error_code;
   }

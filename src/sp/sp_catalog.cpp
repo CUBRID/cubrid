@@ -418,9 +418,9 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
       {
 	DB_VALUE v;
 
-	if (sp_check_param_type_supported (arg.data_type, arg.mode) != NO_ERROR)
+	err = sp_check_param_type_supported (arg.data_type, arg.mode);
+	if (err != NO_ERROR)
 	  {
-	    err = er_errid ();
 	    goto error;
 	  }
 
@@ -575,7 +575,7 @@ error:
 
   AU_ENABLE (save);
 
-  return err;
+  return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 }
 
 int
