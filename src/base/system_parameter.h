@@ -601,7 +601,7 @@ extern "C"
 					 * this flag only can be set if the parameter has PRM_FOR_CLIENT,
 					 * PRM_FOR_SERVER, and PRM_USER_CHANGE flags. */
 
-#define PRM_FOR_PL_CONTEXT  0x00010000	/* is for PL parameter */
+#define PRM_FOR_PL_CONTEXT  0x00020000	/* is for PL parameter */
 
 #define PRM_DEPRECATED      0x40000000	/* is deprecated */
 #define PRM_OBSOLETED       0x80000000	/* is obsoleted */
