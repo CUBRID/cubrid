@@ -83,7 +83,7 @@
 
 #if defined (SERVER_MODE)
 #include "connection_error.h"
-#endif /* SERVER_MODE */
+#endif
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -978,14 +978,7 @@ perfmon_server_get_stats (THREAD_ENTRY * thread_p)
       return NULL;
     }
 
-  /* no need peek stats at TRACE ON */
-  if (thread_is_on_trace (thread_p))
-    {
-      return pstat_Global.tran_stats[tran_index];
-    }
-
   perfmon_get_peek_stats (pstat_Global.tran_stats[tran_index]);
-
   return pstat_Global.tran_stats[tran_index];
 }
 
@@ -1053,8 +1046,18 @@ UINT64
 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
 {
   UINT64 *stats;
+  int tran_index;
 
-  stats = perfmon_server_get_stats (thread_p);
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0);
+
+  if (tran_index >= pstat_Global.n_trans)
+    {
+      return 0;
+    }
+
+  stats = pstat_Global.tran_stats[tran_index];
+
   if (stats != NULL)
     {
       int offset = pstat_Metadata[statistic_id].start_offset;
