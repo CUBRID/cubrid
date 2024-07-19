@@ -1056,6 +1056,12 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
       return 0;
     }
 
+  /* This routine is called from the query execute scan routine in TRACE ON state.
+   * Therefore, there is no need to call perfmon_get_peek_stats,
+   * which retrieves overall statistical information,
+   * because the server's overall statistical information is not needed,
+   * and only I/O fetch and time information are needed.
+   */
   stats = pstat_Global.tran_stats[tran_index];
 
   if (stats != NULL)
