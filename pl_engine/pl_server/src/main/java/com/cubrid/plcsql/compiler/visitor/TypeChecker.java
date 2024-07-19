@@ -929,12 +929,17 @@ public class TypeChecker extends AstVisitor<Type> {
         if (node.usedExprList != null) {
             for (Expr e : node.usedExprList) {
                 Type tyUsedExpr = visit(e);
-                if (tyUsedExpr == Type.BOOLEAN
-                        || tyUsedExpr == Type.CURSOR
-                        || tyUsedExpr == Type.SYS_REFCURSOR) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(e.ctx), // s428
-                            "expressions in a USING clause cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
+                switch (tyUsedExpr.idx) {
+                    case Type.IDX_CURSOR:
+                    case Type.IDX_RECORD:
+                    case Type.IDX_BOOLEAN:
+                    case Type.IDX_SYS_REFCURSOR:
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(e.ctx), // s430
+                                "expressions in a USING clause cannot be of "
+                                        + tyUsedExpr.plcName
+                                        + " type");
+                    default:; // OK
                 }
             }
         }
@@ -1066,12 +1071,17 @@ public class TypeChecker extends AstVisitor<Type> {
         if (node.usedExprList != null) {
             for (Expr e : node.usedExprList) {
                 Type tyUsedExpr = visit(e); // s429
-                if (tyUsedExpr == Type.BOOLEAN
-                        || tyUsedExpr == Type.CURSOR
-                        || tyUsedExpr == Type.SYS_REFCURSOR) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(e.ctx), // s430
-                            "expressions in a USING clause cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
+                switch (tyUsedExpr.idx) {
+                    case Type.IDX_CURSOR:
+                    case Type.IDX_RECORD:
+                    case Type.IDX_BOOLEAN:
+                    case Type.IDX_SYS_REFCURSOR:
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(e.ctx), // s428
+                                "expressions in a USING clause cannot be of "
+                                        + tyUsedExpr.plcName
+                                        + " type");
+                    default:; // OK
                 }
             }
         }
