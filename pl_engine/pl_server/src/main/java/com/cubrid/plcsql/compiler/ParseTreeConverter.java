@@ -1707,7 +1707,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             symbolStack.putDeclLabel(label, declLabel);
         }
 
-        DeclDynamicRecord declForRecord = new DeclDynamicRecord(recNameCtx, record, new TypeSpec(null, Type.RECORD_ANY));
+        DeclDynamicRecord declForRecord =
+                new DeclDynamicRecord(recNameCtx, record, new TypeSpec(null, Type.RECORD_ANY));
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());

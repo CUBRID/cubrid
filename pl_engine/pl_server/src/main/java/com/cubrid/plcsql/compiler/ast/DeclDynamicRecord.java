@@ -44,8 +44,7 @@ public class DeclDynamicRecord extends DeclIdTyped {
     public final String name;
     public final TypeSpec typeSpec;
 
-    public DeclDynamicRecord(
-            ParserRuleContext ctx, String name, TypeSpec typeSpec) {
+    public DeclDynamicRecord(ParserRuleContext ctx, String name, TypeSpec typeSpec) {
         super(ctx);
 
         this.name = name;
