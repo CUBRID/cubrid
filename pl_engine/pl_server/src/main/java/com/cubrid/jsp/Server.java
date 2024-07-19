@@ -41,6 +41,7 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
@@ -264,4 +265,41 @@ public class Server {
     public boolean getShutdown() {
         return shutdown.get();
     }
+
+    // ----------------------------------------------------------------------
+    // The following two methods are temporary mock implementation
+
+    public static final int SYS_PARAM_COMPAT_NUMERIC_DIVISION_SCALE = 1;
+    public static final int SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR = 2;
+    public static final int SYS_PARAM_ORACLE_STYLE_EMPTY_STRING = 3;
+    public static final int SYS_PARAM_TIMEZONE = 4;
+
+    public static boolean getSystemParameterBool(int code) {
+        switch (code) {
+            case SYS_PARAM_COMPAT_NUMERIC_DIVISION_SCALE:
+                return false;
+            case SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR:
+                return false;
+            case SYS_PARAM_ORACLE_STYLE_EMPTY_STRING:
+                return false;
+            default:
+                assert (false);
+                return false;
+        }
+    }
+
+    private static final ZoneOffset tz = ZoneOffset.of("+09:00");
+
+    public static ZoneOffset getSystemParameterTimezone(int code) {
+        switch (code) {
+            case SYS_PARAM_TIMEZONE:
+                return tz;
+            default:
+                assert (false);
+                return null;
+        }
+    }
+
+    //
+    // ----------------------------------------------------------------------
 }
