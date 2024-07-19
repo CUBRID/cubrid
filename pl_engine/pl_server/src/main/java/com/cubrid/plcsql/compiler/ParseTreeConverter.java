@@ -126,7 +126,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + errCode
                                     + " to the call of "
                                     + ps.name
-                                    + " must be assignable to because it is to an OUT parameter");
+                                    + " must be updatable because it is to an OUT parameter");
                 }
 
                 gpc.decl = new DeclProc(null, ps.name, paramList);
@@ -159,7 +159,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + errCode
                                     + " to the call of "
                                     + fs.name
-                                    + " must be assignable to because it is to an OUT parameter");
+                                    + " must be updatable because it is to an OUT parameter");
                 }
 
                 if (!DBTypeAdapter.isSupported(fs.retType.type)) {
@@ -900,7 +900,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + res
                                     + " to the function "
                                     + name
-                                    + " must be assignable to because it is to an OUT parameter");
+                                    + " must be updatable because it is to an OUT parameter");
                 }
 
                 return new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
@@ -1302,7 +1302,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             if (!id.isAssignableTo()) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx.identifier()), // s019
-                        Misc.getNormalizedText(ctx.identifier()) + " is not assignable to");
+                        Misc.getNormalizedText(ctx.identifier()) + " cannot be updated");
             }
 
             return id;
@@ -1314,7 +1314,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 if (!((ExprField) e).isAssignableTo()) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.record_field()), // s080
-                            Misc.getNormalizedText(ctx.record_field()) + " is not assignable to");
+                            Misc.getNormalizedText(ctx.record_field()) + " cannot be updated");
                 }
 
                 return (ExprField) e;
@@ -1322,7 +1322,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx.record_field()), // s081
                         Misc.getNormalizedText(ctx.record_field())
-                                + " is a serial value and not assignable to");
+                                + " is a serial value and not updatable");
             } else {
                 throw new RuntimeException("unreachable");
             }
@@ -1957,7 +1957,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         // s060: undeclared id ...
-        // s039: variables to store fetch results must be assignable to
+        // s039: variables to store fetch results must be updatable
         NodeList<Expr> intoTargetList = visitInto_clause(ctx.into_clause());
 
         List<Type> columnTypeList;
@@ -1990,7 +1990,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (!refCursor.isAssignableTo()) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx.identifier()), // s041
-                    "identifier in an OPEN-FOR statement must be assignable to");
+                    "identifier in an OPEN-FOR statement must be updatable");
         }
         if (((DeclIdTyped) refCursor.decl).typeSpec().type != Type.SYS_REFCURSOR) {
             throw new SemanticError(
@@ -2064,7 +2064,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 + res
                                 + " to the procedure "
                                 + Misc.detachPkgName(name)
-                                + " must be assignable to because it is to an OUT parameter");
+                                + " must be updatable because it is to an OUT parameter");
             }
 
             return new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
@@ -2523,7 +2523,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx), // s056
                                 ((AssignTarget) target).name()
-                                        + " in the INTO clause is not assignable to");
+                                        + " in the INTO clause cannot be updated");
                     }
                     intoTargetList.add(target);
                 }
