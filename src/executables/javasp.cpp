@@ -333,7 +333,7 @@ static void javasp_signal_handler (int sig)
   int status = javasp_get_server_info (db_name, jsp_info); // if failed,
   if (status == NO_ERROR && jsp_info.pid != JAVASP_PID_DISABLED)
     {
-      (void) envvar_bindir_file (executable_path, PATH_MAX, UTIL_JAVASP_NAME);
+      (void) envvar_bindir_file (executable_path, PATH_MAX, UTIL_PL_NAME);
       if (command.compare ("running") != 0 || db_name.empty ())
 	{
 	  return;
@@ -351,7 +351,7 @@ static void javasp_signal_handler (int sig)
       int pid = fork ();
       if (pid == 0) // child
 	{
-	  execl (executable_path, UTIL_JAVASP_NAME, "start", db_name.c_str (), NULL);
+	  execl (executable_path, UTIL_PL_NAME, "start", db_name.c_str (), NULL);
 	  exit (0);
 	}
       else

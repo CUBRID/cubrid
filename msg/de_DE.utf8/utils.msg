@@ -155,7 +155,7 @@ Vorhandene Serviceutilities:\n\
     gateway\n\
     manager\n\
     heartbeat\n\
-    javasp\n\
+    pl\n\
 \n\
 Vorhandene Administratorutilities:\n\
     addvoldb\n\
@@ -259,11 +259,9 @@ Vorhandene Befehle:\n\
 42 Parameter ist Ungültig.\n
 43 Datei(%1$s) offene Fehler.\n
 44 Cubrid Utility, Version %1$s\n\
-Anwendung: %2$s javasp <Befehl> [args]\n\
+Anwendung: %2$s pl <Befehl> [args]\n\
 \n\
 Vorhandene Befehle:\n\
-    start       [database-name]\n\
-    stop        [database-name]\n\
     restart     [database-name]\n\
     status      [database-name]\n
 45 cubrid utility, version %1$s\n\
