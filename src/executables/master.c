@@ -131,9 +131,12 @@ pthread_mutex_t css_Master_er_log_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t css_Master_er_log_enable_lock = PTHREAD_MUTEX_INITIALIZER;
 bool css_Master_er_log_enabled = true;
 
+#if !defined(WINDOWS)
 /* *INDENT-OFF* */
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 /* *INDENT-ON* */
+#endif
+
 /*
  * css_master_error() - print error message to syslog or console
  *   return: none
@@ -1241,7 +1244,6 @@ main (int argc, char **argv)
 	  goto cleanup;
 	}
     }
-#endif
 
   // TODO : When no non-HA server exists in HA environment, server_monitor should not be initialized.
   //        In this issue, server_monitor is initialized only when HA is disabled. Once all sub-tasks of
@@ -1254,6 +1256,7 @@ main (int argc, char **argv)
       master_Server_monitor.reset (new server_monitor ());
       // *INDENT-ON*
     }
+#endif
 
   conn = css_make_conn (css_Master_socket_fd[0]);
   css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0], READ_WRITE, 0,
