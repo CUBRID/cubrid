@@ -105,16 +105,6 @@ public class ExprId extends Expr implements AssignTarget {
 
     @Override
     public boolean isAssignableTo() {
-
-        if (decl instanceof DeclParamOut) {
-            return true;
-        }
-
-        if (decl instanceof DeclVar) {
-            DeclVar varDecl = (DeclVar) decl;
-            return (varDecl.typeSpec.type != Type.RECORD_ANY);
-        }
-
-        return false;
+        return (decl instanceof DeclParamOut) || (decl instanceof DeclVar);
     }
 }

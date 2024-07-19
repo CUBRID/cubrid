@@ -1784,11 +1784,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
 
-        Type recTy = node.record.typeSpec.type;
+        Type recTy = node.record.typeSpec().type;
         assert recTy instanceof TypeRecord;
 
         String[] recordSetArgs =
-                getRecordSetArgs(node.record.name, (TypeRecord) recTy, node.record.scope.level);
+                getRecordSetArgs(node.record.name(), (TypeRecord) recTy, node.record.scope.level);
         Object setUsedExpr = getSetUsedExpr(node.usedExprList);
 
         return new CodeTemplate(
@@ -1796,13 +1796,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 Misc.getLineColumnOf(node.ctx),
                 tmplStmtForStaticSqlLoop,
                 "%'RECORD-CLASS'%",
-                node.record.typeSpec.type.javaCode,
+                node.record.typeSpec().type.javaCode,
                 "%'+SQL'%",
                 visit(node.sql),
                 "%'+SET-USED-EXPR'%",
                 setUsedExpr,
                 "%'RECORD'%",
-                node.record.name,
+                node.record.name(),
                 "%'LABEL'%",
                 node.label == null ? "" : node.label + "_%'LEVEL'%:",
                 "%'+RECORD-FIELD-VALUES'%",
@@ -1814,10 +1814,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     }
 
     // -------------------------------------------------------------------------
-    // StmtForExecImmeLoop
+    // StmtForDynamicSqlLoop
     //
 
-    private static String[] tmplStmtForExecImmeLoop =
+    private static String[] tmplStmtForDynamicSqlLoop =
             new String[] {
                 "{ // for loop with dynamic SQL",
                 "  PreparedStatement stmt_%'LEVEL'% = null;",
@@ -1854,20 +1854,20 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             };
 
     @Override
-    public CodeToResolve visitStmtForExecImmeLoop(StmtForExecImmeLoop node) {
+    public CodeToResolve visitStmtForDynamicSqlLoop(StmtForDynamicSqlLoop node) {
 
         Object setUsedExpr = getSetUsedExpr(node.usedExprList);
 
         return new CodeTemplate(
                 "StmtForSqlLoop",
                 Misc.getLineColumnOf(node.ctx),
-                tmplStmtForExecImmeLoop,
+                tmplStmtForDynamicSqlLoop,
                 "%'+SQL'%",
                 visit(node.sql),
                 "%'+SET-USED-EXPR'%",
                 setUsedExpr,
                 "%'RECORD'%",
-                node.record.name,
+                node.record.name(),
                 "%'LABEL'%",
                 node.label == null ? "" : node.label + "_%'LEVEL'%:",
                 "%'LEVEL'%",

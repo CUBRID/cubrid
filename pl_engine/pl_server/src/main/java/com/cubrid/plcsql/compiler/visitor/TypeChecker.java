@@ -751,7 +751,7 @@ public class TypeChecker extends AstVisitor<Type> {
         if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.val.ctx), // s216
-                    "type of the assigned value is not compatible with the type of the variable");
+                    "type of assigned value is not compatible with the type of target variable");
         } else {
             node.val.setCoercion(c);
         }
@@ -1053,7 +1053,7 @@ public class TypeChecker extends AstVisitor<Type> {
     }
 
     @Override
-    public Type visitStmtForExecImmeLoop(StmtForExecImmeLoop node) {
+    public Type visitStmtForDynamicSqlLoop(StmtForDynamicSqlLoop node) {
 
         Type sqlType = visit(node.sql);
         if (sqlType.idx != Type.IDX_STRING) {

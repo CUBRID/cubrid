@@ -1302,7 +1302,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             if (!id.isAssignableTo()) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx.identifier()), // s019
-                        Misc.getNormalizedText(ctx.identifier()) + " cannot be updated");
+                        Misc.getNormalizedText(ctx.identifier()) + " is not updatable");
             }
 
             return id;
@@ -1314,7 +1314,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 if (!((ExprField) e).isAssignableTo()) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.record_field()), // s080
-                            Misc.getNormalizedText(ctx.record_field()) + " cannot be updated");
+                            Misc.getNormalizedText(ctx.record_field()) + " is not updatable");
                 }
 
                 return (ExprField) e;
@@ -1707,8 +1707,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             symbolStack.putDeclLabel(label, declLabel);
         }
 
-        DeclVar declForRecord =
-                new DeclVar(recNameCtx, record, new TypeSpec(null, Type.RECORD_ANY), false, null);
+        DeclDynamicRecord declForRecord = new DeclDynamicRecord(recNameCtx, record, new TypeSpec(null, Type.RECORD_ANY));
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1717,7 +1716,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtForExecImmeLoop(ctx, label, declForRecord, dynSql, usedExprList, stmts);
+        return new StmtForDynamicSqlLoop(ctx, label, declForRecord, dynSql, usedExprList, stmts);
     }
 
     @Override
@@ -2523,7 +2522,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx), // s056
                                 ((AssignTarget) target).name()
-                                        + " in the INTO clause cannot be updated");
+                                        + " in the INTO clause is not updatable");
                     }
                     intoTargetList.add(target);
                 }

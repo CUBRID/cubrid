@@ -33,27 +33,36 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtForExecImmeLoop extends StmtForSqlLoop {
+public class DeclDynamicRecord extends DeclIdTyped {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtForExecImmeLoop(this);
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
-    public StmtForExecImmeLoop(
-            ParserRuleContext ctx,
-            String label,
-            DeclVar record,
-            Expr dynamicSql,
-            NodeList<? extends Expr> usedExprList,
-            NodeList<Stmt> stmts) {
-        super(
-                ctx,
-                true,
-                label,
-                record,
-                dynamicSql,
-                usedExprList == null ? null : usedExprList.nodes,
-                stmts);
+    public final String name;
+    public final TypeSpec typeSpec;
+
+    public DeclDynamicRecord(
+            ParserRuleContext ctx, String name, TypeSpec typeSpec) {
+        super(ctx);
+
+        this.name = name;
+        this.typeSpec = typeSpec;
+    }
+
+    public TypeSpec typeSpec() {
+        return typeSpec;
+    }
+
+    @Override
+    public String name() {
+        return name;
+    }
+
+    @Override
+    public String kind() {
+        return "dynamic record";
     }
 }
