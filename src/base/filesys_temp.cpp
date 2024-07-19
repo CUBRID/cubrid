@@ -39,7 +39,7 @@ namespace
   {
 #ifdef LINUX
     const char *cubrid_tmp = std::getenv (CUBRID_TMP_ENV);
-    std::string filename = cubrid_tmp != nullptr ? cubrid_tmp : std::filesystem::temp_directory_path ();
+    std::string filename = cubrid_tmp != nullptr ? cubrid_tmp : std::filesystem::temp_directory_path ().u8string ();
 
     filename += "/";
     filename += prefix;
