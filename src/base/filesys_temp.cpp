@@ -84,3 +84,11 @@ std::pair<std::string, FILE *> filesys::open_temp_file (const char *prefix, cons
 #endif
   return {filename, fileptr};
 }
+
+std::string filesys::temp_directory_path (void)
+{
+  const char *cubrid_tmp = std::getenv (CUBRID_TMP_ENV);
+  std::string pathname = cubrid_tmp != nullptr ? cubrid_tmp : std::filesystem::temp_directory_path ();
+
+  return pathname;
+}
