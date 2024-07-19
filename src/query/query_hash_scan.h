@@ -23,12 +23,22 @@
 #ifndef _QUERY_HASH_SCAN_H_
 #define _QUERY_HASH_SCAN_H_
 
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
-#error Wrong module
-#endif // not server and not SA mode
-
-#include "query_hash_scan_constants.h"
 #include "regu_var.hpp"
+
+struct val_descr;
+typedef struct val_descr VAL_DESCR;
+
+/* kind of hash list scan method */
+enum hash_method
+{
+  HASH_METH_NOT_USE = 0,
+  HASH_METH_IN_MEM = 1,
+  HASH_METH_HYBRID = 2,
+  HASH_METH_HASH_FILE = 3
+};
+typedef enum hash_method HASH_METHOD;
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
 
 #define MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p) \
   do \
@@ -128,10 +138,10 @@ int qdata_free_hscan_entry (const void *key, void *data, void *args);
 
 int qdata_hscan_key_eq (const void *key1, const void *key2);
 
-int qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
+int qdata_build_hscan_key (THREAD_ENTRY * thread_p, VAL_DESCR * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
 HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
-				     REGU_VARIABLE_LIST probe_regu_list, val_descr * vd);
+				     REGU_VARIABLE_LIST probe_regu_list, VAL_DESCR * vd);
 HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
 						   REGU_VARIABLE_LIST probe_regu_list, HASH_SCAN_KEY * new_key);
 
@@ -163,5 +173,7 @@ extern EH_SEARCH fhs_search (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid, TF
 extern EH_SEARCH fhs_search_next (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid, TFTID * value_ptr);
 extern void fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid);
 /* end : FILE HASH SCAN */
+
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #endif /* _QUERY_HASH_SCAN_H_ */

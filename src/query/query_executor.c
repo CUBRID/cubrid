@@ -40,7 +40,6 @@
 #include "partition_sr.h"
 #include "query_aggregate.hpp"
 #include "query_analytic.hpp"
-#include "query_hash_scan_constants.h"
 #include "query_opfunc.h"
 #include "fetch.h"
 #include "dbtype.h"
