@@ -362,9 +362,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         if (selectList.size() == 0) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx), // s078
-                    row + " has no columns"); // unlikely ...
+            throw new RuntimeException(row + " has no columns"); // unlikely ...
         }
 
         return new TypeSpec(ctx, TypeRecord.getInstance(ofTable, row, selectList));
@@ -1311,18 +1309,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             Expr e = visitRecord_field(ctx.record_field()); // s079: undeclared id ...
             if (e instanceof ExprField) {
-                if (!((ExprField) e).isAssignableTo()) {
+                ExprField field = (ExprField) e;
+                if (!field.isAssignableTo()) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.record_field()), // s080
-                            Misc.getNormalizedText(ctx.record_field()) + " is not updatable");
+                            field.name() + " is not updatable");
                 }
 
-                return (ExprField) e;
+                return field;
             } else if (e instanceof ExprSerialVal) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx.record_field()), // s081
-                        Misc.getNormalizedText(ctx.record_field())
-                                + " is a serial value and not updatable");
+                        "serial value is not updatable");
             } else {
                 throw new RuntimeException("unreachable");
             }
