@@ -48,7 +48,7 @@
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "boot_sr.h"
-#endif /* !WINDWS && SERVER_MODE */
+#endif
 
 #include "environment_variable.h"
 #include "system_parameter.h"
