@@ -54,7 +54,7 @@ namespace cubmethod
     assert (sig_list.num_methods > 0);
 
     // init runtime context
-    session_get_method_runtime_context (thread_p, m_rctx);
+    // session_get_method_runtime_context (thread_p, m_rctx);
     session_get_session_id (thread_p, &m_sid);
 
     m_tid = logtb_find_current_tranid (thread_p);

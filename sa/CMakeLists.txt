@@ -330,6 +330,10 @@ set(SP_SOURCES
   ${SP_DIR}/jsp_comm.c
   ${SP_DIR}/jsp_file.c
   ${SP_DIR}/jsp_sr.c
+  ${SP_DIR}/pl_execution_stack.cpp
+  ${SP_DIR}/pl_query_cursor.cpp
+  ${SP_DIR}/pl_session.cpp
+  ${SP_DIR}/pl_signature.cpp
   ${SP_DIR}/sp_catalog.cpp
   ${SP_DIR}/sp_code.cpp
   )

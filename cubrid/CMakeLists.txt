@@ -270,8 +270,16 @@ set(SP_SOURCES
   ${SP_DIR}/jsp_comm.c
   ${SP_DIR}/jsp_file.c
   ${SP_DIR}/jsp_sr.c
+  ${SP_DIR}/pl_execution_stack.cpp
+  ${SP_DIR}/pl_query_cursor.cpp
+  ${SP_DIR}/pl_session.cpp
+  ${SP_DIR}/pl_signature.cpp
   ${SP_DIR}/sp_code.cpp
   )
+
+set(SP_HEADERS
+  ${SP_DIR}/pl_execution_stack.hpp
+)
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_connection_java.cpp
@@ -507,6 +515,7 @@ set (CUBRID_LIB_HEADERS
   ${OBJECT_HEADERS}
   ${QUERY_HEADERS}
   ${STORAGE_HEADERS}
+  ${SP_HEADERS}
   ${THREAD_HEADERS}
   ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}

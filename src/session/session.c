@@ -53,6 +53,7 @@
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 #include "xasl_cache.h"
+#include "pl_session.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -133,7 +134,7 @@ struct session_state
   int private_lru_index;
 
   load_session *load_session_p;
-  method_runtime_context *method_rctx_p;
+  PL_SESSION *pl_session_p;
 
   // *INDENT-OFF*
   session_state ();
@@ -312,7 +313,7 @@ session_state_init (void *st)
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
-  session_p->method_rctx_p = NULL;
+  session_p->pl_session_p = NULL;
 
   return NO_ERROR;
 }
@@ -3173,8 +3174,8 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
 }
 
 int
-session_get_method_runtime_context (THREAD_ENTRY * thread_p,
-				    REFPTR (method_runtime_context, method_runtime_context_ref_ptr))
+session_get_pl_session (THREAD_ENTRY * thread_p,
+				    REFPTR (PL_SESSION, pl_session_ref_ptr))
 {
   SESSION_STATE *state_p = NULL;
 
@@ -3184,12 +3185,12 @@ session_get_method_runtime_context (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  if (state_p->method_rctx_p == NULL)
+  if (state_p->pl_session_p == NULL)
     {
-      state_p->method_rctx_p = new method_runtime_context ();
+      state_p->pl_session_p = new PL_SESSION ();
     }
 
-  method_runtime_context_ref_ptr = state_p->method_rctx_p;
+  pl_session_ref_ptr = state_p->pl_session_p;
 
   return NO_ERROR;
 }
@@ -3217,13 +3218,13 @@ session_stop_attached_threads (void *session_arg)
       session->load_session_p = NULL;
     }
 
-  if (session->method_rctx_p != NULL)
+  if (session->pl_session_p != NULL)
     {
-      session->method_rctx_p->set_interrupt (er_errid ());
-      session->method_rctx_p->wait_for_interrupt ();
+      session->pl_session_p->set_interrupt (er_errid ());
+      session->pl_session_p->wait_for_interrupt ();
 
-      delete session->method_rctx_p;
-      session->method_rctx_p = NULL;
+      delete session->pl_session_p;
+      session->pl_session_p = NULL;
     }
 #endif
 }

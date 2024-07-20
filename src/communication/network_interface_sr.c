@@ -11198,7 +11198,7 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   unpacker.unpack_all (verbose, input_string);
 
   cubmethod::runtime_context * ctx = NULL;
-  session_get_method_runtime_context (thread_p, ctx);
+  // session_get_method_runtime_context (thread_p, ctx);
 
   int error = ER_FAILED;
   cubmem::extensible_block ext_blk;
