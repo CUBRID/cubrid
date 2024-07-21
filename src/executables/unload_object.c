@@ -181,6 +181,7 @@ static int max_fetched_copyarea_list = 1;
 #if !defined(WINDOWS)
 static S_WAITING_INFO wi_unload_class;
 static S_WAITING_INFO wi_w_blk_getQ;
+S_WAITING_INFO wi_write_file;
 #endif
 
 #define OBJECT_SUFFIX "_objects"
@@ -1901,7 +1902,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   TIMER_BEGIN (&wi_unload_class);
 
   TIMER_CLEAR (&wi_w_blk_getQ);
-  TIMER_BEGIN (&wi_w_blk_getQ);
+  TIMER_CLEAR (&wi_write_file);
 
   approximate_class_objects = 0;
   if (get_estimated_objs (hfid, &approximate_class_objects, false) < 0)
@@ -2729,6 +2730,73 @@ open_object_file (extract_context & ctxt, const char *output_dirname, const char
   return true;
 }
 
+
+#if 0
+bool
+read_unload_cfg (int *io_buffer_size, int *fetched_list_size, int *writer_q_size, int *io_buffer_list_sz)
+{
+  FILE *fp;
+  char buf[1024];
+  char *pv;
+  int buffer_size, list_cnt, q_size, buffer_list_sz;
+
+  fp = fopen ("unloaddb.cfg", "rt");
+  if (!fp)
+    return false;
+
+  // io_buffer_size
+  // io_buffer_list_sz
+  // fetched_list_size
+  // writer_q_size
+
+  buffer_size = list_cnt = q_size = buffer_list_sz = -1;
+
+  while (!feof (fp))
+    {
+      buf[0] = 0x00;
+      fgets (buf, sizeof (buf), fp);
+
+      if (buf[0] == '#')
+	continue;
+
+      pv = strrchr (buf, '=');
+      if (pv == NULL)
+	continue;
+
+      *pv = 0x00;
+      pv++;
+
+      if (strcmp (buf, "io_buffer_size") == 0)
+	{
+	  buffer_size = atoi (pv);
+	}
+      else if (strcmp (buf, "io_buffer_list_sz") == 0)
+	{
+	  buffer_list_sz = atoi (pv);
+	}
+      else if (strcmp (buf, "fetched_list_size") == 0)
+	{
+	  list_cnt = atoi (pv);
+	}
+      else if (strcmp (buf, "writer_q_size") == 0)
+	{
+	  q_size = atoi (pv);
+	}
+    }
+  fclose (fp);
+
+  if (buffer_size == -1 || list_cnt == -1 || q_size == -1 || buffer_list_sz == -1)
+    return false;
+
+  *io_buffer_size = buffer_size;
+  *fetched_list_size = list_cnt;
+  *writer_q_size = q_size;
+  *io_buffer_list_sz = buffer_list_sz;
+
+  return true;
+}
+#endif
+
 static bool
 init_thread_param (const char *output_dirname, int nthreads)
 {
@@ -2781,6 +2849,16 @@ init_thread_param (const char *output_dirname, int nthreads)
   buffer_block_list_sz *= writer_q_size;
 
   max_fetched_copyarea_list = (thr_max * 4);	// TODO: ctshim
+
+#if 0
+  if (read_unload_cfg (&g_io_buffer_size, &max_fetched_copyarea_list, &writer_q_size, &buffer_block_list_sz))
+    {
+      fprintf (stderr, "Notice: read unloaddb.cfg\n");
+      g_io_buffer_size -= (g_io_buffer_size % _blksize);
+      return init_queue_n_list_for_object_file (writer_q_size, buffer_block_list_sz);
+    }
+#endif
+
   return init_queue_n_list_for_object_file (writer_q_size, buffer_block_list_sz);	// TODO: ctshim 
 }
 
@@ -2807,6 +2885,9 @@ print_monitoring_info (int nthreads)
   fprintf (fp, ALIGN_SPACE_FMT "Fetch  : %12.6f sec, count= %" PRId64 "\n", "",
 	   g_uci->wi_fetch.ts_wait_sum.tv_sec + ((double) g_uci->wi_fetch.ts_wait_sum.tv_nsec / NANO_PREC_VAL),
 	   g_uci->wi_fetch.cnt);
+
+  fprintf (fp, ALIGN_SPACE_FMT "Write  : %12.6f sec\n", "",
+	   wi_write_file.ts_wait_sum.tv_sec + ((double) wi_write_file.ts_wait_sum.tv_nsec / NANO_PREC_VAL));
 
   if (nthreads <= 0)
     return;

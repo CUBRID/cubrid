@@ -79,6 +79,9 @@ static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 
 static int write_object_file (TEXT_BUFFER_BLK * head);
 
+#if !defined(WINDOWS)
+extern S_WAITING_INFO wi_write_file;
+#endif
 class text_buffer_mgr
 {
 private:
@@ -602,14 +605,17 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
 	      goto exit_on_error;
 	    }
 
-	  error = ((str + 1) < end && str[1]) ? flush_quoted_str (tout, "'+\n '", 5) : flush_quoted_str (tout, "'", 1);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
 	  write_len = 0;	// reset the number of characters written per line.
-	  st = str + 1;		// reset start point
+	  st = str + 1;		// reset start point 
+
+	  if ((str + 1) < end && str[1])
+	    {
+	      error = flush_quoted_str (tout, "'+\n '", 5);
+	      if (error != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+	    }
 	}
     }
 
@@ -1019,6 +1025,7 @@ write_object_file (TEXT_BUFFER_BLK * head)
   int error = NO_ERROR;
   int _errno;
 
+  TIMER_BEGIN (&wi_write_file);
   for (tp = head; tp && tp->count > 0; tp = head)
     {
       head = tp->next;
@@ -1040,6 +1047,7 @@ write_object_file (TEXT_BUFFER_BLK * head)
 
       c_text_buf_mgr.release_text_buffer (tp);
     }
+  TIMER_END (&wi_write_file);
 
   return error;
 }
