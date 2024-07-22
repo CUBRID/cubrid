@@ -63,6 +63,7 @@ authenticate_context::reset (void)
   public_user = nullptr;
   dba_user = nullptr;
   disable_auth_check = true;
+  ignore_passwords = false;
 }
 
 authenticate_context::authenticate_context (void) // au_init ()
