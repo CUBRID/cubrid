@@ -267,6 +267,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
   ${QUERY_DIR}/show_scan.c
+  ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -332,11 +333,11 @@ set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set(JSP_SOURCES
-  ${JSP_DIR}/jsp_cl.c
-  ${JSP_DIR}/jsp_comm.c
-  ${JSP_DIR}/jsp_file.c
-  ${JSP_DIR}/jsp_sr.c
+set(SP_SOURCES
+  ${SP_DIR}/jsp_cl.c
+  ${SP_DIR}/jsp_comm.c
+  ${SP_DIR}/jsp_file.c
+  ${SP_DIR}/jsp_sr.c
   )
 
 set(METHOD_SOURCES
@@ -579,7 +580,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -615,7 +616,7 @@ add_library(cubridsa SHARED
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${MONITOR_HEADERS}
   ${MONITOR_SOURCES}

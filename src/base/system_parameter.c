@@ -91,6 +91,9 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 #include "string_regex.hpp"
+#if !defined (SERVER_MODE)
+#include "optimizer.h"
+#endif
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -736,6 +739,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
 #define PRM_NAME_PRINT_INDEX_DETAIL        "print_index_detail"
+
+#define PRM_NAME_MAX_SUBQUERY_CACHE_SIZE    "max_subquery_cache_size"
 
 #define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
 
@@ -2418,6 +2423,12 @@ static int prm_vacuum_ovfp_check_threshold_default = 1000;
 static int prm_vacuum_ovfp_check_threshold_upper = INT_MAX;
 static int prm_vacuum_ovfp_check_threshold_lower = 2;
 static unsigned int prm_vacuum_ovfp_check_threshold_flag = 0;
+
+UINT64 PRM_MAX_SUBQUERY_CACHE_SIZE = 2 * 1024 * 1024;	/* 2 MB */
+static UINT64 prm_max_subquery_cache_size_default = 2 * 1024 * 1024;	/* 2 MB */
+static UINT64 prm_max_subquery_cache_size_lower = 0;	/* 0 */
+static UINT64 prm_max_subquery_cache_size_upper = 16 * 1024 * 1024;	/* 16 MB */
+static unsigned int prm_max_subquery_cache_size_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6364,6 +6375,18 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_MAX_SUBQUERY_CACHE_SIZE,
+   PRM_NAME_MAX_SUBQUERY_CACHE_SIZE,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_HIDDEN),
+   PRM_BIGINT,
+   &prm_max_subquery_cache_size_flag,
+   (void *) &prm_max_subquery_cache_size_default,
+   (void *) &PRM_MAX_SUBQUERY_CACHE_SIZE,
+   (void *) &prm_max_subquery_cache_size_upper,
+   (void *) &prm_max_subquery_cache_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 static int num_session_parameters = 0;
@@ -7269,6 +7292,22 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	{
 	  continue;
 	}
+
+#if !defined(SERVER_MODE)
+      if (strcmp (prm->name, PRM_NAME_OPTIMIZATION_LEVEL) == 0)
+	{
+	  if (value != NULL)
+	    {
+	      int level;
+	      if (parse_int (&level, value, 10) < 0 || CHECK_INVALID_OPTIMIZATION_LEVEL (level))
+		{
+		  error = PRM_ERR_BAD_VALUE;
+		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
+		  return error;
+		}
+	    }
+	}
+#endif
 
       if (strcmp (prm->name, PRM_NAME_SERVER_TIMEZONE) == 0)
 	{
@@ -11184,7 +11223,7 @@ prm_get_next_param_value (char **data, char **prm, char **val)
     }
   if (*p == '\0')
     {
-      err = PRM_ERR_NO_ERROR;
+      err = PRM_ERR_BAD_VALUE;
       goto cleanup;
     }
 

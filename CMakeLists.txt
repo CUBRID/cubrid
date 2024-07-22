@@ -100,6 +100,25 @@ else()
   message(FATAL_ERROR "Failed to parse a version string from ${VERSION_FILE} file")
 endif()
 
+# Define a function to read the actual Git directory and HEAD for Git Worktrees
+function(set_git_dir_from_worktree git_dir head_file)
+    file(READ ${CMAKE_SOURCE_DIR}/.git git_dir_content)
+    string(REGEX MATCH "gitdir: (.*)/worktrees/(.*)\n" _ ${git_dir_content})
+    set(${git_dir} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    set(${head_file} "${CMAKE_MATCH_1}/worktrees/${CMAKE_MATCH_2}/HEAD" PARENT_SCOPE)
+endfunction()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git") # Regular Git project
+    if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/.git")
+        set(GIT_DIR "${CMAKE_SOURCE_DIR}/.git")
+        set(HEAD_FILE "${GIT_DIR}/HEAD")
+    else() # Git Worktree
+        set_git_dir_from_worktree(GIT_DIR HEAD_FILE)
+    endif()
+else()
+    message(FATAL_ERROR "Not a git repository")
+endif()
+
 if(VERSION_MATCHES_LENGTH GREATER 3)
   list(GET VERSION_MATCHES 3 CUBRID_EXTRA_VERSION)
   if(VERSION_MATCHES_LENGTH GREATER 4)
@@ -150,7 +169,7 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
     endif(git_result)
     set(CUBRID_HASH_TAG -${commit_hash})
     # Generate the same file in other directory to trigger cmake re-configure when the HEAD changes
-    configure_file(".git/HEAD" ${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache COPYONLY)
+    configure_file("${HEAD_FILE}" "${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache" COPYONLY)
   else(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
     set(CUBRID_EXTRA_VERSION 0)
   endif(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
@@ -396,7 +415,7 @@ set(COMPAT_DIR               ${CMAKE_SOURCE_DIR}/src/compat)
 set(CONNECTION_DIR           ${CMAKE_SOURCE_DIR}/src/connection)
 set(EXECUTABLES_DIR          ${CMAKE_SOURCE_DIR}/src/executables)
 set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
-set(JSP_DIR                  ${CMAKE_SOURCE_DIR}/src/jsp)
+set(SP_DIR                   ${CMAKE_SOURCE_DIR}/src/sp)
 set(LOADDB_DIR               ${CMAKE_SOURCE_DIR}/src/loaddb)
 set(METHOD_DIR               ${CMAKE_SOURCE_DIR}/src/method)
 set(MONITOR_DIR              ${CMAKE_SOURCE_DIR}/src/monitor)
@@ -426,7 +445,7 @@ include_directories(
   src/connection
   src/executables
   src/heaplayers
-  src/jsp
+  src/sp
   src/loaddb
   src/method
   src/monitor

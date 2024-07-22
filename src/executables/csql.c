@@ -2121,8 +2121,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	case CUBRID_STMT_EVALUATE:
 	  if (result != NULL)
 	    {
-	      // suppress results (always NULL)
-	      // csql_results (csql_arg, result, db_get_query_type_ptr (result), stmt_start_line_no, stmt_type);
+	      // Results can be values other than NULL
+	      csql_results (csql_arg, result, db_get_query_type_ptr (result), stmt_start_line_no, stmt_type);
 	    }
 	  break;
 
@@ -2451,8 +2451,15 @@ csql_set_sys_param (const char *arg_str)
     }
   else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level %d", &level) == 1)
     {
-      qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
-      snprintf (ans, len - 1, "level %d", level);
+      if (CHECK_INVALID_OPTIMIZATION_LEVEL (level))
+	{
+	  snprintf (ans, len - 1, "error: wrong value %d", level);
+	}
+      else
+	{
+	  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+	  strncpy (ans, arg_str, len - 1);
+	}
     }
   else
     {

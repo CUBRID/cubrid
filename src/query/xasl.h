@@ -35,6 +35,7 @@
 #include "regu_var.hpp"
 #include "storage_common.h"
 #include "string_opfunc.h"
+#include "subquery_cache.h"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "external_sort.h"
@@ -495,6 +496,7 @@ struct cte_proc_node
 #define XASL_NEED_SINGLE_TUPLE_SCAN   0x8000	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	      0x10000	/* is any tde class related */
 #define XASL_SAMPLING_SCAN	      0x20000	/* is sampling scan */
+#define XASL_USES_SQ_CACHE	      0x40000	/* subquery uses result cache */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -514,7 +516,32 @@ struct cte_proc_node
 	      if ((_x)->status == XASL_CLEARED || (_x)->status == XASL_INITIALIZED) \
 		{ \
 		  /* execute xasl query */ \
-		  if (qexec_execute_mainblock ((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR) \
+		  if (_x->sub_xasl_id) \
+		    { \
+		      /* execute xasl for subquery's result-cache */ \
+		      if (qexec_execute_subquery_for_result_cache ((thread_p), _x, (v)->xasl_state) != NO_ERROR) \
+			{ \
+			  /* execute without result-cache */ \
+			  free_and_init (_x->sub_xasl_id); \
+		  	  if (qexec_execute_mainblock ((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR) \
+		    	    { \
+		      	      (_x)->status = XASL_FAILURE; \
+			    } \
+			} \
+		      /* fetch the single tuple from list_id */ \
+		      else if (_x->status == XASL_SUCCESS) \
+		        { \
+		          if (qdata_get_single_tuple_from_list_id ((thread_p), _x->list_id, _x->single_tuple) != NO_ERROR) \
+			    { \
+		              _x->status = XASL_FAILURE; \
+			    } \
+		          else \
+			    { \
+		              (r)->value.dbvalptr = _x->single_tuple->valp->val; \
+			    } \
+		        } \
+		    } \
+		  else if (qexec_execute_mainblock ((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR) \
 		    { \
 		      (_x)->status = XASL_FAILURE; \
 		    } \
@@ -1030,9 +1057,10 @@ struct xasl_node
 				 * DELETE in the generated SELECT statement) */
   int mvcc_reev_extra_cls_cnt;	/* number of extra OID - CLASS_OID pairs added to the select list in case of
 				 * UPDATE/DELETE in MVCC */
-  XASL_ID *cte_xasl_id;		/* for CTE's query cache */
-  int cte_host_var_count;
-  int *cte_host_var_index;
+  XASL_ID *sub_xasl_id;		/* for cached subquery */
+  int sub_host_var_count;	/* for subquery's host variable count */
+  int *sub_host_var_index;	/* for subquery's host variable index */
+  int sub_cache_ref_count;	/* for subquery's result-cache ref. count */
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
@@ -1063,6 +1091,8 @@ struct xasl_node
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
+
+  SQ_CACHE *sq_cache;
 
 #if defined (CS_MODE) || defined (SA_MODE)
   int projected_size;		/* # of bytes per result tuple */
