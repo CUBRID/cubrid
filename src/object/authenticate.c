@@ -5153,16 +5153,13 @@ au_change_sp_owner (MOP sp, MOP owner)
       sprintf (new_name_str, "%s.%s", downcase_owner_name, name_str);
 
       /* change the unique_name */
-      if (new_name_str != NULL)
+      db_make_string (&value, new_name_str);
+      error = obj_set (sp, SP_ATTR_UNIQUE_NAME, &value);
+      if (error < 0)
 	{
-	  db_make_string (&value, new_name_str);
-	  error = obj_set (sp, SP_ATTR_UNIQUE_NAME, &value);
-	  if (error < 0)
-	    {
-	      goto end;
-	    }
-	  pr_clear_value (&value);
+	  goto end;
 	}
+      pr_clear_value (&value);
 
       db_make_object (&value, owner);
       error = obj_set (sp, SP_ATTR_OWNER, &value);

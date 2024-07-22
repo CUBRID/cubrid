@@ -991,16 +991,13 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       sm_downcase_name (owner_str, downcase_owner_name, DB_MAX_USER_LENGTH);
       sprintf (new_name_str, "%s.%s", downcase_owner_name, sm_remove_qualifier_name (name_str));
 
-      if (new_name_str != NULL)
+      db_make_string (&user_val, new_name_str);
+      err = obj_set (sp_mop, SP_ATTR_UNIQUE_NAME, &user_val);
+      if (err < 0)
 	{
-	  db_make_string (&user_val, new_name_str);
-	  err = obj_set (sp_mop, SP_ATTR_UNIQUE_NAME, &user_val);
-	  if (err < 0)
-	    {
-	      goto error;
-	    }
-	  pr_clear_value (&user_val);
+	  goto error;
 	}
+      pr_clear_value (&user_val);
 
       /* change the owner */
       db_make_object (&user_val, new_owner);

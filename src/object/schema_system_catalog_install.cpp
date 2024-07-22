@@ -846,8 +846,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_UNIQUE, "", {"sp_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {"unique_name", nullptr}, false}
     },
 // authorization
     {
@@ -1844,7 +1843,7 @@ namespace cubschema
 		   // columns
     {
       {"sp_name", "varchar(255)"},
-      {"sp_owner_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
       {"pkg_name", "varchar (255)"},
       {"index_of", "integer"},
       {"arg_name", "varchar(255)"},

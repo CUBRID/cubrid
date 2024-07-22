@@ -5903,14 +5903,14 @@ procedure_or_function_name
 
 procedure_or_function_name_list
 	: procedure_or_function_name_list ',' procedure_or_function_name
-		{{
+		{{ DBG_TRACE_GRAMMAR(procedure_or_function_name_list, : procedure_or_function_name_list ',' procedure_or_function_name);
 
 			$$ = parser_make_link($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| procedure_or_function_name
-		{{
+		{{ DBG_TRACE_GRAMMAR(procedure_or_function_name_list, : procedure_or_function_name);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
