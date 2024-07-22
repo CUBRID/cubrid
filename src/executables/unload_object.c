@@ -2724,26 +2724,25 @@ open_object_file (extract_context & ctxt, const char *output_dirname, const char
   return true;
 }
 
-//#define USE_CFG_FILE_TEST
-#if defined(USE_CFG_FILE_TEST)
-bool
-read_unload_cfg (int *io_buffer_size, int *fetched_list_size, int *writer_q_size, int *io_buffer_list_sz)
+#define USE_CFG_FILE_TUNNING_TEST
+#if defined(USE_CFG_FILE_TUNNING_TEST)
+void
+read_unload_cfg (int thr_max, int *io_buffer_size, int *fetched_list_size, int *writer_q_size)
 {
   FILE *fp;
   char buf[1024];
   char *pv;
-  int buffer_size, list_cnt, q_size, buffer_list_sz;
+  int buffer_size, list_weight, q_weight;
 
   fp = fopen ("unloaddb.cfg", "rt");
   if (!fp)
-    return false;
+    return;
 
   // io_buffer_size
-  // io_buffer_list_sz
-  // fetched_list_size
-  // writer_q_size
+  // list_weight
+  // queue_weight
 
-  buffer_size = list_cnt = q_size = buffer_list_sz = -1;
+  buffer_size = list_weight = q_weight = -1;
 
   while (!feof (fp))
     {
@@ -2753,6 +2752,8 @@ read_unload_cfg (int *io_buffer_size, int *fetched_list_size, int *writer_q_size
       if (buf[0] == '#')
 	continue;
 
+      trim (buf);
+
       pv = strrchr (buf, '=');
       if (pv == NULL)
 	continue;
@@ -2760,34 +2761,33 @@ read_unload_cfg (int *io_buffer_size, int *fetched_list_size, int *writer_q_size
       *pv = 0x00;
       pv++;
 
-      if (strcmp (buf, "io_buffer_size") == 0)
+      if (strcasecmp (buf, "io_buffer_size") == 0)
 	{
 	  buffer_size = atoi (pv);
 	}
-      else if (strcmp (buf, "io_buffer_list_sz") == 0)
+      else if (strcasecmp (buf, "list_weight") == 0)
 	{
-	  buffer_list_sz = atoi (pv);
+	  list_weight = atoi (pv);
 	}
-      else if (strcmp (buf, "fetched_list_size") == 0)
+      else if (strcasecmp (buf, "queue_weight") == 0)
 	{
-	  list_cnt = atoi (pv);
-	}
-      else if (strcmp (buf, "writer_q_size") == 0)
-	{
-	  q_size = atoi (pv);
+	  q_weight = atoi (pv);
 	}
     }
   fclose (fp);
 
-  if (buffer_size == -1 || list_cnt == -1 || q_size == -1 || buffer_list_sz == -1)
-    return false;
-
-  *io_buffer_size = buffer_size;
-  *fetched_list_size = list_cnt;
-  *writer_q_size = q_size;
-  *io_buffer_list_sz = buffer_list_sz;
-
-  return true;
+  if (buffer_size > 0)
+    {
+      *io_buffer_size = buffer_size;
+    }
+  if (list_weight > 0)
+    {
+      *fetched_list_size = (thr_max * list_weight) + 1;
+    }
+  if (q_weight > 0)
+    {
+      *writer_q_size = (thr_max * q_weight) + 1;
+    }
 }
 #endif
 
@@ -2825,36 +2825,31 @@ init_thread_param (const char *output_dirname, int nthreads)
     }
 #endif /* WINDOWS */
 
+  int writer_q_size = 0;
+
+  writer_q_size = (thr_max * 4) + 1;
+  max_fetched_copyarea_list = (thr_max * 2) + 1;
+
+#if defined(USE_CFG_FILE_TUNNING_TEST)
+  read_unload_cfg (thr_max, &g_io_buffer_size, &max_fetched_copyarea_list, &writer_q_size);
+#endif
   /*
    * Determine the IO buffer size by specifying a multiple of the
    * natural block size for the device.
    * NEED FUTURE OPTIMIZATION
    */
   g_io_buffer_size -= (g_io_buffer_size % _blksize);
-
-  int buffer_block_list_sz = thr_max * 2;
-  int writer_q_size = 100;
-
-  // Up to ((g_io_buffer_size * buffer_block_list_sz) * writer_q_size) bytes of memory may be required.
-  if (writer_q_size < (thr_max * 4))
+  if (writer_q_size < 17)
     {
-      writer_q_size = thr_max * 4;
+      writer_q_size = 17;
     }
-  buffer_block_list_sz *= writer_q_size;
 
-  max_fetched_copyarea_list = (thr_max * 4);	// TODO: ctshim
-
-#if defined(USE_CFG_FILE_TEST)
-  if (read_unload_cfg (&g_io_buffer_size, &max_fetched_copyarea_list, &writer_q_size, &buffer_block_list_sz))
-    {
-      g_io_buffer_size -= (g_io_buffer_size % _blksize);
-      fprintf (stderr, "Notice: read unloaddb.cfg, io_buffer_size=%d buffer_list_cnt=%d fetch list=%d wq_size=%d\n",
-	       g_io_buffer_size, buffer_block_list_sz, max_fetched_copyarea_list, writer_q_size);
-      return init_queue_n_list_for_object_file (writer_q_size, buffer_block_list_sz);
-    }
+#if defined(USE_CFG_FILE_TUNNING_TEST)
+  fprintf (stderr, "Notice: read unloaddb.cfg, io_buffer_size=%d fetch list=%d wq_size=%d\n",
+	   g_io_buffer_size, max_fetched_copyarea_list, writer_q_size);
 #endif
 
-  return init_queue_n_list_for_object_file (writer_q_size, buffer_block_list_sz);	// TODO: ctshim 
+  return init_queue_n_list_for_object_file (writer_q_size, (writer_q_size * 2));
 }
 
 static void

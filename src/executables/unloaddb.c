@@ -66,7 +66,7 @@ FILE *output_file = NULL;
 
 #define DFLT_VARCHAR_BUFFER_SIZE (1)	// 1K
 #define MAX_VARCHAR_BUFFER_SIZE  (1024)	// 1M
-#define DFLT_REQ_DATASIZE        (1)	// 1 page size
+#define DFLT_REQ_DATASIZE        (100)	// 100 page size
 #define MAX_REQ_DATA_PAGES       (1024)	//
 #define MAX_THREAD_COUNT         (127)
 
