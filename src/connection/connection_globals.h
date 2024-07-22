@@ -57,20 +57,59 @@ typedef struct css_conn_rule_info
   int num_curr_conn;
 } CSS_CONN_RULE_INFO;
 
-extern int css_Service_id;
-extern const char *css_Service_name;
+/*
+ * server register resource message body
+ */
 
-extern int css_Server_use_new_connection_protocol;
-extern int css_Server_inhibit_connection_socket;
-extern SOCKET css_Server_connection_socket;
-extern CSS_CONN_RULE_INFO css_Conn_rules[];
-extern const int css_Conn_rules_size;
+/* process register */
+typedef struct css_server_proc_register CSS_SERVER_PROC_REGISTER;
+struct css_server_proc_register
+{
+  static constexpr int CSS_SERVER_MAX_SZ_SERVER_NAME = 256;
+  static constexpr int CSS_SERVER_MAX_SZ_PROC_EXEC_PATH = 128;
+  static constexpr int CSS_SERVER_MAX_SZ_PROC_ARGS = 1024;
 
-extern SOCKET css_Pipe_to_master;
+  char server_name[CSS_SERVER_MAX_SZ_SERVER_NAME];
+  int server_name_length;
+  int pid;
+  char exec_path[CSS_SERVER_MAX_SZ_PROC_EXEC_PATH];
+  char args[CSS_SERVER_MAX_SZ_PROC_ARGS];
+
+  inline css_server_proc_register ();
+};
+
+css_server_proc_register::css_server_proc_register ():server_name_length (0), pid (0)
+{
+  memset (server_name, 0, CSS_SERVER_MAX_SZ_SERVER_NAME);
+  memset (exec_path, 0, CSS_SERVER_MAX_SZ_PROC_EXEC_PATH);
+  memset (args, 0, CSS_SERVER_MAX_SZ_PROC_ARGS);
+}
+
+extern int
+  css_Service_id;
+extern const char *
+  css_Service_name;
+
+extern int
+  css_Server_use_new_connection_protocol;
+extern int
+  css_Server_inhibit_connection_socket;
+extern SOCKET
+  css_Server_connection_socket;
+extern CSS_CONN_RULE_INFO
+  css_Conn_rules[];
+extern const int
+  css_Conn_rules_size;
+
+extern SOCKET
+  css_Pipe_to_master;
 
 #define CSS_NET_MAGIC_SIZE		8
-extern char css_Net_magic[CSS_NET_MAGIC_SIZE];
-extern void css_init_conn_rules (void);
-extern int css_get_max_conn (void);
+extern char
+  css_Net_magic[CSS_NET_MAGIC_SIZE];
+extern void
+css_init_conn_rules (void);
+extern int
+css_get_max_conn (void);
 
 #endif /* _CONNECTION_GLOBALS_H_ */

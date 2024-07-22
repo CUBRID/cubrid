@@ -28,7 +28,7 @@
 server_monitor::server_monitor ()
 {
   m_server_entry_list = std::make_unique<std::vector<server_entry>> ();
-  fprintf (stdout, "server_entry_list is created. \n");
+  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_list is created. \n");
 
   m_thread_shutdown = false;
   m_monitoring_thread = std::make_unique<std::thread> ([this]()
@@ -39,7 +39,7 @@ server_monitor::server_monitor ()
       }
   });
 
-  fprintf (stdout, "server_monitor_thread is created. \n");
+  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is created. \n");
   fflush (stdout);
 }
 
@@ -51,11 +51,11 @@ server_monitor::~server_monitor ()
   if (m_monitoring_thread->joinable())
     {
       m_monitoring_thread->join();
-      fprintf (stdout, "server_monitor_thread is terminated. \n");
+      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is terminated. \n");
     }
 
   assert (m_server_entry_list->size () == 0);
-  fprintf (stdout, "server_entry_list is deleted. \n");
+  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_list is deleted. \n");
   fflush (stdout);
 }
 
@@ -64,17 +64,26 @@ server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, ch
     CSS_CONN_ENTRY *conn)
 {
   m_server_entry_list->emplace_back (pid, exec_path, args, conn);
-  fprintf (stdout, "server has been registered into master_Server_monitor : pid : %d, exec_path : %s, args : %s\n", pid,
+  fprintf (stdout,
+	   "[SERVER_REVIVE_DEBUG] : server has been registered into master_Server_monitor : pid : %d, exec_path : %s, args : %s\n",
+	   pid,
 	   exec_path, args);
 }
 
 void
 server_monitor::remove_server_entry_by_conn (CSS_CONN_ENTRY *conn)
 {
+#if defined(DEBUG)
+  size_t org_size = m_server_entry_list->size ();
+#endif
   m_server_entry_list->erase (std::remove_if (m_server_entry_list->begin(),
 			      m_server_entry_list->end(), [conn] (auto e) -> bool {return e.m_conn == conn;}));
 
-  fprintf (stdout, "server has been removed from master_Server_monitor. Number of server in master_Server_monitor: %d\n",
+#if defined(DEBUG)
+  assert (org_size > m_server_entry_list->size ());
+#endif
+  fprintf (stdout,
+	   "[SERVER_REVIVE_DEBUG] : server has been removed from master_Server_monitor. Number of server in master_Server_monitor: %d\n",
 	   m_server_entry_list->size ());
 }
 

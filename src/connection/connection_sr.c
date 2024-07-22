@@ -81,7 +81,6 @@
 #include "connection_sr.h"
 #include "server_support.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
-#include "master_server_monitor.hpp"
 
 #ifdef PACKET_TRACE
 #define TRACE(string, arg)					\
@@ -1083,7 +1082,7 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
  *   proc_register(out):
  */
 static void
-css_make_set_proc_register (const char *server_name, int server_name_length, SERVER_PROC_REGISTER * proc_register)
+css_make_set_proc_register (const char *server_name, int server_name_length, CSS_SERVER_PROC_REGISTER * proc_register)
 {
   char *p, *last;
   char **argv;
@@ -1123,7 +1122,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #endif
   const char *data;
   int data_length;
-  SERVER_PROC_REGISTER proc_register;
+  CSS_SERVER_PROC_REGISTER proc_register;
 
   css_Service_id = master_port_id;
   if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
@@ -1158,10 +1157,12 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
       data = (const char *) &proc_register;
       data_length = sizeof (proc_register);
     }
+
   if (css_common_connect (conn, &rid, hname, connection_protocol, data, data_length, master_port_id) == NULL)
     {
       goto fail_end;
     }
+
   if (css_readn (conn->fd, (char *) &response_buff, sizeof (int), -1) != sizeof (int))
     {
       goto fail_end;

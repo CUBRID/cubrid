@@ -29,6 +29,7 @@
 #include <memory>
 #include <time.h>
 #include "connection_defs.h"
+#include "connection_globals.h"
 
 class server_monitor
 {
@@ -76,36 +77,5 @@ class server_monitor
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
 };
 
-/*
- * server register resource message body
- */
-
-/* process register */
-typedef struct server_proc_register SERVER_PROC_REGISTER;
-struct server_proc_register
-{
-  static constexpr int SERVER_MAX_SZ_SERVER_NAME = 256;
-  static constexpr int SERVER_MAX_SZ_PROC_EXEC_PATH = 128;
-  static constexpr int SERVER_MAX_SZ_PROC_ARGS = 1024;
-
-  char server_name[SERVER_MAX_SZ_SERVER_NAME];
-  int server_name_length;
-  int pid;
-  char exec_path[SERVER_MAX_SZ_PROC_EXEC_PATH];
-  char args[SERVER_MAX_SZ_PROC_ARGS];
-
-  inline server_proc_register ();
-};
-
 extern std::unique_ptr<server_monitor> master_Server_monitor;
-
-server_proc_register::server_proc_register ()
-  : server_name_length (0)
-  , pid (0)
-{
-  memset (server_name, 0, SERVER_MAX_SZ_SERVER_NAME);
-  memset (exec_path, 0, SERVER_MAX_SZ_PROC_EXEC_PATH);
-  memset (args, 0, SERVER_MAX_SZ_PROC_ARGS);
-}
-
 #endif

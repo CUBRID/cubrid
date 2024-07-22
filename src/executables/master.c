@@ -339,7 +339,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
   int length;
   CSS_CONN_ENTRY *datagram_conn;
   SOCKET_QUEUE_ENTRY *entry;
-  SERVER_PROC_REGISTER *proc_register = (SERVER_PROC_REGISTER *) buffer;
+  CSS_SERVER_PROC_REGISTER *proc_register = (CSS_SERVER_PROC_REGISTER *) buffer;
 
   datagram = NULL;
   datagram_length = 0;
@@ -466,7 +466,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   //  1. When a client requests to connect a cub_server to cub_master, which is already registered.
   //  2. When a new cub_server requests to register itself to cub_master.
   //  For the first situation, css_register_new_server() receives the server name as data.
-  //  For the second situation, css_register_new_server() receives SERVER_PROC_REGISTER as data.
+  //  For the second situation, css_register_new_server() receives CSS_SERVER_PROC_REGISTER as data.
   //  css_register_new_server determines which case it is by checking if the entry is NULL or not.
 
   if (css_receive_data (conn, rid, &data, &data_length, -1) == NO_ERRORS)

@@ -92,10 +92,10 @@ set(CUB_MASTER_SOURCES
   ${EXECUTABLES_DIR}/master.c
   ${EXECUTABLES_DIR}/master_request.c
   ${EXECUTABLES_DIR}/master_util.c
-  ${EXECUTABLES_DIR}/master_server_monitor.cpp
   )
 if(UNIX)
   list(APPEND CUB_MASTER_SOURCES ${EXECUTABLES_DIR}/master_heartbeat.c)
+  list(APPEND CUB_MASTER_SOURCES ${EXECUTABLES_DIR}/master_server_monitor.cpp)
   SET_SOURCE_FILES_PROPERTIES(
 	${CUB_MASTER_SOURCES}
 	PROPERTIES LANGUAGE CXX
