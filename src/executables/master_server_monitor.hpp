@@ -40,11 +40,11 @@ class server_monitor
 	server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
 	~server_entry () {};
 
-	server_entry &operator= (const server_entry &) = default;
-	server_entry &operator= (server_entry &&) = default;
-
 	server_entry (const server_entry &) = default;
 	server_entry (server_entry &&) = default;
+
+	server_entry &operator= (const server_entry &) = default;
+	server_entry &operator= (server_entry &&) = default;
 
 	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
 
