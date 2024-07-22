@@ -176,7 +176,6 @@ static char *gauge_class_name;
 
 static volatile bool writer_thread_proc_terminate = false;
 static volatile bool printer_thread_proc_terminate = false;
-static volatile bool multi_thread_mode = false;
 static int max_fetched_copyarea_list = 1;
 #if !defined(WINDOWS)
 static S_WAITING_INFO wi_unload_class;
@@ -1373,9 +1372,7 @@ unload_printer (LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj, TEXT_OUTPUT * obj
       TIMER_END (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
       if (error == NO_ERROR)
 	{
-	  TIMER_BEGIN (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
 	  error = process_object (desc_obj, &obj->oid, g_uci->referenced_class, obj_out);
-	  TIMER_END (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
 	  if (error != NO_ERROR)
 	    {
 	      if (!ignore_err_flag)
@@ -1506,7 +1503,7 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
 
   OID_SET_NULL (&last_oid);
 
-  if (!multi_thread_mode)
+  if (!g_multi_thread_mode)
     {
       obj_out = &(g_thr_param[0].text_output);
       desc_obj = make_desc_obj (g_uci->class_ptr, g_varchar_buffer_size);
@@ -1523,7 +1520,7 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
 
 	  if (fetch_area != NULL)
 	    {
-	      if (!multi_thread_mode)
+	      if (!g_multi_thread_mode)
 		{
 		  error = unload_printer (fetch_area, desc_obj, obj_out);
 		  locator_free_copy_area (fetch_area);
@@ -1873,7 +1870,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   /* Before outputting individual records, common information needs to be output.
    * Let's print this information to a file immediately.
    */
-  g_is_direct_flush = true;
+  g_multi_thread_mode = false;
 
   class_oid = ws_oid (class_);
 
@@ -1935,8 +1932,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 
   printer_thread_proc_terminate = false;
   writer_thread_proc_terminate = false;
-  g_is_direct_flush = (nthreads <= 1) ? true : false;
-  multi_thread_mode = (nthreads > 0) ? true : false;
+  g_multi_thread_mode = (nthreads > 0) ? true : false;
   TIMER_CLEAR (&(g_thr_param[0].wi_get_list));
   TIMER_CLEAR (&(g_thr_param[0].wi_add_Q));
 
@@ -1967,7 +1963,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   unld_cls_info.cparea_lst_ref = &c_cparea_lst_class;
   g_uci = &unld_cls_info;
 
-  if (multi_thread_mode)
+  if (g_multi_thread_mode)
     {
       for (i = 0; i < nthreads; i++)
 	{
@@ -1988,20 +1984,17 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	    }
 	}
 
-      if (nthreads > 1)
+      if (pthread_create (&writer_tid, NULL, unload_writer_thread, NULL) != 0)
 	{
-	  if (pthread_create (&writer_tid, NULL, unload_writer_thread, NULL) != 0)
-	    {
-	      perror ("pthread_create()\n");
-	      exit (1);
-	    }
+	  perror ("pthread_create()\n");
+	  exit (1);
 	}
     }
 
   YIELD_THREAD ();
   unload_fetcher (fetch_type);
 
-  if (!multi_thread_mode)
+  if (!g_multi_thread_mode)
     {
       assert (g_thr_param[0].text_output.ref_thread_param_idx == 0);
       error = text_print_request_flush (&(g_thr_param[0].text_output), true);
@@ -2030,11 +2023,13 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	}
     }
 
-  if (nthreads > 1)
+  if (g_multi_thread_mode)
     {
       void *retval;
       writer_thread_proc_terminate = true;
       pthread_join (writer_tid, &retval);
+
+      g_multi_thread_mode = false;
     }
 
   pthread_cond_destroy (&unld_cls_info.cond);
@@ -2109,11 +2104,12 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
   int data;
   int v = 0;
 
+  TIMER_BEGIN (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
   class_ptr = desc_obj->class_;
   class_oid = ws_oid (desc_obj->classop);
   if (!datafile_per_class && referenced_class)
     {				/* need to hash OID */
-      if (multi_thread_mode)
+      if (g_multi_thread_mode)
 	{
 	  pthread_mutex_lock (&g_update_hash_cs_lock);
 	  update_hash (obj_oid, class_oid, &data);
@@ -2157,17 +2153,15 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
       ++v;
     }
   CHECK_PRINT_ERROR (text_print (obj_out, "\n", 1, NULL));
+  TIMER_END (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
 
-  error = text_print_request_flush (obj_out, false);
-
-exit_on_end:
-
-  return error;
+  return text_print_request_flush (obj_out, false);
 
 exit_on_error:
-
   CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
+  TIMER_END (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
+
+  return error;
 
 }
 
@@ -2730,8 +2724,8 @@ open_object_file (extract_context & ctxt, const char *output_dirname, const char
   return true;
 }
 
-
-#if 0
+//#define USE_CFG_FILE_TEST
+#if defined(USE_CFG_FILE_TEST)
 bool
 read_unload_cfg (int *io_buffer_size, int *fetched_list_size, int *writer_q_size, int *io_buffer_list_sz)
 {
@@ -2819,7 +2813,7 @@ init_thread_param (const char *output_dirname, int nthreads)
   /* There may be content that needs to be output even before calling process_class().
    * Let's output this area to a file immediately.
    */
-  g_is_direct_flush = true;
+  g_multi_thread_mode = false;
 
   int _blksize = 4096;
   g_io_buffer_size = 1024 * 1024;	/* 1 Mbyte */
@@ -2850,11 +2844,12 @@ init_thread_param (const char *output_dirname, int nthreads)
 
   max_fetched_copyarea_list = (thr_max * 4);	// TODO: ctshim
 
-#if 0
+#if defined(USE_CFG_FILE_TEST)
   if (read_unload_cfg (&g_io_buffer_size, &max_fetched_copyarea_list, &writer_q_size, &buffer_block_list_sz))
     {
-      fprintf (stderr, "Notice: read unloaddb.cfg\n");
       g_io_buffer_size -= (g_io_buffer_size % _blksize);
+      fprintf (stderr, "Notice: read unloaddb.cfg, io_buffer_size=%d buffer_list_cnt=%d fetch list=%d wq_size=%d\n",
+	       g_io_buffer_size, buffer_block_list_sz, max_fetched_copyarea_list, writer_q_size);
       return init_queue_n_list_for_object_file (writer_q_size, buffer_block_list_sz);
     }
 #endif

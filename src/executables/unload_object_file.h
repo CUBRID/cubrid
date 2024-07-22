@@ -122,7 +122,7 @@ extern volatile bool error_occurred;
 extern int g_sampling_records;
 extern int g_io_buffer_size;
 extern int g_fd_handle;
-extern bool g_is_direct_flush;
+extern bool g_multi_thread_mode;
 extern UNLD_THR_PARAM *g_thr_param;
 
 #endif // _LOAD_OBJECT_THREADING_H_

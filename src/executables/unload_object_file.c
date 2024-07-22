@@ -66,7 +66,7 @@
 volatile bool error_occurred = false;
 int g_io_buffer_size = 4096;
 int g_fd_handle = INVALID_FILE_NO;
-bool g_is_direct_flush = false;
+bool g_multi_thread_mode = false;
 UNLD_THR_PARAM *g_thr_param = NULL;
 int g_sampling_records = -1;
 
@@ -515,22 +515,20 @@ static int
 flush_quoted_str (TEXT_OUTPUT * tout, const char *st, int tlen)
 {
   int ret = NO_ERROR;
-  int cpsize;
   int capacity = tout->tail_ptr->iosize - tout->tail_ptr->count;
 
   if (capacity <= tlen)
     {
-      cpsize = (capacity < tlen) ? capacity : tlen;
-      memcpy (tout->tail_ptr->ptr, st, cpsize);
-      tout->tail_ptr->ptr += cpsize;
-      tout->tail_ptr->count += cpsize;
-      tlen -= cpsize;
+      memcpy (tout->tail_ptr->ptr, st, capacity);
+      tout->tail_ptr->ptr += capacity;
+      tout->tail_ptr->count += capacity;
+      tlen -= capacity;
       assert (tout->tail_ptr->count == tout->tail_ptr->iosize);
 
       ret = get_text_output_mem (tout);
       if ((ret == NO_ERROR) && (tlen > 0))
 	{
-	  memcpy (tout->tail_ptr->ptr, st + cpsize, tlen);
+	  memcpy (tout->tail_ptr->ptr, st + capacity, tlen);
 	  tout->tail_ptr->ptr += tlen;
 	  tout->tail_ptr->count += tlen;
 	}
@@ -973,7 +971,7 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
       return NO_ERROR;
     }
 
-  if (g_is_direct_flush && g_fd_handle != INVALID_FILE_NO)
+  if (!g_multi_thread_mode && g_fd_handle != INVALID_FILE_NO)
     {
       tout->head_ptr = NULL;
       tout->tail_ptr = NULL;
