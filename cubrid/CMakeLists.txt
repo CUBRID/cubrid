@@ -497,6 +497,7 @@ target_include_directories(cubrid PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/uti
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubrid LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubrid PUBLIC rt)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
