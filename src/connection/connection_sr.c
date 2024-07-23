@@ -149,8 +149,8 @@ CSS_THREAD_FN css_Request_handler = NULL;
 /* This will handle closed connection errors */
 CSS_THREAD_FN css_Connection_error_handler = NULL;
 
-static char css_Exec_path[PATH_MAX];
-static char **css_Argv;
+static char css_Server_exec_path[PATH_MAX];
+static char **css_Server_argv;
 
 #define CSS_CONN_IDX(conn_arg) ((conn_arg) - css_Conn_array)
 
@@ -1090,11 +1090,11 @@ css_set_proc_register (const char *server_name, int server_name_length, CSS_SERV
   memcpy (proc_register->server_name, server_name, server_name_length);
   proc_register->server_name_length = htonl (server_name_length);
   proc_register->pid = htonl (getpid ());
-  strncpy_bufsize (proc_register->exec_path, css_Exec_path);
+  strncpy_bufsize (proc_register->exec_path, css_Server_exec_path);
 
   p = (char *) &proc_register->args[0];
   last = (char *) (p + sizeof (proc_register->args));
-  for (argv = css_Argv; *argv; argv++)
+  for (argv = css_Server_argv; *argv; argv++)
     {
       p += snprintf (p, MAX ((last - p), 0), "%s ", *argv);
     }
@@ -3172,7 +3172,7 @@ void
 css_set_exec_path (char *exec_path)
 {
   assert (exec_path != NULL);
-  strncpy (css_Exec_path, exec_path, sizeof (css_Exec_path) - 1);
+  strncpy (css_Server_exec_path, exec_path, sizeof (css_Server_exec_path) - 1);
 }
 
 /*
@@ -3185,5 +3185,5 @@ void
 css_set_argv (char **argv)
 {
   assert (argv != NULL);
-  css_Argv = argv;
+  css_Server_argv = argv;
 }
