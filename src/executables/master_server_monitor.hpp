@@ -47,10 +47,7 @@ class server_monitor
 	server_entry &operator= (const server_entry &) = delete;
 	server_entry &operator= (server_entry &&) = default;
 
-	CSS_CONN_ENTRY *get_conn ()
-	{
-	  return m_conn;
-	}
+	CSS_CONN_ENTRY *get_conn ();
 
       private:
 	void proc_make_arg (char *args);

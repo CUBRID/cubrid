@@ -97,6 +97,12 @@ server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn)
     }
 }
 
+CSS_CONN_ENTRY *
+server_monitor::server_entry::get_conn ()
+{
+  return m_conn;
+}
+
 void
 server_monitor::server_entry::proc_make_arg (char *args)
 {
