@@ -1313,21 +1313,16 @@ gauge_alarm_handler (int sig)
     {
       int64_t class_objects = class_objects_atomic;
       int64_t total_objects = total_objects_atomic;
-
       int64_t total_approximate_class_objects_tmp = total_approximate_class_objects;
-      int64_t approximate_class_objects_tmp = approximate_class_objects;
 
-      int64_t v_class_objects = (int64_t) (class_objects * 1.1);
-
-      if (v_class_objects > total_approximate_class_objects)
+      if (class_objects > approximate_class_objects)
 	{
-	  total_approximate_class_objects_tmp += (v_class_objects - total_approximate_class_objects);
-	  approximate_class_objects_tmp = v_class_objects;
+	  total_approximate_class_objects_tmp += (class_objects - approximate_class_objects);
 	}
 
       fprintf (stdout, MSG_FORMAT "\r", gauge_class_name, class_objects,
-	       (class_objects > 0 && approximate_class_objects_tmp >= class_objects)
-	       ? (int) (100 * ((float) class_objects / (float) approximate_class_objects_tmp)) : 100,
+	       (class_objects > 0 && approximate_class_objects >= class_objects)
+	       ? (int) (100 * ((float) class_objects / (float) approximate_class_objects)) : 100,
 	       (int) (100 * ((float) total_objects / (float) total_approximate_class_objects_tmp)));
       fflush (stdout);
     }
