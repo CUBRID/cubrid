@@ -7538,12 +7538,19 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 	}
       else if (attr->type_enum == PT_TYPE_NONE)
 	{
-	  pt_fixup_column_type (col);
-
-	  attr->type_enum = col->type_enum;
-	  if (col->data_type)
+	  if (col->node_type == PT_VALUE && col->type_enum == PT_TYPE_NULL)
 	    {
-	      attr->data_type = parser_copy_tree_list (parser, col->data_type);
+	      attr->type_enum = PT_TYPE_VARCHAR;
+	    }
+	  else
+	    {
+	      pt_fixup_column_type (col);
+
+	      attr->type_enum = col->type_enum;
+	      if (col->data_type)
+		{
+		  attr->data_type = parser_copy_tree_list (parser, col->data_type);
+		}
 	    }
 	}
       /* attribute and query_spec column must match type-wise */
