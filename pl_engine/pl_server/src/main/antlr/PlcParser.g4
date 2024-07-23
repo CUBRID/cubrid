@@ -48,8 +48,8 @@ parameter_list
     ;
 
 parameter
-    : parameter_name IN? type_spec                      # parameter_in
-    | parameter_name ( IN? OUT | INOUT ) type_spec      # parameter_out
+    : parameter_name IN? type_spec (COMMENT CHAR_STRING)?                   # parameter_in
+    | parameter_name ( IN? OUT | INOUT ) type_spec (COMMENT CHAR_STRING)?   # parameter_out
     ;
 
 default_value_part
@@ -82,7 +82,15 @@ constant_declaration
     ;
 
 cursor_definition
-    : CURSOR identifier ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) IS static_sql SEMICOLON
+    : CURSOR identifier ( (LPAREN cursor_parameter_list RPAREN)? | LPAREN RPAREN ) IS static_sql SEMICOLON
+    ;
+
+cursor_parameter_list
+    : cursor_parameter (',' cursor_parameter)*
+    ;
+
+cursor_parameter
+    : parameter_name IN? type_spec
     ;
 
 exception_declaration
