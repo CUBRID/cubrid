@@ -864,7 +864,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       code_info.scode = pl_code;
       code_info.otype = compile_info.compiled_type;
       code_info.ocode = compile_info.compiled_code;
-      code_info.owner = Au_user; // current user
+      code_info.owner = sp_info.owner;
 
       err = sp_add_stored_procedure_code (code_info);
       if (err != NO_ERROR)
@@ -1096,8 +1096,18 @@ jsp_check_stored_procedure_name (const char *str)
 {
   char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
 
-  sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
+  sm_qualifier_name (str, owner_name, DB_MAX_USER_LENGTH);
+  if (strncmp (owner_name, "dbms_output", DB_MAX_USER_LENGTH) == 0)
+    {
+      sprintf (buffer, "%s.%s", "public", str);
+    }
+  else
+    {
+      sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
+    }
+
   name = strdup (buffer);
 
   return name;

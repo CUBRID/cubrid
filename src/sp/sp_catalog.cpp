@@ -65,7 +65,7 @@ static int sp_builtin_init ()
   a.is_system_generated = true;
 
   // DBMS_OUTPUT.enable
-  v.unique_name = "dbms_output.enable";
+  v.unique_name = "public.dbms_output.enable";
   v.sp_name = "enable";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
@@ -89,7 +89,7 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.disable
-  v.unique_name = "dbms_output.disable";
+  v.unique_name = "public.dbms_output.disable";
   v.sp_name = "disable";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
@@ -102,7 +102,7 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.put
-  v.unique_name = "dbms_output.put";
+  v.unique_name = "public.dbms_output.put";
   v.sp_name = "put";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
@@ -126,7 +126,7 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.put_line
-  v.unique_name = "dbms_output.put_line";
+  v.unique_name = "public.dbms_output.put_line";
   v.sp_name = "put_line";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
@@ -150,7 +150,7 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.new_line
-  v.unique_name = "dbms_output.new_line";
+  v.unique_name = "public.dbms_output.new_line";
   v.sp_name = "new_line";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
@@ -163,7 +163,7 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.get_line
-  v.unique_name = "dbms_output.get_line";
+  v.unique_name = "public.dbms_output.get_line";
   v.sp_name = "get_line";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
@@ -198,7 +198,7 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.get_lines
-  v.unique_name = "dbms_output.get_lines";
+  v.unique_name = "public.dbms_output.get_lines";
   v.sp_name = "get_lines";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;

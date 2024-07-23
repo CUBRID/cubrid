@@ -9560,19 +9560,13 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  return;
 	}
-
-      if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
-	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER,
-		      "CREATE PROCEDURE/FUNCTION");
-	  return;
-	}
     }
-  else
+
+  if (ws_is_same_object (owner, Au_user) == false && au_is_dba_group_member (Au_user) == false)
     {
-      /* In system class names, owner name can be NULL. Otherwise, owner name must not be NULL. */
-      assert (au_is_dba_group_member (Au_user));
-      assert (sm_check_system_class_by_name (PT_NAME_ORIGINAL (name)));
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER,
+		  "CREATE PROCEDURE/FUNCTION");
+      return;
     }
 
   for (param = node->info.sp.param_list; param; param = param->next)
