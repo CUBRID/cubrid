@@ -13,7 +13,7 @@
       "binaryDir": "${sourceDir}/build_preset_${presetName}",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "CMAKE_INSTALL_PREFIX": "$env{HOME}/CUBRID",
+        "CMAKE_INSTALL_PREFIX": "$env{CUBRID}",
         "WITH_CCI": "true"
       }
     },

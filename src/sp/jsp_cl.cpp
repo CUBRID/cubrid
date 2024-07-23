@@ -1624,7 +1624,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	int directive = db_get_int (&directive_val);
 
 	const char *auth_name = (directive == SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER ? jsp_get_owner_name (
-					 parsed_method_name) : au_user_name ());
+					 parsed_method_name) : au_get_current_user_name ());
 	int auth_name_len = strlen (auth_name);
 
 	sig->auth_name = (char *) db_private_alloc (NULL, auth_name_len * sizeof (char));

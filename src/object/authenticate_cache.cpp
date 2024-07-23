@@ -23,71 +23,285 @@
 #include "authenticate_cache.hpp"
 
 #include "authenticate.h"
+#include "authenticate_grant.hpp" /* apply_grants */
+#include "dbtype_function.h"
 #include "schema_manager.h"
-
-static AU_CLASS_CACHE *au_make_class_cache (int depth);
-static void au_free_class_cache (AU_CLASS_CACHE *cache);
+#include "set_object.h"
 
 static void free_user_cache (AU_USER_CACHE *u);
-static int au_extend_class_caches (int *index);
 
-/*
- * Au_user_cache
- *
- * The list of cached users.
- */
-static AU_USER_CACHE *Au_user_cache = NULL;
-
-/*
- * Au_class_caches
- *
- * A list of all allocated class caches.  These are maintained on a list
- * so that we can get to all of them easily when they need to be
- * altered.
- */
-static AU_CLASS_CACHE *Au_class_caches = NULL;
-
-/*
- * Au_cache_depth
- *
- * These maintain information about the structure of the class caches.
- * Au_cache_depth has largest current index.
- * Au_cache_max has the total size of the allocated arrays.
- * Au_cache_increment has the growth count when the array needs to be
- * extended.
- * The caches are usually allocated larger than actually necessary so
- * we can avoid reallocating all of them when a new user is added.
- * Probably not that big a deal.
- */
-static int Au_cache_depth = 0;
-static int Au_cache_max = 0;
-static int Au_cache_increment = 4;
-
-/*
- * Au_cache_index
- *
- * This is the current index into the class authorization caches.
- * It will be maintained in parallel with the current user.
- * Each user is assigned a particular index, when the user changes,
- * Au_cache_index is changed as well.
- */
-int Au_cache_index = -1;
+authenticate_cache::authenticate_cache ()
+{
+  init ();
+}
 
 /*
  * init_caches - Called during au_init().  Initialize all of the cache
- *               related global variables.
+ *               related variables.
  *   return: none
  */
 void
-init_caches (void)
+authenticate_cache::init (void)
 {
-  Au_user_cache = NULL;
-  Au_class_caches = NULL;
-  Au_cache_depth = 0;
-  Au_cache_max = 0;
-  Au_cache_increment = 4;
-  Au_cache_index = -1;
+  user_cache = NULL;
+  class_caches = NULL;
+  cache_depth = 0;
+  cache_max = 0;
+  cache_increment = 4;
+  cache_index = -1;
 }
+
+
+/*
+ * flush_caches - Called during au_final(). Free the authorization cache
+ *                structures and initialize the global variables
+ *                to their default state.
+ *   return : none
+ */
+void
+authenticate_cache::flush (void)
+{
+  AU_USER_CACHE *u, *nextu;
+  AU_CLASS_CACHE *c, *nextc;
+
+  for (c = class_caches, nextc = NULL; c != NULL; c = nextc)
+    {
+      nextc = c->next;
+      c->class_->auth_cache = NULL;
+      free_class_cache (c);
+    }
+  for (u = user_cache, nextu = NULL; u != NULL; u = nextu)
+    {
+      nextu = u->next;
+      free_user_cache (u);
+    }
+
+  /* clear the associated globals */
+  init ();
+}
+
+/*
+ * update_cache -  This is the main function for parsing all of
+ *                 the authorization information for a particular class and
+ *                 caching it in the class structure.
+ *                 This will be called once after each successful
+ *                 read/write lock. It needs to be fast.
+ *   return: error code
+ *   classop(in):  class MOP to authorize
+ *   sm_class(in): direct pointer to class structure
+ *   cache(in):
+ */
+int
+authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
+{
+  int error = NO_ERROR;
+  DB_SET *groups = NULL;
+  int i, save, card;
+  DB_VALUE value;
+  MOP group, auth;
+  bool is_member = false;
+  unsigned int *bits = NULL;
+  bool need_pop_er_stack = false;
+
+  /*
+   * must disable here because we may be updating the cache of the system
+   * objects and we need to read them in order to update etc.
+   */
+  AU_DISABLE (save);
+
+  er_stack_push ();
+
+  need_pop_er_stack = true;
+
+  bits = get_cache_bits (sm_class);
+  if (bits == NULL)
+    {
+      assert (false);
+      return er_errid ();
+    }
+
+  /* initialize the cache bits */
+  *bits = AU_NO_AUTHORIZATION;
+
+  if (sm_class->owner == NULL)
+    {
+      /* This shouldn't happen - assign it to the DBA */
+      error = ER_AU_CLASS_WITH_NO_OWNER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+
+      goto end;
+    }
+
+  is_member = au_is_dba_group_member (Au_user);
+  if (is_member)
+    {
+      *bits = AU_FULL_AUTHORIZATION;
+      goto end;
+    }
+
+  /* there might be errors */
+  error = er_errid ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (ws_is_same_object (Au_user, sm_class->owner))
+    {
+      /* might want to allow grant/revoke on self */
+      *bits = AU_FULL_AUTHORIZATION;
+      goto end;
+    }
+
+  if (au_get_set (Au_user, "groups", &groups) != NO_ERROR)
+    {
+      error = ER_AU_ACCESS_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "groups", AU_USER_CLASS_NAME);
+
+      goto end;
+    }
+
+  db_make_object (&value, sm_class->owner);
+
+  is_member = set_ismember (groups, &value);
+
+  /* there might be errors */
+  error = er_errid ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (is_member)
+    {
+      /* we're a member of the owning group */
+      *bits = AU_FULL_AUTHORIZATION;
+    }
+  else if (au_get_object (Au_user, "authorization", &auth) != NO_ERROR)
+    {
+      error = ER_AU_ACCESS_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "authorization", AU_USER_CLASS_NAME);
+    }
+  else
+    {
+      /* apply local grants */
+      error = apply_grants (auth, classop, bits);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      /* apply grants from all groups */
+      card = set_cardinality (groups);
+
+      /* there might be errors */
+      error = er_errid ();
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      for (i = 0; i < card; i++)
+	{
+	  /* will have to handle deleted groups here ! */
+	  error = au_set_get_obj (groups, i, &group);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  if (ws_is_same_object (group, Au_dba_user))
+	    {
+	      /* someones on the DBA member list, give them power */
+	      *bits = AU_FULL_AUTHORIZATION;
+	    }
+	  else
+	    {
+	      error = au_get_object (group, "authorization", &auth);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+
+	      error = apply_grants (auth, classop, bits);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+	    }
+	}
+    }
+
+end:
+
+  if (groups != NULL)
+    {
+      set_free (groups);
+    }
+
+  if (need_pop_er_stack)
+    {
+      if (error == NO_ERROR)
+	{
+	  er_stack_pop ();
+	}
+      else
+	{
+	  er_stack_pop_and_keep_error ();
+	}
+    }
+
+  AU_ENABLE (save);
+
+  return (error);
+}
+
+// setter/getter of cache_index
+int
+authenticate_cache::get_cache_index ()
+{
+  return cache_index;
+}
+
+void
+authenticate_cache::set_cache_index (int idx)
+{
+  cache_index = idx;
+}
+
+/*
+ * au_free_authorization_cache -  This removes a class cache from the global
+ *                                cache list, detaches it from the class
+ *                                and frees it.
+ *   return: none
+ *   cache(in): class cache
+ */
+void
+authenticate_cache::free_authorization_cache (void *cache)
+{
+  AU_CLASS_CACHE *c, *prev;
+
+  if (cache != NULL)
+    {
+      for (c = class_caches, prev = NULL; c != NULL && c != cache; c = c->next)
+	{
+	  prev = c;
+	}
+      if (c != NULL)
+	{
+	  if (prev == NULL)
+	    {
+	      class_caches = c->next;
+	    }
+	  else
+	    {
+	      prev->next = c->next;
+	    }
+	}
+      free_class_cache ((AU_CLASS_CACHE *) cache);
+    }
+}
+
 
 /*
  * AUTHORIZATION CACHES
@@ -98,8 +312,8 @@ init_caches (void)
  *    return: new cache structure
  *    depth(in): number of elements to include in the cache
  */
-static AU_CLASS_CACHE *
-au_make_class_cache (int depth)
+AU_CLASS_CACHE *
+authenticate_cache::make_class_cache (int depth)
 {
   AU_CLASS_CACHE *new_class_cache = NULL;
   int i;
@@ -135,8 +349,8 @@ au_make_class_cache (int depth)
  *    return: none
  *    cache(in): cache to free
  */
-static void
-au_free_class_cache (AU_CLASS_CACHE *cache)
+void
+authenticate_cache::free_class_cache (AU_CLASS_CACHE *cache)
 {
   if (cache != NULL)
     {
@@ -154,15 +368,15 @@ au_free_class_cache (AU_CLASS_CACHE *cache)
  *       cache on the global cache list so we can maintain it consistently.
  */
 AU_CLASS_CACHE *
-au_install_class_cache (SM_CLASS *sm_class)
+authenticate_cache::install_class_cache (SM_CLASS *sm_class)
 {
   AU_CLASS_CACHE *new_class_cache;
 
-  new_class_cache = au_make_class_cache (Au_cache_max);
+  new_class_cache = make_class_cache (cache_max);
   if (new_class_cache != NULL)
     {
-      new_class_cache->next = Au_class_caches;
-      Au_class_caches = new_class_cache;
+      new_class_cache->next = class_caches;
+      class_caches = new_class_cache;
       new_class_cache->class_ = sm_class;
       sm_class->auth_cache = new_class_cache;
     }
@@ -170,46 +384,13 @@ au_install_class_cache (SM_CLASS *sm_class)
   return new_class_cache;
 }
 
-/*
- * au_free_authorization_cache -  This removes a class cache from the global
- *                                cache list, detaches it from the class
- *                                and frees it.
- *   return: none
- *   cache(in): class cache
- */
-void
-au_free_authorization_cache (void *cache)
-{
-  AU_CLASS_CACHE *c, *prev;
-
-  if (cache != NULL)
-    {
-      for (c = Au_class_caches, prev = NULL; c != NULL && c != cache; c = c->next)
-	{
-	  prev = c;
-	}
-      if (c != NULL)
-	{
-	  if (prev == NULL)
-	    {
-	      Au_class_caches = c->next;
-	    }
-	  else
-	    {
-	      prev->next = c->next;
-	    }
-	}
-      au_free_class_cache ((AU_CLASS_CACHE *) cache);
-    }
-}
-
 unsigned int *
-get_cache_bits (SM_CLASS *sm_class)
+authenticate_cache::get_cache_bits (SM_CLASS *sm_class)
 {
   AU_CLASS_CACHE *cache = (AU_CLASS_CACHE *) sm_class->auth_cache;
   if (cache == NULL)
     {
-      cache = au_install_class_cache (sm_class);
+      cache = install_class_cache (sm_class);
       if (cache == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -217,7 +398,7 @@ get_cache_bits (SM_CLASS *sm_class)
 	}
     }
 
-  return &cache->data[Au_cache_index];
+  return &cache->data[cache_index];
 }
 
 /*
@@ -230,26 +411,26 @@ get_cache_bits (SM_CLASS *sm_class)
  *       and avoid reallocating all the caches. If we have no extra elements,
  *       we grow all the caches by a certain amount.
  */
-static int
-au_extend_class_caches (int *index)
+int
+authenticate_cache::extend_class_caches (int *index)
 {
   int error = NO_ERROR;
   AU_CLASS_CACHE *c, *new_list, *new_entry, *next;
   int new_max, i;
 
-  if (Au_cache_depth < Au_cache_max)
+  if (cache_depth < cache_max)
     {
-      *index = Au_cache_depth;
-      Au_cache_depth++;
+      *index = cache_depth;
+      cache_depth++;
     }
   else
     {
       new_list = NULL;
-      new_max = Au_cache_max + Au_cache_increment;
+      new_max = cache_max + cache_increment;
 
-      for (c = Au_class_caches; c != NULL && !error; c = c->next)
+      for (c = class_caches; c != NULL && !error; c = c->next)
 	{
-	  new_entry = au_make_class_cache (new_max);
+	  new_entry = make_class_cache (new_max);
 	  if (new_entry == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -257,7 +438,7 @@ au_extend_class_caches (int *index)
 	    }
 	  else
 	    {
-	      for (i = 0; i < Au_cache_depth; i++)
+	      for (i = 0; i < cache_depth; i++)
 		{
 		  new_entry->data[i] = c->data[i];
 		}
@@ -269,21 +450,21 @@ au_extend_class_caches (int *index)
 
       if (!error)
 	{
-	  for (c = Au_class_caches, next = NULL; c != NULL; c = next)
+	  for (c = class_caches, next = NULL; c != NULL; c = next)
 	    {
 	      next = c->next;
 	      c->class_->auth_cache = NULL;
-	      au_free_class_cache (c);
+	      free_class_cache (c);
 	    }
 	  for (c = new_list; c != NULL; c = c->next)
 	    {
 	      c->class_->auth_cache = c;
 	    }
 
-	  Au_class_caches = new_list;
-	  Au_cache_max = new_max;
-	  *index = Au_cache_depth;
-	  Au_cache_depth++;
+	  class_caches = new_list;
+	  cache_max = new_max;
+	  *index = cache_depth;
+	  cache_depth++;
 	}
     }
 
@@ -305,13 +486,13 @@ au_extend_class_caches (int *index)
  *       be fast.
  */
 int
-au_find_user_cache_index (DB_OBJECT *user, int *index, int check_it)
+authenticate_cache::find_user_cache_index (DB_OBJECT *user, int *index, int check_it)
 {
   int error = NO_ERROR;
   AU_USER_CACHE *u, *new_user_cache;
   DB_OBJECT *class_mop;
 
-  for (u = Au_user_cache; u != NULL && !ws_is_same_object (u->user, user); u = u->next)
+  for (u = user_cache; u != NULL && !ws_is_same_object (u->user, user); u = u->next)
     ;
 
   if (u != NULL)
@@ -344,14 +525,14 @@ au_find_user_cache_index (DB_OBJECT *user, int *index, int check_it)
       new_user_cache = (AU_USER_CACHE *) malloc (sizeof (AU_USER_CACHE));
       if (new_user_cache != NULL)
 	{
-	  if ((error = au_extend_class_caches (index)))
+	  if ((error = extend_class_caches (index)))
 	    {
 	      free_and_init (new_user_cache);
 	    }
 	  else
 	    {
-	      new_user_cache->next = Au_user_cache;
-	      Au_user_cache = new_user_cache;
+	      new_user_cache->next = user_cache;
+	      user_cache = new_user_cache;
 	      new_user_cache->user = user;
 	      new_user_cache->index = *index;
 	    }
@@ -366,8 +547,8 @@ au_find_user_cache_index (DB_OBJECT *user, int *index, int check_it)
  *   returns: none
  *   u(in): user cache
  */
-static void
-free_user_cache (AU_USER_CACHE *u)
+void
+authenticate_cache::free_user_cache (AU_USER_CACHE *u)
 {
   if (u != NULL)
     {
@@ -395,19 +576,19 @@ free_user_cache (AU_USER_CACHE *u)
  *       matter that much.  grant/revoke don't happen very often.
  */
 void
-reset_cache_for_user_and_class (SM_CLASS *sm_class)
+authenticate_cache::reset_cache_for_user_and_class (SM_CLASS *sm_class)
 {
   AU_USER_CACHE *u;
   AU_CLASS_CACHE *c;
 
-  for (c = Au_class_caches; c != NULL && c->class_ != sm_class; c = c->next);
+  for (c = class_caches; c != NULL && c->class_ != sm_class; c = c->next);
   if (c != NULL)
     {
       /*
        * invalide every user's cache for this class_, could be more
        * selective and do only the given user and its members
        */
-      for (u = Au_user_cache; u != NULL; u = u->next)
+      for (u = user_cache; u != NULL; u = u->next)
 	{
 	  c->data[u->index] = AU_CACHE_INVALID;
 	}
@@ -430,14 +611,14 @@ reset_cache_for_user_and_class (SM_CLASS *sm_class)
  */
 
 void
-au_reset_authorization_caches (void)
+authenticate_cache::reset_authorization_caches (void)
 {
   AU_CLASS_CACHE *c;
   int i;
 
-  for (c = Au_class_caches; c != NULL; c = c->next)
+  for (c = class_caches; c != NULL; c = c->next)
     {
-      for (i = 0; i < Au_cache_depth; i++)
+      for (i = 0; i < cache_depth; i++)
 	{
 	  c->data[i] = AU_CACHE_INVALID;
 	}
@@ -456,11 +637,11 @@ au_reset_authorization_caches (void)
  *       cache array.
  */
 void
-remove_user_cache_references (MOP user)
+authenticate_cache::remove_user_cache_references (MOP user)
 {
   AU_USER_CACHE *u;
 
-  for (u = Au_user_cache; u != NULL; u = u->next)
+  for (u = user_cache; u != NULL; u = u->next)
     {
       if (ws_is_same_object (u->user, user))
 	{
@@ -470,39 +651,40 @@ remove_user_cache_references (MOP user)
 }
 
 /*
- * flush_caches - Called during au_final(). Free the authorization cache
- *                structures and initialize the global variables
- *                to their default state.
- *   return : none
+ * au_print_cache() -
+ *   return: none
+ *   cache(in):
+ *   fp(in):
  */
 void
-flush_caches (void)
+authenticate_cache::print_cache (int cache, FILE *fp)
 {
-  AU_USER_CACHE *u, *nextu;
-  AU_CLASS_CACHE *c, *nextc;
+  int i, mask, auth, option;
+  const char *auth_type_name[] =
+  {
+    "select", "insert", "update", "delete", "alter", "index", "execute"
+  };
 
-  for (c = Au_class_caches, nextc = NULL; c != NULL; c = nextc)
+  if (cache < 0)
     {
-      nextc = c->next;
-      c->class_->auth_cache = NULL;
-      au_free_class_cache (c);
+      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_INVALID_CACHE));
     }
-  for (u = Au_user_cache, nextu = NULL; u != NULL; u = nextu)
+  else
     {
-      nextu = u->next;
-      free_user_cache (u);
+      for (i = 0; i < 7; i++)
+	{
+	  mask = 1 << i;
+	  auth = cache & mask;
+	  option = cache & (mask << AU_GRANT_SHIFT);
+	  if (option)
+	    {
+	      fprintf (fp, "*");
+	    }
+	  if (auth)
+	    {
+	      fprintf (fp, "%s ", auth_type_name[i]);
+	    }
+	}
     }
-
-  /* clear the associated globals */
-  init_caches ();
-}
-
-void au_set_cache_index (int idx)
-{
-  Au_cache_index = idx;
-}
-
-int au_get_cache_index()
-{
-  return Au_cache_index;
+  fprintf (fp, "\n");
 }
