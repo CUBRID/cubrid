@@ -3435,11 +3435,11 @@ check_authorization (TR_TRIGGER * trigger, bool alter_flag)
 	  /* must check authorization against the associated class */
 	  if (alter_flag)
 	    {
-	      error = au_check_authorization (trigger->class_mop, AU_ALTER);
+	      error = au_check_class_authorization (trigger->class_mop, AU_ALTER);
 	    }
 	  else
 	    {
-	      error = au_check_authorization (trigger->class_mop, AU_SELECT);
+	      error = au_check_class_authorization (trigger->class_mop, AU_SELECT);
 	    }
 
 	  if (error == NO_ERROR)
@@ -3697,7 +3697,7 @@ check_target (DB_TRIGGER_EVENT event, DB_OBJECT * class_mop, const char *attribu
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_MISSING_TARGET_CLASS, 0);
 	}
       /* User must have ALTER privilege for the class */
-      else if (au_check_authorization (class_mop, AU_ALTER) == NO_ERROR)
+      else if (au_check_class_authorization (class_mop, AU_ALTER) == NO_ERROR)
 	{
 	  if (attribute == NULL)
 	    {

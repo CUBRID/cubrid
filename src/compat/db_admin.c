@@ -1779,7 +1779,7 @@ db_set_password (DB_OBJECT * user, const char *old_passwd, const char *new_passw
   CHECK_MODIFICATION_ERROR ();
 
   /* should check old password ! */
-  retval = au_set_password (user, new_passwd);
+  retval = au_set_password_encrypt (user, new_passwd);
 
   return (retval);
 }
@@ -1946,7 +1946,7 @@ db_get_user_name (void)
 
   /* Kludge, twiddle the constness of this thing.  It probably doesn't need to be const anyway, its just a copy of the
    * attribute value. */
-  name = au_user_name ();
+  name = au_get_current_user_name ();
 
   return ((char *) name);
 }
