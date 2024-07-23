@@ -26,6 +26,9 @@
 
 #include "class_object.h" /* SM_CLASS */
 
+/* Invalid cache is identified when the high bit is on. */
+#define AU_CACHE_INVALID        0x80000000
+
 /*
  * AU_CLASS_CACHE
  *
@@ -66,20 +69,85 @@ struct au_user_cache
   int index;
 };
 
-extern int Au_cache_index;
+/*
+ * AUTHORIZATION CACHING
+ */
 
-extern void init_caches (void);
-extern void flush_caches (void);
+class authenticate_cache
+{
+  public:
 
-// Au_cache_index
-extern int au_get_cache_index ();
-extern void au_set_cache_index (int idx);
+    /*
+     * Au_user_cache
+     *
+     * The list of cached users.
+     */
+    AU_USER_CACHE *user_cache;
 
-extern AU_CLASS_CACHE *au_install_class_cache (SM_CLASS *sm_class);
-extern int au_find_user_cache_index (DB_OBJECT *user, int *index, int check_it);
-extern void reset_cache_for_user_and_class (SM_CLASS *sm_class);
-extern void remove_user_cache_references (MOP user);
+    /*
+     * Au_class_caches
+     *
+     * A list of all allocated class caches.  These are maintained on a list
+     * so that we can get to all of them easily when they need to be
+     * altered.
+     */
+    AU_CLASS_CACHE *class_caches;
 
-extern unsigned int *get_cache_bits (SM_CLASS *sm_class);
+    /*
+     * Au_cache_depth
+     *
+     * These maintain information about the structure of the class caches.
+     * Au_cache_depth has largest current index.
+     * Au_cache_max has the total size of the allocated arrays.
+     * Au_cache_increment has the growth count when the array needs to be
+     * extended.
+     * The caches are usually allocated larger than actually necessary so
+     * we can avoid reallocating all of them when a new user is added.
+     * Probably not that big a deal.
+     */
+    int cache_depth = 0;
+    int cache_max = 0;
+    int cache_increment = 4;
+
+    /*
+    * Au_cache_index
+    *
+    * This is the current index into the class authorization caches.
+    * It will be maintained in parallel with the current user.
+    * Each user is assigned a particular index, when the user changes,
+    * Au_cache_index is changed as well.
+    */
+    int cache_index;
+
+    authenticate_cache ();
+
+    void init (void);
+    void flush (void);
+    int update (MOP classop, SM_CLASS *sm_class);
+
+    // setter/getter of cache_index
+    int get_cache_index ();
+    void set_cache_index (int idx);
+
+    unsigned int *get_cache_bits (SM_CLASS *sm_class);
+
+    void free_authorization_cache (void *cache);
+    int find_user_cache_index (DB_OBJECT *user, int *index, int check_it);
+
+    void reset_cache_for_user_and_class (SM_CLASS *sm_class);
+    void reset_authorization_caches (void);
+
+    void remove_user_cache_references (MOP user);
+
+    void print_cache (int cache, FILE *fp);  // for debugging
+
+  private:
+    // migrate static methods
+    AU_CLASS_CACHE *make_class_cache (int depth);
+    void free_class_cache (AU_CLASS_CACHE *cache);
+    AU_CLASS_CACHE *install_class_cache (SM_CLASS *sm_class);
+    int extend_class_caches (int *index);
+    void free_user_cache (AU_USER_CACHE *u);
+};
 
 #endif // _AUTHENTICATE_CACHE_HPP_
