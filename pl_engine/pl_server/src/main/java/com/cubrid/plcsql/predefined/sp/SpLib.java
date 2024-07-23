@@ -488,7 +488,7 @@ public class SpLib {
     }
 
     public static void DBMS_OUTPUT$GET_LINE(String[] line, Integer[] status) {
-        int[] iArr = new int[0];
+        int[] iArr = new int[1];
         DBMS_OUTPUT.getLine(line, iArr);
         status[0] = iArr[0];
     }
