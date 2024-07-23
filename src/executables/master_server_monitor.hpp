@@ -47,7 +47,10 @@ class server_monitor
 	server_entry &operator= (const server_entry &) = delete;
 	server_entry &operator= (server_entry &&) = default;
 
-	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
+	CSS_CONN_ENTRY *get_conn ()
+	{
+	  return m_conn;
+	}
 
       private:
 	void proc_make_arg (char *args);
@@ -55,6 +58,7 @@ class server_monitor
 	int m_pid;                                    // process ID of server process
 	std::string m_exec_path;                      // executable path of server process
 	std::vector<std::string> m_argv;              // arguments of server process
+	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
 	timeval m_last_revive_time;                   // latest revive time
 	bool m_need_revive;                           // need to revive (true if the server is abnormally terminated)
     };

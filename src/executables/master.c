@@ -359,6 +359,9 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  css_add_request_to_socket_queue (datagram_conn, false, proc_register->server_name, server_fd, READ_WRITE, 0,
 					   &css_Master_socket_anchor);
 
+	  //  Note : server_name is usually packed(appended) information of server_name, version_string, env_var, pid,
+	  //  packed from css_pack_server_name(). Since there are some cases that returns server_name and server_name_length
+	  //  as NULL, we need to check if server_name is packed information or not.
 	  length = (int) strlen (proc_register->server_name) + 1;
 	  server_name_length = (int) ntohl (proc_register->server_name_length);
 
