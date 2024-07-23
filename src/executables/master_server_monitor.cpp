@@ -27,7 +27,7 @@
 
 server_monitor::server_monitor ()
 {
-  m_server_entry_list = std::make_unique<std::vector<server_entry>> ();
+  m_server_entry_list = std::make_unique<std::list<server_entry>> ();
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_list is created. \n");
 
   m_thread_shutdown = false;
@@ -73,15 +73,12 @@ server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, ch
 void
 server_monitor::remove_server_entry_by_conn (CSS_CONN_ENTRY *conn)
 {
+  const auto result = std::remove_if (m_server_entry_list->begin(), m_server_entry_list->end(),
+				      [conn] (auto e) -> bool {return e.m_conn == conn;});
 #if defined(DEBUG)
-  size_t org_size = m_server_entry_list->size ();
+  assert (result != m_server_entry_list->end ());
 #endif
-  m_server_entry_list->erase (std::remove_if (m_server_entry_list->begin(),
-			      m_server_entry_list->end(), [conn] (auto e) -> bool {return e.m_conn == conn;}));
-
-#if defined(DEBUG)
-  assert (org_size > m_server_entry_list->size ());
-#endif
+  m_server_entry_list->erase (result, m_server_entry_list->end());
   fprintf (stdout,
 	   "[SERVER_REVIVE_DEBUG] : server has been removed from master_Server_monitor. Number of server in master_Server_monitor: %d\n",
 	   m_server_entry_list->size ());

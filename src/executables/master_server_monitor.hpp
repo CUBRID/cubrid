@@ -26,6 +26,7 @@
 #include <cstring>
 #include <thread>
 #include <vector>
+#include <list>
 #include <memory>
 #include <time.h>
 #include "connection_defs.h"
@@ -41,9 +42,9 @@ class server_monitor
 	~server_entry () {};
 
 	server_entry (const server_entry &) = default;
-	server_entry (server_entry &&) = default;
+	server_entry (server_entry &&) = delete;
 
-	server_entry &operator= (const server_entry &) = default;
+	server_entry &operator= (const server_entry &) = delete;
 	server_entry &operator= (server_entry &&) = default;
 
 	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
@@ -72,7 +73,7 @@ class server_monitor
     void remove_server_entry_by_conn (CSS_CONN_ENTRY *conn);
 
   private:
-    std::unique_ptr<std::vector <server_entry>> m_server_entry_list;    // list of server entries
+    std::unique_ptr<std::list <server_entry>> m_server_entry_list;      // list of server entries
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
 };

@@ -1075,19 +1075,19 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
 }
 
 /*
- * css_make_set_proc_register() - make a server proc register.
+ * css_set_proc_register() - make a server proc register.
  *   return:
  *   server_name(in):
  *   server_name_lenth(in):
  *   proc_register(out):
  */
 static void
-css_make_set_proc_register (const char *server_name, int server_name_length, CSS_SERVER_PROC_REGISTER * proc_register)
+css_set_proc_register (const char *server_name, int server_name_length, CSS_SERVER_PROC_REGISTER * proc_register)
 {
   char *p, *last;
   char **argv;
 
-  strncpy_bufsize (proc_register->server_name, server_name);
+  memcpy (proc_register->server_name, server_name, server_name_length);
   proc_register->server_name_length = htonl (server_name_length);
   proc_register->pid = htonl (getpid ());
   strncpy_bufsize (proc_register->exec_path, css_Exec_path);
@@ -1153,7 +1153,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
     {
       // Linux and Unix
       connection_protocol = SERVER_REQUEST;
-      css_make_set_proc_register (server_name, name_length, &proc_register);
+      css_set_proc_register (server_name, name_length, &proc_register);
       data = (const char *) &proc_register;
       data_length = sizeof (proc_register);
     }
@@ -3171,6 +3171,7 @@ css_free_user_access_status (void)
 void
 css_set_exec_path (char *exec_path)
 {
+  assert (exec_path != NULL);
   strncpy (css_Exec_path, exec_path, sizeof (css_Exec_path) - 1);
 }
 
@@ -3183,5 +3184,6 @@ css_set_exec_path (char *exec_path)
 void
 css_set_argv (char **argv)
 {
+  assert (argv != NULL);
   css_Argv = argv;
 }

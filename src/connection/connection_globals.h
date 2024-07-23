@@ -79,7 +79,9 @@ struct css_server_proc_register
 };
 
 // *INDENT-OFF*
-css_server_proc_register::css_server_proc_register ():server_name_length (0), pid (0)
+css_server_proc_register::css_server_proc_register ()
+  : server_name_length (0)
+  , pid (0)
 {
   memset (server_name, 0, CSS_SERVER_MAX_SZ_SERVER_NAME);
   memset (exec_path, 0, CSS_SERVER_MAX_SZ_PROC_EXEC_PATH);

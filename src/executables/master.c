@@ -337,6 +337,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
   int datagram_length;
   SOCKET server_fd = INVALID_SOCKET;
   int length;
+  int server_name_length;
   CSS_CONN_ENTRY *datagram_conn;
   SOCKET_QUEUE_ENTRY *entry;
   CSS_SERVER_PROC_REGISTER *proc_register = (CSS_SERVER_PROC_REGISTER *) buffer;
@@ -357,8 +358,11 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 #endif
 	  css_add_request_to_socket_queue (datagram_conn, false, proc_register->server_name, server_fd, READ_WRITE, 0,
 					   &css_Master_socket_anchor);
+
 	  length = (int) strlen (proc_register->server_name) + 1;
-	  if (length < proc_register->server_name_length)
+	  server_name_length = (int) ntohl (proc_register->server_name_length);
+
+	  if (length < server_name_length)
 	    {
 	      entry = css_return_entry_of_server (proc_register->server_name, css_Master_socket_anchor);
 	      if (entry != NULL)
@@ -389,7 +393,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  if (!entry->ha_mode)
 	    {
               /* *INDENT-OFF* */
-              master_Server_monitor->make_and_insert_server_entry (proc_register->pid, proc_register->exec_path, proc_register->args, datagram_conn);
+              master_Server_monitor->make_and_insert_server_entry (ntohl(proc_register->pid), proc_register->exec_path, proc_register->args, datagram_conn);
               /* *INDENT-ON* */
 	    }
 	}

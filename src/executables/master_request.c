@@ -725,6 +725,7 @@ css_process_shutdown (char *time_buffer)
 	  master_Server_monitor->remove_server_entry_by_conn (temp->conn_ptr);
 #endif
 	  css_process_start_shutdown (temp, timeout * 60, buffer);
+
 	  /* wait process terminated */
 	  master_util_wait_proc_terminate (temp->pid);
 	}
