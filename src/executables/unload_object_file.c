@@ -1094,4 +1094,23 @@ timespec_addup (struct timespec *ts_sum, struct timespec *ts_add)
       ts_sum->tv_nsec -= NANO_PREC_VAL;
     }
 }
+
+void
+print_message_with_time (FILE * fp, const char *msg)
+{
+  struct timespec specific_time;
+  struct tm *now;
+
+  if (fp == NULL)
+    {
+      return;
+    }
+
+  clock_gettime (CLOCK_REALTIME, &specific_time);
+  now = localtime (&specific_time.tv_sec);
+
+  fprintf (fp, "time: %04d/%02d/%02d %02d:%02d:%02d.%09ld, %s\n", 1900 + now->tm_year,
+	   now->tm_mon + 1, now->tm_mday, now->tm_hour, now->tm_min, now->tm_sec, specific_time.tv_nsec,
+	   (msg ? msg : ""));
+}
 #endif

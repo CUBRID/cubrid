@@ -193,17 +193,14 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       g_request_pages = MAX_REQ_DATA_PAGES;
     }
 
-  enhanced_estimates = utility_get_option_bool_value (arg_map, UNLOAD_ENHANCED_ESTIMATES_S);
+  if (verbose_flag)
+    {
+      enhanced_estimates = utility_get_option_bool_value (arg_map, UNLOAD_ENHANCED_ESTIMATES_S);
+    }
 
   if (!do_schema)
     {
       sampling_records = utility_get_option_int_value (arg_map, UNLOAD_SAMPLING_TEST_S);
-      if (sampling_records >= 0 && !verbose_flag)
-	{
-	  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_SAMPLING_TEST_L);
-	  fflush (stderr);
-	  sampling_records = -1;
-	}
 
       thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
       thread_count = (thread_count < 0) ? 0 : ((thread_count > MAX_THREAD_COUNT) ? MAX_THREAD_COUNT : thread_count);

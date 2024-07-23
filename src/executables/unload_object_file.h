@@ -54,6 +54,7 @@ class print_output;
 #define TIMER_CLEAR(pwi)
 #define TIMER_BEGIN(pwi)
 #define TIMER_END(pwi)
+#define PRINT_MESSAGE_WITH_TIME(fp, msg)
 #else
 typedef struct _waiting_info
 {
@@ -70,12 +71,14 @@ typedef struct _waiting_info
          (pwi)->cnt++;                                                          \
       }                                                                         \
   } while(0);
-#define ALIGN_SPACE_FMT "    %-25s  | "
 #define NANO_PREC_VAL  (1000000000L)
 
 extern void timespec_diff (struct timespec *start, struct timespec *end, struct timespec *diff);
 extern void timespec_accumulate (struct timespec *ts_sum, struct timespec *ts_start);
 extern void timespec_addup (struct timespec *ts_sum, struct timespec *ts_add);
+extern void print_message_with_time (FILE * fp, const char *msg);
+
+#define PRINT_MESSAGE_WITH_TIME(fp, msg)  print_message_with_time((fp), (msg))
 #endif
 
 typedef struct text_buffer_block TEXT_BUFFER_BLK;

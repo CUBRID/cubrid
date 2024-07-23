@@ -186,7 +186,11 @@ S_WAITING_INFO wi_write_file;
 #define OBJECT_SUFFIX "_objects"
 
 #define HEADER_FORMAT 	"-------------------------------+--------------------------------\n""    %-25s  |  %23s \n""-------------------------------+--------------------------------\n"
-#define MSG_FORMAT 		"    %-25s  |  %10ld (%3d%% / %5d%%)"
+#define MSG_FORMAT 	"    %-25s  |  %10ld (%3d%% / %5d%%)"
+
+#define ALIGN_SPACE_FMT "    %-25s  | "
+
+
 
 #if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
 static FILE *unloadlog_file = NULL;
@@ -398,7 +402,7 @@ static bool close_object_file ();
 static bool open_object_file (extract_context & ctxt, const char *output_dirname, const char *class_name);
 static bool init_thread_param (const char *output_dirname, int nthreads);
 static void quit_thread_param ();
-static void print_monitoring_info (int nthreads);
+static void print_monitoring_info (const char *class_name, int nthreads);
 
 /*
  * get_estimated_objs - get the estimated number of object reside in file heap
@@ -973,23 +977,10 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 	      hfid = sm_ch_heap ((MOBJ) class_ptr);
 	      if (!HFID_IS_NULL (hfid))
 		{
-		  int64_t bk;
-		  if (g_sampling_records > 1)
-		    {
-		      bk = est_objects;
-		      est_objects = 0;
-		    }
-
 		  if (get_estimated_objs (hfid, &est_objects, enhanced_estimates) < 0)
 		    {
 		      status = 1;
 		      goto end;
-		    }
-
-		  if (g_sampling_records > 1)
-		    {
-		      est_objects = (est_objects > g_sampling_records) ? est_objects : g_sampling_records;
-		      est_objects += bk;
 		    }
 		}
 	    }
@@ -1821,6 +1812,12 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       goto exit_on_error;
     }
 
+  TIMER_CLEAR (&wi_unload_class);
+  TIMER_BEGIN (&wi_unload_class);
+
+  TIMER_CLEAR (&wi_w_blk_getQ);
+  TIMER_CLEAR (&wi_write_file);
+
   if (nthreads > 0)
     {
       for (i = 0; i < class_ptr->att_count; i++)
@@ -1889,23 +1886,11 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
     }
 
   /* Now start fetching all the instances */
-
-  TIMER_CLEAR (&wi_unload_class);
-  TIMER_BEGIN (&wi_unload_class);
-
-  TIMER_CLEAR (&wi_w_blk_getQ);
-  TIMER_CLEAR (&wi_write_file);
-
   approximate_class_objects = 0;
   if (get_estimated_objs (hfid, &approximate_class_objects, false) < 0)
     {
       if (!ignore_err_flag)
 	goto exit_on_error;
-    }
-
-  if ((g_sampling_records > 1) && (g_sampling_records < approximate_class_objects))
-    {
-      approximate_class_objects = g_sampling_records;
     }
 
   if (verbose_flag)
@@ -2071,7 +2056,10 @@ exit_on_end:
   unload_log_write (p_unloadlog_filename, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
 #endif
 
-  print_monitoring_info (nthreads);
+  if (g_sampling_records >= 0)
+    {
+      print_monitoring_info (sm_ch_name ((MOBJ) class_ptr), nthreads);
+    }
   return error;
 
 exit_on_error:
@@ -2857,13 +2845,18 @@ quit_thread_param ()
 }
 
 static void
-print_monitoring_info (int nthreads)
+print_monitoring_info (const char *class_name, int nthreads)
 {
 #if !defined(WINDOWS)
-  if (g_sampling_records < 0)
-    return;
-
   FILE *fp = stdout;
+
+  assert (g_sampling_records >= 0);
+
+  if (verbose_flag == false)
+    {
+      int64_t class_objects = class_objects_atomic;
+      fprintf (fp, ALIGN_SPACE_FMT "Records: %ld\n", class_name, class_objects);
+    }
 
   fprintf (fp, ALIGN_SPACE_FMT "Elapsed: %12.6f sec\n", "",
 	   wi_unload_class.ts_wait_sum.tv_sec + ((double) wi_unload_class.ts_wait_sum.tv_nsec / NANO_PREC_VAL));
