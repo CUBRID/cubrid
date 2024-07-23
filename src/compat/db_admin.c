@@ -2754,7 +2754,7 @@ db_set_system_parameters (const char *data)
       rc = sysprm_change_server_parameters (assignments);
     }
 
-  if (rc == PRM_ERR_NO_ERROR || rc == PRM_ERR_NOT_FOR_CLIENT || rc == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
+  if (rc == PRM_ERR_NO_ERROR)
     {
       /* values were successfully set on server, set them on client too */
       sysprm_change_parameter_values (assignments, true, true);
