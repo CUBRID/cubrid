@@ -1755,8 +1755,8 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   /*****************************/
   /**** 1. MAIN QUERY CHECK ****/
   /*****************************/
-  /* NO_MERGE hint check */
-  if (subquery->info.query.q.select.hint & PT_HINT_NO_MERGE)
+  /* NO_MERGE and QUERY_CACHE hint check */
+  if (subquery->info.query.q.select.hint & (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE))
     {
       return NON_PUSHABLE;
     }
@@ -1954,8 +1954,8 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
 {
   CHECK_PUSHABLE_INFO cpi;
 
-  /* NO_MERGE hint check */
-  if (subquery->info.query.q.select.hint & PT_HINT_NO_MERGE)
+  /* NO_MERGE and QUERY_CACHE hint check */
+  if (subquery->info.query.q.select.hint & (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE))
     {
       return NON_PUSHABLE;
     }
@@ -4274,6 +4274,12 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       return 0;
     }
 
+  /* do NOT copy-push for a cached query */
+  if (subquery->info.query.q.select.hint & PT_HINT_QUERY_CACHE)
+    {
+      return 0;
+    }
+
   /* check inst num or orderby_num */
   if (pt_has_inst_in_where_and_select_list (parser, subquery))
     {
@@ -4839,8 +4845,13 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
     }
 
   /* move hint, from, where, group_by, using_index part over */
-  derived->info.query.q.select.hint = agg_sel->info.query.q.select.hint;
-  agg_sel->info.query.q.select.hint = PT_HINT_NONE;
+
+  /* If the NO_MERGE hint moves to the derived subquery, it will not affect the agg_sel subquery.
+   * Therefore, the NO_MERGE hint is not moved to the derived subquery. 
+   * Additionally, if the subquery has the QUERY_CACHE hint, it should not be merged, so it is treated together with the NO_MERGE hint.
+   * All hints except for NO_MERGE and QUERY_CACHE are moved to the derived subquery. */
+  derived->info.query.q.select.hint = agg_sel->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE);
+  agg_sel->info.query.q.select.hint &= (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE);
 
   derived->info.query.q.select.leading = agg_sel->info.query.q.select.leading;
   agg_sel->info.query.q.select.leading = NULL;

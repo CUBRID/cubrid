@@ -30,6 +30,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.Server;
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
 import java.time.DateTimeException;
@@ -56,7 +57,7 @@ public class DateTimeParser {
     public static final LocalDateTime minDatetimeLocal = LocalDateTime.of(1, 1, 1, 0, 0, 0, 0);
     // max datetime: 9999-12-31 23:59:59.999
     public static final LocalDateTime maxDatetimeLocal =
-            LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999);
+            LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999000000);
 
     private static final ZoneOffset TIMEZONE_0 = ZoneOffset.of("Z");
     // TODO: update the following value along with the server
@@ -148,7 +149,7 @@ public class DateTimeParser {
         if (delim < 0) {
             // no timezone offset
             localPart = parseDateAndTime(s, forDatetime);
-            zone = TIMEZONE_SESSION;
+            zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
         } else {
             String dt = s.substring(0, delim);
             String z = s.substring(delim + 1);
@@ -158,7 +159,7 @@ public class DateTimeParser {
             } catch (DateTimeException e) {
                 // z turn out not to be a timezone offset. try timezone omitted string
                 localPart = parseDateAndTime(s, forDatetime);
-                zone = TIMEZONE_SESSION;
+                zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
             }
         }
 
