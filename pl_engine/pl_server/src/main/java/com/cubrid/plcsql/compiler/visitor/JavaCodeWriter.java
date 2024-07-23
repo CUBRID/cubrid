@@ -43,6 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
@@ -434,7 +435,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+UPPER-BOUND'%",
                         visit(node.upperBound));
 
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -492,7 +493,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             visit(node.right));
         }
 
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -539,7 +540,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             getJavaCodeOfType(node.resultType));
         }
 
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -571,7 +572,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             node.elsePart == null ? "null" : visit(node.elsePart));
         }
 
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -615,7 +616,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             node.attr.method);
         }
 
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -624,7 +625,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeTemplate tmpl =
                 new CodeTemplate(
                         "ExprDate", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -633,7 +634,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeTemplate tmpl =
                 new CodeTemplate(
                         "ExprDatetime", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -641,7 +642,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl =
                 new CodeTemplate("ExprFalse", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -649,7 +650,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl =
                 new CodeTemplate("ExprField", Misc.getLineColumnOf(node.ctx), node.javaCode());
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -711,7 +712,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+ARGUMENTS'%",
                         visitArguments(node.args, node.decl.paramList));
 
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -722,7 +723,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public CodeToResolve visitExprId(ExprId node) {
 
         CodeTemplate tmpl = new CodeTemplate("ExprId", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -747,7 +748,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+IN-ELEMENTS'%",
                         visitNodeList(node.inElements).setDelimiter(","));
 
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -772,7 +773,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'ESCAPE'%",
                         node.escape == null ? "null" : node.escape.javaCode());
 
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -820,7 +821,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             visitNodeList(node.args).setDelimiter(","));
         }
 
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -874,7 +875,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+ARGUMENTS'%",
                         visitArguments(node.args, node.decl.paramList));
 
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -886,7 +887,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl = new CodeTemplate("ExprNull", Misc.UNKNOWN_LINE_COLUMN, "null");
 
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -894,7 +895,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeTemplate tmpl =
                 new CodeTemplate(
                         "ExprUnit", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -902,7 +903,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeTemplate tmpl =
                 new CodeTemplate(
                         "ExprFloat", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -951,7 +952,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                 ? "CURRENT_VALUE"
                                 : "NEXT_VALUE");
         javaTypesUsed.add("java.math.BigDecimal");
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -959,14 +960,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl =
                 new CodeTemplate("ExprSqlRowCount", Misc.UNKNOWN_LINE_COLUMN, "sql_rowcount[0]");
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
     public CodeToResolve visitExprStr(ExprStr node) {
 
         CodeTemplate tmpl = new CodeTemplate("ExprStr", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -975,14 +976,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeTemplate tmpl =
                 new CodeTemplate(
                         "ExprTime", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
     public CodeToResolve visitExprTrue(ExprTrue node) {
 
         CodeTemplate tmpl = new CodeTemplate("ExprTrue", Misc.UNKNOWN_LINE_COLUMN, "true");
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -1005,7 +1006,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         node.opStr,
                         "%'+OPERAND'%",
                         visit(node.operand));
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -1013,7 +1014,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl =
                 new CodeTemplate("ExprTimestamp", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -1022,7 +1023,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeTemplate tmpl =
                 new CodeTemplate(
                         "ExprAutoParam", Misc.UNKNOWN_LINE_COLUMN, node.javaCode(javaTypesUsed));
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -1030,7 +1031,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl =
                 new CodeTemplate("ExprSqlCode", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     @Override
@@ -1038,7 +1039,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl =
                 new CodeTemplate("ExprSqlCode", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
-        return applyCoercion(node.coercion, tmpl);
+        return applyCoercion(node.coercion, tmpl, node.ctx);
     }
 
     // -------------------------------------------------------------------------
@@ -2580,20 +2581,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  new %'DST-RECORD'%())"
             };
 
-    private CodeToResolve applyCoercion(Coercion c, CodeTemplate exprCode) {
+    private CodeToResolve applyCoercion(Coercion c, CodeTemplate exprCode, ParserRuleContext ctx) {
 
         if (c == null || c instanceof Coercion.Identity) {
             return exprCode;
         } else {
 
-            int[] exprPlcsqlPos = exprCode.plcsqlPos;
-            exprCode.plcsqlPos = Misc.UNKNOWN_LINE_COLUMN; // to reduce code range markers
-
             if (c instanceof Coercion.Cast) {
                 Coercion.Cast cast = (Coercion.Cast) c;
                 return new CodeTemplate(
                         "cast coercion",
-                        exprPlcsqlPos,
+                        Misc.UNKNOWN_LINE_COLUMN,
                         tmplCastCoercion,
                         "%'TYPE'%",
                         getJavaCodeOfType(cast.dst),
@@ -2601,6 +2599,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         exprCode);
             } else if (c instanceof Coercion.Conversion) {
                 Coercion.Conversion conv = (Coercion.Conversion) c;
+                int[] exprPlcsqlPos = Misc.getLineColumnOf(ctx);
+
                 return new CodeTemplate(
                         "conversion coercion",
                         exprPlcsqlPos,
@@ -2613,6 +2613,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         exprCode);
             } else if (c instanceof Coercion.CoerceAndCheckPrecision) {
                 Coercion.CoerceAndCheckPrecision checkPrec = (Coercion.CoerceAndCheckPrecision) c;
+                int[] exprPlcsqlPos = Misc.getLineColumnOf(ctx);
+
                 return new CodeTemplate(
                         "coerce and check precision",
                         exprPlcsqlPos,
@@ -2622,9 +2624,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'SCALE'%",
                         Short.toString(checkPrec.scale),
                         "%'+EXPR'%",
-                        applyCoercion(checkPrec.c, exprCode));
+                        applyCoercion(checkPrec.c, exprCode, ctx));
             } else if (c instanceof Coercion.CoerceAndCheckStrLength) {
                 Coercion.CoerceAndCheckStrLength checkStrLen = (Coercion.CoerceAndCheckStrLength) c;
+                int[] exprPlcsqlPos = Misc.getLineColumnOf(ctx);
+
                 return new CodeTemplate(
                         "coerce and check precision",
                         exprPlcsqlPos,
@@ -2634,9 +2638,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'LENGTH'%",
                         "" + checkStrLen.length,
                         "%'+EXPR'%",
-                        applyCoercion(checkStrLen.c, exprCode));
+                        applyCoercion(checkStrLen.c, exprCode, ctx));
             } else if (c instanceof Coercion.NullToRecord) {
                 Coercion.NullToRecord nullToRec = (Coercion.NullToRecord) c;
+                int[] exprPlcsqlPos = Misc.getLineColumnOf(ctx);
+
                 return new CodeTemplate(
                         "null to record coercion",
                         exprPlcsqlPos,
@@ -2647,6 +2653,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         exprCode);
             } else if (c instanceof Coercion.RecordToRecord) {
                 Coercion.RecordToRecord recToRec = (Coercion.RecordToRecord) c;
+                int[] exprPlcsqlPos = Misc.getLineColumnOf(ctx);
+
                 return new CodeTemplate(
                         "record to record coercion",
                         exprPlcsqlPos,

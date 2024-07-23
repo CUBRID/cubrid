@@ -171,9 +171,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " as its return type");
                 }
 
-                Type retType =
-                        DBTypeAdapter.getDeclType(
-                                fs.retType.type, fs.retType.prec, fs.retType.scale);
+                Type retType = DBTypeAdapter.getValueType(fs.retType.type);
 
                 gfc.decl = new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(retType));
 
@@ -196,12 +194,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + sqlType);
                 }
 
-                Type ty =
-                        DBTypeAdapter.getDeclType(
-                                ct.colType.type, ct.colType.prec, ct.colType.scale);
-
                 assert node instanceof TypeSpecPercent;
-                ((TypeSpecPercent) node).type = ty;
+                TypeSpecPercent tsp = (TypeSpecPercent) node;
+                if (tsp.forParameterOrReturn) {
+                    tsp.type = DBTypeAdapter.getValueType(ct.colType.type);
+                } else {
+                    tsp.type =
+                            DBTypeAdapter.getDeclType(
+                                    ct.colType.type, ct.colType.prec, ct.colType.scale);
+                }
             } else {
                 assert false : "unreachable";
             }
@@ -261,7 +262,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public DeclParamIn visitParameter_in(Parameter_inContext ctx) {
         String name = Misc.getNormalizedText(ctx.parameter_name());
-        TypeSpec typeSpec = (TypeSpec) visit(ctx.type_spec());
+        TypeSpec typeSpec;
+        try {
+            forParameterOrReturn = true;
+            typeSpec = (TypeSpec) visit(ctx.type_spec());
+        } finally {
+            forParameterOrReturn = false;
+        }
 
         DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec);
         symbolStack.putDecl(name, ret);
@@ -272,7 +279,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public DeclParamOut visitParameter_out(Parameter_outContext ctx) {
         String name = Misc.getNormalizedText(ctx.parameter_name());
-        TypeSpec typeSpec = (TypeSpec) visit(ctx.type_spec());
+        TypeSpec typeSpec;
+        try {
+            forParameterOrReturn = true;
+            typeSpec = (TypeSpec) visit(ctx.type_spec());
+        } finally {
+            forParameterOrReturn = false;
+        }
 
         boolean alsoIn = ctx.IN() != null || ctx.INOUT() != null;
         DeclParamOut ret = new DeclParamOut(ctx, name, typeSpec, alsoIn);
@@ -305,7 +318,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
             String column = Misc.getNormalizedText(ctx.identifier());
 
-            TypeSpec ret = new TypeSpecPercent(ctx, table, column);
+            TypeSpec ret = new TypeSpecPercent(ctx, table, column, forParameterOrReturn);
             semanticQuestions.put(ret, new ServerAPI.ColumnType(table, column));
             return ret;
         }
@@ -370,6 +383,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public TypeSpec visitNumeric_type(Numeric_typeContext ctx) {
+
+        if (forParameterOrReturn) {
+            return new TypeSpec(ctx, Type.NUMERIC_ANY);
+        }
+
         int precision = 15; // default
         short scale = 0; // default
 
@@ -401,6 +419,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public TypeSpec visitChar_type(Char_typeContext ctx) {
+
+        if (forParameterOrReturn) {
+            return new TypeSpec(ctx, Type.STRING_ANY);
+        }
+
         int length = 1; // default
 
         try {
@@ -422,6 +445,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public TypeSpec visitVarchar_type(Varchar_typeContext ctx) {
+
+        if (forParameterOrReturn) {
+            return new TypeSpec(ctx, Type.STRING_ANY);
+        }
+
         int length = TypeVarchar.MAX_LEN; // default
 
         try {
@@ -2233,6 +2261,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // Private
     // --------------------------------------------------------
 
+    private boolean forParameterOrReturn = false;
+
     private static class UseAndDeclLevel {
         ParserRuleContext use;
         int declLevel;
@@ -2325,7 +2355,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         Misc.getLineColumnOf(ctx), // s050
                         "function " + name + " must specify its return type");
             }
-            TypeSpec retTypeSpec = (TypeSpec) visit(ctx.type_spec());
+
+            TypeSpec retTypeSpec;
+            try {
+                forParameterOrReturn = true;
+                retTypeSpec = (TypeSpec) visit(ctx.type_spec());
+            } finally {
+                forParameterOrReturn = false;
+            }
+
             Type retType = retTypeSpec.type;
             if (symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN) { // at top level
                 if (retType == Type.BOOLEAN || retType == Type.SYS_REFCURSOR) {
@@ -2545,8 +2583,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
             }
 
-            Type paramType =
-                    DBTypeAdapter.getDeclType(params[i].type, params[i].prec, params[i].scale);
+            Type paramType = DBTypeAdapter.getValueType(params[i].type);
 
             TypeSpec tySpec = TypeSpec.getBogus(paramType);
             if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) != 0) {
