@@ -91,6 +91,7 @@ struct text_buffer_block
 typedef struct text_output
 {
   int ref_thread_param_idx;
+  int record_cnt;
   TEXT_BUFFER_BLK *head_ptr;
   TEXT_BUFFER_BLK *tail_ptr;
 } TEXT_OUTPUT;

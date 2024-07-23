@@ -313,6 +313,7 @@ get_text_output_mem (TEXT_OUTPUT * tout)
 
   if (tout->head_ptr == NULL)
     {
+      tout->record_cnt = 0;
       tout->head_ptr = pt;
     }
   else
@@ -968,6 +969,7 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 
       tout->head_ptr = NULL;
       tout->tail_ptr = NULL;
+      tout->record_cnt = 0;
       return NO_ERROR;
     }
 
@@ -975,12 +977,14 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
     {
       tout->head_ptr = NULL;
       tout->tail_ptr = NULL;
+      tout->record_cnt = 0;
       return write_object_file (head);
     }
 
   int flag = 0;
 
-  if (force || head->next || (((double) head->count / head->iosize) > 0.999))	// TODO: ctshim
+  tout->record_cnt++;
+  if (force || head->next || ((head->iosize - head->count) < (((double) head->count / tout->record_cnt) * 1.1)))
     {
       do
 	{
@@ -1000,8 +1004,6 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 	    {
 	      return ER_FAILED;
 	    }
-
-
 	}
       while (true);
       if (flag)
@@ -1011,6 +1013,7 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 
       tout->head_ptr = NULL;
       tout->tail_ptr = NULL;
+      tout->record_cnt = 0;
     }
 
   return NO_ERROR;
