@@ -10693,7 +10693,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     {
       PT_ERRORf2 (parser, node,
 		  "Object name [%s] not allowed. It cannot exceed %d bytes.",
-		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
+		  pt_short_print (parser, node), (DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH) - 1);
       *continue_walk = PT_STOP_WALK;
       return node;
     }
