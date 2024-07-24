@@ -100,7 +100,7 @@ server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn)
 }
 
 CSS_CONN_ENTRY *
-server_monitor::server_entry::get_conn ()
+server_monitor::server_entry::get_conn () const
 {
   return m_conn;
 }
