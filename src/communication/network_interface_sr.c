@@ -2006,7 +2006,7 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
       return;
     }
 
-  auto[filename, outfp] = filesys::open_temp_file ("dump_logpb_stat_", "w+b");
+  auto[filename, outfp] = filesys::open_temp_file ("logpb_dump_stat_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2320,7 +2320,7 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
       return;
     }
 
-  auto[filename, outfp] = filesys::open_temp_file ("dump_acl_", "w+b");
+  auto[filename, outfp] = filesys::open_temp_file ("acl_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2401,7 +2401,7 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
       return;
     }
 
-  auto[filename, outfp] = filesys::open_temp_file ("dump_lock_", "w+b");
+  auto[filename, outfp] = filesys::open_temp_file ("lock_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -6097,7 +6097,7 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       return;
     }
 
-  auto[filename, outfp] = filesys::open_temp_file ("dump_qplan_", "w+b");
+  auto[filename, outfp] = filesys::open_temp_file ("qplan_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -6177,7 +6177,7 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       return;
     }
 
-  auto[filename, outfp] = filesys::open_temp_file ("dump_qcache_", "w+b");
+  auto[filename, outfp] = filesys::open_temp_file ("qcache_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7176,7 +7176,7 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       return;
     }
 
-  auto[filename, outfp] = filesys::open_temp_file ("dump_thread_cs_", "w+b");
+  auto[filename, outfp] = filesys::open_temp_file ("thread_cs_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7291,7 +7291,7 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       return;
     }
 
-  auto[filename, outfp] = filesys::open_temp_file ("dump_logtb_", "w+b");
+  auto[filename, outfp] = filesys::open_temp_file ("logtb_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7925,7 +7925,7 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *re
       return;
     }
 
-  auto[filename, outfp] = filesys::open_temp_file ("dump_prm_", "w+b");
+  auto[filename, outfp] = filesys::open_temp_file ("prm_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -9613,7 +9613,7 @@ svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
       return;
     }
 
-  auto[filename, outfp] = filesys::open_temp_file ("dump_vacuum_", "w+b");
+  auto[filename, outfp] = filesys::open_temp_file ("vacuum_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
