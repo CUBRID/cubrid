@@ -543,9 +543,9 @@ SetCUBRIDEnvVar ()
       _putenv (EnvString);
 #ifdef _DEBUG
       if (debugfd)
-        {
-          fprintf (debugfd, "$CUBRID_TMP = %s\n", getenv ("CUBRID_TMP"));
-        }
+	{
+	  fprintf (debugfd, "$CUBRID_TMP = %s\n", getenv ("CUBRID_TMP"));
+	}
 #endif
     }
 

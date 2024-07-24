@@ -62,13 +62,13 @@ namespace
 
     if (ret > 0)
       {
-        filename = buf;
+	filename = buf;
       }
     else
       {
-        filename = std::tmpnam (buf);
-        auto pos = filename.rfind ('\\');
-        filename.insert (pos+1, prefix);
+	filename = std::tmpnam (buf);
+	auto pos = filename.rfind ('\\');
+	filename.insert (pos+1, prefix);
       }
 #endif
 
