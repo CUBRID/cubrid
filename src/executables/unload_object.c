@@ -2707,7 +2707,7 @@ open_object_file (extract_context & ctxt, const char *output_dirname, const char
   return true;
 }
 
-#define USE_CFG_FILE_TUNNING_TEST
+//#define USE_CFG_FILE_TUNNING_TEST
 #if defined(USE_CFG_FILE_TUNNING_TEST)
 void
 read_unload_cfg (int thr_max, int *io_buffer_size, int *fetched_list_size, int *writer_q_size)
