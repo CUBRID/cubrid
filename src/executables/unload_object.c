@@ -418,7 +418,7 @@ get_estimated_objs (HFID * hfid, int64_t * est_objects, bool enhnnced)
   int error = NO_ERROR;
   int approximation = 1;
 
-  approximation = enhnnced ? 1 : 0;
+  approximation = enhnnced ? 0 : 1;
 
   error = heap_get_class_num_objects_pages (hfid, approximation, &nobjs, &ignore_npages);
   if (error < 0)

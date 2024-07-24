@@ -70,7 +70,6 @@ FILE *output_file = NULL;
 
 int g_pre_alloc_varchar_size = DFLT_PRE_ALLOC_VARCHAR_SIZE;
 int g_request_pages = DFLT_REQ_DATASIZE;
-int g_thread_count = 0;
 int g_parallel_process_cnt = -1;
 int g_parallel_process_idx = -1;
 
