@@ -3588,16 +3588,6 @@ do_check_subquery_cache (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
 
-  if (statement->node_type == PT_SELECT)
-    {
-      if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_COLS_SCHEMA)
-	  || PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_FULL_INFO_COLS_SCHEMA)
-	  || PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IDX_SCHEMA))
-	{
-	  return NO_ERROR;
-	}
-    }
-
   /* All CTE and sub-queries included in the query must be prepared first. */
   if (pt_is_allowed_result_cache ())
     {
