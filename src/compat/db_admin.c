@@ -2767,7 +2767,7 @@ db_set_system_parameters (const char *data)
 	  SYSPRM_ASSIGN_VALUE *tmp;
 
 	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LK_TIMEOUT), &tmp);
-	  if (tmp->value.i >= 0)
+	  if (tmp->value.i > 0)
 	    {
 	      tran_reset_wait_times (tmp->value.i * 1000);
 	    }
