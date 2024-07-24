@@ -33,7 +33,7 @@ class print_output;
 
 extern char *database_name;
 extern char *input_filename;
-extern int g_varchar_buffer_size;
+extern int g_pre_alloc_varchar_size;
 extern int g_parallel_process_cnt;
 extern int g_parallel_process_idx;
 extern int g_request_pages;

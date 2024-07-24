@@ -57,20 +57,18 @@
 int do_multi_processing (int processes, bool * is_main_process);
 #endif
 
-//#endif
-
 char *database_name = NULL;
 const char *output_dirname = NULL;
 char *input_filename = NULL;
 FILE *output_file = NULL;
 
-#define DFLT_VARCHAR_BUFFER_SIZE (1)	// 1K
-#define MAX_VARCHAR_BUFFER_SIZE  (1024)	// 1M
-#define DFLT_REQ_DATASIZE        (100)	// 100 page size
-#define MAX_REQ_DATA_PAGES       (1024)	//
-#define MAX_THREAD_COUNT         (127)
+#define DFLT_PRE_ALLOC_VARCHAR_SIZE (1024)	// 1024 characters
+#define MAX_PRE_ALLOC_VARCHAR_SIZE  (DB_MAX_VARCHAR_PRECISION)
+#define DFLT_REQ_DATASIZE           (100)	// 100 page size
+#define MAX_REQ_DATA_PAGES          (1024)	//
+#define MAX_THREAD_COUNT            (127)
 
-int g_varchar_buffer_size = DFLT_VARCHAR_BUFFER_SIZE;
+int g_pre_alloc_varchar_size = DFLT_PRE_ALLOC_VARCHAR_SIZE;
 int g_request_pages = DFLT_REQ_DATASIZE;
 int g_thread_count = 0;
 int g_parallel_process_cnt = -1;
@@ -172,16 +170,11 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   split_schema_files = utility_get_option_string_value (arg_map, UNLOAD_SPLIT_SCHEMA_FILES_S, 0);
   is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
-  g_varchar_buffer_size = utility_get_option_int_value (arg_map, UNLOAD_STRING_BUFFER_SIZE_S);
-  if (g_varchar_buffer_size < 0)
+  g_pre_alloc_varchar_size = utility_get_option_int_value (arg_map, UNLOAD_STRING_BUFFER_SIZE_S);
+  if (g_pre_alloc_varchar_size > MAX_PRE_ALLOC_VARCHAR_SIZE)
     {
-      g_varchar_buffer_size = 0;
+      g_pre_alloc_varchar_size = MAX_PRE_ALLOC_VARCHAR_SIZE;
     }
-  else if (g_varchar_buffer_size > MAX_VARCHAR_BUFFER_SIZE)
-    {
-      g_varchar_buffer_size = MAX_VARCHAR_BUFFER_SIZE;
-    }
-  g_varchar_buffer_size *= 1024;	// to KB  
 
   g_request_pages = utility_get_option_int_value (arg_map, UNLOAD_REQUEST_PAGES_S);
   if (g_request_pages < 0)

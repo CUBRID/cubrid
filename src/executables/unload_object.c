@@ -1407,7 +1407,7 @@ unload_extractor_thread (void *param)
   int thr_ret = NO_ERROR;
   pthread_t tid = pthread_self ();
   TEXT_OUTPUT *obj_out = &(parg->text_output);
-  DESC_OBJ *desc_obj = make_desc_obj (g_uci->class_ptr, g_varchar_buffer_size);
+  DESC_OBJ *desc_obj = make_desc_obj (g_uci->class_ptr, g_pre_alloc_varchar_size);
   if (desc_obj == NULL)
     {
       thr_ret = ER_FAILED;
@@ -1492,7 +1492,7 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
   if (!g_multi_thread_mode)
     {
       obj_out = &(g_thr_param[0].text_output);
-      desc_obj = make_desc_obj (g_uci->class_ptr, g_varchar_buffer_size);
+      desc_obj = make_desc_obj (g_uci->class_ptr, g_pre_alloc_varchar_size);
     }
 
   while ((nobjects != nfetched) && (error_occurred == false))

@@ -83,7 +83,7 @@ extern int data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * doma
  *    string_buf_size(in): Specifies the size of the memory space to copy the data of the varchar column
  */
 DESC_OBJ *
-make_desc_obj (SM_CLASS * class_, int string_buf_size)
+make_desc_obj (SM_CLASS * class_, int pre_alloc_varchar_size)
 {
   DESC_OBJ *obj;
   SM_ATTRIBUTE *att;
@@ -123,7 +123,7 @@ make_desc_obj (SM_CLASS * class_, int string_buf_size)
 	}
 
       // Until now, string_buf_size is set to -1 when calling from compatdb.
-      if (string_buf_size > 0)
+      if (pre_alloc_varchar_size > 0)
 	{
 	  obj->dbvalue_buf_ptr = (DBVALUE_BUF *) calloc (class_->att_count, sizeof (DBVALUE_BUF));
 	}
@@ -135,22 +135,33 @@ make_desc_obj (SM_CLASS * class_, int string_buf_size)
 
 	  if (obj->dbvalue_buf_ptr && att->type->get_id () == DB_TYPE_VARCHAR)
 	    {
-	      int sz;
-	      if (att->domain->precision == DB_MAX_VARCHAR_PRECISION || att->domain->precision <= 0)
+	      INT64 byte_sz = pre_alloc_varchar_size;
+	      assert (pre_alloc_varchar_size <= DB_MAX_VARCHAR_PRECISION);
+
+	      if (att->domain->precision > 0 && att->domain->precision <= pre_alloc_varchar_size)
 		{
-		  sz = string_buf_size;
-		}
-	      else
-		{
-		  sz = (int) ((INT64) att->domain->precision * INTL_CODESET_MULT (att->domain->codeset));
-		  if (string_buf_size < sz)
-		    {
-		      sz = string_buf_size;
-		    }
+		  byte_sz = att->domain->precision;
 		}
 
-	      obj->dbvalue_buf_ptr[i].buf = (char *) malloc (sz + 1);
-	      obj->dbvalue_buf_ptr[i].buf_size = (obj->dbvalue_buf_ptr[i].buf == NULL) ? 0 : sz;
+	      /* Using INTL_CODESET_MULT() causes significant memory waste. 
+	       * Therefore, realistic character lengths are used.
+	       * (byte_sz * INTL_CODESET_MULT (att->domain->codeset));
+	       */
+	      if (att->domain->codeset == INTL_CODESET_UTF8)
+		byte_sz *= 3;
+	      else if (att->domain->codeset == INTL_CODESET_KSC5601_EUC)
+		byte_sz *= 2;
+
+	      if (byte_sz < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+		{
+		  /* When using dbvalue_buf_ptr, the PEEK method will be specified to read.
+		   * In the PEEK method, a buffer is needed only when the string is compressed.    
+		   */
+		  continue;
+		}
+
+	      obj->dbvalue_buf_ptr[i].buf = (char *) malloc (byte_sz + 1);
+	      obj->dbvalue_buf_ptr[i].buf_size = (obj->dbvalue_buf_ptr[i].buf == NULL) ? 0 : byte_sz;
 	    }
 	}
     }
