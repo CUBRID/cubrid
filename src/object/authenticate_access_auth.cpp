@@ -151,7 +151,7 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
   const char *name;
   const char *sql_query =
 	  "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
-	  " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?" " AND [au].[class_of] = ? AND [au].[auth_type] = ?";
+	  " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?" " AND [au].[object_of] = ? AND [au].[auth_type] = ?";
 
   for (i = 0; i < COUNT_FOR_VARIABLES; i++)
     {
@@ -451,7 +451,7 @@ int
 au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char *name)
 {
   int error = NO_ERROR, save;
-  const char *sql_query = "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[class_of] IN (%s);";
+  const char *sql_query = "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[object_of] IN (%s);";
   DB_VALUE val;
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;

@@ -745,7 +745,7 @@ namespace cubschema
       {"grantor", AU_USER_CLASS_NAME},
       {"grantee", AU_USER_CLASS_NAME},
       {"object_type", "integer"},
-      {"class_of", "object"},
+      {"object_of", "object"},
       {"auth_type", format_varchar (7)},
       {"is_grantable", "integer"}
     },
