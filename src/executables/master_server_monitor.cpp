@@ -76,7 +76,7 @@ void
 server_monitor::remove_server_entry_by_conn (CSS_CONN_ENTRY *conn)
 {
   const auto result = std::remove_if (m_server_entry_list->begin(), m_server_entry_list->end(),
-				      [conn] (auto e) -> bool {return e.get_conn() == conn;});
+				      [conn] (auto& e) -> bool {return e.get_conn() == conn;});
   assert (result != m_server_entry_list->end ());
 
   m_server_entry_list->erase (result, m_server_entry_list->end());

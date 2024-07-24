@@ -41,7 +41,7 @@ class server_monitor
 	server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
 	~server_entry () {};
 
-	server_entry (const server_entry &) = default;
+	server_entry (const server_entry &) = delete;
 	server_entry (server_entry &&) = delete;
 
 	server_entry &operator= (const server_entry &) = delete;
