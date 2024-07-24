@@ -2518,6 +2518,10 @@ struct pt_host_var_info
   PT_MISC_TYPE var_type;	/* PT_HOST_IN, PT_HOST_OUT, */
   int index;			/* for PT_HOST_VAR ordering */
   const char *label;
+
+  /* for processing subquery's result cache */
+  int saved;			/* for saving the main query's host_var indexes */
+  PT_NODE *next;		/* for linking to same host_var indexes */
 };
 
 /* Info for lists of PT_NODE */

@@ -1657,12 +1657,12 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
+  if (stmt->node_type != PT_SELECT)
     {
       return stmt;
     }
 
-  if (stmt->info.query.flag.subquery_cached)
+  if (stmt->info.query.flag.subquery_cached && stmt->xasl_id)
     {
       *err = do_execute_subquery (parser, stmt);
       if (*err != NO_ERROR)
@@ -1820,7 +1820,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   /* All CTE sub-queries included in the query must be executed first. */
   if (pt_is_allowed_result_cache ())
     {
-      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &statement->flag, NULL, NULL);
+      err = NO_ERROR;
+      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &err, NULL, NULL);
       if (err != NO_ERROR)
 	{
 	  return err;
@@ -2370,7 +2371,7 @@ char_array_to_name_list (PARSER_CONTEXT * parser, char **names, int length)
 static DB_PREPARE_SUBQUERY_INFO *
 set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int num_query)
 {
-  int i, q = num_query;
+  int i, v, q = num_query;
 
   if (num_query % 4 == 0)	/* need to realloc subquery info every 4 */
     {
@@ -2398,7 +2399,16 @@ set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int
 
   if (query->sub_host_var_count > 0)
     {
-      memcpy (info[q].host_var_index, query->sub_host_var_index, query->sub_host_var_count * sizeof (int));
+      i = 0;
+      v = 0;
+      while (v < query->sub_host_var_count)
+	{
+	  if (query->sub_host_var_index[i] >= 0)
+	    {
+	      info[q].host_var_index[v++] = query->sub_host_var_index[query->sub_host_var_index[i]];
+	    }
+	  i++;
+	}
     }
 
   return info;
@@ -2432,7 +2442,7 @@ do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *
 
   prepare_info = (DB_PREPARE_INFO *) arg;
 
-  if (stmt->info.query.flag.subquery_cached)
+  if (stmt->node_type == PT_SELECT && stmt->xasl_id != NULL && stmt->info.query.flag.subquery_cached)
     {
       prepare_info->subquery_info =
 	set_prepare_subquery_info (stmt, prepare_info->subquery_info, prepare_info->subquery_num);
