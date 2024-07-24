@@ -3564,8 +3564,6 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
-      bool has_cte_spec = false;
-
       *err = do_prepare_subquery (parser, stmt);
       if (*err != NO_ERROR)
 	{
