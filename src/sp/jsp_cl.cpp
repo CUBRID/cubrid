@@ -175,7 +175,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
       mop = NULL;
     }
 
-  free_and_init (checked_name);  
+  free_and_init (checked_name);
   AU_ENABLE (save);
 
   return mop;
@@ -1267,7 +1267,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	  goto error;
 	}
     }
-    
+
   err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PROCEDURE, name);
   if (err != NO_ERROR)
     {
