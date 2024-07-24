@@ -3815,6 +3815,7 @@ struct parser_node
     unsigned use_auto_commit:1;	/* use autocommit */
     unsigned done_reduce_equality_terms:1;	/* reduce_equality_terms() is already called */
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
+    unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };

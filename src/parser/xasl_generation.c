@@ -25595,7 +25595,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
 
   /* for subquery cache */
-  if (aptr_statement->xasl_id)
+  if (aptr_statement->xasl_id && !statement->flag.do_not_use_subquery_cache)
     {
       xasl->sub_xasl_id = aptr_statement->xasl_id;
       xasl->sub_host_var_count = aptr_statement->sub_host_var_count;
@@ -26098,7 +26098,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
 
   /* for subquery cache */
-  if (aptr_statement->xasl_id)
+  if (aptr_statement->xasl_id && !statement->flag.do_not_use_subquery_cache)
     {
       xasl->sub_xasl_id = aptr_statement->xasl_id;
       xasl->sub_host_var_count = aptr_statement->sub_host_var_count;

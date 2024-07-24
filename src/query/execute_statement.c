@@ -3512,6 +3512,22 @@ end:
 }
 
 static PT_NODE *
+do_clear_subquery_cache_flag (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_QUERY (stmt))
+    {
+      if (stmt->info.query.flag.subquery_cached)
+	{
+	  stmt->info.query.flag.subquery_cached = false;
+	}
+    }
+
+  return stmt;
+}
+
+static PT_NODE *
 do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int *err = (int *) arg;
@@ -3542,10 +3558,16 @@ do_check_subquery_cache (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
 
+  if (statement->flag.do_not_use_subquery_cache)
+    {
+      (void *) parser_walk_tree (parser, statement, do_clear_subquery_cache_flag, NULL, NULL, NULL);
+      return NO_ERROR;
+    }
+
   /* All CTE and sub-queries included in the query must be prepared first. */
   if (pt_is_allowed_result_cache ())
     {
-      parser_walk_tree (parser, statement, do_prepare_subquery_pre, &err, NULL, NULL);
+      (void *) parser_walk_tree (parser, statement, do_prepare_subquery_pre, &err, NULL, NULL);
     }
 
   return err;
