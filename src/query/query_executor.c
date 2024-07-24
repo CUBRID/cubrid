@@ -11059,9 +11059,17 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   aptr = xasl->aptr_list;
   val_no = insert->num_vals;
 
-  if (!skip_aptr)
+  if (!skip_aptr && aptr)
     {
-      if (aptr && qexec_execute_mainblock (thread_p, aptr, xasl_state, NULL) != NO_ERROR)
+      if (QEXEC_IS_SUBQUERY_CACHE (aptr))
+	{
+	  if (qexec_execute_subquery_for_result_cache (thread_p, aptr, xasl_state) != NO_ERROR)
+	    {
+	      qexec_failure_line (__LINE__, xasl_state);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+      else if (qexec_execute_mainblock (thread_p, aptr, xasl_state, NULL) != NO_ERROR)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
 	  return ER_FAILED;
