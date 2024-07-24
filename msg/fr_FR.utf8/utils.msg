@@ -556,6 +556,9 @@ options valids:\n\
       --hash-file=FICHIER         FICHIER pour hachage; valeur par défaut: générer par tmpnam ()\n\
       --latest-image              lors du vidage d'objets, il vide la dernière image des objets dans les volumes de données, sans se référer aux volumes de journaux (ignorant MVCC)\n\
                                   Cela peut inclure des données non validées et des données supprimées qui ne sont pas aspirées ; par défaut : désactivé\n\
+  -t, --thread-count=COUNT        Specifies the number of threads to use when operating in a multi-threaded mode; default: 0 maximum: 127\n\
+      --enhanced-estimates        Obtaining the correct number of records; default: disabled (Ignored if -v is not specified)\n\
+                                  It may take a long time\n\
   -v, --verbose                   active les messages verbeux d'état; par défaut: désactivé\n\
       --use-delimiter             utilise '"' dans les endroits où un identificateur commence ou se termine; par défaut: ne pas utiliser\n\
   -S, --SA-mode                   exécution en mode autonome\n\

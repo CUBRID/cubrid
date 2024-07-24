@@ -552,6 +552,9 @@ opciones validas:\n\
       --hash-file=FILE        ARCHIVO para hash; estandar: generar por tmpnam()\n\
       --latest-image          al volcar objetos, vuelca la última imagen de los objetos en los volúmenes de datos, sin hacer referencia a los volúmenes de registro (ignorando MVCC)\n\
                               Podría incluir datos no confirmados y datos eliminados que no se vacían; predeterminado: deshabilitado\n\
+  -t, --thread-count=COUNT    Specifies the number of threads to use when operating in a multi-threaded mode; default: 0 maximum: 127\n\
+      --enhanced-estimates    Obtaining the correct number of records; default: disabled (Ignored if -v is not specified)\n\
+                              It may take a long time\n\
   -v, --verbose               habilitar mensajes de estado verbose; estandar: inhabilitado\n\
       --use-delimiter         utilizar '"' donde un identificador empieza y acaba; estandar: no utilizar\n\
   -S, --SA-mode               modo de ejecucion independiente\n\
