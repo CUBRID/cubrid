@@ -89,6 +89,7 @@ cursor_parameter_list
     : cursor_parameter (',' cursor_parameter)*
     ;
 
+/* cursor parameter cannot have COMMENT and OUT/INOUT modifier */
 cursor_parameter
     : parameter_name IN? type_spec
     ;
