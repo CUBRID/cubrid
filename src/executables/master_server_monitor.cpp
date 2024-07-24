@@ -25,6 +25,8 @@
 
 #include "master_server_monitor.hpp"
 
+std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
+
 server_monitor::server_monitor ()
 {
   m_server_entry_list = std::make_unique<std::list<server_entry>> ();

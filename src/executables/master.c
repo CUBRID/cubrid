@@ -66,7 +66,6 @@
 #endif /* ! WINDOWS */
 #include "master_util.h"
 #include "master_request.h"
-#include "system_parameter.h"
 #if !defined(WINDOWS)
 #include "master_heartbeat.h"
 #endif
@@ -130,12 +129,6 @@ pthread_mutex_t css_Master_socket_anchor_lock;
 pthread_mutex_t css_Master_er_log_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t css_Master_er_log_enable_lock = PTHREAD_MUTEX_INITIALIZER;
 bool css_Master_er_log_enabled = true;
-
-#if !defined(WINDOWS)
-/* *INDENT-OFF* */
-std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
-/* *INDENT-ON* */
-#endif
 
 /*
  * css_master_error() - print error message to syslog or console
@@ -363,7 +356,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  //  packed from css_pack_server_name(). Since there are some cases that returns server_name and server_name_length
 	  //  as NULL, we need to check if server_name is packed information or not.
 	  length = (int) strlen (proc_register->server_name) + 1;
-	  server_name_length = (int) ntohl (proc_register->server_name_length);
+	  server_name_length = proc_register->server_name_length;
 
 	  if (length < server_name_length)
 	    {
@@ -393,10 +386,11 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 		    }
 		}
 	    }
+
 	  if (!entry->ha_mode)
 	    {
               /* *INDENT-OFF* */
-              master_Server_monitor->make_and_insert_server_entry (ntohl(proc_register->pid), proc_register->exec_path, proc_register->args, datagram_conn);
+              master_Server_monitor->make_and_insert_server_entry (proc_register->pid, proc_register->exec_path, proc_register->args, datagram_conn);
               /* *INDENT-ON* */
 	    }
 	}

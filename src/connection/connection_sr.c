@@ -1088,12 +1088,12 @@ css_set_proc_register (const char *server_name, int server_name_length, CSS_SERV
   char **argv;
 
   memcpy (proc_register->server_name, server_name, server_name_length);
-  proc_register->server_name_length = htonl (server_name_length);
-  proc_register->pid = htonl (getpid ());
+  proc_register->server_name_length = server_name_length;
+  proc_register->pid = getpid ();
   strncpy_bufsize (proc_register->exec_path, css_Server_exec_path);
 
-  p = (char *) &proc_register->args[0];
-  last = (char *) (p + sizeof (proc_register->args));
+  p = (char *) proc_register->args;
+  last = p + proc_register->CSS_SERVER_MAX_SZ_PROC_ARGS;
   for (argv = css_Server_argv; *argv; argv++)
     {
       p += snprintf (p, MAX ((last - p), 0), "%s ", *argv);

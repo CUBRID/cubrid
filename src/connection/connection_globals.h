@@ -69,9 +69,10 @@ struct css_server_proc_register
   static constexpr int CSS_SERVER_MAX_SZ_PROC_EXEC_PATH = 128;
   static constexpr int CSS_SERVER_MAX_SZ_PROC_ARGS = 1024;
 
+  int pid;
   char server_name[CSS_SERVER_MAX_SZ_SERVER_NAME];
   int server_name_length;
-  int pid;
+
   char exec_path[CSS_SERVER_MAX_SZ_PROC_EXEC_PATH];
   char args[CSS_SERVER_MAX_SZ_PROC_ARGS];
 
