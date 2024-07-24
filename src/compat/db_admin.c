@@ -1779,7 +1779,7 @@ db_set_password (DB_OBJECT * user, const char *old_passwd, const char *new_passw
   CHECK_MODIFICATION_ERROR ();
 
   /* should check old password ! */
-  retval = au_set_password (user, new_passwd);
+  retval = au_set_password_encrypt (user, new_passwd);
 
   return (retval);
 }
@@ -1946,7 +1946,7 @@ db_get_user_name (void)
 
   /* Kludge, twiddle the constness of this thing.  It probably doesn't need to be const anyway, its just a copy of the
    * attribute value. */
-  name = au_user_name ();
+  name = au_get_current_user_name ();
 
   return ((char *) name);
 }
@@ -2758,6 +2758,32 @@ db_set_system_parameters (const char *data)
     {
       /* values were successfully set on server, set them on client too */
       sysprm_change_parameter_values (assignments, true, true);
+    }
+
+  for (SYSPRM_ASSIGN_VALUE * ptr = assignments; ptr != NULL; ptr = ptr->next)
+    {
+      if (ptr->prm_id == PRM_ID_LK_TIMEOUT)
+	{
+	  SYSPRM_ASSIGN_VALUE *tmp;
+
+	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LK_TIMEOUT), &tmp);
+	  if (tmp->value.i > 0)
+	    {
+	      tran_reset_wait_times (tmp->value.i * 1000);
+	    }
+	  else
+	    {
+	      tran_reset_wait_times (tmp->value.i);
+	    }
+	}
+      else if (ptr->prm_id == PRM_ID_LOG_ISOLATION_LEVEL)
+	{
+	  SYSPRM_ASSIGN_VALUE *tmp;
+
+	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LOG_ISOLATION_LEVEL), &tmp);
+
+	  tran_reset_isolation ((TRAN_ISOLATION) tmp->value.i, TM_TRAN_ASYNC_WS ());
+	}
     }
 
   /* convert SYSPRM_ERR to error code */

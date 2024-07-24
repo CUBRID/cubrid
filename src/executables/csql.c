@@ -1049,7 +1049,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
-	      au_disable ();
+	      int dummy;
+	      AU_DISABLE (dummy);
 	    }
 	  csql_Database_connected = true;
 
@@ -2838,6 +2839,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   char *env;
   int client_type;
   int avail_size;
+  int save;
   char *p = NULL;
   unsigned char ip_addr[16] = { 0 };
 
@@ -2999,7 +3001,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_disable ();
+      AU_DISABLE (save);
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */
@@ -3594,7 +3596,8 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_disable ();
+      int dummy;
+      AU_DISABLE (dummy);
     }
   csql_Database_connected = true;
 
