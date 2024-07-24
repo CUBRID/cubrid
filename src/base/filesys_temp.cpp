@@ -54,10 +54,10 @@ namespace
 
     if (cubrid_tmp != nullptr)
       {
-        char pf[PREFIX_LEN];
+	char pf[PREFIX_LEN];
 
-        snprintf (pf, PREFIX_LEN, "%s", prefix != nullptr ? prefix : "CT");
-        ret = GetTempFileName (cubrid_tmp, pf, 0, buf);
+	snprintf (pf, PREFIX_LEN, "%s", prefix != nullptr ? prefix : "CT");
+	ret = GetTempFileName (cubrid_tmp, pf, 0, buf);
       }
 
     if (ret > 0)
