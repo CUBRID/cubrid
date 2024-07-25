@@ -3512,24 +3512,6 @@ end:
 }
 
 static PT_NODE *
-do_restore_host_var_index (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
-{
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (stmt->node_type == PT_HOST_VAR)
-    {
-      if (stmt->info.host_var.saved > 0)
-	{
-	  stmt->info.host_var.index = stmt->info.host_var.saved - 1;
-	  stmt->info.host_var.next = NULL;
-	  stmt->info.host_var.saved = 0;
-	}
-    }
-
-  return stmt;
-}
-
-static PT_NODE *
 do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int *err = (int *) arg;
@@ -3592,7 +3574,6 @@ do_check_subquery_cache (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (pt_is_allowed_result_cache ())
     {
       (void *) parser_walk_tree (parser, statement, do_prepare_subquery_pre, &err, NULL, NULL);
-      (void *) parser_walk_tree (parser, statement, do_restore_host_var_index, &err, NULL, NULL);
     }
 
   return err;
@@ -14681,7 +14662,7 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
 	  for (hv = host_var_p[i]; hv; hv = hv->info.host_var.next)
 	    {
-	      hv->info.host_var.saved = i + 1;
+	      hv->info.host_var.saved = i;
 	      hv->info.host_var.index = sub_idx;
 	    }
 	}
@@ -14693,6 +14674,22 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   /* restore the flag */
   stmt->info.query.is_subquery = save_flag;
+
+  /* restore host var index */
+  for (i = 0, stmt->sub_host_var_count = 0; i < var_count; i++)
+    {
+      if (host_var_p[i])
+	{
+	  for (hv = host_var_p[i]; hv; hv = hv->info.host_var.next)
+	    {
+	      hv->info.host_var.index = hv->info.host_var.saved;
+	      hv->info.host_var.next = NULL;
+	    }
+	}
+    }
+
+  /* save the flag for main query's prepare */
+  save_flag = stmt->info.query.is_subquery;
 
   if (var_count > 0)
     {
