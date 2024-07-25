@@ -77,7 +77,6 @@ struct log_bgarv_header
 
   INT32 dummy;
   INT64 db_creation;
-  INT64 vol_creation;
 
   LOG_PAGEID start_page_id;
   LOG_PAGEID current_page_id;
@@ -1170,7 +1169,6 @@ logwr_flush_bgarv_header_page (void)
   bgarvhdr = (LOG_BGARV_HEADER *) log_pgptr->area;
   strncpy (bgarvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
   bgarvhdr->db_creation = logwr_Gl.hdr.db_creation;
-  bgarvhdr->vol_creation = time (NULL);
   bgarvhdr->start_page_id = bg_arv_info->start_page_id;
   bgarvhdr->current_page_id = bg_arv_info->current_page_id;
   bgarvhdr->last_sync_pageid = bg_arv_info->last_sync_pageid;
