@@ -35,6 +35,8 @@
 typedef bool (*CSS_CHECK_CLIENT_TYPE) (BOOT_CLIENT_TYPE client_type);
 typedef int (*CSS_GET_MAX_CONN_NUM) (void);
 
+#define CSS_SERVER_PROC_REGISTER_INITIALIZER    {-1, "", 0, "", ""}
+
 /*
  * a rule defining how a client consumes connections.
  * ex) a client using CR_NORMAL_FIRST_RESERVED_LAST
