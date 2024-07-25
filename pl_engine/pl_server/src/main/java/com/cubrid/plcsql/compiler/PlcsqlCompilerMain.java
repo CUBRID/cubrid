@@ -51,7 +51,14 @@ import org.antlr.v4.runtime.tree.*;
 
 public class PlcsqlCompilerMain {
 
+    // temporary code - the owner and revision strings will come from the server
+    private static int revision = 1;
     public static CompileInfo compilePLCSQL(String in, boolean verbose) {
+        return compilePLCSQL(in, verbose, "dba", Integer.toString(revision++));
+    }
+    // end of temporary code
+
+    public static CompileInfo compilePLCSQL(String in, boolean verbose, String owner, String revision) {
 
         // System.out.println("[TEMP] text to the compiler");
         // System.out.println(in);
@@ -59,7 +66,7 @@ public class PlcsqlCompilerMain {
         int optionFlags = verbose ? OPT_VERBOSE : 0;
         CharStream input = CharStreams.fromString(in);
         try {
-            return compileInner(input, optionFlags);
+            return compileInner(input, optionFlags, owner, revision);
         } catch (SyntaxError e) {
             CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
             return err;
@@ -137,7 +144,7 @@ public class PlcsqlCompilerMain {
         return t;
     }
 
-    private static CompileInfo compileInner(CharStream input, int optionFlags) {
+    private static CompileInfo compileInner(CharStream input, int optionFlags, String owner, String revision) {
 
         boolean verbose = (optionFlags & OPT_VERBOSE) > 0;
 
@@ -227,7 +234,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // converting parse tree to AST
 
-        ParseTreeConverter converter = new ParseTreeConverter(staticSqls);
+        ParseTreeConverter converter = new ParseTreeConverter(staticSqls, owner, revision);
         Unit unit = (Unit) converter.visit(tree);
 
         if (verbose) {
