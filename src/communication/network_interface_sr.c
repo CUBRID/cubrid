@@ -7185,6 +7185,8 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       return;
     }
 
+  filesys::auto_delete_file file_del (filename.c_str ());
+
   sync_dump_statistics (outfp, SYNC_TYPE_ALL);
 
   file_size = ftell (outfp);
