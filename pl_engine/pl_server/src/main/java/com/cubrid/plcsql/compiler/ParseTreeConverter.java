@@ -65,10 +65,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public ParseTreeConverter(
             Map<ParserRuleContext, SqlSemantics> staticSqls,
             String spOwner,
-            String routineRevision) {
+            String spRevision) {
         this.staticSqls = staticSqls;
         this.spOwner = Misc.getNormalizedText(spOwner);
-        this.routineRevision = routineRevision;
+        this.spRevision = spRevision;
     }
 
     public void askServerSemanticQuestions() {
@@ -849,7 +849,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             String owner = Misc.getNormalizedText(ctx.func_call_name().owner);
             if (owner.equals(spOwner) && name.equals(spName) && isSpFunc) {
 
-                // OK: recursive call of the stored procedure being defined
+                // OK: recursive call of the stored function being defined
                 // Note that owner name is unused afterwards.
             } else {
 
@@ -2275,7 +2275,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private final Map<ParserRuleContext, SqlSemantics> staticSqls;
     private final String spOwner;
-    private final String routineRevision;
+    private final String spRevision;
 
     private String spName;
     private boolean isSpFunc;
