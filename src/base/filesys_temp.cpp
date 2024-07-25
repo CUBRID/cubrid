@@ -34,7 +34,7 @@
 
 #include "environment_variable.h"
 
-#define	CUBRID_TMP_ENV	"CUBRID_TMP"
+#define	CUBRID_TMP_ENV	"TMP"
 #define PREFIX_LEN      3
 
 namespace
