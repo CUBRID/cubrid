@@ -1122,6 +1122,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #endif
   const char *data;
   int data_length;
+  CSS_SERVER_PROC_REGISTER proc_register = CSS_SERVER_PROC_REGISTER_INITIALIZER;
 
   css_Service_id = master_port_id;
   if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
