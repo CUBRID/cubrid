@@ -153,7 +153,8 @@ extern "C"
   extern int db_set_user_comment (DB_OBJECT * user, const char *comment);
   extern int db_grant (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth, int grant_option);
   extern int db_revoke (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth);
-  extern int db_grant_object (DB_OBJECT_TYPE obj_type, DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth, int grant_option);
+  extern int db_grant_object (DB_OBJECT_TYPE obj_type, DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth,
+			      int grant_option);
   extern int db_revoke_object (DB_OBJECT_TYPE obj_type, DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth);
   extern int db_check_authorization (DB_OBJECT * op, DB_AUTH auth);
   extern int db_check_authorization_and_grant_option (MOP op, DB_AUTH auth);
