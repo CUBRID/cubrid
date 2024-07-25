@@ -62,7 +62,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     public final SymbolStack symbolStack = new SymbolStack();
 
-    public ParseTreeConverter(Map<ParserRuleContext, SqlSemantics> staticSqls, String spOwner, String routineRevision) {
+    public ParseTreeConverter(
+            Map<ParserRuleContext, SqlSemantics> staticSqls,
+            String spOwner,
+            String routineRevision) {
         this.staticSqls = staticSqls;
         this.spOwner = Misc.getNormalizedText(spOwner);
         this.routineRevision = routineRevision;
@@ -1183,7 +1186,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
         boolean isFunction = (ctx.PROCEDURE() == null);
-        symbolStack.pushSymbolTable(name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
+        symbolStack.pushSymbolTable(
+                name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
 
         visitParameter_list(ctx.parameter_list()); // just to put symbols to the symbol table
 
@@ -2011,7 +2015,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             // This has an owner name
 
             String owner = Misc.getNormalizedText(ctx.proc_call_name().owner);
-            if (owner.equals(spOwner) && ctx.proc_call_name().DBMS_OUTPUT() == null && name.equals(spName) && !isSpFunc) {
+            if (owner.equals(spOwner)
+                    && ctx.proc_call_name().DBMS_OUTPUT() == null
+                    && name.equals(spName)
+                    && !isSpFunc) {
 
                 // OK: recursive call of the stored procedure being defined
                 // Note that owner name is unused afterwards.
@@ -2341,12 +2348,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             if (ctx.LANGUAGE() != null) {
                 throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.LANGUAGE()),   // s083
+                        Misc.getLineColumnOf(ctx.LANGUAGE()), // s083
                         "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
             }
             if (ctx.authid_spec() != null) {
                 throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.LANGUAGE()),   // s084
+                        Misc.getLineColumnOf(ctx.LANGUAGE()), // s084
                         "illegal keyword AUTHID for a local procedure/function");
             }
             if (ctx.routine_uniq_name().owner != null) {
