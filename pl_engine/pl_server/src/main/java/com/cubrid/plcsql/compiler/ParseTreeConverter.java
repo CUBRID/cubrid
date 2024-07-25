@@ -63,9 +63,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public final SymbolStack symbolStack = new SymbolStack();
 
     public ParseTreeConverter(
-            Map<ParserRuleContext, SqlSemantics> staticSqls,
-            String spOwner,
-            String spRevision) {
+            Map<ParserRuleContext, SqlSemantics> staticSqls, String spOwner, String spRevision) {
         this.staticSqls = staticSqls;
         this.spOwner = Misc.getNormalizedText(spOwner);
         this.spRevision = spRevision;
