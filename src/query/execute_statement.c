@@ -14761,7 +14761,10 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 	execute_query (&info[q].xasl_id, &query_id, info[q].host_var_count, host_variables,
 		       &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
 
-      free_and_init (host_variables);
+      if (host_variables)
+	{
+	  free_and_init (host_variables);
+	}
 
       if (err != NO_ERROR)
 	{
