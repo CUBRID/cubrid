@@ -1204,7 +1204,7 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf
   char *read_buf;
   T_SQL_RESULT result;
 
-  auto [filename, next_tmp_fp] = filesys::open_temp_file ("br_", "w+b");
+  auto[filename, next_tmp_fp] = filesys::open_temp_file ("br_", "w+b");
   if (next_tmp_fp == NULL)
     {
       fprintf (stderr, "cannot open temp file\n");
@@ -1244,7 +1244,7 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf
 	{
 	  fprintf (stderr, "memory allocation failed\n");
 	  fclose (next_tmp_fp);
-          unlink (filename.c_str ());
+	  unlink (filename.c_str ());
 	  free_and_init (read_buf);
 	  return ER_FAILED;
 	}
@@ -1262,7 +1262,7 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf
 
   /* save next temp file pointer in global variable */
   br_tmpfp = next_tmp_fp;
-  strcpy (br_tmp_filename, filename.c_str());
+  strcpy (br_tmp_filename, filename.c_str ());
 
   free_and_init (read_buf);
   return NO_ERROR;
@@ -1291,7 +1291,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, 
       return NO_ERROR;
     }
 
-  auto [filename, next_tmp_fp] = filesys::open_temp_file ("br_", "w+b");
+  auto[filename, next_tmp_fp] = filesys::open_temp_file ("br_", "w+b");
   if (next_tmp_fp == NULL)
     {
       fprintf (stderr, "cannot open temp file\n");
@@ -1594,7 +1594,7 @@ open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp, FIL
       PROC_ERR (ER_FAILED);
     }
 
-  auto [filename, fileptr] = filesys::open_temp_file ("br_", "w+b");
+  auto[filename, fileptr] = filesys::open_temp_file ("br_", "w+b");
 
   br_tmpfp = fileptr;
 
@@ -1603,7 +1603,7 @@ open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp, FIL
       fprintf (stderr, "cannot open temp file\n");
       PROC_ERR (ER_FAILED);
     }
-  strcpy (br_tmp_filename, filename.c_str());
+  strcpy (br_tmp_filename, filename.c_str ());
 
   *cci_errfp = fopen (CCI_ERR_FILE_NAME, "w");
   if (*cci_errfp == NULL)
