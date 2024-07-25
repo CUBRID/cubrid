@@ -32,6 +32,8 @@
 #include <io.h>
 #endif
 
+#include "environment_variable.h"
+
 #define	CUBRID_TMP_ENV	"CUBRID_TMP"
 #define PREFIX_LEN      3
 
@@ -39,7 +41,7 @@ namespace
 {
   std::string unique_tmp_filename (const char *prefix="cub_") //generates an unique filename in tmp folder
   {
-    const char *cubrid_tmp = std::getenv (CUBRID_TMP_ENV);
+    const char *cubrid_tmp = envvar_get (CUBRID_TMP_ENV);
 #ifdef LINUX
     std::string filename = cubrid_tmp != nullptr ? cubrid_tmp : std::filesystem::temp_directory_path ().u8string ();
 
@@ -107,7 +109,7 @@ std::pair<std::string, FILE *> filesys::open_temp_file (const char *prefix, cons
 
 std::string filesys::temp_directory_path (void)
 {
-  const char *cubrid_tmp = std::getenv (CUBRID_TMP_ENV);
+  const char *cubrid_tmp = envvar_get (CUBRID_TMP_ENV);
   std::string pathname = cubrid_tmp != nullptr ? cubrid_tmp : std::filesystem::temp_directory_path ().u8string ();
 
   return pathname;
