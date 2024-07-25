@@ -68,6 +68,7 @@
 #include "connection_cl.h"
 #include "dbtype.h"
 #include "method_callback.hpp"
+#include "filesys_temp.hpp"
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
@@ -173,7 +174,8 @@ db_init (const char *program, int print_version, const char *dbname, const char 
 #if defined (CUBRID_DEBUG)
   int value;
   const char *env_value;
-  char more_vol_info_temp_file[L_tmpnam];
+  char more_vol_info_temp_file[PATH_MAX];
+  std::string filename = "";
 #endif
   const char *more_vol_info_file = NULL;
   int error = NO_ERROR;
@@ -203,8 +205,10 @@ db_init (const char *program, int print_version, const char *dbname, const char 
 
 	  db_npages = npages / 4;
 
-	  if (tmpnam (more_vol_info_temp_file) != NULL && (more_vols_fp = fopen (more_vol_info_temp_file, "w")) != NULL)
+	  std::tie (filename, more_vols_fp) = filesys::open_temp_file ("db");;
+	  if (more_vols_fp != NULL)
 	    {
+	      snprintf (more_vol_info_temp_file, PATH_MAX, "%s", filename.c_str ());
 	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "DATA", "NPAGES", db_npages);
 	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "INDEX", "NPAGES", db_npages);
 	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "TEMP", "NPAGES", db_npages);
