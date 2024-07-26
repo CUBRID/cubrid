@@ -1004,6 +1004,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 			  css_Active_server_count--;
 			}
 #endif
+                      master_Server_monitor->find_set_entry_to_revive (temp->conn_ptr);
 		      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
 		    }
 		}
