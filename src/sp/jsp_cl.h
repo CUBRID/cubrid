@@ -77,6 +77,7 @@ extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statem
 extern int jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int jsp_check_out_param_in_query (PARSER_CONTEXT * parser, PT_NODE * node, int arg_mode);
 extern int jsp_check_param_type_supported (PT_NODE * node);
 extern int jsp_check_return_type_supported (DB_TYPE type);
 

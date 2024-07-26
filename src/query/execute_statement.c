@@ -4321,7 +4321,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return error;
 	    }
 
-	  error = au_check_authorization (class_mop, AU_ALTER);
+	  error = au_check_class_authorization (class_mop, AU_ALTER);
 	  if (error != NO_ERROR)
 	    {
 	      // set an error since only warning was set.
@@ -4976,6 +4976,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (error == NO_ERROR)
 	    {
+	      prm_set_integer_value (PRM_ID_LOG_ISOLATION_LEVEL, (int) tran_isolation);
 	      error = tran_reset_isolation (tran_isolation, async_ws);
 	    }
 	  break;
@@ -4993,6 +4994,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      wait_secs = db_get_float (&val);
+	      prm_set_integer_value (PRM_ID_LK_TIMEOUT, wait_secs);
 	      if (wait_secs > 0)
 		{
 		  wait_secs *= 1000;
@@ -5125,7 +5127,16 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
   switch (statement->info.set_opt_lvl.option)
     {
     case PT_OPT_LVL:
-      qo_set_optimization_param (NULL, QO_PARAM_LEVEL, (int) db_get_int (&val1));
+      {
+	int level = db_get_int (&val1);
+	if (CHECK_INVALID_OPTIMIZATION_LEVEL (level))
+	  {
+	    pr_clear_value (&val1);
+	    er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__, ER_OBJ_INVALID_ARGUMENTS, 0);
+	    return ER_OBJ_INVALID_ARGUMENTS;
+	  }
+	qo_set_optimization_param (NULL, QO_PARAM_LEVEL, (int) db_get_int (&val1));
+      }
       break;
     case PT_OPT_COST:
       plan = db_get_string (&val1);
@@ -9982,6 +9993,13 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID
 		  flush_to_server[idx] = 0;
 		}
 	    }
+
+	  // In has_unique_constraint (mop) is just for checking whether flushing to server is required, an error should be ignored.
+	  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+	    {
+	      er_clear ();
+	    }
+
 	  error = delete_object_tuple (mop);
 	  if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
 	    {
@@ -21394,7 +21412,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
     }
   else
     {
-      owner_name = (char *) au_user_name ();
+      owner_name = (char *) au_get_current_user_name ();
       if (!owner_name)
 	{
 	  return NULL;

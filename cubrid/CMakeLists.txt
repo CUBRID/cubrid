@@ -266,10 +266,10 @@ set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set(JSP_SOURCES
-  ${JSP_DIR}/jsp_comm.c
-  ${JSP_DIR}/jsp_file.c
-  ${JSP_DIR}/jsp_sr.c
+set(SP_SOURCES
+  ${SP_DIR}/jsp_comm.c
+  ${SP_DIR}/jsp_file.c
+  ${SP_DIR}/jsp_sr.c
   )
 
 set(METHOD_SOURCES
@@ -460,7 +460,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}
@@ -485,7 +485,7 @@ set (CUBRID_LIB_SOURCES
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}
@@ -541,6 +541,7 @@ if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubrid PUBLIC stdc++fs)
+  target_link_libraries(cubrid PUBLIC rt)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
