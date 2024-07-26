@@ -2405,7 +2405,7 @@ set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int
 	{
 	  if (query->sub_host_var_index[i] >= 0)
 	    {
-	      info[q].host_var_index[v++] = query->sub_host_var_index[query->sub_host_var_index[i]];
+	      info[q].host_var_index[v++] = query->sub_host_var_index[i];
 	    }
 	  i++;
 	}
