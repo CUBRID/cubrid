@@ -115,8 +115,6 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/.git") # Regular Git project
     else() # Git Worktree
         set_git_dir_from_worktree(GIT_DIR HEAD_FILE)
     endif()
-else()
-    message(FATAL_ERROR "Not a git repository")
 endif()
 
 if(VERSION_MATCHES_LENGTH GREATER 3)
