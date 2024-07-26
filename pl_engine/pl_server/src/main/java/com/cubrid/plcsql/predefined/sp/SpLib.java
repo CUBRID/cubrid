@@ -2030,36 +2030,49 @@ public class SpLib {
     // ====================================
     // /
     @Operator(coercionScheme = CoercionScheme.ArithOp)
-    public static Short opDiv(Short l, Short r) {
+    public static Object opDiv(Short l, Short r) {
         if (l == null || r == null) {
             return null;
         }
         if (r.equals((short) 0)) {
             throw new ZERO_DIVIDE();
         }
-        return (short) (l / r);
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return opDiv(BigDecimal.valueOf(l.longValue()), BigDecimal.valueOf(r.longValue()));
+        } else {
+            return (short) (l / r);
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
-    public static Integer opDiv(Integer l, Integer r) {
+    public static Object opDiv(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
         }
         if (r.equals(0)) {
             throw new ZERO_DIVIDE();
         }
-        return l / r;
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return opDiv(BigDecimal.valueOf(l.longValue()), BigDecimal.valueOf(r.longValue()));
+        } else {
+            return l / r;
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
-    public static Long opDiv(Long l, Long r) {
+    public static Object opDiv(Long l, Long r) {
         if (l == null || r == null) {
             return null;
         }
         if (r.equals(0)) {
             throw new ZERO_DIVIDE();
         }
-        return l / r;
+
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return opDiv(BigDecimal.valueOf(l), BigDecimal.valueOf(r));
+        } else {
+            return l / r;
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
