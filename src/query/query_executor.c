@@ -16096,6 +16096,14 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
+	  /* Before executing the next recursive part, clearing VAL_LIST is necessary.
+	   * See CBRD-25428 for the details.
+	   */
+	  if (recursive_part->val_list)
+	    {
+	      qexec_clear_db_val_list (recursive_part->val_list->valp);
+	    }
+
 	  if (first_iteration)
 	    {
 	      /* unify list_id types after the first execution of the recursive part */

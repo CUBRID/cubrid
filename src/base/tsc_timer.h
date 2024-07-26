@@ -32,8 +32,11 @@
 do { \
   (total).tv_usec += (diff).tv_usec; \
   (total).tv_sec += (diff).tv_sec; \
-  (total).tv_sec += (total).tv_usec / 1000000; \
-  (total).tv_usec %= 1000000; \
+  if ((total).tv_usec >= 1000000) \
+    { \
+      (total).tv_sec++; \
+      (total).tv_usec -= 1000000; \
+    } \
 } while (0)
 
 typedef UINT64 TSC_UINT64;
