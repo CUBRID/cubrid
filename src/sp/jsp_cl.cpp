@@ -165,7 +165,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, name);
     }
 
-  if (mop && purpose != DB_AUTH_NONE)
+  if (mop)
     {
       err = check_execute_authorization (mop, purpose);
     }
@@ -1804,31 +1804,116 @@ jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list)
 }
 
 static int
+check_execute_authorization_by_query (const MOP sp_obj)
+{
+  int error = NO_ERROR, save;
+  const char *query = "SELECT [au] FROM " CT_CLASSAUTH_NAME
+		      " [au] WHERE [object_type] = ? and [auth_type] = 'EXECUTE' and [object_of] = ?";
+  DB_QUERY_RESULT *result = NULL;
+  DB_SESSION *session = NULL;
+  DB_VALUE val[2];
+  int stmt_id;
+  int cnt = 0;
+
+  db_make_null (&val[0]);
+  db_make_null (&val[1]);
+
+  /* Disable the checking for internal authorization object access */
+  AU_DISABLE (save);
+
+  session = db_open_buffer_local (query);
+  if (session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
+  db_make_int (&val[0], (int) DB_OBJECT_PROCEDURE);
+  db_make_object (&val[1], sp_obj);
+
+  error = db_push_values (session, 2, val);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  cnt = error = db_execute_statement_local (session, stmt_id, &result);
+  if (error < 0)
+    {
+      goto release;
+    }
+
+  error = db_query_end (result);
+
+release:
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+exit:
+  pr_clear_value (&val[0]);
+  pr_clear_value (&val[1]);
+
+  AU_ENABLE (save);
+
+  return cnt;
+}
+
+static int
 check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 {
-  int error = ER_FAILED;
+  int error = NO_ERROR;
   MOP owner_mop = NULL;
   DB_VALUE owner;
 
+  if (au_type != DB_AUTH_EXECUTE)
+    {
+      return NO_ERROR;
+    }
+
   if (au_is_dba_group_member (Au_user))
     {
-      error = NO_ERROR;
+      return NO_ERROR;
     }
-  else
-    {
-      error = db_get (sp_obj, SP_ATTR_OWNER, &owner);
-      if (error == NO_ERROR)
-	{
-	  // check sp's owner is current user
-	  owner_mop = db_get_object (&owner);
-	  if (!ws_is_same_object (owner_mop, Au_user))
-	    {
-	      error = (au_type == DB_AUTH_EXECUTE) ? ER_AU_EXECUTE_FAILURE : ER_AU_SELECT_FAILURE;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	      return error;
-	    }
 
-	  error = NO_ERROR;
+  error = db_get (sp_obj, SP_ATTR_OWNER, &owner);
+  if (error == NO_ERROR)
+    {
+      // check sp's owner is current user
+      owner_mop = db_get_object (&owner);
+      if (ws_is_same_object (owner_mop, Au_user))
+	{
+	  return NO_ERROR;
+	}
+      else
+	{
+	  if (au_type == DB_AUTH_EXECUTE)
+	    {
+	      if (check_execute_authorization_by_query (sp_obj) == 0)
+		{
+		  error = ER_AU_EXECUTE_FAILURE;
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+		  return error;
+		}
+	      else
+		{
+		  error = er_errid ();
+		}
+	    }
 	}
     }
 
