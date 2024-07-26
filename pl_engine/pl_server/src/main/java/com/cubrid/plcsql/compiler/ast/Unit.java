@@ -44,7 +44,6 @@ public class Unit extends AstNode {
 
     public final boolean autonomousTransaction;
     public final boolean connectionRequired;
-    public final Set<String> imports;
     public final DeclRoutine routine;
     public final String revision;
 
@@ -52,8 +51,7 @@ public class Unit extends AstNode {
             ParserRuleContext ctx,
             boolean autonomousTransaction,
             boolean connectionRequired,
-            Set<String> imports,
-            DeclRoutine routine, 
+            DeclRoutine routine,
             String revision) {
         super(ctx);
 
@@ -61,7 +59,6 @@ public class Unit extends AstNode {
 
         this.autonomousTransaction = autonomousTransaction;
         this.connectionRequired = connectionRequired;
-        this.imports = imports;
         this.routine = routine;
         this.revision = revision;
     }
@@ -104,19 +101,9 @@ public class Unit extends AstNode {
         return className;
     }
 
-    public String[] getImportsArray() {
-        if (imports.size() == 0) {
-            return new String[] {"// no imports"};
-        } else {
-            return imports.toArray(dummyStrArr);
-        }
-    }
-
     // ------------------------------------------
     // Private
     // ------------------------------------------
-
-    private static final String[] dummyStrArr = new String[0];
 
     private String className;
 }
