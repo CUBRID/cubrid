@@ -46,13 +46,15 @@ public class Unit extends AstNode {
     public final boolean connectionRequired;
     public final Set<String> imports;
     public final DeclRoutine routine;
+    public final String revision;
 
     public Unit(
             ParserRuleContext ctx,
             boolean autonomousTransaction,
             boolean connectionRequired,
             Set<String> imports,
-            DeclRoutine routine) {
+            DeclRoutine routine, 
+            String revision) {
         super(ctx);
 
         assert routine.scope.level == 1;
@@ -61,6 +63,7 @@ public class Unit extends AstNode {
         this.connectionRequired = connectionRequired;
         this.imports = imports;
         this.routine = routine;
+        this.revision = revision;
     }
 
     public String getJavaSignature() {
@@ -95,7 +98,7 @@ public class Unit extends AstNode {
 
         if (className == null) {
             String kindStr = routine.isProcedure() ? "Proc" : "Func";
-            className = String.format("%s_%s", kindStr, routine.name);
+            className = String.format("%s_%s_%s", kindStr, routine.name, revision);
         }
 
         return className;

@@ -227,7 +227,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         previsitRoutine_definition(ctx.routine_definition());
         assert spName != null;
         DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
-        return new Unit(ctx, autonomousTransaction, connectionRequired, imports, decl);
+        return new Unit(ctx, autonomousTransaction, connectionRequired, imports, decl, spRevision);
     }
 
     @Override
