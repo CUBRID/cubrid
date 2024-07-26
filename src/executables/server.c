@@ -50,6 +50,7 @@
 #include "system_parameter.h"
 #include "perf_monitor.h"
 #include "util_func.h"
+#include "connection_sr.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* !defined (WINDOWS) */
@@ -352,6 +353,9 @@ main (int argc, char **argv)
 #if !defined(WINDOWS)
     hb_set_exec_path (executable_path);
     hb_set_argv (argv);
+
+    css_set_exec_path (executable_path);
+    css_set_argv (argv);
 
     /* create a new session */
     setsid ();

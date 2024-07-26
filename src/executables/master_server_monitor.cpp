@@ -21,6 +21,7 @@
 //
 
 #include <sstream>
+#include <algorithm>
 
 #include "master_server_monitor.hpp"
 
@@ -28,8 +29,8 @@ std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 
 server_monitor::server_monitor ()
 {
-  m_server_entry_list = std::make_unique<std::vector<server_entry>> ();
-  fprintf (stdout, "server_entry_list is created. \n");
+  m_server_entry_list = std::make_unique<std::list<server_entry>> ();
+  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_list is created. \n");
 
   m_thread_shutdown = false;
   m_monitoring_thread = std::make_unique<std::thread> ([this]()
@@ -40,7 +41,7 @@ server_monitor::server_monitor ()
       }
   });
 
-  fprintf (stdout, "server_monitor_thread is created. \n");
+  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is created. \n");
   fflush (stdout);
 }
 
@@ -52,18 +53,41 @@ server_monitor::~server_monitor ()
   if (m_monitoring_thread->joinable())
     {
       m_monitoring_thread->join();
-      fprintf (stdout, "server_monitor_thread is terminated. \n");
+      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is terminated. \n");
     }
 
   assert (m_server_entry_list->size () == 0);
-  fprintf (stdout, "server_entry_list is deleted. \n");
+  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_list is deleted. \n");
   fflush (stdout);
 }
 
+void
+server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, char *args,
+    CSS_CONN_ENTRY *conn)
+{
+  m_server_entry_list->emplace_back (pid, exec_path, args, conn);
+  fprintf (stdout,
+	   "[SERVER_REVIVE_DEBUG] : server has been registered into master_Server_monitor : pid : %d, exec_path : %s, args : %s\n",
+	   pid,
+	   exec_path, args);
+}
+
+void
+server_monitor::remove_server_entry_by_conn (CSS_CONN_ENTRY *conn)
+{
+  const auto result = std::remove_if (m_server_entry_list->begin(), m_server_entry_list->end(),
+				      [conn] (auto& e) -> bool {return e.get_conn() == conn;});
+  assert (result != m_server_entry_list->end ());
+
+  m_server_entry_list->erase (result, m_server_entry_list->end());
+  fprintf (stdout,
+	   "[SERVER_REVIVE_DEBUG] : server has been removed from master_Server_monitor. Number of server in master_Server_monitor: %d\n",
+	   m_server_entry_list->size ());
+}
+
 server_monitor::server_entry::
-server_entry (int pid, const char *server_name, const char *exec_path, char *args, CSS_CONN_ENTRY *conn)
+server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn)
   : m_pid {pid}
-  , m_server_name {server_name}
   , m_exec_path {exec_path}
   , m_conn {conn}
   , m_last_revive_time {0, 0}
@@ -73,6 +97,12 @@ server_entry (int pid, const char *server_name, const char *exec_path, char *arg
     {
       proc_make_arg (args);
     }
+}
+
+CSS_CONN_ENTRY *
+server_monitor::server_entry::get_conn () const
+{
+  return m_conn;
 }
 
 void
