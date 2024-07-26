@@ -32,7 +32,6 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.sql.*;
-import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class Unit extends AstNode {
