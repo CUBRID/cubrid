@@ -551,7 +551,8 @@ static int qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_N
 STATIC_INLINE int qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_proc,
 					     TP_DOMAIN ** domains, int *value_indexes,
 					     QFILE_TUPLE_RECORD * tuple_record, HASH_SCAN_KEY * key,
-					     HASH_SCAN_KEY * compare_key) __attribute__ ((ALWAYS_INLINE));
+					     HASH_SCAN_KEY * compare_key, bool * exit_on_next)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int qexec_hash_join_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan,
 					     QFILE_TUPLE_RECORD * tuple_record, QFILE_LIST_SCAN_ID * list_scan_id)
   __attribute__ ((ALWAYS_INLINE));
@@ -7058,24 +7059,6 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
       stats->hash_method = HASH_METH_NOT_USE;
     }
 
-  if (outer_list_id->type_list.type_cnt == 0)
-    {
-      error = qexec_start_mainblock_iterations (thread_p, outer_xasl, xasl_state);
-      if (error != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-    }
-
-  if (inner_list_id->type_list.type_cnt == 0)
-    {
-      error = qexec_start_mainblock_iterations (thread_p, inner_xasl, xasl_state);
-      if (error != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-    }
-
   if ((outer_list_id->tuple_cnt == 0) && (merge_info->join_type != JOIN_RIGHT))
     {
       if (on_trace)
@@ -7097,6 +7080,15 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
       goto exit_on_end;
     }
+
+  /**
+   * When aptr_list is executed in qexec_execute_mainblock_internal, if there is no result
+   * from either outer_xasl or inner_xasl in merge_info, the execution of the other one is skipped.
+   * In this case, the list_id.type_list.type_cnt of the skipped one can be 0.
+   * However, it should not come to this.
+   */
+  assert (outer_list_id->type_list.type_cnt != 0);
+  assert (inner_list_id->type_list.type_cnt != 0);
 
   {
     QFILE_TUPLE_VALUE_TYPE_LIST type_list;
@@ -7730,6 +7722,7 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 #endif
 
   int error = NO_ERROR;
+  bool exit_on_next;
 
   if ((thread_p == NULL) || (hashjoin_proc == NULL) || (list_scan_id == NULL))
     {
@@ -7775,20 +7768,19 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
       error =
 	qexec_hash_join_fetch_key (thread_p, hashjoin_proc, build_domains, build_value_indexes, &tuple_record, key,
-				   NULL /* compare_key */ );
+				   NULL /* compare_key */ , &exit_on_next);
       if (error != NO_ERROR)
 	{
-	  if (error < 0)
-	    {
-	      goto exit_on_error;
-	    }
-	  else
-	    {
-	      error = NO_ERROR;
-
-	      /* Give up and read the next tuple. */
-	      continue;
-	    }
+	  goto exit_on_error;
+	}
+      else if (exit_on_next == true)
+	{
+	  /* Give up and read the next tuple. */
+	  continue;
+	}
+      else
+	{
+	  /* fall through */
 	}
 
 #if defined(TEST_HASH_JOIN_TEST_TIME)
@@ -7923,6 +7915,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   TSCTIMEVAL tv_diff;
 
   int error = NO_ERROR;
+  bool exit_on_next;
 
   if ((thread_p == NULL) || (hashjoin_proc == NULL) || (build_list_scan_id == NULL) || (probe_list_scan_id == NULL)
       || (list_id == NULL))
@@ -7999,20 +7992,19 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
       error =
 	qexec_hash_join_fetch_key (thread_p, hashjoin_proc, probe_domains, probe_value_indexes, &tuple_record, key,
-				   NULL /* compare_key */ );
+				   NULL /* compare_key */ , &exit_on_next);
       if (error != NO_ERROR)
 	{
-	  if (error < 0)
-	    {
-	      goto exit_on_error;
-	    }
-	  else
-	    {
-	      error = NO_ERROR;
-
-	      /* Give up and read the next tuple. */
-	      continue;
-	    }
+	  goto exit_on_error;
+	}
+      else if (exit_on_next == true)
+	{
+	  /* Give up and read the next tuple. */
+	  continue;
+	}
+      else
+	{
+	  /* fall through */
 	}
 
 #if defined(TEST_HASH_JOIN_TEST_TIME)
@@ -8075,25 +8067,24 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
 	  error =
 	    qexec_hash_join_fetch_key (thread_p, hashjoin_proc, build_domains, build_value_indexes, &found_tuple_record,
-				       found_key, key /* compare_key */ );
+				       found_key, key /* compare_key */ , &exit_on_next);
 	  if (error != NO_ERROR)
 	    {
-	      if (error < 0)
-		{
-		  goto exit_on_error;
-		}
-	      else
-		{
-		  error = NO_ERROR;
-
+	      goto exit_on_error;
+	    }
+	  else if (exit_on_next == true)
+	    {
 #if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_PROBE)
-		  fprintf (stdout, "\n[DEBUG] Not Matched Key: ");
-		  qfile_print_tuple (&(build_list_scan_id->list_id.type_list), found_tuple_record.tpl);
+	      fprintf (stdout, "\n[DEBUG] Not Matched Key: ");
+	      qfile_print_tuple (&(build_list_scan_id->list_id.type_list), found_tuple_record.tpl);
 #endif
 
-		  /* Give up and read the next hash value. */
-		  continue;
-		}
+	      /* Give up and read the next tuple. */
+	      continue;
+	    }
+	  else
+	    {
+	      /* fall through */
 	    }
 
 #if defined(TEST_HASH_JOIN_TEST_TIME)
@@ -8193,6 +8184,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
   TSCTIMEVAL tv_diff;
 
   int error = NO_ERROR;
+  bool exit_on_next;
 
   if ((thread_p == NULL) || (hashjoin_proc == NULL) || (build_scan_id == NULL) || (probe_scan_id == NULL)
       || (xasl_state == NULL) || (list_id == NULL))
@@ -8285,41 +8277,40 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 
       error =
 	qexec_hash_join_fetch_key (thread_p, hashjoin_proc, probe_domains, probe_value_indexes, &tuple_record, key,
-				   NULL /* compare_key */ );
+				   NULL /* compare_key */ , &exit_on_next);
       if (error != NO_ERROR)
 	{
-	  if (error < 0)
+	  goto exit_on_error;
+	}
+      else if (exit_on_next == true)
+	{
+#if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_PROBE)
+	  fprintf (stdout, "\n[DEBUG] Fill Outer Key: ");
+	  qfile_print_tuple (&(probe_scan_id->s.llsid.list_id->type_list), tuple_record.tpl);
+#endif
+
+	  if (is_right_outer_join == true)
 	    {
-	      goto exit_on_error;
+	      error =
+		qexec_merge_tuple_add_list (thread_p, list_id, NULL, &tuple_record, merge_info, &result_tuple_record);
 	    }
 	  else
 	    {
-#if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_PROBE)
-	      fprintf (stdout, "\n[DEBUG] Fill Outer Key: ");
-	      qfile_print_tuple (&(probe_scan_id->s.llsid.list_id->type_list), tuple_record.tpl);
-#endif
-
-	      if (is_right_outer_join == true)
-		{
-		  error =
-		    qexec_merge_tuple_add_list (thread_p, list_id, NULL, &tuple_record, merge_info,
-						&result_tuple_record);
-		}
-	      else
-		{
-		  error =
-		    qexec_merge_tuple_add_list (thread_p, list_id, &tuple_record, NULL, merge_info,
-						&result_tuple_record);
-		}
-
-	      if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-
-	      /* Give up and read the next tuple. */
-	      continue;
+	      error =
+		qexec_merge_tuple_add_list (thread_p, list_id, &tuple_record, NULL, merge_info, &result_tuple_record);
 	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  /* Give up and read the next tuple. */
+	  continue;
+	}
+      else
+	{
+	  /* fall through */
 	}
 
       hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
@@ -8352,25 +8343,24 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 
 	  error =
 	    qexec_hash_join_fetch_key (thread_p, hashjoin_proc, build_domains, build_value_indexes, &found_tuple_record,
-				       found_key, key /* compare_key */ );
+				       found_key, key /* compare_key */ , &exit_on_next);
 	  if (error != NO_ERROR)
 	    {
-	      if (error < 0)
-		{
-		  goto exit_on_error;
-		}
-	      else
-		{
-		  error = NO_ERROR;
-
+	      goto exit_on_error;
+	    }
+	  else if (exit_on_next == true)
+	    {
 #if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_PROBE)
-		  fprintf (stdout, "\n[DEBUG] Not Matched Key: ");
-		  qfile_print_tuple (&(build_scan_id->s.llsid.list_id->type_list), found_tuple_record.tpl);
+	      fprintf (stdout, "\n[DEBUG] Not Matched Key: ");
+	      qfile_print_tuple (&(build_scan_id->s.llsid.list_id->type_list), found_tuple_record.tpl);
 #endif
 
-		  /* Give up and read the next hash value. */
-		  continue;
-		}
+	      /* Give up and read the next tuple. */
+	      continue;
+	    }
+	  else
+	    {
+	      /* fall through */
 	    }
 
 	  if (during_join_pred != NULL)
@@ -8503,7 +8493,7 @@ exit_on_error:
 STATIC_INLINE int
 qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_proc, TP_DOMAIN ** domains,
 			   int *value_indexes, QFILE_TUPLE_RECORD * tuple_record, HASH_SCAN_KEY * key,
-			   HASH_SCAN_KEY * compare_key)
+			   HASH_SCAN_KEY * compare_key, bool * exit_on_next)
 {
   OR_BUF iterator, buf;
   int value_size;
@@ -8527,6 +8517,9 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
   assert (tuple_record != NULL);
   assert (tuple_record->tpl != NULL);
   assert (key != NULL);
+  assert (exit_on_next != NULL);
+
+  *exit_on_next = false;
 
   coerce_domains = hashjoin_proc->coerce_domains;
   need_coerce_domains = hashjoin_proc->need_coerce_domains;
@@ -8631,8 +8624,9 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoi
   return NO_ERROR;
 
 exit_on_next:
-  /* Add 1 to return a value greater than 0. */
-  return value_index + 1;
+  *exit_on_next = true;
+
+  return NO_ERROR;
 
 exit_on_error:
   if (error == NO_ERROR)
