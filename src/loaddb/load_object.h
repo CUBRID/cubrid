@@ -57,6 +57,7 @@ typedef struct desc_obj
 } DESC_OBJ;
 
 
+
 extern DESC_OBJ *make_desc_obj (SM_CLASS * class_, int pre_alloc_varchar_size);
 extern int desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag);
 extern int desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj, bool is_unloaddb);
