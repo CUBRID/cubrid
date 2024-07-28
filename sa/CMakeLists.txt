@@ -29,8 +29,8 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
-  ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unload_object_file.c
+  ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
   )
 
@@ -551,8 +551,8 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
-  ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unload_object_file.c
+  ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
