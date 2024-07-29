@@ -54,6 +54,10 @@
 #include <io.h>
 #endif /* not WINDOWS */
 
+#include "authenticate.h"
+#include "db_client_type.hpp"
+#include "dbi.h"
+
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "error_code.h"
@@ -254,16 +258,50 @@ main (int argc, char *argv[])
 	    goto exit;
 	  }
 
+	// bootstrap
+	AU_DISABLE_PASSWORDS ();
+	db_set_client_type (DB_CLIENT_TYPE_PLCSQL_HELPER);
+	if (db_login ("DBA", NULL) != NO_ERROR)
+	  {
+	    JAVASP_PRINT_ERR_MSG ("%s\n", db_error_string (3));
+	    goto exit;
+	  }
+
+	if (db_restart ("pl server", TRUE, db_name.c_str()) != NO_ERROR)
+	  {
+	    PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	    goto exit;
+	  }
+
+	int cnt = 0;
 	status = javasp_start_server (jsp_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
 	    command = "running";
 	    javasp_read_info (db_name.c_str(), running_info);
+
 	    do
 	      {
 		SLEEP_MILISEC (0, 100);
+		int error = db_ping_server (0, NULL);
+		if (error != NO_ERROR)
+		  {
+		    cnt ++;
+		  }
+		else
+		  {
+		    cnt = 0;
+		  }
+
+		if (cnt > 10)
+		  {
+		    status = ER_GENERIC_ERROR;
+		    break;
+		  }
 	      }
 	    while (true);
+
+	    db_shutdown ();
 	  }
       }
     else if (command.compare ("stop") == 0)
@@ -376,6 +414,11 @@ static void javasp_signal_handler (int sig)
 		}
 	    }
 	  free (symbols);
+
+	  if (!er_is_initialized ())
+	    {
+	      er_init (NULL, ER_NEVER_EXIT);
+	    }
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
 
