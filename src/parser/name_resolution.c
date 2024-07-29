@@ -3362,7 +3362,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	     * jsp_is_exist_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
 	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
 	     */
-	    char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+	    char downcase_owner_name[DB_MAX_USER_LENGTH];
+	    downcase_owner_name[0] = '\0';
 	    char *generic_name = NULL;
 
 	    sm_downcase_name (node->info.dot.arg1->info.name.original, downcase_owner_name, DB_MAX_USER_LENGTH);
@@ -3374,7 +3375,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      {
 		/*
 		 * If (dot.arg1->node_type == PT_NAME) & (dot.arg2->node_type == PT_FUNCTION), pt_bind_name_or_path_in_scope() always returns NULL and has an er_errid() value.
-		 * Therefore, er_errid() that occurs in pt_bind_name_or_path_in_scope must be reset.
 		 */
 		if (er_errid () == NO_ERROR)
 		  {
@@ -3452,7 +3452,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		    {
 		      current_schema_name = sc_current_schema_name ();
 		      sprintf (buffer, "%s.%s", current_schema_name, node->info.function.generic_name);
-		      node->info.function.generic_name = strdup (buffer);
+		      node->info.function.generic_name = pt_append_string (parser, NULL, buffer);
 		    }
 
 		  node1 = pt_resolve_stored_procedure (parser, node, bind_arg);

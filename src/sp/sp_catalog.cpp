@@ -587,6 +587,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
   int save;
   int err;
 
+  db_make_null (&value);
   AU_DISABLE (save);
 
   classobj_p = db_find_class (SP_ARG_CLASS_NAME);

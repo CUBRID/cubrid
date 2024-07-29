@@ -9536,37 +9536,38 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *default_value_node = NULL;
   PT_NODE *default_value = NULL;
   PT_NODE *initial_def_val = NULL;
-  PT_NODE *name;
-  DB_OBJECT *owner = NULL;
-  const char *owner_name = NULL;
-
   int param_count = 0;
   bool has_default_value = false;
 
   bool is_plcsql = (node->info.sp.body->info.sp_body.lang == SP_LANG_PLCSQL);
 
-  name = node->info.sp.name;
-  owner_name = pt_get_qualifier_name (parser, name);
-  if (owner_name)
+  if (au_is_dba_group_member (Au_user) == false)
     {
-      owner = db_find_user (owner_name);
-      if (owner == NULL)
+      DB_OBJECT *owner = NULL;
+      PT_NODE *name = node->info.sp.name;
+      const char *owner_name = pt_get_qualifier_name (parser, name);
+
+      if (owner_name)
 	{
-	  ASSERT_ERROR_AND_SET (error);
-
-	  if (er_errid () == ER_AU_INVALID_USER)
+	  owner = db_find_user (owner_name);
+	  if (owner == NULL)
 	    {
-	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
-	    }
-	  return;
-	}
-    }
+	      ASSERT_ERROR_AND_SET (error);
 
-  if (ws_is_same_object (owner, Au_user) == false && au_is_dba_group_member (Au_user) == false)
-    {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER,
-		  "CREATE PROCEDURE/FUNCTION");
-      return;
+	      if (er_errid () == ER_AU_INVALID_USER)
+		{
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+		}
+	      return;
+	    }
+
+	  if (ws_is_same_object (owner, Au_user) == false)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER,
+			  "CREATE PROCEDURE/FUNCTION");
+	      return;
+	    }
+	}
     }
 
   for (param = node->info.sp.param_list; param; param = param->next)

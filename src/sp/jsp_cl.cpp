@@ -670,7 +670,8 @@ int
 jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   const char *decl = NULL, *comment = NULL;
-  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char owner_name[DB_MAX_USER_LENGTH];
+  owner_name[0] = '\0';
 
   PT_NODE *param_list, *p;
   PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
@@ -899,8 +900,10 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   int err = NO_ERROR;
   PT_NODE *sp_name = NULL, *sp_owner = NULL, *sp_comment = NULL;
   const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL;
-  char new_name_str[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char new_name_str[DB_MAX_IDENTIFIER_LENGTH];
+  new_name_str[0] = '\0';
+  char downcase_owner_name[DB_MAX_USER_LENGTH];
+  downcase_owner_name[0] = '\0';
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
   MOP sp_mop = NULL, new_owner = NULL;
@@ -1096,7 +1099,8 @@ jsp_check_stored_procedure_name (const char *str)
 {
   char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
-  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char owner_name[DB_MAX_USER_LENGTH];
+  owner_name[0] = '\0';
 
   sm_qualifier_name (str, owner_name, DB_MAX_USER_LENGTH);
   if (strncmp (owner_name, "dbms_output", DB_MAX_USER_LENGTH) == 0)
