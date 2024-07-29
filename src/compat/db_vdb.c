@@ -645,7 +645,20 @@ db_compile_statement_local (DB_SESSION * session)
       /* execute subqueries first */
       if (subquery_info)
 	{
+	  int q;
+
 	  err = do_execute_prepared_subquery (parser, statement, num_query, subquery_info);
+
+	  /* clear subquery's prepare info. */
+	  for (q = 0; q < num_query; q++)
+	    {
+	      if (subquery_info[q].host_var_index)
+		{
+		  free (subquery_info[q].host_var_index);
+		}
+	    }
+
+	  free (subquery_info);
 
 	  if (err != NO_ERROR)
 	    {

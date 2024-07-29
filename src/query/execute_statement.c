@@ -14676,14 +14676,19 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   stmt->info.query.is_subquery = save_flag;
 
   /* restore host var index */
-  for (i = 0, stmt->sub_host_var_count = 0; i < var_count; i++)
+  for (i = 0; i < var_count; i++)
     {
       if (host_var_p[i])
 	{
+	  PT_NODE *prev = NULL;
 	  for (hv = host_var_p[i]; hv; hv = hv->info.host_var.next)
 	    {
+	      if (prev)
+		{
+		  prev->next = NULL;
+		}
 	      hv->info.host_var.index = hv->info.host_var.saved;
-	      hv->info.host_var.next = NULL;
+	      prev = hv;
 	    }
 	}
     }
@@ -14694,6 +14699,10 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   if (var_count > 0)
     {
       free (host_var_p);
+      for (i = 0; i < var_count; i++)
+	{
+	  db_value_clear (&context.host_variables[i]);
+	}
       free (context.host_variables);
     }
 
@@ -14748,7 +14757,7 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		      sizeof (DB_VALUE) * info[q].host_var_count);
 	      err = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto clear_and_exit;
+	      break;
 	    }
 
 	  for (i = 0; i < info[q].host_var_count; i++)
@@ -14777,17 +14786,6 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 	    }
 	  break;
 	}
-    }
-
-clear_and_exit:
-  /* clear prepare info. */
-  if (info)
-    {
-      for (i = 0; i < num_query; i++)
-	{
-	  free_and_init (info[i].host_var_index);
-	}
-      free_and_init (info);
     }
 
   return err;

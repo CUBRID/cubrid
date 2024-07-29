@@ -651,6 +651,7 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 	{
 	  OR_UNPACK_XASL_ID (ptr, &info->subquery_info[q].xasl_id);
 	  ptr = or_unpack_int (ptr, &info->subquery_info[q].host_var_count);
+	  info->subquery_info[q].host_var_index = NULL;
 	  if (info->subquery_info[q].host_var_count > 0)
 	    {
 	      info->subquery_info[q].host_var_index =
