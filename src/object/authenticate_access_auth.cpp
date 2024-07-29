@@ -125,7 +125,7 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
   obj_set (m_au_obj, "object_type", &value);
 
   db_make_object (&value, inst_mop);
-  obj_set (m_au_obj, "class_of", &value);
+  obj_set (m_au_obj, "object_of", &value);
 
   for (type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++);
 
