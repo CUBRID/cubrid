@@ -39,8 +39,12 @@ create_routine
     ;
 
 routine_definition
-    : (PROCEDURE | FUNCTION) identifier ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
+    : (PROCEDURE | FUNCTION) routine_uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
       (authid_spec)? (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
+    ;
+
+routine_uniq_name
+    : (owner=identifier '.')? name=identifier
     ;
 
 parameter_list
@@ -210,7 +214,11 @@ return_statement
     ;
 
 procedure_call
-    : (DBMS_OUTPUT '.')? routine_name function_argument?
+    : proc_call_name function_argument?
+    ;
+
+proc_call_name
+    : (owner=identifier '.')? (DBMS_OUTPUT '.')? name=identifier
     ;
 
 body
@@ -354,7 +362,25 @@ atom
     ;
 
 function_call
-    : function_name function_argument
+    : func_call_name function_argument
+    ;
+
+func_call_name
+    : (owner=identifier '.')? name=func_name
+    ;
+
+func_name
+    : identifier
+    | DATE
+    | DEFAULT
+    | IF
+    | INSERT
+    | MOD
+    | REPLACE
+    | REVERSE
+    | TIME
+    | TIMESTAMP
+    | TRUNCATE
     ;
 
 relational_operator
@@ -443,10 +469,6 @@ restricted_using_clause
 
 restricted_using_element
     : (IN)? expression
-    ;
-
-routine_name
-    : identifier
     ;
 
 parameter_name
@@ -557,20 +579,6 @@ quoted_string
 identifier
     : REGULAR_ID
     | DELIMITED_ID
-    ;
-
-function_name
-    : identifier
-    | DATE
-    | DEFAULT
-    | IF
-    | INSERT
-    | MOD
-    | REPLACE
-    | REVERSE
-    | TIME
-    | TIMESTAMP
-    | TRUNCATE
     ;
 
 
