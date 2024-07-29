@@ -479,9 +479,9 @@ au_change_sp_owner (MOP sp, MOP owner)
   int error = NO_ERROR;
   int save;
   const char *name_str = NULL, *owner_str = NULL;
-  char new_name_str[DB_MAX_IDENTIFIER_LENGTH]
+  char new_name_str[DB_MAX_IDENTIFIER_LENGTH];
   new_name_str[0]= '\0';
-  char downcase_owner_name[DB_MAX_USER_LENGTH]
+  char downcase_owner_name[DB_MAX_USER_LENGTH];
   downcase_owner_name[0] = '\0';
   DB_VALUE value, name_value, owner_value;
 
