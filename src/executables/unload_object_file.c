@@ -134,18 +134,22 @@ public:
     return true;
   }
 
-  TEXT_BUFFER_BLK *get_text_buffer ()
+  TEXT_BUFFER_BLK *get_text_buffer (int alloc_sz)
   {
     TEXT_BUFFER_BLK *tp = NULL;
 
-    pthread_mutex_lock (&m_cs_lock);
-    if (m_free_list)
+    if (alloc_sz <= g_io_buffer_size)
       {
-	tp = m_free_list;
-	m_free_list = tp->next;
-	m_cnt_free_list--;
+	alloc_sz = g_io_buffer_size;
+	pthread_mutex_lock (&m_cs_lock);
+	if (m_free_list)
+	  {
+	    tp = m_free_list;
+	    m_free_list = tp->next;
+	    m_cnt_free_list--;
+	  }
+	pthread_mutex_unlock (&m_cs_lock);
       }
-    pthread_mutex_unlock (&m_cs_lock);
 
     if (!tp)
       {
@@ -158,6 +162,21 @@ public:
       }
 
     tp->next = NULL;
+    if (tp->buffer == NULL)
+      {
+	tp->buffer = (char *) malloc (alloc_sz + 1);
+	if (tp->buffer == NULL)
+	  {
+	    assert (false);
+	    free (tp);
+	    return NULL;
+	  }
+
+	tp->ptr = tp->buffer;
+	tp->iosize = alloc_sz;
+	tp->count = 0;
+      }
+
     return tp;
   }
 
@@ -167,17 +186,20 @@ public:
     tp->ptr = tp->buffer;
     tp->count = 0;
 
-    pthread_mutex_lock (&m_cs_lock);
-    if (m_cnt_free_list < m_max_cnt_free_list)
+    if (tp->iosize == g_io_buffer_size)
       {
-	tp->next = m_free_list;
-	m_free_list = tp;
-	m_cnt_free_list++;
-	pthread_mutex_unlock (&m_cs_lock);
+	pthread_mutex_lock (&m_cs_lock);
+	if (m_cnt_free_list < m_max_cnt_free_list)
+	  {
+	    tp->next = m_free_list;
+	    m_free_list = tp;
+	    m_cnt_free_list++;
+	    pthread_mutex_unlock (&m_cs_lock);
 
-	return;
+	    return;
+	  }
+	pthread_mutex_unlock (&m_cs_lock);
       }
-    pthread_mutex_unlock (&m_cs_lock);
 
     if (tp->buffer)
       {
@@ -305,9 +327,21 @@ init_queue_n_list_for_object_file (int q_size, int blk_size)
 }
 
 static int
-get_text_output_mem (TEXT_OUTPUT * tout)
+get_text_output_mem (TEXT_OUTPUT * tout, int alloc_sz)
 {
-  TEXT_BUFFER_BLK *pt = c_text_buf_mgr.get_text_buffer ();
+  TEXT_BUFFER_BLK *pt = NULL;
+
+  if (alloc_sz > g_io_buffer_size)
+    {
+      alloc_sz += g_io_buffer_size;
+    }
+  else
+    {
+      alloc_sz = g_io_buffer_size;
+    }
+
+
+  pt = c_text_buf_mgr.get_text_buffer (alloc_sz);
   if (pt == NULL)
     return ER_FAILED;
 
@@ -321,20 +355,6 @@ get_text_output_mem (TEXT_OUTPUT * tout)
       tout->tail_ptr->next = pt;
     }
   tout->tail_ptr = pt;
-
-  if (pt->buffer == NULL)
-    {
-      pt->buffer = (char *) malloc (g_io_buffer_size + 1);
-      if (pt->buffer == NULL)
-	{
-	  assert (false);
-	  return false;
-	}
-
-      pt->ptr = pt->buffer;
-      pt->iosize = g_io_buffer_size;
-      pt->count = 0;
-    }
 
   return NO_ERROR;
 }
@@ -526,7 +546,7 @@ flush_quoted_str (TEXT_OUTPUT * tout, const char *st, int tlen)
       tlen -= capacity;
       assert (tout->tail_ptr->count == tout->tail_ptr->iosize);
 
-      ret = get_text_output_mem (tout);
+      ret = get_text_output_mem (tout, tlen);
       if ((ret == NO_ERROR) && (tlen > 0))
 	{
 	  memcpy (tout->tail_ptr->ptr, st + capacity, tlen);
@@ -567,12 +587,12 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
   if (tout->tail_ptr == NULL)
     {
       assert (tout->head_ptr == NULL);
-      CHECK_PRINT_ERROR (get_text_output_mem (tout));
+      CHECK_PRINT_ERROR (get_text_output_mem (tout, len));
     }
   else if (tout->tail_ptr->iosize <= tout->tail_ptr->count)
     {
       assert (tout->tail_ptr->iosize == tout->tail_ptr->count);
-      CHECK_PRINT_ERROR (get_text_output_mem (tout));
+      CHECK_PRINT_ERROR (get_text_output_mem (tout, len));
     }
 
   /* opening quote */
@@ -628,7 +648,7 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
 
   if (tout->tail_ptr->iosize <= tout->tail_ptr->count)
     {
-      CHECK_PRINT_ERROR (get_text_output_mem (tout));
+      CHECK_PRINT_ERROR (get_text_output_mem (tout, 1));
     }
 
   /* closing quote */
@@ -903,47 +923,63 @@ text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ..
   if (tout->tail_ptr == NULL)
     {
       assert (tout->head_ptr == NULL);
-      CHECK_PRINT_ERROR (get_text_output_mem (tout));
+      CHECK_PRINT_ERROR (get_text_output_mem (tout, ((buflen > 0) ? buflen : -1)));
     }
 
-start:
   size = tout->tail_ptr->iosize - tout->tail_ptr->count;	/* free space size */
-  if (buflen)
+  if (buflen > 0)
     {
-      nbytes = buflen;		/* unformatted print */
+      assert (buf != NULL);
+
+      while (buflen >= size)
+	{
+	  memcpy (tout->tail_ptr->ptr, buf, size);
+	  *(tout->tail_ptr->ptr + size) = '\0';	/* Null terminate */
+	  tout->tail_ptr->ptr += size;
+	  tout->tail_ptr->count += size;
+	  buflen -= size;
+	  CHECK_PRINT_ERROR (get_text_output_mem (tout, buflen));
+	  size = tout->tail_ptr->iosize;
+	}
+
+      if (buflen > 0)
+	{
+	  memcpy (tout->tail_ptr->ptr, buf, buflen);
+	  *(tout->tail_ptr->ptr + buflen) = '\0';	/* Null terminate */
+
+	  tout->tail_ptr->ptr += buflen;
+	  tout->tail_ptr->count += buflen;
+	}
     }
   else
     {
       va_start (ap, fmt);
       nbytes = vsnprintf (tout->tail_ptr->ptr, size, fmt, ap);
       va_end (ap);
+
+      if (nbytes < 0)
+	return ER_FAILED;
+
+      if (nbytes >= size)
+	{
+	  CHECK_PRINT_ERROR (get_text_output_mem (tout, nbytes));
+	  size = tout->tail_ptr->iosize;
+	  va_start (ap, fmt);
+	  nbytes = vsnprintf (tout->tail_ptr->ptr, size, fmt, ap);
+	  va_end (ap);
+	  if (nbytes < 0)
+	    return ER_FAILED;
+	}
+
+      assert (nbytes < size);
+      tout->tail_ptr->ptr += nbytes;
+      tout->tail_ptr->count += nbytes;
     }
 
-  if (nbytes > 0)
-    {
-      if (nbytes < size)
-	{			/* OK */
-	  if (buflen > 0)
-	    {			/* unformatted print */
-	      assert (buf != NULL);
-	      memcpy (tout->tail_ptr->ptr, buf, buflen);
-	      *(tout->tail_ptr->ptr + buflen) = '\0';	/* Null terminate */
-	    }
-	  tout->tail_ptr->ptr += nbytes;
-	  tout->tail_ptr->count += nbytes;
-	}
-      else
-	{			/* need more buffer */
-	  CHECK_PRINT_ERROR (get_text_output_mem (tout));
-	  goto start;		/* retry */
-	}
-    }
-
-exit_on_end:
   return error;
 exit_on_error:
   CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
+  return error;
 }
 
 int
@@ -984,7 +1020,7 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
   int flag = 0;
 
   tout->record_cnt++;
-  if (force || head->next || ((head->iosize - head->count) < (((double) head->count / tout->record_cnt) * 1.1)))
+  if (force || head->next || ((head->iosize - head->count) < (((double) head->count / tout->record_cnt) * 1.5)))
     {
       do
 	{
