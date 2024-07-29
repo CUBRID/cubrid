@@ -14831,6 +14831,10 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   if (host_variables)
     {
+      for (i = 0; i < stmt->sub_host_var_count; i++)
+	{
+	  db_value_clear (&host_variables[i]);
+	}
       free (host_variables);
     }
 
