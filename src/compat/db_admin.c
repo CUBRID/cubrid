@@ -1820,7 +1820,7 @@ db_get_object_type (MOP obj_)
   assert (obj_->class_mop != NULL);
 
   OID *mop = WS_OID (obj_->class_mop);
-  if (OID_EQ (mop, WS_OID (sm_Root_class_mop))
+  if (OID_EQ (mop, WS_OID (sm_Root_class_mop)))
     {
       // table, view
       ret_val = DB_OBJECT_CLASS;
@@ -1829,7 +1829,7 @@ db_get_object_type (MOP obj_)
     {
       // database object types except (v)class
       MOP sp_class_mop = sm_find_class (CT_STORED_PROC_NAME);
-      if (sp_class_mop && mop == WS_OID (sp_class_mop))
+      if (sp_class_mop && OID_EQ (mop, WS_OID (sp_class_mop)))
 	{
 	  ret_val = DB_OBJECT_PROCEDURE;
 	}
