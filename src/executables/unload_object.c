@@ -1751,53 +1751,6 @@ exit_on_error:
   return error;
 }
 
-static int
-thread_attr_initialize (pthread_attr_t * pthread_attr)
-{
-  int rv;
-  size_t ts_size;
-
-  rv = pthread_attr_init (pthread_attr);
-  if (rv != 0)
-    {
-      return ER_CSS_PTHREAD_ATTR_INIT;
-    }
-
-#if defined(AIX)
-  /* AIX's pthread is slightly different from other systems. Its performance highly depends on the pthread's scope and
-   * it's related kernel parameters. */
-  rv =
-    pthread_attr_setscope (pthread_attr,
-			   prm_get_bool_value (PRM_ID_PTHREAD_SCOPE_PROCESS) ? PTHREAD_SCOPE_PROCESS :
-			   PTHREAD_SCOPE_SYSTEM);
-#else /* AIX */
-  rv = pthread_attr_setscope (pthread_attr, PTHREAD_SCOPE_SYSTEM);
-#endif /* AIX */
-  if (rv != 0)
-    {
-      return ER_CSS_PTHREAD_ATTR_SETSCOPE;
-    }
-
-  /* Sun Solaris allocates 1M for a thread stack, and it is quite enough */
-#if !defined(sun) && !defined(SOLARIS)
-#if defined(_POSIX_THREAD_ATTR_STACKSIZE)
-  rv = pthread_attr_getstacksize (pthread_attr, &ts_size);
-  if (ts_size < (size_t) prm_get_bigint_value (PRM_ID_THREAD_STACKSIZE))
-    {
-      rv = pthread_attr_setstacksize (pthread_attr, prm_get_bigint_value (PRM_ID_THREAD_STACKSIZE));
-      if (rv != 0)
-	{
-	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
-	}
-
-      pthread_attr_getstacksize (pthread_attr, &ts_size);
-    }
-#endif /* _POSIX_THREAD_ATTR_STACKSIZE */
-#endif /* not sun && not SOLARIS */
-
-  return NO_ERROR;
-}
-
 /*
  * process_class - dump one class in loader format
  *    return: NO_ERROR, if successful, error number, if not successful.
@@ -1829,7 +1782,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   pthread_t writer_tid;
   int *retval = NULL;
   class copyarea_list c_cparea_lst_class;
-  pthread_attr_t thread_attr;
 
   /*
    * Only process classes that were requested or classes that were
@@ -1984,21 +1936,14 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 
   if (g_multi_thread_mode)
     {
-      error = thread_attr_initialize (&thread_attr);
-      if (error != NO_ERROR)
+      if (pthread_mutex_init (&unld_cls_info.mtx, NULL) != 0)
 	{
-	  goto exit_on_end;
-	}
-      else if (pthread_mutex_init (&unld_cls_info.mtx, NULL) != 0)
-	{
-	  pthread_attr_destroy (&thread_attr);
 	  error = ER_FAILED;
 	  goto exit_on_end;
 	}
       else if (pthread_cond_init (&unld_cls_info.cond, NULL) != 0)
 	{
 	  pthread_mutex_destroy (&unld_cls_info.mtx);
-	  pthread_attr_destroy (&thread_attr);
 	  error = ER_FAILED;
 	  goto exit_on_end;
 	}
@@ -2015,15 +1960,14 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	  TIMER_CLEAR (&(g_thr_param[i].wi_to_obj_str[0]));
 	  TIMER_CLEAR (&(g_thr_param[i].wi_to_obj_str[1]));
 
-	  if (pthread_create (&(g_thr_param[i].tid), &thread_attr, unload_extractor_thread, (void *) (g_thr_param + i))
-	      != 0)
+	  if (pthread_create (&(g_thr_param[i].tid), NULL, unload_extractor_thread, (void *) (g_thr_param + i)) != 0)
 	    {
 	      perror ("pthread_create()\n");
 	      exit (1);
 	    }
 	}
 
-      if (pthread_create (&writer_tid, &thread_attr, unload_writer_thread, NULL) != 0)
+      if (pthread_create (&writer_tid, NULL, unload_writer_thread, NULL) != 0)
 	{
 	  perror ("pthread_create()\n");
 	  exit (1);
@@ -2069,7 +2013,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 
       pthread_cond_destroy (&unld_cls_info.cond);
       pthread_mutex_destroy (&unld_cls_info.mtx);
-      pthread_attr_destroy (&thread_attr);	/* destroy thread_attribute */
     }
 
   TIMER_END (&wi_unload_class);
