@@ -8877,7 +8877,7 @@ auth_stmt
 
 		DBG_PRINT}}
         | revoke_proc_cmd identifier_list from_id_list
-		{{ DBG_TRACE_GRAMMAR(auth_stmt, | revoke_proc_cmd from_id_list);
+		{{ DBG_TRACE_GRAMMAR(auth_stmt, | revoke_proc_cmd identifier_list from_id_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_REVOKE);
 

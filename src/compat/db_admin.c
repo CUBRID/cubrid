@@ -1820,7 +1820,7 @@ db_get_object_type (MOP obj_)
   assert (obj_->class_mop != NULL);
 
   OID *mop = WS_OID (obj_->class_mop);
-  if (mop == WS_OID (sm_Root_class_mop))
+  if (OID_EQ (mop, WS_OID (sm_Root_class_mop))
     {
       // table, view
       ret_val = DB_OBJECT_CLASS;
