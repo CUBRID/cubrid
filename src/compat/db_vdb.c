@@ -2403,15 +2403,18 @@ set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int
 
   XASL_ID_COPY (&info[q].xasl_id, query->xasl_id);
   info[q].host_var_count = query->sub_host_var_count;
-  info[q].host_var_index = (int *) malloc (sizeof (int) * query->sub_host_var_count);
-  if (info[q].host_var_index == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * query->sub_host_var_count);
-      goto err_exit;
-    }
+  info[q].host_var_index = NULL;
 
   if (query->sub_host_var_count > 0)
     {
+      info[q].host_var_index = (int *) malloc (sizeof (int) * query->sub_host_var_count);
+      if (info[q].host_var_index == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (int) * query->sub_host_var_count);
+	  goto err_exit;
+	}
+
       i = 0;
       v = 0;
       while (v < query->sub_host_var_count)
@@ -2431,9 +2434,12 @@ err_exit:
     {
       for (i = 0; i < num_query; i++)
 	{
-	  free_and_init (info[i].host_var_index);
+	  if (info[i].host_var_index)
+	    {
+	      free (info[i].host_var_index);
+	    }
 	}
-      free_and_init (info);
+      free (info);
     }
 
   return NULL;

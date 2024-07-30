@@ -14621,7 +14621,7 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   if (var_count > 0)
     {
-      host_var_p = (PT_NODE **) malloc (sizeof (PT_NODE *) * var_count);
+      host_var_p = (PT_NODE **) calloc (var_count, sizeof (PT_NODE *));
       if (host_var_p == NULL)
 	{
 	  goto err_exit;
@@ -14638,7 +14638,6 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	{
 	  goto err_exit;
 	}
-      memset (host_var_p, NULL, var_count * sizeof (PT_NODE *));
 
       /* not to traverse next subquery */
       save_next = stmt->next;
@@ -14692,9 +14691,6 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    }
 	}
     }
-
-  /* save the flag for main query's prepare */
-  save_flag = stmt->info.query.is_subquery;
 
   if (var_count > 0)
     {
@@ -14772,7 +14768,11 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 
       if (host_variables)
 	{
-	  free_and_init (host_variables);
+	  for (i = 0; i < info[q].host_var_count; i++)
+	    {
+	      db_value_clear (&host_variables[i]);
+	    }
+	  free (host_variables);
 	}
 
       if (err != NO_ERROR)
