@@ -4015,7 +4015,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 
       assert (part_count <= MAX_PARTITIONS);
 
-      partitions = (BTREE_SCAN_PART *) malloc (sizeof (BTREE_SCAN_PART) * part_count);
+      partitions = (BTREE_SCAN_PART *) calloc (part_count, sizeof (BTREE_SCAN_PART));
       if (partitions == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
