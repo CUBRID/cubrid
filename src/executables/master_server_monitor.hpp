@@ -48,23 +48,23 @@ class server_monitor
 	server_entry &operator= (server_entry &&) = default;
 
 	CSS_CONN_ENTRY *get_conn () const;
-        bool get_need_revive () const;
-        void set_need_revive (bool need_revive);
-        char *const * get_argv () const;
-        const char* get_exec_path () const;
-        struct timeval get_last_revive_time () const;
+	bool get_need_revive () const;
+	void set_need_revive (bool need_revive);
+	const char **get_argv () const;
+	const char *get_exec_path () const;
+	struct timeval get_last_revive_time () const;
 
-        bool m_need_revive;                           // need to revive (true if the server is abnormally terminated)
+	int m_revive_count;                           // revive count of server process
 
       private:
 	void proc_make_arg (char *args);
 
 	int m_pid;                                    // process ID of server process
+	bool m_need_revive;                           // need to revive (true if the server is abnormally terminated)
 	std::string m_exec_path;                      // executable path of server process
 	std::vector<std::string> m_argv;              // arguments of server process
 	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
 	timeval m_last_revive_time;                   // latest revive time
-	
     };
 
     server_monitor ();
@@ -80,6 +80,7 @@ class server_monitor
 				       CSS_CONN_ENTRY *conn);
     void remove_server_entry_by_conn (CSS_CONN_ENTRY *conn);
     void find_set_entry_to_revive (CSS_CONN_ENTRY *conn);
+    int get_server_entry_count () const;
 
   private:
     std::unique_ptr<std::list <server_entry>> m_server_entry_list;      // list of server entries
@@ -88,4 +89,5 @@ class server_monitor
 };
 
 extern std::unique_ptr<server_monitor> master_Server_monitor;
+//extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_p);
 #endif
