@@ -6160,27 +6160,27 @@ public class SpLib {
         assert o != null;
         Class<?> c = o.getClass();
         if (c == Boolean.class) {
-            return "boolean";
+            return "BOOLEAN";
         } else if (c == String.class) {
-            return "string";
+            return "STRING";
         } else if (c == Short.class) {
-            return "short";
+            return "SHORT";
         } else if (c == Integer.class) {
-            return "int";
+            return "INT";
         } else if (c == Long.class) {
-            return "bigint";
+            return "BIGINT";
         } else if (c == BigDecimal.class) {
-            return "numeric";
+            return "NUMERIC";
         } else if (c == Float.class) {
-            return "float";
+            return "FLOAT";
         } else if (c == Double.class) {
-            return "double";
+            return "DOUBLE";
         } else if (c == Date.class) {
-            return "date";
+            return "DATE";
         } else if (c == Time.class) {
-            return "time";
+            return "TIME";
         } else if (c == Timestamp.class) {
-            return "timestamp or datetime (ambiguous)";
+            return "TIMESTAMP or DATETIME (ambiguous)";
         } else {
             return "<unknown>";
         }
