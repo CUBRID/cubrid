@@ -701,7 +701,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
-  temp = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));;
+  temp = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));
   sp_info.unique_name = temp;
   free (temp);
   if (sp_info.unique_name.empty ())
@@ -1111,7 +1111,7 @@ jsp_check_stored_procedure_name (const char *str)
   if (memcmp (str, "dbms_output.", dbms_output_len) == 0)
     {
       sprintf (buffer, "public.dbms_output.%s",
-	       sm_downcase_name (str + dbms_output_len, tmp, strlen (str + dbms_output_len)));
+	       sm_downcase_name (str + dbms_output_len, tmp, strlen (str + dbms_output_len) + 1));
     }
   else
     {
