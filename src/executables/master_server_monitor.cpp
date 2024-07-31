@@ -34,7 +34,7 @@
 
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 
-static void server_monitor_try_revive_server (const char *exec_path, const char **argv);
+static void server_monitor_try_revive_server (std::string exec_path, std::vector<std::string> argv);
 static int server_monitor_check_server_revived (int past_server_count);
 
 server_monitor::server_monitor ()
@@ -56,8 +56,13 @@ server_monitor::server_monitor ()
 	    if (entry.get_need_revive ())
 	      {
 		entry.set_need_revive (false);
-		const char **argv = entry.get_argv();
-		const char *exec_path = entry.get_exec_path();
+
+		std::vector<std::string> argv;
+		for (auto arg : entry.m_argv)
+		  {
+		    argv.push_back (arg);
+		  }
+		std::string exec_path = entry.m_exec_path;
 
 		master_Server_monitor->remove_server_entry_by_conn (entry.get_conn());
 
@@ -77,12 +82,6 @@ server_monitor::server_monitor ()
 			  }
 		      }
 		  }
-		for (int i = 0; argv[i] != nullptr; i++)
-		  {
-		    delete[] argv[i];
-		  }
-		delete[] argv;
-		delete[] exec_path;
 	      }
 	  }
       }
@@ -183,29 +182,6 @@ server_monitor::server_entry::set_need_revive (bool need_revive)
   m_need_revive = need_revive;
 }
 
-const char **
-server_monitor::server_entry::get_argv () const
-{
-  const char **argv = new const char *[m_argv.size() + 1];
-  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : argv length : %d\n", m_argv.size() + 1);
-  for (size_t i = 0; i < m_argv.size(); i++)
-    {
-      argv[i] = new char[m_argv[i].size() + 1];
-      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : argv[%d] legnth : %d\n", i, m_argv[i].size() + 1);
-      strcpy ((char *)argv[i], m_argv[i].c_str());
-    }
-  argv[m_argv.size()] = nullptr;
-  return argv;
-}
-
-const char *
-server_monitor::server_entry::get_exec_path () const
-{
-  char *exec_path = new char[m_exec_path.size() + 1];
-  strcpy (exec_path, m_exec_path.c_str());
-  return exec_path;
-}
-
 struct timeval
 server_monitor::server_entry::get_last_revive_time () const
 {
@@ -224,7 +200,7 @@ server_monitor::server_entry::proc_make_arg (char *args)
 }
 
 static void
-server_monitor_try_revive_server (const char *exec_path, const char **argv)
+server_monitor_try_revive_server (std::string exec_path, std::vector<std::string> argv)
 {
   pid_t pid;
   int error_code;
@@ -235,7 +211,13 @@ server_monitor_try_revive_server (const char *exec_path, const char **argv)
     }
   else if (pid == 0)
     {
-      error_code = execv (exec_path, (char *const *)argv);
+      const char **argv_ptr = new const char *[argv.size() + 1];
+      for (size_t i = 0; i < argv.size(); i++)
+	{
+	  argv_ptr[i] = argv[i].c_str();
+	}
+      argv_ptr[argv.size()] = nullptr;
+      error_code = execv (exec_path.c_str(), (char *const *)argv_ptr);
     }
   else
     {

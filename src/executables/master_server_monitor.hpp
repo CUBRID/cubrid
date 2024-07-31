@@ -50,19 +50,18 @@ class server_monitor
 	CSS_CONN_ENTRY *get_conn () const;
 	bool get_need_revive () const;
 	void set_need_revive (bool need_revive);
-	const char **get_argv () const;
-	const char *get_exec_path () const;
 	struct timeval get_last_revive_time () const;
 
 	int m_revive_count;                           // revive count of server process
+	std::string m_exec_path;                      // executable path of server process
+	std::vector<std::string> m_argv;              // arguments of server process
 
       private:
 	void proc_make_arg (char *args);
 
 	int m_pid;                                    // process ID of server process
 	bool m_need_revive;                           // need to revive (true if the server is abnormally terminated)
-	std::string m_exec_path;                      // executable path of server process
-	std::vector<std::string> m_argv;              // arguments of server process
+
 	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
 	timeval m_last_revive_time;                   // latest revive time
     };
