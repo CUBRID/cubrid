@@ -116,6 +116,8 @@ static void javasp_signal_handler (int sig);
 static bool is_signal_handling = false;
 static char executable_path[PATH_MAX];
 
+static bool is_server_conncted = false;
+
 static std::string command;
 static std::string db_name;
 static JAVASP_SERVER_INFO running_info = JAVASP_SERVER_INFO_INITIALIZER;
@@ -123,6 +125,7 @@ static JAVASP_SERVER_INFO running_info = JAVASP_SERVER_INFO_INITIALIZER;
 /*
  * main() - javasp main function
  */
+
 
 int
 main (int argc, char *argv[])
@@ -272,6 +275,7 @@ main (int argc, char *argv[])
 	    PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	    goto exit;
 	  }
+	is_server_conncted = true;
 
 	int cnt = 0;
 	status = javasp_start_server (jsp_info, db_name, pathname);
@@ -282,7 +286,6 @@ main (int argc, char *argv[])
 
 	    do
 	      {
-		SLEEP_MILISEC (0, 100);
 		int error = db_ping_server (0, NULL);
 		if (error != NO_ERROR)
 		  {
@@ -292,16 +295,15 @@ main (int argc, char *argv[])
 		  {
 		    cnt = 0;
 		  }
+		SLEEP_MILISEC (0, 500);
 
 		if (cnt > 10)
 		  {
-		    status = ER_GENERIC_ERROR;
+		    // can not connect with cub_server
 		    break;
 		  }
 	      }
 	    while (true);
-
-	    db_shutdown ();
 	  }
       }
     else if (command.compare ("stop") == 0)
@@ -348,6 +350,11 @@ exit:
 	{
 	  JAVASP_PRINT_ERR_MSG ("%s\n", er_msg ());
 	}
+    }
+
+  if (is_server_conncted)
+    {
+      (void) db_shutdown ();
     }
 
   return status;
