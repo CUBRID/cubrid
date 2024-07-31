@@ -682,6 +682,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   std::string pl_code;
 
   SP_INFO sp_info;
+  char *temp;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -700,7 +701,9 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
-  sp_info.unique_name = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));
+  temp = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));;
+  sp_info.unique_name = temp;
+  free (temp);
   if (sp_info.unique_name.empty ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
@@ -1098,14 +1101,17 @@ static char *
 jsp_check_stored_procedure_name (const char *str)
 {
   char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
+  char tmp[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
+  static int dbms_output_len = strlen ("dbms_output.");
   char owner_name[DB_MAX_USER_LENGTH];
   owner_name[0] = '\0';
 
-  sm_qualifier_name (str, owner_name, DB_MAX_USER_LENGTH);
-  if (strncmp (owner_name, "dbms_output", DB_MAX_USER_LENGTH) == 0)
+
+  if (memcmp (str, "dbms_output.", dbms_output_len) == 0)
     {
-      sprintf (buffer, "%s.%s", "public", str);
+      sprintf (buffer, "public.dbms_output.%s",
+	       sm_downcase_name (str + dbms_output_len, tmp, strlen (str + dbms_output_len)));
     }
   else
     {
