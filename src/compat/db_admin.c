@@ -2760,6 +2760,32 @@ db_set_system_parameters (const char *data)
       sysprm_change_parameter_values (assignments, true, true);
     }
 
+  for (SYSPRM_ASSIGN_VALUE * ptr = assignments; ptr != NULL; ptr = ptr->next)
+    {
+      if (ptr->prm_id == PRM_ID_LK_TIMEOUT)
+	{
+	  SYSPRM_ASSIGN_VALUE *tmp;
+
+	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LK_TIMEOUT), &tmp);
+	  if (tmp->value.i > 0)
+	    {
+	      tran_reset_wait_times (tmp->value.i * 1000);
+	    }
+	  else
+	    {
+	      tran_reset_wait_times (tmp->value.i);
+	    }
+	}
+      else if (ptr->prm_id == PRM_ID_LOG_ISOLATION_LEVEL)
+	{
+	  SYSPRM_ASSIGN_VALUE *tmp;
+
+	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LOG_ISOLATION_LEVEL), &tmp);
+
+	  tran_reset_isolation ((TRAN_ISOLATION) tmp->value.i, TM_TRAN_ASYNC_WS ());
+	}
+    }
+
   /* convert SYSPRM_ERR to error code */
   error = sysprm_set_error (rc, data);
 
