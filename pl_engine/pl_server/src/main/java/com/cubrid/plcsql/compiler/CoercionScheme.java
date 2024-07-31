@@ -360,33 +360,33 @@ public enum CoercionScheme {
         compOpCommonType[Type.IDX_OBJECT][Type.IDX_OBJECT] = Type.OBJECT;
 
         compOpCommonType[Type.IDX_BOOLEAN][Type.IDX_NULL] = Type.BOOLEAN;
-        compOpCommonType[Type.IDX_BOOLEAN][Type.IDX_OBJECT] = Type.BOOLEAN;
+        compOpCommonType[Type.IDX_BOOLEAN][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_BOOLEAN][Type.IDX_BOOLEAN] = Type.BOOLEAN;
 
         compOpCommonType[Type.IDX_STRING][Type.IDX_NULL] = Type.STRING_ANY;
-        compOpCommonType[Type.IDX_STRING][Type.IDX_OBJECT] = Type.STRING_ANY;
+        compOpCommonType[Type.IDX_STRING][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_STRING][Type.IDX_STRING] = Type.STRING_ANY;
 
         compOpCommonType[Type.IDX_SHORT][Type.IDX_NULL] = Type.SHORT;
-        compOpCommonType[Type.IDX_SHORT][Type.IDX_OBJECT] = Type.SHORT;
+        compOpCommonType[Type.IDX_SHORT][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_SHORT][Type.IDX_STRING] = Type.DOUBLE;
         compOpCommonType[Type.IDX_SHORT][Type.IDX_SHORT] = Type.SHORT;
 
         compOpCommonType[Type.IDX_INT][Type.IDX_NULL] = Type.INT;
-        compOpCommonType[Type.IDX_INT][Type.IDX_OBJECT] = Type.INT;
+        compOpCommonType[Type.IDX_INT][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_INT][Type.IDX_STRING] = Type.DOUBLE;
         compOpCommonType[Type.IDX_INT][Type.IDX_SHORT] = Type.INT;
         compOpCommonType[Type.IDX_INT][Type.IDX_INT] = Type.INT;
 
         compOpCommonType[Type.IDX_BIGINT][Type.IDX_NULL] = Type.BIGINT;
-        compOpCommonType[Type.IDX_BIGINT][Type.IDX_OBJECT] = Type.BIGINT;
+        compOpCommonType[Type.IDX_BIGINT][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_BIGINT][Type.IDX_STRING] = Type.DOUBLE;
         compOpCommonType[Type.IDX_BIGINT][Type.IDX_SHORT] = Type.BIGINT;
         compOpCommonType[Type.IDX_BIGINT][Type.IDX_INT] = Type.BIGINT;
         compOpCommonType[Type.IDX_BIGINT][Type.IDX_BIGINT] = Type.BIGINT;
 
         compOpCommonType[Type.IDX_NUMERIC][Type.IDX_NULL] = Type.NUMERIC_ANY;
-        compOpCommonType[Type.IDX_NUMERIC][Type.IDX_OBJECT] = Type.NUMERIC_ANY;
+        compOpCommonType[Type.IDX_NUMERIC][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_NUMERIC][Type.IDX_STRING] = Type.DOUBLE;
         compOpCommonType[Type.IDX_NUMERIC][Type.IDX_SHORT] = Type.NUMERIC_ANY;
         compOpCommonType[Type.IDX_NUMERIC][Type.IDX_INT] = Type.NUMERIC_ANY;
@@ -394,7 +394,7 @@ public enum CoercionScheme {
         compOpCommonType[Type.IDX_NUMERIC][Type.IDX_NUMERIC] = Type.NUMERIC_ANY;
 
         compOpCommonType[Type.IDX_FLOAT][Type.IDX_NULL] = Type.FLOAT;
-        compOpCommonType[Type.IDX_FLOAT][Type.IDX_OBJECT] = Type.FLOAT;
+        compOpCommonType[Type.IDX_FLOAT][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_FLOAT][Type.IDX_STRING] = Type.DOUBLE;
         compOpCommonType[Type.IDX_FLOAT][Type.IDX_SHORT] = Type.FLOAT;
         compOpCommonType[Type.IDX_FLOAT][Type.IDX_INT] = Type.FLOAT;
@@ -403,7 +403,7 @@ public enum CoercionScheme {
         compOpCommonType[Type.IDX_FLOAT][Type.IDX_FLOAT] = Type.FLOAT;
 
         compOpCommonType[Type.IDX_DOUBLE][Type.IDX_NULL] = Type.DOUBLE;
-        compOpCommonType[Type.IDX_DOUBLE][Type.IDX_OBJECT] = Type.DOUBLE;
+        compOpCommonType[Type.IDX_DOUBLE][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_DOUBLE][Type.IDX_STRING] = Type.DOUBLE;
         compOpCommonType[Type.IDX_DOUBLE][Type.IDX_SHORT] = Type.DOUBLE;
         compOpCommonType[Type.IDX_DOUBLE][Type.IDX_INT] = Type.DOUBLE;
@@ -413,12 +413,12 @@ public enum CoercionScheme {
         compOpCommonType[Type.IDX_DOUBLE][Type.IDX_DOUBLE] = Type.DOUBLE;
 
         compOpCommonType[Type.IDX_DATE][Type.IDX_NULL] = Type.DATE;
-        compOpCommonType[Type.IDX_DATE][Type.IDX_OBJECT] = Type.DATE;
+        compOpCommonType[Type.IDX_DATE][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_DATE][Type.IDX_STRING] = Type.DATE;
         compOpCommonType[Type.IDX_DATE][Type.IDX_DATE] = Type.DATE;
 
         compOpCommonType[Type.IDX_TIME][Type.IDX_NULL] = Type.TIME;
-        compOpCommonType[Type.IDX_TIME][Type.IDX_OBJECT] = Type.TIME;
+        compOpCommonType[Type.IDX_TIME][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_TIME][Type.IDX_STRING] = Type.TIME;
         compOpCommonType[Type.IDX_TIME][Type.IDX_SHORT] = Type.TIME;
         compOpCommonType[Type.IDX_TIME][Type.IDX_INT] = Type.TIME;
@@ -426,13 +426,13 @@ public enum CoercionScheme {
         compOpCommonType[Type.IDX_TIME][Type.IDX_TIME] = Type.TIME;
 
         compOpCommonType[Type.IDX_DATETIME][Type.IDX_NULL] = Type.DATETIME;
-        compOpCommonType[Type.IDX_DATETIME][Type.IDX_OBJECT] = Type.DATETIME;
+        compOpCommonType[Type.IDX_DATETIME][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_DATETIME][Type.IDX_STRING] = Type.DATETIME;
         compOpCommonType[Type.IDX_DATETIME][Type.IDX_DATE] = Type.DATETIME;
         compOpCommonType[Type.IDX_DATETIME][Type.IDX_DATETIME] = Type.DATETIME;
 
         compOpCommonType[Type.IDX_TIMESTAMP][Type.IDX_NULL] = Type.TIMESTAMP;
-        compOpCommonType[Type.IDX_TIMESTAMP][Type.IDX_OBJECT] = Type.TIMESTAMP;
+        compOpCommonType[Type.IDX_TIMESTAMP][Type.IDX_OBJECT] = Type.OBJECT;
         compOpCommonType[Type.IDX_TIMESTAMP][Type.IDX_STRING] = Type.TIMESTAMP;
         compOpCommonType[Type.IDX_TIMESTAMP][Type.IDX_SHORT] = Type.TIMESTAMP;
         compOpCommonType[Type.IDX_TIMESTAMP][Type.IDX_INT] = Type.TIMESTAMP;

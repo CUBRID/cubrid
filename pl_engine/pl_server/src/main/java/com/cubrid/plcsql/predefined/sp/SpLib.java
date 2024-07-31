@@ -780,13 +780,13 @@ public class SpLib {
             // bigint
             return opBitCompli((Long) l);
         } else if (l instanceof BigDecimal) {
-            // not applicable
+            // bigint
             return opBitCompli(convNumericToBigint((BigDecimal) l));
         } else if (l instanceof Float) {
-            // not applicable
+            // bigint
             return opBitCompli(convFloatToBigint((Float) l));
         } else if (l instanceof Double) {
-            // not applicable
+            // bigint
             return opBitCompli(convDoubleToBigint((Double) l));
         } else if (l instanceof Date) {
             // not applicable
