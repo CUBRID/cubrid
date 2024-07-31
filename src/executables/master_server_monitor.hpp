@@ -29,6 +29,9 @@
 #include <list>
 #include <memory>
 #include <time.h>
+#include <mutex>
+#include <master_util.h>
+#include <master_request.h>
 #include "connection_defs.h"
 #include "connection_globals.h"
 
@@ -45,7 +48,20 @@ class server_monitor
 	server_entry (server_entry &&) = delete;
 
 	server_entry &operator= (const server_entry &) = delete;
-	server_entry &operator= (server_entry &&) = default;
+	server_entry &operator= (server_entry && other)
+  {
+        if (this != &other)
+          {
+                m_pid = other.m_pid;
+                m_need_revive = other.m_need_revive;
+                m_conn = other.m_conn;
+                m_last_revive_time = other.m_last_revive_time;
+                m_revive_count = other.m_revive_count;
+                m_exec_path = other.m_exec_path;
+                m_argv = other.m_argv;
+          }
+        return *this;
+  }
 
 	CSS_CONN_ENTRY *get_conn () const;
 	bool get_need_revive () const;
@@ -53,7 +69,7 @@ class server_monitor
 	struct timeval get_last_revive_time () const;
 
 	int m_revive_count;                           // revive count of server process
-	std::string m_exec_path;                      // executable path of server process
+      	std::string m_exec_path;                      // executable path of server process
 	std::vector<std::string> m_argv;              // arguments of server process
 
       private:
@@ -61,7 +77,6 @@ class server_monitor
 
 	int m_pid;                                    // process ID of server process
 	bool m_need_revive;                           // need to revive (true if the server is abnormally terminated)
-
 	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
 	timeval m_last_revive_time;                   // latest revive time
     };
@@ -81,6 +96,8 @@ class server_monitor
     void find_set_entry_to_revive (CSS_CONN_ENTRY *conn);
     int get_server_entry_count () const;
 
+    std::mutex m_server_entry_list_lock;                                 // lock for server entry list
+
   private:
     std::unique_ptr<std::list <server_entry>> m_server_entry_list;      // list of server entries
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
@@ -88,5 +105,7 @@ class server_monitor
 };
 
 extern std::unique_ptr<server_monitor> master_Server_monitor;
-//extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_p);
+extern SOCKET_QUEUE_ENTRY *css_Master_socket_anchor;
+extern pthread_mutex_t css_Master_socket_anchor_lock;
+extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_p);
 #endif
