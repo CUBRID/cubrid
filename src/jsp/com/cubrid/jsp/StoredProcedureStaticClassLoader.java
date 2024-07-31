@@ -63,6 +63,9 @@ public class StoredProcedureStaticClassLoader extends URLClassLoader {
 
     private void init() {
         try {
+            if (!Files.exists(root)) {
+                Files.createDirectories(root);
+            }
             addURL(root.toUri().toURL());
             initJar();
         } catch (Exception e) {
