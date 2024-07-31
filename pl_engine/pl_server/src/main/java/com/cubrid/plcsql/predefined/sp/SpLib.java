@@ -2328,6 +2328,15 @@ public class SpLib {
     // +
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static String opAdd(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (l == null) {
+                l = EMPTY_STRING;
+            }
+            if (r == null) {
+                r = EMPTY_STRING;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
