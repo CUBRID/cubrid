@@ -48,29 +48,31 @@ class server_monitor
 	server_entry (server_entry &&) = delete;
 
 	server_entry &operator= (const server_entry &) = delete;
-	server_entry &operator= (server_entry && other)
-  {
-        if (this != &other)
-          {
-                m_pid = other.m_pid;
-                m_need_revive = other.m_need_revive;
-                m_conn = other.m_conn;
-                m_last_revive_time = other.m_last_revive_time;
-                m_revive_count = other.m_revive_count;
-                m_exec_path = other.m_exec_path;
-                m_argv = other.m_argv;
-          }
-        return *this;
-  }
+	server_entry &operator= (server_entry &&other)
+	{
+	  if (this != &other)
+	    {
+	      m_pid = other.m_pid;
+	      m_need_revive = other.m_need_revive;
+	      m_conn = other.m_conn;
+	      m_last_revive_time = other.m_last_revive_time;
+	      m_revive_count = other.m_revive_count;
+	      m_exec_path = other.m_exec_path;
+	      m_argv = other.m_argv;
+	    }
+	  return *this;
+	}
 
 	CSS_CONN_ENTRY *get_conn () const;
+	int get_pid () const;
 	bool get_need_revive () const;
 	void set_need_revive (bool need_revive);
 	struct timeval get_last_revive_time () const;
 
 	int m_revive_count;                           // revive count of server process
-      	std::string m_exec_path;                      // executable path of server process
+	std::string m_exec_path;                      // executable path of server process
 	std::vector<std::string> m_argv;              // arguments of server process
+	std::mutex m_server_entry_lock;                // lock for server entry
 
       private:
 	void proc_make_arg (char *args);
@@ -93,10 +95,9 @@ class server_monitor
     void make_and_insert_server_entry (int pid, const char *exec_path, char *args,
 				       CSS_CONN_ENTRY *conn);
     void remove_server_entry_by_conn (CSS_CONN_ENTRY *conn);
+    void remove_server_entry_by_pid (int pid);
     void find_set_entry_to_revive (CSS_CONN_ENTRY *conn);
     int get_server_entry_count () const;
-
-    std::mutex m_server_entry_list_lock;                                 // lock for server entry list
 
   private:
     std::unique_ptr<std::list <server_entry>> m_server_entry_list;      // list of server entries
@@ -105,7 +106,5 @@ class server_monitor
 };
 
 extern std::unique_ptr<server_monitor> master_Server_monitor;
-extern SOCKET_QUEUE_ENTRY *css_Master_socket_anchor;
-extern pthread_mutex_t css_Master_socket_anchor_lock;
-extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_p);
+
 #endif

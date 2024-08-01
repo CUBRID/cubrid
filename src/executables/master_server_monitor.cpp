@@ -50,37 +50,31 @@ server_monitor::server_monitor ()
     struct timeval tv;
     while (!m_thread_shutdown)
       {
+	sleep (1);
 	for (auto &entry : *m_server_entry_list)
 	  {
-            
+	    std::unique_lock<std::mutex> lock (entry.m_server_entry_lock);
 	    if (entry.get_need_revive ())
 	      {
-                fprintf(stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread found reviving server. \n");
 		entry.set_need_revive (false);
 
-                std::vector<std::string> argv;
-                for (auto arg : entry.m_argv)
-                {
-                  argv.push_back (arg);
-                }
-                std::string exec_path = entry.m_exec_path;
-                int revive_count = entry.m_revive_count;
-                timeval last_revive_time = entry.get_last_revive_time ();
-                
-		gettimeofday (&tv, nullptr);
-                master_Server_monitor->remove_server_entry_by_conn (entry.get_conn ());
-                pthread_mutex_lock (&css_Master_socket_anchor_lock);
-                css_remove_entry_by_conn (entry.get_conn(), &css_Master_socket_anchor);
-                pthread_mutex_unlock (&css_Master_socket_anchor_lock);
+		std::vector<std::string> argv;
+		for (auto arg : entry.m_argv)
+		  {
+		    argv.push_back (arg);
+		  }
+		std::string exec_path = entry.m_exec_path;
+		int revive_count = entry.m_revive_count;
+		timeval last_revive_time = entry.get_last_revive_time ();
 
+		gettimeofday (&tv, nullptr);
+		master_Server_monitor->remove_server_entry_by_pid (entry.get_pid ());
 		if (GET_ELAPSED_TIME (tv, last_revive_time
 				     ) > 1000 )
-             //prm_get_integer_value (PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS))
 		  {
 		    while (++revive_count < max_retries)
 		      {
 			server_monitor_try_revive_server (exec_path, argv);
-
 			int past_server_count = master_Server_monitor->get_server_entry_count ();
 			error_code = server_monitor_check_server_revived (past_server_count);
 			if (error_code == NO_ERROR)
@@ -90,8 +84,7 @@ server_monitor::server_monitor ()
 		      }
 		  }
 
-                fprintf(stdout, "[SERVER_REVIVE_DEBUG] : Server revive routine done. \n");
-              }
+	      }
 	  }
       }
   });
@@ -119,10 +112,8 @@ void
 server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, char *args,
     CSS_CONN_ENTRY *conn)
 {
-  std::lock_guard<std::mutex> lock(m_server_entry_list_lock);
-  fprintf(stdout, "[SERVER_REVIVE_DEBUG] : before insert \n");
+  //std::lock_guard<std::mutex> lock(m_server_entry_list_lock);
   m_server_entry_list->emplace_back (pid, exec_path, args, conn);
-  fprintf(stdout, "[SERVER_REVIVE_DEBUG] : after insert \n");
   fprintf (stdout,
 	   "[SERVER_REVIVE_DEBUG] : server has been registered into master_Server_monitor : pid : %d, exec_path : %s, args : %s\n",
 	   pid,
@@ -132,17 +123,29 @@ server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, ch
 void
 server_monitor::remove_server_entry_by_conn (CSS_CONN_ENTRY *conn)
 {
-  std::lock_guard<std::mutex> lock(m_server_entry_list_lock);
-  fprintf(stdout, "[SERVER_REVIVE_DEBUG] : before remove \n");
   const auto result = std::remove_if (m_server_entry_list->begin(), m_server_entry_list->end(),
-				      [conn] (auto& e) -> bool {
-                return e.get_conn() == conn;
-                });
-  fprintf(stdout, "[SERVER_REVIVE_DEBUG] : after remove \n");
+				      [conn] (auto& e) -> bool
+  {
+    std::unique_lock<std::mutex> lock (e.m_server_entry_lock);
+    return e.get_conn() == conn;
+  });
   assert (result != m_server_entry_list->end ());
-  fprintf(stdout, "[SERVER_REVIVE_DEBUG] : before erase \n");
   m_server_entry_list->erase (result, m_server_entry_list->end());
-  fprintf(stdout, "[SERVER_REVIVE_DEBUG] : after erase \n");
+  fprintf (stdout,
+	   "[SERVER_REVIVE_DEBUG] : server has been removed from master_Server_monitor. Number of server in master_Server_monitor: %d\n",
+	   m_server_entry_list->size ());
+}
+
+void
+server_monitor::remove_server_entry_by_pid (int pid)
+{
+  const auto result = std::remove_if (m_server_entry_list->begin(), m_server_entry_list->end(),
+				      [pid] (auto& e) -> bool
+  {
+    return e.get_pid() == pid;
+  });
+  assert (result != m_server_entry_list->end ());
+  m_server_entry_list->erase (result, m_server_entry_list->end());
   fprintf (stdout,
 	   "[SERVER_REVIVE_DEBUG] : server has been removed from master_Server_monitor. Number of server in master_Server_monitor: %d\n",
 	   m_server_entry_list->size ());
@@ -151,16 +154,17 @@ server_monitor::remove_server_entry_by_conn (CSS_CONN_ENTRY *conn)
 void
 server_monitor::find_set_entry_to_revive (CSS_CONN_ENTRY *conn)
 {
-  std::lock_guard<std::mutex> lock(m_server_entry_list_lock);
+  std::lock_guard<std::mutex> lock (m_server_entry_list_lock);
   for (auto &entry : *m_server_entry_list)
     {
+      std::unique_lock<std::mutex> lock (entry.m_server_entry_lock);
       if (entry.get_conn() == conn)
 	{
+	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry is set to true. \n");
 	  entry.set_need_revive (true);
 	  return;
 	}
     }
-  fprintf(stdout, "[SERVER_REVIVE_DEBUG] : server_entry is set to true. \n");
 }
 
 int
@@ -188,6 +192,12 @@ CSS_CONN_ENTRY *
 server_monitor::server_entry::get_conn () const
 {
   return m_conn;
+}
+
+int
+server_monitor::server_entry::get_pid () const
+{
+  return m_pid;
 }
 
 bool
@@ -231,17 +241,17 @@ server_monitor_try_revive_server (std::string exec_path, std::vector<std::string
     }
   else if (pid == 0)
     {
-    const char** argv_ptr = new const char*[argv.size() + 1];
+      const char **argv_ptr = new const char *[argv.size() + 1];
       for (size_t i = 0; i < argv.size(); i++)
-        {
-          argv_ptr[i] = argv[i].c_str();
-        }
+	{
+	  argv_ptr[i] = argv[i].c_str();
+	}
       argv_ptr[argv.size()] = nullptr;
       error_code = execv (exec_path.c_str(), (char *const *)argv_ptr);
     }
   else
     {
-      fprintf(stdout, "[SERVER_REVIVE_DEBUG] : Server revive is processing. pid : %d\n", pid);
+      return;
     }
 }
 
@@ -249,12 +259,11 @@ static int
 server_monitor_check_server_revived (int past_server_count)
 {
   int tries = 0;
-  while (tries < 10)
+  while (tries < 30)
     {
       sleep (1);
       if (master_Server_monitor->get_server_entry_count () > past_server_count)
 	{
-	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Server is revived.\n");
 	  return NO_ERROR;
 	}
       tries++;
