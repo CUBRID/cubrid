@@ -52,8 +52,8 @@ server_monitor::server_monitor ()
     struct timeval tv;
     while (!m_thread_shutdown)
       {
-	std::this_thread::sleep_for (std::chrono::seconds (1));
-	for (auto it = m_server_entry_list->begin(); it != m_server_entry_list->end(); ++it)
+	std::this_thread::sleep_for (std::chrono::milliseconds (200));
+	for (auto it = m_server_entry_list->begin(); it != m_server_entry_list->end();)
 	  {
 	    std::unique_lock<std::mutex> lock (it->m_server_entry_lock);
 	    if (it->get_need_revive ())
@@ -69,8 +69,8 @@ server_monitor::server_monitor ()
 
 		timeval last_revive_time = it->get_last_revive_time ();
 		gettimeofday (&tv, nullptr);
-		m_server_entry_list->erase (it);
-		if (GET_ELAPSED_TIME (tv, last_revive_time) > 1000)
+		it = m_server_entry_list->erase (it);
+		if (GET_ELAPSED_TIME (tv, last_revive_time) > 10000)
 		  {
 		    while (++revive_count < max_retries)
 		      {
@@ -83,6 +83,10 @@ server_monitor::server_monitor ()
 			  }
 		      }
 		  }
+	      }
+	    else
+	      {
+		it++;
 	      }
 	  }
       }
@@ -143,6 +147,7 @@ server_monitor::find_set_entry_to_revive (CSS_CONN_ENTRY *conn)
       if (entry.get_conn() == conn)
 	{
 	  entry.set_need_revive (true);
+	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : set_need_revive\n");
 	  return;
 	}
     }
@@ -173,12 +178,6 @@ CSS_CONN_ENTRY *
 server_monitor::server_entry::get_conn () const
 {
   return m_conn;
-}
-
-int
-server_monitor::server_entry::get_pid () const
-{
-  return m_pid;
 }
 
 bool

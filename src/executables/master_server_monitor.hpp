@@ -62,7 +62,6 @@ class server_monitor
 	}
 
 	CSS_CONN_ENTRY *get_conn () const;
-	int get_pid () const;
 	bool get_need_revive () const;
 	void set_need_revive (bool need_revive);
 	struct timeval get_last_revive_time () const;
@@ -76,7 +75,7 @@ class server_monitor
 	void proc_make_arg (char *args);
 
 	int m_pid;                                    // process ID of server process
-	bool m_need_revive;                           // need to revive (true if the server is abnormally terminated)
+	volatile bool m_need_revive;                  // need to revive (true if the server is abnormally terminated)
 	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
 	timeval m_last_revive_time;                   // latest revive time
     };
