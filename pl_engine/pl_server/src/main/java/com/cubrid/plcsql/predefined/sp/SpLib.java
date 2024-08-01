@@ -3443,6 +3443,7 @@ public class SpLib {
             return null;
         }
 
+        e = e.trim();
         if (e.length() == 0) {
             return INT_ZERO;
         }
@@ -3457,6 +3458,7 @@ public class SpLib {
             return null;
         }
 
+        e = e.trim();
         if (e.length() == 0) {
             return SHORT_ZERO;
         }
@@ -3471,6 +3473,7 @@ public class SpLib {
             return null;
         }
 
+        e = e.trim();
         if (e.length() == 0) {
             return DOUBLE_ZERO;
         }
@@ -3487,6 +3490,7 @@ public class SpLib {
             return null;
         }
 
+        e = e.trim();
         if (e.length() == 0) {
             return FLOAT_ZERO;
         }
@@ -3511,6 +3515,7 @@ public class SpLib {
             return null;
         }
 
+        e = e.trim();
         if (e.length() == 0) {
             return LONG_ZERO;
         }
