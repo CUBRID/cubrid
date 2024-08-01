@@ -74,6 +74,9 @@
 
 #include "packer.hpp"
 
+#include "connection_cl.h"
+#include "connection_defs.h"
+
 #include <string>
 #include <algorithm>
 #include <array>
@@ -122,6 +125,61 @@ static std::string command;
 static std::string db_name;
 static JAVASP_SERVER_INFO running_info = JAVASP_SERVER_INFO_INITIALIZER;
 
+/* DB server state */
+enum DB_SERVER_STATE
+{
+  DB_SERVER_STATE_UNKNOWN = 0,
+  DB_SERVER_STATE_DEAD = 1,
+  DB_SERVER_STATE_DEREGISTERED = 2,
+  DB_SERVER_STATE_STARTED = 3,
+  DB_SERVER_STATE_NOT_REGISTERED = 4,
+  DB_SERVER_STATE_REGISTERED = 5,
+  DB_SERVER_STATE_REGISTERED_AND_TO_BE_STANDBY = 6,
+  DB_SERVER_STATE_REGISTERED_AND_ACTIVE = 7,
+  DB_SERVER_STATE_REGISTERED_AND_TO_BE_ACTIVE = 8
+};
+
+static int
+get_server_state_from_master (CSS_CONN_ENTRY *conn, const char *db_name)
+{
+  unsigned short request_id;
+  int error = NO_ERROR;
+  int server_state;
+  int buffer_size;
+  int *buffer = NULL;
+
+  if (conn == NULL)
+    {
+      return DB_SERVER_STATE_DEAD;
+    }
+
+  error = css_send_request (conn, GET_SERVER_STATE, &request_id, db_name, (int) strlen (db_name) + 1);
+  if (error != NO_ERRORS)
+    {
+      return DB_SERVER_STATE_DEAD;
+    }
+
+  /* timeout : 5000 milliseconds */
+  error = css_receive_data (conn, request_id, (char **) &buffer, &buffer_size, 5000);
+  if (error == NO_ERRORS)
+    {
+      if (buffer_size == sizeof (int))
+	{
+	  server_state = ntohl (*buffer);
+	  free_and_init (buffer);
+
+	  return server_state;
+	}
+    }
+
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
+    }
+
+  return DB_SERVER_STATE_UNKNOWN;
+}
+
 /*
  * main() - javasp main function
  */
@@ -132,6 +190,7 @@ main (int argc, char *argv[])
 {
   int status = NO_ERROR;
   FILE *redirect = NULL; /* for ping */
+  CSS_CONN_ENTRY *master_conn = NULL;
 
 #if defined(WINDOWS)
   FARPROC jsp_old_hook = NULL;
@@ -277,31 +336,30 @@ main (int argc, char *argv[])
 	  }
 	is_server_conncted = true;
 
-	int cnt = 0;
 	status = javasp_start_server (jsp_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
 	    command = "running";
 	    javasp_read_info (db_name.c_str(), running_info);
 
+            // check DB server's state through master request
+	    int port_id = prm_get_master_port_id ();
+	    if (port_id <= 0)
+	      {
+		goto exit;
+	      }
+
+	    unsigned short rid;
+	    int state;
+	    master_conn = css_connect_to_master_timeout ("127.0.0.1", port_id, 5000, &rid);
 	    do
 	      {
-		int error = db_ping_server (0, NULL);
-		if (error != NO_ERROR)
+		state = get_server_state_from_master (master_conn, db_name.c_str ());
+		if (state < DB_SERVER_STATE_REGISTERED && state != DB_SERVER_STATE_UNKNOWN)
 		  {
-		    cnt ++;
-		  }
-		else
-		  {
-		    cnt = 0;
-		  }
-		SLEEP_MILISEC (0, 500);
-
-		if (cnt > 10)
-		  {
-		    // can not connect with cub_server
 		    break;
 		  }
+		SLEEP_MILISEC (1, 0);
 	      }
 	    while (true);
 	  }
@@ -319,14 +377,20 @@ main (int argc, char *argv[])
 	JAVASP_PRINT_ERR_MSG ("Invalid command: %s\n", command.c_str ());
 	status = ER_GENERIC_ERROR;
       }
+  }
+
+exit:
+
+  if (master_conn != NULL)
+    {
+      css_free_conn (master_conn);
+      master_conn = NULL;
+    }
 
 #if defined(WINDOWS)
     // socket shutdown for windows
     windows_socket_shutdown (jsp_old_hook);
 #endif /* WINDOWS */
-  }
-
-exit:
 
   if (command.compare ("ping") == 0)
     {
