@@ -31,35 +31,33 @@ set(MSG_FILES
   )
 
 if(WIN32)
-set(ICONV_CONTENT "
-param (
-  [string] $sourceFilePath,
-  [string] $destinationFilePath
-)
+  set(ICONV_CONTENT "
+    param (
+      [string] $sourceFilePath,
+      [string] $destinationFilePath
+    )
 
-\$content = Get-Content -Path $sourceFilePath -Raw -Encoding UTF8
-[System.Text.Encoding]::GetEncoding('euc-kr').GetBytes(\$content) | Set-Content -Path $destinationFilePath -Encoding Byte
-Write-Output 'File encoding converion from UTF-8 to EUC-KR completed'
-")
-set(ICONV_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/iconv.ps1")
-file(WRITE ${ICONV_SCRIPT} ${ICONV_CONTENT})
-endif()
+    \$content = Get-Content -Path $sourceFilePath -Raw -Encoding UTF8
+    [System.Text.Encoding]::GetEncoding('euc-kr').GetBytes(\$content) | Set-Content -Path $destinationFilePath -Encoding Byte
+    Write-Output 'File encoding converion from UTF-8 to EUC-KR completed'
+  ")
+  set(ICONV_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/iconv.ps1")
+  file(WRITE ${ICONV_SCRIPT} ${ICONV_CONTENT})
+endif(WIN32)
 
 foreach(locale ${LOCALE_DIRS})
-
   if(${locale} STREQUAL "en_US")
-   set(SRC_LOCALE "en_US.utf8")
-   set(NEED_ICONV 0)
+    set(SRC_LOCALE "en_US.utf8")
+    set(NEED_ICONV 0)
   elseif(${locale} STREQUAL "ko_KR.euckr")
-   set(SRC_LOCALE "ko_KR.utf8")
-   set(NEED_ICONV 1)
+    set(SRC_LOCALE "ko_KR.utf8")
+    set(NEED_ICONV 1)
   else()
-   set(SRC_LOCALE "${locale}")
-   set(NEED_ICONV 0)
+    set(SRC_LOCALE "${locale}")
+    set(NEED_ICONV 0)
   endif()
 
   foreach(msgfile ${MSG_FILES})
-
     if(NEED_ICONV EQUAL 1)
       if(WIN32)
         add_custom_command(
@@ -70,11 +68,11 @@ foreach(locale ${LOCALE_DIRS})
           DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SRC_LOCALE}/${msgfile}.msg
           VERBATIM
           )
-      else()
+      else(WIN32)
         find_program(ICONV_COMMAND iconv) 
         if(NOT ICONV_COMMAND)
           message(FATAL_ERROR "iconv command not found. Please install iconv.")
-        endif()
+        endif(NOT ICONV_COMMAND)
 
         add_custom_command(
           OUTPUT ${locale}/${msgfile}.msg
@@ -83,8 +81,8 @@ foreach(locale ${LOCALE_DIRS})
           COMMENT "Conversion ${msgfile}.msg in ${locale}"
           DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SRC_LOCALE}/${msgfile}.msg
           )
-      endif()
-    else()
+      endif(WIN32)
+    else(NEED_ICONV EQUAL 1)
       add_custom_command(
         OUTPUT ${locale}/${msgfile}.msg
         COMMAND ${CMAKE_COMMAND} -E make_directory ${locale}
@@ -92,7 +90,7 @@ foreach(locale ${LOCALE_DIRS})
         COMMENT "Copy ${msgfile}.msg in ${locale}"
         DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SRC_LOCALE}/${msgfile}.msg
         )
-    endif()
+    endif(NEED_ICONV EQUAL 1)
 
     add_custom_command(
       OUTPUT ${locale}/${msgfile}.cat
@@ -101,7 +99,7 @@ foreach(locale ${LOCALE_DIRS})
       COMMENT "Generating ${msgfile}.cat for ${locale}"
       DEPENDS gencat ${CMAKE_CURRENT_BINARY_DIR}/${locale}/${msgfile}.msg
       )
-  endforeach()
+  endforeach(msgfile)
 
   add_custom_target(gen_msgs_${locale} ALL DEPENDS ${locale}/cubrid.cat ${locale}/csql.cat ${locale}/utils.cat ${locale}/esql.cat)
 
@@ -113,4 +111,4 @@ foreach(locale ${LOCALE_DIRS})
     ${CMAKE_CURRENT_BINARY_DIR}/${locale}
     DESTINATION ${CUBRID_LOCALEDIR}
     FILES_MATCHING PATTERN "*.cat")
-endforeach()
+endforeach(locale)
