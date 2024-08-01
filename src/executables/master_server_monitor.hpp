@@ -30,8 +30,6 @@
 #include <memory>
 #include <time.h>
 #include <mutex>
-#include <master_util.h>
-#include <master_request.h>
 #include "connection_defs.h"
 #include "connection_globals.h"
 
@@ -95,7 +93,6 @@ class server_monitor
     void make_and_insert_server_entry (int pid, const char *exec_path, char *args,
 				       CSS_CONN_ENTRY *conn);
     void remove_server_entry_by_conn (CSS_CONN_ENTRY *conn);
-    void remove_server_entry_by_pid (int pid);
     void find_set_entry_to_revive (CSS_CONN_ENTRY *conn);
     int get_server_entry_count () const;
 
