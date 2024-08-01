@@ -1791,12 +1791,6 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	      break;
 	    }
 
-	  /* try to stop javasp server first */
-	  if (is_javasp_running (token) == JAVASP_SERVER_RUNNING)
-	    {
-	      (void) process_pl (command_type, 1, (const char **) &token, false, true, process_window_service, false);
-	    }
-
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_STOP, token);
 
 	  if (is_server_running (CHECK_SERVER, token, 0))
