@@ -147,7 +147,6 @@ server_monitor::find_set_entry_to_revive (CSS_CONN_ENTRY *conn)
       if (entry.get_conn() == conn)
 	{
 	  entry.set_need_revive (true);
-	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : set_need_revive\n");
 	  return;
 	}
     }
