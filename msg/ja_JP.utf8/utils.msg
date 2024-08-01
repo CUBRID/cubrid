@@ -552,7 +552,7 @@ unloaddb: データベースからスキーマとオブジェクトをアンロ�
       --hash-file=FILE        ハッシュファイル名; デフォルト: ファイルを作るために「tmpnam()」使う。\n\
       --latest-image          オブジェクトをダンプするとき、ログボリュームを参照せずに（MVCCを無視して）データボリューム内のオブジェクトの最新のイメージをダンプします\n\
                               コミットされていないデータや、バキュームされていない削除されたデータが含まれる可能性があります。 デフォルト：無効\n\
-  -t, --thread-count=COUNT    Specifies the number of threads to use when operating in a multi-threaded mode; default: 0 maximum: 127\n\
+  -t, --thread-count=COUNT    Specifies the number of threads to use when operating in a multi-threaded mode; default: 1 maximum: 127\n\
       --enhanced-estimates    Obtaining the correct number of records; default: disabled (Ignored if -v is not specified)\n\
                               It may take a long time\n\
   -v, --verbose               多様な進行情報を出力; デフォルト: 出力しない\n\

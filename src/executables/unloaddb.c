@@ -130,7 +130,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   bool do_schema = false;
   bool is_main_process = true;
   bool enhanced_estimates = false;
-  int thread_count = 0;
+  int thread_count = 1;
   int sampling_records = -1;
 
   db_set_use_utility_thread (true);
