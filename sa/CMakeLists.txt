@@ -693,7 +693,7 @@ if(UNIX)
   target_link_libraries(cubridsa PUBLIC rt)
 endif(UNIX)
 # for dblink
-target_link_libraries(cubridsa cascci)
+target_link_libraries(cubridsa PUBLIC cascci)
 
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 #add_dependencies(cubridsa ${EP_TARGETS})
