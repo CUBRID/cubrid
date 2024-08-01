@@ -1960,13 +1960,15 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   PARSER_CONTEXT *parser;
   PT_NODE **query_ptr;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH];
+  owner_name[0] = '\0';
   char *class_name = NULL;
   const char *null_spec;
   bool has_using_index;
   bool change_vclass_spec;
   int i;
-  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  char output_owner[DB_MAX_USER_LENGTH + 4];
+  output_owner[0] = '\0';
   char *query_ptr_result;
 
   /*
@@ -2081,6 +2083,7 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  parser = parser_create_parser ();
 	  if (parser == NULL)
 	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
 	      continue;
 	    }
 
@@ -2215,6 +2218,7 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	  parser = parser_create_parser ();
 	  if (parser == NULL)
 	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
 	      continue;
 	    }
 
@@ -2231,7 +2235,7 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 				    sizeof (output_owner));
 
 		  output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
-			      PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
+			      PRINT_IDENTIFIER (class_name), i, query_ptr_result);
 		}
 	      else
 		{		/* emit the usual statements */
@@ -2239,7 +2243,7 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 				    sizeof (output_owner));
 
 		  output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
-			      PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
+			      PRINT_IDENTIFIER (class_name), query_ptr_result);
 		}
 	    }
 
