@@ -295,6 +295,12 @@ namespace cublog
   {
     assert (false == m_adding_finished); // unguarded read
 
+    static std::size_t minimum_jobs_in_queue = 0;
+    if (minimum_jobs_in_queue == 0)
+      {
+	minimum_jobs_in_queue = (std::size_t) prm_get_integer_value (PRM_ID_REDO_MINIMUM_JOB_COUNT);
+      }
+
     bool first_job_in_produce_vec = false;
     {
       std::lock_guard<std::mutex> lockg { m_produce_vec_mtx };
@@ -308,7 +314,7 @@ namespace cublog
       m_produce_vec.push_back (a_job);
     }
 
-    if (first_job_in_produce_vec)
+    if (m_produce_vec.size () > minimum_jobs_in_queue)
       {
 	m_produce_vec_cv.notify_one ();
       }
@@ -333,24 +339,31 @@ namespace cublog
 				      bool &a_out_adding_finished)
   {
     assert (a_out_job_vec.empty ());
+    static int period_in_sec = -1;
+    if (period_in_sec == -1)
+      {
+	period_in_sec = prm_get_integer_value (PRM_ID_REDO_JOB_PERIOD);
+      }
 
     a_out_adding_finished = false;
 
     std::unique_lock<std::mutex> ulock { m_produce_vec_mtx };
-    m_produce_vec_cv.wait (ulock, [this, &ulock, &a_out_adding_finished] ()
+    while (!m_produce_vec_cv.wait_for (ulock, std::chrono::seconds (period_in_sec), [this, &ulock,
+					     &a_out_adding_finished] ()
     {
       if (m_produce_vec.empty ())
-	{
-	  if (m_do_monitor_unapplied_log_lsa)
-	    {
-	      set_unapplied_log_lsa_from_pop_func (MAX_LSA, ulock);
-	    }
-	  // adding having finished is also a termination condition
-	  a_out_adding_finished = m_adding_finished;
-	  return a_out_adding_finished;
-	}
-      return true;
-    });
+	  {
+	    if (m_do_monitor_unapplied_log_lsa)
+	      {
+		set_unapplied_log_lsa_from_pop_func (MAX_LSA, ulock);
+	      }
+	    // adding having finished is also a termination condition
+	    a_out_adding_finished = m_adding_finished;
+	    return a_out_adding_finished;
+	  }
+	return true;
+      }));
+
     assert ((!m_produce_vec.empty () && !a_out_adding_finished) ||
 	    (m_produce_vec.empty () && a_out_adding_finished)); // xor
 

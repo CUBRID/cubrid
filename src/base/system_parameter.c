@@ -396,6 +396,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_SQL_LOG_MAX_COUNT "ha_sql_log_max_count"
 
+#define PRM_NAME_REDO_MINIMUM_JOB_COUNT "redo_minimum_job_count"
+#define PRM_NAME_REDO_JOB_PERIOD "redo_job_period"
+
 #define PRM_NAME_HA_COPY_LOG_MAX_ARCHIVES "ha_copy_log_max_archives"
 
 #define PRM_NAME_HA_COPY_LOG_TIMEOUT "ha_copy_log_timeout"
@@ -1519,6 +1522,18 @@ static int prm_ha_sql_log_max_count_default = 2;
 static int prm_ha_sql_log_max_count_upper = 5;
 static int prm_ha_sql_log_max_count_lower = 2;
 static unsigned int prm_ha_sql_log_max_count_flag = 0;
+
+int PRM_REDO_MINIMUM_JOB_COUNT = 100;
+static int prm_redo_minimum_job_count_default = 100;
+static int prm_redo_minimum_job_count_upper = INT_MAX;
+static int prm_redo_minimum_job_count_lower = 1;
+static unsigned int prm_redo_minimum_job_count_flag = 0;
+
+int PRM_REDO_JOB_PERIOD = 1;
+static int prm_redo_job_period_default = 1;
+static int prm_redo_job_period_upper = INT_MAX;
+static int prm_redo_job_period_lower = 1;
+static unsigned int prm_redo_job_period_flag = 0;
 
 int PRM_HA_SQL_LOG_MAX_SIZE_IN_MB = INT_MIN;
 static int prm_ha_sql_log_max_size_in_mb_default = 50;
@@ -6363,6 +6378,30 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_HA_SQL_LOG_MAX_COUNT,
    (void *) &prm_ha_sql_log_max_count_upper,
    (void *) &prm_ha_sql_log_max_count_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REDO_MINIMUM_JOB_COUNT,
+   PRM_NAME_REDO_MINIMUM_JOB_COUNT,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_redo_minimum_job_count_flag,
+   (void *) &prm_redo_minimum_job_count_default,
+   (void *) &PRM_REDO_MINIMUM_JOB_COUNT,
+   (void *) &prm_redo_minimum_job_count_upper,
+   (void *) &prm_redo_minimum_job_count_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REDO_JOB_PERIOD,
+   PRM_NAME_REDO_JOB_PERIOD,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_redo_job_period_flag,
+   (void *) &prm_redo_job_period_default,
+   (void *) &PRM_REDO_JOB_PERIOD,
+   (void *) &prm_redo_job_period_upper,
+   (void *) &prm_redo_job_period_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
