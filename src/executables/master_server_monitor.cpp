@@ -70,7 +70,8 @@ server_monitor::server_monitor ()
 		timeval last_revive_time = it->get_last_revive_time ();
 		gettimeofday (&tv, nullptr);
 		it = m_server_entry_list->erase (it);
-		if (GET_ELAPSED_TIME (tv, last_revive_time) > 10000)
+		if (GET_ELAPSED_TIME (tv, last_revive_time) > prm_get_integer_value (
+			    PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS))
 		  {
 		    while (++revive_count < max_retries)
 		      {
