@@ -11110,16 +11110,20 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
    * DEFAULT value and AUTO INCREMENT cannot be defined for the same column.
    * Therefore, it will change to the property on which the last MODIFY statement was executed. 
    */
-  if (attr_def->info.attr_def.data_default != NULL && att->flags & SM_ATTFLAG_AUTO_INCREMENT)
+  if (attr_def->info.attr_def.data_default != NULL)
     {
-      attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_LOST;
+      if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
+	{
+	  attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_LOST;
+	}
     }
-
-  if (attr_def->info.attr_def.auto_increment != NULL
-      && (!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
-	  || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE))
+  else if (attr_def->info.attr_def.auto_increment != NULL)
     {
-      attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_LOST;
+      if ((!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
+	   || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE))
+	{
+	  attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_LOST;
+	}
     }
 
   /* existing FOREIGN KEY (referencing) */
