@@ -112,7 +112,6 @@ void
 server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, char *args,
     CSS_CONN_ENTRY *conn)
 {
-  //std::lock_guard<std::mutex> lock(m_server_entry_list_lock);
   m_server_entry_list->emplace_back (pid, exec_path, args, conn);
   fprintf (stdout,
 	   "[SERVER_REVIVE_DEBUG] : server has been registered into master_Server_monitor : pid : %d, exec_path : %s, args : %s\n",
@@ -154,7 +153,6 @@ server_monitor::remove_server_entry_by_pid (int pid)
 void
 server_monitor::find_set_entry_to_revive (CSS_CONN_ENTRY *conn)
 {
-  std::lock_guard<std::mutex> lock (m_server_entry_list_lock);
   for (auto &entry : *m_server_entry_list)
     {
       std::unique_lock<std::mutex> lock (entry.m_server_entry_lock);
