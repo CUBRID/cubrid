@@ -342,7 +342,7 @@ main (int argc, char *argv[])
 	    command = "running";
 	    javasp_read_info (db_name.c_str(), running_info);
 
-            // check DB server's state through master request
+	    // check DB server's state through master request
 	    int port_id = prm_get_master_port_id ();
 	    if (port_id <= 0)
 	      {
@@ -357,6 +357,7 @@ main (int argc, char *argv[])
 		state = get_server_state_from_master (master_conn, db_name.c_str ());
 		if (state < DB_SERVER_STATE_REGISTERED && state != DB_SERVER_STATE_UNKNOWN)
 		  {
+		    JAVASP_PRINT_ERR_MSG ("Stopped due to the shutdown of the database server\n");
 		    break;
 		  }
 		SLEEP_MILISEC (1, 0);
@@ -388,8 +389,8 @@ exit:
     }
 
 #if defined(WINDOWS)
-    // socket shutdown for windows
-    windows_socket_shutdown (jsp_old_hook);
+  // socket shutdown for windows
+  windows_socket_shutdown (jsp_old_hook);
 #endif /* WINDOWS */
 
   if (command.compare ("ping") == 0)
