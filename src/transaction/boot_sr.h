@@ -102,7 +102,6 @@ extern bool boot_Enabled_flush_daemons;
 #define BO_DISABLE_FLUSH_DAEMONS() \
         do \
           { \
-            assert (BO_IS_FLUSH_DAEMON_AVAILABLE ()); \
             boot_Enabled_flush_daemons = false; \
           } \
         while (0)
