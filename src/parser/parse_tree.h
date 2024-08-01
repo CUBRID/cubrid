@@ -3917,7 +3917,6 @@ struct parser_context
   int auto_param_count;		/* number of auto parameterized variables */
 
   int dbval_cnt;		/* to be assigned to XASL */
-  int *sub_host_var_index;	/* subquery's host variable index */
   int line, column;		/* current input line and column */
 
   void *etc;			/* application context */

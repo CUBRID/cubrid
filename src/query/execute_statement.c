@@ -14615,8 +14615,9 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   stmt->info.query.flag.subquery_cached = 1;
 
-  context.sub_host_var_index = NULL;
   context.host_var_count = 0;
+  context.host_variables = NULL;
+  stmt->sub_host_var_index = NULL;
   stmt->sub_host_var_count = 0;
 
   if (var_count > 0)
@@ -14624,18 +14625,21 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
       host_var_p = (PT_NODE **) calloc (var_count, sizeof (PT_NODE *));
       if (host_var_p == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (PT_NODE *));
 	  goto err_exit;
 	}
 
       context.host_variables = (DB_VALUE *) malloc (var_count * sizeof (DB_VALUE));
       if (context.host_variables == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
 	  goto err_exit;
 	}
 
       stmt->sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
       if (stmt->sub_host_var_index == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
 	  goto err_exit;
 	}
 
@@ -14649,7 +14653,7 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
       stmt->next = save_next;
     }
 
-  for (i = 0, stmt->sub_host_var_count = 0; i < var_count; i++)
+  for (i = 0; i < var_count; i++)
     {
       if (host_var_p[i])
 	{
@@ -14666,6 +14670,7 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    }
 	}
     }
+
   /* save the flag for main query's prepare */
   save_flag = stmt->info.query.is_subquery;
 
@@ -14695,7 +14700,9 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   if (var_count > 0)
     {
       free (host_var_p);
-      for (i = 0; i < var_count; i++)
+
+      /* clear for only cloned */
+      for (i = 0; i < stmt->sub_host_var_count; i++)
 	{
 	  db_value_clear (&context.host_variables[i]);
 	}
@@ -14706,22 +14713,14 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
 err_exit:
 
-  if (host_var_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (PT_NODE *));
-    }
-
-  if (context.host_variables == NULL)
+  if (host_var_p)
     {
       free (host_var_p);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
     }
 
-  if (stmt->sub_host_var_index == NULL)
+  if (context.host_variables)
     {
-      free (host_var_p);
       free (context.host_variables);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
     }
 
   return ER_OUT_OF_VIRTUAL_MEMORY;
