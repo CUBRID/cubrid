@@ -53,7 +53,7 @@ class print_output;
 #if defined(WINDOWS)
 #define TIMER_CLEAR(pwi)
 #define TIMER_BEGIN(flag, pwi)
-#define TIMER_END(flag pwi)
+#define TIMER_END(flag, pwi)
 #define PRINT_MESSAGE_WITH_TIME(fp, msg)
 #else
 typedef struct _waiting_info
