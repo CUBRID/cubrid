@@ -80,7 +80,7 @@
 #include "error_context.hpp"
 
 
-#define OPEN_MODE_VALUE   0666
+#define CREAT_OBJECT_FILE_PERM   0644
 
 #define MARK_CLASS_REQUESTED(cl_no) \
   (class_requested[cl_no / 8] |= 1 << cl_no % 8)
@@ -175,7 +175,7 @@ static char *gauge_class_name;
 
 
 static volatile bool writer_thread_proc_terminate = false;
-static volatile bool printer_thread_proc_terminate = false;
+static volatile bool extractor_thread_proc_terminate = false;
 static int max_fetched_copyarea_list = 1;
 #if !defined(WINDOWS)
 static S_WAITING_INFO wi_unload_class;
@@ -192,11 +192,11 @@ S_WAITING_INFO wi_write_file;
 
 
 
-#if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
-static FILE *unloadlog_file = NULL;
-#else
+#if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
 static char *p_unloadlog_filename = NULL;
 static void unload_log_write (char *log_file_name, const char *fmt, ...);
+#else
+static FILE *unloadlog_file = NULL;
 #endif
 
 pthread_mutex_t g_update_hash_cs_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -398,7 +398,7 @@ static int all_classes_processed (void);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 			    char *output_filename_p, const size_t filename_size);
 
-static bool close_object_file ();
+static void close_object_file ();
 static bool open_object_file (extract_context & ctxt, const char *output_dirname, const char *class_name);
 static bool init_thread_param (const char *output_dirname, int nthreads);
 static void quit_thread_param ();
@@ -411,16 +411,16 @@ static void print_monitoring_info (const char *class_name, int nthreads);
  *    est_objects(out): estimated number of object
  */
 static int
-get_estimated_objs (HFID * hfid, int64_t * est_objects, bool enhnnced)
+get_estimated_objs (HFID * hfid, int64_t * est_objects, bool enhanced)
 {
   int ignore_npages;
   int nobjs = 0;
   int error = NO_ERROR;
-  int approximation = 1;
 
-  approximation = enhnnced ? 0 : 1;
+#define USE_APPROXIMATION      (1)
+#define USE_ACTUAL             (0)
 
-  error = heap_get_class_num_objects_pages (hfid, approximation, &nobjs, &ignore_npages);
+  error = heap_get_class_num_objects_pages (hfid, (enhanced ? USE_ACTUAL : USE_APPROXIMATION), &nobjs, &ignore_npages);
   if (error < 0)
     return error;
 
@@ -627,7 +627,7 @@ static void
 extractobjects_term_handler (int sig)
 {
   error_occurred = true;
-  printer_thread_proc_terminate = true;
+  extractor_thread_proc_terminate = true;
   usleep (10000);
   writer_thread_proc_terminate = true;
   usleep (10000);
@@ -1187,11 +1187,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 
 	      if (datafile_per_class && IS_CLASS_REQUESTED (i))
 		{
-		  if (close_object_file () == false)
-		    {
-		      status = 1;
-		      goto end;
-		    }
+		  close_object_file ();
 		}
 
 	      if (ret_val != NO_ERROR)
@@ -1261,10 +1257,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 
   if (!datafile_per_class)
     {
-      if (close_object_file () == false)
-	{
-	  status = 1;
-	}
+      close_object_file ();
     }
 
 /* in case of both normal and error */
@@ -1421,7 +1414,7 @@ unload_extractor_thread (void *param)
       er_context_p = new cuberr::context ();
       er_context_p->register_thread_local ();
 
-      while (printer_thread_proc_terminate == false)
+      while (extractor_thread_proc_terminate == false)
 	{
 	  node = g_uci->cparea_lst_ref->get ();
 	  if (node)
@@ -1433,7 +1426,7 @@ unload_extractor_thread (void *param)
 		  break;
 		}
 	    }
-	  else if (printer_thread_proc_terminate == false)
+	  else if (extractor_thread_proc_terminate == false)
 	    {
 	      TIMER_BEGIN (&(parg->wi_get_list));
 
@@ -1793,9 +1786,13 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
     }
 
   if (IS_CLASS_REQUESTED (cl_no))
-    requested_class = 1;
+    {
+      requested_class = 1;
+    }
   if (IS_CLASS_REFERENCED (cl_no))
-    referenced_class = 1;
+    {
+      referenced_class = 1;
+    }
 
   if (!requested_class && !referenced_class)
     {
@@ -1910,7 +1907,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       goto exit_on_end;
     }
 
-  printer_thread_proc_terminate = false;
+  extractor_thread_proc_terminate = false;
   writer_thread_proc_terminate = false;
   g_multi_thread_mode = (nthreads > 0) ? true : false;
   TIMER_CLEAR (&(g_thr_param[0].wi_get_list));
@@ -1984,7 +1981,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
     }
   else
     {
-      printer_thread_proc_terminate = true;
+      extractor_thread_proc_terminate = true;
 
       pthread_mutex_lock (&unld_cls_info.mtx);
       pthread_cond_broadcast (&unld_cls_info.cond);
@@ -2657,18 +2654,15 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
   return 0;
 }
 
-static bool
+static void
 close_object_file ()
 {
-  bool bret = true;
 
   if (g_fd_handle != INVALID_FILE_NO)
     {
       close (g_fd_handle);
       g_fd_handle = INVALID_FILE_NO;
     }
-
-  return bret;
 }
 
 static bool
@@ -2697,7 +2691,7 @@ open_object_file (extract_context & ctxt, const char *output_dirname, const char
       snprintf (out_fname, PATH_MAX - 1, "%s/%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX);
     }
 
-  g_fd_handle = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, OPEN_MODE_VALUE);
+  g_fd_handle = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, CREAT_OBJECT_FILE_PERM);
   if (g_fd_handle == INVALID_FILE_NO)
     {
       fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
@@ -2719,7 +2713,9 @@ read_unload_cfg (int thr_max, int *io_buffer_size, int *fetched_list_size, int *
 
   fp = fopen ("unloaddb.cfg", "rt");
   if (!fp)
-    return;
+    {
+      return;
+    }
 
   // io_buffer_size
   // list_weight
@@ -2733,13 +2729,17 @@ read_unload_cfg (int thr_max, int *io_buffer_size, int *fetched_list_size, int *
       fgets (buf, sizeof (buf), fp);
 
       if (buf[0] == '#')
-	continue;
+	{
+	  continue;
+	}
 
       trim (buf);
 
       pv = strrchr (buf, '=');
       if (pv == NULL)
-	continue;
+	{
+	  continue;
+	}
 
       *pv = 0x00;
       pv++;
@@ -2868,7 +2868,9 @@ print_monitoring_info (const char *class_name, int nthreads)
 	   wi_write_file.ts_wait_sum.tv_sec + ((double) wi_write_file.ts_wait_sum.tv_nsec / NANO_PREC_VAL));
 
   if (nthreads <= 0)
-    return;
+    {
+      return;
+    }
 
   fprintf (fp, ALIGN_SPACE_FMT "Add L  : %12.6f sec, count= %" PRId64 "\n", "",
 	   g_uci->cparea_lst_ref->m_wi_add_list.ts_wait_sum.tv_sec +
@@ -2961,12 +2963,15 @@ retry:
 	}
     }
 
-  va_list ap;
+  if (fp)
+    {
+      va_list ap;
 
-  va_start (ap, fmt);
-  int result = vfprintf (fp, fmt, ap);
-  va_end (ap);
+      va_start (ap, fmt);
+      int result = vfprintf (fp, fmt, ap);
+      va_end (ap);
 
-  fclose (fp);
+      fclose (fp);
+    }
 }
 #endif

@@ -313,12 +313,19 @@ extern int net_server_start (const char *name);
 extern const char *get_capability_string (int cap, int cap_type);
 extern const char *get_net_request_name (int request);
 
-__inline int
+typedef enum
+{
+  NET_ENDIAN_UNKNOWN = 0,
+  NET_ENDIAN_LITTLE = 1,
+  NET_ENDIAN_BIG = 2
+} NET_ENDIAN;
+
+__inline NET_ENDIAN
 get_endian_type ()
 {
   unsigned int e_v = 0x12345678;
   unsigned char *e_p = (unsigned char *) (&e_v);
-  return ((e_p[0] == 0x78) ? 1 : (e_p[0] == 0x12) ? 2 : 0);
+  return ((e_p[0] == 0x78) ? NET_ENDIAN_LITTLE : (e_p[0] == 0x12) ? NET_ENDIAN_BIG : NET_ENDIAN_UNKNOWN);
 }
 
 #endif /* _NETWORK_H_ */

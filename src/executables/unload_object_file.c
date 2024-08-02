@@ -343,7 +343,9 @@ get_text_output_mem (TEXT_OUTPUT * tout, int alloc_sz)
 
   pt = c_text_buf_mgr.get_text_buffer (alloc_sz);
   if (pt == NULL)
-    return ER_FAILED;
+    {
+      return ER_FAILED;
+    }
 
   if (tout->head_ptr == NULL)
     {
@@ -373,7 +375,9 @@ flushing_write_blk_queue ()
   while (head)
     {
       if (write_object_file (head) != NO_ERROR)
-	return -1;
+	{
+	  return -1;
+	}
 
       head = c_write_blk_queue.dequeue ();
     }
@@ -660,7 +664,7 @@ exit_on_end:
   return error;
 exit_on_error:
   CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
+  return error;
 }
 
 #define INTERNAL_BUFFER_SIZE (400)	/* bigger than DBL_MAX_DIGITS */

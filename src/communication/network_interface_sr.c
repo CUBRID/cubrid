@@ -839,7 +839,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   int content_size;
   int num_objs = 0;
   int nparallel_process, nparallel_process_idx, request_pages;
-  int server_endian = get_endian_type ();
+  NET_ENDIAN server_endian = get_endian_type ();
   int client_endian;
   int encode_endian = 1;
 
@@ -855,7 +855,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_int (ptr, &nparallel_process_idx);
   ptr = or_unpack_int (ptr, &client_endian);
 
-  if (client_endian == server_endian && server_endian != 0 && (nparallel_process > 0))
+  if ((NET_ENDIAN) client_endian == server_endian && server_endian != NET_ENDIAN_UNKNOWN && (nparallel_process > 0))
     {
       encode_endian = 0;
     }
