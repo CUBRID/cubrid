@@ -2415,16 +2415,7 @@ set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int
 	  goto err_exit;
 	}
 
-      i = 0;
-      v = 0;
-      while (v < query->sub_host_var_count)
-	{
-	  if (query->sub_host_var_index[i] >= 0)
-	    {
-	      info[q].host_var_index[v++] = query->sub_host_var_index[i];
-	    }
-	  i++;
-	}
+      memcpy (info[q].host_var_index, query->sub_host_var_index, query->sub_host_var_count * sizeof (int));
     }
 
   return info;
