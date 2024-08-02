@@ -1035,7 +1035,7 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 
 	  if (flag == 0)
 	    {
-	      TIMER_BEGIN (&(g_thr_param[tout->ref_thread_param_idx].wi_add_Q));
+	      TIMER_BEGIN ((g_sampling_records >= 0), &(g_thr_param[tout->ref_thread_param_idx].wi_add_Q));
 	      flag++;
 	    }
 
@@ -1048,7 +1048,7 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
       while (true);
       if (flag)
 	{
-	  TIMER_END (&(g_thr_param[tout->ref_thread_param_idx].wi_add_Q));
+	  TIMER_END ((g_sampling_records >= 0), &(g_thr_param[tout->ref_thread_param_idx].wi_add_Q));
 	}
 
       tout->head_ptr = NULL;
@@ -1066,7 +1066,7 @@ write_object_file (TEXT_BUFFER_BLK * head)
   int error = NO_ERROR;
   int _errno;
 
-  TIMER_BEGIN (&wi_write_file);
+  TIMER_BEGIN ((g_sampling_records >= 0), &wi_write_file);
   for (tp = head; tp && tp->count > 0; tp = head)
     {
       head = tp->next;
@@ -1088,7 +1088,7 @@ write_object_file (TEXT_BUFFER_BLK * head)
 
       c_text_buf_mgr.release_text_buffer (tp);
     }
-  TIMER_END (&wi_write_file);
+  TIMER_END ((g_sampling_records >= 0), &wi_write_file);
 
   return error;
 }

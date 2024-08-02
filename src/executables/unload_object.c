@@ -334,7 +334,7 @@ public:
 
 	if (!tm_chk_flag)
 	  {
-	    TIMER_BEGIN (&m_wi_add_list);
+	    TIMER_BEGIN ((g_sampling_records >= 0), &m_wi_add_list);
 	    tm_chk_flag = true;
 	  }
 
@@ -343,7 +343,7 @@ public:
 
     if (tm_chk_flag)
       {
-	TIMER_END (&m_wi_add_list);
+	TIMER_END ((g_sampling_records >= 0), &m_wi_add_list);
       }
 
     if (m_root == NULL)
@@ -1346,9 +1346,9 @@ unload_printer (LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj, TEXT_OUTPUT * obj
       ++class_objects_atomic;
       ++total_objects_atomic;
       LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
-      TIMER_BEGIN (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
+      TIMER_BEGIN ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
       error = desc_disk_to_obj (g_uci->class_, g_uci->class_ptr, &recdes, desc_obj, true);
-      TIMER_END (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
+      TIMER_END ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
       if (error == NO_ERROR)
 	{
 	  error = process_object (desc_obj, &obj->oid, g_uci->referenced_class, obj_out);
@@ -1428,13 +1428,13 @@ unload_extractor_thread (void *param)
 	    }
 	  else if (extractor_thread_proc_terminate == false)
 	    {
-	      TIMER_BEGIN (&(parg->wi_get_list));
+	      TIMER_BEGIN ((g_sampling_records >= 0), &(parg->wi_get_list));
 
 	      pthread_mutex_lock (&g_uci->mtx);
 	      pthread_cond_wait (&g_uci->cond, &g_uci->mtx);
 	      pthread_mutex_unlock (&g_uci->mtx);
 
-	      TIMER_END (&(parg->wi_get_list));
+	      TIMER_END ((g_sampling_records >= 0), &(parg->wi_get_list));
 	    }
 	}
 
@@ -1490,12 +1490,12 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
 
   while ((nobjects != nfetched) && (error_occurred == false))
     {
-      TIMER_BEGIN (&(g_uci->wi_fetch));
+      TIMER_BEGIN ((g_sampling_records >= 0), &(g_uci->wi_fetch));
       if (locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area,
 			     g_request_pages, g_parallel_process_cnt,
 			     (g_parallel_process_idx - 1) /* to zero base */ ) == NO_ERROR)
 	{
-	  TIMER_END (&(g_uci->wi_fetch));
+	  TIMER_END ((g_sampling_records >= 0), &(g_uci->wi_fetch));
 
 	  if (fetch_area != NULL)
 	    {
@@ -1570,9 +1570,9 @@ unload_writer_thread (void *param)
 	  break;
 	}
 
-      TIMER_BEGIN (&wi_w_blk_getQ);
+      TIMER_BEGIN ((g_sampling_records >= 0), &wi_w_blk_getQ);
       usleep (100);
-      TIMER_END (&wi_w_blk_getQ);
+      TIMER_END ((g_sampling_records >= 0), &wi_w_blk_getQ);
 
 #if !defined(WINDOWS)
       if (ret == 0)
@@ -1810,7 +1810,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
     }
 
   TIMER_CLEAR (&wi_unload_class);
-  TIMER_BEGIN (&wi_unload_class);
+  TIMER_BEGIN ((g_sampling_records >= 0), &wi_unload_class);
 
   TIMER_CLEAR (&wi_w_blk_getQ);
   TIMER_CLEAR (&wi_write_file);
@@ -2012,7 +2012,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       pthread_mutex_destroy (&unld_cls_info.mtx);
     }
 
-  TIMER_END (&wi_unload_class);
+  TIMER_END ((g_sampling_records >= 0), &wi_unload_class);
 
   if (error_occurred && error == NO_ERROR)
     {
@@ -2084,7 +2084,7 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
   int data;
   int v = 0;
 
-  TIMER_BEGIN (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
+  TIMER_BEGIN ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
   class_ptr = desc_obj->class_;
   class_oid = ws_oid (desc_obj->classop);
   if (!datafile_per_class && referenced_class)
@@ -2133,13 +2133,13 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
       ++v;
     }
   CHECK_PRINT_ERROR (text_print (obj_out, "\n", 1, NULL));
-  TIMER_END (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
+  TIMER_END ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
 
   return text_print_request_flush (obj_out, false);
 
 exit_on_error:
   CHECK_EXIT_ERROR (error);
-  TIMER_END (&(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
+  TIMER_END ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
 
   return error;
 

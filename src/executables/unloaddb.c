@@ -195,7 +195,11 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       sampling_records = utility_get_option_int_value (arg_map, UNLOAD_SAMPLING_TEST_S);
 
       thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
-      thread_count = (thread_count < 0) ? 0 : ((thread_count > MAX_THREAD_COUNT) ? MAX_THREAD_COUNT : thread_count);
+      if ((thread_count < 0) || (thread_count > MAX_THREAD_COUNT))
+	{
+	  fprintf (stderr, "\n--The number of threads ranges from 0 to 127.\n");
+	  goto end;
+	}
 
       if (datafile_per_class)
 	{
@@ -527,11 +531,11 @@ typedef struct
   bool is_running;
 } CHILD_PROC;
 
-#define SET_PROC_TERMINATE(proc, count, wpid, runnign_cnt) do { \
+#define SET_PROC_TERMINATE(proc, count, wpid, running_cnt) do { \
    for(int i = 0; i < (count); i++) {                           \
         if((proc)[i].child_pid == (wpid)) {                     \
            if((proc)[i].is_running)                             \
-               (runnign_cnt)--;                                 \
+               (running_cnt)--;                                 \
            (proc)[i].is_running = false;                        \
            break;                                               \
         }                                                       \
@@ -590,12 +594,12 @@ do_multi_processing (int processes, bool * is_main_process)
 
   if (*is_main_process)
     {
-      int status, runnign_cnt;
+      int status, running_cnt;
       pid_t wpid;
 
       fprintf (stderr, "P) pid=%ld \n", getpid ());
 
-      runnign_cnt = processes;
+      running_cnt = processes;
       do
 	{
 	  do
@@ -626,7 +630,7 @@ do_multi_processing (int processes, bool * is_main_process)
 	    {
 	      fprintf (stderr, "exited, status=%d [%d]\n", WEXITSTATUS (status), wpid);
 	      fflush (stderr);
-	      SET_PROC_TERMINATE (zchild_proc, processes, wpid, runnign_cnt);
+	      SET_PROC_TERMINATE (zchild_proc, processes, wpid, running_cnt);
 	      if (WEXITSTATUS (status) != 0)
 		{
 		  if (do_kill == false)
@@ -670,7 +674,7 @@ do_multi_processing (int processes, bool * is_main_process)
 
 		  fprintf (stderr, "killed by signal %d [%d]\n", WTERMSIG (status), wpid);
 		  fflush (stderr);
-		  SET_PROC_TERMINATE (zchild_proc, processes, wpid, runnign_cnt);
+		  SET_PROC_TERMINATE (zchild_proc, processes, wpid, running_cnt);
 		  if (do_kill == false)
 		    {
 		      do_kill_multi_processing (zchild_proc, processes);
@@ -683,7 +687,7 @@ do_multi_processing (int processes, bool * is_main_process)
 		}
 	    }
 	}
-      while (runnign_cnt > 0);
+      while (running_cnt > 0);
     }
 
 // PRINT_AND_LOG_ERR_MSG ("%s: %s\n", exec_name, db_error_string (3));

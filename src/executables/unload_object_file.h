@@ -52,8 +52,8 @@ class print_output;
 
 #if defined(WINDOWS)
 #define TIMER_CLEAR(pwi)
-#define TIMER_BEGIN(pwi)
-#define TIMER_END(pwi)
+#define TIMER_BEGIN(flag, pwi)
+#define TIMER_END(flag pwi)
 #define PRINT_MESSAGE_WITH_TIME(fp, msg)
 #else
 typedef struct _waiting_info
@@ -63,10 +63,10 @@ typedef struct _waiting_info
   int64_t cnt;
 } S_WAITING_INFO;
 
-#define TIMER_CLEAR(pwi)   memset((pwi), 0x00, sizeof(S_WAITING_INFO))
-#define TIMER_BEGIN(pwi)   if(g_sampling_records >= 0) clock_gettime (CLOCK_MONOTONIC /* CLOCK_REALTIME */, &((pwi)->ts_beging))
-#define TIMER_END(pwi)   do {                                                   \
-    if(g_sampling_records >= 0)  {                                             \
+#define TIMER_CLEAR(pwi)       memset((pwi), 0x00, sizeof(S_WAITING_INFO))
+#define TIMER_BEGIN(flag, pwi) if((flag)) clock_gettime (CLOCK_MONOTONIC /* CLOCK_REALTIME */, &((pwi)->ts_beging))
+#define TIMER_END(flag, pwi)   do {                                             \
+    if((flag))  {                                                               \
          timespec_accumulate (&((pwi)->ts_wait_sum), &((pwi)->ts_beging));      \
          (pwi)->cnt++;                                                          \
       }                                                                         \
