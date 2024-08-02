@@ -68,7 +68,7 @@ sm_define_view_class_spec (void)
 	"SELECT "
 	  "[c].[class_name] AS [class_name], "
 	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
-	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END AS [class_type], "
+	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOWN' END AS [class_type], "
 	  "CASE WHEN MOD ([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
 	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
 	  "CASE "
@@ -953,7 +953,7 @@ sm_define_view_authorization_spec (void)
 	"SELECT "
 	  "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
 	  "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
-          "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END AS [object_type], "
+          "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOWN' END AS [object_type], "
 	  "[c].[class_name] AS [object_name], "
 	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[a].[auth_type] AS [auth_type], "
@@ -1051,7 +1051,7 @@ sm_define_view_authorization_spec (void)
 		    "WHERE "
 		      "[u].[name] = CURRENT_USER"
 		  ") "
-		"AND [au].[auth_type] = 'SELECT'"
+		"AND [au].[auth_type] = 'EXECUTE'"
 	    ") ) ",
 	CT_CLASSAUTH_NAME,
         CT_CLASS_NAME,
