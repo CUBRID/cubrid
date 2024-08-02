@@ -25,6 +25,7 @@ echo Setting CUBRID Environments
 
 set CUBRID=C:\CUBRID
 set CUBRID_DATABASES=%CUBRID%\databases
+set CUBRID_TMP=%CUBRID%\tmp
 
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\CUBRID\cmserver" /v "ROOT_PATH" /t REG_SZ /d "%CUBRID%\\" /f
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\CUBRID\cmserver" /v "Version" /t REG_SZ /d "11.0" /f
@@ -34,6 +35,7 @@ reg add "HKEY_LOCAL_MACHINE\SOFTWARE\CUBRID\CUBRID" /v "Patch" /t REG_SZ /d "0" 
 
 reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v "CUBRID" /t REG_SZ /d "%CUBRID%\\" /f
 reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v "CUBRID_DATABASES" /t REG_SZ /d "%CUBRID_DATABASES%" /f
+reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v "CUBRID_TMP" /t REG_SZ /d "%CUBRID_TMP%" /f
 reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v "Path" /t REG_SZ /d "%CUBRID%\cci\bin;%CUBRID%\bin;%PATH%" /f
 
 echo %CUBRID%
