@@ -4964,6 +4964,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (error == NO_ERROR)
 	    {
+	      prm_set_integer_value (PRM_ID_LOG_ISOLATION_LEVEL, (int) tran_isolation);
 	      error = tran_reset_isolation (tran_isolation, async_ws);
 	    }
 	  break;
@@ -4981,6 +4982,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      wait_secs = db_get_float (&val);
+	      prm_set_integer_value (PRM_ID_LK_TIMEOUT, wait_secs);
 	      if (wait_secs > 0)
 		{
 		  wait_secs *= 1000;

@@ -1356,6 +1356,12 @@ au_drop_user (MOP user)
       goto error;
     }
 
+  error = au_delete_authorizartion_of_dropping_user (user);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
   /*
    * could go through classes created by this user and change ownership
    * to the DBA ? - do this as the classes are referenced instead
