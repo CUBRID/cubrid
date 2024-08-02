@@ -673,7 +673,7 @@ static int
 au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type)
 {
   int error = NO_ERROR;
-  DB_SET *grants;
+  DB_SET *grants = NULL;
   MOP auth;
   int save = 0, current = 0, gindex, mask, savepoint_revoke = 0;
   AU_GRANT *grant_list;
