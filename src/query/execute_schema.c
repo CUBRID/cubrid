@@ -1812,13 +1812,11 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		      goto end;
 		    }
 
-		  // TODO: In CBRD-24912, GRANT/REVOKE for stored procedure is implemented, the following will be processed properly
 		  error = db_grant_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth, grant_option);
 		  if (error != NO_ERROR)
-		    if (error != NO_ERROR)
-		      {
-			goto end;
-		      }
+		    {
+		      goto end;
+		    }
 		}
 	    }
 	  else
