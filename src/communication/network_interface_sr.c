@@ -855,7 +855,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_int (ptr, &nparallel_process_idx);
   ptr = or_unpack_int (ptr, &client_endian);
 
-  if ((NET_ENDIAN) client_endian == server_endian && server_endian != NET_ENDIAN_UNKNOWN && (nparallel_process > 0))
+  if ((NET_ENDIAN) client_endian == server_endian && server_endian != NET_ENDIAN_UNKNOWN)
     {
       encode_endian = 0;
     }
@@ -866,6 +866,11 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     {
       thread_p->_unload_cnt_parallel_process = nparallel_process;
       thread_p->_unload_parallel_process_idx = nparallel_process_idx;
+    }
+  else
+    {
+      thread_p->_unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+      thread_p->_unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
     }
 
   copy_area = NULL;
