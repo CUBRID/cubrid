@@ -7794,40 +7794,38 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
 
   const static char *query =
     "SELECT CONCAT ('GRANT ', "
-           "GROUP_CONCAT([AU].[auth_type] ORDER BY 1 SEPARATOR ', '), "
-           "' ON ',"
-           "CASE [AU].[object_type] WHEN 'PROCEDURE' THEN 'PROCEDURE ' WHEN 'FUNCTION' THEN 'PROCEDURE ' ELSE '' END, "
-           "[AU].[owner_name] || '.' || [AU].[object_name],"
-           "' TO ',"
-           "[AU].[grantee_name],"
-           "IF ([AU].[is_grantable]='YES', ' WITH GRANT OPTION', '')"
-           ") AS GRANTS "
-      "FROM "
-        "[db_auth] AS [AU] "
-      "WHERE "
-        "[AU].[grantee_name] = UPPER('%s') "
-      "GROUP BY "
-        "[AU].[grantee_name], [AU].[object_name], [AU].[is_grantable] ASC "
-      "ORDER BY 1;";
+    "GROUP_CONCAT([AU].[auth_type] ORDER BY 1 SEPARATOR ', '), "
+    "' ON ',"
+    "CASE [AU].[object_type] WHEN 'PROCEDURE' THEN 'PROCEDURE ' WHEN 'FUNCTION' THEN 'PROCEDURE ' ELSE '' END, "
+    "[AU].[owner_name] || '.' || [AU].[object_name],"
+    "' TO ',"
+    "[AU].[grantee_name],"
+    "IF ([AU].[is_grantable]='YES', ' WITH GRANT OPTION', '')"
+    ") AS GRANTS "
+    "FROM "
+    "[db_auth] AS [AU] "
+    "WHERE "
+    "[AU].[grantee_name] = UPPER('%s') "
+    "GROUP BY " "[AU].[grantee_name], [AU].[object_name], [AU].[is_grantable] ASC " "ORDER BY 1;";
 
-   const int buffer_size = 1024; // length of query (480) + identifier (255) < 1024
-   char buffer [buffer_size];
+  const int buffer_size = 1024;	// length of query (480) + identifier (255) < 1024
+  char buffer[buffer_size];
 
-   memset (buffer, 0, buffer_size);
-   snprintf (buffer, buffer_size, query, original_user_name);
+  memset (buffer, 0, buffer_size);
+  snprintf (buffer, buffer_size, query, original_user_name);
 
   /* parser ';' will empty and reset the stack of parser, this make the status machine be right for the next statement,
    * and avoid nested parser statement. */
-   parser_parse_string (parser, ";");
+  parser_parse_string (parser, ";");
 
   node = parser_parse_string_use_sys_charset (parser, buffer);
   if (node == NULL)
     {
       return NULL;
     }
-    
+
   parser->flag.dont_collect_exec_stats = 1;
-  
+
   show_node = pt_pop (parser);
   assert (show_node == node[0]);
 
