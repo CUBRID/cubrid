@@ -330,14 +330,12 @@ public:
     while (m_max <= m_used)
       {
 	pthread_mutex_unlock (&m_cs_lock);
-	YIELD_THREAD ();
-
 	if (!tm_chk_flag)
 	  {
 	    TIMER_BEGIN ((g_sampling_records >= 0), &m_wi_add_list);
 	    tm_chk_flag = true;
 	  }
-
+	YIELD_THREAD ();
 	pthread_mutex_lock (&m_cs_lock);
       }
 
@@ -1491,12 +1489,12 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
   while ((nobjects != nfetched) && (error_occurred == false))
     {
       TIMER_BEGIN ((g_sampling_records >= 0), &(g_uci->wi_fetch));
-      if (locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area,
-			     g_request_pages, g_parallel_process_cnt,
-			     (g_parallel_process_idx - 1) /* to zero base */ ) == NO_ERROR)
+      error = locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area,
+				 g_request_pages, g_parallel_process_cnt,
+				 (g_parallel_process_idx - 1) /* to zero base */ );
+      TIMER_END ((g_sampling_records >= 0), &(g_uci->wi_fetch));
+      if (error == NO_ERROR)
 	{
-	  TIMER_END ((g_sampling_records >= 0), &(g_uci->wi_fetch));
-
 	  if (fetch_area != NULL)
 	    {
 	      if (!g_multi_thread_mode)
@@ -1572,14 +1570,13 @@ unload_writer_thread (void *param)
 
       TIMER_BEGIN ((g_sampling_records >= 0), &wi_w_blk_getQ);
       usleep (100);
-      TIMER_END ((g_sampling_records >= 0), &wi_w_blk_getQ);
-
 #if !defined(WINDOWS)
       if (ret == 0)
 	{
 	  wi_w_blk_getQ.cnt--;
 	}
 #endif
+      TIMER_END ((g_sampling_records >= 0), &wi_w_blk_getQ);
     }
 
   if (thr_ret == NO_ERROR)
@@ -1809,11 +1806,10 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       goto exit_on_error;
     }
 
-  TIMER_CLEAR (&wi_unload_class);
-  TIMER_BEGIN ((g_sampling_records >= 0), &wi_unload_class);
-
   TIMER_CLEAR (&wi_w_blk_getQ);
   TIMER_CLEAR (&wi_write_file);
+  TIMER_CLEAR (&wi_unload_class);
+  TIMER_BEGIN ((g_sampling_records >= 0), &wi_unload_class);
 
   if (nthreads > 0)
     {
