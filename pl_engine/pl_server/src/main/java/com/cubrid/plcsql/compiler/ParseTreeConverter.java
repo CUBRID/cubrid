@@ -260,6 +260,38 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
+    public NodeList<DeclParamIn> visitCursor_parameter_list(Cursor_parameter_listContext ctx) {
+
+        if (ctx == null) {
+            return EMPTY_CURSOR_PARAMS;
+        }
+
+        NodeList<DeclParamIn> ret = new NodeList<>();
+        for (Cursor_parameterContext pc : ctx.cursor_parameter()) {
+            ret.addNode(visitCursor_parameter(pc));
+        }
+
+        return ret;
+    }
+
+    @Override
+    public DeclParamIn visitCursor_parameter(Cursor_parameterContext ctx) {
+        String name = Misc.getNormalizedText(ctx.parameter_name());
+        TypeSpec typeSpec;
+        try {
+            forParameterOrReturn = true;
+            typeSpec = (TypeSpec) visit(ctx.type_spec());
+        } finally {
+            forParameterOrReturn = false;
+        }
+
+        DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec);
+        symbolStack.putDecl(name, ret);
+
+        return ret;
+    }
+
+    @Override
     public DeclParamIn visitParameter_in(Parameter_inContext ctx) {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
@@ -1167,14 +1199,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.pushSymbolTable("cursor_def", null);
 
-        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
-        for (DeclParam dp : paramList.nodes) {
-            if (dp instanceof DeclParamOut) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(dp.ctx), // s014
-                        "parameters of a cursor definition may not be OUT parameters");
-            }
-        }
+        NodeList<DeclParamIn> paramList = visitCursor_parameter_list(ctx.cursor_parameter_list());
 
         SqlSemantics sws = staticSqls.get(ctx.static_sql());
         assert sws != null;
@@ -2204,6 +2229,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private static final String SYMBOL_TABLE_TOP = "%predefined";
     private static final NodeList<DeclParam> EMPTY_PARAMS = new NodeList<>();
+    private static final NodeList<DeclParamIn> EMPTY_CURSOR_PARAMS = new NodeList<>();
     private static final NodeList<Expr> EMPTY_ARGS = new NodeList<>();
 
     private static boolean isRecordId(ExprId id) {
