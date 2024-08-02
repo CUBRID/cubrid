@@ -946,21 +946,25 @@ sm_define_view_index_key_spec (void)
 const char *
 sm_define_view_authorization_spec (void)
 {
-  static char stmt [2048];
+  static char stmt [4096];
 
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
 	  "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
 	  "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
-	  "[a].[class_of].[class_name] AS [class_name], "
-	  "CAST ([a].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+          "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END AS [object_type], "
+	  "[c].[class_name] AS [object_name], "
+	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[a].[auth_type] AS [auth_type], "
 	  "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable] "
 	"FROM "
-	  /* CT_CLASSAUTH_NAME */
-	  "[%s] AS [a] "
+	  /* CT_CLASSAUTH_NAME, CT_CLASS_NAME */
+	  "[%s] AS [a], [%s] AS [c] "
 	"WHERE "
+          "[a].[object_of] = [c].[class_of] "
+          "AND [a].[object_type] = 0 "
+          "AND ( "
 	  "{'DBA'} SUBSETEQ ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -970,7 +974,7 @@ sm_define_view_authorization_spec (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") "
-	  "OR {[a].[class_of].[owner].[name]} SUBSETEQ ("
+	  "OR {[c].[owner].[name]} SUBSETEQ ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
@@ -979,7 +983,7 @@ sm_define_view_authorization_spec (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") "
-	  "OR {[a].[class_of]} SUBSETEQ ("
+	  "OR {[c].[class_of]} SUBSETEQ ("
 	      "SELECT "
 		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
@@ -996,12 +1000,73 @@ sm_define_view_authorization_spec (void)
 		      "[u].[name] = CURRENT_USER"
 		  ") "
 		"AND [au].[auth_type] = 'SELECT'"
-	    ")",
+	    ") ) "
+   "UNION ALL "
+        "SELECT "
+	  "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
+	  "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
+          "CASE [s].[sp_type] WHEN 1 THEN 'PROCEDURE' ELSE 'FUNCTION' END AS [object_type], "
+          "[s].[sp_name] AS [object_name], "
+          "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [owner_name], "
+          "[a].[auth_type] AS [auth_type], "
+          "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable] "
+        "FROM "
+          /* CT_CLASSAUTH_NAME, CT_STORED_PROC_NAME */
+	  "[%s] AS [a], [%s] AS [s] "
+	"WHERE "
+          "[a].[object_of] = [s] "
+          "AND [a].[object_type] = 5 "
+          "AND ( "
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
+	  "OR {[s].[owner].[name]} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
+	  "OR {[s]} SUBSETEQ ("
+	      "SELECT "
+		"SUM (SET {[au].[object_of]}) "
+	      "FROM "
+		/* CT_CLASSAUTH_NAME */
+		"[%s] AS [au] "
+	      "WHERE "
+		"{[au].[grantee].[name]} SUBSETEQ ("
+		    "SELECT "
+		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		    "FROM "
+		      /* AU_USER_CLASS_NAME */
+		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		    "WHERE "
+		      "[u].[name] = CURRENT_USER"
+		  ") "
+		"AND [au].[auth_type] = 'SELECT'"
+	    ") ) ",
 	CT_CLASSAUTH_NAME,
+        CT_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	AU_USER_CLASS_NAME,
+
+        CT_CLASSAUTH_NAME,
+        CT_STORED_PROC_NAME,
+	AU_USER_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
+	AU_USER_CLASS_NAME
+        );
   // *INDENT-ON*
 
   return stmt;
