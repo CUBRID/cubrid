@@ -2384,7 +2384,7 @@ char_array_to_name_list (PARSER_CONTEXT * parser, char **names, int length)
 static DB_PREPARE_SUBQUERY_INFO *
 set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int num_query)
 {
-  int i, v, q = num_query;
+  int i, q = num_query;
 
   if (num_query % 4 == 0)	/* need to realloc subquery info every 4 */
     {

@@ -14365,12 +14365,14 @@ pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     {
       PT_NODE *hv = node->info.name.constant_value;
 
+      /* the host var. by lambda node should be excluded from subquery's host variable */
       if (hv->node_type == PT_HOST_VAR)
 	{
 	  hv->info.host_var.saved = hv->info.host_var.index + 1;
 	}
     }
 
+  /* the host var. having same index should be linked each other */
   if (node->node_type == PT_HOST_VAR && node->info.host_var.index >= 0)
     {
       node->info.host_var.next = host_var_p[node->info.host_var.index];
@@ -14670,6 +14672,7 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	{
 	  for (hv = host_var_p[i]; hv; hv = hv->info.host_var.next)
 	    {
+	      /* saved flag indicates whether it can be used as a host variable. */
 	      if (!hv->info.host_var.saved)
 		{
 		  sub_idx = stmt->sub_host_var_count;
@@ -14685,6 +14688,7 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    {
 	      if (!hv->info.host_var.saved)
 		{
+		  /* set the saved flag for host variables */
 		  hv->info.host_var.saved = i + 1;
 		  hv->info.host_var.index = sub_idx;
 		}
