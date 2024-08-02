@@ -2671,27 +2671,40 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      /* converse join type */
 			      join_type = (join_type == PT_JOIN_LEFT_OUTER) ? PT_JOIN_RIGHT_OUTER : PT_JOIN_LEFT_OUTER;
 
-			      for (tmp = p_spec; tmp->next != spec; tmp = tmp->next)
+			      s_start = NULL;
+			      p_end = p_spec;
+			      s_end = p_spec;
+
+			      for (tmp = p_spec; tmp != spec; tmp = tmp->next)
 				{
-				  if (tmp->next->info.spec.join_type == PT_JOIN_NONE)
+				  if (!s_start && tmp->next->info.spec.join_type == PT_JOIN_NONE && tmp->next != spec)
 				    {
+				      p_end = tmp;
 				      s_start = tmp->next;
-				      tmp->next = spec;
-				      break;
+				    }
+
+				  else if (!s_start)
+				    {
+				      p_end = tmp;
+				      s_end = tmp;
+				    }
+
+				  if (s_start)
+				    {
+				      if (tmp->next == spec)
+					{
+					  s_end = tmp;
+					}
 				    }
 				}
-
-			      for (tmp = s_start; tmp->next != spec; tmp = tmp->next)
-				{
-				  ;
-				}
-			      tmp->next = NULL;
 
 			      for (tmp = spec; tmp->next; tmp = tmp->next)
 				{
 				  ;
 				}
 
+			      s_end->next = NULL;
+			      p_end->next = spec;
 			      tmp->next = s_start;
 			    }
 			  else
