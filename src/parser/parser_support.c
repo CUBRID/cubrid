@@ -7770,7 +7770,7 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
 }
 
 /*
- * pt_make_query_show_grants() - builds the query used for  for a
+ * pt_make_query_show_grants() - builds the query used for SHOW GRANTS for a
  *				 given user
  *
  *   SELECT CONCAT ( 'GRANT ',
