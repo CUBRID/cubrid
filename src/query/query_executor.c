@@ -6767,7 +6767,7 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
 	    hashjoin_proc->probe = &(hashjoin_proc->inner);
 	  }
 	else if ((outer_list_id->tuple_cnt == inner_list_id->tuple_cnt)
-		 && (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt))
+		 && (outer_list_id->page_cnt < inner_list_id->page_cnt))
 	  {
 	    /* build input: outer */
 	    hashjoin_proc->build = &(hashjoin_proc->outer);
