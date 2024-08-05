@@ -71,16 +71,7 @@
 #define MSGCAT_AUTH_AUTH_TITLE          15
 #define MSGCAT_AUTH_USER_DIRECT_GROUPS  16
 
-enum AU_OBJECT
-{
-  AU_OBJECT_CLASS,		/* TABLE, VIEW (_db_class) */
-  AU_OBJECT_TRIGGER,		/* TRIGGER (_db_trigger) */
-  AU_OBJECT_SERIAL,		/* SERIAL (db_serial) */
-  AU_OBJECT_SERVER,		/* SERVER (db_server) */
-  AU_OBJECT_SYNONYM,		/* SYNONYM (_db_synonym) */
-  AU_OBJECT_PROCEDURE		/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
-};
-
+typedef DB_OBJECT_TYPE AU_OBJECT;
 
 /*
  * Mask to extract only the authorization bits from a cache.  This can also

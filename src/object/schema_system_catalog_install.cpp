@@ -744,7 +744,8 @@ namespace cubschema
     {
       {"grantor", AU_USER_CLASS_NAME},
       {"grantee", AU_USER_CLASS_NAME},
-      {"class_of", CT_CLASS_NAME},
+      {"object_type", "integer"},
+      {"object_of", "object"},
       {"auth_type", format_varchar (7)},
       {"is_grantable", "integer"}
     },
@@ -757,7 +758,7 @@ namespace cubschema
       // owner, grants
       Au_dba_user, {}
     },
-// initializer
+// initializers
     nullptr
 	   );
 

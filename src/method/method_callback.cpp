@@ -602,7 +602,8 @@ namespace cubmethod
 
     AU_DISABLE (save);
     {
-      mop_p = jsp_find_stored_procedure (name);
+      // TODO
+      mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
       if (mop_p == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);

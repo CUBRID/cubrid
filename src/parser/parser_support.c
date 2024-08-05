@@ -7776,7 +7776,7 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
  *   SELECT CONCAT ( 'GRANT ',
  *	 	    GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', '),
  *	 	    ' ON ' ,
- *	 	    AU.class_of.class_name,
+ *	 	    AU.object_of.class_name,
  *	 	    ' TO ',
  *	 	    AU.grantee.name ,
  *	 	    IF (AU.is_grantable=1,
@@ -7784,8 +7784,8 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
  *	 	       '')
  *		 ) AS GRANTS
  *   FROM db_class C, _db_auth AU
- *   WHERE AU.class_of.unique_name = C.unique_name AND
- *	    AU.class_of.owner.name = C.owner_name AND
+ *   WHERE AU.object_of.unique_name = C.unique_name AND
+ *	    AU.object_of.owner.name = C.owner_name AND
  *	    C.is_system_class='NO' AND
  *	    ( AU.grantee.name=<user_name> OR
  *	      SET{ AU.grantee.name} SUBSETEQ (
@@ -7793,7 +7793,7 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
  *		       FROM db_user U, TABLE(groups) AS t(g)
  *		       WHERE U.name=<user_name>)
  *	     )
- *   GROUP BY AU.grantee, AU.class_of, AU.is_grantable
+ *   GROUP BY AU.grantee, AU.object_of, AU.is_grantable
  *   ORDER BY 1;
  *
  *  Note : The purpose of GROUP BY is to group all the privilege by user,
@@ -7838,7 +7838,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
    *      CONCAT ( 'GRANT ',
    *                GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', '),
    *                ' ON ' ,
-   *                AU.class_of.unique_name,
+   *                AU.object_of.unique_name,
    *                ' TO ',
    *                AU.grantee.name ,
    *                IF (AU.is_grantable=1,
@@ -7884,7 +7884,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
     concat_arg = pt_make_string_value (parser, " ON ");
     concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
 
-    concat_arg = pt_make_dotted_identifier (parser, "AU.class_of.unique_name");
+    concat_arg = pt_make_dotted_identifier (parser, "AU.object_of.unique_name");
     concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
 
     concat_arg = pt_make_string_value (parser, " TO ");
@@ -7927,25 +7927,25 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
 
   /* ------ SELECT ... WHERE ------- */
   /*
-   * WHERE AU.class_of.class_name = C.class_name AND
-   *    AU.class_of.owner.name = C.owner_name AND
+   * WHERE AU.object_of.class_name = C.class_name AND
+   *    AU.object_of.owner.name = C.owner_name AND
    *    C.is_system_class='NO' AND
    *    ( AU.grantee.name=<user_name> OR
    *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> )
    *           )
    */
   {
-    /* AU.class_of.class_name = C.class_name */
+    /* AU.object_of.class_name = C.class_name */
     PT_NODE *where_item = NULL;
 
-    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.class_name", "C.class_name");
+    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.object_of.class_name", "C.class_name");
     where_expr = where_item;
   }
   {
-    /* AU.class_of.owner.name = C.owner_name */
+    /* AU.object_of.owner.name = C.owner_name */
     PT_NODE *where_item = NULL;
 
-    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.owner.name", "C.owner_name");
+    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.object_of.owner.name", "C.owner_name");
     /* <where_expr> = <where_expr> AND <where_item> */
     where_expr = parser_make_expression (parser, PT_AND, where_expr, where_item, NULL);
   }
@@ -7998,12 +7998,12 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   assert (node->info.query.q.select.where == NULL);
   node->info.query.q.select.where = parser_append_node (where_expr, node->info.query.q.select.where);
 
-  /* GROUP BY : AU.grantee, AU.class_of, AU.is_grantable */
+  /* GROUP BY : AU.grantee, AU.object_of, AU.is_grantable */
   assert (node->info.query.q.select.group_by == NULL);
   group_by_item = pt_make_sort_spec_with_identifier (parser, "AU.grantee", PT_ASC);
   node->info.query.q.select.group_by = parser_append_node (group_by_item, node->info.query.q.select.group_by);
 
-  group_by_item = pt_make_sort_spec_with_identifier (parser, "AU.class_of", PT_ASC);
+  group_by_item = pt_make_sort_spec_with_identifier (parser, "AU.object_of", PT_ASC);
   node->info.query.q.select.group_by = parser_append_node (group_by_item, node->info.query.q.select.group_by);
 
   group_by_item = pt_make_sort_spec_with_identifier (parser, "AU.is_grantable", PT_ASC);

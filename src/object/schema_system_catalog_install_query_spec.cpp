@@ -105,9 +105,9 @@ sm_define_view_class_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[c]} SUBSETEQ ("
+	      "OR {[c].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -170,9 +170,9 @@ sm_define_view_super_class_spec (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") "
-	  "OR {[c]} SUBSETEQ ("
+	  "OR {[c].[class_of]} SUBSETEQ ("
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "
@@ -238,7 +238,7 @@ sm_define_view_vclass_spec (void)
 		") "
 	      "OR {[q].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -334,9 +334,9 @@ sm_define_view_attribute_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[c]} SUBSETEQ ("
+	      "OR {[c].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -418,9 +418,9 @@ sm_define_view_attribute_set_domain_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[c]} SUBSETEQ ("
+	      "OR {[c].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -494,7 +494,7 @@ sm_define_view_method_spec (void)
 		") "
 	      "OR {[m].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -575,7 +575,7 @@ sm_define_view_method_argument_spec (void)
 		") "
 	      "OR {[s].[meth_of].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -658,7 +658,7 @@ sm_define_view_method_argument_set_domain_spec (void)
 		") "
 	      "OR {[s].[meth_of].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -725,7 +725,7 @@ sm_define_view_method_file_spec (void)
 	    ") "
 	  "OR {[f].[class_of]} SUBSETEQ ("
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "
@@ -839,7 +839,7 @@ sm_define_view_index_spec (void)
 	    ") "
 	  "OR {[i].[class_of]} SUBSETEQ ("
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "
@@ -916,7 +916,7 @@ sm_define_view_index_key_spec (void)
 		") "
 	      "OR {[k].[index_of].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -981,7 +981,7 @@ sm_define_view_authorization_spec (void)
 	    ") "
 	  "OR {[a].[class_of]} SUBSETEQ ("
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "
@@ -1048,9 +1048,9 @@ sm_define_view_trigger_spec (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") "
-	  "OR {[c]} SUBSETEQ (" /* Why [c] and not [t].[target_class]? */
+	  "OR {[c].[class_of]} SUBSETEQ (" /* Why [c] and not [t].[target_class]? */
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "
@@ -1124,7 +1124,7 @@ sm_define_view_partition_spec (void)
 		") "
 	      "OR {[p].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -1375,7 +1375,7 @@ sm_define_view_db_server_spec (void)
 	    ") "
 	  "OR {[ds]} SUBSETEQ ("
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "
