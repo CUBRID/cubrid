@@ -30,6 +30,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/util_cs.c
+  ${EXECUTABLES_DIR}/master_server_monitor.cpp
   )
 
 set(EXECUTABLE_HEADERS
@@ -433,7 +434,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/util_cs.c
-  ${EXECUTABLES_DIR}/master_server_monitor.cpp
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
   ${HEAPLAYER_SOURCES}
