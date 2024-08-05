@@ -738,8 +738,9 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   int lang;
   int err = NO_ERROR;
   bool has_savepoint = false;
-  PLCSQL_COMPILE_INFO compile_info;
-  std::string pl_code;
+
+  PLCSQL_COMPILE_REQUEST compile_request;
+  PLCSQL_COMPILE_RESPONSE compile_response;
 
   SP_INFO sp_info;
   char *temp;
@@ -824,13 +825,27 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       sp_info.args.push_back (arg_info);
     }
 
+  if (sm_qualifier_name (sp_info.unique_name.data (), owner_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+  sp_info.owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+  if (sp_info.owner == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER_NAME, 1, owner_name);
+      goto error_exit;
+    }
+
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
-      pl_code.assign (statement->sql_user_text, statement->sql_user_text_len);
-      err = plcsql_transfer_file (pl_code, false, compile_info);
-      if (err == NO_ERROR && compile_info.err_code == NO_ERROR)
+      compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
+      compile_request.owner.assign ((owner_name[0] == '\0') ? au_get_current_user_name () : owner_name);
+
+      err = plcsql_transfer_file (compile_request, compile_response);
+      if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
 	{
-	  decl = compile_info.java_signature.c_str ();
+	  decl = compile_response.java_signature.c_str ();
 	}
       else
 	{
@@ -838,18 +853,18 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  err = ER_SP_COMPILE_ERROR;
 
 	  std::string err_msg;
-	  if (compile_info.err_msg.empty ())
+	  if (compile_response.err_msg.empty ())
 	    {
 	      err_msg = "unknown";
 	    }
 	  else
 	    {
-	      err_msg.assign (compile_info.err_msg);
+	      err_msg.assign (compile_response.err_msg);
 	    }
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_info.err_line,
-		  compile_info.err_column, err_msg.c_str ());
-	  pt_record_error (parser, parser->statement_number, compile_info.err_line, compile_info.err_column, er_msg (),
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_response.err_line,
+		  compile_response.err_column, err_msg.c_str ());
+	  pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
 			   NULL);
 	  goto error_exit;
 	}
@@ -868,12 +883,6 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
     }
   sp_info.target = decl ? decl : "";
-  if (sm_qualifier_name (sp_info.unique_name.data (), owner_name, DB_MAX_USER_LENGTH) == NULL)
-    {
-      ASSERT_ERROR ();
-      return NULL;
-    }
-  sp_info.owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
   sp_info.comment = (char *) PT_NODE_SP_COMMENT (statement);
 
   if (err != NO_ERROR)
@@ -913,7 +922,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       goto error_exit;
     }
 
-  if (!pl_code.empty ())
+  if (!compile_request.code.empty ())
     {
       SP_CODE_INFO code_info;
 
@@ -925,9 +934,9 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       code_info.name = jsp_get_class_name_of_target (sp_info.target);
       code_info.created_time = stm.str ();
       code_info.stype = (sp_info.lang == SP_LANG_PLCSQL) ? SPSC_PLCSQL : SPSC_JAVA;
-      code_info.scode = pl_code;
-      code_info.otype = compile_info.compiled_type;
-      code_info.ocode = compile_info.compiled_code;
+      code_info.scode = compile_request.code;
+      code_info.otype = compile_response.compiled_type;
+      code_info.ocode = compile_response.compiled_code;
       code_info.owner = sp_info.owner;
 
       err = sp_add_stored_procedure_code (code_info);
