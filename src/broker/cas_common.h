@@ -46,6 +46,9 @@
 #define ON	1
 #define OFF	0
 
+#define YES	1
+#define NO	0
+
 #define TRUE	1
 #define FALSE	0
 
