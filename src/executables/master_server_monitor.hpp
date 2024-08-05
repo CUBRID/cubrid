@@ -28,8 +28,9 @@
 #include <vector>
 #include <list>
 #include <memory>
-#include <time.h>
 #include <mutex>
+#include <chrono>
+#include <condition_variable>
 #include "connection_defs.h"
 #include "connection_globals.h"
 
@@ -61,25 +62,33 @@ class server_monitor
 	  return *this;
 	}
 
+	int get_pid () const;
+	std::string get_exec_path () const;
+	std::vector<std::string> get_argv () const;
 	CSS_CONN_ENTRY *get_conn () const;
 	bool get_need_revive () const;
+	std::chrono::steady_clock::time_point get_last_revive_time () const;
+
+	void set_pid (int pid);
+	void set_exec_path (const char *exec_path);
+	void set_conn (CSS_CONN_ENTRY *conn);
 	void set_need_revive (bool need_revive);
-	struct timeval get_last_revive_time () const;
+	void set_last_revive_time ();
 
-	int m_revive_count;                           // revive count of server process
-	std::string m_exec_path;                      // executable path of server process
-	std::vector<std::string> m_argv;              // arguments of server process
-	std::mutex m_server_entry_lock;                // lock for server entry
-
+	int m_revive_count;                                           // revive count of server process
 
 	void proc_make_arg (char *args);
 
-	int m_pid;                                    // process ID of server process
-	volatile bool m_need_revive;                  // need to revive (true if the server is abnormally terminated)
-	CSS_CONN_ENTRY *m_conn;                       // connection entry of server process
-	timeval m_last_revive_time;                   // latest revive time
-
       private:
+	int m_pid;                                                    // process ID of server process
+	std::string m_exec_path;                                      // executable path of server process
+	std::vector<std::string> m_argv;                              // arguments of server process
+	CSS_CONN_ENTRY *m_conn;                                       // connection entry of server process
+	volatile bool
+	m_need_revive;                                  // need to revive (true if the server is abnormally terminated)
+	std::chrono::steady_clock::time_point m_last_revive_time;     // last revive time
+	std::mutex m_entry_mutex;                                     // lock for server entry
+	std::condition_variable m_entry_cv;                           // condition variable for server entry
     };
 
     server_monitor ();
@@ -104,6 +113,9 @@ class server_monitor
     std::unique_ptr<std::list <server_entry>> m_server_entry_list;      // list of server entries
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
+    std::mutex m_monitor_mutex;                                         // lock for server entry list
+    std::condition_variable m_monitor_cv;                               // condition variable for server entry list
+    std::atomic_int m_revive_entry_count;                               // count of server entries for revive
 };
 
 extern std::unique_ptr<server_monitor> master_Server_monitor;
