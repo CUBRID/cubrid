@@ -3098,7 +3098,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
 	  default:
 	    {
-	      hash_method_string = "none";
+	      hash_method_string = "skip";
 
 	      hashjoin_proc->build = &(hashjoin_proc->inner);
 	      hashjoin_proc->probe = &(hashjoin_proc->outer);
@@ -3116,7 +3116,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	build = json_object ();
 	json_object_set_new (build, "time", json_integer (TO_MSEC (hashjoin_proc->stats.build.elapsed_time)));
 	json_object_set_new (build, "build_time", json_integer (TO_MSEC (hashjoin_proc->stats.build.build_time)));
-	json_object_set_new (build, "built_type", json_string (hash_method_string));
+	json_object_set_new (build, "hash_method", json_string (hash_method_string));
 	if (is_hash_file)
 	  {
 	    json_object_set_new (build, "ncollisions", json_integer (hashjoin_proc->stats.build.ncollisions));
@@ -3483,7 +3483,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
 	  default:
 	    {
-	      hash_method_string = "none";
+	      hash_method_string = "skip";
 
 	      hashjoin_proc->build = &(hashjoin_proc->inner);
 	      hashjoin_proc->probe = &(hashjoin_proc->outer);
@@ -3505,7 +3505,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	if (is_hash_file)
 	  {
 	    fprintf (fp,
-		     "%*cBUILD (time: %d, build_time: %d, build_type: %s, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		     "%*cBUILD (time: %d, build_time: %d, hash_method: %s, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
 		     indent, ' ', TO_MSEC (hashjoin_proc->stats.build.elapsed_time),
 		     TO_MSEC (hashjoin_proc->stats.build.build_time), hash_method_string,
 		     (long long int) hashjoin_proc->stats.build.fetches,
@@ -3515,7 +3515,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	else
 	  {
 	    fprintf (fp,
-		     "%*cBUILD (time: %d, build_time: %d, build_type: %s, ncollisions: %u, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		     "%*cBUILD (time: %d, build_time: %d, hash_method: %s, ncollisions: %u, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
 		     indent, ' ', TO_MSEC (hashjoin_proc->stats.build.elapsed_time),
 		     TO_MSEC (hashjoin_proc->stats.build.build_time), hash_method_string,
 		     (unsigned int) hashjoin_proc->stats.build.ncollisions,
