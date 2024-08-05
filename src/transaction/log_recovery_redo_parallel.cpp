@@ -298,7 +298,7 @@ namespace cublog
     static std::size_t minimum_jobs_in_queue = 0;
     if (minimum_jobs_in_queue == 0)
       {
-	minimum_jobs_in_queue = (std::size_t) prm_get_integer_value (PRM_ID_REDO_MINIMUM_JOB_COUNT);
+	minimum_jobs_in_queue = (std::size_t) prm_get_integer_value (PRM_ID_RECOVERY_REDO_MINIMUM_JOB_COUNT);
       }
 
     bool first_job_in_produce_vec = false;
@@ -342,7 +342,7 @@ namespace cublog
     static int period_in_sec = -1;
     if (period_in_sec == -1)
       {
-	period_in_sec = prm_get_integer_value (PRM_ID_REDO_JOB_PERIOD);
+	period_in_sec = prm_get_integer_value (PRM_ID_RECOVERY_REDO_JOB_PERIOD_IN_SECS);
       }
 
     a_out_adding_finished = false;
