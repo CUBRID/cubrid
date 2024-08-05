@@ -10386,7 +10386,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   switch (node->node_type)
     {
     case PT_NAME:
-      if (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+      if (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED) || node->info.name.meta_class == PT_META_CLASS)
 	{
 	  original_name = node->info.name.original;
 	  resolved_name = node->info.name.resolved;
@@ -10565,7 +10565,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     }
 
   // *INDENT-OFF*
-  assert ((node->node_type == PT_NAME && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+  assert ((node->node_type == PT_NAME && (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED) || node->info.name.meta_class == PT_META_CLASS))
           || (node->node_type == PT_EXPR && PT_IS_SERIAL (node->info.expr.op)));
   // *INDENT-ON*
   assert (original_name && original_name[0] != '\0');
@@ -10580,7 +10580,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     {
       PT_ERRORf2 (parser, node,
 		  "Object name [%s] not allowed. It cannot exceed %d bytes.",
-		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
+		  pt_short_print (parser, node), (DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH) - 1);
       *continue_walk = PT_STOP_WALK;
       return node;
     }

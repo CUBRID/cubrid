@@ -156,7 +156,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
 
   checked_name = jsp_check_stored_procedure_name (name);
   db_make_string (&value, checked_name);
-  mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_NAME, &value);
+  mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
 
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
@@ -730,6 +730,8 @@ int
 jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   const char *decl = NULL, *comment = NULL;
+  char owner_name[DB_MAX_USER_LENGTH];
+  owner_name[0] = '\0';
 
   PT_NODE *param_list, *p;
   PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
@@ -740,6 +742,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   std::string pl_code;
 
   SP_INFO sp_info;
+  char *temp;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -758,7 +761,16 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
-  sp_info.sp_name = PT_NODE_SP_NAME (statement);
+  temp = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));
+  sp_info.unique_name = temp;
+  free (temp);
+  if (sp_info.unique_name.empty ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
+      return er_errid ();
+    }
+
+  sp_info.sp_name = sm_remove_qualifier_name (sp_info.unique_name.data ());
   if (sp_info.sp_name.empty ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
@@ -780,7 +792,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   param_list = PT_NODE_SP_ARGS (statement);
   for (p = param_list; p != NULL; p = p->next)
     {
-      SP_ARG_INFO arg_info (sp_info.sp_name, sp_info.pkg_name);
+      SP_ARG_INFO arg_info (sp_info.unique_name, sp_info.pkg_name);
 
       arg_info.index_of = param_count++;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
@@ -805,7 +817,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       // check # of args constraint
       if (param_count > MAX_ARG_COUNT)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, sp_info.sp_name.data ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, sp_info.unique_name.data ());
 	  goto error_exit;
 	}
 
@@ -856,7 +868,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
     }
   sp_info.target = decl ? decl : "";
-  sp_info.owner = Au_user; // current user
+  if (sm_qualifier_name (sp_info.unique_name.data (), owner_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+  sp_info.owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
   sp_info.comment = (char *) PT_NODE_SP_COMMENT (statement);
 
   if (err != NO_ERROR)
@@ -865,7 +882,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
 
   /* check already exists */
-  if (jsp_is_exist_stored_procedure (sp_info.sp_name.data ()))
+  if (jsp_is_exist_stored_procedure (sp_info.unique_name.data ()))
     {
       if (statement->info.sp.or_replace)
 	{
@@ -877,7 +894,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	    }
 	  has_savepoint = true;
 
-	  err = drop_stored_procedure (sp_info.sp_name.data (), sp_info.sp_type);
+	  err = drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -885,7 +902,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, sp_info.sp_name.data ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, sp_info.unique_name.data ());
 	  goto error_exit;
 	}
     }
@@ -911,7 +928,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       code_info.scode = pl_code;
       code_info.otype = compile_info.compiled_type;
       code_info.ocode = compile_info.compiled_code;
-      code_info.owner = Au_user; // current user
+      code_info.owner = sp_info.owner;
 
       err = sp_add_stored_procedure_code (code_info);
       if (err != NO_ERROR)
@@ -946,6 +963,10 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   int err = NO_ERROR;
   PT_NODE *sp_name = NULL, *sp_owner = NULL, *sp_comment = NULL;
   const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL;
+  char new_name_str[DB_MAX_IDENTIFIER_LENGTH];
+  new_name_str[0] = '\0';
+  char downcase_owner_name[DB_MAX_USER_LENGTH];
+  downcase_owner_name[0] = '\0';
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
   MOP sp_mop = NULL, new_owner = NULL;
@@ -1030,9 +1051,21 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       goto error;
     }
 
-  /* change the owner */
   if (sp_owner != NULL)
     {
+      /* change the unique_name */
+      sm_downcase_name (owner_str, downcase_owner_name, DB_MAX_USER_LENGTH);
+      sprintf (new_name_str, "%s.%s", downcase_owner_name, sm_remove_qualifier_name (name_str));
+
+      db_make_string (&user_val, new_name_str);
+      err = obj_set (sp_mop, SP_ATTR_UNIQUE_NAME, &user_val);
+      if (err < 0)
+	{
+	  goto error;
+	}
+      pr_clear_value (&user_val);
+
+      /* change the owner */
       db_make_object (&user_val, new_owner);
       err = obj_set (sp_mop, SP_ATTR_OWNER, &user_val);
       if (err < 0)
@@ -1128,9 +1161,23 @@ static char *
 jsp_check_stored_procedure_name (const char *str)
 {
   char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
+  char tmp[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
+  static int dbms_output_len = strlen ("dbms_output.");
+  char owner_name[DB_MAX_USER_LENGTH];
+  owner_name[0] = '\0';
 
-  sm_downcase_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
+
+  if (memcmp (str, "dbms_output.", dbms_output_len) == 0)
+    {
+      sprintf (buffer, "public.dbms_output.%s",
+	       sm_downcase_name (str + dbms_output_len, tmp, strlen (str + dbms_output_len) + 1));
+    }
+  else
+    {
+      sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
+    }
+
   name = strdup (buffer);
 
   return name;

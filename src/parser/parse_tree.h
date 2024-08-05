@@ -540,6 +540,12 @@ struct json_t;
         || (n->node_type == PT_UPDATE && n->info.update.spec->info.spec.remote_server_name) \
         || (n->node_type == PT_MERGE && n->info.merge.into->info.spec.remote_server_name))
 
+#define PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION(n) \
+	((n->info.dot.arg1->node_type == PT_NAME) \
+	&& (n->info.dot.arg2->node_type == PT_FUNCTION) \
+	&& (n->info.dot.arg2->info.function.function_type == PT_GENERIC) \
+        && (strchr (n->info.dot.arg2->info.function.generic_name, '.') == NULL))
+
 #if !defined (SERVER_MODE)
 /* the following defines support host variable binding for internal statements.
    internal statements can be generated on TEXT handling, and these statements
