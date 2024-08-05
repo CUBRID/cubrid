@@ -350,8 +350,7 @@ static bool disk_Logging = false;
 STATIC_INLINE char *disk_vhdr_get_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *disk_vhdr_get_next_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE size_t disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE size_t disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
 static int disk_vhdr_set_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *vol_fullname);
 static int disk_vhdr_set_next_vol_fullname (DISK_VOLUME_HEADER * vhdr, const char *next_vol_fullname);
 static int disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks);
@@ -5313,32 +5312,18 @@ disk_vhdr_get_vol_remarks (const DISK_VOLUME_HEADER * vhdr)
 }
 
 /*
- * disk_vhdr_get_vol_remarks_size () - get the size of 'remarks' from volume header
- *
- * return    : the size of remarks
- * vhdr (in) : volume header
- */
-STATIC_INLINE size_t
-disk_vhdr_get_vol_remarks_size (const DISK_VOLUME_HEADER * vhdr)
-{
-  assert (vhdr != NULL);
-
-  return strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1;
-}
-
-/*
  * disk_vhdr_get_vol_header_size () - get the size of volume header including variable fields
  *
  * return    : total size
  * vhdr (in) : volume header
  */
-STATIC_INLINE size_t
+STATIC_INLINE int
 disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr)
 {
   assert (vhdr != NULL);
 
   const char *remarks = disk_vhdr_get_vol_remarks (vhdr);
-  const int volume_header_size = remarks + disk_vhdr_get_vol_remarks_size (vhdr) - (char *) vhdr;
+  const int volume_header_size = (remarks + strlen (remarks) + 1) - (char *) (vhdr);
 
   assert (volume_header_size >= 0 && volume_header_size <= DB_PAGESIZE);
 
