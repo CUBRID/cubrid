@@ -1825,7 +1825,7 @@ check_execute_authorization_by_query (const MOP sp_obj)
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto exit;
+      goto release;
     }
 
   error = db_set_system_generated_statement (session);
@@ -1863,8 +1863,6 @@ release:
     {
       db_close_session (session);
     }
-
-exit:
   pr_clear_value (&val[0]);
   pr_clear_value (&val[1]);
 
@@ -1899,21 +1897,14 @@ check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 	{
 	  return NO_ERROR;
 	}
+      else if (check_execute_authorization_by_query (sp_obj) == 0)
+	{
+	  error = ER_AU_EXECUTE_FAILURE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
       else
 	{
-	  if (au_type == DB_AUTH_EXECUTE)
-	    {
-	      if (check_execute_authorization_by_query (sp_obj) == 0)
-		{
-		  error = ER_AU_EXECUTE_FAILURE;
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-		  return error;
-		}
-	      else
-		{
-		  error = er_errid ();
-		}
-	    }
+	  error = er_errid ();
 	}
     }
 
