@@ -7790,29 +7790,92 @@ PT_NODE *
 pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_name)
 {
   PT_NODE **node = NULL;
-  PT_NODE *show_node;
+  PT_NODE *show_node = NULL;
+  char user_name[SM_MAX_IDENTIFIER_LENGTH];
 
+  // *INDENT-OFF*
   const static char *query =
-    "SELECT CONCAT ('GRANT ', "
-    "GROUP_CONCAT([AU].[auth_type] ORDER BY 1 SEPARATOR ', '), "
-    "' ON ',"
-    "CASE [AU].[object_type] WHEN 'PROCEDURE' THEN 'PROCEDURE ' WHEN 'FUNCTION' THEN 'PROCEDURE ' ELSE '' END, "
-    "[AU].[owner_name] || '.' || [AU].[object_name],"
-    "' TO ',"
-    "[AU].[grantee_name],"
-    "IF ([AU].[is_grantable]='YES', ' WITH GRANT OPTION', '')"
-    ") AS GRANTS "
-    "FROM "
-    "[db_auth] AS [AU] "
-    "WHERE "
-    "[AU].[grantee_name] = UPPER('%s') "
-    "GROUP BY " "[AU].[grantee_name], [AU].[object_name], [AU].[is_grantable] ASC " "ORDER BY 1;";
+        "SELECT "
+                "CONCAT ('GRANT ', "
+                "GROUP_CONCAT([auth_type] ORDER BY 1 SEPARATOR ', '), "
+                "' ON ',"
+                "IF ([object_type]=5, 'PROCEDURE ', ''), "
+                "[owner_name] || '.' || [object_name], "
+                "' TO ',"
+                "[grantee_name],"
+                "IF ([is_grantable]=1, ' WITH GRANT OPTION', '')"
+                ") AS GRANTS "
+        "FROM ("
+                "SELECT "
+                        "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
+                        "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
+                        "[a].[object_type] AS [object_type], "
+                        "[c].[class_name] AS [object_name], "
+                        "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+                        "[a].[auth_type] AS [auth_type], "
+                        "[a].[is_grantable] AS [is_grantable] "
+                "FROM "
+                        "[_db_auth] AS [a], [_db_class] AS [c] "
+                "WHERE "
+                        "[a].[object_of] = [c].[class_of] "
+                        "AND [a].[object_type] = 0 "
+                        "AND MOD ([c].[is_system_class], 2) = 0 "
+                        "AND ( "
+                        "[a].[grantee].[name] = '%1$s' "
+                        "OR "
+                        "SET {[a].[grantee].[name]} SUBSETEQ ("
+                                "SELECT "
+                                        "SUM (SET {[t].[g].[name]}) "
+                                "FROM "
+                                        /* AU_USER_CLASS_NAME */
+                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                "WHERE "
+                                        "[u].[name] = '%1$s'"
+                                ") "
+                        ") "
+        "UNION ALL "
+                "SELECT "
+                        "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
+                        "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
+                        "[a].[object_type] AS [object_type], "
+                        "[s].[sp_name] AS [object_name], "
+                        "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+                        "[a].[auth_type] AS [auth_type], "
+                        "[a].[is_grantable] AS [is_grantable] "
+                "FROM "
+                        "[_db_auth] AS [a], [_db_stored_procedure] AS [s] "
+                "WHERE "
+                        "[a].[object_of] = [s] "
+                        "AND [a].[object_type] = 5 "
+                        "AND [s].[is_system_generated] = 0 "
+                        "AND ( "
+                        "[a].[grantee].[name] = '%1$s' "
+                        "OR "
+                        "SET {[a].[grantee].[name]} SUBSETEQ ("
+                                "SELECT "
+                                        "SUM (SET {[t].[g].[name]}) "
+                                "FROM "
+                                        /* AU_USER_CLASS_NAME */
+                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                "WHERE "
+                                        "[u].[name] = '%1$s'"
+                                ") "
+                        ") "
+        ") "
+        "GROUP BY "
+                "[grantee_name], [owner_name], [object_name], [is_grantable] ASC "
+        "ORDER BY 1;";
+  // *INDENT-ON*
 
-  const int buffer_size = 1024;	// length of query (480) + identifier (255) < 1024
+  const int buffer_size = 4096;	// length of query (1303) + identifier (255) * 4 < 1024
   char buffer[buffer_size];
-
   memset (buffer, 0, buffer_size);
-  snprintf (buffer, buffer_size, query, original_user_name);
+
+  /* conversion to uppercase can cause <original_user_name> to double size, if internationalization is used : size
+   * <user_name> accordingly */
+  intl_identifier_upper (original_user_name, user_name);
+
+  snprintf (buffer, buffer_size, query, user_name);
 
   /* parser ';' will empty and reset the stack of parser, this make the status machine be right for the next statement,
    * and avoid nested parser statement. */
@@ -7828,6 +7891,20 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
 
   show_node = pt_pop (parser);
   assert (show_node == node[0]);
+
+  if (show_node)
+    {
+      // for backward compatibiltiy
+      char col_alias[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+      const char *const col_header = "Grants for ";
+
+      strcpy (col_alias, col_header);
+      strncat (col_alias, user_name, SM_MAX_IDENTIFIER_LENGTH - strlen (col_header) - 1);
+      col_alias[SM_MAX_IDENTIFIER_LENGTH - 1] = '\0';
+
+      PT_NODE *concat_node = show_node->info.query.q.select.list;
+      concat_node->alias_print = pt_append_string (parser, NULL, col_alias);
+    }
 
   return node[0];
 }
