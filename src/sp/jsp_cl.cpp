@@ -833,6 +833,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   sp_info.owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
   if (sp_info.owner == NULL)
     {
+      // for safeguard: it is already checked in pt_check_create_stored_procedure ()
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER_NAME, 1, owner_name);
       goto error_exit;
     }

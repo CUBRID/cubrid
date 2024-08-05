@@ -9556,8 +9556,7 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  return;
 	}
-
-      if (au_is_dba_group_member (Au_user) == false && ws_is_same_object (owner, Au_user) == false)
+      else if (au_is_dba_group_member (Au_user) == false && ws_is_same_object (owner, Au_user) == false)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER,
 		      "CREATE PROCEDURE/FUNCTION");
