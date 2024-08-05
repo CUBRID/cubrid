@@ -119,7 +119,7 @@ static void javasp_signal_handler (int sig);
 static bool is_signal_handling = false;
 static char executable_path[PATH_MAX];
 
-static bool is_server_conncted = false;
+static bool is_server_connected = false;
 
 static std::string command;
 static std::string db_name;
@@ -334,7 +334,7 @@ main (int argc, char *argv[])
 	    PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	    goto exit;
 	  }
-	is_server_conncted = true;
+	is_server_connected = true;
 
 	status = javasp_start_server (jsp_info, db_name, pathname);
 	if (status == NO_ERROR)
@@ -417,7 +417,7 @@ exit:
 	}
     }
 
-  if (is_server_conncted)
+  if (is_server_connected)
     {
       (void) db_shutdown ();
     }
