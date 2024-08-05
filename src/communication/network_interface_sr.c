@@ -89,6 +89,7 @@
 #include "crypt_opfunc.h"
 #include "flashback.h"
 #include "method_compile.hpp"
+#include "method_compile_def.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -11193,9 +11194,9 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 {
   packing_unpacker unpacker (request, (size_t) reqlen);
 
-  bool verbose;
-  std::string input_string;
-  unpacker.unpack_all (verbose, input_string);
+  PLCSQL_COMPILE_REQUEST compile_request;
+
+  unpacker.unpack_all (compile_request);
 
   cubmethod::runtime_context * ctx = NULL;
   session_get_method_runtime_context (thread_p, ctx);
@@ -11204,7 +11205,7 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   cubmem::extensible_block ext_blk;
   if (ctx)
     {
-      error = cubmethod::invoke_compile (*thread_p, *ctx, input_string, verbose, ext_blk);
+      error = cubmethod::invoke_compile (*thread_p, *ctx, compile_request, ext_blk);
     }
 
   // Error code and is_ignored.

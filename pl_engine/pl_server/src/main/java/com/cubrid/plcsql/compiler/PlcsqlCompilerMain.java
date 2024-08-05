@@ -54,8 +54,8 @@ public class PlcsqlCompilerMain {
     // temporary code - the owner and revision strings will come from the server
     private static int revision = 1;
 
-    public static CompileInfo compilePLCSQL(String in, boolean verbose) {
-        return compilePLCSQL(in, verbose, "dba", Integer.toString(revision++));
+    public static CompileInfo compilePLCSQL(String in, String owner, boolean verbose) {
+        return compilePLCSQL(in, verbose, owner, Integer.toString(revision++));
     }
     // end of temporary code
 

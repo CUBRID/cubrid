@@ -50,8 +50,8 @@ namespace cubmethod
     return error;
   }
 
-  int invoke_compile (cubthread::entry &thread_ref, runtime_context &ctx, const std::string &program,
-		      const bool &verbose, cubmem::extensible_block &out_blk)
+  int invoke_compile (cubthread::entry &thread_ref, runtime_context &ctx, const PLCSQL_COMPILE_REQUEST &compile_request,
+		      cubmem::extensible_block &out_blk)
   {
     int error = NO_ERROR;
     connection *conn = ctx.get_connection_pool().claim();
@@ -59,7 +59,7 @@ namespace cubmethod
     header header (s_id, SP_CODE_COMPILE, ctx.get_and_increment_request_id ());
     SOCKET socket = conn->get_socket ();
     {
-      error = mcon_send_data_to_java (socket, header, verbose, program);
+      error = mcon_send_data_to_java (socket, header, compile_request);
       if (error != NO_ERROR)
 	{
 	  goto exit;
