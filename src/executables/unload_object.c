@@ -167,15 +167,13 @@ static const char *prohibited_classes[] = {
 static std::atomic <int64_t>  class_objects_atomic = 0;
 static std::atomic <int64_t>  total_objects_atomic = 0;
 static std::atomic <int64_t>  failed_objects_atomic = 0;
-static std::atomic <int>      extractor_thread_cnt_atomic = 0;
 // *INDENT-ON*
 
-#define INVALID_THREAD_ID    ((pthread_t) (-1))
 static int64_t approximate_class_objects = 0;
 static int64_t total_approximate_class_objects = 0;
 static char *gauge_class_name;
 
-static bool hit_interrupt = false;
+static bool all_thread_joined = true;
 static volatile bool writer_thread_proc_terminate = true;
 static volatile bool extractor_thread_proc_terminate = false;
 static int max_fetched_copyarea_list = 1;
@@ -217,19 +215,12 @@ struct _unloaddb_class_info
   S_WAITING_INFO wi_fetch;
 #endif
 
+  pthread_mutex_t mtx;
+  pthread_cond_t cond;
+
   class copyarea_list *cparea_lst_ref;
 };
 UNLD_CLASS_PARAM *g_uci = NULL;
-
-
-// *INDENT-OFF*
-struct
-{
-  bool unloaddb_lock_inside;
-  pthread_mutex_t unloaddb_mtx;
-  pthread_cond_t unloaddb_cond;
-} g_unld_lck = {false, };
-// *INDENT-ON*
 
 typedef struct _lc_copyarea_node LC_COPYAREA_NODE;
 struct _lc_copyarea_node
@@ -633,27 +624,15 @@ extractobjects_cleanup ()
 static void
 extractobjects_term_handler (int sig)
 {
-  hit_interrupt = true;
   error_occurred = true;
   extractor_thread_proc_terminate = true;
-  if (g_unld_lck.unloaddb_lock_inside)
-    {
-      g_unld_lck.unloaddb_lock_inside = false;
-      pthread_mutex_lock (&g_unld_lck.unloaddb_mtx);
-      pthread_cond_broadcast (&g_unld_lck.unloaddb_cond);
-      pthread_mutex_unlock (&g_unld_lck.unloaddb_mtx);
-    }
-
-  usleep (100);
+  usleep (10000);
   writer_thread_proc_terminate = true;
-  usleep (100);
+  usleep (10000);
 
-
-  int thrcnt = extractor_thread_cnt_atomic;
-  while (thrcnt > 0)
+  while (all_thread_joined == false)
     {
-      usleep (100);
-      thrcnt = extractor_thread_cnt_atomic;
+      usleep (10000);
     }
 
   extractobjects_cleanup ();
@@ -1424,10 +1403,7 @@ unload_extractor_thread (void *param)
   int thr_ret = NO_ERROR;
   pthread_t tid = pthread_self ();
   TEXT_OUTPUT *obj_out = &(parg->text_output);
-  DESC_OBJ *desc_obj;
-
-  extractor_thread_cnt_atomic++;
-  desc_obj = make_desc_obj (g_uci->class_ptr, g_pre_alloc_varchar_size);
+  DESC_OBJ *desc_obj = make_desc_obj (g_uci->class_ptr, g_pre_alloc_varchar_size);
   if (desc_obj == NULL)
     {
       thr_ret = ER_FAILED;
@@ -1457,26 +1433,23 @@ unload_extractor_thread (void *param)
 	    {
 	      TIMER_BEGIN ((g_sampling_records >= 0), &(parg->wi_get_list));
 
-	      pthread_mutex_lock (&g_unld_lck.unloaddb_mtx);
-	      pthread_cond_wait (&g_unld_lck.unloaddb_cond, &g_unld_lck.unloaddb_mtx);
-	      pthread_mutex_unlock (&g_unld_lck.unloaddb_mtx);
+	      pthread_mutex_lock (&g_uci->mtx);
+	      pthread_cond_wait (&g_uci->cond, &g_uci->mtx);
+	      pthread_mutex_unlock (&g_uci->mtx);
 
 	      TIMER_END ((g_sampling_records >= 0), &(parg->wi_get_list));
 	    }
 	}
 
-      if (hit_interrupt == false)
+      node = g_uci->cparea_lst_ref->get ();
+      while (node)
 	{
-	  node = g_uci->cparea_lst_ref->get ();
-	  while (node)
+	  if (thr_ret == NO_ERROR)
 	    {
-	      if (thr_ret == NO_ERROR)
-		{
-		  thr_ret = unload_printer (node->lc_copy_area, desc_obj, obj_out);
-		}
-	      g_uci->cparea_lst_ref->add_freelist (node);
-	      node = g_uci->cparea_lst_ref->get ();
+	      thr_ret = unload_printer (node->lc_copy_area, desc_obj, obj_out);
 	    }
+	  g_uci->cparea_lst_ref->add_freelist (node);
+	  node = g_uci->cparea_lst_ref->get ();
 	}
 
       er_context_p->deregister_thread_local ();
@@ -1491,7 +1464,6 @@ unload_extractor_thread (void *param)
       error_occurred = true;
     }
 
-  extractor_thread_cnt_atomic--;
   pthread_exit ((THREAD_RET_T) thr_ret);
   return (THREAD_RET_T) thr_ret;
 }
@@ -1543,9 +1515,9 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
 		{
 		  g_uci->cparea_lst_ref->add (fetch_area, true);
 		  fetch_area = NULL;
-		  pthread_mutex_lock (&g_unld_lck.unloaddb_mtx);
-		  pthread_cond_signal (&g_unld_lck.unloaddb_cond);
-		  pthread_mutex_unlock (&g_unld_lck.unloaddb_mtx);
+		  pthread_mutex_lock (&g_uci->mtx);
+		  pthread_cond_signal (&g_uci->cond);
+		  pthread_mutex_unlock (&g_uci->mtx);
 		}
 
 	      if (g_sampling_records > 0)
@@ -1592,7 +1564,6 @@ unload_writer_thread (void *param)
   int thr_ret = NO_ERROR;
   int ret;
 
-  extractor_thread_cnt_atomic++;
   while (writer_thread_proc_terminate == false)
     {
       ret = flushing_write_blk_queue ();
@@ -1613,7 +1584,7 @@ unload_writer_thread (void *param)
       TIMER_END ((g_sampling_records >= 0), &wi_w_blk_getQ);
     }
 
-  if (thr_ret == NO_ERROR && hit_interrupt == false)
+  if (thr_ret == NO_ERROR)
     {
       ret = flushing_write_blk_queue ();
       if (ret < 0)
@@ -1627,7 +1598,6 @@ unload_writer_thread (void *param)
       error_occurred = true;
     }
 
-  extractor_thread_cnt_atomic--;
   pthread_exit ((THREAD_RET_T) thr_ret);
   return (THREAD_RET_T) thr_ret;
 }
@@ -1804,9 +1774,11 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   bool enabled_alarm = false;
   LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
   UNLD_CLASS_PARAM unld_cls_info;
-  pthread_t writer_tid = INVALID_THREAD_ID;
+  pthread_t writer_tid;
   int *retval = NULL;
   class copyarea_list c_cparea_lst_class;
+
+  all_thread_joined = true;
 
   /*
    * Only process classes that were requested or classes that were
@@ -1937,9 +1909,14 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       goto exit_on_end;
     }
 
-  //
   extractor_thread_proc_terminate = false;
   writer_thread_proc_terminate = false;
+  g_multi_thread_mode = (nthreads > 0) ? true : false;
+  TIMER_CLEAR (&(g_thr_param[0].wi_get_list));
+  TIMER_CLEAR (&(g_thr_param[0].wi_add_Q));
+
+  TIMER_CLEAR (&(g_thr_param[0].wi_to_obj_str[0]));
+  TIMER_CLEAR (&(g_thr_param[0].wi_to_obj_str[1]));
 
   unld_cls_info.hfid = hfid;
   unld_cls_info.class_oid = class_oid;
@@ -1955,31 +1932,25 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   unld_cls_info.cparea_lst_ref = &c_cparea_lst_class;
   g_uci = &unld_cls_info;
 
-  TIMER_CLEAR (&(g_thr_param[0].wi_get_list));
-  TIMER_CLEAR (&(g_thr_param[0].wi_add_Q));
 
-  TIMER_CLEAR (&(g_thr_param[0].wi_to_obj_str[0]));
-  TIMER_CLEAR (&(g_thr_param[0].wi_to_obj_str[1]));
-
-  g_multi_thread_mode = (nthreads > 0) ? true : false;
   if (g_multi_thread_mode)
     {
-      if (pthread_mutex_init (&g_unld_lck.unloaddb_mtx, NULL) != 0)
+      if (pthread_mutex_init (&unld_cls_info.mtx, NULL) != 0)
 	{
 	  error = ER_FAILED;
 	  goto exit_on_end;
 	}
-      else if (pthread_cond_init (&g_unld_lck.unloaddb_cond, NULL) != 0)
+      else if (pthread_cond_init (&unld_cls_info.cond, NULL) != 0)
 	{
-	  pthread_mutex_destroy (&g_unld_lck.unloaddb_mtx);
+	  pthread_mutex_destroy (&unld_cls_info.mtx);
 	  error = ER_FAILED;
 	  goto exit_on_end;
 	}
-      g_unld_lck.unloaddb_lock_inside = true;
+
       for (i = 0; i < nthreads; i++)
 	{
 	  g_thr_param[i].thread_idx = i;
-	  g_thr_param[i].tid = INVALID_THREAD_ID;
+	  g_thr_param[i].tid = (pthread_t) - 1;
 	  assert (g_thr_param[i].text_output.ref_thread_param_idx == i);
 
 	  TIMER_CLEAR (&(g_thr_param[i].wi_get_list));
@@ -1993,6 +1964,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	      perror ("pthread_create()\n");
 	      exit (1);
 	    }
+	  all_thread_joined = false;
 	}
 
       if (pthread_create (&writer_tid, NULL, unload_writer_thread, NULL) != 0)
@@ -2000,6 +1972,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	  perror ("pthread_create()\n");
 	  exit (1);
 	}
+      all_thread_joined = false;
     }
 
   YIELD_THREAD ();
@@ -2014,10 +1987,11 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
     {
       extractor_thread_proc_terminate = true;
 
-      pthread_mutex_lock (&g_unld_lck.unloaddb_mtx);
-      pthread_cond_broadcast (&g_unld_lck.unloaddb_cond);
-      pthread_mutex_unlock (&g_unld_lck.unloaddb_mtx);
+      pthread_mutex_lock (&unld_cls_info.mtx);
+      pthread_cond_broadcast (&unld_cls_info.cond);
+      pthread_mutex_unlock (&unld_cls_info.mtx);
 
+      pthread_cond_broadcast (&unld_cls_info.cond);
       YIELD_THREAD ();
 
       for (i = 0; i < nthreads; i++)
@@ -2038,9 +2012,8 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 
       g_multi_thread_mode = false;
 
-      g_unld_lck.unloaddb_lock_inside = false;
-      pthread_cond_destroy (&g_unld_lck.unloaddb_cond);
-      pthread_mutex_destroy (&g_unld_lck.unloaddb_mtx);
+      pthread_cond_destroy (&unld_cls_info.cond);
+      pthread_mutex_destroy (&unld_cls_info.mtx);
     }
   TIMER_END ((g_sampling_records >= 0), &wi_unload_class);
   if (error_occurred && error == NO_ERROR)
@@ -2087,6 +2060,7 @@ exit_on_end:
       print_monitoring_info (sm_ch_name ((MOBJ) class_ptr), nthreads);
     }
 
+  all_thread_joined = true;
   return error;
 
 exit_on_error:
