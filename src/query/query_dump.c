@@ -3056,7 +3056,6 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       subquery = json_array ();
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  qdump_print_stats_json (xasl_p->aptr_list, proc);
 	  temp = json_object ();
 	  qdump_print_stats_json (xptr, temp);
 	  json_array_append_new (subquery, temp);
