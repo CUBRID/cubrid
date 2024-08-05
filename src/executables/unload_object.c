@@ -173,8 +173,8 @@ static int64_t approximate_class_objects = 0;
 static int64_t total_approximate_class_objects = 0;
 static char *gauge_class_name;
 
-static bool all_thread_joined = true;
-static volatile bool writer_thread_proc_terminate = true;
+
+static volatile bool writer_thread_proc_terminate = false;
 static volatile bool extractor_thread_proc_terminate = false;
 static int max_fetched_copyarea_list = 1;
 #if !defined(WINDOWS)
@@ -629,11 +629,6 @@ extractobjects_term_handler (int sig)
   usleep (10000);
   writer_thread_proc_terminate = true;
   usleep (10000);
-
-  while (all_thread_joined == false)
-    {
-      usleep (10000);
-    }
 
   extractobjects_cleanup ();
   /* terminate a program */
@@ -1778,8 +1773,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   int *retval = NULL;
   class copyarea_list c_cparea_lst_class;
 
-  all_thread_joined = true;
-
   /*
    * Only process classes that were requested or classes that were
    * referenced via requested classes.
@@ -1903,6 +1896,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 #endif
     }
 
+  error_occurred = false;
   error = text_print_request_flush (&(g_thr_param[0].text_output), true);
   if (error != NO_ERROR)
     {
@@ -1964,7 +1958,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	      perror ("pthread_create()\n");
 	      exit (1);
 	    }
-	  all_thread_joined = false;
 	}
 
       if (pthread_create (&writer_tid, NULL, unload_writer_thread, NULL) != 0)
@@ -1972,7 +1965,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	  perror ("pthread_create()\n");
 	  exit (1);
 	}
-      all_thread_joined = false;
     }
 
   YIELD_THREAD ();
@@ -2015,7 +2007,9 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       pthread_cond_destroy (&unld_cls_info.cond);
       pthread_mutex_destroy (&unld_cls_info.mtx);
     }
+
   TIMER_END ((g_sampling_records >= 0), &wi_unload_class);
+
   if (error_occurred && error == NO_ERROR)
     {
       error = ER_FAILED;
@@ -2059,11 +2053,10 @@ exit_on_end:
     {
       print_monitoring_info (sm_ch_name ((MOBJ) class_ptr), nthreads);
     }
-
-  all_thread_joined = true;
   return error;
 
 exit_on_error:
+
   CHECK_EXIT_ERROR (error);
   return error;
 
