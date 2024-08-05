@@ -22,7 +22,6 @@
 
 #include <sstream>
 #include <algorithm>
-#include <sys/time.h>
 #include <unistd.h>
 #include <signal.h>
 #include <system_parameter.h>
