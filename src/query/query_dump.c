@@ -2893,12 +2893,9 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   json_t *subquery, *groupby, *orderby;
   json_t *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
-<<<<<<< HEAD
-=======
   json_t *temp;
   xasl_node *xptr;
   json_t *sq_cache;
->>>>>>> b214f10... [CBRD-25361] Fixed the issue where trace information for CTEs and subqueries not provided. (#5200)
 
   if (xasl_p == NULL || parent == NULL)
     {
@@ -2926,7 +2923,6 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     case BUILD_SCHEMA_PROC:
       json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
       json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
       json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
       break;
 
@@ -2935,7 +2931,6 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     case INTERSECTION_PROC:
       json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
       json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
       json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
       subquery = json_array ();
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
@@ -3232,9 +3227,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
+      fprintf (fp, "%s (time: %d, fetch: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
 	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
-	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
+	       (long long int) xasl_p->xasl_stats.ioreads);
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
 	  qdump_print_stats_text (fp, xptr, indent);
