@@ -5327,7 +5327,7 @@ disk_vhdr_get_vol_header_size (const DISK_VOLUME_HEADER * vhdr)
 
   assert (volume_header_size >= 0 && volume_header_size <= DB_PAGESIZE);
 
-  return (size_t) volume_header_size;
+  return volume_header_size;
 }
 
 /*
