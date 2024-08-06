@@ -75,19 +75,20 @@ class server_monitor
 	void set_need_revive (bool need_revive);
 	void set_last_revive_time ();
 
-	int m_revive_count;                                           // revive count of server process
-
 	void proc_make_arg (char *args);
 	bool server_entry_compare_args_and_argv (const char *args);
 
+	int m_revive_count;                                           // revive count of server process
+
       private:
-	int m_pid;                                                    // process ID of server process
-	std::string m_exec_path;                                      // executable path of server process
-	std::vector<std::string> m_argv;                              // arguments of server process
-	CSS_CONN_ENTRY *m_conn;                                       // connection entry of server process
-	volatile bool m_need_revive;                                  // need to revive (true if the server is abnormally terminated)
-	std::chrono::steady_clock::time_point m_last_revive_time;     // last revive time
-	std::mutex m_entry_mutex;                                     // lock for server entry
+	int m_pid;                                                 // process ID of server process
+	std::string m_exec_path;                                   // executable path of server process
+	std::vector<std::string> m_argv;                           // arguments of server process
+	CSS_CONN_ENTRY *m_conn;                                    // connection entry of server process
+	volatile bool m_need_revive;                               // need to be revived by monitoring thread
+	std::chrono::steady_clock::time_point m_last_revive_time;  // last revive time
+	std::mutex m_entry_mutex;                                  // lock for server entry
+
     };
 
     server_monitor ();

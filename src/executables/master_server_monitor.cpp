@@ -61,16 +61,12 @@ server_monitor::server_monitor ()
 	      {
 		if (it->get_need_revive ())
 		  {
-		    //it->set_need_revive (false);
-
 		    tv = std::chrono::steady_clock::now ();
 		    auto timediff = std::chrono::duration_cast<std::chrono::milliseconds> (tv - it->get_last_revive_time()).count();
 		    if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS)
 		      {
 			while (++ (it->m_revive_count) < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
 			  {
-			    //it->set_need_revive (true);
-
 			    server_monitor_try_revive_server (it->get_exec_path(), it->get_argv(), &pid);
 			    assert (pid > 0);
 			    error_code = kill (pid, 0);
