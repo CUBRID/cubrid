@@ -66,8 +66,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     public final SymbolStack symbolStack = new SymbolStack();
 
-    public ParseTreeConverter(Map<ParserRuleContext, SqlSemantics> staticSqls) {
-        this.staticSqls = staticSqls;
+    public ParseTreeConverter() {
+        //this.staticSqls = staticSqls;
     }
 
     public void askServerSemanticQuestions() {
@@ -1202,7 +1202,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         NodeList<DeclParamIn> paramList = visitCursor_parameter_list(ctx.cursor_parameter_list());
 
-        SqlSemantics sws = staticSqls.get(ctx.static_sql());
+        //SqlSemantics sws = staticSqls.get(ctx.static_sql());
+        SqlSemantics sws = getSqlSemanticsFromServer(ctx.static_sql());
         assert sws != null;
         assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
         if (sws.intoTargetStrs != null) {
@@ -1688,11 +1689,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("for_s_sql_loop", null);
 
         ParserRuleContext recNameCtx = ctx.for_static_sql().record_name();
-        ParserRuleContext selectCtx = ctx.for_static_sql().static_sql();
+        Static_sqlContext selectCtx = ctx.for_static_sql().static_sql();
 
         String record = Misc.getNormalizedText(recNameCtx);
 
-        SqlSemantics sws = staticSqls.get(selectCtx);
+        //SqlSemantics sws = staticSqls.get(selectCtx);
+        SqlSemantics sws = getSqlSemanticsFromServer(selectCtx);
         assert sws != null;
         if (sws.kind != ServerConstants.CUBRID_STMT_SELECT) {
             throw new SemanticError(
@@ -1917,7 +1919,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public StmtStaticSql visitStatic_sql(Static_sqlContext ctx) {
 
         connectionRequired = true;
-        SqlSemantics sws = staticSqls.get(ctx);
+        //SqlSemantics sws = staticSqls.get(ctx);
+        SqlSemantics sws = getSqlSemanticsFromServer(ctx);
         assert sws != null;
         StaticSql staticSql = checkAndConvertStaticSql(sws, ctx);
         if (staticSql.kind == ServerConstants.CUBRID_STMT_SELECT) {
@@ -2049,7 +2052,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     "identifier in an OPEN-FOR statement must be of SYS_REFCURSOR type");
         }
 
-        SqlSemantics sws = staticSqls.get(ctx.static_sql());
+        //SqlSemantics sws = staticSqls.get(ctx.static_sql());
+        SqlSemantics sws = getSqlSemanticsFromServer(ctx.static_sql());
         assert sws != null;
         assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
         if (sws.intoTargetStrs != null) {
@@ -2328,7 +2332,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private final LinkedHashMap<AstNode, ServerAPI.Question> semanticQuestions =
             new LinkedHashMap<>();
 
-    private final Map<ParserRuleContext, SqlSemantics> staticSqls;
+    //private final Map<ParserRuleContext, SqlSemantics> staticSqls;
     private final Set<String> imports = new TreeSet<>();
 
     private int exHandlerDepth;
@@ -2698,5 +2702,19 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         return 0;
+    }
+
+    private static SqlSemantics getSqlSemanticsFromServer(Static_sqlContext ctx) {
+
+        // server interaction may take a long time
+        List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(ctx.getText()));
+        assert sqlSemantics.size() == 1;
+
+        SqlSemantics ss = sqlSemantics.get(0);
+        if (ss.errCode == 0) {
+            return ss;
+        } else {
+            throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s435
+        }
     }
 }

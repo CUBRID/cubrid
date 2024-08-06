@@ -229,7 +229,8 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // converting parse tree to AST
 
-        ParseTreeConverter converter = new ParseTreeConverter(staticSqls);
+        //ParseTreeConverter converter = new ParseTreeConverter(staticSqls);
+        ParseTreeConverter converter = new ParseTreeConverter();
         Unit unit = (Unit) converter.visit(tree);
 
         if (verbose) {
