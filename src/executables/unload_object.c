@@ -183,7 +183,6 @@ static S_WAITING_INFO wi_w_blk_getQ;
 S_WAITING_INFO wi_write_file;
 #endif
 #define INVALID_THREAD_ID  ((pthread_t) (-1))
-pthread_t g_main_thread_id = INVALID_THREAD_ID;
 
 #define OBJECT_SUFFIX "_objects"
 
@@ -625,14 +624,6 @@ extractobjects_cleanup ()
 static void
 extractobjects_term_handler (int sig)
 {
-#if !defined(WINDOWS)
-  if ((g_main_thread_id != INVALID_THREAD_ID) && (g_main_thread_id != pthread_self ()))
-    {
-      pthread_kill (g_main_thread_id, sig);
-      return;
-    }
-#endif
-
   error_occurred = true;
   extractor_thread_proc_terminate = true;
   usleep (1000);
@@ -726,7 +717,6 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
   g_sampling_records = sampling_records;
 
   /* register new signal handlers */
-  g_main_thread_id = pthread_self ();
   prev_intr_handler = os_set_signal_handler (SIGINT, extractobjects_term_handler);
   prev_term_handler = os_set_signal_handler (SIGTERM, extractobjects_term_handler);
 #if !defined(WINDOWS)
