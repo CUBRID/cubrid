@@ -2261,9 +2261,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private static final NodeList<Expr> EMPTY_ARGS = new NodeList<>();
 
     private static boolean isRecordId(ExprId id) {
-        return (id != null
-                && id.decl instanceof DeclIdTypeSpeced
-                && ((DeclIdTypeSpeced) id.decl).typeSpec().type.idx == Type.IDX_RECORD);
+        return (id != null && id.decl.type().idx == Type.IDX_RECORD);
     }
 
     private static boolean isCursorOrRefcursor(ExprId id) {

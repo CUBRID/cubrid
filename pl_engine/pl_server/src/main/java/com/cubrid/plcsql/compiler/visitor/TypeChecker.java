@@ -471,8 +471,7 @@ public class TypeChecker extends AstVisitor<Type> {
         Type ret = null;
 
         DeclId declId = node.record.decl;
-        assert declId instanceof DeclIdTypeSpeced;
-        Type recTy = ((DeclIdTypeSpeced) declId).typeSpec().type;
+        Type recTy = declId.type();
         assert recTy.idx == Type.IDX_RECORD;
         if (recTy == Type.RECORD_ANY) {
             // This record is for a dynamic SQL
