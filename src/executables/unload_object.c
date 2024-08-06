@@ -182,6 +182,8 @@ static S_WAITING_INFO wi_unload_class;
 static S_WAITING_INFO wi_w_blk_getQ;
 S_WAITING_INFO wi_write_file;
 #endif
+#define INVALID_THREAD_ID  ((pthread_t) (-1))
+pthread_t g_main_thread_id = INVALID_THREAD_ID;
 
 #define OBJECT_SUFFIX "_objects"
 
@@ -596,7 +598,6 @@ check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type)
 static void
 extractobjects_cleanup ()
 {
-  quit_thread_param ();
   close_object_file ();
 
   if (obj_table != NULL)
@@ -624,11 +625,17 @@ extractobjects_cleanup ()
 static void
 extractobjects_term_handler (int sig)
 {
+  if ((g_main_thread_id != INVALID_THREAD_ID) && (g_main_thread_id != pthread_self ()))
+    {
+      pthread_kill (g_main_thread_id, sig);
+      return;
+    }
+
   error_occurred = true;
   extractor_thread_proc_terminate = true;
-  usleep (10000);
+  usleep (1000);
   writer_thread_proc_terminate = true;
-  usleep (10000);
+  usleep (100);
 
   extractobjects_cleanup ();
   /* terminate a program */
@@ -717,6 +724,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
   g_sampling_records = sampling_records;
 
   /* register new signal handlers */
+  g_main_thread_id = pthread_self ();
   prev_intr_handler = os_set_signal_handler (SIGINT, extractobjects_term_handler);
   prev_term_handler = os_set_signal_handler (SIGTERM, extractobjects_term_handler);
 #if !defined(WINDOWS)
@@ -1270,6 +1278,7 @@ end:
    * Cleanup
    */
   free_and_init (unload_class_table);
+  quit_thread_param ();
   extractobjects_cleanup ();
 
   /* restore previous signal handlers */
@@ -1944,7 +1953,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       for (i = 0; i < nthreads; i++)
 	{
 	  g_thr_param[i].thread_idx = i;
-	  g_thr_param[i].tid = (pthread_t) - 1;
+	  g_thr_param[i].tid = INVALID_THREAD_ID;
 	  assert (g_thr_param[i].text_output.ref_thread_param_idx == i);
 
 	  TIMER_CLEAR (&(g_thr_param[i].wi_get_list));
@@ -1956,14 +1965,14 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	  if (pthread_create (&(g_thr_param[i].tid), NULL, unload_extractor_thread, (void *) (g_thr_param + i)) != 0)
 	    {
 	      perror ("pthread_create()\n");
-	      exit (1);
+	      _exit (1);
 	    }
 	}
 
       if (pthread_create (&writer_tid, NULL, unload_writer_thread, NULL) != 0)
 	{
 	  perror ("pthread_create()\n");
-	  exit (1);
+	  _exit (1);
 	}
     }
 
@@ -2434,12 +2443,12 @@ update_hash (OID * object_oid, OID * class_oid, int *data)
       if (fh_put (obj_table, class_oid, data) != NO_ERROR)
 	{
 	  perror ("SYSTEM ERROR related with hash-file\n==>unloaddb is NOT completed");
-	  exit (1);
+	  _exit (1);
 	}
       if (fh_put (obj_table, object_oid, data) != NO_ERROR)
 	{
 	  perror ("SYSTEM ERROR related with hash-file\n==>unloaddb is NOT completed");
-	  exit (1);
+	  _exit (1);
 	}
     }
   else
