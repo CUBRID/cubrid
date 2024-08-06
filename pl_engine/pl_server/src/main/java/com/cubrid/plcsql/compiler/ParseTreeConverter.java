@@ -49,6 +49,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -2594,14 +2595,42 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             // check (name-binding) and convert into-variables used in the SQL
             if (sws.intoTargetStrs != null) {
 
-                if (sws.intoTargetStrs.size() != sws.selectList.size()) {
+                List<String> intoTargetStrs = sws.intoTargetStrs;
+
+                // check if a single target is an updatable record, and if so, expand it to its fields
+                if (intoTargetStrs.size() == 1) {
+
+                    // check if it is a record
+                    String s = Misc.getNormalizedText(intoTargetStrs.get(0));
+                    if (s.indexOf('.') < 0) {
+                        ExprId id = visitNonFuncIdentifier(s, ctx);
+                        if (id.decl.type() instanceof TypeRecord) {
+
+                            if (!id.isAssignableTo()) {
+                                throw new SemanticError(
+                                        Misc.getLineColumnOf(ctx), // s056
+                                        id.name + " in the INTO clause is not updatable");
+                            }
+
+                            // rebuild the targets with the record's fields
+                            intoTargetStrs = new LinkedList<>();
+                            TypeRecord tyRec = (TypeRecord) id.decl.type();
+                            for (Misc.Pair<String, Type> p : tyRec.selectList) {
+                                intoTargetStrs.add(s + '.' + p.e1);
+                            }
+                        }
+                    }
+                }
+
+                if (intoTargetStrs.size() != sws.selectList.size()) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s402
-                            "the length of select list is different from the length of into-variables");
+                            String.format("select list's length(%d) is different from INTO targets' length(%d)",
+                                sws.selectList.size(), intoTargetStrs.size()));
                 }
 
                 intoTargetList = new ArrayList<>();
-                for (String t : sws.intoTargetStrs) {
+                for (String t : intoTargetStrs) {
                     Expr target = getHostExprFromText(t, ctx); // s409: undeclared id ...
                     assert target instanceof AssignTarget;
                     if (!((AssignTarget) target).isAssignableTo()) {
