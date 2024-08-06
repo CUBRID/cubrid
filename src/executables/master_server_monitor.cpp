@@ -40,7 +40,7 @@ server_monitor::server_monitor ()
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_list is created. \n");
 
   m_thread_shutdown = false;
-  m_revive_entry_count = 0;
+  m_revive_entry_count.store (0);
   m_monitoring_thread = std::make_unique<std::thread> ([this]()
   {
     int error_code;
@@ -49,8 +49,12 @@ server_monitor::server_monitor ()
     while (!m_thread_shutdown)
       {
 	std::unique_lock<std::mutex> lock (m_monitor_mutex);
-	m_monitor_cv.wait (lock);
-	while (m_revive_entry_count > 0)
+
+	while (!m_monitor_cv.wait_for (lock, std::chrono::seconds (1), [this] ()
+	{
+	  return m_revive_entry_count.load () > 0 || m_thread_shutdown;
+	  }));
+	while (m_revive_entry_count.load () > 0)
 	  {
 	    fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is running. Number of server need revive : %d\n",
 		     m_revive_entry_count.load());
@@ -61,9 +65,8 @@ server_monitor::server_monitor ()
 		    it->set_need_revive (false);
 
 		    tv = std::chrono::steady_clock::now ();
-		    // Calculate the timediff between tv and m_last_revive_time in milliseconds. cast as integer.
 		    auto timediff = std::chrono::duration_cast<std::chrono::milliseconds> (tv - it->get_last_revive_time()).count();
-		    if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS)
+		    if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS / 100)
 		      {
 			while (++it->m_revive_count < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
 			  {
@@ -132,7 +135,6 @@ server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, ch
     CSS_CONN_ENTRY *conn)
 {
   bool success = false;
-  // Check if the server is already registered by comparing args to m_argv (need conversion)
   for (auto &entry : *m_server_entry_list)
     {
       if (server_monitor_compare_args_and_argv (args, entry.get_argv ()))
@@ -168,7 +170,6 @@ server_monitor::remove_server_entry_by_conn (CSS_CONN_ENTRY *conn)
   const auto result = std::remove_if (m_server_entry_list->begin(), m_server_entry_list->end(),
 				      [conn] (auto& e) -> bool
   {
-    //std::unique_lock<std::mutex> lock (e.m_mutex);
     return e.get_conn() == conn;
   });
   assert (result != m_server_entry_list->end ());
