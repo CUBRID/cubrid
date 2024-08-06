@@ -85,8 +85,7 @@ class server_monitor
 	std::string m_exec_path;                                      // executable path of server process
 	std::vector<std::string> m_argv;                              // arguments of server process
 	CSS_CONN_ENTRY *m_conn;                                       // connection entry of server process
-	volatile bool
-	m_need_revive;                                  // need to revive (true if the server is abnormally terminated)
+	volatile bool m_need_revive;                                  // need to revive (true if the server is abnormally terminated)
 	std::chrono::steady_clock::time_point m_last_revive_time;     // last revive time
 	std::mutex m_entry_mutex;                                     // lock for server entry
     };
