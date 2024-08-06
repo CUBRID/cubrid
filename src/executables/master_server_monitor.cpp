@@ -31,9 +31,6 @@
 #define SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS prm_get_integer_value (PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS)
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 
-static void server_monitor_try_revive_server (std::string exec_path, std::vector<std::string> argv, int *pid);
-static bool server_monitor_compare_args_and_argv (const char *args, std::vector<std::string> argv);
-
 server_monitor::server_monitor ()
 {
   m_server_entry_list = std::make_unique<std::list<server_entry>> ();
@@ -50,10 +47,12 @@ server_monitor::server_monitor ()
       {
 	std::unique_lock<std::mutex> lock (m_monitor_mutex);
 
-	while (!m_monitor_cv.wait_for (lock, std::chrono::seconds (1), [this] ()
+	constexpr int period_in_secs = 1;
+	while (!m_monitor_cv.wait_for (lock, std::chrono::seconds (period_in_secs), [this] ()
 	{
 	  return m_revive_entry_count.load () > 0 || m_thread_shutdown;
 	  }));
+
 	while (m_revive_entry_count.load () > 0)
 	  {
 	    fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is running. Number of server need revive : %d\n",
@@ -62,15 +61,15 @@ server_monitor::server_monitor ()
 	      {
 		if (it->get_need_revive ())
 		  {
-		    it->set_need_revive (false);
+		    //it->set_need_revive (false);
 
 		    tv = std::chrono::steady_clock::now ();
 		    auto timediff = std::chrono::duration_cast<std::chrono::milliseconds> (tv - it->get_last_revive_time()).count();
-		    if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS / 100)
+		    if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS)
 		      {
-			while (++it->m_revive_count < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
+			while (++ (it->m_revive_count) < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
 			  {
-			    it->set_need_revive (true);
+			    //it->set_need_revive (true);
 
 			    server_monitor_try_revive_server (it->get_exec_path(), it->get_argv(), &pid);
 			    assert (pid > 0);
@@ -137,7 +136,7 @@ server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, ch
   bool success = false;
   for (auto &entry : *m_server_entry_list)
     {
-      if (server_monitor_compare_args_and_argv (args, entry.get_argv ()))
+      if (entry.server_entry_compare_args_and_argv (args))
 	{
 	  entry.set_pid (pid);
 	  entry.set_exec_path (exec_path);
@@ -192,12 +191,6 @@ server_monitor::find_set_entry_to_revive (CSS_CONN_ENTRY *conn)
 	  return;
 	}
     }
-}
-
-int
-server_monitor::get_server_entry_count () const
-{
-  return m_server_entry_list->size ();
 }
 
 server_monitor::server_entry::
@@ -293,8 +286,27 @@ server_monitor::server_entry::proc_make_arg (char *args)
     }
 }
 
-static void
-server_monitor_try_revive_server (std::string exec_path, std::vector<std::string> argv, int *out_pid)
+bool
+server_monitor::server_entry::server_entry_compare_args_and_argv (const char *args)
+{
+  std::istringstream iss (args);
+  std::string tok;
+  for (size_t i = 0; i < m_argv.size(); i++)
+    {
+      if (! (iss >> tok))
+	{
+	  return false;
+	}
+      if (m_argv[i] != tok)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+void
+server_monitor::server_monitor_try_revive_server (std::string exec_path, std::vector<std::string> argv, int *out_pid)
 {
   pid_t pid;
   int error_code;
@@ -340,23 +352,4 @@ server_monitor::server_monitor_check_server_revived (server_monitor::server_entr
 	}
     }
   return ER_FAILED;
-}
-
-static bool
-server_monitor_compare_args_and_argv (const char *args, std::vector<std::string> argv)
-{
-  std::istringstream iss (args);
-  std::string tok;
-  for (size_t i = 0; i < argv.size(); i++)
-    {
-      if (! (iss >> tok))
-	{
-	  return false;
-	}
-      if (argv[i] != tok)
-	{
-	  return false;
-	}
-    }
-  return true;
 }

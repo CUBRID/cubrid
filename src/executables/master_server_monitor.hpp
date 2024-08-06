@@ -78,6 +78,7 @@ class server_monitor
 	int m_revive_count;                                           // revive count of server process
 
 	void proc_make_arg (char *args);
+	bool server_entry_compare_args_and_argv (const char *args);
 
       private:
 	int m_pid;                                                    // process ID of server process
@@ -88,7 +89,6 @@ class server_monitor
 	m_need_revive;                                  // need to revive (true if the server is abnormally terminated)
 	std::chrono::steady_clock::time_point m_last_revive_time;     // last revive time
 	std::mutex m_entry_mutex;                                     // lock for server entry
-	std::condition_variable m_entry_cv;                           // condition variable for server entry
     };
 
     server_monitor ();
@@ -104,10 +104,8 @@ class server_monitor
 				       CSS_CONN_ENTRY *conn);
     void remove_server_entry_by_conn (CSS_CONN_ENTRY *conn);
     void find_set_entry_to_revive (CSS_CONN_ENTRY *conn);
+    void server_monitor_try_revive_server (std::string exec_path, std::vector<std::string> argv, int *out_pid);
     int server_monitor_check_server_revived (server_monitor::server_entry &sentry);
-
-    int get_server_entry_count () const;
-
 
   private:
     std::unique_ptr<std::list <server_entry>> m_server_entry_list;      // list of server entries
