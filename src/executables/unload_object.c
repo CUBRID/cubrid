@@ -625,11 +625,13 @@ extractobjects_cleanup ()
 static void
 extractobjects_term_handler (int sig)
 {
+#if !defined(WINDOWS)
   if ((g_main_thread_id != INVALID_THREAD_ID) && (g_main_thread_id != pthread_self ()))
     {
       pthread_kill (g_main_thread_id, sig);
       return;
     }
+#endif
 
   error_occurred = true;
   extractor_thread_proc_terminate = true;
