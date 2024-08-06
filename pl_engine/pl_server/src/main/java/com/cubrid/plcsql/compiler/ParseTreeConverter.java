@@ -2165,8 +2165,32 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         NodeList<Expr> ret = new NodeList<>();
 
+        ExprId record = null;
         for (Assign_targetContext c : ctx.assign_target()) {
-            ret.addNode((Expr) visitAssign_target(c));
+            Expr e = visitAssign_target(c);
+            if (e instanceof ExprId && ((ExprId) e).decl.type() instanceof TypeRecord) {
+                record = ((ExprId) e);
+            }
+
+            ret.addNode(e);
+        }
+
+        if (record != null) {
+
+            if (ret.nodes.size() > 1) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s087
+                        "record " + record.name + " must be the only target in the INTO clause");
+            }
+
+            // code rewrite: list the fields instead of the single record variable
+            ret.nodes.clear();
+            ParserRuleContext rctx = record.ctx;
+            TypeRecord tyRec = (TypeRecord) record.decl.type();
+
+            for (Misc.Pair<String, Type> col: tyRec.selectList) {
+                ret.addNode(new ExprField(rctx, record, col.e1));
+            }
         }
 
         return ret;
