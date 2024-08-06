@@ -27,8 +27,6 @@
 #include <system_parameter.h>
 #include "master_server_monitor.hpp"
 
-#define SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_START_CONFIRM)
-#define SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS prm_get_integer_value (PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS)
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 
 server_monitor::server_monitor ()
@@ -41,6 +39,9 @@ server_monitor::server_monitor ()
   m_monitoring_thread = std::make_unique<std::thread> ([this]()
   {
     int error_code;
+    const int SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES = prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_START_CONFIRM);
+    const int SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS = prm_get_integer_value (
+		PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS);
     std::chrono::steady_clock::time_point tv;
     int pid = 0;
     while (!m_thread_shutdown)
@@ -65,32 +66,38 @@ server_monitor::server_monitor ()
 		    auto timediff = std::chrono::duration_cast<std::chrono::milliseconds> (tv - it->get_last_revive_time()).count();
 		    if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS)
 		      {
-			while (++ (it->m_revive_count) < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
+execute:
+			while (++ (it->m_retries) < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
 			  {
 			    server_monitor_try_revive_server (it->get_exec_path(), it->get_argv(), &pid);
-			    assert (pid > 0);
+			    if (pid > 0)
+			      {
+				goto confirm;
+			      }
+			  }
+
+confirm:
+			while (++ (it->m_retries) < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
+			  {
 			    error_code = kill (pid, 0);
 			    if (error_code == ESRCH)
 			      {
 				// If there is no process with the given pid, fork and exectute the server again.
-				continue;
+				goto execute;
 			      }
-
 			    error_code = server_monitor_check_server_revived (*it);
-			    if (error_code != NO_ERROR)
-			      {
-				assert (it->m_revive_count >= SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES);
-				fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server has been failed to revive\n");
-				m_revive_entry_count--;
-				it = m_server_entry_list->erase (it);
-				break;
-			      }
-			    else
+			    if (error_code == NO_ERROR)
 			      {
 				m_revive_entry_count--;
 				it++;
 				break;
 			      }
+			    std::this_thread::sleep_for (std::chrono::milliseconds (1000));
+			  }
+			if (it->m_retries >= SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
+			  {
+			    m_revive_entry_count--;
+			    it = m_server_entry_list->erase (it);
 			  }
 		      }
 		    else
@@ -139,7 +146,7 @@ server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, ch
 	  entry.set_conn (conn);
 	  entry.set_need_revive (false);
 	  entry.set_last_revive_time ();
-	  entry.m_revive_count = 0;
+	  entry.m_retries = 0;
 	  success = true;
 	  fprintf (stdout,
 		   "[SERVER_REVIVE_DEBUG] : server entry has been updated in master_Server_monitor : pid : %d, exec_path : %s, args : %s\n",
@@ -195,7 +202,7 @@ server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn)
   , m_exec_path {exec_path}
   , m_conn {conn}
   , m_need_revive {false}
-  , m_revive_count {0}
+  , m_retries {0}
 {
   set_last_revive_time ();
   if (args != nullptr)
@@ -336,16 +343,11 @@ server_monitor::server_monitor_try_revive_server (std::string exec_path, std::ve
 int
 server_monitor::server_monitor_check_server_revived (server_monitor::server_entry &sentry)
 {
-
-  while (++sentry.m_revive_count < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
+  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_name : %s, pid : %d, revive_count : %d\n",
+	   sentry.get_argv()[1].c_str(), sentry.get_pid(), sentry.m_retries);
+  if (!sentry.get_need_revive())
     {
-      std::this_thread::sleep_for (std::chrono::milliseconds (1000));
-      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_name : %s, pid : %d, revive_count : %d\n",
-	       sentry.get_argv()[1].c_str(), sentry.get_pid(), sentry.m_revive_count);
-      if (!sentry.get_need_revive())
-	{
-	  return NO_ERROR;
-	}
+      return NO_ERROR;
     }
   return ER_FAILED;
 }

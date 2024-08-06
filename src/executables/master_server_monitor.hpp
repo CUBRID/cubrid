@@ -55,7 +55,7 @@ class server_monitor
 	      m_need_revive = other.m_need_revive;
 	      m_conn = other.m_conn;
 	      m_last_revive_time = other.m_last_revive_time;
-	      m_revive_count = other.m_revive_count;
+	      m_retries = other.m_retries;
 	      m_exec_path = other.m_exec_path;
 	      m_argv = other.m_argv;
 	    }
@@ -78,7 +78,7 @@ class server_monitor
 	void proc_make_arg (char *args);
 	bool server_entry_compare_args_and_argv (const char *args);
 
-	int m_revive_count;                                           // revive count of server process
+	int m_retries;                                             // retry count of server process
 
       private:
 	int m_pid;                                                 // process ID of server process
