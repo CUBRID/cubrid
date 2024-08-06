@@ -332,7 +332,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (ctx.table_name() == null) {
             // case <variable>%TYPE
             ExprId id = visitNonFuncIdentifier(ctx.identifier()); // s000: undeclared id
-            if (!(id.decl instanceof DeclIdTyped)) {
+            if (!(id.decl instanceof DeclIdTypeSpeced)) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s001
                         id.name
@@ -340,7 +340,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 + "procedure/function, variable, nor constant");
             }
 
-            return ((DeclIdTyped) id.decl).typeSpec();
+            return ((DeclIdTypeSpeced) id.decl).typeSpec();
         } else {
             // case <table>.<column>%TYPE
             String table = Misc.getNormalizedText(ctx.table_name());
@@ -1758,8 +1758,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             symbolStack.putDeclLabel(label, declLabel);
         }
 
-        DeclDynamicRecord declForRecord =
-                new DeclDynamicRecord(recNameCtx, record, new TypeSpec(null, Type.RECORD_ANY));
+        DeclDynamicRecord declForRecord = new DeclDynamicRecord(recNameCtx, record);
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -2043,7 +2042,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     Misc.getLineColumnOf(ctx.identifier()), // s041
                     "identifier in an OPEN-FOR statement must be updatable");
         }
-        if (((DeclIdTyped) refCursor.decl).typeSpec().type != Type.SYS_REFCURSOR) {
+        if (((DeclIdTypeSpeced) refCursor.decl).typeSpec().type != Type.SYS_REFCURSOR) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx.identifier()), // s042
                     "identifier in an OPEN-FOR statement must be of SYS_REFCURSOR type");
@@ -2234,8 +2233,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private static boolean isRecordId(ExprId id) {
         return (id != null
-                && id.decl instanceof DeclIdTyped
-                && ((DeclIdTyped) id.decl).typeSpec().type.idx == Type.IDX_RECORD);
+                && id.decl instanceof DeclIdTypeSpeced
+                && ((DeclIdTypeSpeced) id.decl).typeSpec().type.idx == Type.IDX_RECORD);
     }
 
     private static boolean isCursorOrRefcursor(ExprId id) {
@@ -2243,7 +2242,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         DeclId decl = id.decl;
         return (decl instanceof DeclCursor
                 || ((decl instanceof DeclVar || decl instanceof DeclParam)
-                        && ((DeclIdTyped) decl).typeSpec().type == Type.SYS_REFCURSOR));
+                        && ((DeclIdTypeSpeced) decl).typeSpec().type == Type.SYS_REFCURSOR));
     }
 
     private static final Map<String, Type> nameToType = new HashMap<>();
@@ -2535,8 +2534,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     } else {
                         // col is a single identifier, which is almost of no use and stupid
                         DeclId decl = id.decl;
-                        if (decl instanceof DeclIdTyped) {
-                            ty = ((DeclIdTyped) decl).typeSpec().type;
+                        if (decl instanceof DeclIdTypeSpeced) {
+                            ty = ((DeclIdTypeSpeced) decl).typeSpec().type;
                             if (ty.idx == Type.IDX_RECORD) {
                                 throw new SemanticError(
                                         Misc.getLineColumnOf(ctx), // s423

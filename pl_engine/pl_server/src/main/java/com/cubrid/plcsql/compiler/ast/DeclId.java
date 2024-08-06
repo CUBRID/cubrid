@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
+
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class DeclId extends Decl {
@@ -37,5 +39,6 @@ public abstract class DeclId extends Decl {
         super(ctx);
     }
 
+    public abstract Type type();
     public abstract String name();
 }

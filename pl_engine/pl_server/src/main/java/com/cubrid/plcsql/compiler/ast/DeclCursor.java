@@ -29,6 +29,7 @@
  */
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.Set;
@@ -61,6 +62,11 @@ public class DeclCursor extends DeclId {
         this.staticSql = staticSql;
 
         setHostValuesMap(paramList, staticSql.hostExprs.keySet());
+    }
+
+    @Override
+    public Type type() {
+        return Type.CURSOR;
     }
 
     @Override
