@@ -99,9 +99,6 @@ class server_monitor
     server_monitor &operator = (const server_monitor &) = delete;
     server_monitor &operator = (server_monitor &&) = delete;
 
-    void start_monitoring_thread ();
-    void stop_monitoring_thread ();
-    void server_monitor_thread_worker ();
     void make_and_insert_server_entry (int pid, const char *exec_path, char *args,
 				       CSS_CONN_ENTRY *conn);
     void remove_server_entry_by_conn (CSS_CONN_ENTRY *conn);
@@ -116,6 +113,10 @@ class server_monitor
     std::mutex m_server_entry_list_mutex;                               // lock for server entry list
     std::condition_variable m_monitor_cv;                               // condition variable for server entry list
     std::atomic_int m_revive_entry_count;                               // count of server entries for revive
+
+    void start_monitoring_thread ();
+    void stop_monitoring_thread ();
+    void server_monitor_thread_worker ();
 };
 
 extern std::unique_ptr<server_monitor> master_Server_monitor;
