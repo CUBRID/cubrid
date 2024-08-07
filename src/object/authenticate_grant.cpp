@@ -309,7 +309,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	  error = ER_AU_CANT_GRANT_OWNER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
-      else
+      else if (au_is_dba_group_member (Au_user) || ws_is_same_object (sp_owner, Au_user))
 	{
 	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
 	    {
@@ -408,6 +408,15 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	       */
 	      sm_bump_local_schema_version ();
 	    }
+	}
+      else
+	{
+	  /*
+	   * The WITH GRANT OPTION is not yet supported for stored procedures.
+	   * Therefore, if the user is not the dba group or owner, the same error as grant/revoke_class is output.
+	   */
+	  error = ER_AU_EXECUTE_FAILURE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
     }
 
@@ -711,6 +720,16 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type)
          goto fail_end;
          }
        */
+      /*
+       * The WITH GRANT OPTION is not yet supported for stored procedures.
+       * Therefore, if the user is not the dba group or owner, the same error as grant/revoke_class is output.
+       */
+      if (!au_is_dba_group_member (Au_user) && !ws_is_same_object (sp_owner, Au_user))
+	{
+	  error = ER_AU_EXECUTE_FAILURE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto fail_end;
+	}
 
       if (au_get_object (user, "authorization", &auth) != NO_ERROR)
 	{
@@ -1195,7 +1214,7 @@ print_grant_entry (DB_SET *grants, int grant_index, FILE *fp)
   else
     {
       fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CLASS_NAME),
-	       jsp_get_name (db_get_object (&value)));
+	       jsp_get_unique_name (db_get_object (&value)));
     }
   fprintf (fp, " ");
 

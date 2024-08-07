@@ -58,6 +58,7 @@ extern MOP jsp_find_stored_procedure_code (const char *name);
 
 extern MOP jsp_get_owner (MOP mop_p);
 const char *jsp_get_name (MOP mop_p);
+const char *jsp_get_unique_name (MOP mop_p);
 
 extern void jsp_set_prepare_call (void);
 extern void jsp_unset_prepare_call (void);

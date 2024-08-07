@@ -470,6 +470,30 @@ jsp_get_name (MOP mop_p)
   return res;
 }
 
+const char *
+jsp_get_unique_name (MOP mop_p)
+{
+  int save;
+  DB_VALUE value;
+  char *res = NULL;
+
+  AU_DISABLE (save);
+
+  /* check type */
+  int err = db_get (mop_p, SP_ATTR_UNIQUE_NAME, &value);
+  if (err != NO_ERROR)
+    {
+      AU_ENABLE (save);
+      return NULL;
+    }
+
+  res = ws_copy_string (db_get_string (&value));
+  pr_clear_value (&value);
+
+  AU_ENABLE (save);
+  return res;
+}
+
 /*
  * jsp_get_owner_name - Return Java Stored Procedure'S Owner nmae
  *   return: if fail return MULL

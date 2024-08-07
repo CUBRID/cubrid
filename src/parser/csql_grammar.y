@@ -8912,8 +8912,8 @@ auth_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-        | revoke_proc_cmd identifier_list from_id_list
-		{{ DBG_TRACE_GRAMMAR(auth_stmt, | revoke_proc_cmd identifier_list from_id_list);
+        | revoke_proc_cmd procedure_or_function_name_list from_id_list
+		{{ DBG_TRACE_GRAMMAR(auth_stmt, | revoke_proc_cmd procedure_or_function_name_list from_id_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_REVOKE);
 
@@ -9014,8 +9014,8 @@ grant_head
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-        | grant_proc_cmd identifier_list to_id_list
-		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_cmd to_id_list);
+        | grant_proc_cmd procedure_or_function_name_list to_id_list
+		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_cmd procedure_or_function_name_list to_id_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_GRANT);
 

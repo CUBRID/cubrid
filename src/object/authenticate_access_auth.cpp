@@ -111,7 +111,7 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
   else
     {
       // TODO: CBRD-24912
-      db_make_string (&name_val, jsp_get_name (obj_mop));
+      db_make_string (&name_val, jsp_get_unique_name (obj_mop));
       inst_mop = jsp_find_stored_procedure (db_get_string (&name_val), DB_AUTH_NONE);
       if (inst_mop == NULL)
 	{
