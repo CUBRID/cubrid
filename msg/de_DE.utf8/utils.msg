@@ -553,8 +553,6 @@ gültige Optionen:\n\
       --hash-file=DATEI        Datei für Hash; Standard: erzeugt bei tmpnam()\n\
       --latest-image           beim Dumpen von Objekten wird das neueste Image von Objekten in Datenvolumes ausgegeben, nicht auf Log-Volumes (ohne MVCC)\n\
                                Es könnte nicht festgeschriebene Daten und gelöschte Daten enthalten, die nicht bereinigt wurden; Standard: deaktiviert\n\
-  -t, --thread-count=COUNT     Number of threads; default: 1 maximum: 127\n\
-      --enhanced-estimates     Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose                ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
       --use-delimiter          '"' verwenden, wo ein Identifikator anfängt und endet; Standard: nicht verwenden\n\
   -S, --SA-mode                Stand-Alone-Ausführung\n\

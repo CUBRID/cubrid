@@ -551,8 +551,6 @@ unloaddb: 从数据库导出对象和结构.\n\
       --hash-file=FILE         指定hash文件名称; 默认: 由 tmpnam() 生成\n\
       --latest-image           转储对象时，它转储数据卷中对象的最新图像，而不是指日志卷（忽略 MVCC）\n\
                                它可能包括未提交的数据和未清除的已删除数据； 默认值：禁用\n\
-  -t, --thread-count=COUNT     Number of threads; default: 1 maximum: 127\n\
-      --enhanced-estimates     Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose                开启详细状态信息; 默认: 不可用\n\
       --use-delimiter          用 '"' 作为一个标示符的开始和结束; 默认: 不使用\n\
   -S, --SA-mode                单机模式执行\n\

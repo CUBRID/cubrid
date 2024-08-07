@@ -567,8 +567,6 @@ opţiuni valide:\n\
       --hash-file=FIŞIER         FIŞIER pentru hash; implicit: generat cu tmpnam()\n\
       --latest-image             când aruncă obiecte, aruncă cea mai recentă imagine a obiectelor din volumele de date, fără a se referi la volumele de jurnal (ignorând MVCC)\n\
                                  Ar putea include date neangajate și date șterse care nu sunt aspirate; implicit: dezactivat\n\
-  -t, --thread-count=COUNT       Number of threads; default: 1 maximum: 127\n\
-      --enhanced-estimates       Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose                  activează mesaje de stare detaliate; implicit: dezactivate\n\
       --use-delimiter            foloseşte '"' unde începe şi se termina un identificator;\n\
                                  implicit: nu se foloseşte delimitator\n\

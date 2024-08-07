@@ -552,8 +552,6 @@ opzioni valide:\n\
       --hash-file=FILE        FILE per hash; predefinito: generato da tmpnam()\n\
       --latest-image          durante il dump degli oggetti, scarica l'ultima immagine degli oggetti nei volumi di dati, senza fare riferimento ai volumi di registro (ignorando MVCC)\n\
                               Potrebbe includere dati non impegnati e dati cancellati che non vengono aspirati; predefinito: disabilitato\n\
-  -t, --thread-count=COUNT    Number of threads; default: 1 maximum: 127\n\
-      --enhanced-estimates    Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose               attivare i messaggi dettagliati di stato; predefinito: non attivo\n\
       --use-delimiter         usa '"' dove un identificatore inizia e termina; predefinito: don't use\n\
   -S, --SA-mode               modalità di esecuzione stand-alone\n\
