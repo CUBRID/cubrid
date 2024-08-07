@@ -570,7 +570,6 @@ sl_log_open (void)
   char cur_sql_log_path[PATH_MAX];
   FILE *fp;
 
-  assert (sl_Info.curr_file_id >= 0);
   if (snprintf (cur_sql_log_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, sl_Info.curr_file_id) < 0)
     {
       assert (false);
@@ -605,8 +604,8 @@ sl_open_next_file (FILE * old_fp)
   FILE *new_fp;
   char new_file_path[PATH_MAX];
 
-  sl_Info.last_inserted_sql_id = 0;
   sl_Info.curr_file_id++;
+  sl_Info.last_inserted_sql_id = 0;
 
   if (snprintf (new_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, sl_Info.curr_file_id) < 0)
     {
