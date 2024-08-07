@@ -168,7 +168,8 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
       if (ws_is_same_object (classobj->owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,  msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_TERM,
+		  DB_OBJECT_CLASS));
 	}
       else if ((error = check_grant_option (class_mop, classobj, type)) == NO_ERROR)
 	{
@@ -307,7 +308,8 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
       if (ws_is_same_object (sp_owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,  msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_TERM,
+		  DB_OBJECT_PROCEDURE));
 	}
       else
 	{
@@ -527,7 +529,8 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type)
       if (ws_is_same_object (classobj->owner, user))
 	{
 	  error = ER_AU_CANT_REVOKE_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,  msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_TERM,
+		  DB_OBJECT_CLASS));
 	  goto fail_end;
 	}
 
@@ -700,7 +703,8 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type)
       if (ws_is_same_object (sp_owner, user))
 	{
 	  error = ER_AU_CANT_REVOKE_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,  msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_TERM,
+		  DB_OBJECT_PROCEDURE));
 	  goto fail_end;
 	}
 

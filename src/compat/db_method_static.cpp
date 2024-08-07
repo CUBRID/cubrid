@@ -357,7 +357,8 @@ au_add_member_method (MOP user, DB_VALUE *returnval, DB_VALUE *memval)
 	  else
 	    {
 	      error = ER_AU_NOT_OWNER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,  msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_TERM,
+		      DB_OBJECT_CLASS));
 	    }
 	}
       else
@@ -424,7 +425,8 @@ au_drop_member_method (MOP user, DB_VALUE *returnval, DB_VALUE *memval)
 	  else
 	    {
 	      error = ER_AU_NOT_OWNER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,  msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_TERM,
+		      DB_OBJECT_CLASS));
 	    }
 	}
       else
