@@ -543,6 +543,7 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -i, --input-class-file=FILE 테이블 이름이 기입된 파일; 기본값: 모든 클래스\n\
       --include-reference     참조되는 테이블 포함; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
       --input-class-only      명세한 클래스만 처리; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
+      --lo-count=COUNT        하나의 디렉터리에 저장할 lo 파일 개수; 기본값: 0\n\
       --estimated-size=NUMBER 인스턴스의 대략적인 개수; 기본값: 계산됨\n\
       --cached-pages=NUMBER   cached 페이지 개수; 기본값: 계산됨\n\
   -O, --output-path=PATH      출력 디렉터리 경로; 기본값: 현재 작업 디렉터리\n\

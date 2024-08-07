@@ -542,6 +542,7 @@ unloaddb: 从数据库导出对象和结构.\n\
   -i, --input-class-file=FILE  指定包含表名的输入文件; 默认: 转储所有类\n\
       --include-reference      和-i选项一起使用.当卸载了指定数据库类，卸载对象的引用; 默认: disabled\n\
       --input-class-only       和-i选项一起使用. 只创建与输入文件中的表相关的方案(schema)文件; 默认: 未启用\n\
+      --lo-count=COUNT         指明一个目录中要被创建的大对象(large object)文件的数目; 默认: 0\n\
       --estimated-size=NUMBER  指定预期的实例数目; 默认: 自动计算\n\
       --cached-pages=NUMBER    配置要被缓存进内存的对象数目; 默认: 100\n\
   -O, --output-path=PATH       用 PATH 作为输出目录; 默认: 工作目录\n\

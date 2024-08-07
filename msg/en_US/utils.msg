@@ -544,6 +544,7 @@ valid options:\n\
   -i, --input-class-file=FILE input FILE of table names; default: dump all classes\n\
       --include-reference     include referenced tables; with -i option; default: disabled\n\
       --input-class-only      include specified class only; with -i option; default: disabled\n\
+      --lo-count=COUNT        lo file COUNT per a directory; default: 0\n\
       --estimated-size=NUMBER estimated NUMBER of instances; default: auto computed\n\
       --cached-pages=NUMBER   NUMBER of cached pages; default: 100\n\
   -O, --output-path=PATH      PATH of output directory; default: working directory\n\
