@@ -179,57 +179,8 @@ public class PlcsqlCompilerMain {
         }
 
         // ------------------------------------------
-        // collect Static SQL in the parse tree
-
-        StaticSqlCollector ssc = new StaticSqlCollector();
-        ParseTreeWalker.DEFAULT.walk(ssc, tree);
-
-        if (verbose) {
-            t0 = logElapsedTime(logStore, "collecting Static SQL statements", t0);
-        }
-
-        // ------------------------------------------
-        // call server API for each SQL to get its semantic information
-
-        List<String> sqlTexts = new ArrayList(ssc.staticSqlTexts.values());
-        List<SqlSemantics> sqlSemantics =
-                ServerAPI.getSqlSemantics(sqlTexts); // server interaction may take a long time
-
-        int seqNo = -1;
-        Iterator<ParserRuleContext> iterCtx = ssc.staticSqlTexts.keySet().iterator();
-        Map<ParserRuleContext, SqlSemantics> staticSqls = new HashMap<>();
-
-        if (sqlSemantics != null) {
-            for (SqlSemantics ss : sqlSemantics) {
-
-                assert ss.seqNo >= 0;
-
-                ParserRuleContext ctx = null;
-                while (true) {
-                    ctx = iterCtx.next();
-                    assert ctx != null;
-                    seqNo++;
-                    if (seqNo == ss.seqNo) {
-                        break;
-                    }
-                }
-
-                if (ss.errCode == 0) {
-                    staticSqls.put(ctx, ss);
-                } else {
-                    throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s435
-                }
-            }
-        }
-
-        if (verbose) {
-            t0 = logElapsedTime(logStore, "semantics check of Static SQL statements by server", t0);
-        }
-
-        // ------------------------------------------
         // converting parse tree to AST
 
-        //ParseTreeConverter converter = new ParseTreeConverter(staticSqls);
         ParseTreeConverter converter = new ParseTreeConverter();
         Unit unit = (Unit) converter.visit(tree);
 
