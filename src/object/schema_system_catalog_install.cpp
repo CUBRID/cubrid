@@ -1698,7 +1698,8 @@ namespace cubschema
     {
       {"grantor_name", "varchar(255)"},
       {"grantee_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
+      {"object_type", "varchar(16)"},
+      {"object_name", "varchar(255)"},
       {"owner_name", "varchar(255)"},
       {"auth_type", "varchar(7)"},
       {"is_grantable", "varchar(3)"},
