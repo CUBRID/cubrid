@@ -33,6 +33,15 @@
 #include <condition_variable>
 #include "connection_defs.h"
 #include "connection_globals.h"
+#include "lockfree_circular_queue.hpp"
+
+typedef enum
+{
+  SERVER_MONITOR_NO_JOB,
+  SERVER_MONITOR_REGISTER_ENTRY,
+  SERVER_MONITOR_REMOVE_ENTRY,
+  SERVER_MONITOR_REVIVE_ENTRY
+} server_monitor_job_type;
 
 class server_monitor
 {
@@ -40,7 +49,8 @@ class server_monitor
     class server_entry
     {
       public:
-	server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
+	server_entry (int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn,
+		      std::chrono::steady_clock::time_point revive_time);
 	~server_entry () {};
 
 	server_entry (const server_entry &) = delete;
@@ -73,7 +83,7 @@ class server_monitor
 	void set_exec_path (const char *exec_path);
 	void set_conn (CSS_CONN_ENTRY *conn);
 	void set_need_revive (bool need_revive);
-	void set_last_revive_time ();
+	void set_last_revive_time (std::chrono::steady_clock::time_point revive_time);
 
 	void proc_make_arg (char *args);
 	bool server_entry_compare_args_and_argv (const char *args);
@@ -90,6 +100,29 @@ class server_monitor
 
     };
 
+    class server_monitor_job
+    {
+      public:
+
+	server_monitor_job_type m_job_type;
+	int m_pid;
+	const char *m_exec_path;
+	char *m_args;
+	CSS_CONN_ENTRY *m_conn;
+	std::chrono::steady_clock::time_point m_produce_time;
+
+	server_monitor_job (server_monitor_job_type job_type, int pid, const char *exec_path, char *args, CSS_CONN_ENTRY *conn);
+	server_monitor_job () : m_job_type (SERVER_MONITOR_NO_JOB), m_pid (0), m_exec_path (nullptr), m_args (nullptr),
+	  m_conn (nullptr) {};
+	~server_monitor_job () {};
+
+	server_monitor_job (const server_monitor_job &) = default;
+	server_monitor_job (server_monitor_job &&) = delete;
+
+	server_monitor_job &operator= (const server_monitor_job &) = default;
+	server_monitor_job &operator= (server_monitor_job &&) = default;
+    };
+
     server_monitor ();
     ~server_monitor ();
 
@@ -100,19 +133,22 @@ class server_monitor
     server_monitor &operator = (server_monitor &&) = delete;
 
     void make_and_insert_server_entry (int pid, const char *exec_path, char *args,
-				       CSS_CONN_ENTRY *conn);
-    void remove_server_entry_by_conn (CSS_CONN_ENTRY *conn);
-    void find_set_entry_to_revive (CSS_CONN_ENTRY *conn);
+				       CSS_CONN_ENTRY *conn, std::chrono::steady_clock::time_point revive_time);
+    void remove_server_entry_by_pid (int pid);
+    void revive_server_with_pid (int pid);
     void server_monitor_try_revive_server (std::string exec_path, std::vector<std::string> argv, int *out_pid);
     int server_monitor_check_server_revived (server_monitor::server_entry &sentry);
+
+    void server_monitor_produce_job (server_monitor_job_type job_type, int pid, const char *exec_path, char *args,
+				     CSS_CONN_ENTRY *conn);
 
   private:
     std::unique_ptr<std::list <server_entry>> m_server_entry_list;      // list of server entries
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
+    lockfree::circular_queue <server_monitor_job> *m_job_queue;         // job queue for monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
-    std::mutex m_server_entry_list_mutex;                               // lock for server entry list
-    std::condition_variable m_monitor_cv;                               // condition variable for server entry list
-    std::atomic_int m_revive_entry_count;                               // count of server entries for revive
+    std::mutex m_monitor_mutex;                                         // lock for server monitor
+    std::condition_variable m_monitor_cv;                               // condition variable for server monitor
 
     void start_monitoring_thread ();
     void stop_monitoring_thread ();

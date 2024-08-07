@@ -390,7 +390,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  if (!entry->ha_mode)
 	    {
               /* *INDENT-OFF* */
-              master_Server_monitor->make_and_insert_server_entry (proc_register->pid, proc_register->exec_path, proc_register->args, datagram_conn);
+              master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REGISTER_ENTRY, proc_register->pid, proc_register->exec_path, proc_register->args, datagram_conn);
               /* *INDENT-ON* */
 	    }
 	}
@@ -1008,7 +1008,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 #if !defined(WINDOWS)
 		      /* Abnormal termination of non-HA server process is detected. */
                       /* *INDENT-OFF* */
-                      master_Server_monitor->find_set_entry_to_revive (temp->conn_ptr);
+                      master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REVIVE_ENTRY, temp->pid, "", "", nullptr);
                       /* *INDENT-ON* */
 #endif
 		      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
