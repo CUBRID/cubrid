@@ -34,83 +34,9 @@ server_monitor::server_monitor ()
   m_server_entry_list = std::make_unique<std::list<server_entry>> ();
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_list is created. \n");
 
-  m_thread_shutdown = false;
+  start_monitoring_thread ();
   m_revive_entry_count.store (0);
-  m_monitoring_thread = std::make_unique<std::thread> ([this]()
-  {
-    int error_code;
-    const int SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES = prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_START_CONFIRM);
-    const int SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS = prm_get_integer_value (
-		PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS);
-    std::chrono::steady_clock::time_point tv;
-    int pid = 0;
-    while (!m_thread_shutdown)
-      {
-	std::unique_lock<std::mutex> lock (m_monitor_mutex);
-
-	constexpr int period_in_secs = 1;
-	while (!m_monitor_cv.wait_for (lock, std::chrono::seconds (period_in_secs), [this] ()
-	{
-	  return m_revive_entry_count.load () > 0 || m_thread_shutdown;
-	  }));
-
-	while (m_revive_entry_count.load () > 0)
-	  {
-	    fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is running. Number of server need revive : %d\n",
-		     m_revive_entry_count.load());
-	    for (auto it = m_server_entry_list->begin(); it != m_server_entry_list->end();)
-	      {
-		if (it->get_need_revive ())
-		  {
-		    tv = std::chrono::steady_clock::now ();
-		    auto timediff = std::chrono::duration_cast<std::chrono::milliseconds> (tv - it->get_last_revive_time()).count();
-		    if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS)
-		      {
-execute:
-			while (++ (it->m_retries) < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
-			  {
-			    server_monitor_try_revive_server (it->get_exec_path(), it->get_argv(), &pid);
-			    if (pid > 0)
-			      {
-				goto confirm;
-			      }
-			  }
-
-confirm:
-			while (++ (it->m_retries) < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
-			  {
-			    error_code = kill (pid, 0);
-			    if (error_code == ESRCH)
-			      {
-				// If there is no process with the given pid, fork and exectute the server again.
-				goto execute;
-			      }
-			    error_code = server_monitor_check_server_revived (*it);
-			    if (error_code == NO_ERROR)
-			      {
-				m_revive_entry_count--;
-				it++;
-				break;
-			      }
-			    std::this_thread::sleep_for (std::chrono::milliseconds (1000));
-			  }
-			if (it->m_retries >= SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
-			  {
-			    m_revive_entry_count--;
-			    it = m_server_entry_list->erase (it);
-			  }
-		      }
-		    else
-		      {
-			fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Process failure repeated within a short period of time.\n");
-			m_revive_entry_count--;
-			it = m_server_entry_list->erase (it);
-		      }
-		  }
-	      }
-	  }
-      }
-  });
+  m_monitoring_thread = std::make_unique<std::thread> (&server_monitor::server_monitor_thread_worker, this);
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is created. \n");
   fflush (stdout);
 }
@@ -119,7 +45,7 @@ confirm:
 // m_monitoring_thread is terminated before m_monitor_list is deleted.
 server_monitor::~server_monitor ()
 {
-  m_thread_shutdown = true;
+  stop_monitoring_thread ();
   if (m_monitoring_thread->joinable())
     {
       m_monitor_cv.notify_all();
@@ -130,6 +56,100 @@ server_monitor::~server_monitor ()
   assert (m_server_entry_list->size () == 0);
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_list is deleted. \n");
   fflush (stdout);
+}
+
+void
+server_monitor::start_monitoring_thread ()
+{
+  m_thread_shutdown = false;
+}
+
+void
+server_monitor::stop_monitoring_thread ()
+{
+  m_thread_shutdown = true;
+}
+
+void
+server_monitor::server_monitor_thread_worker ()
+{
+  int error_code;
+  const int SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES = prm_get_integer_value (PRM_ID_HA_MAX_PROCESS_START_CONFIRM);
+  const int SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS = prm_get_integer_value (
+	      PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS);
+  std::chrono::steady_clock::time_point tv;
+  int pid = 0;
+  while (!m_thread_shutdown)
+    {
+      std::unique_lock<std::mutex> lock (m_server_entry_list_mutex);
+
+      constexpr int period_in_secs = 1;
+      while (!m_monitor_cv.wait_for (lock, std::chrono::seconds (period_in_secs), [this] ()
+      {
+	return m_revive_entry_count.load () > 0 || m_thread_shutdown;
+	}));
+
+      while (m_revive_entry_count.load () > 0)
+	{
+	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is running. Number of server need revive : %d\n",
+		   m_revive_entry_count.load());
+	  for (auto it = m_server_entry_list->begin(); it != m_server_entry_list->end();)
+	    {
+	      if (it->get_need_revive ())
+		{
+		  tv = std::chrono::steady_clock::now ();
+		  auto timediff = std::chrono::duration_cast<std::chrono::milliseconds> (tv - it->get_last_revive_time()).count();
+		  if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS)
+		    {
+execute:
+		      while (++ (it->m_retries) < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
+			{
+			  server_monitor_try_revive_server (it->get_exec_path(), it->get_argv(), &pid);
+			  if (pid > 0)
+			    {
+			      goto confirm;
+			    }
+			}
+
+confirm:
+		      while (it->m_retries < SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
+			{
+			  error_code = kill (pid, 0);
+			  if (error_code == ESRCH)
+			    {
+			      // If there is no process with the given pid, fork and exectute the server again.
+			      goto execute;
+			    }
+			  error_code = server_monitor_check_server_revived (*it);
+			  if (error_code == NO_ERROR)
+			    {
+			      m_revive_entry_count--;
+			      it++;
+			      break;
+			    }
+			  std::this_thread::sleep_for (std::chrono::milliseconds (1000));
+			  it->m_retries++;
+			}
+		      if (it->m_retries >= SERVER_MONITOR_REVIVE_CONFIRM_MAX_RETRIES)
+			{
+			  m_revive_entry_count--;
+			  it = m_server_entry_list->erase (it);
+			}
+		    }
+		  else
+		    {
+		      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Process failure repeated within a short period of time.\n");
+		      m_revive_entry_count--;
+		      it = m_server_entry_list->erase (it);
+		    }
+		}
+	      else
+		{
+		  it++;
+		}
+	    }
+	}
+    }
 }
 
 void
@@ -168,7 +188,7 @@ server_monitor::make_and_insert_server_entry (int pid, const char *exec_path, ch
 void
 server_monitor::remove_server_entry_by_conn (CSS_CONN_ENTRY *conn)
 {
-  std::unique_lock<std::mutex> lock (m_monitor_mutex);
+  std::unique_lock<std::mutex> lock (m_server_entry_list_mutex);
   const auto result = std::remove_if (m_server_entry_list->begin(), m_server_entry_list->end(),
 				      [conn] (auto& e) -> bool
   {
@@ -184,6 +204,7 @@ server_monitor::remove_server_entry_by_conn (CSS_CONN_ENTRY *conn)
 void
 server_monitor::find_set_entry_to_revive (CSS_CONN_ENTRY *conn)
 {
+  std::unique_lock<std::mutex> lock (m_server_entry_list_mutex);
   for (auto &entry : *m_server_entry_list)
     {
       if (entry.get_conn() == conn)
@@ -191,7 +212,7 @@ server_monitor::find_set_entry_to_revive (CSS_CONN_ENTRY *conn)
 	  entry.set_need_revive (true);
 	  m_revive_entry_count++;
 	  m_monitor_cv.notify_all();
-	  return;
+	  break;
 	}
     }
 }
@@ -268,7 +289,6 @@ server_monitor::server_entry::set_conn (CSS_CONN_ENTRY *conn)
 void
 server_monitor::server_entry::set_need_revive (bool need_revive)
 {
-  std::unique_lock<std::mutex> lock (m_entry_mutex);
   m_need_revive = need_revive;
 }
 

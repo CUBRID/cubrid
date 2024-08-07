@@ -87,7 +87,6 @@ class server_monitor
 	CSS_CONN_ENTRY *m_conn;                                    // connection entry of server process
 	volatile bool m_need_revive;                               // need to be revived by monitoring thread
 	std::chrono::steady_clock::time_point m_last_revive_time;  // last revive time
-	std::mutex m_entry_mutex;                                  // lock for server entry
 
     };
 
@@ -100,6 +99,9 @@ class server_monitor
     server_monitor &operator = (const server_monitor &) = delete;
     server_monitor &operator = (server_monitor &&) = delete;
 
+    void start_monitoring_thread ();
+    void stop_monitoring_thread ();
+    void server_monitor_thread_worker ();
     void make_and_insert_server_entry (int pid, const char *exec_path, char *args,
 				       CSS_CONN_ENTRY *conn);
     void remove_server_entry_by_conn (CSS_CONN_ENTRY *conn);
@@ -111,7 +113,7 @@ class server_monitor
     std::unique_ptr<std::list <server_entry>> m_server_entry_list;      // list of server entries
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
-    std::mutex m_monitor_mutex;                                         // lock for server entry list
+    std::mutex m_server_entry_list_mutex;                               // lock for server entry list
     std::condition_variable m_monitor_cv;                               // condition variable for server entry list
     std::atomic_int m_revive_entry_count;                               // count of server entries for revive
 };
