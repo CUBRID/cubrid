@@ -2671,12 +2671,15 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      /* converse join type */
 			      join_type = (join_type == PT_JOIN_LEFT_OUTER) ? PT_JOIN_RIGHT_OUTER : PT_JOIN_LEFT_OUTER;
 
+			      /* need to move unnecessary spec list located between the two swapped specs to the end of the entire spec list */
 			      s_start = NULL;
 			      p_end = p_spec;
 			      s_end = p_spec;
 
 			      for (tmp = p_spec; tmp != spec; tmp = tmp->next)
 				{
+				  /* find the head node of the spec list to be moved
+				   * find the previous node to detach the head node */
 				  if (!s_start && tmp->next->info.spec.join_type == PT_JOIN_NONE && tmp->next != spec)
 				    {
 				      p_end = tmp;
@@ -2689,6 +2692,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 				      s_end = tmp;
 				    }
 
+				  /* if the head node of the spec list to be moved is found, also find the tail node of the spec list to be moved */
 				  if (s_start)
 				    {
 				      if (tmp->next == spec)
@@ -2702,6 +2706,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 				{
 				  ;
 				}
+			      /* found end of spec list */
 
 			      s_end->next = NULL;
 			      p_end->next = spec;
