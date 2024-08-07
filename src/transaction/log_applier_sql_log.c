@@ -49,14 +49,14 @@
 
 #define SL_LOG_FILE_MAX_SIZE   \
   (prm_get_integer_value (PRM_ID_HA_SQL_LOG_MAX_SIZE_IN_MB) * 1024 * 1024)
-#define FILE_ID_FORMAT  "%d"
+#define FILE_ID_FORMAT  "%u"
 #define SQL_ID_FORMAT   "%010u"
 #define CATALOG_FORMAT  FILE_ID_FORMAT " | " SQL_ID_FORMAT
 
 typedef struct sl_info SL_INFO;
 struct sl_info
 {
-  int curr_file_id;
+  unsigned int curr_file_id;
   unsigned int last_inserted_sql_id;
 };
 
@@ -571,7 +571,7 @@ sl_log_open (void)
   FILE *fp;
 
   assert (sl_Info.curr_file_id >= 0);
-  if (snprintf (cur_sql_log_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, sl_Info.curr_file_id) < 0)
+  if (snprintf (cur_sql_log_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, sl_Info.curr_file_id) < 0)
     {
       assert (false);
       return NULL;
@@ -606,16 +606,9 @@ sl_open_next_file (FILE * old_fp)
   char new_file_path[PATH_MAX];
 
   sl_Info.last_inserted_sql_id = 0;
-  if (sl_Info.curr_file_id < INT_MAX)
-    {
-      sl_Info.curr_file_id++;
-    }
-  else
-    {
-      sl_Info.curr_file_id = 0;
-    }
+  sl_Info.curr_file_id++;
 
-  if (snprintf (new_file_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, sl_Info.curr_file_id) < 0)
+  if (snprintf (new_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, sl_Info.curr_file_id) < 0)
     {
       assert (false);
       return NULL;
