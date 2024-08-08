@@ -2110,6 +2110,10 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 			      PRINT_IDENTIFIER (class_name), query_ptr_result);
 		}
 	    }
+	  else
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
+	    }
 
 	  parser_free_parser (parser);
 	}
@@ -2245,6 +2249,10 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 		  output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
 			      PRINT_IDENTIFIER (class_name), query_ptr_result);
 		}
+	    }
+	  else
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
 	    }
 
 	  parser_free_parser (parser);
