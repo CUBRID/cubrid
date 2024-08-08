@@ -2671,46 +2671,45 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      /* converse join type */
 			      join_type = (join_type == PT_JOIN_LEFT_OUTER) ? PT_JOIN_RIGHT_OUTER : PT_JOIN_LEFT_OUTER;
 
-			      /* need to move unnecessary spec list located between the two swapped specs to the end of the entire spec list */
+			      /* move unnecessary spec list located between the two swapped specs to the end of the entire spec list */
 			      s_start = NULL;
-			      p_end = p_spec;
-			      s_end = p_spec;
 
-			      for (tmp = p_spec; tmp != spec; tmp = tmp->next)
+			      for (tmp = p_spec; tmp; tmp = tmp->next)
 				{
-				  /* find the head node of the spec list to be moved
-				   * find the previous node to detach the head node */
-				  if (!s_start && tmp->next->info.spec.join_type == PT_JOIN_NONE && tmp->next != spec)
+				  if (!s_start)
 				    {
-				      p_end = tmp;
-				      s_start = tmp->next;
+				      /* cannot find the spec to move */
+				      if (tmp->next == spec)
+					{
+					  break;
+					}
+
+				      /* find the head node of the spec list to be moved
+				       * find the previous node to detach the head node */
+				      if (tmp->next->info.spec.join_type == PT_JOIN_NONE)
+					{
+					  p_end = tmp;
+					  s_start = tmp->next;
+					}
 				    }
 
-				  else if (!s_start)
+				  else
 				    {
-				      p_end = tmp;
-				      s_end = tmp;
-				    }
-
-				  /* if the head node of the spec list to be moved is found, also find the tail node of the spec list to be moved */
-				  if (s_start)
-				    {
+				      /* find the tail node of the spec list to be moved */
 				      if (tmp->next == spec)
 					{
 					  s_end = tmp;
 					}
+
+				      if (!tmp->next)
+					{
+					  s_end->next = NULL;
+					  p_end->next = spec;
+					  tmp->next = s_start;
+					  break;
+					}
 				    }
 				}
-
-			      for (tmp = spec; tmp->next; tmp = tmp->next)
-				{
-				  ;
-				}
-			      /* found end of spec list */
-
-			      s_end->next = NULL;
-			      p_end->next = spec;
-			      tmp->next = s_start;
 			    }
 			  else
 			    {
