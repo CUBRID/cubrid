@@ -143,7 +143,7 @@ static int
 get_server_state_from_master (CSS_CONN_ENTRY *conn, const char *db_name)
 {
   unsigned short request_id;
-  int error = NO_ERROR;
+  int error = NO_ERRORS;
   int server_state;
   int buffer_size;
   int *buffer = NULL;
