@@ -2672,9 +2672,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      join_type = (join_type == PT_JOIN_LEFT_OUTER) ? PT_JOIN_RIGHT_OUTER : PT_JOIN_LEFT_OUTER;
 
 			      /* move unnecessary spec list located between the two swapped specs to the end of the entire spec list */
+			      p_end = NULL;
 			      s_start = NULL;
+			      s_end = NULL;
 
-			      for (tmp = p_spec; tmp; tmp = tmp->next)
+			      for (tmp = p_spec; tmp->next; tmp = tmp->next)
 				{
 				  if (!s_start)
 				    {
@@ -2700,15 +2702,14 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 					{
 					  s_end = tmp;
 					}
-
-				      if (!tmp->next)
-					{
-					  s_end->next = NULL;
-					  p_end->next = spec;
-					  tmp->next = s_start;
-					  break;
-					}
 				    }
+				}
+
+			      if (s_start && s_end && p_end)
+				{
+				  s_end->next = NULL;
+				  p_end->next = spec;
+				  tmp->next = s_start;
 				}
 			    }
 			  else
