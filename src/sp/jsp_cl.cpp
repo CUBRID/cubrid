@@ -828,8 +828,9 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   if (sm_qualifier_name (sp_info.unique_name.data (), owner_name, DB_MAX_USER_LENGTH) == NULL)
     {
       ASSERT_ERROR ();
-      return NULL;
+      goto error_exit;
     }
+
   sp_info.owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
   if (sp_info.owner == NULL)
     {
@@ -1293,7 +1294,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	  goto error;
 	}
 
-      target_cls = db_get_string (&target_val);
+      target_cls = db_get_string (&target_cls_val);
       err = drop_stored_procedure_code (target_cls);
       if (err != NO_ERROR)
 	{
@@ -1679,13 +1680,13 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	sig->method_type = METHOD_TYPE_JAVA_SP;
 	sig->result_type = sig_result_type;
 
-	// method_name
-	const char *cls_name = db_get_string (&cls);
-	const char *method_name = db_get_string (&method);
+	std::string target;
 
-	std::string target = cls_name + "." + method_name;
+	target.assign (db_get_string (&cls))
+	.append (".")
+	.append (db_get_string (&method));
 
-	sig->method_name = db_private_strndup (target.c_str (), target.size ());
+	sig->method_name = db_private_strndup (NULL, target.c_str (), target.size ());
 	if (!sig->method_name)
 	  {
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -1975,4 +1976,3 @@ check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 
   return error;
 }
-#endif

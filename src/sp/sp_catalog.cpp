@@ -61,6 +61,7 @@ static int sp_builtin_init ()
   v.owner = Au_public_user;
   v.comment = "";
   v.directive = SP_DIRECTIVE_RIGHTS_OWNER;
+  v.target_class = "com.cubrid.plcsql.builtin.DBMS_OUTPUT";
 
   a.is_system_generated = true;
 
@@ -70,7 +71,7 @@ static int sp_builtin_init ()
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.enable(int)";
+  v.target_method = "enable(int)";
 
   // arg(0) of enable
   a.sp_name = v.sp_name;
@@ -94,7 +95,7 @@ static int sp_builtin_init ()
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.disable()";
+  v.target_method = "disable()";
 
   //
   sp_builtin_definition.push_back (v);
@@ -107,7 +108,7 @@ static int sp_builtin_init ()
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.put(java.lang.String)";
+  v.target_method = "put(java.lang.String)";
 
   // arg(0) of put
   a.sp_name = v.sp_name;
@@ -131,7 +132,7 @@ static int sp_builtin_init ()
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.putLine(java.lang.String)";
+  v.target_method = "putLine(java.lang.String)";
 
   // arg(0) of put_line
   a.sp_name = v.sp_name;
@@ -155,7 +156,7 @@ static int sp_builtin_init ()
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.newLine()";
+  v.target_method = "newLine()";
 
   //
   sp_builtin_definition.push_back (v);
@@ -168,7 +169,7 @@ static int sp_builtin_init ()
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.getLine(java.lang.String[], int[])";
+  v.target_method = "getLine(java.lang.String[], int[])";
 
   // arg(0) of get_line
   a.sp_name = v.sp_name;
@@ -203,7 +204,7 @@ static int sp_builtin_init ()
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.getLines(java.lang.String[], int[])";
+  v.target_method = "getLines(java.lang.String[], int[])";
 
   // arg(0) of get_lines
   a.sp_name = v.sp_name;

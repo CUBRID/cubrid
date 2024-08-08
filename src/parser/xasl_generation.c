@@ -3890,8 +3890,11 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  if (db_get (mop_p, SP_ATTR_TARGET_CLASS, &cls) == NO_ERROR
 		      && db_get (mop_p, SP_ATTR_TARGET_METHOD, &method) == NO_ERROR)
 		    {
-		      std::string target = (char *) db_get_string (&cls) + "." + (char *) db_get_string (&method);
-		      (*tail)->method_name = db_private_strndup (target.c_str (), target.size ());
+		      std::string target;
+
+		      target.assign (db_get_string (&cls)).append (".").append (db_get_string (&method));
+
+		      (*tail)->method_name = db_private_strndup (NULL, target.c_str (), target.size ());
 		    }
 		  else
 		    {
