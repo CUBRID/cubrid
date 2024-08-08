@@ -5713,6 +5713,8 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
   PT_NODE *temp;
   PT_NODE *reserved_name = NULL;
   PT_FLAT_SPEC_INFO info;
+  PT_NODE *top_node = NULL;
+  bool is_insert_values = false;
 
   if (!in_node)
     {
@@ -5783,36 +5785,55 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    }
 	}
 
-      /* Else, is this an attribute of a unique entity within scope? */
-      for (savespec = NULL, spec = scope; spec; spec = spec->next)
+      /* get top node */
+      if (bind_arg != NULL && bind_arg->sc_info != NULL)
 	{
-	  if (pt_find_name_in_spec (parser, spec, in_node))
+	  top_node = bind_arg->sc_info->top_node;
+	}
+
+      if (top_node->node_type == PT_INSERT)
+	{
+	  PT_NODE *value_clauses = top_node->info.insert.value_clauses;
+	  if (value_clauses->info.node_list.list_type == PT_IS_VALUE)
 	    {
-	      if (savespec)
-		{
-		  PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AMBIGUOUS_REF_TO,
-			      in_node->info.name.original);
-		  return NULL;
-		}
-	      savespec = spec;
+	      is_insert_values = true;
 	    }
 	}
 
-      if (savespec)
+      /* Do not check names of VALUES list - INSERT INTO <tbl> VALUES (<val_list>) ... */
+      if (!is_insert_values)
 	{
-	  /* if yes, set the resolution and the resolved name */
-	  in_node->info.name.resolved = savespec->info.spec.range_var->info.name.original;
-	  in_node->info.name.partition = savespec->info.spec.range_var->info.name.partition;
-
-	  if (PT_IS_SPEC_REAL_TABLE (savespec))
+	  /* Else, is this an attribute of a unique entity within scope? */
+	  for (savespec = NULL, spec = scope; spec; spec = spec->next)
 	    {
-	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_DEFAULTF_ACCEPTS);
+	      if (pt_find_name_in_spec (parser, spec, in_node))
+		{
+		  if (savespec)
+		    {
+		      PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AMBIGUOUS_REF_TO,
+				  in_node->info.name.original);
+		      return NULL;
+		    }
+		  savespec = spec;
+		}
 	    }
 
-	  savespec = pt_unwhacked_spec (parser, scope, savespec);
+	  if (savespec)
+	    {
+	      /* if yes, set the resolution and the resolved name */
+	      in_node->info.name.resolved = savespec->info.spec.range_var->info.name.original;
+	      in_node->info.name.partition = savespec->info.spec.range_var->info.name.partition;
 
-	  *p_entity = savespec;
-	  return in_node;
+	      if (PT_IS_SPEC_REAL_TABLE (savespec))
+		{
+		  PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_DEFAULTF_ACCEPTS);
+		}
+
+	      savespec = pt_unwhacked_spec (parser, scope, savespec);
+
+	      *p_entity = savespec;
+	      return in_node;
+	    }
 	}
 
       if (col_name)
