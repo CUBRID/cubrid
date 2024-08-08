@@ -201,26 +201,23 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	  goto end;
 	}
 
-      if (datafile_per_class)
+      char *_pstr = NULL;
+      _pstr = utility_get_option_string_value (arg_map, UNLOAD_MT_PROCESS_S, 0);
+      if (_pstr)
 	{
-	  char *_pstr = NULL;
-	  _pstr = utility_get_option_string_value (arg_map, UNLOAD_MT_PROCESS_S, 0);
-	  if (_pstr)
+	  if (sscanf (_pstr, "%d/%d", &g_parallel_process_idx, &g_parallel_process_cnt) != 2)
 	    {
-	      if (sscanf (_pstr, "%d/%d", &g_parallel_process_idx, &g_parallel_process_cnt) != 2)
-		{
-		  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
-		  fflush (stderr);
-		  goto end;
-		}
-	      else if ((g_parallel_process_cnt > MAX_PROCESS_COUNT)
-		       || ((g_parallel_process_cnt > 1)
-			   && (g_parallel_process_idx <= 0 || g_parallel_process_idx > g_parallel_process_cnt)))
-		{
-		  fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
-		  fflush (stderr);
-		  goto end;
-		}
+	      fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
+	      fflush (stderr);
+	      goto end;
+	    }
+	  else if ((g_parallel_process_cnt > MAX_PROCESS_COUNT)
+		   || ((g_parallel_process_cnt > 1)
+		       && (g_parallel_process_idx <= 0 || g_parallel_process_idx > g_parallel_process_cnt)))
+	    {
+	      fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
+	      fflush (stderr);
+	      goto end;
 	    }
 	}
     }
