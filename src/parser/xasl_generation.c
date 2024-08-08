@@ -3883,10 +3883,15 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	      if (mop_p)
 		{
 		  /* java stored procedure signature */
-		  DB_VALUE method;
-		  if (db_get (mop_p, SP_ATTR_TARGET, &method) == NO_ERROR)
+		  DB_VALUE cls, method;
+		  db_make_null (&cls);
+		  db_make_null (&method);
+
+		  if (db_get (mop_p, SP_ATTR_TARGET_CLASS, &cls) == NO_ERROR
+		      && db_get (mop_p, SP_ATTR_TARGET_METHOD, &method) == NO_ERROR)
 		    {
-		      (*tail)->method_name = (char *) db_get_string (&method);
+		      std::string target = (char *) db_get_string (&cls) + "." + (char *) db_get_string (&method);
+		      (*tail)->method_name = db_private_strndup (target.c_str (), target.size ());
 		    }
 		  else
 		    {
@@ -4009,18 +4014,16 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		    }
 
 		  /* OID */
-		  DB_VALUE target_val;
-		  if (db_get (mop_p, SP_ATTR_TARGET, &target_val) == NO_ERROR)
+		  DB_VALUE target_cls_val;
+		  if (db_get (mop_p, SP_ATTR_TARGET_CLASS, &target_cls_val) == NO_ERROR)
 		    {
-		      const char *target_c = db_get_string (&target_val);
 		      MOP code_mop = NULL;
-		      if (target_c != NULL)
+		      const char *target_cls = db_get_string (&target_cls_val);
+		      if (target_cls != NULL)
 			{
-			  std::string target (target_c);
-			  std::string cls_name = jsp_get_class_name_of_target (target);
-			  code_mop = jsp_find_stored_procedure_code (cls_name.c_str ());
+			  code_mop = jsp_find_stored_procedure_code (target_cls);
 			}
-		      pr_clear_value (&target_val);
+		      pr_clear_value (&target_cls_val);
 
 		      if (code_mop)
 			{

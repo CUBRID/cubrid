@@ -4323,8 +4323,8 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
-  DB_VALUE sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, generated_val, args_val, rtn_type_val, method_val,
-    comment_val;
+  DB_VALUE sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, generated_val, args_val, rtn_type_val, class_val,
+    method_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
   int sp_type, rtn_type, arg_cnt, save;
   DB_SET *arg_set;
@@ -4351,7 +4351,8 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 	  || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARGS, &args_val)) != NO_ERROR
 	  || ((err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val)) != NO_ERROR)
-	  || (err = db_get (obj, SP_ATTR_TARGET, &method_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_TARGET_CLASS, &class_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_TARGET_METHOD, &method_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
@@ -4420,7 +4421,7 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 	    }
 	}
 
-      output_ctx ("AS LANGUAGE JAVA NAME '%s'", db_get_string (&method_val));
+      output_ctx ("AS LANGUAGE JAVA NAME '%s.%s'", db_get_string (&class_val), db_get_string (&method_val));
 
       if (!DB_IS_NULL (&comment_val))
 	{

@@ -468,8 +468,16 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    db_make_string (&value, info.target.data ());
-    err = dbt_put_internal (obt_p, SP_ATTR_TARGET, &value);
+    db_make_string (&value, info.target_class.data ());
+    err = dbt_put_internal (obt_p, SP_ATTR_TARGET_CLASS, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
+    db_make_string (&value, info.target_method.data ());
+    err = dbt_put_internal (obt_p, SP_ATTR_TARGET_METHOD, &value);
     pr_clear_value (&value);
     if (err != NO_ERROR)
       {
@@ -837,4 +845,29 @@ void sp_normalize_name (std::string &s)
 {
   s.resize (SM_MAX_IDENTIFIER_LENGTH);
   sm_downcase_name (s.data (), s.data (), SM_MAX_IDENTIFIER_LENGTH);
+}
+
+void
+sp_split_target_signature (const std::string &s, std::string target_cls, std::string target_mth)
+{
+  auto pos = s.find_last_of ('(');
+  if (pos == std::string::npos)
+    {
+      // handle the case where '(' is not found, if necessary
+      target_cls.clear();
+      target_mth.clear();
+      return;
+    }
+
+  pos = s.substr (0, pos).find_last_of ('.');
+  if (pos == std::string::npos)
+    {
+      // handle the case where '.' is not found, if necessary
+      target_cls.clear();
+      target_mth.clear();
+      return;
+    }
+
+  target_cls = s.substr (0, pos);
+  target_mth = s.substr (pos + 1); // +1 to skip the '.'
 }

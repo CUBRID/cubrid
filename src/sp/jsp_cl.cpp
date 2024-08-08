@@ -883,7 +883,13 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  decl = (const char *) PT_NODE_SP_JAVA_METHOD (statement);
 	}
     }
-  sp_info.target = decl ? decl : "";
+
+  if (decl)
+    {
+      std::string target = decl;
+      sp_split_target_signature (target, sp_info.target_class, sp_info.target_method);
+    }
+
   sp_info.comment = (char *) PT_NODE_SP_COMMENT (statement);
 
   if (err != NO_ERROR)
@@ -932,7 +938,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       std::stringstream stm;
       stm << std::put_time (localtime (&converted_timep), "%Y%m%d%H%M%S");
 
-      code_info.name = jsp_get_class_name_of_target (sp_info.target);
+      code_info.name = sp_info.target_class;
       code_info.created_time = stm.str ();
       code_info.stype = (sp_info.lang == SP_LANG_PLCSQL) ? SPSC_PLCSQL : SPSC_JAVA;
       code_info.scode = compile_request.code;
@@ -1206,10 +1212,10 @@ static int
 drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 {
   MOP sp_mop, arg_mop, owner;
-  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_val, lang_val, temp;
+  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_cls_val, lang_val, temp;
   SP_TYPE_ENUM real_type;
   std::string class_name;
-  const char *target;
+  const char *target_cls;
   DB_SET *arg_set_p;
   int save, i, arg_cnt, lang;
   int err;
@@ -1281,16 +1287,14 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   lang = db_get_int (&lang_val);
   if (lang == SP_LANG_PLCSQL)
     {
-      err = db_get (sp_mop, SP_ATTR_TARGET, &target_val);
+      err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
       if (err != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      target = db_get_string (&target_val);
-      class_name = jsp_get_class_name_of_target (std::string (target));
-
-      err = drop_stored_procedure_code (class_name.c_str ());
+      target_cls = db_get_string (&target_val);
+      err = drop_stored_procedure_code (target_cls);
       if (err != NO_ERROR)
 	{
 	  goto error;
@@ -1463,8 +1467,8 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 {
   int error = NO_ERROR;
   int save;
-  DB_VALUE method, auth, param_cnt_val, mode, arg_type, optional_val, default_val, temp, lang_val, directive_val,
-	   result_type, target_val;
+  DB_VALUE cls, method, auth, param_cnt_val, mode, arg_type, optional_val, default_val, temp, lang_val, directive_val,
+	   result_type, target_cls_val;
 
   int sig_num_args = pt_length_of_list (node->info.method_call.arg_list);
   std::vector <int> sig_arg_mode;
@@ -1479,6 +1483,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 
   METHOD_SIG *sig = nullptr;
 
+  db_make_null (&cls);
   db_make_null (&method);
   db_make_null (&auth);
   db_make_null (&param_cnt_val);
@@ -1487,7 +1492,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
   db_make_null (&default_val);
   db_make_null (&temp);
   db_make_null (&result_type);
-  db_make_null (&target_val);
+  db_make_null (&target_cls_val);
 
   {
     char *parsed_method_name = (char *) node->info.method_call.method_name->info.name.original;
@@ -1496,7 +1501,13 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
     if (mop_p)
       {
 	/* check java stored prcedure target */
-	error = db_get (mop_p, SP_ATTR_TARGET, &method);
+	error = db_get (mop_p, SP_ATTR_TARGET_CLASS, &cls);
+	if (error != NO_ERROR)
+	  {
+	    goto end;
+	  }
+
+	error = db_get (mop_p, SP_ATTR_TARGET_METHOD, &method);
 	if (error != NO_ERROR)
 	  {
 	    goto end;
@@ -1641,20 +1652,18 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	  }
 
 	/* OID */
-	error = db_get (mop_p, SP_ATTR_TARGET, &target_val);
+	error = db_get (mop_p, SP_ATTR_TARGET_CLASS, &target_cls_val);
 	if (error != NO_ERROR)
 	  {
 	    goto end;
 	  }
 
-	const char *target_c = db_get_string (&target_val);
-	if (target_c != NULL)
+	const char *target_cls = db_get_string (&target_cls_val);
+	if (target_cls != NULL)
 	  {
-	    std::string target (target_c);
-	    std::string cls_name = jsp_get_class_name_of_target (target);
-	    code_mop = jsp_find_stored_procedure_code (cls_name.c_str ());
+	    code_mop = jsp_find_stored_procedure_code (target_cls);
 	  }
-	pr_clear_value (&target_val);
+	pr_clear_value (&target_cls_val);
       }
     else
       {
@@ -1671,18 +1680,17 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 	sig->result_type = sig_result_type;
 
 	// method_name
+	const char *cls_name = db_get_string (&cls);
 	const char *method_name = db_get_string (&method);
-	int method_name_len = db_get_string_size (&method);
 
-	sig->method_name = (char *) db_private_alloc (NULL, method_name_len + 1);
+	std::string target = cls_name + "." + method_name;
+
+	sig->method_name = db_private_strndup (target.c_str (), target.size ());
 	if (!sig->method_name)
 	  {
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
-
-	memcpy (sig->method_name, method_name, method_name_len);
-	sig->method_name[method_name_len] = 0;
 
 	// lang
 	error = db_get (mop_p, SP_ATTR_LANG, &lang_val);
@@ -1966,16 +1974,5 @@ check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
     }
 
   return error;
-}
-
-#ifdef  __cplusplus
-std::string
-jsp_get_class_name_of_target (const std::string &target)
-{
-  auto pos = target.find_last_of ('(');
-  std::string name_part = target.substr (0, pos);
-
-  pos = name_part.find_last_of ('.');
-  return name_part.substr (0, pos);
 }
 #endif

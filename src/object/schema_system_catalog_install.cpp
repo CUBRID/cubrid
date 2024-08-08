@@ -843,7 +843,8 @@ namespace cubschema
       {"pkg_name", format_varchar (255)},
       {"is_system_generated", "integer"},
       {"directive", "integer"},
-      {"target", format_varchar (4096)},
+      {"target_class", format_varchar (1024)},
+      {"target_method", format_varchar (255)},
       {"owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (1024)}
     },
