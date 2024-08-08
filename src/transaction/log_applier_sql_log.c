@@ -636,12 +636,12 @@ sl_open_next_file (FILE * old_fp)
 static int
 sl_remove_oldest_file (void)
 {
-  int oldest_file_id;
+  unsigned int oldest_file_id;
   char oldest_file_path[PATH_MAX];
 
   oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
 
-  snprintf (oldest_file_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, oldest_file_id);
+  snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id);
 
   unlink (oldest_file_path);
 
