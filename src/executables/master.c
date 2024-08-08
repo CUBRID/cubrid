@@ -82,12 +82,12 @@ static void css_reject_client_request (CSS_CONN_ENTRY * conn, unsigned short rid
 static void css_reject_server_request (CSS_CONN_ENTRY * conn, int reason);
 static void css_accept_server_request (CSS_CONN_ENTRY * conn, int reason);
 static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer);
-static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry,
-				    char *server_name, int server_name_length);
+static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid,
+				    SOCKET_QUEUE_ENTRY * entry, char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
-static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid,
-					    CSS_SERVER_REQUEST request);
+static bool css_send_new_request_to_server (SOCKET server_fd,
+					    SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request);
 static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request);
 static void css_process_new_connection (SOCKET fd);
 static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
@@ -169,8 +169,8 @@ css_master_timeout (void)
   struct timeval timeout;
 
   /* check for timeout */
-  if (css_Master_timeout && time ((time_t *) (&timeout.tv_sec)) != (time_t) (-1)
-      && css_Master_timeout->tv_sec < timeout.tv_sec)
+  if (css_Master_timeout
+      && time ((time_t *) (&timeout.tv_sec)) != (time_t) (-1) && css_Master_timeout->tv_sec < timeout.tv_sec)
     {
       return (0);
     }
@@ -349,8 +349,9 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (datagram_conn, false, proc_register->server_name, server_fd, READ_WRITE, 0,
-					   &css_Master_socket_anchor);
+	  css_add_request_to_socket_queue (datagram_conn, false,
+					   proc_register->server_name,
+					   server_fd, READ_WRITE, 0, &css_Master_socket_anchor);
 
 	  //  Note : server_name is usually packed(appended) information of server_name, version_string, env_var, pid,
 	  //  packed from css_pack_server_name(). Since there are some cases that returns server_name and server_name_length
@@ -390,7 +391,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  if (!entry->ha_mode)
 	    {
               /* *INDENT-OFF* */
-              master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REGISTER_ENTRY, proc_register->pid, proc_register->exec_path, proc_register->args, datagram_conn);
+              master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REGISTER_ENTRY, proc_register->pid, proc_register->exec_path, proc_register->args);
               /* *INDENT-ON* */
 	    }
 	}
@@ -411,8 +412,8 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
  *   server_name_length(in)
  */
 static void
-css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry, char *server_name,
-			int server_name_length)
+css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid,
+			SOCKET_QUEUE_ENTRY * entry, char *server_name, int server_name_length)
 {
   char *datagram;
   int datagram_length;
@@ -563,8 +564,8 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	      css_Active_server_count++;
 #endif
 	      entry =
-		css_add_request_to_socket_queue (conn, false, server_name, conn->fd, READ_WRITE, 0,
-						 &css_Master_socket_anchor);
+		css_add_request_to_socket_queue (conn, false, server_name,
+						 conn->fd, READ_WRITE, 0, &css_Master_socket_anchor);
 	      /* store this for later */
 	      if (entry != NULL)
 		{
@@ -1008,7 +1009,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 #if !defined(WINDOWS)
 		      /* Abnormal termination of non-HA server process is detected. */
                       /* *INDENT-OFF* */
-                      master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REVIVE_ENTRY, temp->pid, "", "", nullptr);
+                      master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REVIVE_ENTRY, temp->pid, "", "");
                       /* *INDENT-ON* */
 #endif
 		      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
@@ -1060,8 +1061,8 @@ again:
 #if !defined(WINDOWS)
 					     (fcntl (temp->fd, F_GETFL, 0) < 0) ||
 #endif /* !WINDOWS */
-					     (temp->error_p != 0) || (temp->conn_ptr == NULL)
-					     || (temp->conn_ptr->status == CONN_CLOSED))))
+					     (temp->error_p != 0)
+					     || (temp->conn_ptr == NULL) || (temp->conn_ptr->status == CONN_CLOSED))))
 	{
 #if defined(DEBUG)
 	  if (css_Active_server_count > 0)
@@ -1267,11 +1268,11 @@ main (int argc, char **argv)
 #endif
 
   conn = css_make_conn (css_Master_socket_fd[0]);
-  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0], READ_WRITE, 0,
-				   &css_Master_socket_anchor);
+  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0],
+				   READ_WRITE, 0, &css_Master_socket_anchor);
   conn = css_make_conn (css_Master_socket_fd[1]);
-  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1], READ_WRITE, 0,
-				   &css_Master_socket_anchor);
+  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1],
+				   READ_WRITE, 0, &css_Master_socket_anchor);
   css_master_loop ();
   css_master_cleanup (SIGINT);
   css_master_error (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_EXITING));
@@ -1372,8 +1373,8 @@ css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_
  *   anchor_p(out):
  */
 SOCKET_QUEUE_ENTRY *
-css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name_p, SOCKET fd, int fd_type, int pid,
-				 SOCKET_QUEUE_ENTRY ** anchor_p)
+css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
+				 char *name_p, SOCKET fd, int fd_type, int pid, SOCKET_QUEUE_ENTRY ** anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;
 
@@ -1394,8 +1395,8 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name
 	{
 	  strcpy (p->name, name_p);
 #if !defined(WINDOWS)
-	  if (IS_MASTER_CONN_NAME_HA_SERVER (p->name) || IS_MASTER_CONN_NAME_HA_COPYLOG (p->name)
-	      || IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name))
+	  if (IS_MASTER_CONN_NAME_HA_SERVER (p->name)
+	      || IS_MASTER_CONN_NAME_HA_COPYLOG (p->name) || IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name))
 	    {
 	      p->ha_mode = TRUE;
 	    }
