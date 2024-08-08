@@ -1911,7 +1911,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 
 	  cls_status = pt_has_modified_class (parser, statement);
 	  if (err == ER_QPROC_RESULT_CACHE_INVALID
-	      || (cls_status = pt_has_modified_class (parser, statement)) == DB_CLASS_NOT_MODIFIED)
+	      || (cls_status == DB_CLASS_NOT_MODIFIED)
 	    {
 	      /* forget all errors */
 	      er_clear ();
