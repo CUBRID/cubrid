@@ -1238,7 +1238,7 @@ sm_define_view_stored_procedure_spec (void)
 	  "[sp].[arg_count] AS [arg_count], "
 	  "CASE [sp].[lang] WHEN 0 THEN 'PLCSQL' WHEN 1 THEN 'JAVA' ELSE 'UNKNOWN' END AS [lang], "
           "CASE [sp].[directive] & 1 WHEN 0 THEN 'DEFINER' ELSE 'CURRENT_USER' END AS [authid], "
-	  "[sp].[target] AS [target], "
+	  "CONCAT ([sp].[target_class], '.', [sp].[target_method]) AS [target], "
 	  "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
 	  "[sp].[comment] AS [comment] "
 	"FROM "
