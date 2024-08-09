@@ -50,7 +50,8 @@ class server_monitor
     class server_entry
     {
       public:
-	server_entry (int pid, std::string exec_path, std::string args, std::chrono::steady_clock::time_point revive_time);
+	server_entry (int pid, std::string exec_path, std::string args, std::string server_name,
+		      std::chrono::steady_clock::time_point revive_time);
 	~server_entry () {};
 
 	server_entry (const server_entry &) = delete;
@@ -64,7 +65,7 @@ class server_monitor
 	      m_pid = other.m_pid;
 	      m_need_revive = other.m_need_revive;
 	      m_last_revive_time = other.m_last_revive_time;
-	      m_retries = other.m_retries;
+	      m_server_name = other.m_server_name;
 	      m_exec_path = other.m_exec_path;
 	      m_argv = other.m_argv;
 	    }
@@ -75,6 +76,7 @@ class server_monitor
 	std::string get_exec_path () const;
 	std::vector<std::string> get_argv () const;
 	std::string get_args () const;
+	std::string get_server_name () const;
 	bool get_need_revive () const;
 	std::chrono::steady_clock::time_point get_last_revive_time () const;
 
@@ -84,14 +86,12 @@ class server_monitor
 	void set_last_revive_time (std::chrono::steady_clock::time_point revive_time);
 
 	void proc_make_arg (std::string args);
-	bool server_entry_compare_args_and_argv (std::string args);
-
-	int m_retries;                                             // retry count of server process
 
       private:
 	int m_pid;                                                 // process ID of server process
 	std::string m_exec_path;                                   // executable path of server process
 	std::vector<std::string> m_argv;                           // arguments of server process
+	std::string m_server_name;                                 // name of server process
 	volatile bool m_need_revive;                               // need to be revived by monitoring thread
 	std::chrono::steady_clock::time_point m_last_revive_time;  // last revive time
     };
@@ -104,10 +104,13 @@ class server_monitor
 	int m_pid;
 	std::string m_exec_path;
 	std::string m_args;
+	std::string m_server_name;
 	std::chrono::steady_clock::time_point m_produce_time;
 
-	server_monitor_job (server_monitor_job_type job_type, int pid, std::string exec_path, std::string args);
-	server_monitor_job () : m_job_type (SERVER_MONITOR_NO_JOB), m_pid (0), m_exec_path (""), m_args ("") {};
+	server_monitor_job (server_monitor_job_type job_type, int pid, std::string exec_path, std::string args,
+			    std::string server_name);
+	server_monitor_job () : m_job_type (SERVER_MONITOR_NO_JOB), m_pid (0), m_exec_path (""), m_args (""),
+	  m_server_name ("") {};
 	~server_monitor_job () {};
 
 	server_monitor_job (const server_monitor_job &) = default;
@@ -126,14 +129,15 @@ class server_monitor
     server_monitor &operator = (const server_monitor &) = delete;
     server_monitor &operator = (server_monitor &&) = delete;
 
-    void make_and_insert_server_entry (int pid, std::string exec_path, std::string args,
+    void make_and_insert_server_entry (int pid, std::string exec_path, std::string args, std::string server_name,
 				       std::chrono::steady_clock::time_point revive_time);
-    void remove_server_entry_by_pid (int pid);
-    void revive_server_with_pid (int pid);
+    void remove_server_entry_by_name (std::string server_name);
+    void revive_server_with_name (std::string server_name);
     void server_monitor_try_revive_server (std::string exec_path, std::vector<std::string> argv, int *out_pid);
-    void server_monitor_check_server_revived (std::string args);
+    void server_monitor_check_server_revived (std::string server_name);
 
-    void server_monitor_produce_job (server_monitor_job_type job_type, int pid, std::string exec_path, std::string args);
+    void server_monitor_produce_job (server_monitor_job_type job_type, int pid, std::string exec_path, std::string args,
+				     std::string server_name);
 
   private:
     std::unique_ptr<std::list <server_entry>> m_server_entry_list;      // list of server entries

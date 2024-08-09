@@ -358,6 +358,12 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  length = (int) strlen (proc_register->server_name) + 1;
 	  server_name_length = proc_register->server_name_length;
 
+	  char *server_name_str = (char *) malloc (length);
+	  if (server_name_str != NULL)
+	    {
+	      strcpy (server_name_str, proc_register->server_name);
+	    }
+
 	  if (length < server_name_length)
 	    {
 	      entry = css_return_entry_of_server (proc_register->server_name, css_Master_socket_anchor);
@@ -391,8 +397,12 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	    {
               /* *INDENT-OFF* */
 
-              master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REGISTER_ENTRY, proc_register->pid, proc_register->exec_path, proc_register->args);
+              master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REGISTER_ENTRY, proc_register->pid, proc_register->exec_path, proc_register->args, server_name_str);
               /* *INDENT-ON* */
+	    }
+	  if (server_name_str != NULL)
+	    {
+	      free_and_init (server_name_str);
 	    }
 	}
     }
@@ -1009,7 +1019,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 #if !defined(WINDOWS)
 		      /* Abnormal termination of non-HA server process is detected. */
                       /* *INDENT-OFF* */
-                      master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REVIVE_ENTRY, temp->pid, "", "");
+                      master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REVIVE_ENTRY, -1, "", "", temp->name);
                       /* *INDENT-ON* */
 #endif
 		      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
