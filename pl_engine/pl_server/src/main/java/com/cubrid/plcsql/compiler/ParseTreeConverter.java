@@ -36,6 +36,8 @@ import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
+import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsLexer;
+import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.error.SyntaxError;
@@ -58,8 +60,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import org.antlr.v4.runtime.ParserRuleContext;
 import org.apache.commons.text.StringEscapeUtils;
+import org.antlr.v4.runtime.*;
+import org.antlr.v4.runtime.tree.*;
+
+import static com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser.*;
 
 // parse tree --> AST converter
 public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
@@ -2693,10 +2698,109 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return 0;
     }
 
-    private static SqlSemantics getSqlSemanticsFromServer(Static_sqlContext ctx) {
+    private static StaticSqlWithRecordsParser getParser(String sqlText) {
+        CharStream in = CharStreams.fromString(sqlText);
+        StaticSqlWithRecordsLexer lexer = new StaticSqlWithRecordsLexer(in);
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        return new StaticSqlWithRecordsParser(tokens);
+    }
+
+    private static SyntaxErrorIndicator replaceErrorListeners(StaticSqlWithRecordsParser parser) {
+        SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
+        parser.removeErrorListeners();
+        parser.addErrorListener(sei);
+        return sei;
+    }
+
+    private String rewriteInsertWithFieldsExpansion(String sqlText, Record_listContext recordList, Static_sqlContext ctx) {
+        int start = recordList.getStart().getStartIndex();
+        int end = recordList.getStop().getStopIndex() + 1;
+
+        String[] split = recordList.getText().split(",");
+        assert split.length > 0;
+
+        List<String> records = new LinkedList<>();
+        List<String> fields = new LinkedList<>();
+        for (String s : split) {
+            s = Misc.getNormalizedText(s);
+            ExprId id = visitNonFuncIdentifier(s, ctx);
+            if (!(id.decl.type() instanceof TypeRecord)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s088
+                        id.name + " is not a record");
+            }
+
+            TypeRecord recTy = (TypeRecord) id.decl.type();
+
+            fields.clear();
+            for (Misc.Pair<String, Type> p: recTy.selectList) {
+                fields.add(s + "." + p.e1);
+            }
+
+            records.add("(" + String.join(", ", fields) + ")");
+        }
+
+        return sqlText.substring(0, start) + String.join(", ", records) + sqlText.substring(end);
+    }
+
+    private String rewriteUpdateWithFieldsExpansion(String sqlText, Row_setContext rowSet, Static_sqlContext ctx) {
+        int start = rowSet.getStart().getStartIndex();
+        int end = rowSet.getStop().getStopIndex() + 1;
+
+        List<String> fieldsSet = new LinkedList<>();
+        String s = Misc.getNormalizedText(rowSet.getStop().getText());
+        ExprId id = visitNonFuncIdentifier(s, ctx);
+        if (!(id.decl.type() instanceof TypeRecord)) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), // s089
+                    id.name + " is not a record");
+        }
+
+        TypeRecord recTy = (TypeRecord) id.decl.type();
+
+        for (Misc.Pair<String, Type> p: recTy.selectList) {
+            fieldsSet.add(String.format("%1$s = %2$s.%1$s", p.e1, s));
+        }
+
+        return sqlText.substring(0, start) + String.join(", ", fieldsSet) + sqlText.substring(end);
+    }
+
+    private String expandRecordIfAny(Static_sqlContext ctx) {
+
+        String sqlText = ctx.getText();
+        String lowercased = sqlText.toLowerCase();
+
+        if (lowercased.indexOf("insert") == 0 || lowercased.indexOf("replace") == 0 || lowercased.indexOf("update") == 0) {
+
+            StaticSqlWithRecordsParser parser = getParser(sqlText);
+            SyntaxErrorIndicator sei = replaceErrorListeners(parser);
+
+            if (lowercased.indexOf("insert") == 0 || lowercased.indexOf("replace") == 0) {
+
+                Insert_w_recordsContext tree = (Insert_w_recordsContext) parser.insert_w_records();
+                if (!sei.hasError) {
+                    return rewriteInsertWithFieldsExpansion(sqlText, tree.record_list(), ctx);
+                }
+
+            } else if (lowercased.indexOf("update") == 0) {
+
+                Update_w_recordContext tree = (Update_w_recordContext) parser.update_w_record();
+                if (!sei.hasError) {
+                    return rewriteUpdateWithFieldsExpansion(sqlText, tree.row_set(), ctx);
+                }
+
+            }
+        }
+
+        return sqlText;
+    }
+
+    private SqlSemantics getSqlSemanticsFromServer(Static_sqlContext ctx) {
+
+        String text = expandRecordIfAny(ctx);
 
         // server interaction may take a long time
-        List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(ctx.getText()));
+        List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(text));
         assert sqlSemantics.size() == 1;
 
         SqlSemantics ss = sqlSemantics.get(0);
@@ -2704,6 +2808,25 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return ss;
         } else {
             throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s435
+        }
+    }
+
+    private static class SyntaxErrorIndicator extends BaseErrorListener {
+
+        boolean hasError;
+        String errMsg;
+
+        @Override
+        public void syntaxError(
+                Recognizer<?, ?> recognizer,
+                Object offendingSymbol,
+                int line,
+                int charPositionInLine,
+                String msg,
+                RecognitionException e) {
+
+            this.hasError = true;
+            this.errMsg = msg;
         }
     }
 }
