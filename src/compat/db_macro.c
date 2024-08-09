@@ -374,6 +374,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_SHORT:
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
+    case DB_TYPE_RESULTSET:
       break;
 
     default:
@@ -526,6 +527,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.info.is_max_string = false;
       value->data.ch.info.compressed_need_clear = false;
       value->data.ch.medium.size = 1;
+      value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "\0";	/* zero; 0 */
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;
@@ -542,6 +544,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.info.is_max_string = false;
       value->data.ch.info.compressed_need_clear = false;
       value->data.ch.medium.size = 1;
+      value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;
@@ -553,6 +556,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       break;
       /* case DB_TYPE_TABLE: internal use only */
     case DB_TYPE_JSON:
+    case DB_TYPE_RESULTSET:
       value->domain.general_info.is_null = 1;
       value->need_clear = false;
       break;
@@ -690,6 +694,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.info.is_max_string = true;
       value->data.ch.info.compressed_need_clear = false;
       value->data.ch.medium.size = 0;
+      value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = NULL;
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;
@@ -706,6 +711,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.info.is_max_string = true;
       value->data.ch.info.compressed_need_clear = false;
       value->data.ch.medium.size = 0;
+      value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = NULL;
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;
@@ -728,6 +734,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       break;
       /* case DB_TYPE_TABLE: internal use only */
     case DB_TYPE_JSON:
+    case DB_TYPE_RESULTSET:
       value->domain.general_info.is_null = 1;
       value->need_clear = false;
       break;
@@ -842,6 +849,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.info.is_max_string = false;
       value->data.ch.info.compressed_need_clear = false;
       value->data.ch.medium.size = 0;
+      value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "";
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;
@@ -855,6 +863,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.info.compressed_need_clear = false;
       value->data.ch.info.is_max_string = false;
       value->data.ch.medium.size = 1;
+      value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "";
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;

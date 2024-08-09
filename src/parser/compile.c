@@ -1033,7 +1033,7 @@ remove_appended_trigger_info (char *msg, int with_evaluate)
   p = strstr (msg, from_on_str);
   if (p != NULL)
     {
-      for (i = 0; p[i] != single_quote_char && i < strlen (p); i++)
+      for (i = 0; p[i] != single_quote_char && p[i] != '\0'; i++)
 	;
 
       if (i > 0 && p[i - 1] == semicolon)

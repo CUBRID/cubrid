@@ -162,6 +162,7 @@ static LF_ENTRY_DESCRIPTOR xentry_desc = {
 
   /* mutex flags */
   LF_EM_NOT_USING_MUTEX,
+  LF_ENTRY_DESCRIPTOR_MAX_ALLOC,
 
   /* functions */
   xentry_alloc,

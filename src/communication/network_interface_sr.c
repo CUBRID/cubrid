@@ -29,6 +29,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "perf_monitor.h"
@@ -88,6 +90,8 @@
 #include "log_manager.h"
 #include "crypt_opfunc.h"
 #include "flashback.h"
+#include "method_compile.hpp"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -154,7 +158,11 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
 
   state = xtran_server_commit (thread_p, retain_lock);
 
-  net_cleanup_server_queues (rid);
+  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
+  if (!rctx || rctx->is_running () == false || rctx->get_depth () == 0)
+    {
+      net_cleanup_server_queues (rid);
+    }
 
   if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
     {
@@ -188,7 +196,11 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
 
   state = xtran_server_abort (thread_p);
 
-  net_cleanup_server_queues (rid);
+  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
+  if (!rctx || rctx->is_running () == false || rctx->get_depth () == 0)
+    {
+      net_cleanup_server_queues (rid);
+    }
 
   if (state != TRAN_UNACTIVE_ABORTED && state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
     {
@@ -1978,7 +1990,6 @@ slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 void
 slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -1995,7 +2006,7 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("logpb_dump_stat_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2003,6 +2014,8 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
       db_private_free_and_init (NULL, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xlogpb_dump_stat (outfp);
   file_size = ftell (outfp);
@@ -2291,7 +2304,6 @@ sacl_reload (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
 void
 sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -2308,7 +2320,7 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("acl_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2317,6 +2329,7 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
       return;
     }
 
+  filesys::auto_delete_file file_del (filename.c_str ());
   xacl_dump (thread_p, outfp);
   file_size = ftell (outfp);
 
@@ -2369,15 +2382,17 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 void
 slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
+  int is_contention;
   int send_size;
+  char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_unpack_int (request, &buffer_size);
+  ptr = or_unpack_int (request, &buffer_size);
+  ptr = or_unpack_int (ptr, &is_contention);
 
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
@@ -2386,7 +2401,7 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("lock_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2395,7 +2410,9 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
       return;
     }
 
-  xlock_dump (thread_p, outfp);
+  filesys::auto_delete_file file_del (filename.c_str ());
+
+  xlock_dump (thread_p, outfp, is_contention);
   file_size = ftell (outfp);
 
   /*
@@ -2582,6 +2599,32 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
       boot_compact_stop (thread_p);
     }
 
+}
+
+/*
+ * shf_get_maxslotted_reclength -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+shf_get_maxslotted_reclength (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int maxslotted_reclength;
+
+  (void) xheap_get_maxslotted_reclength (maxslotted_reclength);
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  (void) or_pack_int (reply, maxslotted_reclength);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -3973,42 +4016,27 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
 
-  ptr = or_unpack_oid (request, &classoid);
-  ptr = or_unpack_int (ptr, &with_fullscan);
+  ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
 
-  error = xstats_update_statistics (thread_p, &classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
-  if (error != NO_ERROR)
+  class_attr_ndv.attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
+  if (class_attr_ndv.attr_ndv == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
     }
 
-  (void) or_pack_errcode (reply, error);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
+  for (int i = 0; i < class_attr_ndv.attr_cnt + 1; i++)
+    {
+      ptr = or_unpack_int (ptr, &class_attr_ndv.attr_ndv[i].id);
+      ptr = or_unpack_int64 (ptr, &class_attr_ndv.attr_ndv[i].ndv);
+    }
+  ptr = or_unpack_oid (ptr, &classoid);
+  ptr = or_unpack_int (ptr, &with_fullscan);
 
-/*
- * sqst_update_all_statistics -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sqst_update_all_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int error, with_fullscan;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = or_unpack_int (request, &with_fullscan);
-
-  error = xstats_update_all_statistics (thread_p, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+  error =
+    xstats_update_statistics (thread_p, &classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING),
+			      &class_attr_ndv);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -4038,6 +4066,8 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   OID class_oid;
   int attr_id, unique_pk;
   char *ptr;
+  int deduplicate_key_pos = -1;
+
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4046,8 +4076,10 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
   ptr = or_unpack_int (ptr, &unique_pk);
+  ptr = or_unpack_int (ptr, &deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-  return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0);
+  return_btid =
+    xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
   if (return_btid == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -5998,6 +6030,44 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 }
 
 /*
+ * sqmgr_drop_query_plans_by_sha1 - Process a NET_SERVER_QM_QUERY_DROP_SHA1_PLANS request
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in)qmgr_drop_query_plans_by_sha1:
+ *   reqlen(in):
+ *
+ * NOTE:
+ * Clear all XASL cache entires out upon request of the client.
+ * This function is a counter part to qmgr_drop_query_plans_by_sha1().
+ */
+void
+sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int status;
+  char *reply, *sha1;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  or_unpack_string_nocopy (request, &sha1);
+
+  /* call the server routine of query drop plan */
+  status = xqmgr_drop_query_plans_by_sha1 (thread_p, sha1);
+  if (status != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  /* pack status (DB_IN32) as a reply */
+  (void) or_pack_int (reply, status);
+
+  /* send reply and data to the client */
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+
+/*
  * sqmgr_dump_query_plans -
  *
  * return:
@@ -6011,7 +6081,6 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 void
 sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -6028,7 +6097,7 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("qplan_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -6036,6 +6105,8 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xqmgr_dump_query_plans (thread_p, outfp);
   file_size = ftell (outfp);
@@ -6090,7 +6161,6 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 void
 sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -6107,7 +6177,7 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("qcache_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -6115,6 +6185,8 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xqmgr_dump_query_cache (thread_p, outfp);
   file_size = ftell (outfp);
@@ -7088,7 +7160,6 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, unsigned int rid, char 
 void
 sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -7105,7 +7176,7 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("thread_cs_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7113,6 +7184,8 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       db_private_free_and_init (NULL, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   sync_dump_statistics (outfp, SYNC_TYPE_ALL);
 
@@ -7204,7 +7277,6 @@ slogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 void
 slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -7221,7 +7293,7 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("logtb_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7229,6 +7301,8 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xlogtb_dump_trantable (thread_p, outfp);
   file_size = ftell (outfp);
@@ -7837,7 +7911,6 @@ sprm_server_obtain_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *
 void
 sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -7854,7 +7927,7 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *re
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("prm_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7862,6 +7935,8 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *re
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xsysprm_dump_server_parameters (outfp);
   file_size = ftell (outfp);
@@ -9524,7 +9599,6 @@ svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 void
 svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -9541,7 +9615,7 @@ svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("vacuum_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -9549,6 +9623,8 @@ svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xvacuum_dump (thread_p, outfp);
   file_size = ftell (outfp);
@@ -10350,28 +10426,68 @@ sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
 void
 sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *buffer = NULL;
+  char *buffer = NULL, *ptr = NULL;
   int buffer_size = 0;
-
+  int oid_cnt = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
   load_session *session = NULL;
   int error_code = session_get_load_session (thread_p, session);
-  if (error_code == NO_ERROR)
-    {
-      assert (session != NULL);
+  std::vector < const cubload::class_entry * >class_entries;
 
-      session->update_class_statistics (*thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto end;
+    }
+  assert (session != NULL);
+
+  /* check disable_statistics */
+  if (session->get_args ().disable_statistics || session->get_args ().syntax_check)
+    {
+      error_code = NO_ERROR;
+      goto end;
     }
 
-  if (er_errid () != NO_ERROR || er_has_error ())
+  session->get_class_registry ().get_all_class_entries (class_entries);
+
+for (const cubload::class_entry * class_entry:class_entries)
     {
-      return_error_to_client (thread_p, rid);
+      if (!class_entry->is_ignored ())
+	{
+	  oid_cnt++;
+	}
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  /* start packing result */
+  /* buffer_size is (int:number of OIDs) + size of packed OIDs */
+  buffer_size = OR_INT_SIZE + (oid_cnt * sizeof (OID));
+  buffer = (char *) db_private_alloc (thread_p, buffer_size);
+  if (buffer == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+  ptr = or_pack_int (buffer, oid_cnt);
+for (const cubload::class_entry * class_entry:class_entries)
+    {
+      if (!class_entry->is_ignored ())
+	{
+	  OID *class_oid = const_cast < OID * >(&class_entry->get_class_oid ());
+	  ptr = or_pack_oid (ptr, class_oid);
+	}
+    }
 
-  or_pack_int (reply, error_code);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+end:
+  char *ptr2 = or_pack_int (reply, buffer_size);
+  ptr2 = or_pack_int (ptr2, error_code);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
+				     buffer_size);
+
+  if (buffer != NULL)
+    {
+      db_private_free_and_init (thread_p, buffer);
+    }
 }
 
 void
@@ -10432,10 +10548,12 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     {
       /* 3) make out arguments */
 
-      // *INDENT-OFF*
-      std::vector<std::reference_wrapper<DB_VALUE>> out_args;
-      // *INDENT-ON*
       method_sig_node *sig = sig_list.method_sig;
+      // *INDENT-OFF*
+      DB_VALUE dummy_null;
+      db_make_null (&dummy_null);
+      std::vector<std::reference_wrapper<DB_VALUE>> out_args (sig->num_method_args, dummy_null);
+      // *INDENT-ON*
       for (int i = 0; i < sig->num_method_args; i++)
 	{
 	  if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
@@ -10444,7 +10562,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	    }
 
 	  int pos = sig->method_arg_pos[i];
-	  out_args.push_back (std::ref (args[pos]));
+	  out_args[pos] = std::ref (args[pos]);
 	}
 
       /* 4) pack */
@@ -11121,4 +11239,35 @@ css_send_error:
 
   flashback_reset ();
   return;
+}
+
+
+void
+splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  bool verbose;
+  std::string input_string;
+  unpacker.unpack_all (verbose, input_string);
+
+  cubmethod::runtime_context * ctx = NULL;
+  session_get_method_runtime_context (thread_p, ctx);
+
+  int error = ER_FAILED;
+  cubmem::extensible_block ext_blk;
+  if (ctx)
+    {
+      error = cubmethod::invoke_compile (*thread_p, *ctx, input_string, verbose, ext_blk);
+    }
+
+  // Error code and is_ignored.
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = or_pack_int (reply, (int) END_CALLBACK);
+  ptr = or_pack_int (ptr, ext_blk.get_size ());
+  ptr = or_pack_int (ptr, error);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				     ext_blk.get_ptr (), (int) ext_blk.get_size ());
 }

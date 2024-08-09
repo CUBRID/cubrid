@@ -559,6 +559,7 @@ unloaddb: データベースからスキーマとオブジェクトをアンロ�
   -C, --CS-mode               クライアントーサーバモードで実行\n\
       --datafile-per-class    格クラス別にオブジェクトファイル生成; デフォルト:　ひとつのオブジェクトファイルを生成\n\
       --split-schema-files    オブジェクトごとにスキーマ情報を分割し、各ファイルを生成します。 デフォルト: すべてのオブジェクトを含む 1 つのスキーマ ファイルを生成する\n\
+      --skip-index-detail     インデックスの作成時に、指定された WITH 句のオプションを出力しません。 デフォルト: 無効 \n\
       --as-dba                ログイン ユーザーが DBA グループのメンバーである場合、DBA と同じスキーマ ファイルを抽出します。\n
 
 
@@ -815,6 +816,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 出力ファイル「%1$s」が開けません。\n
+16 不明なクラス "%1$s"\n
 60 \
 diagdb: データベース情報をダンプ\n\
 使い方: %1$s diagdb [オプション] <データベース名>\n\
@@ -843,7 +845,8 @@ lockdb: データベースのロック情報を出力\n\
 使い方: %1$s lockdb [オプション] <データベース名>\n\
 \n\
 オプション:\n\
-  -o, --output-file=FILE       出力メッセージをセーブするファイル; デフォルト: なし\n
+  -o, --output-file=FILE       出力メッセージをセーブするファイル; デフォルト: なし\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -912,7 +915,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              クラスファイルがもう存在したらオーバーライトする。; デフォルト: オーバーライトしない\n
+  -y, --overwrite              クラスファイルがもう存在したらオーバーライトする。; デフォルト: オーバーライトしない\n\
+  -p, --package                Javaパッケージ名、指定されていない場合は空\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 出力ファイル「%1$s」が開けません。\n
@@ -923,7 +928,8 @@ plandump: クエリープラン表示と管理\n\
 \n\
 オプション:\n\
   -d, --drop                   サーバーキャッシュに存在するプランを全部削除\n\
-  -o, --output-file=FILE       出力メッセージを書き込むファイル; デフォルト: なし\n
+  -o, --output-file=FILE       出力メッセージを書き込むファイル; デフォルト: なし\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 出力ファイル「%1$s」が開けません。\n

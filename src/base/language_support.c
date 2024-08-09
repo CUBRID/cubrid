@@ -1099,8 +1099,7 @@ set_msg_lang_from_env (void)
       if (status != NO_ERROR)
 	{
 	  sprintf (err_msg, "invalid value '%s' for CUBRID_MSG_LANG", lang_Msg_loc_name);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
-	  strcpy (lang_Msg_loc_name, LANG_NAME_DEFAULT);
+	  strcpy (lang_Msg_loc_name, LANG_NAME_ENGLISH "." LANG_CHARSET_UTF8);
 	  return ER_LOC_INIT;
 	}
       else

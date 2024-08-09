@@ -152,7 +152,7 @@ $ csql help messages
    ;PRINT                       - komut buffer yazdır.\n\
    ;SHELL                       - dış kabuk çağırma.\n\
    ;CD                          - Geçerli çalışma dizini değiştirin.\n\
-   ;EXit                        - programdan çık.\n\
+   ;EXit (or Ctrl+d)            - programdan çık.\n\
 \n\
    ;CLear                       - komut buffer temizle.\n\
    ;EDIT   [format/fmt]         - komut arabelleği ile [biçimlendiriciden sonra] sistem düzenleyicisini çağırın.\n\

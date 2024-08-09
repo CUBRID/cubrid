@@ -193,7 +193,7 @@ static bool qo_is_equi_join_term (QO_TERM * term);
 static void add_hint (QO_ENV * env, PT_NODE * tree);
 static void add_using_index (QO_ENV * env, PT_NODE * using_index);
 static int get_opcode_rank (PT_OP_TYPE opcode);
-static int get_expr_fcode_rank (FUNC_TYPE fcode);
+static int get_expr_fcode_rank (FUNC_CODE fcode);
 static int get_operand_rank (PT_NODE * node);
 static int count_classes (PT_NODE * p);
 static QO_CLASS_INFO_ENTRY *grok_classes (QO_ENV * env, PT_NODE * dom_set, QO_CLASS_INFO_ENTRY * info);
@@ -437,7 +437,7 @@ qo_optimize_helper (QO_ENV * env)
   QO_TERM *term;
   QO_NODE *node, *p_node;
   BITSET nodeset;
-  int n;
+  int n, k;
 
   parser = QO_ENV_PARSER (env);
   tree = QO_ENV_PT_TREE (env);
@@ -517,12 +517,7 @@ qo_optimize_helper (QO_ENV * env)
 	      if (QO_TERM_CLASS (term) == QO_TC_JOIN)
 		{
 		  QO_ASSERT (env, QO_ON_COND_TERM (term));
-
-		  n = QO_TERM_LOCATION (term);
-		  if (QO_NODE_LOCATION (QO_TERM_HEAD (term)) == n - 1 && QO_NODE_LOCATION (QO_TERM_TAIL (term)) == n)
-		    {
-		      bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
-		    }
+		  bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
 		}
 
 	      conj->next = next;
@@ -540,19 +535,30 @@ qo_optimize_helper (QO_ENV * env)
       conj->next = next;
     }
 
+  /* check join-edge for ansi(explicit) join */
   for (n = 1; n < env->nnodes; n++)
     {
       node = QO_ENV_NODE (env, n);
-
-      /* check join-edge for explicit join */
-      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_NONE && QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_CROSS
-	  && !BITSET_MEMBER (nodeset, n))
+      /* In case of ansi join without join-edge, a dummy join term is added to maintain the outer join. */
+      if (QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (nodeset, n))
 	{
 	  p_node = QO_ENV_NODE (env, n - 1);
 	  (void) qo_add_dummy_join_term (env, p_node, node);
-	  /* Is it safe to pass node[n-1] as head node? Yes, because the sequence of QO_NODEs corresponds to the
-	   * sequence of PT_SPEC list
-	   */
+	}
+
+      /* set dep set for right outer join */
+      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER)
+	{
+	  /* In the case of right outer join, dependency is set on the entire preceding table connected by ANSI join. */
+	  k = n - 1;
+	  p_node = QO_ENV_NODE (env, k);
+	  QO_ADD_OUTER_DEP_SET (node, p_node);
+
+	  while (k > 0 && QO_NODE_IS_ANSI_JOIN (p_node))
+	    {
+	      p_node = QO_ENV_NODE (env, --k);
+	      QO_ADD_OUTER_DEP_SET (node, p_node);
+	    }
 	}
     }
 
@@ -1294,6 +1300,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
       if (PT_SPEC_IS_DERIVED (entity))
 	{
 	  XASL_NODE *xasl;
+	  DB_BIGINT limit_val = 0;
 
 	  switch (entity->info.spec.derived_table->node_type)
 	    {
@@ -1305,6 +1312,14 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 	      if (xasl)
 		{
 		  QO_NODE_NCARD (node) = (unsigned long) xasl->cardinality;
+
+		  /* check limit value */
+		  limit_val = pt_get_query_limit_from_query (env->parser, entity->info.spec.derived_table);
+		  if (limit_val > 0 && (unsigned long) limit_val < QO_NODE_NCARD (node))
+		    {
+		      QO_NODE_NCARD (node) = (unsigned long) limit_val;
+		    }
+
 		  QO_NODE_TCARD (node) =
 		    (unsigned long) ((QO_NODE_NCARD (node) * (double) xasl->projected_size) / (double) IO_PAGESIZE);
 		  if (QO_NODE_TCARD (node) == 0)
@@ -1920,11 +1935,9 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
     {
     case PT_JOIN_INNER:
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
       break;
     case PT_JOIN_LEFT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
-      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
       for (i = 0; i < env->nterms; i++)
 	{
 	  temp_term = QO_ENV_TERM (env, i);
@@ -1942,9 +1955,7 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
       break;
     case PT_JOIN_RIGHT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
-      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
       QO_ADD_OUTER_DEP_SET (on_node, p_node);
-      QO_ADD_RIGHT_TO_OUTER (on_node, p_node);
       break;
     case PT_JOIN_FULL_OUTER:	/* not used */
       QO_TERM_JOIN_TYPE (term) = JOIN_OUTER;
@@ -2195,20 +2206,14 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		  lhs_indexable = true;
 		}
 	    }
-	  else if (pt_is_multi_col_term (lhs_expr))
+	  else if (pt_is_multi_col_term (lhs_expr) && lhs_expr->flag.is_paren)
 	    {
-	      /* multi column case (attr,attr,...) is indexable for RANGE, EQ operation */
+	      /* multi column case (attr,attr,...) is indexable for RANGE operation */
 	      func_arg = lhs_expr->info.function.arg_list;
 	      op_type = pt_expr->info.expr.op;
 
 	      switch (op_type)
 		{
-		case PT_EQ:
-		  if (!PT_IS_CONST (rhs_expr) || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
-		    {
-		      lhs_indexable = false;
-		    }
-		  break;
 		case PT_RANGE:
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 		    {
@@ -2249,7 +2254,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 			}
 		      segs++;
 		    }
-		  if (!is_find_local_name)
+		  if (!is_find_local_name || segs <= 1)
 		    {
 		      lhs_indexable = false;
 		    }
@@ -2661,15 +2666,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
-		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
 		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
 		}
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_RIGHT_OUTER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
-		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
 		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
-		  QO_ADD_RIGHT_TO_OUTER (on_node, head_node);
 		}
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_FULL_OUTER)
 		{		/* not used */
@@ -2678,7 +2680,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
 		}
 	    }
 	  else
@@ -3416,7 +3417,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
  *   should be added here.
  */
 static int
-get_expr_fcode_rank (FUNC_TYPE fcode)
+get_expr_fcode_rank (FUNC_CODE fcode)
 {
   switch (fcode)
     {
@@ -4355,10 +4356,50 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 
   if (hint & PT_HINT_ORDERED)
     {
-      if (tree->info.query.q.select.ordered)
+      /* iterate over all nodes */
+      p_node = NULL;
+      for (i = 0; i < env->nnodes; i++)
 	{
-	  /* find last ordered node */
-	  for (arg = tree->info.query.q.select.ordered; arg->next; arg = arg->next)
+	  node = QO_ENV_NODE (env, i);
+	  if (p_node)
+	    {			/* skip out the first ordered node */
+	      bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
+	      bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
+	    }
+#if 1				/* TEMPORARY CODE: DO NOT REMOVE ME !!! */
+	  QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) | PT_HINT_ORDERED);
+#endif
+	  p_node = node;	/* save previous node */
+	}			/* for (i = ... ) */
+    }
+
+  if (!(hint & PT_HINT_ORDERED) && (hint & PT_HINT_LEADING))
+    {
+      /* check if spec_id of LEADING match spec_id of tables. */
+      bool found = true;
+      for (arg = tree->info.query.q.select.leading; arg; arg = arg->next)
+	{
+	  for (i = 0; i < env->nnodes; i++)
+	    {
+	      node = QO_ENV_NODE (env, i);
+	      spec = QO_NODE_ENTITY_SPEC (node);
+	      if (spec->info.spec.id == arg->info.name.spec_id)
+		{
+		  break;
+		}
+	    }
+	  if (i == env->nnodes)
+	    {
+	      /* not found */
+	      found = false;
+	      break;
+	    }
+	}
+
+      if (found && tree->info.query.q.select.leading)
+	{
+	  /* find last leading node */
+	  for (arg = tree->info.query.q.select.leading; arg->next; arg = arg->next)
 	    {
 	      ;			/* nop */
 	    }
@@ -4380,12 +4421,12 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 	      spec = QO_NODE_ENTITY_SPEC (node);
 	      /* check for arg list */
 	      p_arg = NULL;
-	      for (arg = tree->info.query.q.select.ordered, j = 0; arg; arg = arg->next, j++)
+	      for (arg = tree->info.query.q.select.leading, j = 0; arg; arg = arg->next, j++)
 		{
 		  if (spec->info.spec.id == arg->info.name.spec_id)
 		    {
 		      if (p_arg)
-			{	/* skip out the first ordered spec */
+			{	/* skip out the first leading spec */
 			  /* find prev node */
 			  for (k = 0; k < env->nnodes; k++)
 			    {
@@ -4399,13 +4440,8 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 				}
 			    }
 			}
-
-#if 1				/* TEMPORARY CODE: DO NOT REMOVE ME !!! */
-		      QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) | PT_HINT_ORDERED);
-#endif
 		      break;	/* exit loop for arg traverse */
 		    }
-
 		  p_arg = arg;	/* save previous arg */
 		}
 
@@ -4415,26 +4451,6 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 		  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), last_ordered_idx);
 		}
 
-	    }			/* for (i = ... ) */
-
-	}
-      else
-	{			/* FULLY HINTED */
-	  /* iterate over all nodes */
-	  p_node = NULL;
-	  for (i = 0; i < env->nnodes; i++)
-	    {
-	      node = QO_ENV_NODE (env, i);
-	      if (p_node)
-		{		/* skip out the first ordered node */
-		  bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
-		}
-#if 1				/* TEMPORARY CODE: DO NOT REMOVE ME !!! */
-	      QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) | PT_HINT_ORDERED);
-#endif
-
-	      p_node = node;	/* save previous node */
 	    }			/* for (i = ... ) */
 	}
     }
@@ -5015,6 +5031,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
   cum_statsp->key_type = NULL;
   cum_statsp->pkeys_size = 0;
   cum_statsp->pkeys = NULL;
+  attr_infop->ndv = 0;
 
   /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
   for (i = 0; i < n; class_info_entryp++, i++)
@@ -5047,6 +5064,13 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	      && !intl_identifier_casecmp (expr_str, consp->func_index_info->expr_str))
 	    {
 	      attr_id = consp->attributes[0]->id;
+
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
+		{
+		  // If a function index is defined in the first position, the second position is the actual column.
+		  // ex) create index idx on tbl(abs(val));
+		  attr_id = consp->attributes[1]->id;
+		}
 
 	      for (j = 0; j < n_attrs; j++, attr_statsp++)
 		{
@@ -5187,6 +5211,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
       cum_statsp->key_type = NULL;
       cum_statsp->pkeys_size = 0;
       cum_statsp->pkeys = NULL;
+      attr_infop->ndv = 0;
 
       return attr_infop;
     }
@@ -5200,6 +5225,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   cum_statsp->key_type = NULL;
   cum_statsp->pkeys_size = 0;
   cum_statsp->pkeys = NULL;
+  attr_infop->ndv = 0;
 
   /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
   for (i = 0; i < n; class_info_entryp++, i++)
@@ -5243,6 +5269,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	  cum_statsp->is_indexed = false;
 	  continue;
 	}
+
+      /* set Number of Distinct Values */
+      attr_infop->ndv += attr_statsp->ndv;
 
       if (cum_statsp->valid_limits == false)
 	{
@@ -5498,6 +5527,10 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    {
 	      /* function index with the function expression as the first attribute */
 	      attr_id = index_entryp->constraints->attributes[0]->id;
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
+		{
+		  attr_id = index_entryp->constraints->attributes[1]->id;
+		}
 	    }
 
 	  for (k = 0; k < n_attrs; k++, attr_statsp++)
@@ -5827,7 +5860,8 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   assert (query->node_type == PT_SELECT);
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
       || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA) || query->flag.is_system_generated_stmt
-      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
+      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT)
+      || (query->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN))
     {
       env->plan_dump_enabled = false;
     }
@@ -6981,21 +7015,9 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_
     {
       return 0;			/* disable loose index scan */
     }
-  else if ((tree->info.query.q.select.hint & PT_HINT_INDEX_LS) && (QO_NODE_HINT (nodep) & PT_HINT_INDEX_LS))
-    {				/* enable loose index scan */
-      if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
-	  || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
-	{			/* skip scan is disabled */
-	  ;			/* go ahead */
-	}
-      else
-	{			/* skip scan is enabled */
-	  return 0;
-	}
-    }
-  else
+  else if (!(tree->info.query.q.select.hint & PT_HINT_INDEX_LS) || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_LS))
     {
-      return 0;			/* no hint */
+      return 0;			/* disable loose index scan */
     }
 
   if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_DISABLE_LOOSE_SCAN))
@@ -7101,8 +7123,8 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
     }
 
   /* check hint */
-  if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
-      || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
+  if ((tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS)
+      || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS) || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
     {
       return false;
     }
@@ -7384,13 +7406,16 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	  nseg_idx = 0;
 
 	  /* count the number of columns on this constraint */
-	  for (col_num = 0; consp->attributes[col_num]; col_num++)
-	    {
-	      ;
-	    }
 	  if (consp->func_index_info)
 	    {
 	      col_num = consp->func_index_info->attr_index_start + 1;
+	    }
+	  else
+	    {
+	      for (col_num = 0; consp->attributes[col_num]; col_num++)
+		{
+		  ;
+		}
 	    }
 
 	  if (col_num <= NELEMENTS)
@@ -7496,16 +7521,16 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
 	      index_entryp->cover_segments = qo_is_coverage_index (env, nodep, index_entryp);
 
-	      index_entryp->is_iss_candidate = qo_is_iss_index (env, nodep, index_entryp);
+	      index_entryp->ils_prefix_len = qo_get_ils_prefix_length (env, nodep, index_entryp);
 
-	      /* disable loose scan if skip scan is possible */
-	      if (index_entryp->is_iss_candidate == true)
+	      /* disable skip scan if loose scan is possible */
+	      if (index_entryp->ils_prefix_len > 0)
 		{
-		  index_entryp->ils_prefix_len = 0;
+		  index_entryp->is_iss_candidate = false;
 		}
 	      else
 		{
-		  index_entryp->ils_prefix_len = qo_get_ils_prefix_length (env, nodep, index_entryp);
+		  index_entryp->is_iss_candidate = qo_is_iss_index (env, nodep, index_entryp);
 		}
 
 	      index_entryp->statistics_attribute_name = NULL;
@@ -7637,7 +7662,8 @@ qo_discover_indexes (QO_ENV * env)
 	   * sequential scan is needed).
 	   */
 	  if (!PT_IS_SPEC_FLAG_SET (QO_NODE_ENTITY_SPEC (nodep),
-				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
+				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN |
+				     PT_SPEC_FLAG_SAMPLING_SCAN)))
 	    {
 	      qo_find_node_indexes (env, nodep);
 	      if (0 < QO_NODE_INFO_N (nodep) && QO_NODE_INDEXES (nodep) != NULL)
@@ -8188,7 +8214,6 @@ qo_node_clear (QO_ENV * env, int idx)
   bitset_init (&(QO_NODE_SUBQUERIES (node)), env);
   bitset_init (&(QO_NODE_SEGS (node)), env);
   bitset_init (&(QO_NODE_OUTER_DEP_SET (node)), env);
-  bitset_init (&(QO_NODE_RIGHT_DEP_SET (node)), env);
 
   QO_NODE_HINT (node) = PT_HINT_NONE;
 }
@@ -8207,7 +8232,6 @@ qo_node_free (QO_NODE * node)
   bitset_delset (&(QO_NODE_SEGS (node)));
   bitset_delset (&(QO_NODE_SUBQUERIES (node)));
   bitset_delset (&(QO_NODE_OUTER_DEP_SET (node)));
-  bitset_delset (&(QO_NODE_RIGHT_DEP_SET (node)));
   qo_free_class_info (QO_NODE_ENV (node), QO_NODE_INFO (node));
   if (QO_NODE_INDEXES (node))
     {
@@ -8326,12 +8350,6 @@ qo_node_dump (QO_NODE * node, FILE * f)
     {
       fputs (" (dep-set ", f);
       bitset_print (&(QO_NODE_DEP_SET (node)), f);
-      fputs (")", f);
-    }
-  if (!bitset_is_empty (&(QO_NODE_RIGHT_DEP_SET (node))))
-    {
-      fputs (" (right-dep-set ", f);
-      bitset_print (&(QO_NODE_RIGHT_DEP_SET (node)), f);
       fputs (")", f);
     }
 
@@ -8560,6 +8578,7 @@ qo_term_clear (QO_ENV * env, int idx)
   QO_TERM_JOIN_TYPE (term) = NO_JOIN;
   QO_TERM_MULTI_COL_SEGS (term) = NULL;
   QO_TERM_MULTI_COL_CNT (term) = 0;
+  QO_TERM_PRED_ORDER (term) = 0;
 
   bitset_init (&(QO_TERM_NODES (term)), env);
   bitset_init (&(QO_TERM_SEGS (term)), env);
@@ -8609,7 +8628,7 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       goto abandon_stop_limit;
     }
 
-  if (pt_get_query_limit_value (QO_ENV_PARSER (env), QO_ENV_PT_TREE (env), &QO_ENV_LIMIT_VALUE (env)) != NO_ERROR)
+  if (pt_get_query_limit_value (QO_ENV_PARSER (env), QO_ENV_PT_TREE (env), &QO_ENV_LIMIT_VALUE (env), true) != NO_ERROR)
     {
       /* unusable limit */
       goto abandon_stop_limit;
@@ -9037,7 +9056,7 @@ qo_term_dump (QO_TERM * term, FILE * f)
     {
       fprintf (f, " (ord %d)", QO_TERM_PRED_ORDER (term));
     }
-  fprintf (f, " (sel %g)", QO_TERM_SELECTIVITY (term));
+  fprintf (f, " (sel %G)", QO_TERM_SELECTIVITY (term));
 
   if (QO_TERM_RANK (term) > 1)
     {

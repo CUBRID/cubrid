@@ -559,6 +559,7 @@ geçerli seçenekler:\n\
   -C, --CS-mode               istemci-sunucu modunda yürütme\n\
       --datafile-per-class    her sınıf için bir nesne dosyası oluşturmak; varsayılan: devre dışı\n\
       --split-schema-files    şema bilgilerini nesneye göre ayırın ve her dosyayı oluşturun; Varsayılan: tüm nesnelerle bir şema dosyası oluştur\n\
+      --skip-index-detail     Dizini oluştururken belirtilen WITH yan tümcesi seçeneklerini yazdırmayın; varsayılan: devre dışı \n\
       --as-dba                Oturum açan kullanıcı DBA grubunun bir üyesiyse, DBA ile aynı şema dosyasını ayıklayın.\n
 
 
@@ -815,6 +816,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Çıktı dosyası '%1$s' açılmaadı \n
+16 Bilinmeyen sınıf "%1$s"\n
 60 \
 diagdb: Bir veritabanı dökümü.\n\
 kullanım: %1$s diagdb [SEÇENEK] database-name\n\
@@ -843,7 +845,8 @@ lockdb: veritabanının kilit durumunu görüntüler.\n\
 kullanım: %1$s lockdb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
-  -o, --output-file=FILE      FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n
+  -o, --output-file=FILE      FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -912,7 +915,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              varsa sınıf dosyanın üzerine yazmak, varsayılan yok\n
+  -y, --overwrite              varsa sınıf dosyanın üzerine yazmak, varsayılan yok\n\
+  -p, --package                Java paket adı, belirtilmemişse boş\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Çıktı dosyası '%1$s' açılamıyor \n
@@ -923,7 +928,8 @@ kullanım: %1$s plandump [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -d, --drop                   sunucunun önbelleğine tüm planları bırakın\n\
-  -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n
+  -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Çıktı dosyası açılamıyor'%1$s'\n

@@ -126,6 +126,7 @@ struct vacuum_worker
   LOG_PAGEID prefetch_last_pageid;	/* last prefetch log pageid */
 
   bool allocated_resources;
+  int idx;			// -1 for vacuum_master;  Otherwise, the sequence number of vacuum_worker
 };
 
 #define VACUUM_MAX_WORKER_COUNT	  50

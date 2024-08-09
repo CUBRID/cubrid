@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Veritabanı "%1$s" bilinmiyor veya dosya "databases.txt" erişilemiyor.
 117 Veritabanı için mutlak Pathadı çok uzun. Path in birleştirilmiş toplam uzunluğu "%1$s" artı adı "%2$s" is %3$d; Kombine uzunluğundan daha az olması gerekir %4$d.
 118 Geçerli çalışma dizinini bulamadı.
-119 /etc/hosts içinde ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
+119 "%2$s" içinde ana bilgisayar adı ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
 120 Yoğunlukların maksimum sayısı (%1$d) değerini aştı.
 121 "%1$s" kaldırmak için çalışılıyor veritabanından kalıcı bir yoğunluk.
 122 Sistem mesajı kataloguna erişilemiyor.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Ana sunucuya bir kanal kurulamadı.
 348 Servis veya port tanımlayıcı da belirtmeniz gerekir.
 349 TCP için bilinmeyen hizmet: %1$s.
-350 /etc/hosts içinde ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
+350 "%2$s" içinde ana bilgisayar adı ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
 351 TCP soketi oluşturulamıyor.
 352 tcp_open: Ayrılmış bir TCP bağlantı noktası alınamıyor.
 353 Ana sunucuya bağlantı yapamazsınız "%1$s".
@@ -683,8 +683,8 @@ $ LOADDB
 613 Sınıf "%3$s" içinde, "%1$s" yerel bileşeni "%2$s" sınıf için bir takma ad yerine hizmet veremez. Etki alanları uyumsuzdur.
 614 Etkin günlük arşiv sayısı %1$d in max istenilen sayısı aşıldı.
 615 Winsock arayüzü ile temas kurulamaz. Winsock hata: %1$d.
-616 Winsock arabirimini kullanarak makine adını belirleyemiyor. Winsock hata: %1$d.
-617 Winsock arabirimini kullanarak makine kimliği belirlenemiyor. Bu makine için ana bilgisayar adı tablo girdisi olmalıdır. Winsock hata: %1$d.
+616 "%2$s" içinde ana bilgisayar adı ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adının olup olmadığını kontrol edin.
+617 "%2$s" içinde ana bilgisayar adı ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adının olup olmadığını kontrol edin.
 618 Öznitelik güncelleştirilebilir değil.
 619 Kötü kaynak karakter kümesi.
 620 Kötü hedef karakter kümesi.
@@ -904,7 +904,7 @@ $ LOADDB
 834 Kaynak dizesi arasında bazı uyumsuzluklar "%1$s" ve verilen "%2$s" biçim dizesi vardır to_number() .
 835 Tanımlanmamış istatistikler öğesi.
 836 SAYFASINDA LATCH (%1$d|%2$d) ZAMAN AŞIMI.
-837 Veritabanı nesneleri (sınıf / tetik / seri / sunucu / synonym vb) sahibi olan kullanıcılara aittir iptal edemezsiniz..
+837 Veritabanı nesneleri sahibi olan kullanıcılara aittir iptal edemezsiniz.
 838 Eşzamanlı olarak taranan indeksi %1$d den daha fazla açılamaz .
 839 "%1$s": Bilinmeyen sistem parametresi veya bozuk bir değer.
 840 Sistem parametresi değiştiremezsiniz "%1$s".
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 Bir hatadan sonra INDEX yüklemesi iptal edildi.
 1244 SHARED niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
 1245 CLASS niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
-1246 /etc/hosts içindeki ("%1$s") adresi ve kurallı adı alınamıyor. Lütfen dosyanın iznini veya ana bilgisayar adı olup olmadığını kontrol edin.
+1246 "%2$s" içindeki ana makine adı ("%1$s") adresi ve kurallı adı alınamıyor. Lütfen dosyanın iznini veya ana bilgisayar adı olup olmadığını kontrol edin.
 1247 Belirtilen zaman (%1$s) Belirtilen yedekleme süresi (%2$s) dan sonra olmalıdır.
 1248 Geçersiz Anahtar dosyası: %1$s
 1249 Anahtar bulunamıyor (dizin: %1$d).
@@ -1437,16 +1437,16 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s", "%4$s" dosyasının %3$d satırında geçersiz biçim.
-1356 "%1$s" ana bilgisayar adı çok uzun, "%3$s" dosyasının %2$d satırında 256'dan küçük veya buna eşit olmalıdır.
-1357 "%1$s" ana bilgisayar adı zaten var, bir ana bilgisayar adı "%3$s" dosyasının %2$d satırındaki diğer IP adresleriyle çoğaltılamaz.
-1358 Hem IP adresi hem de ana bilgisayar adı, "%2$s" dosyasının %1$d satırına tamamen yazılmalıdır.
-1359 cubrid_hosts.conf dosyasında "%1$s" aranamıyor.
-1360 Kullanıcı tanımlı ana bilgisayar kullanılırken bir hata oluştu.
 
-1361 "%1$s" dosyası bulunamadı.
+1355 "%1$s" dosyası bulunamadı.
+1356 DBLink sorgusunda ipucu yok veya ifade türü yanlış. %1$s
+1357 SQL dizesini geniş dizeye dönüştürme işlemi başarısız oldu.
+1358 Etkilenen satır sayısı bilinmiyor.
 
-1362 Son Hata
+1359 Java VM crashed: %1$s
+1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+
+1361 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1508,8 +1508,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 31 geçersiz create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 geçersiz create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 geçersiz create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 geçersiz create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 geçersiz create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+34 geçersiz create procedure\n  CREATE [OR REPLACE] PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {procedure_source|procedure_spec}
+35 geçersiz create function\n  CREATE [OR REPLACE] FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {function_source|function_spec}
 36 geçersiz groups\n  groups spec: GROUPS identifier {, identifier}*
 37 geçersiz members\n  member spec: MEMBERS identifier {, identifier}*
 38 geçersiz password\n  password spec: PASSWORD 'STRING'
@@ -1612,6 +1612,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 ALTER SYNONYM için herhangi bir seçenek belirtilmedi.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
@@ -1930,6 +1931,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
+317 Identifiers cannot be in a LIMIT clause.
+318 Only DBA and DBA group members can change the SERIAL OWNER.
+319 Unsupported argument type '%1$s' of the stored procedure
+320 Unsupported return type '%1$s' of the stored procedure
+321 %TYPE type specification is allowed only for PL/CSQL
+322 Table column '%1$s.%2$s' has not been defined
+323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

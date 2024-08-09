@@ -213,7 +213,7 @@ qmgr_get_page_type (PAGE_PTR page_p, QMGR_TEMP_FILE * temp_file_p)
   return QMGR_TEMP_FILE_PAGE;
 }
 
-static bool
+bool
 qmgr_is_allowed_result_cache (QUERY_FLAG flag)
 {
   static int query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
@@ -2054,6 +2054,19 @@ xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p)
 {
   xcache_drop_all (thread_p);
   fpcache_drop_all (thread_p);
+  return NO_ERROR;
+}
+
+/*
+ * xqmgr_drop_query_plans_by_sha1 () - Drop all the stored query plans
+ *   return: NO_ERROR or ER_FAILED
+ *
+ * Note: Clear sha1 XASL/filter predicate cache entries out upon request of the client.
+ */
+int
+xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, char *sha1)
+{
+  xcache_remove_by_sha1 (thread_p, sha1);
   return NO_ERROR;
 }
 

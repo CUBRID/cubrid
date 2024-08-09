@@ -445,7 +445,9 @@ metadata_of_index_capacity (SHOW_ONLY_ALL flag)
     {"Btid", "varchar(64)"},
     {"Num_distinct_key", "int"},
     {"Total_value", "bigint"},
+    {"Deduplicate_distinct_key", "int"},	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
     {"Avg_num_value_per_key", "int"},
+    {"Avg_num_value_per_deduplicate_key", "int"},	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
     {"Num_leaf_page", "int"},
     {"Num_non_leaf_page", "int"},
     {"Num_ovf_page", "int"},

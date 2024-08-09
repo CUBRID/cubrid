@@ -560,6 +560,7 @@ valid options:\n\
   -C, --CS-mode               client-server mode execution\n\
       --datafile-per-class    create a object file for each class; default: disabled\n\
       --split-schema-files    Split schema information by object and generate each file; Default: generate one schema file with all objects\n\
+      --skip-index-detail     Do not print the specified WITH clause options when creating the index; default: disabled\n\
       --as-dba                If the login user is a member of the DBA group, extract the same schema file as the DBA.\n
 
 
@@ -817,6 +818,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Couldn't open output file '%1$s'\n
+16 Unknown class "%1$s"\n
 60 \
 diagdb: Dump a database.\n\
 usage: %1$s diagdb [OPTION] database-name\n\
@@ -845,7 +847,8 @@ lockdb: Display lock-status of the database.\n\
 usage: %1$s lockdb [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -914,7 +917,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              overwrite class file if exist, default no\n
+  -y, --overwrite              overwrite class file if exist, default no\n\
+  -p, --package                java package name, empty if not specified\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Cannot open output file '%1$s'\n
@@ -925,7 +930,8 @@ usage: %1$s plandump [OPTION] database-name\n\
 \n\
 valid options:\n\
   -d, --drop                   drop all plans in the server's cache\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Cannot open output file '%1$s'\n

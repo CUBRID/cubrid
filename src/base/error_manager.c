@@ -1600,7 +1600,6 @@ er_log (int err_id)
   int line_no;
   const char *file_name;
   const char *msg;
-  off_t position;
   time_t er_time;
   struct tm er_tm;
   struct tm *er_tm_p = &er_tm;
@@ -1748,17 +1747,17 @@ er_log (int err_id)
 
   fprintf (*log_fh, er_Cached_msg[ER_LOG_MSG_WRAPPER_D], time_array, ER_SEVERITY_STRING (severity), file_name, line_no,
 	   ER_ERROR_WARNING_STRING (severity), err_id, tran_index, more_info_p, msg);
-  fflush (*log_fh);
 
   /* Flush the message so it is printed immediately */
-  (void) fflush (*log_fh);
-
-  if (*log_fh != stderr || *log_fh != stdout)
+  if (*log_fh != stderr && *log_fh != stdout)
     {
-      position = ftell (*log_fh);
-      (void) fprintf (*log_fh, "%s", er_Cached_msg[ER_LOG_LAST_MSG]);
+      int wsz = fprintf (*log_fh, "%s", er_Cached_msg[ER_LOG_LAST_MSG]);
       (void) fflush (*log_fh);
-      (void) fseek (*log_fh, position, SEEK_SET);
+      (void) fseek (*log_fh, (-wsz), SEEK_CUR);
+    }
+  else
+    {
+      (void) fflush (*log_fh);
     }
 
   /* Do we want to exit ? */

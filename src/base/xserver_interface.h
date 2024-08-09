@@ -169,11 +169,13 @@ extern int xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isola
 extern LOG_LSA *log_get_final_restored_lsa (void);
 extern float log_get_db_compatibility (void);
 extern int log_set_no_logging (void);
+extern bool log_is_no_logging (void);
 extern bool logtb_has_updated (THREAD_ENTRY * thread_p);
 
 
 extern BTID *xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id,
-			       int unique_pk, long long num_oids, long long num_nulls, long long num_keys);
+			       int unique_pk, long long num_oids, long long num_nulls, long long num_keys,
+			       int deduplicate_key_pos);
 extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
 				OID * class_oids, int n_classes, int n_attrs, int *attr_ids, int *attrs_prefix_length,
 				HFID * hfids, int unique_pk, int not_null_flag, OID * fk_refcls_oid,
@@ -199,8 +201,8 @@ extern int xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid);
 
 extern char *xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id, unsigned int timestamp,
 						int *length);
-extern int xstats_update_statistics (THREAD_ENTRY * thread_p, OID * classoid, bool with_fullscan);
-extern int xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan);
+extern int xstats_update_statistics (THREAD_ENTRY * thread_p, OID * classoid, bool with_fullscan,
+				     CLASS_ATTR_NDV * class_attr_ndv);
 
 extern DKNPAGES xdisk_get_total_numpages (THREAD_ENTRY * thread_p, VOLID volid);
 extern DKNPAGES xdisk_get_free_numpages (THREAD_ENTRY * thread_p, VOLID volid);
@@ -228,6 +230,7 @@ extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, char
 						       QUERY_FLAG * flag, int query_timeout);
 extern int xqmgr_end_query (THREAD_ENTRY * thrd, QUERY_ID query_id);
 extern int xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p);
+extern int xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, char *sha1);
 extern void xqmgr_dump_query_plans (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void xqmgr_dump_query_cache (THREAD_ENTRY * thread_p, FILE * outfp);
 
@@ -241,7 +244,7 @@ extern int xcatalog_check_rep_dir (THREAD_ENTRY * thread_p, OID * class_id, OID 
 
 extern int xacl_reload (THREAD_ENTRY * thread_p);
 extern void xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp);
-extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp);
+extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention);
 
 extern int xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_p,
 				       int include_query_exec_info);

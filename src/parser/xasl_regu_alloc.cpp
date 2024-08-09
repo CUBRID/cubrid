@@ -281,7 +281,7 @@ void
 regu_init (function_node &fnode)
 {
   fnode.value = NULL;
-  fnode.ftype = (FUNC_TYPE) 0;
+  fnode.ftype = (FUNC_CODE) 0;
   fnode.operand = NULL;
   fnode.tmp_obj = NULL;
 
@@ -295,7 +295,7 @@ regu_init (cubxasl::aggregate_list_node &agg)
   agg.accumulator.value = NULL;
   agg.accumulator.value2 = NULL;
   agg.accumulator.curr_cnt = 0;
-  agg.function = (FUNC_TYPE) 0;
+  agg.function = (FUNC_CODE) 0;
   agg.option = (QUERY_OPTIONS) 0;
   agg.operands = NULL;
   agg.list_id = NULL;
@@ -319,7 +319,7 @@ regu_init (cubxasl::analytic_list_node &ana)
   ana.curr_cnt = 0;
   ana.sort_prefix_size = 0;
   ana.sort_list_size = 0;
-  ana.function = (FUNC_TYPE) 0;
+  ana.function = (FUNC_CODE) 0;
   regu_init (ana.operand);
   ana.opr_dbtype = DB_TYPE_NULL;
   ana.flag = 0;

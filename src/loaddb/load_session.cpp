@@ -504,30 +504,6 @@ namespace cubload
     while (!atomic_val.compare_exchange_strong (curr_max, new_max));
   }
 
-  void
-  session::update_class_statistics (cubthread::entry &thread_ref)
-  {
-    if (m_args.disable_statistics || m_args.syntax_check)
-      {
-	return;
-      }
-
-    std::vector<const class_entry *> class_entries;
-    m_class_registry.get_all_class_entries (class_entries);
-
-    append_log_msg (LOADDB_MSG_UPDATING_STATISTICS);
-
-    for (const class_entry *class_entry : class_entries)
-      {
-	if (!class_entry->is_ignored ())
-	  {
-	    OID *class_oid = const_cast<OID *> (&class_entry->get_class_oid ());
-	    xstats_update_statistics (&thread_ref, class_oid, STATS_WITH_SAMPLING);
-	    append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_entry->get_class_name ());
-	  }
-      }
-  }
-
   class_registry &
   session::get_class_registry ()
   {

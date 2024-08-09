@@ -559,6 +559,7 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
       --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
       --split-schema-files    스키마 정보를 오브젝트별로 분리하여 각각의 파일로 생성; 기본값: 모든 오브젝트가 포함된 한 개의 스키마 파일 생성\n\
+      --skip-index-detail     인덱스를 생성할 때 지정된 WITH 절 옵션을 인쇄하지 않음; 기본값: 사용 안 함\n\
       --as-dba                로그인 사용자가 DBA 그룹의 구성원인 경우 DBA와 동일한 스키마 파일을 추출합니다.\n
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
@@ -813,6 +814,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 출력 파일 '%1$s'을 열 수 없습니다.\n
+16 알 수 없는 클래스 "%1$s"\n
 60 \
 diagdb: 데이터베이스 정보 덤프\n\
 사용법: %1$s diagdb [옵션] <데이터베이스 이름>\n\
@@ -841,7 +843,8 @@ lockdb: 데이터베이스의 lock 정보 출력\n\
 사용법: %1$s lockdb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -910,7 +913,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음\n
+  -y, --overwrite              클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음\n\
+  -p, --package                Java 패키지 이름; 지정하지 않으면 빈 문자열\n\
+  -j, --jni                    JNI 사용을 위해 정적 로딩 영역에 클래스 또는 Jar를 추가함\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 '%1$s'을 열 수 없습니다\n
@@ -921,7 +926,8 @@ plandump: 쿼리 플랜 표시 및 관리\n\
 \n\
 옵션:\n\
   -d, --drop                   서버 케시에 있는 모든 플랜 삭제\n\
-  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
+  -s, --sha1=SHA1              서버 케시에 있는 sha1 플랜 삭제; 기본값: 없음\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 출력 파일 '%1$s'을 열 수 없습니다.\n

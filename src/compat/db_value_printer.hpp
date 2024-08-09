@@ -48,6 +48,7 @@ class db_value_printer
       , m_padding (padding)
     {}
 
+    void describe_type  (const db_value *value);
     void describe_money (const db_monetary *value); //former describe_money(parser...)
     void describe_value (const db_value *value);    //former describe_value(parser...)
     void describe_data (const db_value *value);     //former describe_data(parser...)
@@ -61,5 +62,8 @@ class db_value_printer
 void db_fprint_value (FILE *fp, const db_value *value);
 void db_print_value (print_output &output_ctx, const db_value *value);
 void db_sprint_value (const db_value *value, string_buffer &sb);
+#ifndef NDEBUG
+void db_value_print_console (const db_value *value, bool add_newline, char *fmt, ...);
+#endif
 
 #endif //_DB_VALUE_PRINTER_HPP_

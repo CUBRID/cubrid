@@ -40,6 +40,9 @@
 #include "porting.h"
 #include "error_code.h"
 
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
+
 #define STAT_MAX_DIFF_TIME              (60000)	/* 60 * 1000 : 10 min */
 #define SORT_BUF_MAX                    (4096)
 #define BIND_STR_BUF_SIZE               (4096)
@@ -146,6 +149,7 @@ static int break_time = 0;
 static double print_result_diff_time_lower = 0;
 
 static FILE *br_tmpfp = NULL;
+static char br_tmp_filename[PATH_MAX];
 
 static unsigned int num_slower_queries[STAT_MAX_DIFF_TIME] = { 0 };
 static unsigned int num_faster_queries[STAT_MAX_DIFF_TIME] = { 0 };
@@ -1198,10 +1202,9 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf
   int res = 0;
   char *endp;
   char *read_buf;
-  FILE *next_tmp_fp;
   T_SQL_RESULT result;
 
-  next_tmp_fp = tmpfile ();
+  auto[filename, next_tmp_fp] = filesys::open_temp_file ("br_", "w+b");
   if (next_tmp_fp == NULL)
     {
       fprintf (stderr, "cannot open temp file\n");
@@ -1213,6 +1216,7 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf
     {
       fprintf (stderr, "memory allocation failed\n");
       fclose (next_tmp_fp);
+      unlink (filename.c_str ());
       return ER_FAILED;
     }
 
@@ -1240,6 +1244,7 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf
 	{
 	  fprintf (stderr, "memory allocation failed\n");
 	  fclose (next_tmp_fp);
+	  unlink (filename.c_str ());
 	  free_and_init (read_buf);
 	  return ER_FAILED;
 	}
@@ -1251,11 +1256,13 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf
     }
 
   fclose (br_tmpfp);
+  unlink (br_tmp_filename);
 
   fflush (next_tmp_fp);
 
   /* save next temp file pointer in global variable */
   br_tmpfp = next_tmp_fp;
+  strcpy (br_tmp_filename, filename.c_str ());
 
   free_and_init (read_buf);
   return NO_ERROR;
@@ -1277,7 +1284,6 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, 
   int res = 0;
   char *endp;
   char *read_buf = NULL;
-  FILE *next_tmp_fp;
   T_SQL_RESULT *result;
 
   if (num_query <= 0)
@@ -1285,7 +1291,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, 
       return NO_ERROR;
     }
 
-  next_tmp_fp = tmpfile ();
+  auto[filename, next_tmp_fp] = filesys::open_temp_file ("br_", "w+b");
   if (next_tmp_fp == NULL)
     {
       fprintf (stderr, "cannot open temp file\n");
@@ -1297,6 +1303,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, 
     {
       fprintf (stderr, "memory allocation failed\n");
       fclose (next_tmp_fp);
+      unlink (filename.c_str ());
       return ER_FAILED;
     }
   memset (result, '\0', sizeof (T_SQL_RESULT) * num_query);
@@ -1359,6 +1366,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, 
   free_and_init (result);
 
   fclose (br_tmpfp);
+  unlink (br_tmp_filename);
 
   fflush (outfp);
   fflush (next_tmp_fp);
@@ -1379,6 +1387,7 @@ error:
       free_and_init (result[i].sql_info);
     }
   fclose (next_tmp_fp);
+  unlink (filename.c_str ());
 
   return ER_FAILED;
 }
@@ -1562,6 +1571,12 @@ date_format_err:
  *   cci_errfp(out):
  *   skip_sqlfp(out):
  */
+
+#define PROC_ERR(code){ \
+        close_file (*infp, *outfp, *cci_errfp, *skip_sqlfp); \
+        return code; \
+}
+
 static int
 open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp, FILE ** cci_errfp, FILE ** skip_sqlfp)
 {
@@ -1576,35 +1591,36 @@ open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp, FIL
   if (*outfp == NULL)
     {
       fprintf (stderr, "cannot open output file '%s'\n", outfilename);
-      goto error;
+      PROC_ERR (ER_FAILED);
     }
 
-  br_tmpfp = tmpfile ();
+  auto[filename, fileptr] = filesys::open_temp_file ("br_", "w+b");
+
+  br_tmpfp = fileptr;
+
   if (br_tmpfp == NULL)
     {
       fprintf (stderr, "cannot open temp file\n");
-      goto error;
+      PROC_ERR (ER_FAILED);
     }
+  strcpy (br_tmp_filename, filename.c_str ());
 
   *cci_errfp = fopen (CCI_ERR_FILE_NAME, "w");
   if (*cci_errfp == NULL)
     {
       fprintf (stderr, "cannot open output file '%s'\n", CCI_ERR_FILE_NAME);
-      goto error;
+      PROC_ERR (ER_FAILED);
     }
 
   *skip_sqlfp = fopen (PASS_SQL_FILE_NAME, "w");
   if (*skip_sqlfp == NULL)
     {
       fprintf (stderr, "cannot open output file '%s'\n", PASS_SQL_FILE_NAME);
-      goto error;
+      PROC_ERR (ER_FAILED);
     }
 
   return NO_ERROR;
 
-error:
-  close_file (*infp, *outfp, *cci_errfp, *skip_sqlfp);
-  return ER_FAILED;
 }
 
 /*

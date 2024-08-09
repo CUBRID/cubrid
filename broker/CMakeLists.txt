@@ -256,6 +256,7 @@ set(CUB_CAS_SOURCES
   ${BROKER_DIR}/cas_ssl.c
   ${BROKER_DIR}/cas_util.c
   ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/hide_password.cpp
   )
 
 if(UNIX)
@@ -320,6 +321,7 @@ set(CUB_CAS_CGW_SOURCES
   ${BROKER_DIR}/cas_cgw.c
   ${BROKER_DIR}/cas_util.c
   ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/hide_password.cpp
   )
 
 if(UNIX)
@@ -522,6 +524,7 @@ if(WITH_CCI)
     ${BROKER_DIR}/broker_log_replay.c
     ${BROKER_DIR}/broker_log_util.c
     ${BROKER_DIR}/log_top_string.c
+    ${BASE_DIR}/filesys_temp.cpp
     )
   SET_SOURCE_FILES_PROPERTIES(
       ${CUBRID_REPLAY_SOURCES}

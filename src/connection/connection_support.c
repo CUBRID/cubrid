@@ -2439,7 +2439,7 @@ css_trim_str (char *str)
       return (str);
     }
 
-  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'); s++)
+  for (s = str; *s != '\0' && char_isspace2 (*s); s++)
     {
       ;
     }
@@ -2455,7 +2455,7 @@ css_trim_str (char *str)
     {
       ;
     }
-  for (p--; *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'; p--)
+  for (p--; char_isspace2 (*p); p--)
     {
       ;
     }
@@ -2763,7 +2763,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAS
       goto end;
     }
 
-  error = heap_scancache_start (thread_p, &scan_cache, &hfid, NULL, true, false, mvcc_snapshot);
+  error = heap_scancache_start (thread_p, &scan_cache, &hfid, NULL, true, mvcc_snapshot);
   if (error != NO_ERROR)
     {
       goto end;

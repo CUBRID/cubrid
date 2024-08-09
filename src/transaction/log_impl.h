@@ -61,6 +61,7 @@
 #include "lockfree_circular_queue.hpp"
 
 #include <unordered_set>
+#include <unordered_map>
 #include <queue>
 #include <assert.h>
 #if defined(SOLARIS)

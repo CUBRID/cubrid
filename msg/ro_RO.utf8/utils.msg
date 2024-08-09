@@ -574,6 +574,7 @@ opţiuni valide:\n\
   -C, --CS-mode                  mod de execuţie client-server\n\
       --datafile-per-class       creează un fişier obiect pentru fieacre clasă; implicit: dezactivat\n\
       --split-schema-files       împărțiți informațiile de schemă pe obiect și generați fiecare fișier; Implicit: generați un fișier de schemă cu toate obiectele\n\
+      --skip-index-detail        Nu tipăriți opțiunile specificate pentru clauza WITH la crearea indexului; implicit: dezactivat\n\
       --as-dba                   Dacă utilizatorul de conectare este membru al grupului DBA, extrageți același fișier de schemă ca și DBA.\n
 
 
@@ -832,6 +833,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Fişierul de ieşire '%1$s' nu a putut fi deschis\n
+16 Clasă necunoscută "%1$s"\n
 60 \
 diagdb: Varsă o baza de date.\n\
 utilizare: %1$s diagdb [OPŢIUNI] nume-bază-de-date\n\
@@ -860,7 +862,8 @@ lockdb: Afişează situaţia lock-urilor bazei de date.\n\
 utilizare: %1$s lockdb [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
-  -o, --output-file=FIŞIER    redirecţionează mesajele de ieşire către un FIŞIER; implicit: nul\n
+  -o, --output-file=FIŞIER    redirecţionează mesajele de ieşire către un FIŞIER; implicit: nul\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -929,7 +932,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              suprascrie fişierul de clasă dacă exista, implicit nu\n
+  -y, --overwrite              suprascrie fişierul de clasă dacă exista, implicit nu\n\
+  -p, --package                Numele pachetului Java, gol dacă nu este specificat\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Fişierul de ieşire '%1$s' nu a putut fi deschis\n
@@ -940,7 +945,8 @@ utilizare: %1$s plandump [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
   -d, --drop                   şterge toate planurile din memoria cache a serverului\n\
-  -o, --output-file=FIŞIER     redirecţionează mesajele de ieşire către FIŞIER; implicit: nul\n
+  -o, --output-file=FIŞIER     redirecţionează mesajele de ieşire către FIŞIER; implicit: nul\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Fişierul de ieşire '%1$s' nu a putut fi deschis\n

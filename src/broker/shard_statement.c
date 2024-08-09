@@ -1310,7 +1310,7 @@ shard_stmt_change_shard_val_to_id (char **sql_stmt, const char **buf, char appl_
   T_SHARD_KEY_RANGE *range_p = NULL;
   const char *key_column;
   int shard_key_id = -1;
-  char shard_key_id_string[14];
+  char shard_key_id_string[16] = { '\0' };
 
   hint_p = sp_create_parser_hint ();
   if (hint_p == NULL)
@@ -1354,7 +1354,7 @@ shard_stmt_change_shard_val_to_id (char **sql_stmt, const char **buf, char appl_
       goto FINALLY;
     }
 
-  sprintf (shard_key_id_string, "shard_id(%d)*/", range_p->shard_id);
+  snprintf (shard_key_id_string, sizeof (shard_key_id_string), "shard_id(%d)*/", range_p->shard_id);
   *sql_stmt =
     shard_stmt_write_buf_to_sql (*sql_stmt, shard_key_id_string, strlen (shard_key_id_string), true, appl_server);
 

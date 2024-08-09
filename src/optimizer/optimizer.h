@@ -84,6 +84,9 @@ class regu_variable_node;
 #define PLAN_DUMP_ENABLED(level)	((level) >= 0x100)
 #define SIMPLE_DUMP(level)		((level) & 0x100)
 #define DETAILED_DUMP(level)		((level) & 0x200)
+#define CHECK_VALID_EXECUTION(level)	((level & 0x00ff) > 0 && (level & 0x00ff) < 3)
+#define CHECK_VALID_PLAN(level)		(((level>>8) & 0x00ff) >= 0 && ((level>>8) & 0x00ff) < 3)
+#define CHECK_INVALID_OPTIMIZATION_LEVEL(level) (!(CHECK_VALID_EXECUTION(level) && CHECK_VALID_PLAN(level)))
 
 typedef struct qo_env QO_ENV;
 typedef struct qo_node QO_NODE;
@@ -168,7 +171,6 @@ extern bool qo_is_index_iss_scan (QO_PLAN * plan);
 extern bool qo_is_index_loose_scan (QO_PLAN * plan);
 extern bool qo_is_index_mro_scan (QO_PLAN * plan);
 extern bool qo_plan_multi_range_opt (QO_PLAN * plan);
-extern void qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * cost);
 
 /*
  *  QO_XASL support functions

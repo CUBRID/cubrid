@@ -71,8 +71,8 @@ struct pt_arg_type
     pt_generic_type_enum generic_type;
     size_t index; //index type
 
-    pt_arg_type_val (pt_type_enum type)
-      : type (type)
+    pt_arg_type_val (pt_type_enum t)
+      : type (t)
     {
     }
 

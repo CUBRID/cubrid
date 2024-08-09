@@ -559,6 +559,7 @@ gültige Optionen:\n\
   -C, --CS-mode                Client-Server-Ausführung\n\
       --datafile-per-class     eine Objektdatei für jede Klasse erzeugen; Standard: inaktiv\n\
       --split-schema-files     Schemainformationen nach Objekt aufteilen und jede Datei generieren; Standard: Eine Schemadatei mit allen Objekten generieren\n\
+      --skip-index-detail      Geben Sie die angegebenen WITH-Klauseloptionen beim Erstellen des Index nicht aus. Standard: deaktiviert\n\
       --as-dba                 Als de ingelogde gebruiker lid is van de DBA-groep, pak dan hetzelfde schemabestand uit als de DBA.\n
 
 
@@ -815,6 +816,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Ausgangsdatei '%1$s' konnte nicht geöffnet werden \n
+16 Unbekannte Klasse "%1$s"\n
 60 \
 diagdb: Database exportieren.\n\
 Anwendung: %1$s diagdb [OPTION] Datenbanknamen\n\
@@ -843,7 +845,8 @@ lockdb: Lockstatus der Datenbank anzeigen.\n\
 Anwendung: %1$s lockdb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
-  -o, --output-file=DATEI       Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n
+  -o, --output-file=DATEI       Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -912,7 +915,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              Klassendatei, wenn vorhanden, überschreiben, Standard nein\n
+  -y, --overwrite              Klassendatei, wenn vorhanden, überschreiben, Standard nein\n\
+  -p, --package                Java-Paketname, leer, wenn nicht angegeben\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Ausgangdatei '%1$s' kann nicht geöffnet werden\n
@@ -923,7 +928,8 @@ Anwendung: %1$s plandump [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
   -d, --drop                   alle Pläne ins Server-Cache exportieren \n\
-  -o, --output-file=DATEI       Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n
+  -o, --output-file=DATEI       Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
+  -s, --sha1=SHA1               drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Ausgangdatei '%1$s' kann nicht geöffnet werden\n

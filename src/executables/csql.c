@@ -240,6 +240,10 @@ static bool csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg);
 static int get_host_ip (unsigned char *ip_addr);
 static int csql_connect (char *argument, CSQL_ARGUMENT * csql_arg);
 
+static void csql_set_server_output (CSQL_ARGUMENT * csql_arg, bool server_output);
+static void csql_print_server_output (const CSQL_ARGUMENT * csql_arg);
+static int csql_execute_query (const char *stmts);
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
 /*
@@ -1045,7 +1049,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
-	      au_disable ();
+	      int dummy;
+	      AU_DISABLE (dummy);
 	    }
 	  csql_Database_connected = true;
 
@@ -1493,9 +1498,55 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  fprintf (csql_Output_fp, "CONNECT session command does not support --sysadm mode\n");
 	}
       break;
+
+    case S_CMD_MIDXKEY:
+      if (!strcasecmp (argument, "on"))
+	{
+	  csql_arg->midxkey_print = true;
+	}
+      else if (!strcasecmp (argument, "off"))
+	{
+	  csql_arg->midxkey_print = false;
+	}
+      if (csql_Is_interactive)
+	{
+	  fprintf (csql_Output_fp, "MIDXKEY IS %s\n", (csql_arg->midxkey_print ? "ON" : "OFF"));
+	}
+      break;
+
+    case S_CMD_SERVER_OUTPUT:
+      if (strcasecmp (argument, "on") == 0)
+	{
+	  csql_set_server_output (csql_arg, true);
+	}
+      else if (strcasecmp (argument, "off") == 0)
+	{
+	  csql_set_server_output (csql_arg, false);
+	}
+      fprintf (csql_Output_fp, "SERVER OUTPUT IS %s\n", (csql_arg->pl_server_output ? "ON" : "OFF"));
+      break;
     }
 
   return DO_CMD_SUCCESS;
+}
+
+/*
+ * csql_set_server_output() - read a file into command editor
+ *   return: none
+ *   file_name(in): input file name
+ */
+static void
+csql_set_server_output (CSQL_ARGUMENT * csql_arg, bool server_output)
+{
+  csql_arg->pl_server_output = server_output;
+  if (server_output)
+    {
+      csql_execute_query ("CALL enable (50000);");
+    }
+  else
+    {
+      csql_execute_query ("CALL disable ();");
+    }
 }
 
 /*
@@ -1770,6 +1821,61 @@ display_error (DB_SESSION * session, int stmt_start_line_no)
     }
 }
 
+// TODO
+/*
+ * csql_print_server_output()
+ *   return: none
+ */
+static void
+csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
+{
+  int status = 0;
+
+  if (csql_arg->pl_server_output == false)
+    {
+      return;
+    }
+
+  int errors = csql_execute_query ("SELECT '' INTO :pl_output_str");
+  errors += csql_execute_query ("SELECT 0 INTO :pl_output_status");
+  if (errors != 0)
+    {
+      return;
+    }
+
+  do
+    {
+      errors = csql_execute_query ("CALL get_line (:pl_output_str, :pl_output_status);");
+      if (errors != 0)
+	{
+	  break;
+	}
+      DB_VALUE *status_val = pt_find_value_of_label ("pl_output_status");
+      if (status_val)
+	{
+	  status = db_get_int (status_val);
+	  if (status == 0)
+	    {
+	      DB_VALUE *str_val = pt_find_value_of_label ("pl_output_str");
+	      if (str_val)
+		{
+		  const char *str = db_get_string (str_val);
+		  fprintf (csql_Output_fp, "%s\n", str);
+		}
+	      else
+		{
+		  status = 1;
+		}
+	    }
+	}
+      else
+	{
+	  status = 1;
+	}
+    }
+  while (status == 0);
+}
+
 /*
  * csql_execute_statements() - execute statements
  *   return: >0 if some statement failed, zero otherwise
@@ -1901,20 +2007,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       stmt_id = db_compile_statement (session);
 
-      if (session->statements)
+      assert ((stmt_id < 0) || stmt_id == (num_stmts + 1));
+      if (session->statements && session->statements[num_stmts])
 	{
-	  statement = session->statements[num_stmts];
-	  if (statement)
-	    {
-	      if (logddl_set_stmt_type (statement->node_type))
-		{
-		  logddl_set_file_line (statement->line_number);
-		  if (statement->sql_user_text && statement->sql_user_text_len > 0)
-		    {
-		      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len);
-		    }
-		}
-	    }
+	  int t_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, num_stmts + 1);
+	  logddl_check_and_set_query_text (session->statements[num_stmts], t_type, session->parser);
 	}
 
       if (stmt_id <= 0)
@@ -1933,10 +2030,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    }
 
 	  logddl_set_err_code (db_error_code ());
-	  if (statement)
-	    {
-	      logddl_set_file_line (statement->line_number);
-	    }
 
 	  /* compilation error */
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -1951,16 +2044,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		  db_abort_transaction ();
 		  do_abort_transaction = false;
 		  logddl_set_msg (LOGDDL_MSG_AUTO_ROLLBACK);
-		  if (logddl_get_jsp_mode ())
-		    {
-		      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
-		    }
 		}
 	      csql_Num_failures += 1;
-	      if (logddl_get_jsp_mode () == false)
-		{
-		  logddl_write_end ();
-		}
+	      logddl_write_end ();
 	      continue;
 	    }
 	  else
@@ -2003,18 +2089,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		  db_abort_transaction ();
 		  do_abort_transaction = false;
 		  logddl_set_msg (LOGDDL_MSG_AUTO_ROLLBACK);
-		  if (logddl_get_jsp_mode ())
-		    {
-		      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
-		    }
 		}
 	      csql_Num_failures += 1;
 
 	      free_attr_spec (&attr_spec);
-	      if (logddl_get_jsp_mode () == false)
-		{
-		  logddl_write_end ();
-		}
+	      logddl_write_end ();
 	      continue;
 	    }
 	  goto error;
@@ -2042,6 +2121,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	case CUBRID_STMT_EVALUATE:
 	  if (result != NULL)
 	    {
+	      // Results can be values other than NULL
 	      csql_results (csql_arg, result, db_get_query_type_ptr (result), stmt_start_line_no, stmt_type);
 	    }
 	  break;
@@ -2132,16 +2212,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		      db_abort_transaction ();
 		      do_abort_transaction = false;
 		      logddl_set_msg (LOGDDL_MSG_AUTO_ROLLBACK);
-		      if (logddl_get_jsp_mode ())
-			{
-			  logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
-			}
 		    }
 		  csql_Num_failures += 1;
-		  if (logddl_get_jsp_mode () == false)
-		    {
-		      logddl_write_end ();
-		    }
+		  logddl_write_end ();
 		  continue;
 		}
 	      goto error;
@@ -2177,6 +2250,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    }
 	}
 
+      if (csql_arg->pl_server_output)
+	{
+	  csql_print_server_output (csql_arg);
+	}
+
       if (csql_arg->plain_output == false && csql_arg->query_output == false && csql_arg->loaddb_output == false)
 	{
 	  fprintf (csql_Output_fp, "%s\n", stmt_msg);
@@ -2186,23 +2264,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       if (type != FILE_INPUT)
 	{
-	  if (logddl_get_jsp_mode ())
+	  if (csql_is_auto_commit_requested (csql_arg))
 	    {
-	      if (csql_is_auto_commit_requested (csql_arg))
-		{
-		  do_abort_transaction ==
-		    true ? logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK) :
-		    logddl_write_tran_str (LOGDDL_TRAN_TYPE_COMMIT);
-		}
+	      logddl_set_msg (LOGDDL_MSG_AUTO_COMMIT);
 	    }
-	  else
-	    {
-	      if (csql_is_auto_commit_requested (csql_arg))
-		{
-		  logddl_set_msg (LOGDDL_MSG_AUTO_COMMIT);
-		}
-	      logddl_write_end ();
-	    }
+	  logddl_write_end ();
 	}
     }
 
@@ -2247,14 +2313,7 @@ error:
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
-  if (logddl_get_jsp_mode ())
-    {
-      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
-    }
-  else
-    {
-      (type == FILE_INPUT) ? logddl_write_end_for_csql_fileinput ("") : logddl_write_end ();
-    }
+  (type == FILE_INPUT) ? logddl_write_end_for_csql_fileinput ("") : logddl_write_end ();
 
   if (session)
     {
@@ -2392,8 +2451,15 @@ csql_set_sys_param (const char *arg_str)
     }
   else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level %d", &level) == 1)
     {
-      qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
-      snprintf (ans, len - 1, "level %d", level);
+      if (CHECK_INVALID_OPTIMIZATION_LEVEL (level))
+	{
+	  snprintf (ans, len - 1, "error: wrong value %d", level);
+	}
+      else
+	{
+	  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+	  strncpy (ans, arg_str, len - 1);
+	}
     }
   else
     {
@@ -2773,6 +2839,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   char *env;
   int client_type;
   int avail_size;
+  int save;
   char *p = NULL;
   unsigned char ip_addr[16] = { 0 };
 
@@ -2920,14 +2987,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   logddl_init (APP_NAME_CSQL);
   logddl_check_ddl_audit_param ();
-  if (csql_arg->db_name != NULL)
-    {
-      logddl_set_db_name (csql_arg->db_name);
-    }
-  if (csql_arg->user_name != NULL)
-    {
-      logddl_set_user_name (csql_arg->user_name);
-    }
+
   if (get_host_ip (ip_addr) == 0)
     {
       logddl_set_ip ((char *) ip_addr);
@@ -2941,7 +3001,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_disable ();
+      AU_DISABLE (save);
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */
@@ -2967,19 +3027,22 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   csql_Pager_cmd[PATH_MAX - 1] = '\0';
   csql_Formatter_cmd[PATH_MAX - 1] = '\0';
 
-  env = getenv ("EDITOR");
+  env = getenv ("CUBRID_CSQL_EDITOR");
+  env = env != NULL ? env : getenv ("EDITOR");
   if (env)
     {
       strncpy (csql_Editor_cmd, env, PATH_MAX - 1);
     }
 
-  env = getenv ("SHELL");
+  env = getenv ("CUBRID_CSQL_SHELL");
+  env = env != NULL ? env : getenv ("SHELL");
   if (env)
     {
       strncpy (csql_Shell_cmd, env, PATH_MAX - 1);
     }
 
-  env = getenv ("FORMATTER");
+  env = getenv ("CUBRID_CSQL_FORMATTER");
+  env = env != NULL ? env : getenv ("FORMATTER");
   if (env)
     {
       strncpy (csql_Formatter_cmd, env, PATH_MAX - 1);
@@ -3265,6 +3328,54 @@ csql_set_trace (const char *arg_str)
 }
 
 /*
+ * csql_execute_query() -
+ *   return:
+ */
+static int
+csql_execute_query (const char *stmts)
+{
+  DB_SESSION *session = NULL;
+  DB_QUERY_RESULT *result = NULL;
+  int stmt_id = -1;
+  int db_error = ER_FAILED;
+
+  session = db_open_buffer (stmts);
+  if (session == NULL)
+    {
+      goto end;
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      db_error = stmt_id;
+      goto end;
+    }
+
+  db_error = db_execute_statement (session, stmt_id, &result);
+  if (db_error < 0)
+    {
+      goto end;
+    }
+
+  db_error = NO_ERROR;
+
+end:
+
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+  return db_error;
+}
+
+/*
  * csql_display_trace() -
  *   return:
  */
@@ -3485,7 +3596,8 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_disable ();
+      int dummy;
+      AU_DISABLE (dummy);
     }
   csql_Database_connected = true;
 

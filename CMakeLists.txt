@@ -100,6 +100,23 @@ else()
   message(FATAL_ERROR "Failed to parse a version string from ${VERSION_FILE} file")
 endif()
 
+# Define a function to read the actual Git directory and HEAD for Git Worktrees
+function(set_git_dir_from_worktree git_dir head_file)
+    file(READ ${CMAKE_SOURCE_DIR}/.git git_dir_content)
+    string(REGEX MATCH "gitdir: (.*)/worktrees/(.*)\n" _ ${git_dir_content})
+    set(${git_dir} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    set(${head_file} "${CMAKE_MATCH_1}/worktrees/${CMAKE_MATCH_2}/HEAD" PARENT_SCOPE)
+endfunction()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git") # Regular Git project
+    if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/.git")
+        set(GIT_DIR "${CMAKE_SOURCE_DIR}/.git")
+        set(HEAD_FILE "${GIT_DIR}/HEAD")
+    else() # Git Worktree
+        set_git_dir_from_worktree(GIT_DIR HEAD_FILE)
+    endif()
+endif()
+
 if(VERSION_MATCHES_LENGTH GREATER 3)
   list(GET VERSION_MATCHES 3 CUBRID_EXTRA_VERSION)
   if(VERSION_MATCHES_LENGTH GREATER 4)
@@ -150,7 +167,7 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
     endif(git_result)
     set(CUBRID_HASH_TAG -${commit_hash})
     # Generate the same file in other directory to trigger cmake re-configure when the HEAD changes
-    configure_file(".git/HEAD" ${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache COPYONLY)
+    configure_file("${HEAD_FILE}" "${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache" COPYONLY)
   else(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
     set(CUBRID_EXTRA_VERSION 0)
   endif(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
@@ -396,7 +413,7 @@ set(COMPAT_DIR               ${CMAKE_SOURCE_DIR}/src/compat)
 set(CONNECTION_DIR           ${CMAKE_SOURCE_DIR}/src/connection)
 set(EXECUTABLES_DIR          ${CMAKE_SOURCE_DIR}/src/executables)
 set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
-set(JSP_DIR                  ${CMAKE_SOURCE_DIR}/src/jsp)
+set(SP_DIR                   ${CMAKE_SOURCE_DIR}/src/sp)
 set(LOADDB_DIR               ${CMAKE_SOURCE_DIR}/src/loaddb)
 set(METHOD_DIR               ${CMAKE_SOURCE_DIR}/src/method)
 set(MONITOR_DIR              ${CMAKE_SOURCE_DIR}/src/monitor)
@@ -426,7 +443,7 @@ include_directories(
   src/connection
   src/executables
   src/heaplayers
-  src/jsp
+  src/sp
   src/loaddb
   src/method
   src/monitor
@@ -622,17 +639,23 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
     set(CMAKE_EXE_LINKER_FLAGS "-Wl,-bbigtoc -Wl,-brtl -Wl,-bnortllib -Wl,-bnosymbolic -Wl,-bnoautoexp -Wl,-bexpall -Wl,-bmaxdata:0x80000000 -Wl,-bnoipath" CACHE INTERNAL "" FORCE)
   endif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
 elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
-  add_definitions(-DWIN -DWINDOWS -D_CRT_SECURE_NO_WARNINGS /wd4274 /wd4996)
+  add_definitions(-DWIN -DWINDOWS -D_CRT_SECURE_NO_WARNINGS /wd4274 /wd4996 /wd4251 /wd4275)
   string(REPLACE "/DWIN32" "/D_WIN64" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
-  if(MSVC_VERSION GREATER 1400)
-    # experimental option (it can lead the build system to a halt or creating a bad object files)
-    set(PARALLEL_JOBS "0" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
-    if(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
-      add_definitions(/MP)
-    elseif(PARALLEL_JOBS GREATER 0)
-      add_definitions(/MP${PARALLEL_JOBS})
-    endif(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
-  endif(MSVC_VERSION GREATER 1400)
+  
+  # [WARNING] EXPERIMENTAL OPTION: it can lead the build system to a halt or creating a bad object files.
+  # If the build fails unexpectedly, set PARALLEL_JOBS to "0" and try to compile again.
+  set(PARALLEL_JOBS "0" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
+  if(DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL})
+    set(PARALLEL_JOBS "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
+  endif()
+
+  message(STATUS "Build in parallel: ${PARALLEL_JOBS}")
+
+  if(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
+    add_definitions(/MP)
+  elseif(PARALLEL_JOBS GREATER 0)
+    add_definitions(/MP${PARALLEL_JOBS})
+  endif(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
 endif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 
 # common definitions
@@ -802,6 +825,10 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   install(DIRECTORY ${JDBC_DIR}/
     DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC
     FILES_MATCHING PATTERN "*.jar"
+    PATTERN ".github" EXCLUDE
+    PATTERN "cmake" EXCLUDE
+    PATTERN "src" EXCLUDE
+    PATTERN "output" EXCLUDE
   )
 endif()
 
@@ -821,7 +848,7 @@ add_subdirectory(demo)
 add_subdirectory(contrib)
 add_subdirectory(locales)
 add_subdirectory(timezones)
-add_subdirectory(jsp)
+add_subdirectory(pl_engine)
 if(AT_LEAST_ONE_UNIT_TEST)
   add_subdirectory(unit_tests)
 endif()
@@ -833,6 +860,7 @@ endif(WIN32)
 # for cmserver
 if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
   include(ExternalProject)
+  set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/3rdparty")
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
   get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
   get_target_property(CMSTAT_PUBLIC_HEADERS cmstat PUBLIC_HEADER)
@@ -889,7 +917,7 @@ if(USE_CUBRID_ENV)
   install(FILES
     ${CMAKE_SOURCE_DIR}/COPYING
     ${CMAKE_SOURCE_DIR}/CREDITS
-    ${CMAKE_SOURCE_DIR}/README
+    ${CMAKE_SOURCE_DIR}/README.md
     ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
     DESTINATION ${CUBRID_PREFIXDIR})
 # on Windows, databases.txt is create from 'make_cubrid_demo.bat' because databases.txt is deleted in MSI file for install.
@@ -982,14 +1010,9 @@ if(WIN32)
   else()
     message(WARNING "Cannot generate MSI installer with unsupported compiler version")
   endif()
-  if(CMAKE_VERSION VERSION_GREATER "3.1")
     set_property(INSTALL "${CUBRID_BINDIR}/$<TARGET_FILE_NAME:cubridtray>"
       PROPERTY CPACK_START_MENU_SHORTCUTS "CUBRID Service Tray")
     configure_file(cmake/CPackWixPatch.cmake.in wix_patch.xml @ONLY)
-  else(CMAKE_VERSION VERSION_GREATER "3.1")
-    # TODO: msi package will not working on CMAKE version 3.5 or less
-    set(CPACK_PACKAGE_EXECUTABLES cubridtray "CUBRID Service Tray")
-  endif(CMAKE_VERSION VERSION_GREATER "3.1")
 endif(WIN32)
 
 include(CPack)

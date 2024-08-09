@@ -304,6 +304,7 @@ typedef enum
 typedef enum
 {
   DIAGDB_MSG_BAD_OUTPUT = 15,
+  DIAGDB_MSG_UNKNOWN_CLASS = 16,
   DIAGDB_MSG_USAGE = 60
 } MSGCAT_DIAGDB_MSG;
 
@@ -876,6 +877,7 @@ typedef struct _ha_config
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
 #define UTIL_JAVASP_NAME        "cub_javasp" UTIL_EXE_EXT
+#define UTIL_PLCSQL_HELPER_NAME "plcsql_helper" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
@@ -1172,6 +1174,8 @@ typedef struct _ha_config
 /* lockdb option list */
 #define LOCK_OUTPUT_FILE_S                      'o'
 #define LOCK_OUTPUT_FILE_L                      "output-file"
+#define LOCK_DISPLAY_CONTENTION_S               'c'
+#define LOCK_DISPLAY_CONTENTION_L               "contention"
 
 /* optimizedb option list */
 #define OPTIMIZE_CLASS_NAME_S                   'n'
@@ -1194,6 +1198,8 @@ typedef struct _ha_config
 #define DIAG_OUTPUT_FILE_L                      "output-file"
 #define DIAG_EMERGENCY_S                        11202
 #define DIAG_EMERGENCY_L                        "emergency"
+#define DIAG_CLASS_NAME_S                       'n'
+#define DIAG_CLASS_NAME_L                       "class-name"
 
 /* patch option list */
 #define PATCH_RECREATE_LOG_S                    'r'
@@ -1236,6 +1242,8 @@ typedef struct _ha_config
 #define PLANDUMP_DROP_L                         "drop"
 #define PLANDUMP_OUTPUT_FILE_S		        'o'
 #define PLANDUMP_OUTPUT_FILE_L                  "output-file"
+#define PLANDUMP_SHA1_S		        	's'
+#define PLANDUMP_SHA1_L                  	"sha1"
 
 /* tranlist option list */
 #if defined(NEED_PRIVILEGE_PASSWORD)
@@ -1365,6 +1373,8 @@ typedef struct _ha_config
 #define UNLOAD_SPLIT_SCHEMA_FILES_L             "split-schema-files"
 #define UNLOAD_AS_DBA_S                         11921
 #define UNLOAD_AS_DBA_L                         "as-dba"
+#define UNLOAD_SKIP_INDEX_DETAIL_S              11922	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+#define UNLOAD_SKIP_INDEX_DETAIL_L              "skip-index-detail"	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'
@@ -1729,7 +1739,6 @@ extern "C"
   extern INT64 utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map, int arg_ch);
   extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
   extern int utility_check_class_name (const char *class_name);
-  extern bool utility_check_system_class_name (const char *class_name);
 
   extern FILE *fopen_ex (const char *filename, const char *type);
 

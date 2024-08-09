@@ -558,6 +558,7 @@ unloaddb: 从数据库导出对象和结构.\n\
   -C, --CS-mode                客户端-服务器模式执行\n\
       --datafile-per-class     为每个表创建一个对象文件; 默认: 禁止\n\
       --split-schema-files     按对象拆分模式信息并生成每个文件； 默认：生成一个包含所有对象的模式文件\n\
+      --skip-index-detail      创建索引时不打印指定的WITH子句选项； 默认值：禁用\n\
       --as-dba                 如果登录用户是 DBA 组的成员，则提取与 DBA 相同的架构文件。\n
 
 
@@ -814,6 +815,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 无法打开输出文件 '%1$s'\n
+16 未知类 "%1$s"\n
 60 \
 diagdb: 转储一个数据库.\n\
 用法: %1$s diagdb [选项] 数据库名\n\
@@ -842,7 +844,8 @@ lockdb: 显示数据库的锁状态.\n\
 用法: %1$s lockdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
-  -o, --output-file=FILE       重定向输出信息到文件 FILE ; 默认: 空\n
+  -o, --output-file=FILE       重定向输出信息到文件 FILE ; 默认: 空\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -911,7 +914,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              如果类存在则进行重写, 默认 不\n
+  -y, --overwrite              如果类存在则进行重写, 默认 不\n\
+  -p, --package                Java包名，不指定则为空\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 无法打开输出文件 '%1$s'\n
@@ -922,7 +927,8 @@ plandump: 显示或控制缓存的查询计划.\n\
 \n\
 可用选项:\n\
   -d, --drop                   丢弃服务端缓存中的所有计划\n\
-  -o, --output-file=FILE       重定向输出信息到FILE; 默认: 空\n
+  -o, --output-file=FILE       重定向输出信息到FILE; 默认: 空\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 无法打开输出文件 '%1$s'\n

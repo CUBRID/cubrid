@@ -202,7 +202,7 @@ css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry
       dest_host = gethostbyname_uhost (host_name);
       if (dest_host == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 2, host_name, HOSTS_FILE);
 	  return INVALID_SOCKET;
 	}
       remote_ip = *((unsigned int *) (dest_host->h_addr));
@@ -404,7 +404,7 @@ css_gethostid (void)
   if (gethostname (hostname, CUB_MAXHOSTNAMELEN) == SOCKET_ERROR)
     {
       css_Wsa_error = CSS_ER_WINSOCK_HOSTNAME;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 2, hostname, HOSTS_FILE);
     }
   else
     {
@@ -423,7 +423,7 @@ css_gethostid (void)
 	  else
 	    {
 	      css_Wsa_error = CSS_ER_WINSOCK_HOSTID;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTID, 1, WSAGetLastError ());
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTID, 2, hostname, HOSTS_FILE);
 	    }
 	}
     }
@@ -841,7 +841,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       hp = gethostbyname_uhost (host);
       if (hp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 2, host, HOSTS_FILE);
 	  err = ER_CSS_WINSOCK_HOSTNAME;
 	}
       else

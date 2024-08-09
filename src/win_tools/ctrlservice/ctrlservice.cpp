@@ -83,6 +83,7 @@ int
 _tmain (int argc, char *argv[])
 {
   bool rc;
+  int broker_start_loop_cnt_max = 50;
 
   // Install a Service if -i switch used
   if (argc == 2)
@@ -257,6 +258,28 @@ _tmain (int argc, char *argv[])
 
 	  // send control code
 	  rc = ControlService (scHandle, service_control_code, &ss);
+
+	  /*
+	   * When starting a broker having large number of CASes,
+	   * it will waits for some time for CAS invocation.
+	   */
+
+	  if (service_control_code == SERVICE_CONTROL_BROKER_START)
+	    {
+	      for (int i = 0; i < broker_start_loop_cnt_max; i++ )
+		{
+		  if (!rc && ss.dwCurrentState == SERVICE_RUNNING && GetLastError () == ERROR_SERVICE_REQUEST_TIMEOUT)
+		    {
+		      Sleep (200);
+		      rc = ControlService (scHandle, SERVICE_CONTROL_INTERROGATE, &ss);
+		    }
+		  else
+		    {
+		      break;
+		    }
+		}
+	    }
+
 	  if (!rc && ss.dwCurrentState == SERVICE_RUNNING && GetLastError () == ERROR_SERVICE_REQUEST_TIMEOUT)
 	    {
 	      if (!ControlService (scHandle, SERVICE_CONTROL_INTERROGATE, &ss))

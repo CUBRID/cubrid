@@ -3160,7 +3160,7 @@ db_json_doc_is_uncomparable (const JSON_DOC *doc)
 // path_str (out)  : path string
 //
 int
-db_value_to_json_path (const DB_VALUE &path_value, FUNC_TYPE fcode, std::string &path_str)
+db_value_to_json_path (const DB_VALUE &path_value, FUNC_CODE fcode, std::string &path_str)
 {
   if (!TP_IS_CHAR_TYPE (db_value_domain_type (&path_value)))
     {

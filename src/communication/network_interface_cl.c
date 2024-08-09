@@ -74,6 +74,8 @@
 #include "lob_locator.hpp"
 #include "crypt_opfunc.h"
 #include "method_error.hpp"
+#include "message_catalog.h"
+#include "utility.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -1750,6 +1752,110 @@ heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const bool
 }
 
 /*
+ * heap_get_class_num_objects_pages -
+ *
+ * return:
+ *
+ *   hfid(in):
+ *   approximation(in):
+ *   nobjs(in):
+ *   npages(in):
+ *
+ * NOTE:
+ */
+int
+heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, int *npages)
+{
+#if defined(CS_MODE)
+  int req_error, status = ER_FAILED, num_objs, num_pages;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply;
+  char *ptr;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_hfid (request, hfid);
+  ptr = or_pack_int (ptr, approximation);
+
+  req_error =
+    net_client_request (NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &status);
+      ptr = or_unpack_int (ptr, &num_objs);
+      ptr = or_unpack_int (ptr, &num_pages);
+      *nobjs = (int) num_objs;
+      *npages = (int) num_pages;
+    }
+
+  return status;
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xheap_get_class_num_objects_pages (thread_p, hfid, approximation, nobjs, npages);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * heap_has_instance -
+ *
+ * return:
+ *
+ *   hfid(in):
+ *   class_oid(in):
+ *   has_visible_instance(in): true if we need to check for a visible record
+ *
+ * NOTE:
+ */
+int
+heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance)
+{
+#if defined(CS_MODE)
+  int req_error, status = ER_FAILED;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_OID_SIZE + OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  char *ptr;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_hfid (request, hfid);
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_int (ptr, has_visible_instance);
+
+  req_error =
+    net_client_request (NET_SERVER_HEAP_HAS_INSTANCE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &status);
+    }
+
+  return status;
+#else /* CS_MODE */
+  int r = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+  r = xheap_has_instance (thread_p, hfid, class_oid, has_visible_instance);
+  exit_server (*thread_p);
+
+  return r;
+#endif /* !CS_MODE */
+}
+
+/*
  * heap_reclaim_addresses -
  *
  * return:
@@ -1791,6 +1897,47 @@ heap_reclaim_addresses (const HFID * hfid)
   THREAD_ENTRY *thread_p = enter_server ();
 
   success = xheap_reclaim_addresses (thread_p, hfid);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * heap_get_maxslotted_reclength -
+ *
+ * return:
+ *
+ *   maxslotted_reclength(out):
+ *
+ * NOTE:
+ */
+int
+heap_get_maxslotted_reclength (int &maxslotted_reclength)
+{
+#if defined(CS_MODE)
+  int req_error, success = ER_FAILED;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  req_error =
+    net_client_request (NET_SERVER_HEAP_GET_MAXSLOTTED_RECLENGTH, NULL, 0, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &maxslotted_reclength);
+      success = NO_ERROR;
+    }
+
+  return success;
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xheap_get_maxslotted_reclength (maxslotted_reclength);
 
   exit_server (*thread_p);
 
@@ -3734,22 +3881,30 @@ acl_dump (FILE * outfp)
  *   outfp(in):
  */
 void
-lock_dump (FILE * outfp)
+lock_dump (FILE * outfp, int is_contention)
 {
 #if defined(CS_MODE)
   int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request, *ptr;
 
   if (outfp == NULL)
     {
       outfp = stdout;
     }
 
-  req_error = net_client_request_recv_stream (NET_SERVER_LK_DUMP, NULL, 0, NULL, 0, NULL, 0, outfp);
+  request = OR_ALIGNED_BUF_START (a_request);
+
+  (void) or_pack_int (request, is_contention);
+
+  req_error =
+    net_client_request_recv_stream (NET_SERVER_LK_DUMP, request, OR_ALIGNED_BUF_SIZE (a_request), NULL, 0, NULL, 0,
+				    outfp);
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  xlock_dump (thread_p, outfp);
+  xlock_dump (thread_p, outfp, is_contention);
 
   exit_server (*thread_p);
 #endif /* !CS_MODE */
@@ -5629,40 +5784,92 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
  * NOTE:
  */
 int
-stats_update_statistics (OID * classoid, int with_fullscan)
+stats_update_statistics (MOP classop, int with_fullscan)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
-  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
   char *ptr;
+  int request_size;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
 
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
+  /* get NDV by query */
+  if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
+    {
+      if (class_attr_ndv.attr_ndv != NULL)
+	{
+	  free_and_init (class_attr_ndv.attr_ndv);
+	}
+      return ER_FAILED;
+    }
 
-  ptr = or_pack_oid (request, classoid);
+  request_size = OR_INT_SIZE + (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1)) + OR_INT_SIZE + OR_OID_SIZE;
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+
+  ptr = or_pack_int (request, class_attr_ndv.attr_cnt);
+  for (int i = 0; i < class_attr_ndv.attr_cnt + 1; i++)
+    {
+      ptr = or_pack_int (ptr, class_attr_ndv.attr_ndv[i].id);
+      ptr = or_pack_int64 (ptr, class_attr_ndv.attr_ndv[i].ndv);
+    }
+  ptr = or_pack_oid (ptr, WS_OID (classop));
   ptr = or_pack_int (ptr, with_fullscan);
 
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
   req_error =
-    net_client_request (NET_SERVER_QST_UPDATE_STATISTICS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+    net_client_request (NET_SERVER_QST_UPDATE_STATISTICS, request, request_size, reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_errcode (reply, &error);
     }
 
+end:
+  if (class_attr_ndv.attr_ndv != NULL)
+    {
+      free_and_init (class_attr_ndv.attr_ndv);
+    }
+
+  free_and_init (request);
+
   return error;
 #else /* CS_MODE */
   int success;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
+
+  /* get NDV by query */
+  if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
+    {
+      if (class_attr_ndv.attr_ndv != NULL)
+	{
+	  free_and_init (class_attr_ndv.attr_ndv);
+	}
+      return ER_FAILED;
+    }
+
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xstats_update_statistics (thread_p, classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+  success =
+    xstats_update_statistics (thread_p, WS_OID (classop), (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING),
+			      &class_attr_ndv);
 
   exit_server (*thread_p);
+
+  if (class_attr_ndv.attr_ndv != NULL)
+    {
+      free_and_init (class_attr_ndv.attr_ndv);
+    }
 
   return success;
 #endif /* !CS_MODE */
@@ -5682,36 +5889,207 @@ stats_update_all_statistics (int with_fullscan)
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
   char *ptr;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
+  const char *query = "select c.unique_name from _db_class as c where c.class_type = 0 and [partition] is null "
+    "union "
+    "select c.unique_name from _db_class as c, TABLE(c.partition) as g(x) where c.class_type = 0 and x.pname is null;";
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE class_name_val;
+  MOP class_mop;
+  int request_size;
 
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
+  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
+  db_make_null (&class_name_val);
 
-  ptr = or_pack_int (request, with_fullscan);
-
-  req_error =
-    net_client_request (NET_SERVER_QST_UPDATE_ALL_STATISTICS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
+  error = db_compile_and_execute_local (query, &query_result, &query_error);
+  if (error < 0)
     {
-      or_unpack_errcode (reply, &error);
+      goto end;
     }
 
-  return error;
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      goto end;
+    }
+
+  do
+    {
+      const char *class_name = NULL;
+
+      /* class_name */
+      error = db_query_get_tuple_value (query_result, 0, &class_name_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      class_name = db_get_string (&class_name_val);
+
+      class_mop = db_find_class (class_name);
+      if (class_mop == NULL)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      /* get NDV by query */
+      if (stats_get_ndv_by_query (class_mop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      request_size = OR_INT_SIZE + (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1)) + OR_INT_SIZE + OR_OID_SIZE;
+      request = (char *) malloc (request_size);
+      if (request == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      ptr = or_pack_int (request, class_attr_ndv.attr_cnt);
+      for (int i = 0; i < class_attr_ndv.attr_cnt + 1; i++)
+	{
+	  ptr = or_pack_int (ptr, class_attr_ndv.attr_ndv[i].id);
+	  ptr = or_pack_int64 (ptr, class_attr_ndv.attr_ndv[i].ndv);
+	}
+      ptr = or_pack_oid (ptr, WS_OID (class_mop));
+      ptr = or_pack_int (ptr, with_fullscan);
+
+      reply = OR_ALIGNED_BUF_START (a_reply);
+
+      req_error =
+	net_client_request (NET_SERVER_QST_UPDATE_STATISTICS, request, request_size, reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+      if (!req_error)
+	{
+	  or_unpack_errcode (reply, &error);
+	}
+      if (class_attr_ndv.attr_ndv != NULL)
+	{
+	  free_and_init (class_attr_ndv.attr_ndv);
+	}
+      free_and_init (request);
+      db_value_clear (&class_name_val);
+
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+  while ((error = db_query_next_tuple (query_result)) == DB_CURSOR_SUCCESS);
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+  if (class_attr_ndv.attr_ndv != NULL)
+    {
+      free_and_init (class_attr_ndv.attr_ndv);
+    }
+  if (request)
+    {
+      free_and_init (request);
+    }
+
+  return (error == DB_CURSOR_END) ? NO_ERROR : error;
+
 #else /* CS_MODE */
-  int success;
+  int error = NO_ERROR;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
+  const char *query = "select c.unique_name from _db_class as c where c.class_type = 0 and [partition] is null "
+    "union "
+    "select c.unique_name from _db_class as c, TABLE(c.partition) as g(x) where c.class_type = 0 and x.pname is null;";
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE class_name_val;
+  THREAD_ENTRY *thread_p;
+  MOP class_mop;
 
-  THREAD_ENTRY *thread_p = enter_server ();
+  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
+  db_make_null (&class_name_val);
 
-  success = xstats_update_all_statistics (thread_p, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+  error = db_compile_and_execute_local (query, &query_result, &query_error);
+  if (error < 0)
+    {
+      goto end;
+    }
 
-  exit_server (*thread_p);
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      goto end;
+    }
 
-  return success;
+  do
+    {
+      const char *class_name = NULL;
+
+      /* class_name */
+      error = db_query_get_tuple_value (query_result, 0, &class_name_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      class_name = db_get_string (&class_name_val);
+
+      class_mop = db_find_class (class_name);
+      if (class_mop == NULL)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      /* get NDV by query */
+      if (stats_get_ndv_by_query (class_mop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
+	{
+	  if (class_attr_ndv.attr_ndv != NULL)
+	    {
+	      free_and_init (class_attr_ndv.attr_ndv);
+	    }
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      thread_p = enter_server ();
+      error =
+	xstats_update_statistics (thread_p, WS_OID (class_mop),
+				  (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING), &class_attr_ndv);
+      exit_server (*thread_p);
+
+      if (class_attr_ndv.attr_ndv != NULL)
+	{
+	  free_and_init (class_attr_ndv.attr_ndv);
+	}
+
+      db_value_clear (&class_name_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+  while ((error = db_query_next_tuple (query_result)) == DB_CURSOR_SUCCESS);
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+  if (class_attr_ndv.attr_ndv != NULL)
+    {
+      free_and_init (class_attr_ndv.attr_ndv);
+    }
+
+  return (error == DB_CURSOR_END) ? NO_ERROR : error;
 #endif /* !CS_MODE */
 }
 
@@ -5729,7 +6107,8 @@ stats_update_all_statistics (int with_fullscan)
  * NOTE:
  */
 int
-btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk)
+btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk,
+		 int deduplicate_key_pos)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
@@ -5743,6 +6122,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   domain_size = or_packed_domain_size (key_type, 0);
   request_size = OR_BTID_ALIGNED_SIZE + domain_size + OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE;
+  request_size += OR_INT_SIZE;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -5756,6 +6136,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, attr_id);
   ptr = or_pack_int (ptr, unique_pk);
+  ptr = or_pack_int (ptr, deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
   req_error =
     net_client_request (NET_SERVER_BTREE_ADDINDEX, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
@@ -5782,7 +6163,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0);
+  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -6786,7 +7167,6 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	}
 
       request_len += OR_INT_SIZE + OR_PTR_SIZE * net_Deferred_end_queries_count;
-      net_Deferred_end_queries_count = 0;
     }
 
   /* Add message in log in case of autocommit transactions. It helps to trace query execution. */
@@ -6850,6 +7230,12 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
       if (IS_QUERY_EXECUTE_WITH_COMMIT (flag))
 	{
 	  ptr = or_unpack_int (ptr, &end_query_result);
+	  /* If all net_Deferred_end_queries are closed on the server, the value of end_query_result is NO_ERROR. */
+	  /* If end_query_result is not NO_ERROR, net_Deferred_end_queries_count will not reset to attempt a close on commit or abort. */
+	  if (end_query_result == NO_ERROR)
+	    {
+	      net_Deferred_end_queries_count = 0;
+	    }
 	  ptr = or_unpack_int (ptr, &tran_state);
 	  ptr = or_unpack_int (ptr, &should_conn_reset);
 
@@ -7183,6 +7569,68 @@ qmgr_drop_all_query_plans (void)
 
   /* call the server routine of query drop plan */
   status = xqmgr_drop_all_query_plans (thread_p);
+
+  exit_server (*thread_p);
+
+  return status;
+#endif /* !CS_MODE */
+}
+
+/*
+ * qmgr_drop_query_plans_by_sha1 - Send a SERVER_QM_DROP_BY_SHA1 request to the server
+ *
+ * Request the server to clear sha1 XASL cache entires out. When the client
+ * want to delete cached query plans for sha1, this function will be used.
+ * This function is a counter part to sqmgr_drop_all_query_plans().
+ */
+/*
+ * qmgr_drop_query_plans_by_sha1 -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+int
+qmgr_drop_query_plans_by_sha1 (char *sha1)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED;
+  int request_size, strlen1;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  int req_error;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (sha1, &strlen1);
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_FAILED;
+    }
+
+  pack_const_string_with_length (request, sha1, strlen1);
+
+  req_error = net_client_request (NET_SERVER_QM_QUERY_DROP_SHA1_PLANS, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &success);
+    }
+
+  free_and_init (request);
+
+  return success;
+#else /* CS_MODE */
+  int status;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  /* call the server routine of query drop plan */
+  status = xqmgr_drop_query_plans_by_sha1 (thread_p, sha1);
 
   exit_server (*thread_p);
 
@@ -8125,61 +8573,6 @@ logtb_dump_trantable (FILE * outfp)
 }
 
 /*
- * heap_get_class_num_objects_pages -
- *
- * return:
- *
- *   hfid(in):
- *   approximation(in):
- *   nobjs(in):
- *   npages(in):
- *
- * NOTE:
- */
-int
-heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, int *npages)
-{
-#if defined(CS_MODE)
-  int req_error, status = ER_FAILED, num_objs, num_pages;
-  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
-  char *reply;
-  char *ptr;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = or_pack_hfid (request, hfid);
-  ptr = or_pack_int (ptr, approximation);
-
-  req_error =
-    net_client_request (NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &status);
-      ptr = or_unpack_int (ptr, &num_objs);
-      ptr = or_unpack_int (ptr, &num_pages);
-      *nobjs = (int) num_objs;
-      *npages = (int) num_pages;
-    }
-
-  return status;
-#else /* CS_MODE */
-  int success = ER_FAILED;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  success = xheap_get_class_num_objects_pages (thread_p, hfid, approximation, nobjs, npages);
-
-  exit_server (*thread_p);
-
-  return success;
-#endif /* !CS_MODE */
-}
-
-/*
  * btree_get_statistics -
  *
  * return:
@@ -8660,55 +9053,6 @@ sysprm_dump_server_parameters (FILE * outfp)
   xsysprm_dump_server_parameters (outfp);
 
   exit_server (*thread_p);
-#endif /* !CS_MODE */
-}
-
-/*
- * heap_has_instance -
- *
- * return:
- *
- *   hfid(in):
- *   class_oid(in):
- *   has_visible_instance(in): true if we need to check for a visible record
- *
- * NOTE:
- */
-int
-heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance)
-{
-#if defined(CS_MODE)
-  int req_error, status = ER_FAILED;
-  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_OID_SIZE + OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-  char *ptr;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = or_pack_hfid (request, hfid);
-  ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_int (ptr, has_visible_instance);
-
-  req_error =
-    net_client_request (NET_SERVER_HEAP_HAS_INSTANCE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &status);
-    }
-
-  return status;
-#else /* CS_MODE */
-  int r = ER_FAILED;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-  r = xheap_has_instance (thread_p, hfid, class_oid, has_visible_instance);
-  exit_server (*thread_p);
-
-  return r;
 #endif /* !CS_MODE */
 }
 
@@ -10528,18 +10872,64 @@ loaddb_interrupt ()
 }
 
 int
-loaddb_update_stats ()
+loaddb_update_stats (bool verbose)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  OID oid;
+  int oids_count;
+  MOP classop;
 
-  int req_error =
-    net_client_request (NET_SERVER_LD_UPDATE_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
+  /* get class oid */
+  int req_error = net_client_request2 (NET_SERVER_LD_UPDATE_STATS, NULL, 0, reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  if (req_error != NO_ERROR)
     {
-      or_unpack_int (reply, &rc);
+      return req_error;
+    }
+
+  char *ptr = or_unpack_int (reply, &data_reply_size);
+
+  ptr = or_unpack_int (ptr, &rc);
+  if (rc != NO_ERROR || data_reply_size == 0)
+    {
+      rc = ER_FAILED;
+      goto cleanup;
+    }
+
+  /* unpack number of returned OIDs */
+  ptr = or_unpack_int (data_reply, &oids_count);
+
+  for (int i = 0; i < oids_count; i++)
+    {
+      ptr = or_unpack_oid (ptr, &oid);
+      classop = ws_mop (&oid, NULL);
+      assert (classop != NULL);
+      if (classop != NULL)
+	{
+	  if (verbose)
+	    {
+	      const char *class_name_p = db_get_class_name (classop);
+	      if (class_name_p != NULL)
+		{
+		  fprintf (stdout,
+			   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLASS_TITLE),
+			   class_name_p);
+		  fflush (stdout);
+		}
+	    }
+	  stats_update_statistics (classop, 0);
+	}
+    }
+
+cleanup:
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
     }
 
   return rc;
@@ -10887,4 +11277,62 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
   return error_code;
 #endif // CS_MODE
   return ER_NOT_IN_STANDALONE;
+}
+
+int
+plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCSQL_COMPILE_INFO & compile_info)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  char *ptr = NULL;
+
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+
+  packer.set_buffer_and_pack_all (eb, verbose, input_file);
+
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
+						      (int) packer.get_current_size (),
+						      reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply,
+						      &data_reply_size);
+  if (req_error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* consumes dummy reply */
+  int dummy;
+  ptr = or_unpack_int (reply, &dummy);
+  ptr = or_unpack_int (ptr, &dummy);
+  ptr = or_unpack_int (ptr, &dummy);
+
+  /* receive result values / error */
+  if (data_reply != NULL)
+    {
+      packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+      unpacker.unpack_all (compile_info);
+      rc = NO_ERROR;
+    }
+
+error:
+  // TODO error handling
+  if (req_error != NO_ERROR)
+    {
+      // TODO: er_set (...): set proper error
+      rc = req_error;
+    }
+
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
 }

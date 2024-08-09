@@ -152,7 +152,7 @@ $ messaggi di aiuto csql
    ;PRINT                       - stampa buffer dei comandi.\n\
    ;SHELL                       - richiamare shell.\n\
    ;CD                          - cambiare directory di lavoro corrente.\n\
-   ;EXit                        - uscire dal programma.\n\
+   ;EXit (or Ctrl+d)            - uscire dal programma.\n\
 \n\
    ;CLear                       - pulire il buffer di comando.\n\
    ;EDIT   [format/fmt]         - invocare editor di sistema [dopo il formattatore] con il buffer dei comandi.\n\

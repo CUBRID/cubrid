@@ -352,41 +352,39 @@ meth_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      /* METHOD TRANSLATE */
-      /* put methods on the target entity spec's method list */
-      info2.methods_to_translate = 0;
-      info2.root = node;
-      (void) parser_walk_tree (parser, node, NULL, NULL, meth_create_method_list, &info2);
-
-      if (!info2.methods_to_translate)
-	{			/* not found method, do nothing */
-	  break;
-	}
-
-      while (info2.methods_to_translate)
-	{
-	  /* translate statement */
-	  node = parser_walk_tree (parser, node, NULL, NULL, meth_translate_local, node);
-	  /* error check */
-	  if (pt_has_error (parser))
-	    {			/* exit immediately */
-	      goto exit_on_error;
-	    }
-
-	  /* Recalculate method_lists for nested method calls */
-	  info2.methods_to_translate = 0;
-	  info2.root = node;
-	  (void) parser_walk_tree (parser, node, NULL, NULL, meth_create_method_list, &info2);
-	}			/* while (info2.methods_to_translate) */
-
-      /* collapse unnecessary SELECT/MERGE combinations */
-      node = parser_walk_tree (parser, node, NULL, NULL, meth_collapse_nodes, NULL);
-
-      break;
-
     default:
       break;
     }				/* switch (node->node_type) */
+
+  /* METHOD TRANSLATE */
+  /* put methods on the target entity spec's method list */
+  info2.methods_to_translate = 0;
+  info2.root = node;
+  (void) parser_walk_tree (parser, node, NULL, NULL, meth_create_method_list, &info2);
+
+  if (!info2.methods_to_translate)
+    {				/* not found method, do nothing */
+      return node;
+    }
+
+  while (info2.methods_to_translate)
+    {
+      /* translate statement */
+      node = parser_walk_tree (parser, node, NULL, NULL, meth_translate_local, node);
+      /* error check */
+      if (pt_has_error (parser))
+	{			/* exit immediately */
+	  goto exit_on_error;
+	}
+
+      /* Recalculate method_lists for nested method calls */
+      info2.methods_to_translate = 0;
+      info2.root = node;
+      (void) parser_walk_tree (parser, node, NULL, NULL, meth_create_method_list, &info2);
+    }				/* while (info2.methods_to_translate) */
+
+  /* collapse unnecessary SELECT/MERGE combinations */
+  node = parser_walk_tree (parser, node, NULL, NULL, meth_collapse_nodes, NULL);
 
   return node;
 

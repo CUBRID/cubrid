@@ -43,7 +43,7 @@
 #endif
 
 #if defined (WINDOWS)
-#ifdef _EXPORTING
+#ifdef CUBRID_EXPORTING
 #define EXPORT_IMPORT    __declspec(dllexport)
 #else
 #define EXPORT_IMPORT    __declspec(dllimport)
@@ -985,8 +985,6 @@ extern int timeval_to_timespec (struct timespec *to, const struct timeval *from)
 extern FILE *port_open_memstream (char **ptr, size_t * sizeloc);
 
 extern void port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc);
-
-extern char *trim (char *str);
 
 extern int parse_bigint (INT64 * ret_p, const char *str_p, int base);
 

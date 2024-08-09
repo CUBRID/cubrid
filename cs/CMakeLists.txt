@@ -43,12 +43,14 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
+  ${COMPAT_DIR}/db_function.cpp
   ${COMPAT_DIR}/db_info.c
   ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_json_allocator.cpp
   ${COMPAT_DIR}/db_json_path.cpp
   ${COMPAT_DIR}/db_json_types_internal.cpp
   ${COMPAT_DIR}/db_macro.c
+  ${COMPAT_DIR}/db_method_static.cpp
   ${COMPAT_DIR}/db_obj.c
   ${COMPAT_DIR}/db_old.c
   ${COMPAT_DIR}/db_query.c
@@ -66,6 +68,7 @@ set(COMPAT_SOURCES_C
 
 set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/db_function.hpp
   ${COMPAT_DIR}/db_json.hpp
   ${COMPAT_DIR}/db_json_allocator.hpp
   ${COMPAT_DIR}/db_json_path.hpp
@@ -109,6 +112,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/hide_password.cpp
   ${BASE_DIR}/get_clock_freq.c
   ${BASE_DIR}/perf.cpp
   ${BASE_DIR}/perf_monitor.c
@@ -246,9 +250,20 @@ set(QUERY_HEADERS
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate.c
+  ${OBJECT_DIR}/authenticate_access_auth.cpp
+  ${OBJECT_DIR}/authenticate_cache.cpp
+  ${OBJECT_DIR}/authenticate_context.cpp
+  ${OBJECT_DIR}/authenticate_access_class.cpp
+  ${OBJECT_DIR}/authenticate_grant.cpp
+  ${OBJECT_DIR}/authenticate_owner.cpp
+  ${OBJECT_DIR}/authenticate_password.cpp
+  ${OBJECT_DIR}/authenticate_access_user.cpp
+  ${OBJECT_DIR}/authenticate_migration.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
+  ${OBJECT_DIR}/deduplicate_key.c
   ${OBJECT_DIR}/elo.c
+  ${OBJECT_DIR}/identifier_store.cpp
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_accessor.c
   ${OBJECT_DIR}/object_description.cpp
@@ -262,6 +277,11 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/quick_fit.c
   ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
+  ${OBJECT_DIR}/schema_system_catalog.cpp
+  ${OBJECT_DIR}/schema_system_catalog_builder.cpp
+  ${OBJECT_DIR}/schema_system_catalog_definition.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install_query_spec.cpp
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c
@@ -275,14 +295,15 @@ set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set(JSP_SOURCES
-  ${JSP_DIR}/jsp_cl.c
-  ${JSP_DIR}/jsp_comm.c
-  ${JSP_DIR}/jsp_file.c
+set(SP_SOURCES
+  ${SP_DIR}/jsp_cl.c
+  ${SP_DIR}/jsp_comm.c
+  ${SP_DIR}/jsp_file.c
   )
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_connection_cl.cpp
+  ${METHOD_DIR}/method_compile_def.cpp
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
@@ -447,7 +468,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
@@ -487,7 +508,7 @@ add_library(cubridcs SHARED
   ${PROBES_OBJECT}
   ${QUERY_HEADERS}
   ${QUERY_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${TRANSACTION_HEADERS}
   ${TRANSACTION_SOURCES}
@@ -501,7 +522,7 @@ add_library(cubridcs SHARED
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
-target_compile_definitions(cubridcs PRIVATE CS_MODE ${COMMON_DEFS})
+target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubridcs PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)
@@ -526,6 +547,7 @@ if(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridcs PUBLIC stdc++fs)
   target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubridcs LINK_PUBLIC rt)
 else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)

@@ -44,6 +44,10 @@ namespace cubmethod
     m_list_id = query_entry_p->list_id;
     m_current_row_index = 0;
     m_current_tuple.resize (m_list_id->type_list.type_cnt);
+    for (DB_VALUE &val : m_current_tuple)
+      {
+	db_make_null (&val);
+      }
 
     return NO_ERROR;
   }
@@ -98,17 +102,17 @@ namespace cubmethod
 	    TP_DOMAIN *domain = m_list_id->type_list.domp[i];
 	    if (domain == NULL || domain->type == NULL)
 	      {
-		//TODO: error handling?
+		scan_code = S_ERROR;
 		qfile_close_scan (m_thread, &m_scan_id);
+		break;
 	      }
 
 	    DB_VALUE *value = &m_current_tuple[i];
 	    PR_TYPE *pr_type = domain->type;
 
-	    db_make_null (value);
 	    if (flag == V_BOUND)
 	      {
-		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
+		if (pr_type->data_readval (&buf, value, domain, -1, false /* Don't copy */, NULL, 0) != NO_ERROR)
 		  {
 		    scan_code = S_ERROR;
 		    break;
@@ -141,17 +145,15 @@ namespace cubmethod
 	for (int i = 0; i < m_list_id->type_list.type_cnt; i++)
 	  {
 	    DB_VALUE *value = &m_current_tuple[i];
-	    db_make_null (value);
-
 	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
 	    if (flag == V_BOUND)
 	      {
 		TP_DOMAIN *domain = m_list_id->type_list.domp[i];
 		if (domain == NULL || domain->type == NULL)
 		  {
-		    //TODO: error handling?
+		    scan_code = S_ERROR;
 		    qfile_close_scan (m_thread, &m_scan_id);
-		    return S_ERROR;
+		    break;
 		  }
 
 		PR_TYPE *pr_type = domain->type;
@@ -162,8 +164,9 @@ namespace cubmethod
 
 		or_init (&buf, ptr, length);
 
-		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
+		if (pr_type->data_readval (&buf, value, domain, -1, false /* Don't copy */, NULL, 0) != NO_ERROR)
 		  {
+		    qfile_close_scan (m_thread, &m_scan_id);
 		    return S_ERROR;
 		  }
 	      }

@@ -193,8 +193,9 @@ extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE
 					    QFILE_TUPLE_RECORD * tplrec);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);
 extern int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2);
-#if defined (CUBRID_DEBUG)
+#if !defined(NDEBUG)
 extern void qfile_print_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
+extern void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE tpl);
 #endif
 extern QFILE_LIST_ID *qfile_duplicate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, int flag);
 extern int qfile_get_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page, QFILE_TUPLE tuplep,

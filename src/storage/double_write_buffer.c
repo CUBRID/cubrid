@@ -432,6 +432,7 @@ static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
   /* using mutex? */
   LF_EM_USING_MUTEX,
 
+  LF_ENTRY_DESCRIPTOR_MAX_ALLOC,
   dwb_slots_hash_entry_alloc,
   dwb_slots_hash_entry_free,
   dwb_slots_hash_entry_init,

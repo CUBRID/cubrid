@@ -137,6 +137,7 @@ static ARG_MAP_TABLE ua_Space_map[] = {
 
 static ARG_MAP_TABLE ua_Lock_map[] = {
   {"-o", "--" LOCK_OUTPUT_FILE_L},
+  {"-c", "--" LOCK_DISPLAY_CONTENTION_L},
   {0, 0}
 };
 

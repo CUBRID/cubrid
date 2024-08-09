@@ -3842,7 +3842,7 @@ locale_alloc_collation_id (COLL_TAILORING * coll_tail)
 
       if (desc_part != NULL)
 	{
-	  while (desc_part < coll_name + strlen (coll_name))
+	  while (*desc_part)
 	    {
 	      coll_id += *desc_part++;
 	    }

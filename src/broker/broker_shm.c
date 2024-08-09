@@ -48,6 +48,8 @@
 #include "broker_filename.h"
 #include "broker_util.h"
 #include "host_lookup.h"
+#include "error_code.h"
+#include "system_parameter.h"
 
 #if defined(WINDOWS)
 #include "broker_list.h"
@@ -489,6 +491,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
     }
 
   shm_as_p->cci_default_autocommit = br_info_p->cci_default_autocommit;
+  shm_as_p->net_buf_size = br_info_p->net_buf_size;
   shm_as_p->job_queue_size = br_info_p->job_queue_size;
   shm_as_p->job_queue[0].id = 0;	/* initialize max heap */
   shm_as_p->max_prepared_stmt_count = br_info_p->max_prepared_stmt_count;
@@ -760,7 +763,7 @@ get_host_ip (unsigned char *ip_addr)
     }
   if ((hp = gethostbyname_uhost (hostname)) == NULL)
     {
-      fprintf (stderr, "unknown host : %s\n", hostname);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, hostname, HOSTS_FILE);
       return -1;
     }
   memcpy ((void *) ip_addr, (void *) hp->h_addr_list[0], 4);

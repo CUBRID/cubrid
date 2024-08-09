@@ -562,6 +562,7 @@ options valids:\n\
   -C, --CS-mode                   exécution en mode client-serveur\n\
       --datafile-per-class        créer un fichier objet pour chaque classe; par défaut: désactivé\n\
       --split-schema-files        diviser les informations de schéma par objet et générer chaque fichier ; Par défaut : générer un fichier de schéma avec tous les objets\n\
+      --skip-index-detail         N'imprimez pas les options de la clause WITH spécifiées lors de la création de l'index ; par défaut : désactivé\n\
       --as-dba                    Si l'utilisateur de connexion est membre du groupe DBA, extrayez le même fichier de schéma que le DBA.\n
 
 
@@ -818,6 +819,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Impossible d'ouvrir le fichier de sortie '%1$s'\n
+16 Classe inconnue "%1$s"\n
 60 \
 diagdb: Dump a database.\n\
 usage: %1$s diagdb [OPTION] database-name\n\
@@ -846,7 +848,8 @@ lockdb: Affiche l'état du verrouillage de la base de données.\n\
 usage: %1$s lockdb [OPTION] database-name\n\
 \n\
 options valids:\n\
-  -o, --output-file=FICHIER   redirige les messages de sortie à FICHIER; par défaut: aucun\n
+  -o, --output-file=FICHIER   redirige les messages de sortie à FICHIER; par défaut: aucun\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -915,7 +918,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              remplace le fichier de classe si lui existe, par défaut non\n
+  -y, --overwrite              remplace le fichier de classe si lui existe, par défaut non\n\
+  -p, --package                nom du package java, vide s'il n'est pas spécifié\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Impossible d'ouvrir le fichier de sortie '%1$s'\n
@@ -927,6 +932,7 @@ usage: %1$s plandump [OPTION] database-name\n\
 options valids:\n\
   -d, --drop                   supprime tous les plans dans le cache du serveur\n\
   -o, --output-file=FICHIER    redirige les messages de sortie à FICHIER; par défaut: aucun\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Impossible d'ouvrir le fichier de sortie '%1$s'\n

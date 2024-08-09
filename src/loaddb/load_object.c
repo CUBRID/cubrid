@@ -464,7 +464,7 @@ text_print_flush (TEXT_OUTPUT * tout)
  *    ...(in): arguments
  */
 int
-text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...)
+text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, const char *fmt, ...)
 {
   int error = NO_ERROR;
   int nbytes, size;
@@ -502,7 +502,30 @@ start:
       else
 	{			/* need more buffer */
 	  CHECK_PRINT_ERROR (text_print_flush (tout));
-	  goto start;		/* retry */
+	  if (tout->iosize > nbytes)
+	    {
+	      goto start;	/* retry */
+	    }
+
+	  if (buflen > 0)
+	    {
+	      if (buflen != (int) fwrite (buf, 1, buflen, tout->fp))
+		{
+		  return ER_IO_WRITE;
+		}
+	    }
+	  else
+	    {
+	      va_start (ap, fmt);
+	      if (nbytes != vfprintf (tout->fp, fmt, ap))
+		{
+		  va_end (ap);
+		  return ER_IO_WRITE;
+		}
+	      va_end (ap);
+	    }
+
+	  return NO_ERROR;
 	}
     }
 

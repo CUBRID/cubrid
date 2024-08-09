@@ -80,6 +80,9 @@ struct lf_entry_descriptor
   /* does entry have mutex */
   int using_mutex;
 
+  /* maximum alloc cnt */
+  int max_alloc_cnt;
+
   /* allocation callback */
   LF_ENTRY_ALLOC_FUNC f_alloc;
 
@@ -106,7 +109,8 @@ struct lf_entry_descriptor
   LF_ENTRY_DUPLICATE_KEY_HANDLER f_duplicate;
 };
 
-#define LF_ENTRY_DESCRIPTOR_INITIALIZER { 0, 0, 0, 0, 0, 0, NULL, NULL, NULL, \
+#define LF_ENTRY_DESCRIPTOR_MAX_ALLOC 2147483647	/* MAX INT */
+#define LF_ENTRY_DESCRIPTOR_INITIALIZER { 0, 0, 0, 0, 0, 0, LF_ENTRY_DESCRIPTOR_MAX_ALLOC, NULL, NULL, NULL, \
 					  NULL, NULL, NULL, NULL, NULL}
 
 /*
@@ -390,6 +394,7 @@ class lf_hash_table_cpp
 
     size_t get_size () const;
     size_t get_element_count () const;
+    size_t get_alloc_element_count () const;
 
     lf_hash_table &get_hash_table ();
     lf_freelist &get_freelist ();
@@ -615,6 +620,13 @@ lf_hash_table_cpp<Key, T>::get_element_count () const
     {
       return 0;
     }
+}
+
+template <class Key, class T>
+size_t
+lf_hash_table_cpp<Key, T>::get_alloc_element_count () const
+{
+  return m_freelist.alloc_cnt;
 }
 
 template <class Key, class T>

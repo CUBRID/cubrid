@@ -82,6 +82,7 @@ extern void shf_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 extern void shf_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void shf_get_maxslotted_reclength (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stde_is_loaded (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdblink_get_crypt_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -120,7 +121,6 @@ extern void sboot_find_last_temp (THREAD_ENTRY * thread_p, unsigned int rid, cha
 extern void sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sqst_update_all_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -138,6 +138,7 @@ extern void sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *re
 extern void sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_end_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -256,4 +257,8 @@ extern void scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 /* flashback */
 extern void sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+/* PL/CSQL */
+extern void splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
 #endif /* _NETWORK_INTERFACE_SR_H_ */

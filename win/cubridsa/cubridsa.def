@@ -3,12 +3,8 @@ EXPORTS
 ;
 ; functions
 ;
-    au_enable
     au_change_owner
-    au_disable
     au_grant
-    au_get_public_user
-    au_get_dba_user
     cfg_free_directory
     cfg_find_db
     cfg_find_db_list
@@ -81,10 +77,6 @@ EXPORTS
     htonl
     htoni64
     numeric_coerce_int_to_num
-    pgbuf_fix_release
-    pgbuf_fix_debug
-    pgbuf_get_vpid_ptr
-    pgbuf_set_dirty
     prm_get_master_port_id
     prm_get_bool_value
     prm_get_float_value
@@ -129,7 +121,6 @@ EXPORTS
     util_log_write_errid
     util_log_write_errstr
     util_log_write_command
-    au_get_user_class_name
     tr_get_class_name
     boot_emergency_patch
     boot_set_skip_check_ct_classes
@@ -202,8 +193,6 @@ EXPORTS
 	csql
 	csql_get_message
 	basename
-	au_set_password
-	au_disable_passwords
 	er_has_error
 	er_msg
 	er_set
@@ -590,6 +579,7 @@ EXPORTS
     db_objlist_next
     db_objlist_object
     db_objlist_print
+    db_init_lexer_lineno
     db_open_buffer
     db_open_file
     db_open_file_name

@@ -55,6 +55,8 @@
 #include "cas_db_inc.h"
 #endif
 #include "chartype.h"
+#include "hide_password.h"
+
 
 #if defined(WINDOWS)
 typedef int mode_t;
@@ -63,6 +65,9 @@ typedef int mode_t;
 #define CAS_LOG_BUFFER_SIZE (8192)
 #define SQL_LOG_BUFFER_SIZE 163840
 #define ACCESS_LOG_IS_DENIED_TYPE(T)  ((T)==ACL_REJECTED)
+
+#define CAS_LOG_VISIBLE_PW     0
+#define CAS_LOG_HIDE_PW        1
 
 static const char *get_access_log_type_string (ACCESS_LOG_TYPE type);
 static char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
@@ -83,7 +88,8 @@ static void cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, 
 static FILE *access_log_open (char *log_file_name);
 static bool cas_log_begin_hang_check_time (void);
 static void cas_log_end_hang_check_time (bool is_prev_time_set);
-static void cas_log_write_query_string_internal (char *query, int size, bool newline);
+static void cas_log_write_query_string_internal (char *query, int size, bool newline,
+						 HIDE_PWD_INFO_PTR hide_pwd_info_ptr, bool ishidepw);
 
 #ifdef CAS_ERROR_LOG
 static int error_file_offset;
@@ -111,6 +117,8 @@ static int cas_unlink (const char *pathname);
 static int cas_rename (const char *oldpath, const char *newpath);
 static int cas_mkdir (const char *pathname, mode_t mode);
 static void access_log_backup (char *access_log_file, struct tm *ct);
+
+static INT64 saved_temp_stmt_fpos = 0;
 
 static char *
 make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size, const char *br_name)
@@ -690,204 +698,8 @@ cas_log_write_value_string (char *value, int size)
 }
 
 void
-cas_log_write_query_string_nonl (char *query, int size)
+cas_log_compile_begin_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
-  cas_log_write_query_string_internal (query, size, false);
-}
-
-void
-cas_log_write_query_string (char *query, int size)
-{
-  cas_log_write_query_string_internal (query, size, true);
-}
-
-
-
-#define SKIP_SPACE(p)  do {     \
-   while (char_isspace(*(p)))   \
-     {                          \
-        (p)++;                  \
-     }                          \
-} while(0)
-
-static char *
-get_token (char *&in, int &len)
-{
-  char *ps, quot_ch;
-  int quoted_single = 0;
-  int quoted_double = 0;
-
-  SKIP_SPACE (in);
-  ps = in;
-  if (*in == '\'' || *in == '"')
-    {
-      quot_ch = *in;
-      in++;
-      while (*in && *in != quot_ch)
-	{
-	  in++;
-	}
-      if (*in)
-	{
-	  in++;
-	}
-
-      len = (int) (in - ps);
-      return ps;
-    }
-
-  while (*in)
-    {
-      switch (*in)
-	{
-	case '\'':
-	case '"':
-	case '=':
-	case ',':
-	case '(':
-	case ')':
-	  if (ps == in)
-	    {
-	      in++;
-	    }
-	  len = (int) (in - ps);
-	  return ps;
-
-	case '-':
-	  if (in[1] == '-')
-	    {
-	      do
-		{
-		  in++;
-		}
-	      while (*in == '\n');
-	    }
-	  break;
-
-	case '/':
-	  if (in[1] == '/')
-	    {
-	      do
-		{
-		  in++;
-		}
-	      while (*in == '\n');
-	    }
-	  else if (in[1] == '*')
-	    {
-	      in += 2;
-	      while (*in)
-		{
-		  if (in[0] == '*' && in[1] == '/')
-		    {
-		      in += 2;
-		      break;
-		    }
-		  in++;
-		}
-	    }
-
-	  break;
-
-	default:
-	  if (char_isspace (*in))
-	    {
-	      len = (int) (in - ps);
-	      return ps;
-	    }
-	  break;
-	}
-
-      in++;
-    }
-
-  if (in == ps)
-    {
-      return NULL;
-    }
-
-  len = (int) (in - ps);
-  return ps;
-}
-
-static char *
-find_server_password (char *query, int &len)
-{
-  char *ptr;
-  char *ps = NULL;
-  bool is_alter;
-
-  SKIP_SPACE (query);
-  if ((strncasecmp (query, "create", 6) == 0))
-    {
-      query += 6;
-      is_alter = false;
-    }
-  else if ((strncasecmp (query, "alter", 5) == 0))
-    {
-      query += 5;
-      is_alter = true;
-    }
-  else
-    {
-      return NULL;
-    }
-  if (char_isspace (*query) == 0)
-    {
-      return NULL;
-    }
-
-  query++;
-  SKIP_SPACE (query);
-  if (strncasecmp (query, "server", 6) != 0)
-    {
-      return NULL;
-    }
-  query += 6;
-  SKIP_SPACE (query);
-
-  ps = get_token (query, len);
-  while (ps)
-    {
-      if ((len == 8) && (strncasecmp (ps, "password", len) == 0))
-	{
-	  ptr = get_token (query, len);
-	  if (ptr && strncasecmp (ptr, "=", 1) == 0)
-	    {
-	      ps = get_token (query, len);
-	      if (ps)
-		{
-		  if ((ps[0] == '\'' && ps[len - 1] == '\'') || (ps[0] == '"' && ps[len - 1] == '"'))
-		    {
-		      len += (int) (ps - ptr);
-		      return ptr;
-		    }
-		  else if (ps[0] == ',' || (!is_alter && ps[0] == ')'))
-		    {
-		      // PASSWORD= ,
-		      len = 1;
-		      return ptr;
-		    }
-		}
-	      else if (is_alter)
-		{
-		  // PASSWORD=;
-		  len = 1;
-		  return ptr;
-		}
-	    }
-	}
-
-      ps = get_token (query, len);
-    }
-
-  return NULL;
-}
-
-static void
-cas_log_write_query_string_internal (char *query, int size, bool newline)
-{
-
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
       cas_log_open (shm_appl->broker_name);
@@ -895,14 +707,106 @@ cas_log_write_query_string_internal (char *query, int size, bool newline)
 
   if (log_fp != NULL && query != NULL)
     {
-      char *s, *ps;
-      int len = 0;
+      saved_temp_stmt_fpos = cas_ftell (log_fp);
+      cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
+    }
+}
 
-      ps = find_server_password (query, len);
-      s = query;
-      if (ps)
+void
+cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
+{
+  if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
+    {
+      cas_log_open (shm_appl->broker_name);
+    }
+
+  if (log_fp != NULL && query != NULL)
+    {
+      /* If the password information does not exist or the password exists in the query */
+      if (hide_pwd_info_ptr == NULL || (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->used > 0))
 	{
-	  for ( /*empty */ ; s != ps; s++)
+	  cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
+	  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
+	}
+    }
+
+  saved_temp_stmt_fpos = 0;
+}
+
+void
+cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
+{
+  if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
+    {
+      cas_log_open (shm_appl->broker_name);
+    }
+
+  if (log_fp != NULL && query != NULL)
+    {
+      saved_temp_stmt_fpos = cas_ftell (log_fp);
+      cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
+    }
+}
+
+void
+cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
+{
+  if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
+    {
+      cas_log_open (shm_appl->broker_name);
+    }
+
+  if (log_fp != NULL && query != NULL)
+    {
+      /* If the password information does not exist or the password exists in the query */
+      if (hide_pwd_info_ptr == NULL || (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->used > 0))
+	{
+	  cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
+	  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
+	}
+    }
+
+  saved_temp_stmt_fpos = 0;
+}
+
+void
+cas_log_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
+{
+  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
+}
+
+void
+cas_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
+{
+  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
+}
+
+static void
+cas_fprintf_password (FILE * fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
+{
+  password_fprintf (fp, query, hide_pwd_info_ptr, cas_fprintf);
+}
+
+static void
+cas_log_write_query_string_internal (char *query, int size, bool newline, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
+				     bool ishidepw)
+{
+  if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
+    {
+      cas_log_open (shm_appl->broker_name);
+    }
+
+  if (log_fp != NULL && query != NULL)
+    {
+      if (ishidepw == CAS_LOG_HIDE_PW)
+	{
+	  cas_fprintf_password (log_fp, query, hide_pwd_info_ptr);
+	}
+      else
+	{
+	  char *s;
+
+	  for (s = query; *s; s++)
 	    {
 	      if (*s == '\n' || *s == '\r')
 		{
@@ -913,24 +817,6 @@ cas_log_write_query_string_internal (char *query, int size, bool newline)
 		  cas_fputc (*s, log_fp);
 		}
 	    }
-
-	  cas_fputc ('=', log_fp);
-	  cas_fputc ('*', log_fp);
-	  cas_fputc ('*', log_fp);
-	  cas_fputc ('*', log_fp);
-	  s += len;
-	}
-
-      for ( /*empty */ ; *s; s++)
-	{
-	  if (*s == '\n' || *s == '\r')
-	    {
-	      cas_fputc (' ', log_fp);
-	    }
-	  else
-	    {
-	      cas_fputc (*s, log_fp);
-	    }
 	}
 
       if (newline)
@@ -938,7 +824,6 @@ cas_log_write_query_string_internal (char *query, int size, bool newline)
 	  fputc ('\n', log_fp);
 	}
     }
-
 }
 
 void
@@ -1388,7 +1273,7 @@ cas_slow_log_write_value_string (char *value, int size)
 }
 
 void
-cas_slow_log_write_query_string (char *query, int size)
+cas_slow_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
@@ -1398,19 +1283,7 @@ cas_slow_log_write_query_string (char *query, int size)
 
   if (slow_log_fp != NULL && query != NULL)
     {
-      char *s;
-
-      for (s = query; *s; s++)
-	{
-	  if (*s == '\n' || *s == '\r')
-	    {
-	      cas_fputc (' ', slow_log_fp);
-	    }
-	  else
-	    {
-	      cas_fputc (*s, slow_log_fp);
-	    }
-	}
+      cas_fprintf_password (slow_log_fp, query, hide_pwd_info_ptr);
       cas_fputc ('\n', slow_log_fp);
     }
 

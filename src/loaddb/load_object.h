@@ -76,7 +76,7 @@ typedef struct text_output
 } TEXT_OUTPUT;
 
 extern int text_print_flush (TEXT_OUTPUT * tout);
-extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...);
+extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, const char *fmt, ...);
 extern DESC_OBJ *make_desc_obj (SM_CLASS * class_);
 extern int desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag);
 extern int desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj);

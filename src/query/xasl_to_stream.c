@@ -188,6 +188,7 @@ static char *xts_process_method_sig_list (char *ptr, const METHOD_SIG_LIST * met
 static char *xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int size);
 static char *xts_process_connectby_proc (char *ptr, const CONNECTBY_PROC_NODE * connectby_proc);
 static char *xts_process_regu_value_list (char *ptr, const REGU_VALUE_LIST * regu_value_list);
+static char *xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache);
 
 static int xts_sizeof (const json_table_column & ptr);
 static int xts_sizeof (const json_table_node & ptr);
@@ -1436,6 +1437,90 @@ xts_save_val_list (const VAL_LIST * val_list)
     }
 
   buf = xts_process_val_list (buf_p, val_list);
+  if (buf == NULL)
+    {
+      offset = ER_FAILED;
+      goto end;
+    }
+  assert (buf <= buf_p + size);
+
+  memcpy (&xts_Stream_buffer[offset], buf_p, size);
+
+end:
+  if (is_buf_alloced)
+    {
+      free_and_init (buf_p);
+    }
+
+  return offset;
+}
+
+static char *
+xts_process_sub_xasl_id (char *ptr, const XASL_ID * sub_xasl_id)
+{
+  int i;
+
+  ptr = or_pack_sha1 (ptr, &sub_xasl_id->sha1);
+
+  OR_PUT_INT (ptr, sub_xasl_id->cache_flag);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, sub_xasl_id->time_stored.sec);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, sub_xasl_id->time_stored.usec);
+  ptr += OR_INT_SIZE;
+
+  return ptr;
+}
+
+static int
+xts_save_sub_xasl_id (const XASL_ID * sub_xasl_id)
+{
+  int offset, i;
+  int size;
+  char *ptr;
+
+  OR_ALIGNED_BUF (sizeof (*sub_xasl_id)) a_buf;
+  char *buf = OR_ALIGNED_BUF_START (a_buf);
+
+  char *buf_p = NULL;
+  bool is_buf_alloced = false;
+
+  if (sub_xasl_id == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  offset = xts_get_offset_visited_ptr (sub_xasl_id);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  size = sizeof (XASL_ID);
+
+  offset = xts_reserve_location_in_stream (size);
+  if (offset == ER_FAILED || xts_mark_ptr_visited (sub_xasl_id, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
+    {
+      buf_p = buf;
+    }
+  else
+    {
+      buf_p = (char *) malloc (size);
+      if (buf_p == NULL)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return ER_FAILED;
+	}
+
+      is_buf_alloced = true;
+    }
+
+  buf = xts_process_sub_xasl_id (buf_p, sub_xasl_id);
   if (buf == NULL)
     {
       offset = ER_FAILED;
@@ -2740,6 +2825,35 @@ xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
   return offset;
 }
 
+static char *
+xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache)
+{
+  int offset, n_elements;
+
+  if (sq_cache)
+    {
+      n_elements = sq_cache->sq_key_struct->n_elements;
+      ptr = or_pack_int (ptr, n_elements);
+
+      offset = xts_save_db_value_array (sq_cache->sq_key_struct->dbv_array, n_elements);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+  else
+    {
+      n_elements = 0;
+      ptr = or_pack_int (ptr, n_elements);
+
+      offset = 0;
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  return ptr;
+}
+
 /*
  * xts_process_xasl_header () - Pack XASL node header in buffer.
  *
@@ -2764,7 +2878,7 @@ static char *
 xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 {
   int offset;
-  int cnt;
+  int cnt, i;
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
   assert (PTR_ALIGN (ptr, MAX_ALIGNMENT) == ptr);
@@ -3034,6 +3148,27 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->mvcc_reev_extra_cls_cnt);
 
+  if (xasl->sub_xasl_id == NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      offset = xts_save_sub_xasl_id (xasl->sub_xasl_id);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  ptr = or_pack_int (ptr, xasl->sub_host_var_count);
+
+  for (i = 0; i < xasl->sub_host_var_count; i++)
+    {
+      ptr = or_pack_int (ptr, xasl->sub_host_var_index[i]);
+    }
+
   /*
    * NOTE that the composite lock block is strictly a server side block
    * and is not packed.
@@ -3128,6 +3263,12 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+
+  ptr = xts_process_sq_cache (ptr, xasl->sq_cache);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
 
   return ptr;
 }
@@ -4371,7 +4512,8 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
   ptr = or_pack_int (ptr, access_spec->access);
 
   if (access_spec->access == ACCESS_METHOD_SEQUENTIAL || access_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE)
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
     {
       ptr = or_pack_int (ptr, 0);
     }
@@ -5866,6 +6008,10 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
       size += xts_sizeof_access_spec_type (access_spec);
     }
 
+  size += PTR_SIZE;		/* for subquery's xasl_id */
+  size += OR_INT_SIZE;		/* for subquery's host variable count */
+  size += (OR_INT_SIZE * xasl->sub_host_var_count);
+
   switch (xasl->type)
     {
     case BUILDLIST_PROC:
@@ -5975,7 +6121,9 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 
   size += (OR_INT_SIZE		/* iscan_oid_order */
 	   + PTR_SIZE		/* query_alias */
-	   + PTR_SIZE);		/* next */
+	   + PTR_SIZE		/* next */
+	   + OR_INT_SIZE	/* sq_cache_n_elements */
+	   + PTR_SIZE);		/* sq_cache */
 
   return size;
 }

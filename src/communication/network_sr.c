@@ -329,6 +329,9 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_AUTHORIZATION | CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = shf_heap_reclaim_addresses;
 
+  req_p = &net_Requests[NET_SERVER_HEAP_GET_MAXSLOTTED_RECLENGTH];
+  req_p->processing_function = shf_get_maxslotted_reclength;
+
   /* file */
   req_p = &net_Requests[NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
@@ -448,10 +451,6 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sqst_update_statistics;
 
-  req_p = &net_Requests[NET_SERVER_QST_UPDATE_ALL_STATISTICS];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = sqst_update_all_statistics;
-
   /* query manager */
   req_p = &net_Requests[NET_SERVER_QM_QUERY_PREPARE];
   req_p->action_attribute = IN_TRANSACTION;
@@ -471,6 +470,9 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_ALL_PLANS];
   req_p->processing_function = sqmgr_drop_all_query_plans;
+
+  req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_SHA1_PLANS];
+  req_p->processing_function = sqmgr_drop_query_plans_by_sha1;
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_PLANS];
   req_p->processing_function = sqmgr_dump_query_plans;
@@ -737,6 +739,11 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_LOGINFO];
   req_p->processing_function = sflashback_get_loginfo;
+
+  /* PL/CSQL */
+  req_p = &net_Requests[NET_SERVER_PLCSQL_TRANSFER_FILE];
+  req_p->processing_function = splcsql_transfer_file;
+
 }
 
 /*

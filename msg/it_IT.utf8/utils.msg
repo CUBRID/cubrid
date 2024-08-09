@@ -559,6 +559,7 @@ opzioni valide:\n\
   -C, --CS-mode               modalità di esecuzione client-server\n\
       --datafile-per-class    creare un file oggetto per ogni classe; predefinito: non attivo\n\
       --split-schema-files    dividere le informazioni sullo schema per oggetto e generare ciascun file; Predefinito: genera un file schema con tutti gli oggetti\n\
+      --skip-index-detail     Non stampare le opzioni della clausola WITH specificate durante la creazione dell'indice; predefinito: disabilitato\n\
       --as-dba                Se l'utente di accesso è un membro del gruppo DBA, estrai lo stesso file di schema del DBA.\n
 
 
@@ -815,6 +816,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Impossibile aprire il file di output '%1$s'\n
+16 Classe sconosciuta "%1$s"\n
 60 \
 diagdb: Discarica database.\n\
 uso: %1$s diagdb [OPZIONE] nome-database\n\
@@ -843,7 +845,8 @@ lockdb: Visualizzare lock-status del database.\n\
 uso: %1$s lockdb [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
-  -o, --output-file=FILE       reindirizzare i messaggi di output a FILE; predefinito: nessuno\n
+  -o, --output-file=FILE       reindirizzare i messaggi di output a FILE; predefinito: nessuno\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -912,7 +915,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              sovrascrivere class file, se esiste, niente predefinito\n
+  -y, --overwrite              sovrascrivere class file, se esiste, niente predefinito\n\
+  -p, --package                nome pacchetto java, vuoto se non specificato\n\
+  -j, --jni                    add a Class or Jar to static loading for JNI\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Impossibile aprire il file di output '%1$s'\n
@@ -923,7 +928,8 @@ uso: %1$s plandump [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
   -d, --drop                   eliminare tutti i piani nella cache del server\n\
-  -o, --output-file=FILE       reindirizzare i messaggi di output a FILE; predefinito: nessuno\n
+  -o, --output-file=FILE       reindirizzare i messaggi di output a FILE; predefinito: nessuno\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Impossibile aprire il file di output '%1$s'\n

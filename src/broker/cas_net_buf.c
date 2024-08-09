@@ -49,10 +49,12 @@
 #include "byte_order.h"
 
 static int net_buf_realloc (T_NET_BUF * net_buf, int size);
+static int _net_buf_size = INT_DEFAULE_NET_BUF_SIZE;
 
 void
 net_buf_init (T_NET_BUF * net_buf, T_BROKER_VERSION client_version)
 {
+  set_net_buf_size ();
   net_buf->data = NULL;
   net_buf->alloc_size = 0;
   net_buf->data_size = 0;
@@ -872,4 +874,19 @@ net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type, un
     }
 
   return 0;
+}
+
+int
+get_net_buf_size ()
+{
+  return _net_buf_size;
+}
+
+void
+set_net_buf_size ()
+{
+  _net_buf_size = (shm_appl == NULL
+		   || shm_appl->net_buf_size <= 0) ? INT_DEFAULE_NET_BUF_SIZE : shm_appl->net_buf_size * ONE_K;
+
+  return;
 }

@@ -5979,6 +5979,8 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "ADMIN_COMPACTDB_WOS";
     case DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT:
       return "ADMIN_LOADDB_COMPAT";
+    case DB_CLIENT_TYPE_LOADDB_UTILITY:
+      return "LOADDB_UTILITY";
     case DB_CLIENT_TYPE_UNKNOWN:
     default:
       return "UNKNOWN";

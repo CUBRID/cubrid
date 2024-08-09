@@ -2735,7 +2735,8 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p, co
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file remove",
 	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "fileio_unformat: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+      _er_log_debug (ARG_FILE_LINE, "[MONITOR_WAITING_THREAD] fileio_unformat: %6d.%06d\n", elapsed_time.tv_sec,
+		     elapsed_time.tv_usec);
     }
 #endif
 
@@ -3954,7 +3955,8 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file read",
 	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "fileio_read: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+      _er_log_debug (ARG_FILE_LINE, "[MONITOR_WAITING_THREAD] fileio_read: %6d.%06d\n", elapsed_time.tv_sec,
+		     elapsed_time.tv_usec);
     }
 #endif
 
@@ -4157,7 +4159,8 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file write",
 	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "fileio_write: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+      _er_log_debug (ARG_FILE_LINE, "[MONITOR_WAITING_THREAD] fileio_write: %6d.%06d\n", elapsed_time.tv_sec,
+		     elapsed_time.tv_usec);
     }
 #endif
 
@@ -4242,7 +4245,8 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file read",
 	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "fileio_read_pages: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+      _er_log_debug (ARG_FILE_LINE, "[MONITOR_WAITING_THREAD] fileio_read_pages: %6d.%06d\n", elapsed_time.tv_sec,
+		     elapsed_time.tv_usec);
     }
 #endif
 
@@ -4329,7 +4333,8 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file write",
 	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "fileio_write_pages: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+      _er_log_debug (ARG_FILE_LINE, "[MONITOR_WAITING_THREAD] fileio_write_pages: %6d.%06d\n", elapsed_time.tv_sec,
+		     elapsed_time.tv_usec);
     }
 #endif
 
@@ -4465,7 +4470,8 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
 	{
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file sync",
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-	  er_log_debug (ARG_FILE_LINE, "fileio_synchronize: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+	  _er_log_debug (ARG_FILE_LINE, "[MONITOR_WAITING_THREAD] fileio_synchronize: %6d.%06d\n", elapsed_time.tv_sec,
+			 elapsed_time.tv_usec);
 	}
 #endif
 
@@ -10185,7 +10191,8 @@ exit_on_error:
 int
 fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, char *to_vol_label_p,
 		       char *verbose_to_vol_label_p, char *prev_vol_label_p, FILEIO_RESTORE_PAGE_BITMAP * page_bitmap,
-		       bool is_remember_pages)
+		       bool is_remember_pages, bool & is_prev_vol_header_restored,
+		       FILEIO_UNLINKED_VOLINFO_MAP & unlinked_volinfo)
 {
   int next_page_id = 0;
   INT64 total_nbytes = 0;
@@ -10371,7 +10378,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 	      goto error;
 	    }
 
-	  if (volid != LOG_DBFIRST_VOLID)
+	  if (volid != LOG_DBFIRST_VOLID && is_prev_vol_header_restored)
 	    {
 	      VOLID prev_volid;
 	      int prev_vdes;
@@ -10392,7 +10399,42 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 		}
 
 	      fileio_dismount (thread_p, prev_vdes);
+
+	      if (unlinked_volinfo.count (volid))
+		{
+		  // The volume headers of both previous and current volumes are in the full or big incremental backup volumes.
+		  // Therefore, the link between the two volumes is naturally established during the restoration process.
+		  // So, there is no need to explicitly set it.
+		  unlinked_volinfo.erase (volid);
+
+		  _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [UNSAVE UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
+				 session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
+		}
 	    }
+
+	  if (incremental_includes_volume_header == true)
+	    {
+	      if (volid != LOG_DBFIRST_VOLID && is_prev_vol_header_restored == false)
+		{
+		  _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [FOUND UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
+				 session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
+
+		  if (!unlinked_volinfo.count (volid))
+		    {
+		      unlinked_volinfo[volid] =
+			std::make_pair (std::string (to_vol_label_p), std::string (prev_vol_label_p));
+
+		      _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [SAVE UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
+				     session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
+		    }
+		}
+	    }
+
+	  is_prev_vol_header_restored = true;
+	}
+      else
+	{
+	  is_prev_vol_header_restored = false;
 	}
 
       /* save current volname */

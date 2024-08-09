@@ -1408,7 +1408,11 @@ init_env (void)
       return (-1);
     }
 
+#if defined (WINDOWS)
+  if (listen (sock_fd, SOMAXCONN_HINT (shm_appl->job_queue_size)) < 0)
+#else
   if (listen (sock_fd, shm_appl->job_queue_size) < 0)
+#endif
     {
       UW_SET_ERROR_CODE (UW_ER_CANT_BIND, 0);
       return (-1);

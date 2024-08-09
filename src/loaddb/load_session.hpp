@@ -119,7 +119,6 @@ namespace cubload
       void stats_update_last_committed_line (int64_t last_committed_line);
       void stats_update_current_line (int64_t current_line);
 
-      void update_class_statistics (cubthread::entry &thread_ref);
       const load_args &get_args ();
 
       class_registry &get_class_registry ();

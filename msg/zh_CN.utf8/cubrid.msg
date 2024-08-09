@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 数据库 "%1$s" 是未知的, 或是文件"databases.txt"无法被访问.
 117 数据库的绝对路径太长. 路径 "%1$s" 加上名字 "%2$s" 的组合长度为 %3$d; 组合的长度必须小于 %4$d.
 118 定位当前工作目录失败.
-119 在/etc/hosts中找不到("%1$s")。请检查文件的权限或是否有主机名。
+119 在"%2$s"中找不到主机名（"%1$s"）.请检查文件的权限或是否有主机名.
 120 超出了卷 (%1$d) 的最大数目.
 121 试图从数据库删除永久性的卷 "%1$s".
 122 无法访问系统消息目录.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 无法建立一条到master服务的管道.
 348 必须指定服务或端口标识.
 349 未知的TCP服务: %1$s.
-350 在/etc/hosts中找不到("%1$s")。请检查文件的权限或是否有主机名.
+350 在"%2$s"中找不到主机名（"%1$s"）.请检查文件的权限或是否有主机名.
 351 无法创建TCP套接字.
 352 tcp_open: 无法得到一个保留的tcp端口.
 353 在主机 "%1$s" 无法创建连到master服务的连接.
@@ -683,8 +683,8 @@ $ LOADDB
 613 在类 "%3$s", 本地组件 "%1$s" 无法对类 "%2$s" 充当一个别名替代. domain是不兼容的.
 614 活动日志卷的数目超过了%1$d 的最大要求数目.
 615 使用Winsock接口无法建立连接. Winsock 错误: %1$d.
-616 使用Winsock接口无法决定机器名. Winsock 错误: %1$d.
-617 使用Winsock接口无法决定机器id. 在主机名表必须有一个关于这个主机的条目. Winsock 错误: %1$d.
+616 在"%2$s"中找不到主机名（"%1$s"）.请检查文件的权限或是否有主机名.
+617 在"%2$s"中找不到主机名（"%1$s"）.请检查文件的权限或是否有主机名.
 618 属性是不可更新的.
 619 错误的源字符集.
 620 错误的目标字符集.
@@ -904,7 +904,7 @@ $ LOADDB
 834 在给to_number()的源字符串 "%1$s" 和格式字符串之间 "%2$s" 存在一些匹配不一致.
 835 未定义的统计项目.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 您不能删除拥有数据库对象(类/触发器/序列/服务器/同义词等)的用户。
+837 您不能删除拥有数据库对象的用户。
 838 无法同时打开多于 %1$d index scans.
 839 "%1$s": 未知的系统参数或错误的值.
 840 无法改变系统参数 "%1$s".
@@ -1314,7 +1314,7 @@ $ LOADDB
 1243 错误后索引加载被中止.
 1244 CS模式下不支持从对象文件中加载SHARED属性更新..
 1245 CS模式下不支持从对象文件中加载类属性更新.
-1246 在/etc/hosts中无法获取("%1$s")的地址和规范名称。请检查文件的权限或是否有主机名。
+1246 无法获取"%2$s"中主机名（"%1$s"）的地址和规范名称.请检查文件的权限或是否有主机名.
 1247 被指定的时间 (%1$s) 必须在所指定的备份的时间(%2$s) 之后.
 1248 无效的密钥文件：%1$s
 1249 找不到密钥（索引：%1$d）。
@@ -1438,16 +1438,16 @@ $ LOADDB
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s" 在文件 "%4$s" 的第 %3$d 行的格式无效。
-1356 主机名 "%1$s" 太长，它应该小于或等于文件 "%3$s" 的第 %2$d 行的 256。
-1357 主机名 "%1$s" 已经存在，主机名不能与文件 "%3$s" 的第 %2$d 行的其他 IP 地址重复。
-1358 IP 地址和主机名都必须完全写入文件"%2$s"的第 %1$d 行。
-1359 无法在 cubrid_hosts.conf 中查找"%1$s"。
-1360 使用用户定义的主机时发生错误。
 
-1361 找不到文件"%1$s"。
+1355 找不到文件"%1$s"。
+1356 DBLink查询没有提示，或者语句类型不正确。 %1$s
+1357 将 SQL 字符串转换为宽字符串失败。
+1358 受影响的行数未知。
 
-1362 最后一个错误.
+1359 Java VM crashed: %1$s
+1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+
+1361 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1509,8 +1509,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 31 无效的 create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 无效的 create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 无效的 create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 无效的 create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 无效的 create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+34 无效的 create procedure\n  CREATE [OR REPLACE] PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {procedure_source|procedure_spec}
+35 无效的 create function\n  CREATE [OR REPLACE] FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {function_source|function_spec}
 36 无效的组\n  groups spec: GROUPS identifier {, identifier}*
 37 无效的成员\n  member spec: MEMBERS identifier {, identifier}*
 38 无效的密码\n  password spec : PASSWORD 'STRING'
@@ -1613,6 +1613,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 没有为 ALTER SYNONYM 指定选项。
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
@@ -1931,6 +1932,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
+317 Identifiers cannot be in a LIMIT clause.
+318 Only DBA and DBA group members can change the SERIAL OWNER.
+319 Unsupported argument type '%1$s' of the stored procedure
+320 Unsupported return type '%1$s' of the stored procedure
+321 %TYPE type specification is allowed only for PL/CSQL
+322 Table column '%1$s.%2$s' has not been defined
+323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

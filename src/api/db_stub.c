@@ -2703,7 +2703,7 @@ conn_restart_client (CI_CONN_STRUCTURE * pconn, const char *program, int print_v
     {
       db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
       strcpy (db_Database_name, volume);
-      au_link_static_methods ();
+      db_install_static_methods ();
       esm_load_esm_classes ();
 
 #if !defined(WINDOWS)

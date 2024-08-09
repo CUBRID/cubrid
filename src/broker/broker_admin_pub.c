@@ -57,6 +57,7 @@
 #endif /* LINUX */
 
 #include "porting.h"
+#include "tcp.h"
 #include "cas_common.h"
 #include "broker_shm.h"
 #include "shard_metadata.h"
@@ -73,6 +74,8 @@
 #include "chartype.h"
 #include "cubrid_getopt.h"
 #include "dbtype_def.h"
+#include "host_lookup.h"
+#include "system_parameter.h"
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define DB_EMPTY_SESSION        (0)
@@ -251,6 +254,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   int res = 0;
   char path[BROKER_PATH_MAX];
   char upper_broker_name[BROKER_NAME_LEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
@@ -321,6 +325,20 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	}
     }
   chdir (envvar_bindir_file (path, BROKER_PATH_MAX, ""));
+
+  if (gethostname (hostname, sizeof (hostname)) < 0)
+    {
+      fprintf (stderr, "gethostname error: cannot get local hostname\n");
+      return -1;
+    }
+  /* cannot execute broker initialize unless success host look-up */
+  if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, hostname, HOSTS_FILE);
+      fprintf (stderr, er_msg ());
+      fflush (stderr);
+      return -1;
+    }
 
   /* create master shared memory */
   shm_br = broker_shm_initialize_shm_broker (master_shm_id, br_info, br_num, acl_flag, acl_file);

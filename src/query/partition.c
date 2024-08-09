@@ -2886,7 +2886,7 @@ partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node 
   pinfo.vd = vd;
 
   if (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-      || spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
+      || spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
     {
       error = partition_prune_heap_scan (&pinfo);
       if (error != NO_ERROR)
@@ -3875,7 +3875,11 @@ partition_attrinfo_get_key (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext,
 	  goto cleanup;
 	}
     }
-  error = btree_attrinfo_read_dbvalues (thread_p, curr_key, btree_attr_ids, btree_num_attr, &pcontext->attr_info, -1);
+
+  error =
+    btree_attrinfo_read_dbvalues (thread_p, curr_key, NULL, btree_attr_ids, btree_num_attr, &pcontext->attr_info, -1,
+				  NULL);
+
   if (error != NO_ERROR)
     {
       goto cleanup;

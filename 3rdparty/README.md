@@ -4,6 +4,9 @@ This directory contains a CMake build script for third-party softwares that CUBR
 
 ## Dependencies
 
+The following dependencies are required and integrated into the CUBRID build process.  
+For more details on how they are built with CUBRID, please refer to the [3rdparty/CMakeLists.txt](CMakeLists.txt):
+
 - libexpat v2.2.5
 - Jansson v2.10
 - Editline (libedit) for CUBRID version, https://github.com/CUBRID/libedit (Linux Only)

@@ -631,6 +631,7 @@ struct t_shm_appl_server
 #if !defined(WINDOWS)
   sem_t acl_sem;
 #endif
+  int net_buf_size;
 
   char cgw_link_server[CGW_LINK_SERVER_NAME_LEN];
   char cgw_link_server_ip[CGW_LINK_SERVER_IP_LEN];

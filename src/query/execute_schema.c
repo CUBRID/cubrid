@@ -46,6 +46,7 @@
 #include "semantic_check.h"
 #include "xasl_generation.h"
 #include "memory_alloc.h"
+#include "schema_system_catalog_constants.h"
 #include "transform.h"
 #include "set_object.h"
 #include "object_accessor.h"
@@ -82,7 +83,7 @@
 #define UNIQUE_SAVEPOINT_REVOKE_USER "rEVOKEuSER"
 
 #define QUERY_MAX_SIZE	1024 * 1024
-#define MAX_FILTER_PREDICATE_STRING_LENGTH 255
+#define MAX_FILTER_PREDICATE_STRING_LENGTH (1073741823)
 #define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
 typedef enum
@@ -2033,7 +2034,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
   if (password != NULL)
     {
-      error = au_set_password (user, password);
+      error = au_set_password_encrypt (user, password);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2191,9 +2192,11 @@ int
 do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   int error = NO_ERROR;
-  DB_OBJECT *user;
+  DB_OBJECT *user, *member;
   PT_NODE *node;
+  const PT_ALTER_CODE alter_user_code = statement->info.alter_user.code;
   const char *user_name, *password, *comment;
+  const char *member_name;
   bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2240,10 +2243,83 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (node != NULL)
     {
       password = IS_STRING (node) ? GET_STRING (node) : NULL;
-      error = au_set_password (user, password);
+      error = au_set_password_encrypt (user, password);
       if (error != NO_ERROR)
 	{
 	  goto end;
+	}
+    }
+
+  /* member */
+  node = statement->info.alter_user.members;
+  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+  if (member_name != NULL)
+    {
+      if (!ws_is_same_object (user, Au_user) && !au_is_dba_group_member (Au_user))
+	{
+	  error = ER_AU_NOT_OWNER;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto end;
+	}
+
+      switch (alter_user_code)
+	{
+	case PT_ADD_MEMBERS:
+	  do
+	    {
+	      member = db_find_user (member_name);
+
+	      if (member == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	      else
+		{
+		  error = db_add_member (user, member);
+		}
+
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+
+	      node = node->next;
+	      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	    }
+	  while (member_name != NULL);
+	  break;
+	case PT_DROP_MEMBERS:
+	  do
+	    {
+	      member = db_find_user (member_name);
+
+	      if (member == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	      else
+		{
+		  error = db_drop_member (user, member);
+		}
+
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+
+	      node = node->next;
+	      member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	    }
+	  while (member_name != NULL);
+	  break;
+	default:
+	  /* 
+	   * code shall be one of the above 2 types, otherwise it's an error. 
+	   */
+	  assert (false);
+	  break;
 	}
     }
 
@@ -2785,6 +2861,33 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    }
 	}
 
+      bool has_deduplicate_key_col = false;
+
+      // Class or shared attributes are not considered. These are not indexed columns.
+      // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
+      if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
+	{
+	  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
+	  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
+	    {
+	      ((PT_INDEX_INFO *) idx_info)->deduplicate_level = DEDUPLICATE_KEY_LEVEL_OFF;
+	    }
+	  else
+	    {
+	      if (idx_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+		{
+		  PT_INDEX_INFO *t_info = (PT_INDEX_INFO *) idx_info;
+		  t_info->deduplicate_level = param_dedup_level;
+		}
+
+	      if ((idx_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF) && (idx_info->prefix_length == NULL))
+		{
+		  has_deduplicate_key_col = true;
+		  nnames++;
+		}
+	    }
+	}
+
       attnames = (char **) malloc ((nnames + 1) * sizeof (const char *));
       if (attnames == NULL)
 	{
@@ -2821,6 +2924,11 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  i++;
 	  c = c->next;
 	}
+
+      if (has_deduplicate_key_col)
+	{
+	  nnames--;		// get count of real columns, except hidden column
+	}
       attnames[i] = NULL;
 
       if (nnames == 1 && idx_info->prefix_length)
@@ -2846,6 +2954,25 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	      func_index_info->attr_index_start = nnames - idx_info->func_no_args;
 	    }
 	}
+
+      if (has_deduplicate_key_col)
+	{
+	  SM_CLASS *class_ = NULL;
+	  assert ((ctype == DB_CONSTRAINT_INDEX) || (ctype == DB_CONSTRAINT_REVERSE_INDEX));
+
+	  error = au_fetch_class (obj, &class_, AU_FETCH_READ, AU_INDEX);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  if (class_->constraints == NULL
+	      || !classobj_check_attr_in_unique_constraint (class_->constraints, attnames, func_index_info))
+	    {
+	      dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info,
+					    nnames, SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
+	    }
+	}
     }
 
   cname = sm_produce_constraint_name (sm_get_ch_name (obj), ctype, (const char **) attnames, asc_desc, constraint_name);
@@ -2866,6 +2993,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  idx_info->where->info.expr.paren_type = 0;
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_CHARSET_COLLATE_FULL;
+
 	  filter_expr = pt_print_bytes ((PARSER_CONTEXT *) parser, (PT_NODE *) idx_info->where);
 	  parser->custom_print = save_custom;
 	  if (filter_expr)
@@ -7476,6 +7604,59 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
     {
       att_names[i++] = p->info.name.original;
     }
+
+  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
+  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
+    {
+      fk_info->deduplicate_level = DEDUPLICATE_KEY_LEVEL_OFF;
+    }
+  else
+    {
+      if (fk_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+	{
+	  fk_info->deduplicate_level = param_dedup_level;
+	}
+
+      if (fk_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
+	{
+	  SM_CLASS *class_ = NULL;
+	  SM_CLASS_CONSTRAINT *free_cons = NULL;
+	  SM_CLASS_CONSTRAINT *check_cons;
+
+	  if (ctemplate->op != NULL)
+	    {
+	      error = au_fetch_class (ctemplate->op, &class_, AU_FETCH_READ, AU_INDEX);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+
+	      check_cons = class_->constraints;
+	    }
+	  else
+	    {
+	      error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &check_cons);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+
+	      free_cons = check_cons;
+	    }
+
+	  att_names[i] = NULL;
+	  if (check_cons == NULL || !classobj_check_attr_in_unique_constraint (check_cons, (char **) att_names, NULL))
+	    {
+	      // adjust for FK: add deduplicate_key_attr column
+	      att_names[i++] = dk_get_deduplicate_key_attr_name (fk_info->deduplicate_level);
+	    }
+
+	  if (free_cons != NULL)
+	    {
+	      classobj_free_class_constraints (free_cons);
+	    }
+	}
+    }
   att_names[i] = NULL;
 
   if (fk_info->referenced_attrs != NULL)
@@ -7557,7 +7738,10 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 
   if (max_attrs > 0)
     {
-      buf_size = (max_attrs + 1) * sizeof (char *);
+      // If there is an FK, one more space is allocated in advance because deduplicate_key_attr information will be added.
+      // max_attrs +  [ deduplicate_key_attr ] + NULL
+      buf_size = (max_attrs + 2) * sizeof (char *);
+
       att_names = (char **) malloc (buf_size);
 
       if (att_names == NULL)
@@ -9931,8 +10115,9 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 {
   int error = NO_ERROR;
   DB_OBJECT *obj = NULL;
-  DB_VALUE returnval, class_val, user_val;
+  MOP class_mop, user_mop;
   PT_NODE *class_, *user;
+  SM_CLASS *sm_class = NULL;
 
   assert (alter != NULL);
 
@@ -9942,20 +10127,35 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
   user = alter->info.alter.alter_clause.user.user_name;
   assert (user != NULL);
 
-  db_make_null (&returnval);
-
-  db_make_string (&class_val, class_->info.name.original);
-  db_make_string (&user_val, user->info.name.original);
-
-  au_change_owner_method (obj, &returnval, &class_val, &user_val);
-
-  pr_clear_value (&class_val);
-  pr_clear_value (&user_val);
-
-  if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
+  class_mop = sm_find_class (class_->info.name.original);
+  if (class_mop == NULL)
     {
-      error = db_get_error (&returnval);
+      ASSERT_ERROR_AND_SET (error);
+      return error;
     }
+
+  error = au_fetch_class_force (class_mop, &sm_class, AU_FETCH_UPDATE);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  /* To change the owner of a system class is not allowed. */
+  if (sm_issystem (sm_class))
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS, "");
+      return error;
+    }
+
+  user_mop = au_find_user (user->info.name.original);
+  if (user_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = au_change_class_owner (class_mop, user_mop);
 
   return error;
 }
@@ -10904,6 +11104,26 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
     {
       attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* 
+   * DEFAULT value and AUTO INCREMENT cannot be defined for the same column.
+   * Therefore, it will change to the property on which the last MODIFY statement was executed. 
+   */
+  if (attr_def->info.attr_def.data_default != NULL)
+    {
+      if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
+	{
+	  attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_LOST;
+	}
+    }
+  else if (attr_def->info.attr_def.auto_increment != NULL)
+    {
+      if ((!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
+	   || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE))
+	{
+	  attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_LOST;
+	}
     }
 
   /* existing FOREIGN KEY (referencing) */
@@ -14414,6 +14634,7 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * no
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CHARSET_COLLATE_FULL;
+
   expr_str = parser_print_tree_with_quotes (parser, expr);
   parser->custom_print = save_custom;
   assert (expr_str != NULL);
@@ -14725,7 +14946,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       goto error;
     }
 
-  query_str_len = strlen (filter_index_info->pred_string) + strlen (class_name) + 9 /* strlen("SELECT * ") */  +
+  query_str_len = strlen (filter_index_info->pred_string) + strlen (class_name) + 9 /* strlen("SELECT 1 ") */  +
     6 /* strlen(" FROM ") */  +
     2 /* [] */  +
     7 /* strlen(" WHERE " */  +
@@ -14736,7 +14957,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_str_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  snprintf (query_str, query_str_len, "SELECT * FROM [%s] WHERE %s", class_name, filter_index_info->pred_string);
+  snprintf (query_str, query_str_len, "SELECT 1 FROM [%s] WHERE %s", class_name, filter_index_info->pred_string);
   stmt = parser_parse_string_use_sys_charset (parser, query_str);
   if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
     {
@@ -14790,6 +15011,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   where_predicate->info.expr.paren_type = 0;
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CHARSET_COLLATE_FULL;
+
   filter_expr = pt_print_bytes (parser, where_predicate);
   parser->custom_print = save_custom;
   if (filter_expr)

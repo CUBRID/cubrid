@@ -152,7 +152,7 @@ $ csql help messages
    ;PRINT                       - コマンドバッファーの内容を出力。\n\
    ;SHELL                       - シェル実行。\n\
    ;CD                          - 現在作業ディレクトリー変更。\n\
-   ;EXit                        - 終了。\n\
+   ;EXit (or Ctrl+d)            - 終了。\n\
 \n\
    ;CLear                       - コマンドバッファーの内容を消す。\n\
    ;EDIT   [format/fmt]         - コマンドバッファを使用して[フォーマッタの後に]システムエディタを呼び出します。\n\

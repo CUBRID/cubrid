@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Base de données "%1$s" est inconnu, ou le fichier "databases.txt" n'est pas accessible.
 117 Nom de chemin absolu pour la base de données est trop long. La longueur totale de le chemin "%1$s" et le nom "%2$s" est %3$d; la longueur combinée doit être inférieur à %4$d.
 118 Impossible de localiser le répertoire de travail courant.
-119 Impossible de trouver ("%1$s") dans /etc/hosts. Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
+119 Impossible de trouver le nom d'hôte ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 120 Le nombre maximal de volumes (%1$d) a été dépassé.
 121 Tentative de supprimer "%1$s" un volume permanente de la base de données.
 122 Impossible d'accéder au catalogue de messages du système.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Impossible de créer un pipe vers le serveur maître.
 348 Doit spécifier un service ou un identificateur de port.
 349 Service inconnu pour TCP: %1$s.
-350 Impossible de trouver ("%1$s") dans /etc/hosts. Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
+350 Impossible de trouver le nom d'hôte ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 351 Impossible de créer un socket TCP.
 352 tcp_open: ne peut pas obtenir un port TCP réservé.
 353 Impossible d'établir la connexion au serveur maître sur l'hôte "%1$s".
@@ -683,8 +683,8 @@ $ LOADDB
 613 Dans la classe "%3$s", composante locale "%1$s" ne peut pas servir comme un substitut d'alias pour la classe "%2$s". Les domaines sont incompatibles.
 614 Nombre des journaux actifs de transactions a été dépassé. Le nombre maximum souhaité est de %1$d.
 615 Impossible d'établir le contact avec l'interface Winsock. Erreur Winsock: %1$d.
-616 Impossible de déterminer le nom de la machine en utilisant l'interface Winsock. Erreur Winsock: %1$d.
-617 Impossible de déterminer l'id de machine en utilisant l'interface Winsock. Il doit y avoir une enregistration dans la table de nom d'hôte pour cette machine. Erreur Winsock: %1$d.
+616 Impossible de trouver le nom d'hôte ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
+617 Impossible de trouver le nom d'hôte ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 618 Attribut n'est pas modifiable.
 619 Mauvais jeux de caractères codés de source.
 620 Mauvais codeset de destination.
@@ -904,7 +904,7 @@ $ LOADDB
 834 Il ya quelques incohérences entre la chaîne source "%1$s" et la chaîne de format "%2$s" donnée dans to_number().
 835 Objet de statistique pas defini.
 836 LATCH ON PAGE(%1$d|%2$d) a expiré.
-837 Impossible de supprimer l'utilisateur qui possède des objets de base de données(classe/gâchette/serial/serveur/synonym etc).
+837 Impossible de supprimer l'utilisateur qui possède des objets de base de données.
 838  Impossible d'ouvrir plus de %1$d analyses d'index simultanément.
 839 "%1$s": Paramètre de système inconnu ou mauvaise valeur.
 840 Impossible de modifier le paramètres de système "%1$s".
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 Le chargement de l'index a été abandonné après une erreur
 1244 Le chargement de mises à jour d'attributs partagés à partir de fichiers objet n'est pas pris en charge en mode CS.
 1245 Le chargement de mises à jour d'attributs de classe à partir de fichiers objets n'est pas pris en charge en mode CS.
-1246 Impossible d'obtenir l'adresse et le nom canonique de ("%1$s") dans /etc/hosts. Veuillez vérifier l'autorisation du fichier ou s'il existe le nom d'hôte.
+1246 Impossible d'obtenir l'adresse et le nom canonique pour le nom d'hôte ("%1$s") dans "%2$s". Veuillez vérifier l'autorisation du fichier ou s'il existe le nom d'hôte.
 1247 Le temps (%1$s) spécifié doit être postérieure à l'heure (%2$s) de la sauvegarde spécifiée.
 1248 Fichier de clé non valide: %1$s
 1249 Impossible de trouver la clé (index: %1$d).
@@ -1437,16 +1437,16 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s" est un format invalide à la ligne %3$d du fichier "%4$s".
-1356 Le nom d'hôte "%1$s" est trop long, il doit être inférieur ou égal à 256 à la ligne %2$d du fichier "%3$s".
-1357 Le nom d'hôte "%1$s" existe déjà, un nom d'hôte ne peut pas être dupliqué avec d'autres adresses IP à la ligne %2$d du fichier "%3$s".
-1358 L'adresse IP et le nom d'hôte doivent être écrits entièrement à la ligne %1$d du fichier "%2$s".
-1359 Impossible de rechercher "%1$s" dans cubrid_hosts.conf.
-1360 Une erreur s'est produite lors de l'utilisation de l'hôte défini par l'utilisateur.
 
-1361 Le fichier "%1$s" est introuvable.
+1355 Le fichier "%1$s" est introuvable.
+1356 Il n'y a pas d'indication dans la requête DBLink ou le type d'instruction est incorrect. %1$s
+1357 La conversion d'une chaîne SQL en chaîne large a échoué.
+1358 Le nombre de lignes affectées est inconnu.
 
-1362 Dernière erreur
+1359 Java VM crashed: %1$s
+1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+
+1361 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1508,8 +1508,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 31 instruction non valide: create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 instruction non valide: create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 instruction non valide: create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 instruction non valide: create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 instruction non valide: create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+34 instruction non valide: create procedure\n  CREATE [OR REPLACE] PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {procedure_source|procedure_spec}
+35 instruction non valide: create function\n  CREATE [OR REPLACE] FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {function_source|function_spec}
 36 instruction non valide: groups\n  groups spec: GROUPS identifier {, identifier}*
 37 instruction non valide: members\n  member spec: MEMBERS identifier {, identifier}*
 38 instruction non valide: password\n  password spec: PASSWORD 'STRING'
@@ -1612,6 +1612,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 Aucune option spécifiée pour ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Mémoire épuisée.
@@ -1930,6 +1931,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
+317 Identifiers cannot be in a LIMIT clause.
+318 Only DBA and DBA group members can change the SERIAL OWNER.
+319 Unsupported argument type '%1$s' of the stored procedure
+320 Unsupported return type '%1$s' of the stored procedure
+321 %TYPE type specification is allowed only for PL/CSQL
+322 Table column '%1$s.%2$s' has not been defined
+323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

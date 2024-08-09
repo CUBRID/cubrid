@@ -27,7 +27,7 @@
 #include <assert.h>
 
 #include "oid.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 
 typedef struct oid_cache_entry OID_CACHE_ENTRY;
 struct oid_cache_entry

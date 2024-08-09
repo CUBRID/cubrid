@@ -49,7 +49,7 @@
           BUF[DATE_STR_LEN] = '\0';             \
         } while (0)
 
-extern char *ut_trim (char *);
+#define ut_trim  trim
 extern void ut_tolower (char *str);
 extern int ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno);
 extern int is_cas_log (char *str);

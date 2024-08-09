@@ -58,6 +58,7 @@ target_compile_definitions(csql PRIVATE ${COMMON_DEFS})
 target_include_directories(csql PRIVATE ${EP_INCLUDES})
 if(UNIX)
   target_link_libraries(csql LINK_PRIVATE ${CMAKE_DL_LIBS})
+  target_link_libraries(csql LINK_PUBLIC rt)
 else(UNIX)
   target_compile_definitions(csql PRIVATE _CONSOLE)
   target_link_libraries(csql LINK_PRIVATE ws2_32)
@@ -66,6 +67,27 @@ if(UNIX)
   add_dependencies(csql ${EP_TARGETS})
 endif(UNIX)
 add_dependencies(csql cubridsa cubridcs)
+
+set(PLCSQL_SOURCES
+  ${EXECUTABLES_DIR}/plcsql.cpp
+  ${EXECUTABLES_DIR}/util_support.c
+  )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${PLCSQL_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
+add_executable(plcsql_helper ${PLCSQL_SOURCES})
+target_compile_definitions(plcsql_helper PRIVATE ${COMMON_DEFS})
+target_include_directories(plcsql_helper PRIVATE ${EP_INCLUDES})
+add_dependencies(plcsql_helper ${EP_TARGETS})
+
+if(UNIX)
+  target_link_libraries(plcsql_helper PUBLIC stdc++fs)
+endif(UNIX)
+
+target_link_libraries(plcsql_helper LINK_PRIVATE cubridcs)
 
 set(CUB_MASTER_SOURCES
   ${EXECUTABLES_DIR}/master.c
@@ -358,6 +380,7 @@ install(TARGETS
   cub_javasp
   cub_admin
   cubrid_esql
+  plcsql_helper
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header

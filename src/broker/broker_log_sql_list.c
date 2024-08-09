@@ -241,7 +241,7 @@ sql_change_comp_form (char *src, char *dest)
 
   for (p = src, q = dest; *p; p++)
     {
-      if (*p == '\r' || *p == '\n' || *p == '\t' || *p == ' ')
+      if (char_isspace2 (*p))
 	{
 	  if (write_space_flag)
 	    {

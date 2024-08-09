@@ -24,8 +24,9 @@
 #define _XASL_ANALYTIC_HPP_
 
 #include "dbtype_def.h"
+#include "db_function.hpp"          // FUNC_CODE
 #include "regu_var.hpp"             // regu_variable_node
-#include "storage_common.h"       // FUNC_TYPE, QUERY_OPTIONS
+#include "storage_common.h"       // QUERY_OPTIONS
 
 // forward definitions
 struct qfile_list_id;
@@ -66,7 +67,7 @@ namespace cubxasl
     analytic_list_node *next;		/* next analytic node */
 
     /* constant fields, XASL serialized */
-    FUNC_TYPE function;		/* analytic function type */
+    FUNC_CODE function;		/* analytic function type */
     QUERY_OPTIONS option;		/* DISTINCT/ALL option */
     tp_domain *domain;		/* domain of the result */
     tp_domain *original_domain;	/* domain of the result */

@@ -29,7 +29,9 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
-#if !defined (WINDOWS)
+#if defined (WINDOWS)
+#include <io.h>
+#else
 #include <unistd.h>
 #endif
 #include <sys/types.h>
@@ -74,6 +76,8 @@
 #define SYNONYM_SUFFIX        "_synonym"
 #define USER_SUFFIX           "_user"
 #define VCLASS_SUFFIX         "_vclass"
+#define VCLASS_QUERY_SPEC_SUFFIX         "_vclass_query_spec"
+#define UK_SUFFIX            "_uk"
 
 
 #define EX_ERROR_CHECK(c,d,m)                                 \
@@ -136,6 +140,24 @@ typedef enum
 
 typedef enum
 {
+  ALTER_SERIAL_UNIQUE_NAME,
+  ALTER_SERIAL_NAME,
+  ALTER_SERIAL_OWNER_NAME,
+  ALTER_SERIAL_CURRENT_VAL,
+  ALTER_SERIAL_INCREMENT_VAL,
+  ALTER_SERIAL_MAX_VAL,
+  ALTER_SERIAL_MIN_VAL,
+  ALTER_SERIAL_CYCLIC,
+  ALTER_SERIAL_STARTED,
+  ALTER_SERIAL_CACHED_NUM,
+  ALTER_SERIAL_CLASS_NAME,
+  ALTER_SERIAL_COMMENT,
+
+  ALTER_SERIAL_VALUE_INDEX_MAX
+} ALTER_SERIAL_VALUE_INDEX;
+
+typedef enum
+{
   SYNONYM_NAME,
   SYNONYM_OWNER,
   SYNONYM_OWNER_NAME,
@@ -164,12 +186,13 @@ static int order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, in
 static void emit_cycle_warning (print_output & output_ctx);
 static void force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
 static DB_OBJLIST *get_ordered_classes (print_output & output_ctx, MOP * class_table);
-static void emit_class_owner (extract_context & ctxt, print_output & output_ctx, MOP class_);
 static int export_serial (extract_context & ctxt, print_output & output_ctx);
+static int emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx);
 static int emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
 			 DB_OBJLIST * vclass_list_has_using_index);
 
 static void emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TYPE extract_class);
+static void emit_class_query_spec (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TYPE extract_class);
 static bool has_vclass_domains (DB_OBJECT * vclass);
 static DB_OBJLIST *emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_ctx,
@@ -200,7 +223,7 @@ static void emit_primary_key_def (extract_context & ctxt, print_output & output_
 static void emit_primary_and_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_,
 					 const char *class_type);
 static void emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_);
-static void emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_);
+static int emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_);
 static void emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * domains);
 static int emit_autoincrement_def (print_output & output_ctx, DB_ATTRIBUTE * attribute);
 static void emit_method_def (extract_context & ctxt, print_output & output_ctx, DB_METHOD * method,
@@ -212,10 +235,13 @@ static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, D
 static int emit_stored_procedure (extract_context & ctxt, print_output & output_ctx);
 static int emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
+static void emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 			    char *output_filename_p, const size_t filename_size);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *infix,
 			    const char *suffix, char *output_filename_p, const size_t filename_size);
+static int create_filefullpath (const char *output_dirname, const char *output_filename,
+				char *output_filename_p, const size_t filename_size);
 static int export_server (extract_context & ctxt, print_output & output_ctx);
 static int extract_all_schema_file (extract_context & ctxt, const char *output_filename);
 static int extract_split_schema_files (extract_context & ctxt);
@@ -227,8 +253,10 @@ static int extract_procedure (extract_context & ctxt);
 static int extract_server (extract_context & ctxt);
 static int extract_class (extract_context & ctxt);
 static int extract_vclass (extract_context & ctxt);
+static int extract_vclass_query_spec (extract_context & ctxt);
 static int extract_pk (extract_context & ctxt);
 static int extract_fk (extract_context & ctxt);
+static int extract_uk (extract_context & ctxt);
 static int extract_grant (extract_context & ctxt);
 static int get_classes (extract_context & ctxt, print_output & output_ctx);
 static void filter_user_classes (DB_OBJLIST ** class_list, const char *user_name);
@@ -236,6 +264,11 @@ static void emit_primary_key (extract_context & ctxt, print_output & output_ctx,
 static int create_schema_info (extract_context & ctxt);
 static int create_filename_schema_info (const char *output_dirname, const char *output_prefix, char *output_filename_p,
 					const size_t filename_size);
+static void str_tolower (char *str);
+
+static bool is_builtin_package_function (const char *sp_name);
+static PARSER_VARCHAR *do_recreate_where_clause_or_function_attr (PARSER_CONTEXT ** parser, const char *class_name,
+								  DB_CONSTRAINT * constraint, bool where_clause);
 
 /*
  * CLASS DEPENDENCY ORDERING
@@ -637,43 +670,6 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
   return (ordered);
 }
 
-
-/*
- * emit_class_owner - Emits a change_owner statement for a class that has been
- * created.
- *    return:  void
- *    fp(in/out):  FILE pointer
- *    class(in): class MOP
- */
-static void
-emit_class_owner (extract_context & ctxt, print_output & output_ctx, MOP class_)
-{
-  const char *classname;
-  MOP owner;
-  DB_VALUE value;
-
-  classname = db_get_class_name (class_);
-  if (classname != NULL)
-    {
-      owner = au_get_class_owner (class_);
-      if (owner != NULL)
-	{
-	  if (db_get (owner, "name", &value) == NO_ERROR)
-	    {
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && db_get_string (&value) != NULL)
-		{
-		  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		    {
-		      output_ctx ("call [change_owner]('%s', '%s') on class [db_root];\n",
-				  sm_remove_qualifier_name (classname), db_get_string (&value));
-		    }
-		}
-	      db_value_clear (&value);
-	    }
-	}
-    }
-}
-
 /*
  * export_serial - export db_serial
  *    return: NO_ERROR if successful, error code otherwise
@@ -707,8 +703,6 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
     "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
     "from [db_serial] where [class_name] is null and [att_name] is null and owner.name='%s'";
-
-  output_ctx ("\n");
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -830,59 +824,7 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 		}
 	    }
 
-	  if (db_get_int (&values[SERIAL_STARTED]) == 1)
-	    {
-	      /* Calculate next value of serial */
-	      db_make_null (&diff_value);
-	      error = numeric_db_value_sub (&values[SERIAL_MAX_VAL], &values[SERIAL_CURRENT_VAL], &diff_value);
-	      if (error == ER_IT_DATA_OVERFLOW)
-		{
-		  // max - curr might be flooded.
-		  diff_value = values[SERIAL_MAX_VAL];
-		  er_clear ();
-		}
-	      else if (error != NO_ERROR)
-		{
-		  goto err;
-		}
-
-	      error = numeric_db_value_compare (&values[SERIAL_INCREMENT_VAL], &diff_value, &answer_value);
-	      if (error != NO_ERROR)
-		{
-		  goto err;
-		}
-	      /* increment > diff */
-	      if (db_get_int (&answer_value) > 0)
-		{
-		  /* no cyclic case */
-		  if (db_get_int (&values[SERIAL_CYCLIC]) == 0)
-		    {
-		      domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-			      pr_type_name (TP_DOMAIN_TYPE (domain)));
-		      error = ER_IT_DATA_OVERFLOW;
-		      goto err;
-		    }
-
-		  db_value_clear (&values[SERIAL_CURRENT_VAL]);
-		  values[SERIAL_CURRENT_VAL] = values[SERIAL_MIN_VAL];
-		}
-	      /* increment <= diff */
-	      else
-		{
-		  error =
-		    numeric_db_value_add (&values[SERIAL_CURRENT_VAL], &values[SERIAL_INCREMENT_VAL], &answer_value);
-		  if (error != NO_ERROR)
-		    {
-		      goto err;
-		    }
-
-		  db_value_clear (&values[SERIAL_CURRENT_VAL]);
-		  values[SERIAL_CURRENT_VAL] = answer_value;
-		}
-	    }
-
-	  output_ctx ("create serial %s%s%s\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+	  output_ctx ("\ncreate serial %s%s%s\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
 	  output_ctx ("\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
 	  output_ctx ("\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
 	  output_ctx ("\t minvalue %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL], str_buf));
@@ -903,9 +845,14 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 	    }
 	  output_ctx (";\n");
 
+	  if (db_get_int (&values[SERIAL_STARTED]) == 1)
+	    {
+	      output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+	    }
+
 	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
 	    {
-	      output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
+	      output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n",
 			  db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
 	    }
 
@@ -928,6 +875,244 @@ err:
     }
   return error;
 }
+
+static int
+emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
+{
+  int error = NO_ERROR;
+  int i;
+  DB_QUERY_RESULT *query_result;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE values[ALTER_SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
+  DB_DOMAIN *domain;
+  char str_buf[NUMERIC_MAX_STRING_SIZE] = { '\0' };
+  char *uppercase_user = NULL;
+  size_t uppercase_user_size = 0;
+  size_t query_size = 0;
+  char *query = NULL;
+
+  DB_OBJLIST *cl = NULL;
+  const char *schema_name = NULL;
+  char temp_schema[DB_MAX_CLASS_LENGTH] = { '\0' };
+  const char *serial_owner_name = NULL;
+  const char *serial_class_name = NULL;
+
+  /*
+   * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
+   * when changing the following query. Notice the order of the result.
+   */
+  const char *query_all =
+    "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
+    "[cyclic], [started], [cached_num], [class_name], [comment] "
+    "from [db_serial] where [class_name] is not null and [att_name] is not null";
+
+  const char *query_user =
+    "select [unique_name], [name], [owner].[name], [class_name], [current_val], [increment_val], [max_val], [min_val], "
+    "[cyclic], [started], [cached_num], [class_name], [comment] "
+    "from [db_serial] where [class_name] is not null and [att_name] is not null and owner.name='%s'";
+
+  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+    {
+      uppercase_user_size = intl_identifier_upper_string_size (ctxt.login_user);
+      uppercase_user = (char *) malloc (uppercase_user_size + 1);
+      if (uppercase_user == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, uppercase_user_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      intl_identifier_upper (ctxt.login_user, uppercase_user);
+
+      query_size = strlen (query_user) + strlen (uppercase_user) + 1;
+      query = (char *) malloc (query_size);
+      if (query_user == NULL)
+	{
+	  if (uppercase_user != NULL)
+	    {
+	      free_and_init (uppercase_user);
+	    }
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      sprintf (query, query_user, uppercase_user);
+    }
+
+  db_make_null (&diff_value);
+  db_make_null (&answer_value);
+
+  error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
+  if (error < 0)
+    {
+      goto err;
+    }
+
+
+
+  if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
+    {
+      do
+	{
+	  for (i = 0; i < ALTER_SERIAL_VALUE_INDEX_MAX; i++)
+	    {
+	      error = db_query_get_tuple_value (query_result, i, &values[i]);
+	      if (error != NO_ERROR)
+		{
+		  goto err;
+		}
+
+	      /* Validation of the result value */
+	      switch (i)
+		{
+		case ALTER_SERIAL_OWNER_NAME:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			db_make_string (&values[i], "PUBLIC");
+		      }
+		  }
+		  break;
+
+		case ALTER_SERIAL_UNIQUE_NAME:
+		case ALTER_SERIAL_NAME:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		case ALTER_SERIAL_CURRENT_VAL:
+		case ALTER_SERIAL_INCREMENT_VAL:
+		case ALTER_SERIAL_MAX_VAL:
+		case ALTER_SERIAL_MIN_VAL:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_NUMERIC)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		case ALTER_SERIAL_CYCLIC:
+		case ALTER_SERIAL_STARTED:
+		case ALTER_SERIAL_CACHED_NUM:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		case ALTER_SERIAL_CLASS_NAME:
+		  {
+		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		case ALTER_SERIAL_COMMENT:
+		  {
+		    if (DB_IS_NULL (&values[i]) == false && DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+			error = ER_INVALID_SERIAL_VALUE;
+			goto err;
+		      }
+		  }
+		  break;
+
+		default:
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
+		  error = ER_INVALID_SERIAL_VALUE;
+		  goto err;
+		}
+	    }
+
+	  if (required_class_only == true)
+	    {
+	      int same_schema = 0;
+	      for (cl = ctxt.classes; cl != NULL; cl = cl->next)
+		{
+		  schema_name = db_get_class_name (cl->op);
+
+		  serial_owner_name = db_get_string (&values[ALTER_SERIAL_OWNER_NAME]);
+		  serial_class_name = db_get_string (&values[ALTER_SERIAL_CLASS_NAME]);
+
+		  str_tolower ((char *) serial_owner_name);
+		  snprintf (temp_schema, DB_MAX_CLASS_LENGTH, "%s%s%s", (serial_owner_name), ".", serial_class_name);
+
+		  if (strcmp (temp_schema, schema_name) == 0)
+		    {
+		      same_schema++;
+		    }
+		}
+
+	      if (same_schema == 0)
+		{
+		  continue;
+		}
+	    }
+
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
+			  PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_NAME])),
+			  numeric_db_value_print (&values[ALTER_SERIAL_CURRENT_VAL], str_buf));
+
+	      if (db_get_int (&values[ALTER_SERIAL_STARTED]) == 1)
+		{
+
+		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ",
+			      PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_NAME])));
+		}
+	    }
+	  else
+	    {
+	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
+			  PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_UNIQUE_NAME])),
+			  numeric_db_value_print (&values[ALTER_SERIAL_CURRENT_VAL], str_buf));
+
+	      if (db_get_int (&values[ALTER_SERIAL_STARTED]) == 1)
+		{
+		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ",
+			      PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_UNIQUE_NAME])));
+		}
+	    }
+
+	  db_value_clear (&diff_value);
+	  db_value_clear (&answer_value);
+	  for (i = 0; i < ALTER_SERIAL_VALUE_INDEX_MAX; i++)
+	    {
+	      db_value_clear (&values[i]);
+	    }
+	}
+      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
+    }
+
+err:
+  db_query_end (query_result);
+
+  if (uppercase_user != NULL)
+    {
+      free_and_init (uppercase_user);
+    }
+  return error;
+}
+
 
 /*
  * export_synonym - export _db_synonym
@@ -956,6 +1141,9 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   size_t query_size = 0;
   char *query = NULL;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  DB_OBJLIST *cl = NULL;
+  const char *name = NULL;
+  char temp_schema[DB_MAX_CLASS_LENGTH] = { '\0' };
 
   // *INDENT-OFF*
   const char *query_all = "SELECT [name], "
@@ -982,8 +1170,6 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   query_error.err_posno = 0;
 
   AU_DISABLE (save);
-
-  output_ctx ("\n");
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -1099,6 +1285,30 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	      continue;
 	    }
 
+	  if (required_class_only == true)
+	    {
+	      int same_schema = 0;
+	      for (cl = ctxt.classes; cl != NULL; cl = cl->next)
+		{
+		  name = db_get_class_name (cl->op);
+
+		  str_tolower ((char *) target_owner_name);
+		  snprintf (temp_schema, DB_MAX_CLASS_LENGTH, "%s%s%s", (target_owner_name), ".", target_name);
+
+		  if (strcmp (temp_schema, name) == 0)
+		    {
+		      same_schema++;
+		    }
+		}
+
+	      if (same_schema == 0)
+		{
+		  continue;
+		}
+	    }
+
+	  output_ctx ("\n");
+
 	  if (is_public == 1)
 	    {
 	      output_ctx ("CREATE PUBLIC");
@@ -1205,7 +1415,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
   /*
    * Schema
    */
-  if (!required_class_only && ctxt.do_auth)
+  if (required_class_only == false && ctxt.do_auth)
     {
       if (au_export_users (ctxt, schema_output_ctx) < NO_ERROR)
 	{
@@ -1213,13 +1423,52 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	}
     }
 
-  if (!required_class_only && export_serial (ctxt, schema_output_ctx) < NO_ERROR)
+  if (required_class_only == false && export_serial (ctxt, schema_output_ctx) < NO_ERROR)
     {
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
 	{
 	  fprintf (stderr, " Check the value of db_serial object.\n");
 	}
+      err_count++;
+    }
+
+  if (required_class_only == false && emit_stored_procedure (ctxt, schema_output_ctx) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (required_class_only == false && export_server (ctxt, schema_output_ctx) < NO_ERROR)
+    {
+      err_count++;
+    }
+
+  emit_schema (ctxt, schema_output_ctx, EXTRACT_CLASS);
+  if (er_errid () != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_CLASS);
+  if (er_errid () != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (emit_class_alter_serial (ctxt, schema_output_ctx) < NO_ERROR)
+    {
+      fprintf (stderr, "%s", db_error_string (3));
+      if (db_error_code () == ER_INVALID_SERIAL_VALUE)
+	{
+	  fprintf (stderr, " Check the value of db_serial object.\n");
+	}
+      err_count++;
+    }
+
+  emit_schema (ctxt, schema_output_ctx, EXTRACT_VCLASS);
+  if (er_errid () != NO_ERROR)
+    {
+      err_count++;
     }
 
   /*
@@ -1236,17 +1485,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	}
     }
 
-  if (emit_stored_procedure (ctxt, schema_output_ctx) != NO_ERROR)
-    {
-      err_count++;
-    }
-
-  if (export_server (ctxt, schema_output_ctx) < NO_ERROR)
-    {
-      err_count++;
-    }
-
-  emit_schema (ctxt, schema_output_ctx, EXTRACT_CLASS_ALL);
+  emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_VCLASS);
   if (er_errid () != NO_ERROR)
     {
       err_count++;
@@ -1413,13 +1652,17 @@ emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * cl
 	      DB_OBJLIST * vclass_list_has_using_index)
 {
   DB_OBJLIST *cl;
+  int err_count = 0;
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
       /* if its some sort of vclass then it can't have indexes */
       if (db_is_vclass (cl->op) <= 0)
 	{
-	  emit_index_def (ctxt, output_ctx, cl->op);
+	  if (emit_index_def (ctxt, output_ctx, cl->op) != NO_ERROR)
+	    {
+	      err_count++;
+	    }
 	}
     }
 
@@ -1428,7 +1671,7 @@ emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * cl
       emit_query_specs_has_using_index (ctxt, output_ctx, vclass_list_has_using_index);
     }
 
-  return 0;
+  return err_count;
 }
 
 /*
@@ -1436,7 +1679,6 @@ emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * cl
  *    return:
  *    classes():
  *    do_auth():
- *    vclass_list_has_using_index():
  */
 static void
 emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TYPE extract_class)
@@ -1447,11 +1689,10 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
   const char *name = NULL;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
   const char *tde_algo_name = NULL;
   int is_partitioned = 0;
   SM_CLASS *class_ = NULL;
-
-  output_ctx ("\n\n");
 
   /*
    * First create all the classes
@@ -1466,6 +1707,10 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	  continue;
 	}
 
+      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
+      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			sizeof (output_owner));
+
       if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ) != NO_ERROR)
 	{
 	  class_ = NULL;
@@ -1474,18 +1719,18 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	{
 	  if (extract_class == EXTRACT_CLASS_ALL)
 	    {
-	      output_ctx ("CREATE %s %s%s%s", is_vclass ? "VCLASS" : "CLASS",
-			  PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+	      output_ctx ("\nCREATE %s %s%s%s%s", is_vclass ? "VCLASS" : "CLASS", output_owner,
+			  PRINT_IDENTIFIER (class_name));
 	    }
 	  else
 	    {
 	      if (is_vclass == TRUE && extract_class == EXTRACT_VCLASS)
 		{
-		  output_ctx ("CREATE VCLASS %s%s%s", PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+		  output_ctx ("\nCREATE VCLASS %s%s%s%s", output_owner, PRINT_IDENTIFIER (class_name));
 		}
 	      else if (is_vclass == FALSE && extract_class == EXTRACT_CLASS)
 		{
-		  output_ctx ("CREATE CLASS %s%s%s", PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+		  output_ctx ("\nCREATE CLASS %s%s%s%s", output_owner, PRINT_IDENTIFIER (class_name));
 		}
 	      else
 		{
@@ -1543,39 +1788,17 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	{
 	  emit_class_meta (output_ctx, cl->op);
 	}
-
-      /*
-       * Before version 11.2, if an auto_increment column was added after changing the class owner,
-       * owner mismatch occurred.
-       * 
-       * e.g. create user u1;
-       *      create table t1;
-       *      call change_owner ('t1', 'u1') on class db_root;
-       *      alter table t1 add attribute c1 int auto_increment;
-       *      select c.clasS_name, c.owner.name, s.name, s.owner.name
-       *      from _db_class c, db_serial s
-       *      where c.class_name = s.class_name;
-       *
-       *        class_name            owner.name            name                  owner.name
-       *      ========================================================================================
-       *        't1'                  'U1'                  't1_ai_c1'            'DBA'
-       *
-       * After version 11.2, when adding an auto_increment column, there is no problem
-       * because it sets the owner in unique_name.
-       * 
-       * There is a problem if the DBA does not change the owner immediately when creating multiple classes
-       * with the same name. This is because a DBA cannot own multiple classes with the same name at the same time.
-       * Therefore, the owner must be changed immediately after class creation.
-       */
-      if (ctxt.do_auth)
-	{
-	  emit_class_owner (ctxt, output_ctx, cl->op);
-	}
-
-      output_ctx ("\n");
     }
+}
 
-  output_ctx ("\n");
+static void
+emit_class_query_spec (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TYPE extract_class)
+{
+  DB_OBJLIST *cl = NULL;
+  int is_vclass = 0;
+  const char *class_type = NULL;
+  const char *name = NULL;
+  int is_partitioned = 0;
 
   /* emit super classes without resolutions for non-proxies */
   for (cl = ctxt.classes; cl != NULL; cl = cl->next)
@@ -1604,8 +1827,6 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 
       (void) emit_superclasses (ctxt, output_ctx, cl->op, class_type);
     }
-
-  output_ctx ("\n");
 
   /*
    * Now fill out the class definitions for the non-proxy classes.
@@ -1659,8 +1880,6 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	}
     }
 
-  output_ctx ("\n\n");
-
   /* emit super class resolutions for non-proxies */
   for (cl = ctxt.classes; cl != NULL; cl = cl->next)
     {
@@ -1688,8 +1907,6 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
       (void) emit_resolutions (ctxt, output_ctx, cl->op, class_type);
     }
 
-  output_ctx ("\n");
-
   /*
    * do query specs LAST after we're sure that all potentially
    * referenced classes have their full definitions.
@@ -1704,7 +1921,6 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
       er_clear ();
     }
 
-  output_ctx ("\n");
 }
 
 
@@ -1744,13 +1960,16 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   PARSER_CONTEXT *parser;
   PT_NODE **query_ptr;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH];
+  owner_name[0] = '\0';
   char *class_name = NULL;
   const char *null_spec;
   bool has_using_index;
   bool change_vclass_spec;
   int i;
-  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  char output_owner[DB_MAX_USER_LENGTH + 4];
+  output_owner[0] = '\0';
+  char *query_ptr_result;
 
   /*
    * pass 1, emit NULL spec lists for vclasses that have attribute
@@ -1774,8 +1993,6 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	{
 	  continue;
 	}
-
-      output_ctx ("\n");
 
       has_using_index = false;
       for (s = specs; s && has_using_index == false; s = db_query_spec_next (s))
@@ -1813,6 +2030,8 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 		{
 		  continue;
 		}
+
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
 
 	      query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	      if (query_ptr != NULL)
@@ -1860,22 +2079,43 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
       for (s = specs, i = 1; s != NULL; s = db_query_spec_next (s), i++)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	  if (change_vclass_spec)
-	    {			/* change the existing spec lists */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
 
-	      output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
+	  parser = parser_create_parser ();
+	  if (parser == NULL)
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
+	      continue;
+	    }
+
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+
+	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
+	  if (query_ptr != NULL)
+	    {
+	      query_ptr_result = parser_print_tree_with_quotes (parser, *query_ptr);
+	      if (change_vclass_spec)
+		{		/* change the existing spec lists */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), i, query_ptr_result);
+		}
+	      else
+		{		/* emit the usual statements */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), query_ptr_result);
+		}
 	    }
 	  else
-	    {			/* emit the usual statements */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
-
-	      output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
 	    }
+
+	  parser_free_parser (parser);
 	}
     }
 
@@ -1903,8 +2143,7 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
   bool change_vclass_spec;
   int i;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
-
-  output_ctx ("\n\n");
+  char *query_ptr_result;
 
   /*
    * pass 1, emit NULL spec lists for vclasses that have attribute
@@ -1941,6 +2180,9 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	    {
 	      continue;
 	    }
+
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+
 	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	  if (query_ptr != NULL)
 	    {
@@ -1976,22 +2218,44 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
       for (s = specs, i = 1; s; s = db_query_spec_next (s), i++)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	  if (change_vclass_spec)
-	    {			/* change the existing spec lists */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
 
-	      output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
+	  parser = parser_create_parser ();
+	  if (parser == NULL)
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
+	      continue;
+	    }
+
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+
+	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
+	  if (query_ptr != NULL)
+	    {
+	      query_ptr_result = parser_print_tree_with_quotes (parser, *query_ptr);
+
+	      if (change_vclass_spec)
+		{		/* change the existing spec lists */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), i, query_ptr_result);
+		}
+	      else
+		{		/* emit the usual statements */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), query_ptr_result);
+		}
 	    }
 	  else
-	    {			/* emit the usual statements */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
-
-	      output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
 	    }
+
+	  parser_free_parser (parser);
 	}
     }
 
@@ -2030,7 +2294,7 @@ emit_superclasses (extract_context & ctxt, print_output & output_ctx, DB_OBJECT 
       PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			sizeof (output_owner));
 
-      output_ctx ("ALTER %s %s%s%s%s ADD SUPERCLASS ", class_type, output_owner, PRINT_IDENTIFIER (class_name));
+      output_ctx ("\nALTER %s %s%s%s%s ADD SUPERCLASS ", class_type, output_owner, PRINT_IDENTIFIER (class_name));
 
       for (s = supers; s != NULL; s = s->next)
 	{
@@ -2086,7 +2350,7 @@ emit_resolutions (extract_context & ctxt, print_output & output_ctx, DB_OBJECT *
       PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			sizeof (output_owner));
 
-      output_ctx ("ALTER %s %s%s%s%s INHERIT", class_type, output_owner, PRINT_IDENTIFIER (class_name));
+      output_ctx ("\nALTER %s %s%s%s%s INHERIT", class_type, output_owner, PRINT_IDENTIFIER (class_name));
 
       for (; resolution_list != NULL; resolution_list = db_resolution_next (resolution_list))
 	{
@@ -2402,11 +2666,7 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
 
   if (unique_flag)
     {
-      if (split_schema_files)
-	{
-	  emit_unique_def (ctxt, output_ctx, class_, class_type);
-	}
-      else
+      if (split_schema_files == false)
 	{
 	  emit_primary_and_unique_def (ctxt, output_ctx, class_, class_type);
 	}
@@ -2414,7 +2674,10 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
 
   if (reverse_unique_flag)
     {
-      emit_reverse_unique_def (ctxt, output_ctx, class_);
+      if (split_schema_files == false)
+	{
+	  emit_reverse_unique_def (ctxt, output_ctx, class_);
+	}
     }
 
   return true;
@@ -2914,7 +3177,7 @@ emit_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * 
 
   PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
 
-  output_ctx ("ALTER %s %s%s%s%s ADD ATTRIBUTE\n", class_type, output_owner, PRINT_IDENTIFIER (class_name_p));
+  output_ctx ("\nALTER %s %s%s%s%s ADD ATTRIBUTE\n", class_type, output_owner, PRINT_IDENTIFIER (class_name_p));
 
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
@@ -3292,7 +3555,7 @@ emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_O
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			    sizeof (output_owner));
 
-	  output_ctx ("CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s%s (", PRINT_IDENTIFIER (constraint->name),
+	  output_ctx ("\nCREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s%s (", PRINT_IDENTIFIER (constraint->name),
 		      output_owner, PRINT_IDENTIFIER (class_name));
 
 	  for (att = atts; *att != NULL; att++)
@@ -3306,18 +3569,26 @@ emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_O
 
 	      // reverse unique does not care for direction of the column.
 	    }
-	  output_ctx (");\n");
+
+	  output_ctx (")");
+
+	  if (constraint->comment != NULL && constraint->comment[0] != '\0')
+	    {
+	      output_ctx (" ");
+	      help_print_describe_comment (output_ctx, constraint->comment);
+	    }
 	}
     }
+  output_ctx (";\n");
 }
 
 
 /*
  * emit_index_def - emit the index constraint definitions for this class
- *    return: void
+ *    return: 
  *    class(in): the class to emit the indexes for
  */
-static void
+static int
 emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_)
 {
   DB_CONSTRAINT *constraint_list, *constraint;
@@ -3332,11 +3603,17 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
   const int *prefix_length;
   int k, n_attrs = 0;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
+
+  PARSER_CONTEXT *parser = NULL;
+  PARSER_VARCHAR *res_vstr = NULL;
+  int error = NO_ERROR;
+  bool is_fail = false;
 
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
     {
-      return;
+      return error;
     }
 
   cls_name = db_get_class_name (class_);
@@ -3433,6 +3710,28 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	      n_attrs++;
 	    }
 	}
+
+      reserved_col_buf[0] = '\0';
+      if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
+	{
+	  k = dk_sm_deduplicate_key_position (n_attrs, atts, constraint->func_index_info);
+	  if (k != -1)
+	    {
+	      if (constraint->func_index_info && constraint->func_index_info->attr_index_start > 0)
+		{
+		  k--;
+		}
+
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (atts[k]->id))
+		{
+		  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf),
+						 GET_DEDUPLICATE_KEY_ATTR_LEVEL (atts[k]->id));
+		  n_attrs--;	/* Hidden column should not be displayed. */
+		}
+	    }
+	}
+
+      is_fail = false;
       k = 0;
       for (att = atts; k < n_attrs; att++)
 	{
@@ -3444,7 +3743,18 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 		    {
 		      output_ctx (", ");
 		    }
-		  output_ctx ("%s", constraint->func_index_info->expr_str);
+
+		  res_vstr = do_recreate_where_clause_or_function_attr (&parser, cls_name, constraint, false);
+		  if (res_vstr)
+		    {
+		      output_ctx ("%s", res_vstr->bytes);
+		    }
+		  else
+		    {
+		      output_ctx ("%s", constraint->func_index_info->expr_str);
+		      error = ER_FAILED;
+		      is_fail = true;
+		    }
 		  if (constraint->func_index_info->fi_domain->is_desc)
 		    {
 		      output_ctx ("%s", " DESC");
@@ -3483,11 +3793,23 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	    }
 	  k++;
 	}
+
       if (constraint->filter_predicate)
 	{
 	  if (constraint->filter_predicate->pred_string)
 	    {
-	      output_ctx (") where %s", constraint->filter_predicate->pred_string);
+
+	      res_vstr = do_recreate_where_clause_or_function_attr (&parser, cls_name, constraint, true);
+	      if (res_vstr)
+		{
+		  output_ctx (") where %s", res_vstr->bytes);
+		}
+	      else
+		{
+		  output_ctx (") where %s", constraint->filter_predicate->pred_string);
+		  error = ER_FAILED;
+		  is_fail = true;
+		}
 	    }
 	}
       else
@@ -3495,18 +3817,34 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	  output_ctx (")");
 	}
 
-      if (constraint->index_status == SM_INVISIBLE_INDEX)
-	{
-	  output_ctx (" INVISIBLE ");
-	}
-
       /* Safeguard. */
       /* If it's unique then it must surely be with online flag. */
       assert ((constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	      || (ctype != DB_CONSTRAINT_UNIQUE && ctype != DB_CONSTRAINT_REVERSE_UNIQUE));
-      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+
+      if ((reserved_col_buf[0] == '\0') && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
+	{
+	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
+	}
+      if (reserved_col_buf[0])
+	{
+	  if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	    {
+	      output_ctx (" WITH %s, ONLINE", reserved_col_buf);
+	    }
+	  else
+	    {
+	      output_ctx (" WITH %s", reserved_col_buf);
+	    }
+	}
+      else if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
 	  output_ctx (" WITH ONLINE");
+	}
+
+      if (constraint->index_status == SM_INVISIBLE_INDEX)
+	{
+	  output_ctx (" INVISIBLE ");
 	}
 
       if (constraint->comment != NULL && constraint->comment[0] != '\0')
@@ -3515,8 +3853,23 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	  help_print_describe_comment (output_ctx, constraint->comment);
 	}
 
-      output_ctx (";\n");
+      if (is_fail == false)
+	{
+	  output_ctx (";\n");
+	}
+      else
+	{
+	  output_ctx (";%s\n", (parser ? "    /* Failure: Could be an error(Column name may be incorrect) */ "
+				: "    /* Notice: Could be an error */ "));
+	}
     }
+
+  if (parser)
+    {
+      parser_free_parser (parser);
+    }
+
+  return error;
 }
 
 
@@ -3942,6 +4295,34 @@ emit_partition_info (extract_context & ctxt, print_output & output_ctx, MOP clso
   output_ctx (";\n");
 }
 
+// TODO: quick fix
+static bool
+is_builtin_package_function (const char *sp_name)
+{
+  static const char *builtin_list[] = {
+    "enable",
+    "disable",
+    "put",
+    "put_line",
+    "new_line",
+    "get_line",
+    "get_lines",
+    NULL
+  };
+
+  int dim, i;
+
+  dim = DIM (builtin_list);
+  for (i = 0; i < dim; i++)
+    {
+      if (builtin_list[i] != NULL && strcasecmp (builtin_list[i], sp_name) == 0)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
 /*
  * emit_stored_procedure_args - emit stored procedure arguments
  *    return: 0 if success, error count otherwise
@@ -4057,6 +4438,12 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 	  continue;
 	}
 
+      const char *sp_name = db_get_string (&sp_name_val);
+      if (is_builtin_package_function (sp_name))
+	{
+	  continue;
+	}
+
       if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
 	{
 	  owner = db_get_object (&owner_val);
@@ -4153,6 +4540,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   char *class_name = NULL;
   MOP ref_clsop;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
@@ -4172,6 +4560,12 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    {
 	      if (db_attribute_class (*att) != cl->op)
 		{
+		  if (IS_DEDUPLICATE_KEY_ATTR_ID ((*att)->id))
+		    {
+		      assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type));
+		      assert (att[1] == NULL);
+		      break;
+		    }
 		  has_inherited_atts = true;
 		  break;
 		}
@@ -4187,19 +4581,40 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			    sizeof (output_owner));
 
-	  output_ctx ("ALTER CLASS %s%s%s%s ADD", output_owner, PRINT_IDENTIFIER (class_name));
+	  output_ctx ("\nALTER CLASS %s%s%s%s ADD", output_owner, PRINT_IDENTIFIER (class_name));
 	  output_ctx (" CONSTRAINT [%s] FOREIGN KEY(", constraint->name);
 
+	  reserved_col_buf[0] = '\0';
 	  for (att = atts; *att != NULL; att++)
 	    {
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (att[0]->id))
+		{
+		  assert (att[1] == NULL);
+		  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf),
+						 GET_DEDUPLICATE_KEY_ATTR_LEVEL (att[0]->id));
+		  break;
+		}
+
 	      att_name = db_attribute_name (*att);
 	      if (att != atts)
 		{
-		  output_ctx (", ");
+		  output_ctx (", %s%s%s", PRINT_IDENTIFIER (att_name));
 		}
-	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (att_name));
+	      else
+		{
+		  output_ctx ("%s%s%s", PRINT_IDENTIFIER (att_name));
+		}
 	    }
 	  output_ctx (")");
+
+	  if (reserved_col_buf[0] == '\0')
+	    {
+	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
+	    }
+	  if (reserved_col_buf[0])
+	    {
+	      output_ctx (" WITH %s", reserved_col_buf);
+	    }
 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
 	  SPLIT_USER_SPECIFIED_NAME (db_get_class_name (ref_clsop), owner_name, class_name);
@@ -4217,7 +4632,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	      help_print_describe_comment (output_ctx, constraint->comment);
 	    }
 
-	  (void) output_ctx (";\n\n");
+	  (void) output_ctx (";\n");
 	}
     }
 
@@ -4252,8 +4667,6 @@ export_server (extract_context & ctxt, print_output & output_ctx)
   const char *query_user =
     "SELECT [link_name], [host], [port], [db_name], [user_name], [password], [properties], [comment],"
     "[owner].[name] [owner_name], [owner] [owner_obj] FROM [_db_server] WHERE [link_name] IS NOT NULL and [owner].[name]='%s'";
-
-  output_ctx ("\n");
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -4345,7 +4758,7 @@ export_server (extract_context & ctxt, print_output & output_ctx)
 	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 				sizeof (output_owner));
 
-	      output_ctx ("CREATE SERVER %s[%s] (", output_owner, srv_name);
+	      output_ctx ("\nCREATE SERVER %s[%s] (", output_owner, srv_name);
 	      output_ctx ("\n\t HOST= '%s'", (char *) db_get_string (values + 1));
 	      output_ctx (",\n\t PORT= %d", db_get_int (values + 2));
 
@@ -4485,17 +4898,33 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
 }
 
 static int
+create_filefullpath (const char *output_dirname, const char *output_filename,
+		     char *output_filename_p, const size_t filename_size)
+{
+  if (output_dirname == NULL)
+    {
+      output_dirname = ".";
+    }
+
+  size_t total = strlen (output_dirname) + strlen (output_filename) + 8;
+
+  if (total > filename_size)
+    {
+      return -1;
+    }
+
+  snprintf (output_filename_p, filename_size - 1, "%s/%s", output_dirname, output_filename);
+
+  return 0;
+}
+
+static int
 extract_user (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
   char output_schema_info[PATH_MAX * 2] = { '\0' };
-
-  if (required_class_only == true && ctxt.do_auth)
-    {
-      return NO_ERROR;
-    }
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, USER_SUFFIX, output_filename,
@@ -4521,15 +4950,29 @@ extract_user (extract_context & ctxt)
   file_print_output output_ctx (output_file);
 
   /* error is row count if not negative. */
-  err = au_export_users (ctxt, output_ctx);
-  if (err >= NO_ERROR)
+  if (required_class_only == false && ctxt.do_auth)
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
+      err = au_export_users (ctxt, output_ctx);
     }
 
-  if (output_file != NULL)
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no user to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
       fclose (output_file);
       output_file = NULL;
     }
@@ -4543,11 +4986,7 @@ extract_serial (extract_context & ctxt)
   FILE *output_file = NULL;
   char output_filename[PATH_MAX * 2] = { '\0' };
   char output_schema_info[PATH_MAX * 2] = { '\0' };
-
-  if (required_class_only == true)
-    {
-      return NO_ERROR;
-    }
+  int err = NO_ERROR;
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, SERIAL_SUFFIX, output_filename,
@@ -4573,25 +5012,42 @@ extract_serial (extract_context & ctxt)
 
   file_print_output output_ctx (output_file);
 
-  if (export_serial (ctxt, output_ctx) != NO_ERROR)
+  if (required_class_only == false)
     {
-      fprintf (stderr, "%s", db_error_string (3));
-      if (db_error_code () == ER_INVALID_SERIAL_VALUE)
+      err = export_serial (ctxt, output_ctx);
+      if (err != NO_ERROR)
 	{
-	  fprintf (stderr, " Check the value of db_serial object.\n");
+	  fprintf (stderr, "%s", db_error_string (3));
+	  if (db_error_code () == ER_INVALID_SERIAL_VALUE)
+	    {
+	      fprintf (stderr, " Check the value of db_serial object.\n");
+	    }
 	}
     }
 
-  output_ctx ("\n");
-  output_ctx ("COMMIT WORK;\n");
+  fflush (output_file);
 
-  if (output_file != NULL)
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no serial to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
       fclose (output_file);
       output_file = NULL;
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 static int
@@ -4600,6 +5056,7 @@ extract_synonym (extract_context & ctxt)
   FILE *output_file = NULL;
   char output_filename[PATH_MAX * 2] = { '\0' };
   char output_schema_info[PATH_MAX * 2] = { '\0' };
+  int err = NO_ERROR;
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, SYNONYM_SUFFIX, output_filename,
@@ -4625,7 +5082,8 @@ extract_synonym (extract_context & ctxt)
 
   file_print_output output_ctx (output_file);
 
-  if (export_synonym (ctxt, output_ctx) != NO_ERROR)
+  err = export_synonym (ctxt, output_ctx);
+  if (err != NO_ERROR)
     {
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_SYNONYM_INVALID_VALUE)
@@ -4634,16 +5092,29 @@ extract_synonym (extract_context & ctxt)
 	}
     }
 
-  output_ctx ("\n");
-  output_ctx ("COMMIT WORK;\n");
+  fflush (output_file);
 
-  if (output_file != NULL)
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no synonym to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
       fclose (output_file);
       output_file = NULL;
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 static int
@@ -4678,15 +5149,28 @@ extract_procedure (extract_context & ctxt)
 
   file_print_output output_ctx (output_file);
 
-  err = emit_stored_procedure (ctxt, output_ctx);
-  if (err == NO_ERROR)
+  if (required_class_only == false)
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
+      err = emit_stored_procedure (ctxt, output_ctx);
     }
 
-  if (output_file != NULL)
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no procedure to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
       fclose (output_file);
       output_file = NULL;
     }
@@ -4726,15 +5210,28 @@ extract_server (extract_context & ctxt)
 
   file_print_output output_ctx (output_file);
 
-  err = export_server (ctxt, output_ctx);
-  if (err == NO_ERROR)
+  if (required_class_only == false)
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
+      err = export_server (ctxt, output_ctx);
     }
 
-  if (output_file != NULL)
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no server to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
       fclose (output_file);
       output_file = NULL;
     }
@@ -4783,23 +5280,56 @@ extract_class (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      remove (output_filename);
+	      return ER_FAILED;
 	    }
 	}
     }
 
   emit_schema (ctxt, output_ctx, EXTRACT_CLASS);
-  if (er_errid () == NO_ERROR)
+  if (er_errid () == ER_FAILED)
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
+      err = ER_FAILED;
+      goto end_class;
+    }
+
+  emit_class_query_spec (ctxt, output_ctx, EXTRACT_CLASS);
+  if (er_errid () == ER_FAILED)
+    {
+      err = ER_FAILED;
+      goto end_class;
+    }
+
+  if (emit_class_alter_serial (ctxt, output_ctx) < NO_ERROR)
+    {
+      fprintf (stderr, "%s", db_error_string (3));
+      if (db_error_code () == ER_INVALID_SERIAL_VALUE)
+	{
+	  fprintf (stderr, " Check the value of db_serial object.\n");
+	}
+      err = ER_FAILED;
+      goto end_class;
+    }
+
+end_class:
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      /* file is empty (database has no query spec to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
     }
   else
     {
-      err = ER_FAILED;
-    }
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
 
-  if (output_file != NULL)
-    {
       fclose (output_file);
       output_file = NULL;
     }
@@ -4848,23 +5378,108 @@ extract_vclass (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      remove (output_filename);
+	      return ER_FAILED;
 	    }
 	}
     }
 
   emit_schema (ctxt, output_ctx, EXTRACT_VCLASS);
-  if (er_errid () == NO_ERROR)
+  err = (er_errid () == NO_ERROR) ? NO_ERROR : ER_FAILED;
+
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
+      /* file is empty (database has no vclass to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
     }
   else
     {
-      err = ER_FAILED;
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
+      fclose (output_file);
+      output_file = NULL;
     }
 
-  if (output_file != NULL)
+  return err;
+}
+
+static int
+extract_vclass_query_spec (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, VCLASS_QUERY_SPEC_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
     {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       VCLASS_QUERY_SPEC_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (ctxt.classes == NULL)
+    {
+      err = get_classes (ctxt, output_ctx);
+      if (err != NO_ERROR)
+	{
+	  if (output_file != NULL)
+	    {
+	      fclose (output_file);
+	      output_file = NULL;
+	      remove (output_filename);
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  emit_class_query_spec (ctxt, output_ctx, EXTRACT_VCLASS);
+  err = (er_errid () == NO_ERROR) ? NO_ERROR : ER_FAILED;
+
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      /* file is empty (database has no query spec to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
       fclose (output_file);
       output_file = NULL;
     }
@@ -4911,23 +5526,32 @@ extract_pk (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      remove (output_filename);
+	      return ER_FAILED;
 	    }
 	}
     }
 
   emit_primary_key (ctxt, output_ctx, ctxt.classes);
-  if (er_errid () == NO_ERROR)
+  err = (er_errid () == NO_ERROR) ? NO_ERROR : ER_FAILED;
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
+      /* file is empty (database has no pk to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
     }
   else
     {
-      err = ER_FAILED;
-    }
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
 
-  if (output_file != NULL)
-    {
       fclose (output_file);
       output_file = NULL;
     }
@@ -4974,19 +5598,105 @@ extract_fk (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      remove (output_filename);
+	      return ER_FAILED;
 	    }
 	}
     }
 
   err = emit_foreign_key (ctxt, output_ctx, ctxt.classes);
-  if (err == NO_ERROR)
+
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
+      /* file is empty (database has no fk to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
+      fclose (output_file);
+      output_file = NULL;
     }
 
-  if (output_file != NULL)
+  return err;
+}
+
+static int
+extract_uk (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, UK_SUFFIX, output_filename, sizeof (output_filename)) != 0)
     {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME, UK_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (ctxt.classes == NULL)
+    {
+      err = get_classes (ctxt, output_ctx);
+      if (err != NO_ERROR)
+	{
+	  if (output_file != NULL)
+	    {
+	      fclose (output_file);
+	      output_file = NULL;
+	      remove (output_filename);
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  emit_unique_key (ctxt, output_ctx, ctxt.classes);
+  err = (er_errid () == NO_ERROR) ? NO_ERROR : ER_FAILED;
+
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      /* file is empty (database has no grant to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
       fclose (output_file);
       output_file = NULL;
     }
@@ -5035,19 +5745,32 @@ extract_grant (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      remove (output_filename);
+	      return ER_FAILED;
 	    }
 	}
     }
 
   err = emit_grant (ctxt, output_ctx, ctxt.classes);
-  if (err == NO_ERROR)
-    {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
-    }
 
-  if (output_file != NULL)
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no grant to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
       fclose (output_file);
       output_file = NULL;
     }
@@ -5116,6 +5839,78 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
   return err;
 }
 
+static void
+emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
+{
+  DB_OBJLIST *cl = NULL;
+  int is_vclass = 0;
+  int reverse_unique_flag = 0;
+  const char *class_type = "CLASS";
+  const char *name = NULL;
+  int is_partitioned = 0;
+  int unique_flag = 0;
+  DB_ATTRIBUTE *attribute_list = NULL;
+  DB_ATTRIBUTE *a = NULL;
+
+  for (cl = ctxt.classes; cl != NULL; cl = cl->next)
+    {
+      is_vclass = db_is_vclass (cl->op);
+      if (is_vclass > 0)
+	{
+	  /* VCLASS is skipped. */
+	  continue;
+	}
+
+      name = db_get_class_name (cl->op);
+      if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
+	{
+	  continue;
+	}
+
+      attribute_list = db_get_attributes (cl->op);
+
+      /* see if we have an index or unique defined on any attribute */
+      for (a = attribute_list; a != NULL; a = db_attribute_next (a))
+	{
+	  if (db_attribute_class (a) == cl->op)
+	    {
+	      if (db_attribute_is_unique (a))
+		{
+		  unique_flag = 1;
+		}
+	      else if (db_attribute_is_reverse_unique (a))
+		{
+		  reverse_unique_flag = 1;
+		}
+	    }
+
+	  if (unique_flag && reverse_unique_flag)
+	    {
+	      /* Since we already found all, no need to go further. */
+	      break;
+	    }
+	}
+
+      if (unique_flag)
+	{
+	  emit_unique_def (ctxt, output_ctx, cl->op, class_type);
+	}
+
+      if (reverse_unique_flag)
+	{
+	  emit_reverse_unique_def (ctxt, output_ctx, cl->op);
+	}
+
+      unique_flag = 0;
+      reverse_unique_flag = 0;
+    }
+
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
+    }
+}
+
 static int
 extract_split_schema_files (extract_context & ctxt)
 {
@@ -5161,12 +5956,22 @@ extract_split_schema_files (extract_context & ctxt)
       err_count++;
     }
 
+  if (extract_vclass_query_spec (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
   if (extract_class (ctxt) != NO_ERROR)
     {
       err_count++;
     }
 
   if (extract_pk (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_uk (ctxt) != NO_ERROR)
     {
       err_count++;
     }
@@ -5287,10 +6092,12 @@ create_schema_info (extract_context & ctxt)
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char filename_fullpath[PATH_MAX * 2] = { '\0' };
   char order_str[PATH_MAX * 2] = { '\0' };
   const char *loading_order[] =
-    { "_schema_user", "_schema_class", "_schema_vclass", "_schema_serial", "_schema_procedure", "_schema_server",
-    "_schema_pk", "_schema_fk", "_schema_grant", "_schema_synonym"
+    { "_schema_user", "_schema_class", "_schema_vclass", "_schema_server", "_schema_synonym",
+    "_schema_serial", "_schema_procedure",
+    "_schema_pk", "_schema_fk", "_schema_uk", "_schema_grant", "_schema_vclass_query_spec"
   };
 
   const size_t len = sizeof (loading_order) / sizeof (loading_order[0]);
@@ -5329,13 +6136,31 @@ create_schema_info (extract_context & ctxt)
 	{
 	  if (strcmp (order_str, ctxt.schema_file_list[j].c_str ()) == 0)
 	    {
-	      output_ctx ("%s\n", ctxt.schema_file_list[j].c_str ());
-	      break;
+	      if (create_filefullpath
+		  (ctxt.output_dirname, ctxt.schema_file_list[j].c_str (), filename_fullpath,
+		   sizeof (filename_fullpath)))
+		{
+		  continue;
+		}
+
+	      if (access (filename_fullpath, F_OK) != -1)
+		{
+		  output_ctx ("%s\n", ctxt.schema_file_list[j].c_str ());
+		  break;
+		}
 	    }
 	}
     }
 
-  if (output_file != NULL)
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
     {
       fclose (output_file);
       output_file = NULL;
@@ -5344,4 +6169,119 @@ create_schema_info (extract_context & ctxt)
   ctxt.schema_file_list.clear ();
 
   return err;
+}
+
+static void
+str_tolower (char *str)
+{
+  char *p;
+
+  if (str == NULL)
+    return;
+
+  for (p = str; *p; p++)
+    {
+      if (*p >= 'A' && *p <= 'Z')
+	*p = *p - 'A' + 'a';
+    }
+}
+
+static PARSER_VARCHAR *
+do_recreate_where_clause_or_function_attr (PARSER_CONTEXT ** parser, const char *class_name, DB_CONSTRAINT * constraint,
+					   bool where_clause)
+{
+  PT_NODE **stmt;
+  PT_NODE *expr;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  PARSER_VARCHAR *res = NULL;
+  char qry_buf[4096];
+  char *query_str = qry_buf;
+  size_t query_str_len = 0;
+  char *in_str;
+  unsigned int save_custom;
+
+  assert (parser != NULL);
+  if (*parser == NULL)
+    {
+      *parser = parser_create_parser ();
+      if (*parser == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  assert (class_name != NULL);
+  if (where_clause)
+    {
+      in_str = constraint->filter_predicate->pred_string;
+      // SELECT 1 FROM [<class_name>] WHERE <in_str>  
+      query_str_len = strlen (in_str) + strlen (class_name) + 26;
+    }
+  else
+    {
+      in_str = constraint->func_index_info->expr_str;
+      // SELECT <in_str>  FROM [<class_name>]
+      query_str_len = strlen (in_str) + strlen (class_name) + 16;
+    }
+
+  if (query_str_len > sizeof (qry_buf))
+    {
+      query_str = (char *) malloc (query_str_len);
+      if (query_str == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_str_len);
+	  parser_free_parser (*parser);
+	  *parser = NULL;
+	  return NULL;
+	}
+    }
+
+  if (where_clause)
+    {
+      snprintf (query_str, query_str_len, "SELECT 1 FROM [%s] WHERE %s", class_name, in_str);
+    }
+  else
+    {
+      snprintf (query_str, query_str_len, "SELECT %s FROM [%s]", in_str, class_name);
+    }
+
+  stmt = parser_parse_string_use_sys_charset (*parser, query_str);
+  if (stmt == NULL || *stmt == NULL || pt_has_error (*parser))
+    {
+      goto error_exit;
+    }
+
+  expr = where_clause ? (*stmt)->info.query.q.select.where : (*stmt)->info.query.q.select.list;
+
+  *stmt = pt_resolve_names (*parser, *stmt, &sc_info);
+  if (*stmt == NULL || pt_has_error (*parser))
+    {
+      goto error_exit;
+    }
+
+  *stmt = pt_semantic_type (*parser, *stmt, &sc_info);
+  if (*stmt == NULL || pt_has_error (*parser))
+    {
+      goto error_exit;
+    }
+
+  /* make sure paren_type is 0 so parenthesis are not printed */
+  expr->info.expr.paren_type = 0;
+
+  save_custom = (*parser)->custom_print;
+  (*parser)->custom_print |= PT_CHARSET_COLLATE_FULL;
+  (*parser)->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+  (*parser)->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+  (*parser)->custom_print |= PT_SUPPRESS_RESOLVED;
+
+  res = pt_print_bytes (*parser, expr);
+  (*parser)->custom_print = save_custom;
+
+error_exit:
+  if (query_str != qry_buf)
+    {
+      free (query_str);
+    }
+
+  return res;
 }
