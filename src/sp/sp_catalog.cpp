@@ -849,7 +849,7 @@ void sp_normalize_name (std::string &s)
 }
 
 void
-sp_split_target_signature (const std::string &s, std::string target_cls, std::string target_mth)
+sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth)
 {
   auto pos = s.find_last_of ('(');
   if (pos == std::string::npos)

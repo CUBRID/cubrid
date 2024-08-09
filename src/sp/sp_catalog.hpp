@@ -144,6 +144,6 @@ int sp_add_stored_procedure_code (SP_CODE_INFO &info);
 
 // misc
 void sp_normalize_name (std::string &s);
-void sp_split_target_signature (const std::string &s, std::string target_cls, std::string target_mth);
+void sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth);
 
 #endif // _SP_DEFINITION_HPP_
