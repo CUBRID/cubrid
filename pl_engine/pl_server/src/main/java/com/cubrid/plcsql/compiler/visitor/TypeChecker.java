@@ -488,7 +488,7 @@ public class TypeChecker extends AstVisitor<Type> {
                     if (found > 0) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(node.ctx), // s420
-                                String.format("column name '%s' is ambiguous", node.fieldName));
+                                String.format("field name '%s' is ambiguous", node.fieldName));
                     }
                     ret = p.e2;
                     found = i;
@@ -499,7 +499,7 @@ public class TypeChecker extends AstVisitor<Type> {
 
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.ctx), // s401
-                        String.format("no such column '%s' in the query result", node.fieldName));
+                        String.format("no field named '%s' in the record type", node.fieldName));
             } else {
 
                 assert found > 0;

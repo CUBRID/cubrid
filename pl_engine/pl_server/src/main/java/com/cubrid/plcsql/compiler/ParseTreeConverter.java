@@ -2770,25 +2770,30 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String sqlText = ctx.getText();
         String lowercased = sqlText.toLowerCase();
 
-        if (lowercased.indexOf("insert") == 0 || lowercased.indexOf("replace") == 0 || lowercased.indexOf("update") == 0) {
+        if (lowercased.indexOf("insert") == 0
+            || lowercased.indexOf("replace") == 0
+            || lowercased.indexOf("update") == 0) {
 
-            StaticSqlWithRecordsParser parser = getParser(sqlText);
-            SyntaxErrorIndicator sei = replaceErrorListeners(parser);
+            StaticSqlWithRecordsParser parser;
+            SyntaxErrorIndicator sei;
 
             if (lowercased.indexOf("insert") == 0 || lowercased.indexOf("replace") == 0) {
 
-                Insert_w_recordsContext tree = (Insert_w_recordsContext) parser.insert_w_records();
+                parser = getParser(sqlText);
+                sei = replaceErrorListeners(parser);
+
+                Stmt_w_record_valuesContext tree = (Stmt_w_record_valuesContext) parser.stmt_w_record_values();
                 if (!sei.hasError) {
                     return rewriteInsertWithFieldsExpansion(sqlText, tree.record_list(), ctx);
                 }
+            }
 
-            } else if (lowercased.indexOf("update") == 0) {
+            parser = getParser(sqlText);
+            sei = replaceErrorListeners(parser);
 
-                Update_w_recordContext tree = (Update_w_recordContext) parser.update_w_record();
-                if (!sei.hasError) {
-                    return rewriteUpdateWithFieldsExpansion(sqlText, tree.row_set(), ctx);
-                }
-
+            Stmt_w_record_setContext tree = (Stmt_w_record_setContext) parser.stmt_w_record_set();
+            if (!sei.hasError) {
+                return rewriteUpdateWithFieldsExpansion(sqlText, tree.row_set(), ctx);
             }
         }
 

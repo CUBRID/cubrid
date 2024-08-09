@@ -88,12 +88,15 @@ fragment Z : [zZ];
 // Parser Rules
 // =====================================
 
-insert_w_records
-    : (INSERT | REPLACE) any+ (VALUES | VALUE) record_list (ON DUPLICATE KEY UPDATE any+)? EOF
+stmt_w_record_values
+    : INSERT any+ (VALUES | VALUE) record_list (ON DUPLICATE KEY UPDATE any+)? EOF
+    | REPLACE any+ (VALUES | VALUE) record_list EOF
     ;
 
-update_w_record
+stmt_w_record_set
     : UPDATE any+ SET row_set any+ EOF
+    | INSERT any+ SET row_set (ON DUPLICATE KEY UPDATE any+)? EOF
+    | REPLACE any+ SET row_set EOF
     ;
 
 row_set
