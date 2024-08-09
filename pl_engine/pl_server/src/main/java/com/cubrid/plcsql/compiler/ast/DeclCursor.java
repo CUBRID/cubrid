@@ -64,6 +64,11 @@ public class DeclCursor extends DeclId {
     }
 
     @Override
+    public String name() {
+        return name;
+    }
+
+    @Override
     public String kind() {
         return "cursor";
     }
