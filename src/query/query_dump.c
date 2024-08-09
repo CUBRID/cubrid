@@ -2584,6 +2584,13 @@ qdump_print_xasl (xasl_node * xasl_p)
       fprintf (foutput, "-->connect_by ptr:%p\n", xasl_p->connect_by_ptr);
     }
 
+  if (xasl_p->during_join_pred)
+    {
+      fprintf (foutput, "-->during_join predicate:");
+      qdump_print_predicate (xasl_p->during_join_pred);
+      fprintf (foutput, "\n");
+    }
+
   if (xasl_p->after_join_pred)
     {
       fprintf (foutput, "-->after_join predicate:");

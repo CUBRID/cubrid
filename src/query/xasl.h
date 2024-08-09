@@ -1113,6 +1113,7 @@ struct xasl_node
   XASL_NODE *aptr_list;		/* CTEs and uncorrelated subquery. CTEs are guaranteed always before the subqueries */
   XASL_NODE *bptr_list;		/* OBJFETCH_PROC list */
   XASL_NODE *dptr_list;		/* corr. subquery list */
+  PRED_EXPR *during_join_pred;	/* during-join predicate */
   PRED_EXPR *after_join_pred;	/* after-join predicate */
   PRED_EXPR *if_pred;		/* if predicate */
   PRED_EXPR *instnum_pred;	/* inst_num() predicate */

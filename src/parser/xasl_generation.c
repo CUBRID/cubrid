@@ -15084,6 +15084,7 @@ pt_to_buildschema_proc (PARSER_CONTEXT * parser, PT_NODE * select_node)
   xasl->aptr_list = NULL;
   xasl->bptr_list = NULL;
   xasl->dptr_list = NULL;
+  xasl->during_join_pred = NULL;
   xasl->after_join_pred = NULL;
   xasl->if_pred = NULL;
   xasl->instnum_pred = NULL;
@@ -27471,6 +27472,18 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
       if (xasl_src->if_pred)
 	{
 	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) xasl_src->if_pred, SQ_TYPE_PRED);
+	  if (ret == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      cnt += ret;
+	    }
+	}
+      if (xasl_src->during_join_pred)
+	{
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) xasl_src->during_join_pred, SQ_TYPE_PRED);
 	  if (ret == ER_FAILED)
 	    {
 	      return ER_FAILED;

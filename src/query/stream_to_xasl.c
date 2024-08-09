@@ -1949,6 +1949,20 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
+      xasl->during_join_pred = NULL;
+    }
+  else
+    {
+      xasl->during_join_pred = stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->during_join_pred == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
       xasl->after_join_pred = NULL;
     }
   else

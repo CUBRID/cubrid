@@ -2309,6 +2309,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 	{
 	  qexec_clear_db_val_list (xasl->merge_val_list->valp);
 	}
+      pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->during_join_pred, is_final);
       pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->after_join_pred, is_final);
       pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->if_pred, is_final);
       if (xasl->instnum_val)
@@ -6472,7 +6473,7 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 
       /* call outer join merge routine */
       list_id =
-	qexec_merge_list_outer (thread_p, &outer_spec->s_id, &inner_spec->s_id, merge_infop, xasl->after_join_pred,
+	qexec_merge_list_outer (thread_p, &outer_spec->s_id, &inner_spec->s_id, merge_infop, xasl->during_join_pred,
 				xasl_state, ls_flag);
 
       qexec_close_scan (thread_p, outer_spec);
@@ -7528,7 +7529,7 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
     }
 
   error = qexec_hash_outer_join_probe (thread_p, hashjoin_proc, &(build_spec->s_id),
-				       &(probe_spec->s_id), xasl->after_join_pred, xasl_state, list_id);
+				       &(probe_spec->s_id), xasl->during_join_pred, xasl_state, list_id);
 
   if (on_trace)
     {

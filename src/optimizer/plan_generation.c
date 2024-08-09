@@ -63,6 +63,7 @@ static XASL_NODE *add_uncorrelated (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * 
 static XASL_NODE *add_subqueries (QO_ENV * env, XASL_NODE * xasl, BITSET *);
 static XASL_NODE *add_sort_spec (QO_ENV *, XASL_NODE *, QO_PLAN *, DB_VALUE *, bool);
 static XASL_NODE *add_if_predicate (QO_ENV *, XASL_NODE *, PT_NODE *);
+static XASL_NODE *add_during_join_predicate (QO_ENV *, XASL_NODE *, PT_NODE *);
 static XASL_NODE *add_after_join_predicate (QO_ENV *, XASL_NODE *, PT_NODE *);
 
 static PT_NODE *make_pred_from_bitset (QO_ENV * env, BITSET * predset, ELIGIBILITY_FN safe);
@@ -505,7 +506,7 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
       other_pred = make_pred_from_bitset (env, &(plan->plan_un.join.during_join_terms), is_always_true);
       if (other_pred)
 	{
-	  merge->after_join_pred = pt_to_pred_expr (parser, other_pred);
+	  merge->during_join_pred = pt_to_pred_expr (parser, other_pred);
 
 	  /* free pointer node list */
 	  parser_free_tree (parser, other_pred);
@@ -875,15 +876,10 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       xasl->spec_list = NULL;
       xasl->val_list = NULL;
 
-      /**
-       * TODO: XASL_NODE has ordbynum_pred, after_join_pred, if_pred, and instnum_pred as pointers to PRED_EXPR.
-       *       There is no pointer to PRED_EXPR for during_join_pred.
-       *       In case of nested loop join, during_join_pred is used as sarged_terms of inner.
-       */
       during_join_pred = make_pred_from_bitset (env, &(plan->plan_un.join.during_join_terms), is_always_true);
       if (during_join_pred != NULL)
 	{
-	  xasl = add_after_join_predicate (env, xasl, during_join_pred);
+	  xasl = add_during_join_predicate (env, xasl, during_join_pred);
 	  parser_free_tree (parser, during_join_pred);
 	}
     }
@@ -1374,6 +1370,28 @@ add_if_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
     {
       parser = QO_ENV_PARSER (env);
       xasl->if_pred = pt_to_pred_expr (parser, pred);
+    }
+
+  return xasl;
+}
+
+
+/*
+ * add_during_join_predicate () -
+ *   return:
+ *   env(in):
+ *   xasl(in):
+ *   pred(in):
+ */
+static XASL_NODE *
+add_during_join_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
+{
+  PARSER_CONTEXT *parser;
+
+  if (xasl && pred)
+    {
+      parser = QO_ENV_PARSER (env);
+      xasl->during_join_pred = pt_to_pred_expr (parser, pred);
     }
 
   return xasl;

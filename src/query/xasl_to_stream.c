@@ -3035,6 +3035,13 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_pred_expr (xasl->during_join_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   offset = xts_save_pred_expr (xasl->after_join_pred);
   if (offset == ER_FAILED)
     {
@@ -6061,6 +6068,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + PTR_SIZE		/* aptr_list */
 	   + PTR_SIZE		/* bptr_list */
 	   + PTR_SIZE		/* dptr_list */
+	   + PTR_SIZE		/* during_join_pred */
 	   + PTR_SIZE		/* after_join_pred */
 	   + PTR_SIZE		/* if_pred */
 	   + PTR_SIZE		/* instnum_pred */
