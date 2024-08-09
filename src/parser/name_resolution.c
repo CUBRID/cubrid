@@ -2676,7 +2676,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      s_start = NULL;
 			      s_end = NULL;
 
-			      for (tmp = p_spec; tmp->next; tmp = tmp->next)
+			      for (tmp = p_spec; tmp && tmp->next; tmp = tmp->next)
 				{
 				  if (!s_start)
 				    {
