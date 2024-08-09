@@ -36,18 +36,11 @@ import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.error.SyntaxError;
-import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
-import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 

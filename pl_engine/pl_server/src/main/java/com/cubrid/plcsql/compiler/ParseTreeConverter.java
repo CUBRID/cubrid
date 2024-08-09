@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler;
 
 import static com.cubrid.plcsql.compiler.antlrgen.PlcParser.*;
+import static com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser.*;
 
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
@@ -51,20 +52,18 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import org.apache.commons.text.StringEscapeUtils;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
-
-import static com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser.*;
+import org.apache.commons.text.StringEscapeUtils;
 
 // parse tree --> AST converter
 public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
@@ -2190,7 +2189,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             ParserRuleContext rctx = record.ctx;
             TypeRecord tyRec = (TypeRecord) record.decl.type();
 
-            for (Misc.Pair<String, Type> col: tyRec.selectList) {
+            for (Misc.Pair<String, Type> col : tyRec.selectList) {
                 ret.addNode(new ExprField(rctx, record, col.e1));
             }
         }
@@ -2595,7 +2594,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 List<String> intoTargetStrs = sws.intoTargetStrs;
 
-                // check if a single target is an updatable record, and if so, expand it to its fields
+                // check if a single target is an updatable record, and if so, expand it to its
+                // fields
                 if (intoTargetStrs.size() == 1) {
 
                     // check if it is a record
@@ -2623,8 +2623,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 if (intoTargetStrs.size() != sws.selectList.size()) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s402
-                            String.format("select list's length(%d) is different from INTO targets' length(%d)",
-                                sws.selectList.size(), intoTargetStrs.size()));
+                            String.format(
+                                    "select list's length(%d) is different from INTO targets' length(%d)",
+                                    sws.selectList.size(), intoTargetStrs.size()));
                 }
 
                 intoTargetList = new ArrayList<>();
@@ -2712,7 +2713,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return sei;
     }
 
-    private String rewriteInsertWithFieldsExpansion(String sqlText, Record_listContext recordList, Static_sqlContext ctx) {
+    private String rewriteInsertWithFieldsExpansion(
+            String sqlText, Record_listContext recordList, Static_sqlContext ctx) {
         int start = recordList.getStart().getStartIndex();
         int end = recordList.getStop().getStopIndex() + 1;
 
@@ -2733,7 +2735,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             TypeRecord recTy = (TypeRecord) id.decl.type();
 
             fields.clear();
-            for (Misc.Pair<String, Type> p: recTy.selectList) {
+            for (Misc.Pair<String, Type> p : recTy.selectList) {
                 fields.add(s + "." + p.e1);
             }
 
@@ -2743,7 +2745,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return sqlText.substring(0, start) + String.join(", ", records) + sqlText.substring(end);
     }
 
-    private String rewriteUpdateWithFieldsExpansion(String sqlText, Row_setContext rowSet, Static_sqlContext ctx) {
+    private String rewriteUpdateWithFieldsExpansion(
+            String sqlText, Row_setContext rowSet, Static_sqlContext ctx) {
         int start = rowSet.getStart().getStartIndex();
         int end = rowSet.getStop().getStopIndex() + 1;
 
@@ -2758,7 +2761,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         TypeRecord recTy = (TypeRecord) id.decl.type();
 
-        for (Misc.Pair<String, Type> p: recTy.selectList) {
+        for (Misc.Pair<String, Type> p : recTy.selectList) {
             fieldsSet.add(String.format("%1$s = %2$s.%1$s", p.e1, s));
         }
 
@@ -2771,8 +2774,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String lowercased = sqlText.toLowerCase();
 
         if (lowercased.indexOf("insert") == 0
-            || lowercased.indexOf("replace") == 0
-            || lowercased.indexOf("update") == 0) {
+                || lowercased.indexOf("replace") == 0
+                || lowercased.indexOf("update") == 0) {
 
             StaticSqlWithRecordsParser parser;
             SyntaxErrorIndicator sei;
@@ -2782,7 +2785,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 parser = getParser(sqlText);
                 sei = replaceErrorListeners(parser);
 
-                Stmt_w_record_valuesContext tree = (Stmt_w_record_valuesContext) parser.stmt_w_record_values();
+                Stmt_w_record_valuesContext tree =
+                        (Stmt_w_record_valuesContext) parser.stmt_w_record_values();
                 if (!sei.hasError) {
                     return rewriteInsertWithFieldsExpansion(sqlText, tree.record_list(), ctx);
                 }
