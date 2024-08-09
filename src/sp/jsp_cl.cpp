@@ -1950,7 +1950,7 @@ check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
     {
       // check sp's owner is current user
       owner_mop = db_get_object (&owner);
-      if (ws_is_same_object (owner_mop, Au_user))
+      if (ws_is_same_object (owner_mop, Au_user) || ws_is_same_object (owner_mop, Au_public_user))
 	{
 	  return NO_ERROR;
 	}
