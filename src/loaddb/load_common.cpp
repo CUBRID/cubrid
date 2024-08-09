@@ -627,18 +627,54 @@ namespace cubload
     return size;
   }
 
+
+  static int
+  append_incomplete_row (std::ifstream &object_file, std::string &batch_buffer, std::string &one_row_buffer,
+			 batch_handler &b_handler,
+			 class_id &clsid, batch_id &batch_id, size_t size_limit, int lineno, int &one_row_lineno, int &batch_start_offset,
+			 int64_t &batch_rows)
+  {
+    int error_code = NO_ERROR;
+
+    assert (one_row_buffer.empty() == false);
+
+    // The content contained in one_row_buffer may not be a complete row.
+    // TODO: How about handling errors right away without having to send them to the server?
+    if ((one_row_buffer.size() + batch_buffer.size()) >= size_limit)
+      {
+	error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
+	if (error_code != NO_ERROR)
+	  {
+	    object_file.close ();
+	    return error_code;
+	  }
+	// Next batch should start from the following line.
+	batch_start_offset = lineno - one_row_lineno + 1;
+      }
+
+    batch_buffer.append (one_row_buffer);
+    one_row_buffer.clear();
+    one_row_lineno = 0;
+
+    return error_code;
+  }
+
   int
   split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler)
   {
     int error_code;
     int64_t batch_rows = 0;
     int lineno = 0;
+    int one_row_lineno = 0;
     int batch_start_offset = 0;
     class_id clsid = FIRST_CLASS_ID;
     batch_id batch_id = NULL_BATCH_ID;
     std::string batch_buffer;
+    std::string one_row_buffer;
     bool class_is_ignored = false;
     short single_quote_checker = 0;
+    bool  size_over = false;
+    size_t size_limit = 2147482624LL; // (2GB - 1K)
 
     if (object_file_name.empty ())
       {
@@ -654,18 +690,28 @@ namespace cubload
 
     assert (batch_size > 0);
 
-    for (std::string line; std::getline (object_file, line); ++lineno)
+    one_row_buffer.reserve (1024*1024); // 1MB
+    for (std::string line; std::getline (object_file, line); ++lineno, ++one_row_lineno)
       {
 	bool is_id_line = starts_with (line, "%id") || starts_with (line, "%ID");
 	bool is_class_line = starts_with (line, "%class") || starts_with (line, "%CLASS");
 
 	if (is_id_line || is_class_line)
 	  {
+	    if (one_row_buffer.empty() == false)
+	      {
+		error_code = append_incomplete_row (object_file, batch_buffer, one_row_buffer, b_handler, clsid, batch_id, size_limit,
+						    lineno, one_row_lineno, batch_start_offset, batch_rows);
+		if (error_code != NO_ERROR)
+		  {
+		    return error_code;
+		  }
+	      }
+
 	    if (is_class_line)
 	      {
 		// in case of class line collect remaining for current class
 		// and start new batch for the new class
-
 		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
 		if (error_code != NO_ERROR)
 		  {
@@ -708,10 +754,10 @@ namespace cubload
 	  }
 
 	// it is a line containing row data so append it
-	batch_buffer.append (line);
+	one_row_buffer.append (line);
 
 	// since std::getline eats end line character, add it back in order to make loaddb lexer happy
-	batch_buffer.append ("\n");
+	one_row_buffer.append ("\n");
 
 	// check for matching single quotes
 	for (const char &c: line)
@@ -735,19 +781,52 @@ namespace cubload
 	    continue;
 	  }
 
-	++batch_rows;
+	if ((one_row_buffer.size() + batch_buffer.size()) >= size_limit)
+	  {
+	    size_over = true;
+	  }
+	else
+	  {
+	    batch_buffer.append (one_row_buffer);
+	    one_row_buffer.clear();
+	    one_row_lineno = 0;
+
+	    ++batch_rows;
+	    size_over = false;
+	  }
 
 	// check if we have a full batch
-	if (batch_rows == batch_size)
+	if (batch_rows == batch_size || size_over)
 	  {
 	    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
-	    // Next batch should start from the following line.
-	    batch_start_offset = lineno + 1;
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
 		return error_code;
 	      }
+	    // Next batch should start from the following line.
+	    batch_start_offset =  size_over ?  (lineno - one_row_lineno + 1) : (lineno + 1);
+	  }
+
+	if (size_over)
+	  {
+	    if (one_row_buffer.empty() == false)
+	      {
+		batch_buffer.append (one_row_buffer);
+		one_row_buffer.clear();
+	      }
+	    one_row_lineno = 0;
+	    ++batch_rows;
+	  }
+      }
+
+    if (one_row_buffer.empty() == false)
+      {
+	error_code = append_incomplete_row (object_file, batch_buffer, one_row_buffer, b_handler, clsid, batch_id, size_limit,
+					    lineno, one_row_lineno, batch_start_offset, batch_rows);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
 	  }
       }
 
