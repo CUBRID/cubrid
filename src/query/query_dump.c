@@ -36,6 +36,7 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
+#include "subquery_cache.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -2902,8 +2903,11 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   GROUPBY_STATS *gstats;
   json_t *proc, *scan = NULL;
   json_t *subquery, *groupby, *orderby;
-  json_t *left, *right, *outer, *inner;
+  json_t *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
+  json_t *temp;
+  xasl_node *xptr;
+  json_t *sq_cache;
 
   if (xasl_p == NULL || parent == NULL)
     {
@@ -2931,20 +2935,25 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     case BUILD_SCHEMA_PROC:
       json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
       json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
+      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
       json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
       break;
 
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      left = json_object ();
-      right = json_object ();
-
-      qdump_print_stats_json (xasl_p->proc.union_.left, left);
-      qdump_print_stats_json (xasl_p->proc.union_.right, right);
-
-      json_object_set_new (proc, "left", left);
-      json_object_set_new (proc, "right", right);
+      json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+      json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
+      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
+      json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+      subquery = json_array ();
+      for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
+	{
+	  temp = json_object ();
+	  qdump_print_stats_json (xptr, temp);
+	  json_array_append_new (subquery, temp);
+	}
+      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
       break;
 
     case MERGELIST_PROC:
@@ -3009,6 +3018,23 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
   qdump_print_stats_json (xasl_p->connect_by_ptr, proc);
 
+  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
+    {
+      sq_cache = json_object ();
+      json_object_set_new (sq_cache, "hit", json_integer (SQ_CACHE_HIT (xasl_p)));
+      json_object_set_new (sq_cache, "miss", json_integer (SQ_CACHE_MISS (xasl_p)));
+      json_object_set_new (sq_cache, "size", json_integer (SQ_CACHE_SIZE (xasl_p)));
+      if (SQ_CACHE_ENABLED (xasl_p))
+	{
+	  json_object_set_new (sq_cache, "status", json_string ("enabled"));
+	}
+      else
+	{
+	  json_object_set_new (sq_cache, "status", json_string ("disabled"));
+	}
+      json_object_set_new (proc, "SUBQUERY_CACHE", sq_cache);
+    }
+
   gstats = &xasl_p->groupby_stats;
   if (gstats->run_groupby)
     {
@@ -3071,22 +3097,25 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
-      if (HAVE_SUBQUERY_PROC (xasl_p->aptr_list))
+      subquery = json_array ();
+      for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  subquery = json_object ();
-	  qdump_print_stats_json (xasl_p->aptr_list, subquery);
-	  json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
+	  temp = json_object ();
+	  qdump_print_stats_json (xptr, temp);
+	  json_array_append_new (subquery, temp);
 	}
-      else
-	{
-	  qdump_print_stats_json (xasl_p->aptr_list, proc);
-	}
+      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
     }
 
   if (xasl_p->dptr_list != NULL)
     {
-      subquery = json_object ();
-      qdump_print_stats_json (xasl_p->dptr_list, subquery);
+      subquery = json_array ();
+      for (xptr = xasl_p->dptr_list; xptr; xptr = xptr->next)
+	{
+	  temp = json_object ();
+	  qdump_print_stats_json (xptr, temp);
+	  json_array_append_new (subquery, temp);
+	}
       json_object_set_new (proc, "SUBQUERY (correlated)", subquery);
     }
 }
@@ -3194,6 +3223,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
+  xasl_node *xptr;
 
   if (xasl_p == NULL)
     {
@@ -3226,19 +3256,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case UNION_PROC:
-      fprintf (fp, "UNION\n");
-      qdump_print_stats_text (fp, xasl_p->proc.union_.left, indent);
-      qdump_print_stats_text (fp, xasl_p->proc.union_.right, indent);
-      break;
     case DIFFERENCE_PROC:
-      fprintf (fp, "DIFFERENCE\n");
-      qdump_print_stats_text (fp, xasl_p->proc.union_.left, indent);
-      qdump_print_stats_text (fp, xasl_p->proc.union_.right, indent);
-      break;
     case INTERSECTION_PROC:
-      fprintf (fp, "INTERSECTION\n");
-      qdump_print_stats_text (fp, xasl_p->proc.union_.left, indent);
-      qdump_print_stats_text (fp, xasl_p->proc.union_.right, indent);
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
+	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
+	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
+      for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
+	{
+	  qdump_print_stats_text (fp, xptr, indent);
+	}
       break;
 
     case MERGELIST_PROC:
@@ -3270,11 +3296,33 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
     }
 
-  qdump_print_access_spec_stats_text (fp, xasl_p->spec_list, indent);
-  qdump_print_access_spec_stats_text (fp, xasl_p->merge_spec, indent);
+  if (xasl_p->sub_xasl_id && xasl_p->sub_cache_ref_count > 0)
+    {
+      fprintf (fp, "%*cRESULT CACHE (reference count: %d)\n", indent, ' ', xasl_p->sub_cache_ref_count);
+    }
+  else
+    {
+      qdump_print_access_spec_stats_text (fp, xasl_p->spec_list, indent);
+      qdump_print_access_spec_stats_text (fp, xasl_p->merge_spec, indent);
+    }
 
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
   qdump_print_stats_text (fp, xasl_p->connect_by_ptr, indent);
+
+  if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE))
+    {
+      fprintf (fp, "%*c", indent, ' ');
+      if (SQ_CACHE_ENABLED (xasl_p))
+	{
+	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu, status: enabled)\n",
+		   SQ_CACHE_HIT (xasl_p), SQ_CACHE_MISS (xasl_p), SQ_CACHE_SIZE (xasl_p));
+	}
+      else
+	{
+	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu, status: disabled)\n",
+		   SQ_CACHE_HIT (xasl_p), SQ_CACHE_MISS (xasl_p), SQ_CACHE_SIZE (xasl_p));
+	}
+    }
 
   gstats = &xasl_p->groupby_stats;
   if (gstats->run_groupby)
@@ -3338,13 +3386,19 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
 	}
 
-      qdump_print_stats_text (fp, xasl_p->aptr_list, indent);
+      for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
+	{
+	  qdump_print_stats_text (fp, xptr, indent);
+	}
     }
 
   if (xasl_p->dptr_list != NULL)
     {
       fprintf (fp, "%*cSUBQUERY (correlated)\n", indent, ' ');
-      qdump_print_stats_text (fp, xasl_p->dptr_list, indent);
+      for (xptr = xasl_p->dptr_list; xptr; xptr = xptr->next)
+	{
+	  qdump_print_stats_text (fp, xptr, indent);
+	}
     }
 }
 #endif /* SERVER_MODE */

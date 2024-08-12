@@ -536,7 +536,7 @@ function get_options ()
   esac
 
   case $build_mode in
-    release|debug|coverage);;
+    release|debug|coverage|profile);;
     *) show_usage; print_fatal "Mode [$build_mode] is not a valid mode" ;;
   esac
 

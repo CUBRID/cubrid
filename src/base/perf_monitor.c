@@ -83,7 +83,7 @@
 
 #if defined (SERVER_MODE)
 #include "connection_error.h"
-#endif /* SERVER_MODE */
+#endif
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -1048,8 +1048,24 @@ UINT64
 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
 {
   UINT64 *stats;
+  int tran_index;
 
-  stats = perfmon_server_get_stats (thread_p);
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0);
+
+  if (tran_index >= pstat_Global.n_trans)
+    {
+      return 0;
+    }
+
+  /* This routine is called from the query execute scan routine in TRACE ON state.
+   * Therefore, there is no need to call perfmon_get_peek_stats,
+   * which retrieves overall statistical information,
+   * because the server's overall statistical information is not needed,
+   * and only I/O fetch and time information are needed.
+   */
+  stats = pstat_Global.tran_stats[tran_index];
+
   if (stats != NULL)
     {
       int offset = pstat_Metadata[statistic_id].start_offset;

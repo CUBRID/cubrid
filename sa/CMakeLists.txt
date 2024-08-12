@@ -267,6 +267,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
   ${QUERY_DIR}/show_scan.c
+  ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -287,7 +288,15 @@ set(QUERY_HEADERS
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate.c
+  ${OBJECT_DIR}/authenticate_access_auth.cpp
   ${OBJECT_DIR}/authenticate_cache.cpp
+  ${OBJECT_DIR}/authenticate_context.cpp
+  ${OBJECT_DIR}/authenticate_access_class.cpp
+  ${OBJECT_DIR}/authenticate_grant.cpp
+  ${OBJECT_DIR}/authenticate_owner.cpp
+  ${OBJECT_DIR}/authenticate_password.cpp
+  ${OBJECT_DIR}/authenticate_access_user.cpp
+  ${OBJECT_DIR}/authenticate_migration.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
   ${OBJECT_DIR}/deduplicate_key.c
@@ -324,11 +333,11 @@ set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set(JSP_SOURCES
-  ${JSP_DIR}/jsp_cl.c
-  ${JSP_DIR}/jsp_comm.c
-  ${JSP_DIR}/jsp_file.c
-  ${JSP_DIR}/jsp_sr.c
+set(SP_SOURCES
+  ${SP_DIR}/jsp_cl.c
+  ${SP_DIR}/jsp_comm.c
+  ${SP_DIR}/jsp_file.c
+  ${SP_DIR}/jsp_sr.c
   )
 
 set(METHOD_SOURCES
@@ -571,7 +580,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -607,7 +616,7 @@ add_library(cubridsa SHARED
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${MONITOR_HEADERS}
   ${MONITOR_SOURCES}
@@ -681,6 +690,7 @@ if(UNIX)
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridsa LINK_PUBLIC ${CMAKE_DL_LIBS})
   target_link_libraries(cubridsa PUBLIC stdc++fs)
+  target_link_libraries(cubridsa PUBLIC rt)
 endif(UNIX)
 # for dblink
 target_link_libraries(cubridsa cascci)

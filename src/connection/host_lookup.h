@@ -23,6 +23,8 @@
 #ifndef _HOST_LOOKUP_H_
 #define _HOST_LOOKUP_H_
 
+#include <string>
+
 #ident "$Id$"
 extern struct hostent *gethostbyname_uhost (const char *name);
 extern int getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t hostlen,

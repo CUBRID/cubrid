@@ -28,36 +28,23 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.error;
 
-import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.type.Type;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.List;
-import org.antlr.v4.runtime.ParserRuleContext;
+public class SemanticError extends RuntimeException {
 
-public class DeclForRecord extends DeclId {
+    public final int line;
+    public final int column;
 
-    public final String name;
-    public final List<Misc.Pair<String, Type>> fieldTypes;
-
-    public DeclForRecord(
-            ParserRuleContext ctx, String name, List<Misc.Pair<String, Type>> fieldTypes) {
-        super(ctx);
-
-        this.name = name;
-        this.fieldTypes = fieldTypes;
+    public SemanticError(int line, int column, String msg) {
+        super(msg);
+        this.line = line;
+        this.column = column;
     }
 
-    // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
-
-    @Override
-    public String kind() {
-        return "for-loop-record";
+    public SemanticError(int[] lineColumn, String msg) {
+        super(msg);
+        assert lineColumn.length == 2;
+        this.line = lineColumn[0];
+        this.column = lineColumn[1];
     }
 }

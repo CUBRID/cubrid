@@ -110,6 +110,7 @@ PERCENT_FOUND:                '%' SPACE* F O U N D ;
 PERCENT_ISOPEN:               '%' SPACE* I S O P E N ;
 PERCENT_NOTFOUND:             '%' SPACE* N O T F O U N D ;
 PERCENT_ROWCOUNT:             '%' SPACE* R O W C O U N T ;
+PERCENT_ROWTYPE:              '%' SPACE* R O W T Y P E ;
 PERCENT_TYPE:                 '%' SPACE* T Y P E ;
 PLCSQL:                       P L C S Q L ;
 PRAGMA:                       P R A G M A ;

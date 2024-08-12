@@ -609,7 +609,7 @@ struct json_t;
     do {                                                        \
         unsigned int save_custom;                               \
                                                                 \
-        if (!(p) || !(n) || (n->alias_print))                   \
+        if (!(p) || !(n) || (!(n)->info.query.flag.subquery_cached && n->alias_print))                   \
           break;                                                \
         save_custom = (p)->custom_print;                        \
         (p)->custom_print |= (c);                               \
@@ -1384,6 +1384,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_ELIMINATE_JOIN  0x800000000ULL	/* do not eliminate join */
 #define  PT_HINT_SAMPLING_SCAN  0x1000000000ULL	/* SELECT sampling data instead of full data */
 #define  PT_HINT_LEADING  0x2000000000ULL	/* force specific table to join left-to-right */
+#define  PT_HINT_NO_SUBQUERY_CACHE 0x4000000000ULL	/* don't use the subquery result cache */
 
 /* Codes for error messages */
 typedef enum
@@ -2971,7 +2972,7 @@ struct pt_query_info
     unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
-    unsigned cte_query_cached:1;	/* for CTE result-cached */
+    unsigned subquery_cached:1;	/* subquery is cached */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
@@ -2979,7 +2980,7 @@ struct pt_query_info
   PT_NODE *qcache_hint;		/* enable/disable query cache */
   PT_NODE *limit;		/* PT_VALUE (list) limit clause parameter(s) */
   void *xasl;			/* xasl proc pointer */
-  XASL_ID *cte_xasl_id;		/* xasl_id for CTE query */
+  XASL_ID *sub_xasl_id;		/* xasl_id for cached subquery */
   UINTPTR id;			/* query unique id # */
   PT_HINT_ENUM hint;		/* hint flag */
   bool is_order_dependent;	/* true if query is order dependent */
@@ -3782,8 +3783,8 @@ struct parser_node
   PARSER_VARCHAR *expr_before_const_folding;	/* text before constant folding (used by value, host var nodes) */
   PT_TYPE_ENUM type_enum;	/* type enumeration tag PT_TYPE_??? */
   CACHE_TIME cache_time;	/* client or server cache time */
-  int cte_host_var_count;	/* CTE host variable count */
-  int *cte_host_var_index;	/* CTE host variable index in non_recursive CTE node */
+  int sub_host_var_count;	/* subquery's host variable count */
+  int *sub_host_var_index;	/* subquery's host variable index */
 
   struct
   {
@@ -3912,7 +3913,7 @@ struct parser_context
   int auto_param_count;		/* number of auto parameterized variables */
 
   int dbval_cnt;		/* to be assigned to XASL */
-  int *cte_host_var_index;	/* CTE host variable index in non_recursive CTE node */
+  int *sub_host_var_index;	/* subquery's host variable index */
   int line, column;		/* current input line and column */
 
   void *etc;			/* application context */
