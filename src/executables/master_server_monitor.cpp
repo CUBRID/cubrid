@@ -31,6 +31,7 @@ std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 
 server_monitor::server_monitor ()
 {
+  // arbitrary size
   constexpr int SERVER_MONITOR_JOB_QUEUE_SIZE = 1024;
   m_job_queue = new lockfree::circular_queue<server_monitor_job> (SERVER_MONITOR_JOB_QUEUE_SIZE);
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : job_queue is created. \n");
@@ -109,22 +110,24 @@ server_monitor::server_monitor_thread_worker ()
 		   consume_job.m_server_name.c_str());
 	  switch (consume_job.m_job_type)
 	    {
-	    case server_monitor::job_type::NO_JOB:
+	    case job_type::NO_JOB:
+	      assert (false);
 	      break;
-	    case server_monitor::job_type::REGISTER_ENTRY:
+	    case job_type::REGISTER_ENTRY:
 	      make_and_insert_server_entry (consume_job.m_pid, consume_job.m_exec_path, consume_job.m_args, consume_job.m_server_name,
 					    consume_job.m_produce_time);
 	      break;
-	    case server_monitor::job_type::REMOVE_ENTRY:
+	    case job_type::REMOVE_ENTRY:
 	      remove_server_entry (consume_job.m_server_name);
 	      break;
-	    case server_monitor::job_type::REVIVE_ENTRY:
+	    case job_type::REVIVE_ENTRY:
 	      revive_server (consume_job.m_server_name);
 	      break;
-	    case server_monitor::job_type::CONFIRM_REVIVE_ENTRY:
+	    case job_type::CONFIRM_REVIVE_ENTRY:
 	      check_server_revived (consume_job.m_server_name);
 	      break;
 	    default:
+	      assert (false);
 	      break;
 	    }
 	}
@@ -195,7 +198,7 @@ server_monitor::revive_server (std::string server_name)
 	  try_revive_server (entry->second.get_exec_path(), entry->second.get_argv(), &out_pid);
 	  assert (out_pid > 0);
 	  entry->second.set_pid (out_pid);
-	  master_Server_monitor->produce_job (server_monitor::job_type::CONFIRM_REVIVE_ENTRY, -1, "", "",
+	  master_Server_monitor->produce_job (job_type::CONFIRM_REVIVE_ENTRY, -1, "", "",
 					      entry->first);
 	  return;
 	}
@@ -219,12 +222,12 @@ server_monitor::check_server_revived (std::string server_name)
       error_code = kill (entry->second.get_pid (), 0);
       if (error_code == ESRCH)
 	{
-	  master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_ENTRY, -1, "", "", entry->first);
+	  master_Server_monitor->produce_job (job_type::REVIVE_ENTRY, -1, "", "", entry->first);
 	}
       else if (entry->second.get_need_revive ())
 	{
 	  std::this_thread::sleep_for (std::chrono::milliseconds (1000));
-	  master_Server_monitor->produce_job (server_monitor::job_type::CONFIRM_REVIVE_ENTRY, -1, "", "",
+	  master_Server_monitor->produce_job (job_type::CONFIRM_REVIVE_ENTRY, -1, "", "",
 					      entry->first);
 	}
       else
@@ -233,7 +236,7 @@ server_monitor::check_server_revived (std::string server_name)
 	}
       return;
     }
-  master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_ENTRY, -1, "", "", server_name);
+  master_Server_monitor->produce_job (job_type::REVIVE_ENTRY, -1, "", "", server_name);
 }
 
 void
@@ -263,9 +266,6 @@ server_monitor::try_revive_server (std::string exec_path, std::vector<std::strin
       *out_pid = 0;
     }
 
-  // make argv_ptr to unqiue_ptr
-  std::unique_ptr<const char *[]> argv_ptr = std::make_unique<const char *[]> (argv.size () + 1);
-
   pid = fork ();
   if (pid < 0)
     {
@@ -273,7 +273,7 @@ server_monitor::try_revive_server (std::string exec_path, std::vector<std::strin
     }
   else if (pid == 0)
     {
-
+      std::unique_ptr<const char *[]> argv_ptr = std::make_unique<const char *[]> (argv.size () + 1);
       for (size_t i = 0; i < argv.size(); i++)
 	{
 	  argv_ptr[i] = argv[i].c_str();

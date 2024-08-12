@@ -358,6 +358,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  length = (int) strlen (proc_register->server_name) + 1;
 	  server_name_length = proc_register->server_name_length;
 
+	  assert (length <= DB_MAX_IDENTIFIER_LENGTH);
 	  char server_name_str[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 	  strncpy (server_name_str, proc_register->server_name, length);
 
