@@ -843,7 +843,8 @@ namespace cubschema
       {"pkg_name", format_varchar (255)},
       {"is_system_generated", "integer"},
       {"directive", "integer"},
-      {"target", format_varchar (4096)},
+      {"target_class", format_varchar (1024)},
+      {"target_method", format_varchar (1024)},
       {"owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (1024)}
     },
@@ -905,7 +906,7 @@ namespace cubschema
 		   CT_STORED_PROC_CODE_NAME,
 		   // columns
     {
-      {"name", format_varchar (65535)}, // java's name limit
+      {"name", format_varchar (1024)}, // same with [_db_stored_procedure].[target_class]
       {"created_time", format_varchar (16)},
       {"owner", AU_USER_CLASS_NAME},
       {"is_static", "integer"},
