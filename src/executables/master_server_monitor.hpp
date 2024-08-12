@@ -140,7 +140,7 @@ class server_monitor
   private:
     std::unordered_map <std::string, server_entry> m_server_entry_map;  // map of server entries
 
-    std::unique_ptr<std::thread> m_monitor_thread;                      // monitoring thread
+    std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     lockfree::circular_queue <server_monitor_job> *m_job_queue;         // job queue for monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
     std::mutex m_monitor_mutex_consumer;                                // lock for m_job_queue empty check
