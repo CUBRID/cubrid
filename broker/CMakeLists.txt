@@ -524,6 +524,7 @@ if(WITH_CCI)
     ${BROKER_DIR}/broker_log_replay.c
     ${BROKER_DIR}/broker_log_util.c
     ${BROKER_DIR}/log_top_string.c
+    ${BASE_DIR}/filesys_temp.cpp
     )
   SET_SOURCE_FILES_PROPERTIES(
       ${CUBRID_REPLAY_SOURCES}

@@ -28,16 +28,15 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.ast;
 
-public class SyntaxError extends RuntimeException {
+public interface AssignTarget {
 
-    public final int line;
-    public final int column;
+    public String javaCode();
 
-    public SyntaxError(int line, int column, String msg) {
-        super(msg);
-        this.line = line;
-        this.column = column;
-    }
+    public String javaCodeForOutParam();
+
+    public String name();
+
+    public boolean isAssignableTo();
 }
