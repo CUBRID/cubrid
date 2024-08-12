@@ -26,6 +26,7 @@
 #include <cstring>
 #include <thread>
 #include <vector>
+#include <unordered_map>
 #include <list>
 #include <memory>
 #include <mutex>
@@ -50,12 +51,12 @@ class server_monitor
     class server_entry
     {
       public:
-	server_entry (int pid, std::string exec_path, std::string args, std::string server_name,
+	server_entry (int pid, std::string exec_path, std::string args,
 		      std::chrono::steady_clock::time_point revive_time);
 	~server_entry () {};
 
 	server_entry (const server_entry &) = delete;
-	server_entry (server_entry &&) = delete;
+	server_entry (server_entry &&) = default;
 
 	server_entry &operator= (const server_entry &) = delete;
 	server_entry &operator= (server_entry &&other)
@@ -65,7 +66,6 @@ class server_monitor
 	      m_pid = other.m_pid;
 	      m_need_revive = other.m_need_revive;
 	      m_last_revive_time = other.m_last_revive_time;
-	      m_server_name = other.m_server_name;
 	      m_exec_path = other.m_exec_path;
 	      m_argv = other.m_argv;
 	    }
@@ -75,8 +75,6 @@ class server_monitor
 	int get_pid () const;
 	std::string get_exec_path () const;
 	std::vector<std::string> get_argv () const;
-	std::string get_args () const;
-	std::string get_server_name () const;
 	bool get_need_revive () const;
 	std::chrono::steady_clock::time_point get_last_revive_time () const;
 
@@ -91,7 +89,6 @@ class server_monitor
 	int m_pid;                                                 // process ID of server process
 	std::string m_exec_path;                                   // executable path of server process
 	std::vector<std::string> m_argv;                           // arguments of server process
-	std::string m_server_name;                                 // name of server process
 	volatile bool m_need_revive;                               // need to be revived by monitoring thread
 	std::chrono::steady_clock::time_point m_last_revive_time;  // last revive time
     };
@@ -140,12 +137,14 @@ class server_monitor
 				     std::string server_name);
 
   private:
-    std::unique_ptr<std::list <server_entry>> m_server_entry_list;      // list of server entries
+    std::unique_ptr<std::unordered_map <std::string, server_entry>> m_server_entry_map;  // map of server entries
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     lockfree::circular_queue <server_monitor_job> *m_job_queue;         // job queue for monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
-    std::mutex m_monitor_mutex;                                         // lock for server monitor
-    std::condition_variable m_monitor_cv;                               // condition variable for server monitor
+    std::mutex m_monitor_mutex_empty;                                   // lock for for m_job_queue empty check
+    std::mutex m_monitor_mutex_full;                                    // lock for for m_job_queue full check
+    std::condition_variable m_monitor_cv_empty;                         // condition variable for m_job_queue empty check
+    std::condition_variable m_monitor_cv_full;                          // condition variable for m_job_queue full check
 
     void start_monitoring_thread ();
     void stop_monitoring_thread ();

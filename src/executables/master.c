@@ -358,11 +358,9 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  length = (int) strlen (proc_register->server_name) + 1;
 	  server_name_length = proc_register->server_name_length;
 
-	  char *server_name_str = (char *) malloc (length);
-	  if (server_name_str != NULL)
-	    {
-	      strcpy (server_name_str, proc_register->server_name);
-	    }
+	  char server_name_str[256];
+	  memset (server_name_str, 0, sizeof (server_name_str));
+	  strncpy (server_name_str, proc_register->server_name, length);
 
 	  if (length < server_name_length)
 	    {
@@ -399,10 +397,6 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 
               master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REGISTER_ENTRY, proc_register->pid, proc_register->exec_path, proc_register->args, server_name_str);
               /* *INDENT-ON* */
-	    }
-	  if (server_name_str != NULL)
-	    {
-	      free_and_init (server_name_str);
 	    }
 	}
     }
