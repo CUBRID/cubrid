@@ -8032,7 +8032,173 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
     }
 }
-#endif
+
+/*
+ * scan_print_stats_text () -
+ * return:
+ * scan_id(in):
+ */
+void
+scan_print_partition_stats_text (FILE * fp, SCAN_ID * scan_id)
+{
+  SCAN_STATS *curr_stats, *prev_stats;
+  SCAN_STATS dummy_stats;
+
+  if (scan_id == NULL)
+    {
+      return;
+    }
+
+  prev_stats = scan_id->prev_partition_scan_stats;
+  curr_stats = scan_id->curr_partition_scan_stats;
+
+  if (prev_stats == curr_stats)
+    {
+      memset (&dummy_stats, 0, sizeof (SCAN_STATS));
+      prev_stats = &dummy_stats;
+    }
+
+  switch (scan_id->type)
+    {
+    case S_HEAP_SCAN:
+    case S_HEAP_SAMPLING_SCAN:
+      if (curr_stats->noscan)
+	{
+	  fprintf (fp, "(noscan");	/* aggregate optimization is not a scan */
+	}
+      else
+	{
+	  fprintf (fp, "(heap");
+	}
+      break;
+
+    case S_INDX_SCAN:
+      fprintf (fp, "(btree");
+      break;
+
+    case S_LIST_SCAN:
+      if (scan_id->s.llsid.hlsid.hash_list_scan_type == HASH_METH_IN_MEM)
+	{
+	  fprintf (fp, "(hash temp(m), build time: %d,",
+		   TO_MSEC (curr_stats->elapsed_hash_build) - TO_MSEC (prev_stats->elapsed_hash_build));
+	}
+      else if (scan_id->s.llsid.hlsid.hash_list_scan_type == HASH_METH_HYBRID)
+	{
+	  fprintf (fp, "(hash temp(h), build time: %d,",
+		   TO_MSEC (curr_stats->elapsed_hash_build) - TO_MSEC (prev_stats->elapsed_hash_build));
+	}
+      else if (scan_id->s.llsid.hlsid.hash_list_scan_type == HASH_METH_HASH_FILE)
+	{
+	  fprintf (fp, "(hash temp(f), build time: %d,",
+		   TO_MSEC (curr_stats->elapsed_hash_build) - TO_MSEC (prev_stats->elapsed_hash_build));
+	}
+      else
+	{
+	  fprintf (fp, "(temp");
+	}
+      break;
+
+    case S_SHOWSTMT_SCAN:
+      fprintf (fp, "(show");
+      break;
+
+    case S_SET_SCAN:
+      fprintf (fp, "(set");
+      break;
+
+    case S_METHOD_SCAN:
+      fprintf (fp, "(method");
+      break;
+
+    case S_DBLINK_SCAN:
+      fprintf (fp, "(dblink");
+      break;
+
+    case S_CLASS_ATTR_SCAN:
+      fprintf (fp, "(class_attr");
+      break;
+
+    default:
+      fprintf (fp, "(noscan");
+      break;
+    }
+
+  fprintf (fp, " time: %d, fetch: %llu, ioread: %llu",
+	   TO_MSEC (curr_stats->elapsed_scan) - TO_MSEC (prev_stats->elapsed_scan),
+	   (unsigned long long int) curr_stats->num_fetches - prev_stats->num_fetches,
+	   (unsigned long long int) curr_stats->num_ioreads - prev_stats->num_ioreads);
+
+  switch (scan_id->type)
+    {
+    case S_HEAP_SCAN:
+    case S_LIST_SCAN:
+    case S_HEAP_SAMPLING_SCAN:
+      fprintf (fp, ", readrows: %llu, rows: %llu",
+	       (unsigned long long int) curr_stats->read_rows - prev_stats->read_rows,
+	       (unsigned long long int) curr_stats->qualified_rows - prev_stats->qualified_rows);
+      if (curr_stats->agl)
+	{
+	  SCAN_AGL *agl;
+
+	  fprintf (fp, ", agl: ");
+	  for (agl = curr_stats->agl; agl; agl = agl->next)
+	    {
+	      fprintf (fp, "%s", agl->agg_index_name);
+	      if (agl->next)
+		{
+		  fprintf (fp, ", ");
+		}
+	    }
+	}
+      fprintf (fp, ")");
+      break;
+
+    case S_INDX_SCAN:
+      fprintf (fp, ", readkeys: %llu, filteredkeys: %llu, rows: %llu",
+	       (unsigned long long int) curr_stats->read_keys - prev_stats->read_keys,
+	       (unsigned long long int) curr_stats->qualified_keys - prev_stats->qualified_keys,
+	       (unsigned long long int) curr_stats->key_qualified_rows - prev_stats->key_qualified_rows);
+
+      if (curr_stats->covered_index == true)
+	{
+	  fprintf (fp, ", covered: true");
+	}
+
+      if (scan_id->s.isid.need_count_only == true)
+	{
+	  fprintf (fp, ", count_only: true");
+	}
+
+      if (curr_stats->multi_range_opt == true)
+	{
+	  fprintf (fp, ", mro: true");
+	}
+
+      if (curr_stats->index_skip_scan == true)
+	{
+	  fprintf (fp, ", iss: true");
+	}
+
+      if (curr_stats->loose_index_scan == true)
+	{
+	  fprintf (fp, ", loose: true");
+	}
+      fprintf (fp, ")");
+
+      if (curr_stats->covered_index == false)
+	{
+	  fprintf (fp, " (lookup time: %d, rows: %llu)",
+		   TO_MSEC (curr_stats->elapsed_lookup) - TO_MSEC (prev_stats->elapsed_lookup),
+		   (unsigned long long int) curr_stats->data_qualified_rows - prev_stats->data_qualified_rows);
+	}
+      break;
+
+    default:
+      fprintf (fp, ")");
+      break;
+    }
+}
+#endif /* SERVER_MODE */
 
 /*
  * scan_build_hash_list_scan () - build hash table from list

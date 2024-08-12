@@ -3189,6 +3189,81 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 
 	  scan_print_stats_text (fp, &spec->s_id);
 
+	  if (spec->type == TARGET_CLASS && spec->parts != NULL)
+	    {
+	      PARTITION_SPEC_TYPE *partition_spec = NULL;
+	      char *part_class_name = NULL, *part_index_name = NULL;
+
+	      /* init */
+	      spec->s_id.prev_partition_scan_stats = spec->s_id.partition_scan_stats;
+	      spec->s_id.curr_partition_scan_stats = spec->s_id.partition_scan_stats;
+
+	      for (partition_spec = spec->parts; partition_spec != NULL; partition_spec = partition_spec->next)
+		{
+		  fprintf (fp, "\n");
+		  fprintf (fp, "%*cSCAN ", indent + 2, ' ');
+
+		  if (heap_get_class_name (thread_p, &partition_spec->oid, &part_class_name) != NO_ERROR)
+		    {
+		      /* ignore */
+		      er_clear ();
+		    }
+
+		  if (spec->access == ACCESS_METHOD_SEQUENTIAL)
+		    {
+		      if (part_class_name != NULL)
+			{
+			  fprintf (fp, "(partition table: %s), ", part_class_name);
+			}
+		      else
+			{
+			  fprintf (fp, "(partition table: unknown), ");
+			}
+		    }
+		  else if (spec->access == ACCESS_METHOD_INDEX)
+		    {
+		      if (heap_get_indexinfo_of_btid
+			  (thread_p, &partition_spec->oid, &partition_spec->btid, NULL, NULL, NULL, NULL,
+			   &part_index_name, NULL) == NO_ERROR)
+			{
+			  if (part_class_name != NULL && part_index_name != NULL)
+			    {
+			      fprintf (fp, "(partition index: %s.%s), ", part_class_name, part_index_name);
+			    }
+
+			  else
+			    {
+			      fprintf (fp, "(partition index: unknown), ");
+			    }
+			}
+		    }
+
+		  scan_print_partition_stats_text (fp, &spec->s_id);
+
+		  /* next */
+		  spec->s_id.prev_partition_scan_stats = spec->s_id.curr_partition_scan_stats;
+		  spec->s_id.curr_partition_scan_stats++;
+
+		  if (class_name != NULL)
+		    {
+		      free_and_init (class_name);
+		    }
+
+		  if (index_name != NULL)
+		    {
+		      free_and_init (index_name);
+		    }
+		}
+
+	      db_private_free_and_init (thread_p, spec->parts);
+	      spec->curent = NULL;
+	      spec->pruned = false;
+
+	      db_private_free_and_init (thread_p, spec->s_id.partition_scan_stats);
+	      spec->s_id.prev_partition_scan_stats = NULL;
+	      spec->s_id.curr_partition_scan_stats = NULL;
+	    }
+
 	  if (class_name != NULL)
 	    {
 	      free_and_init (class_name);

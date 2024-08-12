@@ -6509,6 +6509,21 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
+
+      if (thread_is_on_trace (thread_p))
+	{
+	  PARTITION_SPEC_TYPE *partition_spec;
+	  int partition_count = 0;
+
+	  for (partition_spec = curr_spec->parts; partition_spec != NULL; partition_spec = partition_spec->next)
+	    {
+	      partition_count++;
+	    }
+
+	  curr_spec->s_id.partition_scan_stats =
+	    (SCAN_STATS *) db_private_alloc (thread_p, partition_count * sizeof (SCAN_STATS));
+	  memset (curr_spec->s_id.partition_scan_stats, 0, partition_count * sizeof (SCAN_STATS));
+	}
     }
 
   if (curr_spec->type == TARGET_CLASS && mvcc_is_mvcc_disabled_class (&ACCESS_SPEC_CLS_OID (curr_spec)))
@@ -6891,10 +6906,17 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
   /* reset pruning info */
   if (curr_spec->type == TARGET_CLASS && curr_spec->parts != NULL)
     {
-      db_private_free (thread_p, curr_spec->parts);
-      curr_spec->parts = NULL;
-      curr_spec->curent = NULL;
-      curr_spec->pruned = false;
+      if (!thread_is_on_trace (thread_p))
+	{
+	  /* youngjinj: trace 정보 출력에 이 정보가 필요하다. */
+	  db_private_free_and_init (thread_p, curr_spec->parts);
+	  curr_spec->curent = NULL;
+	  curr_spec->pruned = false;
+
+	  db_private_free_and_init (thread_p, curr_spec->s_id.partition_scan_stats);
+	  curr_spec->s_id.curr_partition_scan_stats = NULL;
+	  curr_spec->s_id.prev_partition_scan_stats = NULL;
+	}
 
       /* init btid */
       if (curr_spec->indexptr)
@@ -7072,7 +7094,37 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  if (s_parts == S_SUCCESS)
 	    {
 	      /* successfully moved to the next partition */
+	      if (thread_is_on_trace (thread_p))
+		{
+		  if (xasl->curr_spec->s_id.curr_partition_scan_stats == NULL)
+		    {
+		      xasl->curr_spec->s_id.prev_partition_scan_stats = xasl->curr_spec->s_id.partition_scan_stats;
+		      xasl->curr_spec->s_id.curr_partition_scan_stats = xasl->curr_spec->s_id.partition_scan_stats;
+		    }
+		  else
+		    {
+		      /* copy */
+		      *xasl->curr_spec->s_id.curr_partition_scan_stats = xasl->curr_spec->s_id.scan_stats;
+
+		      xasl->curr_spec->s_id.prev_partition_scan_stats = xasl->curr_spec->s_id.curr_partition_scan_stats;
+		      xasl->curr_spec->s_id.curr_partition_scan_stats++;
+		    }
+		}
 	      continue;
+	    }
+	  else if (s_parts == S_END)
+	    {
+	      if (thread_is_on_trace (thread_p))
+		{
+		  if (xasl->curr_spec->s_id.curr_partition_scan_stats != NULL)
+		    {
+		      /* copy */
+		      *xasl->curr_spec->s_id.curr_partition_scan_stats = xasl->curr_spec->s_id.scan_stats;
+
+		      xasl->curr_spec->s_id.prev_partition_scan_stats = NULL;
+		      xasl->curr_spec->s_id.curr_partition_scan_stats = NULL;
+		    }
+		}
 	    }
 	  else if (s_parts == S_ERROR)
 	    {
