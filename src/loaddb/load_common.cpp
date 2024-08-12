@@ -674,7 +674,9 @@ namespace cubload
     bool class_is_ignored = false;
     short single_quote_checker = 0;
     bool  size_over = false;
-    size_t size_limit = 2147482624LL; // (2GB - 1K)
+    size_t size_limit = (((1024 * 1024 * 2) - 1) * 1024LL); // (2GB - 1K)
+#define DEFAULT_STRING_SZ (4096)
+    size_t size_bk = DEFAULT_STRING_SZ;
 
     if (object_file_name.empty ())
       {
@@ -690,7 +692,9 @@ namespace cubload
 
     assert (batch_size > 0);
 
-    one_row_buffer.reserve (1024*1024); // 1MB
+    one_row_buffer.reserve (1024*1024*1); // 1MB
+    batch_buffer.reserve (DEFAULT_STRING_SZ);
+
     for (std::string line; std::getline (object_file, line); ++lineno, ++one_row_lineno)
       {
 	bool is_id_line = starts_with (line, "%id") || starts_with (line, "%ID");
@@ -720,6 +724,8 @@ namespace cubload
 		  }
 
 		++clsid;
+		batch_buffer.reserve (DEFAULT_STRING_SZ);
+		size_bk = DEFAULT_STRING_SZ;
 	      }
 
 	    // New class so we check if the previous one was ignored.
@@ -798,12 +804,18 @@ namespace cubload
 	// check if we have a full batch
 	if (batch_rows == batch_size || size_over)
 	  {
+	    if (size_bk < batch_buffer.size())
+	      {
+		size_bk = batch_buffer.size();
+	      }
+
 	    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
 		return error_code;
 	      }
+	    batch_buffer.reserve (size_bk);
 	    // Next batch should start from the following line.
 	    batch_start_offset =  size_over ?  (lineno - one_row_lineno + 1) : (lineno + 1);
 	  }
