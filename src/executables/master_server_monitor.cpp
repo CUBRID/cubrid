@@ -35,12 +35,11 @@ server_monitor::server_monitor ()
   m_job_queue = new lockfree::circular_queue<server_monitor_job> (SERVER_MONITOR_JOB_QUEUE_SIZE);
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : job_queue is created. \n");
 
-  m_server_entry_map = std::make_unique<std::unordered_map<std::string, server_entry>> ();
+  m_server_entry_map = std::unordered_map<std::string, server_entry> ();
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_map is created. \n");
 
   start_monitoring_thread ();
-  m_monitoring_thread = std::make_unique<std::thread> (&server_monitor::server_monitor_thread_worker, this);
-  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is created. \n");
+
   fflush (stdout);
 }
 
@@ -56,14 +55,9 @@ server_monitor::~server_monitor ()
     }
 
   stop_monitoring_thread ();
-  if (m_monitoring_thread->joinable())
-    {
-      m_monitor_cv_empty.notify_all();
-      m_monitoring_thread->join();
-      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is terminated. \n");
-    }
 
-  assert (m_server_entry_map->size () == 0);
+
+  assert (m_server_entry_map.size () == 0);
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_map is deleted. \n");
 
   fflush (stdout);
@@ -73,12 +67,22 @@ void
 server_monitor::start_monitoring_thread ()
 {
   m_thread_shutdown = false;
+
+  m_monitoring_thread = std::make_unique<std::thread> (&server_monitor::server_monitor_thread_worker, this);
+  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is created. \n");
 }
 
 void
 server_monitor::stop_monitoring_thread ()
 {
   m_thread_shutdown = true;
+
+  if (m_monitoring_thread->joinable())
+    {
+      m_monitor_cv_consumer.notify_all();
+      m_monitoring_thread->join();
+      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is terminated. \n");
+    }
 }
 
 void
@@ -86,10 +90,10 @@ server_monitor::server_monitor_thread_worker ()
 {
   while (!m_thread_shutdown)
     {
-      std::unique_lock<std::mutex> lock (m_monitor_mutex_empty);
+      std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
 
       constexpr int period_in_secs = 1;
-      while (!m_monitor_cv_empty.wait_for (lock, std::chrono::seconds (period_in_secs), [this] ()
+      while (!m_monitor_cv_consumer.wait_for (lock, std::chrono::seconds (period_in_secs), [this] ()
       {
 	return !m_job_queue->is_empty () || m_thread_shutdown;
 	}));
@@ -98,7 +102,7 @@ server_monitor::server_monitor_thread_worker ()
 	{
 	  server_monitor_job consume_job;
 	  m_job_queue->consume (consume_job);
-	  m_monitor_cv_full.notify_all();
+	  m_monitor_cv_producer.notify_all();
 	  fprintf (stdout,
 		   "[SERVER_REVIVE_DEBUG] : job_queue consume : job_type : %d, pid : %d, exec_path : %s, args : %s, server_name : %s\n",
 		   consume_job.m_job_type, consume_job.m_pid, consume_job.m_exec_path.c_str(), consume_job.m_args.c_str(),
@@ -112,10 +116,10 @@ server_monitor::server_monitor_thread_worker ()
 					    consume_job.m_produce_time);
 	      break;
 	    case SERVER_MONITOR_REMOVE_ENTRY:
-	      remove_server_entry_by_name (consume_job.m_server_name);
+	      remove_server_entry (consume_job.m_server_name);
 	      break;
 	    case SERVER_MONITOR_REVIVE_ENTRY:
-	      revive_server_with_name (consume_job.m_server_name);
+	      revive_server (consume_job.m_server_name);
 	      break;
 	    case SERVER_MONITOR_CONFIRM_REVIVE_ENTRY:
 	      server_monitor_check_server_revived (consume_job.m_server_name);
@@ -132,8 +136,8 @@ server_monitor::make_and_insert_server_entry (int pid, std::string exec_path, st
     std::chrono::steady_clock::time_point revive_time)
 {
   bool success = false;
-  auto entry = m_server_entry_map->find (server_name);
-  if (entry != m_server_entry_map->end ())
+  auto entry = m_server_entry_map.find (server_name);
+  if (entry != m_server_entry_map.end ())
     {
       entry->second.set_pid (pid);
       entry->second.set_exec_path (exec_path);
@@ -147,7 +151,7 @@ server_monitor::make_and_insert_server_entry (int pid, std::string exec_path, st
     }
   if (!success)
     {
-      m_server_entry_map->emplace (std::move (server_name), server_entry (pid, exec_path, args, revive_time));
+      m_server_entry_map.emplace (std::move (server_name), server_entry (pid, exec_path, args, revive_time));
 
       fprintf (stdout,
 	       "[SERVER_REVIVE_DEBUG] : server entry has been registered into master_Server_monitor : pid : %d, exec_path : %s, args : %s\n",
@@ -157,20 +161,20 @@ server_monitor::make_and_insert_server_entry (int pid, std::string exec_path, st
 }
 
 void
-server_monitor::remove_server_entry_by_name (std::string server_name)
+server_monitor::remove_server_entry (std::string server_name)
 {
 
-  auto entry = m_server_entry_map->find (server_name);
-  assert (entry != m_server_entry_map->end ());
-  m_server_entry_map->erase (entry);
+  auto entry = m_server_entry_map.find (server_name);
+  assert (entry != m_server_entry_map.end ());
+  m_server_entry_map.erase (entry);
   fprintf (stdout,
 	   "[SERVER_REVIVE_DEBUG] : server entry has been removed from master_Server_monitor. Number of server in master_Server_monitor: %d\n",
-	   m_server_entry_map->size ());
+	   m_server_entry_map.size ());
 
 }
 
 void
-server_monitor::revive_server_with_name (std::string server_name)
+server_monitor::revive_server (std::string server_name)
 {
   int error_code;
   const int SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS = prm_get_integer_value (
@@ -178,8 +182,8 @@ server_monitor::revive_server_with_name (std::string server_name)
   std::chrono::steady_clock::time_point tv;
   int out_pid = 0;
 
-  auto entry = m_server_entry_map->find (server_name);
-  if (entry != m_server_entry_map->end ())
+  auto entry = m_server_entry_map.find (server_name);
+  if (entry != m_server_entry_map.end ())
     {
       entry->second.set_need_revive (true);
       tv = std::chrono::steady_clock::now ();
@@ -199,7 +203,7 @@ server_monitor::revive_server_with_name (std::string server_name)
 	{
 	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Process failure repeated within a short period of time. pid : %d\n",
 		   entry->second.get_pid());
-	  m_server_entry_map->erase (entry);
+	  m_server_entry_map.erase (entry);
 	  return;
 	}
     }
@@ -209,8 +213,8 @@ void
 server_monitor::server_monitor_check_server_revived (std::string server_name)
 {
   int error_code;
-  auto entry = m_server_entry_map->find (server_name);
-  if (entry != m_server_entry_map->end ())
+  auto entry = m_server_entry_map.find (server_name);
+  if (entry != m_server_entry_map.end ())
     {
       error_code = kill (entry->second.get_pid (), 0);
       if (error_code == ESRCH)
@@ -237,15 +241,15 @@ server_monitor::server_monitor_produce_job (server_monitor_job_type job_type, in
     std::string args, std::string server_name)
 {
   server_monitor::server_monitor_job job (job_type, pid, exec_path, args, server_name);
-  std::unique_lock<std::mutex> lock (m_monitor_mutex_full);
+  std::unique_lock<std::mutex> lock (m_monitor_mutex_producer);
 
   constexpr int period_in_secs = 1;
-  while (!m_monitor_cv_full.wait_for (lock, std::chrono::seconds (period_in_secs), [this] ()
+  while (!m_monitor_cv_producer.wait_for (lock, std::chrono::seconds (period_in_secs), [this] ()
   {
     return !m_job_queue->is_full ();
     }));
   m_job_queue->produce (job);
-  m_monitor_cv_full.notify_all();
+  m_monitor_cv_consumer.notify_all();
 }
 
 void
@@ -259,6 +263,9 @@ server_monitor::server_monitor_try_revive_server (std::string exec_path, std::ve
       *out_pid = 0;
     }
 
+  // make argv_ptr to unqiue_ptr
+  std::unique_ptr<const char *[]> argv_ptr = std::make_unique<const char *[]> (argv.size () + 1);
+
   pid = fork ();
   if (pid < 0)
     {
@@ -266,13 +273,13 @@ server_monitor::server_monitor_try_revive_server (std::string exec_path, std::ve
     }
   else if (pid == 0)
     {
-      const char **argv_ptr = new const char *[argv.size() + 1];
+
       for (size_t i = 0; i < argv.size(); i++)
 	{
 	  argv_ptr[i] = argv[i].c_str();
 	}
       argv_ptr[argv.size()] = nullptr;
-      error_code = execv (exec_path.c_str(), (char *const *)argv_ptr);
+      error_code = execv (exec_path.c_str(), (char *const *) argv_ptr.get ());
     }
   else
     {

@@ -128,8 +128,8 @@ class server_monitor
 
     void make_and_insert_server_entry (int pid, std::string exec_path, std::string args, std::string server_name,
 				       std::chrono::steady_clock::time_point revive_time);
-    void remove_server_entry_by_name (std::string server_name);
-    void revive_server_with_name (std::string server_name);
+    void remove_server_entry (std::string server_name);
+    void revive_server (std::string server_name);
     void server_monitor_try_revive_server (std::string exec_path, std::vector<std::string> argv, int *out_pid);
     void server_monitor_check_server_revived (std::string server_name);
 
@@ -137,14 +137,14 @@ class server_monitor
 				     std::string server_name);
 
   private:
-    std::unique_ptr<std::unordered_map <std::string, server_entry>> m_server_entry_map;  // map of server entries
+    std::unordered_map <std::string, server_entry> m_server_entry_map;  // map of server entries
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     lockfree::circular_queue <server_monitor_job> *m_job_queue;         // job queue for monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
-    std::mutex m_monitor_mutex_empty;                                   // lock for for m_job_queue empty check
-    std::mutex m_monitor_mutex_full;                                    // lock for for m_job_queue full check
-    std::condition_variable m_monitor_cv_empty;                         // condition variable for m_job_queue empty check
-    std::condition_variable m_monitor_cv_full;                          // condition variable for m_job_queue full check
+    std::mutex m_monitor_mutex_consumer;                                // lock for m_job_queue empty check
+    std::mutex m_monitor_mutex_producer;                                  // lock for m_job_queue full check
+    std::condition_variable m_monitor_cv_consumer;                      // condition variable for m_job_queue empty check
+    std::condition_variable m_monitor_cv_producer;                      // condition variable for m_job_queue full check
 
     void start_monitoring_thread ();
     void stop_monitoring_thread ();
