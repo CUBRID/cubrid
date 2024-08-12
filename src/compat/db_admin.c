@@ -68,6 +68,7 @@
 #include "connection_cl.h"
 #include "dbtype.h"
 #include "method_callback.hpp"
+#include "filesys_temp.hpp"
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
@@ -173,7 +174,8 @@ db_init (const char *program, int print_version, const char *dbname, const char 
 #if defined (CUBRID_DEBUG)
   int value;
   const char *env_value;
-  char more_vol_info_temp_file[L_tmpnam];
+  char more_vol_info_temp_file[PATH_MAX];
+  std::string filename = "";
 #endif
   const char *more_vol_info_file = NULL;
   int error = NO_ERROR;
@@ -203,8 +205,10 @@ db_init (const char *program, int print_version, const char *dbname, const char 
 
 	  db_npages = npages / 4;
 
-	  if (tmpnam (more_vol_info_temp_file) != NULL && (more_vols_fp = fopen (more_vol_info_temp_file, "w")) != NULL)
+	  std::tie (filename, more_vols_fp) = filesys::open_temp_file ("db");;
+	  if (more_vols_fp != NULL)
 	    {
+	      snprintf (more_vol_info_temp_file, PATH_MAX, "%s", filename.c_str ());
 	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "DATA", "NPAGES", db_npages);
 	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "INDEX", "NPAGES", db_npages);
 	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "TEMP", "NPAGES", db_npages);
@@ -1779,7 +1783,7 @@ db_set_password (DB_OBJECT * user, const char *old_passwd, const char *new_passw
   CHECK_MODIFICATION_ERROR ();
 
   /* should check old password ! */
-  retval = au_set_password (user, new_passwd);
+  retval = au_set_password_encrypt (user, new_passwd);
 
   return (retval);
 }
@@ -1946,7 +1950,7 @@ db_get_user_name (void)
 
   /* Kludge, twiddle the constness of this thing.  It probably doesn't need to be const anyway, its just a copy of the
    * attribute value. */
-  name = au_user_name ();
+  name = au_get_current_user_name ();
 
   return ((char *) name);
 }
@@ -2758,6 +2762,32 @@ db_set_system_parameters (const char *data)
     {
       /* values were successfully set on server, set them on client too */
       sysprm_change_parameter_values (assignments, true, true);
+    }
+
+  for (SYSPRM_ASSIGN_VALUE * ptr = assignments; ptr != NULL; ptr = ptr->next)
+    {
+      if (ptr->prm_id == PRM_ID_LK_TIMEOUT)
+	{
+	  SYSPRM_ASSIGN_VALUE *tmp;
+
+	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LK_TIMEOUT), &tmp);
+	  if (tmp->value.i > 0)
+	    {
+	      tran_reset_wait_times (tmp->value.i * 1000);
+	    }
+	  else
+	    {
+	      tran_reset_wait_times (tmp->value.i);
+	    }
+	}
+      else if (ptr->prm_id == PRM_ID_LOG_ISOLATION_LEVEL)
+	{
+	  SYSPRM_ASSIGN_VALUE *tmp;
+
+	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LOG_ISOLATION_LEVEL), &tmp);
+
+	  tran_reset_isolation ((TRAN_ISOLATION) tmp->value.i, TM_TRAN_ASYNC_WS ());
+	}
     }
 
   /* convert SYSPRM_ERR to error code */

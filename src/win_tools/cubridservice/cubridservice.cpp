@@ -481,6 +481,7 @@ SetCUBRIDEnvVar ()
   DWORD dwBufLength = BUF_LENGTH;
   TCHAR sEnvCUBRID[BUF_LENGTH];
   TCHAR sEnvCUBRID_DATABASES[BUF_LENGTH];
+  TCHAR sEnvCUBRID_TMP[BUF_LENGTH];
   TCHAR sEnvCUBRID_MODE[BUF_LENGTH];
   TCHAR sEnvPath[BUF_LENGTH];
 
@@ -528,6 +529,22 @@ SetCUBRIDEnvVar ()
       if (debugfd)
 	{
 	  fprintf (debugfd, "$CUBRID_DATABASES = %s\n", getenv ("CUBRID_DATABASES"));
+	}
+#endif
+    }
+
+  dwBufLength = BUF_LENGTH;
+  nResult = RegQueryValueEx (hKey, TEXT ("CUBRID_TMP"), NULL, NULL, (LPBYTE) sEnvCUBRID_TMP, &dwBufLength);
+  if (nResult == ERROR_SUCCESS)
+    {
+      // set CUBRID_TMP Environment variable.
+      strcpy (EnvString, "CUBRID_TMP=");
+      strcat (EnvString, sEnvCUBRID_TMP);
+      _putenv (EnvString);
+#ifdef _DEBUG
+      if (debugfd)
+	{
+	  fprintf (debugfd, "$CUBRID_TMP = %s\n", getenv ("CUBRID_TMP"));
 	}
 #endif
     }

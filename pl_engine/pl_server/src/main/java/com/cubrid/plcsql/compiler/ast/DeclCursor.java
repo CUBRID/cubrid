@@ -42,7 +42,7 @@ public class DeclCursor extends DeclId {
     }
 
     public final String name;
-    public final NodeList<DeclParam> paramList;
+    public final NodeList<DeclParamIn> paramList;
     public final StaticSql staticSql;
 
     public int[] paramRefCounts;
@@ -51,7 +51,7 @@ public class DeclCursor extends DeclId {
     public DeclCursor(
             ParserRuleContext ctx,
             String name,
-            NodeList<DeclParam> paramList,
+            NodeList<DeclParamIn> paramList,
             StaticSql staticSql) {
         super(ctx);
 
@@ -64,6 +64,11 @@ public class DeclCursor extends DeclId {
     }
 
     @Override
+    public String name() {
+        return name;
+    }
+
+    @Override
     public String kind() {
         return "cursor";
     }
@@ -72,7 +77,7 @@ public class DeclCursor extends DeclId {
     // Private
     // --------------------------------------------------
 
-    private void setHostValuesMap(NodeList<DeclParam> paramList, Set<Expr> hostExprs) {
+    private void setHostValuesMap(NodeList<DeclParamIn> paramList, Set<Expr> hostExprs) {
 
         // NOTE: hostExprs preserves its insertion order because it is the keys of a LinkedHashMap
 
@@ -84,7 +89,7 @@ public class DeclCursor extends DeclId {
 
         if (paramSize > 0 && hostExprSize > 0) {
             for (int i = 0; i < paramSize; i++) {
-                DeclParam di = paramList.nodes.get(i);
+                DeclParamIn di = paramList.nodes.get(i);
                 int j = 0;
                 for (Expr e : hostExprs) {
                     if (e instanceof ExprId) {

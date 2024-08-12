@@ -36,4 +36,6 @@ public abstract class DeclId extends Decl {
     public DeclId(ParserRuleContext ctx) {
         super(ctx);
     }
+
+    public abstract String name();
 }

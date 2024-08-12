@@ -33,17 +33,17 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtForExecImmeLoop extends StmtForSqlLoop {
+public class StmtForDynamicSqlLoop extends StmtForSqlLoop {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtForExecImmeLoop(this);
+        return visitor.visitStmtForDynamicSqlLoop(this);
     }
 
-    public StmtForExecImmeLoop(
+    public StmtForDynamicSqlLoop(
             ParserRuleContext ctx,
             String label,
-            DeclForRecord record,
+            DeclDynamicRecord record,
             Expr dynamicSql,
             NodeList<? extends Expr> usedExprList,
             NodeList<Stmt> stmts) {
