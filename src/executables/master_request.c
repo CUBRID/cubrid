@@ -533,7 +533,7 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
 			    server_name, timeout);
 #if !defined(WINDOWS)
                   /* *INDENT-OFF* */
-		  master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REMOVE_ENTRY, -1, "", "", server_name);
+		  master_Server_monitor->produce_job (server_monitor::job_type::REMOVE_ENTRY, -1, "", "", server_name);
                   /* *INDENT-ON* */
 #endif
 		  css_process_start_shutdown (temp, timeout * 60, buffer);
@@ -725,7 +725,7 @@ css_process_shutdown (char *time_buffer)
 	{
 #if !defined(WINDOWS)
           /* *INDENT-OFF* */
-	  master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REMOVE_ENTRY, -1, "", "", temp->name);
+	  master_Server_monitor->produce_job (server_monitor::job_type::REMOVE_ENTRY, -1, "", "", temp->name);
           /* *INDENT-ON* */
 #endif
 	  css_process_start_shutdown (temp, timeout * 60, buffer);

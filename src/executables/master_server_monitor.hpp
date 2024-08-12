@@ -36,18 +36,19 @@
 #include "connection_globals.h"
 #include "lockfree_circular_queue.hpp"
 
-typedef enum
-{
-  SERVER_MONITOR_NO_JOB,
-  SERVER_MONITOR_REGISTER_ENTRY,
-  SERVER_MONITOR_REMOVE_ENTRY,
-  SERVER_MONITOR_REVIVE_ENTRY,
-  SERVER_MONITOR_CONFIRM_REVIVE_ENTRY
-} server_monitor_job_type;
-
 class server_monitor
 {
   public:
+
+    enum class job_type
+    {
+      NO_JOB,
+      REGISTER_ENTRY,
+      REMOVE_ENTRY,
+      REVIVE_ENTRY,
+      CONFIRM_REVIVE_ENTRY
+    };
+
     class server_entry
     {
       public:
@@ -97,16 +98,16 @@ class server_monitor
     {
       public:
 
-	server_monitor_job_type m_job_type;
+	job_type m_job_type;
 	int m_pid;
 	std::string m_exec_path;
 	std::string m_args;
 	std::string m_server_name;
 	std::chrono::steady_clock::time_point m_produce_time;
 
-	server_monitor_job (server_monitor_job_type job_type, int pid, std::string exec_path, std::string args,
+	server_monitor_job (job_type job_type, int pid, std::string exec_path, std::string args,
 			    std::string server_name);
-	server_monitor_job () : m_job_type (SERVER_MONITOR_NO_JOB), m_pid (0), m_exec_path (""), m_args (""),
+	server_monitor_job () : m_job_type (server_monitor::job_type::NO_JOB), m_pid (0), m_exec_path (""), m_args (""),
 	  m_server_name ("") {};
 	~server_monitor_job () {};
 
@@ -130,19 +131,20 @@ class server_monitor
 				       std::chrono::steady_clock::time_point revive_time);
     void remove_server_entry (std::string server_name);
     void revive_server (std::string server_name);
-    void server_monitor_try_revive_server (std::string exec_path, std::vector<std::string> argv, int *out_pid);
-    void server_monitor_check_server_revived (std::string server_name);
+    void try_revive_server (std::string exec_path, std::vector<std::string> argv, int *out_pid);
+    void check_server_revived (std::string server_name);
 
-    void server_monitor_produce_job (server_monitor_job_type job_type, int pid, std::string exec_path, std::string args,
-				     std::string server_name);
+    void produce_job (job_type job_type, int pid, std::string exec_path, std::string args,
+		      std::string server_name);
 
   private:
     std::unordered_map <std::string, server_entry> m_server_entry_map;  // map of server entries
-    std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
+
+    std::unique_ptr<std::thread> m_monitor_thread;                      // monitoring thread
     lockfree::circular_queue <server_monitor_job> *m_job_queue;         // job queue for monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
     std::mutex m_monitor_mutex_consumer;                                // lock for m_job_queue empty check
-    std::mutex m_monitor_mutex_producer;                                  // lock for m_job_queue full check
+    std::mutex m_monitor_mutex_producer;                                // lock for m_job_queue full check
     std::condition_variable m_monitor_cv_consumer;                      // condition variable for m_job_queue empty check
     std::condition_variable m_monitor_cv_producer;                      // condition variable for m_job_queue full check
 

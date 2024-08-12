@@ -109,20 +109,20 @@ server_monitor::server_monitor_thread_worker ()
 		   consume_job.m_server_name.c_str());
 	  switch (consume_job.m_job_type)
 	    {
-	    case SERVER_MONITOR_NO_JOB:
+	    case server_monitor::job_type::NO_JOB:
 	      break;
-	    case SERVER_MONITOR_REGISTER_ENTRY:
+	    case server_monitor::job_type::REGISTER_ENTRY:
 	      make_and_insert_server_entry (consume_job.m_pid, consume_job.m_exec_path, consume_job.m_args, consume_job.m_server_name,
 					    consume_job.m_produce_time);
 	      break;
-	    case SERVER_MONITOR_REMOVE_ENTRY:
+	    case server_monitor::job_type::REMOVE_ENTRY:
 	      remove_server_entry (consume_job.m_server_name);
 	      break;
-	    case SERVER_MONITOR_REVIVE_ENTRY:
+	    case server_monitor::job_type::REVIVE_ENTRY:
 	      revive_server (consume_job.m_server_name);
 	      break;
-	    case SERVER_MONITOR_CONFIRM_REVIVE_ENTRY:
-	      server_monitor_check_server_revived (consume_job.m_server_name);
+	    case server_monitor::job_type::CONFIRM_REVIVE_ENTRY:
+	      check_server_revived (consume_job.m_server_name);
 	      break;
 	    default:
 	      break;
@@ -192,11 +192,11 @@ server_monitor::revive_server (std::string server_name)
       if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS)
 	{
 	  entry->second.set_last_revive_time (std::chrono::steady_clock::now ());
-	  server_monitor_try_revive_server (entry->second.get_exec_path(), entry->second.get_argv(), &out_pid);
+	  try_revive_server (entry->second.get_exec_path(), entry->second.get_argv(), &out_pid);
 	  assert (out_pid > 0);
 	  entry->second.set_pid (out_pid);
-	  master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_CONFIRM_REVIVE_ENTRY, -1, "", "",
-	      entry->first);
+	  master_Server_monitor->produce_job (server_monitor::job_type::CONFIRM_REVIVE_ENTRY, -1, "", "",
+					      entry->first);
 	  return;
 	}
       else
@@ -210,7 +210,7 @@ server_monitor::revive_server (std::string server_name)
 }
 
 void
-server_monitor::server_monitor_check_server_revived (std::string server_name)
+server_monitor::check_server_revived (std::string server_name)
 {
   int error_code;
   auto entry = m_server_entry_map.find (server_name);
@@ -219,13 +219,13 @@ server_monitor::server_monitor_check_server_revived (std::string server_name)
       error_code = kill (entry->second.get_pid (), 0);
       if (error_code == ESRCH)
 	{
-	  master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REVIVE_ENTRY, -1, "", "", entry->first);
+	  master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_ENTRY, -1, "", "", entry->first);
 	}
       else if (entry->second.get_need_revive ())
 	{
 	  std::this_thread::sleep_for (std::chrono::milliseconds (1000));
-	  master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_CONFIRM_REVIVE_ENTRY, -1, "", "",
-	      entry->first);
+	  master_Server_monitor->produce_job (server_monitor::job_type::CONFIRM_REVIVE_ENTRY, -1, "", "",
+					      entry->first);
 	}
       else
 	{
@@ -233,12 +233,12 @@ server_monitor::server_monitor_check_server_revived (std::string server_name)
 	}
       return;
     }
-  master_Server_monitor->server_monitor_produce_job (SERVER_MONITOR_REVIVE_ENTRY, -1, "", "", server_name);
+  master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_ENTRY, -1, "", "", server_name);
 }
 
 void
-server_monitor::server_monitor_produce_job (server_monitor_job_type job_type, int pid, std::string exec_path,
-    std::string args, std::string server_name)
+server_monitor::produce_job (job_type job_type, int pid, std::string exec_path,
+			     std::string args, std::string server_name)
 {
   server_monitor::server_monitor_job job (job_type, pid, exec_path, args, server_name);
   std::unique_lock<std::mutex> lock (m_monitor_mutex_producer);
@@ -253,7 +253,7 @@ server_monitor::server_monitor_produce_job (server_monitor_job_type job_type, in
 }
 
 void
-server_monitor::server_monitor_try_revive_server (std::string exec_path, std::vector<std::string> argv, int *out_pid)
+server_monitor::try_revive_server (std::string exec_path, std::vector<std::string> argv, int *out_pid)
 {
   pid_t pid;
   int error_code;
@@ -288,7 +288,7 @@ server_monitor::server_monitor_try_revive_server (std::string exec_path, std::ve
 }
 
 server_monitor::server_monitor_job::
-server_monitor_job (server_monitor_job_type job_type, int pid, std::string exec_path, std::string args,
+server_monitor_job (job_type job_type, int pid, std::string exec_path, std::string args,
 		    std::string server_name)
   : m_job_type {job_type}
   , m_pid {pid}
