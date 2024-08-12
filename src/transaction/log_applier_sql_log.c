@@ -28,6 +28,7 @@
 #include <libgen.h>
 #include <errno.h>
 #include <unistd.h>
+#include <dirent.h>
 #include "log_applier_sql_log.h"
 #include "system_parameter.h"
 #include "object_primitive.h"
@@ -81,6 +82,7 @@ static DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assi
 static FILE *sl_open_next_file (FILE * old_fp);
 static FILE *sl_log_open (void);
 static int sl_remove_oldest_file (void);
+static unsigned int sl_get_sql_log_count (void);
 static int sl_read_catalog (void);
 static int sl_write_catalog (void);
 static int sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_size);
@@ -552,12 +554,9 @@ sl_write_sql (string_buffer & query, string_buffer * select)
     {
       log_fp = sl_open_next_file (log_fp);
 
-      if (sl_Info.curr_file_id >= sql_log_max_cnt)
+      if (sl_remove_oldest_file () != NO_ERROR)
 	{
-	  if (sl_remove_oldest_file () != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
+	  return ER_FAILED;
 	}
     }
 
@@ -639,13 +638,56 @@ sl_remove_oldest_file (void)
   unsigned int oldest_file_id;
   char oldest_file_path[PATH_MAX];
 
-  oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
+  if (sl_get_sql_log_count () <= sql_log_max_cnt)
+    {
+      return NO_ERROR;
+    }
+
+  /*
+   * If the number of files exceeds log_max_count, but the current file ID is less than log_max_count,
+   * it indicates that the file ID has overflowed and wrapped around to 0.
+   */
+  if (sl_Info.curr_file_id < sql_log_max_cnt)
+    {
+      oldest_file_id = UINT_MAX + sl_Info.curr_file_id - sql_log_max_cnt + 1;
+    }
+  else
+    {
+      oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
+    }
 
   snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id);
 
   unlink (oldest_file_path);
 
   return NO_ERROR;
+}
+
+/*
+ * sl_get_sql_log_count() - Counts the number of sql log files in a sql_log directory and returns the count.
+ *   return : count of sql log file
+ */
+static unsigned int
+sl_get_sql_log_count (void)
+{
+  DIR *dir_info;
+  struct dirent *dir_entry;
+  char log_path[PATH_MAX];
+  unsigned int file_cnt = 0;
+
+  snprintf (log_path, PATH_MAX, "%s/sql_log", prm_get_string_value (PRM_ID_HA_SQL_LOG_PATH));
+  dir_info = opendir (log_path);
+
+  if (dir_info != NULL)
+    {
+      while ((dir_entry = readdir (dir_info)) != NULL)
+	{
+	  file_cnt++;
+	}
+      closedir (dir_info);
+    }
+
+  return file_cnt;
 }
 
 /*
