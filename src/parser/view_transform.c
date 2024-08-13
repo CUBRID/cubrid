@@ -7347,7 +7347,7 @@ static PT_NODE *
 mq_odku_resolve_view_spec (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk)
 {
   PT_NODE *sel_spec = (PT_NODE *) arg;
-  PT_NODE *entity, *sel_list = NULL, *subquery;
+  PT_NODE *entity, *subquery, *sel_list = NULL, *class_ = NULL;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -7357,8 +7357,12 @@ mq_odku_resolve_view_spec (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, i
     }
 
   entity = pt_find_spec (parser, sel_spec, odku);
+  if (entity)
+    {
+      class_ = entity->info.spec.flat_entity_list;
+    }
 
-  if (entity && mq_translatable_class (parser, entity->info.spec.flat_entity_list))
+  if (class_ && mq_translatable_class (parser, class_))
     {
       subquery = mq_fetch_subqueries (parser, entity->info.spec.flat_entity_list);
       if (subquery)
