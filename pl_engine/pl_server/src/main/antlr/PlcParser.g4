@@ -45,6 +45,7 @@ routine_definition
 
 routine_uniq_name
     : (owner=identifier '.')? name=identifier
+    | '[' (owner=identifier '.')? name=identifier ']'   /* rewritten query */
     ;
 
 parameter_list

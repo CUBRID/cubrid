@@ -337,6 +337,8 @@ typedef enum
 
 FUNCTION_MAP *keyword_offset (const char *name);
 
+static int parser_append_to_plcsql_text(int curr_len, const char* text_part);
+
 static PT_NODE* pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size);
 
 static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list);
@@ -489,6 +491,8 @@ int g_query_string_len;
 int g_original_buffer_len;
 
 static char *g_plcsql_text;
+static int g_plcsql_text_buffer_size;
+#define PLCSQL_TEXT_BUFFER_INITIAL_SIZE         (1000)
 
 /*
  * The behavior of location propagation when a rule is matched must
@@ -12796,7 +12800,11 @@ pl_language_spec
                             assert(g_plcsql_text != NULL);
 
                             if ($3) {
-                                len = $2 + strlen($3->info.name.original);
+                                if (g_query_string) {
+                                    len = $2 + strlen($3->info.name.original);
+                                } else {
+                                    len = parser_append_to_plcsql_text($2, $3->info.name.original);
+                                }
                                 parser_free_tree(this_parser, $3);
                             } else {
                                 len = $2;
@@ -12805,7 +12813,15 @@ pl_language_spec
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
 			    node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(g_plcsql_text, len);
 			    node->info.sp_body.direct = 1;
+
+
 			  }
+
+                        if (!g_query_string) {
+                            // In this case, g_plcsql_text must have been malloced.
+                            // See the definition of plcsql_text.
+                            free(g_plcsql_text);
+                        }
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -12834,15 +12850,28 @@ plcsql_text
         : plcsql_text plcsql_text_part
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, : plcsql_text plcsql_text_part);
 
-                        $$ = $1 + strlen($2);
+                        int plcsql_text_size = $1;
+
+                        if (g_query_string) {
+                            $$ = plcsql_text_size + strlen($2);
+                        } else {
+                            $$ = parser_append_to_plcsql_text(plcsql_text_size, $2);
+                        }
 
 		DBG_PRINT}}
         | plcsql_text_part
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, | plcsql_text_part);
 
                         assert(g_plcsql_text == NULL);
-                        g_plcsql_text = g_query_string + @$.buffer_pos;
-                        $$ = strlen($1);
+                        if (g_query_string) {
+                            g_plcsql_text = g_query_string + @$.buffer_pos;
+                            $$ = strlen($1);
+                        } else {
+                            g_plcsql_text = malloc(PLCSQL_TEXT_BUFFER_INITIAL_SIZE + 1);
+                            g_plcsql_text_buffer_size = PLCSQL_TEXT_BUFFER_INITIAL_SIZE;
+                            $$ = parser_append_to_plcsql_text(0, $1);
+                        }
+
 
 		DBG_PRINT}}
         ;
@@ -28479,6 +28508,27 @@ pt_ct_check_select (char* p, char *perr_msg)
    sprintf(perr_msg, "Only SELECT statements are supported.");
    return false;
 }
+
+static int
+parser_append_to_plcsql_text(int curr_len, const char* text_part)
+{
+    int len_to_add = strlen(text_part);
+    int result_len = curr_len + len_to_add;
+
+    if (g_plcsql_text_buffer_size < result_len) {
+        do {
+            g_plcsql_text_buffer_size *= 2;
+        } while (g_plcsql_text_buffer_size < result_len);
+
+        g_plcsql_text = realloc(g_plcsql_text, g_plcsql_text_buffer_size + 1);
+    }
+
+    memcpy(g_plcsql_text + curr_len, text_part, len_to_add);
+    g_plcsql_text[result_len] = '\0';
+
+    return result_len;
+}
+
 
 static PT_NODE*
 pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size)
