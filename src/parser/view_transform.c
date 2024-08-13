@@ -7364,7 +7364,7 @@ mq_odku_resolve_view_spec (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, i
 
   if (class_ && mq_translatable_class (parser, class_))
     {
-      subquery = mq_fetch_subqueries (parser, entity->info.spec.flat_entity_list);
+      subquery = mq_fetch_subqueries (parser, class_);
       if (subquery)
 	{
 	  sel_list = subquery->info.query.q.select.list;
