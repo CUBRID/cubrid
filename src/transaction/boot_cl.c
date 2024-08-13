@@ -1387,7 +1387,10 @@ boot_shutdown_client (bool is_er_final)
 #endif /* !CS_MODE */
 	}
 
-      boot_client_all_finalize (is_er_final);
+      if (!boot_Is_client_all_final)
+	{
+	  boot_client_all_finalize (is_er_final);
+	}
     }
 
   return NO_ERROR;
