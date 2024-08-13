@@ -10198,7 +10198,15 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 		}
 	      else
 		{
-		  newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
+		  if (newspec->info.spec.entity_name)
+		    {
+		      newspec->info.spec.range_var->info.name.original =
+			newspec->info.spec.entity_name->info.name.original;
+		    }
+		  else
+		    {
+		      newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
+		    }
 		}
 
 	      newspec->info.spec.location = spec->info.spec.location;
