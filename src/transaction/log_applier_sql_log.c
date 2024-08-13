@@ -68,6 +68,7 @@ static FILE *catalog_fp;
 static int sql_log_max_cnt = 0;
 static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
+static char sql_log_path[PATH_MAX];
 
 static int sl_write_sql (string_buffer & query, string_buffer * select);
 static void sl_print_insert_att_names (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
@@ -81,7 +82,7 @@ static DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assi
 
 static FILE *sl_open_next_file (FILE * old_fp);
 static FILE *sl_log_open (void);
-static int sl_remove_oldest_file (void);
+static void sl_remove_oldest_file (void);
 static unsigned int sl_get_sql_log_count (void);
 static int sl_read_catalog (void);
 static int sl_write_catalog (void);
@@ -174,8 +175,6 @@ sl_read_catalog (void)
 int
 sl_init (const char *db_name, const char *repl_log_path)
 {
-  char sql_log_path[PATH_MAX];
-
   if (sl_create_sql_log_dir (repl_log_path, sql_log_path, sizeof (sql_log_path)) != NO_ERROR)
     {
       return ER_FAILED;
@@ -553,11 +552,7 @@ sl_write_sql (string_buffer & query, string_buffer * select)
   if (ftell (log_fp) >= SL_LOG_FILE_MAX_SIZE)
     {
       log_fp = sl_open_next_file (log_fp);
-
-      if (sl_remove_oldest_file () != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
+      sl_remove_oldest_file ();
     }
 
   return NO_ERROR;
@@ -632,15 +627,19 @@ sl_open_next_file (FILE * old_fp)
  *   This function is related to the ha_sql_log_max_count system parameter.
  *   This system parameter can be set from 2 to 5 and only that number of sql log files are kept.
  */
-static int
+static void
 sl_remove_oldest_file (void)
 {
   unsigned int oldest_file_id;
   char oldest_file_path[PATH_MAX];
 
+  /*
+   * If the number of SQL log files is less than or equal to 'sql_log_max_cnt', 
+   * it is assumed that there are no files to delete.
+   */
   if (sl_get_sql_log_count () <= sql_log_max_cnt)
     {
-      return NO_ERROR;
+      return;
     }
 
   /*
@@ -658,9 +657,10 @@ sl_remove_oldest_file (void)
 
   snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id);
 
+  //If there are no files to unlink, return -1 and store the error information in 'errno'.
   unlink (oldest_file_path);
 
-  return NO_ERROR;
+  return;
 }
 
 /*
@@ -675,8 +675,9 @@ sl_get_sql_log_count (void)
   char log_path[PATH_MAX];
   unsigned int file_cnt = 0;
 
-  snprintf (log_path, PATH_MAX, "%s/sql_log", prm_get_string_value (PRM_ID_HA_SQL_LOG_PATH));
-  dir_info = opendir (log_path);
+  assert (sql_log_path != NULL);
+
+  dir_info = opendir (sql_log_path);
 
   if (dir_info != NULL)
     {
@@ -751,7 +752,6 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
 	{
 	  *p = '\0';
 	}
-
       if (strcmp (basename (path_buf), ".") && strcmp (basename (path_buf), ".."))
 	{
 	  if (access (path_buf, F_OK) < 0)
