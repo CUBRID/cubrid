@@ -667,14 +667,14 @@ log_get_final_restored_lsa (void)
 static bool
 log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation)
 {
-  INT64 vol_dbcreation;		/* Database creation time in volume */
+  INT64 db_creation;		/* Database creation time in volume */
 
-  if (disk_get_creation_time (thread_p, volid, &vol_dbcreation) != NO_ERROR)
+  if (disk_get_db_creation (thread_p, volid, &db_creation) != NO_ERROR)
     {
       return false;
     }
 
-  if (difftime ((time_t) vol_dbcreation, (time_t) (*log_dbcreation)) == 0)
+  if (difftime ((time_t) db_creation, (time_t) (*log_dbcreation)) == 0)
     {
       return true;
     }
@@ -8830,7 +8830,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
   LOG_LSA init_nontemp_lsa;
   int ret = NO_ERROR;
 
-  ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &db_creation);
+  ret = disk_get_db_creation (thread_p, LOG_DBFIRST_VOLID, &db_creation);
   if (ret != NO_ERROR)
     {
       return ret;
@@ -9289,7 +9289,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   int val;
   const char *str;
   char buf[256];
-  DB_DATETIME time_val;
+  DB_DATETIME vol_creation;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_HEADER *header = &ctx->header;
 
@@ -9313,8 +9313,8 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], val);
   idx++;
 
-  db_localdatetime ((time_t *) (&header->db_creation), &time_val);
-  error = db_make_datetime (out_values[idx], &time_val);
+  db_localdatetime ((time_t *) (&header->vol_creation), &vol_creation);
+  error = db_make_datetime (out_values[idx], &vol_creation);
   idx++;
   if (error != NO_ERROR)
     {
@@ -9626,7 +9626,7 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   int error = NO_ERROR;
   int idx = 0;
   int val;
-  DB_DATETIME time_val;
+  DB_DATETIME vol_creation;
 
   ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = (ARCHIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_ARV_HEADER *header = &ctx->header;
@@ -9651,8 +9651,8 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   db_make_int (out_values[idx], val);
   idx++;
 
-  db_localdatetime ((time_t *) (&header->db_creation), &time_val);
-  error = db_make_datetime (out_values[idx], &time_val);
+  db_localdatetime ((time_t *) (&header->vol_creation), &vol_creation);
+  error = db_make_datetime (out_values[idx], &vol_creation);
   idx++;
   if (error != NO_ERROR)
     {
