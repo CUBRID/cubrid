@@ -1324,10 +1324,12 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   if (db_creation != NULL)
     {
       loghdr->db_creation = *db_creation;
+      loghdr->vol_creation = time (NULL);
     }
   else
     {
       loghdr->db_creation = -1;
+      loghdr->vol_creation = -1;
     }
 
   if (strlen (rel_release_string ()) >= REL_MAX_RELEASE_LENGTH)
@@ -5701,6 +5703,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
   strncpy (arvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
   arvhdr->db_creation = log_Gl.hdr.db_creation;
+  arvhdr->vol_creation = time (NULL);
   arvhdr->next_trid = log_Gl.hdr.next_trid;
   arvhdr->arv_num = log_Gl.hdr.nxarv_num;
 
