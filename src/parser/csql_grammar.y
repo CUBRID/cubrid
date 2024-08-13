@@ -26509,8 +26509,11 @@ parse_one_statement (int state)
   else
     parser_statement_OK = 1;
 
+  parser_yyinput_single_mode = 0;
+#if 0
   if (!parser_yyinput_single_mode)	/* eof */
     return 1;
+#endif
 
   return 0;
 }

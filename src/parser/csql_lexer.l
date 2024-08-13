@@ -1967,8 +1967,7 @@ end:
 int
 yywrap ()
 {
-  //return 1;
-  return !parser_yyinput_single_mode;
+  return 1;
 }
 
 
@@ -2107,6 +2106,8 @@ parser_yyinput_multi_line (char *buff, int max_size)
 static int
 parser_yyinput (char *buff, int max_size)
 {
+  return parser_yyinput_multi_line (buff, max_size);
+/*
   int ret;
   if (!parser_yyinput_single_mode)
     {
@@ -2119,6 +2120,7 @@ parser_yyinput (char *buff, int max_size)
     }
 
   return ret;
+   */
 }
 
 static int
