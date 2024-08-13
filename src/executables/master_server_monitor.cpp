@@ -110,9 +110,6 @@ server_monitor::server_monitor_thread_worker ()
 		   consume_job.m_server_name.c_str());
 	  switch (consume_job.m_job_type)
 	    {
-	    case job_type::NO_JOB:
-	      assert (false);
-	      break;
 	    case job_type::REGISTER_ENTRY:
 	      make_and_insert_server_entry (consume_job.m_pid, consume_job.m_exec_path, consume_job.m_args, consume_job.m_server_name,
 					    consume_job.m_produce_time);
@@ -126,6 +123,7 @@ server_monitor::server_monitor_thread_worker ()
 	    case job_type::CONFIRM_REVIVE_ENTRY:
 	      check_server_revived (consume_job.m_server_name);
 	      break;
+	    case job_type::JOB_MAX:
 	    default:
 	      assert (false);
 	      break;

@@ -42,11 +42,11 @@ class server_monitor
 
     enum class job_type
     {
-      NO_JOB,
-      REGISTER_ENTRY,
-      REMOVE_ENTRY,
-      REVIVE_ENTRY,
-      CONFIRM_REVIVE_ENTRY
+      REGISTER_ENTRY = 0,
+      REMOVE_ENTRY = 1,
+      REVIVE_ENTRY = 2,
+      CONFIRM_REVIVE_ENTRY =  3,
+      JOB_MAX
     };
 
     class server_entry
@@ -107,7 +107,7 @@ class server_monitor
 
 	server_monitor_job (job_type job_type, int pid, std::string exec_path, std::string args,
 			    std::string server_name);
-	server_monitor_job () : m_job_type (job_type::NO_JOB), m_pid (0), m_exec_path (""), m_args (""),
+	server_monitor_job () : m_job_type (job_type::JOB_MAX), m_pid (0), m_exec_path (""), m_args (""),
 	  m_server_name ("") {};
 	~server_monitor_job () {};
 
