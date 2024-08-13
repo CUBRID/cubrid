@@ -7341,6 +7341,46 @@ mq_check_vclass_for_insert (PARSER_CONTEXT * parser, PT_NODE * query_spec)
 }
 
 /*
+ * resolve the name nodes from view spec in "on duplicate key update" cluase
+ */
+static PT_NODE *
+mq_odku_resolve_view_spec (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk)
+{
+  PT_NODE *sel_spec = (PT_NODE *) arg;
+  PT_NODE *entity, *sel_list = NULL, *subquery;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (odku == NULL || odku->node_type != PT_NAME)
+    {
+      return odku;
+    }
+
+  entity = pt_find_spec (parser, sel_spec, odku);
+
+  if (entity && mq_translatable_class (parser, entity->info.spec.flat_entity_list))
+    {
+      subquery = mq_fetch_subqueries (parser, entity->info.spec.flat_entity_list);
+      if (subquery)
+	{
+	  sel_list = subquery->info.query.q.select.list;
+	}
+
+      while (sel_list)
+	{
+	  if (sel_list->node_type == PT_NAME && !strcmp (sel_list->info.name.original, odku->info.name.original))
+	    {
+	      *odku = *sel_list;
+	    }
+
+	  sel_list = sel_list->next;
+	}
+    }
+
+  return odku;
+}
+
+/*
  * mq_rewrite_upd_del_top_level_specs () - rewrite top-level specs of UPDATE or
  *                                         DELETE statements that are spec sets
  *                                         or refer views with multiple queries
@@ -7354,6 +7394,7 @@ static PT_NODE *
 mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int *continue_walk)
 {
   PT_NODE **spec = NULL;
+  PT_NODE *sel_spec, *odku;
 
   if (statement == NULL)
     {
@@ -7387,6 +7428,25 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
       break;
 
     case PT_INSERT:
+      /*
+       * In the INSERT statement, the select-list of the select query may incorrectly create
+       * unnecessary columns during the view merging process.
+       * And these unnecessary columns may be incorrectly referenced in the assignment of on duplicate key update.
+       * So we need to resolve this so that the information of the name node
+       * of the odku assignments is set correctly.
+       */
+      odku = statement->info.insert.odku_assignments;
+      if (odku && statement->info.insert.value_clauses->info.node_list.list->node_type == PT_SELECT)
+	{
+	  sel_spec = statement->info.insert.value_clauses->info.node_list.list->info.query.q.select.from;
+
+	  while (odku)
+	    {
+	      parser_walk_tree (parser, odku->info.expr.arg2, mq_odku_resolve_view_spec, sel_spec, NULL, NULL);
+	      odku = odku->next;
+	    }
+	}
+
       /* INSERT does not support rewrites so we must check that no rewrite is needed */
       spec = &statement->info.insert.spec;
       break;
