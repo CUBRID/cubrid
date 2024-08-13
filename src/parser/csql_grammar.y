@@ -1682,6 +1682,7 @@ static int g_plcsql_text_buffer_size;
 %token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
+%token <cptr> SEMICOLON
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
 %token <cptr> SERVER

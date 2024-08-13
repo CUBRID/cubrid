@@ -38,6 +38,8 @@
 
 #define CSQL_MAXNAME	256
 
+int parser_yyinput_single_mode = 0;
+
 static int parser_yyinput_single_line (char *buff, int max_size);
 static int parser_yyinput_multi_line (char *buff, int max_size);
 static int parser_yyinput (char *buff, int max_size);
@@ -1089,6 +1091,13 @@ IDL       [a-zA-Z0-9_]
 
 \\N									{ begin_token(yytext);   return Null; }
 
+";"                                                                     { begin_token(yytext);
+                                                                                if (parser_yyinput_single_mode) {
+                                                                                        return 0;
+                                                                                } else {
+                                                                                        return SEMICOLON;
+                                                                                }
+                                                                         }
 "->"									{ begin_token(yytext);   return RIGHT_ARROW; }
 "."									{ begin_token(yytext);   return DOT; }
 "->>"									{ begin_token(yytext);   return DOUBLE_RIGHT_ARROW; }
@@ -1715,8 +1724,6 @@ _[uU][tT][fF]8[']		{
 
 %%
 
-int parser_yyinput_single_mode = 0;
-
 void
 csql_yyerror_explicit (int line, int column)
 {
@@ -1960,7 +1967,8 @@ end:
 int
 yywrap ()
 {
-  return 1;
+  //return 1;
+  return !parser_yyinput_single_mode;
 }
 
 
@@ -1972,6 +1980,8 @@ init_plcsql_lexing()
         from_plcsql_text = 0;
 }
 
+static int end_flag = 0;
+
 static int
 parser_yyinput_single_line (char *buff, int max_size)
 {
@@ -1979,6 +1989,15 @@ parser_yyinput_single_line (char *buff, int max_size)
   int i = 0;
 
   assert (max_size >= 1);
+
+  if (end_flag) {
+      buff[0] = 0;
+      end_flag = 0;
+      return 0;
+      //buff[0] = -1;
+      //return 1;
+  }
+
   do
     {
       if (str_identifier == '\'' || str_identifier == '\"')
@@ -2035,8 +2054,10 @@ parser_yyinput_single_line (char *buff, int max_size)
 
       if (c == ';')
 	{
-	  buff[i++] = -1;
+	  //buff[i++] = -1;
+	  buff[i++] = ';';
 	  buff[i] = 0;
+          end_flag = 1;
 	  return i;
 	}
 
@@ -2086,14 +2107,18 @@ parser_yyinput_multi_line (char *buff, int max_size)
 static int
 parser_yyinput (char *buff, int max_size)
 {
+  int ret;
   if (!parser_yyinput_single_mode)
     {
-      return parser_yyinput_multi_line (buff, max_size);
+      ret = parser_yyinput_multi_line (buff, max_size);
     }
   else
     {
-      return parser_yyinput_single_line (buff, max_size);
+      ret = parser_yyinput_single_line (buff, max_size);
+      printf("[temp] %s\n", buff);
     }
+
+  return ret;
 }
 
 static int
