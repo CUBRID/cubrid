@@ -390,6 +390,11 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  if (!entry->ha_mode)
 	    {
               /* *INDENT-OFF* */
+              if (master_Server_monitor == nullptr)
+              {
+                master_Server_monitor.reset (new server_monitor ());
+              }
+              
               master_Server_monitor->make_and_insert_server_entry (proc_register->pid, proc_register->exec_path, proc_register->args, datagram_conn);
               /* *INDENT-ON* */
 	    }
@@ -1244,18 +1249,6 @@ main (int argc, char **argv)
 	  status = EXIT_FAILURE;
 	  goto cleanup;
 	}
-    }
-
-  // TODO : When no non-HA server exists in HA environment, server_monitor should not be initialized.
-  //        In this issue, server_monitor is initialized only when HA is disabled. Once all sub-tasks of
-  //        CBRD-24741 are done, this condition will be removed. And server_monitor will be initialized wh
-  //        en first non-HA server is started in HA environment. (server_monitor will be finalized when last
-  //        non-HA server is stopped in HA environment.)
-  if (HA_DISABLED ())
-    {
-      // *INDENT-OFF*
-      master_Server_monitor.reset (new server_monitor ());
-      // *INDENT-ON*
     }
 #endif
 
