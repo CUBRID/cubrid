@@ -47,7 +47,7 @@ public class StmtForStaticSqlLoop extends StmtForSqlLoop {
     public StmtForStaticSqlLoop(
             ParserRuleContext ctx,
             String label,
-            DeclForRecord record,
+            DeclVar record,
             StaticSql staticSql,
             NodeList<Stmt> stmts) {
         super(

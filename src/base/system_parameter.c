@@ -6377,7 +6377,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_MAX_SUBQUERY_CACHE_SIZE,
    PRM_NAME_MAX_SUBQUERY_CACHE_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT),
    PRM_BIGINT,
    &prm_max_subquery_cache_size_flag,
    (void *) &prm_max_subquery_cache_size_default,

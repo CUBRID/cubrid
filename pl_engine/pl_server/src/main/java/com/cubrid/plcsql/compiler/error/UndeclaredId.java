@@ -28,30 +28,15 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.error;
 
-import org.antlr.v4.runtime.ParserRuleContext;
+public class UndeclaredId extends SemanticError {
 
-public abstract class DeclParam extends DeclIdTyped {
-
-    public final String name;
-    public final TypeSpec typeSpec;
-
-    public DeclParam(ParserRuleContext ctx, String name, TypeSpec typeSpec) {
-        super(ctx);
-        this.name = name;
-        this.typeSpec = typeSpec;
+    public UndeclaredId(int line, int column, String msg) {
+        super(line, column, msg);
     }
 
-    @Override
-    public TypeSpec typeSpec() {
-        return typeSpec;
+    public UndeclaredId(int[] lineColumn, String msg) {
+        super(lineColumn, msg);
     }
-
-    @Override
-    public String name() {
-        return name;
-    }
-
-    abstract String toJavaSignature();
 }
