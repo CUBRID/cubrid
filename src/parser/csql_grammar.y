@@ -1753,9 +1753,9 @@ stmt_done
 	;
 
 stmt_list
-	: stmt_list ';' %dprec 1
+	: stmt_list SEMICOLON %dprec 1
                 {{ /* empty line*/ }}
-        | stmt_list ';' stmt %dprec 2
+        | stmt_list SEMICOLON stmt %dprec 2
 		{{
 
 			if ($3 != NULL)
@@ -1799,7 +1799,7 @@ stmt_list
 			  }
 
 		DBG_PRINT}}
-        | ';'
+        | SEMICOLON
                 {{ /* empty line*/ }}
 	;
 
