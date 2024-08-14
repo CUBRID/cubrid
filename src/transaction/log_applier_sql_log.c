@@ -28,7 +28,6 @@
 #include <libgen.h>
 #include <errno.h>
 #include <unistd.h>
-#include <dirent.h>
 #include "log_applier_sql_log.h"
 #include "system_parameter.h"
 #include "object_primitive.h"
@@ -68,7 +67,6 @@ static FILE *catalog_fp;
 static int sql_log_max_cnt = 0;
 static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
-static char sql_log_path[PATH_MAX];
 
 static int sl_write_sql (string_buffer & query, string_buffer * select);
 static void sl_print_insert_att_names (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
@@ -82,8 +80,7 @@ static DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assi
 
 static FILE *sl_open_next_file (FILE * old_fp);
 static FILE *sl_log_open (void);
-static void sl_remove_oldest_file (void);
-static unsigned int sl_get_sql_log_count (void);
+static void sl_remove_oldest_file_if_needed (void);
 static int sl_read_catalog (void);
 static int sl_write_catalog (void);
 static int sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_size);
@@ -175,6 +172,8 @@ sl_read_catalog (void)
 int
 sl_init (const char *db_name, const char *repl_log_path)
 {
+  char sql_log_path[PATH_MAX];
+
   if (sl_create_sql_log_dir (repl_log_path, sql_log_path, sizeof (sql_log_path)) != NO_ERROR)
     {
       return ER_FAILED;
@@ -552,7 +551,8 @@ sl_write_sql (string_buffer & query, string_buffer * select)
   if (ftell (log_fp) >= SL_LOG_FILE_MAX_SIZE)
     {
       log_fp = sl_open_next_file (log_fp);
-      sl_remove_oldest_file ();
+
+      sl_remove_oldest_file_if_needed ();
     }
 
   return NO_ERROR;
@@ -620,75 +620,38 @@ sl_open_next_file (FILE * old_fp)
 }
 
 /*
- * sl_remove_oldest_file() - remove oldest sql log file
- *   return: error code
+ * sl_remove_oldest_file_if_needed() - remove oldest sql log file
  *
  * Note:
  *   This function is related to the ha_sql_log_max_count system parameter.
  *   This system parameter can be set from 2 to 5 and only that number of sql log files are kept.
  */
 static void
-sl_remove_oldest_file (void)
+sl_remove_oldest_file_if_needed (void)
 {
   unsigned int oldest_file_id;
   char oldest_file_path[PATH_MAX];
 
-  /*
-   * If the number of SQL log files is less than or equal to 'sql_log_max_cnt', 
-   * it is assumed that there are no files to delete.
-   */
-  if (sl_get_sql_log_count () <= sql_log_max_cnt)
-    {
-      return;
-    }
-
-  /*
-   * If the number of files exceeds log_max_count, but the current file ID is less than log_max_count,
-   * it indicates that the file ID has overflowed and wrapped around to 0.
-   */
+  // step(1) : guess oldest file
+  // If the file ID is smaller than 'sql_log_max_cnt', it is considered to have wrapped around after exceeding 'UINT_MAX'.
   if (sl_Info.curr_file_id < sql_log_max_cnt)
     {
       oldest_file_id = UINT_MAX + sl_Info.curr_file_id - sql_log_max_cnt + 1;
     }
-  else
+  else				// It is a case where wrap around has not occurred.
     {
       oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
     }
 
   snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id);
 
-  //If there are no files to unlink, return -1 and store the error information in 'errno'.
+  // step(2) : exist check
+  // Since the 'unlink' function behaves differently based on the existence of the file, the existence check is omitted.
+
+  // step(3) : remove
   unlink (oldest_file_path);
 
   return;
-}
-
-/*
- * sl_get_sql_log_count() - Counts the number of sql log files in a sql_log directory and returns the count.
- *   return : count of sql log file
- */
-static unsigned int
-sl_get_sql_log_count (void)
-{
-  DIR *dir_info;
-  struct dirent *dir_entry;
-  char log_path[PATH_MAX];
-  unsigned int file_cnt = 0;
-
-  assert (sql_log_path != NULL);
-
-  dir_info = opendir (sql_log_path);
-
-  if (dir_info != NULL)
-    {
-      while ((dir_entry = readdir (dir_info)) != NULL)
-	{
-	  file_cnt++;
-	}
-      closedir (dir_info);
-    }
-
-  return file_cnt;
 }
 
 /*
@@ -752,6 +715,7 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
 	{
 	  *p = '\0';
 	}
+
       if (strcmp (basename (path_buf), ".") && strcmp (basename (path_buf), ".."))
 	{
 	  if (access (path_buf, F_OK) < 0)
