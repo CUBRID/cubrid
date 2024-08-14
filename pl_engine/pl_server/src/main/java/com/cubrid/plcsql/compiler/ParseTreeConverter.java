@@ -1439,6 +1439,32 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
+    public Expr visitKeyword_builtin_func(Keyword_builtin_funcContext ctx) {
+        String name = Misc.getNormalizedText(ctx);
+
+        Decl decl = symbolStack.getDeclForIdExpr(name);
+        assert decl != null;
+        Scope scope = symbolStack.getCurrentScope();
+        if (idUsedInCurrentDeclPart != null && decl.scope.level < scope.level) {
+            idUsedInCurrentDeclPart.put(name, new UseAndDeclLevel(ctx, decl.scope.level));
+        }
+
+        if (decl instanceof DeclId) {
+            return new ExprId(ctx, name, scope, (DeclId) decl);
+        } else if (decl instanceof DeclFunc) {
+            if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
+                connectionRequired = true;
+                return new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS);
+            } else {
+                return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
+            }
+        }
+
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    @Override
     public Stmt visitContinue_statement(Continue_statementContext ctx) {
 
         if (!within(ctx, Loop_statementContext.class)) {
