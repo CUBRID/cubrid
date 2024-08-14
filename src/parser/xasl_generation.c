@@ -27590,6 +27590,8 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
 	case PT_DRAND:
 	case PT_RANDOM:
 	case PT_DRANDOM:
+	case PT_CURRENT_VALUE:
+	case PT_NEXT_VALUE:
 	  *cachable = false;
 	  *continue_walk = PT_STOP_WALK;
 	  break;
