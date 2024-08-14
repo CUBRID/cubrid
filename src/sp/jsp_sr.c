@@ -732,12 +732,10 @@ jsp_start_server (const char *db_name, const char *path, int port)
   }
 
 exit:
-#if defined (SA_MODE)
   if (jvm != NULL)
     {
       JVM_DetachCurrentThread (jvm);
     }
-#endif
 
   return er_errid ();
 }
