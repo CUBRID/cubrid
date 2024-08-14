@@ -1093,9 +1093,15 @@ IDL       [a-zA-Z0-9_]
 
 ";"                                                                     { begin_token(yytext);
                                                                                 if (parser_yyinput_single_mode) {
-                                                                                        return 0;
+                                                                                    // Pretend to be an EOF
+                                                                                    // to make yyparse() return.
+                                                                                    // (parse a single statement at a time)
+                                                                                    // NOTE: at the next call to yylex(),
+                                                                                    // the work starts at the last state of
+                                                                                    // the lexer.
+                                                                                    return 0;
                                                                                 } else {
-                                                                                        return SEMICOLON;
+                                                                                    return SEMICOLON;
                                                                                 }
                                                                          }
 "->"									{ begin_token(yytext);   return RIGHT_ARROW; }
@@ -1974,108 +1980,9 @@ yywrap ()
 static void
 init_plcsql_lexing()
 {
-        plcsql_begin_end_balance = 0;
-        plcsql_nest_level = 0;
-        from_plcsql_text = 0;
-}
-
-static int end_flag = 0;
-
-static int
-parser_yyinput_single_line (char *buff, int max_size)
-{
-  int c, end;
-  int i = 0;
-
-  assert (max_size >= 1);
-
-  if (end_flag) {
-      buff[0] = 0;
-      end_flag = 0;
-      return 0;
-      //buff[0] = -1;
-      //return 1;
-  }
-
-  do
-    {
-      if (str_identifier == '\'' || str_identifier == '\"')
-        {
-	  c = str_identifier;
-        }
-      else
-        {
-	  c = pt_nextchar ();
-        }
-
-      if (c == '\'' || c == '\"')	/* string start */
-	{
-          if (str_identifier != '\'' && str_identifier != '\"')
-	    {
-              str_identifier = c;
-	      buff[i++] = c;
-	      if (i >= max_size)
-	        {
-	          return i;
-	        }
-	    }
-	    end = c;
-
-	  do
-	    {
-	      c = pt_nextchar ();
-	      if (c == end)	/* string end */
-		{
-		  str_identifier = '\0';
-		  break;
-		}
-
-	      buff[i++] = c;
-	      if (i >= max_size)
-		{
-		  return i;
-		}
-
-	      if (c == '\\'
-		  && (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false))
-		{
-		  /* if escape character */
-		  c = pt_nextchar (); /* read one more */
-		  buff[i++] = c;
-		  if (i >= max_size)
-		    {
-		      return i;
-		    }
-		}
-	    }
-	  while (c != -1);
-	}
-
-      if (c == ';')
-	{
-	  //buff[i++] = -1;
-	  buff[i++] = ';';
-	  buff[i] = 0;
-          end_flag = 1;
-	  return i;
-	}
-
-      buff[i++] = c;
-      if (i >= max_size)
-	{
-	  return i;
-	}
-
-    }
-  while (c != -1);
-
-  buff[i] = 0;
-  parser_yyinput_single_mode = 0;	/* all done */
-
-  /* end of file */
-  str_identifier = '\0';
-
-  return i;
+  plcsql_begin_end_balance = 0;
+  plcsql_nest_level = 0;
+  from_plcsql_text = 0;
 }
 
 static int
@@ -2107,20 +2014,6 @@ static int
 parser_yyinput (char *buff, int max_size)
 {
   return parser_yyinput_multi_line (buff, max_size);
-/*
-  int ret;
-  if (!parser_yyinput_single_mode)
-    {
-      ret = parser_yyinput_multi_line (buff, max_size);
-    }
-  else
-    {
-      ret = parser_yyinput_single_line (buff, max_size);
-      printf("[temp] %s\n", buff);
-    }
-
-  return ret;
-   */
 }
 
 static int
