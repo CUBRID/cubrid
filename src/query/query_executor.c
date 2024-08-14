@@ -7308,20 +7308,6 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       stats->build.fetch_time +=
 	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
 		   old_fetch_time) / 1000);
-
-      switch (stats->hash_method)
-	{
-	case HASH_METH_IN_MEM:
-	case HASH_METH_HYBRID:
-	  stats->build.ncollisions = hashjoin_proc->hash_scan.memory.hash_table->ncollisions;
-	  break;
-
-	case HASH_METH_HASH_FILE:
-	default:
-	  /* TODO: */
-	  stats->build.ncollisions = 0;
-	  break;
-	}
     }
 
   if (error != NO_ERROR)
@@ -7479,20 +7465,6 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
       stats->build.fetch_time +=
 	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
 		   old_fetch_time) / 1000);
-
-      switch (stats->hash_method)
-	{
-	case HASH_METH_IN_MEM:
-	case HASH_METH_HYBRID:
-	  stats->build.ncollisions = hashjoin_proc->hash_scan.memory.hash_table->ncollisions;
-	  break;
-
-	case HASH_METH_HASH_FILE:
-	default:
-	  /* TODO: */
-	  stats->build.ncollisions = 0;
-	  break;
-	}
     }
 
   if (error != NO_ERROR)
@@ -8131,6 +8103,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
       if (on_trace)
 	{
+	  stats->probe.probes += max_entry;
 	  stats->probe.max_entry = MAX (stats->probe.max_entry, max_entry);
 	}
     }
@@ -8435,6 +8408,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 
       if (on_trace)
 	{
+	  stats->probe.probes += max_entry;
 	  stats->probe.max_entry = MAX (stats->probe.max_entry, max_entry);
 	}
 

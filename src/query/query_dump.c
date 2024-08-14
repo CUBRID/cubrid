@@ -3124,10 +3124,6 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	json_object_set_new (build, "time", json_integer (TO_MSEC (hashjoin_proc->stats.build.elapsed_time)));
 	json_object_set_new (build, "build_time", json_integer (TO_MSEC (hashjoin_proc->stats.build.build_time)));
 	json_object_set_new (build, "hash_method", json_string (hash_method_string));
-	if (is_hash_file)
-	  {
-	    json_object_set_new (build, "ncollisions", json_integer (hashjoin_proc->stats.build.ncollisions));
-	  }
 	json_object_set_new (build, "fetch", json_integer (hashjoin_proc->stats.build.fetches));
 	json_object_set_new (build, "fetch_time", json_integer (hashjoin_proc->stats.build.fetch_time));
 	json_object_set_new (build, "ioread", json_integer (hashjoin_proc->stats.build.ioreads));
@@ -3138,6 +3134,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
 	probe = json_object ();
 	json_object_set_new (probe, "time", json_integer (TO_MSEC (hashjoin_proc->stats.probe.elapsed_time)));
+	json_object_set_new (probe, "probe", json_integer (hashjoin_proc->stats.probe.probes));
 	json_object_set_new (probe, "probe_time", json_integer (TO_MSEC (hashjoin_proc->stats.probe.probe_time)));
 	json_object_set_new (probe, "max_entry", json_integer (hashjoin_proc->stats.probe.max_entry));
 	json_object_set_new (probe, "fetch", json_integer (hashjoin_proc->stats.probe.fetches));
@@ -3522,10 +3519,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	else
 	  {
 	    fprintf (fp,
-		     "%*cBUILD (time: %d, build_time: %d, hash_method: %s, ncollisions: %u, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		     "%*cBUILD (time: %d, build_time: %d, hash_method: %s, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
 		     indent, ' ', TO_MSEC (hashjoin_proc->stats.build.elapsed_time),
 		     TO_MSEC (hashjoin_proc->stats.build.build_time), hash_method_string,
-		     (unsigned int) hashjoin_proc->stats.build.ncollisions,
 		     (long long int) hashjoin_proc->stats.build.fetches,
 		     (long long int) hashjoin_proc->stats.build.fetch_time,
 		     (long long int) hashjoin_proc->stats.build.ioreads);
@@ -3542,8 +3538,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	qdump_print_stats_text (fp, hashjoin_proc->build->xasl, indent);
 
 	fprintf (fp,
-		 "%*cPROBE (time: %d, probe_time: %d, max_entry: %u, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		 "%*cPROBE (time: %d, probe: %d, probe_time: %d, max_entry: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
 		 indent, ' ', TO_MSEC (hashjoin_proc->stats.probe.elapsed_time),
+		 (unsigned int) hashjoin_proc->stats.probe.probes,
 		 TO_MSEC (hashjoin_proc->stats.probe.probe_time),
 		 (unsigned int) hashjoin_proc->stats.probe.max_entry,
 		 (long long int) hashjoin_proc->stats.probe.fetches,

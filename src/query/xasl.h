@@ -419,6 +419,7 @@ struct hashjoin_stats
     UINT64 fetches;
     UINT64 ioreads;
     UINT64 fetch_time;
+    UINT32 probes;
     UINT32 max_entry;
   } probe;
 };
