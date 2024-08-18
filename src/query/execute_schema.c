@@ -1792,8 +1792,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV
-	      || auth->info.auth_cmd.auth_cmd == PT_EXECUTE_FUNCTION_PRIV)
+	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
 	    {
 	      // NOTE: db_auth is always DB_AUTH_EXECUTE
 	      assert (db_auth == DB_AUTH_EXECUTE);
@@ -1901,8 +1900,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV
-	      || auth->info.auth_cmd.auth_cmd == PT_EXECUTE_FUNCTION_PRIV)
+	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
 	    {
 	      // NOTE: db_auth is always DB_AUTH_EXECUTE
 	      assert (db_auth == DB_AUTH_EXECUTE);

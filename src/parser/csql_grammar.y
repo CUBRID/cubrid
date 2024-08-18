@@ -9092,12 +9092,12 @@ author_cmd_list
 	;
 
 authorized_execute_procedure_cmd
-        : EXECUTE ON_ procedure_or_function
+        : EXECUTE ON_ PROCEDURE
                 {{
 			PT_NODE *node = parser_new_node (this_parser, PT_AUTH_CMD);
 			if (node)
 			  {
-			    node->info.auth_cmd.auth_cmd = ($3 == 1) ? PT_EXECUTE_PROCEDURE_PRIV : PT_EXECUTE_FUNCTION_PRIV;
+			    node->info.auth_cmd.auth_cmd = PT_EXECUTE_PROCEDURE_PRIV;
                             node->info.auth_cmd.attr_mthd_list = NULL;
 			  }
                         $$ = node;
