@@ -9928,7 +9928,7 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
   while (auth_cmd_list)
     {
       PT_PRIV_TYPE pt_auth = auth_cmd_list->info.auth_cmd.auth_cmd;
-      if (pt_auth == PT_EXECUTE_PROCEDURE_PRIV || pt_auth == PT_EXECUTE_FUNCTION_PRIV)
+      if (pt_auth == PT_EXECUTE_PROCEDURE_PRIV)
 	{
 	  is_for_spec = false;
 	  break;
@@ -9946,6 +9946,12 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else
     {
+      /* check grant option */
+      if (node->info.grant.grant_option == PT_GRANT_OPTION)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_SP_GRANT_OPTION_NOT_ALLOWED, pt_show_misc_type (PT_SP_PROCEDURE));
+	}
+
       /* check spec_list (procedures/functions) exists */
       for (PT_NODE * procs = node->info.grant.spec_list; procs != NULL; procs = procs->next)
 	{
@@ -9957,6 +9963,8 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 	    }
 	}
+
+
     }
 
   /* make sure the grantees/revokees exist */
