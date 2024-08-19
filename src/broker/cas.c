@@ -1229,7 +1229,7 @@ cas_main (void)
 
 	    ip_addr = (unsigned char *) (&client_ip_addr);
 
-	    if (shm_appl->access_control && shm_appl->acl_broker_allow == NO)
+	    if (shm_appl->access_control && shm_appl->acl_broker_allow == DENY)
 	      {
 		if (access_control_check_right (shm_appl, db_name, db_user, ip_addr) < 0)
 		  {

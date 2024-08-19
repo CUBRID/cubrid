@@ -140,9 +140,9 @@ static T_CONF_TABLE tbl_on_off[] = {
   {NULL, 0}
 };
 
-static T_CONF_TABLE tbl_yes_no[] = {
-  {"YES", YES},
-  {"NO", NO},
+static T_CONF_TABLE tbl_allow_deny[] = {
+  {"ALLOW", ALLOW},
+  {"DENY", DENY},
   {NULL, 0}
 };
 
@@ -217,6 +217,7 @@ static char *conf_file_loaded[MAX_NUM_OF_CONF_FILE_LOADED];
 const char *broker_keywords[] = {
   "ACCESS_CONTROL",
   "ACCESS_CONTROL_FILE",
+  "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER",
   "ADMIN_LOG_FILE",
   "MASTER_SHM_ID",
   "ACCESS_LIST",
@@ -237,7 +238,6 @@ const char *broker_keywords[] = {
   "MAX_NUM_APPL_SERVER",
   "MIN_NUM_APPL_SERVER",
   "TIME_TO_KILL",
-  "ACCESS_CONTROL_BROKER_ALLOW",
   "CCI_DEFAULT_AUTOCOMMIT",
   "LONG_QUERY_TIME",
   "LONG_TRANSACTION_TIME",
@@ -854,8 +854,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      INI_GETSTR_CHK (s, ini, sec_name, "ACCESS_CONTROL_BROKER_ALLOW", "NO", &lineno);
-      br_info[num_brs].acl_broker_allow = conf_get_value_table_yes_no (s);
+      INI_GETSTR_CHK (s, ini, sec_name, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER", "DENY", &lineno);
+      br_info[num_brs].acl_broker_allow = conf_get_value_table_allow_deny (s);
       if (br_info[num_brs].acl_broker_allow < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -1626,7 +1626,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	}
       fprintf (fp, "JOB_QUEUE_SIZE\t\t=%d\n", br_info[i].job_queue_size);
       fprintf (fp, "TIME_TO_KILL\t\t=%d\n", br_info[i].time_to_kill);
-      fprintf (fp, "ACCESS_CONTROL_BROKER_ALLOW\t=%s\n", br_info[i].acl_broker_allow ? "YES" : "NO");
+      fprintf (fp, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER\t=%s\n", br_info[i].acl_broker_allow ? "ALLOW" : "DENY");
       tmp_str = get_conf_string (br_info[i].access_log, tbl_on_off);
       if (tmp_str)
 	{
@@ -1810,14 +1810,14 @@ conf_get_value_table_on_off (const char *value)
 }
 
 /*
-* conf_get_value_table_yes_no - get value from no/yes table
+* conf_get_value_table_allow_deny - get value from allow/deny table
 *   return: 0, 1 or -1 if fail
 *   value(in):
 */
 int
-conf_get_value_table_yes_no (const char *value)
+conf_get_value_table_allow_deny (const char *value)
 {
-  return (get_conf_value (value, tbl_yes_no));
+  return (get_conf_value (value, tbl_allow_deny));
 }
 
 /*
