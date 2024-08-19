@@ -28,49 +28,55 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.type;
 
-import com.cubrid.plcsql.compiler.ast.Expr;
-import com.cubrid.plcsql.compiler.type.Type;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import com.cubrid.plcsql.compiler.Misc;
+import java.util.HashMap;
 import java.util.List;
-import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.Map;
 
-public class StaticSql {
+public class TypeRecord extends Type {
 
-    public final ParserRuleContext ctx;
-    public final int kind;
-    public final String rewritten;
-    public final LinkedHashMap<Expr, Type> hostExprs; // currently, Types are always null.
+    public static Map<List<Misc.Pair<String, Type>>, TypeRecord> instances = new HashMap<>();
+
     public final List<Misc.Pair<String, Type>> selectList;
-    public final List<Expr> intoTargetList; // can be null
 
-    StaticSql(
-            ParserRuleContext ctx,
-            int kind,
-            String rewritten,
-            LinkedHashMap<Expr, Type> hostExprs,
-            List<Misc.Pair<String, Type>> selectList,
-            List<Expr> intoTargetList) {
+    public boolean generateEq; // whether to generate a opEq method for this record type
 
-        this.ctx = ctx;
-        this.kind = kind;
-        this.rewritten = rewritten;
-        this.hostExprs = hostExprs;
-        this.selectList = selectList;
-        this.intoTargetList = intoTargetList;
+    public static synchronized TypeRecord getInstance(
+            boolean ofTable, String rowName, List<Misc.Pair<String, Type>> selectList) {
+
+        TypeRecord ret = instances.get(selectList);
+        if (ret == null) {
+            int seq = instances.size();
+            ret = new TypeRecord(ofTable, rowName + seq, selectList);
+            instances.put(selectList, ret);
+        }
+
+        return ret;
     }
 
-    public List<Type> getColumnTypeList() {
-        if (selectList == null) {
-            return null;
-        } else {
-            List<Type> ret = new ArrayList<>();
-            for (Misc.Pair<String, Type> p : selectList) {
-                ret.add(p.e2);
-            }
-            return ret;
-        }
+    @Override
+    public String toString() {
+        return plcName + selectList.toString();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Private
+    // ---------------------------------------------------------------------------
+
+    // keys are select lists.
+
+    private static String getPlcName(String rowName) {
+        return String.format("%s%%ROWTYPE", rowName);
+    }
+
+    private static String getJavaName(boolean ofTable, String rowName) {
+        return String.format("$Record_%s_%s", (ofTable ? "T" : "C"), rowName.replace('.', '_'));
+    }
+
+    private TypeRecord(boolean ofTable, String rowName, List<Misc.Pair<String, Type>> selectList) {
+        super(IDX_RECORD, getPlcName(rowName), getJavaName(ofTable, rowName), null);
+        this.selectList = selectList;
     }
 }

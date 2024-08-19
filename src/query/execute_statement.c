@@ -3555,8 +3555,34 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
+  switch (stmt->node_type)
     {
+    case PT_UNION:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+      (void *) parser_walk_tree (parser, stmt->info.query.q.union_.arg1, do_prepare_subquery_pre, err, NULL, NULL);
+      if (*err != NO_ERROR)
+	{
+	  goto stop_walk;
+	}
+      (void *) parser_walk_tree (parser, stmt->info.query.q.union_.arg2, do_prepare_subquery_pre, err, NULL, NULL);
+      goto stop_walk;
+
+    case PT_CREATE_TRIGGER:
+    case PT_ALTER:
+      goto stop_walk;
+
+    case PT_CREATE_ENTITY:
+      if (stmt->info.create_entity.entity_type != PT_CLASS)
+	{
+	  goto stop_walk;
+	}
+      return stmt;
+
+    case PT_SELECT:
+      break;
+
+    default:
       return stmt;
     }
 
