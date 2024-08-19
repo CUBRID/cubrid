@@ -2776,6 +2776,7 @@ struct pt_name_info
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 #define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
 #define PT_NAME_INFO_SERVER_SPECIFIED 16384	/* server name is specified for dblink */
+#define PT_NAME_INFO_REFERENCED_AT_ODKU 32768	/* a vclass referenced at "on duplicate key update clause" */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))

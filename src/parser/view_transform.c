@@ -1664,10 +1664,8 @@ mq_substitute_spec_in_method_and_hints (PARSER_CONTEXT * parser, PT_NODE * node,
 static PT_NODE *
 pt_check_odku_has_vclass (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk)
 {
-  ODKU_INFO *info = (ODKU_INFO *) arg;
-
-  PT_NODE *sel_spec = info->sel_spec;	//(PT_NODE *) arg;
-  PT_NODE *entity, *subquery, *sel_list = NULL, *class_ = NULL;
+  PT_NODE *sel_spec = (PT_NODE *) arg;
+  PT_NODE *entity, *class_ = NULL;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -1683,8 +1681,7 @@ pt_check_odku_has_vclass (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, in
 
       if (class_ && mq_translatable_class (parser, class_))
 	{
-	  info->has_vclass = true;
-	  *continue_walk = PT_STOP_WALK;
+	  class_->info.name.flag |= PT_NAME_INFO_REFERENCED_AT_ODKU;
 	}
     }
 
@@ -1773,31 +1770,6 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       break;
 
     case PT_INSERT:
-      /*
-       * if the odku assignment includes a view spec,
-       * do not push it as the column name might refer to an incorrect table or view.
-       */
-      odku = mainquery->info.insert.odku_assignments;
-      if (odku && mainquery->info.insert.value_clauses->info.node_list.list->node_type == PT_SELECT)
-	{
-	  ODKU_INFO assignment;
-
-	  assignment.sel_spec = mainquery->info.insert.value_clauses->info.node_list.list->info.query.q.select.from;
-	  assignment.has_vclass = false;
-
-	  while (odku && !assignment.has_vclass)
-	    {
-	      parser_walk_tree (parser, odku->info.expr.arg2, pt_check_odku_has_vclass, &assignment, NULL, NULL);
-	      odku = odku->next;
-	    }
-
-	  if (assignment.has_vclass)
-	    {
-	      return NON_PUSHABLE;
-	    }
-	}
-
-      /* since INSERT can not have a spec list or statement conditions, there is nothing to check */
       statement_spec = mainquery->info.insert.spec;
       pred = NULL;
       select_list = NULL;
@@ -1814,6 +1786,11 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       assert (false);
       PT_INTERNAL_ERROR (parser, "unknown node");
       return HAS_ERROR;
+    }
+
+  if (class_ && PT_NAME_INFO_IS_FLAGED (class_, PT_NAME_INFO_REFERENCED_AT_ODKU))
+    {
+      return NON_PUSHABLE;
     }
 
   /*****************************/
@@ -7418,6 +7395,7 @@ static PT_NODE *
 mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int *continue_walk)
 {
   PT_NODE **spec = NULL;
+  PT_NODE *odku;
 
   if (statement == NULL)
     {
@@ -7451,6 +7429,33 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
       break;
 
     case PT_INSERT:
+      /*
+       * Checks if there is a view referenced in the odku clause.
+       * If there is a referenced view, set a flag
+       * for the view to indicate that it is referenced in odku.
+       * This flag will be used when determining "pushable" in mq_is_pushable_subquery.
+       */
+      odku = statement->info.insert.odku_assignments;
+      if (odku)
+	{
+	  PT_NODE *sel_spec, *values;
+
+	  values = statement->info.insert.value_clauses->info.node_list.list;
+	  while (values)
+	    {
+	      if (values->node_type == PT_SELECT)
+		{
+		  sel_spec = values->info.query.q.select.from;
+		  while (odku)
+		    {
+		      parser_walk_tree (parser, odku->info.expr.arg2, pt_check_odku_has_vclass, sel_spec, NULL, NULL);
+		      odku = odku->next;
+		    }
+		}
+	      values = values->next;
+	    }
+	}
+
       /* INSERT does not support rewrites so we must check that no rewrite is needed */
       spec = &statement->info.insert.spec;
       break;
@@ -10198,15 +10203,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 		}
 	      else
 		{
-		  if (newspec->info.spec.entity_name)
-		    {
-		      newspec->info.spec.range_var->info.name.original =
-			newspec->info.spec.entity_name->info.name.original;
-		    }
-		  else
-		    {
-		      newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
-		    }
+		  newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
 		}
 
 	      newspec->info.spec.location = spec->info.spec.location;
