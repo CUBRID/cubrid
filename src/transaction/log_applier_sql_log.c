@@ -80,7 +80,7 @@ static DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assi
 
 static FILE *sl_open_next_file (FILE * old_fp);
 static FILE *sl_log_open (void);
-static void sl_remove_oldest_file_if_needed (void);
+static void sl_delete_oldest_file_if_needed (void);
 static int sl_read_catalog (void);
 static int sl_write_catalog (void);
 static int sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_size);
@@ -552,7 +552,7 @@ sl_write_sql (string_buffer & query, string_buffer * select)
     {
       log_fp = sl_open_next_file (log_fp);
 
-      sl_remove_oldest_file_if_needed ();
+      sl_delete_oldest_file_if_needed ();
     }
 
   return NO_ERROR;
@@ -620,38 +620,51 @@ sl_open_next_file (FILE * old_fp)
 }
 
 /*
- * sl_remove_oldest_file_if_needed() - remove oldest sql log file
+ * sl_delete_oldest_file_if_needed() - Delete the oldest files if the number of SQL log files exceeds the 'sql_log_max_cnt' value.
  *
  * Note:
  *   This function is related to the ha_sql_log_max_count system parameter.
  *   This system parameter can be set from 2 to 5 and only that number of sql log files are kept.
  */
 static void
-sl_remove_oldest_file_if_needed (void)
+sl_delete_oldest_file_if_needed (void)
 {
   unsigned int oldest_file_id;
   char oldest_file_path[PATH_MAX];
 
   // step(1) : guess oldest file
-  // If the file ID is smaller than 'sql_log_max_cnt', it is considered to have wrapped around after exceeding 'UINT_MAX'.
   if (sl_Info.curr_file_id < sql_log_max_cnt)
     {
-      oldest_file_id = UINT_MAX + sl_Info.curr_file_id - sql_log_max_cnt + 1;
+      /*
+       * This case applies to:
+       * 1. When the SQL log file is first created and the file ID is less than 'sql_log_max_cnt'.
+       * 2. When the SQL log file ID exceeds UINT_MAX and wraps around to 0.
+       */
+      oldest_file_id = UINT_MAX - sql_log_max_cnt + sl_Info.curr_file_id + 1;
     }
-  else				// It is a case where wrap around has not occurred.
+  else
     {
       oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
     }
 
   snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id);
 
-  // step(2) : exist check
-  // Since the 'unlink' function behaves differently based on the existence of the file, the existence check is omitted.
+  /*
+   * step(2) : exist check
+   * Since the 'unlink' function behaves differently based on the existence of the file, the existence check is omitted.
+   * If the file to be deleted doesn’t exist, 'unlink()' will also return '-1'.
+   * Therefore, an existence check is not performed separately.
+   */
 
-  // step(3) : remove
+  /*
+   * step(3) : delete
+   * If the file does not exist, 'unlink' returns '-1' and sets 'errno' to indicate the error,
+   * but no additional error handling is performed.
+   * Cases where the file may not exist include:
+   * 1. When the SQL log file has been created for the first time and the 'file_id' has not exceeded 'sql_log_max_cnt'.
+   * 2. When the user has manually modified the SQL log file ID.
+   */
   unlink (oldest_file_path);
-
-  return;
 }
 
 /*
