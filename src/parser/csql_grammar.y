@@ -9015,7 +9015,7 @@ grant_head
 
 		DBG_PRINT}}
         | grant_proc_cmd procedure_or_function_name_list to_id_list
-		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_cmd procedure_or_function_name_list to_id_list);
+		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_proc_cmd procedure_or_function_name_list to_id_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_GRANT);
 

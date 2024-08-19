@@ -10231,6 +10231,10 @@ pt_resolve_method (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * 
 static PT_NODE *
 pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
 {
+  char owner[DB_MAX_USER_LENGTH];
+  owner[0] = '\0';
+  char *current_user_owner;
+
   PT_NODE *new_node = pt_make_method_call (parser, node, bind_arg);
   if (new_node == NULL)
     {
@@ -10248,8 +10252,7 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
       return NULL;
     }
 
-  std::string owner_name = jsp_get_owner_name (sp_name);
-  if (owner_name.empty ())
+  if (jsp_get_owner_name (sp_name, owner, DB_MAX_USER_LENGTH) == NULL)
     {
       PT_INTERNAL_ERROR (parser, "jsp_get_owner_name");
       return NULL;
@@ -10268,11 +10271,13 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
   PT_METHOD_CALL_AUTH_ID (new_node) = PT_AUTHID_OWNER;	// TODO
   if (PT_METHOD_CALL_AUTH_ID (new_node) == PT_AUTHID_OWNER)
     {
-      PT_METHOD_CALL_AUTH_NAME (new_node) = ws_copy_string (owner_name.c_str ());
+      PT_METHOD_CALL_AUTH_NAME (new_node) = pt_append_string (parser, NULL, owner);
     }
   else
     {
-      PT_METHOD_CALL_AUTH_NAME (new_node) = ws_copy_string (au_get_user_name (Au_user));
+      current_user_owner = au_get_user_name (Au_user);
+      PT_METHOD_CALL_AUTH_NAME (new_node) = pt_append_string (parser, NULL, current_user_owner);
+      ws_free_string_and_init (current_user_owner);
     }
 
   return new_node;
