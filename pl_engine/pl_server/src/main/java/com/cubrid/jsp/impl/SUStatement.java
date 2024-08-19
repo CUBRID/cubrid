@@ -40,7 +40,7 @@ public class SUStatement {
             GET_SCHEMA_INFO = 2,
             GET_AUTOINCREMENT_KEYS = 3;
 
-    private static final int DEFAULT_FETCH_SIZE = 100;
+    private static final int DEFAULT_FETCH_SIZE = 1000;
 
     private int handlerId = -1;
     private int type = NORMAL;
