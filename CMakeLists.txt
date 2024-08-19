@@ -17,6 +17,7 @@
 #
 message(STATUS "======== CMakeLists.txt")
 
+
 cmake_minimum_required(VERSION 2.8)
 
 function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
