@@ -186,13 +186,6 @@ enum pushable_type
 };
 typedef enum pushable_type PUSHABLE_TYPE;
 
-typedef struct odku_info ODKU_INFO;
-struct odku_info
-{
-  PT_NODE *sel_spec;
-  bool has_vclass;
-};
-
 static PT_NODE *mq_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *mq_bump_corr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *mq_union_bump_correlation (PARSER_CONTEXT * parser, PT_NODE * left, PT_NODE * right);
