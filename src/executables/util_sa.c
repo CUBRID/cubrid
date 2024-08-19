@@ -739,6 +739,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       csql_arg.auto_commit = true;
       csql_arg.db_name = database_name;
       csql_arg.in_file_name = init_file_name;
+      csql_arg.user_name = strdup ("DBA");
       csql (arg->command_name, &csql_arg);
     }
 

@@ -60,6 +60,11 @@ public class DeclVar extends DeclIdTyped {
     }
 
     @Override
+    public String name() {
+        return name;
+    }
+
+    @Override
     public String kind() {
         return "variable";
     }

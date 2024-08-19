@@ -91,6 +91,9 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 #include "string_regex.hpp"
+#if !defined (SERVER_MODE)
+#include "optimizer.h"
+#endif
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -6374,7 +6377,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_MAX_SUBQUERY_CACHE_SIZE,
    PRM_NAME_MAX_SUBQUERY_CACHE_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT),
    PRM_BIGINT,
    &prm_max_subquery_cache_size_flag,
    (void *) &prm_max_subquery_cache_size_default,
@@ -7289,6 +7292,22 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	{
 	  continue;
 	}
+
+#if !defined(SERVER_MODE)
+      if (strcmp (prm->name, PRM_NAME_OPTIMIZATION_LEVEL) == 0)
+	{
+	  if (value != NULL)
+	    {
+	      int level;
+	      if (parse_int (&level, value, 10) < 0 || CHECK_INVALID_OPTIMIZATION_LEVEL (level))
+		{
+		  error = PRM_ERR_BAD_VALUE;
+		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
+		  return error;
+		}
+	    }
+	}
+#endif
 
       if (strcmp (prm->name, PRM_NAME_SERVER_TIMEZONE) == 0)
 	{
@@ -11204,7 +11223,7 @@ prm_get_next_param_value (char **data, char **prm, char **val)
     }
   if (*p == '\0')
     {
-      err = PRM_ERR_NO_ERROR;
+      err = PRM_ERR_BAD_VALUE;
       goto cleanup;
     }
 
