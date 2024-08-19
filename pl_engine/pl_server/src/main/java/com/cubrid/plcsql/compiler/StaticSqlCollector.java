@@ -62,7 +62,6 @@ public class StaticSqlCollector extends PlcParserBaseListener {
     // Private
     // -----------------------------------------------
 
-    private int level;
     private boolean collecting;
     private StringBuffer sbuf;
 

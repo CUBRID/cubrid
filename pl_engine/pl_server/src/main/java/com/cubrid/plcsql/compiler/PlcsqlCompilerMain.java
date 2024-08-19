@@ -34,6 +34,8 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
+import com.cubrid.plcsql.compiler.error.SemanticError;
+import com.cubrid.plcsql.compiler.error.SyntaxError;
 import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
@@ -225,7 +227,7 @@ public class PlcsqlCompilerMain {
                 if (ss.errCode == 0) {
                     staticSqls.put(ctx, ss);
                 } else {
-                    throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s410
+                    throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s435
                 }
             }
         }

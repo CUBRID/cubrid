@@ -1360,8 +1360,6 @@ process_service (int command_type, bool process_window_service)
 	{
 	  if (!are_all_services_stopped (0, process_window_service))
 	    {
-	      (void) process_pl (command_type, 0, NULL, false, false, process_window_service, false);
-
 	      if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0
 		  && us_Property_map[SERVER_START_LIST].property_value != NULL
 		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
@@ -1385,6 +1383,8 @@ process_service (int command_type, bool process_window_service)
 		{
 		  (void) process_heartbeat (command_type, 0, NULL);
 		}
+
+	      (void) process_pl (command_type, 0, NULL, false, false, process_window_service, false);
 
 	      (void) process_master (command_type);
 
@@ -1789,12 +1789,6 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	  if (token == NULL)
 	    {
 	      break;
-	    }
-
-	  /* try to stop javasp server first */
-	  if (is_javasp_running (token) == JAVASP_SERVER_RUNNING)
-	    {
-	      (void) process_pl (command_type, 1, (const char **) &token, false, true, process_window_service, false);
 	    }
 
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_STOP, token);
