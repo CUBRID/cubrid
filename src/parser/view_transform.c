@@ -1733,7 +1733,7 @@ static PUSHABLE_TYPE
 mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec,
 			 bool is_vclass, PT_NODE * order_by, PT_NODE * class_)
 {
-  PT_NODE *pred, *statement_spec = NULL, *orderby_for, *select_list, *odku;
+  PT_NODE *pred, *statement_spec = NULL, *orderby_for, *select_list;
   CHECK_PUSHABLE_INFO cpi;
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec, is_rownum_only, is_orderby_for;
@@ -1786,11 +1786,6 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       assert (false);
       PT_INTERNAL_ERROR (parser, "unknown node");
       return HAS_ERROR;
-    }
-
-  if (class_ && PT_NAME_INFO_IS_FLAGED (class_, PT_NAME_INFO_REFERENCED_AT_ODKU))
-    {
-      return NON_PUSHABLE;
     }
 
   /*****************************/
@@ -2534,10 +2529,18 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	}
 
       /* check whether subquery is pushable */
-      is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec, true, order_by, class_);
-      if (is_mergeable == HAS_ERROR)
+      /* The vclass referenced in odku should not be merged as it may reference incorrect columns. */
+      if (PT_NAME_INFO_IS_FLAGED (class_, PT_NAME_INFO_REFERENCED_AT_ODKU))
 	{
-	  goto exit_on_error;
+	  is_mergeable = NON_PUSHABLE;
+	}
+      else
+	{
+	  is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec, true, order_by, class_);
+	  if (is_mergeable == HAS_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 	}
 
       if (is_mergeable == NON_PUSHABLE)
