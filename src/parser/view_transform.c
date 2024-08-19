@@ -186,6 +186,13 @@ enum pushable_type
 };
 typedef enum pushable_type PUSHABLE_TYPE;
 
+typedef struct odku_info ODKU_INFO;
+struct odku_info
+{
+  PT_NODE *sel_spec;
+  bool has_vclass;
+};
+
 static PT_NODE *mq_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *mq_bump_corr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *mq_union_bump_correlation (PARSER_CONTEXT * parser, PT_NODE * left, PT_NODE * right);
@@ -393,7 +400,7 @@ static PT_NODE *mq_reset_references_to_query_string (PARSER_CONTEXT * parser, PT
 static void mq_auto_param_merge_clauses (PARSER_CONTEXT * parser, PT_NODE * stmt);
 
 static PT_NODE *pt_check_for_update_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-
+static PT_NODE *pt_check_odku_has_vclass (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk);
 static int pt_check_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * query, bool root);
 
 static int pt_for_update_prepare_query_internal (PARSER_CONTEXT * parser, PT_NODE * query);
@@ -1652,6 +1659,39 @@ mq_substitute_spec_in_method_and_hints (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
+ * check the name nodes from view spec in "on duplicate key update" cluase
+ */
+static PT_NODE *
+pt_check_odku_has_vclass (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk)
+{
+  ODKU_INFO *info = (ODKU_INFO *) arg;
+
+  PT_NODE *sel_spec = info->sel_spec;	//(PT_NODE *) arg;
+  PT_NODE *entity, *subquery, *sel_list = NULL, *class_ = NULL;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (odku == NULL || odku->node_type != PT_NAME)
+    {
+      return odku;
+    }
+
+  entity = pt_find_spec (parser, sel_spec, odku);
+  if (entity)
+    {
+      class_ = entity->info.spec.flat_entity_list;
+
+      if (class_ && mq_translatable_class (parser, class_))
+	{
+	  info->has_vclass = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return odku;
+}
+
+/*
  * mq_is_pushable_subquery () - check if a subquery is pushable
  *  returns: true if pushable, false otherwise
  *   parser(in): parser context
@@ -1696,7 +1736,7 @@ static PUSHABLE_TYPE
 mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec,
 			 bool is_vclass, PT_NODE * order_by, PT_NODE * class_)
 {
-  PT_NODE *pred, *statement_spec = NULL, *orderby_for, *select_list;
+  PT_NODE *pred, *statement_spec = NULL, *orderby_for, *select_list, *odku;
   CHECK_PUSHABLE_INFO cpi;
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec, is_rownum_only, is_orderby_for;
@@ -1733,6 +1773,30 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       break;
 
     case PT_INSERT:
+      /*
+       * if the odku assignment includes a view spec,
+       * do not push it as the column name might refer to an incorrect table or view.
+       */
+      odku = mainquery->info.insert.odku_assignments;
+      if (odku && mainquery->info.insert.value_clauses->info.node_list.list->node_type == PT_SELECT)
+	{
+	  ODKU_INFO assignment;
+
+	  assignment.sel_spec = mainquery->info.insert.value_clauses->info.node_list.list->info.query.q.select.from;
+	  assignment.has_vclass = false;
+
+	  while (odku && !assignment.has_vclass)
+	    {
+	      parser_walk_tree (parser, odku->info.expr.arg2, pt_check_odku_has_vclass, &assignment, NULL, NULL);
+	      odku = odku->next;
+	    }
+
+	  if (assignment.has_vclass)
+	    {
+	      return NON_PUSHABLE;
+	    }
+	}
+
       /* since INSERT can not have a spec list or statement conditions, there is nothing to check */
       statement_spec = mainquery->info.insert.spec;
       pred = NULL;
@@ -7341,50 +7405,6 @@ mq_check_vclass_for_insert (PARSER_CONTEXT * parser, PT_NODE * query_spec)
 }
 
 /*
- * resolve the name nodes from view spec in "on duplicate key update" cluase
- */
-static PT_NODE *
-mq_odku_resolve_view_spec (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk)
-{
-  PT_NODE *sel_spec = (PT_NODE *) arg;
-  PT_NODE *entity, *subquery, *sel_list = NULL, *class_ = NULL;
-
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (odku == NULL || odku->node_type != PT_NAME)
-    {
-      return odku;
-    }
-
-  entity = pt_find_spec (parser, sel_spec, odku);
-  if (entity)
-    {
-      class_ = entity->info.spec.flat_entity_list;
-    }
-
-  if (class_ && mq_translatable_class (parser, class_))
-    {
-      subquery = mq_fetch_subqueries (parser, class_);
-      if (subquery)
-	{
-	  sel_list = subquery->info.query.q.select.list;
-	}
-
-      while (sel_list)
-	{
-	  if (sel_list->node_type == PT_NAME && !strcmp (sel_list->info.name.original, odku->info.name.original))
-	    {
-	      *odku = *sel_list;
-	    }
-
-	  sel_list = sel_list->next;
-	}
-    }
-
-  return odku;
-}
-
-/*
  * mq_rewrite_upd_del_top_level_specs () - rewrite top-level specs of UPDATE or
  *                                         DELETE statements that are spec sets
  *                                         or refer views with multiple queries
@@ -7398,7 +7418,6 @@ static PT_NODE *
 mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int *continue_walk)
 {
   PT_NODE **spec = NULL;
-  PT_NODE *sel_spec, *odku;
 
   if (statement == NULL)
     {
@@ -7432,25 +7451,6 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
       break;
 
     case PT_INSERT:
-      /*
-       * In the INSERT statement, the select-list of the select query may incorrectly create
-       * unnecessary columns during the view merging process.
-       * And these unnecessary columns may be incorrectly referenced in the assignment of on duplicate key update.
-       * So we need to resolve this so that the information of the name node
-       * of the odku assignments is set correctly.
-       */
-      odku = statement->info.insert.odku_assignments;
-      if (odku && statement->info.insert.value_clauses->info.node_list.list->node_type == PT_SELECT)
-	{
-	  sel_spec = statement->info.insert.value_clauses->info.node_list.list->info.query.q.select.from;
-
-	  while (odku)
-	    {
-	      parser_walk_tree (parser, odku->info.expr.arg2, mq_odku_resolve_view_spec, sel_spec, NULL, NULL);
-	      odku = odku->next;
-	    }
-	}
-
       /* INSERT does not support rewrites so we must check that no rewrite is needed */
       spec = &statement->info.insert.spec;
       break;
