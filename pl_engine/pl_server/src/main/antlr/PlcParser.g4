@@ -367,6 +367,7 @@ atom
     | record_field                              # field_exp
     | function_call                             # call_exp
     | identifier                                # id_exp
+    | keyword_builtin_func                      # builtin_func
     | case_expression                           # case_exp
     | SQL PERCENT_ROWCOUNT                      # sql_rowcount_exp  // this must go before the cursor_attr_exp line
     | cursor_exp ( PERCENT_ISOPEN | PERCENT_FOUND | PERCENT_NOTFOUND | PERCENT_ROWCOUNT )   # cursor_attr_exp
@@ -389,13 +390,17 @@ func_call_name
 
 func_name
     : identifier
+    | keyword_builtin_func
+    ;
+
+keyword_builtin_func
+    : CURRENT_USER
     | DATE
     | DEFAULT
     | IF
     | INSERT
     | MOD
     | REPLACE
-    | REVERSE
     | TIME
     | TIMESTAMP
     | TRUNCATE
@@ -610,6 +615,7 @@ quoted_string
 identifier
     : REGULAR_ID
     | DELIMITED_ID
+    | REVERSE
     ;
 
 
