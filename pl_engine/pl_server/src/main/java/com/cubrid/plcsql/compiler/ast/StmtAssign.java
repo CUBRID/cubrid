@@ -40,13 +40,13 @@ public class StmtAssign extends Stmt {
         return visitor.visitStmtAssign(this);
     }
 
-    public final ExprId var;
+    public final Expr target;
     public final Expr val;
 
-    public StmtAssign(ParserRuleContext ctx, ExprId var, Expr val) {
+    public StmtAssign(ParserRuleContext ctx, Expr target, Expr val) {
         super(ctx);
 
-        this.var = var;
+        this.target = target;
         this.val = val;
     }
 }

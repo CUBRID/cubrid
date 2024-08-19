@@ -28,30 +28,16 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.error;
 
-import org.antlr.v4.runtime.ParserRuleContext;
+public class SyntaxError extends RuntimeException {
 
-public abstract class DeclParam extends DeclIdTyped {
+    public final int line;
+    public final int column;
 
-    public final String name;
-    public final TypeSpec typeSpec;
-
-    public DeclParam(ParserRuleContext ctx, String name, TypeSpec typeSpec) {
-        super(ctx);
-        this.name = name;
-        this.typeSpec = typeSpec;
+    public SyntaxError(int line, int column, String msg) {
+        super(msg);
+        this.line = line;
+        this.column = column;
     }
-
-    @Override
-    public TypeSpec typeSpec() {
-        return typeSpec;
-    }
-
-    @Override
-    public String name() {
-        return name;
-    }
-
-    abstract String toJavaSignature();
 }
