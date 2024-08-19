@@ -333,7 +333,7 @@ public class SUStatement {
         /* need not to send fetch request */
         if (fetchedStartCursorPosition >= 0
                 && fetchedStartCursorPosition <= cursorPosition
-                && cursorPosition <= fetchedStartCursorPosition + fetchedTupleNumber) {
+                && cursorPosition < fetchedStartCursorPosition + fetchedTupleNumber) {
             return;
         }
 
@@ -350,6 +350,8 @@ public class SUStatement {
 
         fetchedTupleNumber = fetchInfo.numFetched;
         fetchedStartCursorPosition = fetchInfo.tuples[0].tupleNumber() - 1;
+        cursorPosition =
+                fetchedStartCursorPosition; // update cursorPosition to the fetched start position.
     }
 
     public void moveCursor(int offset, int origin) {
@@ -431,11 +433,17 @@ public class SUStatement {
         SUResultTuple tuple = null;
         Object obj = null;
 
-        if ((tuples == null) || (tuples[cursorPosition - fetchedStartCursorPosition] == null)) {
+        int idx = cursorPosition - fetchedStartCursorPosition;
+        if (idx < 0) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_INDEX, null);
+        }
+
+        if ((tuples == null) || (tuples[idx] == null)) {
             return null;
         }
 
-        tuple = tuples[cursorPosition - fetchedStartCursorPosition];
+        tuple = tuples[idx];
         if (tuple.getAttribute(index) == null) {
             // it is error case... but for safe guard
             wasNull = true;

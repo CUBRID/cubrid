@@ -246,4 +246,10 @@ namespace cubmethod
   {
     return m_fetch_count;
   }
+
+  void
+  query_cursor::set_fetch_count (int cnt)
+  {
+    m_fetch_count = cnt;
+  }
 }

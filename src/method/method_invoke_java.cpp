@@ -458,18 +458,21 @@ namespace cubmethod
 	cursor->open ();
       }
 
+    cursor->set_fetch_count (fetch_count);
+
     fetch_info info;
-    int i = 0;
+
     SCAN_CODE s_code = S_SUCCESS;
+    int start_index = cursor->get_current_index ();
     while (s_code == S_SUCCESS)
       {
 	s_code = cursor->next_row ();
-	if (s_code == S_END || i > cursor->get_fetch_count ())
+	int tuple_index = cursor->get_current_index ();
+	if (s_code == S_END || tuple_index - start_index >= cursor->get_fetch_count ())
 	  {
 	    break;
 	  }
 
-	int tuple_index = cursor->get_current_index ();
 	std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
 
 	if (cursor->get_is_oid_included())
@@ -483,7 +486,6 @@ namespace cubmethod
 	  {
 	    info.tuples.emplace_back (tuple_index, tuple_values);
 	  }
-	i++;
       }
 
     cubmem::block blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info));
