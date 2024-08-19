@@ -6260,7 +6260,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
       if (type_p)
 	{
 	  val_size = type_p->get_disk_size_of_value (dbval_p);
-#if 0
+#if !defined(NDEBUG)
 	  if (type_p->is_size_computed ())
 	    {
 	      if (pr_is_string_type (dbval_type))
@@ -6273,7 +6273,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 		      precision = DB_MAX_STRING_LENGTH;
 		    }
 
-		  assert_release (string_length <= precision);
+		  assert (string_length <= precision);
 
 		  if (val_size < 0)
 		    {
