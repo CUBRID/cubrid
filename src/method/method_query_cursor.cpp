@@ -250,6 +250,9 @@ namespace cubmethod
   void
   query_cursor::set_fetch_count (int cnt)
   {
-    m_fetch_count = cnt;
+    if (cnt > 0 && cnt < INT32_MAX) // check invalid value
+      {
+	m_fetch_count = cnt;
+      }
   }
 }

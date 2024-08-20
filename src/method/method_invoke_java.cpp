@@ -463,7 +463,13 @@ namespace cubmethod
     fetch_info info;
 
     SCAN_CODE s_code = S_SUCCESS;
-    int fetch_count = cursor->get_fetch_count ();
+
+    /* Most cases, fetch_count will be the same value
+     * To handle an invalid value of fetch_count is set at `cursor->set_fetch_count (fetch_count);`
+     * Here, I'm going to get the fetch_count from the getter again.
+    */
+    fetch_count = cursor->get_fetch_count ();
+
     int start_index = cursor->get_current_index ();
     while (s_code == S_SUCCESS)
       {
