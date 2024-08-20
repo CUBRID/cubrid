@@ -1205,7 +1205,7 @@ static void
 print_grant_entry (DB_SET *grants, int grant_index, FILE *fp)
 {
   DB_VALUE value;
-  char unique_name[DB_MAX_IDENTIFIER_LENGTH];
+  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   unique_name[0] = '\0';
 
   int type;

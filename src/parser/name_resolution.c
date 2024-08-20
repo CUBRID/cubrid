@@ -10231,7 +10231,7 @@ pt_resolve_method (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * 
 static PT_NODE *
 pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
 {
-  char owner[DB_MAX_USER_LENGTH];
+  char owner[DB_MAX_USER_LENGTH + 1];
   owner[0] = '\0';
   char *current_user_owner;
 

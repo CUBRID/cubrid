@@ -91,7 +91,7 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
   DB_AUTH type;
   int i;
   int error = NO_ERROR;
-  char unique_name[DB_MAX_IDENTIFIER_LENGTH];
+  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   unique_name[0] = '\0';
 
   m_au_obj = au_obj;
@@ -116,6 +116,7 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
       if (jsp_get_unique_name (obj_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
+	  pr_clear_value (&value);
 	  return er_errid ();
 	}
 
@@ -123,6 +124,7 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
       if (inst_mop == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
+	  pr_clear_value (&value);
 	  return er_errid ();
 	}
     }

@@ -475,14 +475,14 @@ jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
 {
   int save;
   DB_VALUE value;
-  int error = NO_ERROR;
+  int err = NO_ERROR;
 
   assert (buf != NULL);
   assert (buf_size > 0);
 
   if (mop_p == NULL)
     {
-      ERROR_SET_WARNING (error, ER_SM_INVALID_ARGUMENTS);
+      ERROR_SET_WARNING (err, ER_SM_INVALID_ARGUMENTS);
       buf[0] = '\0';
       return NULL;
     }
@@ -490,14 +490,14 @@ jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
   AU_DISABLE (save);
 
   /* check type */
-  int err = db_get (mop_p, SP_ATTR_UNIQUE_NAME, &value);
+  err = db_get (mop_p, SP_ATTR_UNIQUE_NAME, &value);
   if (err != NO_ERROR)
     {
       AU_ENABLE (save);
       return NULL;
     }
 
-  strcpy (buf, db_get_string (&value));
+  strncpy (buf, db_get_string (&value), buf_size);
   pr_clear_value (&value);
 
   AU_ENABLE (save);
@@ -557,7 +557,7 @@ jsp_get_owner_name (const char *name, char *buf, int buf_size)
       err = db_get (owner, "name", &value2);
       if (err == NO_ERROR)
 	{
-	  strcpy (buf, db_get_string (&value2));
+	  strncpy (buf, db_get_string (&value2), buf_size);
 	}
       pr_clear_value (&value2);
     }
@@ -1527,7 +1527,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 
   METHOD_SIG *sig = nullptr;
 
-  char owner[DB_MAX_USER_LENGTH];
+  char owner[DB_MAX_USER_LENGTH + 1];
   owner[0] = '\0';
 
   db_make_null (&cls);
@@ -1766,6 +1766,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 
 	if (jsp_get_owner_name (parsed_method_name, owner, DB_MAX_USER_LENGTH) == NULL)
 	  {
+	    error = ER_FAILED;
 	    goto end;
 	  }
 
