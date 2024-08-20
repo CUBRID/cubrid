@@ -52,6 +52,8 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 
 #include <functional>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* Estimate on number of pages in the multipage temporary file */
 #define SORT_MULTIPAGE_FILE_SIZE_ESTIMATE  20

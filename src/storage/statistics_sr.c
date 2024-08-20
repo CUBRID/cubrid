@@ -38,6 +38,8 @@
 #include "object_representation.h"
 #include "thread_entry.hpp"
 #include "system_parameter.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define SQUARE(n) ((n)*(n))
 

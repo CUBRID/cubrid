@@ -171,6 +171,8 @@ typedef struct yy_buffer_state *YY_BUFFER_STATE;
 #define YY_PREFIX dbcnv
 #include "cnvlex.h"
 #include "util_func.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static int cnv_fmt_lex_start (FMT_LEX_MODE mode);
 
