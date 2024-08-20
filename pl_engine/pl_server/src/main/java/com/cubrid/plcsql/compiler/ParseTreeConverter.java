@@ -38,7 +38,6 @@ import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.error.SemanticError;
-import com.cubrid.plcsql.compiler.error.SyntaxError;
 import com.cubrid.plcsql.compiler.error.UndeclaredId;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
@@ -1431,6 +1430,32 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 } else {
                     return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
                 }
+            }
+        }
+
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    @Override
+    public Expr visitKeyword_builtin_func(Keyword_builtin_funcContext ctx) {
+        String name = Misc.getNormalizedText(ctx);
+
+        Decl decl = symbolStack.getDeclForIdExpr(name);
+        assert decl != null;
+        Scope scope = symbolStack.getCurrentScope();
+        if (idUsedInCurrentDeclPart != null && decl.scope.level < scope.level) {
+            idUsedInCurrentDeclPart.put(name, new UseAndDeclLevel(ctx, decl.scope.level));
+        }
+
+        if (decl instanceof DeclId) {
+            return new ExprId(ctx, name, scope, (DeclId) decl);
+        } else if (decl instanceof DeclFunc) {
+            if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
+                connectionRequired = true;
+                return new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS);
+            } else {
+                return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
             }
         }
 
