@@ -1254,9 +1254,9 @@ main (int argc, char **argv)
 
   if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
     {
-       // *INDENT-OFF*
-       master_Server_monitor.reset (new server_monitor ());
-       // *INDENT-ON*
+      // *INDENT-OFF*
+      master_Server_monitor.reset (new server_monitor ());
+      // *INDENT-ON*
     }
 #endif
 
