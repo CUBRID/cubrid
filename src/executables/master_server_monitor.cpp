@@ -275,22 +275,13 @@ server_monitor::consume_job ()
     {
       return !m_job_queue.empty () || m_thread_shutdown;
     });
-
-    if (m_thread_shutdown)
-      {
-	while (!m_job_queue.empty ())
-	  {
-	    m_job_queue.pop ();
-	  }
-	return;
-      }
   }
 
   while (true)
     {
       {
 	std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
-	if (m_job_queue.empty ())
+	if (m_thread_shutdown || m_job_queue.empty ())
 	  {
 	    break;
 	  }
