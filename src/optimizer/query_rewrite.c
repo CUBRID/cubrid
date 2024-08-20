@@ -3686,7 +3686,6 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 		  || next_pk_spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER
 		  || next_pk_spec->info.spec.join_type == PT_JOIN_FULL_OUTER))
 	    {
-	      assert (false);
 	      continue;		/* give up */
 	    }
 
