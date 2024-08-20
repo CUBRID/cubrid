@@ -220,7 +220,7 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
       return;
     }
 
-  if (!BO_IS_SERVER_RESTARTED () || !prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+  if (!BO_IS_SERVER_RESTARTED ())
     {
       return;
     }

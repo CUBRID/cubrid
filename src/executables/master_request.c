@@ -532,7 +532,10 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
 			    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_STATUS),
 			    server_name, timeout);
 #if !defined(WINDOWS)
-		  master_Server_monitor->remove_server_entry_by_conn (temp->conn_ptr);
+		  if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+		    {
+		      master_Server_monitor->remove_server_entry_by_conn (temp->conn_ptr);
+		    }
 #endif
 		  css_process_start_shutdown (temp, timeout * 60, buffer);
 		}
@@ -713,7 +716,12 @@ css_process_shutdown (char *time_buffer)
   memset (buffer, 0, sizeof (buffer));
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
 	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_GOING_DOWN), timeout);
-
+  if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+    {
+      /* INDENT-OFF */
+      master_Server_monitor.reset ();
+      /* INDENT-ON */
+    }
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       /* do not send shutdown command to master and connector, only to servers: cause connector crash */
@@ -722,7 +730,10 @@ css_process_shutdown (char *time_buffer)
 	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 #if !defined(WINDOWS)
-	  master_Server_monitor->remove_server_entry_by_conn (temp->conn_ptr);
+	  if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+	    {
+	      //master_Server_monitor->remove_server_entry_by_conn (temp->conn_ptr);
+	    }
 #endif
 	  css_process_start_shutdown (temp, timeout * 60, buffer);
 

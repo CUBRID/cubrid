@@ -389,14 +389,12 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 
 	  if (!entry->ha_mode)
 	    {
+	      if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+		{
               /* *INDENT-OFF* */
-              if (master_Server_monitor == nullptr)
-              {
-                master_Server_monitor.reset (new server_monitor ());
-              }
-              
               master_Server_monitor->make_and_insert_server_entry (proc_register->pid, proc_register->exec_path, proc_register->args, datagram_conn);
               /* *INDENT-ON* */
+		}
 	    }
 	}
     }
@@ -1249,6 +1247,16 @@ main (int argc, char **argv)
 	  status = EXIT_FAILURE;
 	  goto cleanup;
 	}
+    }
+
+  // Since master_Server_monitor is module for restarting abnormally terminated cub_server,
+  // it is only initialized only when auto_restart_server parameter is set to true.
+
+  if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+    {
+       // *INDENT-OFF*
+       master_Server_monitor.reset (new server_monitor ());
+       // *INDENT-ON*
     }
 #endif
 
