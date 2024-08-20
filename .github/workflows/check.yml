@@ -47,6 +47,18 @@ jobs:
             *) continue ;; # skip others
             esac
 
+            # the license_check_ignore_files.txt file was created using the following grep command.
+            #
+            #   grep -r
+            #        --exclude-dir={contrib,cubrid-cci,win}
+            #        --include={*.c,*.h,*.cpp,*.hpp,*.C,*.H,*.CPP,*.HPP,*.ipp,*.sh,*.bat,*.y,*.l,*.msg}
+            #        -L "Apache License"
+            #        * > .github/workflows/license_headers/license_check_ignore_files.txt
+            #
+            if grep "$f" "$license_headers"/license_check_ignore_files.txt > /dev/null; then
+              continue
+            fi
+
             result_for_f="FAIL"
             for header in `find $license_headers -type f`; do
               line_cnt=`wc -l < $header`
