@@ -463,12 +463,13 @@ namespace cubmethod
     fetch_info info;
 
     SCAN_CODE s_code = S_SUCCESS;
+    int fetch_count = cursor->get_fetch_count ();
     int start_index = cursor->get_current_index ();
     while (s_code == S_SUCCESS)
       {
 	s_code = cursor->next_row ();
 	int tuple_index = cursor->get_current_index ();
-	if (s_code == S_END || tuple_index - start_index >= cursor->get_fetch_count ())
+	if (s_code == S_END || tuple_index - start_index >= fetch_count)
 	  {
 	    break;
 	  }
