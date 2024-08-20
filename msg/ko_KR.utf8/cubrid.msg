@@ -2225,7 +2225,7 @@ $set 16 MSGCAT_SET_LOG
 29 COMMENT: 보관 로그 %1$s는 로그 페이지 %2$lld 이전까지만 포함되어 HA 유틸리티에서 더 이상 사용되지 않습니다.
 30 보관 로그의 개수가 허용 최대치를 초과했습니다.
 
-$set 17 MSGCAT_SET_TERM
+$set 17 MSGCAT_SET_GLOSSARY
 1 클래스
 2 트리거
 3 시리얼

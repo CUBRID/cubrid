@@ -2221,7 +2221,7 @@ including those from the current backup level and higher.\n
 29 COMMENT: Log archive %1$s, which contains log pages before %2$lld, is not needed any longer by any HA utilities.\n
 30 Number of active log archives has been exceeded the max desired number.
 
-$set 17 MSGCAT_SET_TERM
+$set 17 MSGCAT_SET_GLOSSARY
 1 class
 2 trigger
 3 serial
