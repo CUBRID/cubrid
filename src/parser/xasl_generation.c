@@ -7029,6 +7029,10 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      regu = NULL;
 	    }
+	  if (pt_prepare_corr_subquery_hash_result_cache (parser, (PT_NODE *) node, xasl))
+	    {
+	      XASL_SET_FLAG (xasl, XASL_USES_SQ_CACHE);
+	    }
 	}
       else
 	{
@@ -27236,6 +27240,12 @@ pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * n
   SQ_KEY *sq_key_struct;
   QPROC_DB_VALUE_LIST dbv_list;
   bool cachable = true;
+
+  if (XASL_IS_FLAGED (xasl, XASL_USES_SQ_CACHE))
+    {
+      /* No need to check twice. */
+      return false;
+    }
 
   if (node->info.query.q.select.hint & PT_HINT_NO_SUBQUERY_CACHE)
     {
