@@ -620,7 +620,7 @@ sl_open_next_file (FILE * old_fp)
 }
 
 /*
- * sl_delete_oldest_file_if_needed() - Delete the oldest files if the number of SQL log files exceeds the 'sql_log_max_cnt' value.
+ * sl_delete_oldest_file_if_needed() - Delete the oldest files only if the number of SQL log files exceeds the 'sql_log_max_cnt' value.
  *
  * Note:
  *   This function is related to the ha_sql_log_max_count system parameter.
@@ -636,9 +636,12 @@ sl_delete_oldest_file_if_needed (void)
   if (sl_Info.curr_file_id < sql_log_max_cnt)
     {
       /*
-       * This case applies to:
-       * 1. When the SQL log file is first created and the file ID is less than 'sql_log_max_cnt'.
-       * 2. When the SQL log file ID exceeds UINT_MAX and wraps around to 0.
+       * Possible cases : 
+       * 1. 'curr_file_id' has never exceeded UINT_MAX 
+       * 2. 'curr_file_id' exceeds UINT_MAX and wraps around to 0
+       *  
+       * Always assume a wrap-around has occurred when inferring the file path
+       * The file is deleted only in case 2
        */
       oldest_file_id = UINT_MAX - sql_log_max_cnt + sl_Info.curr_file_id + 1;
     }
@@ -649,22 +652,26 @@ sl_delete_oldest_file_if_needed (void)
 
   snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id);
 
-  /*
-   * step(2) : exist check
-   * Since the 'unlink' function behaves differently based on the existence of the file, the existence check is omitted.
-   * If the file to be deleted doesn’t exist, 'unlink()' will also return '-1'.
-   * Therefore, an existence check is not performed separately.
-   */
 
   /*
-   * step(3) : delete
-   * If the file does not exist, 'unlink' returns '-1' and sets 'errno' to indicate the error,
-   * but no additional error handling is performed.
+   * step(2) : delete the oldest file if it exists
    * Cases where the file may not exist include:
    * 1. When the SQL log file has been created for the first time and the 'file_id' has not exceeded 'sql_log_max_cnt'.
    * 2. When the user has manually modified the SQL log file ID.
    */
-  unlink (oldest_file_path);
+  if (unlink (oldest_file_path) != 0)
+    {
+      if (errno = EACCES)
+	{
+	  /*
+	   * It is a case in step (1) where the guessed file does not exist or cannot be accessed.
+	   * When inferring the oldest file ID, only sql_log_max_cnt is used, 
+	   * which can lead to a false positive situation where a file that is not actually the oldest is attempted to be deleted.
+	   * Since this error is not considered critical, no error handling is performed. 
+	   * Instead, a comment is logged for future maintenance reference.
+	   */
+	}
+    }
 }
 
 /*
