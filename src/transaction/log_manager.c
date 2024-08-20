@@ -6216,24 +6216,30 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log
 static void
 log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 {
-  time_t tmp_time;
-  char time_val[CTIME_MAX];
+  time_t db_creation_time;
+  time_t vol_creation_time;
+  char db_creation_time_val[CTIME_MAX];
+  char vol_creation_time_val[CTIME_MAX];
 
   fprintf (out_fp, "\n ** DUMP LOG HEADER **\n");
 
-  tmp_time = (time_t) log_header_p->db_creation;
-  (void) ctime_r (&tmp_time, time_val);
+  db_creation_time = (time_t) log_header_p->db_creation;
+  (void) ctime_r (&db_creation_time, db_creation_time_val);
+
+  vol_creation_time = (time_t) log_header_p->vol_creation;
+  (void) ctime_r (&vol_creation_time, vol_creation_time_val);
   fprintf (out_fp,
-	   "HDR: Magic Symbol = %s at disk location = %lld\n     Creation_time = %s"
+	   "HDR: Magic Symbol = %s at disk location = %lld\n"
+	   "     Db_creation_time = %s     Vol_creation_time = %s"
 	   "     Release = %s, Compatibility_disk_version = %g,\n"
 	   "     Db_pagesize = %d, log_pagesize= %d, Shutdown = %d,\n"
 	   "     Next_trid = %d, Next_mvcc_id = %llu, Num_avg_trans = %d, Num_avg_locks = %d,\n"
 	   "     Num_active_log_pages = %d, First_active_log_page = %lld,\n"
 	   "     Current_append = %lld|%d, Checkpoint = %lld|%d,\n", log_header_p->magic,
-	   (long long) offsetof (LOG_PAGE, area), time_val, log_header_p->db_release, log_header_p->db_compatibility,
-	   log_header_p->db_iopagesize, log_header_p->db_logpagesize, log_header_p->is_shutdown,
-	   log_header_p->next_trid, (long long int) log_header_p->mvcc_next_id, log_header_p->avg_ntrans,
-	   log_header_p->avg_nlocks, log_header_p->npages, (long long) log_header_p->fpageid,
+	   (long long) offsetof (LOG_PAGE, area), db_creation_time_val, vol_creation_time_val, log_header_p->db_release,
+	   log_header_p->db_compatibility, log_header_p->db_iopagesize, log_header_p->db_logpagesize,
+	   log_header_p->is_shutdown, log_header_p->next_trid, (long long int) log_header_p->mvcc_next_id,
+	   log_header_p->avg_ntrans, log_header_p->avg_nlocks, log_header_p->npages, (long long) log_header_p->fpageid,
 	   LSA_AS_ARGS (&log_header_p->append_lsa), LSA_AS_ARGS (&log_header_p->chkpt_lsa));
 
   fprintf (out_fp,

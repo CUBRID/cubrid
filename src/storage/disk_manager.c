@@ -3034,8 +3034,15 @@ disk_volume_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 static void
 disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
 {
-  char time_val[CTIME_MAX];
-  time_t tmp_time;
+  time_t db_creation_time;
+  time_t vol_creation_time;
+  char db_creation_time_val[CTIME_MAX];
+  char vol_creation_time_val[CTIME_MAX];
+
+  db_creation_time = (time_t) vhdr->db_creation;
+  vol_creation_time = (time_t) vhdr->vol_creation;
+  (void) ctime_r (&db_creation_time, db_creation_time_val);
+  (void) ctime_r (&vol_creation_time, vol_creation_time_val);
 
   (void) fprintf (fp, " MAGIC SYMBOL = %s at disk location = %lld\n", vhdr->magic,
 		  offsetof (FILEIO_PAGE, page) + (long long) offsetof (DISK_VOLUME_HEADER, magic));
@@ -3052,9 +3059,9 @@ disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
   (void) fprintf (fp, " SECTOR TABLE:    SIZE IN PAGES = %10d, FIRST_PAGE = %5d\n", vhdr->stab_npages,
 		  vhdr->stab_first_page);
 
-  tmp_time = (time_t) vhdr->db_creation;
-  (void) ctime_r (&tmp_time, time_val);
-  (void) fprintf (fp, " Database creation time = %s\n Lowest Checkpoint for recovery = %lld|%lld\n", time_val,
+  (void) fprintf (fp, " Database creation time = %s", db_creation_time_val);
+  (void) fprintf (fp, " Volume creation time = %s", vol_creation_time_val);
+  (void) fprintf (fp, " Lowest Checkpoint for recovery = %lld|%lld\n",
 		  (long long) vhdr->chkpt_lsa.pageid, (long long) vhdr->chkpt_lsa.offset);
   (void) fprintf (fp, "Boot_hfid: volid %d, fileid %d header_pageid %d\n", vhdr->boot_hfid.vfid.volid,
 		  vhdr->boot_hfid.vfid.fileid, vhdr->boot_hfid.hpgid);
