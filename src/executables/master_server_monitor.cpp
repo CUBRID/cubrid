@@ -29,12 +29,11 @@
 
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 
+
 server_monitor::server_monitor ()
 {
   // arbitrary size
-  constexpr int SERVER_MONITOR_JOB_QUEUE_SIZE = 1024;
-  m_job_queue = new lockfree::circular_queue<server_monitor_job> (SERVER_MONITOR_JOB_QUEUE_SIZE);
-  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : job_queue is created. \n");
+  constexpr int job_QUEUE_SIZE = 1024;
 
   m_server_entry_map = std::unordered_map<std::string, server_entry> ();
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_map is created. \n");
@@ -48,15 +47,7 @@ server_monitor::server_monitor ()
 // m_monitoring_thread is terminated before m_monitor_list is deleted.
 server_monitor::~server_monitor ()
 {
-  assert (m_job_queue->is_empty ());
-  if (m_job_queue)
-    {
-      delete m_job_queue;
-      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : job_queue is deleted. \n");
-    }
-
   stop_monitoring_thread ();
-
 
   assert (m_server_entry_map.size () == 0);
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_map is deleted. \n");
@@ -67,7 +58,10 @@ server_monitor::~server_monitor ()
 void
 server_monitor::start_monitoring_thread ()
 {
-  m_thread_shutdown = false;
+  {
+    std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
+    m_thread_shutdown = false;
+  }
 
   m_monitoring_thread = std::make_unique<std::thread> (&server_monitor::server_monitor_thread_worker, this);
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is created. \n");
@@ -76,81 +70,52 @@ server_monitor::start_monitoring_thread ()
 void
 server_monitor::stop_monitoring_thread ()
 {
-  m_thread_shutdown = true;
+  {
+    std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
+    m_thread_shutdown = true;
+  }
+  m_monitor_cv_consumer.notify_all();
 
-  if (m_monitoring_thread->joinable())
-    {
-      m_monitor_cv_consumer.notify_all();
-      m_monitoring_thread->join();
-      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is terminated. \n");
-    }
+  m_monitoring_thread->join();
+  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is terminated. \n");
+
 }
 
 void
 server_monitor::server_monitor_thread_worker ()
 {
-  while (!m_thread_shutdown)
+  while (true)
     {
+      consume_job ();
+
       std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
-
-      constexpr int period_in_secs = 1;
-      while (!m_monitor_cv_consumer.wait_for (lock, std::chrono::seconds (period_in_secs), [this] ()
-      {
-	return !m_job_queue->is_empty () || m_thread_shutdown;
-	}));
-
-      while (!m_job_queue->is_empty ())
+      if (m_thread_shutdown)
 	{
-	  server_monitor_job consume_job;
-	  m_job_queue->consume (consume_job);
-	  m_monitor_cv_producer.notify_all();
-	  fprintf (stdout,
-		   "[SERVER_REVIVE_DEBUG] : job_queue consume : job_type : %d, pid : %d, exec_path : %s, args : %s, server_name : %s\n",
-		   consume_job.m_job_type, consume_job.m_pid, consume_job.m_exec_path.c_str(), consume_job.m_args.c_str(),
-		   consume_job.m_server_name.c_str());
-	  switch (consume_job.m_job_type)
-	    {
-	    case job_type::REGISTER_ENTRY:
-	      make_and_insert_server_entry (consume_job.m_pid, consume_job.m_exec_path, consume_job.m_args, consume_job.m_server_name,
-					    consume_job.m_produce_time);
-	      break;
-	    case job_type::REMOVE_ENTRY:
-	      remove_server_entry (consume_job.m_server_name);
-	      break;
-	    case job_type::REVIVE_ENTRY:
-	      revive_server (consume_job.m_server_name);
-	      break;
-	    case job_type::CONFIRM_REVIVE_ENTRY:
-	      check_server_revived (consume_job.m_server_name);
-	      break;
-	    case job_type::JOB_MAX:
-	    default:
-	      assert (false);
-	      break;
-	    }
+	  break;
 	}
     }
 }
 
 void
-server_monitor::make_and_insert_server_entry (int pid, std::string exec_path, std::string args, std::string server_name,
-    std::chrono::steady_clock::time_point revive_time)
+server_monitor::register_server_entry (int pid, const std::string &exec_path, const std::string &args,
+				       const std::string &server_name,
+				       std::chrono::steady_clock::time_point revive_time)
 {
-  bool success = false;
   auto entry = m_server_entry_map.find (server_name);
+
   if (entry != m_server_entry_map.end ())
     {
       entry->second.set_pid (pid);
       entry->second.set_exec_path (exec_path);
       entry->second.proc_make_arg (args);
       entry->second.set_need_revive (false);
-      success = true;
+      entry->second.set_last_revive_time (revive_time);
       fprintf (stdout,
 	       "[SERVER_REVIVE_DEBUG] : server entry has been updated in master_Server_monitor : pid : %d, exec_path : %s, args : %s\n",
 	       pid,
 	       exec_path.c_str(), args.c_str());
     }
-  if (!success)
+  else
     {
       m_server_entry_map.emplace (std::move (server_name), server_entry (pid, exec_path, args, revive_time));
 
@@ -162,11 +127,11 @@ server_monitor::make_and_insert_server_entry (int pid, std::string exec_path, st
 }
 
 void
-server_monitor::remove_server_entry (std::string server_name)
+server_monitor::remove_server_entry (const std::string &server_name)
 {
-
   auto entry = m_server_entry_map.find (server_name);
   assert (entry != m_server_entry_map.end ());
+
   m_server_entry_map.erase (entry);
   fprintf (stdout,
 	   "[SERVER_REVIVE_DEBUG] : server entry has been removed from master_Server_monitor. Number of server in master_Server_monitor: %d\n",
@@ -175,29 +140,38 @@ server_monitor::remove_server_entry (std::string server_name)
 }
 
 void
-server_monitor::revive_server (std::string server_name)
+server_monitor::revive_server (const std::string &server_name)
 {
   int error_code;
-  const int SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS = prm_get_integer_value (
-	      PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS);
+  const int SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS = 120;
   std::chrono::steady_clock::time_point tv;
-  int out_pid = 0;
+  int out_pid;
 
   auto entry = m_server_entry_map.find (server_name);
+
   if (entry != m_server_entry_map.end ())
     {
       entry->second.set_need_revive (true);
       tv = std::chrono::steady_clock::now ();
       auto timediff = std::chrono::duration_cast<std::chrono::milliseconds> (tv -
 		      entry->second.get_last_revive_time()).count();
+
       if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS)
 	{
-	  entry->second.set_last_revive_time (std::chrono::steady_clock::now ());
-	  try_revive_server (entry->second.get_exec_path(), entry->second.get_argv(), &out_pid);
-	  assert (out_pid > 0);
-	  entry->second.set_pid (out_pid);
-	  master_Server_monitor->produce_job (job_type::CONFIRM_REVIVE_ENTRY, -1, "", "",
-					      entry->first);
+
+	  out_pid = try_revive_server (entry->second.get_exec_path(), entry->second.get_argv());
+	  if (out_pid == -1)
+	    {
+	      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Fork at server revive failed. exec_path : %s, args : %s\n",
+		       entry->second.get_exec_path().c_str(), entry->second.get_argv().at (0).c_str());
+	      m_server_entry_map.erase (entry);
+	    }
+	  else
+	    {
+	      entry->second.set_pid (out_pid);
+	      master_Server_monitor->produce_job (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
+						  entry->first);
+	    }
 	  return;
 	}
       else
@@ -211,83 +185,148 @@ server_monitor::revive_server (std::string server_name)
 }
 
 void
-server_monitor::check_server_revived (std::string server_name)
+server_monitor::check_server_revived (const std::string &server_name)
 {
   int error_code;
   auto entry = m_server_entry_map.find (server_name);
-  if (entry != m_server_entry_map.end ())
+  assert (entry != m_server_entry_map.end ());
+
+  error_code = kill (entry->second.get_pid (), 0);
+  if (error_code)
     {
-      error_code = kill (entry->second.get_pid (), 0);
-      if (error_code == ESRCH)
+      if (errno == ESRCH)
 	{
-	  master_Server_monitor->produce_job (job_type::REVIVE_ENTRY, -1, "", "", entry->first);
-	}
-      else if (entry->second.get_need_revive ())
-	{
-	  std::this_thread::sleep_for (std::chrono::milliseconds (1000));
-	  master_Server_monitor->produce_job (job_type::CONFIRM_REVIVE_ENTRY, -1, "", "",
-					      entry->first);
+	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Can't find server process. pid : %d\n", entry->second.get_pid());
+	  master_Server_monitor->produce_job (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	}
       else
 	{
-	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Server revive success. pid : %d\n", entry->second.get_pid());
+	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Server revive failed. pid : %d\n", entry->second.get_pid());
+	  m_server_entry_map.erase (entry);
 	}
-      return;
     }
-  master_Server_monitor->produce_job (job_type::REVIVE_ENTRY, -1, "", "", server_name);
+  else if (entry->second.get_need_revive ())
+    {
+      std::this_thread::sleep_for (std::chrono::milliseconds (1000));
+      master_Server_monitor->produce_job (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
+					  entry->first);
+    }
+  else
+    {
+      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Server revive success. pid : %d\n", entry->second.get_pid());
+    }
+  return;
 }
 
-void
-server_monitor::produce_job (job_type job_type, int pid, std::string exec_path,
-			     std::string args, std::string server_name)
-{
-  server_monitor::server_monitor_job job (job_type, pid, exec_path, args, server_name);
-  std::unique_lock<std::mutex> lock (m_monitor_mutex_producer);
-
-  constexpr int period_in_secs = 1;
-  while (!m_monitor_cv_producer.wait_for (lock, std::chrono::seconds (period_in_secs), [this] ()
-  {
-    return !m_job_queue->is_full ();
-    }));
-  m_job_queue->produce (job);
-  m_monitor_cv_consumer.notify_all();
-}
-
-void
-server_monitor::try_revive_server (std::string exec_path, std::vector<std::string> argv, int *out_pid)
+int
+server_monitor::try_revive_server (const std::string &exec_path, std::vector<std::string> argv)
 {
   pid_t pid;
   int error_code;
 
-  if (out_pid)
-    {
-      *out_pid = 0;
-    }
-
   pid = fork ();
   if (pid < 0)
     {
-      return;
+      return -1;
     }
   else if (pid == 0)
     {
       std::unique_ptr<const char *[]> argv_ptr = std::make_unique<const char *[]> (argv.size () + 1);
-      for (size_t i = 0; i < argv.size(); i++)
+
+      for (int i = 0; i < argv.size(); i++)
 	{
 	  argv_ptr[i] = argv[i].c_str();
 	}
       argv_ptr[argv.size()] = nullptr;
+
       error_code = execv (exec_path.c_str(), (char *const *) argv_ptr.get ());
     }
   else
     {
-      *out_pid = pid;
+      return pid;
     }
 }
 
-server_monitor::server_monitor_job::
-server_monitor_job (job_type job_type, int pid, std::string exec_path, std::string args,
-		    std::string server_name)
+void
+server_monitor::produce_job (job_type job_type, int pid, const std::string &exec_path,
+			     const std::string &args, const std::string &server_name)
+{
+  server_monitor::job job (job_type, pid, exec_path, args, server_name);
+
+  {
+    std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
+    if (m_thread_shutdown)
+      {
+	return;
+      }
+    m_job_queue.push (job);
+  }
+  m_monitor_cv_consumer.notify_all();
+}
+
+void
+server_monitor::consume_job ()
+{
+  job consume_job;
+
+  {
+    std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
+    m_monitor_cv_consumer.wait (lock, [this] ()
+    {
+      return !m_job_queue.empty () || m_thread_shutdown;
+    });
+
+    if (m_thread_shutdown)
+      {
+	while (!m_job_queue.empty ())
+	  {
+	    m_job_queue.pop ();
+	  }
+	return;
+      }
+  }
+
+  while (true)
+    {
+      {
+	std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
+	if (m_job_queue.empty ())
+	  {
+	    break;
+	  }
+	consume_job = m_job_queue.front ();
+	m_job_queue.pop ();
+      }
+
+      switch (consume_job.get_job_type ())
+	{
+	case job_type::REGISTER_SERVER:
+	  register_server_entry (consume_job.get_pid(), consume_job.get_exec_path(), consume_job.get_args(),
+				 consume_job.get_server_name(), consume_job.get_produce_time());
+
+	  break;
+	case job_type::UNREGISTER_SERVER:
+	  remove_server_entry (consume_job.get_server_name());
+	  break;
+	case job_type::REVIVE_SERVER:
+	  revive_server (consume_job.get_server_name());
+	  break;
+	case job_type::CONFIRM_REVIVE_SERVER:
+	  check_server_revived (consume_job.get_server_name());
+	  break;
+	case job_type::JOB_MAX:
+	default:
+	  assert (false);
+	  break;
+	}
+    }
+
+
+}
+
+server_monitor::job::
+job (job_type job_type, int pid, std::string exec_path, std::string args,
+     std::string server_name)
   : m_job_type {job_type}
   , m_pid {pid}
   , m_exec_path {exec_path}
@@ -295,6 +334,42 @@ server_monitor_job (job_type job_type, int pid, std::string exec_path, std::stri
   , m_server_name {server_name}
   , m_produce_time {std::chrono::steady_clock::now ()}
 {
+}
+
+server_monitor::job_type
+server_monitor::job::get_job_type () const
+{
+  return m_job_type;
+}
+
+int
+server_monitor::job::get_pid () const
+{
+  return m_pid;
+}
+
+std::string
+server_monitor::job::get_exec_path () const
+{
+  return m_exec_path;
+}
+
+std::string
+server_monitor::job::get_args () const
+{
+  return m_args;
+}
+
+std::string
+server_monitor::job::get_server_name () const
+{
+  return m_server_name;
+}
+
+std::chrono::steady_clock::time_point
+server_monitor::job::get_produce_time () const
+{
+  return m_produce_time;
 }
 
 server_monitor::server_entry::
@@ -366,11 +441,12 @@ server_monitor::server_entry::set_last_revive_time (std::chrono::steady_clock::t
 }
 
 void
-server_monitor::server_entry::proc_make_arg (std::string args)
+server_monitor::server_entry::proc_make_arg (const std::string &args)
 {
   m_argv = std::vector<std::string> ();
   std::istringstream iss (args);
   std::string tok;
+
   while (iss >> tok)
     {
       m_argv.push_back (tok);

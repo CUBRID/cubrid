@@ -334,6 +334,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
   CSS_CONN_ENTRY *datagram_conn;
   SOCKET_QUEUE_ENTRY *entry;
   CSS_SERVER_PROC_REGISTER *proc_register = (CSS_SERVER_PROC_REGISTER *) buffer;
+  char server_name_str[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 
   datagram = NULL;
   datagram_length = 0;
@@ -359,7 +360,6 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  server_name_length = proc_register->server_name_length;
 
 	  assert (length <= DB_MAX_IDENTIFIER_LENGTH);
-	  char server_name_str[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 	  strncpy (server_name_str, proc_register->server_name, length);
 
 	  if (length < server_name_length)
@@ -395,7 +395,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	    {
               /* *INDENT-OFF* */
 
-              master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_ENTRY, proc_register->pid, proc_register->exec_path, proc_register->args, server_name_str);
+              master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER, proc_register->pid, proc_register->exec_path, proc_register->args, server_name_str);
               /* *INDENT-ON* */
 	    }
 	}
@@ -1013,7 +1013,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 #if !defined(WINDOWS)
 		      /* Abnormal termination of non-HA server process is detected. */
                       /* *INDENT-OFF* */
-                      master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_ENTRY, -1, "", "", temp->name);
+                      master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER, -1, "", "", temp->name);
                       /* *INDENT-ON* */
 #endif
 		      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
