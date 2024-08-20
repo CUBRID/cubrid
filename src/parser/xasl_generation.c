@@ -18681,28 +18681,15 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
     {
       /* for insert into ... select */
-      PT_NODE *aptr_statement = parser_copy_tree_list (parser, value_clauses->info.node_list.list);
-
-      if (aptr_statement == NULL || (aptr_statement = mq_translate (parser, aptr_statement)) == NULL)
-	{
-	  if (pt_has_error (parser))
-	    {
-	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	    }
-
-	  return NULL;
-	}
+      PT_NODE *aptr_statement = value_clauses->info.node_list.list;
 
       xasl = pt_make_aptr_parent_node (parser, aptr_statement, INSERT_PROC);
-      if (aptr_statement != NULL)
+
+      if (xasl != NULL && aptr_statement->info.query.flag.subquery_cached)
 	{
-	  if (xasl != NULL && aptr_statement->info.query.flag.subquery_cached)
-	    {
-	      xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
-	      xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
-	      xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
-	    }
-	  parser_free_tree (parser, aptr_statement);
+	  xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
+	  xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
+	  xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
 	}
     }
   else
