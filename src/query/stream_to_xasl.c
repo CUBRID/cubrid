@@ -42,6 +42,8 @@
 #include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
 #include "xasl_unpack_info.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg);
 static AGGREGATE_TYPE *stx_restore_aggregate_type (THREAD_ENTRY * thread_p, char *ptr);

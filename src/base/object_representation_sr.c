@@ -39,6 +39,8 @@
 #include <new>
 #include <stdio.h>
 #include <string.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10
@@ -2527,9 +2529,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;
 
-      // *INDENT-OFF*
-      new (&att->auto_increment.serial_obj) std::atomic<or_aligned_oid> (oid_Null_oid);
-      // *INDENT-ON*
+      att->auto_increment.serial_obj = oid_Null_oid;
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 

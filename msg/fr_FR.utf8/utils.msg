@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longueur ou caractère non valide '%1$c' dans le nom de la base de données '%2$s'\n
@@ -130,6 +131,7 @@ Nom d'utilitaires d'administration disponible:\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s est un outil de SGBD.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -192,6 +194,7 @@ Utilitaires d'administrateur disponibles:\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s is a tool for DBMS.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -1325,3 +1328,19 @@ options valides :\n\
                                   pour le flash-back ; par défaut : génère uniquement des instructions SQL pour le flashback\n\
     --oldest                      flashback le plus ancien est exécuté dans l'ordre chronologique pour les instructions SQL exécutées\n\
                                   de l'heure de début à l'heure de fin ; par défaut : le plus récent\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 Veuillez définir le paramètre système 'enable_memory_monitoring' dans 'cubrid.conf' et redémarrer le serveur de base de données.\n
+2 memmon ne peut pas fonctionner en mode autonome.\n
+3 Échec de l'ouverture du fichier de sortie avec le nom de fichier %1$s.\n
+4 La surveillance de la mémoire sur le serveur est désactivée avec succès.\n
+5 disable-force ne peut pas être utilisé avec d'autres options.\n
+6 La surveillance de la mémoire sur le serveur a été désactivée. Vous pouvez l'utiliser à nouveau après avoir redémarré le serveur.\n
+7 memmon n'est pas pris en charge sur ce système d'exploitation.\n
+60 \
+memmon: Fournit des informations sur l'utilisation de la mémoire d'un serveur de base de données.\n\
+utilisation: %1$s memmon [OPTION] nom-de-la-base-de-données\n\
+\n\
+Option valide:\n\
+    -o, --output-file=FILE    résultats de sortie vers un fichier\n\
+    --disable-force           désactiver la surveillance de la mémoire du serveur de force.\n

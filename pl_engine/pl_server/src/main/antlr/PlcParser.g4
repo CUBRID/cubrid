@@ -136,11 +136,16 @@ dyn_sql
     ;
 
 into_clause
-    : INTO identifier (',' identifier)*
+    : INTO assign_target (',' assign_target)*
     ;
 
 assignment_statement
-    : identifier ':=' expression
+    : assign_target ':=' expression
+    ;
+
+assign_target
+    : identifier
+    | record_field
     ;
 
 continue_statement
@@ -266,7 +271,7 @@ open_statement
     ;
 
 fetch_statement
-    : FETCH cursor_exp INTO identifier (',' identifier)*
+    : FETCH cursor_exp into_clause
     ;
 
 open_for_statement
@@ -346,7 +351,7 @@ unary_expression
 
 atom
     : literal                                   # literal_exp
-    | record=identifier '.' field=identifier    # field_exp
+    | record_field                              # field_exp
     | function_call                             # call_exp
     | identifier                                # id_exp
     | case_expression                           # case_exp
@@ -355,6 +360,10 @@ atom
     | LPAREN expression RPAREN                  # paren_exp
     | SQLCODE                                   # sqlcode_exp
     | SQLERRM                                   # sqlerrm_exp
+    ;
+
+record_field
+    : record=identifier '.' field=identifier
     ;
 
 function_call
@@ -470,7 +479,6 @@ index_name
     ;
 
 cursor_exp
-    //: function_call   TODO
     : identifier
     ;
 
@@ -480,6 +488,11 @@ record_name
 
 table_name
     : (identifier '.')? identifier
+    ;
+
+/* row name: table name or cursor name to which %ROWTYPE can be applied */
+row_name
+    : (user=identifier '.')? name=identifier
     ;
 
 column_name
@@ -495,8 +508,9 @@ argument
     ;
 
 type_spec
-    : native_datatype                               # native_type_spec
-    | (table_name '.')? identifier PERCENT_TYPE     # percent_type_spec
+    : native_datatype
+    | percent_type
+    | percent_rowtype
     ;
 
 native_datatype
@@ -504,6 +518,14 @@ native_datatype
     | char_type
     | varchar_type
     | simple_type
+    ;
+
+percent_type
+    : (table_name '.')? identifier PERCENT_TYPE
+    ;
+
+percent_rowtype
+    : row_name PERCENT_ROWTYPE
     ;
 
 numeric_type
