@@ -24,7 +24,7 @@
 #include <algorithm>
 #include <unistd.h>
 #include <signal.h>
-#include <system_parameter.h>
+#include "system_parameter.h"
 #include "master_server_monitor.hpp"
 
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
@@ -143,7 +143,7 @@ void
 server_monitor::revive_server (const std::string &server_name)
 {
   int error_code;
-  const int SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS = 120;
+  constexpr int SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS = 120;
   std::chrono::steady_clock::time_point tv;
   int out_pid;
 
@@ -153,10 +153,9 @@ server_monitor::revive_server (const std::string &server_name)
     {
       entry->second.set_need_revive (true);
       tv = std::chrono::steady_clock::now ();
-      auto timediff = std::chrono::duration_cast<std::chrono::milliseconds> (tv -
+      auto timediff = std::chrono::duration_cast<std::chrono::seconds> (tv -
 		      entry->second.get_last_revive_time()).count();
-
-      if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_MSECS)
+      if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS)
 	{
 
 	  out_pid = try_revive_server (entry->second.get_exec_path(), entry->second.get_argv());
@@ -207,7 +206,8 @@ server_monitor::check_server_revived (const std::string &server_name)
     }
   else if (entry->second.get_need_revive ())
     {
-      std::this_thread::sleep_for (std::chrono::milliseconds (1000));
+      constexpr int SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS = 1;
+      std::this_thread::sleep_for (std::chrono::seconds (SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS));
       master_Server_monitor->produce_job (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
 					  entry->first);
     }
