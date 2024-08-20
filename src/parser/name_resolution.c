@@ -2726,7 +2726,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  prev->next = next;
 		}
 	      cnf->next = NULL;	/* cut-off link */
+
 	      PT_EXPR_INFO_CLEAR_FLAG (cnf, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER);
+
 	      /* put cnf to the ON cond */
 	      spec->info.spec.on_cond = parser_append_node (cnf, spec->info.spec.on_cond);
 	    }
@@ -2768,7 +2770,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      parser_walk_tree (parser, spec->info.spec.on_cond, pt_clear_Oracle_outerjoin_spec_id, bind_arg,
 				pt_continue_walk, NULL);
 
-#if defined(CUBRID_DEBUG)
+#if !defined (NDEBUG)
 	      assert (!PT_EXPR_INFO_IS_FLAGED (spec->info.spec.on_cond,
 					       PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER));
 #endif
@@ -2793,7 +2795,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    }
 	}			/* for */
 
-#if defined(CUBRID_DEBUG)
+#if !defined (NDEBUG)
       for (cnf = node->info.query.q.select.where; cnf; cnf = cnf->next)
 	{
 	  assert (!PT_EXPR_INFO_IS_FLAGED (cnf, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER));
