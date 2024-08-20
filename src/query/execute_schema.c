@@ -60,6 +60,7 @@
 #include "parser_support.h"
 #include "dbtype.h"
 #include "jsp_cl.h"
+#include "msgcat_glossary.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2318,8 +2319,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       if (!ws_is_same_object (user, Au_user) && !au_is_dba_group_member (Au_user))
 	{
 	  error = ER_AU_NOT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,
-		  msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_TERM, DB_OBJECT_CLASS));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
 	  goto end;
 	}
 
