@@ -1652,7 +1652,7 @@ mq_substitute_spec_in_method_and_hints (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
- * check the name nodes from view spec in "on duplicate key update" cluase
+ * check the name nodes from view spec in "on duplicate key update" clause
  */
 static PT_NODE *
 pt_check_odku_has_vclass (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk)

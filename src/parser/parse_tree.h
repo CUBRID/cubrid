@@ -2778,7 +2778,7 @@ struct pt_name_info
 #define PT_NAME_INFO_SERVER_SPECIFIED 16384	/* server name is specified for dblink */
 #define PT_NAME_INFO_REFERENCED_AT_ODKU 32768	/* a vclass referenced at "on duplicate key update clause" */
 
-  short flag;
+  int flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
 #define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (short) (f)
 #define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (short) ~(f)
