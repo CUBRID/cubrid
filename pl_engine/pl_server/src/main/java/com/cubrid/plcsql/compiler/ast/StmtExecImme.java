@@ -44,7 +44,7 @@ public class StmtExecImme extends StmtSql {
             ParserRuleContext ctx,
             int level,
             Expr dynamicSql,
-            NodeList<ExprId> intoVarList,
+            NodeList<Expr> intoTargetList,
             NodeList<? extends Expr> usedExprList) {
         super(
                 ctx,
@@ -52,7 +52,7 @@ public class StmtExecImme extends StmtSql {
                 level,
                 dynamicSql,
                 null,
-                intoVarList == null ? null : intoVarList.nodes,
+                intoTargetList == null ? null : intoTargetList.nodes,
                 usedExprList == null ? null : usedExprList.nodes);
     }
 }

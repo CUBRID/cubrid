@@ -57,9 +57,8 @@ public class SqlSemantics {
             hostExprs; // host variables and auto parameters and their SQL types required in their
     // locations
     public List<ColumnInfo> selectList; // (only for select statements) columns and their SQL types
-    public List<String> intoVars; // (only for select stetements with an into-clause) into variables
-
-    public List<ColumnInfo> columnInfos;
+    public List<String>
+            intoTargetStrs; // (only for select stetements with an into-clause) into variables
 
     public SqlSemantics(
             int seqNo,
@@ -67,14 +66,14 @@ public class SqlSemantics {
             String rewritten,
             List<PlParamInfo> hostExprs,
             List<ColumnInfo> selectList,
-            List<String> intoVars) {
+            List<String> intoTargetStrs) {
 
         this.seqNo = seqNo;
         this.kind = kind;
         this.rewritten = rewritten;
         this.hostExprs = hostExprs;
         this.selectList = selectList;
-        this.intoVars = intoVars;
+        this.intoTargetStrs = intoTargetStrs;
     }
 
     public SqlSemantics(CUBRIDUnpacker unpacker) {
@@ -104,11 +103,11 @@ public class SqlSemantics {
             }
         }
 
-        int intoVarsCnt = unpacker.unpackInt();
-        if (intoVarsCnt > 0) {
-            intoVars = new ArrayList<>();
-            for (int i = 0; i < intoVarsCnt; i++) {
-                intoVars.add(unpacker.unpackCString());
+        int intoTargetsCnt = unpacker.unpackInt();
+        if (intoTargetsCnt > 0) {
+            intoTargetStrs = new ArrayList<>();
+            for (int i = 0; i < intoTargetsCnt; i++) {
+                intoTargetStrs.add(unpacker.unpackCString());
             }
         }
     }

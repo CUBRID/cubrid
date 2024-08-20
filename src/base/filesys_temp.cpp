@@ -26,27 +26,56 @@
 #ifdef LINUX
 #include "porting.h"
 #elif WINDOWS
+#include <windows.h>
 #include <cstdio>
 #include <fcntl.h>
 #include <io.h>
 #endif
 
+#include "environment_variable.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
+#define	CUBRID_TMP_ENV	"TMP"
+#define PREFIX_LEN      3
+
 namespace
 {
   std::string unique_tmp_filename (const char *prefix="cub_") //generates an unique filename in tmp folder
   {
+    const char *cubrid_tmp = envvar_get (CUBRID_TMP_ENV);
 #ifdef LINUX
-    std::string filename = std::filesystem::temp_directory_path ();
+    std::string filename = cubrid_tmp != nullptr ? cubrid_tmp : std::filesystem::temp_directory_path ().u8string ();
+
     filename += "/";
     filename += prefix;
     filename += "XXXXXX"; //used with mkstemp()
     //TBD (not necessary yet)
 #elif WINDOWS
     char buf[L_tmpnam] = {};
-    std::string filename = std::tmpnam (buf);
-    auto pos = filename.rfind ('\\');
-    filename.insert (pos+1, prefix);
+    std::string filename = "";
+    int ret = -1;
+
+    if (cubrid_tmp != nullptr)
+      {
+	char pf[PREFIX_LEN];
+
+	snprintf (pf, PREFIX_LEN, "%s", prefix != nullptr ? prefix : "CT");
+	ret = GetTempFileName (cubrid_tmp, pf, 0, buf);
+      }
+
+    if (ret > 0)
+      {
+	filename = buf;
+      }
+    else
+      {
+	filename = std::tmpnam (buf);
+	auto pos = filename.rfind ('\\');
+	filename.insert (pos+1, prefix);
+      }
 #endif
+
     return filename;
   }
 }
@@ -78,4 +107,12 @@ std::pair<std::string, FILE *> filesys::open_temp_file (const char *prefix, cons
   auto *fileptr = fopen (filename.c_str(), mode);
 #endif
   return {filename, fileptr};
+}
+
+std::string filesys::temp_directory_path (void)
+{
+  const char *cubrid_tmp = envvar_get (CUBRID_TMP_ENV);
+  std::string pathname = cubrid_tmp != nullptr ? cubrid_tmp : std::filesystem::temp_directory_path ().u8string ();
+
+  return pathname;
 }

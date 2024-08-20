@@ -70,6 +70,8 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
 
