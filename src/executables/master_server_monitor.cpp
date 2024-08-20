@@ -59,7 +59,7 @@ void
 server_monitor::start_monitoring_thread ()
 {
   {
-    std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
+    std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
     m_thread_shutdown = false;
   }
 
@@ -71,7 +71,7 @@ void
 server_monitor::stop_monitoring_thread ()
 {
   {
-    std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
+    std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
     m_thread_shutdown = true;
   }
   m_monitor_cv_consumer.notify_all();
@@ -88,7 +88,7 @@ server_monitor::server_monitor_thread_worker ()
     {
       consume_job ();
 
-      std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
+      std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
       if (m_thread_shutdown)
 	{
 	  break;
@@ -164,7 +164,7 @@ server_monitor::revive_server (const std::string &server_name)
 	    {
 	      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Fork at server revive failed. exec_path : %s, args : %s\n",
 		       entry->second.get_exec_path().c_str(), entry->second.get_argv().at (0).c_str());
-	      m_server_entry_map.erase (entry);
+	      master_Server_monitor->produce_job (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	    }
 	  else
 	    {
@@ -254,7 +254,7 @@ server_monitor::produce_job (job_type job_type, int pid, const std::string &exec
   server_monitor::job job (job_type, pid, exec_path, args, server_name);
 
   {
-    std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
+    std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
     if (m_thread_shutdown)
       {
 	return;
@@ -270,7 +270,7 @@ server_monitor::consume_job ()
   job consume_job;
 
   {
-    std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
+    std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
     m_monitor_cv_consumer.wait (lock, [this] ()
     {
       return !m_job_queue.empty () || m_thread_shutdown;
@@ -289,7 +289,7 @@ server_monitor::consume_job ()
   while (true)
     {
       {
-	std::unique_lock<std::mutex> lock (m_monitor_mutex_consumer);
+	std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
 	if (m_job_queue.empty ())
 	  {
 	    break;

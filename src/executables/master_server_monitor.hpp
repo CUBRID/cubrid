@@ -155,7 +155,8 @@ class server_monitor
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     std::queue<job> m_job_queue;                                        // job queue for monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
-    std::mutex m_monitor_mutex_consumer;                                // lock for m_job_queue empty check
+    std::mutex
+    m_server_monitor_mutex;                                  // lock for synchronizing m_job_queue and m_thread_shutdown
     std::condition_variable m_monitor_cv_consumer;                      // condition variable for m_job_queue empty check
 
     void start_monitoring_thread ();
