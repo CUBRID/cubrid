@@ -1971,7 +1971,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   PT_NODE *prev_attr = NULL, *attr = NULL, *next_attr = NULL, *as_attr = NULL;
   PT_NODE *resolved_attrs = NULL, *spec = NULL;
   PT_NODE *flat = NULL, *range_var = NULL;
-  bool do_resolve = true, is_converted = true;
+  bool do_resolve = true;
   PT_NODE *seq = NULL;
   PT_NODE *cnf = NULL, *prev = NULL, *next = NULL, *last = NULL, *save = NULL;
   PT_NODE *lhs = NULL, *rhs = NULL, *lhs_spec = NULL, *rhs_spec = NULL;
@@ -2694,7 +2694,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		      goto select_end;
 		    }
 		  spec->info.spec.join_type = join_type;
-		  PT_EXPR_INFO_CLEAR_FLAG (cnf, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER);
 		}
 	      else
 		{		/* k == 2 */
@@ -2727,7 +2726,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  prev->next = next;
 		}
 	      cnf->next = NULL;	/* cut-off link */
-
+	      PT_EXPR_INFO_CLEAR_FLAG (cnf, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER);
 	      /* put cnf to the ON cond */
 	      spec->info.spec.on_cond = parser_append_node (cnf, spec->info.spec.on_cond);
 	    }
@@ -2769,17 +2768,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      parser_walk_tree (parser, spec->info.spec.on_cond, pt_clear_Oracle_outerjoin_spec_id, bind_arg,
 				pt_continue_walk, NULL);
 
-	      if (PT_EXPR_INFO_IS_FLAGED (spec->info.spec.on_cond, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER))
-		{
-		  is_converted = false;
-		}
+#if defined(CUBRID_DEBUG)
+	      assert (!PT_EXPR_INFO_IS_FLAGED (spec->info.spec.on_cond,
+					       PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER));
+#endif
 	    }
-	}
-
-      if (is_converted && PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_ORACLE_OUTER))
-	{
-	  PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_ORACLE_OUTER);
-	  PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ANSI_JOIN);
 	}
 
       /* check outer join semantic of ON cond */
@@ -2799,6 +2792,19 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      spec->info.spec.on_cond = NULL;
 	    }
 	}			/* for */
+
+#if defined(CUBRID_DEBUG)
+      for (cnf = node->info.query.q.select.where; cnf; cnf = cnf->next)
+	{
+	  assert (!PT_EXPR_INFO_IS_FLAGED (cnf, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER));
+	}
+#endif
+
+      if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_ORACLE_OUTER))
+	{
+	  PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_ORACLE_OUTER);
+	  PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ANSI_JOIN);
+	}
 
     select_end:
       bind_arg->spec_frames = bind_arg->spec_frames->next;
