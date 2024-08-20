@@ -40,8 +40,6 @@
 
 int parser_yyinput_single_mode = 0;
 
-static int parser_yyinput_single_line (char *buff, int max_size);
-static int parser_yyinput_multi_line (char *buff, int max_size);
 static int parser_yyinput (char *buff, int max_size);
 static char *parser_c_hint (void);
 static char *parser_line_hint (void);
@@ -1986,6 +1984,92 @@ init_plcsql_lexing()
 }
 
 static int
+parser_yyinput_single_line (char *buff, int max_size)
+{
+  int c, end;
+  int i = 0;
+
+  assert (max_size >= 1);
+  do
+    {
+      if (str_identifier == '\'' || str_identifier == '\"')
+        {
+         c = str_identifier;
+        }
+      else
+        {
+         c = pt_nextchar ();
+        }
+
+      if (c == '\'' || c == '\"')      /* string start */
+       {
+          if (str_identifier != '\'' && str_identifier != '\"')
+           {
+             str_identifier = c;
+             buff[i++] = c;
+             if (i >= max_size)
+               {
+                 return i;
+               }
+           }
+           end = c;
+
+         do
+           {
+             c = pt_nextchar ();
+             if (c == end)     /* string end */
+               {
+                 str_identifier = '\0';
+                 break;
+               }
+
+             buff[i++] = c;
+             if (i >= max_size)
+               {
+                 return i;
+               }
+
+             if (c == '\\'
+                 && (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false))
+               {
+                 /* if escape character */
+                 c = pt_nextchar (); /* read one more */
+                 buff[i++] = c;
+                 if (i >= max_size)
+                   {
+                     return i;
+                   }
+               }
+           }
+         while (c != -1);
+       }
+
+      buff[i++] = c;
+
+      if (c == ';')
+       {
+         
+         buff[i] = '\0'; /* not required but to ease debugging */
+         /* stop filling the buffer */
+         return i;
+       }
+
+      if (i >= max_size)
+       {
+         buff[i] = '\0'; /* not required but to ease debugging */
+         return i;
+       }
+
+    }
+  while (c != -1);
+
+  /* end of file */
+  str_identifier = '\0';
+
+  return i;
+}
+
+static int
 parser_yyinput_multi_line (char *buff, int max_size)
 {
   int c;
@@ -2013,7 +2097,14 @@ parser_yyinput_multi_line (char *buff, int max_size)
 static int
 parser_yyinput (char *buff, int max_size)
 {
-  return parser_yyinput_multi_line (buff, max_size);
+  if (!parser_yyinput_single_mode)
+    {
+      return parser_yyinput_multi_line (buff, max_size);
+    }
+  else
+    {
+      return parser_yyinput_single_line (buff, max_size);
+    }
 }
 
 static int
