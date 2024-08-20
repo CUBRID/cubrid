@@ -27244,7 +27244,7 @@ pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * n
   if (XASL_IS_FLAGED (xasl, XASL_USES_SQ_CACHE))
     {
       /* No need to check twice. */
-      return false;
+      return true;
     }
 
   if (node->info.query.q.select.hint & PT_HINT_NO_SUBQUERY_CACHE)
