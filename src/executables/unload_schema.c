@@ -258,7 +258,7 @@ static int extract_schema (extract_context & ctxt, print_output & schema_output_
 static int extract_user (extract_context & ctxt);
 static int extract_serial (extract_context & ctxt);
 static int extract_synonym (extract_context & ctxt);
-static int extract_procedure (extract_context & ctxt, func_emit_procedure_type extract_proc_func);
+static int extract_procedure (extract_context & ctxt);
 static int extract_server (extract_context & ctxt);
 static int extract_class (extract_context & ctxt);
 static int extract_vclass (extract_context & ctxt);
@@ -4455,6 +4455,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	}
 
       sp_type = db_get_int (&sp_type_val);
+
       output_ctx ("\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
 
       const char *sp_name = db_get_string (&sp_name_val);
@@ -4665,7 +4666,7 @@ emit_stored_procedure_code (print_output & output_ctx, const char *name)
   if (stype == SPSC_PLCSQL)
     {
       const char *scode = db_get_string (&scode_val);
-      output_ctx ("%s", scode);
+      output_ctx ("\n%s", scode);
     }
 
 exit:
@@ -5273,7 +5274,7 @@ extract_synonym (extract_context & ctxt)
 }
 
 static int
-extract_procedure (extract_context & ctxt, func_emit_procedure_type extract_proc_func)
+extract_procedure (extract_context & ctxt)
 {
   FILE *output_file = NULL;
   int err = NO_ERROR;
@@ -5306,7 +5307,12 @@ extract_procedure (extract_context & ctxt, func_emit_procedure_type extract_proc
 
   if (required_class_only == false)
     {
-      err = extract_proc_func (ctxt, output_ctx);
+      err = emit_stored_procedure_pre (ctxt, output_ctx);
+    }
+
+  if (required_class_only == false)
+    {
+      err = emit_stored_procedure_post (ctxt, output_ctx);
     }
 
   fflush (output_file);
@@ -6091,11 +6097,6 @@ extract_split_schema_files (extract_context & ctxt)
       err_count++;
     }
 
-  if (extract_procedure (ctxt, emit_stored_procedure_pre) != NO_ERROR)
-    {
-      err_count++;
-    }
-
   if (extract_fk (ctxt) != NO_ERROR)
     {
       err_count++;
@@ -6121,7 +6122,7 @@ extract_split_schema_files (extract_context & ctxt)
       err_count++;
     }
 
-  if (extract_procedure (ctxt, emit_stored_procedure_post) != NO_ERROR)
+  if (extract_procedure (ctxt) != NO_ERROR)
     {
       err_count++;
     }
