@@ -97,8 +97,8 @@ server_monitor::server_monitor_thread_worker ()
 
 void
 server_monitor::register_server_entry (int pid, const std::string &exec_path, const std::string &args,
-				       const std::string &server_name,
-				       std::chrono::steady_clock::time_point revive_time)
+				       const std::string &server_name
+				      )
 {
   auto entry = m_server_entry_map.find (server_name);
 
@@ -108,7 +108,7 @@ server_monitor::register_server_entry (int pid, const std::string &exec_path, co
       entry->second.set_exec_path (exec_path);
       entry->second.proc_make_arg (args);
       entry->second.set_need_revive (false);
-      entry->second.set_last_revive_time (revive_time);
+      entry->second.set_last_revive_time (std::chrono::steady_clock::now ());
       fprintf (stdout,
 	       "[SERVER_REVIVE_DEBUG] : server entry has been updated in master_Server_monitor : pid : %d, exec_path : %s, args : %s\n",
 	       pid,
@@ -116,7 +116,8 @@ server_monitor::register_server_entry (int pid, const std::string &exec_path, co
     }
   else
     {
-      m_server_entry_map.emplace (std::move (server_name), server_entry (pid, exec_path, args, revive_time));
+      m_server_entry_map.emplace (std::move (server_name), server_entry (pid, exec_path, args,
+				  std::chrono::steady_clock::now ()));
 
       fprintf (stdout,
 	       "[SERVER_REVIVE_DEBUG] : server entry has been registered into master_Server_monitor : pid : %d, exec_path : %s, args : %s\n",
@@ -292,7 +293,7 @@ server_monitor::consume_job ()
 	{
 	case job_type::REGISTER_SERVER:
 	  register_server_entry (consume_job.get_pid(), consume_job.get_exec_path(), consume_job.get_args(),
-				 consume_job.get_server_name(), consume_job.get_produce_time());
+				 consume_job.get_server_name());
 
 	  break;
 	case job_type::UNREGISTER_SERVER:
@@ -320,7 +321,6 @@ job (job_type job_type, int pid, std::string exec_path, std::string args,
   , m_exec_path {exec_path}
   , m_args {args}
   , m_server_name {server_name}
-  , m_produce_time {std::chrono::steady_clock::now ()}
 {
 }
 
@@ -352,12 +352,6 @@ std::string
 server_monitor::job::get_server_name () const
 {
   return m_server_name;
-}
-
-std::chrono::steady_clock::time_point
-server_monitor::job::get_produce_time () const
-{
-  return m_produce_time;
 }
 
 server_monitor::server_entry::

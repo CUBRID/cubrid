@@ -59,8 +59,8 @@ class server_monitor
     server_monitor &operator = (server_monitor &&) = delete;
 
     void register_server_entry (int pid, const std::string &exec_path, const std::string &args,
-				const std::string &server_name,
-				std::chrono::steady_clock::time_point revive_time);
+				const std::string &server_name
+			       );
     void remove_server_entry (const std::string &server_name);
     void revive_server (const std::string &server_name);
     int try_revive_server (const std::string &exec_path, std::vector<std::string> argv);
@@ -93,7 +93,6 @@ class server_monitor
 	std::string get_exec_path () const;
 	std::string get_args () const;
 	std::string get_server_name () const;
-	std::chrono::steady_clock::time_point get_produce_time () const;
 
       private:
 
@@ -102,7 +101,6 @@ class server_monitor
 	std::string m_exec_path;                                 // executable path of server process
 	std::string m_args;                                      // arguments of server process
 	std::string m_server_name;                               // server name
-	std::chrono::steady_clock::time_point m_produce_time;    // produced time of job
     };
 
     class server_entry
@@ -155,8 +153,7 @@ class server_monitor
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     std::queue<job> m_job_queue;                                        // job queue for monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
-    std::mutex
-    m_server_monitor_mutex;                                  // lock for synchronizing m_job_queue and m_thread_shutdown
+    std::mutex m_server_monitor_mutex;                                  // lock for syncing job_queue and thread_shutdown
     std::condition_variable m_monitor_cv_consumer;                      // condition variable for m_job_queue empty check
 
     void start_monitoring_thread ();
