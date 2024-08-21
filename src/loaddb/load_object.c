@@ -137,6 +137,7 @@ make_desc_obj (SM_CLASS * class_, int pre_alloc_varchar_size)
 	    {
 	      INT64 byte_sz = pre_alloc_varchar_size;
 	      assert (pre_alloc_varchar_size <= DB_MAX_VARCHAR_PRECISION);
+	      assert (att->domain != NULL);
 
 	      if (att->domain->precision > 0 && att->domain->precision <= pre_alloc_varchar_size)
 		{
