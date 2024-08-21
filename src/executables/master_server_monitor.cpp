@@ -78,7 +78,6 @@ server_monitor::stop_monitoring_thread ()
 
   m_monitoring_thread->join();
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is terminated. \n");
-
 }
 
 void
@@ -136,7 +135,6 @@ server_monitor::remove_server_entry (const std::string &server_name)
   fprintf (stdout,
 	   "[SERVER_REVIVE_DEBUG] : server entry has been removed from master_Server_monitor. Number of server in master_Server_monitor: %d\n",
 	   m_server_entry_map.size ());
-
 }
 
 void
@@ -152,12 +150,13 @@ server_monitor::revive_server (const std::string &server_name)
   if (entry != m_server_entry_map.end ())
     {
       entry->second.set_need_revive (true);
+
       tv = std::chrono::steady_clock::now ();
       auto timediff = std::chrono::duration_cast<std::chrono::seconds> (tv -
 		      entry->second.get_last_revive_time()).count();
+
       if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS)
 	{
-
 	  out_pid = try_revive_server (entry->second.get_exec_path(), entry->second.get_argv());
 	  if (out_pid == -1)
 	    {
@@ -311,8 +310,6 @@ server_monitor::consume_job ()
 	  break;
 	}
     }
-
-
 }
 
 server_monitor::job::

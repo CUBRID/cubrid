@@ -394,7 +394,6 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  if (!entry->ha_mode)
 	    {
               /* *INDENT-OFF* */
-
               master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER, proc_register->pid, proc_register->exec_path, proc_register->args, server_name_str);
               /* *INDENT-ON* */
 	    }
