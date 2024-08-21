@@ -25076,22 +25076,15 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	  return S_ERROR;
 	}
 
-      if (scan_cache->mvcc_snapshot != NULL)
+      if (class_oid != NULL && !mvcc_is_mvcc_disabled_class (class_oid))
 	{
-	  if (scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+	  if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
 	    {
-	      if (class_oid != NULL)
+	      if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
+		  SNAPSHOT_SATISFIED)
 		{
-		  if (!mvcc_is_mvcc_disabled_class (class_oid))
-		    {
-		      MVCC_SATISFIES_SNAPSHOT_RESULT res;
-		      res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
-		      if (res == SNAPSHOT_SATISFIED)
-			{
-			  *recdes = *peeked_recdes;
-			  return scan;
-			}
-		    }
+		  *recdes = *peeked_recdes;
+		  return scan;
 		}
 	    }
 	}
