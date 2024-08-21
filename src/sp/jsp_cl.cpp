@@ -446,7 +446,7 @@ jsp_get_owner (MOP mop_p)
   return owner;
 }
 
-const char *
+char *
 jsp_get_name (MOP mop_p)
 {
   int save;
@@ -470,6 +470,40 @@ jsp_get_name (MOP mop_p)
   return res;
 }
 
+char *
+jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
+{
+  int save;
+  DB_VALUE value;
+  int err = NO_ERROR;
+
+  assert (buf != NULL);
+  assert (buf_size > 0);
+
+  if (mop_p == NULL)
+    {
+      ERROR_SET_WARNING (err, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
+      return NULL;
+    }
+
+  AU_DISABLE (save);
+
+  /* check type */
+  err = db_get (mop_p, SP_ATTR_UNIQUE_NAME, &value);
+  if (err != NO_ERROR)
+    {
+      AU_ENABLE (save);
+      return NULL;
+    }
+
+  strncpy (buf, db_get_string (&value), buf_size);
+  pr_clear_value (&value);
+
+  AU_ENABLE (save);
+  return buf;
+}
+
 /*
  * jsp_get_owner_name - Return Java Stored Procedure'S Owner nmae
  *   return: if fail return MULL
@@ -479,14 +513,23 @@ jsp_get_name (MOP mop_p)
  * Note:
  */
 
-const char *
-jsp_get_owner_name (const char *name)
+char *
+jsp_get_owner_name (const char *name, char *buf, int buf_size)
 {
   DB_OBJECT *mop_p;
   DB_VALUE value;
   int err;
   int save;
-  char *res = NULL;
+
+  assert (buf != NULL);
+  assert (buf_size > 0);
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (err, ER_SM_INVALID_ARGUMENTS);
+      buf[0] = '\0';
+      return NULL;
+    }
 
   AU_DISABLE (save);
 
@@ -514,14 +557,14 @@ jsp_get_owner_name (const char *name)
       err = db_get (owner, "name", &value2);
       if (err == NO_ERROR)
 	{
-	  res = ws_copy_string (db_get_string (&value2));
+	  strncpy (buf, db_get_string (&value2), buf_size);
 	}
       pr_clear_value (&value2);
     }
   pr_clear_value (&value);
 
   AU_ENABLE (save);
-  return res;
+  return buf;
 }
 
 
@@ -1484,6 +1527,9 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 
   METHOD_SIG *sig = nullptr;
 
+  char owner[DB_MAX_USER_LENGTH + 1];
+  owner[0] = '\0';
+
   db_make_null (&cls);
   db_make_null (&method);
   db_make_null (&auth);
@@ -1718,8 +1764,14 @@ jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list
 
 	int directive = db_get_int (&directive_val);
 
-	const char *auth_name = (directive == SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER ? jsp_get_owner_name (
-					 parsed_method_name) : au_get_current_user_name ());
+	if (jsp_get_owner_name (parsed_method_name, owner, DB_MAX_USER_LENGTH) == NULL)
+	  {
+	    error = ER_FAILED;
+	    goto end;
+	  }
+
+	const char *auth_name = (directive == SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER ? owner :
+				 au_get_current_user_name ());
 	int auth_name_len = strlen (auth_name);
 
 	sig->auth_name = (char *) db_private_alloc (NULL, auth_name_len * sizeof (char));
