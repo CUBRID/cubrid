@@ -38,6 +38,11 @@ server_monitor::server_monitor ()
   m_server_entry_map = std::unordered_map<std::string, server_entry> ();
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_map is created. \n");
 
+  {
+    std::lock_guard<std::mutex> lock (m_server_monitor_mutex);
+    m_thread_shutdown = false;
+  }
+
   start_monitoring_thread ();
 
   fflush (stdout);
@@ -58,11 +63,6 @@ server_monitor::~server_monitor ()
 void
 server_monitor::start_monitoring_thread ()
 {
-  {
-    std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
-    m_thread_shutdown = false;
-  }
-
   m_monitoring_thread = std::make_unique<std::thread> (&server_monitor::server_monitor_thread_worker, this);
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_monitor_thread is created. \n");
 }
@@ -71,7 +71,7 @@ void
 server_monitor::stop_monitoring_thread ()
 {
   {
-    std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
+    std::lock_guard<std::mutex> lock (m_server_monitor_mutex);
     m_thread_shutdown = true;
   }
   m_monitor_cv_consumer.notify_all();
@@ -83,15 +83,29 @@ server_monitor::stop_monitoring_thread ()
 void
 server_monitor::server_monitor_thread_worker ()
 {
+  job job;
+
   while (true)
     {
-      consume_job ();
+      {
+	std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
 
-      std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
-      if (m_thread_shutdown)
+	m_monitor_cv_consumer.wait (lock, [this]
 	{
-	  break;
-	}
+	  return !m_job_queue.empty () || m_thread_shutdown;
+	});
+
+	if (m_thread_shutdown)
+	  {
+	    break;
+	  }
+	else
+	  {
+	    assert (!m_job_queue.empty ());
+	    job = consume_job ();
+	  }
+      }
+      process_job (job);
     }
 }
 
@@ -163,13 +177,13 @@ server_monitor::revive_server (const std::string &server_name)
 	    {
 	      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Fork at server revive failed. exec_path : %s, args : %s\n",
 		       entry->second.get_exec_path().c_str(), entry->second.get_argv().at (0).c_str());
-	      master_Server_monitor->produce_job (job_type::REVIVE_SERVER, -1, "", "", entry->first);
+	      produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	    }
 	  else
 	    {
 	      entry->second.set_pid (out_pid);
-	      master_Server_monitor->produce_job (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
-						  entry->first);
+	      produce_job_internal (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
+				    entry->first);
 	    }
 	  return;
 	}
@@ -196,7 +210,7 @@ server_monitor::check_server_revived (const std::string &server_name)
       if (errno == ESRCH)
 	{
 	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Can't find server process. pid : %d\n", entry->second.get_pid());
-	  master_Server_monitor->produce_job (job_type::REVIVE_SERVER, -1, "", "", entry->first);
+	  produce_job (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	}
       else
 	{
@@ -208,8 +222,8 @@ server_monitor::check_server_revived (const std::string &server_name)
     {
       constexpr int SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS = 1;
       std::this_thread::sleep_for (std::chrono::seconds (SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS));
-      master_Server_monitor->produce_job (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
-					  entry->first);
+      produce_job (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
+		   entry->first);
     }
   else
     {
@@ -248,74 +262,65 @@ server_monitor::try_revive_server (const std::string &exec_path, std::vector<std
 }
 
 void
-server_monitor::produce_job (job_type job_type, int pid, const std::string &exec_path,
-			     const std::string &args, const std::string &server_name)
+server_monitor::produce_job_internal (job_type job_type, int pid, const std::string &exec_path,
+				      const std::string &args, const std::string &server_name)
 {
   server_monitor::job job (job_type, pid, exec_path, args, server_name);
 
   {
-    std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
-    if (m_thread_shutdown)
-      {
-	return;
-      }
-    m_job_queue.push (job);
+    std::lock_guard<std::mutex> lock (m_server_monitor_mutex);
+    m_job_queue.emplace (job);
   }
-  m_monitor_cv_consumer.notify_all();
 }
 
 void
+server_monitor::produce_job (job_type job_type, int pid, const std::string &exec_path,
+			     const std::string &args, const std::string &server_name)
+{
+  produce_job_internal (job_type, pid, exec_path, args, server_name);
+  m_monitor_cv_consumer.notify_all();
+}
+
+server_monitor::job
 server_monitor::consume_job ()
 {
   job consume_job;
 
-  {
-    std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
-    m_monitor_cv_consumer.wait (lock, [this] ()
+  consume_job = m_job_queue.front ();
+  m_job_queue.pop ();
+
+  return consume_job;
+}
+
+void
+server_monitor::process_job (job consume_job)
+{
+  switch (consume_job.get_job_type ())
     {
-      return !m_job_queue.empty () || m_thread_shutdown;
-    });
-  }
+    case job_type::REGISTER_SERVER:
+      register_server_entry (consume_job.get_pid(), consume_job.get_exec_path(), consume_job.get_args(),
+			     consume_job.get_server_name());
 
-  while (true)
-    {
-      {
-	std::unique_lock<std::mutex> lock (m_server_monitor_mutex);
-	if (m_thread_shutdown || m_job_queue.empty ())
-	  {
-	    break;
-	  }
-	consume_job = m_job_queue.front ();
-	m_job_queue.pop ();
-      }
-
-      switch (consume_job.get_job_type ())
-	{
-	case job_type::REGISTER_SERVER:
-	  register_server_entry (consume_job.get_pid(), consume_job.get_exec_path(), consume_job.get_args(),
-				 consume_job.get_server_name());
-
-	  break;
-	case job_type::UNREGISTER_SERVER:
-	  remove_server_entry (consume_job.get_server_name());
-	  break;
-	case job_type::REVIVE_SERVER:
-	  revive_server (consume_job.get_server_name());
-	  break;
-	case job_type::CONFIRM_REVIVE_SERVER:
-	  check_server_revived (consume_job.get_server_name());
-	  break;
-	case job_type::JOB_MAX:
-	default:
-	  assert (false);
-	  break;
-	}
+      break;
+    case job_type::UNREGISTER_SERVER:
+      remove_server_entry (consume_job.get_server_name());
+      break;
+    case job_type::REVIVE_SERVER:
+      revive_server (consume_job.get_server_name());
+      break;
+    case job_type::CONFIRM_REVIVE_SERVER:
+      check_server_revived (consume_job.get_server_name());
+      break;
+    case job_type::JOB_MAX:
+    default:
+      assert (false);
+      break;
     }
 }
 
 server_monitor::job::
-job (job_type job_type, int pid, std::string exec_path, std::string args,
-     std::string server_name)
+job (job_type job_type, int pid, const std::string &exec_path, const std::string &args,
+     const std::string &server_name)
   : m_job_type {job_type}
   , m_pid {pid}
   , m_exec_path {exec_path}
@@ -355,7 +360,7 @@ server_monitor::job::get_server_name () const
 }
 
 server_monitor::server_entry::
-server_entry (int pid, std::string exec_path, std::string args,
+server_entry (int pid, const std::string &exec_path, const std::string &args,
 	      std::chrono::steady_clock::time_point revive_time)
   : m_pid {pid}
   , m_exec_path {exec_path}
@@ -405,7 +410,7 @@ server_monitor::server_entry::set_pid (int pid)
 }
 
 void
-server_monitor::server_entry::set_exec_path (std::string exec_path)
+server_monitor::server_entry::set_exec_path (const std::string &exec_path)
 {
   m_exec_path = exec_path;
 }

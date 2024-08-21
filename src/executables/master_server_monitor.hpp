@@ -45,29 +45,9 @@ class server_monitor
       REGISTER_SERVER = 0,
       UNREGISTER_SERVER = 1,
       REVIVE_SERVER = 2,
-      CONFIRM_REVIVE_SERVER =  3,
+      CONFIRM_REVIVE_SERVER = 3,
       JOB_MAX
     };
-
-    server_monitor ();
-    ~server_monitor ();
-
-    server_monitor (const server_monitor &) = delete;
-    server_monitor (server_monitor &&) = delete;
-
-    server_monitor &operator = (const server_monitor &) = delete;
-    server_monitor &operator = (server_monitor &&) = delete;
-
-    void register_server_entry (int pid, const std::string &exec_path, const std::string &args,
-				const std::string &server_name);
-    void remove_server_entry (const std::string &server_name);
-    void revive_server (const std::string &server_name);
-    int try_revive_server (const std::string &exec_path, std::vector<std::string> argv);
-    void check_server_revived (const std::string &server_name);
-
-    void produce_job (job_type job_type, int pid, const std::string &exec_path, const std::string &args,
-		      const std::string &server_name);
-    void consume_job ();
 
   private:
 
@@ -76,13 +56,13 @@ class server_monitor
 
       public:
 
-	job (job_type job_type, int pid, std::string exec_path, std::string args,
-	     std::string server_name);
+	job (job_type job_type, int pid, const std::string &exec_path, const std::string &args,
+	     const std::string &server_name);
 	job () : m_job_type (job_type::JOB_MAX) {};
 	~job () {};
 
 	job (const job &) = default;
-	job (job &&) = delete;
+	job (job &&) = default;
 
 	job &operator= (const job &) = default;
 	job &operator= (job &&) = default;
@@ -102,10 +82,38 @@ class server_monitor
 	std::string m_server_name;                               // server name
     };
 
+  public:
+
+    server_monitor ();
+    ~server_monitor ();
+
+    server_monitor (const server_monitor &) = delete;
+    server_monitor (server_monitor &&) = delete;
+
+    server_monitor &operator = (const server_monitor &) = delete;
+    server_monitor &operator = (server_monitor &&) = delete;
+
+    void register_server_entry (int pid, const std::string &exec_path, const std::string &args,
+				const std::string &server_name);
+    void remove_server_entry (const std::string &server_name);
+    void revive_server (const std::string &server_name);
+    int try_revive_server (const std::string &exec_path, std::vector<std::string> argv);
+    void check_server_revived (const std::string &server_name);
+
+    void produce_job_internal (job_type job_type, int pid, const std::string &exec_path, const std::string &args,
+			       const std::string &server_name);
+    void produce_job (job_type job_type, int pid, const std::string &exec_path, const std::string &args,
+		      const std::string &server_name);
+
+    job consume_job ();
+    void process_job (job consume_job);
+
+  private:
+
     class server_entry
     {
       public:
-	server_entry (int pid, std::string exec_path, std::string args,
+	server_entry (int pid, const std::string &exec_path, const std::string &args,
 		      std::chrono::steady_clock::time_point revive_time);
 	~server_entry () {};
 
@@ -133,7 +141,7 @@ class server_monitor
 	std::chrono::steady_clock::time_point get_last_revive_time () const;
 
 	void set_pid (int pid);
-	void set_exec_path (std::string exec_path);
+	void set_exec_path (const std::string &exec_path);
 	void set_need_revive (bool need_revive);
 	void set_last_revive_time (std::chrono::steady_clock::time_point revive_time);
 
@@ -148,10 +156,9 @@ class server_monitor
     };
 
     std::unordered_map <std::string, server_entry> m_server_entry_map;  // map of server entries
-
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     std::queue<job> m_job_queue;                                        // job queue for monitoring thread
-    volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
+    bool m_thread_shutdown;                                             // flag to shutdown monitoring thread
     std::mutex m_server_monitor_mutex;                                  // lock that syncs m_job_queue and m_thread_shutdown
     std::condition_variable m_monitor_cv_consumer;                      // condition variable for m_job_queue empty check
 
