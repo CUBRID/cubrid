@@ -627,11 +627,12 @@ namespace cubload
     return size;
   }
 
+
+#define LOADDB_BUFFER_SIZE_LIMIT ((size_t)(((1024 * 1024 * 2) - 1) * 1024LL)) /* (2GB - 1K) */
   static int
-  append_incomplete_row (std::ifstream &object_file, std::string &batch_buffer, std::string &one_row_buffer,
-			 batch_handler &b_handler,
-			 class_id &clsid, batch_id &batch_id, size_t size_limit, int lineno, int &one_row_lineno, int &batch_start_offset,
-			 int64_t &batch_rows)
+  append_incomplete_row (std::string &batch_buffer, std::string &one_row_buffer, batch_handler &b_handler,
+			 class_id &clsid, batch_id &batch_id, int lineno,
+			 int &one_row_lineno, int &batch_start_offset, int64_t &batch_rows)
   {
     int error_code = NO_ERROR;
 
@@ -639,12 +640,11 @@ namespace cubload
 
     // The content contained in one_row_buffer may not be a complete row.
     // TODO: How about handling errors right away without having to send them to the server?
-    if ((one_row_buffer.size() + batch_buffer.size()) >= size_limit)
+    if ((one_row_buffer.size() + batch_buffer.size()) >= LOADDB_BUFFER_SIZE_LIMIT)
       {
 	error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
 	if (error_code != NO_ERROR)
 	  {
-	    object_file.close ();
 	    return error_code;
 	  }
 	// Next batch should start from the following line.
@@ -673,8 +673,8 @@ namespace cubload
     bool class_is_ignored = false;
     short single_quote_checker = 0;
     bool  size_over = false;
-    size_t size_limit = (((1024 * 1024 * 2) - 1) * 1024LL); // (2GB - 1K)
 #define DEFAULT_STRING_SZ (4096)
+#define DEFAULT_ONEROW_BUF_SZ (1024*1024*1) // 1MB
     size_t size_bk = DEFAULT_STRING_SZ;
 
     if (object_file_name.empty ())
@@ -691,7 +691,10 @@ namespace cubload
 
     assert (batch_size > 0);
 
-    one_row_buffer.reserve (1024*1024*1); // 1MB
+    /* one_row_buffer reuses allocated space.
+     * batch_buffer does not reuse allocated space. Instead, it reallocates to the maximum size it used.
+     */
+    one_row_buffer.reserve (DEFAULT_ONEROW_BUF_SZ);
     batch_buffer.reserve (DEFAULT_STRING_SZ);
 
     for (std::string line; std::getline (object_file, line); ++lineno, ++one_row_lineno)
@@ -703,10 +706,11 @@ namespace cubload
 	  {
 	    if (one_row_buffer.empty() == false)
 	      {
-		error_code = append_incomplete_row (object_file, batch_buffer, one_row_buffer, b_handler, clsid, batch_id, size_limit,
+		error_code = append_incomplete_row (batch_buffer, one_row_buffer, b_handler, clsid, batch_id,
 						    lineno, one_row_lineno, batch_start_offset, batch_rows);
 		if (error_code != NO_ERROR)
 		  {
+		    object_file.close ();
 		    return error_code;
 		  }
 	      }
@@ -787,7 +791,7 @@ namespace cubload
 	    continue;
 	  }
 
-	if ((one_row_buffer.size() + batch_buffer.size()) >= size_limit)
+	if ((one_row_buffer.size() + batch_buffer.size()) >= LOADDB_BUFFER_SIZE_LIMIT)
 	  {
 	    size_over = true;
 	  }
@@ -834,10 +838,11 @@ namespace cubload
 
     if (one_row_buffer.empty() == false)
       {
-	error_code = append_incomplete_row (object_file, batch_buffer, one_row_buffer, b_handler, clsid, batch_id, size_limit,
+	error_code = append_incomplete_row (batch_buffer, one_row_buffer, b_handler, clsid, batch_id,
 					    lineno, one_row_lineno, batch_start_offset, batch_rows);
 	if (error_code != NO_ERROR)
 	  {
+	    object_file.close ();
 	    return error_code;
 	  }
       }
