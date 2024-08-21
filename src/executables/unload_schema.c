@@ -177,10 +177,6 @@ typedef enum
   EXTRACT_VCLASS
 } EXTRACT_CLASS_TYPE;
 
-// *INDENT-OFF*
-using func_emit_procedure_type = std::function <int (extract_context &, print_output &)>;
-// *INDENT-ON*
-
 static void filter_system_classes (DB_OBJLIST ** class_list);
 static void filter_unrequired_classes (DB_OBJLIST ** class_list);
 static int is_dependent_class (DB_OBJECT * class_, DB_OBJLIST * unordered, DB_OBJLIST * ordered);
