@@ -79,6 +79,7 @@ public class SUStatement {
 
     int fetchedTupleNumber = 0;
     int fetchedStartCursorPosition = -1; /* start pos of fetched buffer */
+    int fetchedEndCursorPosition = 0;
 
     boolean isFetched = false;
 
@@ -333,7 +334,7 @@ public class SUStatement {
         /* need not to send fetch request */
         if (fetchedStartCursorPosition >= 0
                 && fetchedStartCursorPosition <= cursorPosition
-                && cursorPosition < fetchedStartCursorPosition + fetchedTupleNumber) {
+                && cursorPosition < fetchedEndCursorPosition) {
             return;
         }
 
@@ -350,8 +351,10 @@ public class SUStatement {
 
         fetchedTupleNumber = fetchInfo.numFetched;
         fetchedStartCursorPosition = fetchInfo.tuples[0].tupleNumber() - 1;
-        cursorPosition =
-                fetchedStartCursorPosition; // update cursorPosition to the fetched start position.
+        fetchedEndCursorPosition = fetchedStartCursorPosition + fetchedTupleNumber;
+
+        // update cursorPosition to the fetched start position
+        cursorPosition = fetchedStartCursorPosition;
     }
 
     public void moveCursor(int offset, int origin) {
