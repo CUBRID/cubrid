@@ -1447,9 +1447,7 @@ $ LOADDB
 1359 Java VM crashed: %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
-1361 Invalid result cache for subquery.
-
-1362 最后一个错误.
+1361 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
