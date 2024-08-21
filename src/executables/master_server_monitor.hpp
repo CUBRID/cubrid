@@ -59,8 +59,7 @@ class server_monitor
     server_monitor &operator = (server_monitor &&) = delete;
 
     void register_server_entry (int pid, const std::string &exec_path, const std::string &args,
-				const std::string &server_name
-			       );
+				const std::string &server_name);
     void remove_server_entry (const std::string &server_name);
     void revive_server (const std::string &server_name);
     int try_revive_server (const std::string &exec_path, std::vector<std::string> argv);
@@ -153,14 +152,12 @@ class server_monitor
     std::unique_ptr<std::thread> m_monitoring_thread;                   // monitoring thread
     std::queue<job> m_job_queue;                                        // job queue for monitoring thread
     volatile bool m_thread_shutdown;                                    // flag to shutdown monitoring thread
-    std::mutex m_server_monitor_mutex;                                  // lock for syncing job_queue and thread_shutdown
+    std::mutex m_server_monitor_mutex;                                  // lock that syncs m_job_queue and m_thread_shutdown
     std::condition_variable m_monitor_cv_consumer;                      // condition variable for m_job_queue empty check
 
     void start_monitoring_thread ();
     void stop_monitoring_thread ();
     void server_monitor_thread_worker ();
-
-
 };
 
 extern std::unique_ptr<server_monitor> master_Server_monitor;
