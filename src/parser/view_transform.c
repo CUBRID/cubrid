@@ -1674,7 +1674,7 @@ pt_check_odku_has_vclass (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, in
 
       if (class_ && mq_translatable_class (parser, class_))
 	{
-	  class_->info.name.flag |= PT_NAME_INFO_REFERENCED_AT_ODKU;
+	  PT_NAME_INFO_SET_FLAG (class_, PT_NAME_INFO_REFERENCED_AT_ODKU);
 	}
     }
 
