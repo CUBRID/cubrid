@@ -7632,6 +7632,11 @@ qexec_hash_outer_join_fill_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	{
 	  break;
 	}
+
+      if (on_trace)
+	{
+	  stats->probe.rows++;
+	}
     }
 
   if (on_trace)
@@ -7878,7 +7883,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   HASH_LIST_SCAN *hash_scan;
   HASH_METHOD hash_method;
   HASH_SCAN_KEY *key, *found_key;
-  int max_entry;
+  int max_collisions;
 
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
@@ -8007,7 +8012,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	  TSC_ADD_TIMEVAL (stats->probe.test_time2, tv_diff);
 #endif
 
-	  max_entry = 0;
+	  max_collisions = 0;
 	}
 
       do
@@ -8041,7 +8046,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	      tsc_getticks (&start_tick);
 #endif
 
-	      max_entry++;
+	      max_collisions++;
 	    }
 
 	  error =
@@ -8090,21 +8095,23 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	      goto exit_on_error;
 	    }
 
-#if defined(TEST_HASH_JOIN_TEST_TIME)
 	  if (on_trace)
 	    {
+#if defined(TEST_HASH_JOIN_TEST_TIME)
 	      tsc_getticks (&end_tick);
 	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	      TSC_ADD_TIMEVAL (stats->probe.test_time5, tv_diff);
-	    }
 #endif
+
+	      stats->probe.rows++;
+	    }
 	}
       while (true);
 
       if (on_trace)
 	{
-	  stats->probe.probes += max_entry;
-	  stats->probe.max_entry = MAX (stats->probe.max_entry, max_entry);
+	  stats->probe.readkeys += max_collisions;
+	  stats->probe.max_collisions = MAX (stats->probe.max_collisions, max_collisions);
 	}
     }
 
@@ -8148,7 +8155,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
   HASH_LIST_SCAN *hash_scan;
   HASH_METHOD hash_method;
   HASH_SCAN_KEY *key, *found_key;
-  int max_entry;
+  int max_collisions;
 
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
@@ -8285,6 +8292,11 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 	      goto exit_on_error;
 	    }
 
+	  if (on_trace)
+	    {
+	      stats->probe.rows++;
+	    }
+
 	  /* Give up and read the next tuple. */
 	  continue;
 	}
@@ -8299,7 +8311,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 
       if (on_trace)
 	{
-	  max_entry = 0;
+	  max_collisions = 0;
 	}
 
       do
@@ -8318,7 +8330,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 
 	  if (on_trace)
 	    {
-	      max_entry++;
+	      max_collisions++;
 	    }
 
 	  error =
@@ -8396,6 +8408,11 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 	      goto exit_on_error;
 	    }
 
+	  if (on_trace)
+	    {
+	      stats->probe.rows++;
+	    }
+
 	  is_outer_filled = true;
 
 	  /* If the scan works in single_fetch mode and the first qualified scan item has now been fetched, return immediately. */
@@ -8408,8 +8425,8 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 
       if (on_trace)
 	{
-	  stats->probe.probes += max_entry;
-	  stats->probe.max_entry = MAX (stats->probe.max_entry, max_entry);
+	  stats->probe.readkeys += max_collisions;
+	  stats->probe.max_collisions = MAX (stats->probe.max_collisions, max_collisions);
 	}
 
       if (is_outer_filled == false)
@@ -8433,6 +8450,11 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
+	    }
+
+	  if (on_trace)
+	    {
+	      stats->probe.rows++;
 	    }
 	}
     }

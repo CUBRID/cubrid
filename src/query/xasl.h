@@ -390,23 +390,27 @@ struct hashjoin_stats
   {
     struct timeval elapsed_time;
     struct timeval build_time;
+    UINT64 fetches;
+    UINT64 fetch_time;
+    UINT64 ioreads;
 
 #if defined(TEST_HASH_JOIN_TEST_TIME)
     struct timeval test_time1;	/* qexec_hash_join_fetch_key */
     struct timeval test_time2;	/* qdata_hash_scan_key */
     struct timeval test_time3;	/* qexec_hash_join_build_key */
 #endif
-
-    UINT64 fetches;
-    UINT64 ioreads;
-    UINT64 fetch_time;
-    UINT32 ncollisions;
   } build;
 
   struct
   {
     struct timeval elapsed_time;
     struct timeval probe_time;
+    UINT64 fetches;
+    UINT64 fetch_time;
+    UINT64 ioreads;
+    UINT64 readkeys;
+    UINT64 rows;
+    UINT32 max_collisions;
 
 #if defined(TEST_HASH_JOIN_TEST_TIME)
     struct timeval test_time1;	/* qexec_hash_join_fetch_key */
@@ -415,12 +419,6 @@ struct hashjoin_stats
     struct timeval test_time4;	/* qexec_hash_join_fetch_key */
     struct timeval test_time5;	/* qexec_merge_tuple_add_list */
 #endif
-
-    UINT64 fetches;
-    UINT64 ioreads;
-    UINT64 fetch_time;
-    UINT32 probes;
-    UINT32 max_entry;
   } probe;
 };
 #endif

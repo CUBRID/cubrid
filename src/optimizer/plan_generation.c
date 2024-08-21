@@ -749,6 +749,10 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
 	  merge_info->ls_inner_column[value_index] = found_index;
 	}
+
+      /* currently, not used */
+      merge_info->ls_outer_unique[value_index] = false;
+      merge_info->ls_inner_unique[value_index] = false;
     }
 
   assert (value_index == merge_info->ls_column_cnt);
