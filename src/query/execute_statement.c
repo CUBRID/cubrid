@@ -3512,14 +3512,61 @@ end:
 }
 
 static PT_NODE *
+do_check_cte_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  bool *has_cte_spec = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (stmt->node_type != PT_SPEC)
+    {
+      return stmt;
+    }
+
+  if (stmt->info.spec.cte_pointer)
+    {
+      *has_cte_spec = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return stmt;
+}
+
+static PT_NODE *
 do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int *err = (int *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
+  switch (stmt->node_type)
     {
+    case PT_UNION:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+      (void *) parser_walk_tree (parser, stmt->info.query.q.union_.arg1, do_prepare_subquery_pre, err, NULL, NULL);
+      if (*err != NO_ERROR)
+	{
+	  goto stop_walk;
+	}
+      (void *) parser_walk_tree (parser, stmt->info.query.q.union_.arg2, do_prepare_subquery_pre, err, NULL, NULL);
+      goto stop_walk;
+
+    case PT_CREATE_TRIGGER:
+    case PT_ALTER:
+      goto stop_walk;
+
+    case PT_CREATE_ENTITY:
+      if (stmt->info.create_entity.entity_type != PT_CLASS)
+	{
+	  goto stop_walk;
+	}
+      return stmt;
+
+    case PT_SELECT:
+      break;
+
+    default:
       return stmt;
     }
 
@@ -3527,13 +3574,33 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
+      bool has_cte_spec = false;
+
+      /* exclude cache from CTE referencing */
+      parser_walk_tree (parser, stmt, do_check_cte_spec, &has_cte_spec, NULL, NULL);
+
+      if (has_cte_spec)
+	{
+	  goto stop_walk;
+	}
+
       *err = do_prepare_subquery (parser, stmt);
+
       if (*err != NO_ERROR)
 	{
-	  *continue_walk = PT_STOP_WALK;
+	  goto stop_walk;
+	}
+      else
+	{
+	  /* no more deep walking tree for excluding nested caching */
+	  *continue_walk = PT_LIST_WALK;
 	}
     }
 
+  return stmt;
+
+stop_walk:
+  *continue_walk = PT_STOP_WALK;
   return stmt;
 }
 

@@ -639,6 +639,8 @@ struct t_shm_appl_server
   char cgw_link_odbc_driver_name[CGW_LINK_ODBC_DRIVER_NAME_LEN];
   char cgw_link_connect_url_property[CGW_LINK_CONNECT_URL_PROPERTY_LEN];
 
+  char acl_broker_allow;
+
   ACCESS_INFO access_info[ACL_MAX_ITEM_COUNT];
 
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];

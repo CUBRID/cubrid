@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Geçersiz uzunluk veya karakter '%1$c' veritabanı adı '%2$s' \n
@@ -130,6 +131,7 @@ Mevcut yönetici yardımcı programı-adı:\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz:http://www.cubrid.org\n
@@ -192,6 +194,7 @@ Mevcut yönetici programları:\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz: http://www.cubrid.org\n
@@ -1309,3 +1312,19 @@ geçerli seçenekler:\n\
                                 flashback için; varsayılan: yalnızca flashback için SQL deyimlerini verir\n\
     --oldest                    flashback, başlangıç zamanından bitiş zamanına kadar yürütülen SQL ifadeleri için kronolojik sırayla\n\
                                 gerçekleştirilir; varsayılan: en son\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 Lütfen 'cubrid.conf' dosyasında sistem parametresi 'enable_memory_monitoring' değerini ayarlayın ve veritabanı sunucusunu yeniden başlatın.\n
+2 memmon, bağımsız çalışma modunda çalıştırılamaz.\n
+3 Dosya adı %1$s olan çıkış dosyası açılamadı.\n
+4 Sunucuda bellek izleme başarıyla devre dışı bırakıldı.\n
+5 disable-force diğer seçeneklerle birlikte kullanılamaz.\n
+6 Sunucuda bellek izleme devre dışı bırakıldı. Sunucuyu yeniden başlattıktan sonra tekrar kullanabilirsiniz.\n
+7 memmon bu işletim sisteminde desteklenmiyor.\n
+60 \
+memmon: Bir veritabanı sunucusunun bellek kullanımı bilgilerini sağlar.\n\
+kullanım: %1$s memmon [SEÇENEK] veritabanı-adı\n\
+\n\
+geçerli seçenek:\n\
+    -o, --output-file=FILE    sonuçları DOSYA'ya çıkar\n\
+    --disable-force           sunucunun bellek izleme özelliğini zorla devre dışı bırakın.\n

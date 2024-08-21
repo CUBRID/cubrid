@@ -57,6 +57,8 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if __WORDSIZE == 32
 #define GET_PTR_FOR_HASH(key) ((unsigned int)(key))

@@ -83,6 +83,8 @@
 #include "subquery_cache.h"
 
 #include <vector>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 // XASL_STATE
 typedef struct xasl_state XASL_STATE;
