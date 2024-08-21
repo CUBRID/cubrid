@@ -46,7 +46,10 @@
 #include "jsp_file.h"
 #include "jsp_comm.h"
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "boot_sr.h"
+#endif
+
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "release_string.h"
@@ -729,12 +732,10 @@ jsp_start_server (const char *db_name, const char *path, int port)
   }
 
 exit:
-#if defined (SA_MODE)
   if (jvm != NULL)
     {
       JVM_DetachCurrentThread (jvm);
     }
-#endif
 
   return er_errid ();
 }
@@ -754,6 +755,7 @@ jsp_server_port (void)
   return sp_port;
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * jsp_server_port_from_info
  *   return: if jsp is disabled return -2 (JAVASP_PORT_DISABLED)
@@ -778,6 +780,7 @@ jsp_server_port_from_info (void)
   return sp_port = jsp_info.port;
 #endif
 }
+#endif
 
 /*
  * jsp_jvm_is_loaded

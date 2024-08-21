@@ -42,6 +42,7 @@ import com.cubrid.jsp.data.AuthInfo;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.CompileInfo;
+import com.cubrid.jsp.data.CompileRequest;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -358,12 +359,20 @@ public class ExecuteThread extends Thread {
 
     private void processCompile() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
-        boolean verbose = unpacker.unpackBool();
-        String inSource = unpacker.unpackCString();
+
+        CompileRequest request = new CompileRequest(unpacker);
+
+        // TODO: Pass CompileRequest directly to compilePLCSQL ()
+        boolean verbose = false;
+        if (request.mode.contains("v")) {
+            verbose = true;
+        }
+        String inSource = request.code;
+        String owner = request.owner;
 
         CompileInfo info = null;
         try {
-            info = PlcsqlCompilerMain.compilePLCSQL(inSource, verbose);
+            info = PlcsqlCompilerMain.compilePLCSQL(inSource, owner, verbose);
             if (info.errCode == 0) {
                 MemoryJavaCompiler compiler = new MemoryJavaCompiler();
                 SourceCode sCode = new SourceCode(info.className, info.translated);

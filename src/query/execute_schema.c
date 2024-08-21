@@ -1799,12 +1799,12 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      assert (db_auth == DB_AUTH_EXECUTE);
 
 	      PT_NODE *p_list = spec_list;
-	      for (PT_NODE * procs = p_list->info.grant.spec_list; procs != NULL; procs = procs->next)
+	      for (PT_NODE * procs = p_list; procs != NULL; procs = procs->next)
 		{
 		  // [TODO] Resovle user schema name, built-in package name
 		  const char *proc_name = procs->info.name.original;
 
-		  MOP proc_mop = jsp_find_stored_procedure (proc_name);
+		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
 		  if (proc_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
@@ -1812,9 +1812,11 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		      goto end;
 		    }
 
-		  // TODO: In CBRD-24912, GRANT/REVOKE for stored procedure is implemented, the following will be processed properly
-		  // error = db_grant_object (user_obj, proc_mop)
-		  error = NO_ERROR;	// TODO
+		  error = db_grant_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth, grant_option);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
 		}
 	    }
 	  else
@@ -1832,7 +1834,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 			  goto end;
 			}
 
-		      error = db_grant (user_obj, class_mop, db_auth, grant_option);
+		      error = db_grant_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth, grant_option);
 		      if (error != NO_ERROR)
 			{
 			  goto end;
@@ -1899,24 +1901,54 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  s_list = spec_list;
-	  for (spec = s_list; spec != NULL; spec = spec->next)
+	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV
+	      || auth->info.auth_cmd.auth_cmd == PT_EXECUTE_FUNCTION_PRIV)
 	    {
-	      entity_list = spec->info.spec.flat_entity_list;
-	      for (entity = entity_list; entity != NULL; entity = entity->next)
+	      // NOTE: db_auth is always DB_AUTH_EXECUTE
+	      assert (db_auth == DB_AUTH_EXECUTE);
+
+	      PT_NODE *p_list = spec_list;
+	      for (PT_NODE * procs = p_list; procs != NULL; procs = procs->next)
 		{
-		  class_mop = db_find_class (entity->info.name.original);
-		  if (class_mop == NULL)
+		  // [TODO] Resovle user schema name, built-in package name
+		  const char *proc_name = procs->info.name.original;
+
+		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
+		  if (proc_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      goto end;
 		    }
 
-		  error = db_revoke (user_obj, class_mop, db_auth);
+		  // TODO: In CBRD-24912, GRANT/REVOKE for stored procedure is implemented, the following will be processed properly
+		  error = db_revoke_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth);
 		  if (error != NO_ERROR)
 		    {
 		      goto end;
+		    }
+		}
+	    }
+	  else
+	    {
+	      for (PT_NODE * spec = spec_list; spec != NULL; spec = spec->next)
+		{
+		  entity_list = spec->info.spec.flat_entity_list;
+		  for (entity = entity_list; entity != NULL; entity = entity->next)
+		    {
+		      class_mop = db_find_class (entity->info.name.original);
+		      if (class_mop == NULL)
+			{
+			  assert (er_errid () != NO_ERROR);
+			  error = er_errid ();
+			  goto end;
+			}
+
+		      error = db_revoke_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
 		    }
 		}
 	    }
@@ -2062,7 +2094,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
   if (password != NULL)
     {
-      error = au_set_password (user, password);
+      error = au_set_password_encrypt (user, password);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2271,7 +2303,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (node != NULL)
     {
       password = IS_STRING (node) ? GET_STRING (node) : NULL;
-      error = au_set_password (user, password);
+      error = au_set_password_encrypt (user, password);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -11132,6 +11164,26 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
     {
       attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* 
+   * DEFAULT value and AUTO INCREMENT cannot be defined for the same column.
+   * Therefore, it will change to the property on which the last MODIFY statement was executed. 
+   */
+  if (attr_def->info.attr_def.data_default != NULL)
+    {
+      if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
+	{
+	  attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_LOST;
+	}
+    }
+  else if (attr_def->info.attr_def.auto_increment != NULL)
+    {
+      if ((!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
+	   || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE))
+	{
+	  attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_LOST;
+	}
     }
 
   /* existing FOREIGN KEY (referencing) */

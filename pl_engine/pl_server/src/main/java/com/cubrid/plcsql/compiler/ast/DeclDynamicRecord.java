@@ -28,23 +28,40 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.ast;
 
-public class SemanticError extends RuntimeException {
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-    public final int line;
-    public final int column;
+public class DeclDynamicRecord extends DeclIdTyped {
 
-    public SemanticError(int line, int column, String msg) {
-        super(msg);
-        this.line = line;
-        this.column = column;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
-    public SemanticError(int[] lineColumn, String msg) {
-        super(msg);
-        assert lineColumn.length == 2;
-        this.line = lineColumn[0];
-        this.column = lineColumn[1];
+    public final String name;
+    public final TypeSpec typeSpec;
+
+    public DeclDynamicRecord(ParserRuleContext ctx, String name, TypeSpec typeSpec) {
+        super(ctx);
+
+        this.name = name;
+        this.typeSpec = typeSpec;
+    }
+
+    public TypeSpec typeSpec() {
+        return typeSpec;
+    }
+
+    @Override
+    public String name() {
+        return name;
+    }
+
+    @Override
+    public String kind() {
+        return "dynamic record";
     }
 }

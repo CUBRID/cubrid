@@ -177,6 +177,10 @@ typedef enum
   EXTRACT_VCLASS
 } EXTRACT_CLASS_TYPE;
 
+// *INDENT-OFF*
+using func_emit_procedure_type = std::function <int (extract_context &, print_output &)>;
+// *INDENT-ON*
+
 static void filter_system_classes (DB_OBJLIST ** class_list);
 static void filter_unrequired_classes (DB_OBJLIST ** class_list);
 static int is_dependent_class (DB_OBJECT * class_, DB_OBJLIST * unordered, DB_OBJLIST * ordered);
@@ -233,8 +237,9 @@ static void emit_methfile_def (print_output & output_ctx, DB_METHFILE * methfile
 static void emit_partition_parts (print_output & output_ctx, SM_PARTITION * partition_info, int partcnt);
 static void emit_partition_info (extract_context & ctxt, print_output & output_ctx, MOP clsobj);
 
+static int emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx);
+static int emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx);
 static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg_set);
-static int emit_stored_procedure (extract_context & ctxt, print_output & output_ctx);
 static int emit_stored_procedure_code (print_output & output_ctx, const char *name);
 
 static int emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
@@ -253,7 +258,7 @@ static int extract_schema (extract_context & ctxt, print_output & schema_output_
 static int extract_user (extract_context & ctxt);
 static int extract_serial (extract_context & ctxt);
 static int extract_synonym (extract_context & ctxt);
-static int extract_procedure (extract_context & ctxt);
+static int extract_procedure (extract_context & ctxt, func_emit_procedure_type extract_proc_func);
 static int extract_server (extract_context & ctxt);
 static int extract_class (extract_context & ctxt);
 static int extract_vclass (extract_context & ctxt);
@@ -1436,7 +1441,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
       err_count++;
     }
 
-  if (required_class_only == false && emit_stored_procedure (ctxt, schema_output_ctx) != NO_ERROR)
+  if (required_class_only == false && emit_stored_procedure_pre (ctxt, schema_output_ctx) != NO_ERROR)
     {
       err_count++;
     }
@@ -1490,6 +1495,11 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 
   emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_VCLASS);
   if (er_errid () != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (required_class_only == false && emit_stored_procedure_post (ctxt, schema_output_ctx) != NO_ERROR)
     {
       err_count++;
     }
@@ -1963,13 +1973,16 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   PARSER_CONTEXT *parser;
   PT_NODE **query_ptr;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH];
+  owner_name[0] = '\0';
   char *class_name = NULL;
   const char *null_spec;
   bool has_using_index;
   bool change_vclass_spec;
   int i;
-  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  char output_owner[DB_MAX_USER_LENGTH + 4];
+  output_owner[0] = '\0';
+  char *query_ptr_result;
 
   /*
    * pass 1, emit NULL spec lists for vclasses that have attribute
@@ -2031,6 +2044,8 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 		  continue;
 		}
 
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+
 	      query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	      if (query_ptr != NULL)
 		{
@@ -2077,22 +2092,43 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
       for (s = specs, i = 1; s != NULL; s = db_query_spec_next (s), i++)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	  if (change_vclass_spec)
-	    {			/* change the existing spec lists */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
 
-	      output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
+	  parser = parser_create_parser ();
+	  if (parser == NULL)
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
+	      continue;
+	    }
+
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+
+	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
+	  if (query_ptr != NULL)
+	    {
+	      query_ptr_result = parser_print_tree_with_quotes (parser, *query_ptr);
+	      if (change_vclass_spec)
+		{		/* change the existing spec lists */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), i, query_ptr_result);
+		}
+	      else
+		{		/* emit the usual statements */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), query_ptr_result);
+		}
 	    }
 	  else
-	    {			/* emit the usual statements */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
-
-	      output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
 	    }
+
+	  parser_free_parser (parser);
 	}
     }
 
@@ -2120,6 +2156,7 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
   bool change_vclass_spec;
   int i;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  char *query_ptr_result;
 
   /*
    * pass 1, emit NULL spec lists for vclasses that have attribute
@@ -2156,6 +2193,9 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	    {
 	      continue;
 	    }
+
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+
 	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	  if (query_ptr != NULL)
 	    {
@@ -2191,22 +2231,44 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
       for (s = specs, i = 1; s; s = db_query_spec_next (s), i++)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	  if (change_vclass_spec)
-	    {			/* change the existing spec lists */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
 
-	      output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
+	  parser = parser_create_parser ();
+	  if (parser == NULL)
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
+	      continue;
+	    }
+
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+
+	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
+	  if (query_ptr != NULL)
+	    {
+	      query_ptr_result = parser_print_tree_with_quotes (parser, *query_ptr);
+
+	      if (change_vclass_spec)
+		{		/* change the existing spec lists */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), i, query_ptr_result);
+		}
+	      else
+		{		/* emit the usual statements */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), query_ptr_result);
+		}
 	    }
 	  else
-	    {			/* emit the usual statements */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
-
-	      output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
 	    }
+
+	  parser_free_parser (parser);
 	}
     }
 
@@ -4318,17 +4380,17 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
 }
 
 /*
- * emit_stored_procedure - emit stored procedure
+ * emit_stored_procedure_pre - emit stored procedure (Dummy PL/CSQL and Java SP)
  *    return: void
  *    output_ctx(in/out): output context
  */
 static int
-emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
+emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
   DB_VALUE sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, lang_val, generated_val, args_val, rtn_type_val,
-    method_val, directive_val, comment_val;
+    class_val, method_val, directive_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
   int sp_type, rtn_type, arg_cnt, directive, save;
   DB_SET *arg_set;
@@ -4351,7 +4413,165 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 
       if ((err = db_get (obj, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_LANG, &lang_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_TARGET, &method_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_NAME, &sp_name_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR)
+	{
+	  err_count++;
+	  continue;
+	}
+
+      if (db_get_int (&generated_val) == 1)
+	{
+	  continue;
+	}
+
+      // owner
+      owner = db_get_object (&owner_val);
+      err = db_get (owner, "name", &owner_name_val);
+      if (err != NO_ERROR)
+	{
+	  err_count++;
+	  continue;
+	}
+
+      if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	{
+	  if (strcasecmp (ctxt.login_user, db_get_string (&owner_name_val)) != 0)
+	    {
+	      continue;
+	    }
+	}
+
+      if ((err = db_get (obj, SP_ATTR_SP_TYPE, &sp_type_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_PKG, &pkg_name_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_ARGS, &args_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_DIRECTIVE, &directive_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
+	{
+	  err_count++;
+	  continue;
+	}
+
+      sp_type = db_get_int (&sp_type_val);
+      output_ctx ("\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
+
+      const char *sp_name = db_get_string (&sp_name_val);
+      if (!DB_IS_NULL (&pkg_name_val))
+	{
+	  const char *pkg_name = db_get_string (&pkg_name_val);
+	  output_ctx (" %s%s%s.%s%s%s (", PRINT_IDENTIFIER (pkg_name), PRINT_IDENTIFIER (sp_name));
+	}
+      else
+	{
+	  output_ctx (" %s%s%s (", PRINT_IDENTIFIER (sp_name));
+	}
+
+      arg_cnt = db_get_int (&arg_cnt_val);
+      arg_set = db_get_set (&args_val);
+      if (emit_stored_procedure_args (output_ctx, arg_cnt, arg_set) > 0)
+	{
+	  err_count++;
+	  output_ctx (";\n");
+	  continue;
+	}
+      output_ctx (") ");
+
+      if (sp_type == SP_TYPE_FUNCTION)
+	{
+	  rtn_type = db_get_int (&rtn_type_val);
+
+	  if (rtn_type == DB_TYPE_RESULTSET)
+	    {
+	      output_ctx ("RETURN CURSOR ");
+	    }
+	  else
+	    {
+	      output_ctx ("RETURN %s ", db_get_type_name ((DB_TYPE) rtn_type));
+	    }
+	}
+
+      // authid
+      directive = db_get_int (&directive_val);
+      if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_CALLER)
+	{
+	  output_ctx ("AUTHID CALLER ");
+	}
+      else
+	{
+	  output_ctx ("AUTHID OWNER ");
+	}
+
+      int sp_lang = db_get_int (&lang_val);
+      if (sp_lang == SP_LANG_PLCSQL)
+	{
+	  output_ctx ("AS LANGUAGE PLCSQL BEGIN NULL; END;\n");
+	}
+      else
+	{
+	  output_ctx ("AS LANGUAGE JAVA NAME '%s'", db_get_string (&method_val));
+
+	  if (!DB_IS_NULL (&comment_val))
+	    {
+	      output_ctx (" COMMENT ");
+	      desc_value_print (output_ctx, &comment_val);
+	    }
+
+	  output_ctx (";\n");
+	}
+
+      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+	{
+	  output_ctx ("call [change_sp_owner]('%s', '%s') on class [db_root];\n", db_get_string (&sp_name_val),
+		      db_get_string (&owner_name_val));
+	}
+
+      db_value_clear (&owner_name_val);
+    }
+
+  db_objlist_free (sp_list);
+  AU_ENABLE (save);
+
+  return err_count;
+}
+
+/*
+ * emit_stored_procedure_post - emit stored procedure
+ *    return: void
+ *    output_ctx(in/out): output context
+ */
+static int
+emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
+{
+  MOP cls, obj, owner;
+  DB_OBJLIST *sp_list = NULL, *cur_sp;
+  DB_VALUE sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, lang_val, generated_val, args_val, rtn_type_val,
+    class_val, method_val, directive_val, comment_val;
+  DB_VALUE owner_val, owner_name_val;
+  int sp_type, rtn_type, arg_cnt, directive, save;
+  DB_SET *arg_set;
+  int err;
+  int err_count = 0;
+
+  AU_DISABLE (save);
+
+  cls = db_find_class (SP_CLASS_NAME);
+  if (cls == NULL)
+    {
+      AU_ENABLE (save);
+      return 1;
+    }
+
+  sp_list = db_get_all_objects (cls);
+  for (cur_sp = sp_list; cur_sp; cur_sp = cur_sp->next)
+    {
+      obj = cur_sp->op;
+
+      if ((err = db_get (obj, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_LANG, &lang_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_TARGET_CLASS, &class_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_TARGET_METHOD, &method_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_NAME, &sp_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR)
 	{
@@ -4382,91 +4602,17 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 	}
 
       const char *sp_name = db_get_string (&sp_name_val);
-      const char *target = db_get_string (&method_val);
+      const char *target_class = db_get_string (&class_val);
       int sp_lang = db_get_int (&lang_val);
-
       if (sp_lang == SP_LANG_PLCSQL)
 	{
-	  std::string class_name = jsp_get_class_name_of_target (std::string (target));
-	  err = emit_stored_procedure_code (output_ctx, class_name.data ());
+	  err = emit_stored_procedure_code (output_ctx, target_class);
 	  output_ctx (";\n");
 	  if (err > 0)
 	    {
 	      err_count++;
 	      continue;
 	    }
-	}
-      else
-	{
-	  if ((err = db_get (obj, SP_ATTR_SP_TYPE, &sp_type_val)) != NO_ERROR
-	      || (err = db_get (obj, SP_ATTR_PKG, &pkg_name_val)) != NO_ERROR
-	      || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
-	      || (err = db_get (obj, SP_ATTR_ARGS, &args_val)) != NO_ERROR
-	      || (err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val)) != NO_ERROR
-	      || (err = db_get (obj, SP_ATTR_DIRECTIVE, &directive_val)) != NO_ERROR
-	      || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
-	    {
-	      err_count++;
-	      continue;
-	    }
-
-	  sp_type = db_get_int (&sp_type_val);
-	  output_ctx ("\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
-
-	  if (!DB_IS_NULL (&pkg_name_val))
-	    {
-	      const char *pkg_name = db_get_string (&pkg_name_val);
-	      output_ctx (" %s%s%s.%s%s%s (", PRINT_IDENTIFIER (pkg_name), PRINT_IDENTIFIER (sp_name));
-	    }
-	  else
-	    {
-	      output_ctx (" %s%s%s (", PRINT_IDENTIFIER (sp_name));
-	    }
-
-	  arg_cnt = db_get_int (&arg_cnt_val);
-	  arg_set = db_get_set (&args_val);
-	  if (emit_stored_procedure_args (output_ctx, arg_cnt, arg_set) > 0)
-	    {
-	      err_count++;
-	      output_ctx (";\n");
-	      continue;
-	    }
-	  output_ctx (") ");
-
-	  if (sp_type == SP_TYPE_FUNCTION)
-	    {
-	      rtn_type = db_get_int (&rtn_type_val);
-
-	      if (rtn_type == DB_TYPE_RESULTSET)
-		{
-		  output_ctx ("RETURN CURSOR ");
-		}
-	      else
-		{
-		  output_ctx ("RETURN %s ", db_get_type_name ((DB_TYPE) rtn_type));
-		}
-	    }
-
-	  // authid
-	  directive = db_get_int (&directive_val);
-	  if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_CALLER)
-	    {
-	      output_ctx ("AUTHID CALLER ");
-	    }
-	  else
-	    {
-	      output_ctx ("AUTHID OWNER ");
-	    }
-
-	  output_ctx ("AS LANGUAGE JAVA NAME '%s'", db_get_string (&method_val));
-
-	  if (!DB_IS_NULL (&comment_val))
-	    {
-	      output_ctx (" COMMENT ");
-	      desc_value_print (output_ctx, &comment_val);
-	    }
-
-	  output_ctx (";\n");
 	}
 
       if (ctxt.is_dba_user || ctxt.is_dba_group_member)
@@ -5127,7 +5273,7 @@ extract_synonym (extract_context & ctxt)
 }
 
 static int
-extract_procedure (extract_context & ctxt)
+extract_procedure (extract_context & ctxt, func_emit_procedure_type extract_proc_func)
 {
   FILE *output_file = NULL;
   int err = NO_ERROR;
@@ -5160,7 +5306,7 @@ extract_procedure (extract_context & ctxt)
 
   if (required_class_only == false)
     {
-      err = emit_stored_procedure (ctxt, output_ctx);
+      err = extract_proc_func (ctxt, output_ctx);
     }
 
   fflush (output_file);
@@ -5945,6 +6091,11 @@ extract_split_schema_files (extract_context & ctxt)
       err_count++;
     }
 
+  if (extract_procedure (ctxt, emit_stored_procedure_pre) != NO_ERROR)
+    {
+      err_count++;
+    }
+
   if (extract_fk (ctxt) != NO_ERROR)
     {
       err_count++;
@@ -5970,7 +6121,7 @@ extract_split_schema_files (extract_context & ctxt)
       err_count++;
     }
 
-  if (extract_procedure (ctxt) != NO_ERROR)
+  if (extract_procedure (ctxt, emit_stored_procedure_post) != NO_ERROR)
     {
       err_count++;
     }

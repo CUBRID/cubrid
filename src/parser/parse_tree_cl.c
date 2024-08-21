@@ -7568,6 +7568,7 @@ pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.sp.name, arg);
   PT_APPLY_WALK (parser, p->info.sp.param_list, arg);
   PT_APPLY_WALK (parser, p->info.sp.ret_data_type, arg);
   return p;
@@ -7584,6 +7585,7 @@ pt_apply_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *ar
 static PT_NODE *
 pt_apply_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.sp.name, arg);
   return p;
 }
 

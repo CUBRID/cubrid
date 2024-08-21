@@ -102,6 +102,7 @@ typedef sp_code_info SP_CODE_INFO;
 
 struct sp_info
 {
+  std::string unique_name;
   std::string sp_name;
   std::string pkg_name;
   SP_TYPE_ENUM sp_type;
@@ -109,20 +110,23 @@ struct sp_info
   bool is_system_generated;
   std::vector <sp_arg_info> args;
   SP_LANG_ENUM lang;
-  std::string target;
+  std::string target_class;
+  std::string target_method;
   SP_DIRECTIVE_ENUM directive;
   MOP owner;
   std::string comment;
 
   sp_info () 
-  : sp_name {}
+  : unique_name {}
+  , sp_name {}
   , pkg_name {}
   , sp_type {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
   , return_type {DB_TYPE::DB_TYPE_NULL}
   , is_system_generated {false}
   , args {}
   , lang {SP_LANG_ENUM::SP_LANG_PLCSQL}
-  , target {}
+  , target_class {}
+  , target_method {}
   , directive {SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER}
   , owner {nullptr}
   , comment {}
@@ -140,5 +144,6 @@ int sp_add_stored_procedure_code (SP_CODE_INFO &info);
 
 // misc
 void sp_normalize_name (std::string &s);
+void sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth);
 
 #endif // _SP_DEFINITION_HPP_

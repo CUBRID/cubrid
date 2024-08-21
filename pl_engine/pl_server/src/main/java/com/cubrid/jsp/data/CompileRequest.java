@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -28,16 +29,16 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.jsp.data;
 
-public class SyntaxError extends RuntimeException {
+public class CompileRequest {
+    public String code = null;
+    public String owner = null;
+    public String mode = null;
 
-    public final int line;
-    public final int column;
-
-    public SyntaxError(int line, int column, String msg) {
-        super(msg);
-        this.line = line;
-        this.column = column;
+    public CompileRequest(CUBRIDUnpacker unpacker) {
+        code = unpacker.unpackCString();
+        owner = unpacker.unpackCString();
+        mode = unpacker.unpackCString();
     }
 }

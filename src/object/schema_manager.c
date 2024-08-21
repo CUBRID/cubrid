@@ -37,6 +37,7 @@
 
 #include "dbtype.h"
 #include "authenticate.h"
+#include "authenticate_access_auth.hpp"
 #include "string_opfunc.h"
 #include "schema_manager.h"
 #include "schema_class_truncator.hpp"
@@ -13826,7 +13827,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
     }
 
   /* now delete _db_auth tuples refers to the table */
-  error = au_delete_auth_of_dropping_table (table_name);
+  error = au_delete_auth_of_dropping_database_object (DB_OBJECT_CLASS, table_name);
   if (error != NO_ERROR)
     {
       goto end;

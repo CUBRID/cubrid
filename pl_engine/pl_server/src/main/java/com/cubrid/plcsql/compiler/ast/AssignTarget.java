@@ -30,34 +30,13 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.type.Type;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.List;
-import org.antlr.v4.runtime.ParserRuleContext;
+public interface AssignTarget {
 
-public class DeclForRecord extends DeclId {
+    public String javaCode();
 
-    public final String name;
-    public final List<Misc.Pair<String, Type>> fieldTypes;
+    public String javaCodeForOutParam();
 
-    public DeclForRecord(
-            ParserRuleContext ctx, String name, List<Misc.Pair<String, Type>> fieldTypes) {
-        super(ctx);
+    public String name();
 
-        this.name = name;
-        this.fieldTypes = fieldTypes;
-    }
-
-    // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
-
-    @Override
-    public String kind() {
-        return "for-loop-record";
-    }
+    public boolean isAssignableTo();
 }

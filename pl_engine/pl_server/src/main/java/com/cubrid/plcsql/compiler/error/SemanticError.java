@@ -28,32 +28,23 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.error;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+public class SemanticError extends RuntimeException {
 
-public class StmtForExecImmeLoop extends StmtForSqlLoop {
+    public final int line;
+    public final int column;
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtForExecImmeLoop(this);
+    public SemanticError(int line, int column, String msg) {
+        super(msg);
+        this.line = line;
+        this.column = column;
     }
 
-    public StmtForExecImmeLoop(
-            ParserRuleContext ctx,
-            String label,
-            DeclForRecord record,
-            Expr dynamicSql,
-            NodeList<? extends Expr> usedExprList,
-            NodeList<Stmt> stmts) {
-        super(
-                ctx,
-                true,
-                label,
-                record,
-                dynamicSql,
-                usedExprList == null ? null : usedExprList.nodes,
-                stmts);
+    public SemanticError(int[] lineColumn, String msg) {
+        super(msg);
+        assert lineColumn.length == 2;
+        this.line = lineColumn[0];
+        this.column = lineColumn[1];
     }
 }
