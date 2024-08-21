@@ -51,6 +51,11 @@ public class DeclForIter extends DeclId {
     }
 
     @Override
+    public String name() {
+        return name;
+    }
+
+    @Override
     public String kind() {
         return "for-loop-iterator";
     }

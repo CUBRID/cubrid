@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character '%1$c' in database name '%2$s'\n
@@ -130,6 +131,7 @@ Available admin utility-name:\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -192,6 +194,7 @@ Available administrator's utilities:\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -1316,3 +1319,19 @@ valid options:\n\
                                   for flashback; default: outputs only SQL statements for flashback\n\
     --oldest                      flashback is performed in chronological order for SQL statements executed from start time to end time;\n\
                                   default: latest\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 Please set the system parameter 'enable_memory_monitoring' in 'cubrid.conf' and restart the database server.\n
+2 memmon cannot run as standalone mode.\n
+3 Fail to open output file with filename %1$s.\n
+4 Memory monitoring on the server is disabled successfully.\n
+5 disable-force cannot be used with other options.\n
+6 Memory monitoring on the server has been disabled. You can use it again after restarting the server.\n
+7 memmon is not supported on this operating system.\n
+60 \
+memmon: Provides memory usage information of a database server.\n\
+usage: %1$s memmon [OPTION] database-name\n\
+\n\
+valid option:\n\
+    -o, --output-file=FILE    output results to FILE\n\
+    --disable-force           disable memory monitor of server forcibly\n

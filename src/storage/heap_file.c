@@ -75,6 +75,8 @@
 #include "tde.h"
 
 #include <set>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -2825,7 +2827,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 		{
 		  pr_type->data_readval (&buf, &def_dbvalue, attrepr->domain, disk_length, copy, NULL, 0);
 
-		  db_fprint_value (stdout, &def_dbvalue);
+		  db_fprint_value (fp, &def_dbvalue);
 		  (void) pr_clear_value (&def_dbvalue);
 		}
 	      else
@@ -18772,6 +18774,7 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
       if (OID_ISNULL (prev_vpid))
 	{
 	  /* no more pages to scan */
+	  pgbuf_ordered_unfix (thread_p, &pg_watcher);
 	  return S_END;
 	}
       /* get next page */
@@ -18786,7 +18789,6 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
     }
   if (pg_watcher.pgptr == NULL)
     {
-      pgbuf_ordered_unfix (thread_p, &pg_watcher);
       return S_ERROR;
     }
 

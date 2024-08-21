@@ -29,6 +29,8 @@
 #include "thread_manager.hpp"
 
 #include <cstring>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {

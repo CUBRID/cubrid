@@ -33,6 +33,8 @@
 #endif
 
 #include "environment_variable.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define	CUBRID_TMP_ENV	"TMP"
 #define PREFIX_LEN      3

@@ -60,6 +60,8 @@
 #include "thread_manager.hpp"
 #include "session.h"
 #include "network_request_def.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static void net_server_init (void);
 static int net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int size, char *buffer);
@@ -744,6 +746,12 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_PLCSQL_TRANSFER_FILE];
   req_p->processing_function = splcsql_transfer_file;
 
+  /* memmon */
+  req_p = &net_Requests[NET_SERVER_MMON_GET_SERVER_INFO];
+  req_p->processing_function = smmon_get_server_info;
+
+  req_p = &net_Requests[NET_SERVER_MMON_DISABLE_FORCE];
+  req_p->processing_function = smmon_disable_force;
 }
 
 /*
@@ -1136,6 +1144,15 @@ net_server_start (const char *server_name)
       goto end;
     }
 
+#if !defined(WINDOWS)
+  if (mmon_initialize (server_name) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize memory_monitor\n");
+      status = -1;
+      goto end;
+    }
+#endif /* !WINDOWS */
+
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
@@ -1182,6 +1199,9 @@ net_server_start (const char *server_name)
 
   cubthread::finalize ();
   cubthread::internal_tasks_worker_pool::finalize ();
+#if !defined(WINDOWS)
+  mmon_finalize ();
+#endif /* !WINDOWS */
   er_final (ER_ALL_FINAL);
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();

@@ -34,6 +34,8 @@ source_dir=`pwd`
 default_java_dir="/usr/lib/jvm/java"
 java_dir=""
 configure_options=""
+# if you turn on the unit test of memory monitor
+# configure_options="-DUNIT_TEST_MEMORY_MONITOR=ON" or "-DUNIT_TESTS=ON"
 # default build_dir = "$source_dir/build_${build_target}_${build_mode}"
 build_dir=""
 prefix_dir=""
