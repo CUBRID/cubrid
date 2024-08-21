@@ -47,6 +47,8 @@
 #include "thread_entry.hpp"
 #include "xasl_cache.h"
 #include "xasl_unpack_info.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined (SERVER_MODE)
 

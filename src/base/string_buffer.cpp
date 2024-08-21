@@ -24,6 +24,8 @@
 
 #include <algorithm>  // for std::min
 #include <memory.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 void string_buffer::add_bytes (size_t len, const char *bytes)
 {

@@ -34,6 +34,7 @@ import com.cubrid.plcsql.compiler.ast.NodeList;
 import java.io.PrintStream;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.ParseTree;
@@ -47,6 +48,28 @@ public class Misc {
         public Pair(X e1, Y e2) {
             this.e1 = e1;
             this.e2 = e2;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == null) {
+                return false;
+            }
+            if (o.getClass() != this.getClass()) {
+                return false;
+            }
+            Pair<X, Y> that = (Pair<X, Y>) o;
+            return Objects.equals(this.e1, that.e1) && Objects.equals(this.e2, that.e2);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hashCode(e1) + Objects.hashCode(e2);
+        }
+
+        @Override
+        public String toString() {
+            return String.format("(%s, %s)", e1, e2);
         }
     }
 
