@@ -636,8 +636,8 @@ sl_delete_oldest_file_if_needed (void)
   if (sl_Info.curr_file_id < sql_log_max_cnt)
     {
       /*
-       * Possible cases : 
-       * 1. 'curr_file_id' has never exceeded UINT_MAX 
+       * Cases : 
+       * 1. 'curr_file_id' has never exceeded 'sql_log_max_cnt'
        * 2. 'curr_file_id' exceeds UINT_MAX and wraps around to 0
        *  
        * Always assume a wrap-around has occurred when inferring the file path
@@ -653,22 +653,18 @@ sl_delete_oldest_file_if_needed (void)
   snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id);
 
 
-  /*
-   * step(2) : delete the oldest file if it exists
-   * Cases where the file may not exist include:
-   * 1. When the SQL log file has been created for the first time and the 'file_id' has not exceeded 'sql_log_max_cnt'.
-   * 2. When the user has manually modified the SQL log file ID.
-   */
+  // step(2) : delete the oldest file if it exists
   if (unlink (oldest_file_path) != 0)
     {
       if (errno = EACCES)
 	{
 	  /*
-	   * It is a case in step (1) where the guessed file does not exist or cannot be accessed.
-	   * When inferring the oldest file ID, only sql_log_max_cnt is used, 
-	   * which can lead to a false positive situation where a file that is not actually the oldest is attempted to be deleted.
-	   * Since this error is not considered critical, no error handling is performed. 
-	   * Instead, a comment is logged for future maintenance reference.
+	   * This situation occurs when an SQL log file is first created and the file ID has not yet exceeded 'sql_log_max_cnt', 
+           * which means there is no oldest file to delete. This corresponds to case 1 of step 1.
+	   * In this case, even though a wrap-around hasn't actually occurred, 
+           * 'oldest_file_path' is still constructed as if it has, leading to a non-existent file path being assigned to 'oldest_file_path'. 
+	   * Although 'oldest_file_path' is generated and an attempt is made to delete it, the 'unlink' function will recognize that the file does not exist.
+	   * As a result, there is no risk of accidentally deleting a file that isn't the oldest due to an incorrect path configuration.
 	   */
 	}
     }
