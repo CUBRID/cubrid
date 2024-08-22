@@ -394,7 +394,7 @@ static void mq_auto_param_merge_clauses (PARSER_CONTEXT * parser, PT_NODE * stmt
 
 static PT_NODE *pt_check_for_update_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_odku_refs_pre (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk);
-static PT_NODE *pt_check_odku_refs_view (PARSER_CONTEXT * parser, PT_NODE * statement);
+static void pt_check_odku_refs_view (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int pt_check_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * query, bool root);
 
 static int pt_for_update_prepare_query_internal (PARSER_CONTEXT * parser, PT_NODE * query);
@@ -1668,7 +1668,7 @@ pt_check_odku_refs_pre (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int 
       return odku;
     }
 
-  for (spec = sel_spec; spec; spec = sel_spec->next)
+  for (spec = sel_spec; spec; spec = spec->next)
     {
       if (spec->info.spec.id == odku->info.name.spec_id)
 	{
@@ -1685,10 +1685,11 @@ pt_check_odku_refs_pre (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int 
  * for the view to indicate that it is referenced in odku.
  * This flag will be used when determining "pushable" in mq_is_pushable_subquery.
  */
-static PT_NODE *
+static void
 pt_check_odku_refs_view (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_NODE *odku = statement->info.insert.odku_assignments;
+
   if (odku)
     {
       PT_NODE *sel_spec, *values;
@@ -1701,10 +1702,11 @@ pt_check_odku_refs_view (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      sel_spec = values->info.query.q.select.from;
 	      while (odku)
 		{
-		  parser_walk_tree (parser, odku->info.expr.arg2, pt_check_odku_refs_pre, sel_spec, NULL, NULL);
+		  (void) parser_walk_tree (parser, odku->info.expr.arg2, pt_check_odku_refs_pre, sel_spec, NULL, NULL);
 		  odku = odku->next;
 		}
 	    }
+
 	  values = values->next;
 	}
     }
