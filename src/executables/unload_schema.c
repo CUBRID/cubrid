@@ -4443,6 +4443,8 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	  || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARGS, &args_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_TARGET_CLASS, &class_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_TARGET_METHOD, &method_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_DIRECTIVE, &directive_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
 	{
