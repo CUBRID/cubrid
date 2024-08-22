@@ -107,7 +107,7 @@ public class SUStatement {
 
         /* init fetch infos */
         fetchSize = DEFAULT_FETCH_SIZE;
-        fetchedStartCursorPosition = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
+        fetchedStartCursorPosition = cursorPosition = totalTupleNumber = fetchedTupleNumber = fetchedEndCursorPosition = 0;
         fetchDirection = ResultSet.FETCH_FORWARD; // TODO: temporary init to FORWARD
 
         maxFetchSize = 0;
@@ -165,7 +165,7 @@ public class SUStatement {
         setColumnInfo(info.columnInfos);
 
         /* init fetch infos */
-        fetchedStartCursorPosition = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
+        fetchedStartCursorPosition = cursorPosition = totalTupleNumber = fetchedTupleNumber = fetchedEndCursorPosition = 0;
         fetchDirection = ResultSet.FETCH_FORWARD; // TODO: temporary init to FORWARD
 
         commandType = (byte) info.getResultInfo().stmtType;
@@ -253,7 +253,7 @@ public class SUStatement {
         if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
             cursorPosition = 0; // already fetched
             fetchedStartCursorPosition = 0;
-            fetchedTupleNumber = 1;
+            fetchedTupleNumber = fetchedEndCursorPosition = 1;
 
             CallInfo callInfo = executeInfo.callInfo;
             tuples = new SUResultTuple[fetchedTupleNumber];
