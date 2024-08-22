@@ -2778,7 +2778,7 @@ struct pt_name_info
 #define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
 #define PT_NAME_INFO_SERVER_SPECIFIED 16384	/* server name is specified for dblink */
 
-  int flag;
+  short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
 #define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (short) (f)
 #define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (short) ~(f)
