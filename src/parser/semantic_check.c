@@ -9965,8 +9965,6 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 	    }
 	}
-
-
     }
 
   /* make sure the grantees/revokees exist */
