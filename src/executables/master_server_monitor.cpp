@@ -32,8 +32,6 @@ std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 
 server_monitor::server_monitor ()
 {
-  // arbitrary size
-  constexpr int job_QUEUE_SIZE = 1024;
 
   m_server_entry_map = std::unordered_map<std::string, server_entry> ();
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_map is created. \n");
@@ -119,10 +117,8 @@ server_monitor::register_server_entry (int pid, const std::string &exec_path, co
   if (entry != m_server_entry_map.end ())
     {
       entry->second.set_pid (pid);
-      entry->second.set_exec_path (exec_path);
-      entry->second.proc_make_arg (args);
       entry->second.set_need_revive (false);
-      entry->second.set_last_revive_time (std::chrono::steady_clock::now ());
+      entry->second.set_registered_time (std::chrono::steady_clock::now ());
       fprintf (stdout,
 	       "[SERVER_REVIVE_DEBUG] : server entry has been updated in master_Server_monitor : pid : %d, exec_path : %s, args : %s\n",
 	       pid,
@@ -156,6 +152,9 @@ void
 server_monitor::revive_server (const std::string &server_name)
 {
   int error_code;
+
+  // Unacceptable revive time difference is set to be 120 seconds
+  // as the timediff of server restart mechanism of heartbeat.
   constexpr int SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS = 120;
   std::chrono::steady_clock::time_point tv;
   int out_pid;
@@ -168,7 +167,7 @@ server_monitor::revive_server (const std::string &server_name)
 
       tv = std::chrono::steady_clock::now ();
       auto timediff = std::chrono::duration_cast<std::chrono::seconds> (tv -
-		      entry->second.get_last_revive_time()).count();
+		      entry->second.get_registered_time()).count();
 
       if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS)
 	{
@@ -176,7 +175,7 @@ server_monitor::revive_server (const std::string &server_name)
 	  if (out_pid == -1)
 	    {
 	      fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Fork at server revive failed. exec_path : %s, args : %s\n",
-		       entry->second.get_exec_path().c_str(), entry->second.get_argv().at (0).c_str());
+		       entry->second.get_exec_path().c_str(), entry->second.get_argv()[0]);
 	      produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	    }
 	  else
@@ -216,11 +215,14 @@ server_monitor::check_server_revived (const std::string &server_name)
 	{
 	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Server revive failed. pid : %d\n", entry->second.get_pid());
 	  m_server_entry_map.erase (entry);
+	  kill (entry->second.get_pid (), SIGKILL);
 	}
     }
   else if (entry->second.get_need_revive ())
     {
+      // Server revive confirm interval is set to be 1 second to avoid busy waiting.
       constexpr int SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS = 1;
+
       std::this_thread::sleep_for (std::chrono::seconds (SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS));
       produce_job (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
 		   entry->first);
@@ -233,10 +235,9 @@ server_monitor::check_server_revived (const std::string &server_name)
 }
 
 int
-server_monitor::try_revive_server (const std::string &exec_path, std::vector<std::string> argv)
+server_monitor::try_revive_server (const std::string &exec_path, char *const *argv)
 {
   pid_t pid;
-  int error_code;
 
   pid = fork ();
   if (pid < 0)
@@ -245,15 +246,7 @@ server_monitor::try_revive_server (const std::string &exec_path, std::vector<std
     }
   else if (pid == 0)
     {
-      std::unique_ptr<const char *[]> argv_ptr = std::make_unique<const char *[]> (argv.size () + 1);
-
-      for (int i = 0; i < argv.size(); i++)
-	{
-	  argv_ptr[i] = argv[i].c_str();
-	}
-      argv_ptr[argv.size()] = nullptr;
-
-      error_code = execv (exec_path.c_str(), (char *const *) argv_ptr.get ());
+      execv (exec_path.c_str(), argv);
     }
   else
     {
@@ -365,7 +358,7 @@ server_entry (int pid, const std::string &exec_path, const std::string &args,
   : m_pid {pid}
   , m_exec_path {exec_path}
   , m_need_revive {false}
-  , m_last_revive_time {revive_time}
+  , m_registered_time {revive_time}
 {
   if (args.size() > 0)
     {
@@ -385,10 +378,10 @@ server_monitor::server_entry::get_exec_path () const
   return m_exec_path;
 }
 
-std::vector<std::string>
+char *const *
 server_monitor::server_entry::get_argv () const
 {
-  return m_argv;
+  return m_argv.get ();
 }
 
 bool
@@ -398,9 +391,9 @@ server_monitor::server_entry::get_need_revive () const
 }
 
 std::chrono::steady_clock::time_point
-server_monitor::server_entry::get_last_revive_time () const
+server_monitor::server_entry::get_registered_time () const
 {
-  return m_last_revive_time;
+  return m_registered_time;
 }
 
 void
@@ -422,20 +415,24 @@ server_monitor::server_entry::set_need_revive (bool need_revive)
 }
 
 void
-server_monitor::server_entry::set_last_revive_time (std::chrono::steady_clock::time_point revive_time)
+server_monitor::server_entry::set_registered_time (std::chrono::steady_clock::time_point revive_time)
 {
-  m_last_revive_time = revive_time;
+  m_registered_time = revive_time;
 }
 
 void
 server_monitor::server_entry::proc_make_arg (const std::string &args)
 {
-  m_argv = std::vector<std::string> ();
+  //argv is type of std::unique_ptr<const char *[]>
+  m_argv = std::make_unique<char *[]> (args.size () + 1);
   std::istringstream iss (args);
-  std::string tok;
-
-  while (iss >> tok)
+  std::string arg;
+  int i = 0;
+  while (std::getline (iss, arg, ' '))
     {
-      m_argv.push_back (tok);
+      m_argv[i] = new char[arg.size () + 1];
+      std::copy (arg.begin (), arg.end (), m_argv[i]);
+      i++;
     }
+  m_argv[args.size()] = nullptr;
 }

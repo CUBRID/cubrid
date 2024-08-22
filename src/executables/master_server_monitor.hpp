@@ -97,7 +97,7 @@ class server_monitor
 				const std::string &server_name);
     void remove_server_entry (const std::string &server_name);
     void revive_server (const std::string &server_name);
-    int try_revive_server (const std::string &exec_path, std::vector<std::string> argv);
+    int try_revive_server (const std::string &exec_path, char *const *argv);
     void check_server_revived (const std::string &server_name);
 
     void produce_job_internal (job_type job_type, int pid, const std::string &exec_path, const std::string &args,
@@ -127,32 +127,32 @@ class server_monitor
 	    {
 	      m_pid = other.m_pid;
 	      m_need_revive = other.m_need_revive;
-	      m_last_revive_time = other.m_last_revive_time;
+	      m_registered_time = other.m_registered_time;
 	      m_exec_path = other.m_exec_path;
-	      m_argv = other.m_argv;
+	      m_argv = std::move (other.m_argv);
 	    }
 	  return *this;
 	}
 
 	int get_pid () const;
 	std::string get_exec_path () const;
-	std::vector<std::string> get_argv () const;
+	char *const *get_argv () const;
 	bool get_need_revive () const;
-	std::chrono::steady_clock::time_point get_last_revive_time () const;
+	std::chrono::steady_clock::time_point get_registered_time () const;
 
 	void set_pid (int pid);
 	void set_exec_path (const std::string &exec_path);
 	void set_need_revive (bool need_revive);
-	void set_last_revive_time (std::chrono::steady_clock::time_point revive_time);
+	void set_registered_time (std::chrono::steady_clock::time_point revive_time);
 
 	void proc_make_arg (const std::string &args);
 
       private:
 	int m_pid;                                                 // process ID of server process
 	std::string m_exec_path;                                   // executable path of server process
-	std::vector<std::string> m_argv;                           // arguments of server process
+	std::unique_ptr<char *[]> m_argv;                 // arguments of server process
 	volatile bool m_need_revive;                               // need to be revived by monitoring thread
-	std::chrono::steady_clock::time_point m_last_revive_time;  // last revive time
+	std::chrono::steady_clock::time_point m_registered_time;  // last revive time
     };
 
     std::unordered_map <std::string, server_entry> m_server_entry_map;  // map of server entries
