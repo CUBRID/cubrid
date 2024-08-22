@@ -4503,7 +4503,9 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
       int sp_lang = db_get_int (&lang_val);
       if (sp_lang == SP_LANG_PLCSQL)
 	{
-	  output_ctx ("AS LANGUAGE PLCSQL BEGIN NULL; END;\n");
+	  output_ctx ("AS LANGUAGE PLCSQL BEGIN ");
+	  (sp_type == SP_TYPE_PROCEDURE) ? output_ctx ("NULL;"); : output_ctx ("RETURN NULL;");
+	  output_ctx (" END;\n");
 	}
       else
 	{
