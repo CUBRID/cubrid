@@ -9950,7 +9950,7 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
       if (node->info.grant.grant_option == PT_GRANT_OPTION)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_AU_GRANT_OPTION_NOT_ALLOWED,
-		      pt_show_misc_type (PT_SP_PROCEDURE));
+		      MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
 	}
 
       /* check spec_list (procedures/functions) exists */
