@@ -46,6 +46,7 @@
 #include "db_json.hpp"
 #include "object_primitive.h"
 #include "db_client_type.hpp"
+#include "msgcat_glossary.hpp"
 
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
