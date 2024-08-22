@@ -1470,7 +1470,8 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 {
   PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list;
   PT_NODE *attributes, *attr, *as_attr_list;
-  PT_NODE *col, *new_select_list, *spec, *pred, *subquery;
+  PT_NODE *col, *new_select_list, *select_list, *spec, *pred, *subquery;
+  const char *col_name;
 
   assert (PT_IS_SELECT (statement));
   if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
@@ -1548,6 +1549,34 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
       if (col->flag.is_hidden_column)
 	{
 	  col->flag.is_hidden_column = 0;
+	}
+    }
+
+  if (pt_has_analytic (parser, subquery))
+    {
+      col = pt_get_select_list (parser, subquery);
+      select_list = new_select_list;
+
+      while (select_list && col)
+	{
+	  col_name = (col->alias_print) ? col->alias_print : col->info.name.original;
+
+	  if (pt_user_specified_name_compare (col_name, select_list->info.name.original) == 0)
+	    {
+	      if (pt_is_analytic_function (parser, col))
+		{
+		  break;
+		}
+
+	      select_list = select_list->next;
+	    }
+
+	  col = col->next;
+	}
+
+      if (!select_list)
+	{
+	  PT_SELECT_INFO_CLEAR_FLAG (subquery, PT_SELECT_INFO_HAS_ANALYTIC);
 	}
     }
 
@@ -2012,7 +2041,6 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
  *  - merge query
  *  - update, delete query
  *  - schema query
- *  - has analitic fuction
  *  - cte query
  *  - hierarchical query
  *  - has distinct
@@ -2066,12 +2094,6 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
   if (pt_has_define_vars (parser, subquery->info.query.q.select.list))
     {
       /* not pushable */
-      return NON_PUSHABLE;
-    }
-
-  /* has analytic function */
-  if (pt_has_analytic (parser, subquery))
-    {
       return NON_PUSHABLE;
     }
 
