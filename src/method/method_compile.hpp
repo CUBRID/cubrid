@@ -37,7 +37,7 @@
 namespace cubmethod
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  int invoke_compile (cubthread::entry &thread_ref, runtime_context &ctx, const PLCSQL_COMPILE_REQUEST &compile_request,
+  int invoke_compile (cubthread::entry &thread_ref, const PLCSQL_COMPILE_REQUEST &compile_request,
 		      cubmem::extensible_block &out_blk);
 #endif
 }
