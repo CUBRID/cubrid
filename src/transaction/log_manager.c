@@ -6216,21 +6216,18 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log
 static void
 log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 {
-  time_t db_creation_time;
-  time_t vol_creation_time;
   char db_creation_time_val[CTIME_MAX];
   char vol_creation_time_val[CTIME_MAX];
 
+  (void) ctime_r ((time_t *) & log_header_p->db_creation, db_creation_time_val);
+  (void) ctime_r ((time_t *) & log_header_p->vol_creation, vol_creation_time_val);
+
   fprintf (out_fp, "\n ** DUMP LOG HEADER **\n");
 
-  db_creation_time = (time_t) log_header_p->db_creation;
-  (void) ctime_r (&db_creation_time, db_creation_time_val);
-
-  vol_creation_time = (time_t) log_header_p->vol_creation;
-  (void) ctime_r (&vol_creation_time, vol_creation_time_val);
   fprintf (out_fp,
 	   "HDR: Magic Symbol = %s at disk location = %lld\n"
-	   "     Db_creation_time = %s     Vol_creation_time = %s"
+	   "     Db_creation_time = %s"
+	   "     Vol_creation_time = %s"
 	   "     Release = %s, Compatibility_disk_version = %g,\n"
 	   "     Db_pagesize = %d, log_pagesize= %d, Shutdown = %d,\n"
 	   "     Next_trid = %d, Next_mvcc_id = %llu, Num_avg_trans = %d, Num_avg_locks = %d,\n"

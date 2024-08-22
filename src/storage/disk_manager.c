@@ -3034,15 +3034,11 @@ disk_volume_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 static void
 disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
 {
-  time_t db_creation_time;
-  time_t vol_creation_time;
   char db_creation_time_val[CTIME_MAX];
   char vol_creation_time_val[CTIME_MAX];
 
-  db_creation_time = (time_t) vhdr->db_creation;
-  vol_creation_time = (time_t) vhdr->vol_creation;
-  (void) ctime_r (&db_creation_time, db_creation_time_val);
-  (void) ctime_r (&vol_creation_time, vol_creation_time_val);
+  (void) ctime_r ((time_t *) & vhdr->db_creation, db_creation_time_val);
+  (void) ctime_r ((time_t *) & vhdr->vol_creation, vol_creation_time_val);
 
   (void) fprintf (fp, " MAGIC SYMBOL = %s at disk location = %lld\n", vhdr->magic,
 		  offsetof (FILEIO_PAGE, page) + (long long) offsetof (DISK_VOLUME_HEADER, magic));
