@@ -21,6 +21,9 @@
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 perfmon_counter_timer_tracker::perfmon_counter_timer_tracker (PERF_STAT_ID a_stat_id)
   : m_stat_id (a_stat_id)
   , m_is_perf_tracking (false)

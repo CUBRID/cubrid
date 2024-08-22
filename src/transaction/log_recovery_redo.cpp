@@ -20,6 +20,9 @@
 
 #include "log_impl.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 #if !defined(NDEBUG)
 void
 vpid_lsa_consistency_check::check (const vpid &a_vpid, const log_lsa &a_log_lsa)
