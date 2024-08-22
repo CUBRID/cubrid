@@ -3616,10 +3616,6 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 stop_walk:
   *continue_walk = PT_STOP_WALK;
   return stmt;
-
-stop_walk:
-  *continue_walk = PT_STOP_WALK;
-  return stmt;
 }
 
 static int
