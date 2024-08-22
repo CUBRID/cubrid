@@ -1716,7 +1716,8 @@ typedef enum
   PT_SPEC_FLAG_MVCC_COND_REEV = 0x400,	/* the spec is used in mvcc condition reevaluation */
   PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
   PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
-  PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000	/* spec for sampling scan */
+  PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
+  PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000	/* spec for odku assignment */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -3819,6 +3820,7 @@ struct parser_node
     unsigned use_auto_commit:1;	/* use autocommit */
     unsigned done_reduce_equality_terms:1;	/* reduce_equality_terms() is already called */
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
+    unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };

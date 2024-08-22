@@ -23,6 +23,8 @@
 #include "xasl_analytic.hpp"
 
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubxasl
 {

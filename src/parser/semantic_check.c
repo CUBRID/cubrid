@@ -7540,8 +7540,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 	{
 	  if (col->node_type == PT_VALUE && col->type_enum == PT_TYPE_NULL)
 	    {
-	      PT_ERRORmf2 (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
-			   attribute_name (parser, attr), pt_short_print (parser, col));
+	      attr->type_enum = PT_TYPE_VARCHAR;
 	    }
 	  else
 	    {
@@ -8156,8 +8155,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    }
 	  else if (s_attr->node_type == PT_VALUE && s_attr->type_enum == PT_TYPE_NULL)
 	    {
-	      PT_ERRORm (parser, s_attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NULL_NOT_ALLOWED_ON_QUERY_SPEC);
-	      return;
+	      s_attr->type_enum = PT_TYPE_VARCHAR;
 	    }
 
 	  derived_attr = pt_derive_attribute (parser, s_attr);

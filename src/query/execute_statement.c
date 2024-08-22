@@ -3512,6 +3512,43 @@ end:
 }
 
 static PT_NODE *
+do_clear_subquery_cache_flag (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_QUERY (stmt))
+    {
+      if (stmt->info.query.flag.subquery_cached)
+	{
+	  stmt->info.query.flag.subquery_cached = false;
+	}
+    }
+
+  return stmt;
+}
+
+static PT_NODE *
+do_check_cte_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  bool *has_cte_spec = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (stmt->node_type != PT_SPEC)
+    {
+      return stmt;
+    }
+
+  if (stmt->info.spec.cte_pointer)
+    {
+      *has_cte_spec = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return stmt;
+}
+
+static PT_NODE *
 do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int *err = (int *) arg;
@@ -3520,7 +3557,6 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 
   switch (stmt->node_type)
     {
-
     case PT_UNION:
     case PT_INTERSECTION:
     case PT_DIFFERENCE:
@@ -3530,14 +3566,22 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 	  goto stop_walk;
 	}
       (void *) parser_walk_tree (parser, stmt->info.query.q.union_.arg2, do_prepare_subquery_pre, err, NULL, NULL);
-      if (*err != NO_ERROR)
+      goto stop_walk;
+
+    case PT_CREATE_TRIGGER:
+    case PT_ALTER:
+      goto stop_walk;
+
+    case PT_CREATE_ENTITY:
+      if (stmt->info.create_entity.entity_type != PT_CLASS)
 	{
 	  goto stop_walk;
 	}
-      goto stop_walk;
+      return stmt;
 
     case PT_SELECT:
       break;
+
     default:
       return stmt;
     }
@@ -3546,7 +3590,18 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
+      bool has_cte_spec = false;
+
+      /* exclude cache from CTE referencing */
+      parser_walk_tree (parser, stmt, do_check_cte_spec, &has_cte_spec, NULL, NULL);
+
+      if (has_cte_spec)
+	{
+	  goto stop_walk;
+	}
+
       *err = do_prepare_subquery (parser, stmt);
+
       if (*err != NO_ERROR)
 	{
 	  goto stop_walk;
@@ -3558,6 +3613,8 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 	}
     }
 
+stop_walk:
+  *continue_walk = PT_STOP_WALK;
   return stmt;
 
 stop_walk:
@@ -3569,6 +3626,12 @@ static int
 do_check_subquery_cache (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
+
+  if (statement->flag.do_not_use_subquery_cache)
+    {
+      (void *) parser_walk_tree (parser, statement, do_clear_subquery_cache_flag, NULL, NULL, NULL);
+      return NO_ERROR;
+    }
 
   /* All CTE and sub-queries included in the query must be prepared first. */
   if (pt_is_allowed_result_cache ())
@@ -3600,6 +3663,13 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   init_compile_context (parser);
 
+  /* All CTE and sub-queries included in the query must be prepared first. */
+  err = do_check_subquery_cache (parser, statement);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
   switch (statement->node_type)
     {
     case PT_DELETE:
@@ -3618,30 +3688,13 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_UNION:
-      /* All CTE and sub-queries included in the query must be prepared first. */
-      err = do_check_subquery_cache (parser, statement);
-      if (err == NO_ERROR)
-	{
-	  err = do_prepare_select (parser, statement);
-	}
+      err = do_prepare_select (parser, statement);
       break;
     case PT_EXECUTE_PREPARE:
       err = do_prepare_session_statement (parser, statement);
       break;
     default:
       /* there are no actions for other types of statements */
-      break;
-    }
-
-  switch (statement->node_type)
-    {
-    case PT_DELETE:
-    case PT_INSERT:
-    case PT_UPDATE:
-      /* All CTE and sub-queries included in DML query must be prepared after the query.
-         because that the select subqueries of DML should be transformed first */
-      err = do_check_subquery_cache (parser, statement);
-    default:
       break;
     }
 
@@ -4992,6 +5045,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (error == NO_ERROR)
 	    {
+	      prm_set_integer_value (PRM_ID_LOG_ISOLATION_LEVEL, (int) tran_isolation);
 	      error = tran_reset_isolation (tran_isolation, async_ws);
 	    }
 	  break;
@@ -5009,6 +5063,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      wait_secs = db_get_float (&val);
+	      prm_set_integer_value (PRM_ID_LK_TIMEOUT, wait_secs);
 	      if (wait_secs > 0)
 		{
 		  wait_secs *= 1000;
@@ -14862,10 +14917,10 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
       free (host_variables);
     }
 
-  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+  if (err == ER_QPROC_RESULT_CACHE_INVALID)
     {
       /* retry the statement once */
-      if (do_prepare_statement (parser, stmt) == NO_ERROR)
+      if ((err = do_prepare_statement (parser, stmt)) == NO_ERROR)
 	{
 	  err = do_execute_statement (parser, stmt);
 	}

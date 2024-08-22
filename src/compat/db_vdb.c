@@ -1831,7 +1831,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
 
   /* All CTE sub-queries included in the query must be executed first. */
-  if (pt_is_allowed_result_cache ())
+  if (pt_is_allowed_result_cache () && !statement->flag.do_not_use_subquery_cache)
     {
       err = NO_ERROR;
       parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &err, NULL, NULL);
@@ -1901,8 +1901,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
-      if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
-	   && session->stage[stmt_ndx] == StatementPreparedStage)
+      if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE
+	    || err == ER_QPROC_RESULT_CACHE_INVALID) && session->stage[stmt_ndx] == StatementPreparedStage)
 	  || (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && session->stage[stmt_ndx] == StatementExecutedStage))
 	{
 	  /* The cache entry was deleted before 'execute' */
@@ -1911,8 +1911,19 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	      pt_free_statement_xasl_id (statement);
 	    }
 
+	  if (err == ER_QPROC_RESULT_CACHE_INVALID)
+	    {
+	      statement->flag.do_not_use_subquery_cache = 1;
+	      statement->flag.recompile = 1;
+	      if (statement->node_type == PT_EXECUTE_PREPARE)
+		{
+		  statement->info.execute.recompile = 1;
+		  return do_recompile_and_execute_prepared_statement (session, statement, result);
+		}
+	    }
+
 	  cls_status = pt_has_modified_class (parser, statement);
-	  if (cls_status == DB_CLASS_NOT_MODIFIED)
+	  if (err == ER_QPROC_RESULT_CACHE_INVALID || cls_status == DB_CLASS_NOT_MODIFIED)
 	    {
 	      /* forget all errors */
 	      er_clear ();
@@ -2979,6 +2990,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 
   if (statement->info.execute.recompile)
     {
+      new_session->statements[0]->flag.do_not_use_subquery_cache = 1;
       new_session->statements[0]->flag.recompile = statement->info.execute.recompile;
     }
 
