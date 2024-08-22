@@ -2050,7 +2050,7 @@ parser_yyinput_single_line (char *buff, int max_size)
        {
          
          buff[i] = '\0'; /* not required but to ease debugging */
-         /* stop filling the buffer */
+         /* stop filling the buffer. see PR 5403 */
          return i;
        }
 
@@ -2062,6 +2062,8 @@ parser_yyinput_single_line (char *buff, int max_size)
 
     }
   while (c != -1);
+
+  buff[i] = '\0'; /* not required but to ease debugging */
 
   /* end of file */
   str_identifier = '\0';
