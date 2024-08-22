@@ -884,16 +884,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
-      if (statement->sql_user_text && statement->sql_user_text_len > 0)
-	{
-	  compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
-	}
-      else
-	{
-	  // In particular, statement->sql_user_text is NULL when this process is from loaddb.
-	  char *plcsql_text = parser_print_tree (parser, statement);
-	  compile_request.code.assign (plcsql_text, strlen (plcsql_text));
-	}
+      assert(statement->sql_user_text && statement->sql_user_text_len);
+      compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
       compile_request.owner.assign ((owner_name[0] == '\0') ? au_get_current_user_name () : owner_name);
 
       err = plcsql_transfer_file (compile_request, compile_response);

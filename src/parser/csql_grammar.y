@@ -337,8 +337,6 @@ typedef enum
 
 FUNCTION_MAP *keyword_offset (const char *name);
 
-static int parser_append_to_plcsql_text(int curr_len, const char* text_part);
-
 static PT_NODE* pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size);
 
 static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list);
@@ -490,9 +488,8 @@ char *g_query_string;
 int g_query_string_len;
 int g_original_buffer_len;
 
-static char *g_plcsql_text;
-static int g_plcsql_text_buffer_size;
-#define PLCSQL_TEXT_BUFFER_INITIAL_SIZE         (1000)
+static void pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec, int end);
+static int g_plcsql_text_pos;
 
 /*
  * The behavior of location propagation when a rule is matched must
@@ -1877,7 +1874,7 @@ stmt
 			allow_attribute_ordering = false;
 			parser_hidden_incr_list = NULL;
 
-                        g_plcsql_text = NULL;
+                        g_plcsql_text_pos = -1;
                         assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
 		DBG_PRINT}}
 	stmt_
@@ -3081,6 +3078,20 @@ create_stmt
 			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
+                            PT_NODE* body = $9;
+                            if (body->info.sp_body.lang == SP_LANG_PLCSQL && body->info.sp_body.impl == NULL)
+                              {
+                                // In particular, this happens while schema loading of loaddb utility
+                                // Without the original buffer, We need to get the SQL user text from the file.
+                                assert(this_parser->original_buffer == NULL);
+                                assert(this_parser->file);
+
+                                int start = @1.buffer_pos - 6;  // 6 : length of "create"
+                                int spec = @8.buffer_pos;       // right after is_or_as
+                                int end = @$.buffer_pos;
+                                pt_set_plcsql_body_impl(node, body, start, spec, end);
+                              }
+
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_PROCEDURE;
@@ -3116,6 +3127,20 @@ create_stmt
 			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
+                            PT_NODE* body = $11;
+                            if (body->info.sp_body.lang == SP_LANG_PLCSQL && body->info.sp_body.impl == NULL)
+                              {
+                                // In particular, this happens while schema loading of loaddb utility
+                                // Without the original buffer, We need to get the SQL user text from the file.
+                                assert(this_parser->original_buffer == NULL);
+                                assert(this_parser->file);
+
+                                int start = @1.buffer_pos - 6;  // 6 : length of "create"
+                                int spec = @10.buffer_pos;      // right after is_or_as
+                                int end = @$.buffer_pos;
+                                pt_set_plcsql_body_impl(node, body, start, spec, end);
+                              }
+
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_FUNCTION;
@@ -12796,18 +12821,15 @@ pl_language_spec
 
 			if (node)
 			  {
-                            assert(g_plcsql_text != NULL);
-
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
-			    node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(g_plcsql_text, $2);
+                            if (g_query_string) {
+                                node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(
+                                        g_query_string + g_plcsql_text_pos, $2);
+                            } else {
+                                node->info.sp_body.impl = NULL; // set later
+                            }
 			    node->info.sp_body.direct = 1;
 			  }
-
-                        if (!g_query_string) {
-                            // In this case, g_plcsql_text must have been malloced.
-                            // See the definition of plcsql_text.
-                            free(g_plcsql_text);
-                        }
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -12836,28 +12858,15 @@ plcsql_text
         : plcsql_text plcsql_text_part
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, : plcsql_text plcsql_text_part);
 
-                        int plcsql_text_size = $1;
-
-                        if (g_query_string) {
-                            $$ = plcsql_text_size + strlen($2);
-                        } else {
-                            $$ = parser_append_to_plcsql_text(plcsql_text_size, $2);
-                        }
+                        $$ = $1 + strlen($2);
 
 		DBG_PRINT}}
         | plcsql_text_part
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, | plcsql_text_part);
 
-                        assert(g_plcsql_text == NULL);
-                        if (g_query_string) {
-                            g_plcsql_text = g_query_string + @$.buffer_pos;
-                            $$ = strlen($1);
-                        } else {
-                            g_plcsql_text = malloc(PLCSQL_TEXT_BUFFER_INITIAL_SIZE + 1);
-                            g_plcsql_text_buffer_size = PLCSQL_TEXT_BUFFER_INITIAL_SIZE;
-                            $$ = parser_append_to_plcsql_text(0, $1);
-                        }
-
+                        assert(g_plcsql_text_pos == -1);
+                        g_plcsql_text_pos = @$.buffer_pos;
+                        $$ = strlen($1);
 
 		DBG_PRINT}}
         ;
@@ -28494,27 +28503,6 @@ pt_ct_check_select (char* p, char *perr_msg)
    return false;
 }
 
-static int
-parser_append_to_plcsql_text(int curr_len, const char* text_part)
-{
-    int len_to_add = strlen(text_part);
-    int result_len = curr_len + len_to_add;
-
-    if (g_plcsql_text_buffer_size < result_len) {
-        do {
-            g_plcsql_text_buffer_size *= 2;
-        } while (g_plcsql_text_buffer_size < result_len);
-
-        g_plcsql_text = realloc(g_plcsql_text, g_plcsql_text_buffer_size + 1);
-    }
-
-    memcpy(g_plcsql_text + curr_len, text_part, len_to_add);
-    g_plcsql_text[result_len] = '\0';
-
-    return result_len;
-}
-
-
 static PT_NODE*
 pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size)
 {
@@ -28567,4 +28555,35 @@ pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING
     }
 
   password_add_offset (&this_parser->hide_pwd_info, start, end, is_add_comma, en_add_pwd_string);
+}
+
+static void
+pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec, int end)
+{
+    // Assumption:
+    //   Control reaches here only from loaddb's loading a schema file.
+    //   In loaddb schema files, CREATE statements of PL/CSQL SP ends with a semicolon and
+    //   there are no spaces before that ending semicolon.
+
+    int r, read_sz = end + 1 - start;   // +1 : for the ending semicolon
+    char* buff = (char*) parser_alloc(this_parser, read_sz);
+
+    int file_pos = ftell(this_parser->file);
+    assert(file_pos >= read_sz);
+    r = fseek(this_parser->file, (-read_sz), SEEK_CUR);
+    assert(r == 0);     // success
+
+    r = (int) fread(buff, 1, read_sz, this_parser->file);
+    assert(r == read_sz);
+    assert(file_pos == ftell(this_parser->file));
+    assert(buff[r - 1] == ';');
+    assert(strncasecmp("create", buff, 6) == 0); // failure means there are spaces before the ending semicolon
+
+    buff[r - 1] = '\0'; // overwrites the ending semicolon
+    char* impl = buff + (spec - start);
+
+    node->sql_user_text = buff;
+    node->sql_user_text_len = r - 1;
+
+    body->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(impl, strlen(impl));
 }
