@@ -4511,7 +4511,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	}
       else
 	{
-	  output_ctx ("AS LANGUAGE JAVA NAME '%s'", db_get_string (&method_val));
+	  output_ctx ("AS LANGUAGE JAVA NAME '%s.%s'", db_get_string (&class_val), db_get_string (&method_val));
 
 	  if (!DB_IS_NULL (&comment_val))
 	    {
