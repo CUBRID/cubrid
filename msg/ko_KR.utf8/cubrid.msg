@@ -1942,6 +1942,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 324 Out 매개변수에 DEFAULT를 할당하는 것은 허용되지 않습니다: '%1$s'.
 325 오직 후행 기본 인수만 허용합니다: '%1$s' 에서 유효하지 않음.
 326 저장 프로시저/함수 '%1$s' 이(가) OUT 또는 IN OUT 인수를 가지고 있습니다.
+327 '%1$s'에 대해 GRANT 옵션을 부여할 수 없습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

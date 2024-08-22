@@ -1938,6 +1938,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 324 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
 325 Only trailing default parameter is allowed: invalid at '%1$s'.
 326 Stored procedure/function '%1$s' has OUT or IN OUT arguments
+327 Grant option is not allowed for '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
