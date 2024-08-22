@@ -624,6 +624,13 @@ extractobjects_cleanup ()
 static void
 extractobjects_term_handler (int sig)
 {
+  static volatile int hit_signal = 0;
+  int hit = ++hit_signal;
+  if (hit != 1)
+    {
+      return;
+    }
+
   error_occurred = true;
   extractor_thread_proc_terminate = true;
   usleep (1000);
