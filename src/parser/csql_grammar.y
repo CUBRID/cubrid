@@ -8917,8 +8917,8 @@ auth_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-        | revoke_proc_cmd identifier_list from_id_list
-		{{ DBG_TRACE_GRAMMAR(auth_stmt, | revoke_proc_cmd identifier_list from_id_list);
+        | revoke_proc_cmd procedure_or_function_name_list from_id_list
+		{{ DBG_TRACE_GRAMMAR(auth_stmt, | revoke_proc_cmd procedure_or_function_name_list from_id_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_REVOKE);
 
@@ -9019,8 +9019,8 @@ grant_head
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-        | grant_proc_cmd identifier_list to_id_list
-		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_cmd to_id_list);
+        | grant_proc_cmd procedure_or_function_name_list to_id_list
+		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_proc_cmd procedure_or_function_name_list to_id_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_GRANT);
 
@@ -9097,12 +9097,12 @@ author_cmd_list
 	;
 
 authorized_execute_procedure_cmd
-        : EXECUTE ON_ procedure_or_function
+        : EXECUTE ON_ PROCEDURE
                 {{
 			PT_NODE *node = parser_new_node (this_parser, PT_AUTH_CMD);
 			if (node)
 			  {
-			    node->info.auth_cmd.auth_cmd = ($3 == 1) ? PT_EXECUTE_PROCEDURE_PRIV : PT_EXECUTE_FUNCTION_PRIV;
+			    node->info.auth_cmd.auth_cmd = PT_EXECUTE_PROCEDURE_PRIV;
                             node->info.auth_cmd.attr_mthd_list = NULL;
 			  }
                         $$ = node;

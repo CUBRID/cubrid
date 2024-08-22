@@ -11202,21 +11202,14 @@ css_send_error:
 void
 splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  packing_unpacker unpacker (request, (size_t) reqlen);
-
+  int error = ER_FAILED;
   PLCSQL_COMPILE_REQUEST compile_request;
 
+  packing_unpacker unpacker (request, (size_t) reqlen);
   unpacker.unpack_all (compile_request);
 
-  cubmethod::runtime_context * ctx = NULL;
-  session_get_method_runtime_context (thread_p, ctx);
-
-  int error = ER_FAILED;
   cubmem::extensible_block ext_blk;
-  if (ctx)
-    {
-      error = cubmethod::invoke_compile (*thread_p, *ctx, compile_request, ext_blk);
-    }
+  error = cubmethod::invoke_compile (*thread_p, compile_request, ext_blk);
 
   // Error code and is_ignored.
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;

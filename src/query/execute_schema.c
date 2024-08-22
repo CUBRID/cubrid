@@ -60,6 +60,7 @@
 #include "parser_support.h"
 #include "dbtype.h"
 #include "jsp_cl.h"
+#include "msgcat_glossary.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1792,8 +1793,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV
-	      || auth->info.auth_cmd.auth_cmd == PT_EXECUTE_FUNCTION_PRIV)
+	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
 	    {
 	      // NOTE: db_auth is always DB_AUTH_EXECUTE
 	      assert (db_auth == DB_AUTH_EXECUTE);
@@ -1901,8 +1901,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV
-	      || auth->info.auth_cmd.auth_cmd == PT_EXECUTE_FUNCTION_PRIV)
+	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
 	    {
 	      // NOTE: db_auth is always DB_AUTH_EXECUTE
 	      assert (db_auth == DB_AUTH_EXECUTE);
@@ -2318,7 +2317,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       if (!ws_is_same_object (user, Au_user) && !au_is_dba_group_member (Au_user))
 	{
 	  error = ER_AU_NOT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
 	  goto end;
 	}
 
