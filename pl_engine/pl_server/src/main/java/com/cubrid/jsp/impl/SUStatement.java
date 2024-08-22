@@ -107,7 +107,9 @@ public class SUStatement {
 
         /* init fetch infos */
         fetchSize = DEFAULT_FETCH_SIZE;
-        fetchedStartCursorPosition = cursorPosition = totalTupleNumber = fetchedTupleNumber = fetchedEndCursorPosition = 0;
+        fetchedStartCursorPosition =
+                cursorPosition =
+                        totalTupleNumber = fetchedTupleNumber = fetchedEndCursorPosition = 0;
         fetchDirection = ResultSet.FETCH_FORWARD; // TODO: temporary init to FORWARD
 
         maxFetchSize = 0;
@@ -165,7 +167,9 @@ public class SUStatement {
         setColumnInfo(info.columnInfos);
 
         /* init fetch infos */
-        fetchedStartCursorPosition = cursorPosition = totalTupleNumber = fetchedTupleNumber = fetchedEndCursorPosition = 0;
+        fetchedStartCursorPosition =
+                cursorPosition =
+                        totalTupleNumber = fetchedTupleNumber = fetchedEndCursorPosition = 0;
         fetchDirection = ResultSet.FETCH_FORWARD; // TODO: temporary init to FORWARD
 
         commandType = (byte) info.getResultInfo().stmtType;
