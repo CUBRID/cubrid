@@ -620,7 +620,7 @@ sl_open_next_file (FILE * old_fp)
 }
 
 /*
- * sl_delete_oldest_file_if_needed() - Delete the oldest files only if the number of SQL log files exceeds the 'sql_log_max_cnt' value.
+ * sl_delete_oldest_file_if_needed() - Delete the oldest file only if the number of SQL log files exceeds the 'sql_log_max_cnt' value.
  *
  * Note:
  *   This function is related to the ha_sql_log_max_count system parameter.
@@ -637,11 +637,10 @@ sl_delete_oldest_file_if_needed (void)
     {
       /*
        * Cases : 
-       * 1. 'curr_file_id' has never exceeded 'sql_log_max_cnt'
-       * 2. 'curr_file_id' exceeds UINT_MAX and wraps around to 0
+       * 1. 'curr_file_id' has never exceeded the maximum value of UINT_MAX, which means there is no oldest file to delete.
+       * 2. 'curr_file_id' exceeds UINT_MAX and wraps around to 0, which means there is oldest file (e.g. oldest file id == UINT_MAX) to delete.
        *  
-       * Always assume a wrap-around has occurred when inferring the file path
-       * The file is deleted only in case 2
+       * Instead of using a complicated process to decide between the two cases, always assume it’s case 2.
        */
       oldest_file_id = UINT_MAX - sql_log_max_cnt + sl_Info.curr_file_id + 1;
     }
@@ -652,22 +651,14 @@ sl_delete_oldest_file_if_needed (void)
 
   snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id);
 
-
   // step(2) : delete the oldest file if it exists
-  if (unlink (oldest_file_path) != 0)
-    {
-      if (errno = EACCES)
-	{
-	  /*
-	   * This situation occurs when an SQL log file is first created and the file ID has not yet exceeded 'sql_log_max_cnt', 
-           * which means there is no oldest file to delete. This corresponds to case 1 of step 1.
-	   * In this case, even though a wrap-around hasn't actually occurred, 
-           * 'oldest_file_path' is still constructed as if it has, leading to a non-existent file path being assigned to 'oldest_file_path'. 
-	   * Although 'oldest_file_path' is generated and an attempt is made to delete it, the 'unlink' function will recognize that the file does not exist.
-	   * As a result, there is no risk of accidentally deleting a file that isn't the oldest due to an incorrect path configuration.
-	   */
-	}
-    }
+  unlink (oldest_file_path);
+  /*
+   * if (errno == EACCES), then this corresponds to case1 mentioned above.
+   * There isn't actually a file to delete, but it will attempt to delete the guessed 'oldest_file_path'.
+   * However, this situation is expected, and the unlink() function does not attempt to delete a file that does not exist,
+   * so even if the 'oldest_file_path' is guessed incorrectly, the issue is mitigated.
+   */
 }
 
 /*
