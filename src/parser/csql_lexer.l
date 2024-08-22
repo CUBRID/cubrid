@@ -94,6 +94,7 @@ int expecting_pl_lang_spec = 0;
 %x POST_DOT_OR_RIGHT_ARROW_STRING
 %x PL_LANG_SPEC
 %x PLCSQL_TEXT
+%x POST_PLCSQL_TEXT
 
  /* id letter */
 IDL       [a-zA-Z0-9_]
@@ -1696,7 +1697,7 @@ _[uU][tT][fF]8[']		{
                                                                 if (plcsql_begin_end_balance == 0) {
                                                                         plcsql_nest_level--;
                                                                         if (plcsql_nest_level < 0) {
-                                                                                BEGIN(INITIAL);
+                                                                                BEGIN(POST_PLCSQL_TEXT);
                                                                         }
                                                                 }
 							        csql_yylval.cptr = pt_makename(yytext);
@@ -1724,6 +1725,21 @@ _[uU][tT][fF]8[']		{
 <PLCSQL_TEXT>. 					        { begin_token(yytext);
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
+
+ /* mode POST_PLCSQL_TEXT */
+
+<POST_PLCSQL_TEXT>[cC][oO][mM][mM][eE][nN][tT]          { BEGIN(INITIAL);
+                                                                yybuffer_pos -= csql_yyleng;
+                                                                yyless(0); }
+
+<POST_PLCSQL_TEXT>{IDL}+                                { BEGIN(INITIAL);
+                                                                begin_token(yytext);
+                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+
+<POST_PLCSQL_TEXT>(\n|.)                                { BEGIN(INITIAL);
+                                                                yybuffer_pos -= csql_yyleng;
+                                                                yyless(0); }
 
 
 %%
