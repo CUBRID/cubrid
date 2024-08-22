@@ -55,6 +55,8 @@
 
 /* The following two are for getpid */
 #include <sys/types.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define	CSS_ENABLE_INTERRUPTS

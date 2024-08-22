@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -130,6 +131,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -192,6 +194,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -816,6 +819,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 출력 파일 '%1$s'을 열 수 없습니다.\n
+16 알 수 없는 클래스 "%1$s"\n
 60 \
 diagdb: 데이터베이스 정보 덤프\n\
 사용법: %1$s diagdb [옵션] <데이터베이스 이름>\n\
@@ -927,7 +931,8 @@ plandump: 쿼리 플랜 표시 및 관리\n\
 \n\
 옵션:\n\
   -d, --drop                   서버 케시에 있는 모든 플랜 삭제\n\
-  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 출력 파일 '%1$s'을 열 수 없습니다.\n
@@ -1301,3 +1306,19 @@ flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니다.\n\
                                 기본값: 플래시백을 위한 SQL 문만 출력\n\
     --oldest                    시작 시간부터 종료 시간까지 수행된 SQL문에 대하여 시간 순으로 플래시백을 수행합니다;\n\
                                 기본값: 최근에 수행된 SQL문부터 역순으로 플래시백을 수행합니다.\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 'cubrid.conf'에서 시스템 파라미터 'enable_memory_monitoring'을 설정하고 데이터베이스 서버를 재시작하세요.\n
+2 memmon은 독립 모드에서 실행할 수 없습니다.\n
+3 파일 이름이 %1$s인 출력 파일을 열 수 없습니다.\n
+4 서버의 메모리 모니터링이 성공적으로 비활성화되었습니다.\n
+5 disable-force는 다른 옵션과 함께 사용할 수 없습니다.\n
+6 서버의 메모리 모니터링이 비활성화되었습니다. 서버를 다시 시작한 후에 다시 사용할 수 있습니다.\n
+7 이 운영 체제에서는 memmon을 지원하지 않습니다.\n
+60 \
+memmon: 데이터베이스 서버의 메모리 사용량 정보를 제공합니다.\n\
+사용법: %1$s memmon [옵션] 데이터베이스 이름\n\
+\n\
+유효한 옵션:\n\
+    -o, --output-file=FILE    결과를 FILE에 출력합니다\n\
+    --disable-force           서버의 메모리 모니터를 강제로 비활성화합니다.\n

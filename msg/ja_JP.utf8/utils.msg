@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 レングスが正しくないか、正しくない文字「%1$c」がデータベース名「%2$s」に入っています。\n
@@ -130,6 +131,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$sはDBMS管理道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
@@ -192,6 +194,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$sはDBMS道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
@@ -816,6 +819,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 出力ファイル「%1$s」が開けません。\n
+16 不明なクラス "%1$s"\n
 60 \
 diagdb: データベース情報をダンプ\n\
 使い方: %1$s diagdb [オプション] <データベース名>\n\
@@ -927,7 +931,8 @@ plandump: クエリープラン表示と管理\n\
 \n\
 オプション:\n\
   -d, --drop                   サーバーキャッシュに存在するプランを全部削除\n\
-  -o, --output-file=FILE       出力メッセージを書き込むファイル; デフォルト: なし\n
+  -o, --output-file=FILE       出力メッセージを書き込むファイル; デフォルト: なし\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 出力ファイル「%1$s」が開けません。\n
@@ -1315,3 +1320,19 @@ flashback：特定のトランザクションをフラッシュバックする�
                                   フラッシュバック用。デフォルト：フラッシュバックのSQLステートメントのみを出力します\n\
     --oldest                      フラッシュバックは、開始時刻から終了時刻まで実行されたSQLステートメントに対して時系列で実行されます;\n\
                                   デフォルト：最新\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 'cubrid.conf'内のシステムパラメータ 'enable_memory_monitoring' を設定し、データベースサーバーを再起動してください。\n
+2 memmon はスタンドアロンモードで実行できません。\n
+3 ファイル名 %1$s で出力ファイルを開けませんでした。\n
+4 メモリモニタリングが正常に無効化されました。\n
+5 disable-forceは他のオプションと一緒に使用することはできません。\n
+6 サーバーのメモリモニタリングは無効になりました。サーバーを再起動すれば再び使用できます。\n
+7 memmonはこのオペレーティングシステムではサポートされていません。\n
+60 \
+memmon: データベースサーバーのメモリ使用状況情報を提供します。\n\
+使用法: %1$s memmon [OPTION] データベース名\n\
+\n\
+有効なオプション:\n\
+    -o, --output-file=FILE    結果を FILE に出力します\n\
+    --disable-force           サーバーのメモリモニターを強制的に無効化します。\n

@@ -7577,6 +7577,68 @@ qmgr_drop_all_query_plans (void)
 }
 
 /*
+ * qmgr_drop_query_plans_by_sha1 - Send a SERVER_QM_DROP_BY_SHA1 request to the server
+ *
+ * Request the server to clear sha1 XASL cache entires out. When the client
+ * want to delete cached query plans for sha1, this function will be used.
+ * This function is a counter part to sqmgr_drop_all_query_plans().
+ */
+/*
+ * qmgr_drop_query_plans_by_sha1 -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+int
+qmgr_drop_query_plans_by_sha1 (char *sha1)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED;
+  int request_size, strlen1;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  int req_error;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (sha1, &strlen1);
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_FAILED;
+    }
+
+  pack_const_string_with_length (request, sha1, strlen1);
+
+  req_error = net_client_request (NET_SERVER_QM_QUERY_DROP_SHA1_PLANS, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &success);
+    }
+
+  free_and_init (request);
+
+  return success;
+#else /* CS_MODE */
+  int status;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  /* call the server routine of query drop plan */
+  status = xqmgr_drop_query_plans_by_sha1 (thread_p, sha1);
+
+  exit_server (*thread_p);
+
+  return status;
+#endif /* !CS_MODE */
+}
+
+/*
  * qmgr_dump_query_plans -
  *
  * return:
@@ -11272,5 +11334,117 @@ error:
   return rc;
 #else /* CS_MODE */
   return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/*
+ * mmon_get_server_info - request to server to get server memory usage info
+ *
+ * return : cubrid error
+ *
+ *   server_info(in/out): save memory usage information of the server
+ */
+int
+mmon_get_server_info (MMON_SERVER_INFO & server_info)
+{
+#if defined(CS_MODE)
+  char *buffer, *ptr, *temp_str;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, dummy;
+  int error = NO_ERROR;
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_GET_SERVER_INFO, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
+    }
+
+  if (error == NO_ERROR)
+    {
+      // unpack server name
+      ptr = or_unpack_string_nocopy (buffer, &temp_str);
+      memcpy (server_info.server_name, temp_str, strlen (temp_str) + 1);
+
+      // unpack server total memory usage
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_mem_usage));
+
+      // unpack metainfo total memory usage
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_metainfo_mem_usage));
+
+      // unpack the number of stat
+      ptr = or_unpack_int (ptr, (int *) &(server_info.num_stat));
+
+      // unpack file name and its memory usage
+      server_info.stat_info.resize (server_info.num_stat);
+
+      // *INDENT-OFF*
+      // unpack memory usage entry info
+      for (auto &s_info : server_info.stat_info)
+        {
+          ptr = or_unpack_string_nocopy (ptr, &temp_str);
+          s_info.first = temp_str;
+          ptr = or_unpack_int64 (ptr, (int64_t *) &(s_info.second));
+        }
+      // *INDENT-ON*
+    }
+  free_and_init (buffer);
+
+  return error;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * mmon_disable_force - request to server to disable memory_monitor forcely
+ *
+ * return : cubrid error
+ */
+int
+mmon_disable_force ()
+{
+#if defined(CS_MODE)
+  char *buffer, *ptr;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, dummy;
+  int error = NO_ERROR;
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_DISABLE_FORCE, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
+    }
+
+  free_and_init (buffer);
+
+  return error;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }

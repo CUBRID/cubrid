@@ -56,6 +56,8 @@
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define DB_NUMBER_ZERO	    0
 
@@ -374,6 +376,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_SHORT:
     case DB_TYPE_VOBJ:
     case DB_TYPE_OID:
+    case DB_TYPE_RESULTSET:
       break;
 
     default:
@@ -555,6 +558,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       break;
       /* case DB_TYPE_TABLE: internal use only */
     case DB_TYPE_JSON:
+    case DB_TYPE_RESULTSET:
       value->domain.general_info.is_null = 1;
       value->need_clear = false;
       break;
@@ -732,6 +736,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       break;
       /* case DB_TYPE_TABLE: internal use only */
     case DB_TYPE_JSON:
+    case DB_TYPE_RESULTSET:
       value->domain.general_info.is_null = 1;
       value->need_clear = false;
       break;

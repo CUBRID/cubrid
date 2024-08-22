@@ -39,6 +39,9 @@
 
 #include <stdio.h>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /*
  *
  *    		 THE ARRAY OF SERVER RECOVERY FUNCTIONS

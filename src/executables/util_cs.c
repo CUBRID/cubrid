@@ -61,6 +61,7 @@
 #include "tde.h"
 #include "flashback_cl.h"
 #include "connection_support.h"
+#include "memory_monitor_cl.hpp"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -2140,6 +2141,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *output_file = NULL;
+  char *sha1 = NULL;
   bool drop_flag = false;
   FILE *outfp = NULL;
 
@@ -2151,6 +2153,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
 
   drop_flag = utility_get_option_bool_value (arg_map, PLANDUMP_DROP_S);
   output_file = utility_get_option_string_value (arg_map, PLANDUMP_OUTPUT_FILE_S, 0);
+  sha1 = utility_get_option_string_value (arg_map, PLANDUMP_SHA1_S, 0);
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2192,8 +2195,16 @@ plandump (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  qmgr_dump_query_plans (outfp);
-  if (drop_flag)
+  if (sha1 != NULL)
+    {
+      if (qmgr_drop_query_plans_by_sha1 (sha1) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+    }
+  else if (drop_flag)
     {
       if (qmgr_drop_all_query_plans () != NO_ERROR)
 	{
@@ -2202,6 +2213,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
     }
+  qmgr_dump_query_plans (outfp);
   db_shutdown ();
 
   if (outfp != stdout)
@@ -4541,4 +4553,146 @@ error_exit:
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 
+}
+
+int
+memmon (UTIL_FUNCTION_ARG * arg)
+{
+#if defined(CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  bool need_shutdown = false;
+  const char *outfile_name;
+  bool disable_force = false;
+  FILE *outfile_fp = NULL;
+  int error_code = NO_ERROR;
+  MMON_SERVER_INFO server_info;
+
+  outfile_name = utility_get_option_string_value (arg_map, MEMMON_OUTPUT_S, 0);
+  disable_force = utility_get_option_bool_value (arg_map, MEMMON_DISABLE_FORCE_S);
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_memmon_usage;
+    }
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  if (outfile_name && disable_force)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON,
+			      MEMMON_MSG_CANNOT_USE_DISABLE_FORCE_WITH_OTHER_OPTION));
+      goto error_exit;
+    }
+
+  if (outfile_name)
+    {
+      outfile_fp = fopen (outfile_name, "w+");
+      if (outfile_fp == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_CANNOT_OPEN_OUTPUT_FILE),
+				 outfile_name);
+	  goto error_exit;
+	}
+    }
+  else
+    {
+      outfile_fp = stdout;
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  if (db_restart (arg->command_name, TRUE, database_name))
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
+      goto error_exit;
+    }
+  need_shutdown = true;
+
+  if (!prm_get_bool_value (PRM_ID_ENABLE_MEMORY_MONITORING))
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_SUPPORTED));
+      goto error_exit;
+    }
+
+  if (disable_force)
+    {
+      error_code = mmon_disable_force ();
+      if (error_code != NO_ERROR)
+	{
+	  switch (error_code)
+	    {
+	    case ER_INTERFACE_NOT_SUPPORTED_OPERATION:
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON,
+						     MEMMON_MSG_NOT_SUPPORTED_OS));
+	      break;
+	    default:
+	      break;
+	    }
+	  goto error_exit;
+	}
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_DISABLE_SUCCESS));
+      goto success_exit;
+    }
+
+  /* execute phase */
+  error_code = mmon_get_server_info (server_info);
+  if (error_code != NO_ERROR)
+    {
+      switch (error_code)
+	{
+	case ER_FAILED:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON,
+						 MEMMON_MSG_MEMORY_MONITOR_IS_DISABLED));
+	  break;
+	case ER_INTERFACE_NOT_SUPPORTED_OPERATION:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON,
+						 MEMMON_MSG_NOT_SUPPORTED_OS));
+	  break;
+	default:
+	  break;
+	}
+      goto error_exit;
+    }
+
+  mmon_print_server_info (server_info, outfile_fp);
+
+success_exit:
+  fclose (outfile_fp);
+
+  db_shutdown ();
+
+  return EXIT_SUCCESS;
+
+print_memmon_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+error_exit:
+  if (need_shutdown)
+    {
+      db_shutdown ();
+    }
+
+  if (outfile_fp)
+    {
+      fclose (outfile_fp);
+    }
+
+  return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
 }

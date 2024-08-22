@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longitud o caracter '%1$c' en el nombre de la base de datos '%2$s'\n no valida.
@@ -130,6 +131,7 @@ Nombre de utilidad admin disponible:\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
@@ -192,6 +194,7 @@ Utilidades de administrador disponible:\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
@@ -816,6 +819,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 No se puede abrir archivo de salida '%1$s'\n
+16 Clase desconocida "%1$s"\n
 60 \
 diagdb: Imprimir una base de datos.\n\
 uso: %1$s diagdb [OPTION] database-name\n\
@@ -927,7 +931,8 @@ uso: %1$s plandump [OPTION] database-name\n\
 \n\
 opciones validas:\n\
   -d, --drop                   soltar todos planes en la memoria cache del servidor\n\
-  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n
+  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 No se puede abrir archivo de salida '%1$s'\n
@@ -1314,3 +1319,19 @@ opciones válidas:\n\
                                   para retrospectiva; predeterminado: genera solo sentencias SQL para flashback\n\
     --oldest                      flashback más antiguo se realiza en orden cronológico para las sentencias SQL ejecutadas desde\n\
                                   la hora de inicio hasta la hora de finalización; predeterminado: último\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 Por favor, configure el parámetro del sistema 'enable_memory_monitoring' en 'cubrid.conf' y reinicie el servidor de la base de datos.\n
+2 memmon no puede ejecutarse en modo independiente.\n
+3 Error al abrir el archivo de salida con el nombre %1$s.\n
+4 La monitorización de memoria en el servidor se ha deshabilitado con éxito.\n
+5 disable-force no se puede usar con otras opciones.\n
+6 La monitorización de memoria en el servidor se ha deshabilitado. Puedes volver a utilizarla después de reiniciar el servidor.\n
+7 memmon no es compatible con este sistema operativo.\n
+60 \
+memmon: Proporciona información sobre el uso de memoria de un servidor de base de datos.\n\
+uso: %1$s memmon [OPCIÓN] nombre-de-base-de-datos\n\
+\n\
+opción válida:\n\
+    -o, --output-file=ARCHIVO    guardar resultados en ARCHIVO\n\
+    --disable-force              deshabilitar forzosamente el monitor de memoria del servidor.\n

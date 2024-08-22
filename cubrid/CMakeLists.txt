@@ -105,6 +105,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/memory_monitor_api.cpp
+  ${BASE_DIR}/memory_monitor_sr.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
@@ -151,6 +153,10 @@ set (BASE_HEADERS
   ${BASE_DIR}/lockfree_transaction_table.hpp
   ${BASE_DIR}/lockfree_transaction_system.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_cwrapper.h
+  ${BASE_DIR}/memory_wrapper.hpp
+  ${BASE_DIR}/memory_monitor_common.hpp
+  ${BASE_DIR}/memory_monitor_sr.hpp
   ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
   ${BASE_DIR}/msgcat_set_log.hpp
@@ -239,6 +245,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
   ${QUERY_DIR}/show_scan.c
+  ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -272,10 +279,10 @@ set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set(JSP_SOURCES
-  ${JSP_DIR}/jsp_comm.c
-  ${JSP_DIR}/jsp_file.c
-  ${JSP_DIR}/jsp_sr.c
+set(SP_SOURCES
+  ${SP_DIR}/jsp_comm.c
+  ${SP_DIR}/jsp_file.c
+  ${SP_DIR}/jsp_sr.c
   )
 
 set(METHOD_SOURCES
@@ -474,7 +481,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}
@@ -499,7 +506,7 @@ set (CUBRID_LIB_SOURCES
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}
@@ -537,7 +544,7 @@ if(WIN32)
   set_target_properties(cubrid PROPERTIES OUTPUT_NAME libcubrid)
 endif(WIN32)
 
-target_compile_definitions(cubrid PRIVATE SERVER_MODE CUBRID_EXPORTING ${COMMON_DEFS})
+target_compile_definitions(cubrid PRIVATE SERVER_MODE EnableThreadMonitoring CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubrid PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)
@@ -556,6 +563,7 @@ if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubrid PUBLIC stdc++fs)
+  target_link_libraries(cubrid PUBLIC rt)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
@@ -576,6 +584,7 @@ if(AT_LEAST_ONE_UNIT_TEST)
 
   target_compile_definitions(cubrid-win-lib PRIVATE
     SERVER_MODE
+    EnableThreadMonitoring
     ${COMMON_DEFS}
     )
 

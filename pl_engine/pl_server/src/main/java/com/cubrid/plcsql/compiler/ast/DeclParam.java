@@ -48,5 +48,10 @@ public abstract class DeclParam extends DeclIdTyped {
         return typeSpec;
     }
 
+    @Override
+    public String name() {
+        return name;
+    }
+
     abstract String toJavaSignature();
 }

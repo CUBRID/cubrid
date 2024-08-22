@@ -123,6 +123,7 @@ static void read_conf_cache (int cid, bool * acl, int *num_br, int *shm_id, char
 static void write_conf_cache (char *file, bool * acl_flag, int *num_broker, int *shm_id, char *alog,
 			      T_BROKER_INFO * br_info, time_t bf_mtime);
 static void clear_conf_cache_entry (int cid);
+static bool is_invalid_buf_size (int size);
 
 static T_CONF_TABLE tbl_appl_server[] = {
   {APPL_SERVER_CAS_TYPE_NAME, APPL_SERVER_CAS},
@@ -136,6 +137,12 @@ static T_CONF_TABLE tbl_appl_server[] = {
 static T_CONF_TABLE tbl_on_off[] = {
   {"ON", ON},
   {"OFF", OFF},
+  {NULL, 0}
+};
+
+static T_CONF_TABLE tbl_allow_deny[] = {
+  {"ALLOW", ALLOW},
+  {"DENY", DENY},
   {NULL, 0}
 };
 
@@ -210,6 +217,7 @@ static char *conf_file_loaded[MAX_NUM_OF_CONF_FILE_LOADED];
 const char *broker_keywords[] = {
   "ACCESS_CONTROL",
   "ACCESS_CONTROL_FILE",
+  "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER",
   "ADMIN_LOG_FILE",
   "MASTER_SHM_ID",
   "ACCESS_LIST",
@@ -296,7 +304,8 @@ const char *broker_keywords[] = {
   "SHARD_PROXY_LOG_DIR",
   /* For backword compatibility */
   "SQL_LOG2",
-  "SHARD"
+  "SHARD",
+  "NET_BUF_SIZE"
 };
 
 int broker_keywords_size = sizeof (broker_keywords) / sizeof (char *);
@@ -664,6 +673,17 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       br_info[num_brs].appl_server_num = br_info[num_brs].appl_server_min_num;
 
+      INI_GETSTR_CHK (s, ini, sec_name, "NET_BUF_SIZE", DEFAULE_NET_BUF_SIZE, &lineno);
+      strncpy_bufsize (size_str, s);
+      br_info[num_brs].net_buf_size = (int) ut_size_string_to_kbyte (size_str, "K");
+
+      if (is_invalid_buf_size (br_info[num_brs].net_buf_size))
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
+
+
       br_info[num_brs].appl_server_max_num =
 	ini_getint (ini, sec_name, "MAX_NUM_APPL_SERVER", DEFAULT_AS_MAX_NUM, &lineno);
       if (br_info[num_brs].appl_server_max_num > APPL_SERVER_NUM_LIMIT || br_info[num_brs].appl_server_max_num < 1)
@@ -829,6 +849,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       strncpy_bufsize (time_str, s);
       br_info[num_brs].time_to_kill = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].time_to_kill < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
+      INI_GETSTR_CHK (s, ini, sec_name, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER", "DENY", &lineno);
+      br_info[num_brs].acl_broker_allow = conf_get_value_table_allow_deny (s);
+      if (br_info[num_brs].acl_broker_allow < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
@@ -1598,6 +1626,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	}
       fprintf (fp, "JOB_QUEUE_SIZE\t\t=%d\n", br_info[i].job_queue_size);
       fprintf (fp, "TIME_TO_KILL\t\t=%d\n", br_info[i].time_to_kill);
+      fprintf (fp, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER\t=%s\n", br_info[i].acl_broker_allow ? "ALLOW" : "DENY");
       tmp_str = get_conf_string (br_info[i].access_log, tbl_on_off);
       if (tmp_str)
 	{
@@ -1607,6 +1636,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
       fprintf (fp, "ACCESS_LOG_DIR\t\t=%s\n", br_info[i].access_log_dir);
       fprintf (fp, "ACCESS_LIST\t\t=%s\n", br_info[i].acl_file);
       fprintf (fp, "MAX_STRING_LENGTH\t=%d\n", br_info[i].max_string_length);
+      fprintf (fp, "NET_BUF_SIZE\t\t=%dK\n", br_info[i].net_buf_size);
       tmp_str = get_conf_string (br_info[i].keep_connection, tbl_keep_connection);
       if (tmp_str)
 	{
@@ -1780,6 +1810,17 @@ conf_get_value_table_on_off (const char *value)
 }
 
 /*
+* conf_get_value_table_allow_deny - get value from allow/deny table
+*   return: 0, 1 or -1 if fail
+*   value(in):
+*/
+int
+conf_get_value_table_allow_deny (const char *value)
+{
+  return (get_conf_value (value, tbl_allow_deny));
+}
+
+/*
  * conf_get_value_sql_log_mode - get value from sql_log_mode table
  *   return: -1 if fail
  *   value(in):
@@ -1832,4 +1873,25 @@ int
 conf_get_value_proxy_log_mode (const char *value)
 {
   return (get_conf_value (value, tbl_proxy_log_mode));
+}
+
+static bool
+is_invalid_buf_size (int size)
+{
+  bool ret = false;
+
+  // The unit of size is KB.
+  switch (size)
+    {
+    case 16:
+    case 32:
+    case 48:
+    case 64:
+      break;
+    default:
+      ret = true;
+      break;
+    }
+
+  return ret;
 }

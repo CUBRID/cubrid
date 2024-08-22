@@ -60,6 +60,8 @@
 #else
 #include "boot_sr.h"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static SOCKET jsp_connect_server_tcp (int server_port);
 #if !defined (WINDOWS)

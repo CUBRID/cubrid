@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Ungültige Länge oder Zeichen '%1$c' in Datenbank '%2$s'\n
@@ -130,6 +131,7 @@ Vorhandene Admin-Utilitynamen:\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s ist ein Werkzeug für DBMS.\n\
 Für zusätzliche Informationen, http://www.cubrid.org besuchen\n
@@ -192,6 +194,7 @@ Vorhandene Administratorutilities:\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s ist ein Werkzeug für DBMS.\n\
 Für zusätzliche Informationen, http://www.cubrid.org, besuchen\n
@@ -816,6 +819,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Ausgangsdatei '%1$s' konnte nicht geöffnet werden \n
+16 Unbekannte Klasse "%1$s"\n
 60 \
 diagdb: Database exportieren.\n\
 Anwendung: %1$s diagdb [OPTION] Datenbanknamen\n\
@@ -927,7 +931,8 @@ Anwendung: %1$s plandump [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
   -d, --drop                   alle Pläne ins Server-Cache exportieren \n\
-  -o, --output-file=DATEI       Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n
+  -o, --output-file=DATEI       Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
+  -s, --sha1=SHA1               drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Ausgangdatei '%1$s' kann nicht geöffnet werden\n
@@ -1314,3 +1319,19 @@ gültige Optionen:\n\
                                         zurückgegeben für Rückblende; Standard: gibt nur SQL-Anweisungen für Flashback aus\n\
     --oldest                            Flashback wird in chronologischer Reihenfolge für SQL-Anweisungen durchgeführt,\n\
                                         die von der Startzeit bis zur Endzeit ausgeführt werden; Standard: neueste\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 Bitte setzen Sie den Systemparameter 'enable_memory_monitoring' in 'cubrid.conf' und starten Sie den Datenbankserver neu.\n
+2 memmon kann nicht im eigenständigen Modus ausgeführt werden.\n
+3 Fehler beim Öffnen der Ausgabedatei mit dem Dateinamen %1$s.\n
+4 Die Speicherüberwachung auf dem Server wurde erfolgreich deaktiviert.\n
+5 disable-force kann nicht zusammen mit anderen Optionen verwendet werden.\n
+6 Die Speicherüberwachung auf dem Server wurde deaktiviert. Sie können sie nach einem Neustart des Servers erneut verwenden.\n
+7 memmon wird auf diesem Betriebssystem nicht unterstützt.\n
+60 \
+memmon: Bietet Informationen zur Speicherauslastung eines Datenbankservers.\n\
+Verwendung: %1$s memmon [OPTION] Datenbankname\n\
+\n\
+Gültige Optionen:\n\
+    -o, --output-file=DATEI    Ergebnisse in DATEI ausgeben\n\
+    --disable-force            Speicherüberwachung des Servers zwangsweise deaktivieren.\n

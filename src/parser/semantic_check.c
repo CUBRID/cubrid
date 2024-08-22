@@ -4380,13 +4380,15 @@ pt_find_aggregate_analytic_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *
  * [Note]
  * This function will search whether an aggregate or analytic function exists
  * in WHERE clause of below statements:
- *     INSERT, DO, SET, DELETE, SELECT, UNION, DIFFERENCE, INTERSECTION, and
+ *     INSERT, UPDATE, DO, SET, DELETE, SELECT, UNION, DIFFERENCE, INTERSECTION, and
  *     MERGE.
  * It stops searching when meets the first aggregate or analytic function.
  *
  * 1) For below node types, searching is limited to child node who containing
+ *    SET clause:
+ *     PT_UPDATE
  *    WHERE clause:
- *     PT_DO, PT_DELETE, PT_SET_SESSION_VARIABLES, PT_SELECT
+ *     PT_DO, PT_DELETE, PT_SET_SESSION_VARIABLES, PT_SELECT, PT_UPDATE
  *
  * 2) For below node types, searching is executed on its args:
  *     PT_UNION, PT_DIFFERENCE, PT_INTERSECTION
@@ -4450,6 +4452,24 @@ pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
       /* walk tree to search */
       (void) parser_walk_tree (parser, node, pt_find_aggregate_analytic_pre, &find, pt_find_aggregate_analytic_post,
 			       &find);
+      break;
+
+    case PT_UPDATE:
+      /* For UPDATE JOIN statements, aggregate functions or analytic functions cannot be used
+       * in the SET and WHERE clauses.  Aggregate functions cannot be used in the UPDATE statement,
+       * even if it is not an UPDATE JOIN statement.  Whether aggregate functions are used is checked
+       * in the pt_semantic_check_local function.
+       */
+      if (node->info.update.spec->next != NULL)
+	{
+	  find = pt_find_aggregate_analytic_in_where (parser, node->info.update.assignment);
+	  if (find != NULL)
+	    {
+	      break;
+	    }
+
+	  find = pt_find_aggregate_analytic_in_where (parser, node->info.update.search_cond);
+	}
       break;
 
     default:
@@ -7520,8 +7540,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 	{
 	  if (col->node_type == PT_VALUE && col->type_enum == PT_TYPE_NULL)
 	    {
-	      PT_ERRORmf2 (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
-			   attribute_name (parser, attr), pt_short_print (parser, col));
+	      attr->type_enum = PT_TYPE_VARCHAR;
 	    }
 	  else
 	    {
@@ -8136,8 +8155,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    }
 	  else if (s_attr->node_type == PT_VALUE && s_attr->type_enum == PT_TYPE_NULL)
 	    {
-	      PT_ERRORm (parser, s_attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NULL_NOT_ALLOWED_ON_QUERY_SPEC);
-	      return;
+	      s_attr->type_enum = PT_TYPE_VARCHAR;
 	    }
 
 	  derived_attr = pt_derive_attribute (parser, s_attr);

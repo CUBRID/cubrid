@@ -55,6 +55,7 @@
 #include "dynamic_array.h"
 #include "flashback_cl.h"
 #include "method_compile_def.hpp"
+#include "memory_monitor_common.hpp"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -265,6 +266,7 @@ extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_stream, int xas
 						      int query_timeout);
 extern int qmgr_end_query (QUERY_ID query_id);
 extern int qmgr_drop_all_query_plans (void);
+extern int qmgr_drop_query_plans_by_sha1 (char *sha1);
 extern void qmgr_dump_query_plans (FILE * outfp);
 extern void qmgr_dump_query_cache (FILE * outfp);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -458,4 +460,7 @@ EXPORT_IMPORT extern int plcsql_transfer_file (const std::string & input_file, c
 					       PLCSQL_COMPILE_INFO & compile_info);
 
 
+/* memmon */
+extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
+extern int mmon_disable_force ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */

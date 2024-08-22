@@ -42,6 +42,8 @@
 #include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
 #include "xasl_unpack_info.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg);
 static AGGREGATE_TYPE *stx_restore_aggregate_type (THREAD_ENTRY * thread_p, char *ptr);
@@ -84,7 +86,7 @@ static char *stx_build_filter_pred_node (THREAD_ENTRY * thread_p, char *ptr, PRE
 static char *stx_build_func_pred (THREAD_ENTRY * thread_p, char *tmp, FUNC_PRED * ptr);
 static char *stx_build_cache_attrinfo (char *tmp);
 static char *stx_build_list_id (THREAD_ENTRY * thread_p, char *tmp, QFILE_LIST_ID * ptr);
-static char *stx_build_cte_xasl_id (THREAD_ENTRY * thread_p, char *tmp, XASL_ID * ptr);
+static char *stx_build_sub_xasl_id (THREAD_ENTRY * thread_p, char *tmp, XASL_ID * ptr);
 static char *stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *tmp, METHOD_SIG_LIST * ptr);
 static char *stx_build_method_sig (THREAD_ENTRY * thread_p, char *tmp, METHOD_SIG * ptr, int size);
 static char *stx_build_union_proc (THREAD_ENTRY * thread_p, char *tmp, UNION_PROC_NODE * ptr);
@@ -136,6 +138,7 @@ static char *stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *tmp, A
 static char *stx_build_srlist_id (THREAD_ENTRY * thread_p, char *tmp, QFILE_SORTED_LIST_ID * ptr);
 static char *stx_build_sort_list (THREAD_ENTRY * thread_p, char *tmp, SORT_LIST * ptr);
 static char *stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *tmp, CONNECTBY_PROC_NODE * ptr);
+static char *stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p);
 
 static REGU_VALUE_LIST *stx_regu_value_list_alloc_and_init (THREAD_ENTRY * thread_p);
 static REGU_VALUE_ITEM *stx_regu_value_item_alloc_and_init (THREAD_ENTRY * thread_p);
@@ -1387,36 +1390,36 @@ stx_restore_OID_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
 }
 
 static XASL_ID *
-stx_restore_cte_xasl_id (THREAD_ENTRY * thread_p, char *ptr)
+stx_restore_sub_xasl_id (THREAD_ENTRY * thread_p, char *ptr)
 {
   int i, offset;
-  XASL_ID *cte_xasl_id;
+  XASL_ID *sub_xasl_id;
 
   if (ptr == NULL)
     {
       return NULL;
     }
 
-  cte_xasl_id = (XASL_ID *) stx_get_struct_visited_ptr (thread_p, ptr);
-  if (cte_xasl_id != NULL)
+  sub_xasl_id = (XASL_ID *) stx_get_struct_visited_ptr (thread_p, ptr);
+  if (sub_xasl_id != NULL)
     {
-      return cte_xasl_id;
+      return sub_xasl_id;
     }
 
-  cte_xasl_id = (XASL_ID *) stx_alloc_struct (thread_p, sizeof (XASL_ID));
-  if (cte_xasl_id == NULL)
+  sub_xasl_id = (XASL_ID *) stx_alloc_struct (thread_p, sizeof (XASL_ID));
+  if (sub_xasl_id == NULL)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       return NULL;
     }
 
-  if (stx_mark_struct_visited (thread_p, ptr, cte_xasl_id) == ER_FAILED
-      || stx_build_cte_xasl_id (thread_p, ptr, cte_xasl_id) == NULL)
+  if (stx_mark_struct_visited (thread_p, ptr, sub_xasl_id) == ER_FAILED
+      || stx_build_sub_xasl_id (thread_p, ptr, sub_xasl_id) == NULL)
     {
       return NULL;
     }
 
-  return cte_xasl_id;
+  return sub_xasl_id;
 }
 
 static KEY_VAL_RANGE *
@@ -2159,24 +2162,24 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      xasl->cte_xasl_id = NULL;
+      xasl->sub_xasl_id = NULL;
     }
   else
     {
-      xasl->cte_xasl_id = stx_restore_cte_xasl_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (xasl->cte_xasl_id == NULL)
+      xasl->sub_xasl_id = stx_restore_sub_xasl_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->sub_xasl_id == NULL)
 	{
 	  goto error;
 	}
     }
 
-  ptr = or_unpack_int (ptr, &xasl->cte_host_var_count);
-  if (xasl->cte_host_var_count > 0)
+  ptr = or_unpack_int (ptr, &xasl->sub_host_var_count);
+  if (xasl->sub_host_var_count > 0)
     {
-      xasl->cte_host_var_index = (int *) malloc (sizeof (int) * xasl->cte_host_var_count);
-      for (i = 0; i < xasl->cte_host_var_count; i++)
+      xasl->sub_host_var_index = (int *) malloc (sizeof (int) * xasl->sub_host_var_count);
+      for (i = 0; i < xasl->sub_host_var_count; i++)
 	{
-	  ptr = or_unpack_int (ptr, &xasl->cte_host_var_index[i]);
+	  ptr = or_unpack_int (ptr, &xasl->sub_host_var_index[i]);
 	}
     }
 
@@ -2273,6 +2276,11 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+    }
+  ptr = stx_build_sq_cache (thread_p, ptr, &xasl->sq_cache);
+  if (ptr == NULL)
+    {
+      goto error;
     }
 
   memset (&xasl->orderby_stats, 0, sizeof (xasl->orderby_stats));
@@ -2395,20 +2403,57 @@ stx_build_cache_attrinfo (char *ptr)
 }
 
 static char *
-stx_build_cte_xasl_id (THREAD_ENTRY * thread_p, char *ptr, XASL_ID * cte_xasl_id)
+stx_build_sub_xasl_id (THREAD_ENTRY * thread_p, char *ptr, XASL_ID * sub_xasl_id)
 {
   int i;
 
-  ptr = or_unpack_sha1 (ptr, &cte_xasl_id->sha1);
+  ptr = or_unpack_sha1 (ptr, &sub_xasl_id->sha1);
 
-  cte_xasl_id->cache_flag = OR_GET_INT (ptr);
+  sub_xasl_id->cache_flag = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
 
-  cte_xasl_id->time_stored.sec = OR_GET_INT (ptr);
+  sub_xasl_id->time_stored.sec = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
 
-  cte_xasl_id->time_stored.usec = OR_GET_INT (ptr);
+  sub_xasl_id->time_stored.usec = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
+
+  return ptr;
+}
+
+static char *
+stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p)
+{
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  SQ_CACHE *new_sq_cache = NULL;
+  int n_elements, offset;
+
+  *sq_cache_p = NULL;
+  ptr = or_unpack_int (ptr, &n_elements);
+  ptr = or_unpack_int (ptr, &offset);
+
+  if (n_elements > 0)
+    {
+      new_sq_cache = (SQ_CACHE *) stx_alloc_struct (thread_p, sizeof (SQ_CACHE));
+      if (new_sq_cache == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      memset (new_sq_cache, 0, sizeof (SQ_CACHE));
+
+      new_sq_cache->sq_key_struct = (SQ_KEY *) stx_alloc_struct (thread_p, sizeof (SQ_KEY));
+      new_sq_cache->sq_key_struct->dbv_array =
+	stx_restore_db_value_array_extra (thread_p, &xasl_unpack_info->packed_xasl[offset], n_elements, n_elements);
+      if (new_sq_cache->sq_key_struct->dbv_array == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+
+      new_sq_cache->sq_key_struct->n_elements = n_elements;
+      *sq_cache_p = new_sq_cache;
+    }
 
   return ptr;
 }

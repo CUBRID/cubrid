@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Lungime sau caracter invalid '%1$c' în numele bazei de date '%2$s'\n
@@ -130,6 +131,7 @@ Nume de utilitare de administrare disponibile:\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s este un utilitar pentru SGDB.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
@@ -192,6 +194,7 @@ Utilitare de administrare disponibile:\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s este un utilitar pentru SGBD.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
@@ -833,6 +836,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 Fişierul de ieşire '%1$s' nu a putut fi deschis\n
+16 Clasă necunoscută "%1$s"\n
 60 \
 diagdb: Varsă o baza de date.\n\
 utilizare: %1$s diagdb [OPŢIUNI] nume-bază-de-date\n\
@@ -944,7 +948,8 @@ utilizare: %1$s plandump [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
   -d, --drop                   şterge toate planurile din memoria cache a serverului\n\
-  -o, --output-file=FIŞIER     redirecţionează mesajele de ieşire către FIŞIER; implicit: nul\n
+  -o, --output-file=FIŞIER     redirecţionează mesajele de ieşire către FIŞIER; implicit: nul\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Fişierul de ieşire '%1$s' nu a putut fi deschis\n
@@ -1340,3 +1345,19 @@ opțiuni valide:\n\
                                   pentru flashback; implicit: scoate numai instrucțiuni SQL pentru flashback\n\
     --oldest                      flashback-ul este efectuat în ordine cronologică pentru instrucțiunile SQL executate de la ora de\n\
                                   început până la ora de sfârșit; implicit: cel mai recent\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 Vă rugăm să setați parametrul de sistem 'enable_memory_monitoring' în 'cubrid.conf' și să reporniți serverul de baze de date.\n
+2 memmon nu poate rula în modul autonom.\n
+3 Eșec la deschiderea fișierului de ieșire cu numele %1$s.\n
+4 Monitorizarea memoriei pe server a fost dezactivată cu succes.\n
+5 disable-force nu poate fi folosit împreună cu alte opțiuni.\n
+6 Monitorizarea memoriei pe server a fost dezactivată. O poți folosi din nou după repornirea serverului.\n
+7 memmon nu este suportat pe acest sistem de operare.\n
+60 \
+memmon: Furnizează informații despre utilizarea memoriei a unui server de baze de date.\n\
+utilizare: %1$s memmon [OPȚIUNE] nume-bază-de-date\n\
+\n\
+opțiuni valide:\n\
+    -o, --output-file=FILE    rezultatele de ieșire în FILE\n\
+    --disable-force           dezactivează forțat monitorul de memorie al serverului.\n

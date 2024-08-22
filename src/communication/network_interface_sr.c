@@ -29,6 +29,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "perf_monitor.h"
@@ -89,6 +91,8 @@
 #include "crypt_opfunc.h"
 #include "flashback.h"
 #include "method_compile.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1988,7 +1992,6 @@ slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 void
 slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -2005,7 +2008,7 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("logpb_dump_stat_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2013,6 +2016,8 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
       db_private_free_and_init (NULL, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xlogpb_dump_stat (outfp);
   file_size = ftell (outfp);
@@ -2301,7 +2306,6 @@ sacl_reload (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
 void
 sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -2318,7 +2322,7 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("acl_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2327,6 +2331,7 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
       return;
     }
 
+  filesys::auto_delete_file file_del (filename.c_str ());
   xacl_dump (thread_p, outfp);
   file_size = ftell (outfp);
 
@@ -2379,7 +2384,6 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 void
 slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -2399,7 +2403,7 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("lock_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2407,6 +2411,8 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xlock_dump (thread_p, outfp, is_contention);
   file_size = ftell (outfp);
@@ -6026,6 +6032,44 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 }
 
 /*
+ * sqmgr_drop_query_plans_by_sha1 - Process a NET_SERVER_QM_QUERY_DROP_SHA1_PLANS request
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in)qmgr_drop_query_plans_by_sha1:
+ *   reqlen(in):
+ *
+ * NOTE:
+ * Clear all XASL cache entires out upon request of the client.
+ * This function is a counter part to qmgr_drop_query_plans_by_sha1().
+ */
+void
+sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int status;
+  char *reply, *sha1;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  or_unpack_string_nocopy (request, &sha1);
+
+  /* call the server routine of query drop plan */
+  status = xqmgr_drop_query_plans_by_sha1 (thread_p, sha1);
+  if (status != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  /* pack status (DB_IN32) as a reply */
+  (void) or_pack_int (reply, status);
+
+  /* send reply and data to the client */
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+
+/*
  * sqmgr_dump_query_plans -
  *
  * return:
@@ -6039,7 +6083,6 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 void
 sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -6056,7 +6099,7 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("qplan_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -6064,6 +6107,8 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xqmgr_dump_query_plans (thread_p, outfp);
   file_size = ftell (outfp);
@@ -6118,7 +6163,6 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 void
 sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -6135,7 +6179,7 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("qcache_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -6143,6 +6187,8 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xqmgr_dump_query_cache (thread_p, outfp);
   file_size = ftell (outfp);
@@ -7116,7 +7162,6 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, unsigned int rid, char 
 void
 sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -7133,7 +7178,7 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("thread_cs_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7141,6 +7186,8 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       db_private_free_and_init (NULL, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   sync_dump_statistics (outfp, SYNC_TYPE_ALL);
 
@@ -7232,7 +7279,6 @@ slogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 void
 slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -7249,7 +7295,7 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("logtb_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7257,6 +7303,8 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xlogtb_dump_trantable (thread_p, outfp);
   file_size = ftell (outfp);
@@ -7865,7 +7913,6 @@ sprm_server_obtain_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *
 void
 sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -7882,7 +7929,7 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *re
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("prm_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7890,6 +7937,8 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *re
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xsysprm_dump_server_parameters (outfp);
   file_size = ftell (outfp);
@@ -9552,7 +9601,6 @@ svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 void
 svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  FILE *outfp;
   int file_size;
   char *buffer;
   int buffer_size;
@@ -9569,7 +9617,7 @@ svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
       return;
     }
 
-  outfp = tmpfile ();
+  auto[filename, outfp] = filesys::open_temp_file ("vacuum_dump_", "w+b");
   if (outfp == NULL)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -9577,6 +9625,8 @@ svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
       db_private_free_and_init (thread_p, buffer);
       return;
     }
+
+  filesys::auto_delete_file file_del (filename.c_str ());
 
   xvacuum_dump (thread_p, outfp);
   file_size = ftell (outfp);
@@ -11222,4 +11272,146 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				     ext_blk.get_ptr (), (int) ext_blk.get_size ());
+}
+
+/*
+ * smmon_get_server_info - get memory usage info from memory monitor
+ *
+ * return:
+ *
+ *  rid(in):
+ *  request(in):
+ *  reqlen(in):
+ */
+void
+smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *buffer_a = NULL, *buffer, *ptr;
+  int size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error = NO_ERROR;
+#if !defined(WINDOWS)
+  MMON_SERVER_INFO server_info;
+
+  if (mmon_is_memory_monitor_enabled ())
+    {
+      mmon_aggregate_server_info (server_info);
+    }
+  else
+    {
+      _er_log_debug (ARG_FILE_LINE, "Memory monitor is already disabled by cubrid memmon --disable-force.\n");
+      error = ER_FAILED;
+      goto end;
+    }
+
+  // Size of server name
+  size += or_packed_string_length (server_info.server_name, NULL);
+  size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
+
+  // Size of total_mem_usage
+  size += OR_INT64_SIZE;
+
+  // Size of total_metainfo_mem_usage
+  size += OR_INT64_SIZE;
+
+  // Size of num_stat
+  size += OR_INT_SIZE;
+
+  // Size of stat name and memory usage
+  // *INDENT-OFF*
+  for (const auto &s_info : server_info.stat_info)
+    {
+      // Size of filename
+      size += or_packed_string_length (s_info.first.c_str (), NULL);
+      size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
+
+      // Size of memory usage
+      size += OR_INT64_SIZE;
+    }
+  // *INDENT-ON*
+
+  buffer_a = (char *) db_private_alloc (thread_p, size + MAX_ALIGNMENT);
+  if (buffer_a == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  else
+    {
+      buffer = PTR_ALIGN (buffer_a, MAX_ALIGNMENT);
+
+      ptr = buffer;
+
+      ptr = or_pack_string (ptr, server_info.server_name);
+      ptr = or_pack_int64 (ptr, server_info.total_mem_usage);
+      ptr = or_pack_int64 (ptr, server_info.total_metainfo_mem_usage);
+      ptr = or_pack_int (ptr, server_info.num_stat);
+
+      // *INDENT-OFF*
+      for (const auto &s_info : server_info.stat_info)
+        {
+          ptr = or_pack_string (ptr, s_info.first.c_str ());
+          ptr = or_pack_int64 (ptr, s_info.second);
+        }
+      // *INDENT-ON*
+      assert (size == (int) (ptr - buffer));
+    }
+
+end:
+  if (error != NO_ERROR)
+    {
+      ptr = or_pack_int (reply, 0);
+      ptr = or_pack_int (ptr, error);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    }
+  else
+    {
+      ptr = or_pack_int (reply, size);
+      ptr = or_pack_int (ptr, error);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
+    }
+  db_private_free_and_init (thread_p, buffer_a);
+#else // WINDOWS
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+
+  // send error
+  ptr = or_pack_int (reply, 0);
+  ptr = or_pack_int (ptr, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+#endif // !WINDOWS
+}
+
+/*
+ * smmon_disable_force - disable memory_monitor forcely
+ *
+ * return:
+ *
+ *  rid(in):
+ *  request(in):
+ *  reqlen(in):
+ */
+void
+smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error = NO_ERROR;
+#if !defined(WINDOWS)
+  mmon_disabled = true;
+
+  ptr = or_pack_int (reply, 0);
+  ptr = or_pack_int (ptr, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+#else // WINDOWS
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+
+  // send error
+  ptr = or_pack_int (reply, 0);
+  ptr = or_pack_int (ptr, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+#endif // !WINDOWS
 }

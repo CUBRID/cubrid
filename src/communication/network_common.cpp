@@ -21,6 +21,8 @@
  */
 
 #include "network.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* The list should sync with net_server_request defined in network.h */
 /* client: used to collect histogram, server: used to log an error */
@@ -142,6 +144,7 @@ const char *net_server_request_name[NET_SERVER_REQUEST_END] =
   "NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE",
   "NET_SERVER_QM_QUERY_END",
   "NET_SERVER_QM_QUERY_DROP_ALL_PLANS",
+  "NET_SERVER_QM_QUERY_DROP_SHA1_PLANS",
   "NET_SERVER_QM_QUERY_DUMP_PLANS",
   "NET_SERVER_QM_QUERY_DUMP_CACHE",
 
@@ -226,7 +229,10 @@ const char *net_server_request_name[NET_SERVER_REQUEST_END] =
   "NET_SERVER_FLASHBACK_GET_SUMMARY",
   "NET_SERVER_FLASHBACK_GET_LOGINFO",
 
-  "NET_SERVER_PLCSQL_TRANSFER_FILE"
+  "NET_SERVER_PLCSQL_TRANSFER_FILE",
+
+  "NET_SERVER_MMON_GET_SERVER_INFO",
+  "NET_SERVER_MMON_DISABLE_FORCE"
 };
 
 /*

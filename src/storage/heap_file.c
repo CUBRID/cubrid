@@ -75,6 +75,8 @@
 #include "tde.h"
 
 #include <set>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -2825,7 +2827,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 		{
 		  pr_type->data_readval (&buf, &def_dbvalue, attrepr->domain, disk_length, copy, NULL, 0);
 
-		  db_fprint_value (stdout, &def_dbvalue);
+		  db_fprint_value (fp, &def_dbvalue);
 		  (void) pr_clear_value (&def_dbvalue);
 		}
 	      else
@@ -14513,13 +14515,13 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 /*
  * heap_dump_heap_file () - dump a specific heap file with class name
  *
- * return            :
+ * return            : error code
  * thread_p (in)     : thread entry
  * fp (in)           : output file
  * dump_records (in) : true to dump records
  * class_name (in)   : name of class to dump
  */
-void
+int
 heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name)
 {
   int error_code = NO_ERROR;
@@ -14532,14 +14534,17 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   status = xlocator_find_class_oid (thread_p, class_name, &class_oid, S_LOCK);
   if (status != LC_CLASSNAME_EXIST)
     {
-      return;
+      error_code = ER_LC_UNKNOWN_CLASSNAME;
+      goto exit;
     }
+
+  fprintf (fp, "\n*** DUMP HEAP OF %s ***\n", class_name);
 
   error_code = heap_hfid_cache_get (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error_code != NO_ERROR)
     {
       assert (false);
-      return;
+      goto exit;
     }
 
   heap_dump (thread_p, fp, &hfid, dump_records);
@@ -14548,7 +14553,7 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   if (error_code != NO_ERROR)
     {
       assert (false);
-      return;
+      goto exit;
     }
 
   for (int i = 1; i < parts_count; i++)
@@ -14557,6 +14562,9 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
     }
 
   heap_clear_partition_info (thread_p, parts, parts_count);
+
+exit:
+  return error_code;
 }
 #endif
 
@@ -18752,6 +18760,7 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
       if (OID_ISNULL (prev_vpid))
 	{
 	  /* no more pages to scan */
+	  pgbuf_ordered_unfix (thread_p, &pg_watcher);
 	  return S_END;
 	}
       /* get next page */
@@ -18766,7 +18775,6 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
     }
   if (pg_watcher.pgptr == NULL)
     {
-      pgbuf_ordered_unfix (thread_p, &pg_watcher);
       return S_ERROR;
     }
 
@@ -25887,7 +25895,7 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   // Check every page is allocated
   for (size_t i = 0; i < array_size; i++)
     {
-      if (pgbuf_is_valid_page (thread_p, &heap_pages_array[i], false, NULL, NULL) != DISK_VALID)
+      if (pgbuf_is_valid_page (thread_p, &heap_pages_array[i], false) != DISK_VALID)
 	{
 	  assert (false);
 	  return ER_FAILED;

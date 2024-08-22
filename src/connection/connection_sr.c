@@ -81,6 +81,8 @@
 #include "connection_sr.h"
 #include "server_support.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #ifdef PACKET_TRACE
 #define TRACE(string, arg)					\
@@ -1166,7 +1168,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #else /* WINDOWS */
       /* send the "pathname" for the datagram */
       /* be sure to open the datagram first.  */
-      pname = std::filesystem::temp_directory_path ();
+      pname = filesys::temp_directory_path ();
       pname += "/cubrid_tcp_setup_server" + std::to_string (getpid ());
       (void) unlink (pname.c_str ());	// make sure file is deleted
 

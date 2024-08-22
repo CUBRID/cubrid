@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 在数据库名 '%2$s' 中有无效的长度或字符 '%1$c' \n
@@ -130,6 +131,7 @@ cubrid 管理工具，版本 %1$s\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -192,6 +194,7 @@ cubrid 管理工具，版本 %1$s\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -815,6 +818,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 无法打开输出文件 '%1$s'\n
+16 未知类 "%1$s"\n
 60 \
 diagdb: 转储一个数据库.\n\
 用法: %1$s diagdb [选项] 数据库名\n\
@@ -926,7 +930,8 @@ plandump: 显示或控制缓存的查询计划.\n\
 \n\
 可用选项:\n\
   -d, --drop                   丢弃服务端缓存中的所有计划\n\
-  -o, --output-file=FILE       重定向输出信息到FILE; 默认: 空\n
+  -o, --output-file=FILE       重定向输出信息到FILE; 默认: 空\n\
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 无法打开输出文件 '%1$s'\n
@@ -1302,3 +1307,19 @@ flashback：提供用于闪回特定事务的语句。\n\
                                 用于闪回；默认值：只输出闪回的 SQL 语句\n\
     --oldest                    对从开始时间到结束时间执行的SQL语句按时间顺序进行闪回；\n\
                                 默认值：最新\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 请在 'cubrid.conf' 中设置系统参数 'enable_memory_monitoring' 并重新启动数据库服务器。\n
+2 memmon 无法以独立模式运行。\n
+3 打开文件名为 %1$s 的输出文件失败。\n
+4 服务器上的内存监控已成功禁用。\n
+5 disable-force不能与其他选项一起使用。\n
+6 服务器上的内存监控已被禁用。您可以在重新启动服务器后再次使用它。\n
+7 此操作系统不支持memmon。\n
+60 \
+memmon：提供数据库服务器的内存使用信息。\n\
+使用方法：%1$s memmon [选项] 数据库名称\n\
+\n\
+有效选项：\n\
+    -o, --output-file=FILE    将结果输出到 FILE 中\n\
+    --disable-force           强制禁用服务器的内存监视器。\n

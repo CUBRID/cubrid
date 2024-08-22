@@ -84,7 +84,11 @@ public class DatetimeValue extends Value {
 
     public Timestamp toTimestamp() throws TypeMismatchException {
         long sec = timestamp.getTime() / 1000L; // truncate milli-seconds
-        return new Timestamp(sec * 1000L);
+        Timestamp ret = new Timestamp(sec * 1000L);
+        if (!ValueUtilities.checkValidTimestamp(ret)) {
+            throw new TypeMismatchException("out of valid range of a Timestamp: " + timestamp);
+        }
+        return ret;
     }
 
     public Timestamp toDatetime() throws TypeMismatchException {

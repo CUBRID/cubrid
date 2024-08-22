@@ -2670,6 +2670,47 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
 			      /* converse join type */
 			      join_type = (join_type == PT_JOIN_LEFT_OUTER) ? PT_JOIN_RIGHT_OUTER : PT_JOIN_LEFT_OUTER;
+
+			      /* move unnecessary spec list located between the two swapped specs to the end of the entire spec list */
+			      p_end = NULL;
+			      s_start = NULL;
+			      s_end = NULL;
+
+			      for (tmp = p_spec; tmp && tmp->next; tmp = tmp->next)
+				{
+				  if (!s_start)
+				    {
+				      /* cannot find the spec to move */
+				      if (tmp->next == spec)
+					{
+					  break;
+					}
+
+				      /* find the head node of the spec list to be moved
+				       * find the previous node to detach the head node */
+				      if (tmp->next->info.spec.join_type == PT_JOIN_NONE)
+					{
+					  p_end = tmp;
+					  s_start = tmp->next;
+					}
+				    }
+
+				  else
+				    {
+				      /* find the tail node of the spec list to be moved */
+				      if (tmp->next == spec)
+					{
+					  s_end = tmp;
+					}
+				    }
+				}
+
+			      if (s_start && s_end && p_end)
+				{
+				  s_end->next = NULL;
+				  p_end->next = spec;
+				  tmp->next = s_start;
+				}
 			    }
 			  else
 			    {
@@ -2727,6 +2768,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		}
 	      cnf->next = NULL;	/* cut-off link */
 
+	      PT_EXPR_INFO_CLEAR_FLAG (cnf, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER);
+
 	      /* put cnf to the ON cond */
 	      spec->info.spec.on_cond = parser_append_node (cnf, spec->info.spec.on_cond);
 	    }
@@ -2767,6 +2810,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      bind_arg->sc_info->Oracle_outerjoin_spec = spec;
 	      parser_walk_tree (parser, spec->info.spec.on_cond, pt_clear_Oracle_outerjoin_spec_id, bind_arg,
 				pt_continue_walk, NULL);
+
+#if !defined (NDEBUG)
+	      assert (!PT_EXPR_INFO_IS_FLAGED (spec->info.spec.on_cond,
+					       PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER));
+#endif
 	    }
 	}
 
@@ -2787,6 +2835,19 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      spec->info.spec.on_cond = NULL;
 	    }
 	}			/* for */
+
+#if !defined (NDEBUG)
+      for (cnf = node->info.query.q.select.where; cnf; cnf = cnf->next)
+	{
+	  assert (!PT_EXPR_INFO_IS_FLAGED (cnf, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER));
+	}
+#endif
+
+      if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_ORACLE_OUTER))
+	{
+	  PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_ORACLE_OUTER);
+	  PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ANSI_JOIN);
+	}
 
     select_end:
       bind_arg->spec_frames = bind_arg->spec_frames->next;
@@ -5588,7 +5649,16 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
 	  return NULL;
 	}
 
-      corr_name = pt_name (parser, "");
+      if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_FOR_UPDATE))
+	{
+	  corr_name = pt_name (parser, in_node->info.name.original);
+	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_FOR_UPDATE);
+	}
+      else
+	{
+	  corr_name = pt_name (parser, "");
+	}
+
       PT_NODE_COPY_NUMBER_OUTERLINK (corr_name, in_node);
       in_node->next = NULL;
       in_node->or_next = NULL;
@@ -5607,10 +5677,6 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
       if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_ALLOW_REUSABLE_OID))
 	{
 	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_ALLOW_REUSABLE_OID);
-	}
-      if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_FOR_UPDATE))
-	{
-	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_FOR_UPDATE);
 	}
 
       parser_free_tree (parser, in_node);
@@ -9174,6 +9240,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
     {
       PT_NODE *node = statement->info.query.q.select.for_update;
       PT_NODE *spec = NULL;
+      PT_NODE *entity;
 
       if (statement->info.query.q.select.for_update != NULL)
 	{
@@ -9187,6 +9254,16 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 			      node->info.name.original);
 		  return NULL;
 		}
+
+	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
+		{
+		  if (sm_check_system_class_by_name (entity->info.name.original))
+		    {
+		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
+				   "UPDATE", entity->info.name.original);
+		      return NULL;
+		    }
+		}
 	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	  parser_free_tree (parser, statement->info.query.q.select.for_update);
@@ -9198,6 +9275,16 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	  for (spec = statement->info.query.q.select.from; spec != NULL; spec = spec->next)
 	    {
 	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
+		{
+		  if (sm_check_system_class_by_name (entity->info.name.original))
+		    {
+		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
+				   "UPDATE", entity->info.name.original);
+		      return NULL;
+		    }
+		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+		}
 	    }
 	}
     }
