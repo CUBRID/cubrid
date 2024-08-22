@@ -1841,6 +1841,8 @@ stmt
 			      {
 			        g_query_string++;
 			      }
+                          } else {
+                              // TODO: assert this is reached only from loaddb's schema loading
 			  }
 
 		DBG_PRINT}}
