@@ -644,13 +644,13 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	    }
 	}
 
-      args.push_back (std::ref (*db_value));
-      vc = vc->next;
-
       if (to_break)
 	{
 	  break;
 	}
+
+      args.push_back (std::ref (*db_value));
+      vc = vc->next;
     }
 
   if (pt_has_error (parser))

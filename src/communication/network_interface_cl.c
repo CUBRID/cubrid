@@ -69,6 +69,7 @@
 #include "compile_context.h"
 #if defined (SA_MODE)
 #include "thread_manager.hpp"
+#include "method_compile.hpp"
 #endif // SA_MODE
 #include "xasl.h"
 #include "lob_locator.hpp"
@@ -11333,6 +11334,17 @@ error:
 
   return rc;
 #else /* CS_MODE */
-  return NO_ERROR;
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  cubmem::extensible_block ext_blk;
+  success = cubmethod::invoke_compile (*thread_p, compile_request, ext_blk);
+  packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
+  unpacker.unpack_all (compile_response);
+
+  exit_server (*thread_p);
+
+  return success;
 #endif /* !CS_MODE */
 }
