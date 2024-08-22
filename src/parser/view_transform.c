@@ -366,7 +366,8 @@ static PT_NODE *mq_reset_references_to_query_string (PARSER_CONTEXT * parser, PT
 static void mq_auto_param_merge_clauses (PARSER_CONTEXT * parser, PT_NODE * stmt);
 
 static PT_NODE *pt_check_for_update_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-
+static PT_NODE *pt_check_odku_refs_pre (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk);
+static void pt_check_odku_refs_view (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int pt_check_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * query, bool root);
 
 static int pt_for_update_prepare_query_internal (PARSER_CONTEXT * parser, PT_NODE * query);
@@ -1638,12 +1639,124 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
       /* Due to tree copy, the spec ids of methods are broken. Reset spec ids */
       mq_reset_ids_in_methods (parser, tmp_result);
 
+<<<<<<< HEAD
       /* get statement spec */
       switch (tmp_result->node_type)
 	{
 	case PT_SELECT:
 	  statement_spec = tmp_result->info.query.q.select.from;
 	  break;
+=======
+/*
+ * check if it refers view or inline view at "on duplicate key update" clause
+ */
+static PT_NODE *
+pt_check_odku_refs_pre (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk)
+{
+  PT_NODE *sel_spec = (PT_NODE *) arg;
+  PT_NODE *spec;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (odku == NULL || odku->node_type != PT_NAME)
+    {
+      return odku;
+    }
+
+  for (spec = sel_spec; spec; spec = spec->next)
+    {
+      if (spec->info.spec.id == odku->info.name.spec_id)
+	{
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_REFERENCED_AT_ODKU);
+	}
+    }
+
+  return odku;
+}
+
+/*
+ * Checks if there is a view or inline view referenced in the odku clause.
+ * If there is a referenced the view, set a flag
+ * for the view to indicate that it is referenced in odku.
+ * This flag will be used when determining "pushable" in mq_is_pushable_subquery.
+ */
+static void
+pt_check_odku_refs_view (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *odku = statement->info.insert.odku_assignments;
+
+  if (odku)
+    {
+      PT_NODE *sel_spec, *values;
+
+      values = statement->info.insert.value_clauses->info.node_list.list;
+      while (values)
+	{
+	  if (values->node_type == PT_SELECT)
+	    {
+	      sel_spec = values->info.query.q.select.from;
+	      while (odku)
+		{
+		  (void) parser_walk_tree (parser, odku->info.expr.arg2, pt_check_odku_refs_pre, sel_spec, NULL, NULL);
+		  odku = odku->next;
+		}
+	    }
+
+	  values = values->next;
+	}
+    }
+}
+
+/*
+ * mq_is_pushable_subquery () - check if a subquery is pushable
+ *  returns: true if pushable, false otherwise
+ *   parser(in): parser context
+ *   query(in): query to check
+ *   is_only_spec(in): true if query is not joined in parent statement
+ *
+ * NOTE:
+ *          | SELECT ...
+ *   main <-|   FROM ( subquery ) <== query check
+ *          |  WHERE term
+ *
+ * 1. MAIN QUERY CHECK
+ * It should be merged in the following cases.
+ *  - INSERT query
+ * It is not pushable(mergeable) in the following cases.
+ *  - Class is Spec set(spec set??)
+ *  - select for schema
+ *  - has CONNECT BY
+ *  - is merge query
+ *  - is CTE query
+ *  - view spec is outer join spec
+ *  - main query's where has define_vars ':='
+ *  - subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation function
+ *
+ * 2. SUB QUERY CHECK
+ * It is not pushable(mergeable) in the following cases.
+ *  - NOT SELECT node (UNION, DIFFERENCE, INTERSECTION)
+ *  - is value query
+ *  - has 'for update'
+ *  - is correlated subquery
+ *  - is CTE query
+ *  - has NOT 'FROM'
+ *  - has outer join spec and CTE spec
+ *  - has CONNECT BY (Hierarchical Queries)
+ *  - has DISTINCT
+ *  - has aggregate or orderby_for or analytic
+ *  - has inst num or orderby_num
+ *  - has method
+ *  TO_DO : check all cases using is_vclass
+ */
+static PUSHABLE_TYPE
+mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec,
+			 bool is_vclass, PT_NODE * order_by, PT_NODE * class_)
+{
+  PT_NODE *pred, *statement_spec = NULL, *orderby_for, *select_list;
+  CHECK_PUSHABLE_INFO cpi;
+  bool is_pushable_query, is_outer_joined;
+  bool is_only_spec, is_rownum_only, is_orderby_for;
+>>>>>>> 3d306ea... [CBRD-25505] insert ... select .. on duplicate key update query result error with view (#5400)
 
 	case PT_UPDATE:
 	  statement_spec = tmp_result->info.update.spec;
@@ -1697,8 +1810,28 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  /* determine if spec is outer joined */
 	  is_outer_joined = mq_is_outer_join_spec (parser, class_spec);
 
+<<<<<<< HEAD
 	  /* determine if vclass_query is pushable */
 	  is_pushable_query = mq_is_pushable_subquery (parser, query_spec, is_only_spec);
+=======
+  /****************************/
+  /*** ODKU REFERENCE CHECK ***/
+  /****************************/
+  /* odku refers view or inline view */
+  if (PT_IS_SPEC_FLAG_SET (class_spec, PT_SPEC_FLAG_REFERENCED_AT_ODKU))
+    {
+      return NON_PUSHABLE;
+    }
+
+  /*****************************/
+  /**** 1. MAIN QUERY CHECK ****/
+  /*****************************/
+  /* NO_MERGE and QUERY_CACHE hint check */
+  if (subquery->info.query.q.select.hint & (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE))
+    {
+      return NON_PUSHABLE;
+    }
+>>>>>>> 3d306ea... [CBRD-25505] insert ... select .. on duplicate key update query result error with view (#5400)
 
 	  /* rewrite vclass_query as a derived table if spec is outer joined or if query is not pushable */
 	  rewrite_as_derived = rewrite_as_derived || !is_pushable_query || is_outer_joined;
@@ -2161,8 +2294,16 @@ mq_translatable_class (PARSER_CONTEXT * parser, PT_NODE * class_)
       return 1;
     }
 
+<<<<<<< HEAD
   return 0;
 }
+=======
+      is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec, true, order_by, class_);
+      if (is_mergeable == HAS_ERROR)
+	{
+	  goto exit_on_error;
+	}
+>>>>>>> 3d306ea... [CBRD-25505] insert ... select .. on duplicate key update query result error with view (#5400)
 
 /*
  * mq_is_union_translation() - tests a spec for a union translation
@@ -6615,6 +6756,7 @@ mq_lookup_symbol (PARSER_CONTEXT * parser, PT_NODE * attr_list, PT_NODE * attr)
   return list;
 }
 
+<<<<<<< HEAD
 /*
  * mq_insert_symbol() - appends the symbol to the entities
  *   return: none
@@ -6626,6 +6768,15 @@ void
 mq_insert_symbol (PARSER_CONTEXT * parser, PT_NODE ** listhead, PT_NODE * attr)
 {
   PT_NODE *new_node;
+=======
+    case PT_INSERT:
+      /* checks if there is a view or inline view referenced in the odku clause. */
+      pt_check_odku_refs_view (parser, statement);
+
+      /* INSERT does not support rewrites so we must check that no rewrite is needed */
+      spec = &statement->info.insert.spec;
+      break;
+>>>>>>> 3d306ea... [CBRD-25505] insert ... select .. on duplicate key update query result error with view (#5400)
 
   if (!attr || attr->node_type != PT_NAME)
     {
