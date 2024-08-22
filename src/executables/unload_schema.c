@@ -4506,19 +4506,26 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
       if (sp_lang == SP_LANG_PLCSQL)
 	{
 	  output_ctx ("AS LANGUAGE PLCSQL BEGIN ");
-	  (sp_type == SP_TYPE_PROCEDURE) ? output_ctx ("NULL;"); : output_ctx ("RETURN NULL;");
+	  if (sp_type == SP_TYPE_PROCEDURE)
+	    {
+	      output_ctx ("NULL;");
+	    }
+	  else
+	    {
+	      output_ctx ("RETURN NULL;");
+	    }
 	  output_ctx (" END;\n");
 	}
       else
 	{
 	  if ((err = db_get (obj, SP_ATTR_TARGET_CLASS, &class_val)) != NO_ERROR
-	    || (err = db_get (obj, SP_ATTR_TARGET_METHOD, &method_val)) != NO_ERROR
-	    || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
+	      || (err = db_get (obj, SP_ATTR_TARGET_METHOD, &method_val)) != NO_ERROR
+	      || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
 	    {
 	      err_count++;
 	      continue;
 	    }
-		
+
 	  output_ctx ("AS LANGUAGE JAVA NAME '%s.%s'", db_get_string (&class_val), db_get_string (&method_val));
 	  db_value_clear (&class_val);
 	  db_value_clear (&method_val);
