@@ -624,7 +624,7 @@ configure_file(cmake/version.h.cmake version.h)
 #############
 # add_definitions(-DTEST_HASH_JOIN_ENABLE)
 # add_definitions(-DTEST_HASH_JOIN_FORCE_ENABLE)
-# add_definitions(-DTEST_HASH_JOIN_TEST_TIME)
+# add_definitions(-DTEST_HASH_JOIN_PROFILE_TIME)
 # add_definitions(-DDEBUG_HASH_JOIN_DUMP_HASH_TABLE)
 # add_definitions(-DDEBUG_HASH_JOIN_DUMP_BUILD)
 # add_definitions(-DDEBUG_HASH_JOIN_DUMP_PROBE)

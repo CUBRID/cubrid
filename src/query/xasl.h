@@ -395,10 +395,13 @@ struct hashjoin_stats
     UINT64 fetch_time;
     UINT64 ioreads;
 
-#if defined(TEST_HASH_JOIN_TEST_TIME)
-    struct timeval test_time1;	/* qexec_hash_join_fetch_key */
-    struct timeval test_time2;	/* qdata_hash_scan_key */
-    struct timeval test_time3;	/* qexec_hash_join_build_key */
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+    struct
+    {
+      struct timeval fetch;	/* qexec_hash_join_fetch_key */
+      struct timeval hash;	/* qdata_hash_scan_key */
+      struct timeval insert;	/* qexec_hash_join_build_key */
+    } profile;
 #endif
   } build;
 
@@ -413,12 +416,15 @@ struct hashjoin_stats
     UINT64 rows;
     UINT32 max_collisions;
 
-#if defined(TEST_HASH_JOIN_TEST_TIME)
-    struct timeval test_time1;	/* qexec_hash_join_fetch_key */
-    struct timeval test_time2;	/* qdata_hash_scan_key */
-    struct timeval test_time3;	/* qexec_hash_join_probe_key */
-    struct timeval test_time4;	/* qexec_hash_join_fetch_key */
-    struct timeval test_time5;	/* qexec_merge_tuple_add_list */
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+    struct
+    {
+      struct timeval fetch;	/* qexec_hash_join_fetch_key */
+      struct timeval hash;	/* qdata_hash_scan_key */
+      struct timeval search;	/* qexec_hash_join_probe_key */
+      struct timeval match;	/* qexec_hash_join_fetch_key */
+      struct timeval add;	/* qexec_merge_tuple_add_list */
+    } profile;
 #endif
   } probe;
 };

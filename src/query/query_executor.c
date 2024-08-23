@@ -7699,7 +7699,7 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
 
-#if defined(TEST_HASH_JOIN_TEST_TIME)
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
   HASHJOIN_STATS *stats;
 
   bool on_trace = thread_is_on_trace (thread_p);
@@ -7736,7 +7736,7 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   key = hash_scan->temp_key;
   assert (key != NULL);
 
-#if defined(TEST_HASH_JOIN_TEST_TIME)
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
   if (on_trace)
     {
       stats = &(hashjoin_proc->stats);
@@ -7745,7 +7745,7 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
   while ((qp_scan = qfile_scan_list_next (thread_p, list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
-#if defined(TEST_HASH_JOIN_TEST_TIME)
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
       if (on_trace)
 	{
 	  tsc_getticks (&start_tick);
@@ -7755,6 +7755,18 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
       error =
 	qexec_hash_join_fetch_key (thread_p, hashjoin_proc, build_domains, build_value_indexes, &tuple_record, key,
 				   NULL /* compare_key */ , &exit_on_next);
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+      if (on_trace)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (stats->build.profile.fetch, tv_diff);
+
+	  tsc_getticks (&start_tick);
+	}
+#endif
+
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -7769,25 +7781,14 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	  /* fall through */
 	}
 
-#if defined(TEST_HASH_JOIN_TEST_TIME)
-      if (on_trace)
-	{
-	  tsc_getticks (&end_tick);
-	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	  TSC_ADD_TIMEVAL (stats->build.test_time1, tv_diff);
-
-	  tsc_getticks (&start_tick);
-	}
-#endif
-
       hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
 
-#if defined(TEST_HASH_JOIN_TEST_TIME)
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
       if (on_trace)
 	{
 	  tsc_getticks (&end_tick);
 	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	  TSC_ADD_TIMEVAL (stats->build.test_time2, tv_diff);
+	  TSC_ADD_TIMEVAL (stats->build.profile.hash, tv_diff);
 
 	  tsc_getticks (&start_tick);
 	}
@@ -7799,12 +7800,12 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	  goto exit_on_error;
 	}
 
-#if defined(TEST_HASH_JOIN_TEST_TIME)
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
       if (on_trace)
 	{
 	  tsc_getticks (&end_tick);
 	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	  TSC_ADD_TIMEVAL (stats->build.test_time3, tv_diff);
+	  TSC_ADD_TIMEVAL (stats->build.profile.insert, tv_diff);
 	}
 #endif
     }
@@ -7897,8 +7898,10 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
   HASHJOIN_STATS *stats;
 
   bool on_trace = thread_is_on_trace (thread_p);
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
+#endif
 
   int error = NO_ERROR;
   bool exit_on_next;
@@ -7969,7 +7972,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
       qfile_print_tuple (&(probe_list_scan_id->list_id.type_list), tuple_record.tpl);
 #endif
 
-#if defined(TEST_HASH_JOIN_TEST_TIME)
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
       if (on_trace)
 	{
 	  tsc_getticks (&start_tick);
@@ -7979,6 +7982,18 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
       error =
 	qexec_hash_join_fetch_key (thread_p, hashjoin_proc, probe_domains, probe_value_indexes, &tuple_record, key,
 				   NULL /* compare_key */ , &exit_on_next);
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+      if (on_trace)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (stats->probe.profile.fetch, tv_diff);
+
+	  tsc_getticks (&start_tick);
+	}
+#endif
+
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -7993,25 +8008,14 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	  /* fall through */
 	}
 
-#if defined(TEST_HASH_JOIN_TEST_TIME)
-      if (on_trace)
-	{
-	  tsc_getticks (&end_tick);
-	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	  TSC_ADD_TIMEVAL (stats->probe.test_time1, tv_diff);
-
-	  tsc_getticks (&start_tick);
-	}
-#endif
-
       hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
 
       if (on_trace)
 	{
-#if defined(TEST_HASH_JOIN_TEST_TIME)
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
 	  tsc_getticks (&end_tick);
 	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	  TSC_ADD_TIMEVAL (stats->probe.test_time2, tv_diff);
+	  TSC_ADD_TIMEVAL (stats->probe.profile.hash, tv_diff);
 #endif
 
 	  max_collisions = 0;
@@ -8019,7 +8023,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
       do
 	{
-#if defined(TEST_HASH_JOIN_TEST_TIME)
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
 	  if (on_trace)
 	    {
 	      tsc_getticks (&start_tick);
@@ -8032,6 +8036,17 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	      goto exit_on_error;
 	    }
 
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.search, tv_diff);
+
+	      tsc_getticks (&start_tick);
+	    }
+#endif
+
 	  if (found_tuple_record.tpl == NULL)
 	    {
 	      /* The hash value was not found, so read the next tuple. */
@@ -8040,20 +8055,24 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
 	  if (on_trace)
 	    {
-#if defined(TEST_HASH_JOIN_TEST_TIME)
-	      tsc_getticks (&end_tick);
-	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	      TSC_ADD_TIMEVAL (stats->probe.test_time3, tv_diff);
-
-	      tsc_getticks (&start_tick);
-#endif
-
 	      max_collisions++;
 	    }
 
 	  error =
 	    qexec_hash_join_fetch_key (thread_p, hashjoin_proc, build_domains, build_value_indexes, &found_tuple_record,
 				       found_key, key /* compare_key */ , &exit_on_next);
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.match, tv_diff);
+
+	      tsc_getticks (&start_tick);
+	    }
+#endif
+
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -8073,20 +8092,16 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 	      /* fall through */
 	    }
 
-#if defined(TEST_HASH_JOIN_TEST_TIME)
-	  if (on_trace)
-	    {
-	      tsc_getticks (&end_tick);
-	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	      TSC_ADD_TIMEVAL (stats->probe.test_time4, tv_diff);
-
-	      tsc_getticks (&start_tick);
-	    }
-#endif
-
 #if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_PROBE)
 	  fprintf (stdout, "\n[DEBUG] Matched Key: ");
 	  qfile_print_tuple (&(build_list_scan_id->list_id.type_list), found_tuple_record.tpl);
+#endif
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&start_tick);
+	    }
 #endif
 
 	  error =
@@ -8099,10 +8114,10 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
 
 	  if (on_trace)
 	    {
-#if defined(TEST_HASH_JOIN_TEST_TIME)
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
 	      tsc_getticks (&end_tick);
 	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	      TSC_ADD_TIMEVAL (stats->probe.test_time5, tv_diff);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.add, tv_diff);
 #endif
 
 	      stats->probe.rows++;
@@ -8169,8 +8184,10 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
   HASHJOIN_STATS *stats;
 
   bool on_trace = thread_is_on_trace (thread_p);
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
+#endif
 
   int error = NO_ERROR;
   bool exit_on_next;
@@ -8264,9 +8281,28 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
       qfile_print_tuple (&(probe_scan_id->s.llsid.list_id->type_list), tuple_record.tpl);
 #endif
 
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+      if (on_trace)
+	{
+	  tsc_getticks (&start_tick);
+	}
+#endif
+
       error =
 	qexec_hash_join_fetch_key (thread_p, hashjoin_proc, probe_domains, probe_value_indexes, &tuple_record, key,
 				   NULL /* compare_key */ , &exit_on_next);
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+      if (on_trace)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (stats->probe.profile.fetch, tv_diff);
+
+	  tsc_getticks (&start_tick);
+	}
+#endif
+
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -8276,6 +8312,13 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 #if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_PROBE)
 	  fprintf (stdout, "\n[DEBUG] Fill Outer Key: ");
 	  qfile_print_tuple (&(probe_scan_id->s.llsid.list_id->type_list), tuple_record.tpl);
+#endif
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&start_tick);
+	    }
 #endif
 
 	  if (is_right_outer_join == true)
@@ -8288,6 +8331,15 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 	      error =
 		qexec_merge_tuple_add_list (thread_p, list_id, &tuple_record, NULL, merge_info, &result_tuple_record);
 	    }
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.add, tv_diff);
+	    }
+#endif
 
 	  if (error != NO_ERROR)
 	    {
@@ -8313,16 +8365,41 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 
       if (on_trace)
 	{
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (stats->probe.profile.hash, tv_diff);
+#endif
+
 	  max_collisions = 0;
 	}
 
       do
 	{
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&start_tick);
+	    }
+#endif
+
 	  error = qexec_hash_join_probe_key (thread_p, hash_scan, &found_tuple_record, &(build_scan_id->s.llsid.lsid));
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  if (on_trace)
+	    {
+
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.search, tv_diff);
+
+	      tsc_getticks (&start_tick);
+	    }
+#endif
 
 	  if (found_tuple_record.tpl == NULL)
 	    {
@@ -8338,6 +8415,18 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 	  error =
 	    qexec_hash_join_fetch_key (thread_p, hashjoin_proc, build_domains, build_value_indexes, &found_tuple_record,
 				       found_key, key /* compare_key */ , &exit_on_next);
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.match, tv_diff);
+
+	      tsc_getticks (&start_tick);
+	    }
+#endif
+
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -8375,6 +8464,17 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 		  goto exit_on_error;
 		}
 
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	      if (on_trace)
+		{
+		  tsc_getticks (&end_tick);
+		  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+		  TSC_ADD_TIMEVAL (stats->probe.profile.match, tv_diff);
+
+		  tsc_getticks (&start_tick);
+		}
+#endif
+
 	      if (ev_res != V_TRUE)
 		{
 #if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_PROBE)
@@ -8387,9 +8487,25 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 		}
 	    }
 
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.match, tv_diff);
+	    }
+#endif
+
 #if !defined(NDEBUG) && defined(DEBUG_HASH_JOIN_DUMP_PROBE)
 	  fprintf (stdout, "\n[DEBUG] Matched Key: ");
 	  qfile_print_tuple (&(build_scan_id->s.llsid.list_id->type_list), found_tuple_record.tpl);
+#endif
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&start_tick);
+	    }
 #endif
 
 	  if (is_right_outer_join == true)
@@ -8412,6 +8528,12 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 
 	  if (on_trace)
 	    {
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.add, tv_diff);
+#endif
+
 	      stats->probe.rows++;
 	    }
 
@@ -8438,6 +8560,13 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 	  qfile_print_tuple (&(probe_scan_id->s.llsid.list_id->type_list), tuple_record.tpl);
 #endif
 
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  if (on_trace)
+	    {
+	      tsc_getticks (&start_tick);
+	    }
+#endif
+
 	  if (is_right_outer_join == true)
 	    {
 	      error =
@@ -8456,6 +8585,12 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashj
 
 	  if (on_trace)
 	    {
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.add, tv_diff);
+#endif
+
 	      stats->probe.rows++;
 	    }
 	}
