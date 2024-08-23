@@ -484,11 +484,11 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
 	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
 	}
 
-      fprintf (fp, " }\n");
+      fprintf (fp, " }");
     }
   else if (hash_list_scan_type == HASH_METH_HYBRID)
     {
-      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]\n", data_p->pos->vpid.pageid,
+      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]", data_p->pos->vpid.pageid,
 	       data_p->pos->vpid.volid, data_p->pos->offset);
     }
   else if (hash_list_scan_type == HASH_METH_HASH_FILE)
@@ -500,7 +500,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
       /* nothing to do */
     }
 
-  // fprintf (fp, "\n}");
+  fprintf (fp, "\n");
 
   return true;
 }

@@ -243,15 +243,16 @@ qdump_print_list_merge_info (QFILE_LIST_MERGE_INFO * merge_info_p)
     }
 
   fprintf (foutput, "[join type:%d]", merge_info_p->join_type);
-  fprintf (foutput, "[single fetch:%d]\n", merge_info_p->single_fetch);
+  fprintf (foutput, "[single fetch:%d]", merge_info_p->single_fetch);
+  fprintf (foutput, "\n");
 
   qdump_print_column ("outer column position", merge_info_p->ls_column_cnt, merge_info_p->ls_outer_column);
   qdump_print_column ("outer column is unique", merge_info_p->ls_column_cnt, merge_info_p->ls_outer_unique);
   qdump_print_column ("inner column position", merge_info_p->ls_column_cnt, merge_info_p->ls_inner_column);
   qdump_print_column ("inner column is unique", merge_info_p->ls_column_cnt, merge_info_p->ls_inner_unique);
+  fprintf (foutput, "\n");
 
-  fprintf (foutput, "\n[output column count:%d]", merge_info_p->ls_pos_cnt);
-
+  fprintf (foutput, "[output column count:%d]", merge_info_p->ls_pos_cnt);
   qdump_print_column ("output columns", merge_info_p->ls_pos_cnt, merge_info_p->ls_pos_list);
   qdump_print_column ("outer/inner indicators", merge_info_p->ls_pos_cnt, merge_info_p->ls_outer_inner_list);
 
