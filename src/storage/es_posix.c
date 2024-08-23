@@ -692,7 +692,6 @@ int
 xes_posix_rename_file (const char *src_path, const char *metaname, char *new_path)
 {
   int ret;
-  char src_path_abs[PATH_MAX], new_path_abs[PATH_MAX];
 
   es_rename_path ((char *) src_path, new_path, (char *) metaname);
 
