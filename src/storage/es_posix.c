@@ -257,12 +257,14 @@ es_abs_open (const char *path, int flags, mode_t mode)
 static int
 es_make_abs_path (char *dst, const char *src)
 {
-  if (src == NULL || dst == NULL)
+  int ret = NO_ERROR;
+
+  if (!IS_ABS_PATH (src))
     {
-      return ER_ES_GENERAL;
+      ret = snprintf (dst, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, src);
     }
 
-  return IS_ABS_PATH (src) ? NO_ERROR : (snprintf (dst, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, src));
+  return ret;
 }
 #endif /* SA_MODE || SERVER_MODE */
 
