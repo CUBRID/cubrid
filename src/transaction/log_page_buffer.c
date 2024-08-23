@@ -105,6 +105,8 @@
 #include "crypt_opfunc.h"
 #include "object_representation.h"
 #include "flashback.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -3455,13 +3457,16 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	{
 	  flush_start_time = log_get_clock_msec ();
 
-          // *INDENT-OFF*
-          new (&writer_info->last_writer_client_info) clientids ();
-          // *INDENT-ON*
-
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
 	  writer_info->last_writer_client_info.client_type = DB_CLIENT_TYPE_UNKNOWN;
+	  writer_info->last_writer_client_info.client_info.clear ();
+	  writer_info->last_writer_client_info.db_user.clear ();
+	  writer_info->last_writer_client_info.program_name.clear ();
+	  writer_info->last_writer_client_info.login_name.clear ();
+	  writer_info->last_writer_client_info.host_name.clear ();
+	  writer_info->last_writer_client_info.client_ip_addr.clear ();
+	  writer_info->last_writer_client_info.process_id = 0;
 	}
 
       entry = writer_info->writer_list;

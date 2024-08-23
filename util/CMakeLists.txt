@@ -58,6 +58,7 @@ target_compile_definitions(csql PRIVATE ${COMMON_DEFS})
 target_include_directories(csql PRIVATE ${EP_INCLUDES})
 if(UNIX)
   target_link_libraries(csql LINK_PRIVATE ${CMAKE_DL_LIBS})
+  target_link_libraries(csql LINK_PUBLIC rt)
 else(UNIX)
   target_compile_definitions(csql PRIVATE _CONSOLE)
   target_link_libraries(csql LINK_PRIVATE ws2_32)
@@ -315,6 +316,8 @@ if(UNIX)
   set(UNITTESTS_LF_SOURCES
     ${BASE_DIR}/porting.c
     ${BASE_DIR}/lock_free.c
+    ${BASE_DIR}/memory_monitor_api.cpp
+    ${BASE_DIR}/memory_monitor_sr.cpp
     ${EXECUTABLES_DIR}/unittests_lf.c
     )
   SET_SOURCE_FILES_PROPERTIES(
@@ -328,6 +331,8 @@ if(UNIX)
 
 
   set(UNITTESTS_AREA_SOURCES
+    ${BASE_DIR}/memory_monitor_api.cpp
+    ${BASE_DIR}/memory_monitor_sr.cpp
     ${EXECUTABLES_DIR}/unittests_area.c
     )
   SET_SOURCE_FILES_PROPERTIES(
@@ -340,6 +345,8 @@ if(UNIX)
   target_link_libraries(unittests_area LINK_PRIVATE cubrid)
 
   set(UNITTESTS_SNAPSHOT_SOURCES
+      ${BASE_DIR}/memory_monitor_api.cpp
+      ${BASE_DIR}/memory_monitor_sr.cpp
       ${EXECUTABLES_DIR}/unittests_snapshot.c
       )
       
@@ -354,6 +361,8 @@ if(UNIX)
     target_link_libraries(unittests_snapshot LINK_PRIVATE cubrid)
     
   set(UNITTESTS_BIT_SOURCES
+    ${BASE_DIR}/memory_monitor_api.cpp
+    ${BASE_DIR}/memory_monitor_sr.cpp
     ${EXECUTABLES_DIR}/unittests_bit.c
     )
     SET_SOURCE_FILES_PROPERTIES(

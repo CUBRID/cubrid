@@ -722,8 +722,8 @@ cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR
 
   if (log_fp != NULL && query != NULL)
     {
-      /* If password exists in query */
-      if (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->used > 0)
+      /* If the password information does not exist or the password exists in the query */
+      if (hide_pwd_info_ptr == NULL || (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->used > 0))
 	{
 	  cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
 	  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
@@ -758,8 +758,8 @@ cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INF
 
   if (log_fp != NULL && query != NULL)
     {
-      /* If password exists in query */
-      if (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->used > 0)
+      /* If the password information does not exist or the password exists in the query */
+      if (hide_pwd_info_ptr == NULL || (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->used > 0))
 	{
 	  cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
 	  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);

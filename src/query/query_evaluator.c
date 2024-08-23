@@ -43,6 +43,8 @@
 #include "dbtype.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
@@ -2782,7 +2784,8 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
  * Note: evaluate key filter(predicates) given as FILTER_INFO
  */
 DB_LOGICAL
-eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filterp)
+eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_VALUE * prefix_value,
+		 FILTER_INFO * filterp)
 {
   DB_MIDXKEY *midxkey;
   int i, j;
@@ -2834,6 +2837,20 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 	      return V_ERROR;
 	    }
 
+	  DB_MIDXKEY *prefix_midxkey = NULL;
+	  if (!prefix_value || prefix_size <= 0)
+	    {
+	      prefix_size = -1;
+	    }
+	  else
+	    {
+	      prefix_midxkey = db_get_midxkey (prefix_value);
+	      if (!prefix_midxkey)
+		{
+		  return V_ERROR;
+		}
+	    }
+
 	  prev_j_index = 0;
 	  prev_j_ptr = NULL;
 
@@ -2842,17 +2859,33 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 	      func_idx_col_id = filterp->btree_num_attrs + 1;
 	    }
 
+	  bool filled_match_idx = (filterp->matched_attid_idx_4_keyflt && filterp->matched_attid_idx_4_keyflt[0] >= 0);
+
 	  /* for all attributes specified in the filter */
 	  for (i = 0; i < scan_attrsp->num_attrs; i++)
 	    {
-	      /* for the attribute ID array of the index key */
-	      for (j = 0; j < filterp->btree_num_attrs; j++)
+	      if (filled_match_idx)
 		{
-		  if (scan_attrsp->attr_ids[i] != filterp->btree_attr_ids[j])
+		  j = filterp->matched_attid_idx_4_keyflt[i];
+		}
+	      else
+		{
+		  /* for the attribute ID array of the index key */
+		  for (j = 0; j < filterp->btree_num_attrs; j++)
 		    {
-		      continue;
+		      if (scan_attrsp->attr_ids[i] == filterp->btree_attr_ids[j])
+			{
+			  if (filterp->matched_attid_idx_4_keyflt)
+			    {
+			      filterp->matched_attid_idx_4_keyflt[i] = j;
+			    }
+			  break;	/* immediately exit inner-loop */
+			}
 		    }
+		}
 
+	      if (j < filterp->btree_num_attrs)
+		{
 		  /* now, found the attr */
 
 		  attrvalue = heap_attrvalue_locate (scan_attrsp->attr_ids[i], scan_attrsp->attr_cache);
@@ -2868,7 +2901,9 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 		    }
 
 		  /* get j-th element value from the midxkey */
-		  if (pr_midxkey_get_element_nocopy (midxkey, ((j < func_idx_col_id) ? j : j + 1),
+		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.         
+		  if (pr_midxkey_get_element_nocopy (((j < prefix_size) ? prefix_midxkey : midxkey),
+						     ((j < func_idx_col_id) ? j : j + 1),
 						     valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
 		    {
 		      return V_ERROR;
@@ -2896,11 +2931,8 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 		    }
 
 		  attrvalue->state = HEAP_WRITTEN_ATTRVALUE;
-
-		  break;	/* immediately exit inner-loop */
 		}
-
-	      if (j >= filterp->btree_num_attrs)
+	      else
 		{
 		  /*
 		   * the attribute exists in key filter scan cache, but it is

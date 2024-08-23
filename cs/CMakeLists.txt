@@ -107,6 +107,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/memory_monitor_cl.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
@@ -147,6 +148,8 @@ set(BASE_HEADERS
   ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_monitor_cl.hpp
+  ${BASE_DIR}/memory_monitor_common.hpp
   ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
   ${BASE_DIR}/msgcat_set_log.hpp
@@ -250,7 +253,15 @@ set(QUERY_HEADERS
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate.c
+  ${OBJECT_DIR}/authenticate_access_auth.cpp
   ${OBJECT_DIR}/authenticate_cache.cpp
+  ${OBJECT_DIR}/authenticate_context.cpp
+  ${OBJECT_DIR}/authenticate_access_class.cpp
+  ${OBJECT_DIR}/authenticate_grant.cpp
+  ${OBJECT_DIR}/authenticate_owner.cpp
+  ${OBJECT_DIR}/authenticate_password.cpp
+  ${OBJECT_DIR}/authenticate_access_user.cpp
+  ${OBJECT_DIR}/authenticate_migration.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
   ${OBJECT_DIR}/deduplicate_key.c
@@ -539,6 +550,7 @@ if(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridcs PUBLIC stdc++fs)
   target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubridcs LINK_PUBLIC rt)
 else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)

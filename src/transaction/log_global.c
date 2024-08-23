@@ -36,6 +36,8 @@
 #include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* Variables */
 #if !defined(SERVER_MODE)

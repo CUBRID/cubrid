@@ -46,10 +46,13 @@ import java.math.RoundingMode;
 import java.sql.*;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.LinkedList;
@@ -59,6 +62,23 @@ import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
+
+    public static Timestamp parseTimestampStr(String s) {
+        // parse again at runtime in order to use the runtime value of timezone setting
+        ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, false);
+        if (timestamp == null) {
+            // The string was valid at the compile time (see
+            // ParseTreeConverter.visitTimestamp_exp()).
+            // But, this error can happen due to a timezone setting change after the compilation
+            throw new VALUE_ERROR(String.format("invalid TIMESTAMP string: %s", s));
+        }
+
+        if (timestamp.equals(DateTimeParser.nullDatetimeUTC)) {
+            return ValueUtilities.NULL_TIMESTAMP;
+        } else {
+            return new Timestamp(timestamp.toEpochSecond() * 1000);
+        }
+    }
 
     public static Object getFieldWithIndex(ResultSet rs, int idx) throws SQLException {
         Object o = rs.getObject(idx);
@@ -131,6 +151,7 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     //
 
+    private static final String EMPTY_STRING = "";
     private static final int[] UNKNOWN_LINE_COLUMN = new int[] {-1, -1};
 
     public static int[] getPlcLineColumn(
@@ -467,7 +488,7 @@ public class SpLib {
     }
 
     public static void DBMS_OUTPUT$GET_LINE(String[] line, Integer[] status) {
-        int[] iArr = new int[0];
+        int[] iArr = new int[1];
         DBMS_OUTPUT.getLine(line, iArr);
         status[0] = iArr[0];
     }
@@ -598,6 +619,12 @@ public class SpLib {
     // is null
     @Operator(coercionScheme = CoercionScheme.ObjectOp)
     public static Boolean opIsNull(Object l) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+        }
+
         return (l == null);
     }
 
@@ -653,10 +680,51 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opNeg(Object l) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+        }
+
         if (l == null) {
             return null;
         }
-        throw new PROGRAM_ERROR(); // unreachable
+
+        if (l instanceof Boolean) {
+            // not applicable
+        } else if (l instanceof String) {
+            // double
+            return opNeg(convStringToDouble((String) l));
+        } else if (l instanceof Short) {
+            // short
+            return opNeg((Short) l);
+        } else if (l instanceof Integer) {
+            // int
+            return opNeg((Integer) l);
+        } else if (l instanceof Long) {
+            // bigint
+            return opNeg((Long) l);
+        } else if (l instanceof BigDecimal) {
+            // numeric
+            return opNeg((BigDecimal) l);
+        } else if (l instanceof Float) {
+            // float
+            return opNeg((Float) l);
+        } else if (l instanceof Double) {
+            // double
+            return opNeg((Double) l);
+        } else if (l instanceof Date) {
+            // not applicable
+        } else if (l instanceof Time) {
+            // not applicable
+        } else if (l instanceof Timestamp) {
+            throw new PROGRAM_ERROR("operand's type is ambiguous: TIMESTAMP or DATETIME");
+        }
+
+        throw new VALUE_ERROR(
+                String.format(
+                        "cannot negate the argument due to its incompatible run-time type %s",
+                        plcsqlTypeOfJavaObject(l)));
     }
 
     // ====================================
@@ -687,10 +755,51 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opBitCompli(Object l) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+        }
+
         if (l == null) {
             return null;
         }
-        throw new PROGRAM_ERROR(); // unreachable
+
+        if (l instanceof Boolean) {
+            // not applicable
+        } else if (l instanceof String) {
+            // bigint
+            return opBitCompli(convStringToBigint((String) l));
+        } else if (l instanceof Short) {
+            // short
+            return opBitCompli((Short) l);
+        } else if (l instanceof Integer) {
+            // int
+            return opBitCompli((Integer) l);
+        } else if (l instanceof Long) {
+            // bigint
+            return opBitCompli((Long) l);
+        } else if (l instanceof BigDecimal) {
+            // bigint
+            return opBitCompli(convNumericToBigint((BigDecimal) l));
+        } else if (l instanceof Float) {
+            // bigint
+            return opBitCompli(convFloatToBigint((Float) l));
+        } else if (l instanceof Double) {
+            // bigint
+            return opBitCompli(convDoubleToBigint((Double) l));
+        } else if (l instanceof Date) {
+            // not applicable
+        } else if (l instanceof Time) {
+            // not applicable
+        } else if (l instanceof Timestamp) {
+            throw new PROGRAM_ERROR("operand's type is ambiguous: TIMESTAMP or DATETIME");
+        }
+
+        throw new VALUE_ERROR(
+                String.format(
+                        "cannot take bit-compliment of the argument due to its incompatible run-time type %s",
+                        plcsqlTypeOfJavaObject(l)));
     }
 
     // ====================================
@@ -733,10 +842,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpEq(l, r);
     }
 
     public static Boolean opEqChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -811,6 +938,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -827,10 +963,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpNullSafeEq(l, r);
     }
 
     public static Boolean opNullSafeEqChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null) {
             return (r == null);
         } else if (r == null) {
@@ -917,6 +1071,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null) {
             return (r == null);
         } else if (r == null) {
@@ -936,6 +1099,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpNeq(l, r);
     }
 
@@ -1014,6 +1186,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1031,10 +1212,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpLe(l, r);
     }
 
     public static Boolean opLeChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1109,6 +1308,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1124,10 +1332,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpGe(l, r);
     }
 
     public static Boolean opGeChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1202,6 +1428,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1217,10 +1452,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpLt(l, r);
     }
 
     public static Boolean opLtChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1295,6 +1548,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1311,10 +1573,28 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         return commonOpGt(l, r);
     }
 
     public static Boolean opGtChar(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1389,6 +1669,15 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -1408,6 +1697,18 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(String o, String lower, String upper) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+            if (EMPTY_STRING.equals(lower)) {
+                lower = null;
+            }
+            if (EMPTY_STRING.equals(upper)) {
+                upper = null;
+            }
+        }
+
         if (o == null || lower == null || upper == null) {
             return null;
         }
@@ -1415,6 +1716,18 @@ public class SpLib {
     }
 
     public static Boolean opBetweenChar(String o, String lower, String upper) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+            if (EMPTY_STRING.equals(lower)) {
+                lower = null;
+            }
+            if (EMPTY_STRING.equals(upper)) {
+                upper = null;
+            }
+        }
+
         if (o == null || lower == null || upper == null) {
             return null;
         }
@@ -1518,6 +1831,18 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Object o, Object lower, Object upper) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+            if (EMPTY_STRING.equals(lower)) {
+                lower = null;
+            }
+            if (EMPTY_STRING.equals(upper)) {
+                upper = null;
+            }
+        }
+
         if (o == null || lower == null || upper == null) {
             return null;
         }
@@ -1544,6 +1869,12 @@ public class SpLib {
     public static Boolean opInChar(String o, String... arr) {
         assert arr != null;
 
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+        }
+
         if (o == null) {
             return null;
         }
@@ -1551,6 +1882,12 @@ public class SpLib {
 
         boolean nullFound = false;
         for (String p : arr) {
+            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+                if (EMPTY_STRING.equals(p)) {
+                    p = null;
+                }
+            }
+
             if (p == null) {
                 nullFound = true;
             } else {
@@ -1650,11 +1987,23 @@ public class SpLib {
     public static Boolean opIn(Object o, Object... arr) {
         assert arr != null;
 
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+        }
+
         if (o == null) {
             return null;
         }
         boolean nullFound = false;
         for (Object p : arr) {
+            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+                if (EMPTY_STRING.equals(p)) {
+                    p = null;
+                }
+            }
+
             if (p == null) {
                 nullFound = true;
             } else {
@@ -1733,45 +2082,68 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opMult(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
-        throw new PROGRAM_ERROR(); // unreachable
+
+        return opMultWithRuntimeTypeConv(l, r);
     }
 
     // ====================================
     // /
     @Operator(coercionScheme = CoercionScheme.ArithOp)
-    public static Short opDiv(Short l, Short r) {
+    public static Object opDiv(Short l, Short r) {
         if (l == null || r == null) {
             return null;
         }
         if (r.equals((short) 0)) {
             throw new ZERO_DIVIDE();
         }
-        return (short) (l / r);
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return opDiv(BigDecimal.valueOf(l.longValue()), BigDecimal.valueOf(r.longValue()));
+        } else {
+            return (short) (l / r);
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
-    public static Integer opDiv(Integer l, Integer r) {
+    public static Object opDiv(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
         }
         if (r.equals(0)) {
             throw new ZERO_DIVIDE();
         }
-        return l / r;
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return opDiv(BigDecimal.valueOf(l.longValue()), BigDecimal.valueOf(r.longValue()));
+        } else {
+            return l / r;
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
-    public static Long opDiv(Long l, Long r) {
+    public static Object opDiv(Long l, Long r) {
         if (l == null || r == null) {
             return null;
         }
         if (r.equals(0)) {
             throw new ZERO_DIVIDE();
         }
-        return l / r;
+
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return opDiv(BigDecimal.valueOf(l), BigDecimal.valueOf(r));
+        } else {
+            return l / r;
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1788,18 +2160,19 @@ public class SpLib {
         int p2 = r.precision();
         int s2 = r.scale();
 
-        int maxPrecision = (p1 - s1) + s2 + Math.max(9, Math.max(s1, s2));
-        int scale = Math.max(9, Math.max(s1, s2));
-        if (maxPrecision > 38) {
-            scale = Math.min(9, scale - (maxPrecision - 38));
-            maxPrecision = 38;
+        int scale;
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_COMPAT_NUMERIC_DIVISION_SCALE)) {
+            scale = Math.max(s1, s2);
+        } else {
+            scale = Math.max(9, Math.max(s1, s2));
         }
+        int maxPrecision = (p1 - s1) + s2 + scale;
 
         BigDecimal ret =
                 l.divide(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
                         .setScale(scale, RoundingMode.HALF_UP);
         if (ret.precision() > 38) {
-            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+            throw new VALUE_ERROR("data overflow");
         }
 
         return ret;
@@ -1829,10 +2202,20 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opDiv(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
-        throw new PROGRAM_ERROR(); // unreachable
+
+        return opDivWithRuntimeTypeConv(l, r);
     }
 
     // ====================================
@@ -1872,10 +2255,20 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opDivInt(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
-        throw new PROGRAM_ERROR(); // unreachable
+
+        return opDivIntWithRuntimeTypeConv(l, r);
     }
 
     // ====================================
@@ -1915,14 +2308,41 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opMod(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
-        throw new PROGRAM_ERROR(); // unreachable
+
+        return opModWithRuntimeTypeConv(l, r);
     }
 
     // ====================================
     // +
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static String opAdd(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (l == null) {
+                l = EMPTY_STRING;
+            }
+            if (r == null) {
+                r = EMPTY_STRING;
+            }
+        }
+
+        if (l == null || r == null) {
+            return null;
+        }
+        return (l + r);
+    }
+
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Short opAdd(Short l, Short r) {
         if (l == null || r == null) {
@@ -2070,10 +2490,20 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opAdd(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
-        throw new PROGRAM_ERROR(); // unreachable
+
+        return opAddWithRuntimeTypeConv(l, r);
     }
 
     // ====================================
@@ -2262,16 +2692,35 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opSubtract(Object l, Object r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(l)) {
+                l = null;
+            }
+            if (EMPTY_STRING.equals(r)) {
+                r = null;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
-        throw new PROGRAM_ERROR(); // unreachable
+
+        return opSubtractWithRuntimeTypeConv(l, r);
     }
 
     // ====================================
     // ||
     @Operator(coercionScheme = CoercionScheme.StringOp)
     public static String opConcat(String l, String r) {
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (l == null) {
+                l = EMPTY_STRING;
+            }
+            if (r == null) {
+                r = EMPTY_STRING;
+            }
+        }
+
         if (l == null || r == null) {
             return null;
         }
@@ -2492,15 +2941,18 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        assert e.getNanos() == 0;
 
         if (e.equals(ValueUtilities.NULL_TIMESTAMP)) {
             // must be calculated everytime because the AM/PM indicator can change according to the
             // locale change
             return String.format("00:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
         }
-        assert e.getNanos() == 0;
 
-        return TIMESTAMP_FORMAT.format(e);
+        Instant instant = Instant.ofEpochMilli(e.getTime());
+        ZoneOffset timezone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+        ZonedDateTime zdt = ZonedDateTime.ofInstant(instant, timezone);
+        return zdt.format(TIMESTAMP_FORMAT);
     }
 
     // from double
@@ -2543,7 +2995,11 @@ public class SpLib {
             return null;
         }
 
-        return String.format("%.15e", e);
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return detachTrailingZeros(String.format("%.15f", e));
+        } else {
+            return String.format("%.15e", e);
+        }
     }
 
     public static Float convDoubleToFloat(Double e) {
@@ -2610,7 +3066,11 @@ public class SpLib {
             return null;
         }
 
-        return String.format("%.6e", e);
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return detachTrailingZeros(String.format("%.6f", e));
+        } else {
+            return String.format("%.6e", e);
+        }
     }
 
     public static Double convFloatToDouble(Float e) {
@@ -2668,7 +3128,11 @@ public class SpLib {
             return null;
         }
 
-        return e.toPlainString();
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+            return detachTrailingZeros(e.toPlainString());
+        } else {
+            return e.toPlainString();
+        }
     }
 
     public static Double convNumericToDouble(BigDecimal e) {
@@ -2979,6 +3443,7 @@ public class SpLib {
             return null;
         }
 
+        e = e.trim();
         if (e.length() == 0) {
             return INT_ZERO;
         }
@@ -2993,6 +3458,7 @@ public class SpLib {
             return null;
         }
 
+        e = e.trim();
         if (e.length() == 0) {
             return SHORT_ZERO;
         }
@@ -3007,6 +3473,7 @@ public class SpLib {
             return null;
         }
 
+        e = e.trim();
         if (e.length() == 0) {
             return DOUBLE_ZERO;
         }
@@ -3023,6 +3490,7 @@ public class SpLib {
             return null;
         }
 
+        e = e.trim();
         if (e.length() == 0) {
             return FLOAT_ZERO;
         }
@@ -3047,6 +3515,7 @@ public class SpLib {
             return null;
         }
 
+        e = e.trim();
         if (e.length() == 0) {
             return LONG_ZERO;
         }
@@ -3361,8 +3830,8 @@ public class SpLib {
     private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a", Locale.US);
     private static final DateFormat DATETIME_FORMAT =
             new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy", Locale.US);
-    private static final DateFormat TIMESTAMP_FORMAT =
-            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy", Locale.US);
+    private static final DateTimeFormatter TIMESTAMP_FORMAT =
+            DateTimeFormatter.ofPattern("hh:mm:ss a MM/dd/yyyy").withLocale(Locale.US);
 
     private static final DateFormat AM_PM = new SimpleDateFormat("a", Locale.US);
     private static final Date ZERO_DATE = new Date(0L);
@@ -3435,11 +3904,23 @@ public class SpLib {
     private static Boolean commonOpIn(Object o, Object... arr) {
         assert arr != null;
 
+        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (EMPTY_STRING.equals(o)) {
+                o = null;
+            }
+        }
+
         if (o == null) {
             return null;
         }
         boolean nullFound = false;
         for (Object p : arr) {
+            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+                if (EMPTY_STRING.equals(p)) {
+                    p = null;
+                }
+            }
+
             if (p == null) {
                 nullFound = true;
             } else {
@@ -3566,6 +4047,1671 @@ public class SpLib {
         } catch (NumberFormatException e) {
             throw new VALUE_ERROR("not in a number form");
         }
+    }
+
+    private static Object opAddWithRuntimeTypeConv(Object l, Object r) {
+        assert l != null;
+        assert r != null;
+
+        if (l instanceof Boolean) {
+            // not applicable
+        } else if (l instanceof String) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // string
+                return opAdd((String) l, (String) r);
+            } else if (r instanceof Short) {
+                // double
+                return opAdd(convStringToDouble((String) l), convShortToDouble((Short) r));
+            } else if (r instanceof Integer) {
+                // double
+                return opAdd(convStringToDouble((String) l), convIntToDouble((Integer) r));
+            } else if (r instanceof Long) {
+                // double
+                return opAdd(convStringToDouble((String) l), convBigintToDouble((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opAdd(convStringToDouble((String) l), convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // double
+                return opAdd(convStringToDouble((String) l), convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opAdd(convStringToDouble((String) l), (Double) r);
+            } else if (r instanceof Date) {
+                // (bigint, date)
+                return opAdd(convStringToBigint((String) l), (Date) r);
+            } else if (r instanceof Time) {
+                // (bigint, time)
+                return opAdd(convStringToBigint((String) l), (Time) r);
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Short) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opAdd(convShortToDouble((Short) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // short
+                return opAdd((Short) l, (Short) r);
+            } else if (r instanceof Integer) {
+                // int
+                return opAdd(convShortToInt((Short) l), (Integer) r);
+            } else if (r instanceof Long) {
+                // bigint
+                return opAdd(convShortToBigint((Short) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opAdd(convShortToNumeric((Short) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opAdd(convShortToFloat((Short) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opAdd(convShortToDouble((Short) l), (Double) r);
+            } else if (r instanceof Date) {
+                // (bigint, date)
+                return opAdd(convShortToBigint((Short) l), (Date) r);
+            } else if (r instanceof Time) {
+                // (bigint, time)
+                return opAdd(convShortToBigint((Short) l), (Time) r);
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Integer) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opAdd(convIntToDouble((Integer) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // int
+                return opAdd((Integer) l, convShortToInt((Short) r));
+            } else if (r instanceof Integer) {
+                // int
+                return opAdd((Integer) l, (Integer) r);
+            } else if (r instanceof Long) {
+                // bigint
+                return opAdd(convIntToBigint((Integer) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opAdd(convIntToNumeric((Integer) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opAdd(convIntToFloat((Integer) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opAdd(convIntToDouble((Integer) l), (Double) r);
+            } else if (r instanceof Date) {
+                // (bigint, date)
+                return opAdd(convIntToBigint((Integer) l), (Date) r);
+            } else if (r instanceof Time) {
+                // (bigint, time)
+                return opAdd(convIntToBigint((Integer) l), (Time) r);
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Long) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opAdd(convBigintToDouble((Long) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opAdd((Long) l, convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opAdd((Long) l, convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opAdd((Long) l, (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opAdd(convBigintToNumeric((Long) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opAdd(convBigintToFloat((Long) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opAdd(convBigintToDouble((Long) l), (Double) r);
+            } else if (r instanceof Date) {
+                // (bigint, date)
+                return opAdd((Long) l, (Date) r);
+            } else if (r instanceof Time) {
+                // (bigint, time)
+                return opAdd((Long) l, (Time) r);
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof BigDecimal) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opAdd(convNumericToDouble((BigDecimal) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // numeric
+                return opAdd((BigDecimal) l, convShortToNumeric((Short) r));
+            } else if (r instanceof Integer) {
+                // numeric
+                return opAdd((BigDecimal) l, convIntToNumeric((Integer) r));
+            } else if (r instanceof Long) {
+                // numeric
+                return opAdd((BigDecimal) l, convBigintToNumeric((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opAdd((BigDecimal) l, (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // double
+                return opAdd(convNumericToDouble((BigDecimal) l), convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opAdd(convNumericToDouble((BigDecimal) l), (Double) r);
+            } else if (r instanceof Date) {
+                // (bigint, date)
+                return opAdd(convNumericToBigint((BigDecimal) l), (Date) r);
+            } else if (r instanceof Time) {
+                // (bigint, time)
+                return opAdd(convNumericToBigint((BigDecimal) l), (Time) r);
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Float) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opAdd(convFloatToDouble((Float) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // float
+                return opAdd((Float) l, convShortToFloat((Short) r));
+            } else if (r instanceof Integer) {
+                // float
+                return opAdd((Float) l, convIntToFloat((Integer) r));
+            } else if (r instanceof Long) {
+                // float
+                return opAdd((Float) l, convBigintToFloat((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opAdd(convFloatToDouble((Float) l), convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // float
+                return opAdd((Float) l, (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opAdd(convFloatToDouble((Float) l), (Double) r);
+            } else if (r instanceof Date) {
+                // (bigint, date)
+                return opAdd(convFloatToBigint((Float) l), (Date) r);
+            } else if (r instanceof Time) {
+                // (bigint, time)
+                return opAdd(convFloatToBigint((Float) l), (Time) r);
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Double) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opAdd((Double) l, convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // double
+                return opAdd((Double) l, convShortToDouble((Short) r));
+            } else if (r instanceof Integer) {
+                // double
+                return opAdd((Double) l, convIntToDouble((Integer) r));
+            } else if (r instanceof Long) {
+                // double
+                return opAdd((Double) l, convBigintToDouble((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opAdd((Double) l, convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // double
+                return opAdd((Double) l, convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opAdd((Double) l, (Double) r);
+            } else if (r instanceof Date) {
+                // (bigint, date)
+                return opAdd(convDoubleToBigint((Double) l), (Date) r);
+            } else if (r instanceof Time) {
+                // (bigint, time)
+                return opAdd(convDoubleToBigint((Double) l), (Time) r);
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Date) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // (date, bigint)
+                return opAdd((Date) l, convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // (date, bigint)
+                return opAdd((Date) l, convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // (date, bigint)
+                return opAdd((Date) l, convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // (date, bigint)
+                return opAdd((Date) l, (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // (date, bigint)
+                return opAdd((Date) l, convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // (date, bigint)
+                return opAdd((Date) l, convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // (date, bigint)
+                return opAdd((Date) l, convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Time) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // (time, bigint)
+                return opAdd((Time) l, convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // (time, bigint)
+                return opAdd((Time) l, convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // (time, bigint)
+                return opAdd((Time) l, convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // (time, bigint)
+                return opAdd((Time) l, (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // (time, bigint)
+                return opAdd((Time) l, convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // (time, bigint)
+                return opAdd((Time) l, convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // (time, bigint)
+                return opAdd((Time) l, convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Timestamp) {
+            throw new PROGRAM_ERROR("left operand's type is ambiguous: TIMESTAMP or DATETIME");
+        }
+
+        throw new VALUE_ERROR(
+                String.format(
+                        "cannot add two arguments due to their incompatible run-time types (%s, %s)",
+                        plcsqlTypeOfJavaObject(l), plcsqlTypeOfJavaObject(r)));
+    }
+
+    private static Object opSubtractWithRuntimeTypeConv(Object l, Object r) {
+        assert l != null;
+        assert r != null;
+
+        if (l instanceof Boolean) {
+            // not applicable
+        } else if (l instanceof String) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opSubtract(convStringToDouble((String) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // double
+                return opSubtract(convStringToDouble((String) l), convShortToDouble((Short) r));
+            } else if (r instanceof Integer) {
+                // double
+                return opSubtract(convStringToDouble((String) l), convIntToDouble((Integer) r));
+            } else if (r instanceof Long) {
+                // double
+                return opSubtract(convStringToDouble((String) l), convBigintToDouble((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opSubtract(
+                        convStringToDouble((String) l), convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // double
+                return opSubtract(convStringToDouble((String) l), convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opSubtract(convStringToDouble((String) l), (Double) r);
+            } else if (r instanceof Date) {
+                // datetime
+                return opSubtract(convStringToDatetime((String) l), convDateToDatetime((Date) r));
+            } else if (r instanceof Time) {
+                // time
+                return opSubtract(convStringToTime((String) l), (Time) r);
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Short) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opSubtract(convShortToDouble((Short) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // short
+                return opSubtract((Short) l, (Short) r);
+            } else if (r instanceof Integer) {
+                // int
+                return opSubtract(convShortToInt((Short) l), (Integer) r);
+            } else if (r instanceof Long) {
+                // bigint
+                return opSubtract(convShortToBigint((Short) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opSubtract(convShortToNumeric((Short) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opSubtract(convShortToFloat((Short) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opSubtract(convShortToDouble((Short) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Integer) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opSubtract(convIntToDouble((Integer) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // int
+                return opSubtract((Integer) l, convShortToInt((Short) r));
+            } else if (r instanceof Integer) {
+                // int
+                return opSubtract((Integer) l, (Integer) r);
+            } else if (r instanceof Long) {
+                // bigint
+                return opSubtract(convIntToBigint((Integer) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opSubtract(convIntToNumeric((Integer) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opSubtract(convIntToFloat((Integer) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opSubtract(convIntToDouble((Integer) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Long) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opSubtract(convBigintToDouble((Long) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opSubtract((Long) l, convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opSubtract((Long) l, convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opSubtract((Long) l, (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opSubtract(convBigintToNumeric((Long) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opSubtract(convBigintToFloat((Long) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opSubtract(convBigintToDouble((Long) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof BigDecimal) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opSubtract(
+                        convNumericToDouble((BigDecimal) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // numeric
+                return opSubtract((BigDecimal) l, convShortToNumeric((Short) r));
+            } else if (r instanceof Integer) {
+                // numeric
+                return opSubtract((BigDecimal) l, convIntToNumeric((Integer) r));
+            } else if (r instanceof Long) {
+                // numeric
+                return opSubtract((BigDecimal) l, convBigintToNumeric((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opSubtract((BigDecimal) l, (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // double
+                return opSubtract(
+                        convNumericToDouble((BigDecimal) l), convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opSubtract(convNumericToDouble((BigDecimal) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Float) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opSubtract(convFloatToDouble((Float) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // float
+                return opSubtract((Float) l, convShortToFloat((Short) r));
+            } else if (r instanceof Integer) {
+                // float
+                return opSubtract((Float) l, convIntToFloat((Integer) r));
+            } else if (r instanceof Long) {
+                // float
+                return opSubtract((Float) l, convBigintToFloat((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opSubtract(
+                        convFloatToDouble((Float) l), convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // float
+                return opSubtract((Float) l, (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opSubtract(convFloatToDouble((Float) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Double) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opSubtract((Double) l, convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // double
+                return opSubtract((Double) l, convShortToDouble((Short) r));
+            } else if (r instanceof Integer) {
+                // double
+                return opSubtract((Double) l, convIntToDouble((Integer) r));
+            } else if (r instanceof Long) {
+                // double
+                return opSubtract((Double) l, convBigintToDouble((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opSubtract((Double) l, convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // double
+                return opSubtract((Double) l, convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opSubtract((Double) l, (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Date) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // datetime
+                return opSubtract(convDateToDatetime((Date) l), convStringToDatetime((String) r));
+            } else if (r instanceof Short) {
+                // (date, bigint)
+                return opSubtract((Date) l, convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // (date, bigint)
+                return opSubtract((Date) l, convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // (date, bigint)
+                return opSubtract((Date) l, (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // (date, bigint)
+                return opSubtract((Date) l, convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // (date, bigint)
+                return opSubtract((Date) l, convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // (date, bigint)
+                return opSubtract((Date) l, convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                return opSubtract((Date) l, (Date) r);
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Time) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // time
+                return opSubtract((Time) l, convStringToTime((String) r));
+            } else if (r instanceof Short) {
+                // (time, bigint)
+                return opSubtract((Time) l, convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // (time, bigint)
+                return opSubtract((Time) l, convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // (time, bigint)
+                return opSubtract((Time) l, (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // (time, bigint)
+                return opSubtract((Time) l, convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // (time, bigint)
+                return opSubtract((Time) l, convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // (time, bigint)
+                return opSubtract((Time) l, convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // time
+                return opSubtract((Time) l, (Time) r);
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Timestamp) {
+            throw new PROGRAM_ERROR("left operand's type is ambiguous: TIMESTAMP or DATETIME");
+        }
+
+        throw new VALUE_ERROR(
+                String.format(
+                        "cannot subtract two arguments due to their incompatible run-time types (%s, %s)",
+                        plcsqlTypeOfJavaObject(l), plcsqlTypeOfJavaObject(r)));
+    }
+
+    private static Object opMultWithRuntimeTypeConv(Object l, Object r) {
+        assert l != null;
+        assert r != null;
+
+        if (l instanceof Boolean) {
+            // not applicable
+        } else if (l instanceof String) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opMult(convStringToDouble((String) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // double
+                return opMult(convStringToDouble((String) l), convShortToDouble((Short) r));
+            } else if (r instanceof Integer) {
+                // double
+                return opMult(convStringToDouble((String) l), convIntToDouble((Integer) r));
+            } else if (r instanceof Long) {
+                // double
+                return opMult(convStringToDouble((String) l), convBigintToDouble((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opMult(convStringToDouble((String) l), convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // double
+                return opMult(convStringToDouble((String) l), convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opMult(convStringToDouble((String) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Short) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opMult(convShortToDouble((Short) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // short
+                return opMult((Short) l, (Short) r);
+            } else if (r instanceof Integer) {
+                // int
+                return opMult(convShortToInt((Short) l), (Integer) r);
+            } else if (r instanceof Long) {
+                // bigint
+                return opMult(convShortToBigint((Short) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opMult(convShortToNumeric((Short) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opMult(convShortToFloat((Short) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opMult(convShortToDouble((Short) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Integer) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opMult(convIntToDouble((Integer) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // int
+                return opMult((Integer) l, convShortToInt((Short) r));
+            } else if (r instanceof Integer) {
+                // int
+                return opMult((Integer) l, (Integer) r);
+            } else if (r instanceof Long) {
+                // bigint
+                return opMult(convIntToBigint((Integer) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opMult(convIntToNumeric((Integer) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opMult(convIntToFloat((Integer) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opMult(convIntToDouble((Integer) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Long) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opMult(convBigintToDouble((Long) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opMult((Long) l, convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opMult((Long) l, convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opMult((Long) l, (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opMult(convBigintToNumeric((Long) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opMult(convBigintToFloat((Long) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opMult(convBigintToDouble((Long) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof BigDecimal) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opMult(convNumericToDouble((BigDecimal) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // numeric
+                return opMult((BigDecimal) l, convShortToNumeric((Short) r));
+            } else if (r instanceof Integer) {
+                // numeric
+                return opMult((BigDecimal) l, convIntToNumeric((Integer) r));
+            } else if (r instanceof Long) {
+                // numeric
+                return opMult((BigDecimal) l, convBigintToNumeric((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opMult((BigDecimal) l, (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // double
+                return opMult(convNumericToDouble((BigDecimal) l), convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opMult(convNumericToDouble((BigDecimal) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Float) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opMult(convFloatToDouble((Float) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // float
+                return opMult((Float) l, convShortToFloat((Short) r));
+            } else if (r instanceof Integer) {
+                // float
+                return opMult((Float) l, convIntToFloat((Integer) r));
+            } else if (r instanceof Long) {
+                // float
+                return opMult((Float) l, convBigintToFloat((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opMult(convFloatToDouble((Float) l), convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // float
+                return opMult((Float) l, (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opMult(convFloatToDouble((Float) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Double) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opMult((Double) l, convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // double
+                return opMult((Double) l, convShortToDouble((Short) r));
+            } else if (r instanceof Integer) {
+                // double
+                return opMult((Double) l, convIntToDouble((Integer) r));
+            } else if (r instanceof Long) {
+                // double
+                return opMult((Double) l, convBigintToDouble((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opMult((Double) l, convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // double
+                return opMult((Double) l, convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opMult((Double) l, (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Date) {
+            // not applicable
+
+        } else if (l instanceof Time) {
+            // not applicable
+
+        } else if (l instanceof Timestamp) {
+            throw new PROGRAM_ERROR("left operand's type is ambiguous: TIMESTAMP or DATETIME");
+        }
+
+        throw new VALUE_ERROR(
+                String.format(
+                        "cannot multiply two arguments due to their incompatible run-time types (%s, %s)",
+                        plcsqlTypeOfJavaObject(l), plcsqlTypeOfJavaObject(r)));
+    }
+
+    private static Object opDivWithRuntimeTypeConv(Object l, Object r) {
+        assert l != null;
+        assert r != null;
+
+        if (l instanceof Boolean) {
+            // not applicable
+        } else if (l instanceof String) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opDiv(convStringToDouble((String) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // double
+                return opDiv(convStringToDouble((String) l), convShortToDouble((Short) r));
+            } else if (r instanceof Integer) {
+                // double
+                return opDiv(convStringToDouble((String) l), convIntToDouble((Integer) r));
+            } else if (r instanceof Long) {
+                // double
+                return opDiv(convStringToDouble((String) l), convBigintToDouble((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opDiv(convStringToDouble((String) l), convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // double
+                return opDiv(convStringToDouble((String) l), convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opDiv(convStringToDouble((String) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Short) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opDiv(convShortToDouble((Short) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // short
+                return opDiv((Short) l, (Short) r);
+            } else if (r instanceof Integer) {
+                // int
+                return opDiv(convShortToInt((Short) l), (Integer) r);
+            } else if (r instanceof Long) {
+                // bigint
+                return opDiv(convShortToBigint((Short) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opDiv(convShortToNumeric((Short) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opDiv(convShortToFloat((Short) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opDiv(convShortToDouble((Short) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Integer) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opDiv(convIntToDouble((Integer) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // int
+                return opDiv((Integer) l, convShortToInt((Short) r));
+            } else if (r instanceof Integer) {
+                // int
+                return opDiv((Integer) l, (Integer) r);
+            } else if (r instanceof Long) {
+                // bigint
+                return opDiv(convIntToBigint((Integer) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opDiv(convIntToNumeric((Integer) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opDiv(convIntToFloat((Integer) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opDiv(convIntToDouble((Integer) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Long) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opDiv(convBigintToDouble((Long) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opDiv((Long) l, convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opDiv((Long) l, convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opDiv((Long) l, (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opDiv(convBigintToNumeric((Long) l), (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // float
+                return opDiv(convBigintToFloat((Long) l), (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opDiv(convBigintToDouble((Long) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof BigDecimal) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opDiv(convNumericToDouble((BigDecimal) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // numeric
+                return opDiv((BigDecimal) l, convShortToNumeric((Short) r));
+            } else if (r instanceof Integer) {
+                // numeric
+                return opDiv((BigDecimal) l, convIntToNumeric((Integer) r));
+            } else if (r instanceof Long) {
+                // numeric
+                return opDiv((BigDecimal) l, convBigintToNumeric((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // numeric
+                return opDiv((BigDecimal) l, (BigDecimal) r);
+            } else if (r instanceof Float) {
+                // double
+                return opDiv(convNumericToDouble((BigDecimal) l), convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opDiv(convNumericToDouble((BigDecimal) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Float) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opDiv(convFloatToDouble((Float) l), convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // float
+                return opDiv((Float) l, convShortToFloat((Short) r));
+            } else if (r instanceof Integer) {
+                // float
+                return opDiv((Float) l, convIntToFloat((Integer) r));
+            } else if (r instanceof Long) {
+                // float
+                return opDiv((Float) l, convBigintToFloat((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opDiv(convFloatToDouble((Float) l), convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // float
+                return opDiv((Float) l, (Float) r);
+            } else if (r instanceof Double) {
+                // double
+                return opDiv(convFloatToDouble((Float) l), (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Double) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // double
+                return opDiv((Double) l, convStringToDouble((String) r));
+            } else if (r instanceof Short) {
+                // double
+                return opDiv((Double) l, convShortToDouble((Short) r));
+            } else if (r instanceof Integer) {
+                // double
+                return opDiv((Double) l, convIntToDouble((Integer) r));
+            } else if (r instanceof Long) {
+                // double
+                return opDiv((Double) l, convBigintToDouble((Long) r));
+            } else if (r instanceof BigDecimal) {
+                // double
+                return opDiv((Double) l, convNumericToDouble((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // double
+                return opDiv((Double) l, convFloatToDouble((Float) r));
+            } else if (r instanceof Double) {
+                // double
+                return opDiv((Double) l, (Double) r);
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Date) {
+            // not applicable
+
+        } else if (l instanceof Time) {
+            // not applicable
+
+        } else if (l instanceof Timestamp) {
+            throw new PROGRAM_ERROR("left operand's type is ambiguous: TIMESTAMP or DATETIME");
+        }
+
+        throw new VALUE_ERROR(
+                String.format(
+                        "cannot divide two arguments due to their incompatible run-time types (%s, %s)",
+                        plcsqlTypeOfJavaObject(l), plcsqlTypeOfJavaObject(r)));
+    }
+
+    private static Object opModWithRuntimeTypeConv(Object l, Object r) {
+        assert l != null;
+        assert r != null;
+
+        if (l instanceof Boolean) {
+            // not applicable
+        } else if (l instanceof String) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opMod(convStringToBigint((String) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opMod(convStringToBigint((String) l), convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opMod(convStringToBigint((String) l), convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opMod(convStringToBigint((String) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opMod(convStringToBigint((String) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opMod(convStringToBigint((String) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opMod(convStringToBigint((String) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Short) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opMod(convShortToBigint((Short) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // short
+                return opMod((Short) l, (Short) r);
+            } else if (r instanceof Integer) {
+                // bigint
+                return opMod(convShortToBigint((Short) l), convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opMod(convShortToBigint((Short) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opMod(convShortToBigint((Short) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opMod(convShortToBigint((Short) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opMod(convShortToBigint((Short) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Integer) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opMod(convIntToBigint((Integer) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opMod(convIntToBigint((Integer) l), convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // int
+                return opMod((Integer) l, (Integer) r);
+            } else if (r instanceof Long) {
+                // bigint
+                return opMod(convIntToBigint((Integer) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opMod(convIntToBigint((Integer) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opMod(convIntToBigint((Integer) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opMod(convIntToBigint((Integer) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Long) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opMod((Long) l, convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opMod((Long) l, convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opMod((Long) l, convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opMod((Long) l, (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opMod((Long) l, convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opMod((Long) l, convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opMod((Long) l, convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof BigDecimal) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opMod(convNumericToBigint((BigDecimal) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opMod(convNumericToBigint((BigDecimal) l), convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opMod(convNumericToBigint((BigDecimal) l), convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opMod(convNumericToBigint((BigDecimal) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opMod(
+                        convNumericToBigint((BigDecimal) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opMod(convNumericToBigint((BigDecimal) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opMod(convNumericToBigint((BigDecimal) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Float) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opMod(convFloatToBigint((Float) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opMod(convFloatToBigint((Float) l), convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opMod(convFloatToBigint((Float) l), convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opMod(convFloatToBigint((Float) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opMod(convFloatToBigint((Float) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opMod(convFloatToBigint((Float) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opMod(convFloatToBigint((Float) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Double) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opMod(convDoubleToBigint((Double) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opMod(convDoubleToBigint((Double) l), convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opMod(convDoubleToBigint((Double) l), convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opMod(convDoubleToBigint((Double) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opMod(convDoubleToBigint((Double) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opMod(convDoubleToBigint((Double) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opMod(convDoubleToBigint((Double) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Date) {
+            // not applicable
+
+        } else if (l instanceof Time) {
+            // not applicable
+
+        } else if (l instanceof Timestamp) {
+            throw new PROGRAM_ERROR("left operand's type is ambiguous: TIMESTAMP or DATETIME");
+        }
+
+        throw new VALUE_ERROR(
+                String.format(
+                        "cannot take remainder of two arguments due to their incompatible run-time types (%s, %s)",
+                        plcsqlTypeOfJavaObject(l), plcsqlTypeOfJavaObject(r)));
+    }
+
+    private static Object opDivIntWithRuntimeTypeConv(Object l, Object r) {
+        assert l != null;
+        assert r != null;
+
+        if (l instanceof Boolean) {
+            // not applicable
+        } else if (l instanceof String) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opDivInt(convStringToBigint((String) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opDivInt(convStringToBigint((String) l), convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opDivInt(convStringToBigint((String) l), convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opDivInt(convStringToBigint((String) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opDivInt(
+                        convStringToBigint((String) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opDivInt(convStringToBigint((String) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opDivInt(convStringToBigint((String) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Short) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opDivInt(convShortToBigint((Short) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // short
+                return opDivInt((Short) l, (Short) r);
+            } else if (r instanceof Integer) {
+                // bigint
+                return opDivInt(convShortToBigint((Short) l), convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opDivInt(convShortToBigint((Short) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opDivInt(convShortToBigint((Short) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opDivInt(convShortToBigint((Short) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opDivInt(convShortToBigint((Short) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Integer) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opDivInt(convIntToBigint((Integer) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opDivInt(convIntToBigint((Integer) l), convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // int
+                return opDivInt((Integer) l, (Integer) r);
+            } else if (r instanceof Long) {
+                // bigint
+                return opDivInt(convIntToBigint((Integer) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opDivInt(convIntToBigint((Integer) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opDivInt(convIntToBigint((Integer) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opDivInt(convIntToBigint((Integer) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Long) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opDivInt((Long) l, convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opDivInt((Long) l, convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opDivInt((Long) l, convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opDivInt((Long) l, (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opDivInt((Long) l, convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opDivInt((Long) l, convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opDivInt((Long) l, convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof BigDecimal) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opDivInt(
+                        convNumericToBigint((BigDecimal) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opDivInt(convNumericToBigint((BigDecimal) l), convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opDivInt(convNumericToBigint((BigDecimal) l), convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opDivInt(convNumericToBigint((BigDecimal) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opDivInt(
+                        convNumericToBigint((BigDecimal) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opDivInt(convNumericToBigint((BigDecimal) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opDivInt(
+                        convNumericToBigint((BigDecimal) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Float) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opDivInt(convFloatToBigint((Float) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opDivInt(convFloatToBigint((Float) l), convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opDivInt(convFloatToBigint((Float) l), convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opDivInt(convFloatToBigint((Float) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opDivInt(convFloatToBigint((Float) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opDivInt(convFloatToBigint((Float) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opDivInt(convFloatToBigint((Float) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Double) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                // bigint
+                return opDivInt(convDoubleToBigint((Double) l), convStringToBigint((String) r));
+            } else if (r instanceof Short) {
+                // bigint
+                return opDivInt(convDoubleToBigint((Double) l), convShortToBigint((Short) r));
+            } else if (r instanceof Integer) {
+                // bigint
+                return opDivInt(convDoubleToBigint((Double) l), convIntToBigint((Integer) r));
+            } else if (r instanceof Long) {
+                // bigint
+                return opDivInt(convDoubleToBigint((Double) l), (Long) r);
+            } else if (r instanceof BigDecimal) {
+                // bigint
+                return opDivInt(
+                        convDoubleToBigint((Double) l), convNumericToBigint((BigDecimal) r));
+            } else if (r instanceof Float) {
+                // bigint
+                return opDivInt(convDoubleToBigint((Double) l), convFloatToBigint((Float) r));
+            } else if (r instanceof Double) {
+                // bigint
+                return opDivInt(convDoubleToBigint((Double) l), convDoubleToBigint((Double) r));
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                throw new PROGRAM_ERROR("right operand's type is ambiguous: TIMESTAMP or DATETIME");
+            }
+
+        } else if (l instanceof Date) {
+            // not applicable
+
+        } else if (l instanceof Time) {
+            // not applicable
+
+        } else if (l instanceof Timestamp) {
+            throw new PROGRAM_ERROR("left operand's type is ambiguous: TIMESTAMP or DATETIME");
+        }
+
+        throw new VALUE_ERROR(
+                String.format(
+                        "cannot divide two arguments as integers due to their incompatible run-time types (%s, %s)",
+                        plcsqlTypeOfJavaObject(l), plcsqlTypeOfJavaObject(r)));
     }
 
     private static int compareWithRuntimeTypeConv(Object l, Object r) {
@@ -3990,5 +6136,58 @@ public class SpLib {
 
     private static boolean isEmptyStr(String s) {
         return s == null || s.length() == 0;
+    }
+
+    private static String detachTrailingZeros(String f) {
+        if (f.indexOf('.') < 0) {
+            // f does not represent a floating point number
+            return f;
+        }
+
+        int len = f.length();
+        for (int i = len - 1; i >= 0; i--) {
+            char c = f.charAt(i);
+
+            if (c == '.') {
+                return f.substring(0, i);
+            }
+
+            if (c != '0') {
+                return f.substring(0, i + 1);
+            }
+        }
+
+        assert false; // unreachable
+        return null;
+    }
+
+    private static String plcsqlTypeOfJavaObject(Object o) {
+        assert o != null;
+        Class<?> c = o.getClass();
+        if (c == Boolean.class) {
+            return "BOOLEAN";
+        } else if (c == String.class) {
+            return "STRING";
+        } else if (c == Short.class) {
+            return "SHORT";
+        } else if (c == Integer.class) {
+            return "INT";
+        } else if (c == Long.class) {
+            return "BIGINT";
+        } else if (c == BigDecimal.class) {
+            return "NUMERIC";
+        } else if (c == Float.class) {
+            return "FLOAT";
+        } else if (c == Double.class) {
+            return "DOUBLE";
+        } else if (c == Date.class) {
+            return "DATE";
+        } else if (c == Time.class) {
+            return "TIME";
+        } else if (c == Timestamp.class) {
+            return "TIMESTAMP or DATETIME (ambiguous)";
+        } else {
+            return "<unknown>";
+        }
     }
 }

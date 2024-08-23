@@ -34,7 +34,7 @@ import com.cubrid.plcsql.compiler.Scope;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprId extends Expr {
+public class ExprId extends Expr implements AssignTarget {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -55,6 +55,7 @@ public class ExprId extends Expr {
         prefixDeclBlock = decl.scope().declDone;
     }
 
+    @Override
     public String javaCode() {
         if (decl instanceof DeclParamOut) {
             return String.format("%s[0]", name);
@@ -62,8 +63,6 @@ public class ExprId extends Expr {
             return name;
         } else if (decl instanceof DeclForIter) {
             return String.format("%s_i%d[0]", name, decl.scope().level);
-        } else if (decl instanceof DeclForRecord) {
-            return String.format("%s_r%d", name, decl.scope().level);
         } else if (decl instanceof DeclConst || decl instanceof DeclCursor) {
             if (prefixDeclBlock) {
                 return String.format("%s.%s", decl.scope().block, name);
@@ -82,6 +81,7 @@ public class ExprId extends Expr {
         }
     }
 
+    @Override
     public String javaCodeForOutParam() {
         if (decl instanceof DeclParamOut) {
             return name;
@@ -95,5 +95,15 @@ public class ExprId extends Expr {
             assert false;
             return null;
         }
+    }
+
+    @Override
+    public String name() {
+        return name;
+    }
+
+    @Override
+    public boolean isAssignableTo() {
+        return (decl instanceof DeclParamOut) || (decl instanceof DeclVar);
     }
 }

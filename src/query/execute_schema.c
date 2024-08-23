@@ -2034,7 +2034,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
   if (password != NULL)
     {
-      error = au_set_password (user, password);
+      error = au_set_password_encrypt (user, password);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2243,7 +2243,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (node != NULL)
     {
       password = IS_STRING (node) ? GET_STRING (node) : NULL;
-      error = au_set_password (user, password);
+      error = au_set_password_encrypt (user, password);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -11104,6 +11104,26 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
     {
       attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* 
+   * DEFAULT value and AUTO INCREMENT cannot be defined for the same column.
+   * Therefore, it will change to the property on which the last MODIFY statement was executed. 
+   */
+  if (attr_def->info.attr_def.data_default != NULL)
+    {
+      if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
+	{
+	  attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_LOST;
+	}
+    }
+  else if (attr_def->info.attr_def.auto_increment != NULL)
+    {
+      if ((!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
+	   || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE))
+	{
+	  attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_LOST;
+	}
     }
 
   /* existing FOREIGN KEY (referencing) */
