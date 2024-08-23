@@ -606,30 +606,6 @@ configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
 configure_file(cmake/version.h.cmake version.h)
 
-
-##########
-# Others #
-##########
-# add_definitions(-DCUBRID_DEBUG_TEST)
-# add_definitions(-DCUBRID_DEBUG_DUMP_PLAN_COST)
-
-##################
-# Hash List Scan #
-##################
-# add_definitions(-DDEBUG_HASH_LIST_SCAN_DUMP_HASH_TABLE)
-# add_definitions(-DDEBUG_HASH_LIST_SCAN_DUMP_FILE_HASH)
-
-#############
-# Hash Join #
-#############
-# add_definitions(-DTEST_HASH_JOIN_ENABLE)
-# add_definitions(-DTEST_HASH_JOIN_FORCE_ENABLE)
-# add_definitions(-DTEST_HASH_JOIN_PROFILE_TIME)
-# add_definitions(-DDEBUG_HASH_JOIN_DUMP_HASH_TABLE)
-# add_definitions(-DDEBUG_HASH_JOIN_DUMP_BUILD)
-# add_definitions(-DDEBUG_HASH_JOIN_DUMP_PROBE)
-
-
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
