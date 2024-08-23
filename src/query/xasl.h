@@ -604,15 +604,10 @@ struct cte_proc_node
 		      /* execute xasl for subquery's result-cache */ \
 		      if (qexec_execute_subquery_for_result_cache ((thread_p), _x, (v)->xasl_state) != NO_ERROR) \
 			{ \
-			  /* execute without result-cache */ \
-			  free_and_init (_x->sub_xasl_id); \
-		  	  if (qexec_execute_mainblock ((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR) \
-		    	    { \
-		      	      (_x)->status = XASL_FAILURE; \
-			    } \
+			  _x->status = XASL_FAILURE; \
 			} \
 		      /* fetch the single tuple from list_id */ \
-		      else if (_x->status == XASL_SUCCESS) \
+		      else \
 		        { \
 		          if (qdata_get_single_tuple_from_list_id ((thread_p), _x->list_id, _x->single_tuple) != NO_ERROR) \
 			    { \

@@ -18732,7 +18732,17 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
     {
-      xasl = pt_make_aptr_parent_node (parser, value_clauses->info.node_list.list, INSERT_PROC);
+      /* for insert into ... select */
+      PT_NODE *aptr_statement = value_clauses->info.node_list.list;
+
+      xasl = pt_make_aptr_parent_node (parser, aptr_statement, INSERT_PROC);
+
+      if (xasl != NULL && aptr_statement->info.query.flag.subquery_cached)
+	{
+	  xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
+	  xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
+	  xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
+	}
     }
   else
     {
@@ -25707,6 +25717,14 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
       goto cleanup;
     }
 
+  /* for subquery cache */
+  if (aptr_statement->xasl_id && !statement->flag.do_not_use_subquery_cache)
+    {
+      xasl->sub_xasl_id = aptr_statement->xasl_id;
+      xasl->sub_host_var_count = aptr_statement->sub_host_var_count;
+      xasl->sub_host_var_index = aptr_statement->sub_host_var_index;
+    }
+
   /* flush all classes */
   p = from;
   while (p != NULL)
@@ -26200,6 +26218,14 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
       goto cleanup;
+    }
+
+  /* for subquery cache */
+  if (aptr_statement->xasl_id && !statement->flag.do_not_use_subquery_cache)
+    {
+      xasl->sub_xasl_id = aptr_statement->xasl_id;
+      xasl->sub_host_var_count = aptr_statement->sub_host_var_count;
+      xasl->sub_host_var_index = aptr_statement->sub_host_var_index;
     }
 
   insert = &xasl->proc.insert;
