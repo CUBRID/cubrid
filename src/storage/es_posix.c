@@ -211,8 +211,14 @@ es_abs_open (const char *path, int flags)
 {
   const char *abs_path = path;
   char path_buf[PATH_MAX];
+  int ret = NO_ERROR;
 
-  if (es_make_abs_path (path_buf, path) > 0)
+  if ((ret = es_make_abs_path (path_buf, path)) < 0)
+    {
+      return ret;
+    }
+
+  if (ret > 0)
     {
       abs_path = path_buf;
     }
@@ -225,8 +231,14 @@ es_abs_open (const char *path, int flags, mode_t mode)
 {
   const char *abs_path = path;
   char path_buf[PATH_MAX];
+  int ret = NO_ERROR;
 
-  if (es_make_abs_path (path_buf, path) > 0)
+  if ((ret = es_make_abs_path (path_buf, path)) < 0)
+    {
+      return ret;
+    }
+
+  if (ret > 0)
     {
       abs_path = path_buf;
     }
