@@ -391,7 +391,6 @@ xes_posix_write_file (const char *path, const void *buf, size_t count, off_t off
    * This restriction is introduced due to OwFS's capability.
    * We need to reconsider about this specification.
    */
-
   if (stat (abs_path, &pstat) < 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", abs_path);
