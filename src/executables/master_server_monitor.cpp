@@ -214,8 +214,8 @@ server_monitor::check_server_revived (const std::string &server_name)
       else
 	{
 	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Server revive failed. pid : %d\n", entry->second.get_pid());
-	  m_server_entry_map.erase (entry);
 	  kill (entry->second.get_pid (), SIGKILL);
+	  m_server_entry_map.erase (entry);
 	}
     }
   else if (entry->second.get_need_revive ())
