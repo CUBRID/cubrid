@@ -1269,7 +1269,7 @@ static DISK_ISVALID btree_check_page_key (THREAD_ENTRY * thread_p, const OID * c
 static DISK_ISVALID btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, VPID * pg_vpid);
 static DISK_ISVALID btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
 					  const char *btname, PAGE_PTR pg_ptr, VPID * pg_vpid, BTREE_NODE_INFO * INFO);
-static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc,
+static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc,
 				       BTREE_STATS_ENV * env /* support for SUPPORT_DEDUPLICATE_KEY_MODE */ );
 static void btree_print_space (FILE * fp, int n);
 static int btree_delete_meta_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, int slot_id);
@@ -6982,6 +6982,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
       /* read key-value */
       assert (BTS->clear_cur_key == false);
 
+#if 0				// ctshim
       if (env->same_prefix_len == -1)
 	{
 	  if (btree_read_record_in_leafpage (thread_p, BTS->C_page, PEEK_KEY_VALUE, BTS) != NO_ERROR)
@@ -6990,6 +6991,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 	    }
 	}
       else
+#endif
 	{
 	  if (btree_read_record
 	      (thread_p, &BTS->btid_int, BTS->C_page, &BTS->key_record, &BTS->cur_key, (void *) &BTS->leaf_rec_info,
@@ -7091,6 +7093,7 @@ count_keys:
       /* read key-value */
 
       assert (BTS->clear_cur_key == false);
+#if 0				// ctshim
       if (env->same_prefix_len == -1)
 	{
 	  if (btree_read_record_in_leafpage (thread_p, BTS->C_page, PEEK_KEY_VALUE, BTS) != NO_ERROR)
@@ -7099,6 +7102,7 @@ count_keys:
 	    }
 	}
       else
+#endif
 	{
 	  if (btree_read_record
 	      (thread_p, &BTS->btid_int, BTS->C_page, &BTS->key_record, &BTS->cur_key, (void *) &BTS->leaf_rec_info,
@@ -8916,8 +8920,7 @@ btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan)
  *   cpc(in):
  */
 static int
-btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc,
-			    BTREE_STATS_ENV * env)
+btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc, BTREE_STATS_ENV * env)
 {
   int free_space;		/* Total free space of the Page */
   int key_cnt;			/* Page key count */
@@ -8940,7 +8943,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   BTS->leaf_rec_info.key_len = 0;
   VPID_SET_NULL (&BTS->leaf_rec_info.ovfl);
 
-
+#if 0				// ctshim
   PAGE_PTR C_page_bk;
   VPID C_vpid_bk;
 
@@ -8949,6 +8952,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 
   BTS->C_page = pg_ptr;
   VPID_COPY (&(BTS->C_vpid), pgbuf_get_vpid_ptr (pg_ptr));
+#endif
 
   /* initialize capacity structure */
   memset (cpc, 0x00, sizeof (BTREE_CAPACITY));
@@ -8991,7 +8995,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
 #endif /* !NDEBUG */
 
-	  ret = btree_get_subtree_capacity (thread_p, btid, page, &cpc2, env);
+	  ret = btree_get_subtree_capacity (thread_p, page, &cpc2, env);
 	  pgbuf_unfix_and_init (thread_p, page);
 	  if (ret != NO_ERROR)
 	    {
@@ -9043,6 +9047,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  cpc->sum_rec_len += BTS->key_record.length;
 
 	  /* read the current record key */
+#if 0				// ctshim
 	  if ((env->same_prefix_len == -1) && !btree_leaf_is_flaged (&BTS->key_record, BTREE_LEAF_RECORD_FENCE))
 	    {
 	      if (btree_read_record_in_leafpage (thread_p, pg_ptr, PEEK_KEY_VALUE, BTS) != NO_ERROR)
@@ -9051,10 +9056,11 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 		}
 	    }
 	  else
+#endif
 	    {
 	      if (btree_read_record
-		  (thread_p, btid, pg_ptr, &BTS->key_record, &BTS->cur_key, &BTS->leaf_rec_info, BTREE_LEAF_NODE,
-		   &BTS->clear_cur_key, &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+		  (thread_p, &(env->btree_scan.btid_int), pg_ptr, &BTS->key_record, &BTS->cur_key, &BTS->leaf_rec_info,
+		   BTREE_LEAF_NODE, &BTS->clear_cur_key, &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
@@ -9070,7 +9076,9 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  btree_clear_key_value (&BTS->clear_cur_key, &BTS->cur_key);
 
 	  /* find the value (OID) count for the record */
-	  oid_cnt = btree_record_get_num_oids (thread_p, btid, &BTS->key_record, BTS->offset, BTREE_LEAF_NODE);
+	  oid_cnt =
+	    btree_record_get_num_oids (thread_p, &(env->btree_scan.btid_int), &BTS->key_record, BTS->offset,
+				       BTREE_LEAF_NODE);
 
 	  ovfl_vpid = BTS->leaf_rec_info.ovfl;
 	  if (!VPID_ISNULL (&ovfl_vpid))
@@ -9101,7 +9109,8 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 		      goto exit_on_error;
 		    }
 
-		  oid_cnt_ovfl += btree_record_get_num_oids (thread_p, btid, &orec, 0, BTREE_OVERFLOW_NODE);
+		  oid_cnt_ovfl +=
+		    btree_record_get_num_oids (thread_p, &(env->btree_scan.btid_int), &orec, 0, BTREE_OVERFLOW_NODE);
 		  pgbuf_unfix_and_init (thread_p, ovfp);
 
 		  cpc->ovfl_oid_pg.tot_free_space += free_space_ovfl;
@@ -9131,30 +9140,12 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   cpc->tot_space += DB_PAGESIZE;
   cpc->tot_used_space = (cpc->tot_space - cpc->tot_free_space);
 
-  if (cpc->dis_key_cnt > 0)
-    {
-      cpc->avg_val_per_dedup_key = (int) (cpc->tot_val_cnt / cpc->deduplicate_dis_key_cnt);
-      cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
-      cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
-
-      cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->deduplicate_dis_key_cnt);
-      //cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->dis_key_cnt);
-    }
-  if (cpc->leaf_pg_cnt > 0)
-    {
-      cpc->avg_pg_key_cnt = (int) (cpc->dis_key_cnt / cpc->leaf_pg_cnt);
-    }
-
-  cpc->avg_pg_free_sp = cpc->tot_free_space / cpc->tot_pg_cnt;
-  if (cpc->ovfl_oid_pg.tot_pg_cnt > 0)
-    {
-      cpc->ovfl_oid_pg.avg_pg_free_sp = cpc->ovfl_oid_pg.tot_free_space / cpc->ovfl_oid_pg.tot_pg_cnt;
-    }
-
   btree_clear_key_value (&BTS->clear_cur_key, &BTS->cur_key);
+#if 0				// ctshim
   COMMON_PREFIX_PAGE_SIZE_RESET (BTS);
   BTS->C_page = C_page_bk;
   VPID_COPY (&(BTS->C_vpid), &C_vpid_bk);
+#endif
 
   return ret;
 
@@ -9168,10 +9159,12 @@ exit_on_error:
       pgbuf_unfix_and_init (thread_p, ovfp);
     }
 
-  COMMON_PREFIX_PAGE_SIZE_RESET (BTS);
   btree_clear_key_value (&BTS->clear_cur_key, &BTS->cur_key);
+#if 0				// ctshim
+  COMMON_PREFIX_PAGE_SIZE_RESET (BTS);
   BTS->C_page = C_page_bk;
   VPID_COPY (&(BTS->C_vpid), &C_vpid_bk);
+#endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -9231,10 +9224,28 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   stats_env.same_prefix_len = GET_DECOMPRESS_IDX_HEADER (root_header);
 
   /* traverse the tree and store the capacity info */
-  //BTREE_INIT_SCAN (&(stats_env.btree_scan));
-  //ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc, &stats_env);
-  ret = btree_get_subtree_capacity (thread_p, &(stats_env.btree_scan.btid_int), root, cpc, &stats_env);
+  ret = btree_get_subtree_capacity (thread_p, root, cpc, &stats_env);
   btree_scan_clear_key (&stats_env.btree_scan);
+
+  if (cpc->dis_key_cnt > 0)
+    {
+      cpc->avg_val_per_dedup_key = (int) (cpc->tot_val_cnt / cpc->deduplicate_dis_key_cnt);
+      cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
+      cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
+
+      cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->deduplicate_dis_key_cnt);
+      //cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->dis_key_cnt);
+    }
+  if (cpc->leaf_pg_cnt > 0)
+    {
+      cpc->avg_pg_key_cnt = (int) (cpc->dis_key_cnt / cpc->leaf_pg_cnt);
+    }
+
+  cpc->avg_pg_free_sp = cpc->tot_free_space / cpc->tot_pg_cnt;
+  if (cpc->ovfl_oid_pg.tot_pg_cnt > 0)
+    {
+      cpc->ovfl_oid_pg.avg_pg_free_sp = cpc->ovfl_oid_pg.tot_free_space / cpc->ovfl_oid_pg.tot_pg_cnt;
+    }
 
   pr_clear_value (&(stats_env.prev_key_val));
   if (ret != NO_ERROR)
