@@ -90,6 +90,7 @@ extern "C"
   extern void parser_free_node_resources (PT_NODE * node);
   extern void parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node);
   extern void parser_free_tree (PARSER_CONTEXT * parser, PT_NODE * tree);
+  extern void parser_free_tree_except_with_clause (PARSER_CONTEXT * parser, PT_NODE * tree);
   extern void parser_free_subtrees (PARSER_CONTEXT * parser, PT_NODE * tree);
   extern void parser_clear_node (PARSER_CONTEXT * parser, PT_NODE * node);
 

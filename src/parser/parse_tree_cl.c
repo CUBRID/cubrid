@@ -1530,6 +1530,20 @@ parser_free_tree (PARSER_CONTEXT * parser, PT_NODE * tree)
 }
 
 /*
+ * thie free routine is called from UPDATE / DELETE / MERGE referenced WITH clause 
+ * the WITH clause will not be free for later use
+ */
+void
+parser_free_tree_except_with_clause (PARSER_CONTEXT * parser, PT_NODE * tree)
+{
+  PT_NODE *saved = tree->info.query.with;
+
+  tree->info.query.with = NULL;
+  (void) parser_walk_tree (parser, tree, free_node_in_tree_pre, NULL, free_node_in_tree_post, NULL);
+  tree->info.query.with = saved;
+}
+
+/*
  * parser_free_subtrees () - free subtrees
  *   return:
  *   parser(in):
