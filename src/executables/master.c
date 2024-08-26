@@ -1008,9 +1008,9 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 #endif
 
 #if !defined(WINDOWS)
-                        /* *INDENT-OFF* */
-                        master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER, -1, "", "", temp->name);
-                        /* *INDENT-ON* */
+		      /* *INDENT-OFF* */
+		      master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER, -1, "", "", temp->name);
+		      /* *INDENT-ON* */
 #endif
 		      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
 		    }
