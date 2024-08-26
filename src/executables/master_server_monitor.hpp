@@ -75,11 +75,11 @@ class server_monitor
 
       private:
 
-	job_type m_job_type;                                     // job type
-	int m_pid;                                               // process ID of server process
-	std::string m_exec_path;                                 // executable path of server process
-	std::string m_args;                                      // arguments of server process
-	std::string m_server_name;                               // server name
+	job_type m_job_type;            // job type
+	int m_pid;                      // process ID of server process
+	std::string m_exec_path;        // executable path of server process
+	std::string m_args;             // arguments of server process
+	std::string m_server_name;      // server name
     };
 
   public:
