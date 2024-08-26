@@ -255,11 +255,10 @@ es_abs_open (const char *path, int flags, mode_t mode)
  * path(in): file path for open, relative or absolute
  *           if relative, (lob_base_path) + path will be opened
  */
-
 static int
 es_make_abs_path (char *dst, const char *src)
 {
-  int ret = NO_ERROR;
+  int ret = 0;
 
   if (!IS_ABS_PATH (src))
     {
