@@ -59,6 +59,7 @@
 #include "error_manager.h"
 #include "connection_globals.h"
 #include "connection_cl.h"
+#include "system_parameter.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* ! WINDOWS */
@@ -391,9 +392,9 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	    {
 	      if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
 		{
-              /* *INDENT-OFF* */
-              master_Server_monitor->make_and_insert_server_entry (proc_register->pid, proc_register->exec_path, proc_register->args, datagram_conn);
-              /* *INDENT-ON* */
+                /* *INDENT-OFF* */
+                master_Server_monitor->make_and_insert_server_entry (proc_register->pid, proc_register->exec_path, proc_register->args, datagram_conn);
+                /* *INDENT-ON* */
 		}
 	    }
 	}
