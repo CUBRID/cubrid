@@ -3560,13 +3560,7 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
     case PT_UNION:
     case PT_INTERSECTION:
     case PT_DIFFERENCE:
-      (void *) parser_walk_tree (parser, stmt->info.query.q.union_.arg1, do_prepare_subquery_pre, err, NULL, NULL);
-      if (*err != NO_ERROR)
-	{
-	  goto stop_walk;
-	}
-      (void *) parser_walk_tree (parser, stmt->info.query.q.union_.arg2, do_prepare_subquery_pre, err, NULL, NULL);
-      goto stop_walk;
+      return stmt;
 
     case PT_CREATE_TRIGGER:
     case PT_ALTER:
@@ -3586,7 +3580,8 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       return stmt;
     }
 
-  if ((stmt->info.query.is_subquery == PT_IS_SUBQUERY || stmt->info.query.is_subquery == PT_IS_UNION_SUBQUERY
+  if ((stmt->info.query.is_subquery == PT_IS_SUBQUERY || stmt->info.query.is_subquery == PT_IS_UNION_QUERY
+       || stmt->info.query.is_subquery == PT_IS_UNION_SUBQUERY
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
