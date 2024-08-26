@@ -17,60 +17,98 @@
 #
 
 set(LOCALE_DIRS 
-  en_US
   en_US.utf8
-  de_DE.utf8
-  es_ES.utf8
-  fr_FR.utf8
-  it_IT.utf8
-  ja_JP.utf8
-  km_KH.utf8
-  ko_KR.euckr
+  en_US
   ko_KR.utf8
-  ro_RO.utf8
-  tr_TR.utf8
-  vi_VN.utf8
-  zh_CN.utf8
+  ko_KR.euckr
   )
 
+set(MSG_FILES
+  cubrid
+  csql
+  utils
+  esql
+  )
+
+if(WIN32)
+  set(ICONV_CONTENT "
+    param (
+      [string] $sourceFilePath,
+      [string] $destinationFilePath
+    )
+
+    \$content = Get-Content -Path $sourceFilePath -Raw -Encoding UTF8
+    [System.Text.Encoding]::GetEncoding('euc-kr').GetBytes(\$content) | Set-Content -Path $destinationFilePath -Encoding Byte
+    Write-Output 'File encoding converion from UTF-8 to EUC-KR completed'
+  ")
+  set(ICONV_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/iconv.ps1")
+  file(WRITE ${ICONV_SCRIPT} ${ICONV_CONTENT})
+endif(WIN32)
+
 foreach(locale ${LOCALE_DIRS})
-  add_custom_command(
-    OUTPUT ${locale}/cubrid.cat
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${locale}
-    COMMAND gencat ${locale}/cubrid.cat ${CMAKE_CURRENT_SOURCE_DIR}/${locale}/cubrid.msg
-    COMMENT "Generating cubrid.cat for ${locale}"
-    DEPENDS gencat ${CMAKE_CURRENT_SOURCE_DIR}/${locale}/cubrid.msg
-    )
-  add_custom_command(
-    OUTPUT ${locale}/csql.cat
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${locale}
-    COMMAND gencat ${locale}/csql.cat ${CMAKE_CURRENT_SOURCE_DIR}/${locale}/csql.msg
-    COMMENT "Generating csql.cat for ${locale}"
-    DEPENDS gencat ${CMAKE_CURRENT_SOURCE_DIR}/${locale}/csql.msg
-    )
-  add_custom_command(
-    OUTPUT ${locale}/utils.cat
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${locale}
-    COMMAND gencat ${locale}/utils.cat ${CMAKE_CURRENT_SOURCE_DIR}/${locale}/utils.msg
-    COMMENT "Generating utils.cat for ${locale}"
-    DEPENDS gencat ${CMAKE_CURRENT_SOURCE_DIR}/${locale}/utils.msg
-    )
-  add_custom_command(
-    OUTPUT ${locale}/esql.cat
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${locale}
-    COMMAND gencat ${locale}/esql.cat ${CMAKE_CURRENT_SOURCE_DIR}/${locale}/esql.msg
-    COMMENT "Generating esql.cat for ${locale}"
-    DEPENDS gencat ${CMAKE_CURRENT_SOURCE_DIR}/${locale}/esql.msg
-    )
+  if(${locale} STREQUAL "en_US")
+    set(SRC_LOCALE "en_US.utf8")
+    set(NEED_ICONV 0)
+  elseif(${locale} STREQUAL "ko_KR.euckr")
+    set(SRC_LOCALE "ko_KR.utf8")
+    set(NEED_ICONV 1)
+  else()
+    set(SRC_LOCALE "${locale}")
+    set(NEED_ICONV 0)
+  endif()
+
+  foreach(msgfile ${MSG_FILES})
+    if(NEED_ICONV EQUAL 1)
+      if(WIN32)
+        add_custom_command(
+          OUTPUT ${locale}/${msgfile}.msg
+          COMMAND ${CMAKE_COMMAND} -E make_directory ${locale}
+          COMMAND powershell -ExecutionPolicy Bypass -File ${ICONV_SCRIPT} -sourceFilePath ${CMAKE_CURRENT_SOURCE_DIR}/${SRC_LOCALE}/${msgfile}.msg -destinationFilePath ${CMAKE_CURRENT_BINARY_DIR}/${locale}/${msgfile}.msg
+          COMMENT "Conversion ${msgfile}.msg in ${locale}"
+          DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SRC_LOCALE}/${msgfile}.msg
+          VERBATIM
+          )
+      else(WIN32)
+        find_program(ICONV_COMMAND iconv) 
+        if(NOT ICONV_COMMAND)
+          message(FATAL_ERROR "iconv command not found. Please install iconv.")
+        endif(NOT ICONV_COMMAND)
+
+        add_custom_command(
+          OUTPUT ${locale}/${msgfile}.msg
+          COMMAND ${CMAKE_COMMAND} -E make_directory ${locale}
+          COMMAND ${ICONV_COMMAND} -f utf-8 -t euckr ${CMAKE_CURRENT_SOURCE_DIR}/${SRC_LOCALE}/${msgfile}.msg > ${CMAKE_CURRENT_BINARY_DIR}/${locale}/${msgfile}.msg
+          COMMENT "Conversion ${msgfile}.msg in ${locale}"
+          DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SRC_LOCALE}/${msgfile}.msg
+          )
+      endif(WIN32)
+    else(NEED_ICONV EQUAL 1)
+      add_custom_command(
+        OUTPUT ${locale}/${msgfile}.msg
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${locale}
+        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${SRC_LOCALE}/${msgfile}.msg ${CMAKE_CURRENT_BINARY_DIR}/${locale}/${msgfile}.msg
+        COMMENT "Copy ${msgfile}.msg in ${locale}"
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SRC_LOCALE}/${msgfile}.msg
+        )
+    endif(NEED_ICONV EQUAL 1)
+
+    add_custom_command(
+      OUTPUT ${locale}/${msgfile}.cat
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${locale}
+      COMMAND gencat ${locale}/${msgfile}.cat ${CMAKE_CURRENT_BINARY_DIR}/${locale}/${msgfile}.msg
+      COMMENT "Generating ${msgfile}.cat for ${locale}"
+      DEPENDS gencat ${CMAKE_CURRENT_BINARY_DIR}/${locale}/${msgfile}.msg
+      )
+  endforeach(msgfile)
+
   add_custom_target(gen_msgs_${locale} ALL DEPENDS ${locale}/cubrid.cat ${locale}/csql.cat ${locale}/utils.cat ${locale}/esql.cat)
 
   install(DIRECTORY
-    ${locale}
+    ${CMAKE_CURRENT_BINARY_DIR}/${locale}
     DESTINATION ${CUBRID_LOCALEDIR}
     FILES_MATCHING PATTERN "*.msg")
   install(DIRECTORY
     ${CMAKE_CURRENT_BINARY_DIR}/${locale}
     DESTINATION ${CUBRID_LOCALEDIR}
-    FILES_MATCHING PATTERN PATTERN "*.cat")
-endforeach()
-
+    FILES_MATCHING PATTERN "*.cat")
+endforeach(locale)
