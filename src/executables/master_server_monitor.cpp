@@ -270,7 +270,7 @@ server_monitor::produce_job_internal (job_type job_type, int pid, const std::str
 				      const std::string &args, const std::string &server_name)
 {
   std::lock_guard<std::mutex> lock (m_server_monitor_mutex);
-  m_job_queue.emplace (job (job_type, pid, exec_path, args, server_name));
+  m_job_queue.emplace (job_type, pid, exec_path, args, server_name);
 }
 
 void
