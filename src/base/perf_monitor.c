@@ -565,6 +565,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_DEALLOC_CNT, "Num_data_page_avoid_dealloc"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
 
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_ASYNC, "Log_redo_async"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_FUNC_EXEC, "Log_redo_func_exec"),
+
   /* Array type statistics */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,
 			       &f_dump_in_buffer_Num_data_page_fix_ext, &f_load_Num_data_page_fix_ext),
@@ -1926,6 +1929,7 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
   switch (thread_p->type)
     {
     case TT_WORKER:
+    case TT_RECOVERY:
       return PERF_MODULE_USER;
     case TT_VACUUM_WORKER:
     case TT_VACUUM_MASTER:
@@ -3175,7 +3179,6 @@ perfmon_initialize (int num_trans)
     }
   memset (pstat_Global.is_watching, 0, memsize);
 
-  pstat_Global.n_watchers = 0;
   pstat_Global.initialized = true;
   return NO_ERROR;
 
@@ -3213,6 +3216,12 @@ perfmon_finalize (void)
     {
       free_and_init (pstat_Global.global_stats);
     }
+
+#if defined (SERVER_MODE)
+  // reset in case of 'always watching' initialization
+  pstat_Global.n_watchers = 0;
+#endif
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #if !defined (HAVE_ATOMIC_BUILTINS)
   pthread_mutex_destroy (&pstat_Global.watch_lock);
