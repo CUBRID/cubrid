@@ -532,7 +532,9 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
 			    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_STATUS),
 			    server_name, timeout);
 #if !defined(WINDOWS)
-		  master_Server_monitor->remove_server_entry_by_conn (temp->conn_ptr);
+                  /* *INDENT-OFF* */
+		  master_Server_monitor->produce_job (server_monitor::job_type::UNREGISTER_SERVER, -1, "", "", server_name);
+                  /* *INDENT-ON* */
 #endif
 		  css_process_start_shutdown (temp, timeout * 60, buffer);
 		}
@@ -722,7 +724,9 @@ css_process_shutdown (char *time_buffer)
 	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 #if !defined(WINDOWS)
-	  master_Server_monitor->remove_server_entry_by_conn (temp->conn_ptr);
+          /* *INDENT-OFF* */
+	  master_Server_monitor->produce_job (server_monitor::job_type::UNREGISTER_SERVER, -1, "", "", temp->name);
+          /* *INDENT-ON* */
 #endif
 	  css_process_start_shutdown (temp, timeout * 60, buffer);
 

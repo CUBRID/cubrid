@@ -30,7 +30,6 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/util_cs.c
-  ${EXECUTABLES_DIR}/master_server_monitor.cpp
   )
 
 set(EXECUTABLE_HEADERS
@@ -392,6 +391,7 @@ set(API_HEADERS
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND EXECUTABLE_SOURCES ${EXECUTABLES_DIR}/checksumdb.c)
+  list(APPEND EXECUTABLE_SOURCES ${EXECUTABLES_DIR}/master_server_monitor.cpp)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/dynamic_load.c)
   list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier_sql_log.c)
