@@ -100,7 +100,7 @@ server_monitor::server_monitor_thread_worker ()
 	else
 	  {
 	    assert (!m_job_queue.empty ());
-	    job = consume_job ();
+	    consume_job (job);
 	  }
       }
       process_job (job);
@@ -169,6 +169,17 @@ server_monitor::revive_server (const std::string &server_name)
       auto timediff = std::chrono::duration_cast<std::chrono::seconds> (tv -
 		      entry->second.get_registered_time()).count();
 
+      // If the server is abnormally terminated and revived within a short period of time, it is considered as a repeated failure.
+      // For HA server, heartbeat handle this case as demoting the server from master to slave and keep trying to revive the server.
+      // However, in this case, the server_monitor will not try to revive the server due to following reasons.
+      // 1. preventing repeated creation of core files.
+      // 2. The service cannot be recovered even if revived if the server abnormally terminates again within a short time.
+
+      // TODO: Consider retry count for repeated failure case, and give up reviving the server after several retries.
+      // TODO: The timediff value continues to increase if REVIVE_SERVER handling is repeated. Thus, the if condition will always be
+      // true after the first evaluation. Therefore, evaluating the timediff only once when producing the REVIVE_SERVER job is needed.
+      // (Currently, it is impossible since registered_time is stored in server_entry, which is not synchronized structure between monitor and main thread.)
+
       if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS)
 	{
 	  out_pid = try_revive_server (entry->second.get_exec_path(), entry->second.get_argv());
@@ -209,7 +220,7 @@ server_monitor::check_server_revived (const std::string &server_name)
       if (errno == ESRCH)
 	{
 	  fprintf (stdout, "[SERVER_REVIVE_DEBUG] : Can't find server process. pid : %d\n", entry->second.get_pid());
-	  produce_job (job_type::REVIVE_SERVER, -1, "", "", entry->first);
+	  produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	}
       else
 	{
@@ -224,8 +235,8 @@ server_monitor::check_server_revived (const std::string &server_name)
       constexpr int SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS = 1;
 
       std::this_thread::sleep_for (std::chrono::seconds (SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS));
-      produce_job (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
-		   entry->first);
+      produce_job_internal (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
+			    entry->first);
     }
   else
     {
@@ -258,12 +269,8 @@ void
 server_monitor::produce_job_internal (job_type job_type, int pid, const std::string &exec_path,
 				      const std::string &args, const std::string &server_name)
 {
-  server_monitor::job job (job_type, pid, exec_path, args, server_name);
-
-  {
-    std::lock_guard<std::mutex> lock (m_server_monitor_mutex);
-    m_job_queue.emplace (job);
-  }
+  std::lock_guard<std::mutex> lock (m_server_monitor_mutex);
+  m_job_queue.emplace (job (job_type, pid, exec_path, args, server_name));
 }
 
 void
@@ -274,19 +281,15 @@ server_monitor::produce_job (job_type job_type, int pid, const std::string &exec
   m_monitor_cv_consumer.notify_all();
 }
 
-server_monitor::job
-server_monitor::consume_job ()
+void
+server_monitor::consume_job (job &consume_job)
 {
-  job consume_job;
-
-  consume_job = m_job_queue.front ();
+  consume_job = std::move (m_job_queue.front ());
   m_job_queue.pop ();
-
-  return consume_job;
 }
 
 void
-server_monitor::process_job (job consume_job)
+server_monitor::process_job (job &consume_job)
 {
   switch (consume_job.get_job_type ())
     {

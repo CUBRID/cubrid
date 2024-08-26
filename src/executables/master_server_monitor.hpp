@@ -64,7 +64,7 @@ class server_monitor
 	job (const job &) = default;
 	job (job &&) = default;
 
-	job &operator= (const job &) = default;
+	job &operator= (const job &) = delete;
 	job &operator= (job &&) = default;
 
 	job_type get_job_type () const;
@@ -105,8 +105,8 @@ class server_monitor
     void produce_job (job_type job_type, int pid, const std::string &exec_path, const std::string &args,
 		      const std::string &server_name);
 
-    job consume_job ();
-    void process_job (job consume_job);
+    void consume_job (job &consune_job);
+    void process_job (job &consume_job);
 
   private:
 
@@ -148,11 +148,11 @@ class server_monitor
 	void proc_make_arg (const std::string &args);
 
       private:
-	int m_pid;                                                 // process ID of server process
-	std::string m_exec_path;                                   // executable path of server process
-	std::unique_ptr<char *[]> m_argv;                 // arguments of server process
-	volatile bool m_need_revive;                               // need to be revived by monitoring thread
-	std::chrono::steady_clock::time_point m_registered_time;  // last revive time
+	int m_pid;                                                  // process ID of server process
+	std::string m_exec_path;                                    // executable path of server process
+	std::unique_ptr<char *[]> m_argv;                           // arguments of server process
+	volatile bool m_need_revive;                                // need to be revived by monitoring thread
+	std::chrono::steady_clock::time_point m_registered_time;    // last revive time
     };
 
     std::unordered_map <std::string, server_entry> m_server_entry_map;  // map of server entries
