@@ -1476,6 +1476,11 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
 {
   int len = _vscprintf_p (format, argptr) + 1;
 
+  if (count == 0)
+    {
+      return (len - 1);
+    }
+
   if (len > (int) count)
     {
       char *cp = (char *) malloc (len);
@@ -1495,7 +1500,7 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
       buffer[count - 1] = 0;
 
       free (cp);
-      return (int) count;
+      return (int) len;
     }
 
   return _vsprintf_p (buffer, count, format, argptr);
