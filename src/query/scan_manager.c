@@ -3748,6 +3748,20 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  return S_ERROR;
 	}
+
+#if !defined(NDEBUG) && defined(DEBUG_HASH_LIST_SCAN_DUMP_HASH_TABLE)
+      if (llsidp->hlsid.hash_list_scan_type != HASH_METH_HASH_FILE)
+	{
+	  if (llsidp->list_id->tuple_cnt <= 100)
+	    {
+	      mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
+			    (void *) &(llsidp->list_id->type_list), (void *) &(llsidp->hlsid.hash_list_scan_type));
+	      printf ("temp file : tuple count = %lld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		      llsidp->list_id->page_cnt * 16);
+	    }
+	}
+#endif
+
       scan_end_scan (thread_p, scan_id);
 
       if (on_trace)
@@ -4902,12 +4916,17 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM
 	  || llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	{
-#if 0
-	  (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
-			       (void *) &llsidp->hlsid.hash_list_scan_type);
-	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
-		  llsidp->list_id->page_cnt * 16);
+#if !defined(NDEBUG) && defined(DEBUG_HASH_LIST_SCAN_DUMP_HASH_TABLE)
+	  if (llsidp->list_id->tuple_cnt <= 100)
+	    {
+	      (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
+				   (void *) &(llsidp->list_id->type_list),
+				   (void *) &(llsidp->hlsid.hash_list_scan_type));
+	      printf ("temp file : tuple count = %lld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		      llsidp->list_id->page_cnt * 16);
+	    }
 #endif
+
 	  mht_clear_hls (llsidp->hlsid.memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
 	  mht_destroy_hls (llsidp->hlsid.memory.hash_table);
 	}
@@ -8238,6 +8257,13 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      return S_ERROR;
 	    }
 	}
+
+      if (llsidp->tplrecp)
+	{
+	  llsidp->tplrecp->size = tplrec.size;
+	  llsidp->tplrecp->tpl = tplrec.tpl;
+	}
+
       return S_SUCCESS;
     }
 
@@ -8245,7 +8271,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
- * scan_next_hash_list_scan () - The scan is moved to the next hash list scan item.
+ * scan_hash_probe_next () - The scan is moved to the next hash list scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
  *
