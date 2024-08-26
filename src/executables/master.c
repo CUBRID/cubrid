@@ -359,6 +359,8 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  length = (int) strlen (proc_register->server_name) + 1;
 	  server_name_length = proc_register->server_name_length;
 
+	  assert (length <= DB_MAX_IDENTIFIER_LENGTH);
+
 	  if (length < server_name_length)
 	    {
 	      entry = css_return_entry_of_server (proc_register->server_name, css_Master_socket_anchor);
@@ -393,7 +395,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	      if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
 		{
                 /* *INDENT-OFF* */
-                master_Server_monitor->make_and_insert_server_entry (proc_register->pid, proc_register->exec_path, proc_register->args, datagram_conn);
+                master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER, proc_register->pid, proc_register->exec_path, proc_register->args, proc_register->server_name);
                 /* *INDENT-ON* */
 		}
 	    }
@@ -1006,6 +1008,15 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 		      if (css_Active_server_count > 0)
 			{
 			  css_Active_server_count--;
+			}
+#endif
+
+#if !defined(WINDOWS)
+		      if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+			{
+                        /* *INDENT-OFF* */
+                        master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER, -1, "", "", temp->name);
+                        /* *INDENT-ON* */
 			}
 #endif
 		      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
