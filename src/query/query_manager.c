@@ -1368,6 +1368,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       thread_p->trigger_involved = true;
     }
 
+  /* for result-cache only */
+  params.size = dbval_count;
+  params.vals = NULL;
+
 #if defined (SERVER_MODE)
   if (dbval_count)
     {
@@ -1404,12 +1408,15 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 
   if (qmgr_is_allowed_result_cache (*flag_p))
     {
-      params.size = dbval_count;
-      params.vals = NULL;
-
-      if (dbval_count)
+      if (dbval_count > 0)
 	{
 	  params.vals = (DB_VALUE *) malloc (sizeof (DB_VALUE) * dbval_count);
+
+	  if (params.vals == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * dbval_count);
+	      goto exit_on_error;
+	    }
 
 	  for (i = 0; i < dbval_count; i++)
 	    {
