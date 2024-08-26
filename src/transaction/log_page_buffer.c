@@ -7573,7 +7573,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   int unit_num;
   FILEIO_BACKUP_RECORD_INFO all_bkup_info[FILEIO_BACKUP_UNDEFINED_LEVEL];
   int first_arv_needed = -1;	/* for self contained, consistent */
-  int last_arv_needed = -1;	/* backups, some arv are needed */
   bool beenwarned;
   bool isincremental = false;	/* Assume full backups */
   bool bkup_in_progress = false;
@@ -8065,41 +8064,6 @@ loop:
     }
   while (volid != NULL_VOLID);
 
-#if defined(SERVER_MODE)
-  /*
-   * Only when in client/server, we may need to force an archive
-   * of the current log active if there were any active transactions
-   * before or during the backup.
-   * This is to insure we have enough log records to restore consistency
-   * to the database in the event a restore with no other log archives
-   * is needed.
-   */
-  LOG_CS_ENTER (thread_p);
-  if (LSA_LT (&chkpt_lsa, &log_Gl.hdr.append_lsa) || log_Gl.hdr.append_lsa.pageid > LOGPB_NEXT_ARCHIVE_PAGE_ID)
-    {
-      logpb_archive_active_log (thread_p);
-    }
-
-  last_arv_needed = log_Gl.hdr.nxarv_num - 1;
-  LOG_CS_EXIT (thread_p);
-
-  if (last_arv_needed >= first_arv_needed)
-    {
-      error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, last_arv_needed);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-#else /* SERVER_MODE */
-  /*
-   * In stand-alone, there can be no other activity modifying the log
-   * so we do not have to keep any log records to be consistent.
-   */
-  first_arv_needed = -1;
-  last_arv_needed = -1;
-#endif /* SERVER_MODE */
-
   /* at here, diable multi-thread usage for fast Log copy */
   session.read_thread_info.num_threads = 1;
 
@@ -8108,18 +8072,15 @@ loop:
   LOG_CS_ENTER (thread_p);
 
 #if defined(SERVER_MODE)
-
-  if (last_arv_needed < log_Gl.hdr.nxarv_num - 1)
+  if (first_arv_needed < log_Gl.hdr.nxarv_num - 1)
     {
-      error_code = logpb_backup_needed_archive_logs (thread_p, &session, last_arv_needed + 1, log_Gl.hdr.nxarv_num - 1);
+      error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, log_Gl.hdr.nxarv_num - 1);
       if (error_code != NO_ERROR)
 	{
 	  LOG_CS_EXIT (thread_p);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 	  goto error;
 	}
-
-      last_arv_needed = log_Gl.hdr.nxarv_num - 1;
     }
 #endif
 
