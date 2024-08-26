@@ -2010,71 +2010,70 @@ parser_yyinput_single_line (char *buff, int max_size)
     {
       if (str_identifier == '\'' || str_identifier == '\"')
         {
-         c = str_identifier;
+	  c = str_identifier;
         }
       else
         {
-         c = pt_nextchar ();
+	  c = pt_nextchar ();
         }
 
-      if (c == '\'' || c == '\"')      /* string start */
-       {
+      if (c == '\'' || c == '\"')	/* string start */
+	{
           if (str_identifier != '\'' && str_identifier != '\"')
-           {
-             str_identifier = c;
-             buff[i++] = c;
-             if (i >= max_size)
-               {
-                 return i;
-               }
-           }
-           end = c;
+	    {
+              str_identifier = c;
+	      buff[i++] = c;
+	      if (i >= max_size)
+	        {
+	          return i;
+	        }
+	    }
+	    end = c;
 
-         do
-           {
-             c = pt_nextchar ();
-             if (c == end)     /* string end */
-               {
-                 str_identifier = '\0';
-                 break;
-               }
+	  do
+	    {
+	      c = pt_nextchar ();
+	      if (c == end)	/* string end */
+		{
+		  str_identifier = '\0';
+		  break;
+		}
 
-             buff[i++] = c;
-             if (i >= max_size)
-               {
-                 return i;
-               }
+	      buff[i++] = c;
+	      if (i >= max_size)
+		{
+		  return i;
+		}
 
-             if (c == '\\'
-                 && (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false))
-               {
-                 /* if escape character */
-                 c = pt_nextchar (); /* read one more */
-                 buff[i++] = c;
-                 if (i >= max_size)
-                   {
-                     return i;
-                   }
-               }
-           }
-         while (c != -1);
-       }
+	      if (c == '\\'
+		  && (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false))
+		{
+		  /* if escape character */
+		  c = pt_nextchar (); /* read one more */
+		  buff[i++] = c;
+		  if (i >= max_size)
+		    {
+		      return i;
+		    }
+		}
+	    }
+	  while (c != -1);
+	}
 
       buff[i++] = c;
 
       if (c == ';')
-       {
-         
-         buff[i] = '\0'; /* not required but to ease debugging */
-         /* stop filling the buffer. see PR 5403 */
-         return i;
-       }
+	{
+          buff[i] = '\0'; /* not required but to ease debugging */
+          /* stop filling the buffer. see PR 5403 */
+	  return i;
+	}
 
       if (i >= max_size)
-       {
-         buff[i] = '\0'; /* not required but to ease debugging */
-         return i;
-       }
+	{
+          buff[i] = '\0'; /* not required but to ease debugging */
+	  return i;
+	}
 
     }
   while (c != -1);
