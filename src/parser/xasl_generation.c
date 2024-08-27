@@ -20903,7 +20903,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (aptr_statement)
     {
       /* with clause should not be freed for later use in the subquery cache. */
-      parser_free_tree_except_with_clause (parser, aptr_statement);
+      aptr_statement->info.query.with = NULL;
+      parser_free_tree (parser, aptr_statement);
     }
 
   return xasl;
@@ -20912,7 +20913,8 @@ error_return:
   if (aptr_statement != NULL)
     {
       /* with clause should not be freed for later use in the subquery cache. */
-      parser_free_tree_except_with_clause (parser, aptr_statement);
+      aptr_statement->info.query.with = NULL;
+      parser_free_tree (parser, aptr_statement);
     }
 
   if (pt_has_error (parser))
@@ -21740,7 +21742,8 @@ cleanup:
   if (aptr_statement != NULL)
     {
       /* with clause should not be freed for later use in the subquery cache. */
-      parser_free_tree_except_with_clause (parser, aptr_statement);
+      aptr_statement->info.query.with = NULL;
+      parser_free_tree (parser, aptr_statement);
     }
 
   if (pt_has_error (parser))
@@ -26088,8 +26091,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 cleanup:
   if (aptr_statement != NULL)
     {
-      /* with clause should not be freed for later use in the subquery cache. */
-      parser_free_tree_except_with_clause (parser, aptr_statement);
+      parser_free_tree (parser, aptr_statement);
     }
   if (from != NULL)
     {
@@ -26373,8 +26375,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 cleanup:
   if (aptr_statement != NULL)
     {
-      /* with clause should not be freed for later use in the subquery cache. */
-      parser_free_tree_except_with_clause (parser, aptr_statement);
+      parser_free_tree (parser, aptr_statement);
     }
   if (error != NO_ERROR)
     {
