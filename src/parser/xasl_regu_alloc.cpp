@@ -86,6 +86,9 @@ regu_xasl_proc_init (xasl_node &node, PROC_TYPE type)
     case MERGELIST_PROC:
       break;
 
+    case HASHJOIN_PROC:
+      break;
+
     case SCAN_PROC:
       break;
 

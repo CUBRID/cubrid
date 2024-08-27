@@ -158,10 +158,12 @@ set(BASE_HEADERS
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/perf_monitor.h
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/printer.hpp
+  ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
@@ -188,6 +190,10 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
+  )
+
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
   )
 
 set(PARSER_SOURCES
@@ -500,6 +506,7 @@ add_library(cubridcs SHARED
   ${COMPAT_SOURCES_C}
   ${BASE_HEADERS}
   ${BASE_SOURCES}
+  ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
   ${COMMUNICATION_SOURCES}
   ${CONNECTION_SOURCES}
@@ -557,7 +564,7 @@ else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
 # for dblink
-target_link_libraries(cubridcs cascci)
+target_link_libraries(cubridcs PUBLIC cascci)
 
 add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 add_dependencies(cubridcs ${EP_TARGETS})

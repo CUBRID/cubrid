@@ -722,6 +722,8 @@ thread_type_to_string (thread_type type)
       return "VACUUM_MASTER";
     case TT_VACUUM_WORKER:
       return "VACUUM_WORKER";
+    case TT_RECOVERY:
+      return "RECOVERY";
     case TT_NONE:
       return "NONE";
     }

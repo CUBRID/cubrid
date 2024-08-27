@@ -645,7 +645,20 @@ db_compile_statement_local (DB_SESSION * session)
       /* execute subqueries first */
       if (subquery_info)
 	{
+	  int q;
+
 	  err = do_execute_prepared_subquery (parser, statement, num_query, subquery_info);
+
+	  /* clear subquery's prepare info. */
+	  for (q = 0; q < num_query; q++)
+	    {
+	      if (subquery_info[q].host_var_index)
+		{
+		  free (subquery_info[q].host_var_index);
+		}
+	    }
+
+	  free (subquery_info);
 
 	  if (err != NO_ERROR)
 	    {
@@ -1657,12 +1670,12 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (!PT_IS_QUERY_NODE_TYPE (stmt->node_type))
+  if (stmt->node_type != PT_SELECT)
     {
       return stmt;
     }
 
-  if (stmt->info.query.flag.subquery_cached)
+  if (stmt->info.query.flag.subquery_cached && stmt->xasl_id)
     {
       *err = do_execute_subquery (parser, stmt);
       if (*err != NO_ERROR)
@@ -1818,9 +1831,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
 
   /* All CTE sub-queries included in the query must be executed first. */
-  if (pt_is_allowed_result_cache ())
+  if (pt_is_allowed_result_cache () && !statement->flag.do_not_use_subquery_cache)
     {
-      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &statement->flag, NULL, NULL);
+      err = NO_ERROR;
+      parser_walk_tree (parser, statement, do_execute_subquery_pre, (void *) &err, NULL, NULL);
       if (err != NO_ERROR)
 	{
 	  return err;
@@ -1887,8 +1901,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
-      if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
-	   && session->stage[stmt_ndx] == StatementPreparedStage)
+      if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE
+	    || err == ER_QPROC_RESULT_CACHE_INVALID) && session->stage[stmt_ndx] == StatementPreparedStage)
 	  || (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && session->stage[stmt_ndx] == StatementExecutedStage))
 	{
 	  /* The cache entry was deleted before 'execute' */
@@ -1897,8 +1911,19 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	      pt_free_statement_xasl_id (statement);
 	    }
 
+	  if (err == ER_QPROC_RESULT_CACHE_INVALID)
+	    {
+	      statement->flag.do_not_use_subquery_cache = 1;
+	      statement->flag.recompile = 1;
+	      if (statement->node_type == PT_EXECUTE_PREPARE)
+		{
+		  statement->info.execute.recompile = 1;
+		  return do_recompile_and_execute_prepared_statement (session, statement, result);
+		}
+	    }
+
 	  cls_status = pt_has_modified_class (parser, statement);
-	  if (cls_status == DB_CLASS_NOT_MODIFIED)
+	  if (err == ER_QPROC_RESULT_CACHE_INVALID || cls_status == DB_CLASS_NOT_MODIFIED)
 	    {
 	      /* forget all errors */
 	      er_clear ();
@@ -2389,15 +2414,18 @@ set_prepare_subquery_info (PT_NODE * query, DB_PREPARE_SUBQUERY_INFO * info, int
 
   XASL_ID_COPY (&info[q].xasl_id, query->xasl_id);
   info[q].host_var_count = query->sub_host_var_count;
-  info[q].host_var_index = (int *) malloc (sizeof (int) * query->sub_host_var_count);
-  if (info[q].host_var_index == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * query->sub_host_var_count);
-      goto err_exit;
-    }
+  info[q].host_var_index = NULL;
 
   if (query->sub_host_var_count > 0)
     {
+      info[q].host_var_index = (int *) malloc (sizeof (int) * query->sub_host_var_count);
+      if (info[q].host_var_index == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (int) * query->sub_host_var_count);
+	  goto err_exit;
+	}
+
       memcpy (info[q].host_var_index, query->sub_host_var_index, query->sub_host_var_count * sizeof (int));
     }
 
@@ -2408,9 +2436,12 @@ err_exit:
     {
       for (i = 0; i < num_query; i++)
 	{
-	  free_and_init (info[i].host_var_index);
+	  if (info[i].host_var_index)
+	    {
+	      free (info[i].host_var_index);
+	    }
 	}
-      free_and_init (info);
+      free (info);
     }
 
   return NULL;
@@ -2432,7 +2463,7 @@ do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *
 
   prepare_info = (DB_PREPARE_INFO *) arg;
 
-  if (stmt->info.query.flag.subquery_cached)
+  if (stmt->node_type == PT_SELECT && stmt->xasl_id != NULL && stmt->info.query.flag.subquery_cached)
     {
       prepare_info->subquery_info =
 	set_prepare_subquery_info (stmt, prepare_info->subquery_info, prepare_info->subquery_num);
@@ -2959,6 +2990,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 
   if (statement->info.execute.recompile)
     {
+      new_session->statements[0]->flag.do_not_use_subquery_cache = 1;
       new_session->statements[0]->flag.recompile = statement->info.execute.recompile;
     }
 
