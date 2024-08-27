@@ -10271,7 +10271,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	      int pruned_count, pruned_index;
 
 	      /* count pruned partitions */
-	      for (pruned_count = 0, spec->curent = spec->parts; spec->curent != NULL; pruned_count++, spec->curent = spec->curent->next);
+	      for (pruned_count = 0, spec->curent = spec->parts; spec->curent != NULL;
+		   pruned_count++, spec->curent = spec->curent->next);
 	      assert (pruned_count > 0);
 
 	      for (pruned_index = (pruned_count - 1); pruned_index > 0; pruned_index--)
