@@ -1888,7 +1888,6 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  db_private_free (thread_p, p->parts);
 	  p->parts = NULL;
 	  p->curent = NULL;
-	  p->pruned_count = 0;
 	  p->pruned = false;
 	}
 
@@ -9378,7 +9377,6 @@ exit_on_error:
       db_private_free (thread_p, curr_spec->parts);
       curr_spec->parts = NULL;
       curr_spec->curent = NULL;
-      curr_spec->pruned_count = 0;
       curr_spec->pruned = false;
     }
 
@@ -10270,9 +10268,13 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	  if (spec->curent->next == NULL)
 	    {
 	      SCAN_STATS *curr_stats, *prev_stats;
-	      int pruned_index;
+	      int pruned_count, pruned_index;
 
-	      for (pruned_index = (spec->pruned_count - 1); pruned_index > 0; pruned_index--)
+	      /* count pruned partitions */
+	      for (pruned_count = 0, spec->curent = spec->parts; spec->curent != NULL; pruned_count++, spec->curent = spec->curent->next);
+	      assert (pruned_count > 0);
+
+	      for (pruned_index = (pruned_count - 1); pruned_index > 0; pruned_index--)
 		{
 		  curr_stats = &spec->parts[pruned_index].scan_stats;
 		  prev_stats = &spec->parts[pruned_index - 1].scan_stats;

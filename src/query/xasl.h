@@ -1080,7 +1080,6 @@ struct access_spec_node
   SCAN_ID s_id;			/* scan identifier */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
-  int pruned_count;
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */
   bool fixed_scan;		/* scan pages are kept fixed? */
   bool pruned;			/* true if partition pruning has been performed */

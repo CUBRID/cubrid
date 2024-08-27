@@ -4725,7 +4725,6 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   ptr = or_unpack_int (ptr, &access_spec->pruning_type);
   access_spec->parts = NULL;
   access_spec->curent = NULL;
-  access_spec->pruned_count = 0;
   access_spec->pruned = false;
 
   access_spec->clear_value_at_clone_decache = xasl_unpack_info->use_xasl_clone;

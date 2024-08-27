@@ -934,8 +934,6 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
 	}
     }
 
-  pinfo->spec->pruned_count = cnt;
-
 cleanup:
   if (btree_name != NULL)
     {
