@@ -404,9 +404,10 @@ extern LC_COPYAREA *locator_reallocate_copy_area_by_length (LC_COPYAREA * old_ar
 
 extern void locator_free_copy_area (LC_COPYAREA * copyarea);
 extern char *locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc, int desc_len);
-extern char *locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc);
+extern char *locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc,
+						  int packed_desc_size);
 extern int locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *contents_length, char **desc_ptr,
-				   int *desc_length);
+				   int *desc_length, bool encode_endian);
 #if defined(SERVER_MODE)
 extern LC_COPYAREA *locator_recv_allocate_copyarea (int num_objs, char **contents_ptr, int contents_length);
 #else /* SERVER_MODE */

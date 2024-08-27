@@ -43,7 +43,7 @@
 #include "authenticate.h"
 #include "schema_manager.h"
 #include "trigger_description.hpp"
-#include "load_object.h"
+#include "unload_object_file.h"
 #include "object_primitive.h"
 #include "parser.h"
 #include "printer.hpp"
