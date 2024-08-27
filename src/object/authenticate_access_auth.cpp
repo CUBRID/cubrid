@@ -86,11 +86,13 @@ int
 au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor, MOP user, MOP obj_mop,
 				DB_AUTH auth_type, bool grant_option)
 {
-  DB_VALUE value, class_name_val, name_val;
+  DB_VALUE value;
   MOP db_class = nullptr, inst_mop = nullptr;
   DB_AUTH type;
   int i;
   int error = NO_ERROR;
+  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  unique_name[0] = '\0';
 
   m_au_obj = au_obj;
   if (m_au_obj == nullptr)
@@ -111,12 +113,18 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
   else
     {
       // TODO: CBRD-24912
-      db_make_string (&name_val, jsp_get_name (obj_mop));
-      inst_mop = jsp_find_stored_procedure (db_get_string (&name_val), DB_AUTH_NONE);
+      if (jsp_get_unique_name (obj_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  pr_clear_value (&value);
+	  return er_errid ();
+	}
+
+      inst_mop = jsp_find_stored_procedure (unique_name, DB_AUTH_NONE);
       if (inst_mop == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  pr_clear_value (&name_val);
+	  pr_clear_value (&value);
 	  return er_errid ();
 	}
     }
@@ -135,7 +143,7 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
   db_make_int (&value, (int) grant_option);
   obj_set (m_au_obj, "is_grantable", &value);
 
-  pr_clear_value (&class_name_val);
+  pr_clear_value (&value);
   return NO_ERROR;
 }
 

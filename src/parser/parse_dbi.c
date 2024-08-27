@@ -2578,7 +2578,6 @@ pt_auth_to_db_auth (const PT_NODE * auth)
       break;
 
     case PT_EXECUTE_PROCEDURE_PRIV:
-    case PT_EXECUTE_FUNCTION_PRIV:
       db_auth = DB_AUTH_EXECUTE;
       break;
 
