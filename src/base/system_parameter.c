@@ -6056,7 +6056,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE_DEBUG,
    PRM_NAME_JAVA_STORED_PROCEDURE_DEBUG,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    &prm_java_stored_procedure_debug_flag,
    (void *) &prm_java_stored_procedure_debug_default,
