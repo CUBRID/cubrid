@@ -393,7 +393,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 	  if (!entry->ha_mode)
 	    {
 #if !defined(WINDOWS)
-	      if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+	      if (auto_Restart_server)
 		{
 		      /* *INDENT-OFF* */
 		      master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER, proc_register->pid, proc_register->exec_path, proc_register->args, proc_register->server_name);
@@ -1014,7 +1014,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 #endif
 
 #if !defined(WINDOWS)
-		      if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+		      if (auto_Restart_server)
 			{
 			      /* *INDENT-OFF* */
 			      master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER, -1, "", "", temp->name);
@@ -1222,6 +1222,8 @@ main (int argc, char **argv)
       goto cleanup;
     }
 
+  auto_Restart_server = prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER);
+
   TPRINTF (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_STARTING), 0);
 
   /* close the message catalog and let the master daemon reopen. */
@@ -1266,7 +1268,7 @@ main (int argc, char **argv)
   // Since master_Server_monitor is module for restarting abnormally terminated cub_server,
   // it is only initialized only when auto_restart_server parameter is set to true.
 
-  if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+  if (auto_Restart_server)
     {
       // *INDENT-OFF*
       master_Server_monitor.reset (new server_monitor ());

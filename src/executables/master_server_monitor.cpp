@@ -28,7 +28,7 @@
 #include "master_server_monitor.hpp"
 
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
-
+bool auto_Restart_server = true;
 
 server_monitor::server_monitor ()
 {

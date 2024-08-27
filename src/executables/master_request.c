@@ -532,7 +532,7 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
 			    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_STATUS),
 			    server_name, timeout);
 #if !defined(WINDOWS)
-		  if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+		  if (auto_Restart_server)
 		    {
 		    /* *INDENT-OFF* */
 		    master_Server_monitor->produce_job (server_monitor::job_type::UNREGISTER_SERVER, -1, "", "", server_name);
@@ -719,7 +719,7 @@ css_process_shutdown (char *time_buffer)
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
 	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_GOING_DOWN), timeout);
 #if !defined(WINDOWS)
-  if (prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+  if (auto_Restart_server)
     {
       /* INDENT-OFF */
       master_Server_monitor.reset ();

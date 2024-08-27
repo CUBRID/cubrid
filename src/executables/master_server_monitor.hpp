@@ -168,5 +168,6 @@ class server_monitor
 };
 
 extern std::unique_ptr<server_monitor> master_Server_monitor;
+extern bool auto_Restart_server;
 
 #endif
