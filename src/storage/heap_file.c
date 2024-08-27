@@ -25078,16 +25078,25 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	  return S_ERROR;
 	}
 
-      if (class_oid != NULL && !mvcc_is_mvcc_disabled_class (class_oid))
+      if (class_oid != NULL)
 	{
-	  if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+	  if (!mvcc_is_mvcc_disabled_class (class_oid))
 	    {
-	      if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
-		  SNAPSHOT_SATISFIED)
+	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
 		{
-		  *recdes = *peeked_recdes;
-		  return scan;
+		  if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
+		      SNAPSHOT_SATISFIED)
+		    {
+		      *recdes = *peeked_recdes;
+		      return scan;
+		    }
 		}
+	    }
+	  else
+	    {
+	      /* mvcc_disabled_class */
+	      *recdes = *peeked_recdes;
+	      return scan;
 	    }
 	}
       /* fall through.. */
