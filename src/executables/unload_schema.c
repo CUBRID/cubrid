@@ -4385,13 +4385,17 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
-  DB_VALUE sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, lang_val, generated_val, args_val, rtn_type_val,
-    class_val, method_val, directive_val, comment_val;
+  DB_VALUE unique_name_val, sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, lang_val, generated_val, args_val,
+    rtn_type_val, class_val, method_val, directive_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
   int sp_type, rtn_type, arg_cnt, directive, save;
   DB_SET *arg_set;
   int err;
   int err_count = 0;
+  char owner_name[DB_MAX_USER_LENGTH];
+  owner_name[0] = '\0';
+  char output_owner[DB_MAX_USER_LENGTH + 4];
+  output_owner[0] = '\0';
 
   AU_DISABLE (save);
 
@@ -4439,6 +4443,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	}
 
       if ((err = db_get (obj, SP_ATTR_SP_TYPE, &sp_type_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_UNIQUE_NAME, &unique_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_NAME, &sp_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_PKG, &pkg_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
@@ -4454,7 +4459,14 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 
       output_ctx ("\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
 
+      // unique_name
+      const char *unique_name = db_get_string (&unique_name_val);
+      // sp_name
       const char *sp_name = db_get_string (&sp_name_val);
+      sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH);
+      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			sizeof (output_owner));
+
       if (!DB_IS_NULL (&pkg_name_val))
 	{
 	  const char *pkg_name = db_get_string (&pkg_name_val);
@@ -4463,9 +4475,10 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	}
       else
 	{
-	  output_ctx (" %s%s%s (", PRINT_IDENTIFIER (sp_name));
+	  output_ctx (" %s%s%s%s (", output_owner, PRINT_IDENTIFIER (sp_name));
 	}
       db_value_clear (&sp_name_val);
+      db_value_clear (&unique_name_val);
 
       arg_cnt = db_get_int (&arg_cnt_val);
       arg_set = db_get_set (&args_val);
