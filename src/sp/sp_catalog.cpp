@@ -823,19 +823,18 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
   db_make_varchar (&value, DB_DEFAULT_PRECISION, info.icode.data (), info.icode.length (), INTL_CODESET_UTF8,
 		   LANG_COLL_UTF8_BINARY);
   err = db_char_to_clob (&value, &elo);
-  if (err != NO_ERROR)
+  if (err == NO_ERROR)
     {
-      goto error;
-    }
-
-  err = dbt_put_internal (obt_p, SP_ATTR_INTERMEDIATE_CODE, &elo);
-  if (err != NO_ERROR)
-    {
-      goto error;
+      err = dbt_put_internal (obt_p, SP_ATTR_INTERMEDIATE_CODE, &elo);
     }
 
   pr_clear_value (&value);
   pr_clear_value (&elo);
+
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
 
   object_p = dbt_finish_object (obt_p);
   if (!object_p)
