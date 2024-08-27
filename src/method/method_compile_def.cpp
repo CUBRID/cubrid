@@ -23,6 +23,8 @@
 #include "dbtype.h"		/* db_value_* */
 #include "method_def.hpp"
 #include "method_struct_value.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

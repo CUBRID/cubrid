@@ -42,6 +42,8 @@
 #if !defined (WINDOWS)
 #include <pthread.h>
 #endif // WINDOWS
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {
@@ -717,6 +719,8 @@ thread_type_to_string (thread_type type)
       return "VACUUM_MASTER";
     case TT_VACUUM_WORKER:
       return "VACUUM_WORKER";
+    case TT_RECOVERY:
+      return "RECOVERY";
     case TT_NONE:
       return "NONE";
     }
