@@ -170,19 +170,19 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
   g_pre_alloc_varchar_size = utility_get_option_int_value (arg_map, UNLOAD_STRING_BUFFER_SIZE_S);
-  if (g_pre_alloc_varchar_size > MAX_PRE_ALLOC_VARCHAR_SIZE)
+  if (g_pre_alloc_varchar_size < 0 || g_pre_alloc_varchar_size > MAX_PRE_ALLOC_VARCHAR_SIZE)
     {
-      g_pre_alloc_varchar_size = MAX_PRE_ALLOC_VARCHAR_SIZE;
+      fprintf (stderr, "\nThe number of '--%s' ranges from 0 to %d.\n", UNLOAD_STRING_BUFFER_SIZE_L,
+	       MAX_PRE_ALLOC_VARCHAR_SIZE);
+      goto end;
     }
 
   g_request_pages = utility_get_option_int_value (arg_map, UNLOAD_REQUEST_PAGES_S);
-  if (g_request_pages < 0)
+  if (g_request_pages < 0 || g_request_pages > MAX_REQ_DATA_PAGES)
     {
-      g_request_pages = 0;
-    }
-  else if (g_request_pages > MAX_REQ_DATA_PAGES)
-    {
-      g_request_pages = MAX_REQ_DATA_PAGES;
+      fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_REQUEST_PAGES_L,
+	       MAX_REQ_DATA_PAGES);
+      goto end;
     }
 
   if (verbose_flag)
@@ -193,11 +193,17 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   if (!do_schema)
     {
       sampling_records = utility_get_option_int_value (arg_map, UNLOAD_SAMPLING_TEST_S);
+      if (sampling_records < -1)
+	{
+	  fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_SAMPLING_TEST_L, INT_MAX);
+	  goto end;
+	}
 
       thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
       if ((thread_count < 0) || (thread_count > MAX_THREAD_COUNT))
 	{
-	  fprintf (stderr, "\n--The number of threads ranges from 0 to 127.\n");
+	  fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_THREAD_COUNT_L,
+		   MAX_THREAD_COUNT);
 	  goto end;
 	}
 
