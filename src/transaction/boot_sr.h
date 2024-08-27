@@ -85,6 +85,28 @@ struct check_args
         (boot_Server_status == BOOT_SERVER_UP \
          || boot_Server_status == BOOT_SERVER_MAINTENANCE)
 
+#if defined(SERVER_MODE)
+extern bool boot_Enabled_flush_daemons;
+
+#define BO_IS_FLUSH_DAEMON_AVAILABLE() \
+        (boot_Enabled_flush_daemons == true)
+#define BO_ENABLE_FLUSH_DAEMONS() \
+        do \
+          { \
+            if (!BO_IS_FLUSH_DAEMON_AVAILABLE ()) \
+              { \
+                boot_Enabled_flush_daemons = true; \
+              } \
+          } \
+        while (0)
+#define BO_DISABLE_FLUSH_DAEMONS() \
+        do \
+          { \
+            boot_Enabled_flush_daemons = false; \
+          } \
+        while (0)
+#endif /* SERVER_MODE */
+
 extern void boot_server_status (BOOT_SERVER_STATUS status);
 
 /* structure for passing arguments into boot_restart_server et. al. */

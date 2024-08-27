@@ -25,6 +25,9 @@
 #include "method_compile_def.hpp"
 #include "session.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubmethod
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)

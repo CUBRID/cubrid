@@ -1445,9 +1445,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1359 Java VM crashed: %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1361 Dropping system generated stored procedure is not allowed.
-1362 PL/CSQL Stored procedure/function does not support Invoker's rights
-1363 Last Error
+
+1361 Invalid result cache for subquery.
+
+1362 Dropping system generated stored procedure is not allowed.
+1363 PL/CSQL Stored procedure/function does not support Invoker's rights.
+
+1364 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

@@ -27,6 +27,8 @@
 #include "storage_common.h"
 
 #include <algorithm>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubscan
 {

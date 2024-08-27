@@ -275,6 +275,10 @@ enum net_server_request
   /* plcsql */
   NET_SERVER_PLCSQL_TRANSFER_FILE,
 
+  /* memmon */
+  NET_SERVER_MMON_GET_SERVER_INFO,
+  NET_SERVER_MMON_DISABLE_FORCE,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
