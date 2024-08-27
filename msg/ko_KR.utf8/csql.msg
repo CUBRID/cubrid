@@ -177,12 +177,13 @@ $ csql help messages
    ;SChema class-name           - 클래스의 스키마 정보 출력.\n\
    ;TRIgger [`*'|trigger-name]  - 트리거 정의 출력.\n\
    ;Get system_parameter        - 시스템 파라메터 보기.\n\
-   ;SEt system_parameter=value  - 시스템 파라메터 설정.\n\
+   ;SET system_parameter=value  - 시스템 파라메터 설정.\n\
    ;STring-width [width]        - 각 문자열 컬럼 값을 출력할 길이를 설정.\n\
    ;COLumn-width [name]=[width] - 명시한 컬럼 값을 출력할 길이를 설정.\n\
    ;PLan [simple|detail|off]    - 쿼리 플랜 보기 설정.\n\
    ;Info <command>              - 내부 정보 출력.\n\
    ;TIme [ON/OFF]               - 쿼리 수행 시간 보기 설정|해제\n\
+   ;SERver-output [ON/OFF]      - DBMS_OUTPUT 버퍼에 저장된 서버 메시지 출력 활성화|비활성화.\n\
    ;LINe-output [ON/OFF]        - 한 라인 내에 값 표시 설정|해제\n\
    ;HISTORYList                 - 수행된 쿼리 리스트 보기.\n\
    ;HISTORYRead <history_num>   - 히스토리 번호에 해당되는 쿼리를 명령어 버퍼에 올림.\n\
