@@ -488,7 +488,7 @@ char *g_query_string;
 int g_query_string_len;
 int g_original_buffer_len;
 
-static void pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec, int end);
+static int pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec, int end);
 static int g_plcsql_text_pos;
 
 /*
@@ -553,7 +553,6 @@ static int g_plcsql_text_pos;
 
 %}
 
-%initial-action {yybuffer_pos = 0;}
 %locations
 %glr-parser
 %define parse.error verbose
@@ -3091,7 +3090,9 @@ create_stmt
                                 int start = @1.buffer_pos - 6;  // 6 : length of "create"
                                 int spec = @8.buffer_pos;       // right after is_or_as
                                 int end = @$.buffer_pos;
-                                pt_set_plcsql_body_impl(node, body, start, spec, end);
+                                if (pt_set_plcsql_body_impl(node, body, start, spec, end) < 0) {
+                                    PT_ERROR (this_parser, node, "failed to get the user SQL from the input file");
+                                }
                               }
 
 			    node->info.sp.or_replace = $2;
@@ -3140,7 +3141,9 @@ create_stmt
                                 int start = @1.buffer_pos - 6;  // 6 : length of "create"
                                 int spec = @10.buffer_pos;      // right after is_or_as
                                 int end = @$.buffer_pos;
-                                pt_set_plcsql_body_impl(node, body, start, spec, end);
+                                if (pt_set_plcsql_body_impl(node, body, start, spec, end) < 0) {
+                                    PT_ERROR (this_parser, node, "failed to get the user SQL from the input file");
+                                }
                               }
 
 			    node->info.sp.or_replace = $2;
@@ -26370,7 +26373,7 @@ parser_main (PARSER_CONTEXT * parser)
 {
   long desc_index = 0;
   long i, top;
-  int rv;
+  int rv, yybuffer_pos_save;
 
   PARSER_CONTEXT *this_parser_saved;
 
@@ -26386,6 +26389,7 @@ parser_main (PARSER_CONTEXT * parser)
   dbcs_start_input ();
 
   yycolumn = yycolumn_end = 1;
+  yybuffer_pos_save = yybuffer_pos;
   yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
@@ -26397,6 +26401,11 @@ parser_main (PARSER_CONTEXT * parser)
 
   pt_initialize_hint(parser, parser_hint_table); 
   rv = yyparse ();
+
+  // parser_main can be reentered while executing statements loaded by loaddb -s.
+  // During the loaddb -s, the yybuffer_pos must not be currupted.
+  yybuffer_pos = yybuffer_pos_save;
+
   pt_cleanup_hint (parser, parser_hint_table);
 
   if (pt_has_error (parser) || parser->stack_top <= 0 || !parser->node_stack)
@@ -26480,6 +26489,9 @@ parse_one_statement (int state)
       csql_yyset_lineno (1);
       yycolumn = yycolumn_end = 1;
 
+      // init only for the first time in order to make csql_yylloc.buffer_pos identical to the file pos
+      yybuffer_pos=0;
+
       return 0;
     }
 
@@ -26487,7 +26499,6 @@ parse_one_statement (int state)
 
   parser_yyinput_single_mode = 1;
 
-  yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
   csql_yylloc.buffer_pos=0;
@@ -28561,33 +28572,49 @@ pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING
   password_add_offset (&this_parser->hide_pwd_info, start, end, is_add_comma, en_add_pwd_string);
 }
 
-static void
+static int
 pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec, int end)
 {
-    // Assumption:
-    //   Control reaches here only from loaddb's loading a schema file.
-    //   In loaddb schema files, CREATE statements of PL/CSQL SP ends with a semicolon and
-    //   there are no spaces before that ending semicolon.
+    // In (at least) following two cases, the control reaches here.
+    //  . csql -i <file> --no-single-line ...
+    //  . cubrid loaddb -s <file> ...
 
-    int r, read_sz = end + 1 - start;   // +1 : for the ending semicolon
-    char* buff = (char*) parser_alloc(this_parser, read_sz);
+    // In these cases, parser->original_buffer is null and
+    // node->sql_user_text must be got from this_parser->file.
+    // The arguments start, spec, and end are got from the tokens' buffer_pos
+    // but they are also actual positions in the file in these two cases.
+
+    int r, read_sz = end - start;   // texts from pos start to pos (end - 1)
+    char* buff = (char*) parser_alloc(this_parser, read_sz + 1);
 
     int file_pos = ftell(this_parser->file);
-    assert(file_pos >= read_sz);
-    r = fseek(this_parser->file, (-read_sz), SEEK_CUR);
-    assert(r == 0);     // success
+
+    r = fseek(this_parser->file, start, SEEK_SET);
+    if (r != 0) {
+        return -1;
+    }
 
     r = (int) fread(buff, 1, read_sz, this_parser->file);
-    assert(r == read_sz);
-    assert(file_pos == ftell(this_parser->file));
-    assert(buff[r - 1] == ';');
-    assert(strncasecmp("create", buff, 6) == 0); // failure means there are spaces before the ending semicolon
+    if (r != read_sz) {
+        return -1;
+    }
 
-    buff[r - 1] = '\0'; // overwrites the ending semicolon
+    r = fseek(this_parser->file, file_pos, SEEK_SET);   // restore it to the original position
+    if (r != 0){
+        return -1;
+    }
+
+    if (strncasecmp("create", buff, 6) != 0) {
+        return -1;
+    }
+
+    buff[read_sz] = '\0';
     char* impl = buff + (spec - start);
 
     node->sql_user_text = buff;
-    node->sql_user_text_len = r - 1;
+    node->sql_user_text_len = read_sz;
 
     body->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(impl, strlen(impl));
+
+    return 0;
 }
