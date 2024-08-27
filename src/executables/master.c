@@ -1222,7 +1222,9 @@ main (int argc, char **argv)
       goto cleanup;
     }
 
+#if !defined(WINDOWS)
   auto_Restart_server = prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER);
+#endif
 
   TPRINTF (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_STARTING), 0);
 
