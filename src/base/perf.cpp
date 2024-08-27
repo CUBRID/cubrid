@@ -27,6 +27,8 @@
 #include <stdexcept>
 
 #include <cstring>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubperf
 {
@@ -36,16 +38,6 @@ namespace cubperf
   stat_definition::stat_definition (void)
   {
     // nothing
-  }
-
-  stat_definition::stat_definition (const stat_id idref, type stat_type, const char *first_name,
-				    const char *second_name /* = NULL */)
-    : m_id (idref)
-    , m_type (stat_type)
-    , m_names { first_name, second_name }
-    , m_offset (0)
-  {
-    //
   }
 
   stat_definition::stat_definition (const stat_definition &other)
@@ -81,11 +73,11 @@ namespace cubperf
   // statset_definition
   //////////////////////////////////////////////////////////////////////////
 
-  statset_definition::statset_definition (std::initializer_list<stat_definition> defs)
+  statset_definition::statset_definition (statset_definition::init_list_t defs)
     : m_stat_count (defs.size ())
     , m_value_count (0)
-    , m_stat_defs (NULL)
-    , m_value_names (NULL)
+    , m_stat_defs (nullptr)
+    , m_value_names (nullptr)
   {
     // copy definitions
     m_stat_defs = new stat_definition[defs.size ()];

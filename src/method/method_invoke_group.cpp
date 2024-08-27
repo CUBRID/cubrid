@@ -37,6 +37,8 @@
 #if defined (SA_MODE)
 #include "query_method.hpp"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {
@@ -235,6 +237,7 @@ namespace cubmethod
       case DB_TYPE_DATETIMETZ:
       case DB_TYPE_DATETIMELTZ:
       case DB_TYPE_JSON:
+      case DB_TYPE_ENUMERATION:
 	res = false;
 	break;
 
@@ -247,7 +250,6 @@ namespace cubmethod
       case DB_TYPE_VOBJ:
       case DB_TYPE_DB_VALUE:
       case DB_TYPE_MIDXKEY:
-      case DB_TYPE_ENUMERATION:
       default:
 	assert (false);
 	break;

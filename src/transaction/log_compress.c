@@ -31,6 +31,8 @@
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "perf_monitor.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * log_zip - compress(zip) log data into LOG_ZIP
@@ -61,25 +63,9 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
   log_zip->data_length = 0;
 
   buf_size = LOG_ZIP_BUF_SIZE (length);
-  if (buf_size > log_zip->buf_size)
-    {
-      if (log_zip->log_data)
-	{
-	  free_and_init (log_zip->log_data);
-	}
 
-      log_zip->log_data = (char *) malloc (buf_size);
-      if (log_zip->log_data == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buf_size);
-	}
-      log_zip->buf_size = buf_size;
-    }
-
-  if (log_zip->log_data == NULL)
+  if (!log_zip_realloc_if_needed (*log_zip, buf_size))
     {
-      log_zip->data_length = 0;
-      log_zip->buf_size = 0;
       return false;
     }
 
@@ -117,10 +103,10 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
  *   return: true on success, false on failure
  *   log_unzip(out): LOG_ZIP structure allocated by log_zip_alloc
  *   length(in): length of given data
- *   data(out): compressed log data
+ *   data(in): compressed log data
  */
 bool
-log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
+log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, const void *data)
 {
   int unzip_len;
   LOG_ZIP_SIZE_T buf_size;
@@ -142,25 +128,8 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
 
   length -= sizeof (LOG_ZIP_SIZE_T);
 
-  if (buf_size > log_unzip->buf_size)
+  if (!log_zip_realloc_if_needed (*log_unzip, buf_size))
     {
-      if (log_unzip->log_data)
-	{
-	  free_and_init (log_unzip->log_data);
-	}
-
-      log_unzip->log_data = (char *) malloc (buf_size);
-      if (log_unzip->log_data == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buf_size);
-	}
-      log_unzip->buf_size = buf_size;
-    }
-
-  if (log_unzip->log_data == NULL)
-    {
-      log_unzip->data_length = 0;
-      log_unzip->buf_size = 0;
       return false;
     }
 
@@ -219,6 +188,39 @@ log_diff (LOG_ZIP_SIZE_T undo_length, const void *undo_data, LOG_ZIP_SIZE_T redo
   return true;
 }
 
+/* log_zip_realloc_if_needed - re-alloc the internal buffer, if needed, and adjust members
+ *  return: true if operation succeeded regardless of whether the allocation was needed or not
+ *  log_zip(in/out): structure to allocate members of
+ *  new_size(in): new buffer to allocate, if the value is greater than the current buffer size, the buffer is re
+ */
+bool
+log_zip_realloc_if_needed (LOG_ZIP & log_zip, LOG_ZIP_SIZE_T new_size)
+{
+  assert (new_size <= LZ4_MAX_INPUT_SIZE);
+
+  if (new_size > 0 && new_size > log_zip.buf_size)
+    {
+      const LOG_ZIP_SIZE_T buf_size = LOG_ZIP_BUF_SIZE (new_size);
+      assert (buf_size <= LZ4_MAX_INPUT_SIZE);
+
+      log_zip.log_data = (char *) realloc (log_zip.log_data, buf_size);
+      if (log_zip.log_data == nullptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buf_size);
+	}
+      log_zip.buf_size = buf_size;
+    }
+
+  if (new_size > 0 && log_zip.log_data == nullptr)
+    {
+      log_zip.data_length = 0;
+      log_zip.buf_size = 0;
+      return false;
+    }
+
+  return true;
+}
+
 /*
  * log_zip_alloc - allocate LOG_ZIP structure
  *   return: LOG_ZIP structure or NULL if error
@@ -230,11 +232,9 @@ LOG_ZIP *
 log_zip_alloc (LOG_ZIP_SIZE_T size)
 {
   LOG_ZIP *log_zip = NULL;
-  LOG_ZIP_SIZE_T buf_size = 0;
 
   assert (size <= LZ4_MAX_INPUT_SIZE);
 
-  buf_size = LOG_ZIP_BUF_SIZE (size);
   log_zip = (LOG_ZIP *) malloc (sizeof (LOG_ZIP));
   if (log_zip == NULL)
     {
@@ -243,17 +243,25 @@ log_zip_alloc (LOG_ZIP_SIZE_T size)
       return NULL;
     }
   log_zip->data_length = 0;
+  log_zip->buf_size = 0;
+  log_zip->log_data = nullptr;
 
-  log_zip->log_data = (char *) malloc ((size_t) buf_size);
-  if (log_zip->log_data == NULL)
+  if (!log_zip_realloc_if_needed (*log_zip, size))
     {
       free_and_init (log_zip);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buf_size);
-      return NULL;
+      return nullptr;
     }
-  log_zip->buf_size = buf_size;
 
   return log_zip;
+}
+
+void
+log_zip_free_data (LOG_ZIP & log_zip)
+{
+  if (log_zip.log_data != nullptr)
+    {
+      free_and_init (log_zip.log_data);
+    }
 }
 
 /*
@@ -265,10 +273,6 @@ void
 log_zip_free (LOG_ZIP * log_zip)
 {
   assert (log_zip != NULL);
-  if (log_zip->log_data)
-    {
-      free_and_init (log_zip->log_data);
-    }
-
+  log_zip_free_data (*log_zip);
   free_and_init (log_zip);
 }
