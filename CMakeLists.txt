@@ -608,6 +608,9 @@ configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
 configure_file(cmake/version.h.cmake version.h)
 
+add_definitions(-DTEST_HASH_JOIN_ENABLE)
+add_definitions(-DTEST_HASH_JOIN_FORCE_ENABLE)
+
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
