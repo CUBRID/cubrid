@@ -1785,7 +1785,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
 
-        Type recTy = node.record.typeSpec().type;
+        Type recTy = node.record.type();
         assert recTy instanceof TypeRecord;
 
         String[] recordSetArgs =
@@ -1797,7 +1797,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 Misc.getLineColumnOf(node.ctx),
                 tmplStmtForStaticSqlLoop,
                 "%'RECORD-CLASS'%",
-                node.record.typeSpec().type.javaCode,
+                node.record.type().javaCode,
                 "%'+SQL'%",
                 visit(node.sql),
                 "%'+SET-USED-EXPR'%",
@@ -2739,7 +2739,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             if (param instanceof DeclParamOut) {
                 ExprId id = (ExprId) args.nodes.get(i);
-                DeclIdTyped declId = (DeclIdTyped) id.decl;
+                DeclIdTypeSpeced declId = (DeclIdTypeSpeced) id.decl;
                 sbuf.append(String.format("%s[] o%d", getJavaCodeOfType(declId.typeSpec()), i));
             } else {
                 sbuf.append(String.format("%s o%d", getJavaCodeOfType(param.typeSpec), i));
