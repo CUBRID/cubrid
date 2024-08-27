@@ -2670,6 +2670,47 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
 			      /* converse join type */
 			      join_type = (join_type == PT_JOIN_LEFT_OUTER) ? PT_JOIN_RIGHT_OUTER : PT_JOIN_LEFT_OUTER;
+
+			      /* move unnecessary spec list located between the two swapped specs to the end of the entire spec list */
+			      p_end = NULL;
+			      s_start = NULL;
+			      s_end = NULL;
+
+			      for (tmp = p_spec; tmp && tmp->next; tmp = tmp->next)
+				{
+				  if (!s_start)
+				    {
+				      /* cannot find the spec to move */
+				      if (tmp->next == spec)
+					{
+					  break;
+					}
+
+				      /* find the head node of the spec list to be moved
+				       * find the previous node to detach the head node */
+				      if (tmp->next->info.spec.join_type == PT_JOIN_NONE)
+					{
+					  p_end = tmp;
+					  s_start = tmp->next;
+					}
+				    }
+
+				  else
+				    {
+				      /* find the tail node of the spec list to be moved */
+				      if (tmp->next == spec)
+					{
+					  s_end = tmp;
+					}
+				    }
+				}
+
+			      if (s_start && s_end && p_end)
+				{
+				  s_end->next = NULL;
+				  p_end->next = spec;
+				  tmp->next = s_start;
+				}
 			    }
 			  else
 			    {
@@ -2727,6 +2768,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		}
 	      cnf->next = NULL;	/* cut-off link */
 
+	      PT_EXPR_INFO_CLEAR_FLAG (cnf, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER);
+
 	      /* put cnf to the ON cond */
 	      spec->info.spec.on_cond = parser_append_node (cnf, spec->info.spec.on_cond);
 	    }
@@ -2767,6 +2810,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      bind_arg->sc_info->Oracle_outerjoin_spec = spec;
 	      parser_walk_tree (parser, spec->info.spec.on_cond, pt_clear_Oracle_outerjoin_spec_id, bind_arg,
 				pt_continue_walk, NULL);
+
+#if !defined (NDEBUG)
+	      assert (!PT_EXPR_INFO_IS_FLAGED (spec->info.spec.on_cond,
+					       PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER));
+#endif
 	    }
 	}
 
@@ -2787,6 +2835,19 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      spec->info.spec.on_cond = NULL;
 	    }
 	}			/* for */
+
+#if !defined (NDEBUG)
+      for (cnf = node->info.query.q.select.where; cnf; cnf = cnf->next)
+	{
+	  assert (!PT_EXPR_INFO_IS_FLAGED (cnf, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER));
+	}
+#endif
+
+      if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_ORACLE_OUTER))
+	{
+	  PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_ORACLE_OUTER);
+	  PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ANSI_JOIN);
+	}
 
     select_end:
       bind_arg->spec_frames = bind_arg->spec_frames->next;
@@ -7690,6 +7751,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_HINT_ENUM hint;
   PT_NODE **leading = NULL, **use_nl = NULL, **use_idx = NULL;
   PT_NODE **use_merge = NULL, **index_ss = NULL, **index_ls = NULL;
+  PT_NODE **no_use_hash = NULL, **use_hash = NULL;
   PT_NODE *spec_list = NULL;
 
   switch (node->node_type)
@@ -7702,6 +7764,8 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       index_ss = &node->info.query.q.select.index_ss;
       index_ls = &node->info.query.q.select.index_ls;
       use_merge = &node->info.query.q.select.use_merge;
+      no_use_hash = &node->info.query.q.select.no_use_hash;
+      use_hash = &node->info.query.q.select.use_hash;
       spec_list = node->info.query.q.select.from;
       break;
     case PT_DELETE:
@@ -7710,6 +7774,8 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       use_nl = &node->info.delete_.use_nl_hint;
       use_idx = &node->info.delete_.use_idx_hint;
       use_merge = &node->info.delete_.use_merge_hint;
+      no_use_hash = &node->info.delete_.no_use_hash_hint;
+      use_hash = &node->info.delete_.use_hash_hint;
       spec_list = node->info.delete_.spec;
       break;
     case PT_UPDATE:
@@ -7718,6 +7784,8 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       use_nl = &node->info.update.use_nl_hint;
       use_idx = &node->info.update.use_idx_hint;
       use_merge = &node->info.update.use_merge_hint;
+      no_use_hash = &node->info.update.no_use_hash_hint;
+      use_hash = &node->info.update.use_hash_hint;
       spec_list = node->info.update.spec;
       break;
     default:
@@ -7792,11 +7860,21 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-#if 0
-  if (hint & PT_HINT_USE_HASH)
-    {				/* not used */
+  if (hint & PT_HINT_NO_USE_HASH)
+    {
+      if (pt_resolve_hint_args (parser, no_use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
     }
-#endif /* 0 */
+
+  if (hint & PT_HINT_USE_HASH)
+    {
+      if (pt_resolve_hint_args (parser, use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
 
   return NO_ERROR;
 exit_on_error:
@@ -7827,6 +7905,14 @@ exit_on_error:
     {
       parser_free_tree (parser, *use_merge);
     }
+  if (*no_use_hash != NULL)
+    {
+      parser_free_tree (parser, *no_use_hash);
+    }
+  if (*use_hash != NULL)
+    {
+      parser_free_tree (parser, *use_hash);
+    }
 
   switch (node->node_type)
     {
@@ -7837,18 +7923,24 @@ exit_on_error:
       node->info.query.q.select.index_ss = NULL;
       node->info.query.q.select.index_ls = NULL;
       node->info.query.q.select.use_merge = NULL;
+      node->info.query.q.select.no_use_hash = NULL;
+      node->info.query.q.select.use_hash = NULL;
       break;
     case PT_DELETE:
       node->info.delete_.leading_hint = NULL;
       node->info.delete_.use_nl_hint = NULL;
       node->info.delete_.use_idx_hint = NULL;
       node->info.delete_.use_merge_hint = NULL;
+      node->info.delete_.no_use_hash_hint = NULL;
+      node->info.delete_.use_hash_hint = NULL;
       break;
     case PT_UPDATE:
       node->info.update.leading_hint = NULL;
       node->info.update.use_nl_hint = NULL;
       node->info.update.use_idx_hint = NULL;
       node->info.update.use_merge_hint = NULL;
+      node->info.delete_.no_use_hash_hint = NULL;
+      node->info.delete_.use_hash_hint = NULL;
       break;
     default:
       break;

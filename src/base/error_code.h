@@ -1739,7 +1739,9 @@
 #define ER_SP_SERVER_CRASHED                        -1359
 #define ER_SP_COMPILE_ERROR                         -1360
 
-#define ER_LAST_ERROR                               -1361
+#define ER_QPROC_RESULT_CACHE_INVALID		    -1361
+
+#define ER_LAST_ERROR                               -1362
 
 /*
  * CAUTION!

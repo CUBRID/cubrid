@@ -40,7 +40,7 @@ public class SUStatement {
             GET_SCHEMA_INFO = 2,
             GET_AUTOINCREMENT_KEYS = 3;
 
-    private static final int DEFAULT_FETCH_SIZE = 100;
+    private static final int DEFAULT_FETCH_SIZE = 1000;
 
     private int handlerId = -1;
     private int type = NORMAL;
@@ -79,6 +79,7 @@ public class SUStatement {
 
     int fetchedTupleNumber = 0;
     int fetchedStartCursorPosition = -1; /* start pos of fetched buffer */
+    int fetchedEndCursorPosition = 0;
 
     boolean isFetched = false;
 
@@ -106,7 +107,9 @@ public class SUStatement {
 
         /* init fetch infos */
         fetchSize = DEFAULT_FETCH_SIZE;
-        fetchedStartCursorPosition = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
+        fetchedStartCursorPosition =
+                cursorPosition =
+                        totalTupleNumber = fetchedTupleNumber = fetchedEndCursorPosition = 0;
         fetchDirection = ResultSet.FETCH_FORWARD; // TODO: temporary init to FORWARD
 
         maxFetchSize = 0;
@@ -164,7 +167,9 @@ public class SUStatement {
         setColumnInfo(info.columnInfos);
 
         /* init fetch infos */
-        fetchedStartCursorPosition = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
+        fetchedStartCursorPosition =
+                cursorPosition =
+                        totalTupleNumber = fetchedTupleNumber = fetchedEndCursorPosition = 0;
         fetchDirection = ResultSet.FETCH_FORWARD; // TODO: temporary init to FORWARD
 
         commandType = (byte) info.getResultInfo().stmtType;
@@ -252,7 +257,7 @@ public class SUStatement {
         if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
             cursorPosition = 0; // already fetched
             fetchedStartCursorPosition = 0;
-            fetchedTupleNumber = 1;
+            fetchedTupleNumber = fetchedEndCursorPosition = 1;
 
             CallInfo callInfo = executeInfo.callInfo;
             tuples = new SUResultTuple[fetchedTupleNumber];
@@ -333,7 +338,7 @@ public class SUStatement {
         /* need not to send fetch request */
         if (fetchedStartCursorPosition >= 0
                 && fetchedStartCursorPosition <= cursorPosition
-                && cursorPosition <= fetchedStartCursorPosition + fetchedTupleNumber) {
+                && cursorPosition < fetchedEndCursorPosition) {
             return;
         }
 
@@ -350,6 +355,10 @@ public class SUStatement {
 
         fetchedTupleNumber = fetchInfo.numFetched;
         fetchedStartCursorPosition = fetchInfo.tuples[0].tupleNumber() - 1;
+        fetchedEndCursorPosition = fetchedStartCursorPosition + fetchedTupleNumber;
+
+        // update cursorPosition to the fetched start position
+        cursorPosition = fetchedStartCursorPosition;
     }
 
     public void moveCursor(int offset, int origin) {
@@ -431,11 +440,17 @@ public class SUStatement {
         SUResultTuple tuple = null;
         Object obj = null;
 
-        if ((tuples == null) || (tuples[cursorPosition - fetchedStartCursorPosition] == null)) {
+        int idx = cursorPosition - fetchedStartCursorPosition;
+        if (idx < 0) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_INDEX, null);
+        }
+
+        if ((tuples == null) || (tuples[idx] == null)) {
             return null;
         }
 
-        tuple = tuples[cursorPosition - fetchedStartCursorPosition];
+        tuple = tuples[idx];
         if (tuple.getAttribute(index) == null) {
             // it is error case... but for safe guard
             wasNull = true;
