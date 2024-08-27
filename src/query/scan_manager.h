@@ -377,9 +377,6 @@ struct scan_id_struct
   } s;
 
   SCAN_STATS scan_stats;
-  SCAN_STATS *partition_scan_stats;
-  SCAN_STATS *prev_partition_scan_stats;
-  SCAN_STATS *curr_partition_scan_stats;
   bool scan_immediately_stop;
 };				/* Scan Identifier */
 
@@ -511,7 +508,6 @@ extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 #if defined(SERVER_MODE)
 extern void scan_print_stats_json (SCAN_ID * scan_id, json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);
-extern void scan_print_partition_stats_text (FILE * fp, SCAN_ID * scan_id);
 #endif /* SERVER_MODE */
 
 #endif /* _SCAN_MANAGER_H_ */

@@ -1888,6 +1888,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  db_private_free (thread_p, p->parts);
 	  p->parts = NULL;
 	  p->curent = NULL;
+	  p->pruned_count = 0;
 	  p->pruned = false;
 	}
 
@@ -9072,21 +9073,6 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
-
-      if (thread_is_on_trace (thread_p))
-	{
-	  PARTITION_SPEC_TYPE *partition_spec;
-	  int partition_count = 0;
-
-	  for (partition_spec = curr_spec->parts; partition_spec != NULL; partition_spec = partition_spec->next)
-	    {
-	      partition_count++;
-	    }
-
-	  curr_spec->s_id.partition_scan_stats =
-	    (SCAN_STATS *) db_private_alloc (thread_p, partition_count * sizeof (SCAN_STATS));
-	  memset (curr_spec->s_id.partition_scan_stats, 0, partition_count * sizeof (SCAN_STATS));
-	}
     }
 
   if (curr_spec->type == TARGET_CLASS && mvcc_is_mvcc_disabled_class (&ACCESS_SPEC_CLS_OID (curr_spec)))
@@ -9392,6 +9378,7 @@ exit_on_error:
       db_private_free (thread_p, curr_spec->parts);
       curr_spec->parts = NULL;
       curr_spec->curent = NULL;
+      curr_spec->pruned_count = 0;
       curr_spec->pruned = false;
     }
 
@@ -9469,17 +9456,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
   /* reset pruning info */
   if (curr_spec->type == TARGET_CLASS && curr_spec->parts != NULL)
     {
-      if (!thread_is_on_trace (thread_p))
-	{
-	  /* youngjinj: trace 정보 출력에 이 정보가 필요하다. */
-	  db_private_free_and_init (thread_p, curr_spec->parts);
-	  curr_spec->curent = NULL;
-	  curr_spec->pruned = false;
-
-	  db_private_free_and_init (thread_p, curr_spec->s_id.partition_scan_stats);
-	  curr_spec->s_id.curr_partition_scan_stats = NULL;
-	  curr_spec->s_id.prev_partition_scan_stats = NULL;
-	}
+      curr_spec->curent = NULL;
 
       /* init btid */
       if (curr_spec->indexptr)
@@ -9657,37 +9634,7 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  if (s_parts == S_SUCCESS)
 	    {
 	      /* successfully moved to the next partition */
-	      if (thread_is_on_trace (thread_p))
-		{
-		  if (xasl->curr_spec->s_id.curr_partition_scan_stats == NULL)
-		    {
-		      xasl->curr_spec->s_id.prev_partition_scan_stats = xasl->curr_spec->s_id.partition_scan_stats;
-		      xasl->curr_spec->s_id.curr_partition_scan_stats = xasl->curr_spec->s_id.partition_scan_stats;
-		    }
-		  else
-		    {
-		      /* copy */
-		      *xasl->curr_spec->s_id.curr_partition_scan_stats = xasl->curr_spec->s_id.scan_stats;
-
-		      xasl->curr_spec->s_id.prev_partition_scan_stats = xasl->curr_spec->s_id.curr_partition_scan_stats;
-		      xasl->curr_spec->s_id.curr_partition_scan_stats++;
-		    }
-		}
 	      continue;
-	    }
-	  else if (s_parts == S_END)
-	    {
-	      if (thread_is_on_trace (thread_p))
-		{
-		  if (xasl->curr_spec->s_id.curr_partition_scan_stats != NULL)
-		    {
-		      /* copy */
-		      *xasl->curr_spec->s_id.curr_partition_scan_stats = xasl->curr_spec->s_id.scan_stats;
-
-		      xasl->curr_spec->s_id.prev_partition_scan_stats = NULL;
-		      xasl->curr_spec->s_id.curr_partition_scan_stats = NULL;
-		    }
-		}
 	    }
 	  else if (s_parts == S_ERROR)
 	    {
@@ -10313,6 +10260,47 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
     }
   else
     {
+      if (thread_is_on_trace (thread_p))
+	{
+	  memcpy (&spec->curent->scan_stats, &spec->s_id.scan_stats, sizeof (SCAN_STATS));
+
+	  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
+	  spec->curent->scan_stats.agl = NULL;
+
+	  if (spec->curent->next == NULL)
+	    {
+	      SCAN_STATS *curr_stats, *prev_stats;
+	      int pruned_index;
+
+	      for (pruned_index = (spec->pruned_count - 1); pruned_index > 0; pruned_index--)
+		{
+		  curr_stats = &spec->parts[pruned_index].scan_stats;
+		  prev_stats = &spec->parts[pruned_index - 1].scan_stats;
+
+		  perfmon_diff_timeval (&curr_stats->elapsed_scan, &prev_stats->elapsed_scan,
+					&curr_stats->elapsed_scan);
+		  curr_stats->num_fetches -= prev_stats->num_fetches;
+		  curr_stats->num_ioreads -= prev_stats->num_ioreads;
+
+		  /* for heap & list scan */
+		  curr_stats->read_rows -= prev_stats->read_rows;
+		  curr_stats->qualified_rows -= prev_stats->qualified_rows;
+
+		  /* for btree scan */
+		  curr_stats->read_keys -= prev_stats->read_keys;
+		  curr_stats->qualified_keys -= prev_stats->qualified_keys;
+		  curr_stats->key_qualified_rows -= prev_stats->key_qualified_rows;
+		  curr_stats->data_qualified_rows -= prev_stats->data_qualified_rows;
+		  perfmon_diff_timeval (&curr_stats->elapsed_lookup, &prev_stats->elapsed_lookup,
+					&curr_stats->elapsed_lookup);
+
+		  /* hash list scan */
+		  perfmon_diff_timeval (&curr_stats->elapsed_hash_build, &prev_stats->elapsed_hash_build,
+					&curr_stats->elapsed_hash_build);
+		}
+	    }
+	}
+
       if (spec->curent->next == NULL)
 	{
 	  /* no more partitions */
@@ -10323,6 +10311,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	  spec->curent = spec->curent->next;
 	}
     }
+
   /* close current scan and open a new one on the next partition */
   scan_end_scan (thread_p, &spec->s_id);
   scan_close_scan (thread_p, &spec->s_id);

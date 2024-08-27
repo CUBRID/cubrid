@@ -934,6 +934,8 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
 	}
     }
 
+  pinfo->spec->pruned_count = cnt;
+
 cleanup:
   if (btree_name != NULL)
     {
@@ -2937,6 +2939,14 @@ partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node 
   if (error == NO_ERROR)
     {
       spec->pruned = true;
+    }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      for (spec->curent = spec->parts; spec->curent != NULL; spec->curent = spec->curent->next)
+	{
+	  memset (&spec->curent->scan_stats, 0, sizeof (SCAN_STATS));
+	}
     }
 
   return error;
