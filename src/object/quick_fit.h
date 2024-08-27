@@ -42,4 +42,7 @@ extern void db_ws_free (void *obj);
 extern void *db_ws_alloc (size_t bytes);
 extern void *db_ws_realloc (void *obj, size_t newsize);
 
+extern bool db_is_utility_thread ();
+extern void db_set_use_utility_thread (bool use);
+
 #endif /* _QUICK_FIT_H_ */
