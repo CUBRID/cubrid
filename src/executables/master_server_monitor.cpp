@@ -52,7 +52,6 @@ server_monitor::~server_monitor ()
 {
   stop_monitoring_thread ();
 
-  assert (m_server_entry_map.size () == 0);
   fprintf (stdout, "[SERVER_REVIVE_DEBUG] : server_entry_map is deleted. \n");
 
   fflush (stdout);
