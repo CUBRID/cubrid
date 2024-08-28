@@ -9559,7 +9559,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
 				   void **ptr)
 {
   int error = NO_ERROR;
-  const char *path;
+  char path[PATH_MAX];
   int fd;
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *page_hdr;
@@ -9568,6 +9568,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
   *ptr = NULL;
 
   assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
+  assert (log_Archive_path != NULL);
 
   ctx = (ARCHIVE_LOG_HEADER_SCAN_CTX *) db_private_alloc (thread_p, sizeof (ARCHIVE_LOG_HEADER_SCAN_CTX));
   if (ctx == NULL)
@@ -9577,7 +9578,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
       goto exit_on_error;
     }
 
-  path = db_get_string (arg_values[0]);
+  snprintf (path, PATH_MAX, "%s/%s", log_Archive_path, db_get_string (arg_values[0]));
 
   page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 
