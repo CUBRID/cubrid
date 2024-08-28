@@ -69,6 +69,8 @@
 #include "xasl.h"
 
 #include <array>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 extern LOCK_COMPATIBILITY lock_Comp[12][12];
 

@@ -30,6 +30,7 @@ extern struct hostent *gethostbyname_uhost (const char *name);
 extern int getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t hostlen,
 			      char *serv, size_t servlen, int flags);
 extern int getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct addrinfo **res);
+extern void freeaddrinfo_uhost (struct addrinfo *res);
 
 #if defined(WINDOWS)
 #define ETC_HOSTS "C:\Windows\System32\drivers\etc\hosts"

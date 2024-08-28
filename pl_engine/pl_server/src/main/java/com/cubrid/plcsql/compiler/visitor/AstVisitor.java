@@ -144,7 +144,7 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node);
 
-    public abstract R visitStmtForExecImmeLoop(StmtForExecImmeLoop node);
+    public abstract R visitStmtForDynamicSqlLoop(StmtForDynamicSqlLoop node);
 
     public abstract R visitStmtGlobalProcCall(StmtGlobalProcCall node);
 
@@ -199,12 +199,11 @@ public abstract class AstVisitor<R> {
     DeclId
     DeclParam
     DeclRoutine
-    DeclIdTyped
+    DeclIdTypeSpeced
     Expr
     Stmt
 
     # actually no ast nodes
     DeclForIter
-    DeclForRecord
      */
 }

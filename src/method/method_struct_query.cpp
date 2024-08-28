@@ -26,6 +26,8 @@
 #if defined (CS_MODE)
 #include "method_schema_info.hpp"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

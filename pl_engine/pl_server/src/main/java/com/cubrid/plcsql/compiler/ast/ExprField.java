@@ -32,10 +32,9 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprField extends Expr {
+public class ExprField extends Expr implements AssignTarget {
 
     public void setType(Type type) {
         this.type = type;
@@ -60,23 +59,52 @@ public class ExprField extends Expr {
         this.fieldName = fieldName;
     }
 
-    public String javaCode(Set<String> javaTypesUsed) {
+    @Override
+    public String javaCode() {
 
         if (colIndex > 0) {
 
             // record is for a Static SQL
             //
             assert type != null;
-            javaTypesUsed.add(type.fullJavaType);
-            return String.format(
-                    "(%s) getFieldWithIndex(%s, %d)", type.javaCode, record.javaCode(), colIndex);
+            return String.format("(%s.%s[0])", record.javaCode(), fieldName);
         } else {
 
             // record is for a Dynamic SQL
             //
             assert type == null;
-            return String.format("getFieldWithName(%s, \"%s\")", record.javaCode(), fieldName);
+            return String.format(
+                    "getFieldWithName(%s_r%d, \"%s\")",
+                    record.name, record.decl.scope.level, fieldName);
         }
+    }
+
+    @Override
+    public String javaCodeForOutParam() {
+
+        if (colIndex > 0) {
+
+            // record is for a Static SQL
+            //
+            assert type != null;
+            return String.format("(%s.%s)", record.javaCode(), fieldName);
+        } else {
+
+            // record is for a Dynamic SQL
+            //
+            assert type == null;
+            throw new RuntimeException("unreachable");
+        }
+    }
+
+    @Override
+    public String name() {
+        return record.name + "." + fieldName;
+    }
+
+    @Override
+    public boolean isAssignableTo() {
+        return record.isAssignableTo();
     }
 
     // --------------------------------------------------

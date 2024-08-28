@@ -19,6 +19,8 @@
 #include "method_def.hpp"
 
 #include "memory_private_allocator.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 method_sig_node::method_sig_node ()
 {

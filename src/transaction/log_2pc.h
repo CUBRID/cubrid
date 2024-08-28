@@ -36,6 +36,7 @@
 
 // forward declarations
 struct log_tdes;
+class log_reader;
 
 const int LOG_2PC_NULL_GTRID = -1;
 const bool LOG_2PC_OBTAIN_LOCKS = true;
@@ -86,6 +87,7 @@ int log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid);
 TRAN_STATE log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid);
 void log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes, LOG_LSA * lsa,
 			   LOG_PAGE * log_pgptr);
+void log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes, log_reader & log_pgptr_reader);
 void log_2pc_dump_gtrinfo (FILE * fp, int length, void *data);
 void log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data);
 log_tdes *log_2pc_alloc_coord_info (log_tdes * tdes, int num_particps, int particp_id_length, void *block_particps_ids);

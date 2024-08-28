@@ -42,6 +42,8 @@
 #if !defined (SERVER_MODE)
 #include "method_callback.hpp"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {
@@ -458,18 +460,28 @@ namespace cubmethod
 	cursor->open ();
       }
 
+    cursor->set_fetch_count (fetch_count);
+
     fetch_info info;
-    int i = 0;
+
     SCAN_CODE s_code = S_SUCCESS;
+
+    /* Most cases, fetch_count will be the same value
+     * To handle an invalid value of fetch_count is set at `cursor->set_fetch_count (fetch_count);`
+     * Here, I'm going to get the fetch_count from the getter again.
+    */
+    fetch_count = cursor->get_fetch_count ();
+
+    int start_index = cursor->get_current_index ();
     while (s_code == S_SUCCESS)
       {
 	s_code = cursor->next_row ();
-	if (s_code == S_END || i > cursor->get_fetch_count ())
+	int tuple_index = cursor->get_current_index ();
+	if (s_code == S_END || tuple_index - start_index >= fetch_count)
 	  {
 	    break;
 	  }
 
-	int tuple_index = cursor->get_current_index ();
 	std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
 
 	if (cursor->get_is_oid_included())
@@ -483,7 +495,6 @@ namespace cubmethod
 	  {
 	    info.tuples.emplace_back (tuple_index, tuple_values);
 	  }
-	i++;
       }
 
     cubmem::block blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info));

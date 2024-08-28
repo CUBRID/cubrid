@@ -64,6 +64,7 @@
 #include "log_archives.hpp"
 #include "log_compress.h"
 #include "log_record.hpp"
+#include "log_recovery.h"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
@@ -94,6 +95,8 @@
 #include "dbtype.h"
 #include "cnv.h"
 #include "flashback.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 
@@ -1367,6 +1370,14 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * System was involved in a crash.
        * Execute the recovery process
        */
+
+#if defined(SERVER_MODE)
+      /* The actions of flushing the page buffer and double write buffer are currently designed to operate in a single thread.
+       * As we parallelize the log recovery redo process, this flush operation can also run in multiple threads.
+       * To prevent this, daemons performing the flush should be activated to flush the pages in single thread.
+       * If recovery is not being performed, these daemons will run after completing the log_initialize () */
+      BO_ENABLE_FLUSH_DAEMONS ();
+#endif /* SERVER_MODE */
       log_recovery (thread_p, ismedia_crash, stopat);
     }
   else

@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.TypeRecord;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -45,6 +46,7 @@ public class ExprBinaryOp extends Expr {
     public final Expr right;
 
     public String opExtension = "";
+    public TypeRecord recordTypeOfOperands;
 
     public void setOpExtension(String ext) {
         opExtension = ext;

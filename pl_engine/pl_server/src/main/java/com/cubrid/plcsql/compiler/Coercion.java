@@ -33,10 +33,13 @@ package com.cubrid.plcsql.compiler;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
 import com.cubrid.plcsql.compiler.type.TypeNumeric;
+import com.cubrid.plcsql.compiler.type.TypeRecord;
 import com.cubrid.plcsql.compiler.type.TypeVarchar;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -67,6 +70,47 @@ public abstract class Coercion {
     }
 
     public static Coercion getCoercion(Type src, Type dst) {
+
+        if (dst instanceof TypeRecord) {
+            if (src == Type.NULL) {
+                return new NullToRecord(src, dst);
+            } else if (src instanceof TypeRecord) {
+
+                if (src == dst) {
+                    return Identity.getInstance(src);
+                }
+
+                TypeRecord srcRec = (TypeRecord) src;
+                TypeRecord dstRec = (TypeRecord) dst;
+
+                // conditions of compatibility of two different record types
+                // 1. number of fields must be equal
+                // 2. corresponding fields must be assign comapatible
+
+                if (srcRec.selectList.size() != dstRec.selectList.size()) {
+                    return null; // the numbers of fields do not match
+                }
+
+                int len = srcRec.selectList.size();
+                Coercion[] fieldCoercions = new Coercion[len];
+
+                for (int i = 0; i < len; i++) {
+                    Misc.Pair<String, Type> srcField = srcRec.selectList.get(i);
+                    Misc.Pair<String, Type> dstField = dstRec.selectList.get(i);
+
+                    Coercion c = getCoercion(srcField.e2, dstField.e2);
+                    if (c == null) {
+                        return null; // coercion is not available for this field
+                    } else {
+                        fieldCoercions[i] = c;
+                    }
+                }
+
+                return RecordToRecord.getInstance(srcRec, dstRec, fieldCoercions);
+            }
+
+            return null;
+        }
 
         if (src == dst) {
             return Identity.getInstance(src);
@@ -109,6 +153,111 @@ public abstract class Coercion {
     // ----------------------------------------------
     // coercion cases
     // ----------------------------------------------
+
+    public static class NullToRecord extends Coercion {
+
+        public NullToRecord(Type src, Type dst) {
+            super(src, dst);
+        }
+
+        @Override
+        public String javaCode(String exprJavaCode) {
+            // a new instance of the target record with Null fields
+            return String.format("new %s().setNull(%s)", dst.javaCode, exprJavaCode);
+        }
+
+        @Override
+        Coercion create(Type src, Type dst) {
+            assert false; // NullToRecord is not memoized in CoercionStore
+            return null;
+        }
+    }
+
+    public static class RecordToRecord extends Coercion {
+        Coercion[] fieldCoercions;
+
+        @Override
+        public String javaCode(String exprJavaCode) {
+            assert false; // maybe, unreachable
+            return String.format(
+                    "setFieldsOf%1$s_To_%2$s(%3$s, new %2$s())",
+                    src.javaCode, dst.javaCode, exprJavaCode);
+        }
+
+        @Override
+        Coercion create(Type src, Type dst) {
+            return new RecordToRecord(src, dst);
+        }
+
+        public static RecordToRecord getInstance(Type src, Type dst, Coercion[] fieldCoercions) {
+            RecordToRecord ret = (RecordToRecord) memoized.get(src, dst);
+            if (ret.fieldCoercions == null) {
+                ret.fieldCoercions = fieldCoercions;
+            }
+            return ret;
+        }
+
+        public static List<String> getAllJavaCode() {
+
+            List<String> lines = new LinkedList<>();
+
+            for (Map<Type, Coercion> inner : memoized.store.values()) {
+                for (Coercion c : inner.values()) {
+                    RecordToRecord rtr = (RecordToRecord) c;
+                    lines.addAll(rtr.getCoercionFuncCode());
+                }
+            }
+
+            return lines;
+        }
+
+        public static void clearMemoized() {
+            memoized.clear();
+        }
+
+        // ----------------------------------------------
+        // Private
+        // ----------------------------------------------
+
+        private static CoercionStore memoized = new CoercionStore(new RecordToRecord());
+
+        protected RecordToRecord() {}; // for dummy in the CoercionStore
+
+        private RecordToRecord(Type src, Type dst) {
+            super(src, dst);
+        }
+
+        private List<String> getCoercionFuncCode() {
+
+            List<String> lines = new LinkedList<>();
+
+            lines.add(
+                    String.format(
+                            "private static %2$s setFieldsOf%1$s_To_%2$s(%1$s src, %2$s dst) {",
+                            src.javaCode, dst.javaCode));
+            lines.add("  if (src == null) {");
+            lines.add("    return dst.setNull(null);");
+            lines.add("  }");
+            lines.add("  return dst.set(");
+
+            TypeRecord srcRec = (TypeRecord) src;
+            assert srcRec.selectList.size() == fieldCoercions.length;
+
+            int i = 0;
+            for (Misc.Pair<String, Type> field : srcRec.selectList) {
+                lines.add(
+                        "    "
+                                + (i == 0 ? "" : ",")
+                                + fieldCoercions[i].javaCode("src." + field.e1 + "[0]"));
+                i++;
+            }
+
+            lines.add("  );");
+            lines.add("}");
+
+            return lines;
+        }
+    }
 
     public static class CoerceAndCheckPrecision extends Coercion {
 
@@ -313,6 +462,10 @@ public abstract class Coercion {
             }
 
             return c;
+        }
+
+        synchronized void clear() {
+            store.clear();
         }
 
         // ---------------------------------------

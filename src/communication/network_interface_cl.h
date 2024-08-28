@@ -55,6 +55,7 @@
 #include "dynamic_array.h"
 #include "flashback_cl.h"
 #include "method_compile_def.hpp"
+#include "memory_monitor_common.hpp"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -92,7 +93,7 @@ extern int locator_get_class (OID * class_oid, int class_chn, const OID * oid, L
 			      LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type,
 			      OID * class_oidp, int *nobjects, int *nfetched, OID * last_oidp,
-			      LC_COPYAREA ** fetch_copyarea);
+			      LC_COPYAREA ** fetch_copyarea, int request_pages, int nsplit_process, int nselection_key);
 extern int locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, int class_chn, int need_fetching,
 			       int prefetch, LC_COPYAREA ** fetch_copyarea, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
@@ -459,4 +460,7 @@ EXPORT_IMPORT extern int plcsql_transfer_file (const std::string & input_file, c
 					       PLCSQL_COMPILE_INFO & compile_info);
 
 
+/* memmon */
+extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
+extern int mmon_disable_force ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */

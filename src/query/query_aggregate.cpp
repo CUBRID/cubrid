@@ -41,6 +41,8 @@
 #include "statistics.h"
 
 #include <cmath>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 using namespace cubquery;
 

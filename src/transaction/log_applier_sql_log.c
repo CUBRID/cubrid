@@ -49,14 +49,14 @@
 
 #define SL_LOG_FILE_MAX_SIZE   \
   (prm_get_integer_value (PRM_ID_HA_SQL_LOG_MAX_SIZE_IN_MB) * 1024 * 1024)
-#define FILE_ID_FORMAT  "%d"
+#define FILE_ID_FORMAT  "%u"
 #define SQL_ID_FORMAT   "%010u"
 #define CATALOG_FORMAT  FILE_ID_FORMAT " | " SQL_ID_FORMAT
 
 typedef struct sl_info SL_INFO;
 struct sl_info
 {
-  int curr_file_id;
+  unsigned int curr_file_id;
   unsigned int last_inserted_sql_id;
 };
 
@@ -570,7 +570,7 @@ sl_log_open (void)
   char cur_sql_log_path[PATH_MAX];
   FILE *fp;
 
-  if (snprintf (cur_sql_log_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, sl_Info.curr_file_id) < 0)
+  if (snprintf (cur_sql_log_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, sl_Info.curr_file_id) < 0)
     {
       assert (false);
       return NULL;
@@ -607,7 +607,7 @@ sl_open_next_file (FILE * old_fp)
   sl_Info.curr_file_id++;
   sl_Info.last_inserted_sql_id = 0;
 
-  if (snprintf (new_file_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, sl_Info.curr_file_id) < 0)
+  if (snprintf (new_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, sl_Info.curr_file_id) < 0)
     {
       assert (false);
       return NULL;
@@ -636,12 +636,12 @@ sl_open_next_file (FILE * old_fp)
 static int
 sl_remove_oldest_file (void)
 {
-  int oldest_file_id;
+  unsigned int oldest_file_id;
   char oldest_file_path[PATH_MAX];
 
   oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
 
-  snprintf (oldest_file_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, oldest_file_id);
+  snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id);
 
   unlink (oldest_file_path);
 

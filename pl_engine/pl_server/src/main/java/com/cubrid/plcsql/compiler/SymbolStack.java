@@ -34,6 +34,7 @@ import static com.cubrid.plcsql.compiler.antlrgen.PlcParser.*;
 
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeVariadic;
 import java.lang.reflect.Method;
@@ -623,21 +624,6 @@ public class SymbolStack {
         map.put(name, decl);
     }
 
-    DeclId getDeclId(String name) {
-        Decl d = getDecl(name);
-        if (d instanceof DeclId) {
-            return (DeclId) d;
-        } else {
-            if (d == null) {
-                return null;
-            } else {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(d.ctx), // s071
-                        name + " is not an identifier but " + d.kind() + " in this scope");
-            }
-        }
-    }
-
     DeclProc getDeclProc(String name) {
         Decl d = getDecl(name);
         if (d instanceof DeclProc) {
@@ -648,7 +634,7 @@ public class SymbolStack {
             } else {
                 throw new SemanticError(
                         Misc.getLineColumnOf(d.ctx), // s072
-                        name + " is not a procedure but " + d.kind() + " in this scope");
+                        name + " is not a procedure but a " + d.kind() + " in this scope");
             }
         }
     }
@@ -663,7 +649,7 @@ public class SymbolStack {
             } else {
                 throw new SemanticError(
                         Misc.getLineColumnOf(d.ctx), // s073
-                        name + " is not a function but " + d.kind() + " in this scope");
+                        name + " is not a function but a " + d.kind() + " in this scope");
             }
         }
     }
@@ -678,7 +664,7 @@ public class SymbolStack {
             } else {
                 throw new SemanticError(
                         Misc.getLineColumnOf(d.ctx), // s074
-                        name + " is not an exception but " + d.kind() + " in this scope");
+                        name + " is not an exception but a " + d.kind() + " in this scope");
             }
         }
     }
@@ -708,7 +694,7 @@ public class SymbolStack {
                 throw new SemanticError(
                         Misc.getLineColumnOf(d.ctx), // s075
                         name
-                                + " is neither an identifier nor a function but "
+                                + " is neither an identifier nor a function but a "
                                 + d.kind()
                                 + " in this scope");
             }

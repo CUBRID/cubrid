@@ -45,6 +45,8 @@
 #include "dbtype.h"
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0
 

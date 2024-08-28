@@ -49,6 +49,8 @@
 #include "db_date.h"
 #include "thread_compat.hpp"
 #include "oid.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 static bool safe_memcpy (void *data, void *source, int size);
@@ -400,7 +402,7 @@ qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LI
 
 /*
  * qdata_print_hash_scan_entry () - Print the entry
- *                              Will be used by mht_dump() function
+ *                              Will be used by mht_dump_hls() function
  *   return:
  *   fp(in)     :
  *   key(in)    :
@@ -408,33 +410,97 @@ qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LI
  *   args(in)   :
  */
 int
-qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args)
+qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list, void *args)
 {
-  HASH_SCAN_VALUE *data2 = (HASH_SCAN_VALUE *) data;
-  HASH_METHOD hash_list_scan_type = args ? *((HASH_METHOD *) args) : HASH_METH_NOT_USE;
+  HASH_SCAN_VALUE *data_p;
+  HASH_METHOD hash_list_scan_type;
+  QFILE_TUPLE_VALUE_TYPE_LIST *type_list_p;
+  DB_VALUE dbval;
+  PR_TYPE *pr_type_p;
+  int i;
+  char *tuple_p;
+  OR_BUF buf;
 
-  if (data2 == NULL || args == NULL)
+  if (data == NULL || type_list == NULL || args == NULL)
     {
       return false;
     }
+
+  data_p = (HASH_SCAN_VALUE *) data;
+
+  hash_list_scan_type = *((HASH_METHOD *) args);
+  if (hash_list_scan_type == HASH_METH_NOT_USE)
+    {
+      return false;
+    }
+
+  type_list_p = (QFILE_TUPLE_VALUE_TYPE_LIST *) type_list;
+  if (type_list_p->type_cnt <= 0)
+    {
+      return false;
+    }
+
+  db_make_null (&dbval);
+
   if (fp == NULL)
     {
       fp = stdout;
     }
 
-  fprintf (fp, "LIST_CACHE_ENTRY (%p) {\n", data);
+  fprintf (fp, "  LIST_CACHE_ENTRY (%p) - ", data);
+
   if (hash_list_scan_type == HASH_METH_IN_MEM)
     {
-      fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
-	       QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);
+      fprintf (fp, "data_size = [%d], data = { ", QFILE_GET_TUPLE_LENGTH (data_p->tuple));
+
+      tuple_p = (char *) data_p->tuple + QFILE_TUPLE_LENGTH_SIZE;
+
+      for (i = 0; i < type_list_p->type_cnt; i++)
+	{
+	  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_BOUND)
+	    {
+	      or_init (&buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
+
+	      pr_type_p = type_list_p->domp[i]->type;
+	      pr_type_p->data_readval (&buf, &dbval, type_list_p->domp[i], -1, false /* Don't copy */ , NULL, 0);
+
+	      db_fprint_value (fp, &dbval);
+
+	      if (db_value_need_clear (&dbval))
+		{
+		  pr_clear_value (&dbval);
+		}
+	    }
+	  else
+	    {
+	      fprintf (fp, "VALUE_UNBOUND");
+	    }
+
+	  if (i != type_list_p->type_cnt - 1)
+	    {
+	      fprintf (stdout, " , ");
+	    }
+
+	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
+	}
+
+      fprintf (fp, " }");
     }
   else if (hash_list_scan_type == HASH_METH_HYBRID)
     {
-      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]\n", data2->pos->vpid.pageid,
-	       data2->pos->vpid.volid, data2->pos->offset);
+      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]", data_p->pos->vpid.pageid,
+	       data_p->pos->vpid.volid, data_p->pos->offset);
+    }
+  else if (hash_list_scan_type == HASH_METH_HASH_FILE)
+    {
+      /* nothing to do */
+    }
+  else
+    {
+      /* nothing to do */
     }
 
-  fprintf (fp, "\n}");
+  fprintf (fp, "\n");
 
   return true;
 }
@@ -1290,7 +1356,7 @@ fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
       return ER_FAILED;
     }
 
-#if 0				/* for debug */
+#if !defined(NDEBUG) && defined(DEBUG_HASH_LIST_SCAN_DUMP_FILE_HASH)
   fhs_dump (thread_p, fhsid_p);
 #endif /* for debug */
 

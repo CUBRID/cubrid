@@ -55,7 +55,10 @@
 #include "language_support.h"
 #include "intl_support.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if __WORDSIZE == 32
 #define GET_PTR_FOR_HASH(key) ((unsigned int)(key))
@@ -1364,7 +1367,8 @@ mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const in
  */
 int
 mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, const int print_id_opt,
-	      int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args), void *func_args)
+	      int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
+				 void *args), const void *type_list, void *func_args)
 {
   HENTRY_HLS_PTR *hvector;	/* Entries of hash table */
   HENTRY_HLS_PTR hentry;	/* A hash table entry. linked list */
@@ -1379,7 +1383,7 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
     }
 
   fprintf (out_fp,
-	   "HTABLE NAME = %s, SIZE = %d,\n" "NENTRIES = %d, NPREALLOC = %d, NCOLLISIONS = %d\n\n",
+	   "\nHTABLE NAME = %s, SIZE = %d," "NENTRIES = %d, NPREALLOC = %d, NCOLLISIONS = %d\n\n",
 	   ht->name, ht->size, ht->nentries, ht->nprealloc_entries, ht->ncollisions);
 
   if (print_id_opt)
@@ -1390,15 +1394,17 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
 	  if (*hvector != NULL)
 	    {
 	      fprintf (out_fp, "HASH AT %d\n", i);
+
 	      /* Go over the linked list */
 	      for (hentry = *hvector; cont == TRUE && hentry != NULL; hentry = hentry->next)
 		{
-		  cont = (*print_func) (thread_p, out_fp, hentry->data, func_args);
+		  cont = (*print_func) (thread_p, out_fp, hentry->data, type_list, func_args);
 		}
+
+	      fprintf (out_fp, "\n");
 	    }
 	}
     }
-  fprintf (out_fp, "\n");
 
   return (cont);
 }

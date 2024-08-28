@@ -29,6 +29,8 @@
 #if !defined(WINDOWS)
 #include <sys/time.h>
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define CHECK_CPU_FREQ(v) \
 do { \

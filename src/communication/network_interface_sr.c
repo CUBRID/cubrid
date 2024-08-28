@@ -91,6 +91,8 @@
 #include "crypt_opfunc.h"
 #include "flashback.h"
 #include "method_compile.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -699,7 +701,7 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -776,7 +778,7 @@ slocator_get_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -833,13 +835,17 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   int success;
   char *ptr;
   int fetch_version_type;
-  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 4) + OR_OID_SIZE) a_reply;
+  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 5) + OR_OID_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *desc_ptr = NULL;
   int desc_size;
   char *content_ptr;
   int content_size;
   int num_objs = 0;
+  int nparallel_process, nparallel_process_idx, request_pages;
+  NET_ENDIAN server_endian = get_endian_type ();
+  int client_endian;
+  int encode_endian = 1;
 
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_lock (ptr, &lock);
@@ -848,11 +854,39 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_int (ptr, &nobjects);
   ptr = or_unpack_int (ptr, &nfetched);
   ptr = or_unpack_oid (ptr, &last_oid);
+  ptr = or_unpack_int (ptr, &request_pages);
+  ptr = or_unpack_int (ptr, &nparallel_process);
+  ptr = or_unpack_int (ptr, &nparallel_process_idx);
+  ptr = or_unpack_int (ptr, &client_endian);
+
+  if ((NET_ENDIAN) client_endian == server_endian && server_endian != NET_ENDIAN_UNKNOWN)
+    {
+      encode_endian = 0;
+    }
+
+  assert ((nparallel_process <= 1) || (nparallel_process_idx >= 0 && nparallel_process_idx < nparallel_process));
+
+  if (nparallel_process > 1)
+    {
+      thread_p->_unload_cnt_parallel_process = nparallel_process;
+      thread_p->_unload_parallel_process_idx = nparallel_process_idx;
+    }
+  else
+    {
+      thread_p->_unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+      thread_p->_unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
+    }
 
   copy_area = NULL;
   success =
     xlocator_fetch_all (thread_p, &hfid, &lock, (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, &nobjects,
-			&nfetched, &last_oid, &copy_area);
+			&nfetched, &last_oid, &copy_area, request_pages);
+
+  if (nparallel_process > 1)
+    {
+      thread_p->_unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+      thread_p->_unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
+    }
 
   if (success != NO_ERROR)
     {
@@ -861,7 +895,8 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs =
+	locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, (bool) encode_endian);
     }
   else
     {
@@ -876,6 +911,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_pack_int (reply, num_objs);
   ptr = or_pack_int (ptr, desc_size);
   ptr = or_pack_int (ptr, content_size);
+  ptr = or_pack_int (ptr, encode_endian);
   ptr = or_pack_lock (ptr, lock);
   ptr = or_pack_int (ptr, nobjects);
   ptr = or_pack_int (ptr, nfetched);
@@ -893,7 +929,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       locator_free_copy_area (copy_area);
     }
 
-  if (desc_ptr)
+  if (encode_endian && desc_ptr)
     {
       free_and_init (desc_ptr);
     }
@@ -949,7 +985,7 @@ slocator_does_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -1017,7 +1053,7 @@ slocator_notify_isolation_incons (THREAD_ENTRY * thread_p, unsigned int rid, cha
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -1104,7 +1140,7 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
       else
 	{
-	  locator_unpack_copy_area_descriptor (num_objs, copy_area, packed_desc);
+	  locator_unpack_copy_area_descriptor (num_objs, copy_area, packed_desc, -1);
 	  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
 
 	  if (content_size > 0)
@@ -1137,7 +1173,8 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	   * Send the descriptor and content to handle errors
 	   */
 
-	  num_objs = locator_send_copy_area (reply_copy_area, &reply_content_ptr, &content_size, &desc_ptr, &desc_size);
+	  num_objs =
+	    locator_send_copy_area (reply_copy_area, &reply_content_ptr, &content_size, &desc_ptr, &desc_size, true);
 
 	  ptr = or_pack_int (reply, num_objs);
 	  ptr = or_pack_int (ptr, desc_size);
@@ -1236,7 +1273,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 	}
       else
 	{
-	  locator_unpack_copy_area_descriptor (num_objs, copy_area, packed_desc);
+	  locator_unpack_copy_area_descriptor (num_objs, copy_area, packed_desc, -1);
 	  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
 	  mobjs->multi_update_flags = multi_update_flags;
 
@@ -1370,7 +1407,7 @@ slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
       if (copy_area != NULL)
 	{
-	  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+	  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
 	}
       else
 	{
@@ -1496,7 +1533,7 @@ slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -6874,7 +6911,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, ch
 
   if (copy_area != NULL)
     {
-      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+      num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
     }
   else
     {
@@ -6996,7 +7033,7 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid, char
 
       if (copy_area != NULL)
 	{
-	  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+	  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
 	}
       else
 	{
@@ -11270,4 +11307,146 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				     ext_blk.get_ptr (), (int) ext_blk.get_size ());
+}
+
+/*
+ * smmon_get_server_info - get memory usage info from memory monitor
+ *
+ * return:
+ *
+ *  rid(in):
+ *  request(in):
+ *  reqlen(in):
+ */
+void
+smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *buffer_a = NULL, *buffer, *ptr;
+  int size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error = NO_ERROR;
+#if !defined(WINDOWS)
+  MMON_SERVER_INFO server_info;
+
+  if (mmon_is_memory_monitor_enabled ())
+    {
+      mmon_aggregate_server_info (server_info);
+    }
+  else
+    {
+      _er_log_debug (ARG_FILE_LINE, "Memory monitor is already disabled by cubrid memmon --disable-force.\n");
+      error = ER_FAILED;
+      goto end;
+    }
+
+  // Size of server name
+  size += or_packed_string_length (server_info.server_name, NULL);
+  size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
+
+  // Size of total_mem_usage
+  size += OR_INT64_SIZE;
+
+  // Size of total_metainfo_mem_usage
+  size += OR_INT64_SIZE;
+
+  // Size of num_stat
+  size += OR_INT_SIZE;
+
+  // Size of stat name and memory usage
+  // *INDENT-OFF*
+  for (const auto &s_info : server_info.stat_info)
+    {
+      // Size of filename
+      size += or_packed_string_length (s_info.first.c_str (), NULL);
+      size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
+
+      // Size of memory usage
+      size += OR_INT64_SIZE;
+    }
+  // *INDENT-ON*
+
+  buffer_a = (char *) db_private_alloc (thread_p, size + MAX_ALIGNMENT);
+  if (buffer_a == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  else
+    {
+      buffer = PTR_ALIGN (buffer_a, MAX_ALIGNMENT);
+
+      ptr = buffer;
+
+      ptr = or_pack_string (ptr, server_info.server_name);
+      ptr = or_pack_int64 (ptr, server_info.total_mem_usage);
+      ptr = or_pack_int64 (ptr, server_info.total_metainfo_mem_usage);
+      ptr = or_pack_int (ptr, server_info.num_stat);
+
+      // *INDENT-OFF*
+      for (const auto &s_info : server_info.stat_info)
+        {
+          ptr = or_pack_string (ptr, s_info.first.c_str ());
+          ptr = or_pack_int64 (ptr, s_info.second);
+        }
+      // *INDENT-ON*
+      assert (size == (int) (ptr - buffer));
+    }
+
+end:
+  if (error != NO_ERROR)
+    {
+      ptr = or_pack_int (reply, 0);
+      ptr = or_pack_int (ptr, error);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    }
+  else
+    {
+      ptr = or_pack_int (reply, size);
+      ptr = or_pack_int (ptr, error);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
+    }
+  db_private_free_and_init (thread_p, buffer_a);
+#else // WINDOWS
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+
+  // send error
+  ptr = or_pack_int (reply, 0);
+  ptr = or_pack_int (ptr, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+#endif // !WINDOWS
+}
+
+/*
+ * smmon_disable_force - disable memory_monitor forcely
+ *
+ * return:
+ *
+ *  rid(in):
+ *  request(in):
+ *  reqlen(in):
+ */
+void
+smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error = NO_ERROR;
+#if !defined(WINDOWS)
+  mmon_disabled = true;
+
+  ptr = or_pack_int (reply, 0);
+  ptr = or_pack_int (ptr, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+#else // WINDOWS
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+
+  // send error
+  ptr = or_pack_int (reply, 0);
+  ptr = or_pack_int (ptr, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+#endif // !WINDOWS
 }

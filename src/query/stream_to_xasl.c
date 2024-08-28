@@ -42,6 +42,8 @@
 #include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
 #include "xasl_unpack_info.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg);
 static AGGREGATE_TYPE *stx_restore_aggregate_type (THREAD_ENTRY * thread_p, char *ptr);
@@ -92,6 +94,7 @@ static char *stx_build_fetch_proc (THREAD_ENTRY * thread_p, char *tmp, FETCH_PRO
 static char *stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDLIST_PROC_NODE * ptr);
 static char *stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDVALUE_PROC_NODE * ptr);
 static char *stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *tmp, MERGELIST_PROC_NODE * ptr);
+static char *stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * node_p);
 static char *stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *tmp, QFILE_LIST_MERGE_INFO * ptr);
 static char *stx_build_update_class_info (THREAD_ENTRY * thread_p, char *tmp, UPDDEL_CLASS_INFO * ptr);
 static char *stx_build_update_assignment (THREAD_ENTRY * thread_p, char *tmp, UPDATE_ASSIGNMENT * ptr);
@@ -1948,6 +1951,20 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
+      xasl->during_join_pred = NULL;
+    }
+  else
+    {
+      xasl->during_join_pred = stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->during_join_pred == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
       xasl->after_join_pred = NULL;
     }
   else
@@ -2207,6 +2224,10 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       ptr = stx_build_mergelist_proc (thread_p, ptr, &xasl->proc.mergelist);
       break;
 
+    case HASHJOIN_PROC:
+      ptr = stx_build_hashjoin_proc (thread_p, ptr, &xasl->proc.hashjoin);
+      break;
+
     case UPDATE_PROC:
       ptr = stx_build_update_proc (thread_p, ptr, &xasl->proc.update);
       break;
@@ -2255,6 +2276,9 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     {
       return NULL;
     }
+
+  /* Prevent faults when qdump_print_xasl is called. */
+  xasl->n_oid_list = 0;
 
   ptr = or_unpack_int (ptr, &tmp);
   xasl->iscan_oid_order = (bool) tmp;
@@ -3175,6 +3199,162 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr, MERGELIST_PROC_NOD
 
 error:
   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
+}
+
+/*
+ * stx_build_hashjoin_proc () -
+ *   return: The buffer pointer after the unpacked XASL node.
+ *   thread_p(in): The current thread entry.
+ *   ptr(in): The buffer pointer where the XASL node is packed.
+ *   node_p(in): The pointer to the unpacked XASL node.
+ */
+static char *
+stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * node_p)
+{
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  int offset;
+
+  int error = NO_ERROR;
+
+  memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
+
+  /**
+   * outer
+   */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      error = ER_QPROC_INVALID_XASLNODE;
+      stx_set_xasl_errcode (thread_p, error);
+      goto exit_on_error;
+    }
+  else
+    {
+      node_p->outer.xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->outer.xasl == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  node_p->outer.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
+  if (ptr == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      node_p->outer.val_list = NULL;
+    }
+  else
+    {
+      node_p->outer.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->outer.val_list == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  /**
+   * inner
+   */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      error = ER_QPROC_INVALID_XASLNODE;
+      stx_set_xasl_errcode (thread_p, error);
+      goto exit_on_error;
+    }
+  else
+    {
+      node_p->inner.xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->inner.xasl == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  node_p->inner.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
+  if (ptr == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      node_p->inner.val_list = NULL;
+    }
+  else
+    {
+      node_p->inner.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->inner.val_list == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  /**
+   * merge_info
+   */
+  ptr = stx_build_ls_merge_info (thread_p, ptr, &node_p->merge_info);
+  if (ptr == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  /**
+   * domains, value_indexes
+   */
+  if (node_p->merge_info.ls_column_cnt == 0)
+    {
+      error = ER_QPROC_INVALID_XASLNODE;
+      stx_set_xasl_errcode (thread_p, error);
+      goto exit_on_error;
+    }
+  else
+    {
+      node_p->outer.domains =
+	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
+      if (node_p->outer.domains == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  stx_set_xasl_errcode (thread_p, error);
+	  return NULL;
+	}
+
+      node_p->outer.value_indexes = node_p->merge_info.ls_outer_column;
+
+      node_p->inner.domains =
+	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
+      if (node_p->inner.domains == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  stx_set_xasl_errcode (thread_p, error);
+	  return NULL;
+	}
+
+      node_p->inner.value_indexes = node_p->merge_info.ls_inner_column;
+    }
+
+  node_p->build = NULL;
+  node_p->probe = NULL;
+
+  return ptr;
+
+exit_on_error:
+  if (error == NO_ERROR)
+    {
+      error = stx_get_xasl_errcode (thread_p);
+      if (error == NO_ERROR)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+	}
+    }
+
   return NULL;
 }
 

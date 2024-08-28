@@ -98,6 +98,8 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE  \
   (1250 * (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE))	/* 5 Mbytes */
@@ -145,6 +147,10 @@ extern void boot_client_all_finalize (bool is_er_final);
 
 
 BOOT_SERVER_STATUS boot_Server_status = BOOT_SERVER_DOWN;
+
+#if defined(SERVER_MODE)
+bool boot_Enabled_flush_daemons = false;
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /* boot_cl.c:boot_Host_name[] if CS_MODE and SA_MODE */
@@ -2478,6 +2484,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+#if defined(SERVER_MODE)
+  pgbuf_daemons_init ();
+  dwb_daemons_init ();
+#endif /* SERVER_MODE */
+
   /*
    * Now restart the recovery manager and execute any recovery actions
    */
@@ -2492,8 +2503,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  pgbuf_daemons_init ();
-  dwb_daemons_init ();
+  BO_ENABLE_FLUSH_DAEMONS ();
+
   cdc_daemons_init ();
 #endif /* SERVER_MODE */
 
@@ -2808,6 +2819,7 @@ error:
 #if defined(SERVER_MODE)
   cdc_daemons_destroy ();
 
+  BO_DISABLE_FLUSH_DAEMONS ();
   pgbuf_daemons_destroy ();
   dwb_daemons_destroy ();
 #endif
@@ -3879,7 +3891,6 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   catalog_finalize ();
   qmgr_finalize (thread_p);
   (void) heap_manager_finalize ();
-  perfmon_finalize ();
   fileio_dismount_all (thread_p);
   disk_manager_final ();
   boot_server_status (BOOT_SERVER_DOWN);
@@ -3891,6 +3902,8 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   // return lock-free transaction and destroy the system.
   thread_return_lock_free_transaction_entries ();
   lf_destroy_transaction_systems ();
+
+  perfmon_finalize ();
 
 #if defined(SERVER_MODE)
   /* server mode shuts down all modules */

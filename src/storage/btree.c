@@ -32,6 +32,7 @@
 #include "slotted_page.h"
 #include "log_append.hpp"
 #include "log_manager.h"
+#include "log_recovery.h"
 #include "overflow_file.h"
 #include "xserver_interface.h"
 #include "scan_manager.h"
@@ -57,6 +58,8 @@
 #include <cinttypes>
 #include <stdlib.h>
 #include <string.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define BTREE_HEALTH_CHECK
 

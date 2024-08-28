@@ -25,6 +25,8 @@
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "xasl_predicate.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 using namespace cubxasl;    // it should belong to cubxasl namespace
 

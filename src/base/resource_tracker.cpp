@@ -23,6 +23,8 @@
 #include "resource_tracker.hpp"
 
 #include "error_manager.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubbase
 {

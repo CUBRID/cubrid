@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.TypeRecord;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -42,6 +43,7 @@ public class StmtForCursorLoop extends StmtCursorOpen {
 
     public final String label;
     public final String record;
+    public final TypeRecord recordType;
     public final NodeList<Stmt> stmts;
 
     public StmtForCursorLoop(
@@ -50,6 +52,7 @@ public class StmtForCursorLoop extends StmtCursorOpen {
             NodeList<Expr> args,
             String label,
             String record,
+            TypeRecord recordType,
             NodeList<Stmt> stmts) {
 
         super(ctx, cursor, args);
@@ -58,6 +61,7 @@ public class StmtForCursorLoop extends StmtCursorOpen {
 
         this.label = label;
         this.record = record;
+        this.recordType = recordType;
         this.stmts = stmts;
     }
 }

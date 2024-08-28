@@ -640,7 +640,7 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 
   if (subquery_num > 0)
     {
-      info->subquery_info = (DB_PREPARE_SUBQUERY_INFO *) malloc (subquery_num * sizeof (DB_PREPARE_SUBQUERY_INFO));
+      info->subquery_info = (DB_PREPARE_SUBQUERY_INFO *) calloc (subquery_num, sizeof (DB_PREPARE_SUBQUERY_INFO));
       if (info->subquery_info == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,

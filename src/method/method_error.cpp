@@ -19,6 +19,8 @@
 #include "method_error.hpp"
 
 #include "error_manager.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

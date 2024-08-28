@@ -29,6 +29,8 @@
 #include "thread_manager.hpp"
 
 #include <cstring>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {
@@ -88,6 +90,12 @@ namespace cubthread
     context.shutdown = false;
 #endif // SERVER_MODE
 
+    /* Set clearly for safety.
+     * In fact, it is processed in functions that call xlocator_fetch_all().
+     */
+    context._unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
+    context._unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+
     on_recycle (context);
   }
 
@@ -118,4 +126,24 @@ namespace cubthread
     on_daemon_retire (context);
   }
 
+  system_worker_entry_manager::system_worker_entry_manager (thread_type a_thread_type)
+    : m_thread_type { a_thread_type }
+  {
+  }
+
+  void
+  system_worker_entry_manager::on_create (entry &context)
+  {
+    context.type = m_thread_type;
+    context.tran_index = LOG_SYSTEM_TRAN_INDEX;
+  }
+
+  void
+  system_worker_entry_manager::on_recycle (entry &context)
+  {
+    // thread type is 'not' reset in the parent, checked here
+    assert (context.type == m_thread_type);
+    // transaction index is reset in parent
+    context.tran_index = LOG_SYSTEM_TRAN_INDEX;
+  }
 } // namespace cubthread

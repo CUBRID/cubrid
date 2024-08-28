@@ -2740,6 +2740,8 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
 	    }
 
 	  fprintf (stdout, "[%%%s]\n", shm_appl->broker_name);
+	  fprintf (stdout, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER=%s\n",
+		   (shm_appl->acl_broker_allow) ? "ALLOW" : "DENY");
 
 	  for (j = 0; j < shm_appl->num_access_info; j++)
 	    {

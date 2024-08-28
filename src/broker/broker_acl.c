@@ -431,6 +431,12 @@ access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p, char *dbname,
   int ret_val = -1;
   bool local_ip_flag = false;
 
+  // If there is no broker section in the ACL file and acl_broker_allow is ALLOW, access is allowed for all IPs.
+  if (num_access_info == 0 && shm_as_p->acl_broker_allow == ALLOW)
+    {
+      return 0;
+    }
+
   if (address[0] == 127 && address[1] == 0 && address[2] == 0 && address[3] == 1)
     {
       local_ip_flag = true;

@@ -62,6 +62,8 @@
 #include "heartbeat.h"
 #endif
 #include "string_buffer.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define LOGWR_THREAD_SUSPEND_TIMEOUT 	10
 

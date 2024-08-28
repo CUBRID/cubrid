@@ -32,7 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class DeclParam extends DeclIdTyped {
+public abstract class DeclParam extends DeclIdTypeSpeced {
 
     public final String name;
     public final TypeSpec typeSpec;
@@ -46,6 +46,11 @@ public abstract class DeclParam extends DeclIdTyped {
     @Override
     public TypeSpec typeSpec() {
         return typeSpec;
+    }
+
+    @Override
+    public String name() {
+        return name;
     }
 
     abstract String toJavaSignature();

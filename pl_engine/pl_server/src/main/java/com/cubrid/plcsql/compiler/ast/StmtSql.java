@@ -41,7 +41,7 @@ public abstract class StmtSql extends Stmt {
     public final int level;
     public final Expr sql;
     public final List<Type> columnTypeList;
-    public final List<ExprId> intoVarList;
+    public final List<Expr> intoTargetList;
     public final List<? extends Expr> usedExprList;
 
     public List<Coercion> coercions;
@@ -52,18 +52,18 @@ public abstract class StmtSql extends Stmt {
             int level,
             Expr sql,
             List<Type> columnTypeList,
-            List<ExprId> intoVarList,
+            List<Expr> intoTargetList,
             List<? extends Expr> usedExprList) {
         super(ctx);
 
         // if static and a SELECT statement, then columnTypeList must be given
-        assert dynamic || intoVarList == null || columnTypeList != null;
+        assert dynamic || intoTargetList == null || columnTypeList != null;
 
         this.dynamic = dynamic;
         this.level = level;
         this.sql = sql;
         this.columnTypeList = columnTypeList;
-        this.intoVarList = intoVarList;
+        this.intoTargetList = intoTargetList;
         this.usedExprList = usedExprList;
     }
 

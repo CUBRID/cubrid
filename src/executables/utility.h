@@ -89,7 +89,8 @@ typedef enum
   MSGCAT_UTIL_SET_VACUUMDB = 55,
   MSGCAT_UTIL_SET_CHECKSUMDB = 56,
   MSGCAT_UTIL_SET_TDE = 57,
-  MSGCAT_UTIL_SET_FLASHBACK = 58
+  MSGCAT_UTIL_SET_FLASHBACK = 58,
+  MSGCAT_UTIL_SET_MEMMON = 59
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -739,6 +740,19 @@ typedef enum
   FLASHBACK_MSG_USAGE = 60
 } MSGCAT_FLASHBACK_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_MEMMON */
+typedef enum
+{
+  MEMMON_MSG_NOT_SUPPORTED = 1,
+  MEMMON_MSG_NOT_IN_STANDALONE = 2,
+  MEMMON_MSG_CANNOT_OPEN_OUTPUT_FILE = 3,
+  MEMMON_MSG_DISABLE_SUCCESS = 4,
+  MEMMON_MSG_CANNOT_USE_DISABLE_FORCE_WITH_OTHER_OPTION = 5,
+  MEMMON_MSG_MEMORY_MONITOR_IS_DISABLED = 6,
+  MEMMON_MSG_NOT_SUPPORTED_OS = 7,
+  MEMMON_MSG_USAGE = 60
+} MSGCAT_MEMMON_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -786,6 +800,7 @@ typedef enum
   CHECKSUMDB,
   TDE,
   FLASHBACK,
+  MEMMON,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -999,6 +1014,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
 #define UTIL_OPTION_TDE			        "tde"
 #define UTIL_OPTION_FLASHBACK                   "flashback"
+#define UTIL_OPTION_MEMMON                      "memmon"
 
 #define HIDDEN_CS_MODE_S                        15000
 
@@ -1335,6 +1351,8 @@ typedef struct _ha_config
 #define UNLOAD_INCLUDE_REFERENCE_L              "include-reference"
 #define UNLOAD_INPUT_CLASS_ONLY_S               11902
 #define UNLOAD_INPUT_CLASS_ONLY_L               "input-class-only"
+/* "--lo-count" is a deprecated option that has been removed.
+ * Let's delete it through a separate issue.*/
 #define UNLOAD_LO_COUNT_S                       11903
 #define UNLOAD_LO_COUNT_L                       "lo-count"
 #define UNLOAD_ESTIMATED_SIZE_S                 11904
@@ -1375,6 +1393,20 @@ typedef struct _ha_config
 #define UNLOAD_AS_DBA_L                         "as-dba"
 #define UNLOAD_SKIP_INDEX_DETAIL_S              11922	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 #define UNLOAD_SKIP_INDEX_DETAIL_L              "skip-index-detail"	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+#define UNLOAD_THREAD_COUNT_S                   't'
+#define UNLOAD_THREAD_COUNT_L                   "thread-count"
+#define UNLOAD_STRING_BUFFER_SIZE_S             11923
+#define UNLOAD_STRING_BUFFER_SIZE_L             "use-string-buffer"
+#define UNLOAD_REQUEST_PAGES_S                  11924
+#define UNLOAD_REQUEST_PAGES_L                  "use-request-pages"
+#define UNLOAD_MT_PROCESS_S                     11925
+#define UNLOAD_MT_PROCESS_L                     "process"
+#define UNLOAD_SAMPLING_TEST_S                  11926
+#define UNLOAD_SAMPLING_TEST_L                  "sampling-test"
+#define UNLOAD_ENHANCED_ESTIMATES_S             11927
+#define UNLOAD_ENHANCED_ESTIMATES_L             "enhanced-estimates"
+
+
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'
@@ -1701,6 +1733,12 @@ typedef struct _ha_config
 #define FLASHBACK_OLDEST_S          14102
 #define FLASHBACK_OLDEST_L          "oldest"
 
+/* memmon option list */
+#define MEMMON_OUTPUT_S             'o'
+#define MEMMON_OUTPUT_L             "output-file"
+#define MEMMON_DISABLE_FORCE_S      14103
+#define MEMMON_DISABLE_FORCE_L      "disable-force"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1836,6 +1874,7 @@ extern "C"
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int tde (UTIL_FUNCTION_ARG * arg_map);
   extern int flashback (UTIL_FUNCTION_ARG * arg_map);
+  extern int memmon (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);

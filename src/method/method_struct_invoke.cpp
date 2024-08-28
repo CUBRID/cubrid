@@ -29,6 +29,8 @@
 #include "server_support.h"	/* css_send_reply_and_data_to_client(), css_get_comm_request_id() */
 #include "thread_manager.hpp"
 #include "log_impl.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 #endif
 
 namespace cubmethod

@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -130,6 +131,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -192,6 +194,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -543,7 +546,6 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -i, --input-class-file=FILE 테이블 이름이 기입된 파일; 기본값: 모든 클래스\n\
       --include-reference     참조되는 테이블 포함; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
       --input-class-only      명세한 클래스만 처리; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
-      --lo-count=COUNT        하나의 디렉터리에 저장할 lo 파일 개수; 기본값: 0\n\
       --estimated-size=NUMBER 인스턴스의 대략적인 개수; 기본값: 계산됨\n\
       --cached-pages=NUMBER   cached 페이지 개수; 기본값: 계산됨\n\
   -O, --output-path=PATH      출력 디렉터리 경로; 기본값: 현재 작업 디렉터리\n\
@@ -553,8 +555,10 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
       --hash-file=FILE        해쉬 파일이름; 기본값: 파일을 생성하기 위해 tmpnam()을 사용함\n\
       --latest-image          오브젝트 (객체)를 언로드할 때, 데이터 볼륨의 최신 이미지를 언로드합니다. 이 과정에서 로그 볼륨은 참조되지 않으며, MVCC는 무시됩니다.\n\
                               커밋되지않은 데이터와 제거되었지만 배큠되지 않은 데이터가 포함될 수 있습니다; 기본 값: 사용 안 함\n\
+  -t, --thread-count=COUNT    사용할 스레드 개수를 지정; 기본값: 1 최대값: 127\n\
+      --enhanced-estimates    언로드할 테이블의 정확한 레코드 건수 수집; 기본값 : 미적용\n\
   -v, --verbose               많은 상태 메시지를 출력; 기본값: 출력 안 함\n\
-      --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\
+      --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\      
   -S, --SA-mode               독립 모드 실행\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
       --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
@@ -1301,3 +1305,19 @@ flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니�
                                 기본값: 플래시백을 위한 SQL 문만 출력\n\
     --oldest                    시작 시간부터 종료 시간까지 수행된 SQL문에 대하여 시간 순으로 플래시백을 수행합니다;\n\
                                 기본값: 최근에 수행된 SQL문부터 역순으로 플래시백을 수행합니다.\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 'cubrid.conf'에서 시스템 파라미터 'enable_memory_monitoring'을 설정하고 데이터베이스 서버를 재시작하세요.\n
+2 memmon은 독립 모드에서 실행할 수 없습니다.\n
+3 파일 이름이 %1$s인 출력 파일을 열 수 없습니다.\n
+4 서버의 메모리 모니터링이 성공적으로 비활성화되었습니다.\n
+5 disable-force는 다른 옵션과 함께 사용할 수 없습니다.\n
+6 서버의 메모리 모니터링이 비활성화되었습니다. 서버를 재시작한 후 다시 사용할 수 있습니다.\n
+7 이 운영체제에서는 memmon을 지원하지 않습니다.\n
+60 \
+memmon: 데이터베이스 서버의 메모리 사용량 정보를 제공합니다.\n\
+사용법: %1$s memmon [옵션] 데이터베이스 이름\n\
+\n\
+유효한 옵션:\n\
+    -o, --output-file=FILE    결과를 FILE에 출력합니다\n\
+    --disable-force           서버의 메모리 모니터링을 강제로 비활성화합니다.\n
