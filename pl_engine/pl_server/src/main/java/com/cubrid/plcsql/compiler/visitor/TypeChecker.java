@@ -471,8 +471,7 @@ public class TypeChecker extends AstVisitor<Type> {
         Type ret = null;
 
         DeclId declId = node.record.decl;
-        assert declId instanceof DeclIdTyped;
-        Type recTy = ((DeclIdTyped) declId).typeSpec().type;
+        Type recTy = declId.type();
         assert recTy.idx == Type.IDX_RECORD;
         if (recTy == Type.RECORD_ANY) {
             // This record is for a dynamic SQL
@@ -489,7 +488,7 @@ public class TypeChecker extends AstVisitor<Type> {
                     if (found > 0) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(node.ctx), // s420
-                                String.format("column name '%s' is ambiguous", node.fieldName));
+                                String.format("field name '%s' is ambiguous", node.fieldName));
                     }
                     ret = p.e2;
                     found = i;
@@ -500,7 +499,7 @@ public class TypeChecker extends AstVisitor<Type> {
 
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.ctx), // s401
-                        String.format("no such column '%s' in the query result", node.fieldName));
+                        String.format("no field named '%s' in the record type", node.fieldName));
             } else {
 
                 assert found > 0;
@@ -521,8 +520,8 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitExprId(ExprId node) {
-        if (node.decl instanceof DeclIdTyped) {
-            return ((DeclIdTyped) node.decl).typeSpec().type;
+        if (node.decl instanceof DeclIdTypeSpeced) {
+            return ((DeclIdTypeSpeced) node.decl).typeSpec().type;
         } else if (node.decl instanceof DeclCursor) {
             return Type.CURSOR;
         } else if (node.decl instanceof DeclForIter) {
