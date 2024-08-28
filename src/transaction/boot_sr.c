@@ -2183,7 +2183,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   if (GETHOSTNAME (boot_Host_name, CUB_MAXHOSTNAMELEN) != 0)
     {
-      strcpy (boot_Host_name, "(unknown)");
+      if (gethostname (boot_Host_name, sizeof (boot_Host_name)) < 0)
+	{
+	  strcpy (boot_Host_name, "(unknown)");
+	}
     }
   boot_Host_name[CUB_MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
 

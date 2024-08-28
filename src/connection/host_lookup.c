@@ -63,6 +63,9 @@
             PTR = 0;            \
           }                     \
         } while (0)
+#define CUBRID_HOSTS_CONF            "cubrid_hosts.conf"
+#define MAX_FQDN_LEN                 (255)
+#define MAX_LABEL_LEN                (63)
 
 typedef enum
 {
@@ -105,6 +108,10 @@ static bool is_valid_hostname (char *hostname, int str_len);
 static int load_hosts_file ();
 static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type);
 static void strcpy_ucase (char *dst, const char *src);
+static bool is_valid_ipv4 (const char *ip_addr);
+static int is_valid_label (const char *label);
+static int is_valid_fqdn (const char *fqdn);
+static int check_ip_hostname_mapping (const char *ip, const char *hostname);
 
 /*
  * hostent_alloc () - Allocate memory hostent structure.
@@ -264,7 +271,7 @@ load_hosts_file ()
 
   memset (file_line, 0, LINE_BUF_SIZE + 1);
 
-  hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, "cubrid_hosts.conf");
+  hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, CUBRID_HOSTS_CONF);
 
   fp = fopen (hosts_conf_dir, "r");
   if (fp == NULL)
@@ -706,4 +713,250 @@ strcpy_ucase (char *dst, const char *src)
   dst[i] = '\0';
 
   return;
+}
+
+static bool
+is_valid_ipv4 (const char *ip_addr)
+{
+  struct sockaddr_in sa;
+
+  if (ip_addr == NULL || *ip_addr == '\0') 
+    {
+    return false;
+    }
+
+  return inet_pton (AF_INET, ip_addr, &(sa.sin_addr)) == 1;
+}
+
+static int
+is_valid_label (const char *label)
+{
+  int length = 0;
+  
+  if (label == NULL || *label == '\0') 
+    {
+      return 0;
+    }
+
+  length = strlen (label);
+  if (length == 0 || length > MAX_LABEL_LEN)
+    {
+      return 0;
+    }
+
+  if (!isalpha (label[0]) || !isalnum (label[length - 1]))
+    {
+      return 0;
+    }
+
+  for (int i = 0; i < length; i++)
+    {
+      if (!isalnum (label[i]) && label[i] != '-')
+	{
+	  return 0;
+	}
+    }
+
+  return 1;
+}
+
+static int
+is_valid_fqdn (const char *fqdn)
+{
+  char label[MAX_LABEL_LEN + 1];
+  int label_len = 0;
+  int length = 0;
+
+  if (fqdn == NULL || *fqdn == '\0') 
+    {
+      return 0;
+    }
+
+  length = strlen (fqdn);
+
+  if (length == 0 || length > MAX_FQDN_LEN)
+    {
+      return 0;
+    }
+
+  for (int i = 0; i < length; i++)
+    {
+      if (fqdn[i] == '.')
+	{
+	  label[label_len] = '\0';
+	  if (!is_valid_label (label))
+	    {
+	      return 0;
+	    }
+	  label_len = 0;
+	}
+      else
+	{
+	  if (label_len >= MAX_LABEL_LEN)
+	    {
+	      return 0;
+	    }
+	  label[label_len++] = fqdn[i];
+	}
+    }
+
+  label[label_len] = '\0';
+  return is_valid_label (label);
+}
+
+static int
+check_ip_hostname_mapping (const char *ip, const char *hostname)
+{
+  struct addrinfo hints, *res = NULL;
+  char host[NI_MAXHOST];
+  int is_match = 0;
+  int ret;
+#if defined (WINDOWS)
+  bool wsa_succeed = false;
+#endif
+
+  if (ip == NULL || *ip == '\0' || hostname == NULL || *hostname == '\0')
+    {
+    goto end;
+    }
+
+#if defined (WINDOWS)
+  WSADATA wsaData;
+  int iResult = WSAStartup (MAKEWORD (2, 2), &wsaData);
+  if (iResult != 0)
+    {
+    goto end;
+    }
+  wsa_succeed = true;
+#endif
+
+  memset (&hints, 0, sizeof (hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+
+  ret = getaddrinfo (hostname, NULL, &hints, &res);
+  if (ret != 0)
+    {
+    goto end;
+    }
+
+  ret = getnameinfo (res->ai_addr, res->ai_addrlen, host, sizeof (host), NULL, 0, NI_NUMERICHOST);
+  if (ret != 0)
+    {
+    goto end;
+    }
+  
+  is_match = (strcmp (ip, host) == 0);
+
+end:
+  if (res != NULL) 
+    {
+    freeaddrinfo(res);
+    }
+
+#if defined (WINDOWS)
+  if (wsa_succeed)
+    {
+    WSACleanup ();
+    }
+#endif
+
+  return is_match;
+}
+
+bool
+is_valid_uhost_conf (void)
+{
+  FILE *file;
+  char line_buf[LINE_BUF_SIZE + 1];
+  char src_line[LINE_BUF_SIZE + 1];
+  char *hosts_conf_dir;
+  char host_conf_file_full_path[PATH_MAX];
+  char ipaddr[IPADDR_LEN];
+  char hostname[HOSTNAME_LEN];
+  char *save_ptr_strtok;
+  int line_number = 0;
+  int invalid_cnt = 0;
+
+  if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
+    {
+      return true;
+    }
+
+  hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, CUBRID_HOSTS_CONF);
+
+  file = fopen (hosts_conf_dir, "r");
+  if (!file)
+    {
+      fprintf (stderr, "File %s was not found.\n", hosts_conf_dir);
+      return true;
+    }
+
+  while (fgets (line_buf, sizeof (line_buf), file))
+    {
+      char *hash_pos;
+
+      line_number++;
+      strcpy (src_line, line_buf);
+
+      hash_pos = strchr (line_buf, '#');
+      if (hash_pos != NULL)
+	{
+	  *hash_pos = '\0';
+	}
+
+      trim (line_buf);
+
+      if (line_buf[0] == '\0')
+	{
+	  continue;
+	}
+
+      char *token = strtok_r (line_buf, " \t\n", &save_ptr_strtok);
+      if (token != NULL)
+	{
+	  strncpy (ipaddr, token, IPADDR_LEN - 1);
+	  ipaddr[IPADDR_LEN - 1] = '\0';
+
+	  token = strtok_r (NULL, "\n", &save_ptr_strtok);
+	  if (token == NULL)
+	    {
+	      fprintf (stderr, "Invalid entry at line %d: %s", line_number, src_line);
+	      invalid_cnt++;
+	      continue;
+	    }
+
+	  trim (token);
+	  strncpy (hostname, token, HOSTNAME_LEN - 1);
+	  hostname[HOSTNAME_LEN - 1] = '\0';
+
+	  size_t str_len = strlen (token);
+	  if (is_valid_ipv4 (ipaddr) == false || is_valid_fqdn (hostname) == false)
+	    {
+	      fprintf (stderr, "Invalid entry at line %d: %s", line_number, src_line);
+	      invalid_cnt++;
+	    }
+	  else
+	    {
+	      if (check_ip_hostname_mapping (ipaddr, hostname) == false)
+		{
+		  fprintf (stderr, "IP and hostname do not match at line %d: %s", line_number, src_line);
+		  invalid_cnt++;
+		}
+	    }
+	}
+    }
+
+  if (file)
+    {
+      fclose (file);
+    }
+
+  if (invalid_cnt > 0)
+    {
+      fprintf (stderr, "\n");
+      return false;
+    }
+
+  return true;
 }

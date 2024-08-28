@@ -55,6 +55,8 @@
 
 #include <string>
 
+#include "host_lookup.h"
+
 #if defined(WINDOWS)
 typedef int pid_t;
 #endif
@@ -593,6 +595,12 @@ main (int argc, char *argv[])
       util_log_write_command (argc, argv);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
 
+      return EXIT_FAILURE;
+    }
+
+  if (is_valid_uhost_conf () == false)
+    {
+      print_message (stderr, MSGCAT_UTIL_GENERIC_INVALID_USER_HOSTNAME, HOSTS_FILE);
       return EXIT_FAILURE;
     }
 
