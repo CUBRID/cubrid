@@ -236,7 +236,8 @@ static void emit_partition_info (extract_context & ctxt, print_output & output_c
 static int emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx);
 static int emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx);
 static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg_set);
-static int emit_stored_procedure_code (print_output & output_ctx, const char *name);
+static int emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, const char *name,
+				       const char *owner);
 
 static int emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
@@ -4630,7 +4631,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 	    }
 
 	  const char *target_class = db_get_string (&class_val);
-	  err = emit_stored_procedure_code (output_ctx, target_class);
+	  err = emit_stored_procedure_code (ctxt, output_ctx, target_class, db_get_string (&owner_name_val));
 	  output_ctx (";\n");
 
 	  db_value_clear (&class_val);
@@ -4656,12 +4657,15 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
  *    name(in): code name
  */
 static int
-emit_stored_procedure_code (print_output & output_ctx, const char *name)
+emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, const char *name, const char *owner)
 {
   MOP obj;
   int save, err, err_count = 0;
   DB_VALUE value, stype_val, scode_val;
   int stype;
+  PARSER_CONTEXT *parser;
+  PT_NODE **scode_ptr;
+  char *scode_ptr_result;
 
   AU_DISABLE (save);
 
@@ -4685,7 +4689,31 @@ emit_stored_procedure_code (print_output & output_ctx, const char *name)
   if (stype == SPSC_PLCSQL)
     {
       const char *scode = db_get_string (&scode_val);
-      output_ctx ("\n%s", scode);
+      parser = parser_create_parser ();
+      if (parser == NULL)
+	{
+	  parser_free_parser (parser);
+	  err_count++;
+	  goto exit;
+	}
+
+      scode_ptr = parser_parse_string (parser, scode);
+      if (scode_ptr != NULL)
+	{
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	    }
+	  else if ((*scode_ptr)->info.sp.name->info.name.resolved == NULL)
+	    {
+	      (*scode_ptr)->info.sp.name->info.name.resolved = pt_append_string (parser, NULL, owner);
+	    }
+
+	  scode_ptr_result = parser_print_tree_with_quotes (parser, *scode_ptr);
+	}
+
+      output_ctx ("\n%s", scode_ptr_result);
+      parser_free_parser (parser);
     }
 
 exit:
