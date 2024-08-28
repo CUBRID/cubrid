@@ -709,6 +709,9 @@ static char *g_plcsql_text;
 %type <node> serial_name
 %type <node> synonym_name_without_dot
 %type <node> synonym_name
+%type <node> procedure_or_function_name_without_dot
+%type <node> procedure_or_function_name
+%type <node> procedure_or_function_name_list
 %type <node> opt_alter_synonym
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
@@ -3063,7 +3066,8 @@ create_stmt
 		  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE);
                   expecting_pl_lang_spec = 1;
 		}
-	  identifier opt_sp_param_list		        /* 5, 6 */
+	  procedure_or_function_name_without_dot        /* 5 */
+	  opt_sp_param_list	                        /* 6 */
           opt_authid                                    /* 7 */
 	  is_or_as pl_language_spec		        /* 8, 9 */
 	  opt_comment_spec				/* 10 */
@@ -3096,7 +3100,8 @@ create_stmt
 			push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION);
                         expecting_pl_lang_spec = 1;
 		}
-	  identifier opt_sp_param_list	                /* 5, 6 */
+	  procedure_or_function_name_without_dot        /* 5 */
+	  opt_sp_param_list	                        /* 6 */
 	  RETURN sp_return_type		                /* 7, 8 */
           opt_authid                                    /* 9 */
 	  is_or_as pl_language_spec		        /* 10, 11 */
@@ -4092,10 +4097,10 @@ alter_stmt
 		DBG_PRINT}}
 	| ALTER				/* 1 */
 	  procedure_or_function		/* 2 */
-	  identifier				/* 3 */
-	  opt_owner_clause			/* 4 */
-	  opt_comment_spec			/* 5 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function identifier opt_owner_clause opt_comment_spec);
+	  procedure_or_function_name    /* 3 */
+	  opt_owner_clause		/* 4 */
+	  opt_comment_spec		/* 5 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function procedure_or_function_name opt_owner_clause opt_comment_spec);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_STORED_PROCEDURE);
 
@@ -4671,8 +4676,8 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP PROCEDURE identifier_list
-		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP PROCEDURE identifier_list);
+	| DROP PROCEDURE procedure_or_function_name_list
+		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP PROCEDURE procedure_or_function_name_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_STORED_PROCEDURE);
 
@@ -4687,8 +4692,8 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP FUNCTION identifier_list
-		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP FUNCTION identifier_list);
+	| DROP FUNCTION procedure_or_function_name_list
+		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP FUNCTION procedure_or_function_name_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_STORED_PROCEDURE);
 
@@ -5880,6 +5885,37 @@ synonym_name
 		{ DBG_TRACE_GRAMMAR(synonym_name, : user_specified_name);
 			$$ = $1;
 		}
+	;
+
+procedure_or_function_name_without_dot
+	: user_specified_name_without_dot
+		{ DBG_TRACE_GRAMMAR(procedure_or_function_name_without_dot, : user_specified_name_without_dot);
+			$$ = $1;
+		}
+	;
+	
+procedure_or_function_name
+	: user_specified_name
+		{ DBG_TRACE_GRAMMAR(procedure_or_function_name, : user_specified_name);
+			$$ = $1;
+		}
+	;
+
+procedure_or_function_name_list
+	: procedure_or_function_name_list ',' procedure_or_function_name
+		{{ DBG_TRACE_GRAMMAR(procedure_or_function_name_list, : procedure_or_function_name_list ',' procedure_or_function_name);
+
+			$$ = parser_make_link($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| procedure_or_function_name
+		{{ DBG_TRACE_GRAMMAR(procedure_or_function_name_list, : procedure_or_function_name);
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 opt_partition_spec
@@ -8876,6 +8912,22 @@ auth_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | revoke_proc_cmd procedure_or_function_name_list from_id_list
+		{{ DBG_TRACE_GRAMMAR(auth_stmt, | revoke_proc_cmd procedure_or_function_name_list from_id_list);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_REVOKE);
+
+			if (node)
+			  {
+			    node->info.revoke.user_list = $3;
+			    node->info.revoke.spec_list = $2;
+			    node->info.revoke.auth_cmd_list = $1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 revoke_cmd
@@ -8962,8 +9014,8 @@ grant_head
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-        | grant_proc_cmd identifier_list to_id_list
-		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_cmd to_id_list);
+        | grant_proc_cmd procedure_or_function_name_list to_id_list
+		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_proc_cmd procedure_or_function_name_list to_id_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_GRANT);
 
@@ -9040,12 +9092,12 @@ author_cmd_list
 	;
 
 authorized_execute_procedure_cmd
-        : EXECUTE ON_ procedure_or_function
+        : EXECUTE ON_ PROCEDURE
                 {{
 			PT_NODE *node = parser_new_node (this_parser, PT_AUTH_CMD);
 			if (node)
 			  {
-			    node->info.auth_cmd.auth_cmd = ($3 == 1) ? PT_EXECUTE_PROCEDURE_PRIV : PT_EXECUTE_FUNCTION_PRIV;
+			    node->info.auth_cmd.auth_cmd = PT_EXECUTE_PROCEDURE_PRIV;
                             node->info.auth_cmd.attr_mthd_list = NULL;
 			  }
                         $$ = node;
@@ -19351,7 +19403,7 @@ generic_function
 	;
 
 generic_function_for_call        
-	: identifier 
+	: procedure_or_function_name 
         {
             if(pwd_info.parser_call_check)
             {
@@ -19366,8 +19418,7 @@ generic_function_for_call
             }
         }
         '(' opt_expression_list_for_call ')' opt_on_target
-		{{ DBG_TRACE_GRAMMAR(generic_function_for_call, : identifier '(' opt_expression_list ')' opt_on_target );
-
+		{{ DBG_TRACE_GRAMMAR(generic_function_for_call, : procedure_or_function_name '(' opt_expression_list_for_call ')' opt_on_target );
 			PT_NODE *node = NULL;
 
 			if ($6 == NULL)
@@ -19384,6 +19435,17 @@ generic_function_for_call
 				node->info.method_call.method_name = $1;
 				node->info.method_call.arg_list = $4;
 				node->info.method_call.on_call_target = $6;
+                                if (node->info.method_call.on_call_target != NULL)
+				  {
+				    PT_NAME_INFO_CLEAR_FLAG (node->info.method_call.method_name, PT_NAME_INFO_USER_SPECIFIED);
+				  }
+				else
+				  {
+				    if (node->info.method_call.arg_list != NULL && node->info.method_call.arg_list->node_type == PT_NAME && node->info.method_call.arg_list->info.name.meta_class == PT_META_CLASS)
+				      {
+					PT_NAME_INFO_CLEAR_FLAG (node->info.method_call.method_name, PT_NAME_INFO_USER_SPECIFIED);
+				      }
+				  }
 				node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
 			      }
 
@@ -26469,6 +26531,8 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("SELECT_BTREE_NODE_INFO", PT_HINT_SELECT_BTREE_NODE_INFO),
   INIT_PT_HINT("USE_SBR", PT_HINT_USE_SBR),
   INIT_PT_HINT("NO_SUPPLEMENTAL_LOG", PT_HINT_NO_SUPPLEMENTAL_LOG),
+  INIT_PT_HINT("USE_HASH", PT_HINT_USE_HASH),
+  INIT_PT_HINT("NO_USE_HASH", PT_HINT_NO_USE_HASH),
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
 

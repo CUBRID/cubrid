@@ -2670,6 +2670,47 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
 			      /* converse join type */
 			      join_type = (join_type == PT_JOIN_LEFT_OUTER) ? PT_JOIN_RIGHT_OUTER : PT_JOIN_LEFT_OUTER;
+
+			      /* move unnecessary spec list located between the two swapped specs to the end of the entire spec list */
+			      p_end = NULL;
+			      s_start = NULL;
+			      s_end = NULL;
+
+			      for (tmp = p_spec; tmp && tmp->next; tmp = tmp->next)
+				{
+				  if (!s_start)
+				    {
+				      /* cannot find the spec to move */
+				      if (tmp->next == spec)
+					{
+					  break;
+					}
+
+				      /* find the head node of the spec list to be moved
+				       * find the previous node to detach the head node */
+				      if (tmp->next->info.spec.join_type == PT_JOIN_NONE)
+					{
+					  p_end = tmp;
+					  s_start = tmp->next;
+					}
+				    }
+
+				  else
+				    {
+				      /* find the tail node of the spec list to be moved */
+				      if (tmp->next == spec)
+					{
+					  s_end = tmp;
+					}
+				    }
+				}
+
+			      if (s_start && s_end && p_end)
+				{
+				  s_end->next = NULL;
+				  p_end->next = spec;
+				  tmp->next = s_start;
+				}
 			    }
 			  else
 			    {
@@ -2727,6 +2768,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		}
 	      cnf->next = NULL;	/* cut-off link */
 
+	      PT_EXPR_INFO_CLEAR_FLAG (cnf, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER);
+
 	      /* put cnf to the ON cond */
 	      spec->info.spec.on_cond = parser_append_node (cnf, spec->info.spec.on_cond);
 	    }
@@ -2767,6 +2810,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      bind_arg->sc_info->Oracle_outerjoin_spec = spec;
 	      parser_walk_tree (parser, spec->info.spec.on_cond, pt_clear_Oracle_outerjoin_spec_id, bind_arg,
 				pt_continue_walk, NULL);
+
+#if !defined (NDEBUG)
+	      assert (!PT_EXPR_INFO_IS_FLAGED (spec->info.spec.on_cond,
+					       PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER));
+#endif
 	    }
 	}
 
@@ -2787,6 +2835,19 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      spec->info.spec.on_cond = NULL;
 	    }
 	}			/* for */
+
+#if !defined (NDEBUG)
+      for (cnf = node->info.query.q.select.where; cnf; cnf = cnf->next)
+	{
+	  assert (!PT_EXPR_INFO_IS_FLAGED (cnf, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER));
+	}
+#endif
+
+      if (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_ORACLE_OUTER))
+	{
+	  PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_ORACLE_OUTER);
+	  PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ANSI_JOIN);
+	}
 
     select_end:
       bind_arg->spec_frames = bind_arg->spec_frames->next;
@@ -3245,6 +3306,19 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      node->info.method_call.on_call_target = node->info.method_call.arg_list;
 	      node->info.method_call.arg_list = node->info.method_call.arg_list->next;
 	      node->info.method_call.on_call_target->next = NULL;
+
+	      /*
+	       * When using a session variable in the first arg_list,
+	       * It is unknown whether the session variable contains a class, object, or constant value.
+	       * So, if it's not a Java stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
+	       * 
+	       * ex) create class x (xint int, xstr string, class cint int) method add_int(int, int) int function add_int file '$METHOD_FILE';
+	       *     insert into x values (4, 'string 4');
+	       *     select x into p1 from x where xint = 4;
+	       *     call add_int(p1, 1, 2);
+	       */
+	      node->info.method_call.method_name->info.name.original =
+		sm_remove_qualifier_name (node->info.method_call.method_name->info.name.original);
 	    }
 
 	  /* make method name look resolved */
@@ -3286,9 +3360,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  node->info.method_call.method_name->info.name.spec_id = entity->info.spec.id;
 		}
 	    }
-
 	}
-
       break;
 
     case PT_DATA_TYPE:
@@ -3345,6 +3417,49 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  {
 	    node = temp;
 	  }
+	else if (PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION (node))
+	  {
+	    /*
+	     * jsp_is_exist_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
+	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
+	     */
+	    char downcase_owner_name[DB_MAX_USER_LENGTH];
+	    downcase_owner_name[0] = '\0';
+	    char *generic_name = NULL;
+
+	    sm_downcase_name (node->info.dot.arg1->info.name.original, downcase_owner_name, DB_MAX_USER_LENGTH);
+	    generic_name = pt_append_string (parser, downcase_owner_name, ".");
+	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
+	    node->info.dot.arg2->info.function.generic_name = generic_name;
+
+	    if (jsp_is_exist_stored_procedure (node->info.dot.arg2->info.function.generic_name))
+	      {
+		/*
+		 * If (dot.arg1->node_type == PT_NAME) & (dot.arg2->node_type == PT_FUNCTION), pt_bind_name_or_path_in_scope() always returns NULL and has an er_errid() value.
+		 */
+		if (er_errid () == NO_ERROR)
+		  {
+		    pt_reset_error (parser);
+		  }
+
+		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
+		if (node1 == NULL)
+		  {
+		    break;	// FIXME: something wrong
+		  }
+		PT_NODE_COPY_NUMBER_OUTERLINK (node1, node);
+
+		PT_NODE_INIT_OUTERLINK (node);
+		parser_free_tree (parser, node);
+		node = node1;	/* return the new node */
+		/* don't revisit leaves */
+		*continue_walk = PT_LIST_WALK;
+	      }
+	    else if (pt_has_error (parser))
+	      {
+		return NULL;
+	      }
+	  }
 	else if (pt_has_error (parser))
 	  {
 	    return NULL;
@@ -3379,7 +3494,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
     case PT_FUNCTION:
       if (node->info.function.function_type == PT_GENERIC)
 	{
-	  const char *generic_name = node->info.function.generic_name;
+	  const char *dot = NULL;
+	  const char *current_schema_name = NULL;
+	  char buffer[SM_MAX_IDENTIFIER_LENGTH];
 	  node->info.function.function_type = pt_find_function_type (node->info.function.generic_name);
 
 	  if (node->info.function.function_type == PT_GENERIC)
@@ -3389,8 +3506,16 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
 	       * translate it into a method_call.
 	       */
-	      if (jsp_is_exist_stored_procedure (generic_name))
+	      if (jsp_is_exist_stored_procedure (node->info.function.generic_name))
 		{
+		  dot = strchr (node->info.function.generic_name, '.');
+		  if (dot == NULL)
+		    {
+		      current_schema_name = sc_current_schema_name ();
+		      sprintf (buffer, "%s.%s", current_schema_name, node->info.function.generic_name);
+		      node->info.function.generic_name = pt_append_string (parser, NULL, buffer);
+		    }
+
 		  node1 = pt_resolve_stored_procedure (parser, node, bind_arg);
 		}
 	      else
@@ -7690,6 +7815,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_HINT_ENUM hint;
   PT_NODE **leading = NULL, **use_nl = NULL, **use_idx = NULL;
   PT_NODE **use_merge = NULL, **index_ss = NULL, **index_ls = NULL;
+  PT_NODE **no_use_hash = NULL, **use_hash = NULL;
   PT_NODE *spec_list = NULL;
 
   switch (node->node_type)
@@ -7702,6 +7828,8 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       index_ss = &node->info.query.q.select.index_ss;
       index_ls = &node->info.query.q.select.index_ls;
       use_merge = &node->info.query.q.select.use_merge;
+      no_use_hash = &node->info.query.q.select.no_use_hash;
+      use_hash = &node->info.query.q.select.use_hash;
       spec_list = node->info.query.q.select.from;
       break;
     case PT_DELETE:
@@ -7710,6 +7838,8 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       use_nl = &node->info.delete_.use_nl_hint;
       use_idx = &node->info.delete_.use_idx_hint;
       use_merge = &node->info.delete_.use_merge_hint;
+      no_use_hash = &node->info.delete_.no_use_hash_hint;
+      use_hash = &node->info.delete_.use_hash_hint;
       spec_list = node->info.delete_.spec;
       break;
     case PT_UPDATE:
@@ -7718,6 +7848,8 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       use_nl = &node->info.update.use_nl_hint;
       use_idx = &node->info.update.use_idx_hint;
       use_merge = &node->info.update.use_merge_hint;
+      no_use_hash = &node->info.update.no_use_hash_hint;
+      use_hash = &node->info.update.use_hash_hint;
       spec_list = node->info.update.spec;
       break;
     default:
@@ -7792,11 +7924,21 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-#if 0
-  if (hint & PT_HINT_USE_HASH)
-    {				/* not used */
+  if (hint & PT_HINT_NO_USE_HASH)
+    {
+      if (pt_resolve_hint_args (parser, no_use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
     }
-#endif /* 0 */
+
+  if (hint & PT_HINT_USE_HASH)
+    {
+      if (pt_resolve_hint_args (parser, use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
 
   return NO_ERROR;
 exit_on_error:
@@ -7827,6 +7969,14 @@ exit_on_error:
     {
       parser_free_tree (parser, *use_merge);
     }
+  if (*no_use_hash != NULL)
+    {
+      parser_free_tree (parser, *no_use_hash);
+    }
+  if (*use_hash != NULL)
+    {
+      parser_free_tree (parser, *use_hash);
+    }
 
   switch (node->node_type)
     {
@@ -7837,18 +7987,24 @@ exit_on_error:
       node->info.query.q.select.index_ss = NULL;
       node->info.query.q.select.index_ls = NULL;
       node->info.query.q.select.use_merge = NULL;
+      node->info.query.q.select.no_use_hash = NULL;
+      node->info.query.q.select.use_hash = NULL;
       break;
     case PT_DELETE:
       node->info.delete_.leading_hint = NULL;
       node->info.delete_.use_nl_hint = NULL;
       node->info.delete_.use_idx_hint = NULL;
       node->info.delete_.use_merge_hint = NULL;
+      node->info.delete_.no_use_hash_hint = NULL;
+      node->info.delete_.use_hash_hint = NULL;
       break;
     case PT_UPDATE:
       node->info.update.leading_hint = NULL;
       node->info.update.use_nl_hint = NULL;
       node->info.update.use_idx_hint = NULL;
       node->info.update.use_merge_hint = NULL;
+      node->info.delete_.no_use_hash_hint = NULL;
+      node->info.delete_.use_hash_hint = NULL;
       break;
     default:
       break;
@@ -10167,6 +10323,10 @@ pt_resolve_method (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * 
 static PT_NODE *
 pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
 {
+  char owner[DB_MAX_USER_LENGTH + 1];
+  owner[0] = '\0';
+  char *current_user_owner;
+
   PT_NODE *new_node = pt_make_method_call (parser, node, bind_arg);
   if (new_node == NULL)
     {
@@ -10184,8 +10344,7 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
       return NULL;
     }
 
-  std::string owner_name = jsp_get_owner_name (sp_name);
-  if (owner_name.empty ())
+  if (jsp_get_owner_name (sp_name, owner, DB_MAX_USER_LENGTH) == NULL)
     {
       PT_INTERNAL_ERROR (parser, "jsp_get_owner_name");
       return NULL;
@@ -10204,11 +10363,13 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
   PT_METHOD_CALL_AUTH_ID (new_node) = PT_AUTHID_OWNER;	// TODO
   if (PT_METHOD_CALL_AUTH_ID (new_node) == PT_AUTHID_OWNER)
     {
-      PT_METHOD_CALL_AUTH_NAME (new_node) = ws_copy_string (owner_name.c_str ());
+      PT_METHOD_CALL_AUTH_NAME (new_node) = pt_append_string (parser, NULL, owner);
     }
   else
     {
-      PT_METHOD_CALL_AUTH_NAME (new_node) = ws_copy_string (au_get_user_name (Au_user));
+      current_user_owner = au_get_user_name (Au_user);
+      PT_METHOD_CALL_AUTH_NAME (new_node) = pt_append_string (parser, NULL, current_user_owner);
+      ws_free_string_and_init (current_user_owner);
     }
 
   return new_node;

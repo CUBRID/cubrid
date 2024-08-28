@@ -23,6 +23,10 @@
 #include "method_connection_sr.hpp"
 #include "method_connection_java.hpp"
 #include "method_compile_def.hpp"
+#include "session.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {
@@ -50,16 +54,25 @@ namespace cubmethod
     return error;
   }
 
-  int invoke_compile (cubthread::entry &thread_ref, runtime_context &ctx, const std::string &program,
-		      const bool &verbose, cubmem::extensible_block &out_blk)
+  int invoke_compile (cubthread::entry &thread_ref, const PLCSQL_COMPILE_REQUEST &compile_request,
+		      cubmem::extensible_block &out_blk)
   {
     int error = NO_ERROR;
-    connection *conn = ctx.get_connection_pool().claim();
-    SESSION_ID s_id = thread_ref.conn_entry->session_id;
-    header header (s_id, SP_CODE_COMPILE, ctx.get_and_increment_request_id ());
+
+    SESSION_ID s_id = -1;
+    session_get_session_id (&thread_ref, &s_id);
+
+    cubmethod::runtime_context *ctx = get_rctx (&thread_ref);
+    if (!ctx)
+      {
+	return ER_FAILED;
+      }
+
+    connection *conn = ctx->get_connection_pool().claim();
+    header header (s_id, SP_CODE_COMPILE, ctx->get_and_increment_request_id ());
     SOCKET socket = conn->get_socket ();
     {
-      error = mcon_send_data_to_java (socket, header, verbose, program);
+      error = mcon_send_data_to_java (socket, header, compile_request);
       if (error != NO_ERROR)
 	{
 	  goto exit;
@@ -98,7 +111,7 @@ namespace cubmethod
 	      packing_unpacker respone_unpacker (payload_blk);
 	      sql_semantics_request request;
 	      respone_unpacker.unpack_all (request);
-	      error = callback_send_and_receive (thread_ref, ctx, socket, request);
+	      error = callback_send_and_receive (thread_ref, *ctx, socket, request);
 	      break;
 	    }
 
@@ -107,7 +120,7 @@ namespace cubmethod
 	      packing_unpacker respone_unpacker (payload_blk);
 	      global_semantics_request request;
 	      respone_unpacker.unpack_all (request);
-	      error = callback_send_and_receive (thread_ref, ctx, socket, request);
+	      error = callback_send_and_receive (thread_ref, *ctx, socket, request);
 	      break;
 	    }
 	    }
@@ -126,7 +139,7 @@ namespace cubmethod
       while (code != METHOD_REQUEST_COMPILE);
 
 exit:
-      ctx.get_connection_pool().retire (conn, true);
+      ctx->get_connection_pool().retire (conn, true);
 
       return error;
     }

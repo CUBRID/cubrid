@@ -460,7 +460,6 @@ EXPORTS
     util_log_write_errid
     util_log_write_errstr
     util_log_write_command
-    au_get_public_user_name
     au_login
     ml_ext_free
     ml_ext_add
@@ -980,3 +979,7 @@ EXPORTS
   gethostbyname_uhost
   getnameinfo_uhost
   trim
+  er_has_error
+  prm_get_name
+  windows_socket_startup
+  windows_socket_shutdown

@@ -26,6 +26,8 @@
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

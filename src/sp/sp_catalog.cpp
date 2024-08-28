@@ -37,6 +37,9 @@
 #include "schema_manager.h"
 #include "dbtype.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 // memory representation of built-in stored procedures
 static std::vector <sp_info> sp_builtin_definition;
 
@@ -61,15 +64,17 @@ static int sp_builtin_init ()
   v.owner = Au_public_user;
   v.comment = "";
   v.directive = SP_DIRECTIVE_RIGHTS_OWNER;
+  v.target_class = "com.cubrid.plcsql.builtin.DBMS_OUTPUT";
 
   a.is_system_generated = true;
 
   // DBMS_OUTPUT.enable
+  v.unique_name = "public.dbms_output.enable";
   v.sp_name = "enable";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.enable(int)";
+  v.target_method = "enable(int)";
 
   // arg(0) of enable
   a.sp_name = v.sp_name;
@@ -88,11 +93,12 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.disable
+  v.unique_name = "public.dbms_output.disable";
   v.sp_name = "disable";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.disable()";
+  v.target_method = "disable()";
 
   //
   sp_builtin_definition.push_back (v);
@@ -100,11 +106,12 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.put
+  v.unique_name = "public.dbms_output.put";
   v.sp_name = "put";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.put(java.lang.String)";
+  v.target_method = "put(java.lang.String)";
 
   // arg(0) of put
   a.sp_name = v.sp_name;
@@ -123,11 +130,12 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.put_line
+  v.unique_name = "public.dbms_output.put_line";
   v.sp_name = "put_line";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.putLine(java.lang.String)";
+  v.target_method = "putLine(java.lang.String)";
 
   // arg(0) of put_line
   a.sp_name = v.sp_name;
@@ -146,11 +154,12 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.new_line
+  v.unique_name = "public.dbms_output.new_line";
   v.sp_name = "new_line";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.newLine()";
+  v.target_method = "newLine()";
 
   //
   sp_builtin_definition.push_back (v);
@@ -158,11 +167,12 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.get_line
+  v.unique_name = "public.dbms_output.get_line";
   v.sp_name = "get_line";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.getLine(java.lang.String[], int[])";
+  v.target_method = "getLine(java.lang.String[], int[])";
 
   // arg(0) of get_line
   a.sp_name = v.sp_name;
@@ -192,11 +202,12 @@ static int sp_builtin_init ()
   //
 
   // DBMS_OUTPUT.get_lines
+  v.unique_name = "public.dbms_output.get_lines";
   v.sp_name = "get_lines";
   v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
-  v.target = "com.cubrid.plcsql.builtin.DBMS_OUTPUT.getLines(java.lang.String[], int[])";
+  v.target_method = "getLines(java.lang.String[], int[])";
 
   // arg(0) of get_lines
   a.sp_name = v.sp_name;
@@ -290,10 +301,11 @@ sp_add_stored_procedure (SP_INFO &info)
 static int
 sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 {
-  DB_OBJECT *classobj_p, *object_p;
+  DB_OBJECT *classobj_p, *object_p, *sp_args_obj;
   DB_OTMPL *obt_p = NULL;
   DB_VALUE value;
   DB_SET *param = NULL;
+  MOP *mop_list = NULL;
   int save, err;
 
   AU_DISABLE (save);
@@ -325,11 +337,19 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    sp_normalize_name (info.sp_name);
+    /* unique_name */
+    db_make_string (&value, info.unique_name.data ());
+    err = dbt_put_internal (obt_p, SP_ATTR_UNIQUE_NAME, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
+    /* sp_name */
     db_make_string (&value, info.sp_name.data ());
     err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
     pr_clear_value (&value);
-
     if (err != NO_ERROR)
       {
 	goto error;
@@ -395,11 +415,12 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
+    mop_list = (MOP *) malloc (info.args.size() * sizeof (MOP));
+
     int i = 0;
     for (sp_arg_info &arg: info.args)
       {
 	DB_VALUE v;
-	MOP mop = NULL;
 
 	err = sp_check_param_type_supported (arg.data_type, arg.mode);
 	if (err != NO_ERROR)
@@ -410,13 +431,13 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	arg.sp_name = info.sp_name;
 	arg.pkg_name = info.pkg_name;
 
-	err = sp_add_stored_procedure_argument (&mop, arg);
+	err = sp_add_stored_procedure_argument (&mop_list[i], arg);
 	if (err != NO_ERROR)
 	  {
 	    goto error;
 	  }
 
-	db_make_object (&v, mop);
+	db_make_object (&v, mop_list[i]);
 	err = set_put_element (param, i++, &v);
 	pr_clear_value (&v);
 
@@ -451,8 +472,16 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    db_make_string (&value, info.target.data ());
-    err = dbt_put_internal (obt_p, SP_ATTR_TARGET, &value);
+    db_make_string (&value, info.target_class.data ());
+    err = dbt_put_internal (obt_p, SP_ATTR_TARGET_CLASS, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
+    db_make_string (&value, info.target_method.data ());
+    err = dbt_put_internal (obt_p, SP_ATTR_TARGET_METHOD, &value);
     pr_clear_value (&value);
     if (err != NO_ERROR)
       {
@@ -495,6 +524,46 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	obj_delete (object_p);
 	goto error;
       }
+
+    // args (_db_stored_procedure_args) sp_of oid begin
+    for (i--; i >= 0; i--)
+      {
+	obt_p = dbt_edit_object (mop_list[i]);
+	if (!obt_p)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    err = er_errid ();
+	    goto error;
+	  }
+
+	db_make_object (&value, object_p);
+	err = dbt_put_internal (obt_p, SP_ATTR_SP_OF, &value);
+	pr_clear_value (&value);
+	if (err != NO_ERROR)
+	  {
+	    goto error;
+	  }
+
+	sp_args_obj = dbt_finish_object (obt_p);
+	if (!sp_args_obj)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    err = er_errid ();
+	    goto error;
+	  }
+	obt_p = NULL;
+
+	err = locator_flush_instance (sp_args_obj);
+	if (err != NO_ERROR)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    err = er_errid ();
+	    obj_delete (sp_args_obj);
+	    goto error;
+	  }
+      }
+    free (mop_list);
+    // args (_db_stored_procedure_args) sp_of oid end
   }
 
   AU_ENABLE (save);
@@ -530,6 +599,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
   int save;
   int err;
 
+  db_make_null (&value);
   AU_DISABLE (save);
 
   classobj_p = db_find_class (SP_ARG_CLASS_NAME);
@@ -545,14 +615,6 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
     {
       assert (er_errid () != NO_ERROR);
       err = er_errid ();
-      goto error;
-    }
-
-  db_make_string (&value, info.sp_name.data ());
-  err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
       goto error;
     }
 
@@ -752,6 +814,31 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
+  db_make_int (&value, info.itype);
+  err = dbt_put_internal (obt_p, SP_ATTR_INTERMEDIATE_TYPE, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  DB_VALUE elo;
+  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.icode.data (), info.icode.length (), INTL_CODESET_UTF8,
+		   LANG_COLL_UTF8_BINARY);
+  err = db_char_to_clob (&value, &elo);
+  if (err == NO_ERROR)
+    {
+      err = dbt_put_internal (obt_p, SP_ATTR_INTERMEDIATE_CODE, &elo);
+    }
+
+  pr_clear_value (&value);
+  pr_clear_value (&elo);
+
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
   object_p = dbt_finish_object (obt_p);
   if (!object_p)
     {
@@ -787,4 +874,29 @@ void sp_normalize_name (std::string &s)
 {
   s.resize (SM_MAX_IDENTIFIER_LENGTH);
   sm_downcase_name (s.data (), s.data (), SM_MAX_IDENTIFIER_LENGTH);
+}
+
+void
+sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth)
+{
+  auto pos = s.find_last_of ('(');
+  if (pos == std::string::npos)
+    {
+      // handle the case where '(' is not found, if necessary
+      target_cls.clear();
+      target_mth.clear();
+      return;
+    }
+
+  pos = s.substr (0, pos).find_last_of ('.');
+  if (pos == std::string::npos)
+    {
+      // handle the case where '.' is not found, if necessary
+      target_cls.clear();
+      target_mth.clear();
+      return;
+    }
+
+  target_cls = s.substr (0, pos);
+  target_mth = s.substr (pos + 1); // +1 to skip the '.'
 }

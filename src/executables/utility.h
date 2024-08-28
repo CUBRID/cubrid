@@ -89,7 +89,8 @@ typedef enum
   MSGCAT_UTIL_SET_VACUUMDB = 55,
   MSGCAT_UTIL_SET_CHECKSUMDB = 56,
   MSGCAT_UTIL_SET_TDE = 57,
-  MSGCAT_UTIL_SET_FLASHBACK = 58
+  MSGCAT_UTIL_SET_FLASHBACK = 58,
+  MSGCAT_UTIL_SET_MEMMON = 59
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -739,6 +740,19 @@ typedef enum
   FLASHBACK_MSG_USAGE = 60
 } MSGCAT_FLASHBACK_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_MEMMON */
+typedef enum
+{
+  MEMMON_MSG_NOT_SUPPORTED = 1,
+  MEMMON_MSG_NOT_IN_STANDALONE = 2,
+  MEMMON_MSG_CANNOT_OPEN_OUTPUT_FILE = 3,
+  MEMMON_MSG_DISABLE_SUCCESS = 4,
+  MEMMON_MSG_CANNOT_USE_DISABLE_FORCE_WITH_OTHER_OPTION = 5,
+  MEMMON_MSG_MEMORY_MONITOR_IS_DISABLED = 6,
+  MEMMON_MSG_NOT_SUPPORTED_OS = 7,
+  MEMMON_MSG_USAGE = 60
+} MSGCAT_MEMMON_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -786,6 +800,7 @@ typedef enum
   CHECKSUMDB,
   TDE,
   FLASHBACK,
+  MEMMON,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -877,6 +892,7 @@ typedef struct _ha_config
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
 #define UTIL_JAVASP_NAME        "cub_javasp" UTIL_EXE_EXT
+#define UTIL_PL_NAME            "cub_pl" UTIL_EXE_EXT
 #define UTIL_PLCSQL_HELPER_NAME "plcsql_helper" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
@@ -891,6 +907,7 @@ typedef struct _ha_config
 #define PRINT_MANAGER_NAME      "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
 #define PRINT_JAVASP_NAME       "cubrid javasp"
+#define PRINT_PL_NAME           "cubrid pl"
 #define PRINT_HA_PROCS_NAME     "HA processes"
 
 #define PRINT_CMD_SERVICE       "service"
@@ -953,6 +970,7 @@ typedef struct _ha_config
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
 #define MASK_JAVASP             0x80
+#define MASK_PL                 0x80
 
 /* utility option list */
 #define UTIL_OPTION_CREATEDB                    "createdb"
@@ -999,6 +1017,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
 #define UTIL_OPTION_TDE			        "tde"
 #define UTIL_OPTION_FLASHBACK                   "flashback"
+#define UTIL_OPTION_MEMMON                      "memmon"
 
 #define HIDDEN_CS_MODE_S                        15000
 
@@ -1701,6 +1720,12 @@ typedef struct _ha_config
 #define FLASHBACK_OLDEST_S          14102
 #define FLASHBACK_OLDEST_L          "oldest"
 
+/* memmon option list */
+#define MEMMON_OUTPUT_S             'o'
+#define MEMMON_OUTPUT_L             "output-file"
+#define MEMMON_DISABLE_FORCE_S      14103
+#define MEMMON_DISABLE_FORCE_L      "disable-force"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1836,6 +1861,7 @@ extern "C"
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int tde (UTIL_FUNCTION_ARG * arg_map);
   extern int flashback (UTIL_FUNCTION_ARG * arg_map);
+  extern int memmon (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);

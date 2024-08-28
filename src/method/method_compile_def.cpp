@@ -23,13 +23,48 @@
 #include "dbtype.h"		/* db_value_* */
 #include "method_def.hpp"
 #include "method_struct_value.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {
 //////////////////////////////////////////////////////////////////////////
 // compile info
 //////////////////////////////////////////////////////////////////////////
-  compile_info::compile_info ()
+
+#define COMPILE_REQUEST_PACKER_ARGS() \
+  code, owner, mode
+
+  compile_request::compile_request ()
+    : code {}
+    , owner {}
+    , mode {}
+  {
+    //
+  }
+
+  void
+  compile_request::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (COMPILE_REQUEST_PACKER_ARGS ());
+  }
+
+  size_t
+  compile_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset,
+	   COMPILE_REQUEST_PACKER_ARGS ());
+  }
+
+  void
+  compile_request::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (COMPILE_REQUEST_PACKER_ARGS ());
+  }
+
+//
+
+  compile_response::compile_response ()
     : err_code (-1)
     , err_line (0)
     , err_column (0)
@@ -38,7 +73,7 @@ namespace cubmethod
   }
 
   void
-  compile_info::pack (cubpacking::packer &serializator) const
+  compile_response::pack (cubpacking::packer &serializator) const
   {
     serializator.pack_int (err_code);
     if (err_code < 0)
@@ -63,7 +98,7 @@ namespace cubmethod
   }
 
   size_t
-  compile_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  compile_response::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t size = serializator.get_packed_int_size (start_offset); // err_code
 
@@ -91,7 +126,7 @@ namespace cubmethod
   }
 
   void
-  compile_info::unpack (cubpacking::unpacker &deserializator)
+  compile_response::unpack (cubpacking::unpacker &deserializator)
   {
     deserializator.unpack_int (err_code);
     if (err_code < 0)

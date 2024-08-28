@@ -23,6 +23,7 @@
 #define SP_ARG_CLASS_NAME       "_db_stored_procedure_args"
 #define SP_CODE_CLASS_NAME      "_db_stored_procedure_code"
 
+#define SP_ATTR_UNIQUE_NAME             "unique_name"
 #define SP_ATTR_NAME                    "sp_name"
 #define SP_ATTR_SP_TYPE                 "sp_type"
 #define SP_ATTR_RETURN_TYPE             "return_type"
@@ -31,11 +32,13 @@
 #define SP_ATTR_LANG                    "lang"
 #define SP_ATTR_PKG                     "pkg_name"
 #define SP_ATTR_IS_SYSTEM_GENERATED     "is_system_generated"
-#define SP_ATTR_TARGET                  "target"
+#define SP_ATTR_TARGET_CLASS            "target_class"
+#define SP_ATTR_TARGET_METHOD           "target_method"
 #define SP_ATTR_DIRECTIVE               "directive"
 #define SP_ATTR_OWNER                   "owner"
 #define SP_ATTR_COMMENT                 "comment"
 
+#define SP_ATTR_SP_OF                   "sp_of"
 #define SP_ATTR_ARG_NAME                "arg_name"
 #define SP_ATTR_INDEX_OF_NAME           "index_of"
 #define SP_ATTR_DATA_TYPE               "data_type"
@@ -51,6 +54,9 @@
 #define SP_ATTR_SOURCE_CODE             "scode"
 #define SP_ATTR_OBJECT_TYPE             "otype"
 #define SP_ATTR_OBJECT_CODE             "ocode"
+
+#define SP_ATTR_INTERMEDIATE_TYPE       "itype"
+#define SP_ATTR_INTERMEDIATE_CODE       "icode"
 
 typedef enum
 {

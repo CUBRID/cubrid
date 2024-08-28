@@ -90,6 +90,7 @@ static void print_er_msg ();
 static T_SCHEMA_FILE_LIST_INFO **ldr_check_file_list (std::string & file_name, int &num_files, int &error_code);
 static void ldr_free_and_fclose (T_SCHEMA_FILE_LIST_INFO ** file_list, int num);
 static int ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args args);
+static void ldr_print_error_msg (int line, int base_line, const char *file_name);
 
 /*
  * print_log_msg - print log message
@@ -742,7 +743,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       util_log_write_errstr ("%s\n", db_error_string (3));
       status = 3;
       db_end_session ();
-      db_shutdown ();
       goto error_return;
     }
 
@@ -815,7 +815,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	{
 	  // failed
 	  db_end_session ();
-	  db_shutdown ();
 	  goto error_return;
 	}
     }
@@ -833,7 +832,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  util_log_write_errstr (msg_format);
 	  status = 3;
 	  db_end_session ();
-	  db_shutdown ();
 	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_INDEX_FILE_S,
 			 args.index_file.c_str (), index_file_start_line);
 	  logddl_write_end ();
@@ -868,7 +866,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  util_log_write_errstr (msg_format);
 	  status = 3;
 	  db_end_session ();
-	  db_shutdown ();
 	  print_log_msg (1, " done.\n\nRestart loaddb with '--%s %s:%d' option\n", LOAD_TRIGGER_FILE_L,
 			 args.trigger_file.c_str (), trigger_file_start_line);
 	  logddl_write_end ();
@@ -922,6 +919,7 @@ error_return:
     }
 
   logddl_destroy ();
+  db_shutdown ();
   return status;
 }
 
@@ -983,6 +981,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
   int last_statement_line_no = 0;	// tracks line no of the last successfully executed stmt. -1 for failed ones.
   int check_line_no = true;
   PT_NODE *statement = NULL;
+  int base_line = *start_line - 1;
 
   if ((*start_line) > 1)
     {
@@ -1051,15 +1050,17 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	      do
 		{
 		  session_error = db_get_next_error (session_error, &line, &col);
-		  if (line >= 0)
+
+		  if (line <= 0)
 		    {
-		      // We need -1 here since start_line will offset the output.
-		      print_log_msg (1, "In %s line %d,\n", file_name, line + (*start_line) - 1);
-		      print_log_msg (1, "ERROR: %s \n", db_error_string (3));
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		      logddl_set_file_line (line);
+		      db_get_parser_line_col (session, &line, &col);	// current input line and column
 		    }
+
+		  ldr_print_error_msg (line, base_line, file_name);
+
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  logddl_set_file_line (line + base_line);
 		}
 	      while (session_error);
 	    }
@@ -1074,18 +1075,22 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
       if (error < 0)
 	{
-	  print_log_msg (1, "ERROR: %s\n", db_error_string (3));
+	  int line, col;
+	  db_get_parser_line_col (session, &line, &col);	// current input line and column
+	  ldr_print_error_msg (line, base_line, file_name);
 	  db_close_session (session);
-	  logddl_set_file_line (last_statement_line_no);
+	  logddl_set_file_line (line + base_line);
 	  break;
 	}
       executed_cnt++;
       error = db_query_end (res);
       if (error < 0)
 	{
-	  print_log_msg (1, "ERROR: %s\n", db_error_string (3));
+	  int line, col;
+	  db_get_parser_line_col (session, &line, &col);	// current input line and column
+	  ldr_print_error_msg (line, base_line, file_name);
 	  db_close_session (session);
-	  logddl_set_file_line (last_statement_line_no);
+	  logddl_set_file_line (line + base_line);
 	  break;
 	}
 
@@ -1094,8 +1099,8 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  db_commit_transaction ();
 	  print_log_msg (args->verbose_commit, "%8d statements executed. Commit transaction at line %d\n", executed_cnt,
-			 last_statement_line_no);
-	  *start_line = last_statement_line_no + 1;
+			 base_line + last_statement_line_no);
+	  *start_line = base_line + last_statement_line_no + 1;
 	}
       print_log_msg ((int) args->verbose, "Total %8d statements executed.\r", executed_cnt);
       fflush (stdout);
@@ -1344,7 +1349,7 @@ load_has_authorization (const std::string & class_name, DB_AUTH au_type)
       return error_code;
     }
 
-  error_code = au_check_authorization (class_mop, au_type);
+  error_code = au_check_class_authorization (class_mop, au_type);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1604,7 +1609,6 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
       util_log_write_errstr (msg_format);
       status = 3;
       db_end_session ();
-      db_shutdown ();
       print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S,
 		     args.schema_file.c_str (), schema_file_start_line);
       logddl_write_end ();
@@ -1631,7 +1635,6 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
 	{
 	  status = 3;
 	  db_end_session ();
-	  db_shutdown ();
 	  print_log_msg (1, "\nAborting current transaction...\n");
 	  return status;
 	}
@@ -1641,4 +1644,19 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
 
   logddl_write_end ();
   return status;
+}
+
+static void
+ldr_print_error_msg (int line, int base_line, const char *file_name)
+{
+  if (line >= 0)
+    {
+      print_log_msg (1, "In %s line %d,\n", file_name, line + base_line);
+    }
+  else
+    {
+      print_log_msg (1, "Unknown error line in %s, \n", file_name);
+    }
+
+  print_log_msg (1, "ERROR: %s \n", db_error_string (3));
 }

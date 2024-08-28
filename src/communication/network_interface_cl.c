@@ -69,6 +69,7 @@
 #include "compile_context.h"
 #if defined (SA_MODE)
 #include "thread_manager.hpp"
+#include "method_compile.hpp"
 #endif // SA_MODE
 #include "xasl.h"
 #include "lob_locator.hpp"
@@ -11280,7 +11281,7 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 }
 
 int
-plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCSQL_COMPILE_INFO & compile_info)
+plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COMPILE_RESPONSE & compile_response)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -11291,7 +11292,7 @@ plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCS
   char *data_reply = NULL;
   int data_reply_size = 0;
 
-  packer.set_buffer_and_pack_all (eb, verbose, input_file);
+  packer.set_buffer_and_pack_all (eb, compile_request);
 
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -11314,7 +11315,7 @@ plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCS
   if (data_reply != NULL)
     {
       packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-      unpacker.unpack_all (compile_info);
+      unpacker.unpack_all (compile_response);
       rc = NO_ERROR;
     }
 
@@ -11333,6 +11334,129 @@ error:
 
   return rc;
 #else /* CS_MODE */
-  return NO_ERROR;
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  cubmem::extensible_block ext_blk;
+  success = cubmethod::invoke_compile (*thread_p, compile_request, ext_blk);
+  packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
+  unpacker.unpack_all (compile_response);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * mmon_get_server_info - request to server to get server memory usage info
+ *
+ * return : cubrid error
+ *
+ *   server_info(in/out): save memory usage information of the server
+ */
+int
+mmon_get_server_info (MMON_SERVER_INFO & server_info)
+{
+#if defined(CS_MODE)
+  char *buffer, *ptr, *temp_str;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, dummy;
+  int error = NO_ERROR;
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_GET_SERVER_INFO, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
+    }
+
+  if (error == NO_ERROR)
+    {
+      // unpack server name
+      ptr = or_unpack_string_nocopy (buffer, &temp_str);
+      memcpy (server_info.server_name, temp_str, strlen (temp_str) + 1);
+
+      // unpack server total memory usage
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_mem_usage));
+
+      // unpack metainfo total memory usage
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_metainfo_mem_usage));
+
+      // unpack the number of stat
+      ptr = or_unpack_int (ptr, (int *) &(server_info.num_stat));
+
+      // unpack file name and its memory usage
+      server_info.stat_info.resize (server_info.num_stat);
+
+      // *INDENT-OFF*
+      // unpack memory usage entry info
+      for (auto &s_info : server_info.stat_info)
+        {
+          ptr = or_unpack_string_nocopy (ptr, &temp_str);
+          s_info.first = temp_str;
+          ptr = or_unpack_int64 (ptr, (int64_t *) &(s_info.second));
+        }
+      // *INDENT-ON*
+    }
+  free_and_init (buffer);
+
+  return error;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * mmon_disable_force - request to server to disable memory_monitor forcely
+ *
+ * return : cubrid error
+ */
+int
+mmon_disable_force ()
+{
+#if defined(CS_MODE)
+  char *buffer, *ptr;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, dummy;
+  int error = NO_ERROR;
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_DISABLE_FORCE, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
+    }
+
+  free_and_init (buffer);
+
+  return error;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }

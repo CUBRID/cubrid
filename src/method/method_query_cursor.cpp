@@ -23,6 +23,8 @@
 #include "list_file.h"
 #include "log_impl.h"
 #include "object_representation.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {
@@ -245,5 +247,14 @@ namespace cubmethod
   query_cursor::get_fetch_count ()
   {
     return m_fetch_count;
+  }
+
+  void
+  query_cursor::set_fetch_count (int cnt)
+  {
+    if (cnt > 0 && cnt < INT32_MAX) // check invalid value
+      {
+	m_fetch_count = cnt;
+      }
   }
 }

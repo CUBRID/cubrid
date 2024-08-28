@@ -46,6 +46,7 @@
 #include "db_json.hpp"
 #include "object_primitive.h"
 #include "db_client_type.hpp"
+#include "msgcat_glossary.hpp"
 
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
@@ -7541,8 +7542,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 	{
 	  if (col->node_type == PT_VALUE && col->type_enum == PT_TYPE_NULL)
 	    {
-	      PT_ERRORmf2 (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
-			   attribute_name (parser, attr), pt_short_print (parser, col));
+	      attr->type_enum = PT_TYPE_VARCHAR;
 	    }
 	  else
 	    {
@@ -8157,8 +8157,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    }
 	  else if (s_attr->node_type == PT_VALUE && s_attr->type_enum == PT_TYPE_NULL)
 	    {
-	      PT_ERRORm (parser, s_attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NULL_NOT_ALLOWED_ON_QUERY_SPEC);
-	      return;
+	      s_attr->type_enum = PT_TYPE_VARCHAR;
 	    }
 
 	  derived_attr = pt_derive_attribute (parser, s_attr);
@@ -9536,11 +9535,33 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *default_value_node = NULL;
   PT_NODE *default_value = NULL;
   PT_NODE *initial_def_val = NULL;
-
   int param_count = 0;
   bool has_default_value = false;
-
   bool is_plcsql = (node->info.sp.body->info.sp_body.lang == SP_LANG_PLCSQL);
+
+  DB_OBJECT *owner = NULL;
+  PT_NODE *name = node->info.sp.name;
+  const char *owner_name = pt_get_qualifier_name (parser, name);
+  if (owner_name)
+    {
+      owner = db_find_user (owner_name);
+      if (owner == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+
+	  if (er_errid () == ER_AU_INVALID_USER)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	    }
+	  return;
+	}
+      else if (au_is_dba_group_member (Au_user) == false && ws_is_same_object (owner, Au_user) == false)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER,
+		      "CREATE PROCEDURE/FUNCTION");
+	  return;
+	}
+    }
 
   for (param = node->info.sp.param_list; param; param = param->next)
     {
@@ -9908,7 +9929,7 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
   while (auth_cmd_list)
     {
       PT_PRIV_TYPE pt_auth = auth_cmd_list->info.auth_cmd.auth_cmd;
-      if (pt_auth == PT_EXECUTE_PROCEDURE_PRIV || pt_auth == PT_EXECUTE_FUNCTION_PRIV)
+      if (pt_auth == PT_EXECUTE_PROCEDURE_PRIV)
 	{
 	  is_for_spec = false;
 	  break;
@@ -9926,6 +9947,13 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else
     {
+      /* check grant option */
+      if (node->info.grant.grant_option == PT_GRANT_OPTION)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_AU_GRANT_OPTION_NOT_ALLOWED,
+		      MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
+	}
+
       /* check spec_list (procedures/functions) exists */
       for (PT_NODE * procs = node->info.grant.spec_list; procs != NULL; procs = procs->next)
 	{
@@ -10551,7 +10579,14 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
   col_cnt = pt_length_of_select_list (pt_get_select_list (parser, qry), EXCLUDE_HIDDEN_COLUMNS);
   if (tgt_cnt != col_cnt)
     {
-      PT_ERRORmf2 (parser, into, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COL_CNT_NE_INTO_CNT, col_cnt, tgt_cnt);
+      if (parser->flag.is_parsing_static_sql == 1 && tgt_cnt == 1)
+	{
+	  // OK. the single target can be a record
+	}
+      else
+	{
+	  PT_ERRORmf2 (parser, into, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COL_CNT_NE_INTO_CNT, col_cnt, tgt_cnt);
+	}
     }
 
   if (parser->flag.is_parsing_static_sql == 1)

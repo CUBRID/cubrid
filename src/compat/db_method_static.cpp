@@ -20,6 +20,8 @@
  * db_method_static.cpp: implement static method links and their implementation
  */
 
+#include "msgcat_glossary.hpp"
+
 #include "dbi.h" /* db_ */
 #include "dbtype.h"
 #include "dbtype_def.h"
@@ -186,7 +188,7 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
 	  return;
 	}
       /*
-       * although au_set_password will check this, check it out here before
+       * although au_set_password_encrypt will check this, check it out here before
        * we bother creating the user object
        */
       if (password != NULL && DB_IS_STRING (password) && !DB_IS_NULL (password) && (tmp = db_get_string (password))
@@ -214,7 +216,7 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
 	    {
 	      if (password != NULL && DB_IS_STRING (password) && !DB_IS_NULL (password))
 		{
-		  error = au_set_password (user, db_get_string (password));
+		  error = au_set_password_encrypt (user, db_get_string (password));
 		  if (error != NO_ERROR)
 		    {
 		      db_make_error (returnval, error);
@@ -357,7 +359,7 @@ au_add_member_method (MOP user, DB_VALUE *returnval, DB_VALUE *memval)
 	  else
 	    {
 	      error = ER_AU_NOT_OWNER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
 	    }
 	}
       else
@@ -424,7 +426,7 @@ au_drop_member_method (MOP user, DB_VALUE *returnval, DB_VALUE *memval)
 	  else
 	    {
 	      error = ER_AU_NOT_OWNER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
 	    }
 	}
       else
@@ -451,7 +453,7 @@ error:
 }
 
 /*
- * au_set_password_method -  Method interface for au_set_password.
+ * au_set_password_method -  Method interface for au_set_password_encrypt.
  *   return: none
  *   user(in): user object
  *   returnval(out): return value of this method
@@ -471,7 +473,7 @@ au_set_password_method (MOP user, DB_VALUE *returnval, DB_VALUE *password)
 	  string = db_get_string (password);
 	}
 
-      error = au_set_password (user, string);
+      error = au_set_password_encrypt (user, string);
       if (error != NO_ERROR)
 	{
 	  db_make_error (returnval, error);
@@ -940,7 +942,7 @@ au_check_authorization_method (MOP obj, DB_VALUE *returnval, DB_VALUE *class_, D
       classmop = sm_find_class (db_get_string (class_));
       if (classmop != NULL)
 	{
-	  error = au_check_authorization (classmop, (DB_AUTH) db_get_int (auth));
+	  error = au_check_class_authorization (classmop, (DB_AUTH) db_get_int (auth));
 	  db_make_int (returnval, (error == NO_ERROR) ? true : false);
 	}
       else
@@ -976,7 +978,7 @@ au_change_sp_owner_method (MOP obj, DB_VALUE *returnval, DB_VALUE *sp, DB_VALUE 
     {
       if (owner != NULL && DB_IS_STRING (owner) && !DB_IS_NULL (owner) && db_get_string (owner) != NULL)
 	{
-	  sp_mop = jsp_find_stored_procedure (db_get_string (sp));
+	  sp_mop = jsp_find_stored_procedure (db_get_string (sp), DB_AUTH_NONE);
 	  if (sp_mop != NULL)
 	    {
 	      user = au_find_user (db_get_string (owner));

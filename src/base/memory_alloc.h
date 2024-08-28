@@ -45,6 +45,13 @@
 #include <memory>
 #include <functional>
 #endif
+/* ***IMPORTANT!!***
+ * memory_wrapper.hpp has a restriction that it must locate at the end of including section
+ * because the user-defined new for overloaded format can make build error in glibc
+ * when glibc header use "placement new" or another overloaded format of new.
+ * So memory_wrapper.hpp cannot be included in header file, but memory_cwrapper.h can be included.
+ * You can include memory_cwrapper.h in a header file when the header file use allocation function. */
+#include "memory_cwrapper.h"
 
 /* Ceiling of positive division */
 #define CEIL_PTVDIV(dividend, divisor) \

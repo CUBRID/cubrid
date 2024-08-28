@@ -37,9 +37,22 @@ namespace cubmethod
 {
   struct pl_parameter_info;
 
-  struct EXPORT_IMPORT compile_info : public cubpacking::packable_object
+  struct EXPORT_IMPORT compile_request : public cubpacking::packable_object
   {
-    compile_info ();
+    compile_request ();
+
+    std::string code;
+    std::string owner;
+    std::string mode; /* for debugging : compile configs such as verbose */
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+  };
+
+  struct EXPORT_IMPORT compile_response : public cubpacking::packable_object
+  {
+    compile_response ();
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -196,6 +209,7 @@ namespace cubmethod
   };
 }
 
-using PLCSQL_COMPILE_INFO = cubmethod::compile_info;
+using PLCSQL_COMPILE_REQUEST = cubmethod::compile_request;
+using PLCSQL_COMPILE_RESPONSE = cubmethod::compile_response;
 
 #endif //_METHOD_COMPILE_DEF_HPP_

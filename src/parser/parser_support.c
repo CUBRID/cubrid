@@ -7754,7 +7754,7 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
   const char *user_name = NULL;
   PT_NODE *node = NULL;
 
-  user_name = au_user_name ();
+  user_name = au_get_current_user_name ();
   if (user_name == NULL)
     {
       return NULL;
@@ -7773,29 +7773,6 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
  * pt_make_query_show_grants() - builds the query used for SHOW GRANTS for a
  *				 given user
  *
- *   SELECT CONCAT ( 'GRANT ',
- *	 	    GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', '),
- *	 	    ' ON ' ,
- *	 	    AU.class_of.class_name,
- *	 	    ' TO ',
- *	 	    AU.grantee.name ,
- *	 	    IF (AU.is_grantable=1,
- *	 	       ' WITH GRANT OPTION',
- *	 	       '')
- *		 ) AS GRANTS
- *   FROM db_class C, _db_auth AU
- *   WHERE AU.class_of.unique_name = C.unique_name AND
- *	    AU.class_of.owner.name = C.owner_name AND
- *	    C.is_system_class='NO' AND
- *	    ( AU.grantee.name=<user_name> OR
- *	      SET{ AU.grantee.name} SUBSETEQ (
- *		       SELECT SUM(SET{t.g.name})
- *		       FROM db_user U, TABLE(groups) AS t(g)
- *		       WHERE U.name=<user_name>)
- *	     )
- *   GROUP BY AU.grantee, AU.class_of, AU.is_grantable
- *   ORDER BY 1;
- *
  *  Note : The purpose of GROUP BY is to group all the privilege by user,
  *	   table and the presence of 'WITH GRANT OPTION' flag. We output the
  *	   privileges for the user but also for all groups to which the user
@@ -7808,218 +7785,128 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
  *   parser(in): Parser context
  *   user_name(in): DB user name
  */
+
 PT_NODE *
 pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_name)
 {
-  PT_NODE *node = NULL;
-  PT_NODE *from_item = NULL;
-  PT_NODE *where_expr = NULL;
-  PT_NODE *concat_node = NULL;
-  PT_NODE *group_by_item = NULL;
+  PT_NODE **node = NULL;
+  PT_NODE *show_node = NULL;
   char user_name[SM_MAX_IDENTIFIER_LENGTH];
 
-  assert (original_user_name != NULL);
-  assert (strlen (original_user_name) < SM_MAX_IDENTIFIER_LENGTH);
+  // *INDENT-OFF*
+  const static char *query =
+        "SELECT "
+                "CONCAT ('GRANT ', "
+                "GROUP_CONCAT([auth_type] ORDER BY 1 SEPARATOR ', '), "
+                "' ON ',"
+                "IF ([object_type]=5, 'PROCEDURE ', ''), "
+                "[owner_name] || '.' || [object_name], "
+                "' TO ',"
+                "[grantee_name],"
+                "IF ([is_grantable]=1, ' WITH GRANT OPTION', '')"
+                ") AS GRANTS "
+        "FROM ("
+                "SELECT "
+                        "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
+                        "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
+                        "[a].[object_type] AS [object_type], "
+                        "[c].[class_name] AS [object_name], "
+                        "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+                        "[a].[auth_type] AS [auth_type], "
+                        "[a].[is_grantable] AS [is_grantable] "
+                "FROM "
+                        "[_db_auth] AS [a], [_db_class] AS [c] "
+                "WHERE "
+                        "[a].[object_of] = [c].[class_of] "
+                        "AND [a].[object_type] = 0 "
+                        "AND MOD ([c].[is_system_class], 2) = 0 "
+                        "AND ( "
+                        "[a].[grantee].[name] = '%1$s' "
+                        "OR "
+                        "SET {[a].[grantee].[name]} SUBSETEQ ("
+                                "SELECT "
+                                        "SUM (SET {[t].[g].[name]}) "
+                                "FROM "
+                                        /* AU_USER_CLASS_NAME */
+                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                "WHERE "
+                                        "[u].[name] = '%1$s'"
+                                ") "
+                        ") "
+        "UNION ALL "
+                "SELECT "
+                        "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
+                        "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
+                        "[a].[object_type] AS [object_type], "
+                        "[s].[sp_name] AS [object_name], "
+                        "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+                        "[a].[auth_type] AS [auth_type], "
+                        "[a].[is_grantable] AS [is_grantable] "
+                "FROM "
+                        "[_db_auth] AS [a], [_db_stored_procedure] AS [s] "
+                "WHERE "
+                        "[a].[object_of] = [s] "
+                        "AND [a].[object_type] = 5 "
+                        "AND [s].[is_system_generated] = 0 "
+                        "AND ( "
+                        "[a].[grantee].[name] = '%1$s' "
+                        "OR "
+                        "SET {[a].[grantee].[name]} SUBSETEQ ("
+                                "SELECT "
+                                        "SUM (SET {[t].[g].[name]}) "
+                                "FROM "
+                                        /* AU_USER_CLASS_NAME */
+                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                "WHERE "
+                                        "[u].[name] = '%1$s'"
+                                ") "
+                        ") "
+        ") "
+        "GROUP BY "
+                "[grantee_name], [owner_name], [object_name], [is_grantable] ASC "
+        "ORDER BY 1;";
+  // *INDENT-ON*
+
+  const int buffer_size = 4096;	// length of query (1303) + identifier (255) * 4 < 1024
+  char buffer[buffer_size];
+  memset (buffer, 0, buffer_size);
 
   /* conversion to uppercase can cause <original_user_name> to double size, if internationalization is used : size
    * <user_name> accordingly */
   intl_identifier_upper (original_user_name, user_name);
 
-  node = parser_new_node (parser, PT_SELECT);
+  snprintf (buffer, buffer_size, query, user_name);
+
+  /* parser ';' will empty and reset the stack of parser, this make the status machine be right for the next statement,
+   * and avoid nested parser statement. */
+  parser_parse_string (parser, ";");
+
+  node = parser_parse_string_use_sys_charset (parser, buffer);
   if (node == NULL)
     {
       return NULL;
     }
 
-  PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_READ_ONLY);
+  parser->flag.dont_collect_exec_stats = 1;
 
-  /* ------ SELECT list ------- */
-  /*
-   *      CONCAT ( 'GRANT ',
-   *                GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', '),
-   *                ' ON ' ,
-   *                AU.class_of.unique_name,
-   *                ' TO ',
-   *                AU.grantee.name ,
-   *                IF (AU.is_grantable=1,
-   *                   ' WITH GRANT OPTION',
-   *                   '')
-   *             ) AS GRANTS
-   */
-  {
-    PT_NODE *concat_arg_list = NULL;
-    PT_NODE *concat_arg = NULL;
+  show_node = pt_pop (parser);
+  assert (show_node == node[0]);
 
-    concat_arg = pt_make_string_value (parser, "GRANT ");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
+  if (show_node)
     {
-      /* GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', ') */
-      PT_NODE *group_concat_field = NULL;
-      PT_NODE *group_concat_sep = NULL;
-      PT_NODE *order_by_item = NULL;
-
-      concat_arg = parser_new_node (parser, PT_FUNCTION);
-      if (concat_arg == NULL)
-	{
-	  return NULL;
-	}
-
-      concat_arg->info.function.function_type = PT_GROUP_CONCAT;
-      concat_arg->info.function.all_or_distinct = PT_ALL;
-
-      group_concat_field = pt_make_dotted_identifier (parser, "AU.auth_type");
-      group_concat_sep = pt_make_string_value (parser, ", ");
-      concat_arg->info.function.arg_list = parser_append_node (group_concat_sep, group_concat_field);
-
-      /* add ORDER BY */
-      assert (concat_arg->info.function.order_by == NULL);
-
-      /* By 1 */
-      order_by_item = pt_make_sort_spec_with_number (parser, 1, PT_ASC);
-      concat_arg->info.function.order_by = order_by_item;
-    }
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_arg = pt_make_string_value (parser, " ON ");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_arg = pt_make_dotted_identifier (parser, "AU.class_of.unique_name");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_arg = pt_make_string_value (parser, " TO ");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_arg = pt_make_dotted_identifier (parser, "AU.grantee.name");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    /* IF (AU.is_grantable=1, ' WITH GRANT OPTION','') */
-    {
-      PT_NODE *pred_for_if = NULL;
-
-      pred_for_if = pt_make_pred_name_int_val (parser, PT_EQ, "AU.is_grantable", 1);
-      concat_arg = pt_make_if_with_strings (parser, pred_for_if, " WITH GRANT OPTION", "", NULL);
-    }
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_node = parser_keyword_func ("concat", concat_arg_list);
-    if (concat_node == NULL)
-      {
-	return NULL;
-      }
-
-    {
+      // for backward compatibiltiy
       char col_alias[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
       const char *const col_header = "Grants for ";
 
       strcpy (col_alias, col_header);
       strncat (col_alias, user_name, SM_MAX_IDENTIFIER_LENGTH - strlen (col_header) - 1);
       col_alias[SM_MAX_IDENTIFIER_LENGTH - 1] = '\0';
+
+      PT_NODE *concat_node = show_node->info.query.q.select.list;
       concat_node->alias_print = pt_append_string (parser, NULL, col_alias);
     }
-  }
-  node->info.query.q.select.list = parser_append_node (concat_node, node->info.query.q.select.list);
 
-  /* ------ SELECT ... FROM ------- */
-  from_item = pt_add_table_name_to_from_list (parser, node, "db_class", "C", DB_AUTH_SELECT);
-
-  from_item = pt_add_table_name_to_from_list (parser, node, "_db_auth", "AU", DB_AUTH_SELECT);
-
-  /* ------ SELECT ... WHERE ------- */
-  /*
-   * WHERE AU.class_of.class_name = C.class_name AND
-   *    AU.class_of.owner.name = C.owner_name AND
-   *    C.is_system_class='NO' AND
-   *    ( AU.grantee.name=<user_name> OR
-   *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> )
-   *           )
-   */
-  {
-    /* AU.class_of.class_name = C.class_name */
-    PT_NODE *where_item = NULL;
-
-    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.class_name", "C.class_name");
-    where_expr = where_item;
-  }
-  {
-    /* AU.class_of.owner.name = C.owner_name */
-    PT_NODE *where_item = NULL;
-
-    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.owner.name", "C.owner_name");
-    /* <where_expr> = <where_expr> AND <where_item> */
-    where_expr = parser_make_expression (parser, PT_AND, where_expr, where_item, NULL);
-  }
-  {
-    /* C.is_system_class = 'NO' */
-    PT_NODE *where_item = NULL;
-
-    where_item = pt_make_pred_name_string_val (parser, PT_EQ, "C.is_system_class", "NO");
-    /* <where_expr> = <where_expr> AND <where_item> */
-    where_expr = parser_make_expression (parser, PT_AND, where_expr, where_item, NULL);
-  }
-  {
-    PT_NODE *user_cond = NULL;
-    PT_NODE *group_cond = NULL;
-    /* AU.grantee.name = <user_name> */
-    user_cond = pt_make_pred_name_string_val (parser, PT_EQ, "AU.grantee.name", user_name);
-
-    /* SET{ AU.grantee.name} SUBSETEQ ( <query_user_groups> */
-    {
-      /* query to get a SET of user's groups */
-      PT_NODE *query_user_groups = NULL;
-      PT_NODE *set_of_grantee_name = NULL;
-
-      {
-	/* SET{ AU.grantee.name} */
-	PT_NODE *grantee_name_identifier = NULL;
-
-	grantee_name_identifier = pt_make_dotted_identifier (parser, "AU.grantee.name");
-	set_of_grantee_name = parser_new_node (parser, PT_VALUE);
-	if (set_of_grantee_name == NULL)
-	  {
-	    return NULL;
-	  }
-	set_of_grantee_name->info.value.data_value.set = grantee_name_identifier;
-	set_of_grantee_name->type_enum = PT_TYPE_SET;
-      }
-
-      query_user_groups = pt_make_query_user_groups (parser, user_name);
-
-      group_cond = parser_make_expression (parser, PT_SUBSETEQ, set_of_grantee_name, query_user_groups, NULL);
-    }
-    user_cond = parser_make_expression (parser, PT_OR, user_cond, group_cond, NULL);
-
-    where_expr = parser_make_expression (parser, PT_AND, where_expr, user_cond, NULL);
-  }
-
-
-
-  /* WHERE list should be empty */
-  assert (node->info.query.q.select.where == NULL);
-  node->info.query.q.select.where = parser_append_node (where_expr, node->info.query.q.select.where);
-
-  /* GROUP BY : AU.grantee, AU.class_of, AU.is_grantable */
-  assert (node->info.query.q.select.group_by == NULL);
-  group_by_item = pt_make_sort_spec_with_identifier (parser, "AU.grantee", PT_ASC);
-  node->info.query.q.select.group_by = parser_append_node (group_by_item, node->info.query.q.select.group_by);
-
-  group_by_item = pt_make_sort_spec_with_identifier (parser, "AU.class_of", PT_ASC);
-  node->info.query.q.select.group_by = parser_append_node (group_by_item, node->info.query.q.select.group_by);
-
-  group_by_item = pt_make_sort_spec_with_identifier (parser, "AU.is_grantable", PT_ASC);
-  node->info.query.q.select.group_by = parser_append_node (group_by_item, node->info.query.q.select.group_by);
-  group_by_item = NULL;
-
-  {
-    PT_NODE *order_by_item = NULL;
-
-    assert (node->info.query.order_by == NULL);
-
-    /* By GROUPS */
-    order_by_item = pt_make_sort_spec_with_number (parser, 1, PT_ASC);
-    node->info.query.order_by = parser_append_node (order_by_item, node->info.query.order_by);
-  }
-  return node;
+  return node[0];
 }
 
 /*
@@ -8138,7 +8025,9 @@ pt_split_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
   if ((delete_stmt->info.delete_.hint & PT_HINT_ORDERED)
       || ((delete_stmt->info.delete_.hint & PT_HINT_USE_NL) && delete_stmt->info.delete_.use_nl_hint == NULL)
       || ((delete_stmt->info.delete_.hint & PT_HINT_USE_IDX) && delete_stmt->info.delete_.use_idx_hint == NULL)
-      || ((delete_stmt->info.delete_.hint & PT_HINT_USE_MERGE) && delete_stmt->info.delete_.use_merge_hint == NULL))
+      || ((delete_stmt->info.delete_.hint & PT_HINT_USE_MERGE) && delete_stmt->info.delete_.use_merge_hint == NULL)
+      || ((delete_stmt->info.delete_.hint & PT_HINT_NO_USE_HASH) && delete_stmt->info.delete_.no_use_hash_hint == NULL)
+      || ((delete_stmt->info.delete_.hint & PT_HINT_USE_HASH) && delete_stmt->info.delete_.use_hash_hint == NULL))
     {
       return NO_ERROR;
     }
@@ -10499,7 +10388,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   switch (node->node_type)
     {
     case PT_NAME:
-      if (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+      if (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED) || node->info.name.meta_class == PT_META_CLASS)
 	{
 	  original_name = node->info.name.original;
 	  resolved_name = node->info.name.resolved;
@@ -10678,7 +10567,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     }
 
   // *INDENT-OFF*
-  assert ((node->node_type == PT_NAME && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+  assert ((node->node_type == PT_NAME && (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED) || node->info.name.meta_class == PT_META_CLASS))
           || (node->node_type == PT_EXPR && PT_IS_SERIAL (node->info.expr.op)));
   // *INDENT-ON*
   assert (original_name && original_name[0] != '\0');
@@ -10693,7 +10582,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     {
       PT_ERRORf2 (parser, node,
 		  "Object name [%s] not allowed. It cannot exceed %d bytes.",
-		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
+		  pt_short_print (parser, node), (DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH) - 1);
       *continue_walk = PT_STOP_WALK;
       return node;
     }
