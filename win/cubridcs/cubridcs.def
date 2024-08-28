@@ -978,4 +978,5 @@ EXPORTS
   db_json_val_from_str
   gethostbyname_uhost
   getnameinfo_uhost
+  is_valid_uhost_conf
   trim
