@@ -2953,6 +2953,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	    {
 	      free_and_init (class_name);
 	    }
+
 	  if (index_name != NULL)
 	    {
 	      free_and_init (index_name);
@@ -3502,6 +3503,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	    {
 	      free_and_init (class_name);
 	    }
+
 	  if (index_name != NULL)
 	    {
 	      free_and_init (index_name);
