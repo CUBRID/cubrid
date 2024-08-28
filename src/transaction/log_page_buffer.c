@@ -7642,12 +7642,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
       goto error;
     }
 
-  /*
-   * Determine the first log archive that will be needed to insure
-   * consistency if we are forced to restore the database with nothing but this backup.
-   * first_arv_needed may need to be based on what archive chkpt_lsa is in.
-   */
-
 #if defined (SERVER_MODE)
   print_backupdb_waiting_reason = false;
   wait_checkpoint_begin_time = time (NULL);
@@ -7695,6 +7689,12 @@ loop:
   saved_run_nxchkpt_atpageid = log_Gl.run_nxchkpt_atpageid;
   log_Gl.run_nxchkpt_atpageid = NULL_PAGEID;
 #endif /* SERVER_MODE */
+
+  /*
+   * Determine the first log archive that will be needed to insure
+   * consistency if we are forced to restore the database with nothing but this backup.
+   * first_arv_needed may need to be based on what archive chkpt_lsa is in.
+   */
 
   if (log_Gl.hdr.last_arv_num_for_syscrashes > -1)
     {
@@ -8072,7 +8072,7 @@ loop:
   LOG_CS_ENTER (thread_p);
 
 #if defined(SERVER_MODE)
-  if (first_arv_needed < log_Gl.hdr.nxarv_num - 1)
+  if (first_arv_needed < log_Gl.hdr.nxarv_num)
     {
       error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, log_Gl.hdr.nxarv_num - 1);
       if (error_code != NO_ERROR)
