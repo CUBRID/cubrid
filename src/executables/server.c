@@ -207,8 +207,6 @@ CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name)
 static void
 crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
 {
-  int pid;
-
   if (signo != SIGABRT && siginfo != NULL && siginfo->si_code <= 0)
     {
       register_fatal_signal_handler (signo);

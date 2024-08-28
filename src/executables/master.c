@@ -1264,9 +1264,7 @@ main (int argc, char **argv)
 	}
     }
 
-#if !defined(WINDOWS)
   auto_Restart_server = prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER);
-#endif
 
   // Since master_Server_monitor is module for restarting abnormally terminated cub_server,
   // it is initialized only when auto_restart_server parameter is set to true.
