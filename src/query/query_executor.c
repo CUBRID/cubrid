@@ -10267,12 +10267,13 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 
 	  if (spec->curent->next == NULL)
 	    {
+	      PARTITION_SPEC_TYPE *curr_part = NULL;
 	      SCAN_STATS *curr_stats, *prev_stats;
 	      int pruned_count, pruned_index;
 
 	      /* count pruned partitions */
-	      for (pruned_count = 0, spec->curent = spec->parts; spec->curent != NULL;
-		   pruned_count++, spec->curent = spec->curent->next);
+	      for (pruned_count = 0, curr_part = spec->parts; curr_part != NULL;
+		   pruned_count++, curr_part = curr_part->next);
 	      assert (pruned_count > 0);
 
 	      for (pruned_index = (pruned_count - 1); pruned_index > 0; pruned_index--)
