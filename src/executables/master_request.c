@@ -534,9 +534,9 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
 #if !defined(WINDOWS)
 		  if (auto_Restart_server)
 		    {
-		    /* *INDENT-OFF* */
-		    master_Server_monitor->produce_job (server_monitor::job_type::UNREGISTER_SERVER, -1, "", "", server_name);
-		    /* *INDENT-ON* */
+		      /* *INDENT-OFF* */
+		      master_Server_monitor->produce_job (server_monitor::job_type::UNREGISTER_SERVER, -1, "", "", server_name);
+		      /* *INDENT-ON* */
 		    }
 #endif
 		  css_process_start_shutdown (temp, timeout * 60, buffer);
@@ -726,6 +726,7 @@ css_process_shutdown (char *time_buffer)
       /* INDENT-ON */
     }
 #endif
+
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       /* do not send shutdown command to master and connector, only to servers: cause connector crash */

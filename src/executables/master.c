@@ -321,7 +321,7 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
  *   conn(in)
  *   rid(in)
  *   buffer(in)
- * 
+ *
  */
 static void
 css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
@@ -395,9 +395,10 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 #if !defined(WINDOWS)
 	      if (auto_Restart_server)
 		{
-		      /* *INDENT-OFF* */
-		      master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER, proc_register->pid, proc_register->exec_path, proc_register->args, proc_register->server_name);
-		      /* *INDENT-ON* */
+		  /* *INDENT-OFF* */
+		  master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER, proc_register->pid,
+						      proc_register->exec_path, proc_register->args, proc_register->server_name);
+		  /* *INDENT-ON* */
 		}
 #endif
 	    }
@@ -1016,9 +1017,9 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 #if !defined(WINDOWS)
 		      if (auto_Restart_server)
 			{
-			      /* *INDENT-OFF* */
-			      master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER, -1, "", "", temp->name);
-			      /* *INDENT-ON* */
+			  /* *INDENT-OFF* */
+			  master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER, -1, "", "", temp->name);
+			  /* *INDENT-ON* */
 			}
 #endif
 		      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
@@ -1222,10 +1223,6 @@ main (int argc, char **argv)
       goto cleanup;
     }
 
-#if !defined(WINDOWS)
-  auto_Restart_server = prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER);
-#endif
-
   TPRINTF (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_STARTING), 0);
 
   /* close the message catalog and let the master daemon reopen. */
@@ -1267,8 +1264,12 @@ main (int argc, char **argv)
 	}
     }
 
+#if !defined(WINDOWS)
+  auto_Restart_server = prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER);
+#endif
+
   // Since master_Server_monitor is module for restarting abnormally terminated cub_server,
-  // it is only initialized only when auto_restart_server parameter is set to true.
+  // it is initialized only when auto_restart_server parameter is set to true.
 
   if (auto_Restart_server)
     {
