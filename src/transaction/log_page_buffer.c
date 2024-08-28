@@ -7572,7 +7572,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   const char *bk_vol;		/* ptr to old bkup volume name */
   int unit_num;
   FILEIO_BACKUP_RECORD_INFO all_bkup_info[FILEIO_BACKUP_UNDEFINED_LEVEL];
-  int first_arv_needed = -1;	/* for self contained, consistent */
   bool beenwarned;
   bool isincremental = false;	/* Assume full backups */
   bool bkup_in_progress = false;
@@ -7583,6 +7582,8 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   const char *db_nopath_name_p;
   int keys_vdes = NULL_VOLDES;
 #if defined(SERVER_MODE)
+  int first_arv_needed = -1;	/* for self contained, consistent */
+
   int rv;
   time_t wait_checkpoint_begin_time;
   bool print_backupdb_waiting_reason = false;
@@ -7689,51 +7690,6 @@ loop:
   saved_run_nxchkpt_atpageid = log_Gl.run_nxchkpt_atpageid;
   log_Gl.run_nxchkpt_atpageid = NULL_PAGEID;
 #endif /* SERVER_MODE */
-
-  /*
-   * Determine the first log archive that will be needed to insure
-   * consistency if we are forced to restore the database with nothing but this backup.
-   * first_arv_needed may need to be based on what archive chkpt_lsa is in.
-   */
-
-  if (log_Gl.hdr.last_arv_num_for_syscrashes > -1)
-    {
-      first_arv_needed = log_Gl.hdr.last_arv_num_for_syscrashes;
-    }
-  else
-    {
-      first_arv_needed = log_Gl.hdr.nxarv_num;
-    }
-
-  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
-  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
-
-  if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
-    {
-      int min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
-
-      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d\n",
-		     min_arv_required_for_vacuum);
-
-      if (min_arv_required_for_vacuum >= 0)
-	{
-	  if (first_arv_needed >= 0)
-	    {
-	      first_arv_needed = MIN (first_arv_needed, min_arv_required_for_vacuum);
-	    }
-	  else
-	    {
-	      first_arv_needed = min_arv_required_for_vacuum;
-	    }
-	}
-      else
-	{
-	  /* Page should be in archive. */
-	  assert (false);
-	}
-
-      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive needed for backup is %d\n", first_arv_needed);
-    }
 
   /* Get the current checkpoint address */
   rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
@@ -8072,6 +8028,51 @@ loop:
   LOG_CS_ENTER (thread_p);
 
 #if defined(SERVER_MODE)
+  /*
+   * Determine the first log archive that will be needed to insure
+   * consistency if we are forced to restore the database with nothing but this backup.
+   * first_arv_needed may need to be based on what archive chkpt_lsa is in.
+   */
+
+  if (log_Gl.hdr.last_arv_num_for_syscrashes > -1)
+    {
+      first_arv_needed = log_Gl.hdr.last_arv_num_for_syscrashes;
+    }
+  else
+    {
+      first_arv_needed = log_Gl.hdr.nxarv_num;
+    }
+
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
+
+  if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
+    {
+      int min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d\n",
+		     min_arv_required_for_vacuum);
+
+      if (min_arv_required_for_vacuum >= 0)
+	{
+	  if (first_arv_needed >= 0)
+	    {
+	      first_arv_needed = MIN (first_arv_needed, min_arv_required_for_vacuum);
+	    }
+	  else
+	    {
+	      first_arv_needed = min_arv_required_for_vacuum;
+	    }
+	}
+      else
+	{
+	  /* Page should be in archive. */
+	  assert (false);
+	}
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive needed for backup is %d\n", first_arv_needed);
+    }
+
   if (first_arv_needed < log_Gl.hdr.nxarv_num)
     {
       error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, log_Gl.hdr.nxarv_num - 1);
