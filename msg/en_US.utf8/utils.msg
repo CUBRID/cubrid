@@ -545,7 +545,6 @@ valid options:\n\
   -i, --input-class-file=FILE input FILE of table names; default: dump all classes\n\
       --include-reference     include referenced tables; with -i option; default: disabled\n\
       --input-class-only      include specified class only; with -i option; default: disabled\n\
-      --lo-count=COUNT        lo file COUNT per a directory; default: 0\n\
       --estimated-size=NUMBER estimated NUMBER of instances; default: auto computed\n\
       --cached-pages=NUMBER   NUMBER of cached pages; default: 100\n\
   -O, --output-path=PATH      PATH of output directory; default: working directory\n\
@@ -555,6 +554,8 @@ valid options:\n\
       --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
       --latest-image          when dumping objects, it dumps the latest image of objects in data volumes, not referring to log volumes (ignoring MVCC)\n\
                               It could include uncommitted data and deleted data which is not vacuummed; default: disabled\n\
+  -t, --thread-count=COUNT    Number of threads; default: 1 maximum: 127\n\
+      --enhanced-estimates    Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose               enable verbose status messages; default: disabled\n\
       --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
   -S, --SA-mode               stand-alone mode execution\n\

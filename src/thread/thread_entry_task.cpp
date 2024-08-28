@@ -90,6 +90,12 @@ namespace cubthread
     context.shutdown = false;
 #endif // SERVER_MODE
 
+    /* Set clearly for safety.
+     * In fact, it is processed in functions that call xlocator_fetch_all().
+     */
+    context._unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
+    context._unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+
     on_recycle (context);
   }
 
