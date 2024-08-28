@@ -22838,7 +22838,7 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
   //  {"Deduplicate_distinct_key", "int"},
   db_make_int (out_values[idx++], cpc.deduplicate_dis_key_cnt);
 
-  // {"Num_fecnce_key", "int"},
+  // {"Num_fence_key", "int"},
   db_make_int (out_values[idx++], cpc.fence_key_cnt);
 
   // {"Avg_num_value_per_key", "int"}
