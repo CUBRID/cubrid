@@ -3082,7 +3082,10 @@ create_stmt
                             PT_NODE* body = $9;
                             if (body->info.sp_body.lang == SP_LANG_PLCSQL && body->info.sp_body.impl == NULL)
                               {
-                                // In particular, this happens while schema loading of loaddb utility
+                                // In particular, this happens for two cases:
+                                //   . cubrid loaddb -s <file> ... (loading a schema file with loaddb utility)
+                                //   . csql -i <file> --no-single-line ... (running csql with -i and --no-single-line)
+                                // in which case parser->original_buffer is NULL.
                                 // Without the original buffer, We need to get the SQL user text from the file.
                                 assert(this_parser->original_buffer == NULL);
                                 assert(this_parser->file);
@@ -3133,7 +3136,10 @@ create_stmt
                             PT_NODE* body = $11;
                             if (body->info.sp_body.lang == SP_LANG_PLCSQL && body->info.sp_body.impl == NULL)
                               {
-                                // In particular, this happens while schema loading of loaddb utility
+                                // In particular, this happens for two cases:
+                                //   . cubrid loaddb -s <file> ... (loading a schema file with loaddb utility)
+                                //   . csql -i <file> --no-single-line ... (running csql with -i and --no-single-line)
+                                // in which case parser->original_buffer is NULL.
                                 // Without the original buffer, We need to get the SQL user text from the file.
                                 assert(this_parser->original_buffer == NULL);
                                 assert(this_parser->file);
