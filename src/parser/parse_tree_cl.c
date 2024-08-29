@@ -7599,6 +7599,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1, *r2, *r3;
 
   r1 = pt_print_bytes (parser, p->info.sp.name);
+
   q = pt_append_nulstring (parser, q, "create ");
   if (p->info.sp.or_replace)
     {
@@ -7606,7 +7607,14 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp.type));
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_varchar (parser, q, r1);
+  if (parser->custom_print & (PT_PRINT_NO_SPECIFIED_USER_NAME | PT_PRINT_NO_CURRENT_USER_NAME))
+    {
+      q = pt_append_name (parser, q, p->info.sp.name->info.name.original);
+    }
+  else
+    {
+      q = pt_append_varchar (parser, q, r1);
+    }
 
   r2 = pt_print_bytes_l (parser, p->info.sp.param_list);
   q = pt_append_nulstring (parser, q, "(");
