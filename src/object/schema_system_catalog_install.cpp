@@ -676,6 +676,7 @@ namespace cubschema
       {"is_foreign_key", "integer"},
       {"filter_expression", format_varchar (1073741823)},
       {"have_function", "integer"},
+      {"with_options", "integer"},
       {"comment", format_varchar (1024)},
       {"status", "integer"}
     },
@@ -1582,6 +1583,7 @@ namespace cubschema
       {"is_deduplicate", "varchar(3)"},
       {"deduplicate_key_level", "smallint"},
 #endif
+      {"deduplicate_level", "integer"},
       {"filter_expression", "varchar(1073741823)"},
       {"have_function", "varchar(3)"},
       {"comment", "varchar(1024)"},
