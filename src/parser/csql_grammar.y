@@ -28622,7 +28622,5 @@ pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start,
 
     body->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(impl, (spec_end - spec_start));
 
-    fprintf(stderr, "[temp] impl='%s'\n", parser_print_tree(this_parser, body));
-
     return 0;
 }
