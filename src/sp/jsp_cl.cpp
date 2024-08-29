@@ -884,6 +884,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
+      assert (statement->sql_user_text && statement->sql_user_text_len);
       compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
       compile_request.owner.assign ((owner_name[0] == '\0') ? au_get_current_user_name () : owner_name);
 
