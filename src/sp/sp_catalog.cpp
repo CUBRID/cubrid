@@ -37,6 +37,9 @@
 #include "schema_manager.h"
 #include "dbtype.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 // memory representation of built-in stored procedures
 static std::vector <sp_info> sp_builtin_definition;
 

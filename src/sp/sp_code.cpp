@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +29,9 @@
 #include "heap_file.h"
 #include "object_representation_sr.h"
 #include "sp_constants.hpp"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 ATTR_ID spcode_Attrs_id[SPC_ATTR_MAX_INDEX];
 int spcode_Num_attrs = -1;

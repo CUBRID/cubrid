@@ -12876,8 +12876,8 @@ plcsql_text
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, | plcsql_text_part);
 
                         assert(g_plcsql_text_pos == -1);
-                        g_plcsql_text_pos = @$.buffer_pos;
                         $$ = strlen($1);
+                        g_plcsql_text_pos = @$.buffer_pos - $$;
 
 		DBG_PRINT}}
         ;
