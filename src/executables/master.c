@@ -59,6 +59,7 @@
 #include "error_manager.h"
 #include "connection_globals.h"
 #include "connection_cl.h"
+#include "system_parameter.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* ! WINDOWS */
@@ -320,7 +321,7 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
  *   conn(in)
  *   rid(in)
  *   buffer(in)
- * 
+ *
  */
 static void
 css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
@@ -391,9 +392,15 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 
 	  if (!entry->ha_mode)
 	    {
-              /* *INDENT-OFF* */
-              master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER, proc_register->pid, proc_register->exec_path, proc_register->args, proc_register->server_name);
-              /* *INDENT-ON* */
+#if !defined(WINDOWS)
+	      if (auto_Restart_server)
+		{
+		  /* *INDENT-OFF* */
+		  master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER, proc_register->pid,
+						      proc_register->exec_path, proc_register->args, proc_register->server_name);
+		  /* *INDENT-ON* */
+		}
+#endif
 	    }
 	}
     }
@@ -1008,9 +1015,12 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 #endif
 
 #if !defined(WINDOWS)
-		      /* *INDENT-OFF* */
-		      master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER, -1, "", "", temp->name);
-		      /* *INDENT-ON* */
+		      if (auto_Restart_server)
+			{
+			  /* *INDENT-OFF* */
+			  master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER, -1, "", "", temp->name);
+			  /* *INDENT-ON* */
+			}
 #endif
 		      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
 		    }
@@ -1254,12 +1264,12 @@ main (int argc, char **argv)
 	}
     }
 
-  // TODO : When no non-HA server exists in HA environment, server_monitor should not be initialized.
-  //        In this issue, server_monitor is initialized only when HA is disabled. Once all sub-tasks of
-  //        CBRD-24741 are done, this condition will be removed. And server_monitor will be initialized wh
-  //        en first non-HA server is started in HA environment. (server_monitor will be finalized when last
-  //        non-HA server is stopped in HA environment.)
-  if (HA_DISABLED ())
+  auto_Restart_server = prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER);
+
+  // Since master_Server_monitor is a module for restarting abnormally terminated cub_server,
+  // it is initialized only when the 'auto_restart_server' parameter is set to true.
+
+  if (auto_Restart_server)
     {
       // *INDENT-OFF*
       master_Server_monitor.reset (new server_monitor ());
