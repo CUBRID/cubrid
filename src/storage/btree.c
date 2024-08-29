@@ -6983,29 +6983,17 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
       /* read key-value */
       assert (BTS->clear_cur_key == false);
 
-#if 0				// ctshim
-      if (env->same_prefix_len == -1)
+      if (btree_read_record
+	  (thread_p, &BTS->btid_int, BTS->C_page, &BTS->key_record, &BTS->cur_key, (void *) &BTS->leaf_rec_info,
+	   BTREE_LEAF_NODE, &BTS->clear_cur_key, &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
 	{
-	  if (btree_read_record_in_leafpage (thread_p, BTS->C_page, PEEK_KEY_VALUE, BTS) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
+	  goto exit_on_error;
 	}
-      else
-#endif
-	{
-	  if (btree_read_record
-	      (thread_p, &BTS->btid_int, BTS->C_page, &BTS->key_record, &BTS->cur_key, (void *) &BTS->leaf_rec_info,
-	       BTREE_LEAF_NODE, &BTS->clear_cur_key, &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
 
-	  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-	  if (btree_is_same_key_for_stats (env, &BTS->cur_key))
-	    {
-	      goto end;
-	    }
+      /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+      if (btree_is_same_key_for_stats (env, &BTS->cur_key))
+	{
+	  goto end;
 	}
 
       /* Is there any visible objects? */
@@ -7094,31 +7082,18 @@ count_keys:
       /* read key-value */
 
       assert (BTS->clear_cur_key == false);
-#if 0				// ctshim
-      if (env->same_prefix_len == -1)
+      if (btree_read_record
+	  (thread_p, &BTS->btid_int, BTS->C_page, &BTS->key_record, &BTS->cur_key, (void *) &BTS->leaf_rec_info,
+	   BTREE_LEAF_NODE, &BTS->clear_cur_key, &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
 	{
-	  if (btree_read_record_in_leafpage (thread_p, BTS->C_page, PEEK_KEY_VALUE, BTS) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-      else
-#endif
-	{
-	  if (btree_read_record
-	      (thread_p, &BTS->btid_int, BTS->C_page, &BTS->key_record, &BTS->cur_key, (void *) &BTS->leaf_rec_info,
-	       BTREE_LEAF_NODE, &BTS->clear_cur_key, &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  if (btree_is_same_key_for_stats (env, &BTS->cur_key))
-	    {
-	      env->stat_info->keys--;
-	      goto end;
-	    }
+	  goto exit_on_error;
 	}
 
+      if (btree_is_same_key_for_stats (env, &BTS->cur_key))
+	{
+	  env->stat_info->keys--;
+	  goto end;
+	}
 
       /* get pkeys info */
       ret = btree_get_stats_midxkey (thread_p, env, db_get_midxkey (&BTS->cur_key));
@@ -8944,17 +8919,6 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
   BTS->leaf_rec_info.key_len = 0;
   VPID_SET_NULL (&BTS->leaf_rec_info.ovfl);
 
-#if 0				// ctshim
-  PAGE_PTR C_page_bk;
-  VPID C_vpid_bk;
-
-  C_page_bk = BTS->C_page;
-  VPID_COPY (&C_vpid_bk, &(BTS->C_vpid));
-
-  BTS->C_page = pg_ptr;
-  VPID_COPY (&(BTS->C_vpid), pgbuf_get_vpid_ptr (pg_ptr));
-#endif
-
   /* initialize capacity structure */
   memset (cpc, 0x00, sizeof (BTREE_CAPACITY));
 
@@ -9058,23 +9022,11 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
 	  cpc->sum_rec_len += BTS->key_record.length;
 
 	  /* read the current record key */
-#if 0				// ctshim
-	  if ((env->same_prefix_len == -1) && !btree_leaf_is_flaged (&BTS->key_record, BTREE_LEAF_RECORD_FENCE))
+	  if (btree_read_record
+	      (thread_p, &(env->btree_scan.btid_int), pg_ptr, &BTS->key_record, &BTS->cur_key, &BTS->leaf_rec_info,
+	       BTREE_LEAF_NODE, &BTS->clear_cur_key, &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
 	    {
-	      if (btree_read_record_in_leafpage (thread_p, pg_ptr, PEEK_KEY_VALUE, BTS) != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	    }
-	  else
-#endif
-	    {
-	      if (btree_read_record
-		  (thread_p, &(env->btree_scan.btid_int), pg_ptr, &BTS->key_record, &BTS->cur_key, &BTS->leaf_rec_info,
-		   BTREE_LEAF_NODE, &BTS->clear_cur_key, &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
+	      goto exit_on_error;
 	    }
 
 	  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
@@ -9166,11 +9118,6 @@ exit_on_error:
     }
 
   btree_clear_key_value (&BTS->clear_cur_key, &BTS->cur_key);
-#if 0				// ctshim
-  COMMON_PREFIX_PAGE_SIZE_RESET (BTS);
-  BTS->C_page = C_page_bk;
-  VPID_COPY (&(BTS->C_vpid), &C_vpid_bk);
-#endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
