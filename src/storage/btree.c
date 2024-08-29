@@ -9135,7 +9135,6 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
 {
   VPID root_vpid;		/* root page identifier */
   PAGE_PTR root = NULL;		/* root page pointer */
-  //BTID_INT btid_int;
   BTREE_ROOT_HEADER *root_header = NULL;
   int ret = NO_ERROR;
 
@@ -9164,8 +9163,6 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
 
   BTREE_INIT_SCAN (&(stats_env.btree_scan));
 
-  //btid_int.sys_btid = btid;
-  //ret = btree_glean_root_header_info (thread_p, root_header, &btid_int, true);
   stats_env.btree_scan.btid_int.sys_btid = btid;
   ret = btree_glean_root_header_info (thread_p, root_header, &(stats_env.btree_scan.btid_int), true);
   if (ret != NO_ERROR)
