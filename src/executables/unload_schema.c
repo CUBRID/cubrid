@@ -4664,10 +4664,10 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 			    const char *owner_name)
 {
   MOP obj;
-  int save, err, err_count = 0;
+  int save, err = NO_ERROR;
   DB_VALUE value, stype_val, scode_val;
   int stype;
-  PARSER_CONTEXT *parser;
+  PARSER_CONTEXT *parser = NULL;
   PT_NODE **scode_ptr;
   char *scode_ptr_result;
 
@@ -4677,7 +4677,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
   obj = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_ATTR_CLS_NAME, &value);
   if (obj == NULL)
     {
-      err_count++;
+      err = ER_FAILED;
       goto exit;
     }
 
@@ -4685,7 +4685,6 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
   if ((err = db_get (obj, SP_ATTR_SOURCE_TYPE, &stype_val)) != NO_ERROR
       || (err = db_get (obj, SP_ATTR_SOURCE_CODE, &scode_val)) != NO_ERROR)
     {
-      err_count++;
       goto exit;
     }
 
@@ -4696,8 +4695,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
       parser = parser_create_parser ();
       if (parser == NULL)
 	{
-	  parser_free_parser (parser);
-	  err_count++;
+	  err = ER_FAILED;
 	  goto exit;
 	}
 
@@ -4724,17 +4722,20 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 	{
 	  output_ctx ("\n%s", scode_ptr_result);
 	}
-
-      parser_free_parser (parser);
     }
 
 exit:
+
+  if (parser)
+    {
+      parser_free_parser (parser);
+    }
 
   db_value_clear (&value);
   db_value_clear (&scode_val);
   AU_ENABLE (save);
 
-  return err_count;
+  return err;
 }
 
 /*
