@@ -488,7 +488,7 @@ char *g_query_string;
 int g_query_string_len;
 int g_original_buffer_len;
 
-static int pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec, int end);
+static int pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start, int spec_end, int end);
 static int g_plcsql_text_pos;
 
 /*
@@ -3089,9 +3089,10 @@ create_stmt
                                 assert(this_parser->file);
 
                                 int start = @1.buffer_pos - 6;  // 6 : length of "create"
-                                int spec = @8.buffer_pos;       // right after is_or_as
+                                int spec_start = @8.buffer_pos; // right after is_or_as
+                                int spec_end = @9.buffer_pos;
                                 int end = @$.buffer_pos;
-                                if (pt_set_plcsql_body_impl(node, body, start, spec, end) < 0) {
+                                if (pt_set_plcsql_body_impl(node, body, start, spec_start, spec_end, end) < 0) {
                                     PT_ERROR (this_parser, node, "failed to get the user SQL from the input file");
                                 }
                               }
@@ -3142,10 +3143,11 @@ create_stmt
                                 assert(this_parser->original_buffer == NULL);
                                 assert(this_parser->file);
 
-                                int start = @1.buffer_pos - 6;  // 6 : length of "create"
-                                int spec = @10.buffer_pos;      // right after is_or_as
+                                int start = @1.buffer_pos - 6;      // 6 : length of "create"
+                                int spec_start = @10.buffer_pos;    // right after is_or_as
+                                int spec_end = @11.buffer_pos;
                                 int end = @$.buffer_pos;
-                                if (pt_set_plcsql_body_impl(node, body, start, spec, end) < 0) {
+                                if (pt_set_plcsql_body_impl(node, body, start, spec_start, spec_end, end) < 0) {
                                     PT_ERROR (this_parser, node, "failed to get the user SQL from the input file");
                                 }
                               }
@@ -28577,7 +28579,7 @@ pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING
 }
 
 static int
-pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec, int end)
+pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start, int spec_end, int end)
 {
     // In (at least) following two cases, the control reaches here.
     //  . csql -i <file> --no-single-line ...
@@ -28585,7 +28587,7 @@ pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec, int e
 
     // In these cases, parser->original_buffer is null and
     // node->sql_user_text must be got from this_parser->file.
-    // The arguments start, spec, and end are got from the tokens' buffer_pos
+    // The arguments start, spec_start, spec_end, and end are got from the tokens' buffer_pos
     // but they are also actual positions in the file in these two cases.
 
     int r, read_sz = end - start;   // texts from pos start to pos (end - 1)
@@ -28613,12 +28615,14 @@ pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec, int e
     }
 
     buff[read_sz] = '\0';
-    char* impl = buff + (spec - start);
+    char* impl = buff + (spec_start - start);
 
     node->sql_user_text = buff;
     node->sql_user_text_len = read_sz;
 
-    body->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(impl, strlen(impl));
+    body->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(impl, (spec_end - spec_start));
+
+    fprintf(stderr, "[temp] impl='%s'\n", parser_print_tree(this_parser, body));
 
     return 0;
 }
