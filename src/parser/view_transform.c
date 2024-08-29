@@ -7619,7 +7619,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      if (node)
+      if (node && node->node_type != PT_CREATE_ENTITY)
 	{
 	  /* for the optimization of the query includes dblink
 	   * it is better to be written to a subquery */
@@ -7642,7 +7642,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  break;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case PT_INSERT:
     case PT_DELETE:
@@ -11205,6 +11205,7 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 		  result->column_number = node->column_number;
 		  result->flag.is_hidden_column = node->flag.is_hidden_column;
 		  result->buffer_pos = node->buffer_pos;
+		  result->alias_print = node->alias_print;
 #if 0
 		  result->info.name.original = node->info.name.original;
 #endif /* 0 */
