@@ -9454,6 +9454,17 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
   /* reset pruning info */
   if (curr_spec->type == TARGET_CLASS && curr_spec->parts != NULL)
     {
+      if (thread_is_on_trace (thread_p))
+	{
+	  if (curr_spec->curent != NULL)
+	    {
+	      memcpy (&curr_spec->curent->scan_stats, &curr_spec->s_id.scan_stats, sizeof (SCAN_STATS));
+
+	      /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
+	      curr_spec->curent->scan_stats.agl = NULL;
+	    }
+	}
+
       curr_spec->curent = NULL;
 
       /* init btid */
@@ -9668,7 +9679,6 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	}
     }
   while (1);
-
 }
 
 /*
@@ -10264,45 +10274,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 
 	  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
 	  spec->curent->scan_stats.agl = NULL;
-
-	  if (spec->curent->next == NULL)
-	    {
-	      PARTITION_SPEC_TYPE *curr_part = NULL;
-	      SCAN_STATS *curr_stats, *prev_stats;
-	      int pruned_count, pruned_index;
-
-	      /* count pruned partitions */
-	      for (pruned_count = 0, curr_part = spec->parts; curr_part != NULL;
-		   pruned_count++, curr_part = curr_part->next);
-	      assert (pruned_count > 0);
-
-	      for (pruned_index = (pruned_count - 1); pruned_index > 0; pruned_index--)
-		{
-		  curr_stats = &spec->parts[pruned_index].scan_stats;
-		  prev_stats = &spec->parts[pruned_index - 1].scan_stats;
-
-		  perfmon_diff_timeval (&curr_stats->elapsed_scan, &prev_stats->elapsed_scan,
-					&curr_stats->elapsed_scan);
-		  curr_stats->num_fetches -= prev_stats->num_fetches;
-		  curr_stats->num_ioreads -= prev_stats->num_ioreads;
-
-		  /* for heap & list scan */
-		  curr_stats->read_rows -= prev_stats->read_rows;
-		  curr_stats->qualified_rows -= prev_stats->qualified_rows;
-
-		  /* for btree scan */
-		  curr_stats->read_keys -= prev_stats->read_keys;
-		  curr_stats->qualified_keys -= prev_stats->qualified_keys;
-		  curr_stats->key_qualified_rows -= prev_stats->key_qualified_rows;
-		  curr_stats->data_qualified_rows -= prev_stats->data_qualified_rows;
-		  perfmon_diff_timeval (&curr_stats->elapsed_lookup, &prev_stats->elapsed_lookup,
-					&curr_stats->elapsed_lookup);
-
-		  /* hash list scan */
-		  perfmon_diff_timeval (&curr_stats->elapsed_hash_build, &prev_stats->elapsed_hash_build,
-					&curr_stats->elapsed_hash_build);
-		}
-	    }
 	}
 
       if (spec->curent->next == NULL)

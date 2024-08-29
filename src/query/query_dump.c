@@ -2961,15 +2961,18 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
 	  if ((spec->parts != NULL) && (spec->s_id.scan_stats.agl == NULL))
 	    {
-	      PARTITION_SPEC_TYPE *curr_part = NULL;
+	      PARTITION_SPEC_TYPE *curr_part = NULL, *prev_part = NULL;
+	      SCAN_STATS *scan_stats, *curr_stats, *prev_stats;
 	      SCAN_STATS save_stats;
 
 	      part_scan_array = json_array ();
 
+	      scan_stats = &spec->s_id.scan_stats;
+
 	      /* save */
 	      memcpy (&save_stats, &spec->s_id.scan_stats, sizeof (SCAN_STATS));
 
-	      for (curr_part = spec->parts; curr_part != NULL; curr_part = curr_part->next)
+	      for (curr_part = spec->parts; curr_part != NULL; prev_part = curr_part, curr_part = curr_part->next)
 		{
 		  part_scan = json_object ();
 
@@ -3023,10 +3026,49 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
 		  json_object_set_new (part_scan, "access", json_string (spec_name));
 
-		  memcpy (&spec->s_id.scan_stats, &curr_part->scan_stats, sizeof (SCAN_STATS));
+		  curr_stats = &curr_part->scan_stats;
+
+		  if ((prev_part != NULL)
+		      && ((curr_stats->elapsed_scan.tv_sec != 0) || (curr_stats->elapsed_scan.tv_usec != 0)))
+		    {
+		      prev_stats = &prev_part->scan_stats;
+
+		      perfmon_diff_timeval (&scan_stats->elapsed_scan, &prev_stats->elapsed_scan,
+					    &curr_stats->elapsed_scan);
+		      scan_stats->num_fetches = curr_stats->num_fetches - prev_stats->num_fetches;
+		      scan_stats->num_ioreads = curr_stats->num_ioreads - prev_stats->num_ioreads;
+
+		      /* for heap & list scan */
+		      scan_stats->read_rows = curr_stats->read_rows - prev_stats->read_rows;
+		      scan_stats->qualified_rows = curr_stats->qualified_rows - prev_stats->qualified_rows;
+
+		      /* for btree scan */
+		      scan_stats->read_keys = curr_stats->read_keys - prev_stats->read_keys;
+		      scan_stats->qualified_keys = curr_stats->qualified_keys - prev_stats->qualified_keys;
+		      scan_stats->key_qualified_rows = curr_stats->key_qualified_rows - prev_stats->key_qualified_rows;
+		      scan_stats->data_qualified_rows =
+			curr_stats->data_qualified_rows - prev_stats->data_qualified_rows;
+		      perfmon_diff_timeval (&scan_stats->elapsed_lookup, &prev_stats->elapsed_lookup,
+					    &curr_stats->elapsed_lookup);
+
+		      assert (scan_stats->covered_index == curr_stats->covered_index);
+		      assert (scan_stats->multi_range_opt == curr_stats->multi_range_opt);
+		      assert (scan_stats->index_skip_scan == curr_stats->index_skip_scan);
+		      assert (scan_stats->loose_index_scan == curr_stats->loose_index_scan);
+		      assert (scan_stats->noscan == curr_stats->noscan);
+		      assert (scan_stats->agl == curr_stats->agl);
+
+		      /* hash list scan */
+		      perfmon_diff_timeval (&scan_stats->elapsed_hash_build, &prev_stats->elapsed_hash_build,
+					    &curr_stats->elapsed_hash_build);
+		    }
+		  else
+		    {
+		      memcpy (scan_stats, &curr_part->scan_stats, sizeof (SCAN_STATS));
+		    }
 
 		  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
-		  spec->s_id.scan_stats.agl = NULL;
+		  scan_stats->agl = NULL;
 
 		  scan_print_stats_json (&spec->s_id, part_scan);
 
@@ -3076,7 +3118,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
       if (part_scan_array != NULL)
 	{
-	  json_object_set_new (scan, "PARTITION SCAN", part_scan_array);
+	  json_object_set_new (scan, "PARTITION", part_scan_array);
 	}
 
       if (scan_array != NULL)
@@ -3511,16 +3553,19 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 
 	  if ((spec->parts != NULL) && (spec->s_id.scan_stats.agl == NULL))
 	    {
-	      PARTITION_SPEC_TYPE *curr_part = NULL;
+	      PARTITION_SPEC_TYPE *curr_part = NULL, *prev_part = NULL;
+	      SCAN_STATS *scan_stats, *curr_stats, *prev_stats;
 	      SCAN_STATS save_stats;
 
-	      /* save */
-	      memcpy (&save_stats, &spec->s_id.scan_stats, sizeof (SCAN_STATS));
+	      scan_stats = &spec->s_id.scan_stats;
 
-	      for (curr_part = spec->parts; curr_part != NULL; curr_part = curr_part->next)
+	      /* save */
+	      memcpy (&save_stats, scan_stats, sizeof (SCAN_STATS));
+
+	      for (curr_part = spec->parts; curr_part != NULL; prev_part = curr_part, curr_part = curr_part->next)
 		{
 		  fprintf (fp, "\n");
-		  fprintf (fp, "%*cPARTITION SCAN ", indent + 2, ' ');
+		  fprintf (fp, "%*cPARTITION ", multi_spec_indent + 2, ' ');
 
 		  if (heap_get_class_name (thread_p, &curr_part->oid, &class_name) != NO_ERROR)
 		    {
@@ -3568,10 +3613,49 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		      break;
 		    }
 
-		  memcpy (&spec->s_id.scan_stats, &curr_part->scan_stats, sizeof (SCAN_STATS));
+		  curr_stats = &curr_part->scan_stats;
+
+		  if ((prev_part != NULL)
+		      && ((curr_stats->elapsed_scan.tv_sec != 0) || (curr_stats->elapsed_scan.tv_usec != 0)))
+		    {
+		      prev_stats = &prev_part->scan_stats;
+
+		      perfmon_diff_timeval (&scan_stats->elapsed_scan, &prev_stats->elapsed_scan,
+					    &curr_stats->elapsed_scan);
+		      scan_stats->num_fetches = curr_stats->num_fetches - prev_stats->num_fetches;
+		      scan_stats->num_ioreads = curr_stats->num_ioreads - prev_stats->num_ioreads;
+
+		      /* for heap & list scan */
+		      scan_stats->read_rows = curr_stats->read_rows - prev_stats->read_rows;
+		      scan_stats->qualified_rows = curr_stats->qualified_rows - prev_stats->qualified_rows;
+
+		      /* for btree scan */
+		      scan_stats->read_keys = curr_stats->read_keys - prev_stats->read_keys;
+		      scan_stats->qualified_keys = curr_stats->qualified_keys - prev_stats->qualified_keys;
+		      scan_stats->key_qualified_rows = curr_stats->key_qualified_rows - prev_stats->key_qualified_rows;
+		      scan_stats->data_qualified_rows =
+			curr_stats->data_qualified_rows - prev_stats->data_qualified_rows;
+		      perfmon_diff_timeval (&scan_stats->elapsed_lookup, &prev_stats->elapsed_lookup,
+					    &curr_stats->elapsed_lookup);
+
+		      assert (scan_stats->covered_index == curr_stats->covered_index);
+		      assert (scan_stats->multi_range_opt == curr_stats->multi_range_opt);
+		      assert (scan_stats->index_skip_scan == curr_stats->index_skip_scan);
+		      assert (scan_stats->loose_index_scan == curr_stats->loose_index_scan);
+		      assert (scan_stats->noscan == curr_stats->noscan);
+		      assert (scan_stats->agl == curr_stats->agl);
+
+		      /* hash list scan */
+		      perfmon_diff_timeval (&scan_stats->elapsed_hash_build, &prev_stats->elapsed_hash_build,
+					    &curr_stats->elapsed_hash_build);
+		    }
+		  else
+		    {
+		      memcpy (scan_stats, &curr_part->scan_stats, sizeof (SCAN_STATS));
+		    }
 
 		  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
-		  spec->s_id.scan_stats.agl = NULL;
+		  scan_stats->agl = NULL;
 
 		  scan_print_stats_text (fp, &spec->s_id);
 
