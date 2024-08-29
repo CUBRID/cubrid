@@ -4634,7 +4634,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 
 	  const char *target_class = db_get_string (&class_val);
 	  err = emit_stored_procedure_code (ctxt, output_ctx, target_class, owner_name);
-	  output_ctx (";\n");
+	  output_ctx ("\n");
 
 	  db_value_clear (&class_val);
 	  if (err > 0)
