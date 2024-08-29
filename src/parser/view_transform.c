@@ -7642,7 +7642,9 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  break;
 	}
-    [[fallthrough]] case PT_INSERT:
+      /* FALLTHRU */
+
+    case PT_INSERT:
     case PT_DELETE:
     case PT_UPDATE:
     case PT_MERGE:
