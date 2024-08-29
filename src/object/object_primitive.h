@@ -378,15 +378,7 @@ pr_is_set_type (DB_TYPE type)
 STATIC_INLINE int
 pr_is_string_type (DB_TYPE type)
 {
-  int status = 0;
-
-  if (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR || type == DB_TYPE_NCHAR
-      || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT)
-    {
-      status = 1;
-    }
-
-  return status;
+  return TP_IS_STRING_TYPE (type);
 }
 
 /*

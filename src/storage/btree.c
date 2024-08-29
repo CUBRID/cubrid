@@ -32,6 +32,7 @@
 #include "slotted_page.h"
 #include "log_append.hpp"
 #include "log_manager.h"
+#include "log_recovery.h"
 #include "overflow_file.h"
 #include "xserver_interface.h"
 #include "scan_manager.h"
@@ -9003,6 +9004,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
 	    }
 
 	  /* form the cpc structure for a non-leaf node page */
+	  cpc->fence_key_cnt += cpc2.fence_key_cnt;
 	  cpc->dis_key_cnt += cpc2.dis_key_cnt;
 	  cpc->tot_val_cnt += cpc2.tot_val_cnt;
 	  cpc->deduplicate_dis_key_cnt += cpc2.deduplicate_dis_key_cnt;
@@ -9032,6 +9034,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
   else
     {				/* a leaf page */
       /* form the cpc structure for a leaf node page */
+      cpc->fence_key_cnt = 0;
       cpc->dis_key_cnt = 0;
       cpc->deduplicate_dis_key_cnt = key_cnt;
       //cpc->dis_key_cnt = key_cnt;
@@ -9044,6 +9047,14 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
 	    {
 	      goto exit_on_error;
 	    }
+
+	  if (btree_leaf_is_flaged (&BTS->key_record, BTREE_LEAF_RECORD_FENCE))
+	    {
+	      cpc->fence_key_cnt++;
+	      cpc->deduplicate_dis_key_cnt--;
+	      continue;
+	    }
+
 	  cpc->sum_rec_len += BTS->key_record.length;
 
 	  /* read the current record key */
@@ -9141,11 +9152,6 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
   cpc->tot_used_space = (cpc->tot_space - cpc->tot_free_space);
 
   btree_clear_key_value (&BTS->clear_cur_key, &BTS->cur_key);
-#if 0				// ctshim
-  COMMON_PREFIX_PAGE_SIZE_RESET (BTS);
-  BTS->C_page = C_page_bk;
-  VPID_COPY (&(BTS->C_vpid), &C_vpid_bk);
-#endif
 
   return ret;
 
@@ -9229,6 +9235,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
 
   if (cpc->dis_key_cnt > 0)
     {
+      assert (cpc->deduplicate_dis_key_cnt > 0);
       cpc->avg_val_per_dedup_key = (int) (cpc->tot_val_cnt / cpc->deduplicate_dis_key_cnt);
       cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
       cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
@@ -9324,6 +9331,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
   fprintf (fp, "Total Value Count: %lld\n", cpc.tot_val_cnt);
   fprintf (fp, "Deduplicate Distinct Key Count: %d\n", cpc.deduplicate_dis_key_cnt);
+  fprintf (fp, "Fence Key Count: %d\n", cpc.fence_key_cnt);
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
   fprintf (fp, "Average Value Count Per Deduplicate Key: %d\n", cpc.avg_val_per_dedup_key);
 
@@ -22888,6 +22896,9 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
   //  {"Deduplicate_distinct_key", "int"},
   db_make_int (out_values[idx++], cpc.deduplicate_dis_key_cnt);
 
+  // {"Num_fence_key", "int"},
+  db_make_int (out_values[idx++], cpc.fence_key_cnt);
+
   // {"Avg_num_value_per_key", "int"}
   db_make_int (out_values[idx++], cpc.avg_val_per_key);
 
@@ -29810,10 +29821,8 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
   bool log_btree_ops = prm_get_bool_value (PRM_ID_LOG_BTREE_OPS);
   bool has_debug_info = false;
 
-  /* >>>>>>>>>>>> */
   /* Debug ID to help developers find the source of bug in logging/recovery code. */
   BTREE_RV_DEBUG_ID rv_debug_id = BTREE_RV_REDO_NO_ID;
-  /* <<<<<<<<<<<< */
 
   /* Get flags and slot ID. */
   flags = rcv->offset & BTREE_RV_FLAGS_MASK;
