@@ -2965,15 +2965,23 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	      SCAN_STATS *scan_stats, *curr_stats, *prev_stats;
 	      SCAN_STATS save_stats;
 
-	      part_scan_array = json_array ();
-
 	      scan_stats = &spec->s_id.scan_stats;
 
 	      /* save */
 	      memcpy (&save_stats, &spec->s_id.scan_stats, sizeof (SCAN_STATS));
 
+	      part_scan_array = json_array ();
+
 	      for (curr_part = spec->parts; curr_part != NULL; prev_part = curr_part, curr_part = curr_part->next)
 		{
+		  curr_stats = &curr_part->scan_stats;
+
+		  if ((curr_stats->elapsed_scan.tv_sec == 0) && (curr_stats->elapsed_scan.tv_usec == 0))
+		    {
+		      /* skip */
+		      continue;
+		    }
+
 		  part_scan = json_object ();
 
 		  if (heap_get_class_name (thread_p, &curr_part->oid, &class_name) != NO_ERROR)
@@ -3026,10 +3034,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
 		  json_object_set_new (part_scan, "access", json_string (spec_name));
 
-		  curr_stats = &curr_part->scan_stats;
-
-		  if ((prev_part != NULL)
-		      && ((curr_stats->elapsed_scan.tv_sec != 0) || (curr_stats->elapsed_scan.tv_usec != 0)))
+		  if (prev_part != NULL)
 		    {
 		      prev_stats = &prev_part->scan_stats;
 
@@ -3564,6 +3569,14 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 
 	      for (curr_part = spec->parts; curr_part != NULL; prev_part = curr_part, curr_part = curr_part->next)
 		{
+		  curr_stats = &curr_part->scan_stats;
+
+		  if ((curr_stats->elapsed_scan.tv_sec == 0) && (curr_stats->elapsed_scan.tv_usec == 0))
+		    {
+		      /* skip */
+		      continue;
+		    }
+
 		  fprintf (fp, "\n");
 		  fprintf (fp, "%*cPARTITION ", multi_spec_indent + 2, ' ');
 
@@ -3599,7 +3612,6 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 			      {
 				fprintf (fp, "(index: %s.%s), ", class_name, index_name);
 			      }
-
 			    else
 			      {
 				fprintf (fp, "(index: unknown), ");
@@ -3613,10 +3625,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		      break;
 		    }
 
-		  curr_stats = &curr_part->scan_stats;
-
-		  if ((prev_part != NULL)
-		      && ((curr_stats->elapsed_scan.tv_sec != 0) || (curr_stats->elapsed_scan.tv_usec != 0)))
+		  if (prev_part != NULL)
 		    {
 		      prev_stats = &prev_part->scan_stats;
 
