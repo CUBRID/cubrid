@@ -207,8 +207,6 @@ CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name)
 static void
 crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
 {
-  int pid;
-
   if (signo != SIGABRT && siginfo != NULL && siginfo->si_code <= 0)
     {
       register_fatal_signal_handler (signo);
@@ -218,47 +216,6 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
   if (os_set_signal_handler (signo, SIG_DFL) == SIG_ERR)
     {
       return;
-    }
-
-  if (!BO_IS_SERVER_RESTARTED () || !prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
-    {
-      return;
-    }
-
-  pid = fork ();
-  if (pid == 0)
-    {
-      char err_log[PATH_MAX];
-      int ppid;
-      int fd, fd_max;
-
-      fd_max = css_get_max_socket_fds ();
-
-      for (fd = 3; fd < fd_max; fd++)
-	{
-	  close (fd);
-	}
-
-      ppid = getppid ();
-      while (1)
-	{
-	  if (kill (ppid, 0) < 0)
-	    {
-	      break;
-	    }
-	  sleep (1);
-	}
-
-      unmask_signal (signo);
-
-      if (prm_get_string_value (PRM_ID_ER_LOG_FILE) != NULL)
-	{
-	  snprintf (err_log, PATH_MAX, "%s.%d", prm_get_string_value (PRM_ID_ER_LOG_FILE), ppid);
-	  rename (prm_get_string_value (PRM_ID_ER_LOG_FILE), err_log);
-	}
-
-      execl (executable_path, executable_path, database_name, NULL);
-      exit (0);
     }
 }
 

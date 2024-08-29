@@ -532,9 +532,12 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
 			    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_STATUS),
 			    server_name, timeout);
 #if !defined(WINDOWS)
-                  /* *INDENT-OFF* */
-		  master_Server_monitor->produce_job (server_monitor::job_type::UNREGISTER_SERVER, -1, "", "", server_name);
-                  /* *INDENT-ON* */
+		  if (auto_Restart_server)
+		    {
+		      /* *INDENT-OFF* */
+		      master_Server_monitor->produce_job (server_monitor::job_type::UNREGISTER_SERVER, -1, "", "", server_name);
+		      /* *INDENT-ON* */
+		    }
 #endif
 		  css_process_start_shutdown (temp, timeout * 60, buffer);
 		}
@@ -715,6 +718,14 @@ css_process_shutdown (char *time_buffer)
   memset (buffer, 0, sizeof (buffer));
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
 	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_GOING_DOWN), timeout);
+#if !defined(WINDOWS)
+  if (auto_Restart_server)
+    {
+      /* INDENT-OFF */
+      master_Server_monitor.reset ();
+      /* INDENT-ON */
+    }
+#endif
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
@@ -723,11 +734,6 @@ css_process_shutdown (char *time_buffer)
 	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_SERVER (temp->name)
 	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
-#if !defined(WINDOWS)
-          /* *INDENT-OFF* */
-	  master_Server_monitor->produce_job (server_monitor::job_type::UNREGISTER_SERVER, -1, "", "", temp->name);
-          /* *INDENT-ON* */
-#endif
 	  css_process_start_shutdown (temp, timeout * 60, buffer);
 
 	  /* wait process terminated */
