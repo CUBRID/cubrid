@@ -236,8 +236,8 @@ static void emit_partition_info (extract_context & ctxt, print_output & output_c
 static int emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx);
 static int emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx);
 static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg_set);
-static int emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, const char *name,
-				       const char *owner);
+static int emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, const char *code_name,
+				       const char *owner_name);
 
 static int emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
@@ -4575,6 +4575,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
   int save;
   int err;
   int err_count = 0;
+  const char *owner_name;
 
   AU_DISABLE (save);
 
@@ -4612,9 +4613,10 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 	  continue;
 	}
 
+      owner_name = db_get_string (&owner_name_val);
       if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
 	{
-	  if (strcasecmp (ctxt.login_user, db_get_string (&owner_name_val)) != 0)
+	  if (strcasecmp (ctxt.login_user, owner_name) != 0)
 	    {
 	      db_value_clear (&owner_name_val);
 	      continue;
@@ -4631,7 +4633,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 	    }
 
 	  const char *target_class = db_get_string (&class_val);
-	  err = emit_stored_procedure_code (ctxt, output_ctx, target_class, db_get_string (&owner_name_val));
+	  err = emit_stored_procedure_code (ctxt, output_ctx, target_class, owner_name);
 	  output_ctx (";\n");
 
 	  db_value_clear (&class_val);
@@ -4654,10 +4656,12 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 /*
  * emit_stored_procedure_code - emit stored procedure code
  *    return: 0 if success, error count otherwise
- *    name(in): code name
+ *    code_name(in): code name
+ *    owner_name(in): owner name
  */
 static int
-emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, const char *name, const char *owner)
+emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, const char *code_name,
+			    const char *owner_name)
 {
   MOP obj;
   int save, err, err_count = 0;
@@ -4669,7 +4673,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 
   AU_DISABLE (save);
 
-  db_make_string (&value, name);
+  db_make_string (&value, code_name);
   obj = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_ATTR_CLS_NAME, &value);
   if (obj == NULL)
     {
@@ -4704,15 +4708,23 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 	    {
 	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
 	    }
-	  else if ((*scode_ptr)->info.sp.name->info.name.resolved == NULL)
+	  else
 	    {
-	      (*scode_ptr)->info.sp.name->info.name.resolved = pt_append_string (parser, NULL, owner);
+	      PT_NODE *sp_name = (*scode_ptr)->info.sp.name;
+	      if (sp_name->info.name.resolved == NULL)
+		{
+		  sp_name->info.name.resolved = pt_append_string (parser, NULL, owner_name);
+		}
 	    }
 
 	  scode_ptr_result = parser_print_tree_with_quotes (parser, *scode_ptr);
 	}
 
-      output_ctx ("\n%s", scode_ptr_result);
+      if (scode_ptr_result)
+	{
+	  output_ctx ("\n%s", scode_ptr_result);
+	}
+
       parser_free_parser (parser);
     }
 
