@@ -11351,11 +11351,15 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
 	  /*
 	   * re-check as_attr_list for whole merge query
 	   */
-	  as_attr_list =
-	    pt_get_attr_list_of_derived_table (parser, derived_table_type, derived_table,
-					       parent_spec->info.spec.range_var);
+	  if (derived_table->info.query.is_subquery == PT_IS_SUBQUERY)
+	    {
+	      as_attr_list =
+		pt_get_attr_list_of_derived_table (parser, derived_table_type, derived_table,
+						   parent_spec->info.spec.range_var);
 
-	  col_cnt = pt_length_of_list (as_attr_list);
+	      col_cnt = pt_length_of_list (as_attr_list);
+	    }
+
 	  if (col_cnt != attr_cnt)
 	    {
 
