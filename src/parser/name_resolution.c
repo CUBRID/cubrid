@@ -1076,18 +1076,12 @@ pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec)
   if (PT_SPEC_IS_DERIVED (spec))
     {
       derived_table = spec_info->derived_table;
-
-      /*
-       * as_attr_list is would be incorrect for whole merged query level
-       * so, it needs to make a new as_attr_list
-       */
-      if (spec_info->as_attr_list != NULL)
+      if (spec_info->as_attr_list == NULL)
 	{
-	  parser_free_tree (parser, spec_info->as_attr_list);
+	  spec_info->as_attr_list =
+	    pt_get_attr_list_of_derived_table (parser, spec_info->derived_table_type, derived_table,
+					       spec_info->range_var);
 	}
-
-      spec_info->as_attr_list =
-	pt_get_attr_list_of_derived_table (parser, spec_info->derived_table_type, derived_table, spec_info->range_var);
 
       /* get types from derived table; */
       pt_set_attr_list_types (parser, spec_info->as_attr_list, spec_info->derived_table_type, derived_table, spec);
@@ -11354,9 +11348,21 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
       attr_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
       if (col_cnt != attr_cnt)
 	{
-	  PT_ERRORmf3 (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_CNT_NE_DERIVED_C,
-		       pt_short_print (parser, parent_spec), attr_cnt, col_cnt);
-	  return;
+	  /*
+	   * re-check as_attr_list for whole merge query
+	   */
+	  as_attr_list =
+	    pt_get_attr_list_of_derived_table (parser, derived_table_type, derived_table,
+					       parent_spec->info.spec.range_var);
+
+	  col_cnt = pt_length_of_list (as_attr_list);
+	  if (col_cnt != attr_cnt)
+	    {
+
+	      PT_ERRORmf3 (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_CNT_NE_DERIVED_C,
+			   pt_short_print (parser, parent_spec), attr_cnt, col_cnt);
+	      return;
+	    }
 	}
       else
 	{
