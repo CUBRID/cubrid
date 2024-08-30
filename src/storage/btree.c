@@ -8971,6 +8971,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	    }
 
 	  /* form the cpc structure for a non-leaf node page */
+	  cpc->fence_key_cnt += cpc2.fence_key_cnt;
 	  cpc->dis_key_cnt += cpc2.dis_key_cnt;
 	  cpc->tot_val_cnt += cpc2.tot_val_cnt;
 	  cpc->deduplicate_dis_key_cnt += cpc2.deduplicate_dis_key_cnt;
@@ -9000,6 +9001,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   else
     {				/* a leaf page */
       /* form the cpc structure for a leaf node page */
+      cpc->fence_key_cnt = 0;
       cpc->dis_key_cnt = 0;
       cpc->deduplicate_dis_key_cnt = key_cnt;
       //cpc->dis_key_cnt = key_cnt;
@@ -9012,6 +9014,14 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	    {
 	      goto exit_on_error;
 	    }
+
+	  if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+	    {
+	      cpc->fence_key_cnt++;
+	      cpc->deduplicate_dis_key_cnt--;
+	      continue;
+	    }
+
 	  cpc->sum_rec_len += rec.length;
 
 	  /* read the current record key */
@@ -9093,26 +9103,6 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   cpc->tot_space += DB_PAGESIZE;
   cpc->tot_used_space = (cpc->tot_space - cpc->tot_free_space);
 
-  if (cpc->dis_key_cnt > 0)
-    {
-      cpc->avg_val_per_dedup_key = (int) (cpc->tot_val_cnt / cpc->deduplicate_dis_key_cnt);
-      cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
-      cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
-
-      cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->deduplicate_dis_key_cnt);
-      //cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->dis_key_cnt);
-    }
-  if (cpc->leaf_pg_cnt > 0)
-    {
-      cpc->avg_pg_key_cnt = (int) (cpc->dis_key_cnt / cpc->leaf_pg_cnt);
-    }
-
-  cpc->avg_pg_free_sp = cpc->tot_free_space / cpc->tot_pg_cnt;
-  if (cpc->ovfl_oid_pg.tot_pg_cnt > 0)
-    {
-      cpc->ovfl_oid_pg.avg_pg_free_sp = cpc->ovfl_oid_pg.tot_free_space / cpc->ovfl_oid_pg.tot_pg_cnt;
-    }
-
   return ret;
 
 exit_on_error:
@@ -9185,6 +9175,27 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   BTREE_INIT_SCAN (&(stats_env.btree_scan));
   ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc, &stats_env);
   btree_scan_clear_key (&stats_env.btree_scan);
+
+  if (cpc->dis_key_cnt > 0)
+    {
+      assert (cpc->deduplicate_dis_key_cnt > 0);
+      cpc->avg_val_per_dedup_key = (int) (cpc->tot_val_cnt / cpc->deduplicate_dis_key_cnt);
+      cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
+      cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
+
+      cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->deduplicate_dis_key_cnt);
+      //cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->dis_key_cnt);
+    }
+  if (cpc->leaf_pg_cnt > 0)
+    {
+      cpc->avg_pg_key_cnt = (int) (cpc->dis_key_cnt / cpc->leaf_pg_cnt);
+    }
+
+  cpc->avg_pg_free_sp = cpc->tot_free_space / cpc->tot_pg_cnt;
+  if (cpc->ovfl_oid_pg.tot_pg_cnt > 0)
+    {
+      cpc->ovfl_oid_pg.avg_pg_free_sp = cpc->ovfl_oid_pg.tot_free_space / cpc->ovfl_oid_pg.tot_pg_cnt;
+    }
 
   pr_clear_value (&(stats_env.prev_key_val));
   if (ret != NO_ERROR)
@@ -9263,6 +9274,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
   fprintf (fp, "Total Value Count: %lld\n", cpc.tot_val_cnt);
   fprintf (fp, "Deduplicate Distinct Key Count: %d\n", cpc.deduplicate_dis_key_cnt);
+  fprintf (fp, "Fence Key Count: %d\n", cpc.fence_key_cnt);
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
   fprintf (fp, "Average Value Count Per Deduplicate Key: %d\n", cpc.avg_val_per_dedup_key);
 
@@ -22826,6 +22838,9 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
 
   //  {"Deduplicate_distinct_key", "int"},
   db_make_int (out_values[idx++], cpc.deduplicate_dis_key_cnt);
+
+  // {"Num_fence_key", "int"},
+  db_make_int (out_values[idx++], cpc.fence_key_cnt);
 
   // {"Avg_num_value_per_key", "int"}
   db_make_int (out_values[idx++], cpc.avg_val_per_key);
