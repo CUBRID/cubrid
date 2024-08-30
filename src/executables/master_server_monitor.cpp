@@ -135,10 +135,11 @@ server_monitor::remove_server_entry (const std::string &server_name)
   auto entry = m_server_entry_map.find (server_name);
   assert (entry != m_server_entry_map.end ());
 
-  m_server_entry_map.erase (entry);
   er_log_debug (ARG_FILE_LINE,
 		"server monitor - Server entry has been removed from Server monitor. : (Server name : %s, pid : %d)\n",
 		server_name.c_str(), entry->second.get_pid());
+
+  m_server_entry_map.erase (entry);
 }
 
 void
