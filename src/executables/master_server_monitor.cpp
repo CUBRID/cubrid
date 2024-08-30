@@ -44,10 +44,6 @@ server_monitor::server_monitor ()
   }
 
   start_monitoring_thread ();
-  // 1. 접두어 추가
-  // 2. 모든 항목에 pid 추가
-  // 3. job consume / produce에는 exec_path 까지 추가.
-
   er_log_debug (ARG_FILE_LINE, "server monitor - Monitoring thread has been created.\n");
 }
 
@@ -56,8 +52,6 @@ server_monitor::server_monitor ()
 server_monitor::~server_monitor ()
 {
   stop_monitoring_thread ();
-
-
   er_log_debug (ARG_FILE_LINE, "server monitor - Monitoring thread has been deleted.\n");
 }
 
@@ -242,7 +236,8 @@ server_monitor::check_server_revived (const std::string &server_name)
     }
   else
     {
-      er_log_debug (ARG_FILE_LINE, "Server revive success. (Server name : %s, pid : %d)\n", entry->first.c_str(),
+      er_log_debug (ARG_FILE_LINE, "server monitor - Server revive success. (Server name : %s, pid : %d)\n",
+		    entry->first.c_str(),
 		    entry->second.get_pid());
     }
   return;
@@ -275,7 +270,7 @@ server_monitor::produce_job_internal (job_type job_type, int pid, const std::str
   std::lock_guard<std::mutex> lock (m_server_monitor_mutex);
   m_job_queue.emplace (job_type, pid, exec_path, args, server_name);
   er_log_debug (ARG_FILE_LINE,
-		"Job has been produced into job queue of Server monitor. (Job type : %s, Server name : %s, pid : %d, exec_path : %s)\n",
+		"server monitor - Job has been produced into job queue of Server monitor. (Job type : %s, Server name : %s, pid : %d, exec_path : %s)\n",
 		m_job_queue.back().get_job_type_str().c_str(), server_name.c_str(), pid, exec_path.c_str());
 }
 
@@ -293,7 +288,7 @@ server_monitor::consume_job (job &consume_job)
   consume_job = std::move (m_job_queue.front ());
   m_job_queue.pop ();
   er_log_debug (ARG_FILE_LINE,
-		"Job has been consumed from job queue of Server monitor. (Job type : %s, Server name : %s, pid : %d, exec_path : %s)\n",
+		"server monitor - Job has been consumed from job queue of Server monitor. (Job type : %s, Server name : %s, pid : %d, exec_path : %s)\n",
 		consume_job.get_job_type_str().c_str(), consume_job.get_server_name().c_str(), consume_job.get_pid(),
 		consume_job.get_exec_path().c_str());
 }
