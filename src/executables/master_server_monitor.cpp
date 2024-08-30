@@ -31,7 +31,7 @@
 #include "system_parameter.h"
 
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
-
+bool auto_Restart_server = false;
 
 server_monitor::server_monitor ()
 {
@@ -57,7 +57,6 @@ server_monitor::~server_monitor ()
 {
   stop_monitoring_thread ();
 
-  assert (m_server_entry_map.size () == 0);
 
   er_log_debug (ARG_FILE_LINE, "server monitor - Monitoring thread has been deleted.\n");
 }
