@@ -72,6 +72,7 @@ class server_monitor
 	std::string get_exec_path () const;
 	std::string get_args () const;
 	std::string get_server_name () const;
+	std::string get_job_type_str () const;
 
       private:
 
