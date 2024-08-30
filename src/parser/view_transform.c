@@ -8478,29 +8478,29 @@ mq_update_node_order (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   PT_NODE *nth_node, *temp;
   int index;
 
-  if (tree == NULL || (!PT_IS_SORT_SPEC_NODE (tree) && !PT_IS_FUNCTION (tree)))
+  if (tree == NULL || (!PT_IS_SORT_SPEC_NODE (tree) && !pt_is_analytic_function (parser, tree)))
     {
       *continue_walk = PT_STOP_WALK;
     }
 
-  if (PT_IS_SORT_SPEC_NODE (tree))
+  if (PT_IS_SORT_SPEC_NODE (tree) && PT_IS_VALUE_NODE (tree->info.sort_spec.expr))
     {
-      index = (tree->info.sort_spec.expr)->info.value.data_value.i;
-      nth_node = pt_get_node_from_list (spec->info.spec.as_attr_list, index - 1);
-
-      mq_insert_symbol (parser, &spec->info.spec.referenced_attrs, nth_node);
-
-      index = pt_find_node_order (parser, spec->info.spec.referenced_attrs, nth_node);
-
       temp = parser_new_node (parser, PT_VALUE);
       if (temp == NULL)
 	{
-	  parser_free_tree (parser, temp);
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
 	}
       else
 	{
+	  index = (tree->info.sort_spec.expr)->info.value.data_value.i;
+	  nth_node = pt_get_node_from_list (spec->info.spec.as_attr_list, index - 1);
+
+	  mq_insert_symbol (parser, &spec->info.spec.referenced_attrs, nth_node);
+
+	  index = pt_find_node_order (parser, spec->info.spec.referenced_attrs, nth_node);
 	  temp->type_enum = PT_TYPE_INTEGER;
 	  temp->info.value.data_value.i = index;
+
 	  (void) pt_value_to_db (parser, temp);
 	  parser_free_tree (parser, tree->info.sort_spec.expr);
 
