@@ -393,7 +393,8 @@ static PT_NODE *mq_reset_references_to_query_string (PARSER_CONTEXT * parser, PT
 static void mq_auto_param_merge_clauses (PARSER_CONTEXT * parser, PT_NODE * stmt);
 
 static PT_NODE *pt_check_for_update_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-
+static PT_NODE *pt_check_odku_refs_pre (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk);
+static void pt_check_odku_refs_view (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int pt_check_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * query, bool root);
 
 static int pt_for_update_prepare_query_internal (PARSER_CONTEXT * parser, PT_NODE * query);
@@ -1652,6 +1653,66 @@ mq_substitute_spec_in_method_and_hints (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
+ * check if it refers view or inline view at "on duplicate key update" clause
+ */
+static PT_NODE *
+pt_check_odku_refs_pre (PARSER_CONTEXT * parser, PT_NODE * odku, void *arg, int *continue_walk)
+{
+  PT_NODE *sel_spec = (PT_NODE *) arg;
+  PT_NODE *spec;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (odku == NULL || odku->node_type != PT_NAME)
+    {
+      return odku;
+    }
+
+  for (spec = sel_spec; spec; spec = spec->next)
+    {
+      if (spec->info.spec.id == odku->info.name.spec_id)
+	{
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_REFERENCED_AT_ODKU);
+	}
+    }
+
+  return odku;
+}
+
+/*
+ * Checks if there is a view or inline view referenced in the odku clause.
+ * If there is a referenced the view, set a flag
+ * for the view to indicate that it is referenced in odku.
+ * This flag will be used when determining "pushable" in mq_is_pushable_subquery.
+ */
+static void
+pt_check_odku_refs_view (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *odku = statement->info.insert.odku_assignments;
+
+  if (odku)
+    {
+      PT_NODE *sel_spec, *values;
+
+      values = statement->info.insert.value_clauses->info.node_list.list;
+      while (values)
+	{
+	  if (values->node_type == PT_SELECT)
+	    {
+	      sel_spec = values->info.query.q.select.from;
+	      while (odku)
+		{
+		  (void) parser_walk_tree (parser, odku->info.expr.arg2, pt_check_odku_refs_pre, sel_spec, NULL, NULL);
+		  odku = odku->next;
+		}
+	    }
+
+	  values = values->next;
+	}
+    }
+}
+
+/*
  * mq_is_pushable_subquery () - check if a subquery is pushable
  *  returns: true if pushable, false otherwise
  *   parser(in): parser context
@@ -1750,6 +1811,15 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       assert (false);
       PT_INTERNAL_ERROR (parser, "unknown node");
       return HAS_ERROR;
+    }
+
+  /****************************/
+  /*** ODKU REFERENCE CHECK ***/
+  /****************************/
+  /* odku refers view or inline view */
+  if (PT_IS_SPEC_FLAG_SET (class_spec, PT_SPEC_FLAG_REFERENCED_AT_ODKU))
+    {
+      return NON_PUSHABLE;
     }
 
   /*****************************/
@@ -2492,7 +2562,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  goto exit_on_error;
 	}
 
-      /* check whether subquery is pushable */
       is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec, true, order_by, class_);
       if (is_mergeable == HAS_ERROR)
 	{
@@ -4870,6 +4939,12 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
 
   derived->info.query.q.select.use_merge = agg_sel->info.query.q.select.use_merge;
   agg_sel->info.query.q.select.use_merge = NULL;
+
+  derived->info.query.q.select.no_use_hash = agg_sel->info.query.q.select.no_use_hash;
+  agg_sel->info.query.q.select.no_use_hash = NULL;
+
+  derived->info.query.q.select.use_hash = agg_sel->info.query.q.select.use_hash;
+  agg_sel->info.query.q.select.use_hash = NULL;
 
   derived->info.query.q.select.from = agg_sel->info.query.q.select.from;
   agg_sel->info.query.q.select.from = NULL;
@@ -7387,6 +7462,9 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
       break;
 
     case PT_INSERT:
+      /* checks if there is a view or inline view referenced in the odku clause. */
+      pt_check_odku_refs_view (parser, statement);
+
       /* INSERT does not support rewrites so we must check that no rewrite is needed */
       spec = &statement->info.insert.spec;
       break;
@@ -13769,7 +13847,7 @@ mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * query_cache)
 static void
 mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_query)
 {
-  bool is_index_ss, is_index_ls;
+  bool is_index_ss, is_index_ls, is_use_hash, is_no_use_hash;
 
   if (dest_query->node_type == PT_SELECT)
     {
@@ -13809,6 +13887,14 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
       dest_query->info.query.q.select.use_merge =
 	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_merge),
 			    dest_query->info.query.q.select.use_merge);
+
+      dest_query->info.query.q.select.no_use_hash =
+	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.no_use_hash),
+			    dest_query->info.query.q.select.no_use_hash);
+
+      dest_query->info.query.q.select.use_hash =
+	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_hash),
+			    dest_query->info.query.q.select.use_hash);
     }
 
   /* merge USING INDEX clause of vclass spec */

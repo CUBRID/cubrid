@@ -41,6 +41,8 @@
 #include "system_parameter.h"
 
 #include <cassert>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {
@@ -84,6 +86,9 @@ namespace cubthread
     assert (false);
     return;
 #else // not SA_MODE = SERVER_MODE
+
+    assert (m_all_entries == nullptr);
+    assert (m_entry_dispatcher == nullptr);
 
     m_available_entries_count = m_max_threads;
 

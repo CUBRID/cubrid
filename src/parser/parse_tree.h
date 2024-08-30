@@ -1353,7 +1353,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_USE_NL  0x10ULL	/* force nl-join */
 #define  PT_HINT_USE_IDX  0x20ULL	/* force idx-join */
 #define  PT_HINT_USE_MERGE  0x40ULL	/* force m-join */
-#define  PT_HINT_USE_HASH  0x80ULL	/* not used */
+#define  PT_HINT_USE_HASH  0x80ULL	/* force hash-join */
 #define  PT_HINT_RECOMPILE  0x0100ULL	/* recompile */
 #define  PT_HINT_LK_TIMEOUT  0x0200ULL	/* lock_timeout */
 #define  PT_HINT_NO_LOGGING  0x0400ULL	/* no_logging */
@@ -1372,8 +1372,8 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_SORT_LIMIT  0x800000ULL
 #define  PT_HINT_NO_HASH_AGGREGATE  0x1000000ULL	/* no hash aggregate evaluation */
 #define  PT_HINT_SKIP_UPDATE_NULL  0x2000000ULL
-#define  PT_HINT_NO_INDEX_LS  0x4000000ULL	/* enable loose index scan */
-#define  PT_HINT_INDEX_LS  0x8000000ULL	/* disable loose index scan */
+#define  PT_HINT_NO_INDEX_LS  0x4000000ULL	/* disable loose index scan */
+#define  PT_HINT_INDEX_LS  0x8000000ULL	/* enable loose index scan */
 #define  PT_HINT_NO_SUPPLEMENTAL_LOG  0x10000000ULL	/* Used in DML (only for update delete currently) to avoid adding DML supplemental logs that may be duplicated by DDL */
 #define  PT_HINT_SELECT_RECORD_INFO  0x20000000ULL	/* SELECT record info from tuple header instead of data */
 #define  PT_HINT_SELECT_PAGE_INFO  0x40000000ULL	/* SELECT page header information from heap file instead of record data */
@@ -1385,6 +1385,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_SAMPLING_SCAN  0x1000000000ULL	/* SELECT sampling data instead of full data */
 #define  PT_HINT_LEADING  0x2000000000ULL	/* force specific table to join left-to-right */
 #define  PT_HINT_NO_SUBQUERY_CACHE 0x4000000000ULL	/* don't use the subquery result cache */
+#define  PT_HINT_NO_USE_HASH  0x8000000000ULL	/* disable hash-join */
 
 /* Codes for error messages */
 typedef enum
@@ -1716,7 +1717,8 @@ typedef enum
   PT_SPEC_FLAG_MVCC_COND_REEV = 0x400,	/* the spec is used in mvcc condition reevaluation */
   PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
   PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
-  PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000	/* spec for sampling scan */
+  PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
+  PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000	/* spec for odku assignment */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2267,6 +2269,8 @@ struct pt_delete_info
   PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
   PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
   PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
+  PT_NODE *no_use_hash_hint;	/* NO_USE_HASH hint's arguments (PT_NAME list) */
+  PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
   PT_HINT_ENUM hint;		/* hint flag */
@@ -2518,6 +2522,10 @@ struct pt_host_var_info
   PT_MISC_TYPE var_type;	/* PT_HOST_IN, PT_HOST_OUT, */
   int index;			/* for PT_HOST_VAR ordering */
   const char *label;
+
+  /* for processing subquery's result cache */
+  int saved;			/* for saving the main query's host_var indexes */
+  PT_NODE *next;		/* for linking to same host_var indexes */
 };
 
 /* Info for lists of PT_NODE */
@@ -2905,6 +2913,8 @@ struct pt_select_info
   PT_NODE *index_ss;		/* PT_NAME (list) */
   PT_NODE *index_ls;		/* PT_NAME (list) */
   PT_NODE *use_merge;		/* PT_NAME (list) */
+  PT_NODE *no_use_hash;		/* PT_NAME (list) */
+  PT_NODE *use_hash;		/* PT_NAME (list) */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_NODE *jdbc_life_time;	/* jdbc cache life time */
   struct qo_summary *qo_summary;
@@ -3080,6 +3090,8 @@ struct pt_update_info
   PT_NODE *use_nl_hint;		/* USE_NL hint's arguments (PT_NAME list) */
   PT_NODE *use_idx_hint;	/* USE_IDX hint's arguments (PT_NAME list) */
   PT_NODE *use_merge_hint;	/* USE_MERGE hint's arguments (PT_NAME list) */
+  PT_NODE *no_use_hash_hint;	/* NO_USE_HASH hint's arguments (PT_NAME list) */
+  PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
@@ -3815,6 +3827,7 @@ struct parser_node
     unsigned use_auto_commit:1;	/* use autocommit */
     unsigned done_reduce_equality_terms:1;	/* reduce_equality_terms() is already called */
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
+    unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
@@ -3913,7 +3926,6 @@ struct parser_context
   int auto_param_count;		/* number of auto parameterized variables */
 
   int dbval_cnt;		/* to be assigned to XASL */
-  int *sub_host_var_index;	/* subquery's host variable index */
   int line, column;		/* current input line and column */
 
   void *etc;			/* application context */

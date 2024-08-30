@@ -399,15 +399,17 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
  */
 int
 locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oidp,
-		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea)
+		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea,
+		   int request_pages, int nparallel_process, int nparallel_process_idx)
 {
 #if defined(CS_MODE)
   int req_error;
   char *ptr;
   int return_value = ER_FAILED;
-  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 4) + (OR_OID_SIZE * 2)) a_request;
+  int client_endian = (int) get_endian_type ();
+  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 7) + (OR_OID_SIZE * 2)) a_request;
   char *request;
-  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 4) + OR_OID_SIZE) a_reply;
+  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 5) + OR_OID_SIZE) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -420,6 +422,10 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   ptr = or_pack_int (ptr, *nobjects);
   ptr = or_pack_int (ptr, *nfetched);
   ptr = or_pack_oid (ptr, last_oidp);
+  ptr = or_pack_int (ptr, request_pages);
+  ptr = or_pack_int (ptr, nparallel_process);
+  ptr = or_pack_int (ptr, nparallel_process_idx);
+  ptr = or_pack_int (ptr, client_endian);
   *fetch_copyarea = NULL;
 
   req_error =
@@ -428,6 +434,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   if (req_error == NO_ERROR)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
+      ptr += OR_INT_SIZE;	//  or_unpack_int (ptr, &client_endian);
       ptr = or_unpack_lock (ptr, lock);
       ptr = or_unpack_int (ptr, nobjects);
       ptr = or_unpack_int (ptr, nfetched);
@@ -445,9 +452,28 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   THREAD_ENTRY *thread_p = enter_server ();
 
+  assert ((nparallel_process <= 1) || (nparallel_process_idx >= 0 && nparallel_process_idx < nparallel_process));
+
+  if (nparallel_process > 1)
+    {
+      thread_p->_unload_cnt_parallel_process = nparallel_process;
+      thread_p->_unload_parallel_process_idx = nparallel_process_idx;
+    }
+  else
+    {
+      thread_p->_unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+      thread_p->_unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
+    }
+
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
-			fetch_copyarea);
+			fetch_copyarea, request_pages);
+
+  if (nparallel_process > 1)
+    {
+      thread_p->_unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+      thread_p->_unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
+    }
 
   exit_server (*thread_p);
 
@@ -616,7 +642,7 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
 
   request_ptr = or_pack_int (request, num_objs);
   request_ptr = or_pack_int (request_ptr, desc_size);
@@ -690,7 +716,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  num_objs = locator_send_copy_area (copy_area, &content_ptr, NULL, &desc_ptr, &desc_size);
+  num_objs = locator_send_copy_area (copy_area, &content_ptr, NULL, &desc_ptr, &desc_size, true);
 
   request_ptr = or_pack_int (request, num_objs);
   request_ptr = or_pack_int (request_ptr, mobjs->multi_update_flags);
@@ -717,7 +743,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
       (void) or_unpack_int (reply, &error_code);
       if (error_code == NO_ERROR)
 	{
-	  locator_unpack_copy_area_descriptor (num_objs, copy_area, desc_ptr);
+	  locator_unpack_copy_area_descriptor (num_objs, copy_area, desc_ptr, -1);
 	}
     }
   if (desc_ptr)
@@ -11334,5 +11360,117 @@ error:
   return rc;
 #else /* CS_MODE */
   return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/*
+ * mmon_get_server_info - request to server to get server memory usage info
+ *
+ * return : cubrid error
+ *
+ *   server_info(in/out): save memory usage information of the server
+ */
+int
+mmon_get_server_info (MMON_SERVER_INFO & server_info)
+{
+#if defined(CS_MODE)
+  char *buffer, *ptr, *temp_str;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, dummy;
+  int error = NO_ERROR;
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_GET_SERVER_INFO, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
+    }
+
+  if (error == NO_ERROR)
+    {
+      // unpack server name
+      ptr = or_unpack_string_nocopy (buffer, &temp_str);
+      memcpy (server_info.server_name, temp_str, strlen (temp_str) + 1);
+
+      // unpack server total memory usage
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_mem_usage));
+
+      // unpack metainfo total memory usage
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_metainfo_mem_usage));
+
+      // unpack the number of stat
+      ptr = or_unpack_int (ptr, (int *) &(server_info.num_stat));
+
+      // unpack file name and its memory usage
+      server_info.stat_info.resize (server_info.num_stat);
+
+      // *INDENT-OFF*
+      // unpack memory usage entry info
+      for (auto &s_info : server_info.stat_info)
+        {
+          ptr = or_unpack_string_nocopy (ptr, &temp_str);
+          s_info.first = temp_str;
+          ptr = or_unpack_int64 (ptr, (int64_t *) &(s_info.second));
+        }
+      // *INDENT-ON*
+    }
+  free_and_init (buffer);
+
+  return error;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * mmon_disable_force - request to server to disable memory_monitor forcely
+ *
+ * return : cubrid error
+ */
+int
+mmon_disable_force ()
+{
+#if defined(CS_MODE)
+  char *buffer, *ptr;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, dummy;
+  int error = NO_ERROR;
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_DISABLE_FORCE, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
+    }
+
+  free_and_init (buffer);
+
+  return error;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
