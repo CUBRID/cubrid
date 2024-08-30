@@ -829,4 +829,5 @@ EXPORTS
     windows_socket_shutdown
     gethostbyname_uhost
     getnameinfo_uhost
-    is_valid_uhost_conf
+    validate_uhost_conf
+	

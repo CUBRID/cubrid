@@ -599,9 +599,8 @@ main (int argc, char *argv[])
       return EXIT_FAILURE;
     }
 
-  if (is_valid_uhost_conf () == false)
+  if (validate_uhost_conf () == false)
     {
-      print_message (stderr, MSGCAT_UTIL_GENERIC_INVALID_USER_HOSTNAME, HOSTS_FILE);
       return EXIT_FAILURE;
     }
 

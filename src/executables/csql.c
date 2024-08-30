@@ -2878,10 +2878,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_exit (EXIT_FAILURE);
     }
 
-  if (is_valid_uhost_conf () == false)
+  if (validate_uhost_conf () == false)
     {
-      fprintf (csql_Error_fp, msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_E_INVALID_UHOST_CONF),
-	       HOSTS_FILE);
       csql_exit (EXIT_FAILURE);
     }
 
