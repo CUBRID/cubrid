@@ -11205,7 +11205,19 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 		  result->column_number = node->column_number;
 		  result->flag.is_hidden_column = node->flag.is_hidden_column;
 		  result->buffer_pos = node->buffer_pos;
-		  result->alias_print = node->alias_print;
+
+		  /* it needs alias for CREATE ... AS SELECT ... */
+		  if (node->alias_print)
+		    {
+		      result->alias_print =
+			(const char *) parser_allocate_string_buffer (parser, strlen (node->alias_print),
+								      sizeof (char));
+		      if (result->alias_print == NULL)
+			{
+			  return NULL;
+			}
+		      strcpy ((char *) result->alias_print, node->alias_print);
+		    }
 #if 0
 		  result->info.name.original = node->info.name.original;
 #endif /* 0 */
