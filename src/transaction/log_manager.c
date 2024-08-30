@@ -9201,7 +9201,7 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 				  void **ptr)
 {
   int error = NO_ERROR;
-  const char *path;
+  char path[PATH_MAX];
   int fd = -1;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
 
@@ -9231,7 +9231,9 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
       LOG_PAGE *page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 
       assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
-      path = db_get_string (arg_values[0]);
+      assert (log_Path != NULL);
+
+      snprintf (path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path), db_get_string (arg_values[0]));
 
       fd = fileio_open (path, O_RDONLY, 0);
       if (fd == -1)
@@ -9578,7 +9580,8 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
       goto exit_on_error;
     }
 
-  snprintf (path, PATH_MAX, "%s/%s", log_Archive_path, db_get_string (arg_values[0]));
+  snprintf (path, PATH_MAX, "%s%s%s", log_Archive_path, FILEIO_PATH_SEPARATOR (log_Archive_path),
+	    db_get_string (arg_values[0]));
 
   page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 
