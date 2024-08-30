@@ -29,33 +29,119 @@
 
 #ident "$Id$"
 
+#include <assert.h>
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-  extern int char_islower (int c);
-  extern int char_isupper (int c);
-  extern int char_isalpha (int c);
-  extern int char_isdigit (int c);
-  extern int char_isalnum (int c);
-  extern int char_isspace (int c);
-  extern int char_iseol (int c);
-  extern int char_isxdigit (int c);
-#if defined (ENABLE_UNUSED_FUNCTION)
-  extern int char_isascii (int c);
+#define CHAR_PROP_NONE        (0x00)
+#define CHAR_PROP_UPPER       (0x01)	/* uppercase.  */
+#define CHAR_PROP_LOWER       (0x02)	/* lowercase.  */
+#define CHAR_PROP_DIGIT       (0x04)	/* Numeric.    */
+#define CHAR_PROP_SPACE       (0x08)	/* space, \t \n \r \f \v */
+#define CHAR_PROP_HEXNUM      (0x10)	/* 0~9, a~f, A~F  */
+#define CHAR_PROP_EOL         (0x20)	/* \r \n  */
+#define CHAR_PROP_ISO8859_UPPER (0x40)
+#define CHAR_PROP_ISO8859_LOWER (0x80)
+
+#define CHAR_PROP_ALPHA       (CHAR_PROP_UPPER | CHAR_PROP_LOWER)	/* Alphabetic.  */
+#define CHAR_PROP_ALPHA_NUM   (CHAR_PROP_ALPHA | CHAR_PROP_DIGIT)	/* Alpha-Numeric */
+
+  typedef unsigned char char_type_prop;
+  extern const char_type_prop *char_properties_ptr;
+  extern const unsigned char *char_lower_mapper_ptr;
+  extern const unsigned char *char_upper_mapper_ptr;
+  extern const unsigned char *iso8859_lower_mapper_ptr;
+  extern const unsigned char *iso8859_upper_mapper_ptr;
+
+#ifndef NDEBUG
+#define CHECK_OVER_CODE_VALUE(c)   assert((unsigned char)(c) < 256)
+#else
+#define CHECK_OVER_CODE_VALUE(c)
 #endif
 
-  extern int char_tolower (int c);
-  extern int char_toupper (int c);
+  inline int char_isspace (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_SPACE);
+  }
+  inline int char_isupper (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_UPPER);
+  }
+  inline int char_tolower (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return ((int) char_lower_mapper_ptr[(unsigned char) c]);
+  }
+  inline int char_islower (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_LOWER);
+  }
+  inline int char_isalpha (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_ALPHA);
+  }
+  inline int char_isdigit (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_DIGIT);
+  }
+  inline int char_isalnum (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_ALPHA_NUM);
+  }
+  inline int char_iseol (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_EOL);
+  }
+  inline int char_isxdigit (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_HEXNUM);
+  }
+  inline int char_toupper (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return ((int) char_upper_mapper_ptr[(unsigned char) c]);
+  }
 
-  extern int char_isupper_iso8859 (int c);
-  extern int char_islower_iso8859 (int c);
-  extern int char_tolower_iso8859 (int c);
-  extern int char_toupper_iso8859 (int c);
+  inline int char_tolower_iso8859 (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return ((int) iso8859_lower_mapper_ptr[(unsigned char) c]);
+  }
+  inline int char_toupper_iso8859 (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return ((int) iso8859_upper_mapper_ptr[(unsigned char) c]);
+  }
+  inline int char_islower_iso8859 (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[(unsigned char) c] & (CHAR_PROP_LOWER | CHAR_PROP_ISO8859_LOWER));
+  }
+  inline int char_isupper_iso8859 (int c)
+  {
+    CHECK_OVER_CODE_VALUE (c);
+    return (char_properties_ptr[(unsigned char) c] & (CHAR_PROP_UPPER | CHAR_PROP_ISO8859_UPPER));
+  }
+
+/* In some codes, only four items (' ', '\t', '\n', '\r') were checked.
+ * In order to maintain its original form, it was given a different name. */
+#define char_isspace2  char_isspace
+
+  extern char *trim (char *str);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif				/* _CHARTYPE_H_ */
+#endif /* _CHARTYPE_H_ */

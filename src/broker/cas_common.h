@@ -32,6 +32,7 @@
 #endif
 
 #include "porting.h"
+#include "chartype.h"
 #define makestring1(x) #x
 #define makestring(x) makestring1(x)
 

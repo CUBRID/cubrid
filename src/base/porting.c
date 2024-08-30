@@ -1476,6 +1476,11 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
 {
   int len = _vscprintf_p (format, argptr) + 1;
 
+  if (count == 0)
+    {
+      return (len - 1);
+    }
+
   if (len > (int) count)
     {
       char *cp = (char *) malloc (len);
@@ -1495,7 +1500,7 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
       buffer[count - 1] = 0;
 
       free (cp);
-      return (int) count;
+      return (int) len;
     }
 
   return _vsprintf_p (buffer, count, format, argptr);
@@ -2255,36 +2260,6 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
       *ptr = buff;
 #endif
     }
-}
-
-char *
-trim (char *str)
-{
-  char *p;
-  char *s;
-
-  if (str == NULL)
-    return (str);
-
-  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'); s++)
-    ;
-  if (*s == '\0')
-    {
-      *str = '\0';
-      return (str);
-    }
-
-  /* *s must be a non-white char */
-  for (p = s; *p != '\0'; p++)
-    ;
-  for (p--; *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'; p--)
-    ;
-  *++p = '\0';
-
-  if (s != str)
-    memmove (str, s, strlen (s) + 1);
-
-  return (str);
 }
 
 int
