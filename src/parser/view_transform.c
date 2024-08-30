@@ -8416,7 +8416,7 @@ mq_get_references_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 	  if (spec->info.spec.derived_table && spec->info.spec.as_attr_list)
 	    {
 	      index = pt_find_node_order (parser, spec->info.spec.as_attr_list, node);
-              subquery = spec->info.spec.derived_table;
+	      subquery = spec->info.spec.derived_table;
 	      nth_node = pt_get_node_from_list (subquery->info.query.q.select.list, index - 1);
 
 	      if (PT_IS_ANALYTIC_NODE (nth_node))
