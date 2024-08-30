@@ -27,7 +27,7 @@
 
 #include "master_server_monitor.hpp"
 
-#include "master_util.h"
+#include "error_manager.h"
 #include "system_parameter.h"
 
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
@@ -45,7 +45,7 @@ server_monitor::server_monitor ()
 
   start_monitoring_thread ();
 
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Server monitor has been created.\n");
+  er_log_debug (ARG_FILE_LINE, "Server monitor has been created.\n");
 }
 
 // In server_monitor destructor, it should guarentee that
@@ -56,7 +56,7 @@ server_monitor::~server_monitor ()
 
   assert (m_server_entry_map.size () == 0);
 
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Server monitor has been deleted.\n");
+  er_log_debug (ARG_FILE_LINE, "Server monitor has been deleted.\n");
 }
 
 void
@@ -118,16 +118,16 @@ server_monitor::register_server_entry (int pid, const std::string &exec_path, co
       entry->second.set_pid (pid);
       entry->second.set_need_revive (false);
       entry->second.set_registered_time (std::chrono::steady_clock::now ());
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Server entry has been updated in Server monitor. : Server name : %s, pid : %d\n",
-			   server_name.c_str(), pid);
+      er_log_debug (ARG_FILE_LINE, "Server entry has been updated in Server monitor. : Server name : %s, pid : %d\n",
+		    server_name.c_str(), pid);
     }
   else
     {
       m_server_entry_map.emplace (std::move (server_name), server_entry (pid, exec_path, args,
 				  std::chrono::steady_clock::now ()));
 
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-			   "Server entry has been registered into Server monitor. : Server name : %s, pid : %d\n", server_name.c_str(), pid);
+      er_log_debug (ARG_FILE_LINE,
+		    "Server entry has been registered into Server monitor. : Server name : %s, pid : %d\n", server_name.c_str(), pid);
     }
 }
 
@@ -138,8 +138,8 @@ server_monitor::remove_server_entry (const std::string &server_name)
   assert (entry != m_server_entry_map.end ());
 
   m_server_entry_map.erase (entry);
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Server entry has been removed from Server monitor. : Server name : %s\n",
-		       server_name.c_str());
+  er_log_debug (ARG_FILE_LINE, "Server entry has been removed from Server monitor. : Server name : %s\n",
+		server_name.c_str());
 }
 
 void
@@ -179,7 +179,7 @@ server_monitor::revive_server (const std::string &server_name)
 	  out_pid = try_revive_server (entry->second.get_exec_path(), entry->second.get_argv());
 	  if (out_pid == -1)
 	    {
-	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Failed to execute server. : Server name : %s\n", entry->first.c_str());
+	      er_log_debug (ARG_FILE_LINE, "Failed to execute server. : Server name : %s\n", entry->first.c_str());
 	      produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	    }
 	  else
@@ -192,8 +192,8 @@ server_monitor::revive_server (const std::string &server_name)
 	}
       else
 	{
-	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Process failure repeated within a short period of time. : Server name : %s\n",
-			       entry->first.c_str());
+	  er_log_debug (ARG_FILE_LINE, "Process failure repeated within a short period of time. : Server name : %s\n",
+			entry->first.c_str());
 	  m_server_entry_map.erase (entry);
 	  return;
 	}
@@ -212,12 +212,12 @@ server_monitor::check_server_revived (const std::string &server_name)
     {
       if (errno == ESRCH)
 	{
-	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Can't found revived server process. : Server name : %s\n", entry->first.c_str());
+	  er_log_debug (ARG_FILE_LINE, "Can't found revived server process. : Server name : %s\n", entry->first.c_str());
 	  produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	}
       else
 	{
-	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Server revive failed. : Server name : %s\n", entry->first.c_str());
+	  er_log_debug (ARG_FILE_LINE, "Server revive failed. : Server name : %s\n", entry->first.c_str());
 	  kill (entry->second.get_pid (), SIGKILL);
 	  m_server_entry_map.erase (entry);
 	}
@@ -233,8 +233,8 @@ server_monitor::check_server_revived (const std::string &server_name)
     }
   else
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Server revive success. : Server name : %s, pid : %d\n", entry->first.c_str(),
-			   entry->second.get_pid());
+      er_log_debug (ARG_FILE_LINE, "Server revive success. : Server name : %s, pid : %d\n", entry->first.c_str(),
+		    entry->second.get_pid());
     }
   return;
 }
@@ -265,9 +265,9 @@ server_monitor::produce_job_internal (job_type job_type, int pid, const std::str
 {
   std::lock_guard<std::mutex> lock (m_server_monitor_mutex);
   m_job_queue.emplace (job_type, pid, exec_path, args, server_name);
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-		       "Job has been produced into job queue of Server monitor. : Job type : %s, Server name : %s\n",
-		       m_job_queue.back().get_job_type_str().c_str(), server_name.c_str());
+  er_log_debug (ARG_FILE_LINE,
+		"Job has been produced into job queue of Server monitor. : Job type : %s, Server name : %s\n",
+		m_job_queue.back().get_job_type_str().c_str(), server_name.c_str());
 }
 
 void
@@ -283,9 +283,9 @@ server_monitor::consume_job (job &consume_job)
 {
   consume_job = std::move (m_job_queue.front ());
   m_job_queue.pop ();
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-		       "Job has been consumed from job queue of Server monitor. : Job type : %s, Server name : %s\n",
-		       consume_job.get_job_type_str().c_str(), consume_job.get_server_name().c_str());
+  er_log_debug (ARG_FILE_LINE,
+		"Job has been consumed from job queue of Server monitor. : Job type : %s, Server name : %s\n",
+		consume_job.get_job_type_str().c_str(), consume_job.get_server_name().c_str());
 }
 
 void
