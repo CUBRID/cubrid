@@ -1076,12 +1076,18 @@ pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec)
   if (PT_SPEC_IS_DERIVED (spec))
     {
       derived_table = spec_info->derived_table;
-      if (spec_info->as_attr_list == NULL)
+
+      /*
+       * as_attr_list is would be incorrect for whole merged query level
+       * so, it needs to make a new as_attr_list
+       */
+      if (spec_info->as_attr_list != NULL)
 	{
-	  spec_info->as_attr_list =
-	    pt_get_attr_list_of_derived_table (parser, spec_info->derived_table_type, derived_table,
-					       spec_info->range_var);
+	  parser_free_tree (parser, spec_info->as_attr_list);
 	}
+
+      spec_info->as_attr_list =
+	pt_get_attr_list_of_derived_table (parser, spec_info->derived_table_type, derived_table, spec_info->range_var);
 
       /* get types from derived table; */
       pt_set_attr_list_types (parser, spec_info->as_attr_list, spec_info->derived_table_type, derived_table, spec);

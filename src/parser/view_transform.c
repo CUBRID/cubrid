@@ -7619,7 +7619,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      if (node && node->node_type != PT_CREATE_ENTITY)
+      if (node)
 	{
 	  /* for the optimization of the query includes dblink
 	   * it is better to be written to a subquery */
