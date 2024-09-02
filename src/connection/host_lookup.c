@@ -120,7 +120,7 @@ static std::unordered_map <std::string, int> user_host_Map;
 static struct hostent *hostent_alloc (const char *ipaddr, const char *hostname);
 static int load_hosts_file (void);
 static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type);
-static void strcpy_ucase (char *dst, int len, const char *src);
+static void strcpy_ucase (char *dst, size_t len, const char *src);
 static bool is_valid_ipv4 (const char *ip_addr);
 static int is_valid_label (const char *label);
 static int is_valid_fqdn (const char *fqdn);
@@ -228,7 +228,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
     }
 
-  strcpy_ucase (hostname_u, HOSTNAME_LEN, hostname);
+  strcpy_ucase (hostname_u, (size_t) HOSTNAME_LEN, hostname);
 
   /* Look up in the user_host_Map */
   /* The case which is looking up the IP addr and checking the hostname or IP addr in the hash map */
@@ -498,11 +498,11 @@ freeaddrinfo_uhost (struct addrinfo *res)
 }
 
 static void
-strcpy_ucase (char *dst, int len, const char *src)
+strcpy_ucase (char *dst, size_t len, const char *src)
 {
   int i;
 
-  if (dst == NULL || src == NULL)
+  if (dst == NULL || src == NULL || len == 0)
     {
       return;
     }
@@ -717,7 +717,7 @@ handle_uhost_conf (int action_type)
 	  if (token != NULL)
 	    {
 	      trim (token);
-	      strcpy_ucase (hostname, HOSTNAME_LEN, token);
+	      strcpy_ucase (hostname, (size_t) HOSTNAME_LEN, token);
 	    }
 	  else
 	    {
