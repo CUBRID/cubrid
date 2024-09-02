@@ -27,9 +27,6 @@
 
 #include "master_server_monitor.hpp"
 
-#include "error_manager.h"
-#include "system_parameter.h"
-
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 bool auto_Restart_server = false;
 
@@ -44,7 +41,7 @@ server_monitor::server_monitor ()
   }
 
   start_monitoring_thread ();
-  _er_log_debug (ARG_FILE_LINE, "[Server Monitor] : Monitoring thread has been created.\n");
+  _er_log_debug (ARG_FILE_LINE, "[Server Monitor] Monitoring started.");
 }
 
 // In server_monitor destructor, it should guarentee that
@@ -52,7 +49,7 @@ server_monitor::server_monitor ()
 server_monitor::~server_monitor ()
 {
   stop_monitoring_thread ();
-  _er_log_debug (ARG_FILE_LINE, "[Server Monitor] : Monitoring thread has been deleted.\n");
+  _er_log_debug (ARG_FILE_LINE, "[Server Monitor] Monitoring thread finished.");
 }
 
 void
@@ -115,7 +112,7 @@ server_monitor::register_server_entry (int pid, const std::string &exec_path, co
       entry->second.set_need_revive (false);
       entry->second.set_registered_time (std::chrono::steady_clock::now ());
       _er_log_debug (ARG_FILE_LINE,
-		     "[Server Monitor] %s : Server entry has been updated in Server monitor. (pid : %d)\n",
+		     "[Server Monitor] [%s] Server entry has been updated. (pid : %d)",
 		     server_name.c_str(), pid);
     }
   else
@@ -124,7 +121,7 @@ server_monitor::register_server_entry (int pid, const std::string &exec_path, co
 				  std::chrono::steady_clock::now ()));
 
       _er_log_debug (ARG_FILE_LINE,
-		     "[Server Monitor] %s : Server entry has been registered into Server monitor. : (pid : %d)\n",
+		     "[Server Monitor] [%s] Server entry has been registered newly. : (pid : %d)",
 		     server_name.c_str(), pid);
     }
 }
@@ -136,7 +133,7 @@ server_monitor::remove_server_entry (const std::string &server_name)
   assert (entry != m_server_entry_map.end ());
 
   _er_log_debug (ARG_FILE_LINE,
-		 "[Server Monitor] %s : Server entry has been removed from Server monitor. : (pid : %d)\n",
+		 "[Server Monitor] [%s] Server entry has been unregistered. : (pid : %d)",
 		 server_name.c_str(), entry->second.get_pid());
 
   m_server_entry_map.erase (entry);
@@ -180,7 +177,7 @@ server_monitor::revive_server (const std::string &server_name)
 	  if (out_pid == -1)
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
-			     "[Server Monitor] %s : Failed to execute server. Server monitor will try to execute server again. (pid : %d)\n",
+			     "[Server Monitor] [%s] Failed to fork server process. Server monitor will try it again. (pid : %d)",
 			     entry->first.c_str(), entry->second.get_pid());
 	      produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	    }
@@ -188,7 +185,7 @@ server_monitor::revive_server (const std::string &server_name)
 	    {
 	      entry->second.set_pid (out_pid);
 	      _er_log_debug (ARG_FILE_LINE,
-			     "[Server Monitor] %s : Server monitor is waiting for server to be registered. (pid : %d)\n",
+			     "[Server Monitor] [%s] Server monitor is waiting for server to be registered. (pid : %d)",
 			     entry->first.c_str(), entry->second.get_pid());
 	      produce_job_internal (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
 				    entry->first);
@@ -198,8 +195,8 @@ server_monitor::revive_server (const std::string &server_name)
       else
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[Server Monitor] %s : Process failure repeated within a short period of time. Server process will be terminated. (pid : %d)\n",
-			 entry->first.c_str(), entry->second.get_pid());
+			 "[Server Monitor] [%s] Process failure repeated within a short period of time (%d sec). Server process will be terminated. (pid : %d)",
+			 entry->first.c_str(), SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS, entry->second.get_pid());
 	  m_server_entry_map.erase (entry);
 	  return;
 	}
@@ -219,14 +216,14 @@ server_monitor::check_server_revived (const std::string &server_name)
       if (errno == ESRCH)
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[Server Monitor] %s : Can't found revived server process. Server monitor will try to revive server again. (pid : %d)\n",
+			 "[Server Monitor] [%s] Revived server process can not be found. Server monitor will try to revive server again. (pid : %d)",
 			 entry->first.c_str(), entry->second.get_pid());
 	  produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	}
       else
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[Server Monitor] %s : Server revive failed. Server process will be terminated. (pid : %d)\n",
+			 "[Server Monitor] [%s] Server revive failed due to unknown error from kill() function. Server process will be terminated. (pid : %d)",
 			 entry->first.c_str(), entry->second.get_pid());
 	  kill (entry->second.get_pid (), SIGKILL);
 	  m_server_entry_map.erase (entry);
@@ -245,7 +242,7 @@ server_monitor::check_server_revived (const std::string &server_name)
     }
   else
     {
-      _er_log_debug (ARG_FILE_LINE, "[Server Monitor] %s : Server revive success. (pid : %d)\n",
+      _er_log_debug (ARG_FILE_LINE, "[Server Monitor] [%s] Server revive success. (pid : %d)",
 		     entry->first.c_str(),
 		     entry->second.get_pid());
     }
@@ -360,25 +357,6 @@ std::string
 server_monitor::job::get_server_name () const
 {
   return m_server_name;
-}
-
-std::string
-server_monitor::job::get_job_type_str () const
-{
-  switch (m_job_type)
-    {
-    case job_type::REGISTER_SERVER:
-      return "REGISTER_SERVER";
-    case job_type::UNREGISTER_SERVER:
-      return "UNREGISTER_SERVER";
-    case job_type::REVIVE_SERVER:
-      return "REVIVE_SERVER";
-    case job_type::CONFIRM_REVIVE_SERVER:
-      return "CONFIRM_REVIVE_SERVER";
-    case job_type::JOB_MAX:
-    default:
-      return "JOB_MAX";
-    }
 }
 
 server_monitor::server_entry::

@@ -32,7 +32,6 @@
 #include <mutex>
 #include <chrono>
 #include <condition_variable>
-#include "connection_defs.h"
 #include "connection_globals.h"
 
 class server_monitor
@@ -72,7 +71,6 @@ class server_monitor
 	std::string get_exec_path () const;
 	std::string get_args () const;
 	std::string get_server_name () const;
-	std::string get_job_type_str () const;
 
       private:
 
