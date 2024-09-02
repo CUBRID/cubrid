@@ -49,7 +49,7 @@ server_monitor::server_monitor ()
 server_monitor::~server_monitor ()
 {
   stop_monitoring_thread ();
-  _er_log_debug (ARG_FILE_LINE, "[Server Monitor] Monitoring thread finished.");
+  _er_log_debug (ARG_FILE_LINE, "[Server Monitor] Monitoring finished.");
 }
 
 void
