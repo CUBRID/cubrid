@@ -455,7 +455,7 @@ public enum CoercionScheme {
         arithOpCommonType[Type.IDX_OBJECT][Type.IDX_NULL] = Type.OBJECT;
         arithOpCommonType[Type.IDX_OBJECT][Type.IDX_OBJECT] = Type.OBJECT;
 
-        arithOpCommonType[Type.IDX_STRING][Type.IDX_NULL] = Type.STRING_ANY;
+        arithOpCommonType[Type.IDX_STRING][Type.IDX_NULL] = Type.DOUBLE;
         arithOpCommonType[Type.IDX_STRING][Type.IDX_OBJECT] = Type.OBJECT;
         arithOpCommonType[Type.IDX_STRING][Type.IDX_STRING] = Type.DOUBLE;
 
@@ -504,6 +504,7 @@ public enum CoercionScheme {
         arithOpCommonType[Type.IDX_DOUBLE][Type.IDX_FLOAT] = Type.DOUBLE;
         arithOpCommonType[Type.IDX_DOUBLE][Type.IDX_DOUBLE] = Type.DOUBLE;
 
+        addCommonTypeExt[Type.IDX_STRING][Type.IDX_NULL] = Type.STRING_ANY;
         addCommonTypeExt[Type.IDX_STRING][Type.IDX_STRING] = Type.STRING_ANY;
         addCommonTypeExt[Type.IDX_DATE][Type.IDX_OBJECT] = Type.OBJECT;
         addCommonTypeExt[Type.IDX_TIME][Type.IDX_OBJECT] = Type.OBJECT;
