@@ -9231,7 +9231,6 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
       LOG_PAGE *page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 
       assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
-      assert (log_Path != NULL);
 
       snprintf (path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path), db_get_string (arg_values[0]));
 
@@ -9570,7 +9569,6 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
   *ptr = NULL;
 
   assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
-  assert (log_Archive_path != NULL);
 
   ctx = (ARCHIVE_LOG_HEADER_SCAN_CTX *) db_private_alloc (thread_p, sizeof (ARCHIVE_LOG_HEADER_SCAN_CTX));
   if (ctx == NULL)
