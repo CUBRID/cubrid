@@ -681,7 +681,9 @@ handle_uhost_conf (int action_type)
   file = fopen (hosts_conf_dir, "r");
   if (!file)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_FILE_NOT_FOUND), host_conf_file_full_path);
+      fprintf (stderr,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_FILE_NOT_FOUND),
+	       host_conf_file_full_path);
       return true;
     }
 
@@ -726,11 +728,16 @@ handle_uhost_conf (int action_type)
 		{
 		  if (!is_valid_ipv4 (ipaddr))
 		    {
-		      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), ipaddr, line_number, HOSTS_FILE);
+		      fprintf (stderr,
+			       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+					       MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), ipaddr, line_number, HOSTS_FILE);
 		    }
 		  else
 		    {
-		      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), "No Hostname", line_number, HOSTS_FILE);
+		      fprintf (stderr,
+			       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+					       MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), "No Hostname", line_number,
+			       HOSTS_FILE);
 		    }
 		  has_invalid_entries = true;
 		  goto end;
@@ -743,7 +750,9 @@ handle_uhost_conf (int action_type)
 	    {
 	      if (action_type == UHOST_CONF_VALID_CHECK)
 		{
-		  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), ipaddr, line_number, HOSTS_FILE);
+		  fprintf (stderr,
+			   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+					   MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), ipaddr, line_number, HOSTS_FILE);
 		  has_invalid_entries = true;
 		  goto end;
 		}
@@ -755,7 +764,9 @@ handle_uhost_conf (int action_type)
 	    {
 	      if (action_type == UHOST_CONF_VALID_CHECK)
 		{
-		  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), hostname, line_number, HOSTS_FILE);
+		  fprintf (stderr,
+			   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+					   MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), hostname, line_number, HOSTS_FILE);
 		  has_invalid_entries = true;
 		  goto end;
 		}
@@ -790,7 +801,9 @@ handle_uhost_conf (int action_type)
   // Check if the host info is empty
   if (action_type == UHOST_CONF_VALID_CHECK && is_empty_hostinfo == true)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_EMPTY_HOSTS_CONF), HOSTS_FILE);
+      fprintf (stderr,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_EMPTY_HOSTS_CONF),
+	       HOSTS_FILE);
       has_invalid_entries = true;
     }
 
