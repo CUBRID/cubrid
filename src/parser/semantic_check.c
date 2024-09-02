@@ -8669,9 +8669,10 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 			      pt_short_print (parser, crt_attr));
 		  return;
 		}
-
-	      select = pt_semantic_check (parser, select);
 	    }
+
+	  /* INSERT ... SELECT needs to do a semantic check to handle the subquery cache. */
+	  select = pt_semantic_check (parser, select);
 
 	  if (pt_has_parameters (parser, select))
 	    {
