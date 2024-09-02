@@ -10283,6 +10283,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
 	  spec->s_id.partition_stats->agl = NULL;
 	}
+      else
+	{
+	  spec->s_id.partition_stats = NULL;
+	}
     }
 
   /* close current scan and open a new one on the next partition */
@@ -10440,6 +10444,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
     {
       return S_ERROR;
     }
+
   return S_SUCCESS;
 }
 
