@@ -2617,6 +2617,18 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  class_spec->info.spec.derived_table =
 	    mq_substitute_select_in_statement (parser, class_spec->info.spec.derived_table, query_spec, tmp_class);
 
+	  /* as_attr_list for derived queries also needs to be changed. */
+	  if (class_spec->info.spec.derived_table)
+	    {
+	      PT_NODE *subquery = class_spec->info.spec.derived_table;
+
+	      if (class_spec->info.spec.as_attr_list)
+		{
+		  parser_free_tree (parser, class_spec->info.spec.as_attr_list);
+		}
+	      class_spec->info.spec.as_attr_list = parser_copy_tree_list (parser, subquery->info.query.q.select.list);
+	    }
+
 	  if (tmp_class)
 	    {
 	      parser_free_tree (parser, tmp_class);
