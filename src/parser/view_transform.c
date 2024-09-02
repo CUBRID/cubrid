@@ -4608,11 +4608,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
   else
     {
-      /* 
-       * The assignment below defers processing of the CREATE ... AS SELECT statement
-       * to a semantic checking routine.
-       */
-      //spec->info.spec.as_attr_list = parser_copy_tree_list (parser, new_query->info.query.q.select.list);
+      spec->info.spec.as_attr_list = parser_copy_tree_list (parser, new_query->info.query.q.select.list);
     }
   spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
   spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FROM_VCLASS);
