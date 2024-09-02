@@ -11346,28 +11346,11 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
 
       /* select_list attributes must match derived columns in number */
       attr_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
-      if (col_cnt > attr_cnt)
+      if (col_cnt != attr_cnt)
 	{
-#if 0
-	  /*
-	   * re-check as_attr_list for whole merge query
-	   */
-	  if (derived_table->info.query.is_subquery == PT_IS_SUBQUERY)
-	    {
-	      as_attr_list =
-		pt_get_attr_list_of_derived_table (parser, derived_table_type, derived_table,
-						   parent_spec->info.spec.range_var);
-
-	      col_cnt = pt_length_of_list (as_attr_list);
-	    }
-
-	  if (col_cnt != attr_cnt)
-#endif
-	    {
-	      PT_ERRORmf3 (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_CNT_NE_DERIVED_C,
-			   pt_short_print (parser, parent_spec), attr_cnt, col_cnt);
-	      return;
-	    }
+	  PT_ERRORmf3 (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_CNT_NE_DERIVED_C,
+		       pt_short_print (parser, parent_spec), attr_cnt, col_cnt);
+	  return;
 	}
       else
 	{
