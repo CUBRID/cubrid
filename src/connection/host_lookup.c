@@ -660,7 +660,6 @@ handle_uhost_conf (int action_type)
 {
   FILE *file = NULL;
   char line_buf[LINE_BUF_SIZE + 1];
-  char src_line[LINE_BUF_SIZE + 1];
   char *hosts_conf_dir;
   char host_conf_file_full_path[PATH_MAX];
   char ipaddr[IPADDR_LEN];
@@ -692,7 +691,6 @@ handle_uhost_conf (int action_type)
       char *hash_pos;
 
       line_number++;
-      strcpy (src_line, line_buf);
 
       hash_pos = strchr (line_buf, '#');
       if (hash_pos != NULL)
