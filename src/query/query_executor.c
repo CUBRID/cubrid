@@ -9454,17 +9454,6 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
   /* reset pruning info */
   if (curr_spec->type == TARGET_CLASS && curr_spec->parts != NULL)
     {
-      if (thread_is_on_trace (thread_p))
-	{
-	  if (curr_spec->curent != NULL)
-	    {
-	      memcpy (&curr_spec->curent->scan_stats, &curr_spec->s_id.scan_stats, sizeof (SCAN_STATS));
-
-	      /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
-	      curr_spec->curent->scan_stats.agl = NULL;
-	    }
-	}
-
       curr_spec->curent = NULL;
 
       /* init btid */
@@ -10268,14 +10257,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
     }
   else
     {
-      if (thread_is_on_trace (thread_p))
-	{
-	  memcpy (&spec->curent->scan_stats, &spec->s_id.scan_stats, sizeof (SCAN_STATS));
-
-	  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
-	  spec->curent->scan_stats.agl = NULL;
-	}
-
       if (spec->curent->next == NULL)
 	{
 	  /* no more partitions */
@@ -10284,6 +10265,23 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
       else
 	{
 	  spec->curent = spec->curent->next;
+	}
+    }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      if (spec->curent != NULL)
+	{
+	  spec->s_id.partition_stats = &spec->curent->scan_stats;
+
+	  spec->s_id.partition_stats->covered_index = spec->s_id.scan_stats.covered_index;
+	  spec->s_id.partition_stats->multi_range_opt = spec->s_id.scan_stats.multi_range_opt;
+	  spec->s_id.partition_stats->index_skip_scan = spec->s_id.scan_stats.index_skip_scan;
+	  spec->s_id.partition_stats->loose_index_scan = spec->s_id.scan_stats.loose_index_scan;
+	  spec->s_id.partition_stats->noscan = spec->s_id.scan_stats.noscan;
+
+	  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
+	  spec->s_id.partition_stats->agl = NULL;
 	}
     }
 

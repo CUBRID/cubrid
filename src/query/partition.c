@@ -2805,6 +2805,7 @@ partition_prune_index_scan (PRUNING_CONTEXT * pinfo)
 				       &pruned);
 	}
     }
+
   if (status == MATCH_NOT_FOUND)
     {
       if (pinfo->error_code != NO_ERROR)
@@ -2941,9 +2942,11 @@ partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node 
 
   if (thread_is_on_trace (thread_p))
     {
-      for (spec->curent = spec->parts; spec->curent != NULL; spec->curent = spec->curent->next)
+      PARTITION_SPEC_TYPE *curr_part;
+
+      for (curr_part = spec->parts; curr_part != NULL; curr_part = curr_part->next)
 	{
-	  memset (&spec->curent->scan_stats, 0, sizeof (SCAN_STATS));
+	  memset (&curr_part->scan_stats, 0, sizeof (SCAN_STATS));
 	}
     }
 
