@@ -178,7 +178,7 @@ server_monitor::revive_server (const std::string &server_name)
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
 			     "[Server Monitor] [%s] Failed to fork server process. Server monitor try to revive server again.",
-			     entry->first.c_str(), entry->second.get_pid());
+			     entry->first.c_str());
 	      produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	    }
 	  else
@@ -195,7 +195,7 @@ server_monitor::revive_server (const std::string &server_name)
       else
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[Server Monitor] [%s] Server process failures occurred again within a short period of time (%d sec). It will no longer be revived automatically. (pid : %d)",
+			 "[Server Monitor] [%s] Server process failures occurred again within a short period of time(%d sec). It will no longer be revived automatically. (pid : %d)",
 			 entry->first.c_str(), SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS, entry->second.get_pid());
 	  m_server_entry_map.erase (entry);
 	  return;
@@ -223,7 +223,7 @@ server_monitor::check_server_revived (const std::string &server_name)
       else
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[Server Monitor] [%s] Failed to revive server due to unknown error from kill() function. Server process will not be revived. (pid : %d)",
+			 "[Server Monitor] [%s] Failed to revive server due to unknown error from kill() function. It will no longer be revived automatically. (pid : %d)",
 			 entry->first.c_str(), entry->second.get_pid());
 	  kill (entry->second.get_pid (), SIGKILL);
 	  m_server_entry_map.erase (entry);
