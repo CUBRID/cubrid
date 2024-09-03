@@ -17772,6 +17772,7 @@ pt_is_const_expr_node (PT_NODE * node)
 		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
 	case PT_ISNULL:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
+	case PT_STRCAT:
 	case PT_CONCAT:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && (node->info.expr.arg2 ? pt_is_const_expr_node (node->info.expr.arg2) : true)) ? true : false;
