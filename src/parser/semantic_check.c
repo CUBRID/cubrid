@@ -8262,6 +8262,25 @@ pt_check_create_user (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 }
 
+static PT_NODE *
+pt_check_query_cache_in_create_entity (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *has_cache_hint = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_SELECT)
+    {
+      if (node->info.query.hint & PT_HINT_QUERY_CACHE)
+	{
+	  *has_cache_hint = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
+}
+
 /*
  * pt_check_create_entity () - semantic check a create class/vclass
  *   return:  none
@@ -8672,7 +8691,18 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 
 	  /* INSERT ... SELECT needs to do a semantic check to handle the subquery cache. */
-	  select = pt_semantic_check (parser, select);
+	  if (select)
+	    {
+	      bool has_cache_hint = false;
+
+	      (void *) parser_walk_tree (parser, select, pt_check_query_cache_in_create_entity, &has_cache_hint, NULL,
+					 NULL);
+
+	      if (has_cache_hint)
+		{
+		  select = pt_semantic_check (parser, select);
+		}
+	    }
 
 	  if (pt_has_parameters (parser, select))
 	    {
