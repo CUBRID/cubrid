@@ -31,7 +31,6 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.Expr;
-import com.cubrid.plcsql.compiler.ast.ExprId;
 import com.cubrid.plcsql.compiler.type.Type;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -45,7 +44,7 @@ public class StaticSql {
     public final String rewritten;
     public final LinkedHashMap<Expr, Type> hostExprs; // currently, Types are always null.
     public final List<Misc.Pair<String, Type>> selectList;
-    public final List<ExprId> intoVars; // can be null
+    public final List<Expr> intoTargetList; // can be null
 
     StaticSql(
             ParserRuleContext ctx,
@@ -53,14 +52,14 @@ public class StaticSql {
             String rewritten,
             LinkedHashMap<Expr, Type> hostExprs,
             List<Misc.Pair<String, Type>> selectList,
-            List<ExprId> intoVars) {
+            List<Expr> intoTargetList) {
 
         this.ctx = ctx;
         this.kind = kind;
         this.rewritten = rewritten;
         this.hostExprs = hostExprs;
         this.selectList = selectList;
-        this.intoVars = intoVars;
+        this.intoTargetList = intoTargetList;
     }
 
     public List<Type> getColumnTypeList() {

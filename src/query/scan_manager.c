@@ -51,6 +51,8 @@
 #include "xasl.h"
 #include "query_hash_scan.h"
 #include "statistics.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -676,6 +678,9 @@ scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_
   filter_info_p->num_vstr_ptr = num_vstr_ptr;
   filter_info_p->vstr_ids = vstr_ids;
   filter_info_p->func_idx_col_id = -1;
+
+  filter_info_p->matched_attid_idx_4_keyflt = NULL;
+  filter_info_p->matched_attid_idx_4_readval = NULL;
 }
 
 /*
@@ -3743,6 +3748,20 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  return S_ERROR;
 	}
+
+#if !defined(NDEBUG) && defined(DEBUG_HASH_LIST_SCAN_DUMP_HASH_TABLE)
+      if (llsidp->hlsid.hash_list_scan_type != HASH_METH_HASH_FILE)
+	{
+	  if (llsidp->list_id->tuple_cnt <= 100)
+	    {
+	      mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
+			    (void *) &(llsidp->list_id->type_list), (void *) &(llsidp->hlsid.hash_list_scan_type));
+	      printf ("temp file : tuple count = %lld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		      llsidp->list_id->page_cnt * 16);
+	    }
+	}
+#endif
+
       scan_end_scan (thread_p, scan_id);
 
       if (on_trace)
@@ -4888,6 +4907,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  db_private_free_and_init (thread_p, isidp->multi_range_opt.sort_col_dom);
 	}
       memset ((void *) (&(isidp->multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
+      btree_range_scan_free_matched_idx (&isidp->bt_scan);
       break;
 
     case S_LIST_SCAN:
@@ -4896,12 +4916,17 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM
 	  || llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	{
-#if 0
-	  (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
-			       (void *) &llsidp->hlsid.hash_list_scan_type);
-	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
-		  llsidp->list_id->page_cnt * 16);
+#if !defined(NDEBUG) && defined(DEBUG_HASH_LIST_SCAN_DUMP_HASH_TABLE)
+	  if (llsidp->list_id->tuple_cnt <= 100)
+	    {
+	      (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
+				   (void *) &(llsidp->list_id->type_list),
+				   (void *) &(llsidp->hlsid.hash_list_scan_type));
+	      printf ("temp file : tuple count = %lld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		      llsidp->list_id->page_cnt * 16);
+	    }
 #endif
+
 	  mht_clear_hls (llsidp->hlsid.memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
 	  mht_destroy_hls (llsidp->hlsid.memory.hash_table);
 	}
@@ -7716,8 +7741,8 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
       return ER_FAILED;
     }
 
-  error = btree_attrinfo_read_dbvalues (thread_p, key, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
-					iscan_id->rest_attrs.attr_cache, -1);
+  error = btree_attrinfo_read_dbvalues (thread_p, key, NULL, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
+					iscan_id->rest_attrs.attr_cache, -1, NULL);
   if (error != NO_ERROR)
     {
       return error;
@@ -8232,6 +8257,13 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      return S_ERROR;
 	    }
 	}
+
+      if (llsidp->tplrecp)
+	{
+	  llsidp->tplrecp->size = tplrec.size;
+	  llsidp->tplrecp->tpl = tplrec.tpl;
+	}
+
       return S_SUCCESS;
     }
 
@@ -8239,7 +8271,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
- * scan_next_hash_list_scan () - The scan is moved to the next hash list scan item.
+ * scan_hash_probe_next () - The scan is moved to the next hash list scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
  *

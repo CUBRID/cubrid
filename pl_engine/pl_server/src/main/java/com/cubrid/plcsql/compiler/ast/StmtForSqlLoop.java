@@ -37,7 +37,7 @@ public abstract class StmtForSqlLoop extends Stmt {
 
     public final boolean dynamic;
     public final String label;
-    public final DeclForRecord record;
+    public final DeclId record;
     public final Expr sql;
     public final List<? extends Expr> usedExprList;
     public final NodeList<Stmt> stmts;
@@ -46,7 +46,7 @@ public abstract class StmtForSqlLoop extends Stmt {
             ParserRuleContext ctx,
             boolean dynamic,
             String label,
-            DeclForRecord record,
+            DeclId record,
             Expr sql,
             List<? extends Expr> usedExprList,
             NodeList<Stmt> stmts) {

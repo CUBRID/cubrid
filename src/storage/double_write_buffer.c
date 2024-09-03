@@ -38,6 +38,8 @@
 #include "boot_sr.h"
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 #define DWB_SLOTS_HASH_SIZE		    1000
@@ -3933,11 +3935,10 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
 
     void execute (cubthread::entry &thread_ref) override
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-        {
-	  // wait for boot to finish
-	  return;
-        }
+      if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
+      {
+        return;
+      }
 
       /* performance tracking */
       PERF_UTIME_TRACKER_TIME (NULL, &m_perf_track, PSTAT_DWB_FLUSH_BLOCK_COND_WAIT);
@@ -3963,11 +3964,10 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
 void
 dwb_file_sync_helper_execute (cubthread::entry &thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED ())
-    {
-      // wait for boot to finish
-      return;
-    }
+  if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
+      {
+        return;
+      }
 
   /* flush pages as long as necessary */
   if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)

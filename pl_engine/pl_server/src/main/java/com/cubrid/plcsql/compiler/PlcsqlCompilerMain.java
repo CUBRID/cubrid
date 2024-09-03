@@ -34,18 +34,13 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
-import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
-import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
+import com.cubrid.plcsql.compiler.error.SemanticError;
+import com.cubrid.plcsql.compiler.error.SyntaxError;
 import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
@@ -177,57 +172,9 @@ public class PlcsqlCompilerMain {
         }
 
         // ------------------------------------------
-        // collect Static SQL in the parse tree
-
-        StaticSqlCollector ssc = new StaticSqlCollector();
-        ParseTreeWalker.DEFAULT.walk(ssc, tree);
-
-        if (verbose) {
-            t0 = logElapsedTime(logStore, "collecting Static SQL statements", t0);
-        }
-
-        // ------------------------------------------
-        // call server API for each SQL to get its semantic information
-
-        List<String> sqlTexts = new ArrayList(ssc.staticSqlTexts.values());
-        List<SqlSemantics> sqlSemantics =
-                ServerAPI.getSqlSemantics(sqlTexts); // server interaction may take a long time
-
-        int seqNo = -1;
-        Iterator<ParserRuleContext> iterCtx = ssc.staticSqlTexts.keySet().iterator();
-        Map<ParserRuleContext, SqlSemantics> staticSqls = new HashMap<>();
-
-        if (sqlSemantics != null) {
-            for (SqlSemantics ss : sqlSemantics) {
-
-                assert ss.seqNo >= 0;
-
-                ParserRuleContext ctx = null;
-                while (true) {
-                    ctx = iterCtx.next();
-                    assert ctx != null;
-                    seqNo++;
-                    if (seqNo == ss.seqNo) {
-                        break;
-                    }
-                }
-
-                if (ss.errCode == 0) {
-                    staticSqls.put(ctx, ss);
-                } else {
-                    throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s410
-                }
-            }
-        }
-
-        if (verbose) {
-            t0 = logElapsedTime(logStore, "semantics check of Static SQL statements by server", t0);
-        }
-
-        // ------------------------------------------
         // converting parse tree to AST
 
-        ParseTreeConverter converter = new ParseTreeConverter(staticSqls);
+        ParseTreeConverter converter = new ParseTreeConverter();
         Unit unit = (Unit) converter.visit(tree);
 
         if (verbose) {

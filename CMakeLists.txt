@@ -17,7 +17,7 @@
 #
 message(STATUS "======== CMakeLists.txt")
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.21)
 
 function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
   get_cmake_property(vars VARIABLES)
@@ -115,8 +115,6 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/.git") # Regular Git project
     else() # Git Worktree
         set_git_dir_from_worktree(GIT_DIR HEAD_FILE)
     endif()
-else()
-    message(FATAL_ERROR "Not a git repository")
 endif()
 
 if(VERSION_MATCHES_LENGTH GREATER 3)
@@ -413,6 +411,7 @@ set(CM_COMMON_DIR            ${CMAKE_SOURCE_DIR}/src/cm_common)
 set(COMMUNICATION_DIR        ${CMAKE_SOURCE_DIR}/src/communication)
 set(COMPAT_DIR               ${CMAKE_SOURCE_DIR}/src/compat)
 set(CONNECTION_DIR           ${CMAKE_SOURCE_DIR}/src/connection)
+set(DEBUGGING_DIR            ${CMAKE_SOURCE_DIR}/src/debugging)
 set(EXECUTABLES_DIR          ${CMAKE_SOURCE_DIR}/src/executables)
 set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
 set(SP_DIR                   ${CMAKE_SOURCE_DIR}/src/sp)
@@ -443,6 +442,7 @@ include_directories(
   src/communication
   src/compat
   src/connection
+  src/debugging
   src/executables
   src/heaplayers
   src/sp

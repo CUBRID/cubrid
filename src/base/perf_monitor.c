@@ -83,7 +83,7 @@
 
 #if defined (SERVER_MODE)
 #include "connection_error.h"
-#endif /* SERVER_MODE */
+#endif
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -97,6 +97,8 @@ static int rv;
 #if !defined (SERVER_MODE)
 #include "network_interface_cl.h"
 #endif /* !defined (SERVER_MODE) */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
@@ -562,6 +564,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_LFCQ_SHR_NUM, "Num_lfcq_shared_lists"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_DEALLOC_CNT, "Num_data_page_avoid_dealloc"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
+
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_ASYNC, "Log_redo_async"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_FUNC_EXEC, "Log_redo_func_exec"),
 
   /* Array type statistics */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,
@@ -1046,8 +1051,24 @@ UINT64
 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
 {
   UINT64 *stats;
+  int tran_index;
 
-  stats = perfmon_server_get_stats (thread_p);
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0);
+
+  if (tran_index >= pstat_Global.n_trans)
+    {
+      return 0;
+    }
+
+  /* This routine is called from the query execute scan routine in TRACE ON state.
+   * Therefore, there is no need to call perfmon_get_peek_stats,
+   * which retrieves overall statistical information,
+   * because the server's overall statistical information is not needed,
+   * and only I/O fetch and time information are needed.
+   */
+  stats = pstat_Global.tran_stats[tran_index];
+
   if (stats != NULL)
     {
       int offset = pstat_Metadata[statistic_id].start_offset;
@@ -1908,6 +1929,7 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
   switch (thread_p->type)
     {
     case TT_WORKER:
+    case TT_RECOVERY:
       return PERF_MODULE_USER;
     case TT_VACUUM_WORKER:
     case TT_VACUUM_MASTER:
@@ -3157,7 +3179,6 @@ perfmon_initialize (int num_trans)
     }
   memset (pstat_Global.is_watching, 0, memsize);
 
-  pstat_Global.n_watchers = 0;
   pstat_Global.initialized = true;
   return NO_ERROR;
 
@@ -3195,6 +3216,12 @@ perfmon_finalize (void)
     {
       free_and_init (pstat_Global.global_stats);
     }
+
+#if defined (SERVER_MODE)
+  // reset in case of 'always watching' initialization
+  pstat_Global.n_watchers = 0;
+#endif
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #if !defined (HAVE_ATOMIC_BUILTINS)
   pthread_mutex_destroy (&pstat_Global.watch_lock);

@@ -75,6 +75,8 @@
 #include "tde.h"
 
 #include <set>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -2825,7 +2827,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 		{
 		  pr_type->data_readval (&buf, &def_dbvalue, attrepr->domain, disk_length, copy, NULL, 0);
 
-		  db_fprint_value (stdout, &def_dbvalue);
+		  db_fprint_value (fp, &def_dbvalue);
 		  (void) pr_clear_value (&def_dbvalue);
 		}
 	      else
@@ -8028,6 +8030,20 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      /* stop */
 		      break;
 		    }
+
+		  if (thread_p->_unload_cnt_parallel_process > 1)
+		    {
+		      assert (thread_p->_unload_parallel_process_idx >= 0
+			      && thread_p->_unload_parallel_process_idx < thread_p->_unload_cnt_parallel_process);
+		      if ((oid.pageid % thread_p->_unload_cnt_parallel_process) !=
+			  thread_p->_unload_parallel_process_idx)
+			{
+			  scan = S_END;
+			  oid.slotid = -1;
+			  break;
+			}
+		    }
+
 		  if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
 		    {
 		      /* skip the header */
@@ -18758,6 +18774,7 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
       if (OID_ISNULL (prev_vpid))
 	{
 	  /* no more pages to scan */
+	  pgbuf_ordered_unfix (thread_p, &pg_watcher);
 	  return S_END;
 	}
       /* get next page */
@@ -18772,7 +18789,6 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
     }
   if (pg_watcher.pgptr == NULL)
     {
-      pgbuf_ordered_unfix (thread_p, &pg_watcher);
       return S_ERROR;
     }
 
@@ -25076,16 +25092,26 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	  return S_ERROR;
 	}
 
-      const bool need_check_visibility = scan_cache->mvcc_snapshot != NULL
-	&& scan_cache->mvcc_snapshot->snapshot_fnc != NULL && class_oid != NULL
-	&& !mvcc_is_mvcc_disabled_class (class_oid)
-	&& scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) !=
-	SNAPSHOT_SATISFIED;
-
-      if (!need_check_visibility)
+      if (class_oid != NULL)
 	{
-	  *recdes = *peeked_recdes;
-	  return scan;
+	  if (!mvcc_is_mvcc_disabled_class (class_oid))
+	    {
+	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+		{
+		  if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
+		      SNAPSHOT_SATISFIED)
+		    {
+		      *recdes = *peeked_recdes;
+		      return scan;
+		    }
+		}
+	    }
+	  else
+	    {
+	      /* mvcc_disabled_class */
+	      *recdes = *peeked_recdes;
+	      return scan;
+	    }
 	}
       /* fall through.. */
     }

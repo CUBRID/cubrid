@@ -43,7 +43,7 @@
 #include "authenticate.h"
 #include "schema_manager.h"
 #include "trigger_description.hpp"
-#include "load_object.h"
+#include "unload_object_file.h"
 #include "object_primitive.h"
 #include "parser.h"
 #include "printer.hpp"
@@ -1960,13 +1960,16 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   PARSER_CONTEXT *parser;
   PT_NODE **query_ptr;
   const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH];
+  owner_name[0] = '\0';
   char *class_name = NULL;
   const char *null_spec;
   bool has_using_index;
   bool change_vclass_spec;
   int i;
-  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  char output_owner[DB_MAX_USER_LENGTH + 4];
+  output_owner[0] = '\0';
+  char *query_ptr_result;
 
   /*
    * pass 1, emit NULL spec lists for vclasses that have attribute
@@ -2028,6 +2031,8 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 		  continue;
 		}
 
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+
 	      query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	      if (query_ptr != NULL)
 		{
@@ -2074,22 +2079,43 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
       for (s = specs, i = 1; s != NULL; s = db_query_spec_next (s), i++)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	  if (change_vclass_spec)
-	    {			/* change the existing spec lists */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
 
-	      output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
+	  parser = parser_create_parser ();
+	  if (parser == NULL)
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
+	      continue;
+	    }
+
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+
+	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
+	  if (query_ptr != NULL)
+	    {
+	      query_ptr_result = parser_print_tree_with_quotes (parser, *query_ptr);
+	      if (change_vclass_spec)
+		{		/* change the existing spec lists */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), i, query_ptr_result);
+		}
+	      else
+		{		/* emit the usual statements */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), query_ptr_result);
+		}
 	    }
 	  else
-	    {			/* emit the usual statements */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
-
-	      output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
 	    }
+
+	  parser_free_parser (parser);
 	}
     }
 
@@ -2117,6 +2143,7 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
   bool change_vclass_spec;
   int i;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  char *query_ptr_result;
 
   /*
    * pass 1, emit NULL spec lists for vclasses that have attribute
@@ -2153,6 +2180,9 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	    {
 	      continue;
 	    }
+
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+
 	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	  if (query_ptr != NULL)
 	    {
@@ -2188,22 +2218,44 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
       for (s = specs, i = 1; s; s = db_query_spec_next (s), i++)
 	{
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-	  if (change_vclass_spec)
-	    {			/* change the existing spec lists */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
 
-	      output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), i, db_query_spec_string (s));
+	  parser = parser_create_parser ();
+	  if (parser == NULL)
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
+	      continue;
+	    }
+
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+
+	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
+	  if (query_ptr != NULL)
+	    {
+	      query_ptr_result = parser_print_tree_with_quotes (parser, *query_ptr);
+
+	      if (change_vclass_spec)
+		{		/* change the existing spec lists */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s CHANGE QUERY %d %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), i, query_ptr_result);
+		}
+	      else
+		{		/* emit the usual statements */
+		  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+				    sizeof (output_owner));
+
+		  output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
+			      PRINT_IDENTIFIER (class_name), query_ptr_result);
+		}
 	    }
 	  else
-	    {			/* emit the usual statements */
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
-
-	      output_ctx ("ALTER VCLASS %s%s%s%s ADD QUERY %s ;\n", output_owner,
-			  PRINT_IDENTIFIER (class_name), db_query_spec_string (s));
+	    {
+	      output_ctx ("/* ERROR : ALTER VCLASS %s%s%s ADD QUERY ... */\n", PRINT_IDENTIFIER (name));
 	    }
+
+	  parser_free_parser (parser);
 	}
     }
 

@@ -57,6 +57,8 @@
 #ifndef NDEBUG
 #include "db_value_printer.hpp"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args
@@ -146,13 +148,9 @@ struct btree_scan_partition_info
 {
   BTREE_SCAN bt_scan;		/* Holds information regarding the scan of the current partition. */
 
-  OID oid;			/* Oid of current partition. */
-
   BTREE_NODE_HEADER *header;	/* Header info for current partition */
 
   int key_cnt;			/* Number of keys in current page in the current partition. */
-
-  PAGE_PTR page;		/* current page in the current partition. */
 
   PRUNING_CONTEXT pcontext;	/* Pruning context for current partition. */
 
@@ -3922,12 +3920,12 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   DB_VALUE_COMPARE_RESULT compare_ret;
   OR_CLASSREP *classrepr = NULL;
   int classrepr_cacheindex = -1, part_count = -1, pos = -1;
-  bool clear_pcontext = false, has_partitions = false;
+  bool clear_pcontext = false;
   PRUNING_CONTEXT pcontext;
   BTID pk_btid;
   OID pk_clsoid;
   HFID pk_dummy_hfid;
-  BTREE_SCAN_PART partitions[MAX_PARTITIONS];
+  BTREE_SCAN_PART *partitions = NULL;
   bool has_nulls = false;
 
   bool has_deduplicate_key_col = false;
@@ -4015,6 +4013,13 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 
       assert (part_count <= MAX_PARTITIONS);
 
+      partitions = (BTREE_SCAN_PART *) malloc (part_count * sizeof (BTREE_SCAN_PART));
+      if (partitions == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (ret);
+	  goto end;
+	}
+
       /* Init context of each partition using the root context. */
       for (i = 0; i < part_count; i++)
 	{
@@ -4026,8 +4031,6 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  partitions[i].header = NULL;
 	  partitions[i].key_cnt = -1;
 	}
-
-      has_partitions = true;
     }
 
   while (true)
@@ -4125,7 +4128,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       /* We got the value from the foreign key, now search through the primary key index. */
       found = false;
 
-      if (has_partitions)
+      if (partitions)
 	{
 	  COPY_OID (&pk_clsoid, sort_args->fk_refcls_oid);
 	  BTID_COPY (&pk_btid, sort_args->fk_refcls_pk_btid);
@@ -4270,7 +4273,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	    }
 	}
 
-      if (has_partitions)
+      if (partitions)
 	{
 	  /* Update references. */
 	  partitions[pos].key_cnt = pk_node_key_cnt;
@@ -4287,12 +4290,14 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 
 end:
 
-  if (has_partitions)
+  if (partitions)
     {
       for (i = 0; i < part_count; i++)
 	{
 	  pgbuf_unfix_and_init_after_check (thread_p, partitions[i].bt_scan.C_page);
 	}
+
+      free (partitions);
     }
 
   pgbuf_unfix_and_init_after_check (thread_p, old_page);

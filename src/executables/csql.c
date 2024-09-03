@@ -1049,7 +1049,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
-	      au_disable ();
+	      int dummy;
+	      AU_DISABLE (dummy);
 	    }
 	  csql_Database_connected = true;
 
@@ -1842,6 +1843,7 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
       return;
     }
 
+  bool print_header = true;
   do
     {
       errors = csql_execute_query ("CALL get_line (:pl_output_str, :pl_output_status);");
@@ -1858,6 +1860,12 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
 	      DB_VALUE *str_val = pt_find_value_of_label ("pl_output_str");
 	      if (str_val)
 		{
+		  if (print_header)
+		    {
+		      print_header = false;
+		      fprintf (csql_Output_fp, "<DBMS_OUTPUT>\n");
+		      fprintf (csql_Output_fp, "====\n");
+		    }
 		  const char *str = db_get_string (str_val);
 		  fprintf (csql_Output_fp, "%s\n", str);
 		}
@@ -1873,6 +1881,12 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
 	}
     }
   while (status == 0);
+
+  if (!print_header)
+    {
+      // print_header is false if there was at least one server-output line.
+      fprintf (csql_Output_fp, "\n");
+    }
 }
 
 /*
@@ -2450,8 +2464,15 @@ csql_set_sys_param (const char *arg_str)
     }
   else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level %d", &level) == 1)
     {
-      qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
-      snprintf (ans, len - 1, "level %d", level);
+      if (CHECK_INVALID_OPTIMIZATION_LEVEL (level))
+	{
+	  snprintf (ans, len - 1, "error: wrong value %d", level);
+	}
+      else
+	{
+	  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+	  strncpy (ans, arg_str, len - 1);
+	}
     }
   else
     {
@@ -2831,6 +2852,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   char *env;
   int client_type;
   int avail_size;
+  int save;
   char *p = NULL;
   unsigned char ip_addr[16] = { 0 };
 
@@ -2992,7 +3014,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_disable ();
+      AU_DISABLE (save);
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */
@@ -3587,7 +3609,8 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_disable ();
+      int dummy;
+      AU_DISABLE (dummy);
     }
   csql_Database_connected = true;
 
