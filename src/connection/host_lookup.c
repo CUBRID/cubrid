@@ -683,7 +683,7 @@ handle_uhost_conf (int action_type)
       fprintf (stderr,
 	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_FILE_NOT_FOUND),
 	       host_conf_file_full_path);
-      return true;
+      return false;
     }
 
   while (fgets (line_buf, sizeof (line_buf), file))
@@ -811,7 +811,12 @@ end:
       fclose (file);
     }
 
-  if (has_invalid_entries)
+  if (action_type == UHOST_CONF_VALID_CHECK && has_invalid_entries)
+    {
+      return false;
+    }
+
+  if (action_type == UHOST_CONF_LOAD && (cache_idx == 0))
     {
       return false;
     }
