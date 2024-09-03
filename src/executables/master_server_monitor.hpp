@@ -32,7 +32,6 @@
 #include <mutex>
 #include <chrono>
 #include <condition_variable>
-#include "connection_defs.h"
 #include "connection_globals.h"
 
 class server_monitor
