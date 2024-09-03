@@ -56,6 +56,7 @@
 #include "master_util.h"
 #include "master_request.h"
 #include "master_heartbeat.h"
+#include "master_server_monitor.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -530,6 +531,14 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
 		  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
 			    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_STATUS),
 			    server_name, timeout);
+#if !defined(WINDOWS)
+		  if (auto_Restart_server)
+		    {
+		      /* *INDENT-OFF* */
+		      master_Server_monitor->produce_job (server_monitor::job_type::UNREGISTER_SERVER, -1, "", "", server_name);
+		      /* *INDENT-ON* */
+		    }
+#endif
 		  css_process_start_shutdown (temp, timeout * 60, buffer);
 		}
 	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
@@ -709,6 +718,14 @@ css_process_shutdown (char *time_buffer)
   memset (buffer, 0, sizeof (buffer));
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
 	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_GOING_DOWN), timeout);
+#if !defined(WINDOWS)
+  if (auto_Restart_server)
+    {
+      /* INDENT-OFF */
+      master_Server_monitor.reset ();
+      /* INDENT-ON */
+    }
+#endif
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
