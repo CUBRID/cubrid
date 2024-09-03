@@ -284,7 +284,6 @@ Available command:\n\
     acl         <status|reload> [gateway-name]\n
 46 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
 47 Invalid format for owner_name.class_name ('%1$s').\n
-48 There is an invalid IP or Hostname in the %1$s file.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
