@@ -2879,6 +2879,12 @@ mq_substitute_subquery_list_in_statement (PARSER_CONTEXT * parser, PT_NODE * sta
 
   while (query_spec)
     {
+      if (PT_IS_FOR_PL_COMPILE (parser) && sm_is_system_vclass (class_->info.name.original))
+	{
+	  query_spec = query_spec->next;
+	  continue;
+	}
+
       result = mq_substitute_subquery_in_statement (parser, statement, query_spec, class_, order_by, what_for);
       if (result)
 	{
