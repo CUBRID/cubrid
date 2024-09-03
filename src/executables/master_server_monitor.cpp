@@ -121,7 +121,7 @@ server_monitor::register_server_entry (int pid, const std::string &exec_path, co
 				  std::chrono::steady_clock::now ()));
 
       _er_log_debug (ARG_FILE_LINE,
-		     "[Server Monitor] [%s] Server entry has been registered newly. : (pid : %d)",
+		     "[Server Monitor] [%s] Server entry has been registered newly. (pid : %d)",
 		     server_name.c_str(), pid);
     }
 }
@@ -133,7 +133,7 @@ server_monitor::remove_server_entry (const std::string &server_name)
   assert (entry != m_server_entry_map.end ());
 
   _er_log_debug (ARG_FILE_LINE,
-		 "[Server Monitor] [%s] Server entry has been unregistered. : (pid : %d)",
+		 "[Server Monitor] [%s] Server entry has been unregistered. (pid : %d)",
 		 server_name.c_str(), entry->second.get_pid());
 
   m_server_entry_map.erase (entry);
@@ -223,7 +223,7 @@ server_monitor::check_server_revived (const std::string &server_name)
       else
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "[Server Monitor] [%s] Server revive failed due to unknown error from kill() function. Server process will be terminated. (pid : %d)",
+			 "[Server Monitor] [%s] Server revive failed due to unknown error from kill() function. Server process will be terminated forcibly. (pid : %d)",
 			 entry->first.c_str(), entry->second.get_pid());
 	  kill (entry->second.get_pid (), SIGKILL);
 	  m_server_entry_map.erase (entry);
