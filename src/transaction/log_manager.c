@@ -1194,6 +1194,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       r_args->db_creation = log_Gl.hdr.db_creation;
       LSA_COPY (&r_args->restart_repl_lsa, &log_Gl.hdr.smallest_lsa_at_last_chkpt);
+      LSA_COPY (&r_args->restart_committed_lsa, &log_Gl.hdr.append_lsa);
     }
 
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &log_Gl.hdr.chkpt_lsa);
