@@ -2529,22 +2529,32 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
 
   LSA_COPY (&fwd_log_lsa, &log_rec_header->forw_lsa);
 
-  /* TODO - Do we need to handle NULL fwd_log_lsa? */
   if (!LSA_ISNULL (&fwd_log_lsa))
     {
-      assert (fwd_log_lsa.pageid >= log_lsa->pageid);
-
-      if (fwd_log_lsa.pageid != log_lsa->pageid
-	  && (fwd_log_lsa.offset != 0 || fwd_log_lsa.pageid > log_lsa->pageid + 1))
+      if (LSA_GE (log_lsa, &fwd_log_lsa) || LSA_GE (&fwd_log_lsa, &log_Gl.hdr.eof_lsa))
 	{
-	  // The current log record spreads into several log pages.
-	  // Check whether the last page of the record exists.
-	  if (logpb_fetch_page (thread_p, &fwd_log_lsa, LOG_CS_FORCE_USE, log_fwd_page_p) != NO_ERROR)
+	  // check fwd_log_lsa value if it is corrupted or not
+	  is_log_page_broken = true;
+	}
+      else
+	{
+	  if (fwd_log_lsa.pageid != log_lsa->pageid
+	      && (fwd_log_lsa.offset != 0 || fwd_log_lsa.pageid > log_lsa->pageid + 1))
 	    {
-	      /* The forward log page does not exists. */
-	      is_log_page_broken = true;
+	      // The current log record spreads into several log pages.
+	      // Check whether the last page of the record exists.
+	      if (logpb_fetch_page (thread_p, &fwd_log_lsa, LOG_CS_FORCE_USE, log_fwd_page_p) != NO_ERROR)
+		{
+		  /* The forward log page does not exists. */
+		  is_log_page_broken = true;
+		}
 	    }
 	}
+    }
+  else
+    {
+      // fwd_log_lsa is null
+      is_log_page_broken = true;
     }
 
   return is_log_page_broken;
@@ -2791,7 +2801,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  LSA_COPY (end_redo_lsa, &lsa);
 		  LSA_COPY (&prev_lsa, end_redo_lsa);
 		  prev_prev_lsa = prev_lsa;
-		  er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: broken record at LSA=%lld|%d ",
+		  er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: broken record at LSA=%lld|%d ",
 				log_lsa.pageid, log_lsa.offset);
 		  break;
 		}
