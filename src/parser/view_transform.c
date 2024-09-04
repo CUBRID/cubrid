@@ -8413,15 +8413,20 @@ mq_get_references_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
       if (node->info.name.meta_class != PT_METHOD && node->info.name.meta_class != PT_HINT_NAME
 	  && node->info.name.meta_class != PT_INDEX_NAME)
 	{
-	  if (spec->info.spec.derived_table && spec->info.spec.as_attr_list)
+	  if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY && spec->info.spec.derived_table
+	      && spec->info.spec.as_attr_list)
 	    {
-	      index = pt_find_node_order (parser, spec->info.spec.as_attr_list, node);
-	      subquery = spec->info.spec.derived_table;
-	      nth_node = pt_get_node_from_list (subquery->info.query.q.select.list, index - 1);
 
-	      if (PT_IS_ANALYTIC_NODE (nth_node))
+	      index = pt_find_node_order (parser, spec->info.spec.as_attr_list, node);
+	      if (index != -1)
 		{
-		  parser_walk_tree (parser, nth_node, mq_update_node_order, spec, pt_continue_walk, NULL);
+		  subquery = spec->info.spec.derived_table;
+		  nth_node = pt_get_node_from_list (subquery->info.query.q.select.list, index - 1);
+
+		  if (PT_IS_ANALYTIC_NODE (nth_node))
+		    {
+		      parser_walk_tree (parser, nth_node, mq_update_node_order, spec, pt_continue_walk, NULL);
+		    }
 		}
 	    }
 
@@ -8485,6 +8490,9 @@ mq_update_node_order (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 
   if (PT_IS_SORT_SPEC_NODE (tree) && PT_IS_VALUE_NODE (tree->info.sort_spec.expr))
     {
+      nth_node = tree->info.sort_spec.expr;
+      index = nth_node->info.value.data_value.i;
+
       temp = parser_new_node (parser, PT_VALUE);
       if (temp == NULL)
 	{
@@ -8492,7 +8500,6 @@ mq_update_node_order (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	}
       else
 	{
-	  index = (tree->info.sort_spec.expr)->info.value.data_value.i;
 	  nth_node = pt_get_node_from_list (spec->info.spec.as_attr_list, index - 1);
 
 	  mq_insert_symbol (parser, &spec->info.spec.referenced_attrs, nth_node);
@@ -8524,16 +8531,18 @@ pt_find_node_order (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * node
 {
   PT_NODE *col;
   int index;
+  const char *col_name;
 
   for (col = node_list, index = 1; col; col = col->next, index++)
     {
-      if (pt_name_equal (parser, node, col))
+      col_name = (col->alias_print) ? col->alias_print : col->info.name.original;
+      if (pt_user_specified_name_compare (col_name, node->info.name.original) == 0)
 	{
-	  break;
+	  return index;
 	}
     }
 
-  return index;
+  return -1;
 }
 
 /*
@@ -9118,8 +9127,8 @@ mq_substitute_path_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
  *   spec_id(in):
  */
 static PT_NODE *
-mq_path_name_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * lambda_name, PT_NODE * lambda_expr,
-		     UINTPTR spec_id)
+mq_path_name_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * lambda_name,
+		     PT_NODE * lambda_expr, UINTPTR spec_id)
 {
   PATH_LAMBDA_INFO info;
 
@@ -9227,8 +9236,8 @@ mq_reset_spec_distr_subpath_post (PARSER_CONTEXT * parser, PT_NODE * spec, void 
  * of the old_spec must be distributed amoung the new_spec spec nodes.
  */
 static PT_NODE *
-mq_path_spec_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * root_spec, PT_NODE ** prev_ptr,
-		     PT_NODE * old_spec, PT_NODE * new_spec)
+mq_path_spec_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * root_spec,
+		     PT_NODE ** prev_ptr, PT_NODE * old_spec, PT_NODE * new_spec)
 {
   PT_NODE *root_flat;
   PT_NODE *old_flat;
@@ -9674,8 +9683,8 @@ mq_invert_insert_subquery (PARSER_CONTEXT * parser, PT_NODE ** attr, PT_NODE * s
  *   attr_list_ptr(out):
  */
 PT_NODE *
-mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquery, int *idx, PT_NODE ** spec_ptr,
-		      PT_NODE ** attr_list_ptr)
+mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquery, int *idx,
+		      PT_NODE ** spec_ptr, PT_NODE ** attr_list_ptr)
 {
   PT_NODE *range, *spec, *as_attr_list, *col, *tmp;
 
@@ -9771,9 +9780,9 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquer
  *             - the recursive result of this function on both arguments.
  */
 PT_NODE *
-mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_, PT_NODE * corresponding_spec,
-		 PT_NODE * class_where_part, PT_NODE * class_check_part, PT_NODE * class_group_by_part,
-		 PT_NODE * class_having_part)
+mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
+		 PT_NODE * corresponding_spec, PT_NODE * class_where_part, PT_NODE * class_check_part,
+		 PT_NODE * class_group_by_part, PT_NODE * class_having_part)
 {
   PT_NODE *spec;
   PT_NODE **specptr = NULL;
@@ -12014,8 +12023,8 @@ mq_derived_path (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * path)
  *   qry_cache(out):
  */
 static PT_NODE *
-mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_, PT_FETCH_AS fetch_as, DB_AUTH what_for,
-				      PARSER_CONTEXT ** qry_cache)
+mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_, PT_FETCH_AS fetch_as,
+				      DB_AUTH what_for, PARSER_CONTEXT ** qry_cache)
 {
   PARSER_CONTEXT *query_cache;
   DB_OBJECT *class_object;
@@ -12108,8 +12117,8 @@ mq_fetch_subqueries_for_update (PARSER_CONTEXT * parser, PT_NODE * class_, PT_FE
  *   what_for(in):
  */
 static PT_NODE *
-mq_fetch_select_for_real_class_update (PARSER_CONTEXT * parser, PT_NODE * vclass, PT_NODE * real_class,
-				       PT_FETCH_AS fetch_as, DB_AUTH what_for)
+mq_fetch_select_for_real_class_update (PARSER_CONTEXT * parser, PT_NODE * vclass,
+				       PT_NODE * real_class, PT_FETCH_AS fetch_as, DB_AUTH what_for)
 {
   PT_NODE *select_statements = mq_fetch_subqueries_for_update (parser, vclass, fetch_as, what_for);
   PT_NODE *flat;
@@ -12181,9 +12190,9 @@ mq_fetch_select_for_real_class_update (PARSER_CONTEXT * parser, PT_NODE * vclass
  *   spec_id(out): entity spec id of the specification owning the expression
  */
 static PT_NODE *
-mq_fetch_expression_for_real_class_update (PARSER_CONTEXT * parser, DB_OBJECT * vclass_obj, PT_NODE * attr,
-					   PT_NODE * real_class, PT_FETCH_AS fetch_as, DB_AUTH what_for,
-					   UINTPTR * spec_id)
+mq_fetch_expression_for_real_class_update (PARSER_CONTEXT * parser, DB_OBJECT * vclass_obj,
+					   PT_NODE * attr, PT_NODE * real_class, PT_FETCH_AS fetch_as,
+					   DB_AUTH what_for, UINTPTR * spec_id)
 {
   PT_NODE vclass;
   PT_NODE *select_statement;
