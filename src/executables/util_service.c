@@ -55,8 +55,6 @@
 
 #include <string>
 
-#include "host_lookup.h"
-
 #if defined(WINDOWS)
 typedef int pid_t;
 #endif
