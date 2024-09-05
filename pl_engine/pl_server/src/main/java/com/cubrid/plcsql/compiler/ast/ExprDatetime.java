@@ -56,7 +56,7 @@ public class ExprDatetime extends Expr {
         javaTypesUsed.add("java.sql.Timestamp");
 
         if (time.equals(DateTimeParser.nullDatetime)) {
-            return "new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0)";
+            return "new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0)"; // must be equal to ValueUtility.NULL_DATETIME
             // server
         } else {
             return String.format(

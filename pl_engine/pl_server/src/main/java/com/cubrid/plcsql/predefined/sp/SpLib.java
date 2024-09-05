@@ -65,7 +65,7 @@ public class SpLib {
 
     public static Timestamp parseTimestampStr(String s) {
         // parse again at runtime in order to use the runtime value of timezone setting
-        ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, false);
+        ZonedDateTime timestamp = DateTimeParser.TimestampLiteral.parse(s);
         if (timestamp == null) {
             // The string was valid at the compile time (see
             // ParseTreeConverter.visitTimestamp_exp()).
@@ -2427,7 +2427,7 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATE)) {
-            throw new VALUE_ERROR("attempt to use 'zero date'");
+            throw new VALUE_ERROR("attempt to use the zero DATE");
         }
 
         LocalDate lld = l.toLocalDate();
@@ -2445,7 +2445,7 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATETIME)) {
-            throw new VALUE_ERROR("attempt to use 'zero date'");
+            throw new VALUE_ERROR("attempt to use the zero DATETIME");
         }
 
         LocalDateTime lldt = l.toLocalDateTime();
@@ -2463,8 +2463,8 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(ValueUtilities.NULL_DATETIME)) {
-            throw new VALUE_ERROR("attempt to use 'zero date'");
+        if (l.equals(ValueUtilities.NULL_TIMESTAMP)) {
+            throw new VALUE_ERROR("attempt to use the zero TIMESTAMP");
         }
         assert l.getNanos() == 0;
 
@@ -2591,7 +2591,7 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATE) || r.equals(ValueUtilities.NULL_DATE)) {
-            throw new VALUE_ERROR("attempt to use 'zero date'");
+            throw new VALUE_ERROR("attempt to use the zero DATE");
         }
 
         LocalDate lld = l.toLocalDate();
@@ -2605,7 +2605,7 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATETIME) || r.equals(ValueUtilities.NULL_DATETIME)) {
-            throw new VALUE_ERROR("attempt to use 'zero date'");
+            throw new VALUE_ERROR("attempt to use the zero DATETIME");
         }
 
         LocalDateTime lldt = l.toLocalDateTime();
@@ -2624,8 +2624,8 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(ValueUtilities.NULL_DATETIME) || r.equals(ValueUtilities.NULL_DATETIME)) {
-            throw new VALUE_ERROR("attempt to use 'zero date'");
+        if (l.equals(ValueUtilities.NULL_TIMESTAMP) || r.equals(ValueUtilities.NULL_TIMESTAMP)) {
+            throw new VALUE_ERROR("attempt to use the zero TIMESTAMP");
         }
         assert l.getNanos() == 0;
         assert r.getNanos() == 0;
@@ -2650,7 +2650,7 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATE)) {
-            throw new VALUE_ERROR("attempt to use 'zero date'");
+            throw new VALUE_ERROR("attempt to use the zero DATE");
         }
 
         LocalDate lld = l.toLocalDate();
@@ -2663,7 +2663,7 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATETIME)) {
-            throw new VALUE_ERROR("attempt to use 'zero date'");
+            throw new VALUE_ERROR("attempt to use the zero DATETIME");
         }
 
         LocalDateTime lldt = l.toLocalDateTime();
@@ -2681,8 +2681,8 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(ValueUtilities.NULL_DATETIME)) {
-            throw new VALUE_ERROR("attempt to use 'zero date'");
+        if (l.equals(ValueUtilities.NULL_TIMESTAMP)) {
+            throw new VALUE_ERROR("attempt to use the zero TIMESTAMP");
         }
         assert l.getNanos() == 0;
 

@@ -56,7 +56,7 @@ public class ExprDate extends Expr {
         javaTypesUsed.add("java.sql.Date");
 
         if (date.equals(DateTimeParser.nullDate)) {
-            return "new Date(0 - 1900, 0 - 1, 0)";
+            return "new Date(0 - 1900, 0 - 1, 0)";  // must be equal to ValueUtility.NULL_DATE
         } else {
             return String.format(
                     "new Date(%d - 1900, %d - 1, %d)",
