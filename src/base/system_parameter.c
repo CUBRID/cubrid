@@ -94,6 +94,8 @@
 #if !defined (SERVER_MODE)
 #include "optimizer.h"
 #endif
+#include "host_lookup.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -7369,6 +7371,22 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	    }
 	}
 #endif
+      /* The contents of the cubrid_hosts.conf file associated with use_user_hosts are also considered system parameters. */
+      if (strcmp (prm->name, PRM_NAME_USE_USER_HOSTS) == 0)
+	{
+	  if (value != NULL)
+	    {
+	      const KEYVAL *keyvalp = NULL;
+	      keyvalp = prm_keyword (-1, value, boolean_words, DIM (boolean_words));
+	      if (keyvalp != NULL && keyvalp->val == 1)
+		{
+		  if (validate_uhost_conf () == false)
+		    {
+		      return PRM_ERR_BAD_VALUE;
+		    }
+		}
+	    }
+	}
 
       if (strcmp (prm->name, PRM_NAME_SERVER_TIMEZONE) == 0)
 	{
