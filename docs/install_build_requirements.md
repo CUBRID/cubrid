@@ -54,7 +54,7 @@ It is advised to install ccache to speed up the build process. Once ccache is in
 
 ```sh
 # CentOS 7
-sudo yum install -y ccache
+yum install -y ccache
 ```
 
 ## Windows
