@@ -605,7 +605,7 @@ struct cte_proc_node
 	      if ((_x)->status == XASL_CLEARED || (_x)->status == XASL_INITIALIZED) \
 		{ \
 		  /* execute xasl query */ \
-		  if (_x->sub_xasl_id  && _x->single_tuple) \
+		  if (_x->sub_xasl_id) \
 		    { \
 		      /* execute xasl for subquery's result-cache */ \
 		      if (qexec_execute_subquery_for_result_cache ((thread_p), _x, (v)->xasl_state) != NO_ERROR) \
@@ -615,13 +615,16 @@ struct cte_proc_node
 		      /* fetch the single tuple from list_id */ \
 		      else \
 		        { \
-		          if (qdata_get_single_tuple_from_list_id ((thread_p), _x->list_id, _x->single_tuple) != NO_ERROR) \
+			  if (_x->single_tuple) \
 			    { \
-		              _x->status = XASL_FAILURE; \
-			    } \
-		          else \
-			    { \
-		              (r)->value.dbvalptr = _x->single_tuple->valp->val; \
+		              if (qdata_get_single_tuple_from_list_id ((thread_p), _x->list_id, _x->single_tuple) != NO_ERROR) \
+			        { \
+		                  _x->status = XASL_FAILURE; \
+			        } \
+		              else \
+			        { \
+		                  (r)->value.dbvalptr = _x->single_tuple->valp->val; \
+			        } \
 			    } \
 		        } \
 		    } \
