@@ -605,7 +605,7 @@ struct cte_proc_node
 	      if ((_x)->status == XASL_CLEARED || (_x)->status == XASL_INITIALIZED) \
 		{ \
 		  /* execute xasl query */ \
-		  if (_x->sub_xasl_id) \
+		  if (_x->sub_xasl_id  && _x->single_tuple) \
 		    { \
 		      /* execute xasl for subquery's result-cache */ \
 		      if (qexec_execute_subquery_for_result_cache ((thread_p), _x, (v)->xasl_state) != NO_ERROR) \
