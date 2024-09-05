@@ -94,10 +94,10 @@
 #if !defined (SERVER_MODE)
 #include "optimizer.h"
 #endif
+#include "host_lookup.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-#include "host_lookup.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
