@@ -2529,6 +2529,7 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
 
   LSA_COPY (&fwd_log_lsa, &log_rec_header->forw_lsa);
 
+  /* TODO - Do we need to handle NULL fwd_log_lsa? */
   if (!LSA_ISNULL (&fwd_log_lsa))
     {
       if (LSA_GE (log_lsa, &fwd_log_lsa) || LSA_GE (&fwd_log_lsa, &log_Gl.hdr.eof_lsa))
@@ -2550,11 +2551,6 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
 		}
 	    }
 	}
-    }
-  else
-    {
-      // fwd_log_lsa is null
-      is_log_page_broken = true;
     }
 
   return is_log_page_broken;
