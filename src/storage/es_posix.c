@@ -260,7 +260,7 @@ es_make_abs_path (char *dst, const char *src)
 {
   int ret = 0;
 
-  if (!IS_ABS_PATH (src))
+  if ((IS_ABS_PATH (src)) == false)
     {
       ret = snprintf (dst, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, src);
     }
