@@ -2746,7 +2746,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private String rewriteUpdateWithFieldsExpansion(
-            String sqlText, Row_setContext rowSet, Table_specContext tableSpec, Static_sqlContext ctx) {
+            String sqlText,
+            Row_setContext rowSet,
+            Table_specContext tableSpec,
+            Static_sqlContext ctx) {
 
         int start = rowSet.getStart().getStartIndex();
         int end = rowSet.getStop().getStopIndex() + 1;
@@ -2769,12 +2772,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (sws.selectList.size() != recTy.selectList.size()) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx), // s089
-                    "the number of fields of the record " + record +
-                        " is not equal to the number of columns of the table " + tableSpecText);
+                    "the number of fields of the record "
+                            + record
+                            + " is not equal to the number of columns of the table "
+                            + tableSpecText);
         }
 
-        // Type compatibility of each pair of table column and record field is not checked here because
-        // table columns can have a type that is not supported in PL/CSQL (for example, TIMESTAMPLTZ), but
+        // Type compatibility of each pair of table column and record field is not checked here
+        // because
+        // table columns can have a type that is not supported in PL/CSQL (for example,
+        // TIMESTAMPLTZ), but
         // the SQL can run successfully.
         // If the types are not compatible for a pair, then a run-time error will occur for it.
 
@@ -2801,7 +2808,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             if (lowercased.indexOf("insert") == 0 || lowercased.indexOf("replace") == 0) {
 
-
                 parser = getParser(sqlText);
                 sei = replaceErrorListeners(parser);
 
@@ -2819,7 +2825,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             Stmt_w_record_setContext tree = (Stmt_w_record_setContext) parser.stmt_w_record_set();
             if (!sei.hasError) {
                 // (UPDATE|INSERT|REPLACE) ... table SET ROW = r ...
-                return rewriteUpdateWithFieldsExpansion(sqlText, tree.row_set(), tree.table_spec(), ctx);
+                return rewriteUpdateWithFieldsExpansion(
+                        sqlText, tree.row_set(), tree.table_spec(), ctx);
             }
         }
 
