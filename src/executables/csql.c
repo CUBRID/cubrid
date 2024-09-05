@@ -2873,16 +2873,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_exit (EXIT_FAILURE);
     }
 
-  if (sysprm_load_and_init (csql_arg->db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS) != NO_ERROR)
-    {
-      csql_exit (EXIT_FAILURE);
-    }
-
-  if (validate_uhost_conf () == false)
-    {
-      csql_exit (EXIT_FAILURE);
-    }
-
   /* set up prompt and message fields. */
   if (csql_arg->sysadm)
     {

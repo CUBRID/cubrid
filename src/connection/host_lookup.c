@@ -40,12 +40,11 @@
 #include <pthread.h>
 #endif
 
+#include "host_lookup.h"
 #include "porting.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
-#include "host_lookup.h"
-#include "utility.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -670,18 +669,13 @@ handle_uhost_conf (int action_type)
   int cache_idx = 0;
   bool has_invalid_entries = false;
 
-  if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
-    {
-      return true;
-    }
-
   hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, CUBRID_HOSTS_CONF);
 
   file = fopen (hosts_conf_dir, "r");
   if (!file)
     {
       fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_FILE_NOT_FOUND),
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS, PRM_ERR_FILE_NOT_FOUND),
 	       host_conf_file_full_path);
       return false;
     }
@@ -727,15 +721,14 @@ handle_uhost_conf (int action_type)
 		  if (!is_valid_ipv4 (ipaddr))
 		    {
 		      fprintf (stderr,
-			       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-					       MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), ipaddr, line_number, HOSTS_FILE);
+			       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS,
+					       PRM_ERR_INVALID_HOSTNAME), ipaddr, line_number, hosts_conf_dir);
 		    }
 		  else
 		    {
 		      fprintf (stderr,
-			       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-					       MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), "No Hostname", line_number,
-			       HOSTS_FILE);
+			       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS,
+					       PRM_ERR_INVALID_HOSTNAME), "No Hostname", line_number, hosts_conf_dir);
 		    }
 		  has_invalid_entries = true;
 		  goto end;
@@ -749,8 +742,8 @@ handle_uhost_conf (int action_type)
 	      if (action_type == UHOST_CONF_VALID_CHECK)
 		{
 		  fprintf (stderr,
-			   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-					   MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), ipaddr, line_number, HOSTS_FILE);
+			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS,
+					   PRM_ERR_INVALID_HOSTNAME), ipaddr, line_number, hosts_conf_dir);
 		  has_invalid_entries = true;
 		  goto end;
 		}
@@ -763,8 +756,8 @@ handle_uhost_conf (int action_type)
 	      if (action_type == UHOST_CONF_VALID_CHECK)
 		{
 		  fprintf (stderr,
-			   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-					   MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME), hostname, line_number, HOSTS_FILE);
+			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS,
+					   PRM_ERR_INVALID_HOSTNAME), hostname, line_number, hosts_conf_dir);
 		  has_invalid_entries = true;
 		  goto end;
 		}
@@ -800,8 +793,7 @@ handle_uhost_conf (int action_type)
   if (action_type == UHOST_CONF_VALID_CHECK && is_empty_hostinfo == true)
     {
       fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_EMPTY_HOSTS_CONF),
-	       HOSTS_FILE);
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS, PRM_ERR_EMPTY_HOSTS_CONF), hosts_conf_dir);
       has_invalid_entries = true;
     }
 

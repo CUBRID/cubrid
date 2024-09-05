@@ -599,11 +599,6 @@ main (int argc, char *argv[])
       return EXIT_FAILURE;
     }
 
-  if (validate_uhost_conf () == false)
-    {
-      return EXIT_FAILURE;
-    }
-
   ha_mode_in_common = prm_get_integer_value (PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY);
 
   if (util_type == ADMIN)
