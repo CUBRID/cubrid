@@ -3620,11 +3620,6 @@ do_check_subquery_cache (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
 
-  if (statement->info.query.flag.do_not_cache)
-    {
-      return NO_ERROR;
-    }
-
   if (statement->flag.do_not_use_subquery_cache)
     {
       (void *) parser_walk_tree (parser, statement, do_clear_subquery_cache_flag, NULL, NULL, NULL);
