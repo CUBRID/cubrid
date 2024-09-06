@@ -2680,8 +2680,9 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		    {
 		      LSA_COPY (&last_log_tdes->tail_lsa, &log_rec->prev_tranlsa);
 		      LSA_COPY (&last_log_tdes->undo_nxlsa, &log_rec->prev_tranlsa);
-		      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: trid = %d, tail_lsa=%lld|%d\n",
-				    log_rec->trid, last_log_tdes->tail_lsa.pageid, last_log_tdes->tail_lsa.offset);
+		      er_log_debug (ARG_FILE_LINE, "%s: trid = %d, tail_lsa=%lld|%d\n",
+				    __func__, log_rec->trid, last_log_tdes->tail_lsa.pageid,
+				    last_log_tdes->tail_lsa.offset);
 		    }
 		}
 	      assert (!prev_lsa.is_null ());
@@ -2743,8 +2744,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  if (last_checked_page_id != log_lsa.pageid)
 	    {
 #if !defined(NDEBUG)
-	      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
-			    log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
+	      er_log_debug (ARG_FILE_LINE, "%s: log page %lld, checksum %d\n",
+			    __func__, log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
 	      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 		{
 		  fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
@@ -2773,9 +2774,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  /* Found corrupted log page. */
 		  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 		    {
-		      _er_log_debug (ARG_FILE_LINE,
-				     "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
-				     (long long int) log_lsa.pageid);
+		      _er_log_debug (ARG_FILE_LINE, "%s: log page %lld is corrupted due to partial flush.\n",
+				     __func__, (long long int) log_lsa.pageid);
 		    }
 		}
 
@@ -2797,8 +2797,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  LSA_COPY (end_redo_lsa, &lsa);
 		  LSA_COPY (&prev_lsa, end_redo_lsa);
 		  prev_prev_lsa = prev_lsa;
-		  er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: broken record at LSA=%lld|%d ",
-				log_lsa.pageid, log_lsa.offset);
+		  er_log_debug (ARG_FILE_LINE, "%s: broken record at LSA=%lld|%d ",
+				__func__, log_lsa.pageid, log_lsa.offset);
 		  break;
 		}
 	    }
@@ -2895,8 +2895,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 			{
 			  _er_log_debug (ARG_FILE_LINE,
-					 "logpb_recovery_analysis: Partial page flush - first corrupted log record LSA = (%lld, %d)\n",
-					 (long long int) log_lsa.pageid, log_lsa.offset);
+					 "%s: Partial page flush - first corrupted log record LSA = (%lld, %d)\n",
+					 __func__, (long long int) log_lsa.pageid, log_lsa.offset);
 			}
 		      LOG_RESET_APPEND_LSA (&log_lsa);
 		      LSA_SET_NULL (&lsa);
