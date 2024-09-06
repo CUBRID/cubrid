@@ -8404,8 +8404,8 @@ static PT_NODE *
 mq_get_references_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
 {
   PT_NODE *spec = (PT_NODE *) void_arg;
-  PT_NODE *nth_node, *subquery;
-  int index;
+  PT_NODE *temp, *nth_node, *subquery;
+  int attr_order, referenced_attr_order;
 
   if (node->node_type == PT_NAME && node->info.name.spec_id == spec->info.spec.id)
     {
@@ -8417,15 +8417,21 @@ mq_get_references_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 	      && spec->info.spec.as_attr_list)
 	    {
 
-	      index = pt_find_node_order (parser, spec->info.spec.as_attr_list, node);
-	      if (index != -1)
+	      attr_order = pt_find_node_order (parser, spec->info.spec.as_attr_list, node);
+	      if (attr_order != -1)
 		{
 		  subquery = spec->info.spec.derived_table;
-		  nth_node = pt_get_node_from_list (subquery->info.query.q.select.list, index - 1);
+		  nth_node = pt_get_node_from_list (subquery->info.query.q.select.list, attr_order - 1);
 
-		  if (PT_IS_ANALYTIC_NODE (nth_node))
+                  referenced_attr_order = pt_find_node_order(parser, spec->info.spec.referenced_attrs, node);
+		  if (PT_IS_ANALYTIC_NODE (nth_node) && referenced_attr_order == -1)
 		    {
+                      temp = nth_node->next;
+                      nth_node->next = NULL;
+
 		      parser_walk_tree (parser, nth_node, mq_update_node_order, spec, pt_continue_walk, NULL);
+                      
+                      nth_node->next = temp;
 		    }
 		}
 	    }
@@ -8481,7 +8487,7 @@ mq_update_node_order (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 {
   PT_NODE *spec = (PT_NODE *) arg;
   PT_NODE *nth_node, *temp;
-  int index;
+  int index, select_order;
 
   if (tree == NULL || (!PT_IS_SORT_SPEC_NODE (tree) && !pt_is_analytic_function (parser, tree)))
     {
@@ -8491,7 +8497,7 @@ mq_update_node_order (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   if (PT_IS_SORT_SPEC_NODE (tree) && PT_IS_VALUE_NODE (tree->info.sort_spec.expr))
     {
       nth_node = tree->info.sort_spec.expr;
-      index = nth_node->info.value.data_value.i;
+      select_order = nth_node->info.value.data_value.i;
 
       temp = parser_new_node (parser, PT_VALUE);
       if (temp == NULL)
@@ -8500,11 +8506,19 @@ mq_update_node_order (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	}
       else
 	{
-	  nth_node = pt_get_node_from_list (spec->info.spec.as_attr_list, index - 1);
+	  nth_node = pt_get_node_from_list (spec->info.spec.as_attr_list, select_order - 1);
 
 	  mq_insert_symbol (parser, &spec->info.spec.referenced_attrs, nth_node);
 
 	  index = pt_find_node_order (parser, spec->info.spec.referenced_attrs, nth_node);
+
+          /*
+          if(index == -1)
+          {
+                index = select_order;
+          }
+          */ 
+          
 	  temp->type_enum = PT_TYPE_INTEGER;
 	  temp->info.value.data_value.i = index;
 
@@ -8531,12 +8545,14 @@ pt_find_node_order (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * node
 {
   PT_NODE *col;
   int index;
-  const char *col_name;
+  const char *col_name, *node_name;
+
+  node_name = (node->alias_print) ? node->alias_print : node->info.name.original;
 
   for (col = node_list, index = 1; col; col = col->next, index++)
     {
       col_name = (col->alias_print) ? col->alias_print : col->info.name.original;
-      if (pt_user_specified_name_compare (col_name, node->info.name.original) == 0)
+      if (pt_user_specified_name_compare (col_name, node_name) == 0)
 	{
 	  return index;
 	}
