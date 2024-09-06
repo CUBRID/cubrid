@@ -490,8 +490,10 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (error == NO_ERROR)
     {
-      /* Save the method result. */
+      /* Save the method result and its domain */
       statement->etc = (void *) db_value_copy (&ret_value);
+      statement = pt_bind_type_from_dbval (parser, statement, &ret_value);
+
       PT_NODE *into = statement->info.method_call.to_return_var;
 
       const char *into_label;
