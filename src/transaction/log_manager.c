@@ -322,6 +322,8 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
+static bool log_is_absolute_path (const char *path);
+static bool log_is_file_name_only (const char *path);
 
 /*for CDC */
 static int cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry);
@@ -9233,7 +9235,26 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 
       assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
 
-      snprintf (path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path), db_get_string (arg_values[0]));
+      if (log_is_absolute_path (db_get_string (arg_values[0])))
+	{
+	  snprintf (path, PATH_MAX, "%s", db_get_string (arg_values[0]));
+	}
+      else			//relative path
+	{
+	  if (log_is_file_name_only (db_get_string (arg_values[0])))
+	    {
+	      snprintf (path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path),
+			db_get_string (arg_values[0]));
+	    }
+	  else
+	    {
+	      char dir_path[PATH_MAX];
+
+	      fileio_get_directory_path (dir_path, boot_db_full_name ());
+	      snprintf (path, PATH_MAX, "%s%s%s", dir_path, FILEIO_PATH_SEPARATOR (dir_path),
+			db_get_string (arg_values[0]));
+	    }
+	}
 
       fd = fileio_open (path, O_RDONLY, 0);
       if (fd == -1)
@@ -9259,7 +9280,8 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
       close (fd);
       fd = -1;
 
-      if (memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ACTIVE, strlen (CUBRID_MAGIC_LOG_ACTIVE)) != 0)
+      if ((memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ACTIVE, strlen (CUBRID_MAGIC_LOG_ACTIVE)) != 0) ||
+	  (ctx->header.db_creation != log_Gl.hdr.db_creation))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, path);
 	  error = ER_IO_MOUNT_FAIL;
@@ -9579,8 +9601,26 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
       goto exit_on_error;
     }
 
-  snprintf (path, PATH_MAX, "%s%s%s", log_Archive_path, FILEIO_PATH_SEPARATOR (log_Archive_path),
-	    db_get_string (arg_values[0]));
+  if (log_is_absolute_path (db_get_string (arg_values[0])))
+    {
+      snprintf (path, PATH_MAX, "%s", db_get_string (arg_values[0]));
+    }
+  else
+    {
+      if (log_is_file_name_only (db_get_string (arg_values[0])))
+	{
+	  snprintf (path, PATH_MAX, "%s%s%s", log_Archive_path, FILEIO_PATH_SEPARATOR (log_Archive_path),
+		    db_get_string (arg_values[0]));
+	}
+      else
+	{
+	  char dir_path[PATH_MAX];
+
+	  fileio_get_directory_path (dir_path, boot_db_full_name ());
+	  snprintf (path, PATH_MAX, "%s%s%s", dir_path, FILEIO_PATH_SEPARATOR (dir_path),
+		    db_get_string (arg_values[0]));
+	}
+    }
 
   page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -9605,7 +9645,8 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
 
   ctx->header.magic[sizeof (ctx->header.magic) - 1] = 0;
 
-  if (memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ARCHIVE, strlen (CUBRID_MAGIC_LOG_ARCHIVE)) != 0)
+  if ((memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ARCHIVE, strlen (CUBRID_MAGIC_LOG_ARCHIVE)) != 0) ||
+      (ctx->header.db_creation != log_Gl.hdr.db_creation))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, path);
       error = ER_IO_MOUNT_FAIL;
@@ -9616,6 +9657,11 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
   ctx = NULL;
 
 exit_on_error:
+  if (fd != -1)
+    {
+      close (fd);
+    }
+
   if (ctx != NULL)
     {
       db_private_free_and_init (thread_p, ctx);
@@ -10613,6 +10659,47 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 					       false);
 
   return error_code;
+}
+
+
+/*
+ * log_is_absolute_path () - Checks if the given path argument is an absolute path.
+ *
+ * return    : boolean
+ * path (in) : path
+ */
+static bool
+log_is_absolute_path (const char *path)
+{
+  assert (path != NULL);
+
+#if defined(WINDOWS)
+  if ((path[1] == ':' && (path[2] == '\\' || path[2] == '/')) || (path[0] == '\\' && path[1] == '\\'))
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+#endif
+
+  return path[0] == '/';
+}
+
+/*
+ * log_is_file_name_only () - Check if path contains any directory separator.
+ *
+ * return    : boolean
+ * path (in) : path
+ */
+static bool
+log_is_file_name_only (const char *path)
+{
+#if defined(WINDOWS)
+  return strchr (path, '\\') == NULL && strchr (path, '/') == NULL;
+#endif
+  return strchr (path, '/') == NULL;
 }
 
 static int
