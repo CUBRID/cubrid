@@ -114,6 +114,11 @@ struct json_t;
 #define PT_INTERNAL_ERROR(parser, what) \
 	pt_internal_error((parser), __FILE__, __LINE__, (what))
 
+// macros for PARSER_CONTEXT
+#define PT_IS_FOR_PL_COMPILE(parser) \
+        ((parser)->flag.is_parsing_static_sql == 1)
+
+// macros for PT_NODE */
 #define PT_IS_QUERY_NODE_TYPE(x) \
     (  (x) == PT_SELECT     || (x) == PT_UNION \
     || (x) == PT_DIFFERENCE || (x) == PT_INTERSECTION)
