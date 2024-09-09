@@ -890,7 +890,11 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
       compile_request.owner.assign ((owner_name[0] == '\0') ? au_get_current_user_name () : owner_name);
 
+      // TODO: Only the owner's rights is supported for PL/CSQL
+      au_perform_push_user (sp_info.owner);
       err = plcsql_transfer_file (compile_request, compile_response);
+      au_perform_pop_user ();
+
       if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
 	{
 	  decl = compile_response.java_signature.c_str ();
