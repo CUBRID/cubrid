@@ -249,7 +249,7 @@ es_abs_open (const char *path, int flags, mode_t mode)
 }
 
 /*
- * es_abs_open -
+ * es_make_abs_path -
  *
  * return: return code, 0: already absolute path
  * path(in): file path for open, relative or absolute
