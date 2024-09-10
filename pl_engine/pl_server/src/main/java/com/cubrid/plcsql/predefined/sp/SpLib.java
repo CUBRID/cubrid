@@ -73,7 +73,7 @@ public class SpLib {
             throw new VALUE_ERROR(String.format("invalid TIMESTAMP string: %s", s));
         }
 
-        if (timestamp.equals(DateTimeParser.nullDatetimeUTC)) {
+        if (timestamp.equals(DateTimeParser.nullDatetimeGMT)) {
             return ValueUtilities.NULL_TIMESTAMP;
         } else {
             return new Timestamp(timestamp.toEpochSecond() * 1000);
@@ -3423,7 +3423,7 @@ public class SpLib {
             throw new VALUE_ERROR("not in a TIMESTAMP format");
         }
 
-        if (zdt.equals(DateTimeParser.nullDatetimeUTC)) {
+        if (zdt.equals(DateTimeParser.nullDatetimeGMT)) {
             return ValueUtilities.NULL_TIMESTAMP;
         } else {
             assert zdt.getNano() == 0;

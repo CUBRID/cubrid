@@ -186,10 +186,8 @@ public class ValueUtilities {
         return dt.compareTo(MIN_DATETIME) >= 0 && dt.compareTo(MAX_DATETIME) <= 0;
     }
 
-    public static final Timestamp MIN_TIMESTAMP =
-            Timestamp.valueOf(DateTimeParser.minTimestampLocal);
-    public static final Timestamp MAX_TIMESTAMP =
-            Timestamp.valueOf(DateTimeParser.maxTimestampLocal);
+    public static final Timestamp MIN_TIMESTAMP = new Timestamp(DateTimeParser.minTimestamp.toEpochSecond() * 1000);
+    public static final Timestamp MAX_TIMESTAMP = new Timestamp(DateTimeParser.maxTimestamp.toEpochSecond() * 1000);
     public static final Timestamp MIN_DATETIME = Timestamp.valueOf(DateTimeParser.minDatetimeLocal);
     public static final Timestamp MAX_DATETIME = Timestamp.valueOf(DateTimeParser.maxDatetimeLocal);
 
