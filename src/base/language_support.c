@@ -1208,7 +1208,7 @@ error_codeset:
 int
 lang_set_charset (const INTL_CODESET codeset)
 {
-  if (codeset < INTL_CODESET_ISO88591 || codeset > INTL_CODESET_LAST)
+  if (codeset < INTL_CODESET_ISO88591 || codeset >= INTL_CODESET_MAX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, "Codeset is not valid");
       return ER_LOC_INIT;
@@ -2777,7 +2777,7 @@ lang_charset_cubrid_name_to_id (const char *name)
 {
   int current_codeset = INTL_CODESET_BINARY;
 
-  while (current_codeset <= INTL_CODESET_LAST)
+  while (current_codeset < INTL_CODESET_MAX)
     {
       if (strcasecmp (name, lang_Db_charsets[current_codeset].charset_cubrid_name) == 0)
 	{
