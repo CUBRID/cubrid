@@ -2431,7 +2431,12 @@ public class SpLib {
         }
 
         LocalDate lld = l.toLocalDate();
-        return Date.valueOf(lld.plusDays(r.longValue()));
+        Date ret = Date.valueOf(lld.plusDays(r.longValue()));
+        if (ValueUtilities.checkValidDate(ret)) {
+            return ret;
+        } else {
+            throw new VALUE_ERROR("not in the valid range of DATE type");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2449,7 +2454,12 @@ public class SpLib {
         }
 
         LocalDateTime lldt = l.toLocalDateTime();
-        return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.MILLIS));
+        Timestamp ret = Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.MILLIS));
+        if (ValueUtilities.checkValidDatetime(ret)) {
+            return ret;
+        } else {
+            throw new VALUE_ERROR("not in the valid range of DATETIME type");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2469,7 +2479,12 @@ public class SpLib {
         assert l.getNanos() == 0;
 
         LocalDateTime lldt = l.toLocalDateTime();
-        return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.SECONDS));
+        Timestamp ret = Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.SECONDS));
+        if (ValueUtilities.checkValidTimestamp(ret)) {
+            return ret;
+        } else {
+            throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2654,7 +2669,12 @@ public class SpLib {
         }
 
         LocalDate lld = l.toLocalDate();
-        return Date.valueOf(lld.minusDays(r.longValue()));
+        Date ret = Date.valueOf(lld.minusDays(r.longValue()));
+        if (ValueUtilities.checkValidDate(ret)) {
+            return ret;
+        } else {
+            throw new VALUE_ERROR("not in the valid range of DATE type");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2667,7 +2687,12 @@ public class SpLib {
         }
 
         LocalDateTime lldt = l.toLocalDateTime();
-        return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.MILLIS));
+        Timestamp ret = Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.MILLIS));
+        if (ValueUtilities.checkValidDatetime(ret)) {
+            return ret;
+        } else {
+            throw new VALUE_ERROR("not in the valid range of DATETIME type");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2687,7 +2712,12 @@ public class SpLib {
         assert l.getNanos() == 0;
 
         LocalDateTime lldt = l.toLocalDateTime();
-        return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.SECONDS));
+        Timestamp ret = Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.SECONDS));
+        if (ValueUtilities.checkValidTimestamp(ret)) {
+            return ret;
+        } else {
+            throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2828,7 +2858,7 @@ public class SpLib {
             return ValueUtilities.NULL_TIMESTAMP;
         }
 
-        return new Timestamp(
+        Timestamp ret = new Timestamp(
                 e.getYear(),
                 e.getMonth(),
                 e.getDate(),
@@ -2836,6 +2866,11 @@ public class SpLib {
                 e.getMinutes(),
                 e.getSeconds(),
                 0);
+        if (ValueUtilities.checkValidTimestamp(ret)) {
+            return ret;
+        } else {
+            throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
+        }
     }
 
     public static String convDatetimeToString(Timestamp e) {
@@ -2871,7 +2906,12 @@ public class SpLib {
             return ValueUtilities.NULL_TIMESTAMP;
         }
 
-        return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
+        Timestamp ret = new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
+        if (ValueUtilities.checkValidTimestamp(ret)) {
+            return ret;
+        } else {
+            throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
+        }
     }
 
     public static String convDateToString(Date e) {
@@ -3392,7 +3432,7 @@ public class SpLib {
         }
 
         if (d.equals(DateTimeParser.nullDate)) {
-            return new Date(-1900, -1, 0);
+            return ValueUtilities.NULL_DATE;
         } else {
             return new Date(d.getYear() - 1900, d.getMonthValue() - 1, d.getDayOfMonth());
         }
@@ -4027,7 +4067,12 @@ public class SpLib {
 
     private static Timestamp longToTimestamp(long l) {
         try {
-            return ValueUtilities.longToTimestamp(l);
+            Timestamp ret = ValueUtilities.longToTimestamp(l);
+            if (ValueUtilities.checkValidTimestamp(ret)) {
+                return ret;
+            } else {
+                throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
+            }
         } catch (TypeMismatchException e) {
             throw new VALUE_ERROR(e.getMessage());
         }
