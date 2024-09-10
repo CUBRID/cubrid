@@ -2420,7 +2420,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   db_charset_db_header = boot_get_db_charset_from_header (thread_p, log_path, log_prefix);
-  if (db_charset_db_header <= INTL_CODESET_NONE || INTL_CODESET_LAST < db_charset_db_header)
+  if (db_charset_db_header <= INTL_CODESET_NONE || INTL_CODESET_MAX <= db_charset_db_header)
     {
       char er_msg[ERR_MSG_SIZE];
       snprintf (er_msg, sizeof (er_msg) - 1,
@@ -5513,7 +5513,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
   if (recreate_log == false)
     {
       db_charset_db_header = boot_get_db_charset_from_header (thread_p, log_path, log_prefix);
-      if (db_charset_db_header <= INTL_CODESET_NONE || INTL_CODESET_LAST < db_charset_db_header)
+      if (db_charset_db_header <= INTL_CODESET_NONE || INTL_CODESET_MAX <= db_charset_db_header)
 	{
 	  char er_msg[ERR_MSG_SIZE];
 	  snprintf (er_msg, sizeof (er_msg) - 1,

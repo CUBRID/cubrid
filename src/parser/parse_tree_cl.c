@@ -1811,7 +1811,8 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer, c
   parser->original_buffer = buffer;
 
   parser->next_byte = buffgetin;
-  if (LANG_VARIABLE_CHARSET (lang_charset ()))
+  INTL_CODESET intl_codeset = lang_charset ();
+  if (LANG_VARIABLE_CHARSET (intl_codeset))
     {
       parser->next_char = dbcs_get_next;
       parser->casecmp = intl_identifier_casecmp;
@@ -1920,7 +1921,8 @@ parser_parse_file (PARSER_CONTEXT * parser, FILE * file)
     }
   parser->file = file;
   parser->next_byte = fgetin;
-  if (LANG_VARIABLE_CHARSET (lang_charset ()))
+  INTL_CODESET intl_codeset = lang_charset ();
+  if (LANG_VARIABLE_CHARSET (intl_codeset))
     {
       parser->next_char = dbcs_get_next;
       parser->casecmp = intl_identifier_casecmp;
@@ -1977,7 +1979,8 @@ pt_init_one_statement_parser (PARSER_CONTEXT * parser, FILE * file)
     }
   parser->file = file;
   parser->next_byte = fgetin;
-  if (LANG_VARIABLE_CHARSET (lang_charset ()))
+  INTL_CODESET intl_codeset = lang_charset ();
+  if (LANG_VARIABLE_CHARSET (intl_codeset))
     {
       parser->next_char = dbcs_get_next;
       parser->casecmp = intl_identifier_casecmp;
