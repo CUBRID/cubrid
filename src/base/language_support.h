@@ -116,7 +116,7 @@ enum
   LANG_COLL_BUILTIN_MAX = LANG_COLL_BINARY
 };
 
-static int binary_collation_mapper[INTL_CODESET_MAX] = {
+static const int _binary_collation_mapper[INTL_CODESET_MAX] = {
   LANG_COLL_BINARY,		/* INTL_CODESET_ASCII */
   LANG_COLL_BINARY,		/* INTL_CODESET_RAW_BITS */
   LANG_COLL_BINARY,		/* INTL_CODESET_RAW_BYTES */
@@ -125,7 +125,7 @@ static int binary_collation_mapper[INTL_CODESET_MAX] = {
   LANG_COLL_UTF8_BINARY		/* INTL_CODESET_UTF8 */
 };
 
-#define LANG_GET_BINARY_COLLATION(c) binary_collation_mapper[(c)]
+#define LANG_GET_BINARY_COLLATION(c) _binary_collation_mapper[(c)]
 
 typedef struct db_charset DB_CHARSET;
 struct db_charset
