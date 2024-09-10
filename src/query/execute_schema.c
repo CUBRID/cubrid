@@ -2810,7 +2810,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 {
   int error = NO_ERROR;
   int nnames = 0;
-  DB_CONSTRAINT_TYPE ctype = DB_CONSTRAINT_NONE;
+  DB_CONSTRAINT_TYPE ctype;
   char **attnames = NULL;
   int *asc_desc = NULL;
   int *attrs_prefix_length = NULL;
@@ -5571,7 +5571,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
       *attrnames = (char *) (*attp)->header.name;
       attrnames++;
       asc_desc[i] = 0;		/* guess as Asc */
-      if (DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint->type) || key_type->is_desc)
+      if (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint->type) || key_type->is_desc)
 	{
 	  asc_desc[i] = 1;	/* Desc */
 	}
