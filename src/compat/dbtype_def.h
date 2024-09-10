@@ -461,7 +461,7 @@ extern "C"
 #define DB_CONSTRAINT_UNIQUE_FAMILY_BITS        \
         ((0x01 << DB_CONSTRAINT_UNIQUE) | (0x01 << DB_CONSTRAINT_REVERSE_UNIQUE) | (0x01 << DB_CONSTRAINT_PRIMARY_KEY))
 
-  static int db_constraint_family_bits[4] = {
+  static const int _db_constraint_family_bits[4] = {
     // unique family    
     DB_CONSTRAINT_UNIQUE_FAMILY_BITS,
     // index family
@@ -476,10 +476,14 @@ extern "C"
 
 #define CHECK_DB_CONSTRAINT_TYPE(c)  ASSERT_IN_MACRO((c) >= 0 && (c) < DB_CONSTRAINT_TYPE_MAX)
 
-#define DB_IS_CONSTRAINT_UNIQUE_FAMILY(c)        (CHECK_DB_CONSTRAINT_TYPE((c)), (db_constraint_family_bits[0] & (0x01 << (c))) != 0)
-#define DB_IS_CONSTRAINT_INDEX_FAMILY(c)         (CHECK_DB_CONSTRAINT_TYPE((c)), (db_constraint_family_bits[1] & (0x01 << (c))) != 0)
-#define DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) (CHECK_DB_CONSTRAINT_TYPE((c)), (db_constraint_family_bits[2] & (0x01 << (c))) != 0)
-#define DB_IS_CONSTRAINT_FAMILY(c)               (CHECK_DB_CONSTRAINT_TYPE((c)), (db_constraint_family_bits[3] & (0x01 << (c))) != 0)
+#define DB_IS_CONSTRAINT_UNIQUE_FAMILY(c)        \
+                (CHECK_DB_CONSTRAINT_TYPE((c)), (_db_constraint_family_bits[0] & (0x01 << (c))) != 0)
+#define DB_IS_CONSTRAINT_INDEX_FAMILY(c)         \
+                (CHECK_DB_CONSTRAINT_TYPE((c)), (_db_constraint_family_bits[1] & (0x01 << (c))) != 0)
+#define DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
+                (CHECK_DB_CONSTRAINT_TYPE((c)), (_db_constraint_family_bits[2] & (0x01 << (c))) != 0)
+#define DB_IS_CONSTRAINT_FAMILY(c)               \
+                (CHECK_DB_CONSTRAINT_TYPE((c)), (_db_constraint_family_bits[3] & (0x01 << (c))) != 0)
 /* *INDENT-ON* */
 
   typedef enum
@@ -1213,7 +1217,7 @@ extern "C"
   } DB_DEFAULT_EXPR_TYPE;
 
 /* *INDENT-OFF* */
-  static int db_datetime_default_bits = 
+  static const int _db_datetime_default_bits = 
       ( (0x01 << DB_DEFAULT_SYSDATE)         | (0x01 << DB_DEFAULT_SYSTIME)
       | (0x01 << DB_DEFAULT_SYSDATETIME)     | (0x01 << DB_DEFAULT_SYSTIMESTAMP)       
       | (0x01 << DB_DEFAULT_CURRENTDATETIME) | (0x01 << DB_DEFAULT_CURRENTTIMESTAMP) 
@@ -1221,7 +1225,8 @@ extern "C"
       | (0x01 << DB_DEFAULT_UNIX_TIMESTAMP) );
 
 #define CHECK_DATETIME_DEFAULT_EXPR_TYPE(v)  ASSERT_IN_MACRO((v) >= 0 && (v < DB_DEFAULT_EXPR_TYPE_MAX))
-#define DB_IS_DATETIME_DEFAULT_EXPR(v)  (CHECK_DATETIME_DEFAULT_EXPR_TYPE((v)), (db_datetime_default_bits & (0x01 << (v))) != 0)
+#define DB_IS_DATETIME_DEFAULT_EXPR(v)      \
+                (CHECK_DATETIME_DEFAULT_EXPR_TYPE((v)), (_db_datetime_default_bits & (0x01 << (v))) != 0)
 /* *INDENT-ON* */
 
   /* An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
