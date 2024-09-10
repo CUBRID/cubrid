@@ -182,6 +182,7 @@ enum intl_codeset
   INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
   INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
   INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
+
   INTL_CODESET_MAX,
 
   INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES
