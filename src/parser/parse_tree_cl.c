@@ -280,7 +280,7 @@ static PT_NODE *pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, voi
 static PT_NODE *pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_sp_body (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
-static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
+static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_LAST_NODE_NUMBER];
 
 static PT_NODE *pt_init_alter_trigger (PT_NODE * p);
 static PT_NODE *pt_init_get_opt_lvl (PT_NODE * p);
@@ -321,7 +321,7 @@ static PT_NODE *pt_init_insert_value (PT_NODE * p);
 static PT_NODE *pt_init_kill (PT_NODE * p);
 static PT_NODE *pt_init_vacuum (PT_NODE * p);
 static PT_NODE *pt_init_json_table_column (PT_NODE * p);
-static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
+static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_LAST_NODE_NUMBER];
 
 static PARSER_VARCHAR *pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -457,7 +457,7 @@ static PARSER_VARCHAR *pt_print_json_table_column_error_or_empty_behavior (PARSE
 									   &column_behavior);
 static PARSER_VARCHAR *pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VARCHAR * pstr);
 
-static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
+static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_LAST_NODE_NUMBER];
 
 extern "C"
 {

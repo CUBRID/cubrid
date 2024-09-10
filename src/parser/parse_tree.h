@@ -1076,8 +1076,7 @@ enum pt_node_type
   PT_DBLINK_TABLE,
   PT_DBLINK_TABLE_DML,
   PT_SP_BODY,
-  PT_NODE_NUMBER,		/* This is the number of node types */
-  PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
+  PT_LAST_NODE_NUMBER		/* This is the number of node types */
 };
 typedef enum pt_node_type PT_NODE_TYPE;
 
