@@ -33,6 +33,7 @@ package com.cubrid.jsp.value;
 import com.cubrid.jsp.Server;
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -58,6 +59,9 @@ public class DateTimeParser {
     public static final ZonedDateTime minTimestamp = ZonedDateTime.of(minTimestampLocal, TIMEZONE_0);
     public static final ZonedDateTime maxTimestamp = ZonedDateTime.of(maxTimestampLocal, TIMEZONE_0);
 
+    private static final Instant minTimestampInstant = minTimestamp.toInstant();
+    private static final Instant maxTimestampInstant = maxTimestamp.toInstant();
+
     // min datetime: 0001-01-01 00:00:00.000
     public static final LocalDateTime minDatetimeLocal = LocalDateTime.of(1, 1, 1, 0, 0, 0, 0);
     // max datetime: 9999-12-31 23:59:59.999
@@ -65,6 +69,9 @@ public class DateTimeParser {
 
     private static final ZonedDateTime minDatetimeGMT = ZonedDateTime.of(minDatetimeLocal, TIMEZONE_0);
     private static final ZonedDateTime maxDatetimeGMT = ZonedDateTime.of(maxDatetimeLocal, TIMEZONE_0);
+
+    private static final Instant minDatetimeGMTInstant = minDatetimeGMT.toInstant();
+    private static final Instant maxDatetimeGMTInstant = maxDatetimeGMT.toInstant();
 
     public static final LocalDate nullDate = LocalDate.MAX;
     public static final LocalDateTime nullDatetime = LocalDateTime.MAX;
@@ -165,14 +172,15 @@ public class DateTimeParser {
         }
 
         ZonedDateTime ret = ZonedDateTime.of(localPart, zone);
+        Instant instant = ret.toInstant();
         if (forDatetime) {
             // for DATETIME*
-            if (ret.compareTo(minDatetimeGMT) < 0 || ret.compareTo(maxDatetimeGMT) > 0) {
+            if (instant.compareTo(minDatetimeGMTInstant) < 0 || instant.compareTo(maxDatetimeGMTInstant) > 0) {
                 return null;
             }
         } else {
             // in this case, for TIMESTAMP*
-            if (ret.compareTo(minTimestamp) < 0 || ret.compareTo(maxTimestamp) > 0) {
+            if (instant.compareTo(minTimestampInstant) < 0 || instant.compareTo(maxTimestampInstant) > 0) {
                 return null;
             }
         }
