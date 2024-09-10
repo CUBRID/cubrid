@@ -3574,6 +3574,14 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       return stmt;
 
     case PT_SELECT:
+      /* 
+       * SYSDATE, SERIAL related functions and other queries that should not be cached
+       * The parser sets the do_not_cache flag for these queries.
+       */
+      if (stmt->info.query.flag.do_not_cache)
+	{
+	  return stmt;
+	}
       break;
 
     default:
