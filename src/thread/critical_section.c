@@ -644,8 +644,8 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
-		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, csect_name (csect),
+		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (tv_diff));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_enter_critical_section_as_reader: %6d.%06d"
@@ -863,8 +863,8 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
-		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, csect_name (csect),
+		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (tv_diff));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_enter_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"
@@ -1123,8 +1123,8 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
-		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, csect_name (csect),
+		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (tv_diff));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_demote_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"
@@ -1331,8 +1331,8 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
-		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, csect_name (csect),
+		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (tv_diff));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_promote_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"

@@ -126,6 +126,9 @@ struct bo_restart_arg
   bool is_restore_from_backup;
   INT64 db_creation;		/* database creation time */
   LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
+  LOG_LSA restart_committed_lsa;	/* committed_lsa which will be used by applylogdb after restoreslave.
+					 * Replicated logs before the committed_lsa should not be applied by applylogdb,
+					 * because logs before committed_lsa are already applied by recovery process */
   char keys_file_path[PATH_MAX];	/* Master Key File (_keys) path for TDE. If it is not NULL, it is used, not the keys spcified system parameter or from default path */
 };
 
