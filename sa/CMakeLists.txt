@@ -346,7 +346,8 @@ set(SP_SOURCES
   ${SP_DIR}/jsp_comm.c
   ${SP_DIR}/jsp_file.c
   ${SP_DIR}/jsp_sr.c
-  ${SP_DIR}/pl_execution_stack.cpp
+  ${SP_DIR}/method_invoke_group.cpp
+  ${SP_DIR}/pl_execution_stack_context.cpp
   ${SP_DIR}/pl_query_cursor.cpp
   ${SP_DIR}/pl_session.cpp
   ${SP_DIR}/pl_signature.cpp
@@ -365,14 +366,12 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_scan.cpp
-  ${METHOD_DIR}/method_invoke_builtin.cpp
   ${METHOD_DIR}/method_invoke_java.cpp
   ${METHOD_DIR}/method_struct_parameter_info.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp
   ${METHOD_DIR}/method_struct_query.cpp
   ${METHOD_DIR}/method_struct_oid_info.cpp
-  ${METHOD_DIR}/method_invoke_group.cpp
   ${METHOD_DIR}/method_runtime_context.cpp
   ${METHOD_DIR}/method_query_util.cpp
   ${METHOD_DIR}/method_query_handler.cpp
