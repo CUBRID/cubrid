@@ -1555,6 +1555,13 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 	}
     }
 
+  if (new_select_list == NULL)
+    {
+      /* case of constant attr. e.g.) count(*), count(1) */
+      /* just add one of integer value */
+      new_select_list = pt_make_integer_value (parser, 1);
+    }
+
   /* cut off select list and order by */
   save_order_by = subquery->info.query.order_by;
   save_select_list = subquery->info.query.q.select.list;
@@ -1562,34 +1569,25 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   subquery->info.query.q.select.list = NULL;
 
   tmp_query = parser_copy_tree (parser, subquery);
+  tmp_query->info.query.q.select.list = new_select_list;
 
-  if (new_select_list == NULL)
+  /* revert subquery */
+  subquery->info.query.order_by = save_order_by;
+  subquery->info.query.q.select.list = save_select_list;
+
+  pred = statement->info.query.q.select.where;
+  if (subquery->info.query.order_by &&
+      (!pt_has_aggregate (parser, statement) || pt_has_inst_in_where_and_select_list (parser, subquery)
+       || pt_has_analytic (parser, statement) || pt_has_order_sensitive_agg (parser, statement)
+       || pt_has_inst_num (parser, pred)))
     {
-      /* case of constant attr. e.g.) count(*), count(1) */
-      /* just add one of integer value */
-      tmp_query->info.query.q.select.list = pt_make_integer_value (parser, 1);
-    }
-  else
-    {
-      tmp_query->info.query.q.select.list = new_select_list;
-
-      /* revert subquery */
-      subquery->info.query.order_by = save_order_by;
-      subquery->info.query.q.select.list = save_select_list;
-
-      pred = statement->info.query.q.select.where;
-      if (subquery->info.query.order_by &&
-	  (!pt_has_aggregate (parser, statement) || pt_has_inst_in_where_and_select_list (parser, subquery)
-	   || pt_has_analytic (parser, statement) || pt_has_order_sensitive_agg (parser, statement)
-	   || pt_has_inst_num (parser, pred)))
+      tmp_query = mq_update_order_by (parser, tmp_query, subquery, NULL, spec);
+      if (tmp_query == NULL)
 	{
-	  tmp_query = mq_update_order_by (parser, tmp_query, subquery, NULL, spec);
-	  if (tmp_query == NULL)
-	    {
-	      goto exit_on_error;
-	    }
+	  goto exit_on_error;
 	}
     }
+
   /* copy select_list to as_attr_list before mq_lambda() */
   as_attr_list = parser_copy_tree_list (parser, tmp_query->info.query.q.select.list);
 
@@ -8542,7 +8540,7 @@ pt_find_node_order (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * node
   for (col = node_list, index = 1; col; col = col->next, index++)
     {
       col_name = (PT_IS_NAME_NODE (col)) ? col->info.name.original : col->alias_print;
-      if (pt_user_specified_name_compare (col_name, node_name) == 0)
+      if (pt_str_compare (col_name, node_name, CASE_INSENSITIVE) != 0)
 	{
 	  return index;
 	}
