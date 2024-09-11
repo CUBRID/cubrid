@@ -857,13 +857,13 @@ get_grants (MOP auth, DB_SET **grant_ptr, int filter)
       goto end;
     }
 
+  grants = db_get_set (&value);
+  gsize = set_size (grants);
+
   if (!filter)
     {
       goto end;
     }
-
-  grants = db_get_set (&value);
-  gsize = set_size (grants);
 
   /* there might be errors */
   error = er_errid ();
