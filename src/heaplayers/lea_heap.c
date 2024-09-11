@@ -115,9 +115,6 @@ static void munmap_is_to_be_called (void *m, void *ptr, MMAP_TRACE_H * h);
 #define ENABLE_SEPARATE_MMAP_EVENT_TRACE
 #include "malloc_2_8_3.c"
 
-#define CUBRIDCUBRIDCUBRID (0)
-#undef CUBRIDCUBRIDCUBRID
-
 /*
  * my_malloc - system_malloc hook function 
  *    return: memory allocated
