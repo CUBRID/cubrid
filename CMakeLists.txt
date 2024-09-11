@@ -21,16 +21,20 @@ cmake_minimum_required(VERSION 3.21)
 
 
 # Check if ccache is installed
-find_program(CCACHE_PROGRAM ccache)
+option(USE_CCACHE "Use ccache as compiler launcher" ON)
 
-# If ccache is found, use it as a compiler launcher
-if(CCACHE_PROGRAM)
+if(USE_CCACHE)
+  find_program(CCACHE_PROGRAM ccache)
+  if(CCACHE_PROGRAM)
     message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
     # Set the compiler launcher globally
     set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "C compiler launcher" FORCE)
     set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "C++ compiler launcher" FORCE)
-else()
+  else()
     message(STATUS "ccache not found. Building without ccache.")
+  endif()
+else()
+  message(STATUS "ccache usage is disabled.")
 endif()
 
 
