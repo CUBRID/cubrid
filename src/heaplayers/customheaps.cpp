@@ -31,9 +31,6 @@
 #undef malloc
 #undef free
 
-#define CUBRIDCUBRIDCUBRID (0)
-#undef CUBRIDCUBRIDCUBRID
-
 using namespace HL;
 
 volatile int anyThreadCreatedInHL = 1;
