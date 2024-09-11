@@ -41,6 +41,15 @@ namespace cubpl
     , arg_default_value {nullptr}
   {}
 
+  pl_arg::pl_arg (int num_args)
+    : arg_size {num_args}
+  {
+    arg_mode = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
+    arg_type = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
+    arg_default_value_size = (char **) db_private_alloc (NULL, (param_cnt) * sizeof (char *));
+    arg_default_value = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
+  }
+
   pl_arg::~pl_arg ()
   {
     if (arg_size > 0)
@@ -165,6 +174,7 @@ namespace cubpl
   void
   pl_signature::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_int (pl_type);
     serializator.pack_c_string (name, strlen (name));
 
     serializator.pack_bool (auth != nullptr);
@@ -173,7 +183,6 @@ namespace cubpl
 	serializator.pack_c_string (auth, strlen (auth));
       }
 
-    serializator.pack_int (pl_type);
     serializator.pack_int (result_type);
 
     serializator.pack_bool (arg != nullptr);
@@ -186,6 +195,8 @@ namespace cubpl
   void
   pl_signature::unpack (cubpacking::unpacker &deserializator)
   {
+    deserializator.unpack_int (pl_type);
+
     cubmem::extensible_block name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
     deserializator.unpack_string_to_memblock (name_blk);
     name = name_blk.release_ptr ();
@@ -203,7 +214,6 @@ namespace cubpl
 	auth = nullptr;
       }
 
-    deserializator.unpack_int (pl_type);
     deserializator.unpack_int (result_type);
 
     bool has_arg = false;
@@ -222,13 +232,15 @@ namespace cubpl
   pl_signature::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t size = 0;
+    size += serializator.get_packed_int_size (size); /* pl_type */
+
     size += serializator.get_packed_c_string_size (name, strlen (name), size); // name
     size += serializator.get_packed_bool_size (size); // has auth
     if (auth)
       {
 	size += serializator.get_packed_c_string_size (auth, strlen (auth), size);
       }
-    size += serializator.get_packed_int_size (size); /* pl_type */
+
     size += serializator.get_packed_int_size (size); /* result_type */
 
     size += serializator.get_packed_bool_size (size); // has arg

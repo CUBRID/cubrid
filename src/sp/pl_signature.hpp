@@ -40,14 +40,15 @@ namespace cubpl
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     pl_arg ();
+    pl_arg (int num_args);
     ~pl_arg () override;
   };
 
   struct pl_signature : public cubpacking::packable_object
   {
+    int pl_type; // Java SP or PL/CSQL
     char *name;
     char *auth;
-    int pl_type; // Java SP or PL/CSQL
     int result_type; // DB_TYPE
 
     pl_arg *arg;
@@ -63,7 +64,7 @@ namespace cubpl
   struct pl_signature_array : public cubpacking::packable_object
   {
     int num_sigs;
-    pl_signature* sigs;
+    pl_signature *sigs;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -74,6 +75,19 @@ namespace cubpl
   };
 
 #if 0
+  struct plcsql_sig : public pl_signature
+  {
+    OID code_oid;
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    plcsql_sig ();
+    ~plcsql_sig () override;
+  };
+
+
   struct method_sig : public pl_signature
   {
     int *method_arg_pos;		/* arg position in list file */

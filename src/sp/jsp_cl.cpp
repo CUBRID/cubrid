@@ -1240,6 +1240,8 @@ jsp_check_stored_procedure_name (const char *str)
       sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
     }
 
+  // sm_downcase_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
+
   name = strdup (buffer);
 
   return name;

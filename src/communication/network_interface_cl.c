@@ -10940,6 +10940,14 @@ cleanup:
 }
 
 int
+pl_call (const pl_signature& sig)
+{
+  
+}
+
+
+#if 0
+int
 method_invoke_fold_constants (const method_sig_list & sig_list,
 			      std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result)
 {
@@ -11054,6 +11062,7 @@ error:
   return error_code;
 #endif /* !CS_MODE */
 }
+#endif
 
 /*
  * flashabck_get_and_show_summary () - client-side function to get and show flashback summary

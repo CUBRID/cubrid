@@ -62,7 +62,6 @@ namespace cubpl
   class query_cursor;
   class execution_stack;
 
-
   using THREAD_ENTRY_IDX = int;
   using QUERY_ID = std::uint64_t;
 

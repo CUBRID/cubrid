@@ -784,6 +784,7 @@ struct json_t;
 #define PT_NAME_ORIGINAL(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.original)
 #define PT_NAME_RESOLVED(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.resolved)
 #define PT_NAME_DB_OBJECT(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.db_object)
+#define PT_NAME_ORIGINAL(n)             (PT_NAME_ASSERT ((n)), (n)->info.name.original)
 
 /* PT_CREATE_ENTITY */
 #define PT_CREATE_ENTITY_ASSERT(n)	(PT_ASSERT_NODE_TYPE ((n), PT_CREATE_ENTITY))
@@ -828,6 +829,7 @@ struct json_t;
 
 /* PT_METHOD_CALL_INFO */
 #define PT_METHOD_CALL_NAME(n)		((n)->info.method_call.method_name)
+#define PT_METHOD_ARG_LIST(n)           ((n)->info.method_call.arg_list)
 #define PT_METHOD_CALL_AUTH_ID(n)	((n)->info.method_call.auth_id)
 #define PT_METHOD_CALL_AUTH_NAME(n)	((n)->info.method_call.auth_name)
 
