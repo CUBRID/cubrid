@@ -244,6 +244,8 @@ static int sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * dest_para
 				 int parallel_num);
 static int sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
 				       int parallel_num);
+static int sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
+				       int parallel_num);
 #endif
 /* end parallel sort */
 
@@ -1354,7 +1356,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   /* for parallel sort */
   SORT_PARAM px_sort_param[SORT_MAX_PARALLEL];	/* TO_DO : need dynamic alloc */
   QFILE_LIST_SCAN_ID *scan_id_p;
-  int parallel_num = 2;		/* TO_DO : depending on the number of pages in the temp file */
+  int parallel_num = 4;		/* TO_DO : depending on the number of pages in the temp file */
 
   thread_set_sort_stats_active (thread_p, true);
 
@@ -1480,7 +1482,6 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
   if (!is_parallel)
     {
-      /* temporarily, only parallelism when ORDER_BY. */
       sort_param->px_max_index = 1;
       error = sort_listfile_internal (thread_p, sort_param);
     }
@@ -1549,44 +1550,10 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	}
 
       /* merging temp files from parallel processed */
-      /* TO_DO : fix to be processed by parallel_num */
-      sort_param->temp[0] = px_sort_param[0].temp[px_sort_param[0].px_result_file_idx];
-      sort_param->file_contents[0] = px_sort_param[0].file_contents[px_sort_param[0].px_result_file_idx];
-
-      sort_param->px_result_file_idx = 0;
-
-      sort_param->temp[1] = px_sort_param[1].temp[px_sort_param[1].px_result_file_idx];
-      sort_param->file_contents[1] = px_sort_param[1].file_contents[px_sort_param[1].px_result_file_idx];
-
-      /* only 2 files remains */
-      sort_param->half_files = 2;
-      sort_param->tot_tempfiles = 4;
-      sort_param->in_half = 0;
-
-      /* Create output temporary files make file and temporary volume page count estimates */
-      int file_pg_cnt_est = sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
-      file_pg_cnt_est = MAX (1, file_pg_cnt_est);
-
-      for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
+      error = sort_merge_run_for_parallel (thread_p, px_sort_param, sort_param, parallel_num);
+      if (error != NO_ERROR)
 	{
-	  error =
-	    sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
-	  if (error != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-	}
-
-      /* Merge the parallel processed results. */
-      sort_param->px_max_index = 1;
-      if (sort_param->option == SORT_ELIM_DUP)
-	{
-	  error = sort_exphase_merge_elim_dup (thread_p, sort_param);
-	}
-      else
-	{
-	  /* SORT_DUP */
-	  error = sort_exphase_merge (thread_p, sort_param);
+	  goto cleanup;
 	}
 
       /* free px_sort_param */
@@ -4107,7 +4074,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, bo
       (void) file_temp_retire (thread_p, &(sort_param->multipage_file));
     }
 
-  if (is_parallel)		/* If it is parallel processing, some may not be free. need to check again. */
+  if (is_parallel)
     {
       for (k = 0; k < sort_param->tot_tempfiles; k++)
 	{
@@ -4344,7 +4311,6 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       else if (++j >= half_num_page)
 	{
 	  QFILE_PUT_NEXT_VPID_NULL (page_p);
-	  qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
 	  first_vpid[i] = next_vpid;
 	  last_vpid[i] = prev_vpid;
 	  i++;
@@ -4355,6 +4321,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 	    }
 	  else
 	    {
+	      qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
 	      break;
 	    }
 	}
@@ -4421,6 +4388,78 @@ cleanup:
 	      db_private_free_and_init (thread_p, px_sort_param[i].get_arg);
 	    }
 	}
+    }
+
+  return error;
+}
+
+/*
+ * sort_merge_run_for_parallel () - merge run for parallel
+ *   return: NO_ERROR
+ *   px_sort_param(in):
+ *   sort_param(in):
+ *   parallel_num(in):
+ */
+static int
+sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
+			    int parallel_num)
+{
+  int error = NO_ERROR;
+  int i = 0, j = 0, half_num_page;
+  PAGE_PTR page_p;
+  VPID next_vpid, prev_vpid, first_vpid[SORT_MAX_PARALLEL], last_vpid[SORT_MAX_PARALLEL];
+  QFILE_LIST_SCAN_ID *scan_id_p;
+  SORT_INFO *sort_info_p, *org_sort_info_p;
+
+  /* TO_DO : fix to not alloc in advance. */
+  for (i = 0; i < sort_param->tot_tempfiles; i++)
+    {
+      db_private_free (thread_p, sort_param->file_contents[i].num_pages);
+    }
+
+  /* TO_DO : Up to 4 in parallel. Expansion required. SORT_MAX_HALF_FILES */
+  if (parallel_num > 4)
+    {
+      assert(0);
+    }
+
+  /* copy temp file from parallel to main */
+  for (int i = 0; i < parallel_num; i++)
+    {
+      sort_param->temp[i] = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
+      sort_param->file_contents[i] = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx];
+    }
+
+  /* init file info */
+  sort_param->px_result_file_idx = 0;
+  sort_param->half_files = parallel_num;
+  sort_param->tot_tempfiles = parallel_num * 2;
+  sort_param->in_half = 0;
+
+  /* Create output temporary files make file and temporary volume page count estimates */
+  int file_pg_cnt_est = sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
+  file_pg_cnt_est = MAX (1, file_pg_cnt_est);
+
+  for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
+    {
+      error =
+	sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* Merge the parallel processed results. */
+  sort_param->px_max_index = 1;
+  if (sort_param->option == SORT_ELIM_DUP)
+    {
+      error = sort_exphase_merge_elim_dup (thread_p, sort_param);
+    }
+  else
+    {
+      /* SORT_DUP */
+      error = sort_exphase_merge (thread_p, sort_param);
     }
 
   return error;
