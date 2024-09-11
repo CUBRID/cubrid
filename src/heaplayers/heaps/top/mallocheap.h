@@ -42,6 +42,9 @@ extern "C" size_t malloc_usable_size (void *) throw ();
 #include "memory_monitor_sr.hpp"
 #endif /* SERVER_MODE */
 
+#define CUBRIDCUBRIDCUBRID (0)
+#undef CUBRIDCUBRIDCUBRID
+
 namespace HL
 {
 
