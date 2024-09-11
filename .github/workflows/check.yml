@@ -176,6 +176,8 @@ jobs:
             *) continue ;; # skip others
             esac
 
+            echo $f
+
             ${{ env.CPPCHECK_PATH }}/cppcheck --force -j4 --inline-suppr --suppressions-list=.github/workflows/cppcheck-spr-list --quiet --enable=warning -iheaplayers $f 2>>$result_file
           done
 
