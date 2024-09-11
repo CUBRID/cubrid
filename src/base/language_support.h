@@ -116,7 +116,7 @@ enum
   LANG_COLL_BUILTIN_MAX = LANG_COLL_BINARY
 };
 
-static const int _binary_collation_mapper[INTL_CODESET_MAX] = {
+static const unsigned int _binary_collation_mapper[INTL_CODESET_MAX] = {
   LANG_COLL_BINARY,		/* INTL_CODESET_ASCII */
   LANG_COLL_BINARY,		/* INTL_CODESET_RAW_BITS */
   LANG_COLL_BINARY,		/* INTL_CODESET_RAW_BYTES */

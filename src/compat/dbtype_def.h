@@ -461,7 +461,7 @@ extern "C"
 #define DB_CONSTRAINT_UNIQUE_FAMILY_BITS        \
         ((0x01 << DB_CONSTRAINT_UNIQUE) | (0x01 << DB_CONSTRAINT_REVERSE_UNIQUE) | (0x01 << DB_CONSTRAINT_PRIMARY_KEY))
 
-  static const int _db_constraint_family_bits[4] = {
+  static const unsigned int _db_constraint_family_bits[4] = {
     // unique family    
     DB_CONSTRAINT_UNIQUE_FAMILY_BITS,
     // index family
@@ -1217,7 +1217,7 @@ extern "C"
   } DB_DEFAULT_EXPR_TYPE;
 
 /* *INDENT-OFF* */
-  static const int _db_datetime_default_bits = 
+  static const unsigned int _db_datetime_default_bits = 
       ( (0x01 << DB_DEFAULT_SYSDATE)         | (0x01 << DB_DEFAULT_SYSTIME)
       | (0x01 << DB_DEFAULT_SYSDATETIME)     | (0x01 << DB_DEFAULT_SYSTIMESTAMP)       
       | (0x01 << DB_DEFAULT_CURRENTDATETIME) | (0x01 << DB_DEFAULT_CURRENTTIMESTAMP) 
