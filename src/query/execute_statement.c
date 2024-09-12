@@ -3608,9 +3608,12 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
       bool has_cte_or_system_class = false;
+      PT_NODE *saved = stmt->next;
 
       /* exclude cache from CTE or system class referencing */
+      stmt->next = NULL;
       parser_walk_tree (parser, stmt, do_check_cte_or_system_class_spec, &has_cte_or_system_class, NULL, NULL);
+      stmt->next = saved;
 
       if (has_cte_or_system_class)
 	{
