@@ -1364,7 +1364,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   /* for parallel sort */
   SORT_PARAM px_sort_param[SORT_MAX_PARALLEL];	/* TO_DO : need dynamic alloc */
   QFILE_LIST_SCAN_ID *scan_id_p;
-  int parallel_num = 4;		/* TO_DO : depending on the number of pages in the temp file */
+  int parallel_num = 2;		/* TO_DO : depending on the number of pages in the temp file */
 
   thread_set_sort_stats_active (thread_p, true);
 
@@ -1482,7 +1482,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
       /* need to check the appropriate number of parallels depending on the number of pages */
-      if (sort_info_p->input_file->page_cnt < 2)
+      if (sort_info_p->input_file->page_cnt < 2 || sort_info_p->input_file->tuple_cnt < 2)
 	{
 	  is_parallel = false;
 	}
@@ -3182,7 +3182,7 @@ sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   int result_file_idx = sort_param->px_result_file_idx;
   RECDES record = RECDES_INITIALIZER;
   RECDES long_record = RECDES_INITIALIZER;
-  int error;
+  int error = NO_ERROR;
   SORT_REC *sort_rec;
   int tot_rows = 0;
 
@@ -4308,7 +4308,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 			    int parallel_num)
 {
   int error = NO_ERROR;
-  int i = 0, j = 0, half_num_page;
+  int i = 0, j = 0, splitted_num_page;
   PAGE_PTR page_p;
   VPID next_vpid, prev_vpid, first_vpid[SORT_MAX_PARALLEL], last_vpid[SORT_MAX_PARALLEL];
   QFILE_LIST_SCAN_ID *scan_id_p;
@@ -4318,12 +4318,21 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
   sort_info_p = (SORT_INFO *) sort_param->get_arg;
   scan_id_p = sort_info_p->s_id->s_id;
 
-  half_num_page = sort_info_p->input_file->page_cnt / parallel_num;
-
   /* close input file for read. it'll be opened in parallel */
   qfile_close_scan (thread_p, scan_id_p);
 
+  /* init vpid */
+  for (i = 0; i < parallel_num; i++)
+    {
+      first_vpid[i] = VPID_INITIALIZER;
+      last_vpid[i] = VPID_INITIALIZER;
+    }
+
+  splitted_num_page = sort_info_p->input_file->page_cnt / parallel_num;
+  splitted_num_page = MIN (splitted_num_page, sort_info_p->input_file->tuple_cnt / parallel_num);
+
   /* find first and last vpid for splitted file */
+  i = 0;
   prev_vpid = sort_info_p->input_file->first_vpid;
   while (true)
     {
@@ -4333,7 +4342,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 	{
 	  break;
 	}
-      else if (++j >= half_num_page)
+      else if (++j >= splitted_num_page)
 	{
 	  QFILE_PUT_NEXT_VPID_NULL (page_p);
 	  first_vpid[i] = next_vpid;
@@ -4386,7 +4395,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 	}
       memcpy (sort_info_p->input_file, org_sort_info_p->input_file, sizeof (QFILE_LIST_ID));
       sort_info_p->input_file->tuple_cnt = org_sort_info_p->input_file->tuple_cnt / parallel_num;
-      sort_info_p->input_file->page_cnt = half_num_page;
+      sort_info_p->input_file->page_cnt = splitted_num_page; /* TO_DO : Make the page count more accurate */
       sort_info_p->input_file->first_vpid = (i == 0) ? org_sort_info_p->input_file->first_vpid : first_vpid[i - 1];
       sort_info_p->input_file->last_vpid =
 	(i == parallel_num - 1) ? org_sort_info_p->input_file->last_vpid : last_vpid[i];
