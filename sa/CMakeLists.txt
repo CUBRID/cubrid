@@ -371,7 +371,6 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_struct_value.cpp
   ${METHOD_DIR}/method_struct_query.cpp
   ${METHOD_DIR}/method_struct_oid_info.cpp
-  ${METHOD_DIR}/method_runtime_context.cpp
   ${METHOD_DIR}/method_query_util.cpp
   ${METHOD_DIR}/method_query_handler.cpp
   ${METHOD_DIR}/method_query_cursor.cpp
