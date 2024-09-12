@@ -98,6 +98,14 @@
 
 #define IS_PARALLEL_EXECUTION(t) ((t)->px_max_index > 1)
 
+enum parallel_type
+{
+  PX_SINGLE = 0,
+  PX_MAIN_IN_PARALLEL = 1,
+  PX_THREAD_IN_PARALLEL
+};
+typedef enum parallel_type PARALLEL_TYPE;
+
 typedef struct file_contents FILE_CONTENTS;
 struct file_contents
 {				/* node of the file_contents linked list */
@@ -256,7 +264,7 @@ static int sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * so
 static int sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_get_avg_numpages_of_nonempty_tmpfile (SORT_PARAM * sort_param);
-static void sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, bool is_parallel);
+static void sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PARALLEL_TYPE parallel_type);
 static int sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc,
 			      bool tde_encrypted);
 
@@ -1565,17 +1573,12 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	{
 	  goto cleanup;
 	}
-
-      /* free px_sort_param */
-      for (int i = 0; i < parallel_num; i++)
-	{
-	  sort_return_used_resources (thread_p, &px_sort_param[i], true);
-	}
     }
 
 #else
   /* no parallel */
   sort_param->px_max_index = 1;
+  is_parallel = false;
   error = sort_listfile_internal (thread_p, sort_param);
 #endif
 
@@ -1584,8 +1587,21 @@ cleanup:
   CUBRID_SORT_END (sort_param->total_numrecs, error);
 #endif /* ENABLE_SYSTEMTAP */
 
-  sort_return_used_resources (thread_p, sort_param, false);
-  sort_param = NULL;
+  /* free sort_param */
+  if (is_parallel)
+    {
+      for (int i = 0; i < parallel_num; i++)
+	{
+	  sort_return_used_resources (thread_p, &px_sort_param[i], PX_THREAD_IN_PARALLEL);
+	}
+
+      sort_return_used_resources (thread_p, sort_param, PX_MAIN_IN_PARALLEL);
+    }
+  else
+    {
+      sort_return_used_resources (thread_p, sort_param, PX_SINGLE);
+    }
+
   thread_set_sort_stats_active (thread_p, false);
 
   return error;
@@ -4051,7 +4067,7 @@ sort_get_avg_numpages_of_nonempty_tmpfile (SORT_PARAM * sort_param)
  *       memory areas and destroying any temporary files and volumes.
  */
 static void
-sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, bool is_parallel)
+sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PARALLEL_TYPE parallel_type)
 {
   int k;
 #if defined(SERVER_MODE)
@@ -4068,7 +4084,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, bo
       free_and_init (sort_param->internal_memory);
     }
 
-  if (!is_parallel)
+  if (parallel_type == PX_SINGLE || parallel_type == PX_MAIN_IN_PARALLEL)
     {
       for (k = 0; k < sort_param->tot_tempfiles; k++)
 	{
@@ -4084,7 +4100,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, bo
       (void) file_temp_retire (thread_p, &(sort_param->multipage_file));
     }
 
-  if (is_parallel)
+  if (parallel_type == PX_SINGLE || parallel_type == PX_THREAD_IN_PARALLEL)
     {
       for (k = 0; k < sort_param->tot_tempfiles; k++)
 	{
@@ -4095,9 +4111,8 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, bo
 	}
     }
 
-  if (is_parallel)
+  if (parallel_type == PX_THREAD_IN_PARALLEL)
     {
-      /* free memory */
       for (int i = 0; i < sort_param->px_max_index; i++)
 	{
 	  if (sort_param->get_arg != NULL)
@@ -4126,7 +4141,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, bo
    */
 #endif
 
-  if (!is_parallel)
+  if (parallel_type == PX_SINGLE || parallel_type == PX_MAIN_IN_PARALLEL)
     {
       free_and_init (sort_param);
     }
