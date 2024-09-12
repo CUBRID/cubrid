@@ -129,7 +129,10 @@ typedef enum
   /* javasp usage = 44 ? */
   /* gateway usage = 45 ? */
   MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH = 46,
-  MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT = 47
+  MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT = 47,
+  MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME = 48,
+  MSGCAT_UTIL_GENERIC_EMPTY_HOSTS_CONF = 49,
+  MSGCAT_UTIL_GENERIC_FILE_NOT_FOUND = 50
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -1351,6 +1354,8 @@ typedef struct _ha_config
 #define UNLOAD_INCLUDE_REFERENCE_L              "include-reference"
 #define UNLOAD_INPUT_CLASS_ONLY_S               11902
 #define UNLOAD_INPUT_CLASS_ONLY_L               "input-class-only"
+/* "--lo-count" is a deprecated option that has been removed.
+ * Let's delete it through a separate issue.*/
 #define UNLOAD_LO_COUNT_S                       11903
 #define UNLOAD_LO_COUNT_L                       "lo-count"
 #define UNLOAD_ESTIMATED_SIZE_S                 11904
@@ -1391,6 +1396,20 @@ typedef struct _ha_config
 #define UNLOAD_AS_DBA_L                         "as-dba"
 #define UNLOAD_SKIP_INDEX_DETAIL_S              11922	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 #define UNLOAD_SKIP_INDEX_DETAIL_L              "skip-index-detail"	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+#define UNLOAD_THREAD_COUNT_S                   't'
+#define UNLOAD_THREAD_COUNT_L                   "thread-count"
+#define UNLOAD_STRING_BUFFER_SIZE_S             11923
+#define UNLOAD_STRING_BUFFER_SIZE_L             "use-string-buffer"
+#define UNLOAD_REQUEST_PAGES_S                  11924
+#define UNLOAD_REQUEST_PAGES_L                  "use-request-pages"
+#define UNLOAD_MT_PROCESS_S                     11925
+#define UNLOAD_MT_PROCESS_L                     "process"
+#define UNLOAD_SAMPLING_TEST_S                  11926
+#define UNLOAD_SAMPLING_TEST_L                  "sampling-test"
+#define UNLOAD_ENHANCED_ESTIMATES_S             11927
+#define UNLOAD_ENHANCED_ESTIMATES_L             "enhanced-estimates"
+
+
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

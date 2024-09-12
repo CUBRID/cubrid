@@ -59,6 +59,7 @@
 #include "error_manager.h"
 #include "connection_globals.h"
 #include "connection_cl.h"
+#include "system_parameter.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* ! WINDOWS */
@@ -73,6 +74,7 @@
 #include "message_catalog.h"
 #include "dbi.h"
 #include "util_func.h"
+#include "master_server_monitor.hpp"
 
 static void css_master_error (const char *error_string);
 static int css_master_timeout (void);
@@ -80,8 +82,7 @@ static int css_master_init (int cport, SOCKET * clientfd);
 static void css_reject_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason);
 static void css_reject_server_request (CSS_CONN_ENTRY * conn, int reason);
 static void css_accept_server_request (CSS_CONN_ENTRY * conn, int reason);
-static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_name,
-				    int server_name_length);
+static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer);
 static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry,
 				    char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
@@ -319,39 +320,53 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
  *   return: none
  *   conn(in)
  *   rid(in)
- *   server_name(in)
- *   server_name_length(in)
+ *   buffer(in)
+ *
  */
 static void
-css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_name, int server_name_length)
+css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 {
   char *datagram;
+  char *server_name;
   int datagram_length;
   SOCKET server_fd = INVALID_SOCKET;
   int length;
+  int server_name_length;
   CSS_CONN_ENTRY *datagram_conn;
   SOCKET_QUEUE_ENTRY *entry;
+  CSS_SERVER_PROC_REGISTER *proc_register = (CSS_SERVER_PROC_REGISTER *) buffer;
 
   datagram = NULL;
   datagram_length = 0;
+
   css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED);
+
   if (css_receive_data (conn, rid, &datagram, &datagram_length, -1) == NO_ERRORS)
     {
+
       if (datagram != NULL && css_tcp_master_datagram (datagram, &server_fd))
 	{
 	  datagram_conn = css_make_conn (server_fd);
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (datagram_conn, false, server_name, server_fd, READ_WRITE, 0,
+	  css_add_request_to_socket_queue (datagram_conn, false, proc_register->server_name, server_fd, READ_WRITE, 0,
 					   &css_Master_socket_anchor);
-	  length = (int) strlen (server_name) + 1;
+
+	  //  Note : server_name is usually packed(appended) information of server_name, version_string, env_var, pid,
+	  //  packed from css_pack_server_name(). Since there are some cases that returns server_name and server_name_length
+	  //  as NULL, we need to check if server_name is packed information or not.
+	  length = (int) strlen (proc_register->server_name) + 1;
+	  server_name_length = proc_register->server_name_length;
+
+	  assert (length <= DB_MAX_IDENTIFIER_LENGTH);
+
 	  if (length < server_name_length)
 	    {
-	      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+	      entry = css_return_entry_of_server (proc_register->server_name, css_Master_socket_anchor);
 	      if (entry != NULL)
 		{
-		  server_name += length;
+		  server_name = proc_register->server_name + length;
 		  entry->version_string = (char *) malloc (strlen (server_name) + 1);
 		  if (entry->version_string != NULL)
 		    {
@@ -373,6 +388,19 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_
 		      entry->env_var = NULL;
 		    }
 		}
+	    }
+
+	  if (!entry->ha_mode)
+	    {
+#if !defined(WINDOWS)
+	      if (auto_Restart_server)
+		{
+		  /* *INDENT-OFF* */
+		  master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER, proc_register->pid,
+						      proc_register->exec_path, proc_register->args, proc_register->server_name);
+		  /* *INDENT-ON* */
+		}
+#endif
 	    }
 	}
     }
@@ -440,20 +468,26 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
 static void
 css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 {
-  int name_length;
-  char *server_name = NULL;
+  int data_length;
+  char *data = NULL;
   SOCKET_QUEUE_ENTRY *entry;
 
-  /* read server name */
-  if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS)
+  //  Note: css_register_new_server() is used in two situations:
+  //  1. When a client requests to connect a cub_server to cub_master, which is already registered.
+  //  2. When a new cub_server requests to register itself to cub_master.
+  //  For the first situation, css_register_new_server() receives the server name as data.
+  //  For the second situation, css_register_new_server() receives CSS_SERVER_PROC_REGISTER as data.
+  //  css_register_new_server determines which case it is by checking if the entry is NULL or not.
+
+  if (css_receive_data (conn, rid, &data, &data_length, -1) == NO_ERRORS)
     {
-      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+      entry = css_return_entry_of_server (data, css_Master_socket_anchor);
       if (entry != NULL)
 	{
 	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server that was auto-started */
-	      css_accept_old_request (conn, rid, entry, server_name, name_length);
+	      css_accept_old_request (conn, rid, entry, data, data_length);
 	    }
 	  else
 	    {
@@ -468,18 +502,17 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (conn, false, server_name, conn->fd, READ_WRITE, 0,
-					   &css_Master_socket_anchor);
+	  css_add_request_to_socket_queue (conn, false, data, conn->fd, READ_WRITE, 0, &css_Master_socket_anchor);
 
 #else /* ! WINDOWS */
 	  /* accept a request from a new server */
-	  css_accept_new_request (conn, rid, server_name, name_length);
+	  css_accept_new_request (conn, rid, data);
 #endif /* ! WINDOWS */
 	}
     }
-  if (server_name != NULL)
+  if (data != NULL)
     {
-      free_and_init (server_name);
+      free_and_init (data);
     }
 
 #if !defined(WINDOWS)
@@ -980,6 +1013,15 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 			  css_Active_server_count--;
 			}
 #endif
+
+#if !defined(WINDOWS)
+		      if (auto_Restart_server)
+			{
+			  /* *INDENT-OFF* */
+			  master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER, -1, "", "", temp->name);
+			  /* *INDENT-ON* */
+			}
+#endif
 		      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
 		    }
 		}
@@ -1220,6 +1262,18 @@ main (int argc, char **argv)
 	  status = EXIT_FAILURE;
 	  goto cleanup;
 	}
+    }
+
+  auto_Restart_server = prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER);
+
+  // Since master_Server_monitor is a module for restarting abnormally terminated cub_server,
+  // it is initialized only when the 'auto_restart_server' parameter is set to true.
+
+  if (auto_Restart_server)
+    {
+      // *INDENT-OFF*
+      master_Server_monitor.reset (new server_monitor ());
+      // *INDENT-ON*
     }
 #endif
 

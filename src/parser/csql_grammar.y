@@ -12700,8 +12700,8 @@ plcsql_text
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, | plcsql_text_part);
 
                         assert(g_plcsql_text == NULL);
-                        g_plcsql_text = g_query_string + @$.buffer_pos;
                         $$ = strlen($1);
+                        g_plcsql_text = g_query_string + @$.buffer_pos - $$;
 
 		DBG_PRINT}}
         ;
@@ -26355,6 +26355,8 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("SELECT_BTREE_NODE_INFO", PT_HINT_SELECT_BTREE_NODE_INFO),
   INIT_PT_HINT("USE_SBR", PT_HINT_USE_SBR),
   INIT_PT_HINT("NO_SUPPLEMENTAL_LOG", PT_HINT_NO_SUPPLEMENTAL_LOG),
+  INIT_PT_HINT("USE_HASH", PT_HINT_USE_HASH),
+  INIT_PT_HINT("NO_USE_HASH", PT_HINT_NO_USE_HASH),
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
 

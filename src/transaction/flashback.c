@@ -45,6 +45,7 @@
 #include "flashback.h"
 
 #include "log_impl.h"
+#include "log_reader.hpp"
 #include "message_catalog.h"
 #include "msgcat_set_log.hpp"
 #include "memory_alloc.h"

@@ -2135,7 +2135,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (r.equals(0)) {
+        if (r.equals(0L)) {
             throw new ZERO_DIVIDE();
         }
 
@@ -2247,7 +2247,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (r.equals(0)) {
+        if (r.equals(0L)) {
             throw new ZERO_DIVIDE();
         }
         return l / r;
@@ -2300,7 +2300,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (r.equals(0)) {
+        if (r.equals(0L)) {
             throw new ZERO_DIVIDE();
         }
         return l % r;

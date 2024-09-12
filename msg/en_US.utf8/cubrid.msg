@@ -65,6 +65,9 @@ $set 4 MSGCAT_SET_PARAMETER
 22 Deprecated parameter
 23 The '%1$s' and '%2$s' parameters can not be used together.\n
 31 The '%1$s' parameter:
+32 Invalid IP or Hostname '%1$s' at line %2$d in the '%3$s' file.\n
+33 There is no IP or Hostname in '%1$s' file.\n
+34 File '%1$s' was not found.\n
 
 $set 5 MSGCAT_SET_ERROR
 1 Missing message for error code %1$d.
@@ -1047,7 +1050,7 @@ $ LOADDB
 977 Checkpoint started (previous checkpoint page id: %1$lld, previous redo page id: %2$lld).
 978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 CONNECT BY loop in user data.
-980 A thread is waiting in %1$s more than %2$d msec.
+980 A thread is waiting in %1$s more than %2$d msec(%3$d msec).
 981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.
 982 Set interrupt to the transaction %1$d.
 983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.

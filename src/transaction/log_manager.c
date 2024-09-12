@@ -64,6 +64,7 @@
 #include "log_archives.hpp"
 #include "log_compress.h"
 #include "log_record.hpp"
+#include "log_recovery.h"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
@@ -1193,6 +1194,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       r_args->db_creation = log_Gl.hdr.db_creation;
       LSA_COPY (&r_args->restart_repl_lsa, &log_Gl.hdr.smallest_lsa_at_last_chkpt);
+      LSA_COPY (&r_args->restart_committed_lsa, &log_Gl.hdr.append_lsa);
     }
 
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &log_Gl.hdr.chkpt_lsa);
@@ -1369,6 +1371,14 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * System was involved in a crash.
        * Execute the recovery process
        */
+
+#if defined(SERVER_MODE)
+      /* The actions of flushing the page buffer and double write buffer are currently designed to operate in a single thread.
+       * As we parallelize the log recovery redo process, this flush operation can also run in multiple threads.
+       * To prevent this, daemons performing the flush should be activated to flush the pages in single thread.
+       * If recovery is not being performed, these daemons will run after completing the log_initialize () */
+      BO_ENABLE_FLUSH_DAEMONS ();
+#endif /* SERVER_MODE */
       log_recovery (thread_p, ismedia_crash, stopat);
     }
   else
@@ -9192,7 +9202,7 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 				  void **ptr)
 {
   int error = NO_ERROR;
-  const char *path;
+  char path[PATH_MAX];
   int fd = -1;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
 
@@ -9222,7 +9232,8 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
       LOG_PAGE *page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 
       assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
-      path = db_get_string (arg_values[0]);
+
+      snprintf (path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path), db_get_string (arg_values[0]));
 
       fd = fileio_open (path, O_RDONLY, 0);
       if (fd == -1)
@@ -9550,7 +9561,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
 				   void **ptr)
 {
   int error = NO_ERROR;
-  const char *path;
+  char path[PATH_MAX];
   int fd;
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *page_hdr;
@@ -9568,7 +9579,8 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
       goto exit_on_error;
     }
 
-  path = db_get_string (arg_values[0]);
+  snprintf (path, PATH_MAX, "%s%s%s", log_Archive_path, FILEIO_PATH_SEPARATOR (log_Archive_path),
+	    db_get_string (arg_values[0]));
 
   page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 

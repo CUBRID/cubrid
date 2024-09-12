@@ -43,7 +43,7 @@
 #include "authenticate.h"
 #include "schema_manager.h"
 #include "trigger_description.hpp"
-#include "load_object.h"
+#include "unload_object_file.h"
 #include "object_primitive.h"
 #include "parser.h"
 #include "printer.hpp"
@@ -907,7 +907,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
     "from [db_serial] where [class_name] is not null and [att_name] is not null";
 
   const char *query_user =
-    "select [unique_name], [name], [owner].[name], [class_name], [current_val], [increment_val], [max_val], [min_val], "
+    "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
     "from [db_serial] where [class_name] is not null and [att_name] is not null and owner.name='%s'";
 

@@ -170,8 +170,8 @@ extern int mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, 
 			  void *func_args);
 extern void mht_destroy_hls (MHT_HLS_TABLE * ht);
 extern int mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, const int print_id_opt,
-			 int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args),
-			 void *func_args);
+			 int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
+					    void *args), const void *type_list, void *func_args);
 extern unsigned int mht_calculate_htsize (unsigned int ht_size);
 /* for HASH LIST SCAN (end) */
 
