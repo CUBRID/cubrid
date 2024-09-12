@@ -888,7 +888,7 @@ struct method_spec_node
   XASL_NODE *xasl_node;		/* the XASL node that contains the */
   /* list file ID for the method */
   /* arguments */
-  METHOD_SIG_LIST *method_sig_list;	/* method signature list */
+  PL_SIGNATURE_ARRAY_TYPE *sig_array;	/* method signature array */
 };
 
 struct dblink_spec_node
@@ -981,8 +981,8 @@ union hybrid_node
 #define ACCESS_SPEC_METHOD_REGU_LIST(ptr) \
         ((ptr)->s.method_node.method_regu_list)
 
-#define ACCESS_SPEC_METHOD_SIG_LIST(ptr) \
-        ((ptr)->s.method_node.method_sig_list)
+#define ACCESS_SPEC_METHOD_SIG_ARRAY(ptr) \
+        ((ptr)->s.method_node.sig_array)
 
 #define ACCESS_SPEC_METHOD_LIST_ID(ptr) \
         (ACCESS_SPEC_METHOD_XASL_NODE(ptr)->list_id)
