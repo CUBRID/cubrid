@@ -542,7 +542,7 @@ namespace cubmethod
     if (qres && qres->type == T_SELECT)
       {
 	result_info.query_id = qres->res.s.query_id;
-	if (result_info.query_id == NULL_QUERY_ID || result_info.query_id >= SHRT_MAX)
+	if (result_info.query_id >= SHRT_MAX) // handle invalid value
 	  {
 	    result_info.query_id = NULL_QUERY_ID; // initialized value
 	  }
