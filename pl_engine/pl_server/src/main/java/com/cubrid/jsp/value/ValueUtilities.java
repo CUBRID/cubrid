@@ -200,8 +200,10 @@ public class ValueUtilities {
 
     public static final Date MIN_DATE = new Date(1 - 1900, 1 - 1, 1);
     public static final Date MAX_DATE = new Date(9999 - 1900, 12 - 1, 31);
-    public static final Timestamp MIN_TIMESTAMP = new Timestamp(DateTimeParser.minTimestamp.toEpochSecond() * 1000);
-    public static final Timestamp MAX_TIMESTAMP = new Timestamp(DateTimeParser.maxTimestamp.toEpochSecond() * 1000);
+    public static final Timestamp MIN_TIMESTAMP =
+            new Timestamp(DateTimeParser.minTimestamp.toEpochSecond() * 1000);
+    public static final Timestamp MAX_TIMESTAMP =
+            new Timestamp(DateTimeParser.maxTimestamp.toEpochSecond() * 1000);
     public static final Timestamp MIN_DATETIME = Timestamp.valueOf(DateTimeParser.minDatetimeLocal);
     public static final Timestamp MAX_DATETIME = Timestamp.valueOf(DateTimeParser.maxDatetimeLocal);
 

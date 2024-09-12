@@ -2858,14 +2858,15 @@ public class SpLib {
             return ValueUtilities.NULL_TIMESTAMP;
         }
 
-        Timestamp ret = new Timestamp(
-                e.getYear(),
-                e.getMonth(),
-                e.getDate(),
-                e.getHours(),
-                e.getMinutes(),
-                e.getSeconds(),
-                0);
+        Timestamp ret =
+                new Timestamp(
+                        e.getYear(),
+                        e.getMonth(),
+                        e.getDate(),
+                        e.getHours(),
+                        e.getMinutes(),
+                        e.getSeconds(),
+                        0);
         if (ValueUtilities.checkValidTimestamp(ret)) {
             return ret;
         } else {

@@ -33,8 +33,8 @@ package com.cubrid.jsp.value;
 import com.cubrid.jsp.Server;
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
-import java.time.Instant;
 import java.time.DateTimeException;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -56,8 +56,10 @@ public class DateTimeParser {
     // local(zoneless) part of max timestamp local part: 2038-01-19 03:14:07
     public static final LocalDateTime maxTimestampLocal = LocalDateTime.of(2038, 1, 19, 3, 14, 7);
 
-    public static final ZonedDateTime minTimestamp = ZonedDateTime.of(minTimestampLocal, TIMEZONE_0);
-    public static final ZonedDateTime maxTimestamp = ZonedDateTime.of(maxTimestampLocal, TIMEZONE_0);
+    public static final ZonedDateTime minTimestamp =
+            ZonedDateTime.of(minTimestampLocal, TIMEZONE_0);
+    public static final ZonedDateTime maxTimestamp =
+            ZonedDateTime.of(maxTimestampLocal, TIMEZONE_0);
 
     private static final Instant minTimestampInstant = minTimestamp.toInstant();
     private static final Instant maxTimestampInstant = maxTimestamp.toInstant();
@@ -65,10 +67,13 @@ public class DateTimeParser {
     // min datetime: 0001-01-01 00:00:00.000
     public static final LocalDateTime minDatetimeLocal = LocalDateTime.of(1, 1, 1, 0, 0, 0, 0);
     // max datetime: 9999-12-31 23:59:59.999
-    public static final LocalDateTime maxDatetimeLocal = LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999000000);
+    public static final LocalDateTime maxDatetimeLocal =
+            LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999000000);
 
-    private static final ZonedDateTime minDatetimeGMT = ZonedDateTime.of(minDatetimeLocal, TIMEZONE_0);
-    private static final ZonedDateTime maxDatetimeGMT = ZonedDateTime.of(maxDatetimeLocal, TIMEZONE_0);
+    private static final ZonedDateTime minDatetimeGMT =
+            ZonedDateTime.of(minDatetimeLocal, TIMEZONE_0);
+    private static final ZonedDateTime maxDatetimeGMT =
+            ZonedDateTime.of(maxDatetimeLocal, TIMEZONE_0);
 
     private static final Instant minDatetimeGMTInstant = minDatetimeGMT.toInstant();
     private static final Instant maxDatetimeGMTInstant = maxDatetimeGMT.toInstant();
@@ -175,12 +180,14 @@ public class DateTimeParser {
         Instant instant = ret.toInstant();
         if (forDatetime) {
             // for DATETIME*
-            if (instant.compareTo(minDatetimeGMTInstant) < 0 || instant.compareTo(maxDatetimeGMTInstant) > 0) {
+            if (instant.compareTo(minDatetimeGMTInstant) < 0
+                    || instant.compareTo(maxDatetimeGMTInstant) > 0) {
                 return null;
             }
         } else {
             // in this case, for TIMESTAMP*
-            if (instant.compareTo(minTimestampInstant) < 0 || instant.compareTo(maxTimestampInstant) > 0) {
+            if (instant.compareTo(minTimestampInstant) < 0
+                    || instant.compareTo(maxTimestampInstant) > 0) {
                 return null;
             }
         }
