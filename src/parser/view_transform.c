@@ -8540,7 +8540,7 @@ pt_find_node_order (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * node
   for (col = node_list, index = 1; col; col = col->next, index++)
     {
       col_name = (PT_IS_NAME_NODE (col)) ? col->info.name.original : col->alias_print;
-      if (pt_str_compare (col_name, node_name, CASE_INSENSITIVE) != 0)
+      if (pt_str_compare (col_name, node_name, CASE_INSENSITIVE) == 0)
 	{
 	  return index;
 	}
