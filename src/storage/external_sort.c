@@ -1521,10 +1521,20 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
       /* wait for threads */
       /* TO_DO : no busy wait. need to block and wake up */
+      int done;
       do
 	{
 	  thread_sleep (10);
-	  if (px_sort_param[0].px_status == 1 && px_sort_param[1].px_status == 1)
+	  done = true;
+	  for (int i = 0; i < parallel_num; i++)
+	    {
+	      if (px_sort_param[i].px_status != 1)
+		{
+		  done = false;
+		  break;
+		}
+	    }
+	  if (done)
 	    {
 	      break;
 	    }
