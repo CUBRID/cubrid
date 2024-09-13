@@ -114,9 +114,15 @@ struct json_t;
 #define PT_INTERNAL_ERROR(parser, what) \
 	pt_internal_error((parser), __FILE__, __LINE__, (what))
 
-#define PT_IS_QUERY_NODE_TYPE(x) \
-    (  (x) == PT_SELECT     || (x) == PT_UNION \
-    || (x) == PT_DIFFERENCE || (x) == PT_INTERSECTION)
+extern bool _was_init_node_type_variable;
+#define BIT_BUF_BYTE_SIZE(max)     ((((max) - 1) >> 3) + 1)
+#define SET_BIT_BYTE(buf, v)       ((buf)[((v) >> 3)] |= (0x01 << ((v) & 0x07)))
+#define CHECK_BIT_BYTE(buf, v)     ( ASSERT_IN_MACRO(_was_init_node_type_variable == true), \
+                                     (((buf)[((v) >> 3)] & (0x01 << ((v) & 0x07))) != 0) )
+#define CHECK_PT_NODE_TYPE_ENUM(v) (ASSERT_IN_MACRO((v) > PT_NODE_NONE && (v) < PT_LAST_NODE_NUMBER))
+
+extern unsigned char _query_node_type[];
+#define PT_IS_QUERY_NODE_TYPE(x) (CHECK_PT_NODE_TYPE_ENUM((x)), CHECK_BIT_BYTE(_query_node_type, (x)))
 
 #define PT_IS_CLASSOID_NAME(x) \
     (  (x)->info.name.meta_class == PT_CLASSOID_ATTR)
@@ -422,7 +428,7 @@ struct json_t;
           (op) == PT_PRIOR || \
           (op) == PT_CONNECT_BY_ROOT || \
 	  (op) == PT_QPRIOR || \
-          (op) == PT_UNARY_MINUS) )
+          (op) == PT_UNARY_MINUS )
 
 #define PT_IS_N_COLUMN_UPDATE_EXPR(n) \
         ( (n) && \
@@ -824,11 +830,10 @@ struct json_t;
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
 #define PT_NODE_IS_NAME(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_NAME)
 #define PT_NODE_IS_SPEC(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_SPEC)
-#define PT_NODE_IS_SYNONYM(n)		(PT_ASSERT_NOT_NULL ((n)),		\
-					 (n)->node_type == PT_ALTER_SYNONYM ||	\
-					 (n)->node_type == PT_CREATE_SYNONYM ||	\
-					 (n)->node_type == PT_DROP_SYNONYM ||	\
-					 (n)->node_type == PT_RENAME_SYNONYM)
+extern unsigned char _synonym_node_type[];
+#define PT_NODE_IS_SYNONYM(n)		(PT_ASSERT_NOT_NULL ((n)), CHECK_PT_NODE_TYPE_ENUM((n)->node_type), \
+                                         CHECK_BIT_BYTE(_synonym_node_type, (n)->node_type))
+
 
 /* Check node_type of PT_SPEC */
 #define PT_SPEC_IS_ONLY(n)		(PT_SPEC_ASSERT ((n)), (n)->info.spec.only_all == PT_ONLY)
@@ -4104,6 +4109,7 @@ extern "C"
   void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
   bool pt_is_json_value_type (PT_TYPE_ENUM type);
   bool pt_is_json_doc_type (PT_TYPE_ENUM type);
+  void initialize_bits_mask_variable ();
 #ifdef __cplusplus
 }
 #endif

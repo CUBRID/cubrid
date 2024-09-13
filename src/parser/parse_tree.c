@@ -1466,3 +1466,32 @@ pt_is_json_doc_type (PT_TYPE_ENUM type)
 
   return db_is_json_doc_type (converted_type);
 }
+
+bool _was_init_node_type_variable = false;
+unsigned char _query_node_type[BIT_BUF_BYTE_SIZE (PT_LAST_NODE_NUMBER)] = { 0, };
+unsigned char _synonym_node_type[BIT_BUF_BYTE_SIZE (PT_LAST_NODE_NUMBER)] = { 0, };
+
+
+void
+initialize_bits_mask_variable ()
+{
+  if (_was_init_node_type_variable)
+    {
+      return;
+    }
+
+  // PT_IS_QUERY_NODE_TYPE
+  SET_BIT_BYTE (_query_node_type, PT_SELECT);
+  SET_BIT_BYTE (_query_node_type, PT_UNION);
+  SET_BIT_BYTE (_query_node_type, PT_DIFFERENCE);
+  SET_BIT_BYTE (_query_node_type, PT_INTERSECTION);
+
+  // PT_NODE_IS_SYNONYM
+  SET_BIT_BYTE (_query_node_type, PT_ALTER_SYNONYM);
+  SET_BIT_BYTE (_query_node_type, PT_CREATE_SYNONYM);
+  SET_BIT_BYTE (_query_node_type, PT_DROP_SYNONYM);
+  SET_BIT_BYTE (_query_node_type, PT_RENAME_SYNONYM);
+
+  //
+  _was_init_node_type_variable = true;
+}
