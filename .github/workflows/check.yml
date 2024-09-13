@@ -179,6 +179,14 @@ jobs:
             echo CUBRIDCUBRIDCUBRID
             echo $f
 
+            if [[ $f == 'src/heaplayers/'* ]]; then
+              echo $f 123
+            fi
+
+            if [[ $f =~ ^src/heaplayers/.* ]]; then
+              echo $f 456
+            fi
+
             ${{ env.CPPCHECK_PATH }}/cppcheck --force -j4 --inline-suppr --suppressions-list=.github/workflows/cppcheck-spr-list --quiet --enable=warning -iheaplayers $f 2>>$result_file
           done
 
