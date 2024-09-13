@@ -2127,21 +2127,21 @@ $set 15 MSGCAT_SET_IO
 3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
 4 Backup magic file identification %1$s,\n
 5          Release: %1$s\n\
-     Disk Version: %2$g\n
+Disk Version: %2$g\n
 6    Database Name: %1$s\n\
- DB Creation Time: %2$s\
-         Pagesize: %3$d\n
+DB Creation Time: %2$s\
+Pagesize: %3$d\n
 7     Backup Level: %1$d (%2$s)\n\
-        Start_lsa: %3$lld|%4$d\n\
-         Last_lsa: %5$lld|%6$d\n
+Start_lsa: %3$lld|%4$d\n\
+Last_lsa: %5$lld|%6$d\n
 8      Backup Time: %1$s\
-  Backup Unit Num: %2$d\n
+Backup Unit Num: %2$d\n
 9  Database Volume name: %1$s\n\
-   Volume Identifier: %2$d, Size: %3$lld bytes (%4$d pages)\n
+Volume Identifier: %2$d, Size: %3$lld bytes (%4$d pages)\n
 10   Database Name: %1$s\n\
-     Volume Name: %2$s\n\
-        Unit Num: %3$d\n\
-    Backup Level: %4$d (%5$s)\n\
+Volume Name: %2$s\n\
+Unit Num: %3$d\n\
+Backup Level: %4$d (%5$s)\n\
 Enter one of the following options:\n
 11 Type\n \
   -  %1$d to quit.\n \
@@ -2164,7 +2164,7 @@ Enter one of the following options:\n
 26     Next Backup Volume Name: %1$s\n
 27  Backup Pagesize: %1$d\n
 28       Zip Method: %1$d (%2$s)\n\
-        Zip Level: %3$d (%4$s)\n
+Zip Level: %3$d (%4$s)\n
 29 Include Active Log: %1$s\n
 
 $set 16 MSGCAT_SET_LOG
