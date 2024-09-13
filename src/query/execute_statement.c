@@ -14996,6 +14996,11 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= TRAN_AUTO_COMMIT;
     }
 
+  if (statement->info.execute.do_cache)
+    {
+      query_flag |= RESULT_CACHE_REQUIRED;
+    }
+
   if (query_trace == true)
     {
       do_set_trace_to_query_flag (&query_flag);

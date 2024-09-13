@@ -158,6 +158,7 @@ extern "C"
     TP_DOMAIN **host_var_expected_domains;
     int auto_param_count;	/* number of auto parametrized values */
     int recompile;		/* statement should be recompiled */
+    int do_cache;		/* statement uses result cache */
     int oids_included;
     char **into_list;		/* names of the "into" variables */
     int into_count;		/* count of elements from the into array */
