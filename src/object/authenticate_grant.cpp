@@ -76,13 +76,17 @@ int
 au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 {
   int error = NO_ERROR;
-  MOP auth;
-  DB_SET *grants;
+  MOP auth, grantable_auth;
+  DB_SET *grants, *grantable_grants;
   DB_VALUE value;
-  int current, save = 0, gindex;
+  int current, save = 0, gindex, mask;
   SM_CLASS *classobj;
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_grant = 0;
   MOP *sub_partitions = NULL;
+  MOP grantor = NULL;
+  int gsize, j, grantable_cache;
+  DB_VALUE grantable_element, grantable_cache_element, grantable_user_element;
+  DB_AUTH grantable_type;
 
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
   if (error != NO_ERROR)
@@ -166,7 +170,56 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	    }
 	  else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	    {
-	      gindex = find_grant_entry (grants, class_mop, Au_user);
+	      if (au_is_dba_group_member (Au_user) || au_is_user_group_member (classobj->owner, Au_user))
+		{
+		  grantor = classobj->owner;
+		}
+	      else
+		{
+		  if (au_get_object (Au_user, "authorization", &grantable_auth) != NO_ERROR)
+		    {
+		      error = ER_AU_ACCESS_ERROR;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
+		    }
+		  else if (au_fetch_instance (grantable_auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
+		    {
+		      error = ER_AU_CANT_UPDATE;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		    }
+		  else if ((error = obj_inst_lock (grantable_auth, 1)) == NO_ERROR
+			   && (error = get_grants (grantable_auth, &grantable_grants, 1)) == NO_ERROR)
+		    {
+		      gsize = set_size (grantable_grants);
+		      for (j = 0; j < gsize && error == NO_ERROR; j += GRANT_ENTRY_LENGTH)
+			{
+			  grantable_cache = AU_NO_AUTHORIZATION;
+			  grantable_type = type;
+			  if (set_get_element (grantable_grants, GRANT_ENTRY_CACHE (j), &grantable_cache_element))
+			    {
+			      assert (er_errid () != NO_ERROR);
+			      error = er_errid ();
+			      break;
+			    }
+
+			  grantable_cache = db_get_int (&grantable_cache_element);
+			  if (grantable_type == DB_AUTH_ALL)
+			    {
+			      grantable_type = (DB_AUTH) (grantable_cache & AU_TYPE_MASK);
+			    }
+
+			  if ((grantable_cache & (int) grantable_type))
+			    {
+			      grantor = Au_user;
+			    }
+			  else
+			    {
+			      grantor = classobj->owner;
+			    }
+			}
+		    }
+		}
+
+	      gindex = find_grant_entry (grants, class_mop, grantor);
 	      if (gindex == -1)
 		{
 		  current = AU_NO_AUTHORIZATION;
@@ -199,14 +252,14 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 		  if (ins_bits)
 		    {
 		      error =
-			      accessor.insert_auth (Au_user, user, class_mop, ins_bits,
+			      accessor.insert_auth (grantor, user, class_mop, ins_bits,
 						    (grant_option) ? ins_bits : DB_AUTH_NONE);
 		    }
 		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
 		  if ((error == NO_ERROR) && upd_bits)
 		    {
 		      error =
-			      accessor.update_auth (Au_user, user, class_mop, upd_bits,
+			      accessor.update_auth (grantor, user, class_mop, upd_bits,
 						    (grant_option) ? upd_bits : DB_AUTH_NONE);
 		    }
 		}
@@ -223,12 +276,22 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 		{
 		  current |= ((int) type << AU_GRANT_SHIFT);
 		}
+	      /* with grant option을 주고 뺏으려하면, 안뺏어짐... */
+	      else
+		{
+		  mask = (int) ~ (type << AU_GRANT_SHIFT);
+		  current &= mask;
+		  if (current)
+		    {
+		      current |= (int) type;
+		    }
+		}
 
 	      db_make_int (&value, current);
 	      if (gindex == -1)
 		{
 		  /* There is no grant entry, add a new one. */
-		  gindex = add_grant_entry (grants, class_mop, Au_user);
+		  gindex = add_grant_entry (grants, class_mop, grantor);
 		}
 	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
 	      set_free (grants);
