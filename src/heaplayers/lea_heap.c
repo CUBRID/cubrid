@@ -51,6 +51,9 @@
 #define system_malloc my_malloc
 #define system_free my_free
 
+#define CUBRIDCUBRIDCUBRID
+#undef CUBRIDCUBRIDCUBRID
+
 static void *my_malloc (size_t sz);
 static int my_free (void *p);
 
