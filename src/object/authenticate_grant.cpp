@@ -116,18 +116,37 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
     }
 
   AU_DISABLE (save);
-  if (ws_is_same_object (user, Au_user))
+  if ((error = au_fetch_class_force (class_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
     {
-      /*
-       * Treat grant to self condition as a success only. Although this
-       * statement is a no-op, it is not an indication of no-success.
-       * The "privileges" are indeed already granted to self.
-       * Note: Revoke from self is an error, because this cannot be done.
-       */
-    }
-  else if ((error = au_fetch_class_force (class_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
-    {
-      if (ws_is_same_object (classobj->owner, user))
+      if (ws_is_same_object (user, Au_user))
+	{
+	  /*
+	   * Treat grant to self condition as a success only. Although this
+	   * statement is a no-op, it is not an indication of no-success.
+	   * The "privileges" are indeed already granted to self.
+	   * Note: Revoke from self is an error, because this cannot be done.
+	   * Additionally, two conditions have been added:
+	   *  1) No-op is disabled if the user does not have access to the CLASS (excluding the owner)
+	   *    Example :
+	   *      CALL LOGIN('u1', '') ON CLASS db_user;
+	   *      GRANT SELECT ON dba.tbl TO u1;
+	   *    Result : ERROR: SELECT authorization failure
+	   *  2) No-op is disabled if the user has access to the CLASS but does not have the WITH GRANT OPTION (excluding the owner).
+	   *    Example :
+	   *      CALL LOGIN(class db_user, 'dba', '');
+	   *      GRANT SELECT ON dba.tbl TO u1;
+	   *      CALL LOGIN('u1', '') ON CLASS db_user;
+	   *      GRANT SELECT ON dba.tbl TO u1;
+	   *    Result : ERROR: No GRANT option.
+	   */
+
+	  error = check_grant_option (class_mop, classobj, type);
+	  if (error != NO_ERROR)
+	    {
+	      return (error);
+	    }
+	}
+      else if (ws_is_same_object (classobj->owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
