@@ -38,8 +38,7 @@
 #include <queue>
 
 #include "method_connection_pool.hpp" /* cubmethod::connection */
-#include "method_def.hpp"	/* method_sig_node */
-#include "method_runtime_context.hpp" /* cubmethod::runtime_context */
+
 #include "method_struct_parameter_info.hpp" /* db_parameter_info */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */
 #include "porting.h" /* SOCKET */
@@ -47,6 +46,7 @@
 
 #include "pl_execution_stack_context.hpp"
 #include "pl_signature.hpp"
+#include "pl_session.hpp"
 
 // thread_entry.hpp
 namespace cubthread
@@ -67,7 +67,7 @@ namespace cubmethod
   {
     public:
       method_invoke_group () = delete; // Not DefaultConstructible
-      method_invoke_group (cubpl::execution_stack &stack, cubpl::pl_signature_array &sig);
+      method_invoke_group (cubpl::pl_signature_array &sig);
 
       method_invoke_group (method_invoke_group &&other) = delete; // Not MoveConstructible
       method_invoke_group (const method_invoke_group &copy) = delete; // Not CopyConstructible
@@ -78,11 +78,12 @@ namespace cubmethod
       ~method_invoke_group ();
 
       void begin ();
-      int prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base, const std::vector<bool> &arg_use_vec);
+      int prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int execute (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int reset (bool is_end_query);
       void end ();
 
+      int get_num_methods ();
       DB_VALUE &get_return_value (int index);
 
       METHOD_GROUP_ID get_id () const;
@@ -94,15 +95,15 @@ namespace cubmethod
       std::string get_error_msg ();
       void set_error_msg (const std::string &msg);
 
-    private:
+      void destroy_resources ();
 
-      runtime_context *m_rctx;
+    private:
       bool m_is_running;
 
       std::string m_err_msg;
 
       METHOD_GROUP_ID m_id;
-      cubpl::execution_stack &m_stack;
+      cubpl::execution_stack *m_stack;
       cubpl::pl_signature_array &m_sig_array;
 
       std::vector <DB_VALUE> m_result_vector;	/* placeholder for result value */

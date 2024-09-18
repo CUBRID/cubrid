@@ -20,5 +20,11 @@ if [ -z "$CUBRID" ]; then
 	exit 1
 fi
 
+mkdir -p $CUBRID/demo/method
+
+cubrid_esql -u $CUBRID/demo/method/method_factorial.ec
+gcc -c $CUBRID/demo/method/method_factorial.c -I$CUBRID/include -fPIC
+gcc -o $CUBRID/demo/method/method_factorial.so $CUBRID/demo/method/method_factorial.o -shared -L$CUBRID/lib -lcubridesql -lm
+
 cubrid createdb --db-volume-size=100M --log-volume-size=100M demodb en_US.utf8  > /dev/null 2>&1
 cubrid loaddb -u dba -s $CUBRID/demo/demodb_schema -d $CUBRID/demo/demodb_objects demodb > /dev/null 2>&1

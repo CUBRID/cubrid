@@ -23,7 +23,7 @@
 
 #include "ddl_log.h"
 
-#include "method_def.hpp"
+
 #include "method_compile.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"

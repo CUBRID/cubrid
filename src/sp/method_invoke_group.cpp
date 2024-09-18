@@ -23,7 +23,7 @@
 #include "db_value_printer.hpp"
 #include "jsp_comm.h"		/* common communcation functions for javasp */
 #include "mem_block.hpp" /* cubmem::extensible_block */
-#include "method_invoke.hpp"
+
 #include "method_struct_invoke.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"	/* OR_ */
@@ -33,6 +33,7 @@
 #include "method_connection_pool.hpp"
 #include "session.h"
 #include "string_buffer.hpp"
+#include "pl_session.hpp"
 
 #if defined (SA_MODE)
 #include "query_method.hpp"
@@ -45,20 +46,22 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Method Group to invoke together
 //////////////////////////////////////////////////////////////////////////
-  method_invoke_group::method_invoke_group (cubpl::execution_stack &stack, cubpl::pl_signature_array &sig_array)
+  method_invoke_group::method_invoke_group (cubpl::pl_signature_array &sig_array)
     : m_id ((std::uint64_t) this)
-    , m_stack (stack)
+    , m_stack (nullptr)
     , m_sig_array (sig_array)
   {
     assert (sig_array.num_sigs > 0);
 
     // assert
-#if defined (NDEBUG)
+#if !defined (NDEBUG)
     for (int i = 0; i < sig_array.num_sigs; i++)
       {
-	assert (PL_TYPE_IS_METHOD (sig_array.sigs[i].type);
+	assert (PL_TYPE_IS_METHOD (sig_array.sigs[i].type));
       }
 #endif
+
+
 
     DB_VALUE v;
     db_make_null (&v);
@@ -67,7 +70,7 @@ namespace cubmethod
 
   method_invoke_group::~method_invoke_group ()
   {
-
+    destroy_resources ();
   }
 
   DB_VALUE &
@@ -90,34 +93,44 @@ namespace cubmethod
   }
 
   int
-  method_invoke_group::prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base,
-				const std::vector<bool> &arg_use_vec)
+  method_invoke_group::prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
     int error = NO_ERROR;
 
-    SESSION_ID s_id = m_stack.get_session ()->get_id ();
-    int req_id = m_stack.get_and_increment_request_id ();
-    TRANID t_id = m_stack.get_tran_id ();
+    SESSION_ID s_id = cubpl::get_session ()->get_id ();
+    int req_id = m_stack->get_and_increment_request_id ();
+    TRANID t_id = m_stack->get_tran_id ();
 
     cubmethod::header header (s_id, METHOD_REQUEST_ARG_PREPARE, req_id);
-    cubmethod::prepare_args arg (m_id, t_id, METHOD_TYPE_CLASS_METHOD, arg_base); // TODO
+    cubmethod::prepare_args arg (m_id, t_id, METHOD_TYPE_CLASS_METHOD, arg_base); // TOD
 
+    error = method_send_data_to_client (m_stack->get_thread_entry (), header, arg);
     return error;
   }
 
   int method_invoke_group::execute (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base)
   {
     int error = NO_ERROR;
+    SESSION_ID s_id;
+    TRANID t_id;
 
-    SESSION_ID s_id = m_stack.get_session ()->get_id ();
-    TRANID t_id = m_stack.get_tran_id ();
+    m_stack = cubpl::get_session ()->create_and_push_stack (nullptr);
+    s_id =  cubpl::get_session ()->get_id ();
+    t_id = m_stack->get_tran_id ();
+
+    // prepare args
+    error = prepare (arg_base);
+    if (error != NO_ERROR)
+      {
+	goto exit;
+      }
 
     for (int i = 0; i < m_sig_array.num_sigs; i++)
       {
-	int req_id = m_stack.get_and_increment_request_id ();
+	int req_id = m_stack->get_and_increment_request_id ();
 	// invoke
 	cubmethod::header header (s_id, METHOD_REQUEST_INVOKE /* default */, 0);
-	error = method_send_data_to_client (m_stack.get_thread_entry (), header, m_sig_array.sigs[i]);
+	error = method_send_data_to_client (m_stack->get_thread_entry (), header, m_id, m_sig_array.sigs[i]);
 	if (error != NO_ERROR)
 	  {
 	    break;
@@ -144,27 +157,28 @@ namespace cubmethod
 	};
 
 	// get_return
-	error = xs_receive (m_stack.get_thread_entry (), get_method_result);
+	error = xs_receive (m_stack->get_thread_entry (), get_method_result);
 	if (error != NO_ERROR)
 	  {
 	    break;
 	  }
 
-#if 0
-	if (m_rctx->is_interrupted ())
+#if 0 // TODO
+	if (m_session->is_interrupted ())
 	  {
-	    error = m_rctx->get_interrupt_id ();
+	    error = m_session->get_interrupt_id ();
 	  }
 
 	if (error != NO_ERROR)
 	  {
 	    // if error is not interrupt reason, interrupt is not set
-	    m_rctx->set_interrupt (error, (er_has_error () && er_msg ()) ? er_msg () : "");
+	    m_session->set_interrupt (error, (er_has_error () && er_msg ()) ? er_msg () : "");
 	    break;
 	  }
 #endif
       }
 
+exit:
     return error;
   }
 
@@ -193,10 +207,15 @@ namespace cubmethod
 	m_handler_set.clear ();
       }
 
-    destroy_resources ();
 #endif
 
     return error;
+  }
+
+  void
+  method_invoke_group::destroy_resources ()
+  {
+    pr_clear_value_vector (m_result_vector);
   }
 
   void
@@ -211,6 +230,12 @@ namespace cubmethod
     // m_rctx->pop_stack (m_thread_p, this);
 
     m_is_running = false;
+  }
+
+  int
+  method_invoke_group::get_num_methods ()
+  {
+    return m_sig_array.num_sigs;
   }
 
   std::string

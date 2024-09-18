@@ -194,7 +194,7 @@ regu_spec_target_init (access_spec_node &spec, TARGET_TYPE type)
     case TARGET_METHOD:
       ACCESS_SPEC_METHOD_REGU_LIST (&spec) = NULL;
       ACCESS_SPEC_XASL_NODE (&spec) = NULL;
-      ACCESS_SPEC_METHOD_SIG_LIST (&spec) = NULL;
+      ACCESS_SPEC_METHOD_SIG_ARRAY (&spec) = NULL;
       break;
     case TARGET_JSON_TABLE:
       ACCESS_SPEC_JSON_TABLE_REGU_VAR (&spec) = NULL;

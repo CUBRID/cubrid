@@ -25,15 +25,27 @@
 
 #include "packable_object.hpp"
 
+  enum PL_TYPE
+  {
+    PL_TYPE_NONE = 0,
+    PL_TYPE_INSTANCE_METHOD,
+    PL_TYPE_CLASS_METHOD,
+    PL_TYPE_JAVA_SP,
+    PL_TYPE_PLCSQL
+  };
+
 namespace cubpl
 {
+#define PL_TYPE_IS_METHOD(type) \
+        ((type) == PL_TYPE_INSTANCE_METHOD || (type) == PL_TYPE_CLASS_METHOD)
+  
   struct pl_arg : public cubpacking::packable_object
   {
     int arg_size;
-    int *arg_mode;  // IN OUT IN/OUT
-    int *arg_type;  // DB_TYPE array
-    int   *arg_default_value_size;
-    char **arg_default_value;
+    int *arg_mode;  // array of (IN|OUT|IN/OUT)
+    int *arg_type;  // array of DB_TYPE
+    int   *arg_default_value_size; // -2: NULL, -1: Non-optional, else: optional
+    char **arg_default_value; // array of VARCHAR (256)
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -42,20 +54,39 @@ namespace cubpl
     pl_arg ();
     pl_arg (int num_args);
     ~pl_arg () override;
+
+    void set_arg_size (int num_args);
+    void clear ();
+  };
+
+  union pl_ext
+  {
+    struct pl_sp_info
+    {
+      OID code_oid; // PL/CSQL
+    } sp;
+    struct pl_method_info
+    {
+      char *class_name;
+      int *arg_pos;
+    } method;
   };
 
   struct pl_signature : public cubpacking::packable_object
   {
-    int pl_type; // Java SP or PL/CSQL
+    int type; // PL_TYPE
     char *name;
     char *auth;
     int result_type; // DB_TYPE
 
-    pl_arg *arg;
+    pl_arg arg;
+    pl_ext ext;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    bool has_args ();
 
     pl_signature ();
     ~pl_signature () override;
@@ -73,34 +104,10 @@ namespace cubpl
     pl_signature_array ();
     ~pl_signature_array () override;
   };
-
-#if 0
-  struct plcsql_sig : public pl_signature
-  {
-    OID code_oid;
-
-    void pack (cubpacking::packer &serializator) const override;
-    void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
-
-    plcsql_sig ();
-    ~plcsql_sig () override;
-  };
-
-
-  struct method_sig : public pl_signature
-  {
-    int *method_arg_pos;		/* arg position in list file */
-    char *class_name;		        /* class name for the class method */
-
-    void pack (cubpacking::packer &serializator) const override;
-    void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
-
-    method ();
-    ~method () override;
-  };
-#endif
 }
+
+using PL_SIGNATURE_TYPE = cubpl::pl_signature;
+using PL_SIGNATURE_ARG_TYPE = cubpl::pl_arg;
+using PL_SIGNATURE_ARRAY_TYPE = cubpl::pl_signature_array;
 
 #endif // _PL_SIGNATURE_HPP_

@@ -17,7 +17,7 @@
  */
 
 /*
- * pl_execution_stack.hpp: managing subprograms of a server task
+ * pl_execution_stack_context.hpp: managing subprograms of a server task
  */
 
 #ifndef _PL_EXECUTION_STACK_HPP_
@@ -37,6 +37,7 @@
 
 #include "method_struct_invoke.hpp"
 #include "method_connection_pool.hpp"
+#include "method_connection_sr.hpp"
 
 // thread_entry.hpp
 namespace cubthread
@@ -55,19 +56,20 @@ namespace cubpl
   {
     protected:
       PL_STACK_ID m_id;
-      cubthread::entry *m_thread_p;
-      session *m_rctx;
-
-      SESSION_ID m_sid;
       TRANID m_tid;
 
+      cubthread::entry *m_thread_p;
+      session *m_session;
+
+      /* resources */
       std::unordered_set <int> m_stack_handler_id;
       std::unordered_set <std::uint64_t> m_stack_cursor_id;
+      cubmethod::connection *m_connection;
+
+      /* error */
+      std::string m_error_message;
 
       bool m_is_running;
-      bool m_is_for_scan;
-
-      void destory_all_cursors ();
 
     public:
       execution_stack () = delete; // Not DefaultConstructible
@@ -79,40 +81,77 @@ namespace cubpl
       execution_stack &operator= (execution_stack &&other) = delete; // Not MoveAssignable
       execution_stack &operator= (const execution_stack &copy) = delete; // Not CopyAssignable
 
-      virtual ~execution_stack () {};
+      ~execution_stack ();
 
       /* getters */
       PL_STACK_ID get_id () const;
       TRANID get_tran_id ();
-      SESSION_ID get_session_id () const;
 
-      session *get_pl_session () const;
+      /* session and thread */
       cubthread::entry *get_thread_entry () const;
 
+      /* connection */
       cubmethod::connection *get_connection () const;
+      std::queue<cubmem::block> &get_data_queue ();
 
       /* resource management */
-
-      query_cursor *create_cursor (QUERY_ID query_id, bool oid_included);
+      int add_cursor (QUERY_ID query_id, bool oid_included);
+      void remove_cursor (QUERY_ID query_id);
       query_cursor *get_cursor (QUERY_ID query_id);
-      void register_returning_cursor (QUERY_ID query_id);
-      // void deregister_returning_cursor (QUERY_ID query_id);
+      void promote_to_session_cursor (QUERY_ID query_id);
+      void destory_all_cursors ();
 
-      void register_stack_query_handler (int handler_id);
-      /*
-      PL_QUERY_CURSOR *create_cursor (QUERY_ID query_id, bool oid_included);
-      PL_QUERY_CURSOR *get_cursor (QUERY_ID query_id);
-      void register_returning_cursor (QUERY_ID query_id);
-      void deregister_returning_cursor (QUERY_ID query_id);
-
-      // client handelr
-      void register_client_handler (int handler_id);
-      */
+      /* query handler */
+      void add_query_handler (int handler_id);
+      void remove_query_handler (int handler_id);
 
       const std::unordered_set <int> *get_stack_query_handler () const;
       const std::unordered_set <std::uint64_t> *get_stack_cursor () const;
 
-      virtual bool is_for_scan () const = 0; // METHOD SCAN or SP STACK
+      // runtime (temporary)
+      std::queue<cubmem::block> m_data_queue;
+
+      cubmethod::header m_client_header; // header sending to cubridcs
+      cubmethod::header m_java_header; // header sending to cub_javasp
+      bool m_transaction_control;
+
+      template <typename ... Args>
+      int send_data_to_client (cubthread::entry *thread_p, Args &&... args)
+      {
+	int error_code = NO_ERROR;
+	auto dummy = [&] (const cubmem::block & b)
+	{
+	  return NO_ERROR;
+	};
+
+	error_code = cubmethod::method_send_data_to_client (thread_p, m_client_header, std::forward<Args> (args)...);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+
+	return cubmethod::xs_receive (thread_p, dummy);
+      }
+
+      int m_req_id;
+      inline int get_and_increment_request_id ()
+      {
+	return m_req_id++;
+      }
+
+      std::string m_error_msg;
+      void set_error_message (std::string &error_msg)
+      {
+	m_error_message = error_msg;
+      }
+
+      const std::string &get_error_message ()
+      {
+	return m_error_message;
+      }
+
+      cubmem::block get_payload_block (cubpacking::unpacker &unpacker);
+
   };
 }
 

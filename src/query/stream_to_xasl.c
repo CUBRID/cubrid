@@ -42,6 +42,8 @@
 #include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
 #include "xasl_unpack_info.hpp"
+#include "pl_signature.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -76,9 +78,8 @@ static HEAP_CACHE_ATTRINFO *stx_restore_cache_attrinfo (THREAD_ENTRY * thread_p,
 static DB_VALUE **stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr, int size, int total_size);
 static int *stx_restore_int_array (THREAD_ENTRY * thread_p, char *ptr, int size);
 static OID *stx_restore_OID_array (THREAD_ENTRY * thread_p, char *ptr, int size);
-static METHOD_SIG_LIST *stx_restore_method_sig_list (THREAD_ENTRY * thread_p, char *ptr);
-static METHOD_SIG *stx_restore_method_sig (THREAD_ENTRY * thread_p, char *ptr, int size);
-static METHOD_ARG_INFO *stx_restore_method_arg_info (THREAD_ENTRY * thread_p, char *ptr, int num_args);
+
+static PL_SIGNATURE_ARRAY_TYPE *stx_restore_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr);
 static KEY_RANGE *stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr, int size);
 
 static char *stx_build_xasl_node (THREAD_ENTRY * thread_p, char *tmp, XASL_NODE * ptr);
@@ -88,9 +89,9 @@ static char *stx_build_func_pred (THREAD_ENTRY * thread_p, char *tmp, FUNC_PRED 
 static char *stx_build_cache_attrinfo (char *tmp);
 static char *stx_build_list_id (THREAD_ENTRY * thread_p, char *tmp, QFILE_LIST_ID * ptr);
 static char *stx_build_sub_xasl_id (THREAD_ENTRY * thread_p, char *tmp, XASL_ID * ptr);
-static char *stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *tmp, METHOD_SIG_LIST * ptr);
-static char *stx_build_method_sig (THREAD_ENTRY * thread_p, char *tmp, METHOD_SIG * ptr, int size);
-static char *stx_build_method_arg_info (THREAD_ENTRY * thread_p, char *tmp, METHOD_ARG_INFO * ptr, int num_args);
+
+static char *stx_build_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr, PL_SIGNATURE_ARRAY_TYPE * sig_array);
+
 static char *stx_build_union_proc (THREAD_ENTRY * thread_p, char *tmp, UNION_PROC_NODE * ptr);
 static char *stx_build_fetch_proc (THREAD_ENTRY * thread_p, char *tmp, FETCH_PROC_NODE * ptr);
 static char *stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDLIST_PROC_NODE * ptr);
@@ -1200,107 +1201,42 @@ stx_restore_list_id (THREAD_ENTRY * thread_p, char *ptr)
 }
 
 /*
- * stx_restore_method_sig_list () -
+ * stx_restore_pl_sig_array () -
  *
- * Note: do not use or_unpack_method_sig_list ()
  */
-static METHOD_SIG_LIST *
-stx_restore_method_sig_list (THREAD_ENTRY * thread_p, char *ptr)
+static PL_SIGNATURE_ARRAY_TYPE *
+stx_restore_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr)
 {
-  METHOD_SIG_LIST *method_sig_list;
+  PL_SIGNATURE_ARRAY_TYPE *sig_array = NULL;
 
   if (ptr == NULL)
     {
       return NULL;
     }
 
-  method_sig_list = (METHOD_SIG_LIST *) stx_get_struct_visited_ptr (thread_p, ptr);
-  if (method_sig_list != NULL)
+  sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_get_struct_visited_ptr (thread_p, ptr);
+  if (sig_array != NULL)
     {
-      return method_sig_list;
+      return sig_array;
     }
 
-  method_sig_list = (METHOD_SIG_LIST *) stx_alloc_struct (thread_p, sizeof (METHOD_SIG_LIST));
-  if (method_sig_list == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-  if (stx_mark_struct_visited (thread_p, ptr, method_sig_list) == ER_FAILED
-      || stx_build_method_sig_list (thread_p, ptr, method_sig_list) == NULL)
-    {
-      return NULL;
-    }
+  //sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_ARRAY_TYPE));
+  //if (sig_array == NULL)
+  //  {
+  //   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  //   return NULL;
+  // }
+  sig_array = new PL_SIGNATURE_ARRAY_TYPE;
 
-  return method_sig_list;
-}
+  // new (sig_array) PL_SIGNATURE_ARRAY_TYPE;
 
-static METHOD_SIG *
-stx_restore_method_sig (THREAD_ENTRY * thread_p, char *ptr, int count)
-{
-  METHOD_SIG *method_sig;
-
-  if (ptr == NULL)
-    {
-      assert (count == 0);
-      return NULL;
-    }
-
-  assert (count > 0);
-
-  method_sig = (METHOD_SIG *) stx_get_struct_visited_ptr (thread_p, ptr);
-  if (method_sig != NULL)
-    {
-      return method_sig;
-    }
-
-  method_sig = (METHOD_SIG *) stx_alloc_struct (thread_p, sizeof (METHOD_SIG));
-  if (method_sig == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-
-  if (stx_mark_struct_visited (thread_p, ptr, method_sig) == ER_FAILED
-      || stx_build_method_sig (thread_p, ptr, method_sig, count) == NULL)
+  if (stx_mark_struct_visited (thread_p, ptr, sig_array) == ER_FAILED ||
+      stx_build_pl_sig_array (thread_p, ptr, sig_array) == NULL)
     {
       return NULL;
     }
 
-  return method_sig;
-}
-
-static METHOD_ARG_INFO *
-stx_restore_method_arg_info (THREAD_ENTRY * thread_p, char *ptr, int num_args)
-{
-  METHOD_ARG_INFO *arg_info;
-  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
-
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
-
-  arg_info = (METHOD_ARG_INFO *) stx_get_struct_visited_ptr (thread_p, ptr);
-  if (arg_info != NULL)
-    {
-      return arg_info;
-    }
-
-  arg_info = (METHOD_ARG_INFO *) stx_alloc_struct (thread_p, sizeof (METHOD_ARG_INFO));
-  if (arg_info == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-
-  if (stx_mark_struct_visited (thread_p, ptr, arg_info) == ER_FAILED
-      || stx_build_method_arg_info (thread_p, ptr, arg_info, num_args) == NULL)
-    {
-      return NULL;
-    }
-
-  return arg_info;
+  return sig_array;
 }
 
 static DB_VALUE **
@@ -2557,170 +2493,15 @@ error:
 }
 
 static char *
-stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG_LIST * method_sig_list)
+stx_build_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr, PL_SIGNATURE_ARRAY_TYPE * sig_array)
 {
-  int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  int size, offset;
 
-  ptr = or_unpack_int (ptr, (int *) &method_sig_list->num_methods);
+  ptr = or_unpack_int (ptr, (int *) &size);
+  packing_unpacker unpacker (ptr, size);
+  unpacker.unpack_all (*sig_array);
 
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      method_sig_list->method_sig = NULL;
-    }
-  else
-    {
-      method_sig_list->method_sig =
-	stx_restore_method_sig (thread_p, &xasl_unpack_info->packed_xasl[offset], method_sig_list->num_methods);
-      if (method_sig_list->method_sig == NULL)
-	{
-	  goto error;
-	}
-    }
-
-#if !defined(NDEBUG)
-  {
-    int i = 0;
-    METHOD_SIG *sig;
-
-    for (sig = method_sig_list->method_sig; sig; sig = sig->next)
-      {
-	i++;
-      }
-    assert (method_sig_list->num_methods == i);
-  }
-#endif
-
-  return ptr;
-
-error:
-  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-  return NULL;
-}
-
-static char *
-stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_sig, int count)
-{
-  int offset;
-  int num_args, n;
-  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
-
-  method_sig->method_name = stx_restore_string (thread_p, ptr);
-  if (method_sig->method_name == NULL)
-    {
-      assert (false);
-      goto error;
-    }
-
-  method_sig->auth_name = stx_restore_string (thread_p, ptr);
-
-  ptr = or_unpack_int (ptr, (int *) &method_sig->method_type);
-  ptr = or_unpack_int (ptr, &method_sig->num_method_args);
-
-  num_args = method_sig->num_method_args;
-
-  ptr = or_unpack_int (ptr, &method_sig->result_type);
-
-  method_sig->method_arg_pos = (int *) stx_alloc_struct (thread_p, sizeof (int) * (num_args + 1));
-  if (method_sig->method_arg_pos == NULL)
-    {
-      goto error;
-    }
-
-  for (n = 0; n < (num_args + 1); n++)
-    {
-      ptr = or_unpack_int (ptr, &(method_sig->method_arg_pos[n]));
-    }
-
-/* is can be null */
-  method_sig->class_name = stx_restore_string (thread_p, ptr);
-
-  ptr = or_unpack_oid (ptr, &method_sig->oid);
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      method_sig->arg_info = NULL;
-    }
-  else
-    {
-      method_sig->arg_info = stx_restore_method_arg_info (thread_p, &xasl_unpack_info->packed_xasl[offset], num_args);
-      if (method_sig->arg_info == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      method_sig->next = NULL;
-    }
-  else
-    {
-      method_sig->next = stx_restore_method_sig (thread_p, &xasl_unpack_info->packed_xasl[offset], count - 1);
-      if (method_sig->next == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  return ptr;
-
-error:
-  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-  return NULL;
-}
-
-
-static char *
-stx_build_method_arg_info (THREAD_ENTRY * thread_p, char *ptr, METHOD_ARG_INFO * method_arg_info, int num_args)
-{
-  int n;
-  method_arg_info->arg_mode = (int *) stx_alloc_struct (thread_p, sizeof (int) * num_args);
-  if (method_arg_info->arg_mode == NULL)
-    {
-      goto error;
-    }
-
-  method_arg_info->arg_type = (int *) stx_alloc_struct (thread_p, sizeof (int) * num_args);
-  if (method_arg_info->arg_type == NULL)
-    {
-      goto error;
-    }
-
-  method_arg_info->default_value_size = (int *) stx_alloc_struct (thread_p, sizeof (int) * num_args);
-  if (method_arg_info->default_value_size == NULL)
-    {
-      goto error;
-    }
-
-  method_arg_info->default_value = (char **) stx_alloc_struct (thread_p, sizeof (char *) * num_args);
-  if (method_arg_info->default_value == NULL)
-    {
-      goto error;
-    }
-
-  for (n = 0; n < num_args; n++)
-    {
-      ptr = or_unpack_int (ptr, &method_arg_info->arg_mode[n]);
-    }
-  for (n = 0; n < num_args; n++)
-    {
-      ptr = or_unpack_int (ptr, &method_arg_info->arg_type[n]);
-    }
-  for (n = 0; n < num_args; n++)
-    {
-      ptr = or_unpack_int (ptr, &method_arg_info->default_value_size[n]);
-      method_arg_info->default_value[n] = stx_restore_string (thread_p, ptr);
-    }
-
-  return ptr;
-
-error:
-  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-  return NULL;
+  return (char *) unpacker.get_curr_ptr ();
 }
 
 static char *
@@ -5461,12 +5242,12 @@ stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *ptr, METHOD_SPEC_TYPE
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      method_spec->method_sig_list = NULL;
+      method_spec->sig_array = NULL;
     }
   else
     {
-      method_spec->method_sig_list = stx_restore_method_sig_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (method_spec->method_sig_list == NULL)
+      method_spec->sig_array = stx_restore_pl_sig_array (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (method_spec->sig_array == NULL)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;

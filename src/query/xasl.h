@@ -30,13 +30,14 @@
 #include "access_json_table.hpp"
 #include "access_spec.hpp"
 #include "memory_hash.h"
-#include "method_def.hpp"
+
 #include "query_hash_scan.h"
 #include "query_list.h"
 #include "regu_var.hpp"
 #include "storage_common.h"
 #include "string_opfunc.h"
 #include "subquery_cache.h"
+#include "pl_signature.hpp"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "external_sort.h"

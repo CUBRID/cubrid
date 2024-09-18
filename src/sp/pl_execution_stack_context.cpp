@@ -16,62 +16,85 @@
  *
  */
 
-#include "pl_execution_stack.hpp"
+#include "pl_execution_stack_context.hpp"
 
 #include "session.h"
+#include "jsp_comm.h"
 
 namespace cubpl
 {
   execution_stack::execution_stack (cubthread::entry *thread_p)
     : m_id ((std::uint64_t) this)
     , m_thread_p (thread_p)
+    , m_session {get_session ()}
+    , m_client_header (-1,  METHOD_REQUEST_CALLBACK /* default */, 0)
+    , m_java_header (-1,  SP_CODE_INTERNAL_JDBC /* default */, 0)
+    , m_connection {nullptr}
   {
-    // init runtime context
-    session_get_pl_session (thread_p, m_rctx);
-    session_get_session_id (thread_p, &m_sid);
-
     m_tid = logtb_find_current_tranid (thread_p);
-
     m_is_running = false;
+
+    if (m_session)
+      {
+	m_client_header.id = m_session->get_id ();
+      }
   }
 
-  void
-  execution_stack::register_stack_query_handler (int handler_id)
+  execution_stack::~execution_stack ()
   {
-    m_stack_handler_id.insert (handler_id);
+    if (m_session)
+      {
+	// retire connection
+	if (m_connection)
+	  {
+	    cubmethod::connection *conn = std::move (m_connection);
+	    m_session->get_connection_pool ().retire (conn, false);
+	  }
+      }
   }
 
-  query_cursor *
-  execution_stack::create_cursor (QUERY_ID query_id, bool oid_included)
+  /*
+    void
+    execution_stack::register_stack_query_handler (int handler_id)
+    {
+      m_stack_handler_id.insert (handler_id);
+    }
+  */
+
+  int
+  execution_stack::add_cursor (QUERY_ID query_id, bool oid_included)
   {
     if (query_id == NULL_QUERY_ID || query_id >= SHRT_MAX)
       {
 	// false query e.g) SELECT * FROM db_class WHERE 0 <> 0
-	return nullptr;
+	return ER_FAILED;
       }
 
-    m_stack_cursor_id.insert (query_id);
-    return get_pl_session ()->create_cursor (m_thread_p, query_id, oid_included);
-  }
+    query_cursor *cursor = nullptr;
+    if ((cursor = get_cursor (query_id)) == nullptr)
+      {
+	cursor = m_session->create_cursor (m_thread_p, query_id, oid_included);
+      }
 
-  cubmethod::connection *
-  execution_stack::get_connection () const
-  {
-    // TODO
-    return nullptr;
-  }
+    if (cursor)
+      {
+	m_stack_cursor_id.insert (query_id);
+      }
 
-  void
-  execution_stack::register_returning_cursor (QUERY_ID query_id)
-  {
-    get_pl_session ()->register_returning_cursor (m_thread_p, query_id);
-    m_stack_cursor_id.erase (query_id);
+    return NO_ERROR;
   }
 
   query_cursor *
   execution_stack::get_cursor (QUERY_ID query_id)
   {
-    return get_pl_session ()->get_cursor (m_thread_p, query_id);
+    return m_session->get_cursor (m_thread_p, query_id);
+  }
+
+  void
+  execution_stack::promote_to_session_cursor (QUERY_ID query_id)
+  {
+    m_session->add_session_cursor (m_thread_p, query_id);
+    m_stack_cursor_id.erase (query_id);
   }
 
   void
@@ -81,12 +104,17 @@ namespace cubpl
       {
 	// If the cursor is received from the child function and is not returned to the parent function, the cursor remains in m_cursor_set.
 	// So here trying to find the cursor Id in the global returning cursor storage and remove it if exists.
-	get_pl_session ()->deregister_returning_cursor (m_thread_p, cursor_it);
-
-	get_pl_session ()->destroy_cursor (m_thread_p, cursor_it);
+	m_session->destroy_cursor (m_thread_p, cursor_it);
       }
 
     m_stack_cursor_id.clear ();
+  }
+
+  cubmethod::connection *
+  execution_stack::get_connection () const
+  {
+    // TODO
+    return nullptr;
   }
 
   PL_STACK_ID
@@ -95,23 +123,11 @@ namespace cubpl
     return m_id;
   }
 
-  SESSION_ID
-  execution_stack::get_session_id () const
-  {
-    return m_sid;
-  }
-
   TRANID
   execution_stack::get_tran_id ()
   {
     m_tid = logtb_find_current_tranid (m_thread_p);
     return m_tid;
-  }
-
-  cubpl::session *
-  execution_stack::get_pl_session () const
-  {
-    return m_rctx;
   }
 
   cubthread::entry *
@@ -131,5 +147,20 @@ namespace cubpl
   execution_stack::get_stack_cursor () const
   {
     return &m_stack_cursor_id;
+  }
+
+  cubmem::block
+  execution_stack::get_payload_block (cubpacking::unpacker &unpacker)
+  {
+    char *aligned_ptr = PTR_ALIGN (unpacker.get_curr_ptr(), MAX_ALIGNMENT);
+    cubmem::block payload_blk ((size_t) (unpacker.get_buffer_end() - aligned_ptr),
+			       aligned_ptr);
+    return payload_blk;
+  }
+
+  std::queue<cubmem::block> &
+  execution_stack::get_data_queue ()
+  {
+    return m_data_queue;
   }
 }

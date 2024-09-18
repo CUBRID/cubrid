@@ -2101,6 +2101,11 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  break;
 	case TARGET_METHOD:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.method_node.method_regu_list, is_final);
+	  if (is_final)
+	    {
+	      delete p->s.method_node.sig_array;
+              p->s.method_node.sig_array = NULL;
+	    }
 	  break;
 	case TARGET_REGUVAL_LIST:
 	  break;
@@ -9326,7 +9331,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
     case TARGET_METHOD:
       error_code =
 	scan_open_method_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-			       ACCESS_SPEC_METHOD_LIST_ID (curr_spec), ACCESS_SPEC_METHOD_SIG_LIST (curr_spec));
+			       ACCESS_SPEC_METHOD_LIST_ID (curr_spec), ACCESS_SPEC_METHOD_SIG_ARRAY (curr_spec));
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

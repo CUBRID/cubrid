@@ -30,7 +30,7 @@
 #include <queue>
 
 #include "network_interface_cl.h"
-#include "method_def.hpp"
+
 #include "mem_block.hpp"
 #include "packer.hpp"
 #include "transaction_cl.h"

@@ -34,7 +34,7 @@
 // forward def
 struct method_sig_list;
 struct qfile_list_id;
-struct method_sig_node;
+
 
 #if defined(CS_MODE)
 extern int method_dispatch (unsigned int rc, char *methoddata, int methoddata_size);

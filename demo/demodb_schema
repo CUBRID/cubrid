@@ -47,6 +47,8 @@ call change_owner('record', 'PUBLIC') on class db_root;
 CREATE CLASS history dont_reuse_oid;
 call change_owner('history', 'PUBLIC') on class db_root;
 
+CREATE CLASS cub_meth (a int);
+call change_owner('cub_meth', 'PUBLIC') on class db_root;
 
 CREATE PRIVATE SYNONYM athlete FOR public.athlete;
 CREATE PRIVATE SYNONYM code FOR public.code;
@@ -182,5 +184,6 @@ ALTER CLASS public.game ADD CONSTRAINT [fk_game_event_code] FOREIGN KEY(event_co
 
 ALTER CLASS public.game ADD CONSTRAINT [fk_game_athlete_code] FOREIGN KEY(athlete_code) REFERENCES public.athlete ON DELETE RESTRICT ON UPDATE RESTRICT ;
 
+ALTER CLASS public.cub_meth add method class factorial(int) int function exec_factorial file '$CUBRID/demo/method/method_factorial.so', '$CUBRID/lib/libcubridesql.so';
 
 COMMIT WORK;
