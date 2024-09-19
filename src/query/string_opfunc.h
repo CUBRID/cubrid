@@ -43,25 +43,19 @@
 typedef struct cub_compiled_regex cub_compiled_regex;
 #endif
 
-#define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
-                                 ((s)==DB_TYPE_VARCHAR))
-#define QSTR_IS_NATIONAL_CHAR(s) (((s)==DB_TYPE_NCHAR) || \
-                                 ((s)==DB_TYPE_VARNCHAR))
-#define QSTR_IS_BIT(s)           (((s)==DB_TYPE_BIT) || \
-                                 ((s)==DB_TYPE_VARBIT))
-#define QSTR_IS_ANY_CHAR(s)	(QSTR_IS_CHAR(s) || QSTR_IS_NATIONAL_CHAR(s))
-#define QSTR_IS_ANY_CHAR_OR_BIT(s)		(QSTR_IS_ANY_CHAR(s) \
-                                                 || QSTR_IS_BIT(s))
+/* *INDENT-OFF* */
+#define QSTR_IS_CHAR(s)             (CHECK_DB_TYPE_ENUM((s)), ((_db_char_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
+#define QSTR_IS_NATIONAL_CHAR(s)    (CHECK_DB_TYPE_ENUM((s)), ((_db_nchar_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
+#define QSTR_IS_BIT(s)              (CHECK_DB_TYPE_ENUM((s)), ((_db_bit_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
 
-#define QSTR_IS_FIXED_LENGTH(s)         (((s)==DB_TYPE_CHAR)  || \
-                                     ((s)==DB_TYPE_NCHAR) || \
-                                     ((s)==DB_TYPE_BIT))
+#define QSTR_IS_ANY_CHAR(s)         (CHECK_DB_TYPE_ENUM((s)), ((_db_string_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
+#define QSTR_IS_ANY_CHAR_OR_BIT(s)  (CHECK_DB_TYPE_ENUM((s)), ((_db_any_char_or_bit_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
 
-#define QSTR_IS_VARIABLE_LENGTH(s)      (((s)==DB_TYPE_VARCHAR)  || \
-                                     ((s)==DB_TYPE_VARNCHAR) || \
-                                     ((s)==DB_TYPE_VARBIT))
+#define QSTR_IS_FIXED_LENGTH(s)     (CHECK_DB_TYPE_ENUM((s)), ((_db_fixed_length_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
+#define QSTR_IS_VARIABLE_LENGTH(s)  (CHECK_DB_TYPE_ENUM((s)), ((_db_variable_length_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
+/* *INDENT-ON* */
 
-#define QSTR_NUM_BYTES(a)            (((a) + 7) / 8)
+#define QSTR_NUM_BYTES(a)           (((a) + 7) / 8)
 
 #define QSTR_CHAR_COMPARE(id, string1, size1, string2, size2, ti) \
 	QSTR_COMPARE(id, string1, size1, string2, size2, ti)

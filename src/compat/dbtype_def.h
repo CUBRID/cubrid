@@ -28,6 +28,8 @@
 
 #include "error_code.h"
 #include <stdint.h>
+#include "system.h"
+#include "porting.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -668,12 +670,6 @@ extern "C"
 
 #define NULL_DEFAULT_EXPRESSION_OPERATOR (-1)
 
-#define DB_IS_DATETIME_DEFAULT_EXPR(v) ((v) == DB_DEFAULT_SYSDATE || \
-    (v) == DB_DEFAULT_CURRENTTIME || (v) == DB_DEFAULT_CURRENTDATE || \
-    (v) == DB_DEFAULT_SYSDATETIME || (v) == DB_DEFAULT_SYSTIMESTAMP || \
-    (v) == DB_DEFAULT_UNIX_TIMESTAMP || (v) == DB_DEFAULT_CURRENTDATETIME || \
-    (v) == DB_DEFAULT_CURRENTTIMESTAMP || (v) == DB_DEFAULT_SYSTIME)
-
   /* This defines the basic type identifier constants. These are used in the domain specifications of attributes and method
    * arguments and as value type tags in the DB_VALUE structures.
    */
@@ -724,6 +720,9 @@ extern "C"
     DB_TYPE_JSON = 40,
 
     DB_TYPE_MAX,		/* This is the number of DB_TYPE */
+    /* Notice: 
+     * If you want to add new values ​​or change the order, you must also modify the pt_db_to_type_enum() function.
+     */
 
     /* aliases */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
@@ -733,6 +732,86 @@ extern "C"
 
     DB_TYPE_LAST = (DB_TYPE_MAX - 1)
   } DB_TYPE;
+
+/* *INDENT-OFF* */
+#define CHECK_DB_TYPE_ENUM(v)  ASSERT_IN_MACRO(((v) >= DB_TYPE_FIRST) && ((v) <= DB_TYPE_LAST))
+#define GET_DB_TYPE_ENUM_BIT_POS(t)  ((INT64)0x01 << (t))
+
+  static const UINT64 _db_string_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARCHAR)  | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_CHAR)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARNCHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_NCHAR);
+
+  static const UINT64 _db_variable_string_type = GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARCHAR)
+                                               | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARNCHAR);
+
+  static const UINT64 _db_char_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARCHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_CHAR);
+  static const UINT64 _db_nchar_type =               
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARNCHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_NCHAR);
+  static const UINT64 _db_bit_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARBIT) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_BIT);
+
+  static const UINT64 _db_any_char_or_bit_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARCHAR)  | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_CHAR)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARNCHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_NCHAR)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARBIT)   | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_BIT);
+
+  static const UINT64 _db_fixed_length_type =
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_CHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_NCHAR);
+  static const UINT64 _db_variable_length_type =
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARCHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARNCHAR);
+
+  static const UINT64 _db_set_type = GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_SEQUENCE)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_MULTISET) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_SET);
+
+  static const UINT64 _db_lob_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_BLOB) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_CLOB);
+
+  static const UINT64 _db_numeric_type =
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_INTEGER) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_FLOAT)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DOUBLE)  | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_SMALLINT)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_NUMERIC) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_MONETARY)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_BIGINT);
+
+  static const UINT64 _db_double_align_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DOUBLE) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_BIGINT);
+
+  static const UINT64 _db_date_with_tz_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DATETIMELTZ)  | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DATETIMETZ)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_TIMESTAMPLTZ) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_TIMESTAMPTZ);
+
+  static const UINT64 _db_date_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DATE)  
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DATETIME)     | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_TIMESTAMP)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DATETIMELTZ)  | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DATETIMETZ)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_TIMESTAMPLTZ) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_TIMESTAMPTZ);
+
+  static const UINT64 _db_date_or_time_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DATE)         | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_TIME)  
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DATETIME)     | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_TIMESTAMP)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DATETIMELTZ)  | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DATETIMETZ)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_TIMESTAMPLTZ) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_TIMESTAMPTZ); 
+
+  static const UINT64 _db_floating_number_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_FLOAT)   | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DOUBLE)  
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_NUMERIC) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_MONETARY);
+
+  static const UINT64 _db_discrete_number_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_INTEGER) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_SMALLINT)  
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_BIGINT);
+
+  static const UINT64 _db_has_collation_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARCHAR)  | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_CHAR)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARNCHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_NCHAR)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_ENUMERATION);
+
+  static const UINT64 _db_not_support_covering_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_TIMESTAMPTZ) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_DATETIMETZ);
+
+  static const UINT64 _db_oid_object_type = 
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_OID) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_OBJECT);
+
+/* *INDENT-ON* */                                                  
 
   /* Domain information stored in DB_VALUE structures. */
   typedef union db_domain_info DB_DOMAIN_INFO;
@@ -1206,7 +1285,30 @@ extern "C"
     DB_DEFAULT_CURRENTDATE = 10,
     DB_DEFAULT_SYSTIME = 11,
     DB_DEFAULT_FORMATTED_SYSDATE = 12,
+    DB_DEFAULT_EXPR_TYPE_MAX
   } DB_DEFAULT_EXPR_TYPE;
+
+
+
+/* *INDENT-OFF* */
+#define CHECK_DB_DEFAULT_EXPR_TYPE_ENUM(v)  ASSERT_IN_MACRO(((v) >= DB_DEFAULT_NONE) && ((v) < DB_DEFAULT_EXPR_TYPE_MAX))
+#define GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(v)  ((int)0x01 << (v))
+
+  static const int _db_defgault_expr_type =  (                                  \
+      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_SYSDATE) |               \
+      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_CURRENTTIME) |           \
+      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_CURRENTDATE) |           \
+      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_SYSDATETIME) |           \
+      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_SYSTIMESTAMP)|           \
+      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_UNIX_TIMESTAMP)|         \
+      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_CURRENTDATETIME) |       \
+      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_CURRENTTIMESTAMP) |      \
+      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_SYSTIME) );         
+
+#define DB_IS_DATETIME_DEFAULT_EXPR(v) ( CHECK_DB_DEFAULT_EXPR_TYPE_ENUM((v)),  \
+                                         (_db_defgault_expr_type &  GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(v)) != 0)
+/* *INDENT-ON* */                                                  
+
 
   /* An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
    * like SYS_DATE, CURRENT_TIME. Also we allow to_char expression.

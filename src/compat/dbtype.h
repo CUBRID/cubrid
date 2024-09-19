@@ -63,15 +63,8 @@
 #define DB_IS_NULL(value)               db_value_is_null(value)
 
 /* *INDENT-OFF* */
-#define CHECK_DB_TYPE_ENUM(v)  ASSERT_IN_MACRO(((v) >= DB_TYPE_FIRST) && ((v) <= DB_TYPE_LAST))
-#define GET_DB_TYPE_ENUM_BIT_POS(t)  ((INT64)0x01 << (t))
-
-static const UINT64 _db_char_string_type = 
-              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARCHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_CHAR)
-            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARNCHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_NCHAR);
-
 #define DB_IS_STRING(value) ( CHECK_DB_TYPE_ENUM(db_value_type(value)),  \
-                              ((_db_char_string_type & GET_DB_TYPE_ENUM_BIT_POS(db_value_type(value))) != 0) )
+                              ((_db_string_type & GET_DB_TYPE_ENUM_BIT_POS(db_value_type(value))) != 0) )
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
@@ -85,8 +78,7 @@ static const UINT64 _db_char_string_type =
 #define DB_TRIED_COMPRESSION(value) (db_get_compressed_size(value) != DB_NOT_YET_COMPRESSED)
 
   /* Macros from dbval.h */
-     static const UINT64 _db_variable_string_type = GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARCHAR)
-                                                  | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARNCHAR);
+     
 
 #define DB_IS_VAR_CHAR_STRING(v)     ( CHECK_DB_TYPE_ENUM((v)),         \
                                       ((_db_variable_string_type & GET_DB_TYPE_ENUM_BIT_POS((v))) != 0) )

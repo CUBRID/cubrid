@@ -222,74 +222,64 @@ typedef enum tp_match
  * we change the semantics.  Will have to think carefully about this
  */
 
-#define TP_IS_SET_TYPE(typenum) \
-  ((((typenum) == DB_TYPE_SET) || ((typenum) == DB_TYPE_MULTISET) || \
-    ((typenum) == DB_TYPE_SEQUENCE)) ? true : false)
+/* *INDENT-OFF* */
+#define TP_IS_SET_TYPE(typenum)   ( CHECK_DB_TYPE_ENUM((typenum)), \
+                                    ((_db_set_type & GET_DB_TYPE_ENUM_BIT_POS((typenum))) != 0) )
 
 /*
  * TP_IS_BIT_TYPE
  *    Tests to see if the type id is one of the binary string types.
  */
 
-#define TP_IS_BIT_TYPE(typeid) \
-  (((typeid) == DB_TYPE_VARBIT) || ((typeid) == DB_TYPE_BIT))
+#define TP_IS_BIT_TYPE(typeid) ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                 ((_db_bit_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0 ))
 
 /*
  * TP_IS_CHAR_TYPE
  *    Tests to see if a type is any one of the character types.
  */
 
-#define TP_IS_CHAR_TYPE(typeid) \
-  (((typeid) == DB_TYPE_VARCHAR)  || ((typeid) == DB_TYPE_CHAR) || \
-   ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR))
+#define TP_IS_CHAR_TYPE(typeid)  ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                   ((_db_string_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
 
-#define TP_IS_LOB_TYPE(typeid) \
-  (((typeid) == DB_TYPE_BLOB)  || ((typeid) == DB_TYPE_CLOB))
+#define TP_IS_LOB_TYPE(typeid)   ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                   ((_db_lob_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
 
-#define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) \
-  (((typeid) == DB_TYPE_CHAR) || ((typeid) == DB_TYPE_NCHAR))
-
-#define TP_IS_VAR_LEN_CHAR_TYPE(typeid) \
-    (((typeid) == DB_TYPE_VARCHAR) || ((typeid) == DB_TYPE_VARNCHAR))
+#define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                            ((_db_fixed_length_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
+#define TP_IS_VAR_LEN_CHAR_TYPE(typeid)   ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                            ((_db_variable_length_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
 
 /*
  * TP_IS_CHAR_BIT_TYPE
  *    Tests to see if a type is one of the character or bit types.
  */
 
-#define TP_IS_CHAR_BIT_TYPE(typeid) (TP_IS_CHAR_TYPE(typeid) \
-                                     || TP_IS_BIT_TYPE(typeid))
+#define TP_IS_CHAR_BIT_TYPE(typeid)       ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                            ((_db_any_char_or_bit_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
 
-#define TP_IS_STRING_TYPE(typeid) TP_IS_CHAR_BIT_TYPE((typeid))
+#define TP_IS_STRING_TYPE(typeid)         TP_IS_CHAR_BIT_TYPE((typeid))
 
-#define TP_IS_NUMERIC_TYPE(typeid) \
-  (((typeid) == DB_TYPE_INTEGER) || ((typeid) == DB_TYPE_FLOAT) \
-   || ((typeid) == DB_TYPE_DOUBLE)  || ((typeid) == DB_TYPE_SMALLINT) \
-   || ((typeid) == DB_TYPE_NUMERIC) || ((typeid) == DB_TYPE_MONETARY) \
-   || ((typeid) == DB_TYPE_BIGINT))
+#define TP_IS_NUMERIC_TYPE(typeid)        ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                            ((_db_numeric_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
 
-#define TP_IS_DOUBLE_ALIGN_TYPE(typeid) \
-  ((typeid) == DB_TYPE_DOUBLE || (typeid) == DB_TYPE_BIGINT)
+#define TP_IS_DOUBLE_ALIGN_TYPE(typeid)   ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                            ((_db_double_align_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
 
-#define TP_IS_DATE_WITH_TZ_TYPE(typeid) \
-  (((typeid) == DB_TYPE_DATETIMELTZ) || ((typeid) == DB_TYPE_DATETIMETZ) \
-   || ((typeid) == DB_TYPE_TIMESTAMPLTZ) \
-   || ((typeid) == DB_TYPE_TIMESTAMPTZ))
+#define TP_IS_DATE_WITH_TZ_TYPE(typeid)   ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                            ((_db_date_with_tz_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
 
-#define TP_IS_DATE_TYPE(typeid) \
-  (((typeid) == DB_TYPE_DATE) || ((typeid) == DB_TYPE_DATETIME) \
-   || ((typeid) == DB_TYPE_TIMESTAMP) || TP_IS_DATE_WITH_TZ_TYPE (typeid))
+#define TP_IS_DATE_TYPE(typeid)           ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                            ((_db_date_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
 
-#define TP_IS_DATE_OR_TIME_TYPE(typeid) \
-  (((typeid) == DB_TYPE_TIME) || TP_IS_DATE_TYPE(typeid))
+#define TP_IS_DATE_OR_TIME_TYPE(typeid)    ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                             ((_db_date_or_time_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
 
-#define TP_IS_FLOATING_NUMBER_TYPE(typeid) \
-  (((typeid) == DB_TYPE_FLOAT) || ((typeid) == DB_TYPE_DOUBLE) \
-   || ((typeid) == DB_TYPE_NUMERIC) || ((typeid) == DB_TYPE_MONETARY))
-
-#define TP_IS_DISCRETE_NUMBER_TYPE(typeid) \
-  (((typeid) == DB_TYPE_INTEGER) || ((typeid) == DB_TYPE_SMALLINT) \
-   || ((typeid) == DB_TYPE_BIGINT))
+#define TP_IS_FLOATING_NUMBER_TYPE(typeid) ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                             ((_db_floating_number_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
+#define TP_IS_DISCRETE_NUMBER_TYPE(typeid) ( CHECK_DB_TYPE_ENUM((typeid)), \
+                                             ((_db_discrete_number_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
+/* *INDENT-ON* */
 
 /*
  * Precision for non-parameterized predefined types
@@ -354,6 +344,8 @@ typedef enum tp_match
 #define TP_DATETIME_AS_CHAR_LENGTH    26
 #define TP_DATETIMETZ_AS_CHAR_LENGTH    64
 
+/* *INDENT-OFF* */
+
 /* CHAR type and VARCHAR type are compatible with each other */
 /* NCHAR type and VARNCHAR type are compatible with each other */
 /* BIT type and VARBIT type are compatible with each other */
@@ -361,6 +353,7 @@ typedef enum tp_match
 /* Keys can come in with a type of DB_TYPE_OID, but the B+tree domain
    itself will always be a DB_TYPE_OBJECT. The comparison routines
    can handle OID and OBJECT as compatible type with each other . */
+/*
 #define TP_ARE_COMPARABLE_KEY_TYPES(key1_type, key2_type) \
       (((key1_type) == (key2_type)) || \
       (((key1_type) == DB_TYPE_CHAR || (key1_type) == DB_TYPE_VARCHAR) && \
@@ -371,22 +364,31 @@ typedef enum tp_match
        ((key2_type) == DB_TYPE_BIT || (key2_type) == DB_TYPE_VARBIT)) || \
       (((key1_type) == DB_TYPE_OID || (key1_type) == DB_TYPE_OBJECT) && \
        ((key2_type) == DB_TYPE_OID || (key2_type) == DB_TYPE_OBJECT)))
+*/
+#define TP_ARE_COMPARABLE_KEY_TYPES(key1_type, key2_type) ( \
+           ( CHECK_DB_TYPE_ENUM((key1_type)), CHECK_DB_TYPE_ENUM((key2_type)) ),    \
+           ( ((key1_type) == (key2_type))                                           \
+             || ((_db_char_type ^ (GET_DB_TYPE_ENUM_BIT_POS(key1_type) | GET_DB_TYPE_ENUM_BIT_POS(key2_type))) == 0)       \
+             || ((_db_bit_type ^ (GET_DB_TYPE_ENUM_BIT_POS(key1_type) | GET_DB_TYPE_ENUM_BIT_POS(key2_type))) == 0)        \
+             || ((_db_oid_object_type ^ (GET_DB_TYPE_ENUM_BIT_POS(key1_type) | GET_DB_TYPE_ENUM_BIT_POS(key2_type))) == 0) \
+             || ((_db_nchar_type ^ (GET_DB_TYPE_ENUM_BIT_POS(key1_type) | GET_DB_TYPE_ENUM_BIT_POS(key2_type))) == 0)      \
+           ) )
+
 
 #define TP_DOMAIN_TYPE(dom) \
    ((dom) ? (dom)->type->id : DB_TYPE_NULL)
 
 #define TP_TYPE_HAS_COLLATION(typeid) \
-  (TP_IS_CHAR_TYPE(typeid) || (typeid) == DB_TYPE_ENUMERATION)
+         ( CHECK_DB_TYPE_ENUM((typeid)), ((_db_has_collation_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
 
-#define TP_DOMAIN_CODESET(dom) (((dom) ? (INTL_CODESET)(dom)->codeset : LANG_SYS_CODESET))
-#define TP_DOMAIN_COLLATION(dom) \
-    ((dom) ? (dom)->collation_id : LANG_SYS_COLLATION)
-#define TP_DOMAIN_COLLATION_FLAG(dom) \
-  ((dom) ? (dom)->collation_flag: TP_DOMAIN_COLL_NORMAL)
+#define TP_DOMAIN_CODESET(dom)        ((dom) ? (INTL_CODESET)(dom)->codeset : LANG_SYS_CODESET)
+#define TP_DOMAIN_COLLATION(dom)      ((dom) ? (dom)->collation_id : LANG_SYS_COLLATION)
+#define TP_DOMAIN_COLLATION_FLAG(dom) ((dom) ? (dom)->collation_flag: TP_DOMAIN_COLL_NORMAL)
 
-#define TP_TYPE_NOT_SUPPORT_COVERING(typeid) \
-   ((typeid) == DB_TYPE_TIMESTAMPTZ || (typeid) == DB_TYPE_DATETIMETZ)
+#define TP_TYPE_NOT_SUPPORT_COVERING(typeid)  \
+         ( CHECK_DB_TYPE_ENUM((typeid)), ((_db_not_support_covering_type & GET_DB_TYPE_ENUM_BIT_POS((typeid))) != 0) )
 
+/* *INDENT-ON* */
 
 /*
  * FUNCTIONS
