@@ -426,6 +426,7 @@ namespace cubmethod
     if (query_id == NULL_QUERY_ID || query_id >= SHRT_MAX)
       {
 	// false query e.g) SELECT * FROM db_class WHERE 0 <> 0
+	assert (query_id == NULL_QUERY_ID);
 	return nullptr;
       }
 
