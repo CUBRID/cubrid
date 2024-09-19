@@ -1141,6 +1141,7 @@ enum pt_type_enum
   /* which can be used only in SP parameter and return types */
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
+#define NUM_PT_TYPES (PT_TYPE_MAX - PT_TYPE_MIN)
 
 /* Enumerated priviledges for Grant, Revoke */
 typedef enum

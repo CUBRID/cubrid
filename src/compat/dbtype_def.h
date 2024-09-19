@@ -723,13 +723,15 @@ extern "C"
     DB_TYPE_DATETIMELTZ = 39,
     DB_TYPE_JSON = 40,
 
+    DB_TYPE_MAX,		/* This is the number of DB_TYPE */
+
     /* aliases */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
     DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
     DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
     DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP */
 
-    DB_TYPE_LAST = DB_TYPE_JSON
+    DB_TYPE_LAST = (DB_TYPE_MAX - 1)
   } DB_TYPE;
 
   /* Domain information stored in DB_VALUE structures. */
