@@ -204,8 +204,8 @@ extern "C"
   extern int pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT * object1,
 				   DB_OBJECT * object2, DB_VALUE * result);
 
-  extern DB_TYPE pt_type_enum_to_db (const PT_TYPE_ENUM dt);
-  extern PT_TYPE_ENUM pt_db_to_type_enum (const DB_TYPE t);
+  //extern DB_TYPE pt_type_enum_to_db (const PT_TYPE_ENUM dt);
+  //extern PT_TYPE_ENUM pt_db_to_type_enum (const DB_TYPE t);
   extern const char *pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t);
   extern DB_DOMAIN *pt_type_enum_to_db_domain (const PT_TYPE_ENUM t);
   extern void pt_put_type_enum (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * data_type);
@@ -691,6 +691,116 @@ extern "C"
 
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
+
+
+  static const DB_TYPE _pt_type_2_db_type_mapper[PT_TYPE_MAX - PT_TYPE_MIN] = {
+    DB_TYPE_NULL,		/* PT_TYPE_NONE */
+    DB_TYPE_INTEGER,		/* PT_TYPE_INTEGER */
+    DB_TYPE_FLOAT,		/* PT_TYPE_FLOAT */
+    DB_TYPE_DOUBLE,		/* PT_TYPE_DOUBLE */
+    DB_TYPE_SHORT,		/* PT_TYPE_SMALLINT */
+    DB_TYPE_DATE,		/* PT_TYPE_DATE */
+    DB_TYPE_TIME,		/* PT_TYPE_TIME */
+    DB_TYPE_TIMESTAMP,		/* PT_TYPE_TIMESTAMP */
+    DB_TYPE_DATETIME,		/* PT_TYPE_DATETIME */
+    DB_TYPE_MONETARY,		/* PT_TYPE_MONETARY */
+    DB_TYPE_NUMERIC,		/* PT_TYPE_NUMERIC */
+    DB_TYPE_CHAR,		/* PT_TYPE_CHAR */
+    DB_TYPE_VARCHAR,		/* PT_TYPE_VARCHAR */
+    DB_TYPE_NCHAR,		/* PT_TYPE_NCHAR */
+    DB_TYPE_VARNCHAR,		/* PT_TYPE_VARNCHAR */
+    DB_TYPE_BIT,		/* PT_TYPE_BIT */
+    DB_TYPE_VARBIT,		/* PT_TYPE_VARBIT */
+    DB_TYPE_INTEGER,		/* PT_TYPE_LOGICAL */
+    DB_TYPE_VARIABLE,		/* PT_TYPE_MAYBE */
+    DB_TYPE_JSON,		/* PT_TYPE_JSON */
+    DB_TYPE_NULL,		/* PT_TYPE_NA */
+    DB_TYPE_NULL,		/* PT_TYPE_NULL */
+    DB_TYPE_NULL,		/* PT_TYPE_STAR */
+    DB_TYPE_OBJECT,		/* PT_TYPE_OBJECT */
+    DB_TYPE_SET,		/* PT_TYPE_SET */
+    DB_TYPE_MULTISET,		/* PT_TYPE_MULTISET */
+    DB_TYPE_SEQUENCE,		/* PT_TYPE_SEQUENCE */
+    DB_TYPE_MIDXKEY,		/* PT_TYPE_MIDXKEY */
+    DB_TYPE_NULL,		/* PT_TYPE_COMPOUND */
+    DB_TYPE_NULL,		/* PT_TYPE_EXPR_SET */
+    DB_TYPE_RESULTSET,		/* PT_TYPE_RESULTSET */
+    DB_TYPE_BIGINT,		/* PT_TYPE_BIGINT */
+    DB_TYPE_BLOB,		/* PT_TYPE_BLOB */
+    DB_TYPE_CLOB,		/* PT_TYPE_CLOB */
+    DB_TYPE_NULL,		/* PT_TYPE_ELO */
+    DB_TYPE_ENUMERATION,	/* PT_TYPE_ENUMERATION */
+    DB_TYPE_TIMESTAMPLTZ,	/* PT_TYPE_TIMESTAMPLTZ */
+    DB_TYPE_TIMESTAMPTZ,	/* PT_TYPE_TIMESTAMPTZ */
+    DB_TYPE_DATETIMETZ,		/* PT_TYPE_DATETIMETZ */
+    DB_TYPE_DATETIMELTZ,	/* PT_TYPE_DATETIMELTZ */
+  };
+
+/*
+ * pt_type_enum_to_db() - return DB_TYPE equivalent of PT_TYPE_ENUM t
+ *   return:  DB_TYPE equivalent of t
+ *   t(in):  a PT_TYPE_ENUM value
+ */
+  static inline DB_TYPE pt_type_enum_to_db (const PT_TYPE_ENUM t)
+  {
+    return (t <= PT_TYPE_MIN || t >= PT_TYPE_MAX) ? DB_TYPE_NULL : _pt_type_2_db_type_mapper[t - PT_TYPE_MIN];
+  }
+
+  static const PT_TYPE_ENUM _db_type_2_pt_type_mapper[DB_TYPE_MAX] = {
+    PT_TYPE_NONE,		/* DB_TYPE_UNKNOWN */
+    PT_TYPE_INTEGER,		/* DB_TYPE_INTEGER */
+    PT_TYPE_FLOAT,		/* DB_TYPE_FLOAT */
+    PT_TYPE_DOUBLE,		/* DB_TYPE_DOUBLE */
+    PT_TYPE_VARCHAR,		/* DB_TYPE_STRING */
+    PT_TYPE_OBJECT,		/* DB_TYPE_OBJECT */
+    PT_TYPE_SET,		/* DB_TYPE_SET */
+    PT_TYPE_MULTISET,		/* DB_TYPE_MULTISET */
+    PT_TYPE_SEQUENCE,		/* DB_TYPE_SEQUENCE */
+    PT_TYPE_NONE /* PT_TYPE_ELO */ ,	/* DB_TYPE_ELO  -- obsolete... keep for backward compatibility. */
+    PT_TYPE_TIME,		/* DB_TYPE_TIME */
+    PT_TYPE_TIMESTAMP,		/* DB_TYPE_TIMESTAMP */
+    PT_TYPE_DATE,		/* DB_TYPE_DATE */
+    PT_TYPE_MONETARY,		/* DB_TYPE_MONETARY */
+    PT_TYPE_MAYBE,		/* DB_TYPE_VARIABLE */
+    PT_TYPE_NONE,		/* DB_TYPE_SUB */
+    PT_TYPE_NONE,		/* DB_TYPE_POINTER */
+    PT_TYPE_NONE,		/* DB_TYPE_ERROR */
+    PT_TYPE_SMALLINT,		/* DB_TYPE_SHORT */
+    PT_TYPE_NONE,		/* DB_TYPE_VOBJ */
+    PT_TYPE_NONE,		/* DB_TYPE_OID */
+    PT_TYPE_NONE,		/* DB_TYPE_DB_VALUE */
+    PT_TYPE_NUMERIC,		/* DB_TYPE_NUMERIC */
+    PT_TYPE_BIT,		/* DB_TYPE_BIT */
+    PT_TYPE_VARBIT,		/* DB_TYPE_VARBIT */
+    PT_TYPE_CHAR,		/* DB_TYPE_CHAR */
+    PT_TYPE_NCHAR,		/* DB_TYPE_NCHAR */
+    PT_TYPE_VARNCHAR,		/* DB_TYPE_VARNCHAR */
+    PT_TYPE_RESULTSET,		/* DB_TYPE_RESULTSET */
+    PT_TYPE_MIDXKEY,		/* DB_TYPE_MIDXKEY */
+    PT_TYPE_NONE,		/* DB_TYPE_TABLE */
+    PT_TYPE_BIGINT,		/* DB_TYPE_BIGINT */
+    PT_TYPE_DATETIME,		/* DB_TYPE_DATETIME */
+    PT_TYPE_BLOB,		/* DB_TYPE_BLOB */
+    PT_TYPE_CLOB,		/* DB_TYPE_CLOB */
+    PT_TYPE_ENUMERATION,	/* DB_TYPE_ENUMERATION */
+    PT_TYPE_TIMESTAMPTZ,	/* DB_TYPE_TIMESTAMPTZ */
+    PT_TYPE_TIMESTAMPLTZ,	/* DB_TYPE_TIMESTAMPLTZ */
+    PT_TYPE_DATETIMETZ,		/* DB_TYPE_DATETIMETZ */
+    PT_TYPE_DATETIMELTZ,	/* DB_TYPE_DATETIMELTZ */
+    PT_TYPE_JSON		/* DB_TYPE_JSON */
+  };
+/*
+ * pt_db_to_type_enum() - Convert type_enum from DB_TYPE... to PT_...
+ *   return: Returns one of the PT_TYPE_ENUMs defined
+ *	     PT_TYPE_NONE for internal or unknown types
+ *   t(in): a data type as defined in dbi.h
+ */
+  static inline PT_TYPE_ENUM pt_db_to_type_enum (const DB_TYPE t)
+  {
+    assert (t != DB_TYPE_ELO);
+    return (t <= DB_TYPE_FIRST || t >= DB_TYPE_MAX) ? PT_TYPE_NONE : _db_type_2_pt_type_mapper[t];
+  }
+
 #ifdef __cplusplus
 }
 #endif
