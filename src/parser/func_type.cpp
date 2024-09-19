@@ -1710,7 +1710,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
     case F_ELT:
     {
       /* all types used in the arguments list */
-      bool has_arg_type[NUM_PT_TYPES];
+      bool has_arg_type[PT_TYPE_MAX - PT_TYPE_MIN];
 
       /* a subset of argument types given to ELT that can not be cast to [N]CHAR VARYING */
       PT_TYPE_ENUM bad_types[4] =
