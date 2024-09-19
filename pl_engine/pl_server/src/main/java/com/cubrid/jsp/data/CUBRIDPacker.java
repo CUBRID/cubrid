@@ -31,9 +31,9 @@
 
 package com.cubrid.jsp.data;
 
-import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import com.cubrid.jsp.protocol.PackableObject;
+import com.cubrid.jsp.value.ValueUtilities;
 import cubrid.sql.CUBRIDOID;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
