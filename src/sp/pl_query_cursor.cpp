@@ -247,4 +247,14 @@ namespace cubpl
   {
     return m_fetch_count;
   }
+
+  void
+  query_cursor::set_fetch_count (int cnt)
+  {
+    if (cnt > 0 && cnt < INT32_MAX) // check invalid value
+      {
+	m_fetch_count = cnt;
+      }
+  }
+
 }

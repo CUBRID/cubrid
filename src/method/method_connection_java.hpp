@@ -38,7 +38,7 @@ namespace cubmethod
   using mcon_callback_func_with_sock = std::function <int (SOCKET socket, cubmem::block &)>;
 
   //////////////////////////////////////////////////////////////////////////
-  // Interface to communicate with Java SP Server
+  // Interface to communicate with 1Java SP Server
   //////////////////////////////////////////////////////////////////////////
   EXPORT_IMPORT int mcon_send_buffer_to_java (SOCKET socket, const cubmem::block &blk);
 

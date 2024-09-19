@@ -38,6 +38,7 @@
 #include "method_struct_invoke.hpp"
 #include "method_connection_pool.hpp"
 #include "method_connection_sr.hpp"
+#include "method_connection_java.hpp"
 
 // thread_entry.hpp
 namespace cubthread
@@ -91,7 +92,7 @@ namespace cubpl
       cubthread::entry *get_thread_entry () const;
 
       /* connection */
-      cubmethod::connection *get_connection () const;
+      cubmethod::connection *get_connection ();
       std::queue<cubmem::block> &get_data_queue ();
 
       /* resource management */
@@ -116,21 +117,37 @@ namespace cubpl
       bool m_transaction_control;
 
       template <typename ... Args>
-      int send_data_to_client (cubthread::entry *thread_p, Args &&... args)
+      int send_data_to_client (const cubmethod::xs_callback_func &func, Args &&... args)
       {
 	int error_code = NO_ERROR;
-	auto dummy = [&] (const cubmem::block & b)
-	{
-	  return NO_ERROR;
-	};
 
+	cubthread::entry *thread_p = get_thread_entry ();
 	error_code = cubmethod::method_send_data_to_client (thread_p, m_client_header, std::forward<Args> (args)...);
 	if (error_code != NO_ERROR)
 	  {
 	    return error_code;
 	  }
 
-	return cubmethod::xs_receive (thread_p, dummy);
+	return cubmethod::xs_receive (thread_p, func);
+      }
+
+      template <typename ... Args>
+      int send_data_to_java (Args &&... args)
+      {
+	m_java_header.req_id = get_and_increment_request_id ();
+	return cubmethod::mcon_send_data_to_java (get_connection()->get_socket (), m_java_header, std::forward<Args> (args)...);
+      }
+
+      int
+      read_data_from_java (cubmem::block &b)
+      {
+	return cubmethod::mcon_read_data_from_java (get_connection()->get_socket (), b);
+      }
+
+      void
+      set_command (int command)
+      {
+	m_java_header.command = command;
       }
 
       int m_req_id;

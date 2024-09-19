@@ -403,10 +403,10 @@ namespace cubpl
     m_session_cursors.clear ();
   }
 
-  cubmethod::connection_pool &
+  cubmethod::connection_pool *
   session::get_connection_pool ()
   {
-    return m_conn_pool;
+    return &m_conn_pool;
   }
 
   cubmethod::db_parameter_info *

@@ -10940,11 +10940,96 @@ cleanup:
 }
 
 int
-pl_call (const pl_signature& sig)
+pl_call (const cubpl::pl_signature & sig, std::vector < std::reference_wrapper < DB_VALUE >> args, DB_VALUE & result)
 {
-  
-}
+  int error_code = NO_ERROR;
+#if defined(CS_MODE)
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  int req_error = NO_ERROR;
 
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  packer.set_buffer_and_pack_all (eb, sig, args);
+
+  {
+    OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+    req_error = net_client_request_method_callback (NET_SERVER_METHOD_FOLD_CONSTANTS, eb.get_ptr (),
+						    (int) packer.get_current_size (), reply,
+						    OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
+    if (req_error != NO_ERROR)
+      {
+	goto error;
+      }
+
+    /* consumes dummy reply */
+    int dummy;
+    char *ptr = or_unpack_int (reply, &dummy);
+    ptr = or_unpack_int (ptr, &dummy);
+    ptr = or_unpack_int (ptr, &dummy);
+
+    /* receive result values / error */
+    if (data_reply != NULL)
+      {
+	packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+	    // *INDENT-OFF*
+	    std::vector <DB_VALUE> out_args;
+	    // *INDENT-ON*
+	unpacker.unpack_all (result, out_args);
+      }
+    else
+      {
+	db_make_null (&result);
+      }
+  }
+
+error:
+  if (req_error != NO_ERROR)
+    {
+      packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+      int error_code;
+      std::string error_msg;
+      unpacker.unpack_all (error_code, error_msg);
+      cubmethod::handle_method_error (error_code, error_msg);
+    }
+
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+
+  return req_error;
+#else
+
+#if 0
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  cubpl::session * session = cubpl::get_session (thread_p);
+  cubpl::execution_stack * stack = session->create_and_push_stack ();
+
+  session->push_stack (stack);
+
+  cubpl::executor executor (*stack, sig);
+
+  (void) executor.fetch_args_peek (args);
+
+  error_code = executor.execute (&result);
+  if (error_code != NO_ERROR)
+    {
+      // TODO =
+    }
+
+  session->pop_stack ();
+
+  exit_server (*thread_p);
+#endif
+  assert (false);
+#endif
+
+  return error_code;
+}
 
 #if 0
 int

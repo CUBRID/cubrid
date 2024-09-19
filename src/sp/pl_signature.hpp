@@ -25,20 +25,20 @@
 
 #include "packable_object.hpp"
 
-  enum PL_TYPE
-  {
-    PL_TYPE_NONE = 0,
-    PL_TYPE_INSTANCE_METHOD,
-    PL_TYPE_CLASS_METHOD,
-    PL_TYPE_JAVA_SP,
-    PL_TYPE_PLCSQL
-  };
+enum PL_TYPE
+{
+  PL_TYPE_NONE = 0,
+  PL_TYPE_INSTANCE_METHOD,
+  PL_TYPE_CLASS_METHOD,
+  PL_TYPE_JAVA_SP,
+  PL_TYPE_PLCSQL
+};
 
 namespace cubpl
 {
 #define PL_TYPE_IS_METHOD(type) \
         ((type) == PL_TYPE_INSTANCE_METHOD || (type) == PL_TYPE_CLASS_METHOD)
-  
+
   struct pl_arg : public cubpacking::packable_object
   {
     int arg_size;
@@ -63,6 +63,8 @@ namespace cubpl
   {
     struct pl_sp_info
     {
+      char *target_class_name;
+      char *target_method_name;
       OID code_oid; // PL/CSQL
     } sp;
     struct pl_method_info

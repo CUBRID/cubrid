@@ -20,6 +20,7 @@
 
 #include "session.h"
 #include "jsp_comm.h"
+#include "method_connection_pool.hpp"
 
 namespace cubpl
 {
@@ -30,6 +31,7 @@ namespace cubpl
     , m_client_header (-1,  METHOD_REQUEST_CALLBACK /* default */, 0)
     , m_java_header (-1,  SP_CODE_INTERNAL_JDBC /* default */, 0)
     , m_connection {nullptr}
+    , m_req_id {0}
   {
     m_tid = logtb_find_current_tranid (thread_p);
     m_is_running = false;
@@ -48,18 +50,16 @@ namespace cubpl
 	if (m_connection)
 	  {
 	    cubmethod::connection *conn = std::move (m_connection);
-	    m_session->get_connection_pool ().retire (conn, false);
+	    m_session->get_connection_pool ()->retire (conn, false);
 	  }
       }
   }
 
-  /*
-    void
-    execution_stack::register_stack_query_handler (int handler_id)
-    {
-      m_stack_handler_id.insert (handler_id);
-    }
-  */
+  void
+  execution_stack::add_query_handler (int handler_id)
+  {
+    m_stack_handler_id.insert (handler_id);
+  }
 
   int
   execution_stack::add_cursor (QUERY_ID query_id, bool oid_included)
@@ -111,10 +111,15 @@ namespace cubpl
   }
 
   cubmethod::connection *
-  execution_stack::get_connection () const
+  execution_stack::get_connection ()
   {
-    // TODO
-    return nullptr;
+    if (m_connection == nullptr)
+      {
+	cubmethod::connection_pool *pool = m_session->get_connection_pool ();
+	m_connection = pool->claim ();
+      }
+
+    return m_connection;
   }
 
   PL_STACK_ID

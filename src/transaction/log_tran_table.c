@@ -77,7 +77,8 @@
 #include "thread_manager.hpp"
 #include "xasl.h"
 #include "xasl_cache.h"
-#include "method_runtime_context.hpp"
+#include "pl_session.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -2834,10 +2835,10 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 #endif
 	}
 
-      cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-      if (rctx)
+      PL_SESSION *session = cubpl::get_session ();
+      if (session)
 	{
-	  rctx->set_interrupt (ER_INTERRUPTED);
+	  session->set_interrupt (ER_INTERRUPTED);
 	}
     }
   else if (interrupt == false && tdes->query_timeout > 0)

@@ -119,7 +119,7 @@ namespace cubpl
 	      }
 	    else
 	      {
-                deserializator.unpack_c_string (arg_default_value[i], 0);
+		deserializator.unpack_c_string (arg_default_value[i], 0);
 	      }
 	  }
       }
@@ -157,12 +157,12 @@ namespace cubpl
   {
     if (num_args > 0)
       {
-        /*
-        if (arg_mode != nullptr)
-        {
-                clear ();
-        }
-        */
+	/*
+	if (arg_mode != nullptr)
+	{
+	        clear ();
+	}
+	*/
 
 	arg_size = num_args;
 	arg_mode = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
@@ -170,13 +170,13 @@ namespace cubpl
 	arg_default_value_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_default_value = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
 
-        for (int i = 0; i < num_args; i++)
-        {
-                arg_mode[i] = 0;
-                arg_type[i] = 0;
-                arg_default_value_size[i] = 0;
-                arg_default_value[i] = nullptr;
-        }
+	for (int i = 0; i < num_args; i++)
+	  {
+	    arg_mode[i] = 0;
+	    arg_type[i] = 0;
+	    arg_default_value_size[i] = 0;
+	    arg_default_value[i] = nullptr;
+	  }
       }
     else
       {
@@ -195,7 +195,9 @@ namespace cubpl
     , auth {nullptr}
     , type {0}
     , result_type {0}
-  {}
+  {
+    memset (&ext, 0, sizeof (pl_ext));
+  }
 
   pl_signature::~pl_signature ()
   {
@@ -206,6 +208,11 @@ namespace cubpl
       {
 	CHECK_NULL_AND_FREE (ext.method.class_name);
 	CHECK_NULL_AND_FREE (ext.method.arg_pos);
+      }
+    else
+      {
+	CHECK_NULL_AND_FREE (ext.sp.target_class_name);
+	CHECK_NULL_AND_FREE (ext.sp.target_method_name);
       }
   }
 
@@ -229,18 +236,28 @@ namespace cubpl
     // ext
     if (PL_TYPE_IS_METHOD (type))
       {
-        serializator.pack_bool (ext.method.class_name != nullptr);
-        if (ext.method.class_name)
-        {
-           serializator.pack_c_string (ext.method.class_name, strlen (ext.method.class_name));
-        }
-        if (arg.arg_size > 0)
-        {
-	  serializator.pack_int_array (ext.method.arg_pos, arg.arg_size);
-        }
+	serializator.pack_bool (ext.method.class_name != nullptr);
+	if (ext.method.class_name)
+	  {
+	    serializator.pack_c_string (ext.method.class_name, strlen (ext.method.class_name));
+	  }
+	if (arg.arg_size > 0)
+	  {
+	    serializator.pack_int_array (ext.method.arg_pos, arg.arg_size);
+	  }
       }
     else
       {
+	serializator.pack_bool (ext.sp.target_class_name != nullptr);
+	if (ext.sp.target_class_name)
+	  {
+	    serializator.pack_c_string (ext.sp.target_class_name, strlen (ext.sp.target_class_name));
+	  }
+	serializator.pack_bool (ext.sp.target_method_name != nullptr);
+	if (ext.sp.target_method_name)
+	  {
+	    serializator.pack_c_string (ext.sp.target_method_name, strlen (ext.sp.target_method_name));
+	  }
 	serializator.pack_oid (ext.sp.code_oid);
       }
   }
@@ -274,33 +291,58 @@ namespace cubpl
     // ext
     if (PL_TYPE_IS_METHOD (type))
       {
-        bool has_cn = false;
-        deserializator.unpack_bool (has_cn);
-        if (has_cn)
-        {
-                cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
-                deserializator.unpack_string_to_memblock (class_name_blk);
-                ext.method.class_name = class_name_blk.release_ptr ();
-        }
-        else
-        {
-                ext.method.class_name = nullptr;
-        }
+	bool has_cn = false;
+	deserializator.unpack_bool (has_cn);
+	if (has_cn)
+	  {
+	    cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+	    deserializator.unpack_string_to_memblock (class_name_blk);
+	    ext.method.class_name = class_name_blk.release_ptr ();
+	  }
+	else
+	  {
+	    ext.method.class_name = nullptr;
+	  }
 
-        if (arg.arg_size > 0)
-        {
-	  ext.method.arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * arg.arg_size);
-	  int cnt;
-          deserializator.unpack_int_array (ext.method.arg_pos, cnt);
-          assert (cnt == arg.arg_size);
-        }
-        else
-        {
-           ext.method.arg_pos = nullptr;
-        }
+	if (arg.arg_size > 0)
+	  {
+	    ext.method.arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * arg.arg_size);
+	    int cnt;
+	    deserializator.unpack_int_array (ext.method.arg_pos, cnt);
+	    assert (cnt == arg.arg_size);
+	  }
+	else
+	  {
+	    ext.method.arg_pos = nullptr;
+	  }
       }
     else
       {
+	bool has_n = false;
+	deserializator.unpack_bool (has_n);
+	if (has_n)
+	  {
+	    cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+	    deserializator.unpack_string_to_memblock (class_name_blk);
+	    ext.sp.target_class_name = class_name_blk.release_ptr ();
+	  }
+	else
+	  {
+	    ext.sp.target_class_name = nullptr;
+	  }
+
+	deserializator.unpack_bool (has_n);
+	if (has_n)
+	  {
+	    cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+	    deserializator.unpack_string_to_memblock (class_name_blk);
+	    ext.sp.target_method_name = class_name_blk.release_ptr ();
+	  }
+	else
+	  {
+	    ext.sp.target_method_name = nullptr;
+	  }
+
 	deserializator.unpack_oid (ext.sp.code_oid);
       }
   }
@@ -324,19 +366,30 @@ namespace cubpl
 
     if (PL_TYPE_IS_METHOD (type))
       {
-    size += serializator.get_packed_bool_size (size); // has class_name
-    if (ext.method.class_name)
-      {
-	size += serializator.get_packed_c_string_size (ext.method.class_name, strlen (ext.method.class_name), size);
-      }
+	size += serializator.get_packed_bool_size (size); // has class_name
+	if (ext.method.class_name)
+	  {
+	    size += serializator.get_packed_c_string_size (ext.method.class_name, strlen (ext.method.class_name), size);
+	  }
 
-        if (arg.arg_size > 0)
-        {
-	  size += serializator.get_packed_int_vector_size (size, arg.arg_size); // arg_pos
-        }
+	if (arg.arg_size > 0)
+	  {
+	    size += serializator.get_packed_int_vector_size (size, arg.arg_size); // arg_pos
+	  }
       }
     else
       {
+	size += serializator.get_packed_bool_size (size); // has target_class_name
+	if (ext.sp.target_class_name)
+	  {
+	    size += serializator.get_packed_c_string_size (ext.sp.target_class_name, strlen (ext.sp.target_class_name), size);
+	  }
+	size += serializator.get_packed_bool_size (size); // has target_method_name
+	if (ext.sp.target_method_name)
+	  {
+	    size += serializator.get_packed_c_string_size (ext.sp.target_method_name, strlen (ext.sp.target_method_name), size);
+	  }
+
 	size += serializator.get_packed_oid_size (size); // code_oid
       }
 
@@ -358,7 +411,7 @@ namespace cubpl
   {
     for (int i = 0; i < num_sigs; i++)
       {
-        sigs[i].~pl_signature ();
+	sigs[i].~pl_signature ();
       }
     CHECK_NULL_AND_FREE (sigs);
   }
@@ -382,7 +435,7 @@ namespace cubpl
 	sigs = (pl_signature *) db_private_alloc (NULL, sizeof (pl_signature) * (num_sigs));
 	for (int i = 0; i < num_sigs; i++)
 	  {
-            new (&sigs[i]) pl_signature ();
+	    new (&sigs[i]) pl_signature ();
 	    sigs[i].unpack (deserializator);
 	  }
       }

@@ -583,7 +583,7 @@ jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type)
 
 static int
 jsp_evaluate_arguments (PARSER_CONTEXT *parser, PT_NODE *statement,
-			std::vector <std::reference_wrapper <DB_VALUE>> args)
+			std::vector <std::reference_wrapper <DB_VALUE>> &args)
 {
   assert (statement);
   assert (statement->node_type == PT_METHOD_CALL);
@@ -1688,10 +1688,11 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
       }
     else
       {
-	const char *target_cls = db_get_string (&entry.vals[SP_ATTR_INDEX_TARGET_CLASS]);
-	if (target_cls != NULL)
+	sig.ext.sp.target_class_name = db_private_strdup (NULL, db_get_string (&entry.vals[SP_ATTR_INDEX_TARGET_CLASS]));
+	sig.ext.sp.target_method_name = db_private_strdup (NULL, db_get_string (&entry.vals[SP_ATTR_INDEX_TARGET_METHOD]));
+	if (sig.ext.sp.target_class_name != NULL)
 	  {
-	    MOP code_mop = jsp_find_stored_procedure_code (target_cls);
+	    MOP code_mop = jsp_find_stored_procedure_code (sig.ext.sp.target_class_name);
 	    if (code_mop)
 	      {
 		sig.ext.sp.code_oid = *WS_OID (code_mop);

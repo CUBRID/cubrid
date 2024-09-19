@@ -25,18 +25,32 @@
 // runtime
 #include "dbtype.h"
 
-#include "method_struct_invoke.hpp"
 #include "method_connection_java.hpp"
+
+#include "method_struct_invoke.hpp"
+#include "method_struct_query.hpp"
 #include "method_struct_value.hpp"
+#include "method_struct_oid_info.hpp"
+#include "method_struct_parameter_info.hpp"
+
+
+
 #include "jsp_comm.h"
+
+#include "pl_query_cursor.hpp"
+
+#include "sp_code.hpp"
+
 
 namespace cubpl
 {
+  using namespace cubmethod;
+
   invoke_java::invoke_java (uint64_t id, int tid, pl_signature *sig, bool tc)
     : g_id (id)
     , tran_id (tid)
   {
-    signature.assign (sig->name);
+    signature.assign (sig->ext.sp.target_class_name).append (".").append (sig->ext.sp.target_method_name);
     auth.assign (sig->auth);
     lang = sig->type;
     result_type = sig->result_type;
@@ -213,10 +227,14 @@ exit:
   executor::change_exec_rights (const char *auth_name)
   {
     int error = NO_ERROR;
-    cubthread::entry *thread_p = m_stack->get_thread_entry ();
     int is_restore = (auth_name == NULL) ? 1 : 0;
 
-    error = m_stack->send_data_to_client (thread_p, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore, auth_name);
+    auto dummy = [&] (const cubmem::block & b)
+    {
+      return NO_ERROR;
+    };
+
+    error = m_stack->send_data_to_client (dummy, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore, auth_name);
     if (error != NO_ERROR)
       {
 	return error;
@@ -237,29 +255,13 @@ exit:
     SESSION_ID sid = get_session ()->get_id ();
     TRANID tid = m_stack->get_tran_id ();
 
-    switch (m_sig.type)
-      {
-      case METHOD_TYPE_INSTANCE_METHOD:
-      case METHOD_TYPE_CLASS_METHOD:
-	assert (false); // TODO: port this
-	break;
-      case METHOD_TYPE_JAVA_SP:
-      case METHOD_TYPE_PLCSQL:
-      {
-	cubmethod::header prepare_header (sid, SP_CODE_PREPARE_ARGS, m_stack->get_and_increment_request_id ());
-	cubmethod::prepare_args prepare_arg ((std::uint64_t) this, tid, METHOD_TYPE_PLCSQL, m_args);
+    header invoke_header (sid, SP_CODE_INVOKE, m_stack->get_and_increment_request_id ());
 
-	cubmethod::header invoke_header (sid, SP_CODE_INVOKE, m_stack->get_and_increment_request_id ());
-	invoke_java invoke_arg ((std::uint64_t) this, tid, &m_sig, true); // TODO
+    m_stack->set_command (SP_CODE_INVOKE);
+    prepare_args prepare_arg ((std::uint64_t) this, tid, METHOD_TYPE_PLCSQL, m_args);
+    invoke_java invoke_arg ((std::uint64_t) this, tid, &m_sig, true); // TODO
 
-	error = mcon_send_data_to_java (m_stack->get_connection ()->get_socket (), prepare_header, prepare_arg, invoke_header,
-					invoke_arg);
-      }
-      break;
-      default:
-	assert (false); // not implemented yet
-	break;
-      }
+    error = m_stack->send_data_to_java (prepare_arg, invoke_arg);
 
     return error;
   }
@@ -268,13 +270,13 @@ exit:
   executor::response_invoke_command (DB_VALUE &value)
   {
     int error_code = NO_ERROR;
-    int start_code;
+    int start_code = -1;
 
     // response loop
     do
       {
 	cubmem::block response_blk;
-	error_code = cubmethod::mcon_read_data_from_java (m_stack->get_connection ()->get_socket (), response_blk);
+	error_code = mcon_read_data_from_java (m_stack->get_connection ()->get_socket (), response_blk);
 	if (error_code != NO_ERROR)
 	  {
 	    break;
@@ -334,7 +336,7 @@ exit:
 
     if (code == SP_CODE_RESULT)
       {
-	cubmethod::dbvalue_java value_unpacker;
+	dbvalue_java value_unpacker;
 	db_make_null (&returnval);
 	value_unpacker.value = &returnval;
 	value_unpacker.unpack (unpacker);
@@ -345,7 +347,17 @@ exit:
 	    m_stack->promote_to_session_cursor (query_id);
 	  }
 
-	// TODO: out_argument
+	for (int i = 0; i < m_sig.arg.arg_size; i++)
+	  {
+	    DB_VALUE out_val;
+	    db_make_null (&out_val);
+	    if (m_sig.arg.arg_mode[i] == SP_MODE_OUT)
+	      {
+		value_unpacker.value = &out_val;
+		value_unpacker.unpack (unpacker);
+		m_out_args.emplace_back (out_val);
+	      }
+	  }
       }
     else if (code == SP_CODE_ERROR)
       {
@@ -365,6 +377,7 @@ exit:
   int
   executor::response_callback_command ()
   {
+    int error_code = NO_ERROR;
     // check queue
     if (m_stack->get_data_queue().empty() == true)
       {
@@ -373,12 +386,546 @@ exit:
 
     cubmem::block &blk = m_stack->get_data_queue().front ();
     packing_unpacker unpacker (blk);
+    cubthread::entry &thread_ref = *m_stack->get_thread_entry ();
 
     int code;
     unpacker.unpack_int (code);
 
-    return NO_ERROR;
+    switch (code)
+      {
+      /* NOTE: we don't need to implement it
+      case METHOD_CALLBACK_GET_DB_VERSION:
+      break;
+      */
+
+      case METHOD_CALLBACK_GET_DB_PARAMETER:
+	error_code = callback_get_db_parameter (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_QUERY_PREPARE:
+	error_code = callback_prepare (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_QUERY_EXECUTE:
+	error_code = callback_execute (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_FETCH:
+	error_code = callback_fetch (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_OID_GET:
+	error_code = callback_oid_get (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_OID_PUT:
+	error_code = callback_oid_put (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_OID_CMD:
+	error_code = callback_oid_cmd (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_COLLECTION:
+	error_code = callback_collection_cmd (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_MAKE_OUT_RS:
+	error_code = callback_make_outresult (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_GET_GENERATED_KEYS:
+	error_code = callback_get_generated_keys (thread_ref, unpacker);
+	break;
+      case METHOD_CALLBACK_END_TRANSACTION:
+	error_code = callback_end_transaction (thread_ref, unpacker);
+	break;
+      case METHOD_CALLBACK_CHANGE_RIGHTS:
+	error_code = callback_change_auth_rights (thread_ref, unpacker);
+	break;
+      case METHOD_CALLBACK_GET_CODE_ATTR:
+	error_code = callback_get_code_attr (thread_ref, unpacker);
+	break;
+      default:
+	// TODO: not implemented yet, do we need error handling?
+	assert (false);
+	error_code = ER_FAILED;
+	break;
+      }
+
+    return error_code;
   }
+
+  std::vector <DB_VALUE> &
+  executor::get_out_args ()
+  {
+    return m_out_args;
+  }
+
+  int
+  executor::callback_get_db_parameter (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_GET_DB_PARAMETER;
+
+    db_parameter_info *parameter_info = get_session()->get_db_parameter_info ();
+    if (parameter_info == nullptr)
+      {
+	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_stack->get_thread_entry());
+	parameter_info = new db_parameter_info ();
+
+	parameter_info->tran_isolation = logtb_find_isolation (tran_index);
+	parameter_info->wait_msec = logtb_find_wait_msecs (tran_index);
+	logtb_get_client_ids (tran_index, &parameter_info->client_ids);
+
+	get_session()->set_db_parameter_info (parameter_info);
+      }
+
+    cubmem::block blk;
+    if (parameter_info)
+      {
+	blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info));
+      }
+    else
+      {
+	blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+					       ARG_FILE_LINE));
+      }
+
+    if (blk.is_valid ())
+      {
+	m_stack->send_data_to_java (blk);
+	delete[] blk.ptr;
+      }
+
+    return error;
+  }
+
+  int
+  executor::callback_prepare (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_QUERY_PREPARE;
+    std::string sql;
+    int flag;
+
+    unpacker.unpack_all (sql, flag);
+
+    auto get_prepare_info = [&] (const cubmem::block & b)
+    {
+      packing_unpacker unpacker (b.ptr, (size_t) b.dim);
+
+      int res_code;
+      unpacker.unpack_int (res_code);
+
+      if (res_code == METHOD_RESPONSE_SUCCESS)
+	{
+	  prepare_info info;
+	  info.unpack (unpacker);
+
+	  m_stack->add_query_handler (info.handle_id);
+	}
+
+      m_stack->send_data_to_java (b);
+
+      return error;
+    };
+
+    error = m_stack->send_data_to_client (get_prepare_info, code, sql, flag);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    return error;
+  }
+
+  int
+  executor::callback_execute (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_QUERY_EXECUTE;
+    execute_request request;
+
+    unpacker.unpack_all (request);
+    request.has_parameter = 1;
+
+    auto get_execute_info = [&] (const cubmem::block & b)
+    {
+      packing_unpacker unpacker (b.ptr, (size_t) b.dim);
+
+      int res_code;
+      unpacker.unpack_int (res_code);
+
+      if (res_code == METHOD_RESPONSE_SUCCESS)
+	{
+	  execute_info info;
+	  info.unpack (unpacker);
+
+	  query_result_info &current_result_info = info.qresult_info;
+	  int stmt_type = current_result_info.stmt_type;
+	  if (stmt_type == CUBRID_STMT_SELECT)
+	    {
+	      std::uint64_t qid = current_result_info.query_id;
+	      bool is_oid_included = current_result_info.include_oid;
+	      (void) m_stack->add_cursor (qid, is_oid_included);
+	    }
+	}
+
+      error = m_stack->send_data_to_java (b);
+      return error;
+    };
+
+    error = m_stack->send_data_to_client (get_execute_info, code, request);
+    request.clear ();
+
+    return error;
+  }
+
+  int
+  executor::callback_fetch (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_FETCH;
+    std::uint64_t qid;
+    int pos;
+    int fetch_count;
+    int fetch_flag;
+
+    unpacker.unpack_all (qid, pos, fetch_count, fetch_flag);
+
+    /* find query cursor */
+    query_cursor *cursor = m_stack->get_cursor (qid);
+    if (cursor == nullptr)
+      {
+	assert (false);
+	cubmem::block b = std::move (mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+				     ARG_FILE_LINE));
+	error = m_stack->send_data_to_java (b);
+	return error;
+      }
+
+    if (cursor->get_is_opened () == false)
+      {
+	cursor->open ();
+      }
+
+    cursor->set_fetch_count (fetch_count);
+
+    fetch_info info;
+
+    SCAN_CODE s_code = S_SUCCESS;
+
+    /* Most cases, fetch_count will be the same value
+     * To handle an invalid value of fetch_count is set at `cursor->set_fetch_count (fetch_count);`
+     * Here, I'm going to get the fetch_count from the getter again.
+    */
+    fetch_count = cursor->get_fetch_count ();
+
+    int start_index = cursor->get_current_index ();
+    while (s_code == S_SUCCESS)
+      {
+	s_code = cursor->next_row ();
+	int tuple_index = cursor->get_current_index ();
+	if (s_code == S_END || tuple_index - start_index >= fetch_count)
+	  {
+	    break;
+	  }
+
+	std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
+
+	if (cursor->get_is_oid_included())
+	  {
+	    /* FIXME!!: For more optimized way, refactoring method_query_cursor is needed */
+	    OID *oid = cursor->get_current_oid ();
+	    std::vector<DB_VALUE> sub_vector = {tuple_values.begin() + 1, tuple_values.end ()};
+	    info.tuples.emplace_back (tuple_index, sub_vector, *oid);
+	  }
+	else
+	  {
+	    info.tuples.emplace_back (tuple_index, tuple_values);
+	  }
+      }
+
+    cubmem::block blk;
+    if (s_code != S_ERROR)
+      {
+	blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info));
+      }
+    else
+      {
+	blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+					       ARG_FILE_LINE));
+      }
+
+    error = m_stack->send_data_to_java (blk);
+    if (blk.is_valid ())
+      {
+	delete [] blk.ptr;
+	blk.ptr = NULL;
+	blk.dim = 0;
+      }
+
+    return error;
+  }
+
+  int
+  executor::callback_oid_get (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_OID_GET;
+    oid_get_request request;
+    request.unpack (unpacker);
+
+    auto java_lambda = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    error = m_stack->send_data_to_client (java_lambda, code, request);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    error = xs_receive (&thread_ref, java_lambda);
+    return error;
+  }
+
+  int
+  executor::callback_oid_put (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_OID_PUT;
+    oid_put_request request;
+    request.is_compatible_java = true;
+    request.unpack (unpacker);
+    request.is_compatible_java = false;
+
+
+    auto java_lambda = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    error = m_stack->send_data_to_client (java_lambda, code, request);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    error = xs_receive (&thread_ref, java_lambda);
+    return error;
+  }
+
+  int
+  executor::callback_oid_cmd (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_OID_CMD;
+    int command;
+    OID oid;
+    unpacker.unpack_all (command, oid);
+
+
+    auto java_lambda = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    error = m_stack->send_data_to_client (java_lambda, code, command, oid);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    error = xs_receive (&thread_ref, java_lambda);
+    return error;
+  }
+
+  int
+  executor::callback_collection_cmd (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+
+    int code = METHOD_CALLBACK_COLLECTION;
+    collection_cmd_request request;
+    request.is_compatible_java = true;
+    request.unpack (unpacker);
+
+
+    request.is_compatible_java = false;
+
+
+    auto java_lambda = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    error = m_stack->send_data_to_client (java_lambda, code, request);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    error = xs_receive (&thread_ref, java_lambda);
+    return error;
+  }
+
+  int
+  executor::callback_make_outresult (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+
+    int code = METHOD_CALLBACK_MAKE_OUT_RS;
+    uint64_t query_id;
+    unpacker.unpack_all (query_id);
+
+    auto get_make_outresult_info = [&] (const cubmem::block & b)
+    {
+      packing_unpacker unpacker (b.ptr, (size_t) b.dim);
+
+      int res_code;
+      make_outresult_info info;
+      unpacker.unpack_all (res_code, info);
+
+      const query_result_info &current_result_info = info.qresult_info;
+      query_cursor *cursor = m_stack->get_cursor (current_result_info.query_id);
+      if (cursor)
+	{
+	  cursor->change_owner (m_stack->get_thread_entry ());
+	  return m_stack->send_data_to_java (b);
+	}
+      else
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+    };
+
+
+    return error;
+  }
+
+  int
+  executor::callback_get_generated_keys (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_GET_GENERATED_KEYS;
+    int handler_id;
+    unpacker.unpack_all (handler_id);
+
+    auto java_lambda = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    error = m_stack->send_data_to_client (java_lambda, code, handler_id);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    return error;
+  }
+
+  int
+  executor::callback_end_transaction (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_END_TRANSACTION;
+    int command; // commit or abort
+
+    unpacker.unpack_all (command);
+
+    auto java_lambda = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    error = m_stack->send_data_to_client (java_lambda, code, command);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    return error;
+  }
+
+  int
+  executor::callback_change_auth_rights (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_CHANGE_RIGHTS;
+
+    int command;
+    std::string auth_name;
+
+    unpacker.unpack_all (command, auth_name);
+
+    auto java_lambda = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    error = m_stack->send_data_to_client (java_lambda, code, command, auth_name);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    return error;
+  }
+
+  int
+  executor::callback_get_code_attr (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_GET_CODE_ATTR;
+
+    std::string attr_name;
+
+    DB_VALUE res;
+    db_make_null (&res);
+    unpacker.unpack_all (attr_name);
+
+    OID *code_oid = &m_sig.ext.sp.code_oid;
+    if (OID_ISNULL (code_oid))
+      {
+	error = ER_FAILED;
+      }
+
+    if (error == NO_ERROR)
+      {
+	error = sp_get_code_attr (&thread_ref, attr_name, code_oid, &res);
+      }
+
+    cubmem::block blk;
+    if (error == NO_ERROR)
+      {
+	dbvalue_java java_packer;
+	java_packer.value = &res;
+
+	blk = std::move (mcon_pack_data_block (error, java_packer));
+      }
+    else
+      {
+	blk = std::move (mcon_pack_data_block (error));
+      }
+
+    db_value_clear (&res);
+
+    error = m_stack->send_data_to_java (blk);
+
+    if (blk.is_valid ())
+      {
+	delete[]  blk.ptr;
+      }
+
+    return error;
+  }
+
+
 }
 
 static bool

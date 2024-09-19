@@ -148,11 +148,6 @@ public class ExecuteThread extends Thread {
                          * the following two request codes are for processing java stored procedure
                          * routine
                          */
-                    case RequestCode.PREPARE_ARGS:
-                        {
-                            processPrepare();
-                            break;
-                        }
                     case RequestCode.INVOKE_SP:
                         {
                             processStoredProcedure();
@@ -270,12 +265,20 @@ public class ExecuteThread extends Thread {
         ctx = ContextManager.getContext(header.id);
         ctx.checkHeader(header);
 
-        ByteBuffer payloadBuffer =
-                ByteBuffer.wrap(
-                        inputBuffer.array(),
-                        unpacker.getCurrentPosition(),
-                        unpacker.getCurrentLimit() - unpacker.getCurrentPosition());
-        ctx.getInboundQueue().add(payloadBuffer);
+        int payloadSize = unpacker.getCurrentLimit() - unpacker.getCurrentPosition();
+        if (payloadSize > 0) {
+            ByteBuffer payloadBuffer =
+                    ByteBuffer.wrap(
+                            inputBuffer.array(),
+                            unpacker.getCurrentPosition(),
+                            unpacker.getCurrentLimit() - unpacker.getCurrentPosition());
+
+            ctx.getInboundQueue().add(payloadBuffer);
+        }
+
+        System.out.println(
+                "size : " + (unpacker.getCurrentLimit() - unpacker.getCurrentPosition()));
+
         return header;
     }
 
@@ -301,18 +304,16 @@ public class ExecuteThread extends Thread {
         return unpacker;
     }
 
-    private void processPrepare() throws Exception {
+    private void processStoredProcedure() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
+
+        // prepare
         if (prepareArgs == null) {
             prepareArgs = new PrepareArgs(unpacker);
         } else {
             prepareArgs.readArgs(unpacker);
         }
-        ctx.checkTranId(prepareArgs.getTranId());
-    }
 
-    private void processStoredProcedure() throws Exception {
-        unpacker.setBuffer(ctx.getInboundQueue().take());
         long id = unpacker.unpackBigint();
         int tid = unpacker.unpackInt();
 

@@ -114,7 +114,7 @@ namespace cubpl
 	return m_req_id++;
       }
 
-      cubmethod::connection_pool &get_connection_pool ();
+      cubmethod::connection_pool *get_connection_pool ();
 
       cubmethod::db_parameter_info *get_db_parameter_info () const;
       void set_db_parameter_info (cubmethod::db_parameter_info *param_info);

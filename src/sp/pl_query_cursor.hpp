@@ -69,6 +69,7 @@ namespace cubpl
       bool get_is_oid_included ();
       bool get_is_opened ();
       int get_fetch_count ();
+      void set_fetch_count (int cnt);
 
       cubthread::entry *get_owner ()
       {

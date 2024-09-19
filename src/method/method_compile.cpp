@@ -59,15 +59,15 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    PL_SESSION* session = cubpl::get_session ();
+    PL_SESSION *session = cubpl::get_session ();
     if (!session)
       {
 	return ER_FAILED;
       }
     SESSION_ID s_id = session->get_id ();
 
-    connection *conn = session->get_connection_pool().claim();
-    header header (s_id, SP_CODE_COMPILE, ctx->get_and_increment_request_id ());
+    connection *conn = session->get_connection_pool()->claim();
+    header header (s_id, SP_CODE_COMPILE, session->get_and_increment_request_id ());
     SOCKET socket = conn->get_socket ();
     {
       error = mcon_send_data_to_java (socket, header, compile_request);
@@ -137,7 +137,10 @@ namespace cubmethod
       while (code != METHOD_REQUEST_COMPILE);
 
 exit:
-      ctx->get_connection_pool().retire (conn, true);
+      if (session)
+	{
+	  session->get_connection_pool()->retire (conn, true);
+	}
 
       return error;
     }

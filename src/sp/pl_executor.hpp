@@ -84,14 +84,14 @@ namespace cubpl
       // execute
       int execute (DB_VALUE &value);
 
+      // getter
+      std::vector <DB_VALUE> &get_out_args ();
     private:
       execution_stack *m_stack;
       pl_signature &m_sig;
 
       std::vector <std::reference_wrapper <DB_VALUE>> m_args;
-
-      // output
-      std::vector <DB_VALUE *> m_out_args;
+      std::vector <DB_VALUE> m_out_args;
 
       int change_exec_rights (const char *auth_name);
 
@@ -101,6 +101,21 @@ namespace cubpl
 
       int response_result (int code, DB_VALUE &returnval);
       int response_callback_command ();
+
+      int callback_get_db_parameter (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_prepare (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_execute (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_fetch (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_oid_get (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_oid_put (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_oid_cmd (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_collection_cmd (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_make_outresult (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_get_generated_keys (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_end_transaction (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_change_auth_rights (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_get_code_attr (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+
 
   };
 }

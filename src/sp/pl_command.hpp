@@ -16,29 +16,30 @@
  *
  */
 
-//
-// method_compile.hpp - define structures used by method feature
-//
+/*
+ * pl_command.hpp
+ */
 
-#ifndef _METHOD_COMPILE_HPP_
-#define _METHOD_COMPILE_HPP_
+#ifndef _PL_COMMAND_HPP_
+#define _PL_COMMAND_HPP_
 
-#include "mem_block.hpp"
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "method_compile_def.hpp"
-#include "thread_entry.hpp"
-#endif
-
-#include <vector>
-#include <string>
-
-namespace cubmethod
+namespace cubpl
 {
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  int invoke_compile (cubthread::entry &thread_ref, const PLCSQL_COMPILE_REQUEST &compile_request,
-		      cubmem::extensible_block &out_blk);
-#endif
+  class command
+  {
+    public:
+      command () = delete; // Not DefaultConstructible
+      command (const command &copy) = delete; // Not CopyConstructible
+      command (command &&other) = delete; // Not MoveConstructible
+
+      command &operator= (const command &copy) = delete; // Not CopyAssignable
+      command &operator= (command &&other) = delete; // Not MoveAssignable
+
+      virtual ~command () = default;
+
+      virtual void on_request () = 0;
+      virtual void on_response () = 0;
+  };
 }
 
-#endif //_METHOD_COMPILE_HPP_
+#endif
