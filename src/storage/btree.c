@@ -19541,6 +19541,12 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	  return DB_UNK;
 	}
 
+/* 
+ * TO-DO:
+ *  Even if key1_type and key2_type are compatible and key1_type and dom_type are compatible,
+ * isn't it possible that key2_type and dom_type are not compatible?
+ *  I don't think we need to check TP_ARE_COMPARABLE_KEY_TYPES (key2_type, dom_type).
+ */
       bool are_types_comparable = (TP_ARE_COMPARABLE_KEY_TYPES (key1_type, key2_type)
 				   && TP_ARE_COMPARABLE_KEY_TYPES (key1_type, dom_type)
 				   && TP_ARE_COMPARABLE_KEY_TYPES (key2_type, dom_type));

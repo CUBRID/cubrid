@@ -353,18 +353,6 @@ typedef enum tp_match
 /* Keys can come in with a type of DB_TYPE_OID, but the B+tree domain
    itself will always be a DB_TYPE_OBJECT. The comparison routines
    can handle OID and OBJECT as compatible type with each other . */
-/*
-#define TP_ARE_COMPARABLE_KEY_TYPES(key1_type, key2_type) \
-      (((key1_type) == (key2_type)) || \
-      (((key1_type) == DB_TYPE_CHAR || (key1_type) == DB_TYPE_VARCHAR) && \
-       ((key2_type) == DB_TYPE_CHAR || (key2_type) == DB_TYPE_VARCHAR)) || \
-      (((key1_type) == DB_TYPE_NCHAR || (key1_type) == DB_TYPE_VARNCHAR) && \
-       ((key2_type) == DB_TYPE_NCHAR || (key2_type) == DB_TYPE_VARNCHAR)) || \
-      (((key1_type) == DB_TYPE_BIT || (key1_type) == DB_TYPE_VARBIT) && \
-       ((key2_type) == DB_TYPE_BIT || (key2_type) == DB_TYPE_VARBIT)) || \
-      (((key1_type) == DB_TYPE_OID || (key1_type) == DB_TYPE_OBJECT) && \
-       ((key2_type) == DB_TYPE_OID || (key2_type) == DB_TYPE_OBJECT)))
-*/
 #define TP_ARE_COMPARABLE_KEY_TYPES(key1_type, key2_type) ( \
            ( CHECK_DB_TYPE_ENUM((key1_type)), CHECK_DB_TYPE_ENUM((key2_type)) ),    \
            ( ((key1_type) == (key2_type))                                           \
