@@ -2480,7 +2480,8 @@ public class SpLib {
 
         LocalDateTime lldt = l.toLocalDateTime();
         Timestamp ret = Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.SECONDS));
-        if (ValueUtilities.checkValidTimestamp(ret)) {
+        ret = ValueUtilities.checkValidTimestamp(ret);
+        if (ret != null) {
             return ret;
         } else {
             throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
@@ -2713,7 +2714,8 @@ public class SpLib {
 
         LocalDateTime lldt = l.toLocalDateTime();
         Timestamp ret = Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.SECONDS));
-        if (ValueUtilities.checkValidTimestamp(ret)) {
+        ret = ValueUtilities.checkValidTimestamp(ret);
+        if (ret != null) {
             return ret;
         } else {
             throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
@@ -2867,7 +2869,8 @@ public class SpLib {
                         e.getMinutes(),
                         e.getSeconds(),
                         0);
-        if (ValueUtilities.checkValidTimestamp(ret)) {
+        ret = ValueUtilities.checkValidTimestamp(ret);
+        if (ret != null) {
             return ret;
         } else {
             throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
@@ -2881,7 +2884,7 @@ public class SpLib {
         if (e.equals(ValueUtilities.NULL_DATETIME)) {
             // must be calculated everytime because the AM/PM indicator can change according to the
             // locale change
-            return String.format("00:00:00.000 %s 00/00/0000", AM_PM.format(ZERO_DATE));
+            return String.format("12:00:00.000 %s 00/00/0000", AM_PM.format(ZERO_DATE));
         }
 
         return DATETIME_FORMAT.format(e);
@@ -2908,7 +2911,8 @@ public class SpLib {
         }
 
         Timestamp ret = new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
-        if (ValueUtilities.checkValidTimestamp(ret)) {
+        ret = ValueUtilities.checkValidTimestamp(ret);
+        if (ret != null) {
             return ret;
         } else {
             throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
@@ -2987,7 +2991,7 @@ public class SpLib {
         if (e.equals(ValueUtilities.NULL_TIMESTAMP)) {
             // must be calculated everytime because the AM/PM indicator can change according to the
             // locale change
-            return String.format("00:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
+            return String.format("12:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
         }
 
         Instant instant = Instant.ofEpochMilli(e.getTime());
@@ -4069,7 +4073,8 @@ public class SpLib {
     private static Timestamp longToTimestamp(long l) {
         try {
             Timestamp ret = ValueUtilities.longToTimestamp(l);
-            if (ValueUtilities.checkValidTimestamp(ret)) {
+            ret = ValueUtilities.checkValidTimestamp(ret);
+            if (ret != null) {
                 return ret;
             } else {
                 throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
