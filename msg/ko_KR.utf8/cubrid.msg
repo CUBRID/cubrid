@@ -2126,7 +2126,7 @@ $set 15 MSGCAT_SET_IO
 2 백업 = %1$s 이(가) 필요합니다. \n 계속하려면 마운트/로드되어야 합니다.\n 마운트/로드 이후 계속하려면 1을 입력하세요.\n 종료하려면 0을 입력하세요.\n
 3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
 4 Backup magic file identification %1$s,\n
-5          Release: %1$s\n\
+5           Release: %1$s\n\
    Disk Version: %2$g\n
 6    Database Name: %1$s\n\
    DB Creation Time: %2$s\
@@ -2138,7 +2138,7 @@ $set 15 MSGCAT_SET_IO
    Backup Unit Num: %2$d\n
 9  Database Volume Name: %1$s\n\
    Volume Identifier: %2$d, Size: %3$lld bytes (%4$d pages)\n
-10   Database Name: %1$s\n\
+10    Database Name: %1$s\n\
    Volume Name: %2$s\n\
    Unit Num: %3$d\n\
    Backup Level: %4$d (%5$s)\n\
@@ -2165,7 +2165,7 @@ $set 15 MSGCAT_SET_IO
 25 이전 백업 볼륨 이름: %1$s\n
 26      다음 백업 볼륨 이름: %1$s\n
 27   Backup Pagesize: %1$d\n
-28       Zip Method: %1$d (%2$s)\n\
+28        Zip Method: %1$d (%2$s)\n\
    Zip Level: %3$d (%4$s)\n
 29 Include Active Log: %1$s\n
 
