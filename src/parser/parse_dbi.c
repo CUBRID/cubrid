@@ -2357,7 +2357,7 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
     DB_TYPE_DATETIMELTZ,	/* PT_TYPE_DATETIMELTZ */
   };
 
-  return (t <= PT_TYPE_MIN || t >= PT_TYPE_MAX) ? DB_TYPE_NULL : _pt_type_2_db_type_mapper[t];
+  return (t <= PT_TYPE_MIN || t >= PT_TYPE_MAX) ? DB_TYPE_NULL : _pt_type_2_db_type_mapper[t - PT_TYPE_MIN];
 
 #else
   DB_TYPE db_type = DB_TYPE_NULL;
