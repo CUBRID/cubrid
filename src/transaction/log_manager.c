@@ -323,7 +323,6 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 static bool log_is_absolute_path (const char *path);
-static bool log_is_file_name_only (const char *path);
 
 /*for CDC */
 static int cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry);
@@ -9239,21 +9238,10 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 	{
 	  snprintf (path, PATH_MAX, "%s", db_get_string (arg_values[0]));
 	}
-      else			//relative path
+      else
 	{
-	  if (log_is_file_name_only (db_get_string (arg_values[0])))
-	    {
-	      snprintf (path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path),
-			db_get_string (arg_values[0]));
-	    }
-	  else
-	    {
-	      char dir_path[PATH_MAX];
-
-	      fileio_get_directory_path (dir_path, boot_db_full_name ());
-	      snprintf (path, PATH_MAX, "%s%s%s", dir_path, FILEIO_PATH_SEPARATOR (dir_path),
-			db_get_string (arg_values[0]));
-	    }
+	  snprintf (path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path),
+		    db_get_string (arg_values[0]));
 	}
 
       fd = fileio_open (path, O_RDONLY, 0);
@@ -9607,19 +9595,8 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
     }
   else
     {
-      if (log_is_file_name_only (db_get_string (arg_values[0])))
-	{
-	  snprintf (path, PATH_MAX, "%s%s%s", log_Archive_path, FILEIO_PATH_SEPARATOR (log_Archive_path),
-		    db_get_string (arg_values[0]));
-	}
-      else
-	{
-	  char dir_path[PATH_MAX];
-
-	  fileio_get_directory_path (dir_path, boot_db_full_name ());
-	  snprintf (path, PATH_MAX, "%s%s%s", dir_path, FILEIO_PATH_SEPARATOR (dir_path),
-		    db_get_string (arg_values[0]));
-	}
+      snprintf (path, PATH_MAX, "%s%s%s", log_Archive_path, FILEIO_PATH_SEPARATOR (log_Archive_path),
+		db_get_string (arg_values[0]));
     }
 
   page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
@@ -10685,21 +10662,6 @@ log_is_absolute_path (const char *path)
 #endif
 
   return path[0] == '/';
-}
-
-/*
- * log_is_file_name_only () - Check if path contains any directory separator.
- *
- * return    : boolean
- * path (in) : path
- */
-static bool
-log_is_file_name_only (const char *path)
-{
-#if defined(WINDOWS)
-  return strchr (path, '\\') == NULL && strchr (path, '/') == NULL;
-#endif
-  return strchr (path, '/') == NULL;
 }
 
 static int
