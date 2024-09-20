@@ -510,6 +510,7 @@ public class SpLib {
     public static class Query {
         public final String query;
         public ResultSet rs;
+        public int rowCount;
 
         public Query(String query) {
             this.query = query;
@@ -588,12 +589,15 @@ public class SpLib {
         }
 
         public long rowCount() {
+            if (!isOpen()) {
+                throw new INVALID_CURSOR("attempted to read an attribute of an unopened cursor");
+            }
+            return (long) rowCount;
+        }
+
+        public void updateRowCount() {
             try {
-                if (!isOpen()) {
-                    throw new INVALID_CURSOR(
-                            "attempted to read an attribute of an unopened cursor");
-                }
-                return (long) rs.getRow();
+                rowCount = rs.getRow();
             } catch (SQLException e) {
                 Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
