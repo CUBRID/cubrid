@@ -29,7 +29,6 @@
 #include "error_code.h"
 #include <stdint.h>
 #include "system.h"
-#include "porting.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -734,7 +733,7 @@ extern "C"
   } DB_TYPE;
 
 /* *INDENT-OFF* */
-#define CHECK_DB_TYPE_ENUM(v)  ASSERT_IN_MACRO(((v) >= DB_TYPE_FIRST) && ((v) <= DB_TYPE_LAST))
+#define CHECK_DB_TYPE_ENUM(v)  assert(((v) >= DB_TYPE_FIRST) && ((v) <= DB_TYPE_LAST))
 #define GET_DB_TYPE_ENUM_BIT_POS(t)  ((INT64)0x01 << (t))
 
   static const UINT64 _db_string_type = 
@@ -1291,7 +1290,7 @@ extern "C"
 
 
 /* *INDENT-OFF* */
-#define CHECK_DB_DEFAULT_EXPR_TYPE_ENUM(v)  ASSERT_IN_MACRO(((v) >= DB_DEFAULT_NONE) && ((v) < DB_DEFAULT_EXPR_TYPE_MAX))
+#define CHECK_DB_DEFAULT_EXPR_TYPE_ENUM(v)  assert(((v) >= DB_DEFAULT_NONE) && ((v) < DB_DEFAULT_EXPR_TYPE_MAX))
 #define GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(v)  ((int)0x01 << (v))
 
   static const int _db_defgault_expr_type =  (                                  \
