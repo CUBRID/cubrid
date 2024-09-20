@@ -1571,7 +1571,9 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 	  if (attr_order != -1)
 	    {
 	      nth_node = pt_get_node_from_list (subquery->info.query.q.select.list, attr_order - 1);
-	      if (nth_node != NULL && PT_IS_ANALYTIC_NODE (nth_node))
+	      assert (nth_node != NULL);
+
+	      if (PT_IS_ANALYTIC_NODE (nth_node))
 		{
 		  temp = nth_node->next;
 		  nth_node->next = NULL;
@@ -8431,7 +8433,7 @@ static PT_NODE *
 mq_get_references_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
 {
   PT_NODE *spec = (PT_NODE *) void_arg;
-  
+
   if (node->node_type == PT_NAME && node->info.name.spec_id == spec->info.spec.id)
     {
       node->info.name.spec_id = (UINTPTR) spec;
