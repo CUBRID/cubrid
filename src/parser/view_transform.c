@@ -8431,9 +8431,7 @@ static PT_NODE *
 mq_get_references_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
 {
   PT_NODE *spec = (PT_NODE *) void_arg;
-  PT_NODE *temp, *nth_node, *subquery;
-  int attr_order, referenced_attr_order;
-
+  
   if (node->node_type == PT_NAME && node->info.name.spec_id == spec->info.spec.id)
     {
       node->info.name.spec_id = (UINTPTR) spec;
