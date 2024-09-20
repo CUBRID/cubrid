@@ -323,13 +323,13 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 static bool log_is_absolute_path (const char *path);
-
+static void log_build_full_path (const char *input_path, char *full_path);
 /*for CDC */
 static int cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry);
 static int cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * recdes,
 				    LOG_LSA lsa, LOG_RCVINDEX rcvindex, bool is_redo);
-static int cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * process_lsa, int *length,
-				     char **data, LOG_RCVINDEX rcvindex, bool is_redo);
+static int cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * process_lsa,
+				     int *length, char **data, LOG_RCVINDEX rcvindex, bool is_redo);
 static int cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id);
 static int cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOGINFO_ENTRY * ddl_entry);
 static int cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LOGINFO_ENTRY * dcl_entry);
@@ -9234,15 +9234,7 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 
       assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
 
-      if (log_is_absolute_path (db_get_string (arg_values[0])))
-	{
-	  snprintf (path, PATH_MAX, "%s", db_get_string (arg_values[0]));
-	}
-      else
-	{
-	  snprintf (path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path),
-		    db_get_string (arg_values[0]));
-	}
+      log_build_full_path (db_get_string (arg_values[0]), path);
 
       fd = fileio_open (path, O_RDONLY, 0);
       if (fd == -1)
@@ -9589,15 +9581,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
       goto exit_on_error;
     }
 
-  if (log_is_absolute_path (db_get_string (arg_values[0])))
-    {
-      snprintf (path, PATH_MAX, "%s", db_get_string (arg_values[0]));
-    }
-  else
-    {
-      snprintf (path, PATH_MAX, "%s%s%s", log_Archive_path, FILEIO_PATH_SEPARATOR (log_Archive_path),
-		db_get_string (arg_values[0]));
-    }
+  log_build_full_path (db_get_string (arg_values[0]), path);
 
   page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -10662,6 +10646,25 @@ log_is_absolute_path (const char *path)
 #endif
 
   return path[0] == '/';
+}
+
+/*
+ * log_build_full_path() - Build a full path by combining the base path and input path
+ *   return: void
+ *   input_path(in): Input path (relative or absolute)
+ *   full_path(out): Output buffer for the full path
+ */
+static void
+log_build_full_path (const char *input_path, char *full_path)
+{
+  if (IS_ABS_PATH (input_path))
+    {
+      snprintf (full_path, PATH_MAX, "%s", input_path);
+    }
+  else
+    {
+      snprintf (full_path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path), input_path);
+    }
 }
 
 static int
