@@ -204,8 +204,6 @@ extern "C"
   extern int pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT * object1,
 				   DB_OBJECT * object2, DB_VALUE * result);
 
-  //extern DB_TYPE pt_type_enum_to_db (const PT_TYPE_ENUM dt);
-  //extern PT_TYPE_ENUM pt_db_to_type_enum (const DB_TYPE t);
   extern const char *pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t);
   extern DB_DOMAIN *pt_type_enum_to_db_domain (const PT_TYPE_ENUM t);
   extern void pt_put_type_enum (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * data_type);
