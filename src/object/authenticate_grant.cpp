@@ -79,7 +79,7 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
   MOP auth;
   DB_SET *grants;
   DB_VALUE value;
-  int current, save = 0, gindex;
+  int current, save = 0, gindex, mask;
   SM_CLASS *classobj;
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_grant = 0;
   MOP *sub_partitions = NULL;
@@ -203,6 +203,15 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	      if (grant_option)
 		{
 		  current |= ((int) type << AU_GRANT_SHIFT);
+		}
+	      else
+		{
+		  mask = (int) ~ (type << AU_GRANT_SHIFT);
+		  current &= mask;
+		  if (current)
+		    {
+		      current |= (int) type;
+		    }
 		}
 
 	      db_make_int (&value, current);
