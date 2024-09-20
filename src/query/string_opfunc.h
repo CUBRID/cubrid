@@ -51,8 +51,8 @@ typedef struct cub_compiled_regex cub_compiled_regex;
 #define QSTR_IS_ANY_CHAR(s)         (CHECK_DB_TYPE_ENUM((s)), ((_db_string_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
 #define QSTR_IS_ANY_CHAR_OR_BIT(s)  (CHECK_DB_TYPE_ENUM((s)), ((_db_any_char_or_bit_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
 
-#define QSTR_IS_FIXED_LENGTH(s)     (CHECK_DB_TYPE_ENUM((s)), ((_db_fixed_length_with_bit_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
-#define QSTR_IS_VARIABLE_LENGTH(s)  (CHECK_DB_TYPE_ENUM((s)), ((_db_variable_length_with_bit_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
+#define QSTR_IS_FIXED_LENGTH(s)     (CHECK_DB_TYPE_ENUM((s)), ((_db_fixed_length_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
+#define QSTR_IS_VARIABLE_LENGTH(s)  (CHECK_DB_TYPE_ENUM((s)), ((_db_variable_length_type & GET_DB_TYPE_ENUM_BIT_POS((s))) != 0))
 /* *INDENT-ON* */
 
 #define QSTR_NUM_BYTES(a)           (((a) + 7) / 8)
