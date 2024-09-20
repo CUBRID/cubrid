@@ -34,7 +34,6 @@ import com.cubrid.jsp.Server;
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
 import java.time.DateTimeException;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -49,20 +48,10 @@ import java.util.Locale;
 
 public class DateTimeParser {
 
-    private static final ZoneOffset TIMEZONE_0 = ZoneOffset.of("Z");
-
-    // local(zoneless) part of min timestamp: 1970-01-01 00:00:01
+    // zoneless part of min timestamp: 1970-01-01 00:00:01
     public static final LocalDateTime minTimestampLocal = LocalDateTime.of(1970, 1, 1, 0, 0, 1);
-    // local(zoneless) part of max timestamp local part: 2038-01-19 03:14:07
+    // zoneless part of max timestamp local part: 2038-01-19 03:14:07
     public static final LocalDateTime maxTimestampLocal = LocalDateTime.of(2038, 1, 19, 3, 14, 7);
-
-    public static final ZonedDateTime minTimestamp =
-            ZonedDateTime.of(minTimestampLocal, TIMEZONE_0);
-    public static final ZonedDateTime maxTimestamp =
-            ZonedDateTime.of(maxTimestampLocal, TIMEZONE_0);
-
-    private static final Instant minTimestampInstant = minTimestamp.toInstant();
-    private static final Instant maxTimestampInstant = maxTimestamp.toInstant();
 
     // min datetime: 0001-01-01 00:00:00.000
     public static final LocalDateTime minDatetimeLocal = LocalDateTime.of(1, 1, 1, 0, 0, 0, 0);
@@ -70,17 +59,22 @@ public class DateTimeParser {
     public static final LocalDateTime maxDatetimeLocal =
             LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999000000);
 
-    private static final ZonedDateTime minDatetimeGMT =
-            ZonedDateTime.of(minDatetimeLocal, TIMEZONE_0);
-    private static final ZonedDateTime maxDatetimeGMT =
-            ZonedDateTime.of(maxDatetimeLocal, TIMEZONE_0);
+    private static final ZoneOffset TIMEZONE_0 = ZoneOffset.of("Z");
+    // TODO: update the following value along with the server
+    private static final ZoneOffset TIMEZONE_SESSION = ZoneOffset.of("+09:00");
 
-    private static final Instant minDatetimeGMTInstant = minDatetimeGMT.toInstant();
-    private static final Instant maxDatetimeGMTInstant = maxDatetimeGMT.toInstant();
+    private static final ZonedDateTime minTimestamp =
+            ZonedDateTime.of(minTimestampLocal, TIMEZONE_0);
+    private static final ZonedDateTime maxTimestamp =
+            ZonedDateTime.of(maxTimestampLocal, TIMEZONE_0);
+    private static final ZonedDateTime minDatetimeUTC =
+            ZonedDateTime.of(minDatetimeLocal, TIMEZONE_0);
+    private static final ZonedDateTime maxDatetimeUTC =
+            ZonedDateTime.of(maxDatetimeLocal, TIMEZONE_0);
 
     public static final LocalDate nullDate = LocalDate.MAX;
     public static final LocalDateTime nullDatetime = LocalDateTime.MAX;
-    public static final ZonedDateTime nullDatetimeGMT = ZonedDateTime.of(nullDatetime, TIMEZONE_0);
+    public static final ZonedDateTime nullDatetimeUTC = ZonedDateTime.of(nullDatetime, TIMEZONE_0);
 
     public static class DateLiteral {
 
@@ -123,7 +117,7 @@ public class DateTimeParser {
 
         public static LocalDateTime parse(String s) {
 
-            LocalDateTime ret = parseLocalDateAndTime(s, true);
+            LocalDateTime ret = parseDateAndTime(s, true);
             if (ret != null
                     && ret != nullDatetime
                     && (ret.compareTo(minDatetimeLocal) < 0
@@ -154,17 +148,17 @@ public class DateTimeParser {
         int delim = s.lastIndexOf(" ");
         if (delim < 0) {
             // no timezone offset
-            localPart = parseLocalDateAndTime(s, forDatetime);
+            localPart = parseDateAndTime(s, forDatetime);
             zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
         } else {
             String dt = s.substring(0, delim);
             String z = s.substring(delim + 1);
             try {
-                localPart = parseLocalDateAndTime(dt, forDatetime);
+                localPart = parseDateAndTime(dt, forDatetime);
                 zone = ZoneOffset.of(z);
             } catch (DateTimeException e) {
                 // z turn out not to be a timezone offset. try timezone omitted string
-                localPart = parseLocalDateAndTime(s, forDatetime);
+                localPart = parseDateAndTime(s, forDatetime);
                 zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
             }
         }
@@ -173,21 +167,17 @@ public class DateTimeParser {
             return null;
         }
         if (localPart == nullDatetime) {
-            return nullDatetimeGMT;
+            return nullDatetimeUTC;
         }
 
         ZonedDateTime ret = ZonedDateTime.of(localPart, zone);
-        Instant instant = ret.toInstant();
         if (forDatetime) {
-            // for DATETIME*
-            if (instant.compareTo(minDatetimeGMTInstant) < 0
-                    || instant.compareTo(maxDatetimeGMTInstant) > 0) {
+            if (ret.compareTo(minDatetimeUTC) < 0 || ret.compareTo(maxDatetimeUTC) > 0) {
                 return null;
             }
         } else {
             // in this case, for TIMESTAMP*
-            if (instant.compareTo(minTimestampInstant) < 0
-                    || instant.compareTo(maxTimestampInstant) > 0) {
+            if (ret.compareTo(minTimestamp) < 0 || ret.compareTo(maxTimestamp) > 0) {
                 return null;
             }
         }
@@ -195,7 +185,7 @@ public class DateTimeParser {
         return ret;
     }
 
-    private static LocalDateTime parseLocalDateAndTime(String s, boolean millis) {
+    private static LocalDateTime parseDateAndTime(String s, boolean millis) {
 
         s = s.trim();
 

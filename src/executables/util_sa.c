@@ -32,7 +32,6 @@
 #include <assert.h>
 #if defined(WINDOWS)
 #include <io.h>
-#include <direct.h>
 #endif
 
 #include "porting.h"
@@ -378,7 +377,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
   const TZ_DATA *tzd;
 
   char required_size[16];
-  char abs_lob_path[PATH_MAX];
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   cubrid_charset = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
@@ -639,21 +637,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-
-  if (lob_path && (IS_ABS_PATH (lob_path)) == false)
-    {
-      char cwd[PATH_MAX];
-
-      if (getcwd (cwd, PATH_MAX) != NULL)
-	{
-	  snprintf (abs_lob_path, PATH_MAX, "%s/%s", cwd, lob_path);
-	  lob_path = abs_lob_path;
-	}
-      else
-	{
-	  goto error_exit;
-	}
-    }
 
   db_login ("DBA", NULL);
   status = db_init (program_name, true, database_name, volume_path, NULL, log_path, lob_path, host_name, overwrite,

@@ -767,7 +767,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
-        ZonedDateTime timestamp = DateTimeParser.TimestampLiteral.parse(s);
+        ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, false);
         if (timestamp == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx), // s052

@@ -65,7 +65,7 @@ public class SpLib {
 
     public static Timestamp parseTimestampStr(String s) {
         // parse again at runtime in order to use the runtime value of timezone setting
-        ZonedDateTime timestamp = DateTimeParser.TimestampLiteral.parse(s);
+        ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, false);
         if (timestamp == null) {
             // The string was valid at the compile time (see
             // ParseTreeConverter.visitTimestamp_exp()).
@@ -73,7 +73,7 @@ public class SpLib {
             throw new VALUE_ERROR(String.format("invalid TIMESTAMP string: %s", s));
         }
 
-        if (timestamp.equals(DateTimeParser.nullDatetimeGMT)) {
+        if (timestamp.equals(DateTimeParser.nullDatetimeUTC)) {
             return ValueUtilities.NULL_TIMESTAMP;
         } else {
             return new Timestamp(timestamp.toEpochSecond() * 1000);
@@ -2135,7 +2135,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (r.equals(0L)) {
+        if (r.equals(0)) {
             throw new ZERO_DIVIDE();
         }
 
@@ -2247,7 +2247,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (r.equals(0L)) {
+        if (r.equals(0)) {
             throw new ZERO_DIVIDE();
         }
         return l / r;
@@ -2427,16 +2427,11 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATE)) {
-            throw new VALUE_ERROR("attempt to use the zero DATE");
+            throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
         LocalDate lld = l.toLocalDate();
-        Date ret = Date.valueOf(lld.plusDays(r.longValue()));
-        if (ValueUtilities.checkValidDate(ret)) {
-            return ret;
-        } else {
-            throw new VALUE_ERROR("not in the valid range of DATE type");
-        }
+        return Date.valueOf(lld.plusDays(r.longValue()));
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2450,16 +2445,11 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATETIME)) {
-            throw new VALUE_ERROR("attempt to use the zero DATETIME");
+            throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
         LocalDateTime lldt = l.toLocalDateTime();
-        Timestamp ret = Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.MILLIS));
-        if (ValueUtilities.checkValidDatetime(ret)) {
-            return ret;
-        } else {
-            throw new VALUE_ERROR("not in the valid range of DATETIME type");
-        }
+        return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.MILLIS));
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2473,18 +2463,13 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(ValueUtilities.NULL_TIMESTAMP)) {
-            throw new VALUE_ERROR("attempt to use the zero TIMESTAMP");
+        if (l.equals(ValueUtilities.NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
         }
         assert l.getNanos() == 0;
 
         LocalDateTime lldt = l.toLocalDateTime();
-        Timestamp ret = Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.SECONDS));
-        if (ValueUtilities.checkValidTimestamp(ret)) {
-            return ret;
-        } else {
-            throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
-        }
+        return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.SECONDS));
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2606,7 +2591,7 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATE) || r.equals(ValueUtilities.NULL_DATE)) {
-            throw new VALUE_ERROR("attempt to use the zero DATE");
+            throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
         LocalDate lld = l.toLocalDate();
@@ -2620,7 +2605,7 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATETIME) || r.equals(ValueUtilities.NULL_DATETIME)) {
-            throw new VALUE_ERROR("attempt to use the zero DATETIME");
+            throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
         LocalDateTime lldt = l.toLocalDateTime();
@@ -2639,8 +2624,8 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(ValueUtilities.NULL_TIMESTAMP) || r.equals(ValueUtilities.NULL_TIMESTAMP)) {
-            throw new VALUE_ERROR("attempt to use the zero TIMESTAMP");
+        if (l.equals(ValueUtilities.NULL_DATETIME) || r.equals(ValueUtilities.NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
         }
         assert l.getNanos() == 0;
         assert r.getNanos() == 0;
@@ -2665,16 +2650,11 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATE)) {
-            throw new VALUE_ERROR("attempt to use the zero DATE");
+            throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
         LocalDate lld = l.toLocalDate();
-        Date ret = Date.valueOf(lld.minusDays(r.longValue()));
-        if (ValueUtilities.checkValidDate(ret)) {
-            return ret;
-        } else {
-            throw new VALUE_ERROR("not in the valid range of DATE type");
-        }
+        return Date.valueOf(lld.minusDays(r.longValue()));
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2683,16 +2663,11 @@ public class SpLib {
             return null;
         }
         if (l.equals(ValueUtilities.NULL_DATETIME)) {
-            throw new VALUE_ERROR("attempt to use the zero DATETIME");
+            throw new VALUE_ERROR("attempt to use 'zero date'");
         }
 
         LocalDateTime lldt = l.toLocalDateTime();
-        Timestamp ret = Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.MILLIS));
-        if (ValueUtilities.checkValidDatetime(ret)) {
-            return ret;
-        } else {
-            throw new VALUE_ERROR("not in the valid range of DATETIME type");
-        }
+        return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.MILLIS));
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2706,18 +2681,13 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        if (l.equals(ValueUtilities.NULL_TIMESTAMP)) {
-            throw new VALUE_ERROR("attempt to use the zero TIMESTAMP");
+        if (l.equals(ValueUtilities.NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
         }
         assert l.getNanos() == 0;
 
         LocalDateTime lldt = l.toLocalDateTime();
-        Timestamp ret = Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.SECONDS));
-        if (ValueUtilities.checkValidTimestamp(ret)) {
-            return ret;
-        } else {
-            throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
-        }
+        return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.SECONDS));
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2858,20 +2828,14 @@ public class SpLib {
             return ValueUtilities.NULL_TIMESTAMP;
         }
 
-        Timestamp ret =
-                new Timestamp(
-                        e.getYear(),
-                        e.getMonth(),
-                        e.getDate(),
-                        e.getHours(),
-                        e.getMinutes(),
-                        e.getSeconds(),
-                        0);
-        if (ValueUtilities.checkValidTimestamp(ret)) {
-            return ret;
-        } else {
-            throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
-        }
+        return new Timestamp(
+                e.getYear(),
+                e.getMonth(),
+                e.getDate(),
+                e.getHours(),
+                e.getMinutes(),
+                e.getSeconds(),
+                0);
     }
 
     public static String convDatetimeToString(Timestamp e) {
@@ -2907,12 +2871,7 @@ public class SpLib {
             return ValueUtilities.NULL_TIMESTAMP;
         }
 
-        Timestamp ret = new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
-        if (ValueUtilities.checkValidTimestamp(ret)) {
-            return ret;
-        } else {
-            throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
-        }
+        return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
     }
 
     public static String convDateToString(Date e) {
@@ -3433,7 +3392,7 @@ public class SpLib {
         }
 
         if (d.equals(DateTimeParser.nullDate)) {
-            return ValueUtilities.NULL_DATE;
+            return new Date(-1900, -1, 0);
         } else {
             return new Date(d.getYear() - 1900, d.getMonthValue() - 1, d.getDayOfMonth());
         }
@@ -3464,7 +3423,7 @@ public class SpLib {
             throw new VALUE_ERROR("not in a TIMESTAMP format");
         }
 
-        if (zdt.equals(DateTimeParser.nullDatetimeGMT)) {
+        if (zdt.equals(DateTimeParser.nullDatetimeUTC)) {
             return ValueUtilities.NULL_TIMESTAMP;
         } else {
             assert zdt.getNano() == 0;
@@ -4068,12 +4027,7 @@ public class SpLib {
 
     private static Timestamp longToTimestamp(long l) {
         try {
-            Timestamp ret = ValueUtilities.longToTimestamp(l);
-            if (ValueUtilities.checkValidTimestamp(ret)) {
-                return ret;
-            } else {
-                throw new VALUE_ERROR("not in the valid range of TIMESTAMP type");
-            }
+            return ValueUtilities.longToTimestamp(l);
         } catch (TypeMismatchException e) {
             throw new VALUE_ERROR(e.getMessage());
         }
