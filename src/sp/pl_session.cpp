@@ -330,7 +330,8 @@ namespace cubpl
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_mutex);
+    // TODo
+    // std::unique_lock<std::mutex> ulock (m_mutex);
 
     // remove from session cursor map
     m_session_cursors.erase (query_id); // safe guard

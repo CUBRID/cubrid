@@ -72,6 +72,7 @@ void regu_init (upddel_class_info &upddel);
 void regu_init (update_assignment &assign);
 void regu_init (arith_list_node &arith);
 void regu_init (function_node &fnode);
+void regu_init (cubxasl::sp_node &sp);
 void regu_init (cubxasl::aggregate_list_node &agg);
 void regu_init (cubxasl::analytic_list_node &ana);
 void regu_init (xasl_node &node);

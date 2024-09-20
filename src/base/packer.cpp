@@ -720,7 +720,8 @@ namespace cubpacking
 
     if (len >= max_str_size)
       {
-	assert (false);
+	assert (max_str_size == 0);
+	align (INT_ALIGNMENT);
 	return;
       }
     if (len > 0)
@@ -728,7 +729,6 @@ namespace cubpacking
 	std::memcpy (str, m_ptr, len);
 	m_ptr += len;
       }
-
     str[len] = '\0';
 
     align (INT_ALIGNMENT);

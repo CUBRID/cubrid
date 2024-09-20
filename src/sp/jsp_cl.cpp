@@ -1791,7 +1791,7 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 	sig.arg.arg_mode[i] = arg_mode;
 	sig.arg.arg_type[i] = arg_type;
 
-	sig.arg.arg_mode[i] = default_value_size;
+	sig.arg.arg_default_value_size[i] = default_value_size;
 	if (default_value_str)
 	  {
 	    sig.arg.arg_default_value[i] = db_private_strndup (NULL, default_value_str, default_value_size);

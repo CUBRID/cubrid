@@ -53,12 +53,21 @@ namespace cubpl
 	    m_session->get_connection_pool ()->retire (conn, false);
 	  }
       }
+
+    destory_all_cursors ();
+
   }
 
   void
   execution_stack::add_query_handler (int handler_id)
   {
     m_stack_handler_id.insert (handler_id);
+  }
+
+  void
+  execution_stack::remove_query_handler (int handler_id)
+  {
+    m_stack_handler_id.erase (handler_id);
   }
 
   int

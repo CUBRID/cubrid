@@ -235,6 +235,8 @@ static REGU_VARIABLE *pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE *
 static REGU_VARIABLE *pt_make_regu_pred (const PRED_EXPR * pred);
 static REGU_VARIABLE *pt_make_function (PARSER_CONTEXT * parser, int function_code, const REGU_VARIABLE_LIST arg_list,
 					const DB_TYPE result_type, const PT_NODE * node);
+
+static REGU_VARIABLE *pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node);
 static REGU_VARIABLE *pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function);
 static REGU_VARIABLE *pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX unbox,
 					     const PT_NODE * node);
@@ -4341,7 +4343,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       /* Do not proceed down the leaves. */
       *continue_walk = PT_LIST_WALK;
     }
-  else if (tree->node_type == PT_METHOD_CALL)
+  else if (PT_IS_METHOD (tree))
     {
       /* Do not proceed down the leaves */
       *continue_walk = PT_LIST_WALK;
@@ -4800,6 +4802,10 @@ pt_cnt_attrs (const REGU_VARIABLE_LIST attr_list)
 	  /* need to check all the operands for the function */
 	  cnt += pt_cnt_attrs (tmp->value.value.funcp->operand);
 	}
+      else if (tmp->value.type == TYPE_SP)
+	{
+	  cnt += pt_cnt_attrs (tmp->value.value.sp_ptr->args);
+	}
     }
 
   return cnt;
@@ -4832,6 +4838,10 @@ pt_fill_in_attrid_array (REGU_VARIABLE_LIST attr_list, ATTR_ID * attr_array, int
 	{
 	  /* need to check all the operands for the function */
 	  pt_fill_in_attrid_array (tmp->value.value.funcp->operand, attr_array, next_pos);
+	}
+      else if (tmp->value.type == TYPE_SP)
+	{
+	  pt_fill_in_attrid_array (tmp->value.value.sp_ptr->args, attr_array, next_pos);
 	}
     }
 }
@@ -6628,6 +6638,48 @@ pt_make_function (PARSER_CONTEXT * parser, int function_code, const REGU_VARIABL
 
 
 /*
+ * pt_stored_procedure_to_regu () - takes a PT_METHOD_CALL and converts to a regu_variable
+ *   return: A NULL return indicates an error occurred
+ *   parser(in):
+ *   function(in/out):
+ *
+ */
+static REGU_VARIABLE *
+pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  int error = NO_ERROR;
+  REGU_VARIABLE *regu = NULL;
+  REGU_VARIABLE_LIST args;
+  SP_TYPE *sp = NULL;
+
+  regu_alloc (regu);
+  if (!regu)
+    {
+      return NULL;
+    }
+
+  regu_alloc (regu->value.sp_ptr);
+
+  sp = regu->value.sp_ptr;
+  if (sp)
+    {
+      error = jsp_make_pl_signature (parser, node, NULL, *(sp->sig));
+      if (error != NO_ERROR)
+	{
+	  return NULL;
+	}
+
+      regu_dbval_type_init (sp->value, (DB_TYPE) sp->sig->result_type);
+      sp->args = pt_to_regu_variable_list (parser, node->info.method_call.arg_list, UNBOX_AS_VALUE, NULL, NULL);
+    }
+
+  regu->type = TYPE_SP;
+  regu->domain = pt_xasl_node_to_domain (parser, node);
+
+  return regu;
+}
+
+/*
  * pt_function_to_regu () - takes a PT_FUNCTION and converts to a regu_variable
  *   return: A NULL return indicates an error occurred
  *   parser(in):
@@ -7505,11 +7557,19 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	       */
 
 	      /* a method call that can be evaluated as a constant expression. */
-	      regu_alloc (val);
-	      pt_evaluate_tree (parser, node, val, 1);
-	      if (!pt_has_error (parser))
+	      if (PT_IS_METHOD (node))
 		{
-		  regu = pt_make_regu_constant (parser, val, pt_node_to_db_type (node), node);
+		  /* a method call that can be evaluated as a constant expression. */
+		  regu_alloc (val);
+		  pt_evaluate_tree (parser, node, val, 1);
+		  if (!pt_has_error (parser))
+		    {
+		      regu = pt_make_regu_constant (parser, val, pt_node_to_db_type (node), node);
+		    }
+		}
+	      else
+		{
+		  regu = pt_stored_procedure_to_regu (parser, node);
 		}
 	      break;
 
@@ -12686,7 +12746,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   int idx = 0;
 
   /* every cselect must have a subquery for its source list file, this is pointed to by the methods of the cselect */
-  if (!cselect || !(cselect->node_type == PT_METHOD_CALL) || !src_derived_tbl || !PT_SPEC_IS_DERIVED (src_derived_tbl))
+  if (!cselect || !(PT_IS_METHOD (cselect)) || !src_derived_tbl || !PT_SPEC_IS_DERIVED (src_derived_tbl))
     {
       return NULL;
     }
@@ -22969,6 +23029,32 @@ pt_get_var_regu_variable_p_list (const REGU_VARIABLE * regu, bool is_prior, int 
     case TYPE_FUNC:
       {
 	REGU_VARIABLE_LIST r = regu->value.funcp->operand;
+	while (r)
+	  {
+	    list1 = pt_get_var_regu_variable_p_list (&r->value, is_prior, err);
+
+	    if (!list)
+	      {
+		list = list1;
+	      }
+	    else
+	      {
+		list2 = list;
+		while (list2->next)
+		  {
+		    list2 = list2->next;
+		  }
+		list2->next = list1;
+	      }
+
+	    r = r->next;
+	  }
+      }
+      break;
+
+    case TYPE_SP:
+      {
+	REGU_VARIABLE_LIST r = regu->value.sp_ptr->args;
 	while (r)
 	  {
 	    list1 = pt_get_var_regu_variable_p_list (&r->value, is_prior, err);

@@ -1145,6 +1145,8 @@ qdump_regu_type_string (REGU_DATATYPE type)
       return "TYPE_REGUVAL_LIST";
     case TYPE_REGU_VAR_LIST:
       return "TYPE_REGU_VAR_LIST";
+    case TYPE_SP:
+      return "TYPE_SP";
     default:
       return "undefined";
     }

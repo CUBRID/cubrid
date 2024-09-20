@@ -10495,21 +10495,7 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
   cubmem::extensible_block eb;
   if (error_code == NO_ERROR)
     {
-      /* 3) make out arguments */
-      /*
-      for (int i = 0; i < m_sig.arg.arg_size; i++)
-      {
-
-                if (m_sig.arg.arg_mode[i] == SP_MODE_OUT)
-                {
-                        value_unpacker.value = &out_val;
-                        value_unpacker.unpack (unpacker);
-                        m_out_args.emplace_back (out_val);
-                }
-      }
-      */
-
-      /* 4) pack */
+      /* 3) pack */
       packer.set_buffer_and_pack_all (eb, ret_value, executor.get_out_args ());
     }
   else

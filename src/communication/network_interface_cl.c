@@ -77,6 +77,7 @@
 #include "method_error.hpp"
 #include "message_catalog.h"
 #include "utility.h"
+#include "sp_constants.hpp"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -10978,6 +10979,21 @@ pl_call (const cubpl::pl_signature & sig, std::vector < std::reference_wrapper <
 	    std::vector <DB_VALUE> out_args;
 	    // *INDENT-ON*
 	unpacker.unpack_all (result, out_args);
+
+	for (int i = 0; i < sig.arg.arg_size; i++)
+	  {
+	    if (sig.arg.arg_mode[i] == SP_MODE_IN)
+	      {
+		continue;
+	      }
+
+	    DB_VALUE & arg = args[i];
+	    DB_VALUE & out_arg = out_args[i];
+
+	    db_value_clear (&arg);
+	    db_value_clone (&out_arg, &arg);
+	    db_value_clear (&out_arg);
+	  }
       }
     else
       {
@@ -11030,124 +11046,6 @@ error:
 
   return error_code;
 }
-
-#if 0
-int
-method_invoke_fold_constants (const method_sig_list & sig_list,
-			      std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result)
-{
-#if defined(CS_MODE)
-  char *data_reply = NULL;
-  int data_reply_size = 0;
-  int req_error = NO_ERROR;
-
-  packing_packer packer;
-  cubmem::extensible_block eb;
-  packer.set_buffer_and_pack_all (eb, sig_list, args);
-
-  {
-    OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
-    char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-    req_error = net_client_request_method_callback (NET_SERVER_METHOD_FOLD_CONSTANTS, eb.get_ptr (),
-						    (int) packer.get_current_size (), reply,
-						    OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
-    if (req_error != NO_ERROR)
-      {
-	goto error;
-      }
-
-    /* consumes dummy reply */
-    int dummy;
-    char *ptr = or_unpack_int (reply, &dummy);
-    ptr = or_unpack_int (ptr, &dummy);
-    ptr = or_unpack_int (ptr, &dummy);
-
-    /* receive result values / error */
-    if (data_reply != NULL)
-      {
-	packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-	    // *INDENT-OFF*
-	    std::vector <DB_VALUE> out_args;
-	    // *INDENT-ON*
-	unpacker.unpack_all (result, out_args);
-
-	method_sig_node *sig = sig_list.method_sig;
-	for (int i = 0; i < sig->num_method_args; i++)
-	  {
-	    if (sig->arg_info->arg_mode[i] == METHOD_ARG_MODE_IN)
-	      {
-		continue;
-	      }
-
-	    int pos = sig->method_arg_pos[i];
-
-	    DB_VALUE & arg = args[pos];
-	    DB_VALUE & out_arg = out_args[pos];
-
-	    db_value_clear (&arg);
-	    db_value_clone (&out_arg, &arg);
-	  }
-
-	pr_clear_value_vector (out_args);
-      }
-    else
-      {
-	db_make_null (&result);
-      }
-  }
-
-error:
-  if (req_error != NO_ERROR)
-    {
-      packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-      int error_code;
-      std::string error_msg;
-      unpacker.unpack_all (error_code, error_msg);
-      cubmethod::handle_method_error (error_code, error_msg);
-    }
-
-  if (data_reply != NULL)
-    {
-      free_and_init (data_reply);
-    }
-
-  return req_error;
-#else /* CS_MODE */
-  int error_code = NO_ERROR;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  error_code = xmethod_invoke_fold_constants (thread_p, sig_list, args, result);
-
-  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-  assert (rctx);
-
-  cubmethod::method_invoke_group * top_on_stack = rctx->top_stack ();
-  assert (top_on_stack);
-
-  if (error_code != NO_ERROR)
-    {
-      if (rctx->is_interrupted ())
-	{
-	  rctx->set_local_error_for_interrupt ();
-	}
-      else if (error_code != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, top_on_stack->get_error_msg ().c_str ());
-	}
-    }
-
-  top_on_stack->reset (true);
-  top_on_stack->end ();
-  rctx->pop_stack (thread_p, top_on_stack);
-
-  exit_server (*thread_p);
-
-  return error_code;
-#endif /* !CS_MODE */
-}
-#endif
 
 /*
  * flashabck_get_and_show_summary () - client-side function to get and show flashback summary

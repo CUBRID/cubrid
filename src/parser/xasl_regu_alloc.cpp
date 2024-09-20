@@ -281,6 +281,21 @@ regu_init (arith_list_node &arith)
 }
 
 void
+regu_init (cubxasl::sp_node &sp)
+{
+  sp.args = NULL;
+  sp.sig = NULL;
+
+  regu_alloc (sp.value);
+
+  regu_alloc (sp.sig);
+  if (sp.sig)
+    {
+      new (sp.sig) PL_SIGNATURE_TYPE ();
+    }
+}
+
+void
 regu_init (function_node &fnode)
 {
   fnode.value = NULL;

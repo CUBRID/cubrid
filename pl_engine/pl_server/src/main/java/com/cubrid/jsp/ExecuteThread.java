@@ -265,19 +265,14 @@ public class ExecuteThread extends Thread {
         ctx = ContextManager.getContext(header.id);
         ctx.checkHeader(header);
 
-        int payloadSize = unpacker.getCurrentLimit() - unpacker.getCurrentPosition();
+        int startOffset = unpacker.getCurrentPosition();
+        int payloadSize = unpacker.getCurrentLimit() - startOffset;
         if (payloadSize > 0) {
             ByteBuffer payloadBuffer =
-                    ByteBuffer.wrap(
-                            inputBuffer.array(),
-                            unpacker.getCurrentPosition(),
-                            unpacker.getCurrentLimit() - unpacker.getCurrentPosition());
+                    ByteBuffer.wrap(inputBuffer.array(), startOffset, payloadSize);
 
             ctx.getInboundQueue().add(payloadBuffer);
         }
-
-        System.out.println(
-                "size : " + (unpacker.getCurrentLimit() - unpacker.getCurrentPosition()));
 
         return header;
     }

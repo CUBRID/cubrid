@@ -72,7 +72,7 @@ namespace cubpl
 	arg_default[i] = arg.arg_default_value[i];
       }
 
-    transaction_control = tc;
+    transaction_control = (lang == SP_LANG_PLCSQL) ? true : tc;
   }
 
   void
@@ -147,6 +147,10 @@ namespace cubpl
   {
     assert (m_stack != nullptr);
 
+    // destory local resources
+    pr_clear_value_vector (m_out_args);
+
+    // exit stack
     (void) get_session ()->pop_and_destroy_stack (m_stack);
   }
 
@@ -351,7 +355,7 @@ exit:
 	  {
 	    DB_VALUE out_val;
 	    db_make_null (&out_val);
-	    if (m_sig.arg.arg_mode[i] == SP_MODE_OUT)
+	    if (m_sig.arg.arg_mode[i] != SP_MODE_IN)
 	      {
 		value_unpacker.value = &out_val;
 		value_unpacker.unpack (unpacker);

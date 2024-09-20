@@ -78,6 +78,7 @@ static int xts_save_aggregate_type (const AGGREGATE_TYPE * aggregate);
 static int xts_save_function_type (const FUNCTION_TYPE * function);
 static int xts_save_analytic_type (const ANALYTIC_TYPE * analytic);
 static int xts_save_analytic_eval_type (const ANALYTIC_EVAL_TYPE * analytic);
+static int xts_save_sp_type (const SP_TYPE * sp);
 static int xts_save_srlist_id (const QFILE_SORTED_LIST_ID * sort_list_id);
 static int xts_save_list_id (const QFILE_LIST_ID * list_id);
 static int xts_save_arith_type (const ARITH_TYPE * arithmetic);
@@ -182,6 +183,7 @@ static char *xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggre
 static char *xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic);
 static char *xts_process_analytic_eval_type (char *ptr, const ANALYTIC_EVAL_TYPE * analytic);
 static char *xts_process_function_type (char *ptr, const FUNCTION_TYPE * function);
+static char *xts_process_sp_type (char *ptr, const SP_TYPE * sp);
 static char *xts_process_srlist_id (char *ptr, const QFILE_SORTED_LIST_ID * sort_list_id);
 static char *xts_process_sort_list (char *ptr, const SORT_LIST * sort_list);
 static char *xts_process_connectby_proc (char *ptr, const CONNECTBY_PROC_NODE * connectby_proc);
@@ -245,6 +247,7 @@ static int xts_sizeof_sort_list (const SORT_LIST * ptr);
 static int xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * ptr);
 static int xts_sizeof_regu_value_list (const REGU_VALUE_LIST * regu_value_list);
 static int xts_sizeof_cte_proc (const CTE_PROC_NODE * ptr);
+static int xts_sizeof_sp_type (const SP_TYPE * sp);
 
 static int xts_mark_ptr_visited (const void *ptr, int offset);
 static int xts_get_offset_visited_ptr (const void *ptr);
@@ -538,6 +541,74 @@ xts_save_aggregate_type (const AGGREGATE_TYPE * aggregate)
     }
 
   buf = xts_process_aggregate_type (buf_p, aggregate);
+  if (buf == NULL)
+    {
+      offset = ER_FAILED;
+      goto end;
+    }
+  assert (buf <= buf_p + size);
+
+  memcpy (&xts_Stream_buffer[offset], buf_p, size);
+
+end:
+  if (is_buf_alloced)
+    {
+      free_and_init (buf_p);
+    }
+
+  return offset;
+}
+
+static int
+xts_save_sp_type (const SP_TYPE * sp)
+{
+  int offset;
+  int size;
+  OR_ALIGNED_BUF (sizeof (*sp) * 2) a_buf;
+  char *buf = OR_ALIGNED_BUF_START (a_buf);
+  char *buf_p = NULL;
+  bool is_buf_alloced = false;
+
+  if (sp == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  offset = xts_get_offset_visited_ptr (sp);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  size = xts_sizeof_sp_type (sp);
+  if (size == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  offset = xts_reserve_location_in_stream (size);
+  if (offset == ER_FAILED || xts_mark_ptr_visited (sp, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
+    {
+      buf_p = buf;
+    }
+  else
+    {
+      buf_p = (char *) malloc (size);
+      if (buf_p == NULL)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return ER_FAILED;
+	}
+
+      is_buf_alloced = true;
+    }
+
+  buf = xts_process_sp_type (buf_p, sp);
   if (buf == NULL)
     {
       offset = ER_FAILED;
@@ -5290,6 +5361,15 @@ xts_pack_regu_variable_value (char *ptr, const REGU_VARIABLE * regu_var)
       ptr = or_pack_int (ptr, offset);
       break;
 
+    case TYPE_SP:
+      offset = xts_save_sp_type (regu_var->value.sp_ptr);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+      break;
+
     case TYPE_FUNC:
       offset = xts_save_function_type (regu_var->value.funcp);
       if (offset == ER_FAILED)
@@ -5627,6 +5707,35 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
 
       ptr = or_pack_int (ptr, offset);
     }
+
+  return ptr;
+}
+
+static char *
+xts_process_sp_type (char *ptr, const SP_TYPE * sp)
+{
+  int offset;
+
+  offset = xts_save_db_value (sp->value);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (sp->args);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_packable_object (*sp->sig);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
@@ -7183,6 +7292,10 @@ xts_get_regu_variable_value_size (const REGU_VARIABLE * regu_var)
       size = PTR_SIZE;		/* arithptr */
       break;
 
+    case TYPE_SP:
+      size = PTR_SIZE;		/* sp_ptr */
+      break;
+
     case TYPE_FUNC:
       size = PTR_SIZE;		/* funcp */
       break;
@@ -7335,6 +7448,23 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
 	  size += tmp_size;
 	}
     }
+
+  return size;
+}
+
+/*
+ * xts_sizeof_function_type () -
+ *   return:
+ *   ptr(in)    :
+ */
+static int
+xts_sizeof_sp_type (const SP_TYPE * sp)
+{
+  int size = 0;
+
+  size += (PTR_SIZE		/* value */
+	   + PTR_SIZE		/* sig */
+	   + PTR_SIZE);		/* args */
 
   return size;
 }

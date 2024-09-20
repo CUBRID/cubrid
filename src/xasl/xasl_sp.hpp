@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,12 +17,31 @@
  */
 
 //
-// pl_query_helper.hpp
+// xasl_sp.hpp - XASL structures used for stored procedures
 //
 
-#ifndef _PL_QUERY_HELPER_HPP_
-#define _PL_QUERY_HELPER_HPP_
+#ifndef _XASL_STORED_PROCEDURE_HPP_
+#define _XASL_STORED_PROCEDURE_HPP_
 
+#include "dbtype_def.h"
+#include "storage_common.h"
+#include "pl_signature.hpp"
 
+// forward definitions
+struct regu_variable_list_node;
+class regu_variable_node;
 
-#endif
+namespace cubxasl
+{
+  struct sp_node
+  {
+    cubpl::pl_signature *sig;
+    regu_variable_list_node *args;
+    DB_VALUE *value; // return value
+  };
+};
+
+// legacy aliases
+using SP_TYPE = cubxasl::sp_node;
+
+#endif // _XASL_STORED_PROCEDURE_HPP_

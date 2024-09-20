@@ -474,7 +474,7 @@ extern int scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
 				  val_list_node * val_list, val_descr * vd,
 				  /* */
-				  QFILE_LIST_ID * list_id, PL_SIGNATURE_ARRAY_TYPE* meth_sig_list);
+				  QFILE_LIST_ID * list_id, PL_SIGNATURE_ARRAY_TYPE * meth_sig_list);
 
 extern int scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  struct access_spec_node *spec,
