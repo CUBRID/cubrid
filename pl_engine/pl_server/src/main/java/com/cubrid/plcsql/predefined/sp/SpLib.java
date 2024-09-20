@@ -63,6 +63,34 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    public static Float checkFloat(Float f) {
+
+        assert f != null;
+
+        if (f.isInfinite()) {
+            throw new VALUE_ERROR("data overflow on data type FLOAT");
+        }
+        if (f.isNaN()) {
+            throw new VALUE_ERROR("not a valid FLOAT value");
+        }
+
+        return f;
+    }
+
+    public static Double checkDouble(Double d) {
+
+        assert d != null;
+
+        if (d.isInfinite()) {
+            throw new VALUE_ERROR("data overflow on data type DOUBLE");
+        }
+        if (d.isNaN()) {
+            throw new VALUE_ERROR("not a valid DOUBLE value");
+        }
+
+        return d;
+    }
+
     public static Timestamp parseTimestampStr(String s) {
         // parse again at runtime in order to use the runtime value of timezone setting
         ZonedDateTime timestamp = DateTimeParser.TimestampLiteral.parse(s);
@@ -667,7 +695,7 @@ public class SpLib {
         if (l == null) {
             return null;
         }
-        return -l;
+        return checkFloat(-l);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -675,7 +703,7 @@ public class SpLib {
         if (l == null) {
             return null;
         }
-        return -l;
+        return checkDouble(-l);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2069,7 +2097,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l * r;
+        return checkFloat(l * r);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2077,7 +2105,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l * r;
+        return checkDouble(l * r);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2186,7 +2214,7 @@ public class SpLib {
         if (r.equals(0.0f)) {
             throw new ZERO_DIVIDE();
         }
-        return l / r;
+        return checkFloat(l / r);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2197,7 +2225,7 @@ public class SpLib {
         if (r.equals(0.0)) {
             throw new ZERO_DIVIDE();
         }
-        return l / r;
+        return checkDouble(l / r);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2396,7 +2424,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l + r;
+        return checkFloat(l + r);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2404,7 +2432,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l + r;
+        return checkDouble(l + r);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2579,7 +2607,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l - r;
+        return checkFloat(l - r);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2587,7 +2615,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l - r;
+        return checkDouble(l - r);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -3048,7 +3076,7 @@ public class SpLib {
             return null;
         }
 
-        return Float.valueOf(e.floatValue());
+        return checkFloat(Float.valueOf(e.floatValue()));
     }
 
     public static BigDecimal convDoubleToNumeric(Double e) {
@@ -3119,7 +3147,7 @@ public class SpLib {
             return null;
         }
 
-        return Double.valueOf(e.doubleValue());
+        return checkDouble(Double.valueOf(e.doubleValue()));
     }
 
     public static BigDecimal convFloatToNumeric(Float e) {
@@ -3181,7 +3209,7 @@ public class SpLib {
             return null;
         }
 
-        return Double.valueOf(e.doubleValue());
+        return checkDouble(Double.valueOf(e.doubleValue()));
     }
 
     public static Float convNumericToFloat(BigDecimal e) {
@@ -3189,7 +3217,7 @@ public class SpLib {
             return null;
         }
 
-        return Float.valueOf(e.floatValue());
+        return checkFloat(Float.valueOf(e.floatValue()));
     }
 
     public static Long convNumericToBigint(BigDecimal e) {
@@ -3246,7 +3274,7 @@ public class SpLib {
             return null;
         }
 
-        return Double.valueOf(e.doubleValue());
+        return checkDouble(Double.valueOf(e.doubleValue()));
     }
 
     public static Float convBigintToFloat(Long e) {
@@ -3254,7 +3282,7 @@ public class SpLib {
             return null;
         }
 
-        return Float.valueOf(e.floatValue());
+        return checkFloat(Float.valueOf(e.floatValue()));
     }
 
     public static BigDecimal convBigintToNumeric(Long e) {
@@ -3303,7 +3331,7 @@ public class SpLib {
             return null;
         }
 
-        return Double.valueOf(e.doubleValue());
+        return checkDouble(Double.valueOf(e.doubleValue()));
     }
 
     public static Float convIntToFloat(Integer e) {
@@ -3311,7 +3339,7 @@ public class SpLib {
             return null;
         }
 
-        return Float.valueOf(e.floatValue());
+        return checkFloat(Float.valueOf(e.floatValue()));
     }
 
     public static BigDecimal convIntToNumeric(Integer e) {
@@ -3368,7 +3396,7 @@ public class SpLib {
             return null;
         }
 
-        return Double.valueOf(e.doubleValue());
+        return checkDouble(Double.valueOf(e.doubleValue()));
     }
 
     public static Float convShortToFloat(Short e) {
@@ -3376,7 +3404,7 @@ public class SpLib {
             return null;
         }
 
-        return Float.valueOf(e.floatValue());
+        return checkFloat(Float.valueOf(e.floatValue()));
     }
 
     public static BigDecimal convShortToNumeric(Short e) {
@@ -3520,7 +3548,7 @@ public class SpLib {
         }
 
         try {
-            return Double.valueOf(e);
+            return checkDouble(Double.valueOf(e));
         } catch (NumberFormatException ex) {
             throw new VALUE_ERROR("not in a DOUBLE format");
         }
@@ -3537,7 +3565,7 @@ public class SpLib {
         }
 
         try {
-            return Float.valueOf(e);
+            return checkFloat(Float.valueOf(e));
         } catch (NumberFormatException ex) {
             throw new VALUE_ERROR("not in a FLOAT format");
         }
