@@ -474,7 +474,7 @@ extern "C"
   };
 
 
-#define CHECK_DB_CONSTRAINT_TYPE(c)  ASSERT_IN_MACRO((c) >= 0 && (c) < DB_CONSTRAINT_TYPE_MAX)
+#define CHECK_DB_CONSTRAINT_TYPE(c)  assert((c) >= 0 && (c) < DB_CONSTRAINT_TYPE_MAX)
 
 #define DB_IS_CONSTRAINT_UNIQUE_FAMILY(c)        \
                 (CHECK_DB_CONSTRAINT_TYPE((c)), (_db_constraint_family_bits[0] & (0x01 << (c))) != 0)
@@ -1224,7 +1224,7 @@ extern "C"
       | (0x01 << DB_DEFAULT_CURRENTDATE)     | (0x01 << DB_DEFAULT_CURRENTTIME)  
       | (0x01 << DB_DEFAULT_UNIX_TIMESTAMP) );
 
-#define CHECK_DATETIME_DEFAULT_EXPR_TYPE(v)  ASSERT_IN_MACRO((v) >= 0 && (v < DB_DEFAULT_EXPR_TYPE_MAX))
+#define CHECK_DATETIME_DEFAULT_EXPR_TYPE(v)  assert((v) >= 0 && (v < DB_DEFAULT_EXPR_TYPE_MAX))
 #define DB_IS_DATETIME_DEFAULT_EXPR(v)      \
                 (CHECK_DATETIME_DEFAULT_EXPR_TYPE((v)), (_db_datetime_default_bits & (0x01 << (v))) != 0)
 /* *INDENT-ON* */
