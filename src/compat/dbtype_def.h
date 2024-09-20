@@ -757,8 +757,15 @@ extern "C"
 
   static const UINT64 _db_fixed_length_type =
               GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_CHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_NCHAR);
+  static const UINT64 _db_fixed_length_with_bit_type =
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_CHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_NCHAR)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_BIT);
   static const UINT64 _db_variable_length_type =
               GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARCHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARNCHAR);
+  static const UINT64 _db_variable_length_with_bit_type =
+              GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARCHAR) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARNCHAR)
+            | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_VARBIT);
+
 
   static const UINT64 _db_set_type = GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_SEQUENCE)
             | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_MULTISET) | GET_DB_TYPE_ENUM_BIT_POS (DB_TYPE_SET);
