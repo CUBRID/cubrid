@@ -1031,7 +1031,7 @@ error_exit:
 int
 jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  int err = NO_ERROR, sp_recompile;
+  int err = NO_ERROR, sp_recompile, save, lang;
   PT_NODE *sp_name = NULL, *sp_owner = NULL, *sp_comment = NULL;
   const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL, *target_cls = NULL;
   char new_name_str[DB_MAX_IDENTIFIER_LENGTH];
@@ -1042,7 +1042,6 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   SP_TYPE_ENUM real_type;
   MOP sp_mop = NULL, new_owner = NULL;
   DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val;
-  int save, lang;
 
   assert (statement != NULL);
 
@@ -1055,6 +1054,9 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
 
   db_make_null (&user_val);
+  db_make_null (&sp_type_val);
+  db_make_null (&sp_lang_val);
+  db_make_null (&target_cls_val);
 
   type = PT_NODE_SP_TYPE (statement);
   sp_name = statement->info.sp.name;
@@ -1063,6 +1065,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   sp_owner = statement->info.sp.owner;
   sp_recompile = statement->info.sp.recompile;
   sp_comment = statement->info.sp.comment;
+
   assert (sp_owner != NULL || sp_comment != NULL || sp_recompile);
 
   name_str = sp_name->info.name.original;
@@ -1158,23 +1161,28 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   lang = db_get_int (&sp_lang_val);
   if (lang == SP_LANG_PLCSQL)
     {
-      err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
-      if (err != NO_ERROR)
+      if (sp_owner != NULL || sp_recompile == 1)
 	{
-	  goto error;
-	}
-      target_cls = db_get_string (&target_cls_val);
+	  err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
+	  if (err != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  target_cls = db_get_string (&target_cls_val);
 
-      if (sp_owner == NULL)
-	{
-	  owner_str = sm_qualifier_name (name_str, downcase_owner_name, DB_MAX_USER_LENGTH);
-	}
+	  if (sp_recompile == 1)
+	    {
+	      owner_str = sm_qualifier_name (name_str, downcase_owner_name, DB_MAX_USER_LENGTH);
+	    }
 
-      err = alter_stored_procedure_code (parser, sp_mop, target_cls, owner_str, sp_recompile);
-      if (err != NO_ERROR)
-	{
-	  goto error;
+	  err = alter_stored_procedure_code (parser, sp_mop, target_cls, owner_str, sp_recompile);
+	  if (err != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  pr_clear_value (&target_cls_val);
 	}
+      pr_clear_value (&sp_lang_val);
     }
 
   /* change the comment */
@@ -1192,6 +1200,9 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 error:
 
   pr_clear_value (&user_val);
+  pr_clear_value (&sp_type_val);
+  pr_clear_value (&sp_lang_val);
+  pr_clear_value (&target_cls_val);
   AU_ENABLE (save);
 
   return err;
@@ -1510,24 +1521,21 @@ static int
 alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *name, const char *owner_str,
 			     int sp_recompile)
 {
+  const char *scode = NULL, *decl = NULL;
+  int scode_len, save, err;
   MOP code_mop;
-  const char *scode;
-  int scode_len;
-  DB_VALUE scode_val;
-  int save;
-  int err;
+  DB_VALUE scode_val, value;
   PLCSQL_COMPILE_REQUEST compile_request;
   PLCSQL_COMPILE_RESPONSE compile_response;
   SP_INFO sp_info;
-  const char *decl = NULL;
   SP_CODE_INFO code_info;
   DB_OBJECT *object_p;
   DB_OTMPL *obt_p = NULL;
-  DB_VALUE value;
 
   AU_DISABLE (save);
 
   db_make_null (&scode_val);
+  db_make_null (&value);
 
   code_mop = jsp_find_stored_procedure_code (name);
   if (code_mop == NULL)
@@ -1542,14 +1550,16 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
     {
       goto error;
     }
+
   scode = db_get_string (&scode_val);
   scode_len = db_get_string_size (&scode_val);
 
   sp_info.owner = db_find_user (owner_str);
 
-  assert (scode_len);
+  assert (scode && scode_len);
   compile_request.code.assign (scode, scode_len);
   compile_request.owner.assign (owner_str);
+  pr_clear_value (&scode_val);
 
   // TODO: Only the owner's rights is supported for PL/CSQL
   au_perform_push_user (sp_info.owner);
@@ -1619,7 +1629,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
 	}
     }
 
-  /* update _db_stored_procedure target_class */
+  /* Update the target_class column in the _db_stored_procedure catalog. */
   obt_p = dbt_edit_object (sp_mop);
   if (obt_p == NULL)
     {
@@ -1658,6 +1668,7 @@ error:
   AU_ENABLE (save);
 
   pr_clear_value (&scode_val);
+  pr_clear_value (&value);
 
   return err;
 }

@@ -1015,7 +1015,6 @@ static int g_plcsql_text_pos;
 %type <node> arg_value_list
 %type <node> kill_stmt
 %type <node> vacuum_stmt
-%type <node> opt_owner_clause_recompile
 %type <node> opt_owner_clause
 %type <node> cte_definition_list
 %type <node> cte_definition
@@ -4141,9 +4140,9 @@ alter_stmt
 	| ALTER				/* 1 */
 	  procedure_or_function		/* 2 */
 	  procedure_or_function_name    /* 3 */
-	  opt_owner_clause_recompile	/* 4 */
+	  opt_owner_clause	        /* 4 */
 	  opt_comment_spec		/* 5 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function procedure_or_function_name opt_owner_clause_recompile opt_comment_spec);
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function procedure_or_function_name opt_owner_clause opt_comment_spec);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_STORED_PROCEDURE);
 
@@ -4152,16 +4151,8 @@ alter_stmt
 			    node->info.sp.name = $3;
 			    node->info.sp.type = ($2 == 1) ? PT_SP_PROCEDURE : PT_SP_FUNCTION;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
-			    if ($4 == 1)
-			      {
-				node->info.sp.owner = NULL;
-				node->info.sp.recompile = $4;
-			      }
-			    else
-			      {
-			        node->info.sp.owner = $4;
-				node->info.sp.recompile = NULL;
-			      }
+			    node->info.sp.owner = $4;
+			    node->info.sp.recompile = 0;
 			    node->info.sp.comment = $5;
 			    if ($4 == NULL && $5 == NULL)
 			      {
@@ -4169,6 +4160,26 @@ alter_stmt
 			                   MSGCAT_SET_PARSER_SYNTAX,
 			                   MSGCAT_SYNTAX_INVALID_ALTER);
 			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  procedure_or_function		/* 2 */
+	  procedure_or_function_name    /* 3 */
+	  RECOMPILE	                /* 4 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function procedure_or_function_name RECOMPILE);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_STORED_PROCEDURE);
+
+			if (node != NULL)
+			  {
+			    node->info.sp.name = $3;
+			    node->info.sp.type = ($2 == 1) ? PT_SP_PROCEDURE : PT_SP_FUNCTION;
+			    node->info.sp.ret_type = PT_TYPE_NONE;
+			    node->info.sp.recompile = 1;
 			  }
 
 			$$ = node;
@@ -4506,18 +4517,6 @@ procedure_or_function
 		{{ DBG_TRACE_GRAMMAR(procedure_or_function, | FUNCTION);
 
 			$$ = 2;
-
-		DBG_PRINT}}
-	;
-
-opt_owner_clause_recompile
-	: opt_owner_clause
-		{ DBG_TRACE_GRAMMAR(opt_owner_clause_recompile, : opt_owner_clause);
-                  $$ = $1; }
-	| RECOMPILE
-		{{ DBG_TRACE_GRAMMAR(opt_owner_clause_recompile, : RECOMPILE);
-
-			$$ = 1;
 
 		DBG_PRINT}}
 	;
