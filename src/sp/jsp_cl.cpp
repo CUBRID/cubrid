@@ -123,6 +123,8 @@ static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid);
 static char *jsp_check_stored_procedure_name (const char *str);
 static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
 static int drop_stored_procedure_code (const char *name);
+static int alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *name, const char *owner_str,
+					int sp_recompile);
 
 static int jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node_list, method_sig_list &sig_list);
 static int *jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list);
@@ -1029,9 +1031,9 @@ error_exit:
 int
 jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  int err = NO_ERROR;
+  int err = NO_ERROR, sp_recompile;
   PT_NODE *sp_name = NULL, *sp_owner = NULL, *sp_comment = NULL;
-  const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL;
+  const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL, *target_cls = NULL;
   char new_name_str[DB_MAX_IDENTIFIER_LENGTH];
   new_name_str[0] = '\0';
   char downcase_owner_name[DB_MAX_USER_LENGTH];
@@ -1039,8 +1041,8 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
   MOP sp_mop = NULL, new_owner = NULL;
-  DB_VALUE user_val, sp_type_val;
-  int save;
+  DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val;
+  int save, lang;
 
   assert (statement != NULL);
 
@@ -1059,8 +1061,9 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   assert (sp_name != NULL);
 
   sp_owner = statement->info.sp.owner;
+  sp_recompile = statement->info.sp.recompile;
   sp_comment = statement->info.sp.comment;
-  assert (sp_owner != NULL || sp_comment != NULL);
+  assert (sp_owner != NULL || sp_comment != NULL || sp_recompile);
 
   name_str = sp_name->info.name.original;
   assert (name_str != NULL);
@@ -1120,6 +1123,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       goto error;
     }
 
+  /* change _db_stored_procedure */
   if (sp_owner != NULL)
     {
       /* change the unique_name */
@@ -1142,6 +1146,35 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  goto error;
 	}
       pr_clear_value (&user_val);
+    }
+
+  /* check lang */
+  err = db_get (sp_mop, SP_ATTR_LANG, &sp_lang_val);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  lang = db_get_int (&sp_lang_val);
+  if (lang == SP_LANG_PLCSQL)
+    {
+      err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+      target_cls = db_get_string (&target_cls_val);
+
+      if (sp_owner == NULL)
+	{
+	  owner_str = sm_qualifier_name (name_str, downcase_owner_name, DB_MAX_USER_LENGTH);
+	}
+
+      err = alter_stored_procedure_code (parser, sp_mop, target_cls, owner_str, sp_recompile);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   /* change the comment */
@@ -1461,6 +1494,170 @@ error:
   AU_ENABLE (save);
 
   pr_clear_value (&owner_val);
+
+  return err;
+}
+
+/*
+ * alter_stored_procedure_code -
+ *   return: Error code
+ *   name(in): jsp name
+ *
+ * Note:
+ */
+
+static int
+alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *name, const char *owner_str,
+			     int sp_recompile)
+{
+  MOP code_mop;
+  const char *scode;
+  int scode_len;
+  DB_VALUE scode_val;
+  int save;
+  int err;
+  PLCSQL_COMPILE_REQUEST compile_request;
+  PLCSQL_COMPILE_RESPONSE compile_response;
+  SP_INFO sp_info;
+  const char *decl = NULL;
+  SP_CODE_INFO code_info;
+  DB_OBJECT *object_p;
+  DB_OTMPL *obt_p = NULL;
+  DB_VALUE value;
+
+  AU_DISABLE (save);
+
+  db_make_null (&scode_val);
+
+  code_mop = jsp_find_stored_procedure_code (name);
+  if (code_mop == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      goto error;
+    }
+
+  err = db_get (code_mop, SP_ATTR_SOURCE_CODE, &scode_val);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+  scode = db_get_string (&scode_val);
+  scode_len = db_get_string_size (&scode_val);
+
+  sp_info.owner = db_find_user (owner_str);
+
+  assert (scode_len);
+  compile_request.code.assign (scode, scode_len);
+  compile_request.owner.assign (owner_str);
+
+  // TODO: Only the owner's rights is supported for PL/CSQL
+  au_perform_push_user (sp_info.owner);
+  err = plcsql_transfer_file (compile_request, compile_response);
+  au_perform_pop_user ();
+
+  if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
+    {
+      decl = compile_response.java_signature.c_str ();
+    }
+  else
+    {
+      // TODO: error handling needs to be improved
+      err = ER_SP_COMPILE_ERROR;
+
+      std::string err_msg;
+      if (compile_response.err_msg.empty ())
+	{
+	  err_msg = "unknown";
+	}
+      else
+	{
+	  err_msg.assign (compile_response.err_msg);
+	}
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_response.err_line,
+	      compile_response.err_column, err_msg.c_str ());
+      pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
+		       NULL);
+      goto error;
+    }
+
+  if (decl)
+    {
+      std::string target = decl;
+      sp_split_target_signature (target, sp_info.target_class, sp_info.target_method);
+    }
+
+  if (sp_recompile == 1)
+    {
+      /* recompile */
+      code_info.name = sp_info.target_class;
+      code_info.otype = compile_response.compiled_type;
+      code_info.ocode = compile_response.compiled_code;
+      code_info.owner = NULL;
+      code_info.icode = compile_response.translated_code;
+
+      err = sp_edit_stored_procedure_code (code_mop, code_info);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+  else
+    {
+      /* owner to */
+      code_info.name = sp_info.target_class;
+      code_info.otype = compile_response.compiled_type;
+      code_info.ocode = compile_response.compiled_code;
+      code_info.owner = sp_info.owner;
+      code_info.icode = compile_response.translated_code;
+
+      err = sp_edit_stored_procedure_code (code_mop, code_info);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+  /* update _db_stored_procedure target_class */
+  obt_p = dbt_edit_object (sp_mop);
+  if (obt_p == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      goto error;
+    }
+
+  db_make_string (&value, code_info.name.data ());
+  err = dbt_put_internal (obt_p, SP_ATTR_TARGET_CLASS, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  object_p = dbt_finish_object (obt_p);
+  if (!object_p)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      goto error;
+    }
+  obt_p = NULL;
+
+  err = locator_flush_instance (object_p);
+  if (err != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      obj_delete (object_p);
+      goto error;
+    }
+
+error:
+  AU_ENABLE (save);
+
+  pr_clear_value (&scode_val);
 
   return err;
 }

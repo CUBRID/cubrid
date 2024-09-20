@@ -8351,6 +8351,11 @@ pt_print_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
+  if (sp_info->recompile != NULL)
+    {
+      q = pt_append_nulstring (parser, q, " recompile ");
+    }
+
   if (sp_info->comment != NULL)
     {
       r1 = pt_print_bytes (parser, sp_info->comment);
