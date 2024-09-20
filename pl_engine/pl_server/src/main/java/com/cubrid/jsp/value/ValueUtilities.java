@@ -208,6 +208,7 @@ public class ValueUtilities {
     public static final Timestamp MAX_DATETIME = Timestamp.valueOf(DateTimeParser.maxDatetimeLocal);
 
     public static final Date NULL_DATE = new Date(0 - 1900, 0 - 1, 0);
-    public static final Timestamp NULL_TIMESTAMP = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
+    public static final Timestamp NULL_TIMESTAMP =
+            new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0); // TODO: CBRD-25595
     public static final Timestamp NULL_DATETIME = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
 }
