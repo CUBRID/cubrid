@@ -1093,10 +1093,4 @@ extern "C"
 #define REFPTR(T, name) T *& name
 #endif				/* !REFPTR */
 
-#ifdef NDEBUG
-#define ASSERT_IN_MACRO(...)   ((void) 0)
-#else
-#define ASSERT_IN_MACRO(...)   assert(__VA_ARGS__)
-#endif
-
 #endif				/* _PORTING_H_ */

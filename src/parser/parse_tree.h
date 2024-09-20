@@ -1009,7 +1009,7 @@ enum pt_type_enum
 typedef enum pt_type_enum PT_TYPE_ENUM;
 
 /* *INDENT-OFF* */
-#define CHECK_PT_TYPE_ENUM(v)  ASSERT_IN_MACRO((v) >= PT_TYPE_MIN && (v) < PT_TYPE_MAX)
+#define CHECK_PT_TYPE_ENUM(v)  assert((v) >= PT_TYPE_MIN && (v) < PT_TYPE_MAX)
 #define GET_PT_TYPE_ENUM_BIT_POS(t)  ((INT64)0x01 << ((t) - PT_TYPE_MIN))
 
 static const UINT64  _numeric_type_mask_bits =
