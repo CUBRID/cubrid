@@ -3274,13 +3274,17 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
     case PT_TYPE_STAR:
     case PT_TYPE_MAYBE:
     case PT_TYPE_EXPR_SET:
-    case PT_TYPE_MAX:
     case PT_TYPE_MIDXKEY:
     case PT_TYPE_RESULTSET:
       PT_ERRORm (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
       return (DB_VALUE *) NULL;
 
+    case PT_TYPE_MAX:
+      assert (false);
+      return (DB_VALUE *) NULL;
+
     default:
+      assert (false);
       break;
     }
 

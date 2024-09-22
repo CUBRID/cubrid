@@ -121,134 +121,6 @@ struct json_t;
 #define PT_IS_CLASSOID_NAME(x) \
     (  (x)->info.name.meta_class == PT_CLASSOID_ATTR)
 
-#define PT_IS_NULL_NODE(e)     ((e)->type_enum==PT_TYPE_NA \
-				|| (e)->type_enum==PT_TYPE_NULL)
-
-#define PT_IS_NUMERIC_TYPE(t) \
-        ( ((t) == PT_TYPE_INTEGER)  || \
-	  ((t) == PT_TYPE_BIGINT)   || \
-	  ((t) == PT_TYPE_FLOAT)    || \
-	  ((t) == PT_TYPE_DOUBLE)   || \
-	  ((t) == PT_TYPE_SMALLINT) || \
-	  ((t) == PT_TYPE_MONETARY) || \
-	  ((t) == PT_TYPE_LOGICAL)  || \
-	  ((t) == PT_TYPE_NUMERIC))
-
-#define PT_IS_DISCRETE_NUMBER_TYPE(t) \
-        ( ((t) == PT_TYPE_INTEGER)  || \
-          ((t) == PT_TYPE_BIGINT)   || \
-	  ((t) == PT_TYPE_SMALLINT))
-
-#define PT_IS_COUNTER_TYPE(t) \
-		PT_IS_DISCRETE_NUMBER_TYPE(t)
-
-#define PT_IS_COLLECTION_TYPE(t) \
-        ( ((t) == PT_TYPE_SET)       || \
-	  ((t) == PT_TYPE_MULTISET)  || \
-	  ((t) == PT_TYPE_SEQUENCE))
-
-#define PT_IS_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_CHAR)     || \
-	  ((t) == PT_TYPE_VARCHAR)  || \
-	  ((t) == PT_TYPE_NCHAR)    || \
-	  ((t) == PT_TYPE_VARNCHAR) || \
-	  ((t) == PT_TYPE_BIT)      || \
-	  ((t) == PT_TYPE_VARBIT))
-
-#define PT_IS_NATIONAL_CHAR_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_NCHAR)      || \
-	  ((t) == PT_TYPE_VARNCHAR))
-
-#define PT_IS_SIMPLE_CHAR_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_CHAR)      || \
-	  ((t) == PT_TYPE_VARCHAR))
-
-#define PT_IS_CHAR_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_CHAR)      || \
-	  ((t) == PT_TYPE_VARCHAR)   || \
-	  ((t) == PT_TYPE_NCHAR)     || \
-	  ((t) == PT_TYPE_VARNCHAR))
-
-#define PT_IS_BIT_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_BIT)      || \
-	  ((t) == PT_TYPE_VARBIT))
-
-#define PT_IS_COMPLEX_TYPE(t) \
-        ( ((t) == PT_TYPE_MONETARY)  || \
-	  ((t) == PT_TYPE_NUMERIC)   || \
-	  ((t) == PT_TYPE_CHAR)      || \
-	  ((t) == PT_TYPE_VARCHAR)   || \
-	  ((t) == PT_TYPE_NCHAR)     || \
-	  ((t) == PT_TYPE_VARNCHAR)  || \
-	  ((t) == PT_TYPE_BIT)       || \
-	  ((t) == PT_TYPE_VARBIT)    || \
-	  ((t) == PT_TYPE_OBJECT)    || \
-	  ((t) == PT_TYPE_SET)       || \
-	  ((t) == PT_TYPE_MULTISET)  || \
-	  ((t) == PT_TYPE_SEQUENCE)  || \
-	  ((t) == PT_TYPE_ENUMERATION))
-
-#define PT_IS_DATE_TIME_WITH_TZ_TYPE(t) \
-        ( (t) == PT_TYPE_TIMESTAMPTZ  || \
-	  (t) == PT_TYPE_TIMESTAMPLTZ || \
-	  (t) == PT_TYPE_DATETIMETZ   || \
-	  (t) == PT_TYPE_DATETIMELTZ)
-
-#define PT_IS_DATE_TIME_TYPE(t) \
-        ( ((t) == PT_TYPE_DATE)         || \
-	  ((t) == PT_TYPE_TIME)         || \
-	  ((t) == PT_TYPE_TIMESTAMP)    || \
-	  ((t) == PT_TYPE_DATETIME)     || \
-	  ((t) == PT_TYPE_DATETIMETZ)   || \
-	  ((t) == PT_TYPE_DATETIMELTZ)  || \
-	  ((t) == PT_TYPE_TIMESTAMPTZ)  || \
-	  ((t) == PT_TYPE_TIMESTAMPLTZ))
-
-#define PT_HAS_DATE_PART(t) \
-        ( ((t) == PT_TYPE_DATE)         || \
-	  ((t) == PT_TYPE_TIMESTAMP)    || \
-	  ((t) == PT_TYPE_DATETIME)     || \
-	  ((t) == PT_TYPE_DATETIMETZ)   || \
-	  ((t) == PT_TYPE_DATETIMELTZ)  || \
-	  ((t) == PT_TYPE_TIMESTAMPTZ)  || \
-	  ((t) == PT_TYPE_TIMESTAMPLTZ))
-
-#define PT_HAS_TIME_PART(t) \
-        ( ((t) == PT_TYPE_TIME)         || \
-	  ((t) == PT_TYPE_TIMESTAMP)    || \
-	  ((t) == PT_TYPE_TIMESTAMPTZ)  || \
-	  ((t) == PT_TYPE_TIMESTAMPLTZ) || \
-	  ((t) == PT_TYPE_DATETIME)	|| \
-	  ((t) == PT_TYPE_DATETIMETZ)	|| \
-	  ((t) == PT_TYPE_DATETIMELTZ))
-
-#define PT_IS_LTZ_TYPE(t) \
-  ((t) == PT_TYPE_TIMESTAMPLTZ || (t) == PT_TYPE_DATETIMELTZ)
-
-#define PT_IS_PRIMITIVE_TYPE(t) \
-        ( ((t) != PT_TYPE_OBJECT) && ((t) != PT_TYPE_NONE))
-
-#define PT_IS_PARAMETERIZED_TYPE(t) \
-        ( ((t) == PT_TYPE_NUMERIC)  || \
-	  ((t) == PT_TYPE_VARCHAR)  || \
-	  ((t) == PT_TYPE_CHAR)     || \
-	  ((t) == PT_TYPE_VARNCHAR) || \
-	  ((t) == PT_TYPE_NCHAR)    || \
-	  ((t) == PT_TYPE_VARBIT)   || \
-	  ((t) == PT_TYPE_BIT)	    || \
-	  ((t) == PT_TYPE_ENUMERATION))
-
-#define PT_IS_LOB_TYPE(t) \
-        ( ((t) == PT_TYPE_BLOB)  || \
-	  ((t) == PT_TYPE_CLOB))
-
-#define PT_HAS_COLLATION(t) \
-        ( ((t) == PT_TYPE_CHAR)     || \
-	  ((t) == PT_TYPE_VARCHAR)  || \
-	  ((t) == PT_TYPE_NCHAR)    || \
-	  ((t) == PT_TYPE_VARNCHAR) || \
-	  ((t) == PT_TYPE_ENUMERATION))
-
 #define PT_VALUE_GET_BYTES(node) \
   ((node) == NULL ? NULL : \
    (node)->info.value.data_value.str->bytes)
@@ -334,12 +206,6 @@ struct json_t;
 
 #define PT_IS_INSERT_VALUE_NODE(n) \
 	( (n) && ((n)->node_type == PT_INSERT_VALUE) )
-
-#define PT_IS_SET_TYPE(n) \
-        ( (n) && ((n)->type_enum == PT_TYPE_SET || \
-                  (n)->type_enum == PT_TYPE_MULTISET || \
-                  (n)->type_enum == PT_TYPE_SEQUENCE) \
-        )
 
 #define PT_IS_HOSTVAR(n) \
         ( (n) && ((n)->node_type == PT_HOST_VAR) )
@@ -1145,6 +1011,107 @@ enum pt_type_enum
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
 #define NUM_PT_TYPES (PT_TYPE_MAX - PT_TYPE_MIN)
+
+/* *INDENT-OFF* */
+#define CHECK_PT_TYPE_ENUM(v)  assert((v) >= PT_TYPE_MIN && (v) < PT_TYPE_MAX)
+#define GET_PT_TYPE_ENUM_BIT_POS(t)  ((INT64)0x01 << ((t) - PT_TYPE_MIN))
+
+static const UINT64  _numeric_type_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_INTEGER)  | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_BIGINT)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_SMALLINT) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DOUBLE)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_FLOAT)    | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_MONETARY)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_LOGICAL)  | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NUMERIC);
+static const UINT64  _discrete_number_type_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_INTEGER)  | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_BIGINT)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_SMALLINT);
+static const UINT64  _collection_type_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_SET)   | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_MULTISET)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_SEQUENCE);
+static const UINT64  _nationl_char_type_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NCHAR) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARNCHAR);
+static const UINT64  _simple_char_type_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_CHAR)  | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARCHAR);
+static const UINT64  _bit_string_type_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_BIT)   | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARBIT);
+static const UINT64  _char_string_type_mask_bits = 
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NCHAR) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARNCHAR)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_CHAR)  | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARCHAR);
+static const UINT64  _string_type_mask_bits = 
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NCHAR) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARNCHAR)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_CHAR)  | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARCHAR)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_BIT)   | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARBIT);
+static const UINT64  _complex_type_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NCHAR) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARNCHAR)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_CHAR)  | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARCHAR)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_BIT)   | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARBIT) 
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_SET)   | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_MULTISET)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_SEQUENCE) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NUMERIC)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_MONETARY) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_ENUMERATION)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_OBJECT);
+static const UINT64  _ltz_type_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMPLTZ) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIMELTZ);
+static const UINT64  _date_time_with_tz_type_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMPLTZ) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIMELTZ)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMPTZ)  | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIMETZ);
+static const UINT64  _date_time_type_mask_bits =
+                        GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMPLTZ) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIMELTZ)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMPTZ)   | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIMETZ)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATE)          | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIME)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMP)     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIME);
+static const UINT64  _has_date_type_mask_bits = 
+                        GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMPLTZ) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIMELTZ)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMPTZ)   | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIMETZ)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATE)          | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMP)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIME);
+static const UINT64  _has_time_type_mask_bits =
+                        GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMPLTZ) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIMELTZ)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMPTZ)   | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIMETZ) 
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIME)          | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_TIMESTAMP)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_DATETIME);
+static const UINT64  _parameterized_type_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NCHAR)   | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARNCHAR)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_CHAR)    | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARCHAR) 
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_BIT)     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARBIT)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NUMERIC) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_ENUMERATION);
+static const UINT64  _lob_type_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_BLOB) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_CLOB);
+static const UINT64  _has_collation_mask_bits =
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NCHAR) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARNCHAR)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_CHAR)  | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_VARCHAR)
+                     | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_ENUMERATION);
+static const UINT64  _primitive_type_mask_bits = 
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_OBJECT) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NONE);
+static const UINT64  _null_node_type_mask_bits = 
+                       GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NA) | GET_PT_TYPE_ENUM_BIT_POS(PT_TYPE_NULL);                       
+
+#define PT_IS_COLLECTION_TYPE(t)  (CHECK_PT_TYPE_ENUM((t)), (_collection_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_NUMERIC_TYPE(t)     (CHECK_PT_TYPE_ENUM((t)), (_numeric_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_NATIONAL_CHAR_STRING_TYPE(t) (CHECK_PT_TYPE_ENUM((t)), (_nationl_char_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_SIMPLE_CHAR_STRING_TYPE(t)   (CHECK_PT_TYPE_ENUM((t)), (_simple_char_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_BIT_STRING_TYPE(t)           (CHECK_PT_TYPE_ENUM((t)), (_bit_string_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_DISCRETE_NUMBER_TYPE(t) (CHECK_PT_TYPE_ENUM((t)), (_discrete_number_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_COUNTER_TYPE(t)     PT_IS_DISCRETE_NUMBER_TYPE((t))
+#define PT_IS_CHAR_STRING_TYPE(t) (CHECK_PT_TYPE_ENUM((t)), (_char_string_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_STRING_TYPE(t)      (CHECK_PT_TYPE_ENUM((t)), (_string_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_COMPLEX_TYPE(t)     (CHECK_PT_TYPE_ENUM((t)), (_complex_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_DATE_TIME_TYPE(t)   (CHECK_PT_TYPE_ENUM((t)), (_date_time_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_HAS_DATE_PART(t)       (CHECK_PT_TYPE_ENUM((t)), (_has_date_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_HAS_TIME_PART(t)       (CHECK_PT_TYPE_ENUM((t)), (_has_time_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_LTZ_TYPE(t)         (CHECK_PT_TYPE_ENUM((t)), (_ltz_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_PARAMETERIZED_TYPE(t) (CHECK_PT_TYPE_ENUM((t)), (_parameterized_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_LOB_TYPE(t)         (CHECK_PT_TYPE_ENUM((t)), (_lob_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_HAS_COLLATION(t)       (CHECK_PT_TYPE_ENUM((t)), (_has_collation_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+#define PT_IS_DATE_TIME_WITH_TZ_TYPE(t) (CHECK_PT_TYPE_ENUM((t)), (_date_time_with_tz_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) != 0)
+
+#define PT_IS_PRIMITIVE_TYPE(t)  (CHECK_PT_TYPE_ENUM((t)), (_primitive_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((t))) == 0)
+
+#define PT_IS_SET_TYPE(n)   \
+        ((n) && PT_IS_COLLECTION_TYPE((n)->type_enum))
+#define PT_IS_NULL_NODE(n)  \
+        (CHECK_PT_TYPE_ENUM(((n)->type_enum)), (_null_node_type_mask_bits & GET_PT_TYPE_ENUM_BIT_POS((n)->type_enum)) != 0)
+
+
+/* *INDENT-ON* */
 
 /* Enumerated priviledges for Grant, Revoke */
 typedef enum
