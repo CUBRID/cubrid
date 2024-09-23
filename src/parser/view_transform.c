@@ -1578,7 +1578,33 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 		  temp = nth_node->next;
 		  nth_node->next = NULL;
 
+		  /*
+		   * e.g. drop table if exists ta, tb;
+		   *      create table ta (ca int, cb int, cc int);
+		   *      create table tb (ca int, cb int, cc int);
+		   *
+		   *      select b_cb, b_row_number
+		   *        from ( select a.cb as a_cb,
+		   *                      b.cb as b_cb,
+		   *                      row_number () over (partition by b.cb order by b.cc) as b_row_number
+		   *                 from ta a, tb b
+		   *                where a.ca = b.ca
+		   *                limit 1 ) t;
+		   * 
+		   *      new_select_list :
+		   *                         t.b_cb, t.b_row_number
+		   *
+		   *      spec->info.spec.as_attr_list :
+		   *                   a_cb,   b_cb,   b_row_number
+		   *
+		   *      Since a_cb does not exist in new_select_list, the indexes after a_cb are decremented.
+		   *
+		   *      spec->info.spec.derived_table->info.query.q.select.list :
+		   *        - before : a.cb,   b.cb,   row_number() over (partition by 2 order by b.cc)
+		   *        -  after : b.cb,   row_number() over (partition by 1 order by b.cc)
+		   */
 		  parser_walk_tree (parser, nth_node, mq_update_node_order, spec, pt_continue_walk, NULL);
+
 		  nth_node->next = temp;
 		}
 	    }
@@ -1620,10 +1646,18 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   /* substitute attributes for query_spec_columns in statement */
   tmp_query = mq_lambda (parser, tmp_query, attributes, query_spec_columns);
 
-  PT_SELECT_INFO_CLEAR_FLAG (tmp_query, PT_SELECT_INFO_HAS_ANALYTIC);
-  if (pt_has_analytic (parser, tmp_query))
+  if (PT_SELECT_INFO_IS_FLAGED (tmp_query, PT_SELECT_INFO_HAS_ANALYTIC))
     {
-      PT_SELECT_INFO_SET_FLAG (tmp_query, PT_SELECT_INFO_HAS_ANALYTIC);
+      /* If analytic functions are not used in new_select_list, they are removed from the subquery.
+       * If no analytic functions are used anymore, PT_SELECT_INFO_HAS_ANALYTIC should be cleared.
+       * If PT_SELECT_INFO_HAS_ANALYTIC is set, pt_has_analytic skips pt_is_analytic_node and pt_is_analytic_node_post,
+       * so it needs to be cleared first. After that, check again whether PT_SELECT_INFO_HAS_ANALYTIC should be set.
+       */
+      PT_SELECT_INFO_CLEAR_FLAG (tmp_query, PT_SELECT_INFO_HAS_ANALYTIC);
+      if (pt_has_analytic (parser, tmp_query))
+	{
+	  PT_SELECT_INFO_SET_FLAG (tmp_query, PT_SELECT_INFO_HAS_ANALYTIC);
+	}
     }
 
   /* assign tmp_query */
