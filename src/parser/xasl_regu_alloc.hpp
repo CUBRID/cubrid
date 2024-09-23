@@ -86,6 +86,12 @@ void regu_alloc (T *&ptr);
 template <typename T>
 void regu_array_alloc (T **ptr, size_t size);
 
+template <typename T, typename ... Args>
+void regu_new (T *&ptr, Args &&... args);
+
+template <typename T>
+void regu_delete (T *&ptr);
+
 /* for regu_machead_array () */
 int *regu_int_array_alloc (int size);
 OID *regu_oid_array_alloc (int size);
@@ -119,6 +125,26 @@ regu_alloc (T *&ptr)
       return;
     }
   regu_init (*ptr);
+}
+
+template <typename T, typename ... Args>
+void
+regu_new (T *&ptr, Args &&... args)
+{
+  ptr = reinterpret_cast<T *> (pt_alloc_packing_buf ((int) sizeof (T)));
+  if (ptr == NULL)
+    {
+      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
+      return;
+    }
+  new (ptr) T (std::forward<Args> (args)...);
+}
+
+template <typename T>
+void
+regu_delete (T *&ptr)
+{
+  ptr->~T (); // call destructor, placement new in regu_new ()
 }
 
 template <typename T>
