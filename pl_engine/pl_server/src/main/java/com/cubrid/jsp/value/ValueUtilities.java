@@ -162,6 +162,18 @@ public class ValueUtilities {
         }
     }
 
+    public static boolean checkValidDate(Date d) {
+        if (d == null) {
+            return false;
+        }
+
+        if (d.equals(NULL_DATE)) {
+            return true;
+        }
+
+        return d.compareTo(MIN_DATE) >= 0 && d.compareTo(MAX_DATE) <= 0;
+    }
+
     public static boolean checkValidTimestamp(Timestamp ts) {
         if (ts == null) {
             return false;
@@ -186,14 +198,17 @@ public class ValueUtilities {
         return dt.compareTo(MIN_DATETIME) >= 0 && dt.compareTo(MAX_DATETIME) <= 0;
     }
 
+    public static final Date MIN_DATE = new Date(1 - 1900, 1 - 1, 1);
+    public static final Date MAX_DATE = new Date(9999 - 1900, 12 - 1, 31);
     public static final Timestamp MIN_TIMESTAMP =
-            Timestamp.valueOf(DateTimeParser.minTimestampLocal);
+            new Timestamp(DateTimeParser.minTimestamp.toEpochSecond() * 1000);
     public static final Timestamp MAX_TIMESTAMP =
-            Timestamp.valueOf(DateTimeParser.maxTimestampLocal);
+            new Timestamp(DateTimeParser.maxTimestamp.toEpochSecond() * 1000);
     public static final Timestamp MIN_DATETIME = Timestamp.valueOf(DateTimeParser.minDatetimeLocal);
     public static final Timestamp MAX_DATETIME = Timestamp.valueOf(DateTimeParser.maxDatetimeLocal);
 
     public static final Date NULL_DATE = new Date(0 - 1900, 0 - 1, 0);
-    public static final Timestamp NULL_TIMESTAMP = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
+    public static final Timestamp NULL_TIMESTAMP =
+            new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0); // TODO: CBRD-25595
     public static final Timestamp NULL_DATETIME = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
 }

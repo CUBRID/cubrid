@@ -278,24 +278,6 @@ namespace cubmethod
 	  }
 	  case METHOD_TYPE_JAVA_SP:
 	  {
-	    /* check arg_base's type is supported */
-	    for (const DB_VALUE &value : arg_base)
-	      {
-		if (is_supported_dbtype (value) == false)
-		  {
-		    error = ER_SP_EXECUTE_ERROR;
-		    std::string err_msg = "unsupported argument type - ";
-
-		    string_buffer sb;
-		    db_value_printer printer (sb);
-		    printer.describe_type (&value);
-
-		    err_msg += std::string (sb.get_buffer(), sb.len ());
-		    set_error_msg (err_msg);
-		    return error;
-		  }
-	      }
-
 	    /* optimize arguments only for java sp not to send redundant values */
 	    DB_VALUE null_val;
 	    db_make_null (&null_val);
@@ -305,6 +287,18 @@ namespace cubmethod
 	      {
 		bool is_used = arg_use_vec [i];
 		optimized_arg_base[i] = (!is_used) ? std::ref (null_val) : optimized_arg_base[i];
+	      }
+
+	    /* check unsupported types */
+	    for (const DB_VALUE &value : optimized_arg_base)
+	      {
+		if (is_supported_dbtype (value) == false)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1,
+			    pr_type_name ((DB_TYPE) value.domain.general_info.type));
+		    set_error_msg (er_msg ());
+		    return er_errid ();
+		  }
 	      }
 
 	    // send to Java SP Servers
@@ -449,6 +443,7 @@ namespace cubmethod
     if (query_id == NULL_QUERY_ID || query_id >= SHRT_MAX)
       {
 	// false query e.g) SELECT * FROM db_class WHERE 0 <> 0
+	assert (query_id == NULL_QUERY_ID);
 	return nullptr;
       }
 

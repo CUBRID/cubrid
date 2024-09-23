@@ -26,6 +26,7 @@
 #include <string>
 
 #ident "$Id$"
+extern bool validate_uhost_conf (void);
 extern struct hostent *gethostbyname_uhost (const char *name);
 extern int getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *host, size_t hostlen,
 			      char *serv, size_t servlen, int flags);

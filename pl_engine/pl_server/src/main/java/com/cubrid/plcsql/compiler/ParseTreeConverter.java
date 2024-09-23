@@ -767,7 +767,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
-        ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, false);
+        ZonedDateTime timestamp = DateTimeParser.TimestampLiteral.parse(s);
         if (timestamp == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx), // s052
@@ -2746,13 +2746,17 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private String rewriteUpdateWithFieldsExpansion(
-            String sqlText, Row_setContext rowSet, Static_sqlContext ctx) {
+            String sqlText,
+            Row_setContext rowSet,
+            Table_specContext tableSpec,
+            Static_sqlContext ctx) {
+
         int start = rowSet.getStart().getStartIndex();
         int end = rowSet.getStop().getStopIndex() + 1;
 
         List<String> fieldsSet = new LinkedList<>();
-        String s = Misc.getNormalizedText(rowSet.getStop().getText());
-        ExprId id = visitNonFuncIdentifier(s, ctx);
+        String record = Misc.getNormalizedText(rowSet.getStop().getText());
+        ExprId id = visitNonFuncIdentifier(record, ctx);
         if (!(id.decl.type() instanceof TypeRecord)) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx), // s089
@@ -2761,8 +2765,30 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         TypeRecord recTy = (TypeRecord) id.decl.type();
 
+        String tableSpecText = tableSpec.getText();
+        SqlSemantics sws = getSqlSemanticsFromServer("select * from " + tableSpecText, ctx);
+        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT;
+
+        if (sws.selectList.size() != recTy.selectList.size()) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), // s089
+                    "the number of fields of the record "
+                            + record
+                            + " is not equal to the number of columns of the table "
+                            + tableSpecText);
+        }
+
+        // Type compatibility of each pair of table column and record field is not checked here
+        // because
+        // table columns can have a type that is not supported in PL/CSQL (for example,
+        // TIMESTAMPLTZ), but
+        // the SQL can run successfully.
+        // If the types are not compatible for a pair, then a run-time error will occur for it.
+
+        Iterator<ColumnInfo> columns = sws.selectList.iterator();
         for (Misc.Pair<String, Type> p : recTy.selectList) {
-            fieldsSet.add(String.format("%1$s = %2$s.%1$s", p.e1, s));
+            ColumnInfo ci = columns.next();
+            fieldsSet.add(String.format("%s = %s.%s", ci.colName, record, p.e1));
         }
 
         return sqlText.substring(0, start) + String.join(", ", fieldsSet) + sqlText.substring(end);
@@ -2788,6 +2814,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 Stmt_w_record_valuesContext tree =
                         (Stmt_w_record_valuesContext) parser.stmt_w_record_values();
                 if (!sei.hasError) {
+                    // (INSERT|REPLACE) ... VALUES r1, r2, ..., rn ...
                     return rewriteInsertWithFieldsExpansion(sqlText, tree.record_list(), ctx);
                 }
             }
@@ -2797,7 +2824,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             Stmt_w_record_setContext tree = (Stmt_w_record_setContext) parser.stmt_w_record_set();
             if (!sei.hasError) {
-                return rewriteUpdateWithFieldsExpansion(sqlText, tree.row_set(), ctx);
+                // (UPDATE|INSERT|REPLACE) ... table SET ROW = r ...
+                return rewriteUpdateWithFieldsExpansion(
+                        sqlText, tree.row_set(), tree.table_spec(), ctx);
             }
         }
 
@@ -2805,8 +2834,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private SqlSemantics getSqlSemanticsFromServer(Static_sqlContext ctx) {
-
         String text = expandRecordIfAny(ctx);
+        return getSqlSemanticsFromServer(text, ctx);
+    }
+
+    private SqlSemantics getSqlSemanticsFromServer(String text, ParserRuleContext ctx) {
 
         // server interaction may take a long time
         List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(text));

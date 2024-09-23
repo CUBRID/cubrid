@@ -294,8 +294,9 @@ qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_met
   /* build hash value */
   for (i = 0; i < ckey->val_count; i++)
     {
+      hash_val = ROTL32 (hash_val, 13);
       tmp_hash_val = mht_get_hash_number (ht_size, ckey->values[i]);
-      hash_val = hash_val ^ tmp_hash_val;
+      hash_val ^= tmp_hash_val;
       if (hash_val == 0)
 	{
 	  hash_val = tmp_hash_val;

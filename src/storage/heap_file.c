@@ -18749,6 +18749,10 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
   PGBUF_WATCHER old_pg_watcher;
   SCAN_CODE scan = S_SUCCESS;
 
+  /* we couldn't find any testcase for this function. */
+  /* but if this assert is called, it indicates that this function is being used. */
+  assert (false);
+
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 

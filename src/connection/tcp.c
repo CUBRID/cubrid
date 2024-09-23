@@ -123,35 +123,18 @@ css_gethostname (char *name, size_t namelen)
     }
 
   size_t namelen_ = (size_t) namelen;
-  addrinfo hints, *result = NULL;
-
-  memset (&hints, 0, sizeof (hints));
-  hints.ai_family = AF_UNSPEC;	// either IPV4 or IPV6
-  hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_CANONNAME;
 
   char hostname[namelen_];
   hostname[namelen_ - 1] = '\0';
-  gethostname (hostname, namelen_);
-
-  int gai_error = getaddrinfo_uhost (hostname, NULL, &hints, &result);
-  if (gai_error != 0)
+  if (gethostname (hostname, namelen_) < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 2, hostname, HOSTS_FILE);
-      return ER_GAI_ERROR;
-    }
-
-  size_t canonname_size = strlen (result->ai_canonname) + 1;	// +1 for NULL terminator
-  if (canonname_size > namelen_)
-    {
-      freeaddrinfo_uhost (result);
       return ER_FAILED;
     }
+  else
+    {
+      strncpy (name, hostname, namelen);
+    }
 
-  memcpy (name, result->ai_canonname, canonname_size);
-  name[canonname_size] = '\0';
-
-  freeaddrinfo_uhost (result);
   return NO_ERROR;
 }
 

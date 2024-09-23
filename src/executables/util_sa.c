@@ -32,6 +32,7 @@
 #include <assert.h>
 #if defined(WINDOWS)
 #include <io.h>
+#include <direct.h>
 #endif
 
 #include "porting.h"
@@ -111,7 +112,7 @@ static int synccoll_check_function_indexes (const LANG_COLL_COMPAT * db_coll, FI
 
 static int delete_all_ha_apply_info (void);
 static int insert_ha_apply_info (char *database_name, char *master_host_name, INT64 database_creation, INT64 pageid,
-				 int offset);
+				 int offset, INT64 committed_pageid, int committed_offset);
 static int delete_all_slave_ha_apply_info (char *database_name, char *master_host_name);
 
 static bool check_ha_db_and_node_list (char *database_name, char *source_host_name);
@@ -377,6 +378,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   const TZ_DATA *tzd;
 
   char required_size[16];
+  char abs_lob_path[PATH_MAX];
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   cubrid_charset = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
@@ -637,6 +639,21 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+
+  if (lob_path && (IS_ABS_PATH (lob_path)) == false)
+    {
+      char cwd[PATH_MAX];
+
+      if (getcwd (cwd, PATH_MAX) != NULL)
+	{
+	  snprintf (abs_lob_path, PATH_MAX, "%s/%s", cwd, lob_path);
+	  lob_path = abs_lob_path;
+	}
+      else
+	{
+	  goto error_exit;
+	}
+    }
 
   db_login ("DBA", NULL);
   status = db_init (program_name, true, database_name, volume_path, NULL, log_path, lob_path, host_name, overwrite,
@@ -4380,7 +4397,8 @@ delete_all_ha_apply_info (void)
  *   return:
  */
 static int
-insert_ha_apply_info (char *database_name, char *master_host_name, INT64 database_creation, INT64 pageid, int offset)
+insert_ha_apply_info (char *database_name, char *master_host_name, INT64 database_creation, INT64 pageid, int offset,
+		      INT64 committed_pageid, int committed_offset)
 {
 #define APPLY_INFO_VALUES	15
 #define QUERY_BUF_SIZE		2048
@@ -4477,8 +4495,12 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
   /* 3. copied_log_path */
   db_make_varchar (&in_value[in_value_idx++], 4096, log_path, strlen (log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-  /* 4 ~ 15. lsa */
-  for (i = 0; i < 6; i++)
+  /* 4 ~ 5. committed lsa */
+  db_make_bigint (&in_value[in_value_idx++], committed_pageid);
+  db_make_int (&in_value[in_value_idx++], committed_offset);
+
+  /* 6 ~ 15. lsa */
+  for (i = 0; i < 5; i++)
     {
       db_make_bigint (&in_value[in_value_idx++], pageid);
       db_make_int (&in_value[in_value_idx++], offset);
@@ -4775,7 +4797,8 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 
       error_code =
 	insert_ha_apply_info (database_name, master_host_name, restart_arg.db_creation,
-			      restart_arg.restart_repl_lsa.pageid, (int) restart_arg.restart_repl_lsa.offset);
+			      restart_arg.restart_repl_lsa.pageid, (int) restart_arg.restart_repl_lsa.offset,
+			      restart_arg.restart_committed_lsa.pageid, (int) restart_arg.restart_committed_lsa.offset);
       if (error_code < 0)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));

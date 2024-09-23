@@ -648,7 +648,7 @@ valid options:\n\
   -N, --node-list                  list nodes managed by CUBRID heartbeat\n\
   -L, --process-list               list local process managed by CUBRID heartbeat\n\
   -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
-  -D, --dereg-process=PID          exit the target process and remove it from managed process entries\n\
+  -D, --dereg-process=PID          exit the target process managed by CUBRID heartbeat and remove it from managed process entries\n\
   -F, --reconfig-node-list         apply CUBRID heartbeat configuration recently changed\n\
   -V, --verbose                    enable verbose status messages; default: disabled\n
 28 Sorry, unknown command: %1$s\n
