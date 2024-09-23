@@ -1598,14 +1598,14 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
       sp_split_target_signature (target, sp_info.target_class, sp_info.target_method);
     }
 
+  code_info.name = sp_info.target_class;
+  code_info.otype = compile_response.compiled_type;
+  code_info.ocode = compile_response.compiled_code;
+  code_info.icode = compile_response.translated_code;
   if (sp_recompile == 1)
     {
       /* recompile */
-      code_info.name = sp_info.target_class;
-      code_info.otype = compile_response.compiled_type;
-      code_info.ocode = compile_response.compiled_code;
       code_info.owner = NULL;
-      code_info.icode = compile_response.translated_code;
 
       err = sp_edit_stored_procedure_code (code_mop, code_info);
       if (err != NO_ERROR)
@@ -1616,11 +1616,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   else
     {
       /* owner to */
-      code_info.name = sp_info.target_class;
-      code_info.otype = compile_response.compiled_type;
-      code_info.ocode = compile_response.compiled_code;
       code_info.owner = sp_info.owner;
-      code_info.icode = compile_response.translated_code;
 
       err = sp_edit_stored_procedure_code (code_mop, code_info);
       if (err != NO_ERROR)

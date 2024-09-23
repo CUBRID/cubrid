@@ -23255,6 +23255,7 @@ identifier
 	| QUEUES                 {{ DBG_TRACE_GRAMMAR(identifier, | QUEUES             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| RANGE_                 {{ DBG_TRACE_GRAMMAR(identifier, | RANGE_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| RANK                   {{ DBG_TRACE_GRAMMAR(identifier, | RANK               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| RECOMPILE              {{ DBG_TRACE_GRAMMAR(identifier, | RECOMPILE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_COUNT           {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_COUNT       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_INSTR           {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_INSTR       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_LIKE            {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_LIKE        ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}

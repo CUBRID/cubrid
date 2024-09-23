@@ -800,7 +800,9 @@ IDL       [a-zA-Z0-9_]
 [rR][eE][aA][dD]							{ begin_token(yytext);   return READ; }
 [rR][eE][aA][lL]							{ begin_token(yytext);   return FLOAT_; }
 [rR][eE][bB][uU][iI][lL][dD] 						{ begin_token(yytext);   return REBUILD; }
-[rR][eE][cC][oO][mM][pP][iI][lL][eE]					{ begin_token(yytext);   return RECOMPILE; }
+[rR][eE][cC][oO][mM][pP][iI][lL][eE]					{ begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);  
+                                                                                return RECOMPILE; }
 [rR][eE][cC][uU][rR][sS][iI][vV][eE]					{ begin_token(yytext);   return RECURSIVE; }
 [rR][eE][fF]								{ begin_token(yytext);   return REF; }
 [rR][eE][fF][eE][rR][eE][nN][cC][eE][sS]				{ begin_token(yytext);   return REFERENCES; }
