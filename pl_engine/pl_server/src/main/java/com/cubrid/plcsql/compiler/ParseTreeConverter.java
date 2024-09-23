@@ -1222,7 +1222,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private void postvisitRoutine_definition(Routine_definitionContext ctx) {
 
-        if (ctx.LANGUAGE() != null && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+        if (ctx.LANGUAGE() != null
+                && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
             int[] lineColumn = Misc.getLineColumnOf(ctx);
             throw new SyntaxError(
                     lineColumn[0],
@@ -1256,7 +1257,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             if (!controlFlowBlocked) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s016
-                        "function " + routine.name + " can reach its end without returning a value");
+                        "function "
+                                + routine.name
+                                + " can reach its end without returning a value");
             }
         } else {
             // procedure
