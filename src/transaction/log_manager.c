@@ -9563,7 +9563,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
 {
   int error = NO_ERROR;
   char path[PATH_MAX];
-  int fd;
+  int fd = -1;
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *page_hdr;
   ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
