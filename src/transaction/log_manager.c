@@ -322,14 +322,13 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
-static bool log_is_absolute_path (const char *path);
 static void log_build_full_path (const char *input_path, char *full_path);
 /*for CDC */
 static int cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry);
 static int cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * recdes,
 				    LOG_LSA lsa, LOG_RCVINDEX rcvindex, bool is_redo);
-static int cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * process_lsa,
-				     int *length, char **data, LOG_RCVINDEX rcvindex, bool is_redo);
+static int cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA * process_lsa, int *length,
+				     char **data, LOG_RCVINDEX rcvindex, bool is_redo);
 static int cdc_find_primary_key (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id);
 static int cdc_make_ddl_loginfo (char *supplement_data, int trid, const char *user, CDC_LOGINFO_ENTRY * ddl_entry);
 static int cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LOGINFO_ENTRY * dcl_entry);
@@ -10620,32 +10619,6 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 					       false);
 
   return error_code;
-}
-
-
-/*
- * log_is_absolute_path () - Checks if the given path argument is an absolute path.
- *
- * return    : boolean
- * path (in) : path
- */
-static bool
-log_is_absolute_path (const char *path)
-{
-  assert (path != NULL);
-
-#if defined(WINDOWS)
-  if ((path[1] == ':' && (path[2] == '\\' || path[2] == '/')) || (path[0] == '\\' && path[1] == '\\'))
-    {
-      return true;
-    }
-  else
-    {
-      return false;
-    }
-#endif
-
-  return path[0] == '/';
 }
 
 /*
