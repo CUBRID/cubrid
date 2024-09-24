@@ -225,8 +225,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Unit visitCreate_routine(Create_routineContext ctx) {
 
-        previsitRoutine_definition(ctx.routine_definition());
         DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
+        postvisitRoutine_definition(ctx.routine_definition());
         return new Unit(ctx, autonomousTransaction, connectionRequired, imports, decl);
     }
 
@@ -1080,24 +1080,22 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Map<String, UseAndDeclLevel> saved = idUsedInCurrentDeclPart;
         idUsedInCurrentDeclPart = new HashMap<>();
 
-        // scan the declarations for the procedures and functions
-        // in order for the effect of their forward declarations
-        for (Declare_specContext ds : ctx.declare_spec()) {
-
-            ParserRuleContext routine;
-
-            routine = ds.routine_definition();
-            if (routine != null) {
-                previsitRoutine_definition((Routine_definitionContext) routine);
-            }
-        }
-
         NodeList<Decl> ret = new NodeList<>();
 
         for (Declare_specContext ds : ctx.declare_spec()) {
             Decl d = (Decl) visit(ds);
             if (d != null) {
                 ret.addNode(d);
+            }
+        }
+
+        for (Declare_specContext ds : ctx.declare_spec()) {
+
+            ParserRuleContext routine;
+
+            routine = ds.routine_definition();
+            if (routine != null) {
+                postvisitRoutine_definition((Routine_definitionContext) routine);
             }
         }
 
@@ -1222,10 +1220,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return ret;
     }
 
-    @Override
-    public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
+    private void postvisitRoutine_definition(Routine_definitionContext ctx) {
 
-        if (ctx.LANGUAGE() != null && symbolStack.getCurrentScope().level > 1) {
+        if (ctx.LANGUAGE() != null
+                && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
             int[] lineColumn = Misc.getLineColumnOf(ctx);
             throw new SyntaxError(
                     lineColumn[0],
@@ -1253,28 +1251,28 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        DeclRoutine ret;
+        DeclRoutine routine;
         if (isFunction) {
-            ret = symbolStack.getDeclFunc(name);
+            routine = symbolStack.getDeclFunc(name);
             if (!controlFlowBlocked) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s016
-                        "function " + ret.name + " can reach its end without returning a value");
+                        "function "
+                                + routine.name
+                                + " can reach its end without returning a value");
             }
         } else {
             // procedure
-            ret = symbolStack.getDeclProc(name);
+            routine = symbolStack.getDeclProc(name);
         }
-        assert ret != null; // by the previsit
-        ret.decls = decls;
-        ret.body = body;
+        assert routine != null; // by the visit
+        routine.decls = decls;
+        routine.body = body;
 
-        if (symbolStack.getCurrentScope().level > 1) {
+        if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
             // check it only for local routines
             checkRedefinitionOfUsedName(name, ctx);
         }
-
-        return ret;
     }
 
     @Override
@@ -2384,7 +2382,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
     }
 
-    private void previsitRoutine_definition(Routine_definitionContext ctx) {
+    @Override
+    public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.identifier());
 
@@ -2395,6 +2394,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
+        DeclRoutine ret;
         if (ctx.PROCEDURE() == null) {
             // function
             if (ctx.RETURN() == null) {
@@ -2421,7 +2421,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " cannot be used as a return type of stored functions");
                 }
             }
-            DeclFunc ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
+            ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
             symbolStack.putDecl(name, ret);
         } else {
             // procedure
@@ -2430,9 +2430,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         Misc.getLineColumnOf(ctx), // s051
                         "procedure " + name + " may not specify a return type");
             }
-            DeclProc ret = new DeclProc(ctx, name, paramList);
+            ret = new DeclProc(ctx, name, paramList);
             symbolStack.putDecl(name, ret);
         }
+
+        return ret;
     }
 
     private Expr visitExpression(ParserRuleContext ctx) {
