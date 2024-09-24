@@ -1602,27 +1602,22 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   code_info.otype = compile_response.compiled_type;
   code_info.ocode = compile_response.compiled_code;
   code_info.icode = compile_response.translated_code;
+
   if (sp_recompile == 1)
     {
       /* recompile */
       code_info.owner = NULL;
-
-      err = sp_edit_stored_procedure_code (code_mop, code_info);
-      if (err != NO_ERROR)
-	{
-	  goto error;
-	}
     }
   else
     {
       /* owner to */
       code_info.owner = sp_info.owner;
+    }
 
-      err = sp_edit_stored_procedure_code (code_mop, code_info);
-      if (err != NO_ERROR)
-	{
-	  goto error;
-	}
+  err = sp_edit_stored_procedure_code (code_mop, code_info);
+  if (err != NO_ERROR)
+    {
+      goto error;
     }
 
   /* Update the target_class column in the _db_stored_procedure catalog. */
