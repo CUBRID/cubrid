@@ -174,6 +174,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     {
       fprintf (stderr, "\nThe number of '--%s' ranges from 0 to %d.\n", UNLOAD_STRING_BUFFER_SIZE_L,
 	       MAX_PRE_ALLOC_VARCHAR_SIZE);
+      status = 1;		// set exit code
       goto end;
     }
 
@@ -182,6 +183,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     {
       fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_REQUEST_PAGES_L,
 	       MAX_REQ_DATA_PAGES);
+      status = 1;		// set exit code         
       goto end;
     }
 
@@ -196,6 +198,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       if (sampling_records < -1)
 	{
 	  fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_SAMPLING_TEST_L, INT_MAX);
+	  status = 1;		// set exit code
 	  goto end;
 	}
 
@@ -204,6 +207,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	{
 	  fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_THREAD_COUNT_L,
 		   MAX_THREAD_COUNT);
+	  status = 1;		// set exit code         
 	  goto end;
 	}
 
@@ -215,6 +219,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
 	      fflush (stderr);
+	      status = 1;	// set exit code
 	      goto end;
 	    }
 	  else if ((g_parallel_process_cnt > MAX_PROCESS_COUNT)
@@ -223,6 +228,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
 	      fflush (stderr);
+	      status = 1;	// set exit code
 	      goto end;
 	    }
 	}
