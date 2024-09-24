@@ -102,10 +102,10 @@ public class ExprAutoParam extends Expr {
                 return String.format("new BigDecimal(\"%s\")", javaObj);
             case DBType.DB_FLOAT:
                 assert javaObj instanceof Float;
-                return String.format("new Float(%sF)", javaObj);
+                return String.format("checkFloat(new Float(%sF))", javaObj);
             case DBType.DB_DOUBLE:
                 assert javaObj instanceof Double;
-                return String.format("new Double(%s)", javaObj);
+                return String.format("checkDouble(new Double(%s))", javaObj);
             case DBType.DB_DATE:
                 assert javaObj instanceof Date;
                 javaTypesUsed.add("java.sql.Date");
