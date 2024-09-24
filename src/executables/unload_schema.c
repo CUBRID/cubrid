@@ -4669,7 +4669,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
   int stype;
   PARSER_CONTEXT *parser = NULL;
   PT_NODE **scode_ptr;
-  char *scode_ptr_result;
+  char *scode_ptr_result = NULL;
 
   AU_DISABLE (save);
 
@@ -4721,6 +4721,10 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
       if (scode_ptr_result)
 	{
 	  output_ctx ("\n%s", scode_ptr_result);
+	}
+      else
+	{
+	  output_ctx ("\n/* error occurs: %s \n\n %s; \n*/", parser->error_buffer, scode);
 	}
     }
 

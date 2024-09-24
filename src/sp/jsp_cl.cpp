@@ -992,7 +992,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       code_info.name = sp_info.target_class;
       code_info.created_time = stm.str ();
       code_info.stype = (sp_info.lang == SP_LANG_PLCSQL) ? SPSC_PLCSQL : SPSC_JAVA;
-      code_info.scode = compile_request.code;
+      code_info.scode = pt_append_string (parser, compile_request.code.c_str (), ";");
       code_info.otype = compile_response.compiled_type;
       code_info.ocode = compile_response.compiled_code;
       code_info.owner = sp_info.owner;
