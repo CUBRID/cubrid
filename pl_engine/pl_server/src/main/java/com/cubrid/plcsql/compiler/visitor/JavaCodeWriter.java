@@ -1295,6 +1295,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  }",
                 "  ResultSet rs = %'CURSOR'%.rs;",
                 "  if (rs.next()) {",
+                "    %'CURSOR'%.updateRowCount();",
                 "    %'+SET-INTO-VARIABLES'%",
                 "  } else {",
                 "    ;", // TODO: setting nulls to into-variables?
@@ -1577,6 +1578,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
                 "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
+                "    %'CURSOR'%.updateRowCount();",
                 "    %'RECORD'%[0].set(",
                 "      %'+RECORD-FIELD-VALUES'%",
                 "    );",
@@ -1599,6 +1601,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
                 "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
+                "    %'CURSOR'%.updateRowCount();",
                 "    %'RECORD'%[0].set(",
                 "      %'+RECORD-FIELD-VALUES'%",
                 "    );",
