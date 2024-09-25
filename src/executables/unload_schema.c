@@ -4722,7 +4722,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 	{
 	  output_ctx ("\n%s", scode_ptr_result);
 	}
-      else
+      else if (parser->error_buffer)
 	{
 	  output_ctx ("\n/* error occurs: %s \n\n %s; \n*/", parser->error_buffer, scode);
 	}
