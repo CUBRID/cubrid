@@ -156,18 +156,37 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
     }
 
   AU_DISABLE (save);
-  if (ws_is_same_object (user, Au_user))
+  if ((error = au_fetch_class_force (class_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
     {
-      /*
-       * Treat grant to self condition as a success only. Although this
-       * statement is a no-op, it is not an indication of no-success.
-       * The "privileges" are indeed already granted to self.
-       * Note: Revoke from self is an error, because this cannot be done.
-       */
-    }
-  else if ((error = au_fetch_class_force (class_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
-    {
-      if (ws_is_same_object (classobj->owner, user))
+      if (ws_is_same_object (user, Au_user))
+	{
+	  /*
+	   * Treat grant to self condition as a success only. Although this
+	   * statement is a no-op, it is not an indication of no-success.
+	   * The "privileges" are indeed already granted to self.
+	   * Note: Revoke from self is an error, because this cannot be done.
+	   * Additionally, two conditions have been added:
+	   *  1) No-op is disabled if the user does not have access to the CLASS (excluding the owner)
+	   *    Example :
+	   *      CALL LOGIN('u1', '') ON CLASS db_user;
+	   *      GRANT SELECT ON dba.tbl TO u1;
+	   *    Result : ERROR: SELECT authorization failure
+	   *  2) No-op is disabled if the user has access to the CLASS but does not have the WITH GRANT OPTION (excluding the owner).
+	   *    Example :
+	   *      CALL LOGIN(class db_user, 'dba', '');
+	   *      GRANT SELECT ON dba.tbl TO u1;
+	   *      CALL LOGIN('u1', '') ON CLASS db_user;
+	   *      GRANT SELECT ON dba.tbl TO u1;
+	   *    Result : ERROR: No GRANT option.
+	   */
+
+	  error = check_grant_option (class_mop, classobj, type);
+	  if (error != NO_ERROR)
+	    {
+	      return (error);
+	    }
+	}
+      else if (ws_is_same_object (classobj->owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
@@ -290,28 +309,39 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
   MOP auth;
   DB_SET *grants;
   int current, save = 0, gindex;
+  SM_CLASS *classobj;
 
   assert (type == AU_EXECUTE);
 
   AU_DISABLE (save);
-  if (ws_is_same_object (user, Au_user))
+  MOP sp_owner = jsp_get_owner (obj_mop);
+  if ((error = au_fetch_class_force (obj_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
     {
-      /*
-       * Treat grant to self condition as a success only. Although this
-       * statement is a no-op, it is not an indication of no-success.
-       * The "privileges" are indeed already granted to self.
-       * Note: Revoke from self is an error, because this cannot be done.
-       */
-    }
-  else
-    {
-      MOP sp_owner = jsp_get_owner (obj_mop);
-      if (ws_is_same_object (sp_owner, user))
+      if (ws_is_same_object (user, Au_user))
+	{
+	  /*
+	   * Treat grant to self condition as a success only. Although this
+	   * statement is a no-op, it is not an indication of no-success.
+	   * The "privileges" are indeed already granted to self.
+	   * Note: Revoke from self is an error, because this cannot be done.
+	   *
+	   * The WITH GRANT OPTION is not yet supported for stored procedures.
+	   * However, since displaying a different error message from au_grant_class() could confuse users,
+	   * the check_grant_option() function was added to ensure the same error message is displayed.
+	   */
+	  error = check_grant_option (obj_mop, classobj, type);
+	  if (error != NO_ERROR)
+	    {
+	      return (error);
+	    }
+	}
+      else if (ws_is_same_object (sp_owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
 	}
-      else if (au_is_dba_group_member (Au_user) || ws_is_same_object (sp_owner, Au_user))
+      //else if (au_is_dba_group_member (Au_user) || ws_is_same_object (sp_owner, Au_user))
+      else if ((error = check_grant_option (obj_mop, classobj, type)) == NO_ERROR)
 	{
 	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
 	    {
@@ -377,9 +407,9 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	      /* TODO: no grant option for procedure */
 	      /*
 	      if (grant_option)
-	      {
-	        current |= ((int) type << AU_GRANT_SHIFT);
-	      }
+	        {
+	          current |= ((int) type << AU_GRANT_SHIFT);
+	        }
 	      */
 
 	      db_make_int (&value, current);
@@ -402,7 +432,8 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	       * clear the cache for this user/class pair to make sure we
 	       * recalculate it the next time it is referenced
 	       */
-	      // reset_cache_for_user_and_class (classobj);
+	      //reset_cache_for_user_and_class (classobj);
+	      Au_cache.reset_cache_for_user_and_class (classobj);
 
 	      /*
 	       * Make sure any cached parse trees are rebuild.  This proabably
@@ -410,18 +441,6 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	       */
 	      sm_bump_local_schema_version ();
 	    }
-	}
-      else
-	{
-	  /*
-	   * The WITH GRANT OPTION is not yet supported for stored procedures.
-	   * Therefore, if the user is not the dba group or owner, the same error as grant/revoke_class is output.
-	   * example:
-	   *   call login(class db_user,'public','');
-	   *   GRANT EXECUTE ON FUNCTION u1.hello TO u2;
-	   */
-	  error = ER_AU_EXECUTE_FAILURE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
     }
 
