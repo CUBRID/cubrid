@@ -2126,19 +2126,19 @@ $set 15 MSGCAT_SET_IO
 2 Backup = %1$s is needed. \n It must be mounted/loaded to continue.\n Type 1 to continue after the backup is mounted/loaded.\n Type 0 to quit.\n
 3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
 4 Backup magic file identification %1$s,\n
-5          Release: %1$s\n\
+5 Release: %1$s\n\
    Disk Version: %2$g\n
-6    Database Name: %1$s\n\
+6 Database Name: %1$s\n\
    DB Creation Time: %2$s\
    Pagesize: %3$d\n
-7     Backup Level: %1$d (%2$s)\n\
+7 Backup Level: %1$d (%2$s)\n\
    Start_lsa: %3$lld|%4$d\n\
    Last_lsa: %5$lld|%6$d\n
-8      Backup Time: %1$s\
+8 Backup Time: %1$s\
    Backup Unit Num: %2$d\n
-9  Database Volume Name: %1$s\n\
+9 Database Volume Name: %1$s\n\
    Volume Identifier: %2$d, Size: %3$lld bytes (%4$d pages)\n
-10   Database Name: %1$s\n\
+10 Database Name: %1$s\n\
    Volume Name: %2$s\n\
    Unit Num: %3$d\n\
    Backup Level: %4$d (%5$s)\n\
@@ -2157,15 +2157,15 @@ $set 15 MSGCAT_SET_IO
 19 Backup volume %1$s timestamp mismatch\n  (Timestamp: %2$s, expecting %3$s).\n\n
 20 Backup volume information file error, line %1$d.\n
 21 Backup Volume Label: Level: %1$d, Unit: %2$d, Database %3$s, Backup Time: %4$s\n
-22     Previous Backup Level: %1$d\n\
+22 Previous Backup Level: %1$d\n\
    Time: %2$s\
    (start_lsa was %3$lld|%4$d)\n
 23 The following database backup volume is needed to continue restoring:\n\n
 24 Backup destination is full, a new destination is required to continue:\n\n
 25 Preceding Backup Volume Name: %1$s\n
-26     Next Backup Volume Name: %1$s\n
-27  Backup Pagesize: %1$d\n
-28       Zip Method: %1$d (%2$s)\n\
+26 Next Backup Volume Name: %1$s\n
+27 Backup Pagesize: %1$d\n
+28 Zip Method: %1$d (%2$s)\n\
    Zip Level: %3$d (%4$s)\n
 29 Include Active Log: %1$s\n
 
