@@ -1482,7 +1482,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
       /* need to check the appropriate number of parallels depending on the number of pages */
-      if (sort_info_p->input_file->page_cnt < 2 || sort_info_p->input_file->tuple_cnt < 2)
+      if (sort_info_p->input_file->page_cnt < 2 || sort_info_p->input_file->tuple_cnt < 2 || parallel_num < 2)
 	{
 	  is_parallel = false;
 	}
@@ -4439,11 +4439,7 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 			    int parallel_num)
 {
   int error = NO_ERROR;
-  int i = 0, j = 0, half_num_page;
-  PAGE_PTR page_p;
-  VPID next_vpid, prev_vpid, first_vpid[SORT_MAX_PARALLEL], last_vpid[SORT_MAX_PARALLEL];
-  QFILE_LIST_SCAN_ID *scan_id_p;
-  SORT_INFO *sort_info_p, *org_sort_info_p;
+  int i = 0;
 
   /* TO_DO : fix to not alloc in advance. */
   for (i = 0; i < sort_param->tot_tempfiles; i++)
@@ -4458,7 +4454,7 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
     }
 
   /* copy temp file from parallel to main */
-  for (int i = 0; i < parallel_num; i++)
+  for (i = 0; i < parallel_num; i++)
     {
       sort_param->temp[i] = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
       sort_param->file_contents[i] = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx];
