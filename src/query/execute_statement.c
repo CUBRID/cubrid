@@ -3530,7 +3530,7 @@ do_clear_subquery_cache_flag (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg
 static PT_NODE *
 do_check_cte_or_system_class_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
-  bool *has_cte_or_system_class = (bool *) arg;
+  bool *has_cte_or_system_class_or_dblink = (bool *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3541,7 +3541,7 @@ do_check_cte_or_system_class_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void
 
   if (stmt->info.spec.cte_pointer)
     {
-      *has_cte_or_system_class = true;
+      *has_cte_or_system_class_or_dblink = true;
       *continue_walk = PT_STOP_WALK;
     }
 
@@ -3553,10 +3553,15 @@ do_check_cte_or_system_class_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void
 	{
 	  if (sm_check_system_class_by_name (class_name))
 	    {
-	      *has_cte_or_system_class = true;
+	      *has_cte_or_system_class_or_dblink = true;
 	      *continue_walk = PT_STOP_WALK;
 	    }
 	}
+    }
+  else if (stmt->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+    {
+      *has_cte_or_system_class_or_dblink = true;
+      *continue_walk = PT_STOP_WALK;
     }
 
   return stmt;
@@ -3566,6 +3571,8 @@ static PT_NODE *
 do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int *err = (int *) arg;
+  bool has_cte_or_system_class_or_dblink = false;
+  PT_NODE *saved;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3596,6 +3603,23 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 	{
 	  return stmt;
 	}
+
+      if (stmt->info.query.hint & PT_HINT_QUERY_CACHE)
+	{
+	  /* exclude cache from CTE, system class, or dblink referencing */
+	  saved = stmt->next;
+	  stmt->next = NULL;
+	  parser_walk_tree (parser, stmt, do_check_cte_or_system_class_spec,
+			    &has_cte_or_system_class_or_dblink, NULL, NULL);
+	  stmt->next = saved;
+
+	  if (has_cte_or_system_class_or_dblink)
+	    {
+	      stmt->info.query.flag.do_cache = 0;
+	      stmt->info.query.flag.do_not_cache = 1;
+	      goto stop_walk;
+	    }
+	}
       break;
 
     default:
@@ -3607,19 +3631,6 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
-      bool has_cte_or_system_class = false;
-      PT_NODE *saved = stmt->next;
-
-      /* exclude cache from CTE or system class referencing */
-      stmt->next = NULL;
-      parser_walk_tree (parser, stmt, do_check_cte_or_system_class_spec, &has_cte_or_system_class, NULL, NULL);
-      stmt->next = saved;
-
-      if (has_cte_or_system_class)
-	{
-	  goto stop_walk;
-	}
-
       *err = do_prepare_subquery (parser, stmt);
 
       if (*err != NO_ERROR)
