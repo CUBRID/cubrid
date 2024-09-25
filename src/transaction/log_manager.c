@@ -322,7 +322,7 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
-
+static void log_build_full_path (const char *input_path, char *full_path);
 /*for CDC */
 static int cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry);
 static int cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * recdes,
@@ -9233,7 +9233,7 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 
       assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
 
-      snprintf (path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path), db_get_string (arg_values[0]));
+      log_build_full_path (db_get_string (arg_values[0]), path);
 
       fd = fileio_open (path, O_RDONLY, 0);
       if (fd == -1)
@@ -9259,7 +9259,8 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
       close (fd);
       fd = -1;
 
-      if (memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ACTIVE, strlen (CUBRID_MAGIC_LOG_ACTIVE)) != 0)
+      if ((memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ACTIVE, strlen (CUBRID_MAGIC_LOG_ACTIVE)) != 0) ||
+	  (ctx->header.db_creation != log_Gl.hdr.db_creation))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, path);
 	  error = ER_IO_MOUNT_FAIL;
@@ -9562,7 +9563,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
 {
   int error = NO_ERROR;
   char path[PATH_MAX];
-  int fd;
+  int fd = -1;
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *page_hdr;
   ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
@@ -9579,8 +9580,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
       goto exit_on_error;
     }
 
-  snprintf (path, PATH_MAX, "%s%s%s", log_Archive_path, FILEIO_PATH_SEPARATOR (log_Archive_path),
-	    db_get_string (arg_values[0]));
+  log_build_full_path (db_get_string (arg_values[0]), path);
 
   page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -9605,7 +9605,8 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
 
   ctx->header.magic[sizeof (ctx->header.magic) - 1] = 0;
 
-  if (memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ARCHIVE, strlen (CUBRID_MAGIC_LOG_ARCHIVE)) != 0)
+  if ((memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ARCHIVE, strlen (CUBRID_MAGIC_LOG_ARCHIVE)) != 0) ||
+      (ctx->header.db_creation != log_Gl.hdr.db_creation))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, path);
       error = ER_IO_MOUNT_FAIL;
@@ -9616,6 +9617,11 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
   ctx = NULL;
 
 exit_on_error:
+  if (fd != -1)
+    {
+      close (fd);
+    }
+
   if (ctx != NULL)
     {
       db_private_free_and_init (thread_p, ctx);
@@ -10613,6 +10619,25 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 					       false);
 
   return error_code;
+}
+
+/*
+ * log_build_full_path() - Build a full path by combining the base path and input path
+ *   return: void
+ *   input_path(in): Input path (relative or absolute)
+ *   full_path(out): Output buffer for the full path
+ */
+static void
+log_build_full_path (const char *input_path, char *full_path)
+{
+  if (IS_ABS_PATH (input_path))
+    {
+      snprintf (full_path, PATH_MAX, "%s", input_path);
+    }
+  else
+    {
+      snprintf (full_path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path), input_path);
+    }
 }
 
 static int
