@@ -86,13 +86,15 @@ namespace cubpl
       void remove_session_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
 
       /* stack management */
-
       // Currently these functions are used for debugging purpose.
       // In the recursive call situation, each time the function is called, a new worker from the thread pool is assigned. With this code, you can easily know the current state.
       // In the future, these functions will resolve some cases when it is necessary to set an error for all threads participating in a recursive call e.g. interrupt
       execution_stack *create_and_push_stack (cubthread::entry *thread_p);
       void pop_and_destroy_stack (execution_stack *&stack);
       execution_stack *top_stack ();
+
+      /* thread */
+      bool is_thread_involved (thread_id_t id);
 
       /* getter */
       SESSION_ID get_id ();

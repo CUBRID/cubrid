@@ -262,6 +262,7 @@ struct json_t;
 #define pt_is_dot_node(n) PT_IS_DOT_NODE(n)
 #define pt_is_expr_node(n) PT_IS_EXPR_NODE(n)
 #define pt_is_function(n) PT_IS_FUNCTION(n)
+#define pt_is_sp(n) PT_IS_JAVA_SP(n)
 #define pt_is_multi_col_term(n) PT_IS_MULTI_COL_TERM(n)
 #define pt_is_name_node(n) PT_IS_NAME_NODE(n)
 #define pt_is_oid_name(n) PT_IS_OID_NAME(n)

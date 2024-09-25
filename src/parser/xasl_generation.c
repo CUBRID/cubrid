@@ -12753,26 +12753,18 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 
   subquery_proc = (XASL_NODE *) src_derived_tbl->info.spec.derived_table->info.query.xasl;
 
-  regu_alloc (sig_array);
+  regu_new (sig_array, pt_length_of_list (cselect));
   if (sig_array == NULL)
-    {
-      return NULL;
-    }
-  new (sig_array) PL_SIGNATURE_ARRAY_TYPE ();
-
-  sig_array->num_sigs = pt_length_of_list (cselect);
-  regu_array_alloc (&sig_array->sigs, sig_array->num_sigs);
-  if (sig_array->sigs == NULL)
     {
       return NULL;
     }
 
   for (PT_NODE * node = cselect; node != NULL; node = node->next)
     {
-      new (sig_array->sigs + idx) PL_SIGNATURE_TYPE ();
       int error = jsp_make_pl_signature (parser, node, src_derived_tbl->info.spec.as_attr_list, sig_array->sigs[idx]);
       if (error != NO_ERROR)
 	{
+	  regu_delete (sig_array);
 	  return NULL;
 	}
       idx++;
@@ -27554,6 +27546,7 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	case TYPE_REGUVAL_LIST:
 	case TYPE_REGU_VAR_LIST:
 	case TYPE_FUNC:
+	case TYPE_SP:
 	  /* Result Cache not supported */
 	  return ER_FAILED;
 	  break;

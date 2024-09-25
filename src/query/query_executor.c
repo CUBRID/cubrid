@@ -1593,11 +1593,11 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
     case TYPE_SP:
       pr_clear_value (regu_var->value.sp_ptr->value);
       pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, regu_var->value.sp_ptr->args, is_final);
-      //if (is_final)
-      //  {
-      delete regu_var->value.sp_ptr->sig;
-      regu_var->value.sp_ptr->sig = NULL;
-      //  }
+      if (is_final)
+        {
+          delete regu_var->value.sp_ptr->sig;
+          regu_var->value.sp_ptr->sig = nullptr;
+        }
       break;
     case TYPE_FUNC:
       pr_clear_value (regu_var->value.funcp->value);
@@ -1740,7 +1740,7 @@ qexec_clear_db_val_list (QPROC_DB_VALUE_LIST list)
  *   return: void
  *   xasl_p(in) : xasl
  *   position_descr(in)   : position desc
- *   is_final(in)  : true, if finalize needed
+ *   is_final(in)  : true, if finalize needex
  */
 static void
 qexec_clear_pos_desc (XASL_NODE * xasl_p, QFILE_TUPLE_VALUE_POSITION * position_descr, bool is_final)

@@ -157,12 +157,12 @@ namespace cubpl
       }
 
       std::string m_error_msg;
-      void set_error_message (std::string &error_msg)
+      void set_error_message (std::string error_msg)
       {
 	m_error_message = error_msg;
       }
 
-      const std::string &get_error_message ()
+      std::string get_error_message ()
       {
 	return m_error_message;
       }

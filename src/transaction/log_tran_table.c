@@ -6074,7 +6074,17 @@ log_tdes::lock_topop ()
 {
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
-      int r = rmutex_lock (NULL, &rmutex_topop);
+      cubthread::entry *thread_p = NULL;
+      if (rmutex_topop.owner != thread_id_t ())
+      {
+        cubpl::session *session = cubpl::get_session();
+      if (session 
+        && session->is_thread_involved (rmutex_topop.owner))
+        {
+        thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
+        }
+      }
+      int r = rmutex_lock (thread_p, &rmutex_topop);
       assert (r == NO_ERROR);
     }
 }
@@ -6084,7 +6094,17 @@ log_tdes::unlock_topop ()
 {
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
-      int r = rmutex_unlock (NULL, &rmutex_topop);
+cubthread::entry *thread_p = NULL;
+      if (rmutex_topop.owner != thread_id_t ())
+      {
+        cubpl::session *session = cubpl::get_session();
+      if (session 
+        && session->is_thread_involved (rmutex_topop.owner))
+        {
+        thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
+        }
+      }
+      int r = rmutex_unlock (thread_p, &rmutex_topop);
       assert (r == NO_ERROR);
     }
 }

@@ -418,28 +418,25 @@ public class ExecuteThread extends Thread {
         Value[] arguments = prepareArgs.getArgs();
         Value[] methodArgs = new Value[paramCount];
         for (int i = 0; i < paramCount; i++) {
-            int pos = unpacker.unpackInt();
             int mode = unpacker.unpackInt();
             int type = unpacker.unpackInt();
             int defaultValSize = unpacker.unpackInt();
             String defaultVal = null;
 
             Value val = null;
-            if (pos != -1) {
-                val = arguments[pos];
+            if (defaultValSize == -1) {
+                val = arguments[i];
+            } else if (defaultValSize > 0) {
+                defaultVal = unpacker.unpackCString();
+                val = new StringValue(defaultVal);
+            } else if (defaultValSize == 0) {
+                val = new NullValue();
             } else {
-                if (defaultValSize > 0) {
-                    defaultVal = unpacker.unpackCString();
-                    val = new StringValue(defaultVal);
-                } else if (defaultValSize == 0) {
-                    val = new StringValue("");
-                } else if (defaultValSize == -2) {
-                    val = new NullValue();
-                } else {
-                    // internal error
-                    assert false;
-                }
+                assert false;
+                // internal error
+                val = new NullValue();
             }
+
             val.setMode(mode);
             val.setDbType(type);
 

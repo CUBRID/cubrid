@@ -10941,7 +10941,7 @@ cleanup:
 }
 
 int
-pl_call (const cubpl::pl_signature & sig, std::vector < std::reference_wrapper < DB_VALUE >> args, DB_VALUE & result)
+pl_call (const cubpl::pl_signature & sig, std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result)
 {
   int error_code = NO_ERROR;
 #if defined(CS_MODE)
@@ -10975,12 +10975,11 @@ pl_call (const cubpl::pl_signature & sig, std::vector < std::reference_wrapper <
     if (data_reply != NULL)
       {
 	packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-	    // *INDENT-OFF*
-	    std::vector <DB_VALUE> out_args;
-	    // *INDENT-ON*
+
+	std::vector < DB_VALUE > out_args;
 	unpacker.unpack_all (result, out_args);
 
-	for (int i = 0; i < sig.arg.arg_size; i++)
+	for (int i = 0, j = 0; i < sig.arg.arg_size; i++)
 	  {
 	    if (sig.arg.arg_mode[i] == SP_MODE_IN)
 	      {
@@ -10988,7 +10987,7 @@ pl_call (const cubpl::pl_signature & sig, std::vector < std::reference_wrapper <
 	      }
 
 	    DB_VALUE & arg = args[i];
-	    DB_VALUE & out_arg = out_args[i];
+	    DB_VALUE & out_arg = out_args[j++];
 
 	    db_value_clear (&arg);
 	    db_value_clone (&out_arg, &arg);

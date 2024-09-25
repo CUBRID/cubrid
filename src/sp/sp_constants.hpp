@@ -58,6 +58,7 @@
 #define SP_ATTR_INTERMEDIATE_TYPE       "itype"
 #define SP_ATTR_INTERMEDIATE_CODE       "icode"
 
+#define SP_MAX_DEFAULT_VALUE_LEN        255
 typedef enum
 {
   SP_TYPE_PROCEDURE = 1,

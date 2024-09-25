@@ -76,6 +76,7 @@ regu_variable_node::map_regu (const map_regu_func_type &func, bool &stop)
 	{
 	  map_regu_and_check_stop (&arg->value);
 	}
+      break;
 
     case TYPE_FUNC:
       if (value.funcp == NULL)

@@ -103,6 +103,8 @@ namespace cubpl
 	  {
 	    m_exec_stack.emplace_back (stack_id);
 	  }
+
+	m_is_running = true;
       }
     else
       {
@@ -133,8 +135,15 @@ namespace cubpl
 	m_exec_stack[m_stack_idx] = -1;
 	m_stack_idx--;
 
+	m_stack_map.erase (claimed->get_id ());
+
 	delete claimed;
 	claimed = nullptr;
+      }
+
+    if (m_stack_idx < 0)
+      {
+	m_is_running = false;
       }
   }
 
@@ -164,6 +173,23 @@ namespace cubpl
       }
 
     return it->second;
+  }
+
+  bool
+  session::is_thread_involved (thread_id_t id)
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    for (const auto &it : m_stack_map)
+      {
+	execution_stack *stack = it.second;
+	if (stack->get_thread_entry () && id == stack->get_thread_entry ()->get_id ())
+	  {
+	    return true;
+	  }
+      }
+
+    return false;
   }
 
   void

@@ -20,12 +20,17 @@
 
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
+#include "sp_constants.hpp"
 
-#define CHECK_NULL_AND_FREE(val)                        \
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"
+#endif
+
+#define CHECK_NULL_AND_FREE(owner, val)                        \
   do {                                                  \
     if (val != nullptr)                                 \
     {                                                   \
-      db_private_free_and_init (NULL, val);             \
+      db_private_free_and_init (owner, val);             \
     }                                                   \
   } while(0)
 
@@ -40,6 +45,11 @@ namespace cubpl
   pl_arg::pl_arg (int num_args)
     : arg_size {num_args}
   {
+#if defined (SERVER_MODE)
+    owner = thread_get_thread_entry_info ();
+#else
+    owner = NULL;
+#endif
     set_arg_size (num_args);
   }
 
@@ -53,17 +63,17 @@ namespace cubpl
   {
     if (arg_size > 0)
       {
-	CHECK_NULL_AND_FREE (arg_mode);
-	CHECK_NULL_AND_FREE (arg_type);
+	CHECK_NULL_AND_FREE (owner, arg_mode);
+	CHECK_NULL_AND_FREE (owner, arg_type);
 	for (int i = 0; i < arg_size; i++)
 	  {
 	    if (arg_default_value_size && arg_default_value_size[i] > 0)
 	      {
-		CHECK_NULL_AND_FREE (arg_default_value[i]);
+		CHECK_NULL_AND_FREE (owner, arg_default_value[i]);
 	      }
 	  }
-	CHECK_NULL_AND_FREE (arg_default_value_size);
-	CHECK_NULL_AND_FREE (arg_default_value);
+	CHECK_NULL_AND_FREE (owner, arg_default_value_size);
+	CHECK_NULL_AND_FREE (owner, arg_default_value);
       }
   }
 
@@ -85,7 +95,7 @@ namespace cubpl
 	      }
 	    else
 	      {
-		serializator.pack_c_string (EMPTY_STRING, 0);
+		// do not pack anything
 	      }
 	  }
       }
@@ -114,12 +124,12 @@ namespace cubpl
 	  {
 	    if (arg_default_value_size[i] > 0)
 	      {
-		arg_default_value[i] = (char *) db_private_alloc (NULL, sizeof (char) * (arg_default_value_size[i]));
-		deserializator.unpack_c_string (arg_default_value[i], arg_default_value_size[i]);
+		arg_default_value[i] = (char *) db_private_alloc (NULL, sizeof (char) * (arg_default_value_size[i] + 1));
+		deserializator.unpack_c_string (arg_default_value[i], SP_MAX_DEFAULT_VALUE_LEN);
 	      }
 	    else
 	      {
-		deserializator.unpack_c_string (arg_default_value[i], 0);
+		arg_default_value[i] = nullptr;
 	      }
 	  }
       }
@@ -155,15 +165,9 @@ namespace cubpl
   void
   pl_arg::set_arg_size (int num_args)
   {
+    clear ();
     if (num_args > 0)
       {
-	/*
-	if (arg_mode != nullptr)
-	{
-	        clear ();
-	}
-	*/
-
 	arg_size = num_args;
 	arg_mode = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_type = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
@@ -188,31 +192,34 @@ namespace cubpl
       }
   }
 
-
-
   pl_signature::pl_signature ()
     : name {nullptr}
     , auth {nullptr}
     , type {0}
     , result_type {0}
   {
+#if defined (SERVER_MODE)
+    owner = thread_get_thread_entry_info ();
+#else
+    owner = NULL;
+#endif
     memset (&ext, 0, sizeof (pl_ext));
   }
 
   pl_signature::~pl_signature ()
   {
-    CHECK_NULL_AND_FREE (name);
-    CHECK_NULL_AND_FREE (auth);
+    CHECK_NULL_AND_FREE (owner, name);
+    CHECK_NULL_AND_FREE (owner, auth);
 
     if (PL_TYPE_IS_METHOD (type))
       {
-	CHECK_NULL_AND_FREE (ext.method.class_name);
-	CHECK_NULL_AND_FREE (ext.method.arg_pos);
+	CHECK_NULL_AND_FREE (owner, ext.method.class_name);
+	CHECK_NULL_AND_FREE (owner, ext.method.arg_pos);
       }
     else
       {
-	CHECK_NULL_AND_FREE (ext.sp.target_class_name);
-	CHECK_NULL_AND_FREE (ext.sp.target_method_name);
+	CHECK_NULL_AND_FREE (owner, ext.sp.target_class_name);
+	CHECK_NULL_AND_FREE (owner, ext.sp.target_method_name);
       }
   }
 
@@ -403,9 +410,19 @@ namespace cubpl
   }
 
   pl_signature_array::pl_signature_array ()
-    : num_sigs {0}
-    , sigs {nullptr}
+    :pl_signature_array (0)
   {}
+
+  pl_signature_array::pl_signature_array (int num)
+    : num_sigs {num}
+  {
+#if defined (SERVER_MODE)
+    owner = thread_get_thread_entry_info ();
+#else
+    owner = NULL;
+#endif
+    sigs = (num > 0) ? new pl_signature[num] : nullptr;
+  }
 
   pl_signature_array::~pl_signature_array ()
   {
@@ -413,7 +430,7 @@ namespace cubpl
       {
 	sigs[i].~pl_signature ();
       }
-    CHECK_NULL_AND_FREE (sigs);
+    CHECK_NULL_AND_FREE (owner, sigs);
   }
 
   void

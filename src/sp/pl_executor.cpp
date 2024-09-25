@@ -57,7 +57,6 @@ namespace cubpl
 
     pl_arg &arg = sig->arg;
     num_args = arg.arg_size;
-    arg_pos.resize (num_args);
     arg_mode.resize (num_args);
     arg_type.resize (num_args);
     arg_default_size.resize (num_args);
@@ -65,7 +64,6 @@ namespace cubpl
 
     for (int i = 0; i < num_args; i++)
       {
-	arg_pos[i] = i;
 	arg_mode[i] = arg.arg_mode[i];
 	arg_type[i] = arg.arg_type[i];
 	arg_default_size[i] = arg.arg_default_value_size[i];
@@ -87,7 +85,6 @@ namespace cubpl
 
     for (int i = 0; i < num_args; i++)
       {
-	serializator.pack_int (arg_pos[i]);
 	serializator.pack_int (arg_mode[i]);
 	serializator.pack_int (arg_type[i]);
 	serializator.pack_int (arg_default_size[i]);
@@ -120,7 +117,6 @@ namespace cubpl
 
     for (int i = 0; i < num_args; i++)
       {
-	size += serializator.get_packed_int_size (size); // arg_pos
 	size += serializator.get_packed_int_size (size); // arg_mode
 	size += serializator.get_packed_int_size (size); // arg_type
 	size += serializator.get_packed_int_size (size); // arg_default_size
@@ -177,10 +173,24 @@ namespace cubpl
 		break;
 	      }
 
-	    m_args.push_back (std::ref (*value));
+	    if (is_supported_dbtype (*value) == false)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1,
+			pr_type_name ((DB_TYPE) value->domain.general_info.type));
+		m_stack->set_error_message (std::string (er_msg ()));
+		error = er_errid ();
+		break;
+	      }
+
+	    m_args.emplace_back (std::ref (*value));
 
 	    operand = operand->next;
 	  }
+      }
+
+    for (const DB_VALUE &val : m_args)
+      {
+
       }
 
     return error;
@@ -191,7 +201,79 @@ namespace cubpl
   {
     assert (m_args.empty ());
     m_args = args;
+    for (const DB_VALUE &val : m_args)
+      {
+	if (is_supported_dbtype (val) == false)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1,
+		    pr_type_name ((DB_TYPE) val.domain.general_info.type));
+	    m_stack->set_error_message (std::string (er_msg ()));
+	    return er_errid ();
+	  }
+      }
+
     return NO_ERROR;
+  }
+
+  bool
+  executor::is_supported_dbtype (const DB_VALUE &value)
+  {
+    bool res = false;
+    switch (DB_VALUE_TYPE (&value))
+      {
+      case DB_TYPE_INTEGER:
+      case DB_TYPE_SHORT:
+      case DB_TYPE_BIGINT:
+      case DB_TYPE_FLOAT:
+      case DB_TYPE_DOUBLE:
+      case DB_TYPE_MONETARY:
+      case DB_TYPE_NUMERIC:
+      case DB_TYPE_CHAR:
+      case DB_TYPE_NCHAR:
+      case DB_TYPE_VARNCHAR:
+      case DB_TYPE_STRING:
+      case DB_TYPE_DATE:
+      case DB_TYPE_TIME:
+      case DB_TYPE_TIMESTAMP:
+      case DB_TYPE_DATETIME:
+      case DB_TYPE_SET:
+      case DB_TYPE_MULTISET:
+      case DB_TYPE_SEQUENCE:
+      case DB_TYPE_OID:
+      case DB_TYPE_OBJECT:
+      case DB_TYPE_RESULTSET:
+      case DB_TYPE_NULL:
+	res = true;
+	break;
+      // unsupported types
+      case DB_TYPE_BIT:
+      case DB_TYPE_VARBIT:
+      case DB_TYPE_TABLE:
+      case DB_TYPE_BLOB:
+      case DB_TYPE_CLOB:
+      case DB_TYPE_TIMESTAMPTZ:
+      case DB_TYPE_TIMESTAMPLTZ:
+      case DB_TYPE_DATETIMETZ:
+      case DB_TYPE_DATETIMELTZ:
+      case DB_TYPE_JSON:
+      case DB_TYPE_ENUMERATION:
+	res = false;
+	break;
+
+      // obsolete, internal, unused type
+      case DB_TYPE_ELO:
+      case DB_TYPE_VARIABLE:
+      case DB_TYPE_SUB:
+      case DB_TYPE_POINTER:
+      case DB_TYPE_ERROR:
+      case DB_TYPE_VOBJ:
+      case DB_TYPE_DB_VALUE:
+      case DB_TYPE_MIDXKEY:
+      default:
+	assert (false);
+	break;
+      }
+    return res;
   }
 
   int
@@ -252,18 +334,12 @@ exit:
   {
     int error = NO_ERROR;
 
-    // prepare
-    // 1) check supported dbtype
-    // 2)
-
     SESSION_ID sid = get_session ()->get_id ();
     TRANID tid = m_stack->get_tran_id ();
 
-    header invoke_header (sid, SP_CODE_INVOKE, m_stack->get_and_increment_request_id ());
-
     m_stack->set_command (SP_CODE_INVOKE);
     prepare_args prepare_arg ((std::uint64_t) this, tid, METHOD_TYPE_PLCSQL, m_args);
-    invoke_java invoke_arg ((std::uint64_t) this, tid, &m_sig, true); // TODO
+    invoke_java invoke_arg ((std::uint64_t) this, tid, &m_sig, prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
 
     error = m_stack->send_data_to_java (prepare_arg, invoke_arg);
 
@@ -362,12 +438,15 @@ exit:
 		m_out_args.emplace_back (out_val);
 	      }
 	  }
+	return NO_ERROR;
       }
     else if (code == SP_CODE_ERROR)
       {
 	std::string error_msg;
 	unpacker.unpack_string (error_msg);
 	m_stack->set_error_message (error_msg);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, error_msg.c_str ());
+	return ER_SP_EXECUTE_ERROR;
       }
     else
       {
@@ -466,6 +545,12 @@ exit:
     return m_out_args;
   }
 
+  execution_stack *
+  executor::get_stack ()
+  {
+    return m_stack;
+  }
+
   int
   executor::callback_get_db_parameter (cubthread::entry &thread_ref, packing_unpacker &unpacker)
   {
@@ -536,11 +621,6 @@ exit:
     };
 
     error = m_stack->send_data_to_client (get_prepare_info, code, sql, flag);
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
     return error;
   }
 
@@ -687,12 +767,6 @@ exit:
     };
 
     error = m_stack->send_data_to_client (java_lambda, code, request);
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
-    error = xs_receive (&thread_ref, java_lambda);
     return error;
   }
 
@@ -706,19 +780,12 @@ exit:
     request.unpack (unpacker);
     request.is_compatible_java = false;
 
-
     auto java_lambda = [&] (const cubmem::block & b)
     {
       return m_stack->send_data_to_java (b);
     };
 
     error = m_stack->send_data_to_client (java_lambda, code, request);
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
-    error = xs_receive (&thread_ref, java_lambda);
     return error;
   }
 
@@ -731,19 +798,12 @@ exit:
     OID oid;
     unpacker.unpack_all (command, oid);
 
-
     auto java_lambda = [&] (const cubmem::block & b)
     {
       return m_stack->send_data_to_java (b);
     };
 
     error = m_stack->send_data_to_client (java_lambda, code, command, oid);
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
-    error = xs_receive (&thread_ref, java_lambda);
     return error;
   }
 
@@ -757,9 +817,7 @@ exit:
     request.is_compatible_java = true;
     request.unpack (unpacker);
 
-
     request.is_compatible_java = false;
-
 
     auto java_lambda = [&] (const cubmem::block & b)
     {
@@ -767,12 +825,6 @@ exit:
     };
 
     error = m_stack->send_data_to_client (java_lambda, code, request);
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
-    error = xs_receive (&thread_ref, java_lambda);
     return error;
   }
 
@@ -807,7 +859,6 @@ exit:
 	}
     };
 
-
     return error;
   }
 
@@ -825,11 +876,6 @@ exit:
     };
 
     error = m_stack->send_data_to_client (java_lambda, code, handler_id);
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
     return error;
   }
 
@@ -848,11 +894,6 @@ exit:
     };
 
     error = m_stack->send_data_to_client (java_lambda, code, command);
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
     return error;
   }
 
@@ -873,11 +914,6 @@ exit:
     };
 
     error = m_stack->send_data_to_client (java_lambda, code, command, auth_name);
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
     return error;
   }
 
@@ -928,8 +964,6 @@ exit:
 
     return error;
   }
-
-
 }
 
 static bool

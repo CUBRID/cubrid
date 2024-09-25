@@ -52,7 +52,6 @@ namespace cubpl
     std::string auth;
     int lang;
     int num_args;
-    std::vector<int> arg_pos;
     std::vector<int> arg_mode;
     std::vector<int> arg_type;
     std::vector<int> arg_default_size;
@@ -86,12 +85,18 @@ namespace cubpl
 
       // getter
       std::vector <DB_VALUE> &get_out_args ();
+      execution_stack *get_stack ();
+
     private:
       execution_stack *m_stack;
       pl_signature &m_sig;
 
       std::vector <std::reference_wrapper <DB_VALUE>> m_args;
       std::vector <DB_VALUE> m_out_args;
+
+      // check
+      int check_unsupported_dbtype ();
+      bool is_supported_dbtype (const DB_VALUE &val);
 
       int change_exec_rights (const char *auth_name);
 

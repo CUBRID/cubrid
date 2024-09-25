@@ -164,7 +164,7 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
   state = xtran_server_commit (thread_p, retain_lock);
 
   PL_SESSION *session = cubpl::get_session ();
-  if (!session || session->is_running () == false || session->get_depth () == 0)
+  if (!session || session->is_running () == false)
     {
       net_cleanup_server_queues (rid);
     }
@@ -202,7 +202,7 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
   state = xtran_server_abort (thread_p);
 
   PL_SESSION *session = cubpl::get_session ();
-  if (!session || session->is_running () == false || session->get_depth () == 0)
+  if (!session || session->is_running () == false)
     {
       net_cleanup_server_queues (rid);
     }
@@ -10474,7 +10474,11 @@ cdc_check_client_connection ()
 void
 spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  int error_code = NO_ERROR;
   packing_unpacker unpacker (request, (size_t) reqlen);
+
+  DB_VALUE ret_value;
+  db_make_null (&ret_value);
 
   /* 1) unpack arguments */
   cubpl::pl_signature sig;
@@ -10486,10 +10490,10 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
   /* 2) invoke */
   cubpl::executor executor (sig);
   (void) executor.fetch_args_peek (ref_args);
-
-  DB_VALUE ret_value;
-  db_make_null (&ret_value);
-  int error_code = executor.execute (ret_value);
+  if (error_code == NO_ERROR)
+    {
+      error_code = executor.execute (ret_value);
+    } 
 
   packing_packer packer;
   cubmem::extensible_block eb;
@@ -10500,8 +10504,16 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
     }
   else
     {
-      // TODO: error handling
-      std::string err_msg ("dummy error");
+      std::string err_msg = executor.get_stack ()->get_error_message ();
+      if (err_msg.empty ())
+	{
+	  err_msg.assign (er_msg ());
+	}
+
+      if (error_code != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg);
+	}
       packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
       (void) return_error_to_client (thread_p, rid);
     }

@@ -1359,6 +1359,13 @@ qdump_print_value (REGU_VARIABLE * value_p)
       qdump_print_function_value (value_p);
       return true;
 
+    case TYPE_SP:
+      fprintf (foutput, "[TYPE_SP]");
+      fprintf (foutput, "[%s]", value_p->value.sp_ptr->sig->name);
+      fprintf (foutput, "args-->");
+      qdump_print_regu_variable_list (value_p->value.sp_ptr->args);
+      return true;
+
     default:
       return true;
     }

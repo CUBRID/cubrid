@@ -123,6 +123,10 @@ static PT_MISC_TYPE jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type);
 static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid);
 
 static char *jsp_check_stored_procedure_name (const char *str);
+static int jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, int num_args);
+static int jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode);
+static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
+
 static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
 static int drop_stored_procedure_code (const char *name);
 
@@ -231,7 +235,7 @@ jsp_is_exist_stored_procedure (const char *name)
   return mop != NULL;
 }
 
-int
+static int
 jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode)
 {
   int error = NO_ERROR;
@@ -258,15 +262,10 @@ jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mod
  * Note:
  */
 
-int
-jsp_check_param_type_supported (PT_NODE *node)
+static int
+jsp_check_param_type_supported (DB_TYPE type, int mode)
 {
-  assert (node && node->node_type == PT_SP_PARAMETERS);
-
-  PT_TYPE_ENUM pt_type = node->type_enum;
-  DB_TYPE domain_type = pt_type_enum_to_db (pt_type);
-
-  switch (domain_type)
+  switch (type)
     {
     case DB_TYPE_INTEGER:
     case DB_TYPE_FLOAT:
@@ -289,14 +288,22 @@ jsp_check_param_type_supported (PT_NODE *node)
       break;
 
     case DB_TYPE_RESULTSET:
-      if (node->info.sp_param.mode != PT_OUTPUT)
+      if (mode != SP_MODE_OUT)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_INPUT_RESULTSET, 0);
+	}
+      else if (!jsp_is_prepare_call ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
+	}
+      else
+	{
+	  return NO_ERROR;
 	}
       break;
 
     default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1, pr_type_name (domain_type));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1, pr_type_name (type));
       break;
     }
 
@@ -332,8 +339,17 @@ jsp_check_return_type_supported (DB_TYPE type)
     case DB_TYPE_CHAR:
     case DB_TYPE_BIGINT:
     case DB_TYPE_DATETIME:
-    case DB_TYPE_RESULTSET:
       return NO_ERROR;
+      break;
+    case DB_TYPE_RESULTSET:
+      if (!jsp_is_prepare_call ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
+	}
+      else
+	{
+	  return NO_ERROR;
+	}
       break;
 
     default:
@@ -1512,9 +1528,8 @@ jsp_is_prepare_call ()
 }
 
 static int
-jsp_check_default_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params)
+jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, int num_args)
 {
-  int num_args = pt_length_of_list (node->info.method_call.arg_list);
   if (num_args > num_params)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, num_params, num_args);
@@ -1647,10 +1662,9 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 					 name, user_name_buffer, DB_MAX_USER_LENGTH) : au_get_current_user_name ());
 
 	int result_type = db_get_int (&entry.vals[SP_ATTR_INDEX_RETURN_TYPE]);
-	if (result_type == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
+	error = jsp_check_return_type_supported ((DB_TYPE) result_type);
+	if (error != NO_ERROR)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
-	    error = er_errid ();
 	    goto exit;
 	  }
 
@@ -1659,6 +1673,10 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	  {
 	    DB_SET *param_set = db_get_set (&entry.vals[SP_ATTR_INDEX_ARGS]);
 	    error = jsp_make_pl_args (parser, node, num_params, param_set, sig);
+	    if (error != NO_ERROR)
+	      {
+		goto exit;
+	      }
 	  }
 
 	sig.auth = db_private_strdup (NULL, auth_name);
@@ -1699,6 +1717,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	      }
 	    else
 	      {
+		// Java SP
 		sig.ext.sp.code_oid = OID_INITIALIZER;
 	      }
 	  }
@@ -1724,7 +1743,8 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
     sig.arg.set_arg_size (num_params);
 
     // check default arguments
-    int num_trailing_default_args = jsp_check_default_args (parser, node, num_params);
+    int num_args = pt_length_of_list (node->info.method_call.arg_list);
+    int num_trailing_default_args = jsp_check_overflow_args (parser, node, num_params, num_args);
     if (num_trailing_default_args < 0)
       {
 	error = er_errid ();
@@ -1760,31 +1780,41 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 	  }
 
 	int arg_type = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_DATA_TYPE]);
-	if (arg_type == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
+	error = jsp_check_param_type_supported ((DB_TYPE) arg_type, arg_mode);
+	if (error != NO_ERROR)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
-	    error = er_errid ();
 	    goto exit_on_error;
 	  }
 
 	const char *default_value_str = NULL;
-	int default_value_size = -1;
+	int default_value_size = PL_ARG_DEFAULT_NONE;
 
-	int is_optional = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_IS_OPTIONAL]);
-	if (is_optional == 1)
+	int num_required_args = num_params - num_trailing_default_args;
+
+	if (i >= num_required_args)
 	  {
-	    const DB_VALUE &default_val = entry.vals[SP_ARGS_ATTR_INDEX_DEFAULT_VALUE];
-	    if (!DB_IS_NULL (&default_val))
+	    int is_optional = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_IS_OPTIONAL]);
+	    if (is_optional == 1)
 	      {
-		default_value_size = db_get_string_size (&default_val);
-		if (default_value_size > 0)
+		const DB_VALUE &default_val = entry.vals[SP_ARGS_ATTR_INDEX_DEFAULT_VALUE];
+		if (!DB_IS_NULL (&default_val))
 		  {
-		    default_value_str = db_get_string (&default_val);
+		    default_value_size = db_get_string_size (&default_val); // null character
+		    if (default_value_size > 0)
+		      {
+			default_value_str = db_get_string (&default_val);
+		      }
+		  }
+		else
+		  {
+		    default_value_size = PL_ARG_DEFAULT_NULL; // special value when default value is *NULL*
 		  }
 	      }
 	    else
 	      {
-		default_value_size = -2; // special value when default value is *NULL*
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, num_params, num_args);
+		error = er_errid ();
+		goto exit_on_error;
 	      }
 	  }
 

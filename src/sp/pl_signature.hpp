@@ -24,6 +24,7 @@
 #define _PL_SIGNATURE_HPP_
 
 #include "packable_object.hpp"
+#include "thread_compat.hpp"
 
 enum PL_TYPE
 {
@@ -34,6 +35,12 @@ enum PL_TYPE
   PL_TYPE_PLCSQL
 };
 
+enum PL_ARG_DEFAULT
+{
+  PL_ARG_DEFAULT_NONE = -1,
+  PL_ARG_DEFAULT_NULL = 0
+};
+
 namespace cubpl
 {
 #define PL_TYPE_IS_METHOD(type) \
@@ -41,10 +48,12 @@ namespace cubpl
 
   struct pl_arg : public cubpacking::packable_object
   {
+    THREAD_ENTRY *owner;
+
     int arg_size;
     int *arg_mode;  // array of (IN|OUT|IN/OUT)
     int *arg_type;  // array of DB_TYPE
-    int   *arg_default_value_size; // -2: NULL, -1: Non-optional, else: optional
+    int   *arg_default_value_size; // -1: Non-optional, 0: NULL, else: optional
     char **arg_default_value; // array of VARCHAR (256)
 
     void pack (cubpacking::packer &serializator) const override;
@@ -76,6 +85,8 @@ namespace cubpl
 
   struct pl_signature : public cubpacking::packable_object
   {
+    THREAD_ENTRY *owner;
+
     int type; // PL_TYPE
     char *name;
     char *auth;
@@ -96,6 +107,8 @@ namespace cubpl
 
   struct pl_signature_array : public cubpacking::packable_object
   {
+    THREAD_ENTRY *owner;
+
     int num_sigs;
     pl_signature *sigs;
 
@@ -104,6 +117,7 @@ namespace cubpl
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     pl_signature_array ();
+    pl_signature_array (int num);
     ~pl_signature_array () override;
   };
 }
