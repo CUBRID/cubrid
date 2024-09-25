@@ -1601,7 +1601,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 		   *
 		   *      spec->info.spec.derived_table->info.query.q.select.list :
 		   *        - before : a.cb,   b.cb,   row_number() over (partition by 2 order by b.cc)
-		   *        -  after : b.cb,   row_number() over (partition by 1 order by b.cc)
+		   *        -  after :         b.cb,   row_number() over (partition by 1 order by b.cc)
 		   */
 		  parser_walk_tree (parser, nth_node, mq_update_node_order, spec, pt_continue_walk, NULL);
 
