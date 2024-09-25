@@ -2142,7 +2142,7 @@ $set 15 MSGCAT_SET_IO
    Volume Name: %2$s\n\
    Unit Num: %3$d\n\
    Backup Level: %4$d (%5$s)\n\
-   Enter one of the following options:\n
+Enter one of the following options:\n
 11 Type\n \
   -  %1$d to quit.\n \
   -  %2$d to continue after the volume is mounted/loaded. (retry) \n \
