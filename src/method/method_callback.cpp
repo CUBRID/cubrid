@@ -137,23 +137,28 @@ namespace cubmethod
   int
   callback_handler::end_transaction (packing_unpacker &unpacker)
   {
+    int error_code = NO_ERROR;
     int command; // commit : 1, abort : 2
     unpacker.unpack_all (command);
 
     if (command == 1)
       {
-	db_commit_transaction ();
+	error_code = db_commit_transaction ();
       }
     else if (command == 2)
       {
-	db_abort_transaction ();
+	error_code = db_abort_transaction ();
       }
     else
       {
 	assert (false);
+	error_code = ER_FAILED;
       }
 
-    free_query_handle_all (true);
+    if (error_code != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+      }
 
     if (m_error_ctx.has_error())
       {
@@ -163,8 +168,6 @@ namespace cubmethod
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, 1);
       }
-
-    return NO_ERROR;
   }
 
   int
