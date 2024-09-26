@@ -1599,7 +1599,6 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
     }
 
   code_info.name = sp_info.target_class;
-  code_info.otype = compile_response.compiled_type;
   code_info.ocode = compile_response.compiled_code;
   code_info.icode = compile_response.translated_code;
 
