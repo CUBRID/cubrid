@@ -1482,7 +1482,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
       /* need to check the appropriate number of parallels depending on the number of pages */
-      if (sort_info_p->input_file->page_cnt < 2 || sort_info_p->input_file->tuple_cnt < 2 || parallel_num < 2)
+      if (sort_info_p->input_file->page_cnt < parallel_num || sort_info_p->input_file->tuple_cnt < parallel_num || parallel_num < 2)
 	{
 	  is_parallel = false;
 	}
@@ -1507,6 +1507,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	{
 	  /* split input temp file. TO_DO : it can be inside sort_copy_sort_param() */
 	  error = sort_split_input_temp_file (thread_p, px_sort_param, sort_param, parallel_num);
+	  /* may need to revert the next page and prev page of temp file. */
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -4309,6 +4310,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 {
   int error = NO_ERROR;
   int i = 0, j = 0, splitted_num_page;
+  bool is_first_vpid = false;
   PAGE_PTR page_p;
   VPID next_vpid, prev_vpid, first_vpid[SORT_MAX_PARALLEL], last_vpid[SORT_MAX_PARALLEL];
   QFILE_LIST_SCAN_ID *scan_id_p;
@@ -4333,10 +4335,16 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 
   /* find first and last vpid for splitted file */
   i = 0;
+  is_first_vpid = false;
   prev_vpid = sort_info_p->input_file->first_vpid;
   while (true)
     {
       page_p = qmgr_get_old_page (thread_p, &prev_vpid, sort_info_p->input_file->tfile_vfid);
+      if (is_first_vpid)
+	{
+	  QFILE_PUT_PREV_VPID_NULL (page_p);
+	  is_first_vpid = false;
+	}
       QFILE_GET_NEXT_VPID (&next_vpid, page_p);
       if (VPID_ISNULL (&next_vpid))
 	{
@@ -4345,6 +4353,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       else if (++j >= splitted_num_page)
 	{
 	  QFILE_PUT_NEXT_VPID_NULL (page_p);
+	  is_first_vpid = true;
 	  first_vpid[i] = next_vpid;
 	  last_vpid[i] = prev_vpid;
 	  i++;
@@ -4355,6 +4364,11 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 	    }
 	  else
 	    {
+	      qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
+
+	      /* init prev page id */
+	      page_p = qmgr_get_old_page (thread_p, &next_vpid, sort_info_p->input_file->tfile_vfid);
+	      QFILE_PUT_PREV_VPID_NULL (page_p);
 	      qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
 	      break;
 	    }
