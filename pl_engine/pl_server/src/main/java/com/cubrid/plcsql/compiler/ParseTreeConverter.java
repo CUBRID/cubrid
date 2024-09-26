@@ -2401,7 +2401,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         String name = Misc.getNormalizedText(ctx.identifier());
 
-        // push a temporary symbol table, in order not to corrupt the current symbol table with the parameters
+        // push a temporary symbol table, in order not to corrupt the current symbol table with the
+        // parameters
         symbolStack.pushSymbolTable("temp", null);
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         symbolStack.popSymbolTable();
