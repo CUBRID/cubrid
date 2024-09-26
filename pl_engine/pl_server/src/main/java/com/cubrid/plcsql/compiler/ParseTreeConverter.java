@@ -225,8 +225,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Unit visitCreate_routine(Create_routineContext ctx) {
 
+        previsitRoutine_definition(ctx.routine_definition(), null);
         DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
-        postvisitRoutine_definition(ctx.routine_definition());
         return new Unit(ctx, autonomousTransaction, connectionRequired, imports, decl);
     }
 
@@ -1080,22 +1080,20 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Map<String, UseAndDeclLevel> saved = idUsedInCurrentDeclPart;
         idUsedInCurrentDeclPart = new HashMap<>();
 
+        // previsit declarations to support recursive or mutually recursive calls of local
+        // procedures/functions
+        Map<String, DeclRoutine> store = previsitDeclarations(ctx.declare_spec());
+        // put the declarations of the routines in the current symbol table
+        for (String routineName : store.keySet()) {
+            symbolStack.putDecl(routineName, store.get(routineName));
+        }
+
         NodeList<Decl> ret = new NodeList<>();
 
         for (Declare_specContext ds : ctx.declare_spec()) {
             Decl d = (Decl) visit(ds);
             if (d != null) {
                 ret.addNode(d);
-            }
-        }
-
-        for (Declare_specContext ds : ctx.declare_spec()) {
-
-            ParserRuleContext routine;
-
-            routine = ds.routine_definition();
-            if (routine != null) {
-                postvisitRoutine_definition((Routine_definitionContext) routine);
             }
         }
 
@@ -1220,10 +1218,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return ret;
     }
 
-    private void postvisitRoutine_definition(Routine_definitionContext ctx) {
+    @Override
+    public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
 
-        if (ctx.LANGUAGE() != null
-                && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+        if (ctx.LANGUAGE() != null && symbolStack.getCurrentScope().level > 1) {
             int[] lineColumn = Misc.getLineColumnOf(ctx);
             throw new SyntaxError(
                     lineColumn[0],
@@ -1251,28 +1249,28 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        DeclRoutine routine;
+        DeclRoutine ret;
         if (isFunction) {
-            routine = symbolStack.getDeclFunc(name);
+            ret = symbolStack.getDeclFunc(name);
             if (!controlFlowBlocked) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s016
-                        "function "
-                                + routine.name
-                                + " can reach its end without returning a value");
+                        "function " + ret.name + " can reach its end without returning a value");
             }
         } else {
             // procedure
-            routine = symbolStack.getDeclProc(name);
+            ret = symbolStack.getDeclProc(name);
         }
-        assert routine != null; // by the visit
-        routine.decls = decls;
-        routine.body = body;
+        assert ret != null; // by the previsit
+        ret.decls = decls;
+        ret.body = body;
 
         if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
             // check it only for local routines
             checkRedefinitionOfUsedName(name, ctx);
         }
+
+        return ret;
     }
 
     @Override
@@ -2382,19 +2380,33 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
     }
 
-    @Override
-    public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
+    private void previsitConstant_declaration(Constant_declarationContext ctx) {
+
+        String name = Misc.getNormalizedText(ctx.identifier());
+        TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
+        DeclConst ret = new DeclConst(ctx, name, ty, ctx.NOT() != null, null);
+        symbolStack.putDecl(name, ret);
+    }
+
+    private void previsitVariable_declaration(Variable_declarationContext ctx) {
+
+        String name = Misc.getNormalizedText(ctx.identifier());
+        TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
+        DeclVar ret = new DeclVar(ctx, name, ty, ctx.NOT() != null, null);
+        symbolStack.putDecl(name, ret);
+    }
+
+    private void previsitRoutine_definition(
+            Routine_definitionContext ctx, Map<String, DeclRoutine> store) {
 
         String name = Misc.getNormalizedText(ctx.identifier());
 
-        // in order not to corrupt the current symbol table with the parameters
+        // push a temporary symbol table, in order not to corrupt the current symbol table with the
+        // parameters
         symbolStack.pushSymbolTable("temp", null);
-
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
-
         symbolStack.popSymbolTable();
 
-        DeclRoutine ret;
         if (ctx.PROCEDURE() == null) {
             // function
             if (ctx.RETURN() == null) {
@@ -2421,8 +2433,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " cannot be used as a return type of stored functions");
                 }
             }
-            ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
+            DeclFunc ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
             symbolStack.putDecl(name, ret);
+            if (store != null) {
+                store.put(name, ret);
+            }
         } else {
             // procedure
             if (ctx.RETURN() != null) {
@@ -2430,11 +2445,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         Misc.getLineColumnOf(ctx), // s051
                         "procedure " + name + " may not specify a return type");
             }
-            ret = new DeclProc(ctx, name, paramList);
+            DeclProc ret = new DeclProc(ctx, name, paramList);
             symbolStack.putDecl(name, ret);
+            if (store != null) {
+                store.put(name, ret);
+            }
         }
-
-        return ret;
     }
 
     private Expr visitExpression(ParserRuleContext ctx) {
@@ -2871,5 +2887,46 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             this.hasError = true;
             this.errMsg = msg;
         }
+    }
+
+    private Map<String, DeclRoutine> previsitDeclarations(Iterable<Declare_specContext> declSpecs) {
+
+        Map<String, DeclRoutine> ret = new HashMap<>();
+
+        // Scan the declarations for the procedures and functions (routines)
+        // in order for the effect of their forward declarations.
+        // Variables and constants are also scanned to support their %type appearing in the
+        // parameter and/or return types of the routines
+
+        symbolStack.pushSymbolTable("temp", null);
+        for (Declare_specContext ds : declSpecs) {
+
+            ParserRuleContext d;
+
+            d = ds.item_declaration();
+            if (d != null) {
+                Item_declarationContext item = (Item_declarationContext) d;
+                d = item.constant_declaration();
+                if (d != null) {
+                    // case of constant_declaration
+                    previsitConstant_declaration((Constant_declarationContext) d);
+                } else {
+                    d = item.variable_declaration();
+                    if (d != null) {
+                        // case of variable_declaration
+                        previsitVariable_declaration((Variable_declarationContext) d);
+                    }
+                }
+            } else {
+                d = ds.routine_definition();
+                if (d != null) {
+                    // case of routine_definition
+                    previsitRoutine_definition((Routine_definitionContext) d, ret);
+                }
+            }
+        }
+        symbolStack.popSymbolTable(); // pop the temporary symbol table
+
+        return ret;
     }
 }
