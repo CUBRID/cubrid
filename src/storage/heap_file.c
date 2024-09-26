@@ -8030,6 +8030,20 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      /* stop */
 		      break;
 		    }
+
+		  if (thread_p->_unload_cnt_parallel_process > 1)
+		    {
+		      assert (thread_p->_unload_parallel_process_idx >= 0
+			      && thread_p->_unload_parallel_process_idx < thread_p->_unload_cnt_parallel_process);
+		      if ((oid.pageid % thread_p->_unload_cnt_parallel_process) !=
+			  thread_p->_unload_parallel_process_idx)
+			{
+			  scan = S_END;
+			  oid.slotid = -1;
+			  break;
+			}
+		    }
+
 		  if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
 		    {
 		      /* skip the header */
@@ -18735,6 +18749,10 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
   PGBUF_WATCHER old_pg_watcher;
   SCAN_CODE scan = S_SUCCESS;
 
+  /* we couldn't find any testcase for this function. */
+  /* but if this assert is called, it indicates that this function is being used. */
+  assert (false);
+
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
@@ -25078,16 +25096,26 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	  return S_ERROR;
 	}
 
-      const bool need_check_visibility = scan_cache->mvcc_snapshot != NULL
-	&& scan_cache->mvcc_snapshot->snapshot_fnc != NULL && class_oid != NULL
-	&& !mvcc_is_mvcc_disabled_class (class_oid)
-	&& scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) !=
-	SNAPSHOT_SATISFIED;
-
-      if (!need_check_visibility)
+      if (class_oid != NULL)
 	{
-	  *recdes = *peeked_recdes;
-	  return scan;
+	  if (!mvcc_is_mvcc_disabled_class (class_oid))
+	    {
+	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+		{
+		  if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
+		      SNAPSHOT_SATISFIED)
+		    {
+		      *recdes = *peeked_recdes;
+		      return scan;
+		    }
+		}
+	    }
+	  else
+	    {
+	      /* mvcc_disabled_class */
+	      *recdes = *peeked_recdes;
+	      return scan;
+	    }
 	}
       /* fall through.. */
     }

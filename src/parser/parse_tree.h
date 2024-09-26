@@ -114,6 +114,11 @@ struct json_t;
 #define PT_INTERNAL_ERROR(parser, what) \
 	pt_internal_error((parser), __FILE__, __LINE__, (what))
 
+// macros for PARSER_CONTEXT
+#define PT_IS_FOR_PL_COMPILE(parser) \
+        ((parser)->flag.is_parsing_static_sql == 1)
+
+// macros for PT_NODE */
 #define PT_IS_QUERY_NODE_TYPE(x) \
     (  (x) == PT_SELECT     || (x) == PT_UNION \
     || (x) == PT_DIFFERENCE || (x) == PT_INTERSECTION)
@@ -3419,6 +3424,7 @@ struct pt_execute_info
   XASL_ID xasl_id;		/* XASL id */
   CUBRID_STMT_TYPE stmt_type;	/* statement type */
   int recompile;		/* not 0 if this statement should be recompiled */
+  int do_cache;			/* query uses result cache */
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */
 };

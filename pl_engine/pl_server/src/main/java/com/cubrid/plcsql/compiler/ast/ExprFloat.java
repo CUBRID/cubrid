@@ -55,9 +55,9 @@ public class ExprFloat extends Expr {
     public String javaCode(Set<String> javaTypesUsed) {
         switch (ty.idx) {
             case Type.IDX_DOUBLE:
-                return "new Double(\"" + val + "\")";
+                return "checkDouble(new Double(\"" + val + "\"))";
             case Type.IDX_FLOAT:
-                return "new Float(\"" + val + "\")";
+                return "checkFloat(new Float(\"" + val + "\"))";
             case Type.IDX_NUMERIC:
                 javaTypesUsed.add("java.math.BigDecimal");
                 return "new BigDecimal(\"" + val + "\")";

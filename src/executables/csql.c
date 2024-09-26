@@ -1843,6 +1843,7 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
       return;
     }
 
+  bool print_header = true;
   do
     {
       errors = csql_execute_query ("CALL dbms_output.get_line (:pl_output_str, :pl_output_status);");
@@ -1859,6 +1860,12 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
 	      DB_VALUE *str_val = pt_find_value_of_label ("pl_output_str");
 	      if (str_val)
 		{
+		  if (print_header)
+		    {
+		      print_header = false;
+		      fprintf (csql_Output_fp, "<DBMS_OUTPUT>\n");
+		      fprintf (csql_Output_fp, "====\n");
+		    }
 		  const char *str = db_get_string (str_val);
 		  fprintf (csql_Output_fp, "%s\n", str);
 		}
@@ -1874,6 +1881,12 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
 	}
     }
   while (status == 0);
+
+  if (!print_header)
+    {
+      // print_header is false if there was at least one server-output line.
+      fprintf (csql_Output_fp, "\n");
+    }
 }
 
 /*
@@ -2297,6 +2310,10 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
 error:
   display_error (session, stmt_start_line_no);
+  if (csql_arg->pl_server_output)
+    {
+      csql_print_server_output (csql_arg);
+    }
   logddl_set_err_code (db_error_code ());
   if (do_abort_transaction)
     {

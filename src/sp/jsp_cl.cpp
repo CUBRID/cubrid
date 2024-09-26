@@ -716,8 +716,10 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (error == NO_ERROR)
     {
-      /* Save the method result. */
+      /* Save the method result and its domain */
       statement->etc = (void *) db_value_copy (&ret_value);
+      statement = pt_bind_type_from_dbval (parser, statement, &ret_value);
+
       PT_NODE *into = statement->info.method_call.to_return_var;
 
       const char *into_label;
@@ -909,10 +911,15 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
+      assert (statement->sql_user_text && statement->sql_user_text_len);
       compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
       compile_request.owner.assign ((owner_name[0] == '\0') ? au_get_current_user_name () : owner_name);
 
+      // TODO: Only the owner's rights is supported for PL/CSQL
+      au_perform_push_user (sp_info.owner);
       err = plcsql_transfer_file (compile_request, compile_response);
+      au_perform_pop_user ();
+
       if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
 	{
 	  decl = compile_response.java_signature.c_str ();

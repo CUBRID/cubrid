@@ -7599,6 +7599,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1, *r2, *r3;
 
   r1 = pt_print_bytes (parser, p->info.sp.name);
+
   q = pt_append_nulstring (parser, q, "create ");
   if (p->info.sp.or_replace)
     {
@@ -7606,7 +7607,14 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp.type));
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_varchar (parser, q, r1);
+  if (parser->custom_print & (PT_PRINT_NO_SPECIFIED_USER_NAME | PT_PRINT_NO_CURRENT_USER_NAME))
+    {
+      q = pt_append_name (parser, q, p->info.sp.name->info.name.original);
+    }
+  else
+    {
+      q = pt_append_varchar (parser, q, r1);
+    }
 
   r2 = pt_print_bytes_l (parser, p->info.sp.param_list);
   q = pt_append_nulstring (parser, q, "(");
@@ -12326,7 +12334,18 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
   if (code == PT_GENERIC)
     {
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
-      q = pt_append_nulstring (parser, q, p->info.function.generic_name);
+      if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
+	{
+	  q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (p->info.function.generic_name));
+	}
+      else if (parser->custom_print & PT_PRINT_NO_CURRENT_USER_NAME)
+	{
+	  q = pt_append_name (parser, q, pt_get_name_without_current_user_name (p->info.function.generic_name));
+	}
+      else
+	{
+	  q = pt_append_name (parser, q, p->info.function.generic_name);
+	}
       q = pt_append_nulstring (parser, q, "(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
@@ -17548,6 +17567,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	  }
 	  break;
 	case PT_PLUS:
+	case PT_STRCAT:
 	case PT_MINUS:
 	case PT_TIMES:
 	case PT_DIVIDE:

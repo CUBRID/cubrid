@@ -544,7 +544,6 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -i, --input-class-file=FILE 테이블 이름이 기입된 파일; 기본값: 모든 클래스\n\
       --include-reference     참조되는 테이블 포함; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
       --input-class-only      명세한 클래스만 처리; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
-      --lo-count=COUNT        하나의 디렉터리에 저장할 lo 파일 개수; 기본값: 0\n\
       --estimated-size=NUMBER 인스턴스의 대략적인 개수; 기본값: 계산됨\n\
       --cached-pages=NUMBER   cached 페이지 개수; 기본값: 계산됨\n\
   -O, --output-path=PATH      출력 디렉터리 경로; 기본값: 현재 작업 디렉터리\n\
@@ -554,8 +553,10 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
       --hash-file=FILE        해쉬 파일이름; 기본값: 파일을 생성하기 위해 tmpnam()을 사용함\n\
       --latest-image          오브젝트 (객체)를 언로드할 때, 데이터 볼륨의 최신 이미지를 언로드합니다. 이 과정에서 로그 볼륨은 참조되지 않으며, MVCC는 무시됩니다.\n\
                               커밋되지않은 데이터와 제거되었지만 배큠되지 않은 데이터가 포함될 수 있습니다; 기본 값: 사용 안 함\n\
+  -t, --thread-count=COUNT    사용할 스레드 개수를 지정; 기본값: 1 최대값: 127\n\
+      --enhanced-estimates    언로드할 테이블의 정확한 레코드 건수 수집; 기본값 : 미적용\n\
   -v, --verbose               많은 상태 메시지를 출력; 기본값: 출력 안 함\n\
-      --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\
+      --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\      
   -S, --SA-mode               독립 모드 실행\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
       --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
@@ -643,7 +644,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' �
   -N, --node-list                  CUBRID heartbeat에 의해 관리되는 노드 조회\n\
   -L, --process-list               CUBRID heartbeat에 의해 관리되는 로컬 프로세스 정보 조회\n\
   -p, --ping-host                  CUBRID heartbeat를 위한 ping 호스트 정보 조회\n\
-  -D, --dereg-process=PID          대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
+  -D, --dereg-process=PID          CUBRID heartbeat에 의해 관리되는 대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
   -F, --reconfig-node-list         CUBRID heartbeat 노드 설정 정보를 재 적용\n\
   -V, --verbose                    많은 상태 메시지 출력; 기본값: 출력하지 않음\n
 28 알 수 없는 명령입니다: %1$s\n

@@ -483,6 +483,17 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 
   return ptr;
 #else /* SA_MODE */
+
+  if (db_is_utility_thread ())
+    {
+      ptr = malloc (size);
+      if (ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	}
+      return ptr;
+    }
+
   if (!db_on_server)
     {
       return db_ws_alloc (size);
@@ -613,6 +624,16 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
   if (ptr == NULL)
     {
       return db_private_alloc (thrd, size);
+    }
+
+  if (db_is_utility_thread ())
+    {
+      new_ptr = realloc (ptr, size);
+      if (new_ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	}
+      return new_ptr;
     }
 
   if (!db_on_server)
@@ -795,6 +816,12 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 
 #else /* SA_MODE */
 
+  if (db_is_utility_thread ())
+    {
+      free (ptr);
+      return;
+    }
+
   if (!db_on_server)
     {
       db_ws_free (ptr);
@@ -813,6 +840,7 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
       if (h->magic != PRIVATE_MALLOC_HEADER_MAGIC)
 	{
 	  /* assertion point */
+	  assert (false);
 	  return;
 	}
 

@@ -488,7 +488,8 @@ char *g_query_string;
 int g_query_string_len;
 int g_original_buffer_len;
 
-static char *g_plcsql_text;
+static int pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start, int spec_end, int end);
+static int g_plcsql_text_pos;
 
 /*
  * The behavior of location propagation when a rule is matched must
@@ -552,7 +553,6 @@ static char *g_plcsql_text;
 
 %}
 
-%initial-action {yybuffer_pos = 0;}
 %locations
 %glr-parser
 %define parse.error verbose
@@ -1678,6 +1678,7 @@ static char *g_plcsql_text;
 %token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
+%token <cptr> SEMICOLON
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
 %token <cptr> SERVER
@@ -1748,9 +1749,9 @@ stmt_done
 	;
 
 stmt_list
-	: stmt_list ';' %dprec 1
+	: stmt_list SEMICOLON %dprec 1
                 {{ /* empty line*/ }}
-        | stmt_list ';' stmt %dprec 2
+        | stmt_list SEMICOLON stmt %dprec 2
 		{{
 
 			if ($3 != NULL)
@@ -1794,7 +1795,7 @@ stmt_list
 			  }
 
 		DBG_PRINT}}
-        | ';'
+        | SEMICOLON
                 {{ /* empty line*/ }}
 	;
 
@@ -1872,7 +1873,7 @@ stmt
 			allow_attribute_ordering = false;
 			parser_hidden_incr_list = NULL;
 
-                        g_plcsql_text = NULL;
+                        g_plcsql_text_pos = -1;
                         assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
 		DBG_PRINT}}
 	stmt_
@@ -3076,6 +3077,26 @@ create_stmt
 			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
+                            PT_NODE* body = $9;
+                            if (body->info.sp_body.lang == SP_LANG_PLCSQL && body->info.sp_body.impl == NULL)
+                              {
+                                // In particular, this happens for two cases:
+                                //   . cubrid loaddb -s <file> ... (loading a schema file with loaddb utility)
+                                //   . csql -i <file> --no-single-line ... (running csql with -i and --no-single-line)
+                                // in which case parser->original_buffer is NULL.
+                                // Without the original buffer, We need to get the SQL user text from the file.
+                                assert(this_parser->original_buffer == NULL);
+                                assert(this_parser->file);
+
+                                int start = @1.buffer_pos - 6;  // 6 : length of "create"
+                                int spec_start = @8.buffer_pos; // right after is_or_as
+                                int spec_end = @9.buffer_pos;
+                                int end = @$.buffer_pos;
+                                if (pt_set_plcsql_body_impl(node, body, start, spec_start, spec_end, end) < 0) {
+                                    PT_ERROR (this_parser, node, "failed to get the user SQL from the input file");
+                                }
+                              }
+
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_PROCEDURE;
@@ -3111,6 +3132,26 @@ create_stmt
 			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
+                            PT_NODE* body = $11;
+                            if (body->info.sp_body.lang == SP_LANG_PLCSQL && body->info.sp_body.impl == NULL)
+                              {
+                                // In particular, this happens for two cases:
+                                //   . cubrid loaddb -s <file> ... (loading a schema file with loaddb utility)
+                                //   . csql -i <file> --no-single-line ... (running csql with -i and --no-single-line)
+                                // in which case parser->original_buffer is NULL.
+                                // Without the original buffer, We need to get the SQL user text from the file.
+                                assert(this_parser->original_buffer == NULL);
+                                assert(this_parser->file);
+
+                                int start = @1.buffer_pos - 6;      // 6 : length of "create"
+                                int spec_start = @10.buffer_pos;    // right after is_or_as
+                                int spec_end = @11.buffer_pos;
+                                int end = @$.buffer_pos;
+                                if (pt_set_plcsql_body_impl(node, body, start, spec_start, spec_end, end) < 0) {
+                                    PT_ERROR (this_parser, node, "failed to get the user SQL from the input file");
+                                }
+                              }
+
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_FUNCTION;
@@ -12784,26 +12825,20 @@ opt_lang_plcsql
         ;
 
 pl_language_spec
-	: opt_lang_plcsql plcsql_text opt_identifier
+	: opt_lang_plcsql plcsql_text
 		{{ DBG_TRACE_GRAMMAR(pl_language_spec, : opt_lang_plcsql plcsql_text);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_SP_BODY);
 
 			if (node)
 			  {
-                            int len;
-
-                            assert(g_plcsql_text != NULL);
-
-                            if ($3) {
-                                len = $2 + strlen($3->info.name.original);
-                                parser_free_tree(this_parser, $3);
-                            } else {
-                                len = $2;
-                            }
-
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
-			    node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(g_plcsql_text, len);
+                            if (g_query_string) {
+                                node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(
+                                        g_query_string + g_plcsql_text_pos, $2);
+                            } else {
+                                node->info.sp_body.impl = NULL; // set later
+                            }
 			    node->info.sp_body.direct = 1;
 			  }
 
@@ -12840,9 +12875,9 @@ plcsql_text
         | plcsql_text_part
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, | plcsql_text_part);
 
-                        assert(g_plcsql_text == NULL);
-                        g_plcsql_text = g_query_string + @$.buffer_pos;
+                        assert(g_plcsql_text_pos == -1);
                         $$ = strlen($1);
+                        g_plcsql_text_pos = @$.buffer_pos - $$;
 
 		DBG_PRINT}}
         ;
@@ -26344,7 +26379,7 @@ parser_main (PARSER_CONTEXT * parser)
 {
   long desc_index = 0;
   long i, top;
-  int rv;
+  int rv, yybuffer_pos_save;
 
   PARSER_CONTEXT *this_parser_saved;
 
@@ -26360,6 +26395,7 @@ parser_main (PARSER_CONTEXT * parser)
   dbcs_start_input ();
 
   yycolumn = yycolumn_end = 1;
+  yybuffer_pos_save = yybuffer_pos;
   yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
@@ -26371,6 +26407,11 @@ parser_main (PARSER_CONTEXT * parser)
 
   pt_initialize_hint(parser, parser_hint_table); 
   rv = yyparse ();
+
+  // parser_main can be reentered while executing statements loaded by loaddb -s.
+  // During the loaddb -s, the yybuffer_pos must not be currupted.
+  yybuffer_pos = yybuffer_pos_save;
+
   pt_cleanup_hint (parser, parser_hint_table);
 
   if (pt_has_error (parser) || parser->stack_top <= 0 || !parser->node_stack)
@@ -26454,6 +26495,9 @@ parse_one_statement (int state)
       csql_yyset_lineno (1);
       yycolumn = yycolumn_end = 1;
 
+      // init only for the first time in order to make csql_yylloc.buffer_pos identical to the file pos
+      yybuffer_pos=0;
+
       return 0;
     }
 
@@ -26461,7 +26505,6 @@ parse_one_statement (int state)
 
   parser_yyinput_single_mode = 1;
 
-  yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
   csql_yylloc.buffer_pos=0;
@@ -26479,8 +26522,7 @@ parse_one_statement (int state)
   else
     parser_statement_OK = 1;
 
-  if (!parser_yyinput_single_mode)	/* eof */
-    return 1;
+  parser_yyinput_single_mode = 0;
 
   return 0;
 }
@@ -28534,4 +28576,51 @@ pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING
     }
 
   password_add_offset (&this_parser->hide_pwd_info, start, end, is_add_comma, en_add_pwd_string);
+}
+
+static int
+pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start, int spec_end, int end)
+{
+    // In (at least) following two cases, the control reaches here.
+    //  . csql -i <file> --no-single-line ...
+    //  . cubrid loaddb -s <file> ...
+
+    // In these cases, parser->original_buffer is null and
+    // node->sql_user_text must be got from this_parser->file.
+    // The arguments start, spec_start, spec_end, and end are got from the tokens' buffer_pos
+    // but they are also actual positions in the file in these two cases.
+
+    int r, read_sz = end - start;   // texts from pos start to pos (end - 1)
+    char* buff = (char*) parser_alloc(this_parser, read_sz + 1);
+
+    int file_pos = ftell(this_parser->file);
+
+    r = fseek(this_parser->file, start, SEEK_SET);
+    if (r != 0) {
+        return -1;
+    }
+
+    r = (int) fread(buff, 1, read_sz, this_parser->file);
+    if (r != read_sz) {
+        return -1;
+    }
+
+    r = fseek(this_parser->file, file_pos, SEEK_SET);   // restore it to the original position
+    if (r != 0){
+        return -1;
+    }
+
+    if (strncasecmp("create", buff, 6) != 0) {
+        return -1;
+    }
+
+    buff[read_sz] = '\0';
+    char* impl = buff + (spec_start - start);
+
+    node->sql_user_text = buff;
+    node->sql_user_text_len = read_sz;
+
+    body->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(impl, (spec_end - spec_start));
+
+    return 0;
 }
