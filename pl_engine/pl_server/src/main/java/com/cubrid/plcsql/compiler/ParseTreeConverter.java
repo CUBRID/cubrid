@@ -36,12 +36,12 @@ import static com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser.*;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.value.DateTimeParser;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParser.Create_routineContext;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsLexer;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser;
 import com.cubrid.plcsql.compiler.ast.*;
-import com.cubrid.plcsql.compiler.error.SemanticError;
-import com.cubrid.plcsql.compiler.error.UndeclaredId;
+import com.cubrid.plcsql.compiler.error.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
 import java.math.BigDecimal;
@@ -228,10 +228,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public Unit visitCreate_routine(Create_routineContext ctx) {
-
         DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
         postvisitRoutine_definition(ctx.routine_definition());
-        return new Unit(ctx, autonomousTransaction, connectionRequired, imports, decl);
+        return new Unit(ctx, autonomousTransaction, connectionRequired, decl, spRevision);
     }
 
     @Override
@@ -1248,6 +1247,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private void postvisitRoutine_definition(Routine_definitionContext ctx) {
 
+        String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
         if (ctx.LANGUAGE() != null
                 && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
             int[] lineColumn = Misc.getLineColumnOf(ctx);
@@ -1257,7 +1257,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
         }
 
-        String name = Misc.getNormalizedText(ctx.identifier());
         boolean isFunction = (ctx.PROCEDURE() == null);
         symbolStack.pushSymbolTable(
                 name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
