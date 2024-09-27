@@ -387,7 +387,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         String code =
                 String.format(
-                        "final Query %s = new Query(\"%s\"); // param-ref-counts: %s, param-marks: %s",
+                        "final Query %s = new Query(\"%s\"); // param-ref-counts: %s, param-num-of-host-expr: %s",
                         node.name,
                         node.staticSql.rewritten,
                         Arrays.toString(node.paramRefCounts),
@@ -1361,8 +1361,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "{ // cursor open",
                 "  %'+DUPLICATE-CURSOR-ARG'%",
-                "  %'CURSOR'%.open(conn,",
-                "    %'+HOST-EXPRS'%);",
+                "  %'CURSOR'%.open(conn, new Object[] {",
+                "    %'+HOST-EXPRS'%});",
                 "}"
             };
 
