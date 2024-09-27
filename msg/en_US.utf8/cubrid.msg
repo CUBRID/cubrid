@@ -1454,7 +1454,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1362 Dropping system generated stored procedure is not allowed.
 1363 PL/CSQL Stored procedure/function does not support Invoker's rights.
 
-1364 Last Error
+1364 Only DBA and the owner can grant the %1$s privilege.
+
+1365 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

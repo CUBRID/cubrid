@@ -315,33 +315,32 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 
   AU_DISABLE (save);
   MOP sp_owner = jsp_get_owner (obj_mop);
-  if ((error = au_fetch_class_force (obj_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
+  if (ws_is_same_object (user, Au_user))
     {
-      if (ws_is_same_object (user, Au_user))
+      /*
+       * Treat grant to self condition as a success only. Although this
+       * statement is a no-op, it is not an indication of no-success.
+       * The "privileges" are indeed already granted to self.
+       * Note: Revoke from self is an error, because this cannot be done.
+       *
+       * The WITH GRANT OPTION is not yet supported for stored procedures.
+       * Therefore, only the DBA, member of the DBA group, and the owner can grant privileges.
+       */
+      if (!au_is_dba_group_member (Au_user) && !ws_is_same_object (sp_owner, Au_user))
 	{
-	  /*
-	   * Treat grant to self condition as a success only. Although this
-	   * statement is a no-op, it is not an indication of no-success.
-	   * The "privileges" are indeed already granted to self.
-	   * Note: Revoke from self is an error, because this cannot be done.
-	   *
-	   * The WITH GRANT OPTION is not yet supported for stored procedures.
-	   * However, since displaying a different error message from au_grant_class() could confuse users,
-	   * the check_grant_option() function was added to ensure the same error message is displayed.
-	   */
-	  error = check_grant_option (obj_mop, classobj, type);
-	  if (error != NO_ERROR)
-	    {
-	      return (error);
-	    }
+	  error = ER_AU_OWNER_ONLY_GRANT_PRIVILEGE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "EXECUTE");
+	  return (error);
 	}
-      else if (ws_is_same_object (sp_owner, user))
+    }
+  else
+    {
+      if (ws_is_same_object (sp_owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
 	}
-      //else if (au_is_dba_group_member (Au_user) || ws_is_same_object (sp_owner, Au_user))
-      else if ((error = check_grant_option (obj_mop, classobj, type)) == NO_ERROR)
+      else if (au_is_dba_group_member (Au_user) || ws_is_same_object (sp_owner, Au_user))
 	{
 	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
 	    {
@@ -433,7 +432,6 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	       * recalculate it the next time it is referenced
 	       */
 	      //reset_cache_for_user_and_class (classobj);
-	      Au_cache.reset_cache_for_user_and_class (classobj);
 
 	      /*
 	       * Make sure any cached parse trees are rebuild.  This proabably
@@ -441,6 +439,12 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	       */
 	      sm_bump_local_schema_version ();
 	    }
+	}
+      else
+	{
+	  error = ER_AU_OWNER_ONLY_GRANT_PRIVILEGE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "EXECUTE");
+	  return (error);
 	}
     }
 
