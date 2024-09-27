@@ -3528,9 +3528,9 @@ do_clear_subquery_cache_flag (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg
 }
 
 static PT_NODE *
-do_check_cte_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+do_check_cte_or_system_class_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
-  bool *has_cte_spec = (bool *) arg;
+  bool *has_cte_or_system_class_or_dblink = (bool *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3541,7 +3541,26 @@ do_check_cte_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *cont
 
   if (stmt->info.spec.cte_pointer)
     {
-      *has_cte_spec = true;
+      *has_cte_or_system_class_or_dblink = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  if (stmt->info.spec.entity_name)
+    {
+      const char *class_name = stmt->info.spec.entity_name->info.name.original;
+
+      if (class_name)
+	{
+	  if (sm_check_system_class_by_name (class_name))
+	    {
+	      *has_cte_or_system_class_or_dblink = true;
+	      *continue_walk = PT_STOP_WALK;
+	    }
+	}
+    }
+  else if (stmt->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+    {
+      *has_cte_or_system_class_or_dblink = true;
       *continue_walk = PT_STOP_WALK;
     }
 
@@ -3552,6 +3571,8 @@ static PT_NODE *
 do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int *err = (int *) arg;
+  bool has_cte_or_system_class_or_dblink = false;
+  PT_NODE *saved;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3574,6 +3595,31 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       return stmt;
 
     case PT_SELECT:
+      /* 
+       * SYSDATE, SERIAL related functions and other queries that should not be cached
+       * The parser sets the do_not_cache flag for these queries.
+       */
+      if (stmt->info.query.flag.do_not_cache)
+	{
+	  return stmt;
+	}
+
+      if (stmt->info.query.hint & PT_HINT_QUERY_CACHE)
+	{
+	  /* exclude cache from CTE, system class, or dblink referencing */
+	  saved = stmt->next;
+	  stmt->next = NULL;
+	  parser_walk_tree (parser, stmt, do_check_cte_or_system_class_spec,
+			    &has_cte_or_system_class_or_dblink, NULL, NULL);
+	  stmt->next = saved;
+
+	  if (has_cte_or_system_class_or_dblink)
+	    {
+	      stmt->info.query.flag.do_cache = 0;
+	      stmt->info.query.flag.do_not_cache = 1;
+	      goto stop_walk;
+	    }
+	}
       break;
 
     default:
@@ -3585,16 +3631,6 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
-      bool has_cte_spec = false;
-
-      /* exclude cache from CTE referencing */
-      parser_walk_tree (parser, stmt, do_check_cte_spec, &has_cte_spec, NULL, NULL);
-
-      if (has_cte_spec)
-	{
-	  goto stop_walk;
-	}
-
       *err = do_prepare_subquery (parser, stmt);
 
       if (*err != NO_ERROR)
@@ -14969,6 +15005,11 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (parser->flag.is_auto_commit)
     {
       query_flag |= TRAN_AUTO_COMMIT;
+    }
+
+  if (statement->info.execute.do_cache)
+    {
+      query_flag |= RESULT_CACHE_REQUIRED;
     }
 
   if (query_trace == true)
