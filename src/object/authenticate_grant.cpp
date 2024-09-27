@@ -309,7 +309,6 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
   MOP auth;
   DB_SET *grants;
   int current, save = 0, gindex;
-  SM_CLASS *classobj;
 
   assert (type == AU_EXECUTE);
 
