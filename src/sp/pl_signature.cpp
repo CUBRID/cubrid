@@ -142,8 +142,7 @@ namespace cubpl
   size_t
   pl_arg::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = 0;
-    size += serializator.get_packed_int_size (size); // arg_size
+    size_t size = serializator.get_packed_int_size (start_offset); // arg_size
     if (arg_size > 0)
       {
 	size += serializator.get_packed_int_vector_size (size, arg_size); // arg_mode
@@ -361,8 +360,7 @@ namespace cubpl
   size_t
   pl_signature::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = 0;
-    size += serializator.get_packed_int_size (size); /* type */
+    size_t size = serializator.get_packed_int_size (start_offset); /* type */
 
     size += serializator.get_packed_c_string_size (name, strlen (name), size); // name
     size += serializator.get_packed_bool_size (size); // has auth
@@ -464,8 +462,7 @@ namespace cubpl
   size_t
   pl_signature_array::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = 0;
-    size += serializator.get_packed_int_size (size); /* num_sigs */
+    size_t size = serializator.get_packed_int_size (start_offset); /* num_sigs */
     for (int i = 0; i < num_sigs; i++)
       {
 	size += sigs[i].get_packed_size (serializator, size);
