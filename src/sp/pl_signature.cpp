@@ -26,6 +26,9 @@
 #include "thread_manager.hpp"
 #endif
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 #define CHECK_NULL_AND_FREE(owner, val)                        \
   do {                                                  \
     if (val != nullptr)                                 \

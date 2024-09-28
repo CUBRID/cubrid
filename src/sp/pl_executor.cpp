@@ -33,15 +33,12 @@
 #include "method_struct_oid_info.hpp"
 #include "method_struct_parameter_info.hpp"
 
-
-
 #include "jsp_comm.h"
-
 #include "pl_query_cursor.hpp"
-
 #include "sp_code.hpp"
 
-
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 namespace cubpl
 {
   using namespace cubmethod;
@@ -186,11 +183,6 @@ namespace cubpl
 
 	    operand = operand->next;
 	  }
-      }
-
-    for (const DB_VALUE &val : m_args)
-      {
-
       }
 
     return error;

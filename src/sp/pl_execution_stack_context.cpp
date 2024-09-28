@@ -22,6 +22,8 @@
 #include "jsp_comm.h"
 #include "method_connection_pool.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 namespace cubpl
 {
   execution_stack::execution_stack (cubthread::entry *thread_p)

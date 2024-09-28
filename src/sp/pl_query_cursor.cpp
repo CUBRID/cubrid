@@ -24,6 +24,9 @@
 #include "log_impl.h"
 #include "object_representation.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubpl
 {
   query_cursor::query_cursor (cubthread::entry *thread_p, QMGR_QUERY_ENTRY *query_entry_p, bool oid_included)
