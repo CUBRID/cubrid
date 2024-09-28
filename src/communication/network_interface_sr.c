@@ -10528,7 +10528,7 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
   if (error_code == NO_ERROR)
     {
       error_code = executor.execute (ret_value);
-    } 
+    }
 
   packing_packer packer;
   cubmem::extensible_block eb;

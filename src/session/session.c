@@ -3177,8 +3177,7 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
 }
 
 int
-session_get_pl_session (THREAD_ENTRY * thread_p,
-				    REFPTR (PL_SESSION, pl_session_ref_ptr))
+session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr))
 {
   SESSION_STATE *state_p = NULL;
 
