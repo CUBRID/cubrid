@@ -430,7 +430,7 @@ namespace cubpl
   {
     if (sigs)
       {
-	delete sigs;
+	delete [] sigs;
 	sigs = nullptr;
       }
   }
