@@ -339,17 +339,8 @@ jsp_check_return_type_supported (DB_TYPE type)
     case DB_TYPE_CHAR:
     case DB_TYPE_BIGINT:
     case DB_TYPE_DATETIME:
-      return NO_ERROR;
-      break;
     case DB_TYPE_RESULTSET:
-      if (!jsp_is_prepare_call ())
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
-	}
-      else
-	{
-	  return NO_ERROR;
-	}
+      return NO_ERROR;
       break;
 
     default:
