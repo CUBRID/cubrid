@@ -18,6 +18,7 @@
 
 #include "pl_signature.hpp"
 
+#include <new>
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
 #include "sp_constants.hpp"
@@ -429,11 +430,11 @@ namespace cubpl
 
   pl_signature_array::~pl_signature_array ()
   {
-    for (int i = 0; i < num_sigs; i++)
+    if (sigs)
       {
-	sigs[i].~pl_signature ();
+	delete sigs;
+	sigs = nullptr;
       }
-    CHECK_NULL_AND_FREE (owner, sigs);
   }
 
   void
@@ -452,10 +453,9 @@ namespace cubpl
     deserializator.unpack_int (num_sigs);
     if (num_sigs > 0)
       {
-	sigs = (pl_signature *) db_private_alloc (NULL, sizeof (pl_signature) * (num_sigs));
+	sigs = new pl_signature [num_sigs];
 	for (int i = 0; i < num_sigs; i++)
 	  {
-	    new (&sigs[i]) pl_signature ();
 	    sigs[i].unpack (deserializator);
 	  }
       }
