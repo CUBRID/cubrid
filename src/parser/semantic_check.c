@@ -7571,11 +7571,14 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 			   attribute_name (parser, attr), pt_short_print (parser, col));
 	    }
 	}
+#if 0
+      /* spec change: no type check for creating view */
       else if (pt_check_vclass_attr_qspec_compatible (parser, attr, col) != PT_UNION_COMP)
 	{
 	  PT_ERRORmf2 (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
 		       attribute_name (parser, attr), pt_short_print (parser, col));
 	}
+#endif
 
       /* any shared attribute must correspond to NA in the query_spec */
       if (is_shared_attribute (parser, attr) && col->type_enum != PT_TYPE_NA && col->type_enum != PT_TYPE_NULL)
