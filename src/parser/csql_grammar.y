@@ -1354,7 +1354,6 @@ static int g_plcsql_text_pos;
 %token PROMOTE
 %token QUERY
 %token READ
-%token REBUILD
 %token RECURSIVE
 %token REF
 %token REFERENCES
@@ -1541,6 +1540,7 @@ static int g_plcsql_text_pos;
 %token <cptr> COLUMNS
 %token <cptr> COMMENT
 %token <cptr> COMMITTED
+%token <cptr> COMPILE
 %token <cptr> COST
 %token <cptr> CRITICAL
 %token <cptr> CUME_DIST
@@ -1662,6 +1662,7 @@ static int g_plcsql_text_pos;
 %token <cptr> QUEUES
 %token <cptr> RANGE_
 %token <cptr> RANK
+%token <cptr> REBUILD
 %token <cptr> REGEXP_COUNT
 %token <cptr> REGEXP_INSTR
 %token <cptr> REGEXP_LIKE
@@ -4139,7 +4140,7 @@ alter_stmt
 	| ALTER				/* 1 */
 	  procedure_or_function		/* 2 */
 	  procedure_or_function_name    /* 3 */
-	  opt_owner_clause		/* 4 */
+	  opt_owner_clause	        /* 4 */
 	  opt_comment_spec		/* 5 */
 		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function procedure_or_function_name opt_owner_clause opt_comment_spec);
 
@@ -4151,6 +4152,7 @@ alter_stmt
 			    node->info.sp.type = ($2 == 1) ? PT_SP_PROCEDURE : PT_SP_FUNCTION;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
 			    node->info.sp.owner = $4;
+			    node->info.sp.recompile = 0;
 			    node->info.sp.comment = $5;
 			    if ($4 == NULL && $5 == NULL)
 			      {
@@ -4158,6 +4160,26 @@ alter_stmt
 			                   MSGCAT_SET_PARSER_SYNTAX,
 			                   MSGCAT_SYNTAX_INVALID_ALTER);
 			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  procedure_or_function		/* 2 */
+	  procedure_or_function_name    /* 3 */
+	  COMPILE	                /* 4 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function procedure_or_function_name COMPILE);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_STORED_PROCEDURE);
+
+			if (node != NULL)
+			  {
+			    node->info.sp.name = $3;
+			    node->info.sp.type = ($2 == 1) ? PT_SP_PROCEDURE : PT_SP_FUNCTION;
+			    node->info.sp.ret_type = PT_TYPE_NONE;
+			    node->info.sp.recompile = 1;
 			  }
 
 			$$ = node;
@@ -23115,6 +23137,7 @@ identifier
 	| COLUMNS                {{ DBG_TRACE_GRAMMAR(identifier, | COLUMNS            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| COMMENT                {{ DBG_TRACE_GRAMMAR(identifier, | COMMENT            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| COMMITTED              {{ DBG_TRACE_GRAMMAR(identifier, | COMMITTED          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| COMPILE                {{ DBG_TRACE_GRAMMAR(identifier, | COMPILE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| COST                   {{ DBG_TRACE_GRAMMAR(identifier, | COST               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CRITICAL               {{ DBG_TRACE_GRAMMAR(identifier, | CRITICAL           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CUME_DIST              {{ DBG_TRACE_GRAMMAR(identifier, | CUME_DIST          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23233,6 +23256,7 @@ identifier
 	| QUEUES                 {{ DBG_TRACE_GRAMMAR(identifier, | QUEUES             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| RANGE_                 {{ DBG_TRACE_GRAMMAR(identifier, | RANGE_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| RANK                   {{ DBG_TRACE_GRAMMAR(identifier, | RANK               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REBUILD                {{ DBG_TRACE_GRAMMAR(identifier, | REBUILD            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_COUNT           {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_COUNT       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_INSTR           {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_INSTR       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_LIKE            {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_LIKE        ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}

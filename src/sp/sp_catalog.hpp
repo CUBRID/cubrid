@@ -144,6 +144,9 @@ int sp_add_stored_procedure (SP_INFO &info);
 int sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info);
 int sp_add_stored_procedure_code (SP_CODE_INFO &info);
 
+// update into system catalogs
+int sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info);
+
 // misc
 void sp_normalize_name (std::string &s);
 void sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth);
