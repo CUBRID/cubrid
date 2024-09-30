@@ -4597,7 +4597,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_MNT_WAITING_THREAD,
    PRM_NAME_MNT_WAITING_THREAD,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    &prm_mnt_waiting_thread_flag,
    (void *) &prm_mnt_waiting_thread_default,
