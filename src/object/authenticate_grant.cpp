@@ -226,6 +226,13 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
 		  if ((error == NO_ERROR) && upd_bits)
 		    {
+		      if (grant_option == 0)
+			{
+			  if (current - (int) type)
+			    {
+			      grant_option = 1;
+			    }
+			}
 		      error =
 			      accessor.update_auth (DB_OBJECT_CLASS, Au_user, user, class_mop, upd_bits,
 						    (grant_option) ? upd_bits : DB_AUTH_NONE);
