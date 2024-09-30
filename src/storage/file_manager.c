@@ -8535,12 +8535,46 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
     {
       /* expand file by one sector */
       FILE_PARTIAL_SECTOR partsect_new = FILE_PARTIAL_SECTOR_INITIALIZER;
-
+    retry:
       /* reserve a sector */
       error_code =
 	disk_reserve_sectors (thread_p, DB_TEMPORARY_DATA_PURPOSE, fhead->volid_last_expand, 1, &partsect_new.vsid);
       if (error_code != NO_ERROR)
 	{
+	  if (error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED)
+	    {
+	      file_tempcache_lock ();
+	      if (file_Tempcache.ncached_numerable > 0)
+		{
+		  if (file_destroy (thread_p, &file_Tempcache.cached_numerable->vfid, true) != NO_ERROR)
+		    {
+		      file_tempcache_unlock ();
+		      assert_release (false);
+		      goto exit;
+		    }
+		  file_Tempcache.cached_numerable = file_Tempcache.cached_numerable->next;
+		  file_Tempcache.ncached_numerable--;
+
+		  file_tempcache_unlock ();
+		  goto retry;
+		}
+	      else if (file_Tempcache.ncached_not_numerable > 0)
+		{
+		  if (file_destroy (thread_p, &file_Tempcache.cached_not_numerable->vfid, true) != NO_ERROR)
+		    {
+		      file_tempcache_unlock ();
+		      assert_release (false);
+		      goto exit;
+		    }
+		  file_Tempcache.cached_not_numerable = file_Tempcache.cached_not_numerable->next;
+		  file_Tempcache.ncached_not_numerable--;
+
+		  file_tempcache_unlock ();
+		  goto retry;
+		}
+	      file_tempcache_unlock ();
+	    }
+
 	  assert_release (false);
 	  goto exit;
 	}
