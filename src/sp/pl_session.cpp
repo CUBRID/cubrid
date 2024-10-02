@@ -360,7 +360,7 @@ namespace cubpl
     // std::unique_lock<std::mutex> ulock (m_mutex);
 
     // remove from session cursor map
-    m_session_cursors.erase (query_id); // safe guard
+    // m_session_cursors.erase (query_id); // safe guard
 
     // find in map
     auto search = m_cursor_map.find (query_id);
@@ -390,7 +390,7 @@ namespace cubpl
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_mutex);
+    // std::unique_lock<std::mutex> ulock (m_mutex);
 
     m_session_cursors.insert (query_id);
   }
@@ -404,9 +404,22 @@ namespace cubpl
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_mutex);
+    // std::unique_lock<std::mutex> ulock (m_mutex);
 
     m_session_cursors.erase (query_id);
+  }
+
+  bool
+  session::is_session_cursor (QUERY_ID query_id)
+  {
+    if (m_session_cursors.find (query_id) != m_session_cursors.end ())
+      {
+	return true;
+      }
+    else
+      {
+	return false;
+      }
   }
 
   void
@@ -415,14 +428,10 @@ namespace cubpl
     std::unique_lock<std::mutex> ulock (m_mutex);
     for (auto &it : m_cursor_map)
       {
-	/*
-	if (cubthread::get_manager () != NULL)
+	query_cursor *cursor = it.second;
+	if (cursor)
 	  {
-	    destroy_cursor (&cubthread::get_entry (), it.first);
-	  }
-	*/
-	if (it.second)
-	  {
+	    destroy_cursor (cursor->get_owner (), it.first /* QUERY_ID */);
 	    delete it.second;
 	  }
       }

@@ -21,6 +21,7 @@
 #include "session.h"
 #include "jsp_comm.h"
 #include "method_connection_pool.hpp"
+#include "pl_query_cursor.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -57,7 +58,6 @@ namespace cubpl
       }
 
     destory_all_cursors ();
-
   }
 
   void
@@ -81,30 +81,54 @@ namespace cubpl
 	return ER_FAILED;
       }
 
-    query_cursor *cursor = nullptr;
-    if ((cursor = get_cursor (query_id)) == nullptr)
-      {
-	cursor = m_session->create_cursor (m_thread_p, query_id, oid_included);
-      }
+    m_stack_cursor_id.insert (query_id);
 
-    if (cursor)
-      {
-	m_stack_cursor_id.insert (query_id);
-      }
-
-    return NO_ERROR;
+    query_cursor *cursor = m_session->create_cursor (m_thread_p, query_id, oid_included);
+    return cursor ? NO_ERROR : ER_FAILED;
   }
 
   query_cursor *
   execution_stack::get_cursor (QUERY_ID query_id)
   {
-    return m_session->get_cursor (m_thread_p, query_id);
+    query_cursor *cursor = nullptr;
+
+    if (query_id == NULL_QUERY_ID || query_id >= SHRT_MAX)
+      {
+	// false query e.g) SELECT * FROM db_class WHERE 0 <> 0
+	return cursor;
+      }
+
+    cursor = m_session->get_cursor (m_thread_p, query_id);
+
+    /*
+    if (cursor == nullptr)
+    {
+        if (m_session->is_session_cursor (query_id))
+        {
+            cursor = m_session->create_cursor (m_thread_p, query_id, false);
+            if (cursor)
+                {
+                  // add to the clearing list at the end of stack
+                  m_stack_cursor_id.insert (query_id);
+                }
+        }
+    }
+    */
+
+    return cursor;
   }
 
   void
   execution_stack::promote_to_session_cursor (QUERY_ID query_id)
   {
     m_session->add_session_cursor (m_thread_p, query_id);
+
+    query_cursor *cursor = m_session->get_cursor (m_thread_p, query_id);
+    if (cursor)
+      {
+	cursor->change_owner (nullptr);
+      }
+
     m_stack_cursor_id.erase (query_id);
   }
 
@@ -115,6 +139,8 @@ namespace cubpl
       {
 	// If the cursor is received from the child function and is not returned to the parent function, the cursor remains in m_cursor_set.
 	// So here trying to find the cursor Id in the global returning cursor storage and remove it if exists.
+	m_session->remove_session_cursor (m_thread_p, cursor_it);
+
 	m_session->destroy_cursor (m_thread_p, cursor_it);
       }
 

@@ -43,6 +43,7 @@ namespace cubpl
   {
     public:
       query_cursor (cubthread::entry *thread_p, QMGR_QUERY_ENTRY *query_entry_p, bool is_oid_included = false);
+      ~query_cursor ();
 
       int open ();
       void close ();
@@ -71,10 +72,7 @@ namespace cubpl
       int get_fetch_count ();
       void set_fetch_count (int cnt);
 
-      cubthread::entry *get_owner ()
-      {
-	return m_thread;
-      }
+      cubthread::entry *get_owner () const;
 
     private:
       cubthread::entry *m_thread; /* which thread owns this cursor */

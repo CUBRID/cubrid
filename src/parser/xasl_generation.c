@@ -6669,7 +6669,15 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return NULL;
 	}
 
-      regu_dbval_type_init (sp->value, (DB_TYPE) sp->sig->result_type);
+      DB_TYPE result_type = (DB_TYPE) sp->sig->result_type;
+      if (result_type == DB_TYPE_RESULTSET)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
+	  PT_ERRORc (parser, node, er_msg ());
+	  return NULL;
+	}
+
+      regu_dbval_type_init (sp->value, result_type);
       sp->args = pt_to_regu_variable_list (parser, node->info.method_call.arg_list, UNBOX_AS_VALUE, NULL, NULL);
     }
 

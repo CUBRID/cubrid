@@ -304,7 +304,6 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_compile_def.cpp
   ${METHOD_DIR}/method_compile.cpp
   ${METHOD_DIR}/method_error.cpp
-  ${METHOD_DIR}/method_query_cursor.cpp
   ${METHOD_DIR}/method_query_util.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp

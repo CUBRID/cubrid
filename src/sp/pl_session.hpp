@@ -84,6 +84,7 @@ namespace cubpl
 
       void add_session_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
       void remove_session_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
+      bool is_session_cursor (QUERY_ID query_id);
 
       /* stack management */
       // Currently these functions are used for debugging purpose.

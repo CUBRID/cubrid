@@ -39,6 +39,11 @@ namespace cubpl
     reset (query_entry_p);
   }
 
+  query_cursor::~query_cursor ()
+  {
+    close ();
+  }
+
   int
   query_cursor::reset (QMGR_QUERY_ENTRY *query_entry_p)
   {
@@ -129,6 +134,10 @@ namespace cubpl
 	      }
 	  }
       }
+    else if (scan_code == S_END)
+      {
+	close ();
+      }
 
     return scan_code;
   }
@@ -176,6 +185,10 @@ namespace cubpl
 	      }
 	  }
       }
+    else if (scan_code == S_END)
+      {
+	close ();
+      }
 
     return scan_code;
   }
@@ -183,7 +196,15 @@ namespace cubpl
   void
   query_cursor::change_owner (cubthread::entry *thread_p)
   {
-    if (m_thread->get_id () == thread_p->get_id ())
+    if (thread_p == nullptr)
+      {
+	close ();
+	// qfile_update_qlist_count (m_thread, m_list_id, -1);
+	m_thread = nullptr;
+	return;
+      }
+
+    if (m_thread != nullptr && m_thread->get_id () == thread_p->get_id ())
       {
 	return;
       }
@@ -194,7 +215,13 @@ namespace cubpl
     m_thread = thread_p;
 
     // m_list_id is going to be destoryed on server-side, so that qlist_count has to be updated
-    qfile_update_qlist_count (thread_p, m_list_id, 1);
+    // qfile_update_qlist_count (thread_p, m_list_id, 1);
+  }
+
+  cubthread::entry *
+  query_cursor::get_owner () const
+  {
+    return m_thread;
   }
 
   std::vector<DB_VALUE>
@@ -202,8 +229,6 @@ namespace cubpl
   {
     return m_current_tuple;
   }
-
-  void clear ();
 
   int
   query_cursor::get_current_index ()

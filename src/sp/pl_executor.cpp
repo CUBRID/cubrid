@@ -416,7 +416,11 @@ exit:
 	if (db_value_type (&returnval) == DB_TYPE_RESULTSET)
 	  {
 	    std::uint64_t query_id = db_get_resultset (&returnval);
-	    m_stack->promote_to_session_cursor (query_id);
+	    if (query_id != NULL_QUERY_ID)
+	      {
+		// qfile_update_qlist_count (thread_p, m_list_id, -1);
+		m_stack->promote_to_session_cursor (query_id);
+	      }
 	  }
 
 	for (int i = 0; i < m_sig.arg.arg_size; i++)
@@ -841,7 +845,7 @@ exit:
       query_cursor *cursor = m_stack->get_cursor (current_result_info.query_id);
       if (cursor)
 	{
-	  cursor->change_owner (m_stack->get_thread_entry ());
+	  cursor->change_owner (&thread_ref);
 	  return m_stack->send_data_to_java (b);
 	}
       else
@@ -850,6 +854,8 @@ exit:
 	  return ER_FAILED;
 	}
     };
+
+    error = m_stack->send_data_to_client (get_make_outresult_info, code, query_id);
 
     return error;
   }
@@ -956,70 +962,4 @@ exit:
 
     return error;
   }
-}
-
-static bool
-is_supported_dbtype (const DB_VALUE &value)
-{
-  bool res = false;
-  switch (DB_VALUE_TYPE (&value))
-    {
-    case DB_TYPE_INTEGER:
-    case DB_TYPE_SHORT:
-    case DB_TYPE_BIGINT:
-    case DB_TYPE_FLOAT:
-    case DB_TYPE_DOUBLE:
-    case DB_TYPE_MONETARY:
-    case DB_TYPE_NUMERIC:
-    case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_STRING:
-
-    case DB_TYPE_DATE:
-    case DB_TYPE_TIME:
-    case DB_TYPE_TIMESTAMP:
-    case DB_TYPE_DATETIME:
-
-    case DB_TYPE_SET:
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-    case DB_TYPE_OID:
-    case DB_TYPE_OBJECT:
-
-    case DB_TYPE_RESULTSET:
-    case DB_TYPE_NULL:
-      res = true;
-      break;
-
-    // unsupported types
-    case DB_TYPE_BIT:
-    case DB_TYPE_VARBIT:
-    case DB_TYPE_TABLE:
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
-    case DB_TYPE_TIMESTAMPTZ:
-    case DB_TYPE_TIMESTAMPLTZ:
-    case DB_TYPE_DATETIMETZ:
-    case DB_TYPE_DATETIMELTZ:
-    case DB_TYPE_JSON:
-    case DB_TYPE_ENUMERATION:
-      res = false;
-      break;
-
-    // obsolete, internal, unused type
-    case DB_TYPE_ELO:
-    case DB_TYPE_VARIABLE:
-    case DB_TYPE_SUB:
-    case DB_TYPE_POINTER:
-    case DB_TYPE_ERROR:
-    case DB_TYPE_VOBJ:
-    case DB_TYPE_DB_VALUE:
-    case DB_TYPE_MIDXKEY:
-    default:
-      assert (false);
-      break;
-    }
-
-  return res;
 }
