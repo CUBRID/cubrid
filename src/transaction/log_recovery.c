@@ -3769,7 +3769,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_ABORT:
 	      {
 		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
-		assert (logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX);
+
+		/* This is a check to verify whether completed transactions exist in the transaction table.
+		 * In the analysis phase, completed transactions are cleared from the transaction table.
+		 * However, system transactions are not cleared, so they are excluded from the assert condition
+		 */
+		assert (tran_id == LOG_SYSTEM_TRANID ||
+			(tran_id > LOG_SYSTEM_TRANID && logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX));
+
 		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_COMMIT_ABORT);
 	      }
 	      break;

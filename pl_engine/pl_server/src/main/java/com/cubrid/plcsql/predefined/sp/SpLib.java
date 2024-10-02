@@ -667,7 +667,7 @@ public class SpLib {
         if (l == null) {
             return null;
         }
-        return ((short) -l);
+        return negateShortExact(l);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -675,7 +675,11 @@ public class SpLib {
         if (l == null) {
             return null;
         }
-        return -l;
+        try {
+            return Math.negateExact(l);
+        } catch (ArithmeticException e) {
+            throw new VALUE_ERROR("data overflow in negation of an INTEGER value");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -683,7 +687,11 @@ public class SpLib {
         if (l == null) {
             return null;
         }
-        return -l;
+        try {
+            return Math.negateExact(l);
+        } catch (ArithmeticException e) {
+            throw new VALUE_ERROR("data overflow in negation of a BIGINT value");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2053,7 +2061,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return (short) (l * r);
+        return multiplyShortExact(l, r);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2061,7 +2069,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l * r;
+        try {
+            return Math.multiplyExact(l, r);
+        } catch (ArithmeticException e) {
+            throw new VALUE_ERROR("data overflow in multiplication of INTEGER values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2069,7 +2081,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l * r;
+        try {
+            return Math.multiplyExact(l, r);
+        } catch (ArithmeticException e) {
+            throw new VALUE_ERROR("data overflow in multiplication of BIGINT values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2380,7 +2396,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return (short) (l + r);
+        return addShortExact(l, r);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2388,7 +2404,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l + r;
+        try {
+            return Math.addExact(l, r);
+        } catch (ArithmeticException e) {
+            throw new VALUE_ERROR("data overflow in addition of INTEGER values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2396,7 +2416,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l + r;
+        try {
+            return Math.addExact(l, r);
+        } catch (ArithmeticException e) {
+            throw new VALUE_ERROR("data overflow in addition of BIGINT values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2561,7 +2585,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return (short) (l - r);
+        return subtractShortExact(l, r);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2569,7 +2593,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l - r;
+        try {
+            return Math.subtractExact(l, r);
+        } catch (ArithmeticException e) {
+            throw new VALUE_ERROR("data overflow in subtraction of INTEGER values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2577,7 +2605,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l - r;
+        try {
+            return Math.subtractExact(l, r);
+        } catch (ArithmeticException e) {
+            throw new VALUE_ERROR("data overflow in subtraction of BIGINT values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -3912,6 +3944,50 @@ public class SpLib {
 
     private static final DateFormat AM_PM = new SimpleDateFormat("a", Locale.US);
     private static final Date ZERO_DATE = new Date(0L);
+
+    private static Short shortOfInt(int i) {
+        if (i <= Short.MAX_VALUE && i >= Short.MIN_VALUE) {
+            return (short) i;
+        } else {
+            return null;
+        }
+    }
+
+    private static Short addShortExact(Short l, Short r) {
+        int v = l.intValue() + r.intValue(); // never overflows
+        Short ret = shortOfInt(v);
+        if (ret == null) {
+            throw new VALUE_ERROR("data overflow in addition of SHORT values");
+        }
+        return ret;
+    }
+
+    private static Short subtractShortExact(Short l, Short r) {
+        int v = l.intValue() - r.intValue(); // never overflows
+        Short ret = shortOfInt(v);
+        if (ret == null) {
+            throw new VALUE_ERROR("data overflow in subtraction of SHORT values");
+        }
+        return ret;
+    }
+
+    private static Short negateShortExact(Short l) {
+        int v = -l.intValue(); // never overflows
+        Short ret = shortOfInt(v);
+        if (ret == null) {
+            throw new VALUE_ERROR("data overflow in negation of a SHORT value");
+        }
+        return ret;
+    }
+
+    private static Short multiplyShortExact(Short l, Short r) {
+        int v = l.intValue() * r.intValue(); // never overflows
+        Short ret = shortOfInt(v);
+        if (ret == null) {
+            throw new VALUE_ERROR("data overflow in multiplication of SHORT values");
+        }
+        return ret;
+    }
 
     private static String rtrim(String s) {
         assert s != null;
