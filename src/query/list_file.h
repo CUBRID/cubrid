@@ -228,6 +228,8 @@ extern int qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page, 
 extern void qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p, int inc);
 extern int qfile_get_list_cache_number_of_entries (int ht_no);
 extern bool qfile_has_no_cache_entries ();
+extern SORT_STATUS qfile_get_next_sort_item (THREAD_ENTRY * thread_p, RECDES * recdes, void *arg);
+
 
 
 #endif /* _LIST_FILE_H_ */

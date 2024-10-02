@@ -3217,7 +3217,7 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, SORT_PUT_FUNC 
 
   return sort_listfile (thread_p, sort_args->hfids[0].vfid.volid, 0 /* TODO - support parallelism */ ,
 			&btree_sort_get_next, sort_args, out_func, out_args, compare_driver, sort_args, SORT_DUP,
-			NO_SORT_LIMIT, includes_tde_class);
+			NO_SORT_LIMIT, includes_tde_class, false);
 }
 
 /*

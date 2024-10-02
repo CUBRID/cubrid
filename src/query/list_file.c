@@ -243,7 +243,6 @@ static void qfile_close_and_free_list_file (THREAD_ENTRY * thread_p, QFILE_LIST_
 static QFILE_LIST_ID *qfile_union_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1, QFILE_LIST_ID * list_id2,
 					int flag);
 
-static SORT_STATUS qfile_get_next_sort_item (THREAD_ENTRY * thread_p, RECDES * recdes, void *arg);
 static int qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg);
 static SORT_INFO *qfile_initialize_sort_info (SORT_INFO * info, QFILE_LIST_ID * listid, SORT_LIST * sort_list);
 static void qfile_clear_sort_info (SORT_INFO * info);
@@ -3371,7 +3370,7 @@ qfile_generate_sort_tuple (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p, 
  * in the list file, or if an error occurs, the sorting module is informed with
  * necessary return codes.
  */
-static SORT_STATUS
+SORT_STATUS
 qfile_get_next_sort_item (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *arg)
 {
   SORT_INFO *sort_info_p;
@@ -3983,6 +3982,9 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   int sort_result, estimated_pages;
   SORT_DUP_OPTION dup_option;
 
+  /* The result file must be closed for parallel processing. If not closed, Latch contention may occur. */
+  qfile_close_list (thread_p, list_id_p);
+
   srlist_id = qfile_open_list (thread_p, &list_id_p->type_list, sort_list_p, list_id_p->query_id, flag, NULL);
   if (srlist_id == NULL)
     {
@@ -4005,6 +4007,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
 
   info.s_id = &s_scan_id;
   info.output_file = srlist_id;
+  info.input_file = list_id_p;
   info.extra_arg = extra_arg;
 
   if (get_func == NULL)
@@ -4039,7 +4042,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
 
   sort_result =
     sort_listfile (thread_p, NULL_VOLID, estimated_pages, get_func, &info, put_func, &info, cmp_func, &info.key_info,
-		   dup_option, limit, srlist_id->tfile_vfid->tde_encrypted);
+		   dup_option, limit, srlist_id->tfile_vfid->tde_encrypted, true);
 
   if (sort_result < 0)
     {
