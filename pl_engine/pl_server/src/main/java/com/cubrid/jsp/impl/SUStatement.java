@@ -354,9 +354,11 @@ public class SUStatement {
         }
 
         fetchedTupleNumber = fetchInfo.numFetched;
-        fetchedStartCursorPosition = fetchInfo.tuples[0].tupleNumber() - 1;
-        fetchedEndCursorPosition = fetchedStartCursorPosition + fetchedTupleNumber;
-
+        if (fetchInfo.numFetched > 0) {
+            // fetch request reach to the end of the result set (S_END)
+            fetchedStartCursorPosition = fetchInfo.tuples[0].tupleNumber() - 1;
+            fetchedEndCursorPosition = fetchedStartCursorPosition + fetchedTupleNumber;
+        }
         // update cursorPosition to the fetched start position
         cursorPosition = fetchedStartCursorPosition;
     }
