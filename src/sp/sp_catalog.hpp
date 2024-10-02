@@ -191,6 +191,9 @@ int sp_add_stored_procedure (SP_INFO &info);
 int sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info);
 int sp_add_stored_procedure_code (SP_CODE_INFO &info);
 
+// update into system catalogs
+int sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info);
+
 // getter
 std::string sp_get_entry_name (int index);
 std::string sp_args_get_entry_name (int index);
