@@ -334,7 +334,7 @@ static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * p
   ((r)->type == TYPE_CONSTANT || (r)->type == TYPE_DBVAL || (r)->type == TYPE_POS_VALUE || (r)->type == TYPE_INARITH)
 
 #define VALIDATE_REGU_KEY(r) \
-  ((r)->type == TYPE_CONSTANT || (r)->type == TYPE_DBVAL || (r)->type == TYPE_POS_VALUE \
+  ((r)->type == TYPE_CONSTANT || (r)->type == TYPE_DBVAL || (r)->type == TYPE_POS_VALUE || (r)->type == TYPE_SP \
    || ((r)->type == TYPE_INARITH && validate_regu_key_function_index ((r))))
 
 typedef struct xasl_supp_info
@@ -4343,7 +4343,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       /* Do not proceed down the leaves. */
       *continue_walk = PT_LIST_WALK;
     }
-  else if (PT_IS_METHOD (tree))
+  else if (tree->node_type == PT_METHOD_CALL)
     {
       /* Do not proceed down the leaves */
       *continue_walk = PT_LIST_WALK;
@@ -10722,11 +10722,12 @@ pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool
 	{
 	  /* PT_IS_IN or PT_EQ_SOME */
 
-	  if (rhs->node_type == PT_FUNCTION)
+	  if (rhs->node_type == PT_FUNCTION || rhs->node_type == PT_METHOD_CALL)
 	    {
 	      /* PT_FUNCTION */
+	      elem = (rhs->node_type == PT_FUNCTION) ? rhs->info.function.arg_list : rhs->info.method_call.arg_list;
 
-	      for (j = 0, elem = rhs->info.function.arg_list; j < n_elem && elem; j++, elem = elem->next)
+	      for (j = 0; j < n_elem && elem; j++, elem = elem->next)
 		{
 
 		  regu_var_list[j] = pt_to_regu_variable (parser, elem, UNBOX_AS_VALUE);
