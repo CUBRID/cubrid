@@ -1864,15 +1864,13 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	    goto exit;
 	  }
 
+	// args
 	int num_params = db_get_int (&entry.vals[SP_ATTR_INDEX_ARG_COUNT]);
-	if (num_params > 0)
+	DB_SET *param_set = db_get_set (&entry.vals[SP_ATTR_INDEX_ARGS]);
+	error = jsp_make_pl_args (parser, node, num_params, param_set, sig);
+	if (error != NO_ERROR)
 	  {
-	    DB_SET *param_set = db_get_set (&entry.vals[SP_ATTR_INDEX_ARGS]);
-	    error = jsp_make_pl_args (parser, node, num_params, param_set, sig);
-	    if (error != NO_ERROR)
-	      {
-		goto exit;
-	      }
+	    goto exit;
 	  }
 
 	sig.auth = db_private_strdup (NULL, auth_name);
@@ -1934,8 +1932,6 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
   db_make_null (&temp);
 
   {
-    sp_entry entry (SP_ARGS_ATTR_INDEX_LAST);
-
     sig.arg.set_arg_size (num_params);
 
     // check default arguments
@@ -1946,6 +1942,8 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 	error = er_errid ();
 	goto exit_on_error;
       }
+
+    sp_entry entry (SP_ARGS_ATTR_INDEX_LAST);
 
     for (int i = 0; i < num_params; i++)
       {
