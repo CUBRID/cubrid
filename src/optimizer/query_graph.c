@@ -3749,13 +3749,6 @@ pt_is_pseudo_const (PT_NODE * expr)
        */
       return true;
 
-    case PT_METHOD_CALL:
-      /*
-       * Even if there are columns(PT_NAME) in the parameter of the Java Stored Procedure(METHOD_CALL),
-       * it can be guaranteed to be evaluated by the time it is referenced.
-       */
-      return true;
-
     case PT_DOT_:
       /*
        * It would be nice if we could use expressions that are
@@ -4033,6 +4026,21 @@ pt_is_pseudo_const (PT_NODE * expr)
 	default:
 	  return false;
 	}
+
+    case PT_METHOD_CALL:
+      PT_NODE * p;
+      /*
+       * Even if there are columns(PT_NAME) in the parameter of the Java Stored Procedure(METHOD_CALL),
+       * it can be guaranteed to be evaluated by the time it is referenced.
+       */
+      for (p = expr->info.method_call.arg_list; p; p = p->next)
+	{
+	  if (!pt_is_pseudo_const (p))
+	    {
+	      return false;
+	    }
+	}
+      return true;
 
     case PT_FUNCTION:
       {
