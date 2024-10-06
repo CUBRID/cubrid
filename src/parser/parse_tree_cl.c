@@ -13319,7 +13319,6 @@ pt_print_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_method_call (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_WALK (parser, p->info.method_call.method_name, arg);
   PT_APPLY_WALK (parser, p->info.method_call.arg_list, arg);
   PT_APPLY_WALK (parser, p->info.method_call.on_call_target, arg);
   PT_APPLY_WALK (parser, p->info.method_call.to_return_var, arg);

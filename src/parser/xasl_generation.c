@@ -4343,7 +4343,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       /* Do not proceed down the leaves. */
       *continue_walk = PT_LIST_WALK;
     }
-  else if (tree->node_type == PT_METHOD_CALL)
+  else if (PT_IS_METHOD (tree))
     {
       /* Do not proceed down the leaves */
       *continue_walk = PT_LIST_WALK;
