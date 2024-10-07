@@ -1296,7 +1296,7 @@ jsp_check_stored_procedure_name (const char *str)
   owner_name[0] = '\0';
 
 
-  if (memcmp (str, "dbms_output.", dbms_output_len) == 0)
+  if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0)
     {
       sprintf (buffer, "public.dbms_output.%s",
 	       sm_downcase_name (str + dbms_output_len, tmp, strlen (str + dbms_output_len) + 1));
