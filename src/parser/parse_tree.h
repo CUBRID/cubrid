@@ -2190,6 +2190,7 @@ struct pt_serial_info
   PT_NODE *owner_name;		/* PT_NAME */
   PT_NODE *comment;		/* PT_VALUE */
   PT_ALTER_CODE code;		/* PT_SERIAL_OPTION, PT_CHANGE_OWNER */
+  bool serial_decache_flag;
   int cyclic;
   int no_max;
   int no_min;
