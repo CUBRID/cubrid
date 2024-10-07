@@ -3539,10 +3539,10 @@ do_check_cte_or_system_class_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void
       return stmt;
     }
 
-  if (q->info.query.is_subquery == PT_IS_SUBQUERY || q->info.query.is_subquery == PT_IS_UNION_QUERY
-      || q->info.query.is_subquery == PT_IS_UNION_SUBQUERY)
+  if (stmt->info.spec.cte_pointer)
     {
-      if (stmt->info.spec.cte_pointer)
+      if (q->info.query.is_subquery == PT_IS_SUBQUERY || q->info.query.is_subquery == PT_IS_UNION_QUERY
+	  || q->info.query.is_subquery == PT_IS_UNION_SUBQUERY)
 	{
 	  goto stop_walk;
 	}
