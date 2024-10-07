@@ -2267,6 +2267,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
   int e, i, j, k;
   int has_function_index = 0;
   int error = NO_ERROR;
+  int attr_id = -1;
+  int with_options = 0;
 
   db_value_put_null (&keys);
   db_value_put_null (&svalue);
@@ -2275,6 +2277,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
   seq_size = set_size (seq_p);
   for (i = 0, j = 0; i < seq_size; i += 2, j++)
     {
+      with_options = 0;
       has_function_index = 0;
       prefix_seq = NULL;
       error = catcls_expand_or_value_by_def (&values[j], &ct_Index);
@@ -2321,10 +2324,10 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
       att_cnt = (key_size - 3) / 2;
 
       /* Get status. */
-      error = set_get_element (key_seq_p, key_size - 2, &attrs[11].value);
+      error = set_get_element (key_seq_p, key_size - 2, &attrs[11 + 1].value);
 
       /* comment */
-      error = set_get_element (key_seq_p, key_size - 1, &attrs[10].value);
+      error = set_get_element (key_seq_p, key_size - 1, &attrs[10 + 1].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2480,6 +2483,12 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 			      if (error != NO_ERROR)
 				{
 				  goto error;
+				}
+
+			      attr_id = db_get_int (attr_val_p);
+			      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
+				{
+				  with_options = GET_DEDUPLICATE_KEY_ATTR_LEVEL (attr_id);
 				}
 
 			      /* key_order */
@@ -2663,6 +2672,17 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       /* have_function */
       db_make_int (&attrs[9].value, has_function_index);
+
+      /* deduplicate */
+      if (att_cnt > 1)
+	{
+	  attr_id = db_get_int (&(subset_p[att_cnt - 1].sub.value[1].value));
+	  if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
+	    {
+	      with_options = GET_DEDUPLICATE_KEY_ATTR_LEVEL (attr_id);
+	    }
+	}
+      db_make_int (&attrs[10].value, with_options);
     }
 
   return NO_ERROR;
@@ -2798,12 +2818,14 @@ catcls_get_property_set (THREAD_ENTRY * thread_p, OR_BUF * buf_p, int expected_s
   DB_SEQ *prop_seq_p = NULL;
   int n_size = 0;
   CATCLS_PROPERTY property_vars[SM_PROPERTY_NUM_INDEX_FAMILY] = {
-    {SM_PROPERTY_PRIMARY_KEY, NULL, 0, true, false, true, false},
-    {SM_PROPERTY_UNIQUE, NULL, 0, true, false, false, false},
-    {SM_PROPERTY_REVERSE_UNIQUE, NULL, 0, true, true, false, false},
-    {SM_PROPERTY_INDEX, NULL, 0, false, false, false, false},
-    {SM_PROPERTY_REVERSE_INDEX, NULL, 0, false, true, false, false},
-    {SM_PROPERTY_FOREIGN_KEY, NULL, 0, false, false, false, true},
+  // *INDENT-OFF*
+    {SM_PROPERTY_PRIMARY_KEY,    NULL, 0,  true, false,  true, false},
+    {SM_PROPERTY_UNIQUE,         NULL, 0,  true, false, false, false},
+    {SM_PROPERTY_REVERSE_UNIQUE, NULL, 0,  true,  true, false, false},
+    {SM_PROPERTY_INDEX,          NULL, 0, false, false, false, false},
+    {SM_PROPERTY_REVERSE_INDEX,  NULL, 0, false,  true, false, false},
+    {SM_PROPERTY_FOREIGN_KEY,    NULL, 0, false, false, false,  true},
+  // *INDENT-ON*    
   };
 
   DB_VALUE vals[SM_PROPERTY_NUM_INDEX_FAMILY];
