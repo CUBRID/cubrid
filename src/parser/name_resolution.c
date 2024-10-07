@@ -3287,79 +3287,81 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        * first parameter to the on_call_target.  If there is no parameter,
        * it will be caught in pt_semantic_check_local()
        */
-      if (!node->info.method_call.on_call_target
-	  && jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
-	{
-	  PT_NODE *method_name = node->info.method_call.method_name;
-	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) method_name;
-	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name->info.name.original);
-	  node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
-	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	  /* don't revisit leaves */
-	  *continue_walk = PT_LIST_WALK;
-	}
-      else
-	{
-	  if (!node->info.method_call.on_call_target && node->info.method_call.arg_list)
-	    {
-	      node->info.method_call.on_call_target = node->info.method_call.arg_list;
-	      node->info.method_call.arg_list = node->info.method_call.arg_list->next;
-	      node->info.method_call.on_call_target->next = NULL;
+      {
+	PT_NODE *method_name_node = node->info.method_call.method_name;
+	const char *method_name = parser_print_tree (parser, method_name_node);
+	if (!node->info.method_call.on_call_target && jsp_is_exist_stored_procedure (method_name))
+	  {
+	    method_name_node->info.name.spec_id = (UINTPTR) method_name_node;
+	    node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name);
+	    method_name_node->info.name.meta_class = PT_METHOD;
+	    parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	    /* don't revisit leaves */
+	    *continue_walk = PT_LIST_WALK;
+	  }
+	else
+	  {
+	    if (!node->info.method_call.on_call_target && node->info.method_call.arg_list)
+	      {
+		node->info.method_call.on_call_target = node->info.method_call.arg_list;
+		node->info.method_call.arg_list = node->info.method_call.arg_list->next;
+		node->info.method_call.on_call_target->next = NULL;
 
-	      /*
-	       * When using a session variable in the first arg_list,
-	       * It is unknown whether the session variable contains a class, object, or constant value.
-	       * So, if it's not a Java stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
-	       * 
-	       * ex) create class x (xint int, xstr string, class cint int) method add_int(int, int) int function add_int file '$METHOD_FILE';
-	       *     insert into x values (4, 'string 4');
-	       *     select x into p1 from x where xint = 4;
-	       *     call add_int(p1, 1, 2);
-	       */
-	      node->info.method_call.method_name->info.name.original =
-		sm_remove_qualifier_name (node->info.method_call.method_name->info.name.original);
-	    }
+		/*
+		 * When using a session variable in the first arg_list,
+		 * It is unknown whether the session variable contains a class, object, or constant value.
+		 * So, if it's not a Java stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
+		 * 
+		 * ex) create class x (xint int, xstr string, class cint int) method add_int(int, int) int function add_int file '$METHOD_FILE';
+		 *     insert into x values (4, 'string 4');
+		 *     select x into p1 from x where xint = 4;
+		 *     call add_int(p1, 1, 2);
+		 */
+		node->info.method_call.method_name->info.name.original =
+		  sm_remove_qualifier_name (node->info.method_call.method_name->info.name.original);
+	      }
 
-	  /* make method name look resolved */
-	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) node->info.method_call.method_name;
-	  node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
+	    /* make method name look resolved */
+	    node->info.method_call.method_name->info.name.spec_id = (UINTPTR) node->info.method_call.method_name;
+	    node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
 
-	  /*
-	   * bind the names in the method arguments and target, their
-	   * scope will be the same as the method node's scope
-	   */
-	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	  /* don't revisit leaves */
-	  *continue_walk = PT_LIST_WALK;
+	    /*
+	     * bind the names in the method arguments and target, their
+	     * scope will be the same as the method node's scope
+	     */
+	    parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	    /* don't revisit leaves */
+	    *continue_walk = PT_LIST_WALK;
 
-	  /* find the type of the method here */
-	  if (!pt_resolve_method_type (parser, node) && (node->info.method_call.call_or_expr != PT_IS_CALL_STMT))
-	    {
-	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_DOESNT_EXIST,
-			  node->info.method_call.method_name->info.name.original);
-	      break;
-	    }
+	    /* find the type of the method here */
+	    if (!pt_resolve_method_type (parser, node) && (node->info.method_call.call_or_expr != PT_IS_CALL_STMT))
+	      {
+		PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_DOESNT_EXIST,
+			    node->info.method_call.method_name->info.name.original);
+		break;
+	      }
 
-	  /* if it is a call statement, we don't want to resolve method_name. also, if scopes is NULL we assume this
-	   * came from an evaluate call and we treat it like a call statement */
-	  if ((node->info.method_call.call_or_expr == PT_IS_CALL_STMT) || (bind_arg->scopes == NULL))
-	    {
-	      break;
-	    }
+	    /* if it is a call statement, we don't want to resolve method_name. also, if scopes is NULL we assume this
+	     * came from an evaluate call and we treat it like a call statement */
+	    if ((node->info.method_call.call_or_expr == PT_IS_CALL_STMT) || (bind_arg->scopes == NULL))
+	      {
+		break;
+	      }
 
-	  /* resolve method name to entity where expansion will take place */
-	  if (node->info.method_call.on_call_target->node_type == PT_NAME
-	      && (node->info.method_call.on_call_target->info.name.meta_class != PT_PARAMETER))
-	    {
-	      PT_NODE *entity = pt_find_entity_in_scopes (parser, bind_arg->scopes,
-							  node->info.method_call.on_call_target->info.name.spec_id);
-	      /* no entity found will be caught as an error later.  Probably an unresolvable target. */
-	      if (entity)
-		{
-		  node->info.method_call.method_name->info.name.spec_id = entity->info.spec.id;
-		}
-	    }
-	}
+	    /* resolve method name to entity where expansion will take place */
+	    if (node->info.method_call.on_call_target->node_type == PT_NAME
+		&& (node->info.method_call.on_call_target->info.name.meta_class != PT_PARAMETER))
+	      {
+		PT_NODE *entity = pt_find_entity_in_scopes (parser, bind_arg->scopes,
+							    node->info.method_call.on_call_target->info.name.spec_id);
+		/* no entity found will be caught as an error later.  Probably an unresolvable target. */
+		if (entity)
+		  {
+		    node->info.method_call.method_name->info.name.spec_id = entity->info.spec.id;
+		  }
+	      }
+	  }
+      }
       break;
 
     case PT_DATA_TYPE:

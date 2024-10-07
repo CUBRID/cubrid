@@ -54,6 +54,7 @@ extern int jsp_make_pl_args (PARSER_CONTEXT * parser, PT_NODE * node, int num_pa
 			     cubpl::pl_signature & signature);
 
 extern int jsp_is_exist_stored_procedure (const char *name);
+
 extern char *jsp_get_owner_name (const char *name, char *buf, int buf_size);
 extern int jsp_get_return_type (const char *name);
 extern int jsp_get_sp_type (const char *name);

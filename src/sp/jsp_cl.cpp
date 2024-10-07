@@ -663,8 +663,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   int error = NO_ERROR;
   PT_NODE *method;
   const char *method_name;
-  if (!statement || ! (method = statement->info.method_call.method_name) || method->node_type != PT_NAME
-      || ! (method_name = method->info.name.original))
+  if (!statement || ! (method = statement->info.method_call.method_name) || method->node_type != PT_NAME)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return er_errid ();
@@ -1820,7 +1819,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
   sp_entry entry (SP_ATTR_INDEX_LAST);
 
   {
-    char *name = (char *) node->info.method_call.method_name->info.name.original;
+    char *name = (char *) parser_print_tree (parser, node->info.method_call.method_name);
 
     sig.name = db_private_strdup (NULL, name);
     if (PT_IS_METHOD (node))
