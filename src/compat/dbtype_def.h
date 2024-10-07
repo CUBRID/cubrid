@@ -178,20 +178,6 @@ extern "C"
 #define DB_CURSOR_END          1
 #define DB_CURSOR_ERROR       -1
 
-#define DB_IS_CONSTRAINT_UNIQUE_FAMILY(c) \
-  ( ((c) == DB_CONSTRAINT_UNIQUE || (c) == DB_CONSTRAINT_REVERSE_UNIQUE || (c) == DB_CONSTRAINT_PRIMARY_KEY) ? true : false )
-
-#define DB_IS_CONSTRAINT_INDEX_FAMILY(c) \
-  ( (DB_IS_CONSTRAINT_UNIQUE_FAMILY(c) || (c) == DB_CONSTRAINT_INDEX || (c) == DB_CONSTRAINT_REVERSE_INDEX \
-     || (c) == DB_CONSTRAINT_FOREIGN_KEY) ? true : false )
-
-#define DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
-  ( ((DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_UNIQUE || (DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_INDEX) \
-    ? true : false )
-
-#define DB_IS_CONSTRAINT_FAMILY(c) \
-  ( (DB_IS_CONSTRAINT_UNIQUE_FAMILY(c) || (c) == DB_CONSTRAINT_NOT_NULL || (c) == DB_CONSTRAINT_FOREIGN_KEY) ? true : false )
-
   /* Volume purposes constants.  These are intended for use by the db_add_volext API function. */
   typedef enum
   {
@@ -462,15 +448,44 @@ extern "C"
    */
   typedef enum
   {
-    DB_CONSTRAINT_NONE = -1,
     DB_CONSTRAINT_UNIQUE = 0,
     DB_CONSTRAINT_INDEX = 1,
     DB_CONSTRAINT_NOT_NULL = 2,
     DB_CONSTRAINT_REVERSE_UNIQUE = 3,
     DB_CONSTRAINT_REVERSE_INDEX = 4,
     DB_CONSTRAINT_PRIMARY_KEY = 5,
-    DB_CONSTRAINT_FOREIGN_KEY = 6
+    DB_CONSTRAINT_FOREIGN_KEY = 6,
+    DB_CONSTRAINT_TYPE_MAX
   } DB_CONSTRAINT_TYPE;		/* TODO: only one enum for DB_CONSTRAINT_TYPE and SM_CONSTRAINT_TYPE */
+
+/* *INDENT-OFF* */
+#define DB_CONSTRAINT_UNIQUE_FAMILY_BITS        \
+        ((0x01 << DB_CONSTRAINT_UNIQUE) | (0x01 << DB_CONSTRAINT_REVERSE_UNIQUE) | (0x01 << DB_CONSTRAINT_PRIMARY_KEY))
+
+  static const unsigned int _db_constraint_family_bits[4] = {
+    // unique family    
+    DB_CONSTRAINT_UNIQUE_FAMILY_BITS,
+    // index family
+    (DB_CONSTRAINT_UNIQUE_FAMILY_BITS 
+     | (0x01 << DB_CONSTRAINT_INDEX) | (0x01 << DB_CONSTRAINT_REVERSE_INDEX) | (0x01 << DB_CONSTRAINT_FOREIGN_KEY)),
+    // reverse family
+    (0x01 << DB_CONSTRAINT_REVERSE_UNIQUE) | (0x01 << DB_CONSTRAINT_REVERSE_INDEX),
+    // constraint family
+    (DB_CONSTRAINT_UNIQUE_FAMILY_BITS | (0x01 << DB_CONSTRAINT_NOT_NULL) | (0x01 << DB_CONSTRAINT_FOREIGN_KEY))
+  };
+
+
+#define CHECK_DB_CONSTRAINT_TYPE(c)  assert((c) >= 0 && (c) < DB_CONSTRAINT_TYPE_MAX)
+
+#define DB_IS_CONSTRAINT_UNIQUE_FAMILY(c)        \
+                (CHECK_DB_CONSTRAINT_TYPE((c)), (_db_constraint_family_bits[0] & (0x01 << (c))) != 0)
+#define DB_IS_CONSTRAINT_INDEX_FAMILY(c)         \
+                (CHECK_DB_CONSTRAINT_TYPE((c)), (_db_constraint_family_bits[1] & (0x01 << (c))) != 0)
+#define DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
+                (CHECK_DB_CONSTRAINT_TYPE((c)), (_db_constraint_family_bits[2] & (0x01 << (c))) != 0)
+#define DB_IS_CONSTRAINT_FAMILY(c)               \
+                (CHECK_DB_CONSTRAINT_TYPE((c)), (_db_constraint_family_bits[3] & (0x01 << (c))) != 0)
+/* *INDENT-ON* */
 
   typedef enum
   {
@@ -1293,27 +1308,18 @@ extern "C"
     DB_DEFAULT_EXPR_TYPE_MAX
   } DB_DEFAULT_EXPR_TYPE;
 
-
-
 /* *INDENT-OFF* */
-#define CHECK_DB_DEFAULT_EXPR_TYPE_ENUM(v)  assert(((v) >= DB_DEFAULT_NONE) && ((v) < DB_DEFAULT_EXPR_TYPE_MAX))
-#define GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(v)  ((int)0x01 << (v))
+  static const unsigned int _db_datetime_default_bits = 
+      ( (0x01 << DB_DEFAULT_SYSDATE)         | (0x01 << DB_DEFAULT_SYSTIME)
+      | (0x01 << DB_DEFAULT_SYSDATETIME)     | (0x01 << DB_DEFAULT_SYSTIMESTAMP)       
+      | (0x01 << DB_DEFAULT_CURRENTDATETIME) | (0x01 << DB_DEFAULT_CURRENTTIMESTAMP) 
+      | (0x01 << DB_DEFAULT_CURRENTDATE)     | (0x01 << DB_DEFAULT_CURRENTTIME)  
+      | (0x01 << DB_DEFAULT_UNIX_TIMESTAMP) );
 
-  static const int _db_defgault_expr_type =  (                                  \
-      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_SYSDATE) |               \
-      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_CURRENTTIME) |           \
-      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_CURRENTDATE) |           \
-      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_SYSDATETIME) |           \
-      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_SYSTIMESTAMP)|           \
-      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_UNIX_TIMESTAMP)|         \
-      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_CURRENTDATETIME) |       \
-      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_CURRENTTIMESTAMP) |      \
-      GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(DB_DEFAULT_SYSTIME) );         
-
-#define DB_IS_DATETIME_DEFAULT_EXPR(v) ( CHECK_DB_DEFAULT_EXPR_TYPE_ENUM((v)),  \
-                                         (_db_defgault_expr_type &  GET_DB_DEFAULT_EXPR_TYPE_ENUM_BIT_POS(v)) != 0)
-/* *INDENT-ON* */                                                  
-
+#define CHECK_DATETIME_DEFAULT_EXPR_TYPE(v)  assert(((v) >= DB_DEFAULT_NONE) && ((v) < DB_DEFAULT_EXPR_TYPE_MAX))
+#define DB_IS_DATETIME_DEFAULT_EXPR(v)      \
+                (CHECK_DATETIME_DEFAULT_EXPR_TYPE((v)), (_db_datetime_default_bits & (0x01 << (v))) != 0)
+/* *INDENT-ON* */
 
   /* An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
    * like SYS_DATE, CURRENT_TIME. Also we allow to_char expression.
