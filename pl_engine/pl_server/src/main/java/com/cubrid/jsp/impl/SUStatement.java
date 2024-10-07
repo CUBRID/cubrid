@@ -355,7 +355,8 @@ public class SUStatement {
 
         fetchedTupleNumber = fetchInfo.numFetched;
         if (fetchInfo.numFetched > 0) {
-            // fetch request reach to the end of the result set (S_END)
+            // fetch until reaching the end of the result set (S_END). 
+            // If fetchInfo.numFetched == 0, it means there are no remaining rows.
             fetchedStartCursorPosition = fetchInfo.tuples[0].tupleNumber() - 1;
             fetchedEndCursorPosition = fetchedStartCursorPosition + fetchedTupleNumber;
         }
