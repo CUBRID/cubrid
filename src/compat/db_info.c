@@ -2395,7 +2395,7 @@ db_get_btree_statistics (DB_CONSTRAINT * cons, int *num_leaf_pages, int *num_tot
   BTID *btid;
   BTREE_STATS stat;
   int errcode;
-  int ctype;
+  DB_CONSTRAINT_TYPE ctype;
 
   ctype = db_constraint_type (cons);
   if (!DB_IS_CONSTRAINT_INDEX_FAMILY (ctype))
