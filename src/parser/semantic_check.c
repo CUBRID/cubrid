@@ -7255,27 +7255,6 @@ pt_is_compatible_type (const PT_TYPE_ENUM arg1_type, const PT_TYPE_ENUM arg2_typ
 }
 
 /*
- * pt_check_vclass_attr_qspec_compatible () -
- *   return:
- *   parser(in):
- *   attr(in):
- *   col(in):
- */
-static PT_UNION_COMPATIBLE
-pt_check_vclass_attr_qspec_compatible (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * col)
-{
-  bool is_object_type;
-  PT_UNION_COMPATIBLE c = pt_union_compatible (parser, attr, col, true, &is_object_type);
-
-  if (c == PT_UNION_INCOMP && pt_is_compatible_type (attr->type_enum, col->type_enum))
-    {
-      c = PT_UNION_COMP;
-    }
-
-  return c;
-}
-
-/*
  * pt_check_vclass_union_spec () -
  *   return:
  *   parser(in):
