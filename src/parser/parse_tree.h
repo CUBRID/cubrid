@@ -1001,11 +1001,15 @@ enum pt_type_enum
   PT_TYPE_DATETIMELTZ,
 
   PT_TYPE_MAX,
+  /* Notice: 
+   * If you want to add new values ​​or change the order, you must also modify the pt_type_enum_to_db() function.
+   */
 
   PT_TYPE_TABLE_COLUMN,		/* not a real type but a type specification of the form <table>.<column>%TYPE */
   /* which can be used only in SP parameter and return types */
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
+#define NUM_PT_TYPES (PT_TYPE_MAX - PT_TYPE_MIN)
 
 /* *INDENT-OFF* */
 #define CHECK_PT_TYPE_ENUM(v)  assert((v) >= PT_TYPE_MIN && (v) < PT_TYPE_MAX)

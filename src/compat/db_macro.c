@@ -2922,7 +2922,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
     case DB_TYPE_OID:		/* Probably won't ever happen */
       goto unsupported_conversion;
 
-    case DB_TYPE_FIRST:
+    case DB_TYPE_NULL:
     case DB_TYPE_DB_VALUE:
     case DB_TYPE_RESULTSET:
     case DB_TYPE_MIDXKEY:

@@ -62,10 +62,9 @@
 
 #define DB_IS_NULL(value)               db_value_is_null(value)
 
-#define DB_IS_STRING(value)       (db_value_type(value) == DB_TYPE_VARCHAR  || \
-                                   db_value_type(value) == DB_TYPE_CHAR     || \
-                                   db_value_type(value) == DB_TYPE_VARNCHAR || \
-                                   db_value_type(value) == DB_TYPE_NCHAR)
+/* *INDENT-OFF* */
+#define DB_IS_STRING(value) ( CHECK_DB_TYPE_ENUM(db_value_type(value)),  \
+                              ((_db_string_type & GET_DB_TYPE_ENUM_BIT_POS(db_value_type(value))) != 0) )
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
@@ -79,17 +78,21 @@
 #define DB_TRIED_COMPRESSION(value) (db_get_compressed_size(value) != DB_NOT_YET_COMPRESSED)
 
   /* Macros from dbval.h */
+     
+
+#define DB_IS_VAR_CHAR_STRING(v)     ( CHECK_DB_TYPE_ENUM((v)),         \
+                                      ((_db_variable_string_type & GET_DB_TYPE_ENUM_BIT_POS((v))) != 0) )
+#define DB_IS_NOT_VAR_CHAR_STRING(v) ( CHECK_DB_TYPE_ENUM((v)),         \
+                                       ((_db_variable_string_type & GET_DB_TYPE_ENUM_BIT_POS((v))) == 0) )
 
 #define DB_NEED_CLEAR(v) \
       ((!DB_IS_NULL(v) \
 	&& ((v)->need_clear == true \
-	    || ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR) \
-		 && (v)->data.ch.info.compressed_need_clear != 0))))
+             || (DB_IS_VAR_CHAR_STRING(DB_VALUE_DOMAIN_TYPE(v)) && (v)->data.ch.info.compressed_need_clear != 0))))
 
-#define DB_GET_COMPRESSED_STRING(v) \
-      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) \
-	? NULL : (v)->data.ch.medium.compressed_buf)
-
+#define DB_GET_COMPRESSED_STRING(v)  \
+                  (DB_IS_NOT_VAR_CHAR_STRING(DB_VALUE_DOMAIN_TYPE((v))) ? NULL : (v)->data.ch.medium.compressed_buf)
+/* *INDENT-ON* */
 
 #define DB_GET_STRING_PRECISION(v) \
     ((v)->domain.char_info.length)
@@ -175,19 +178,23 @@ extern "C"
   extern int db_value_compare (const DB_VALUE * value1, const DB_VALUE * value2);
   extern int db_value_domain_init (DB_VALUE * value, DB_TYPE type, const int precision, const int scale);
   extern void db_value_domain_init_default (DB_VALUE * value, const DB_TYPE type);
-  extern int db_value_domain_min (DB_VALUE * value, DB_TYPE type, const int precision, const int scale,
-				  const int codeset, const int collation_id, const DB_ENUMERATION * enumeration);
-  extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type, const int precision, const int scale,
-				  const int codeset, const int collation_id, const DB_ENUMERATION * enumeration);
-  extern int db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precision, const int scale,
-				      const int codeset, const int collation_id, DB_ENUMERATION * enumeration);
+  extern int
+    db_value_domain_min (DB_VALUE * value, DB_TYPE type, const int precision, const int scale,
+			 const int codeset, const int collation_id, const DB_ENUMERATION * enumeration);
+  extern int
+    db_value_domain_max (DB_VALUE * value, DB_TYPE type, const int precision, const int scale,
+			 const int codeset, const int collation_id, const DB_ENUMERATION * enumeration);
+  extern int
+    db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precision, const int scale,
+			     const int codeset, const int collation_id, DB_ENUMERATION * enumeration);
   extern int db_value_domain_zero (DB_VALUE * value, const DB_TYPE type, const int precision, const int scale);
   extern int db_string_truncate (DB_VALUE * value, const int max_precision);
   extern int db_value_put_null (DB_VALUE * value);
   extern int db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int input_length);
   extern bool db_value_type_is_collection (const DB_VALUE * value);
-  extern int db_value_get (DB_VALUE * value, const DB_TYPE_C type, void *buf, const int buflen, int *transferlen,
-			   int *outputlen);
+  extern int
+    db_value_get (DB_VALUE * value, const DB_TYPE_C type, void *buf, const int buflen, int *transferlen,
+		  int *outputlen);
   extern DB_CURRENCY db_value_get_monetary_currency (const DB_VALUE * value);
   extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
   extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);
