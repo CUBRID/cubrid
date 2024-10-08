@@ -879,6 +879,8 @@ exit:
       }
   }
 
+  std::unordered_map <std::string, MOP> user_mop_cache;
+
   int
   callback_handler::change_rights (packing_unpacker &unpacker)
   {
@@ -886,18 +888,27 @@ exit:
 
     int command;
     std::string auth_user_name;
-    unpacker.unpack_all (command, auth_user_name);
+    unpacker.unpack_int (command);
 
     if (command == 0) // PUSH
       {
-	MOP user = au_find_user (auth_user_name.c_str ());
-	if (user == NULL)
+	unpacker.unpack_string (auth_user_name);
+	if (user_mop_cache.find (auth_user_name) == user_mop_cache.end ())
 	  {
-	    error = ER_FAILED;
+	    MOP user = au_find_user (auth_user_name.c_str ());
+	    if (user == NULL)
+	      {
+		error = ER_FAILED;
+	      }
+	    else
+	      {
+		user_mop_cache[auth_user_name] = user;
+		au_perform_push_user (user);
+	      }
 	  }
 	else
 	  {
-	    au_perform_push_user (user);
+	    au_perform_push_user (user_mop_cache[auth_user_name]);
 	  }
       }
     else // POP

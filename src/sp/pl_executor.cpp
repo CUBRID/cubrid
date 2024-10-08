@@ -312,7 +312,16 @@ exit:
       return NO_ERROR;
     };
 
-    error = m_stack->send_data_to_client (dummy, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore, auth_name);
+    if (is_restore == 0)
+      {
+	error = m_stack->send_data_to_client (dummy, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore, std::string (auth_name));
+      }
+    else
+      {
+	error = m_stack->send_data_to_client (dummy, METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+
+      }
+
     if (error != NO_ERROR)
       {
 	return error;
