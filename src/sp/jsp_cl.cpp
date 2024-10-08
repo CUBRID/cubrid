@@ -1819,7 +1819,9 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
   sp_entry entry (SP_ATTR_INDEX_LAST);
 
   {
-    char *name = (char *) parser_print_tree (parser, node->info.method_call.method_name);
+    PT_NODE *method_name_node = node->info.method_call.method_name;
+    const char *name = PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
+		       method_name_node) : PT_NAME_ORIGINAL (method_name_node);
 
     sig.name = db_private_strdup (NULL, name);
     if (PT_IS_METHOD (node))
