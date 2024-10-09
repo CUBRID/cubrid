@@ -158,7 +158,7 @@ catcls_add_charsets (struct db_object *class_mop)
 
   count_collations = lang_collation_count ();
 
-  for (i = INTL_CODESET_BINARY; i <= INTL_CODESET_LAST; i++)
+  for (i = INTL_CODESET_BINARY; i < INTL_CODESET_MAX; i++)
     {
       DB_OBJECT *obj;
       DB_VALUE val;

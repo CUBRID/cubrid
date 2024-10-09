@@ -2306,145 +2306,6 @@ pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node, const char *class
 }
 
 /*
- * pt_type_enum_to_db() - return DB_TYPE equivalent of PT_TYPE_ENUM t
- *   return:  DB_TYPE equivalent of t
- *   t(in):  a PT_TYPE_ENUM value
- */
-DB_TYPE
-pt_type_enum_to_db (const PT_TYPE_ENUM t)
-{
-  DB_TYPE db_type = DB_TYPE_NULL;
-
-  switch (t)
-    {
-    case PT_TYPE_NONE:
-      db_type = DB_TYPE_NULL;
-      break;
-
-    case PT_TYPE_LOGICAL:
-    case PT_TYPE_INTEGER:
-      db_type = DB_TYPE_INTEGER;
-      break;
-
-    case PT_TYPE_BIGINT:
-      db_type = DB_TYPE_BIGINT;
-      break;
-
-    case PT_TYPE_SMALLINT:
-      db_type = DB_TYPE_SHORT;
-      break;
-    case PT_TYPE_FLOAT:
-      db_type = DB_TYPE_FLOAT;
-      break;
-    case PT_TYPE_DOUBLE:
-      db_type = DB_TYPE_DOUBLE;
-      break;
-
-    case PT_TYPE_DATE:
-      db_type = DB_TYPE_DATE;
-      break;
-    case PT_TYPE_TIME:
-      db_type = DB_TYPE_TIME;
-      break;
-    case PT_TYPE_TIMESTAMP:
-      db_type = DB_TYPE_TIMESTAMP;
-      break;
-    case PT_TYPE_TIMESTAMPTZ:
-      db_type = DB_TYPE_TIMESTAMPTZ;
-      break;
-    case PT_TYPE_TIMESTAMPLTZ:
-      db_type = DB_TYPE_TIMESTAMPLTZ;
-      break;
-
-    case PT_TYPE_DATETIME:
-      db_type = DB_TYPE_DATETIME;
-      break;
-    case PT_TYPE_DATETIMETZ:
-      db_type = DB_TYPE_DATETIMETZ;
-      break;
-    case PT_TYPE_DATETIMELTZ:
-      db_type = DB_TYPE_DATETIMELTZ;
-      break;
-    case PT_TYPE_MONETARY:
-      db_type = DB_TYPE_MONETARY;
-      break;
-
-    case PT_TYPE_CHAR:
-      db_type = DB_TYPE_CHAR;
-      break;
-    case PT_TYPE_VARCHAR:
-      db_type = DB_TYPE_VARCHAR;
-      break;
-
-    case PT_TYPE_JSON:
-      db_type = DB_TYPE_JSON;
-      break;
-
-    case PT_TYPE_OBJECT:
-      db_type = DB_TYPE_OBJECT;
-      break;
-
-    case PT_TYPE_SET:
-      db_type = DB_TYPE_SET;
-      break;
-
-    case PT_TYPE_MULTISET:
-      db_type = DB_TYPE_MULTISET;
-      break;
-
-    case PT_TYPE_SEQUENCE:
-      db_type = DB_TYPE_SEQUENCE;
-      break;
-
-    case PT_TYPE_MIDXKEY:
-      db_type = DB_TYPE_MIDXKEY;
-      break;
-
-    case PT_TYPE_NUMERIC:
-      db_type = DB_TYPE_NUMERIC;
-      break;
-    case PT_TYPE_NCHAR:
-      db_type = DB_TYPE_NCHAR;
-      break;
-    case PT_TYPE_VARNCHAR:
-      db_type = DB_TYPE_VARNCHAR;
-      break;
-    case PT_TYPE_BIT:
-      db_type = DB_TYPE_BIT;
-      break;
-    case PT_TYPE_VARBIT:
-      db_type = DB_TYPE_VARBIT;
-      break;
-
-    case PT_TYPE_RESULTSET:
-      db_type = DB_TYPE_RESULTSET;
-      break;
-
-    case PT_TYPE_BLOB:
-      db_type = DB_TYPE_BLOB;
-      break;
-
-    case PT_TYPE_CLOB:
-      db_type = DB_TYPE_CLOB;
-      break;
-
-    case PT_TYPE_MAYBE:
-      db_type = DB_TYPE_VARIABLE;
-      break;
-
-    case PT_TYPE_ENUMERATION:
-      db_type = DB_TYPE_ENUMERATION;
-      break;
-
-    default:
-      db_type = DB_TYPE_NULL;
-      break;
-    }
-
-  return db_type;
-}
-
-/*
  * pt_node_to_db_type() - return DB_TYPE equivalent of PT_TYPE_ENUM of node
  *   return:  DB_TYPE equivalent of type_enum of node
  *   node(in):  a PT_NODE
@@ -2586,148 +2447,6 @@ pt_auth_to_db_auth (const PT_NODE * auth)
 }
 
 /*
- * pt_db_to_type_enum() - Convert type_enum from DB_TYPE... to PT_...
- *   return: Returns one of the PT_TYPE_ENUMs defined
- *	     PT_TYPE_NONE for internal or unknown types
- *   t(in): a data type as defined in dbi.h
- */
-PT_TYPE_ENUM
-pt_db_to_type_enum (const DB_TYPE t)
-{
-  PT_TYPE_ENUM pt_type = PT_TYPE_NONE;
-
-  if (t > DB_TYPE_LAST)
-    {
-      return PT_TYPE_NONE;
-    }
-  if (t <= DB_TYPE_FIRST)
-    {
-      return PT_TYPE_NONE;
-    }
-
-  switch (t)
-    {
-    case DB_TYPE_INTEGER:
-      pt_type = PT_TYPE_INTEGER;
-      break;
-    case DB_TYPE_BIGINT:
-      pt_type = PT_TYPE_BIGINT;
-      break;
-    case DB_TYPE_NUMERIC:
-      pt_type = PT_TYPE_NUMERIC;
-      break;
-    case DB_TYPE_SHORT:
-      pt_type = PT_TYPE_SMALLINT;
-      break;
-    case DB_TYPE_FLOAT:
-      pt_type = PT_TYPE_FLOAT;
-      break;
-    case DB_TYPE_DOUBLE:
-      pt_type = PT_TYPE_DOUBLE;
-      break;
-
-    case DB_TYPE_DATE:
-      pt_type = PT_TYPE_DATE;
-      break;
-    case DB_TYPE_TIME:
-      pt_type = PT_TYPE_TIME;
-      break;
-    case DB_TYPE_TIMESTAMP:
-      pt_type = PT_TYPE_TIMESTAMP;
-      break;
-    case DB_TYPE_TIMESTAMPTZ:
-      pt_type = PT_TYPE_TIMESTAMPTZ;
-      break;
-    case DB_TYPE_TIMESTAMPLTZ:
-      pt_type = PT_TYPE_TIMESTAMPLTZ;
-      break;
-    case DB_TYPE_DATETIME:
-      pt_type = PT_TYPE_DATETIME;
-      break;
-    case DB_TYPE_DATETIMETZ:
-      pt_type = PT_TYPE_DATETIMETZ;
-      break;
-    case DB_TYPE_DATETIMELTZ:
-      pt_type = PT_TYPE_DATETIMELTZ;
-      break;
-
-    case DB_TYPE_MONETARY:
-      pt_type = PT_TYPE_MONETARY;
-      break;
-
-    case DB_TYPE_OBJECT:
-      pt_type = PT_TYPE_OBJECT;
-      break;
-
-    case DB_TYPE_SET:
-      pt_type = PT_TYPE_SET;
-      break;
-    case DB_TYPE_MULTISET:
-      pt_type = PT_TYPE_MULTISET;
-      break;
-    case DB_TYPE_SEQUENCE:
-      pt_type = PT_TYPE_SEQUENCE;
-      break;
-
-    case DB_TYPE_CHAR:
-      pt_type = PT_TYPE_CHAR;
-      break;
-    case DB_TYPE_STRING:
-      pt_type = PT_TYPE_VARCHAR;
-      break;
-    case DB_TYPE_NCHAR:
-      pt_type = PT_TYPE_NCHAR;
-      break;
-    case DB_TYPE_VARNCHAR:
-      pt_type = PT_TYPE_VARNCHAR;
-      break;
-    case DB_TYPE_BIT:
-      pt_type = PT_TYPE_BIT;
-      break;
-    case DB_TYPE_VARBIT:
-      pt_type = PT_TYPE_VARBIT;
-      break;
-    case DB_TYPE_MIDXKEY:
-      pt_type = PT_TYPE_MIDXKEY;
-      break;
-    case DB_TYPE_RESULTSET:
-      pt_type = PT_TYPE_RESULTSET;
-      break;
-    case DB_TYPE_BLOB:
-      pt_type = PT_TYPE_BLOB;
-      break;
-    case DB_TYPE_CLOB:
-      pt_type = PT_TYPE_CLOB;
-      break;
-    case DB_TYPE_ENUMERATION:
-      pt_type = PT_TYPE_ENUMERATION;
-      break;
-    case DB_TYPE_VARIABLE:
-      pt_type = PT_TYPE_MAYBE;
-      break;
-    case DB_TYPE_JSON:
-      pt_type = PT_TYPE_JSON;
-      break;
-
-      /* these guys should not get encountered */
-    case DB_TYPE_OID:
-    case DB_TYPE_VOBJ:
-    case DB_TYPE_UNKNOWN:
-    case DB_TYPE_POINTER:
-    case DB_TYPE_SUB:
-    case DB_TYPE_ERROR:
-    case DB_TYPE_DB_VALUE:
-    case DB_TYPE_TABLE:
-      pt_type = PT_TYPE_NONE;
-      break;
-    default:
-      /* ALL TYPES MUST GET HANDLED HERE! */
-      assert (false);
-    }
-  return pt_type;
-}
-
-/*
  * pt_node_to_cmd_type() - Convert node to CUBRID_STMT_TYPES
  *   return: one of the CUBRID_STMT_TYPES defined in dbi.h.
  *   node(in):
@@ -2763,7 +2482,7 @@ pt_node_to_cmd_type (PT_NODE * node)
       return CUBRID_STMT_KILL;
     default:
       /* todo: is this acceptable?? I'll add safe-guard and let's see what happens... */
-      assert ((int) node->node_type <= (int) PT_LAST_NODE_NUMBER);
+      assert ((int) node->node_type < (int) PT_LAST_NODE_NUMBER);
       return (CUBRID_STMT_TYPE) node->node_type;
     }
 
@@ -3555,13 +3274,17 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
     case PT_TYPE_STAR:
     case PT_TYPE_MAYBE:
     case PT_TYPE_EXPR_SET:
-    case PT_TYPE_MAX:
     case PT_TYPE_MIDXKEY:
     case PT_TYPE_RESULTSET:
       PT_ERRORm (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
       return (DB_VALUE *) NULL;
 
+    case PT_TYPE_MAX:
+      assert (false);
+      return (DB_VALUE *) NULL;
+
     default:
+      assert (false);
       break;
     }
 

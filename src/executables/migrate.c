@@ -563,7 +563,7 @@ main (int argc, char *argv[])
   db_shutdown ();
   db_started = false;
 
-  if (codeset >= INTL_CODESET_ISO88591 && codeset <= INTL_CODESET_LAST)
+  if (codeset >= INTL_CODESET_ISO88591 && codeset < INTL_CODESET_MAX)
     {
       /* write codeset to the header of an active log */
       if (fix_codeset_in_active_log (db_full_path, codeset) != NO_ERROR)
