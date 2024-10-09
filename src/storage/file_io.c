@@ -85,6 +85,8 @@
 #include "log_common_impl.h"
 #include "log_volids.hpp"
 #include "fault_injection.h"
+#include "thread_worker_pool.hpp"
+
 #if defined (SERVER_MODE)
 #include "vacuum.h"
 #endif /* SERVER_MODE */
