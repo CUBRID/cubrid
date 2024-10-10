@@ -114,14 +114,14 @@ struct json_t;
 #define PT_INTERNAL_ERROR(parser, what) \
 	pt_internal_error((parser), __FILE__, __LINE__, (what))
 
-extern bool _was_init_node_type_variable;
+//extern bool _was_init_node_type_variable;
 #define BIT_BUF_BYTE_SIZE(max)     ((((max) - 1) >> 3) + 1)
 #define SET_BIT_BYTE(buf, v)       ((buf)[((v) >> 3)] |= (0x01 << ((v) & 0x07)))
 #define CHECK_BIT_BYTE(buf, v)     ( assert(_was_init_node_type_variable == true), \
                                      (((buf)[((v) >> 3)] & (0x01 << ((v) & 0x07))) != 0) )
 #define CHECK_PT_NODE_TYPE_ENUM(v) (assert((v) > PT_NODE_NONE && (v) < PT_LAST_NODE_NUMBER))
 
-extern unsigned char _query_node_type[];
+//extern unsigned char _query_node_type[];
 #define PT_IS_QUERY_NODE_TYPE(x) (CHECK_PT_NODE_TYPE_ENUM((x)), CHECK_BIT_BYTE(_query_node_type, (x)))
 
 #define PT_IS_CLASSOID_NAME(x) \
@@ -680,7 +680,7 @@ extern unsigned char _query_node_type[];
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
 #define PT_NODE_IS_NAME(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_NAME)
 #define PT_NODE_IS_SPEC(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_SPEC)
-extern unsigned char _synonym_node_type[];
+//extern unsigned char _synonym_node_type[];
 #define PT_NODE_IS_SYNONYM(n)		(PT_ASSERT_NOT_NULL ((n)), CHECK_PT_NODE_TYPE_ENUM((n)->node_type), \
                                          CHECK_BIT_BYTE(_synonym_node_type, (n)->node_type))
 
@@ -4065,6 +4065,10 @@ extern "C"
   bool pt_is_json_value_type (PT_TYPE_ENUM type);
   bool pt_is_json_doc_type (PT_TYPE_ENUM type);
   void initialize_bits_mask_variable ();
+
+  extern bool _was_init_node_type_variable;
+  extern unsigned char _query_node_type[];
+  extern unsigned char _synonym_node_type[];
 #ifdef __cplusplus
 }
 #endif
