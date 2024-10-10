@@ -11525,6 +11525,7 @@ fileio_lock_region (int fd, int cmd, int type, off_t offset, int whence, off_t l
 }
 #endif /* !WINDOWS */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #if defined(SERVER_MODE)
 /*
  * fileio_os_sysconf () -
@@ -11554,6 +11555,7 @@ fileio_os_sysconf (void)
   return (nprocs > 1) ? (int) nprocs : 1;
 }
 #endif /* SERVER_MODE */
+#endif
 
 /*
  * fileio_initialize_res () -
