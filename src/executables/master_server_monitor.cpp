@@ -118,7 +118,7 @@ server_monitor::register_server_entry (int pid, const std::string &exec_path, co
   else
     {
       m_server_entry_map.emplace (std::move (server_name), server_entry (pid, exec_path, args,
-				  std::chrono::steady_clock::now ()));
+				  std::chrono::steady_clock::time_point ()));
 
       _er_log_debug (ARG_FILE_LINE,
 		     "[Server Monitor] [%s] Server entry has been registered newly. (pid : %d)",
@@ -171,7 +171,8 @@ server_monitor::revive_server (const std::string &server_name)
       // true after the first evaluation. Therefore, evaluating the timediff only once when producing the REVIVE_SERVER job is needed.
       // (Currently, it is impossible since registered_time is stored in server_entry, which is not synchronized structure between monitor and main thread.)
 
-      if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS)
+      if (entry->second.get_registered_time() == std::chrono::steady_clock::time_point ()
+	  || timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS)
 	{
 	  out_pid = try_revive_server (entry->second.get_exec_path(), entry->second.get_argv());
 	  if (out_pid == -1)
