@@ -3863,6 +3863,7 @@ main (int argc, char **argv)
       exit (1);
     }
 
+  initialize_bits_mask_variable();
   if (lang_init () != NO_ERROR)
     {
       exit (1);
