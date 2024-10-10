@@ -2617,6 +2617,18 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  class_spec->info.spec.derived_table =
 	    mq_substitute_select_in_statement (parser, class_spec->info.spec.derived_table, query_spec, tmp_class);
 
+	  /* as_attr_list for derived queries also needs to be changed. */
+	  if (class_spec->info.spec.derived_table)
+	    {
+	      PT_NODE *subquery = class_spec->info.spec.derived_table;
+
+	      if (class_spec->info.spec.as_attr_list)
+		{
+		  parser_free_tree (parser, class_spec->info.spec.as_attr_list);
+		}
+	      class_spec->info.spec.as_attr_list = parser_copy_tree_list (parser, subquery->info.query.q.select.list);
+	    }
+
 	  if (tmp_class)
 	    {
 	      parser_free_tree (parser, tmp_class);
@@ -7637,6 +7649,13 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
 
+    case PT_CREATE_ENTITY:
+      if (node->info.create_entity.create_select == NULL)
+	{
+	  break;
+	}
+      [[fallthrough]];
+
     case PT_INSERT:
     case PT_DELETE:
     case PT_UPDATE:
@@ -11198,6 +11217,19 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 		  result->column_number = node->column_number;
 		  result->flag.is_hidden_column = node->flag.is_hidden_column;
 		  result->buffer_pos = node->buffer_pos;
+
+		  /* it needs alias for CREATE ... AS SELECT ... */
+		  if (node->alias_print)
+		    {
+		      result->alias_print =
+			(const char *) parser_allocate_string_buffer (parser, strlen (node->alias_print),
+								      sizeof (char));
+		      if (result->alias_print == NULL)
+			{
+			  return NULL;
+			}
+		      strcpy ((char *) result->alias_print, node->alias_print);
+		    }
 #if 0
 		  result->info.name.original = node->info.name.original;
 #endif /* 0 */
