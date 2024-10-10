@@ -117,9 +117,9 @@ struct json_t;
 extern bool _was_init_node_type_variable;
 #define BIT_BUF_BYTE_SIZE(max)     ((((max) - 1) >> 3) + 1)
 #define SET_BIT_BYTE(buf, v)       ((buf)[((v) >> 3)] |= (0x01 << ((v) & 0x07)))
-#define CHECK_BIT_BYTE(buf, v)     ( ASSERT_IN_MACRO(_was_init_node_type_variable == true), \
+#define CHECK_BIT_BYTE(buf, v)     ( assert(_was_init_node_type_variable == true), \
                                      (((buf)[((v) >> 3)] & (0x01 << ((v) & 0x07))) != 0) )
-#define CHECK_PT_NODE_TYPE_ENUM(v) (ASSERT_IN_MACRO((v) > PT_NODE_NONE && (v) < PT_LAST_NODE_NUMBER))
+#define CHECK_PT_NODE_TYPE_ENUM(v) (assert((v) > PT_NODE_NONE && (v) < PT_LAST_NODE_NUMBER))
 
 extern unsigned char _query_node_type[];
 #define PT_IS_QUERY_NODE_TYPE(x) (CHECK_PT_NODE_TYPE_ENUM((x)), CHECK_BIT_BYTE(_query_node_type, (x)))
@@ -530,27 +530,26 @@ extern unsigned char _query_node_type[];
 #define PT_SET_NODE_COLL_MODIFIER(p, coll)                  \
     do {                                                    \
       assert ((p) != NULL);				    \
-      if ((p)->node_type == PT_EXPR)			    \
-	{						    \
+      switch((p)->node_type)                                \
+      {                                                     \
+        case PT_EXPR:			                    \
 	  (p)->info.expr.coll_modifier = (coll) + 1;	    \
-	}						    \
-      else if ((p)->node_type == PT_VALUE)		    \
-	{						    \
+          break; 				            \
+        case PT_VALUE:                       		    \
 	  (p)->info.value.coll_modifier = (coll) + 1;	    \
-	}						    \
-      else if ((p)->node_type == PT_NAME)		    \
-	{						    \
+	  break;					    \
+        case PT_NAME:                     		    \
 	  (p)->info.name.coll_modifier = (coll) + 1;	    \
-	}						    \
-      else if ((p)->node_type == PT_FUNCTION)		    \
-	{						    \
+	  break;					    \
+        case PT_FUNCTION:                 		    \
 	  (p)->info.function.coll_modifier = (coll) + 1;    \
-	}						    \
-      else						    \
-	{						    \
-	  assert ((p)->node_type == PT_DOT_);		    \
-	  (p)->info.dot.coll_modifier = (coll) + 1;	    \
-	}						    \
+	  break;					    \
+        case PT_DOT_:					    \
+      	  (p)->info.dot.coll_modifier = (coll) + 1;	    \
+	  break;					    \
+        default:                                            \
+          assert(false);                                    \
+      }                                                     \
     } while (0)
 
 /* Check if spec is flagged with any of flags_ */
@@ -561,34 +560,19 @@ extern unsigned char _query_node_type[];
   (((spec_)->info.spec.flag &				    \
     (PT_SPEC_FLAG_KEY_INFO_SCAN | PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN)) != 0)
 
-/* Obtain reserved name type from spec flag */
-#define PT_SPEC_GET_RESERVED_NAME_TYPE(spec_)				\
-  (((spec_) == NULL || (spec_)->node_type != PT_SPEC			\
-    || (spec_)->info.spec.flag == 0) ?					\
-   /* is spec is NULL or not a PT_SPEC or flag is 0, return invalid */	\
-   RESERVED_NAME_INVALID :						\
-   /* else */								\
-   ((PT_IS_SPEC_FLAG_SET (spec_, PT_SPEC_FLAG_RECORD_INFO_SCAN)) ?	\
-    /* if spec is flagged for record info */				\
-    RESERVED_NAME_RECORD_INFO :						\
-    /* else */								\
-    ((PT_IS_SPEC_FLAG_SET (spec_, PT_SPEC_FLAG_PAGE_INFO_SCAN)) ?	\
-     /* if spec is flagged for page info */				\
-     RESERVED_NAME_PAGE_INFO :						\
-     /* else */								\
-     ((PT_IS_SPEC_FLAG_SET (spec_, PT_SPEC_FLAG_KEY_INFO_SCAN)) ?	\
-      /* if spec is flagged for key info */				\
-      RESERVED_NAME_KEY_INFO :						\
-      /* else */							\
-      ((PT_IS_SPEC_FLAG_SET(spec_, PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN) ?	\
-	/* if spec is flagged for b-tree node info */			\
-	RESERVED_NAME_BTREE_NODE_INFO :					\
-	/* spec is not flagged for any type of reserved names */	\
-	RESERVED_NAME_INVALID))))))
-
 /* Check if according to spec flag should bind names as reserved */
+#define PT_SHOULD_BIND_RESERVED_NAME_FLAGS ((PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN |       \
+                                             PT_SPEC_FLAG_KEY_INFO_SCAN    | PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN))
 #define PT_SHOULD_BIND_RESERVED_NAME(spec_)				\
-  (PT_SPEC_GET_RESERVED_NAME_TYPE (spec_) != RESERVED_NAME_INVALID)
+   ((spec_) != NULL && (spec_)->node_type == PT_SPEC && (spec_)->info.spec.flag & PT_SHOULD_BIND_RESERVED_NAME_FLAGS)
+
+/* Obtain reserved name type from spec flag */
+#define PT_SPEC_GET_RESERVED_NAME_TYPE(spec_)	                                                    \
+    ((PT_SHOULD_BIND_RESERVED_NAME((spec_)) == false) ? RESERVED_NAME_INVALID                       \
+      : (PT_IS_SPEC_FLAG_SET ((spec_), PT_SPEC_FLAG_RECORD_INFO_SCAN)) ? RESERVED_NAME_RECORD_INFO  \
+      : (PT_IS_SPEC_FLAG_SET ((spec_), PT_SPEC_FLAG_PAGE_INFO_SCAN)) ? RESERVED_NAME_PAGE_INFO 	    \
+      : (PT_IS_SPEC_FLAG_SET ((spec_), PT_SPEC_FLAG_KEY_INFO_SCAN)) ? RESERVED_NAME_KEY_INFO        \
+      : RESERVED_NAME_BTREE_NODE_INFO)
 
 /* PT_SPEC node contains a derived table */
 #define PT_SPEC_IS_DERIVED(spec_) \
