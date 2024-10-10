@@ -119,7 +119,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   const char *exec_name = arg->command_name;
   char er_msg_file[PATH_MAX];
   int error;
-  int status = 0;
+  int status = 1;
   int i;
   char *user, *password;
   int au_save;
@@ -172,7 +172,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   g_pre_alloc_varchar_size = utility_get_option_int_value (arg_map, UNLOAD_STRING_BUFFER_SIZE_S);
   if (g_pre_alloc_varchar_size < 0 || g_pre_alloc_varchar_size > MAX_PRE_ALLOC_VARCHAR_SIZE)
     {
-      fprintf (stderr, "\nThe number of '--%s' ranges from 0 to %d.\n", UNLOAD_STRING_BUFFER_SIZE_L,
+      fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_STRING_BUFFER_SIZE_L,
 	       MAX_PRE_ALLOC_VARCHAR_SIZE);
       goto end;
     }
@@ -213,16 +213,14 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	{
 	  if (sscanf (_pstr, "%d/%d", &g_parallel_process_idx, &g_parallel_process_cnt) != 2)
 	    {
-	      fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
-	      fflush (stderr);
+	      fprintf (stderr, "invalid '--%s' option value: %s\n", UNLOAD_MT_PROCESS_L, _pstr);
 	      goto end;
 	    }
 	  else if ((g_parallel_process_cnt > MAX_PROCESS_COUNT)
 		   || ((g_parallel_process_cnt > 1)
 		       && (g_parallel_process_idx <= 0 || g_parallel_process_idx > g_parallel_process_cnt)))
 	    {
-	      fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
-	      fflush (stderr);
+	      fprintf (stderr, "invalid '--%s' option value: %s\n", UNLOAD_MT_PROCESS_L, _pstr);
 	      goto end;
 	    }
 	}
@@ -231,6 +229,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
 
+  status = 0;			// success
   if (database_name == NULL)
     {
       status = 1;

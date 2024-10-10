@@ -472,6 +472,8 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   packed_size += OR_INT_SIZE;
   /* recompile */
   packed_size += OR_INT_SIZE;
+  /* do_cache */
+  packed_size += OR_INT_SIZE;
   /* oids included */
   packed_size += OR_INT_SIZE;
   /* into list length */
@@ -516,6 +518,8 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   ptr = or_pack_int (ptr, info->auto_param_count);
   /* recompile */
   ptr = or_pack_int (ptr, info->recompile);
+  /* do_cache */
+  ptr = or_pack_int (ptr, info->do_cache);
   /* oids included */
   ptr = or_pack_int (ptr, info->oids_included);
   /* into list length */
@@ -585,6 +589,8 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
   ptr = or_unpack_int (ptr, &info->auto_param_count);
   /* unpack recompile */
   ptr = or_unpack_int (ptr, &info->recompile);
+  /* unpack do_cache */
+  ptr = or_unpack_int (ptr, &info->do_cache);
   /* oids included */
   ptr = or_unpack_int (ptr, &info->oids_included);
   /* unpack into list length */
