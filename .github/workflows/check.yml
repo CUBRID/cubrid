@@ -176,7 +176,14 @@ jobs:
             *) continue ;; # skip others
             esac
 
-            ${{ env.CPPCHECK_PATH }}/cppcheck --force -j4 --inline-suppr --suppressions-list=.github/workflows/cppcheck-spr-list --quiet --enable=warning -iheaplayers $f 2>>$result_file
+            # cppcheck can use the -i option to ignore files in a specified directory like -iheaplayers.
+            # However, this option may not work correctly for files like malloc_2_8_3.c that are included in lea_heap.c.
+            # So, make sure cppcheck does not check any files under the src/heaplayers directory.
+            if [[ $f =~ ^src/heaplayers/.* ]]; then
+              continue
+            fi
+
+            ${{ env.CPPCHECK_PATH }}/cppcheck --force -j4 --inline-suppr --suppressions-list=.github/workflows/cppcheck-spr-list --quiet --enable=warning $f 2>>$result_file
           done
 
           echo "errors: `cat $result_file | grep " error: " | wc -l`" > $summary_file
