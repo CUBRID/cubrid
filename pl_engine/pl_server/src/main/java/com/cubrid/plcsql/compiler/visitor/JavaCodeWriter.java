@@ -387,7 +387,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         String code =
                 String.format(
-                        "final Query %s = new Query(\"%s\"); // param-ref-counts: %s, param-marks: %s",
+                        "final Query %s = new Query(\"%s\"); // param-ref-counts: %s, param-num-of-host-expr: %s",
                         node.name,
                         node.staticSql.rewritten,
                         Arrays.toString(node.paramRefCounts),
@@ -1295,6 +1295,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  }",
                 "  ResultSet rs = %'CURSOR'%.rs;",
                 "  if (rs.next()) {",
+                "    %'CURSOR'%.updateRowCount();",
                 "    %'+SET-INTO-VARIABLES'%",
                 "  } else {",
                 "    ;", // TODO: setting nulls to into-variables?
@@ -1360,8 +1361,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "{ // cursor open",
                 "  %'+DUPLICATE-CURSOR-ARG'%",
-                "  %'CURSOR'%.open(conn,",
-                "    %'+HOST-EXPRS'%);",
+                "  %'CURSOR'%.open(conn, new Object[] {",
+                "    %'+HOST-EXPRS'%});",
                 "}"
             };
 
@@ -1577,6 +1578,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
                 "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
+                "    %'CURSOR'%.updateRowCount();",
                 "    %'RECORD'%[0].set(",
                 "      %'+RECORD-FIELD-VALUES'%",
                 "    );",
@@ -1599,6 +1601,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
                 "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
+                "    %'CURSOR'%.updateRowCount();",
                 "    %'RECORD'%[0].set(",
                 "      %'+RECORD-FIELD-VALUES'%",
                 "    );",

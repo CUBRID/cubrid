@@ -608,7 +608,7 @@ public class SymbolStack {
                     Misc.getLineColumnOf(decl.ctx), // s062
                     name + " has already been declared in the same scope");
         }
-        if (symbolTable.scope.level == 1 && map.size() == 0) {
+        if (symbolTable.scope.level == LEVEL_MAIN && map.size() == 0) {
             // the first symbol added to the level 1 is the top-level procedure/function being
             // created or replaced
 

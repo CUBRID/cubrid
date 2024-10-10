@@ -33,6 +33,7 @@ package com.cubrid.jsp.data;
 
 import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import com.cubrid.jsp.protocol.PackableObject;
+import com.cubrid.jsp.value.ValueUtilities;
 import cubrid.sql.CUBRIDOID;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
@@ -176,17 +177,29 @@ public class CUBRIDPacker {
             packString((String) result, charset);
         } else if (result instanceof java.sql.Date) {
             packInt(DBType.DB_DATE);
-            packString(result.toString(), charset);
+            if (result.equals(ValueUtilities.NULL_DATE)) {
+                packString("0000-00-00", charset);
+            } else {
+                packString(result.toString(), charset);
+            }
         } else if (result instanceof java.sql.Time) {
             packInt(DBType.DB_TIME);
             packString(result.toString(), charset);
         } else if (result instanceof java.sql.Timestamp) {
             packInt(ret_type);
             if (ret_type == DBType.DB_DATETIME) {
-                packString(result.toString());
+                if (result.equals(ValueUtilities.NULL_DATETIME)) {
+                    packString("0000-00-00 00:00:00.000");
+                } else {
+                    packString(result.toString());
+                }
             } else {
-                SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                packString(formatter.format(result));
+                if (result.equals(ValueUtilities.NULL_TIMESTAMP)) {
+                    packString("0000-00-00 00:00:00");
+                } else {
+                    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                    packString(formatter.format(result));
+                }
             }
         } else if (result instanceof CUBRIDOID) {
             packInt(DBType.DB_OBJECT);

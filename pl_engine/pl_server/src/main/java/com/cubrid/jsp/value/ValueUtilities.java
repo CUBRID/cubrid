@@ -162,16 +162,33 @@ public class ValueUtilities {
         }
     }
 
-    public static boolean checkValidTimestamp(Timestamp ts) {
-        if (ts == null) {
+    public static boolean checkValidDate(Date d) {
+        if (d == null) {
             return false;
         }
 
-        if (ts.equals(NULL_TIMESTAMP)) {
+        if (d.equals(NULL_DATE)) {
             return true;
         }
 
-        return ts.compareTo(MIN_TIMESTAMP) >= 0 && ts.compareTo(MAX_TIMESTAMP) <= 0;
+        return d.compareTo(MIN_DATE) >= 0 && d.compareTo(MAX_DATE) <= 0;
+    }
+
+    public static Timestamp checkValidTimestamp(Timestamp ts) {
+        if (ts == null) {
+            return null;
+        }
+
+        // '1970-01-01 00:00:00' (GMT) amounts to the Null Timestamp '0000-00-00 00:00:00' in CUBRID
+        if (ts.equals(NULL_TIMESTAMP) || ts.getTime() == 0L) {
+            return NULL_TIMESTAMP;
+        }
+
+        if (ts.compareTo(MIN_TIMESTAMP) >= 0 && ts.compareTo(MAX_TIMESTAMP) <= 0) {
+            return ts;
+        } else {
+            return null;
+        }
     }
 
     public static boolean checkValidDatetime(Timestamp dt) {
@@ -186,14 +203,17 @@ public class ValueUtilities {
         return dt.compareTo(MIN_DATETIME) >= 0 && dt.compareTo(MAX_DATETIME) <= 0;
     }
 
+    public static final Date MIN_DATE = new Date(1 - 1900, 1 - 1, 1);
+    public static final Date MAX_DATE = new Date(9999 - 1900, 12 - 1, 31);
     public static final Timestamp MIN_TIMESTAMP =
-            Timestamp.valueOf(DateTimeParser.minTimestampLocal);
+            new Timestamp(DateTimeParser.minTimestamp.toEpochSecond() * 1000);
     public static final Timestamp MAX_TIMESTAMP =
-            Timestamp.valueOf(DateTimeParser.maxTimestampLocal);
+            new Timestamp(DateTimeParser.maxTimestamp.toEpochSecond() * 1000);
     public static final Timestamp MIN_DATETIME = Timestamp.valueOf(DateTimeParser.minDatetimeLocal);
     public static final Timestamp MAX_DATETIME = Timestamp.valueOf(DateTimeParser.maxDatetimeLocal);
 
     public static final Date NULL_DATE = new Date(0 - 1900, 0 - 1, 0);
-    public static final Timestamp NULL_TIMESTAMP = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
+    public static final Timestamp NULL_TIMESTAMP =
+            new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0); // TODO: CBRD-25595
     public static final Timestamp NULL_DATETIME = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
 }
