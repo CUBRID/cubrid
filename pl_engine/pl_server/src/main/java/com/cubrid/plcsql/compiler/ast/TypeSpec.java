@@ -54,6 +54,8 @@ public class TypeSpec extends AstNode {
 
     // bogus TypeSpec means one with the null context
     // TODO: use Type instead of TypeSpec in the symbol table and remove bogus TypeSpecs
+
+    // NOTE: knownBogus never changes after the initilization during the TypeSpec class initialization
     private static Map<Type, TypeSpec> knownBogus = new HashMap<>();
     static {
         for (int i = Type.IDX_OBJECT; i < Type.BOUND_OF_IDX; i++) {

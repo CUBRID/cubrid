@@ -66,7 +66,9 @@ public class SymbolStack {
     // Static area - common to all symbol stack instances
     //
 
+    // NOTE: never changing after its initialization in the SymbolStack class initilization
     private static final Map<String, FuncOverloads> operators = new HashMap<>();
+
     private static SymbolTable predefinedSymbols =
             new SymbolTable(new Scope(null, null, "%predefined_0", LEVEL_PREDEFINED));
 

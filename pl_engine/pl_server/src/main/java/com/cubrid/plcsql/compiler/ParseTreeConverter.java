@@ -2268,8 +2268,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         && ((DeclIdTypeSpeced) decl).typeSpec().type == Type.SYS_REFCURSOR));
     }
 
+    // NOTE: never changing after the initilization during the ParseTreeConverter class initialization
     private static final Map<String, Type> nameToType = new HashMap<>();
-
     static {
         // NOTE: CHAR, VARCHAR, NUMERIC, and their aliases are not in this map
 

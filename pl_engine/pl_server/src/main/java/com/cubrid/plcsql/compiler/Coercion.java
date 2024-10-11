@@ -339,8 +339,8 @@ public abstract class Coercion {
         // Private
         // ----------------------------------------------
 
+        // NOTE: never changing after the initilization during the Cast class initialization
         private static Map<Integer, Cast> instances = new HashMap<>();
-
         static {
             // NOTE: there is no Cast coercion dst NULL
             instances.put(Type.IDX_OBJECT, new Cast(Type.NULL, Type.OBJECT));
@@ -407,8 +407,8 @@ public abstract class Coercion {
     // Private
     // ----------------------------------------------
 
+    // NOTE: never changing after the initilization during the Coercion class initialization
     private static final Map<Integer, Set<Integer>> possibleCasts = new HashMap<>();
-
     static {
         possibleCasts.put(
                 Type.IDX_DATETIME,
