@@ -7257,27 +7257,6 @@ pt_is_compatible_type (const PT_TYPE_ENUM arg1_type, const PT_TYPE_ENUM arg2_typ
 }
 
 /*
- * pt_check_vclass_attr_qspec_compatible () -
- *   return:
- *   parser(in):
- *   attr(in):
- *   col(in):
- */
-static PT_UNION_COMPATIBLE
-pt_check_vclass_attr_qspec_compatible (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * col)
-{
-  bool is_object_type;
-  PT_UNION_COMPATIBLE c = pt_union_compatible (parser, attr, col, true, &is_object_type);
-
-  if (c == PT_UNION_INCOMP && pt_is_compatible_type (attr->type_enum, col->type_enum))
-    {
-      c = PT_UNION_COMP;
-    }
-
-  return c;
-}
-
-/*
  * pt_check_vclass_union_spec () -
  *   return:
  *   parser(in):
@@ -7572,11 +7551,6 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 	      PT_ERRORmf2 (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
 			   attribute_name (parser, attr), pt_short_print (parser, col));
 	    }
-	}
-      else if (pt_check_vclass_attr_qspec_compatible (parser, attr, col) != PT_UNION_COMP)
-	{
-	  PT_ERRORmf2 (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
-		       attribute_name (parser, attr), pt_short_print (parser, col));
 	}
 
       /* any shared attribute must correspond to NA in the query_spec */
