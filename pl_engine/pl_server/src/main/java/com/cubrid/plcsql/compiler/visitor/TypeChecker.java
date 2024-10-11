@@ -31,10 +31,10 @@
 package com.cubrid.plcsql.compiler.visitor;
 
 import com.cubrid.jsp.data.ColumnInfo;
-import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.DBTypeAdapter;
+import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.StaticSql;
@@ -230,8 +230,8 @@ public class TypeChecker extends AstVisitor<Type> {
 
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
-                symbolStack.getOperator(iStore,
-                        outCoercions, "opBetween", targetType, lowerType, upperType);
+                symbolStack.getOperator(
+                        iStore, outCoercions, "opBetween", targetType, lowerType, upperType);
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s208, s209
@@ -291,7 +291,8 @@ public class TypeChecker extends AstVisitor<Type> {
 
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc binOp =
-                symbolStack.getOperator(iStore, outCoercions, "op" + node.opStr, leftType, rightType);
+                symbolStack.getOperator(
+                        iStore, outCoercions, "op" + node.opStr, leftType, rightType);
         if (binOp == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s210
@@ -358,8 +359,8 @@ public class TypeChecker extends AstVisitor<Type> {
 
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
-                symbolStack.getOperator(iStore, 
-                        outCoercions, "opIn", caseComparedTypes.toArray(TYPE_ARRAY_DUMMY));
+                symbolStack.getOperator(
+                        iStore, outCoercions, "opIn", caseComparedTypes.toArray(TYPE_ARRAY_DUMMY));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s226
@@ -554,7 +555,8 @@ public class TypeChecker extends AstVisitor<Type> {
 
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
-                symbolStack.getOperator(iStore, outCoercions, "opIn", argTypes.toArray(TYPE_ARRAY_DUMMY));
+                symbolStack.getOperator(
+                        iStore, outCoercions, "opIn", argTypes.toArray(TYPE_ARRAY_DUMMY));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s212
@@ -699,7 +701,8 @@ public class TypeChecker extends AstVisitor<Type> {
         Type operandType = visit(node.operand);
 
         List<Coercion> outCoercions = new ArrayList<>();
-        DeclFunc unaryOp = symbolStack.getOperator(iStore, outCoercions, "op" + node.opStr, operandType);
+        DeclFunc unaryOp =
+                symbolStack.getOperator(iStore, outCoercions, "op" + node.opStr, operandType);
         if (unaryOp == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s215
@@ -806,8 +809,8 @@ public class TypeChecker extends AstVisitor<Type> {
 
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
-                symbolStack.getOperator(iStore, 
-                        outCoercions, "opIn", caseComparedTypes.toArray(TYPE_ARRAY_DUMMY));
+                symbolStack.getOperator(
+                        iStore, outCoercions, "opIn", caseComparedTypes.toArray(TYPE_ARRAY_DUMMY));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s201

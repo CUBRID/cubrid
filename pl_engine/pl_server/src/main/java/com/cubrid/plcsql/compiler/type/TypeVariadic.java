@@ -44,6 +44,7 @@ public class TypeVariadic extends Type {
 
     // NOTE: never changing after the initilization during the TypeVariadic class initialization
     private static Map<Integer, TypeVariadic> staticInstances = new HashMap<>();
+
     static {
         for (int i = Type.IDX_OBJECT; i < Type.BOUND_OF_IDX; i++) {
             Type ty = Type.getTypeByIdx(i);

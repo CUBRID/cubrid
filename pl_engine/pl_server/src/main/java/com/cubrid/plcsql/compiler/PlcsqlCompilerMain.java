@@ -132,7 +132,8 @@ public class PlcsqlCompilerMain {
         return t;
     }
 
-    private static CompileInfo compileInner(InstanceStore iStore, CharStream input, int optionFlags) {
+    private static CompileInfo compileInner(
+            InstanceStore iStore, CharStream input, int optionFlags) {
 
         boolean verbose = (optionFlags & OPT_VERBOSE) > 0;
 

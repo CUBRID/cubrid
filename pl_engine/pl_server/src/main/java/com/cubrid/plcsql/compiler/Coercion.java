@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
 import com.cubrid.plcsql.compiler.type.TypeNumeric;
@@ -57,7 +56,8 @@ public abstract class Coercion {
     }
 
     public Coercion create(Type src, Type dst) {
-        throw new RuntimeException("unreachable");  // overridden only by subclasses that are stoed in CoercionStore
+        throw new RuntimeException(
+                "unreachable"); // overridden only by subclasses that are stoed in CoercionStore
     }
 
     public Coercion getReversion(InstanceStore iStore) {
@@ -186,7 +186,8 @@ public abstract class Coercion {
             return new RecordToRecord(src, dst);
         }
 
-        public static RecordToRecord getInstance(InstanceStore iStore, Type src, Type dst, Coercion[] fieldCoercions) {
+        public static RecordToRecord getInstance(
+                InstanceStore iStore, Type src, Type dst, Coercion[] fieldCoercions) {
             RecordToRecord ret = (RecordToRecord) iStore.recToRec.get(src, dst);
             if (ret.fieldCoercions == null) {
                 ret.fieldCoercions = fieldCoercions;
@@ -341,6 +342,7 @@ public abstract class Coercion {
 
         // NOTE: never changing after the initilization during the Cast class initialization
         private static Map<Integer, Cast> instances = new HashMap<>();
+
         static {
             // NOTE: there is no Cast coercion dst NULL
             instances.put(Type.IDX_OBJECT, new Cast(Type.NULL, Type.OBJECT));
@@ -409,6 +411,7 @@ public abstract class Coercion {
 
     // NOTE: never changing after the initilization during the Coercion class initialization
     private static final Map<Integer, Set<Integer>> possibleCasts = new HashMap<>();
+
     static {
         possibleCasts.put(
                 Type.IDX_DATETIME,

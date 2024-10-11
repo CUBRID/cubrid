@@ -178,7 +178,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
 
-                gfc.decl = new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(iStore, retType));
+                gfc.decl =
+                        new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(iStore, retType));
 
             } else if (q instanceof ServerAPI.SerialOrNot) {
 
@@ -205,8 +206,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     tsp.type = DBTypeAdapter.getValueType(iStore, ct.colType.type);
                 } else {
                     tsp.type =
-                            DBTypeAdapter.getDeclType(iStore,
-                                    ct.colType.type, ct.colType.prec, ct.colType.scale);
+                            DBTypeAdapter.getDeclType(
+                                    iStore, ct.colType.type, ct.colType.prec, ct.colType.scale);
                 }
             } else {
                 assert false : "unreachable";
@@ -1661,7 +1662,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         TypeRecord recTy =
-                TypeRecord.getInstance(iStore, false, declCursor.name, declCursor.staticSql.selectList);
+                TypeRecord.getInstance(
+                        iStore, false, declCursor.name, declCursor.staticSql.selectList);
         DeclVar recDecl =
                 new DeclVar(
                         ctx.for_cursor().record_name(),
@@ -2268,8 +2270,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         && ((DeclIdTypeSpeced) decl).typeSpec().type == Type.SYS_REFCURSOR));
     }
 
-    // NOTE: never changing after the initilization during the ParseTreeConverter class initialization
+    // NOTE: never changing after the initilization during the ParseTreeConverter class
+    // initialization
     private static final Map<String, Type> nameToType = new HashMap<>();
+
     static {
         // NOTE: CHAR, VARCHAR, NUMERIC, and their aliases are not in this map
 

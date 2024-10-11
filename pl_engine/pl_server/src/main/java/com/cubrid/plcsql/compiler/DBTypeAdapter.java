@@ -139,7 +139,8 @@ public class DBTypeAdapter {
     // Private
     // ---------------------------------------------------------
 
-    private static Type getType(InstanceStore iStore, int dbType, boolean includePrecision, int prec, short scale) {
+    private static Type getType(
+            InstanceStore iStore, int dbType, boolean includePrecision, int prec, short scale) {
         switch (dbType) {
             case DBType.DB_NULL:
                 return Type.NULL;

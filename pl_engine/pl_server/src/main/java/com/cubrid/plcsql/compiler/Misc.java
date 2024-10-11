@@ -183,6 +183,7 @@ public class Misc {
     }
 
     private static final int SMALL_INDENT_LEVEL_BOUND = 20;
+
     public static String getIndent(int indentLevel) {
         if (indentLevel < SMALL_INDENT_LEVEL_BOUND) {
             return smallIndents[indentLevel];
@@ -204,11 +205,13 @@ public class Misc {
     // ----------------------------------------------
 
     private static final String[] smallIndents = new String[SMALL_INDENT_LEVEL_BOUND];
+
     static {
         for (int i = 0; i < SMALL_INDENT_LEVEL_BOUND; i++) {
             smallIndents[i] = makeIndent(i);
         }
     }
+
     private static final Map<Integer, String> bigIndents = new HashMap<Integer, String>();
 
     private static String peelId(String id) {

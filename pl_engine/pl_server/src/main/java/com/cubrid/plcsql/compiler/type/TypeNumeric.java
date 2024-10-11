@@ -31,8 +31,6 @@
 package com.cubrid.plcsql.compiler.type;
 
 import com.cubrid.plcsql.compiler.InstanceStore;
-import java.util.HashMap;
-import java.util.Map;
 
 public class TypeNumeric extends Type {
 

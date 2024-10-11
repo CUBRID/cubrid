@@ -36,8 +36,11 @@ import java.util.List;
 
 public enum CoercionScheme {
     CompOp {
-        public List<Type> getCoercions(InstanceStore iStore,
-                List<Coercion> outCoercions, List<Type> argTypes, String opName) {
+        public List<Type> getCoercions(
+                InstanceStore iStore,
+                List<Coercion> outCoercions,
+                List<Type> argTypes,
+                String opName) {
             assert argTypes.size() == 2;
 
             Type commonTy = getCommonTypeInner(argTypes.get(0), argTypes.get(1), compOpCommonType);
@@ -72,8 +75,11 @@ public enum CoercionScheme {
     },
 
     NAryCompOp {
-        public List<Type> getCoercions(InstanceStore iStore,
-                List<Coercion> outCoercions, List<Type> argTypes, String opName) {
+        public List<Type> getCoercions(
+                InstanceStore iStore,
+                List<Coercion> outCoercions,
+                List<Type> argTypes,
+                String opName) {
 
             // between, in
 
@@ -122,8 +128,11 @@ public enum CoercionScheme {
     },
 
     ArithOp {
-        public List<Type> getCoercions(InstanceStore iStore,
-                List<Coercion> outCoercions, List<Type> argTypes, String opName) {
+        public List<Type> getCoercions(
+                InstanceStore iStore,
+                List<Coercion> outCoercions,
+                List<Type> argTypes,
+                String opName) {
 
             if (argTypes.size() == 2) {
 
@@ -253,8 +262,11 @@ public enum CoercionScheme {
     },
 
     IntArithOp {
-        public List<Type> getCoercions(InstanceStore iStore,
-                List<Coercion> outCoercions, List<Type> argTypes, String opName) {
+        public List<Type> getCoercions(
+                InstanceStore iStore,
+                List<Coercion> outCoercions,
+                List<Type> argTypes,
+                String opName) {
 
             if (argTypes.size() == 2) {
 
@@ -310,32 +322,44 @@ public enum CoercionScheme {
     },
 
     LogicalOp {
-        public List<Type> getCoercions(InstanceStore iStore,
-                List<Coercion> outCoercions, List<Type> argTypes, String opName) {
+        public List<Type> getCoercions(
+                InstanceStore iStore,
+                List<Coercion> outCoercions,
+                List<Type> argTypes,
+                String opName) {
             // and, or, xor, not
             return getCoercionsToFixedType(iStore, outCoercions, argTypes, Type.BOOLEAN);
         }
     },
 
     StringOp {
-        public List<Type> getCoercions(InstanceStore iStore,
-                List<Coercion> outCoercions, List<Type> argTypes, String opName) {
+        public List<Type> getCoercions(
+                InstanceStore iStore,
+                List<Coercion> outCoercions,
+                List<Type> argTypes,
+                String opName) {
             // ||, like
             return getCoercionsToFixedType(iStore, outCoercions, argTypes, Type.STRING_ANY);
         }
     },
 
     BitOp {
-        public List<Type> getCoercions(InstanceStore iStore,
-                List<Coercion> outCoercions, List<Type> argTypes, String opName) {
+        public List<Type> getCoercions(
+                InstanceStore iStore,
+                List<Coercion> outCoercions,
+                List<Type> argTypes,
+                String opName) {
             // <<, >>, &, ^, |
             return getCoercionsToFixedType(iStore, outCoercions, argTypes, Type.BIGINT);
         }
     },
 
     ObjectOp {
-        public List<Type> getCoercions(InstanceStore iStore,
-                List<Coercion> outCoercions, List<Type> argTypes, String opName) {
+        public List<Type> getCoercions(
+                InstanceStore iStore,
+                List<Coercion> outCoercions,
+                List<Type> argTypes,
+                String opName) {
             // is-null
             return getCoercionsToFixedType(iStore, outCoercions, argTypes, Type.OBJECT);
         }
@@ -345,8 +369,8 @@ public enum CoercionScheme {
         return getCommonTypeInner(lType, rType, compOpCommonType);
     }
 
-    public abstract List<Type> getCoercions(InstanceStore iStore,
-            List<Coercion> outCoercions, List<Type> argTypes, String opName);
+    public abstract List<Type> getCoercions(
+            InstanceStore iStore, List<Coercion> outCoercions, List<Type> argTypes, String opName);
 
     // -----------------------------------------------------------------------
     // Setting for comparison operators
@@ -592,8 +616,11 @@ public enum CoercionScheme {
         intArithOpCommonType[Type.IDX_DOUBLE][Type.IDX_DOUBLE] = Type.BIGINT;
     }
 
-    private static List<Type> getCoercionsToFixedType(InstanceStore iStore,
-            List<Coercion> outCoercions, List<Type> argTypes, Type targetType) {
+    private static List<Type> getCoercionsToFixedType(
+            InstanceStore iStore,
+            List<Coercion> outCoercions,
+            List<Type> argTypes,
+            Type targetType) {
 
         List<Type> ret = new ArrayList<>();
         for (Type t : argTypes) {

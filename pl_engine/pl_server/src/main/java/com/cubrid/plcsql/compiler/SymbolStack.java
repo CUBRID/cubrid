@@ -105,7 +105,8 @@ public class SymbolStack {
                             assert paramType != null;
 
                             DeclParamIn p =
-                                    new DeclParamIn(null, "p" + i, TypeSpec.getBogus(null, paramType));
+                                    new DeclParamIn(
+                                            null, "p" + i, TypeSpec.getBogus(null, paramType));
                             params.addNode(p);
                             i++;
                         }
@@ -117,7 +118,8 @@ public class SymbolStack {
                         assert retType != null;
 
                         // add op
-                        DeclFunc op = new DeclFunc(null, name, params, TypeSpec.getBogus(null, retType));
+                        DeclFunc op =
+                                new DeclFunc(null, name, params, TypeSpec.getBogus(null, retType));
                         putOperator(name, op, opAnnot.coercionScheme());
                     }
                 }
@@ -176,7 +178,9 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
-                                                null, "s", TypeSpec.getBogus(null, Type.STRING_ANY))));
+                                                null,
+                                                "s",
+                                                TypeSpec.getBogus(null, Type.STRING_ANY))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
 
         // put
@@ -187,7 +191,9 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
-                                                null, "s", TypeSpec.getBogus(null, Type.STRING_ANY))));
+                                                null,
+                                                "s",
+                                                TypeSpec.getBogus(null, Type.STRING_ANY))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
     }
 
@@ -517,7 +523,8 @@ public class SymbolStack {
         addPredefinedExceptions();
     }
 
-    public static DeclFunc getOperator(InstanceStore iStore, List<Coercion> outCoercions, String name, Type... argTypes) {
+    public static DeclFunc getOperator(
+            InstanceStore iStore, List<Coercion> outCoercions, String name, Type... argTypes) {
         return getFuncOverload(iStore, outCoercions, operators, name, argTypes);
     }
 
@@ -791,7 +798,8 @@ public class SymbolStack {
 
         DeclFunc get(InstanceStore iStore, List<Coercion> outCoercions, List<Type> argTypes) {
 
-            List<Type> paramTypes = coercionScheme.getCoercions(iStore, outCoercions, argTypes, name);
+            List<Type> paramTypes =
+                    coercionScheme.getCoercions(iStore, outCoercions, argTypes, name);
             if (paramTypes == null) {
                 return null; // no match
             } else {

@@ -33,13 +33,12 @@ package com.cubrid.plcsql.compiler;
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
-import com.cubrid.plcsql.compiler.type.TypeVarchar;
 import com.cubrid.plcsql.compiler.type.TypeNumeric;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
-
-import java.util.Map;
-import java.util.List;
+import com.cubrid.plcsql.compiler.type.TypeVarchar;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 // store of instances of various classes such as types, coercions
 // which are genrated during a single session of compilation

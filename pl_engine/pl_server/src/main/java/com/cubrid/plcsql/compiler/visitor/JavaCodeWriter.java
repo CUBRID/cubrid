@@ -30,15 +30,14 @@
 
 package com.cubrid.plcsql.compiler.visitor;
 
-import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.Coercion;
+import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;

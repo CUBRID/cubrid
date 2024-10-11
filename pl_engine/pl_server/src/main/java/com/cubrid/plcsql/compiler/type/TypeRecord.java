@@ -32,9 +32,7 @@ package com.cubrid.plcsql.compiler.type;
 
 import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.Misc;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class TypeRecord extends Type {
 
@@ -42,8 +40,11 @@ public class TypeRecord extends Type {
 
     public boolean generateEq; // whether to generate a opEq method for this record type
 
-    public static TypeRecord getInstance(InstanceStore iStore,
-            boolean ofTable, String rowName, List<Misc.Pair<String, Type>> selectList) {
+    public static TypeRecord getInstance(
+            InstanceStore iStore,
+            boolean ofTable,
+            String rowName,
+            List<Misc.Pair<String, Type>> selectList) {
 
         TypeRecord ret = iStore.typeRecord.get(selectList);
         if (ret == null) {
