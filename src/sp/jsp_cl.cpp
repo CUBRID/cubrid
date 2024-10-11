@@ -162,7 +162,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
     {
       er_clear ();
       err = ER_SP_NOT_EXIST;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, name);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, checked_name);
     }
 
   if (mop)
