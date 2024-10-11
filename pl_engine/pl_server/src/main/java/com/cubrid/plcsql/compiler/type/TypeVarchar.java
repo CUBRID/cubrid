@@ -44,10 +44,10 @@ public class TypeVarchar extends Type {
 
         assert length <= MAX_LEN && length >= 1;
 
-        TypeVarchar ret = instances.get(length);
+        TypeVarchar ret = iStore.typeVarchar.get(length);
         if (ret == null) {
             ret = new TypeVarchar(length);
-            instances.put(length, ret);
+            iStore.typeVarchar.put(length, ret);
         }
 
         return ret;
@@ -56,8 +56,6 @@ public class TypeVarchar extends Type {
     // ---------------------------------------------------------------------------
     // Private
     // ---------------------------------------------------------------------------
-
-    private static final Map<Integer, TypeVarchar> instances = new HashMap<>();
 
     private static String getPlcName(int length) {
         return String.format("Varchar(%d)", length);

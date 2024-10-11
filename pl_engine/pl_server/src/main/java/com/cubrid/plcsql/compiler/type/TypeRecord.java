@@ -38,8 +38,6 @@ import java.util.Map;
 
 public class TypeRecord extends Type {
 
-    public static Map<List<Misc.Pair<String, Type>>, TypeRecord> instances = new HashMap<>();
-
     public final List<Misc.Pair<String, Type>> selectList;
 
     public boolean generateEq; // whether to generate a opEq method for this record type
@@ -47,11 +45,11 @@ public class TypeRecord extends Type {
     public static synchronized TypeRecord getInstance(InstanceStore iStore,
             boolean ofTable, String rowName, List<Misc.Pair<String, Type>> selectList) {
 
-        TypeRecord ret = instances.get(selectList);
+        TypeRecord ret = iStore.typeRecord.get(selectList);
         if (ret == null) {
-            int seq = instances.size();
+            int seq = iStore.typeRecord.size();
             ret = new TypeRecord(ofTable, rowName + seq, selectList);
-            instances.put(selectList, ret);
+            iStore.typeRecord.put(selectList, ret);
         }
 
         return ret;

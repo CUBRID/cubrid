@@ -30,10 +30,75 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.plcsql.compiler.type.Type;
+import com.cubrid.plcsql.compiler.type.TypeChar;
+import com.cubrid.plcsql.compiler.type.TypeVarchar;
+import com.cubrid.plcsql.compiler.type.TypeNumeric;
+import com.cubrid.plcsql.compiler.type.TypeRecord;
+
+import java.util.Map;
+import java.util.List;
 import java.util.HashMap;
 
 // store of instances of various classes such as types, coercions
 // which are genrated during a single session of compilation
 
 public class InstanceStore {
+
+    // for Coercion.RecordToRecord
+    public final CoercionStore recToRec = new CoercionStore(Coercion.RecordToRecord.DUMMY);
+
+    // for Coercion.Identity
+    public final CoercionStore identity = new CoercionStore(Coercion.Identity.DUMMY);
+
+    // for Coercion.Conversion
+    public final CoercionStore conv = new CoercionStore(Coercion.Conversion.DUMMY);
+
+    // for TypeChar
+    public final Map<Integer, TypeChar> typeChar = new HashMap<>();
+
+    // for TypeVarchar
+    public final Map<Integer, TypeVarchar> typeVarchar = new HashMap<>();
+
+    // for TypeNumeric
+    public final Map<Integer, TypeNumeric> typeNumeric = new HashMap<>();
+
+    // for TypeRecord
+    public final Map<List<Misc.Pair<String, Type>>, TypeRecord> typeRecord = new HashMap<>();
+
+    public static class CoercionStore {
+
+        public final Map<Type, Map<Type, Coercion>> store = new HashMap<>();
+
+        CoercionStore(Coercion dummy) {
+            this.dummy = dummy;
+        }
+
+        synchronized Coercion get(Type src, Type dst) {
+
+            Map<Type, Coercion> storeInner = store.get(src);
+            if (storeInner == null) {
+                storeInner = new HashMap<>();
+                store.put(src, storeInner);
+            }
+
+            Coercion c = storeInner.get(dst);
+            if (c == null) {
+                c = dummy.create(src, dst);
+                storeInner.put(dst, c);
+            }
+
+            return c;
+        }
+
+        synchronized void clear() {
+            store.clear();
+        }
+
+        // ---------------------------------------
+        // Private
+        // ---------------------------------------
+
+        private final Coercion dummy;
+    }
 }

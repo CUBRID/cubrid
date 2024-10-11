@@ -45,10 +45,10 @@ public class TypeNumeric extends Type {
         assert scale <= precision && scale >= 0;
 
         int key = precision * 100 + scale;
-        TypeNumeric ret = instances.get(key);
+        TypeNumeric ret = iStore.typeNumeric.get(key);
         if (ret == null) {
             ret = new TypeNumeric(precision, scale);
-            instances.put(key, ret);
+            iStore.typeNumeric.put(key, ret);
         }
 
         return ret;
@@ -57,8 +57,6 @@ public class TypeNumeric extends Type {
     // ---------------------------------------------------------------------------
     // Private
     // ---------------------------------------------------------------------------
-
-    private static final Map<Integer, TypeNumeric> instances = new HashMap<>();
 
     private static String getPlcName(int precision, short scale) {
         return String.format("Numeric(%d, %d)", precision, scale);

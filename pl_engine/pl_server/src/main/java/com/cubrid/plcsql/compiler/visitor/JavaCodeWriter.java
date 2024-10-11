@@ -183,16 +183,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         // record definitions
         List<String> recordLines = new LinkedList<>();
-        for (TypeRecord rec : TypeRecord.instances.values()) {
+        for (TypeRecord rec : iStore.typeRecord.values()) {
             recordLines.addAll(getRecordDeclCode(rec));
         }
-        TypeRecord.instances = new HashMap<>(); // clear the old accumulation
         String[] recordDefs = recordLines.toArray(DUMMY_STRING_ARRAY);
 
         // add all Java code of record-to-record coercion functions
         recordLines.clear();
-        recordLines.addAll(Coercion.RecordToRecord.getAllJavaCode());
-        Coercion.RecordToRecord.clearMemoized();
+        recordLines.addAll(Coercion.RecordToRecord.getAllJavaCode(iStore));
         String[] recordAssignFuncs = recordLines.toArray(DUMMY_STRING_ARRAY);
 
         // imports
