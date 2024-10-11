@@ -4526,6 +4526,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
       tsc_start_time_usec (&info_logging_check_time);
     }
 
+  LOG_CS_EXIT (thread_p);
+
   while (!LSA_ISNULL (&max_undo_lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
@@ -4949,6 +4951,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "UNDO");
 
   /* Flush all dirty pages */
+
+  LOG_CS_ENTER (thread_p);
 
   logpb_flush_pages_direct (thread_p);
 
