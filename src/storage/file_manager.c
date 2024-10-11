@@ -798,6 +798,7 @@ STATIC_INLINE FILE_TEMPCACHE_ENTRY *file_tempcache_pop_tran_file (THREAD_ENTRY *
 STATIC_INLINE void file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_tempcache_dump (FILE * fp) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool file_tempcache_find_victim_and_destroy (THREAD_ENTRY * thread_p, bool is_numerable);
 
 /************************************************************************/
 /* File tracker section                                                 */
@@ -8544,37 +8545,21 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	  if (error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED)
 	    {
 	      file_tempcache_lock ();
-	      if (file_Tempcache.ncached_not_numerable > 0)
-		{
-		  if (file_destroy (thread_p, &file_Tempcache.cached_not_numerable->vfid, true) != NO_ERROR)
-		    {
-		      file_tempcache_unlock ();
-		      assert_release (false);
-		      goto exit;
-		    }
-		  file_Tempcache.cached_not_numerable = file_Tempcache.cached_not_numerable->next;
-		  file_Tempcache.ncached_not_numerable--;
 
+	      if (file_tempcache_find_victim_and_destroy (thread_p, FILE_IS_NUMERABLE (fhead)))
+		{
 		  file_tempcache_unlock ();
 		  goto retry;
 		}
-	      else if (file_Tempcache.ncached_numerable > 0)
-		{
-		  if (file_destroy (thread_p, &file_Tempcache.cached_numerable->vfid, true) != NO_ERROR)
-		    {
-		      file_tempcache_unlock ();
-		      assert_release (false);
-		      goto exit;
-		    }
-		  file_Tempcache.cached_numerable = file_Tempcache.cached_numerable->next;
-		  file_Tempcache.ncached_numerable--;
 
+	      if (file_tempcache_find_victim_and_destroy (thread_p, !FILE_IS_NUMERABLE (fhead)))
+		{
 		  file_tempcache_unlock ();
 		  goto retry;
 		}
+
 	      file_tempcache_unlock ();
 	    }
-
 	  assert_release (false);
 	  goto exit;
 	}
@@ -9638,6 +9623,52 @@ file_tempcache_dump (FILE * fp)
 
   /* todo: to print transaction temporary files we need some kind of synchronization... right now each transaction
    *       manages its own list freely. */
+}
+
+/*
+ * file_tempcache_find_victim_and_destroy () - find a victim temp file from tempcache and destroy it
+ *
+ * return            : true if a temp file was destroyed, false otherwise
+ * thread_p (in)     : thread entry
+ * is_numerable (in) : true if numerable file is to be destroyed, false otherwise
+ */
+STATIC_INLINE bool
+file_tempcache_find_victim_and_destroy (THREAD_ENTRY * thread_p, bool is_numerable)
+{
+  if (is_numerable)
+    {
+      if (file_Tempcache.ncached_numerable > 0)
+	{
+	  if (file_destroy (thread_p, &file_Tempcache.cached_numerable->vfid, true) != NO_ERROR)
+	    {
+	      assert (false);
+	      return false;
+	    }
+
+	  file_Tempcache.cached_numerable = file_Tempcache.cached_numerable->next;
+	  file_Tempcache.ncached_numerable--;
+	  return true;
+	}
+
+      return false;
+    }
+  else
+    {
+      if (file_Tempcache.ncached_not_numerable > 0)
+	{
+	  if (file_destroy (thread_p, &file_Tempcache.cached_not_numerable->vfid, true) != NO_ERROR)
+	    {
+	      assert (false);
+	      return false;
+	    }
+
+	  file_Tempcache.cached_not_numerable = file_Tempcache.cached_not_numerable->next;
+	  file_Tempcache.ncached_not_numerable--;
+	  return true;
+	}
+
+      return false;
+    }
 }
 
 /************************************************************************/
