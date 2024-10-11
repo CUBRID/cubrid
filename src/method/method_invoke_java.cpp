@@ -496,7 +496,7 @@ namespace cubmethod
 	    info.tuples.emplace_back (tuple_index, tuple_values);
 	  }
 
-	if (tuple_index - start_index > fetch_count)
+	if (tuple_index - start_index >= fetch_count - 1)
 	  {
 	    break;
 	  }
