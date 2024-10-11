@@ -178,7 +178,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
 
-                gfc.decl = new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(retType));
+                gfc.decl = new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(iStore, retType));
 
             } else if (q instanceof ServerAPI.SerialOrNot) {
 
@@ -2685,7 +2685,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             Type paramType = DBTypeAdapter.getValueType(iStore, params[i].type);
 
-            TypeSpec tySpec = TypeSpec.getBogus(paramType);
+            TypeSpec tySpec = TypeSpec.getBogus(iStore, paramType);
             if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) != 0) {
                 boolean alsoIn = (params[i].mode & ServerConstants.PARAM_MODE_IN) != 0;
                 paramList.nodes.add(new DeclParamOut(null, "p" + i, tySpec, alsoIn));

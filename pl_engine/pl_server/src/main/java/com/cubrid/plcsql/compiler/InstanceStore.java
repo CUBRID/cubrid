@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.plcsql.compiler.ast.TypeSpec;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
 import com.cubrid.plcsql.compiler.type.TypeVarchar;
@@ -44,6 +45,9 @@ import java.util.HashMap;
 // which are genrated during a single session of compilation
 
 public class InstanceStore {
+
+    // for bogus TypeSpec
+    public final Map<Type, TypeSpec> bogusTypeSpec = new HashMap<>();
 
     // for Coercion.RecordToRecord
     public final CoercionStore recToRec = new CoercionStore(Coercion.RecordToRecord.DUMMY);
