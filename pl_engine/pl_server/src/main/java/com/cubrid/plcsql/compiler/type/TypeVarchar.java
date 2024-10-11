@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.type;
 
+import com.cubrid.plcsql.compiler.InstanceStore;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -39,7 +40,7 @@ public class TypeVarchar extends Type {
 
     public final int length;
 
-    public static synchronized TypeVarchar getInstance(int length) {
+    public static synchronized TypeVarchar getInstance(InstanceStore iStore, int length) {
 
         assert length <= MAX_LEN && length >= 1;
 

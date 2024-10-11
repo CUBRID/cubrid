@@ -57,7 +57,7 @@ public class TypeSpec extends AstNode {
     static {
         for (int i = Type.IDX_OBJECT; i < Type.BOUND_OF_IDX; i++) {
             Type ty = Type.getTypeByIdx(i);
-            TypeVariadic vty = TypeVariadic.getInstance(ty);
+            TypeVariadic vty = TypeVariadic.getStaticInstance(ty);
             bogus.put(ty, new TypeSpec(null, ty));
             bogus.put(vty, new TypeSpec(null, vty));
         }

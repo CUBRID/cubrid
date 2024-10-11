@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.type;
 
+import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.Misc;
 import java.util.HashMap;
 import java.util.List;
@@ -43,7 +44,7 @@ public class TypeRecord extends Type {
 
     public boolean generateEq; // whether to generate a opEq method for this record type
 
-    public static synchronized TypeRecord getInstance(
+    public static synchronized TypeRecord getInstance(InstanceStore iStore,
             boolean ofTable, String rowName, List<Misc.Pair<String, Type>> selectList) {
 
         TypeRecord ret = instances.get(selectList);

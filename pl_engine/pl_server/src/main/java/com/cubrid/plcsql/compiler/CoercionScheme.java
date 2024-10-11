@@ -36,7 +36,7 @@ import java.util.List;
 
 public enum CoercionScheme {
     CompOp {
-        public List<Type> getCoercions(
+        public List<Type> getCoercions(InstanceStore iStore,
                 List<Coercion> outCoercions, List<Type> argTypes, String opName) {
             assert argTypes.size() == 2;
 
@@ -61,7 +61,7 @@ public enum CoercionScheme {
 
             List<Type> ret = new ArrayList<>();
             for (int i = 0; i < 2; i++) {
-                Coercion c = Coercion.getCoercion(argTypes.get(i), commonTy);
+                Coercion c = Coercion.getCoercion(iStore, argTypes.get(i), commonTy);
                 assert c != null;
                 outCoercions.add(c);
                 ret.add(commonTy);
@@ -72,7 +72,7 @@ public enum CoercionScheme {
     },
 
     NAryCompOp {
-        public List<Type> getCoercions(
+        public List<Type> getCoercions(InstanceStore iStore,
                 List<Coercion> outCoercions, List<Type> argTypes, String opName) {
 
             // between, in
@@ -111,7 +111,7 @@ public enum CoercionScheme {
 
             List<Type> ret = new ArrayList<>();
             for (int i = 0; i < len; i++) {
-                Coercion c = Coercion.getCoercion(argTypes.get(i), wholeCommonTy);
+                Coercion c = Coercion.getCoercion(iStore, argTypes.get(i), wholeCommonTy);
                 assert c != null;
                 outCoercions.add(c);
                 ret.add(wholeCommonTy);
@@ -122,7 +122,7 @@ public enum CoercionScheme {
     },
 
     ArithOp {
-        public List<Type> getCoercions(
+        public List<Type> getCoercions(InstanceStore iStore,
                 List<Coercion> outCoercions, List<Type> argTypes, String opName) {
 
             if (argTypes.size() == 2) {
@@ -152,7 +152,7 @@ public enum CoercionScheme {
 
                     List<Type> ret = new ArrayList<>();
                     for (int i = 0; i < 2; i++) {
-                        Coercion c = Coercion.getCoercion(argTypes.get(i), commonTy);
+                        Coercion c = Coercion.getCoercion(iStore, argTypes.get(i), commonTy);
                         assert c != null;
                         outCoercions.add(c);
                         ret.add(commonTy);
@@ -175,8 +175,8 @@ public enum CoercionScheme {
                             // date/time + string/number, or
                             // date/time - number
 
-                            outCoercions.add(Coercion.Identity.getInstance(lType));
-                            Coercion c = Coercion.getCoercion(rType, Type.BIGINT);
+                            outCoercions.add(Coercion.Identity.getInstance(iStore, lType));
+                            Coercion c = Coercion.getCoercion(iStore, rType, Type.BIGINT);
                             assert c != null;
                             outCoercions.add(c);
 
@@ -195,10 +195,10 @@ public enum CoercionScheme {
 
                             // string/number + date/time
 
-                            Coercion c = Coercion.getCoercion(lType, Type.BIGINT);
+                            Coercion c = Coercion.getCoercion(iStore, lType, Type.BIGINT);
                             assert c != null;
                             outCoercions.add(c);
-                            outCoercions.add(Coercion.Identity.getInstance(rType));
+                            outCoercions.add(Coercion.Identity.getInstance(iStore, rType));
 
                             List<Type> ret = new ArrayList<>();
                             ret.add(Type.BIGINT);
@@ -207,10 +207,10 @@ public enum CoercionScheme {
                             return ret;
                         } else if (opName.equals("opSubtract") && lType == Type.NULL) {
 
-                            Coercion c = Coercion.getCoercion(lType, rType);
+                            Coercion c = Coercion.getCoercion(iStore, lType, rType);
                             assert c != null;
                             outCoercions.add(c);
-                            outCoercions.add(Coercion.Identity.getInstance(rType));
+                            outCoercions.add(Coercion.Identity.getInstance(iStore, rType));
 
                             List<Type> ret = new ArrayList<>();
                             ret.add(rType);
@@ -237,7 +237,7 @@ public enum CoercionScheme {
                     targetTy = Type.OBJECT; // see the comment in CompOp
                 }
 
-                Coercion c = Coercion.getCoercion(argType, targetTy);
+                Coercion c = Coercion.getCoercion(iStore, argType, targetTy);
                 assert c != null;
                 outCoercions.add(c);
 
@@ -253,7 +253,7 @@ public enum CoercionScheme {
     },
 
     IntArithOp {
-        public List<Type> getCoercions(
+        public List<Type> getCoercions(InstanceStore iStore,
                 List<Coercion> outCoercions, List<Type> argTypes, String opName) {
 
             if (argTypes.size() == 2) {
@@ -272,7 +272,7 @@ public enum CoercionScheme {
 
                 List<Type> ret = new ArrayList<>();
                 for (int i = 0; i < 2; i++) {
-                    Coercion c = Coercion.getCoercion(argTypes.get(i), commonTy);
+                    Coercion c = Coercion.getCoercion(iStore, argTypes.get(i), commonTy);
                     assert c != null;
                     outCoercions.add(c);
                     ret.add(commonTy);
@@ -294,7 +294,7 @@ public enum CoercionScheme {
                     targetTy = Type.OBJECT; // see the comment in CompOp
                 }
 
-                Coercion c = Coercion.getCoercion(argType, targetTy);
+                Coercion c = Coercion.getCoercion(iStore, argType, targetTy);
                 assert c != null;
                 outCoercions.add(c);
 
@@ -310,34 +310,34 @@ public enum CoercionScheme {
     },
 
     LogicalOp {
-        public List<Type> getCoercions(
+        public List<Type> getCoercions(InstanceStore iStore,
                 List<Coercion> outCoercions, List<Type> argTypes, String opName) {
             // and, or, xor, not
-            return getCoercionsToFixedType(outCoercions, argTypes, Type.BOOLEAN);
+            return getCoercionsToFixedType(iStore, outCoercions, argTypes, Type.BOOLEAN);
         }
     },
 
     StringOp {
-        public List<Type> getCoercions(
+        public List<Type> getCoercions(InstanceStore iStore,
                 List<Coercion> outCoercions, List<Type> argTypes, String opName) {
             // ||, like
-            return getCoercionsToFixedType(outCoercions, argTypes, Type.STRING_ANY);
+            return getCoercionsToFixedType(iStore, outCoercions, argTypes, Type.STRING_ANY);
         }
     },
 
     BitOp {
-        public List<Type> getCoercions(
+        public List<Type> getCoercions(InstanceStore iStore,
                 List<Coercion> outCoercions, List<Type> argTypes, String opName) {
             // <<, >>, &, ^, |
-            return getCoercionsToFixedType(outCoercions, argTypes, Type.BIGINT);
+            return getCoercionsToFixedType(iStore, outCoercions, argTypes, Type.BIGINT);
         }
     },
 
     ObjectOp {
-        public List<Type> getCoercions(
+        public List<Type> getCoercions(InstanceStore iStore,
                 List<Coercion> outCoercions, List<Type> argTypes, String opName) {
             // is-null
-            return getCoercionsToFixedType(outCoercions, argTypes, Type.OBJECT);
+            return getCoercionsToFixedType(iStore, outCoercions, argTypes, Type.OBJECT);
         }
     };
 
@@ -345,7 +345,7 @@ public enum CoercionScheme {
         return getCommonTypeInner(lType, rType, compOpCommonType);
     }
 
-    public abstract List<Type> getCoercions(
+    public abstract List<Type> getCoercions(InstanceStore iStore,
             List<Coercion> outCoercions, List<Type> argTypes, String opName);
 
     // -----------------------------------------------------------------------
@@ -592,12 +592,12 @@ public enum CoercionScheme {
         intArithOpCommonType[Type.IDX_DOUBLE][Type.IDX_DOUBLE] = Type.BIGINT;
     }
 
-    private static List<Type> getCoercionsToFixedType(
+    private static List<Type> getCoercionsToFixedType(InstanceStore iStore,
             List<Coercion> outCoercions, List<Type> argTypes, Type targetType) {
 
         List<Type> ret = new ArrayList<>();
         for (Type t : argTypes) {
-            Coercion c = Coercion.getCoercion(t, targetType);
+            Coercion c = Coercion.getCoercion(iStore, t, targetType);
             if (c == null) {
                 return null;
             } else {

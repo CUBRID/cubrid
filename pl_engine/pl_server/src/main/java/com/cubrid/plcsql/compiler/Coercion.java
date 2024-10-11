@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
 import com.cubrid.plcsql.compiler.type.TypeNumeric;
@@ -60,16 +61,16 @@ public abstract class Coercion {
         this.dst = dst;
     }
 
-    public Coercion getReversion() {
+    public Coercion getReversion(InstanceStore iStore) {
         // getReversion() is only used for code generation of argument passing to OUT parameters.
         // and the src and dst types are those written by the users in the program
         assert Type.isUserType(src);
         assert Type.isUserType(dst);
 
-        return getCoercion(dst, src);
+        return getCoercion(iStore, dst, src);
     }
 
-    public static Coercion getCoercion(Type src, Type dst) {
+    public static Coercion getCoercion(InstanceStore iStore, Type src, Type dst) {
 
         if (dst instanceof TypeRecord) {
             if (src == Type.NULL) {
@@ -77,7 +78,7 @@ public abstract class Coercion {
             } else if (src instanceof TypeRecord) {
 
                 if (src == dst) {
-                    return Identity.getInstance(src);
+                    return Identity.getInstance(iStore, src);
                 }
 
                 TypeRecord srcRec = (TypeRecord) src;
@@ -98,7 +99,7 @@ public abstract class Coercion {
                     Misc.Pair<String, Type> srcField = srcRec.selectList.get(i);
                     Misc.Pair<String, Type> dstField = dstRec.selectList.get(i);
 
-                    Coercion c = getCoercion(srcField.e2, dstField.e2);
+                    Coercion c = getCoercion(iStore, srcField.e2, dstField.e2);
                     if (c == null) {
                         return null; // coercion is not available for this field
                     } else {
@@ -106,26 +107,26 @@ public abstract class Coercion {
                     }
                 }
 
-                return RecordToRecord.getInstance(srcRec, dstRec, fieldCoercions);
+                return RecordToRecord.getInstance(iStore, srcRec, dstRec, fieldCoercions);
             }
 
             return null;
         }
 
         if (src == dst) {
-            return Identity.getInstance(src);
+            return Identity.getInstance(iStore, src);
         } else if (src == Type.NULL) {
             // cast NULL: in order for Javac dst pick the right version among operator function
             // overloads when all the arguments are nulls
-            return Cast.getInstance(src, dst);
+            return Cast.getInstance(iStore, src, dst);
         } else if (dst == Type.OBJECT) {
-            return Identity.getInstance(src, dst);
+            return Identity.getInstance(iStore, src, dst);
         }
 
-        Coercion ret = Conversion.getInstance(src, dst);
+        Coercion ret = Conversion.getInstance(iStore, src, dst);
         if (ret == null && src.idx == dst.idx) {
             if (src.idx == Type.IDX_NUMERIC || src.idx == Type.IDX_STRING) {
-                ret = Identity.getInstance(src, dst);
+                ret = Identity.getInstance(iStore, src, dst);
             } else {
                 assert false;
             }
@@ -189,7 +190,7 @@ public abstract class Coercion {
             return new RecordToRecord(src, dst);
         }
 
-        public static RecordToRecord getInstance(Type src, Type dst, Coercion[] fieldCoercions) {
+        public static RecordToRecord getInstance(InstanceStore iStore, Type src, Type dst, Coercion[] fieldCoercions) {
             RecordToRecord ret = (RecordToRecord) memoized.get(src, dst);
             if (ret.fieldCoercions == null) {
                 ret.fieldCoercions = fieldCoercions;
@@ -323,11 +324,11 @@ public abstract class Coercion {
             return new Identity(src, dst);
         }
 
-        public static Identity getInstance(Type ty) {
+        public static Identity getInstance(InstanceStore iStore, Type ty) {
             return (Identity) memoized.get(ty, ty);
         }
 
-        public static Identity getInstance(Type src, Type dst) {
+        public static Identity getInstance(InstanceStore iStore, Type src, Type dst) {
             return (Identity) memoized.get(src, dst);
         }
 
@@ -361,7 +362,7 @@ public abstract class Coercion {
             return null;
         }
 
-        public static Cast getInstance(Type src, Type dst) {
+        public static Cast getInstance(InstanceStore iStore, Type src, Type dst) {
             assert src == Type.NULL;
             return instances.get(dst.idx);
         }
@@ -411,7 +412,7 @@ public abstract class Coercion {
             return new Conversion(src, dst);
         }
 
-        public static Conversion getInstance(Type src, Type dst) {
+        public static Conversion getInstance(InstanceStore iStore, Type src, Type dst) {
 
             Set<Integer> possibleTargets = possibleCasts.get(src.idx);
             if (possibleTargets == null || !possibleTargets.contains(dst.idx)) {

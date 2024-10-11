@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.type;
 
+import com.cubrid.plcsql.compiler.InstanceStore;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -38,7 +39,7 @@ public class TypeNumeric extends Type {
     public final int precision;
     public final short scale;
 
-    public static synchronized TypeNumeric getInstance(int precision, short scale) {
+    public static synchronized TypeNumeric getInstance(InstanceStore iStore, int precision, short scale) {
 
         assert precision <= 38 && precision >= 1;
         assert scale <= precision && scale >= 0;

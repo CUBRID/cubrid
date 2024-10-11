@@ -34,6 +34,7 @@ import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
+import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.DBTypeAdapter;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
@@ -62,8 +63,8 @@ public class ExprAutoParam extends Expr {
         this.ty = ty;
     }
 
-    public Type getType() {
-        return DBTypeAdapter.getValueType(ty);
+    public Type getType(InstanceStore iStore) {
+        return DBTypeAdapter.getValueType(iStore, ty);
     }
 
     public String javaCode(Set<String> javaTypesUsed) {

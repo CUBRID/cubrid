@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.visitor;
 
+import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ast.*;
@@ -47,6 +48,7 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
+    private InstanceStore iStore;
     private Set<String> javaTypesUsed = new HashSet<>();
 
     private String getJavaCodeOfType(TypeSpec tySpec) {
@@ -56,6 +58,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private String getJavaCodeOfType(Type type) {
         javaTypesUsed.add(type.fullJavaType);
         return type.javaCode;
+    }
+
+    public JavaCodeWriter(InstanceStore iStore) {
+        this.iStore = iStore;
     }
 
     public List<String> codeLines = new ArrayList<>(); // no LinkedList : frequent access by indexes
@@ -2788,7 +2794,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 }
 
                 // fill updateOutArgs
-                Coercion cRev = c.getReversion();
+                Coercion cRev = c.getReversion(iStore);
                 assert cRev != null; // by earlier check
                 String outVal =
                         String.format(
@@ -2855,7 +2861,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
                     argsToLocal.append("p" + i);
 
-                    Coercion cRev = c.getReversion();
+                    Coercion cRev = c.getReversion(iStore);
                     assert cRev != null; // by earlier check
                     update.add(String.format("o%d[0] = %s;", i, cRev.javaCode("p" + i + "[0]")));
                 }

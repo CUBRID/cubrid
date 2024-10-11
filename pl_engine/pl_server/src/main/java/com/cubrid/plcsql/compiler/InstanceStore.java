@@ -28,33 +28,12 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.type;
+package com.cubrid.plcsql.compiler;
 
 import java.util.HashMap;
-import java.util.Map;
 
-public class TypeVariadic extends Type {
+// store of instances of various classes such as types, coercions
+// which are genrated during a single session of compilation
 
-    public final Type elem;
-
-    private TypeVariadic(Type elem) {
-        super(Type.INVALID_IDX, null, null, null);
-        this.elem = elem;
-    }
-
-    private static Map<Integer, TypeVariadic> instances = new HashMap<>();
-
-    static {
-        for (int i = Type.IDX_OBJECT; i < Type.BOUND_OF_IDX; i++) {
-            Type ty = Type.getTypeByIdx(i);
-            assert ty != null;
-            instances.put(i, new TypeVariadic(ty));
-        }
-    }
-
-    public static synchronized TypeVariadic getStaticInstance(Type ty) {
-        TypeVariadic ret = instances.get(ty.idx);
-        assert ret != null;
-        return ret;
-    }
+public class InstanceStore {
 }

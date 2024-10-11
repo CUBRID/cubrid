@@ -515,8 +515,8 @@ public class SymbolStack {
         addPredefinedExceptions();
     }
 
-    public static DeclFunc getOperator(List<Coercion> outCoercions, String name, Type... argTypes) {
-        return getFuncOverload(outCoercions, operators, name, argTypes);
+    public static DeclFunc getOperator(InstanceStore iStore, List<Coercion> outCoercions, String name, Type... argTypes) {
+        return getFuncOverload(iStore, outCoercions, operators, name, argTypes);
     }
 
     //
@@ -714,6 +714,7 @@ public class SymbolStack {
     }
 
     private static DeclFunc getFuncOverload(
+            InstanceStore iStore,
             List<Coercion> outCoercions,
             Map<String, FuncOverloads> map,
             String name,
@@ -723,7 +724,7 @@ public class SymbolStack {
         if (overloads == null) {
             return null; // TODO: throw?
         } else {
-            return overloads.get(outCoercions, Arrays.asList(argTypes));
+            return overloads.get(iStore, outCoercions, Arrays.asList(argTypes));
         }
     }
 
@@ -786,9 +787,9 @@ public class SymbolStack {
             assert old == null;
         }
 
-        DeclFunc get(List<Coercion> outCoercions, List<Type> argTypes) {
+        DeclFunc get(InstanceStore iStore, List<Coercion> outCoercions, List<Type> argTypes) {
 
-            List<Type> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
+            List<Type> paramTypes = coercionScheme.getCoercions(iStore, outCoercions, argTypes, name);
             if (paramTypes == null) {
                 return null; // no match
             } else {
@@ -798,7 +799,7 @@ public class SymbolStack {
                     Type ty = paramTypes.get(0);
                     paramTypes.clear();
                     paramTypes.add(ty);
-                    paramTypes.add(TypeVariadic.getInstance(ty));
+                    paramTypes.add(TypeVariadic.getStaticInstance(ty));
                 }
 
                 DeclFunc declFunc = overloads.get(paramTypes);
