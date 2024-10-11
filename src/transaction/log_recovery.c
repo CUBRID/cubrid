@@ -2532,7 +2532,7 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
   /* TODO - Do we need to handle NULL fwd_log_lsa? */
   if (!LSA_ISNULL (&fwd_log_lsa))
     {
-      if (LSA_GE (log_lsa, &fwd_log_lsa) || LSA_GE (&fwd_log_lsa, &log_Gl.hdr.eof_lsa))
+      if (LSA_GE (log_lsa, &fwd_log_lsa) || LSA_GT (&fwd_log_lsa, &log_Gl.hdr.eof_lsa))
 	{
 	  // check fwd_log_lsa value if it is corrupted or not
 	  is_log_page_broken = true;
