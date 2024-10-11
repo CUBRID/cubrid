@@ -42,7 +42,7 @@ public class TypeRecord extends Type {
 
     public boolean generateEq; // whether to generate a opEq method for this record type
 
-    public static synchronized TypeRecord getInstance(InstanceStore iStore,
+    public static TypeRecord getInstance(InstanceStore iStore,
             boolean ofTable, String rowName, List<Misc.Pair<String, Type>> selectList) {
 
         TypeRecord ret = iStore.typeRecord.get(selectList);

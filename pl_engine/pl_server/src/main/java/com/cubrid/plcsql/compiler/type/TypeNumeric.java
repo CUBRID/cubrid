@@ -39,7 +39,7 @@ public class TypeNumeric extends Type {
     public final int precision;
     public final short scale;
 
-    public static synchronized TypeNumeric getInstance(InstanceStore iStore, int precision, short scale) {
+    public static TypeNumeric getInstance(InstanceStore iStore, int precision, short scale) {
 
         assert precision <= 38 && precision >= 1;
         assert scale <= precision && scale >= 0;

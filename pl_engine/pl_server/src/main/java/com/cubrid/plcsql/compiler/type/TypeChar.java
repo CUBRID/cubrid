@@ -40,7 +40,7 @@ public class TypeChar extends Type {
 
     public final int length;
 
-    public static synchronized TypeChar getInstance(InstanceStore iStore, int length) {
+    public static TypeChar getInstance(InstanceStore iStore, int length) {
 
         assert length <= MAX_LEN && length >= 1;
 

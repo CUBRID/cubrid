@@ -40,7 +40,7 @@ public class TypeVarchar extends Type {
 
     public final int length;
 
-    public static synchronized TypeVarchar getInstance(InstanceStore iStore, int length) {
+    public static TypeVarchar getInstance(InstanceStore iStore, int length) {
 
         assert length <= MAX_LEN && length >= 1;
 

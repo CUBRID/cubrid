@@ -43,7 +43,6 @@ public class TypeVariadic extends Type {
     }
 
     private static Map<Integer, TypeVariadic> staticInstances = new HashMap<>();
-
     static {
         for (int i = Type.IDX_OBJECT; i < Type.BOUND_OF_IDX; i++) {
             Type ty = Type.getTypeByIdx(i);
@@ -52,7 +51,7 @@ public class TypeVariadic extends Type {
         }
     }
 
-    public static synchronized TypeVariadic getStaticInstance(Type ty) {
+    public static TypeVariadic getStaticInstance(Type ty) {
         TypeVariadic ret = staticInstances.get(ty.idx);
         assert ret != null;
         return ret;

@@ -74,7 +74,7 @@ public class InstanceStore {
             this.dummy = dummy;
         }
 
-        synchronized Coercion get(Type src, Type dst) {
+        Coercion get(Type src, Type dst) {
 
             Map<Type, Coercion> storeInner = store.get(src);
             if (storeInner == null) {
@@ -89,10 +89,6 @@ public class InstanceStore {
             }
 
             return c;
-        }
-
-        synchronized void clear() {
-            store.clear();
         }
 
         // ---------------------------------------
