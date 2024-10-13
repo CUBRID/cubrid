@@ -698,10 +698,10 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, db_get_bigint (value)));
       break;
     case DB_TYPE_INTEGER:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, (DB_BIGINT) db_get_int (value)));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", db_get_int (value)));
       break;
     case DB_TYPE_SMALLINT:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, (DB_BIGINT) db_get_short (value)));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", (int) db_get_short (value)));
       break;
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
