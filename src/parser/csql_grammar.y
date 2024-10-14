@@ -14879,6 +14879,39 @@ to_param
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | identifier DOT identifier
+		{{ DBG_TRACE_GRAMMAR(to_param, | identifier DOT identifier);
+
+			PT_NODE *val = $1;
+                        
+                         if (this_parser->flag.is_parsing_static_sql)
+                          {
+                             if (val && $3)
+                              {
+                                val->info.name.original = pt_append_string (this_parser, val->info.name.original, ".");
+                                val->info.name.original = 
+                                     pt_append_string (this_parser, val->info.name.original, $3->info.name.original);
+                                parser_free_tree (this_parser, $3);
+                              }                              
+                                                          
+                             if (val)
+                              {
+                                val->info.name.meta_class = PT_PARAMETER;
+                                val->info.name.spec_id = (UINTPTR) val;
+                                val->info.name.resolved = pt_makename ("out parameter");
+                              }
+                          }
+                        else
+                          {                               
+                             PT_ERRORm (this_parser, val, MSGCAT_SET_PARSER_SEMANTIC, 
+                                        MSGCAT_SEMANTIC_SP_INTO_FIELD_EXPR_IN_NON_STATIC_SQL);
+                          }
+                                                 
+                        $$ = val;  
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+
 	| identifier
 		{{ DBG_TRACE_GRAMMAR(to_param, | identifier);
 

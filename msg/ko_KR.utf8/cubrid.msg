@@ -1943,6 +1943,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 321 %TYPE 타입 지정은 PL/CSQL에서만 사용 가능합니다
 322 테이블 컬럼 '%1$s.%2$s'이 정의되지 않았습니다
 323 Stored procedure/function '%1$s' 이(가) OUT 또는 IN OUT 인수를 가지고 있습니다.
+324 Select 구문의 INTO절에서 필드 표현식은 저장 함수/프로시저 내부의 Static SQL에서만 허용됩니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
