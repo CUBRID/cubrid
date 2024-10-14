@@ -8544,21 +8544,14 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	{
 	  if (error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED)
 	    {
-	      file_tempcache_lock ();
-
 	      if (file_tempcache_find_victim_and_destroy (thread_p, FILE_IS_NUMERABLE (fhead)))
 		{
-		  file_tempcache_unlock ();
 		  goto retry;
 		}
-
 	      if (file_tempcache_find_victim_and_destroy (thread_p, !FILE_IS_NUMERABLE (fhead)))
 		{
-		  file_tempcache_unlock ();
 		  goto retry;
 		}
-
-	      file_tempcache_unlock ();
 	    }
 	  assert_release (false);
 	  goto exit;
@@ -9635,38 +9628,55 @@ file_tempcache_dump (FILE * fp)
 STATIC_INLINE bool
 file_tempcache_find_victim_and_destroy (THREAD_ENTRY * thread_p, bool is_numerable)
 {
+  FILE_TEMPCACHE_ENTRY *victim;
+
+  file_tempcache_lock ();
   if (is_numerable)
     {
       if (file_Tempcache.ncached_numerable > 0)
 	{
-	  if (file_destroy (thread_p, &file_Tempcache.cached_numerable->vfid, true) != NO_ERROR)
+	  victim = file_Tempcache.cached_numerable;
+
+	  if (file_destroy (thread_p, &victim->vfid, true) != NO_ERROR)
 	    {
+	      file_tempcache_unlock ();
 	      assert (false);
 	      return false;
 	    }
 
-	  file_Tempcache.cached_numerable = file_Tempcache.cached_numerable->next;
+	  file_Tempcache.cached_numerable = victim->next;
 	  file_Tempcache.ncached_numerable--;
+	  file_tempcache_unlock ();
+
+	  file_tempcache_retire_entry (victim);
 	  return true;
 	}
 
+      file_tempcache_unlock ();
       return false;
     }
   else
     {
       if (file_Tempcache.ncached_not_numerable > 0)
 	{
-	  if (file_destroy (thread_p, &file_Tempcache.cached_not_numerable->vfid, true) != NO_ERROR)
+	  victim = file_Tempcache.cached_not_numerable;
+
+	  if (file_destroy (thread_p, &victim->vfid, true) != NO_ERROR)
 	    {
+	      file_tempcache_unlock ();
 	      assert (false);
 	      return false;
 	    }
 
-	  file_Tempcache.cached_not_numerable = file_Tempcache.cached_not_numerable->next;
+	  file_Tempcache.cached_not_numerable = victim->next;
 	  file_Tempcache.ncached_not_numerable--;
+	  file_tempcache_unlock ();
+
+	  file_tempcache_retire_entry (victim);
 	  return true;
 	}
 
+      file_tempcache_unlock ();
       return false;
     }
 }
