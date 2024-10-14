@@ -707,6 +707,13 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_DOUBLE:
       {
 	char *pos;
+
+	if (tout->tail_ptr == NULL)
+	  {
+	    assert (tout->head_ptr == NULL);
+	    CHECK_PRINT_ERROR (get_text_output_mem (tout, -1));
+	  }
+
 	pos = tout->tail_ptr->ptr;
 	CHECK_PRINT_ERROR (text_print
 			   (tout, NULL, 0, "%.*g", (type == DB_TYPE_FLOAT) ? 10 : 17,
