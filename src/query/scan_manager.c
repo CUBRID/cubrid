@@ -5093,6 +5093,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   UINT64 old_fetches = 0, old_ioreads = 0;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
+  SCAN_STATS old_scan_stats;
 
   on_trace = thread_is_on_trace (thread_p);
   if (on_trace)
@@ -5101,6 +5102,11 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
       old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+
+      if (scan_id->partition_stats != NULL)
+	{
+	  memcpy (&old_scan_stats, &scan_id->scan_stats, sizeof (SCAN_STATS));
+	}
     }
 
   switch (scan_id->type)
@@ -5179,6 +5185,51 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       scan_id->scan_stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       scan_id->scan_stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+
+      if (scan_id->partition_stats != NULL)
+	{
+	  perfmon_add_timeval (&scan_id->partition_stats->elapsed_scan, &old_scan_stats.elapsed_scan,
+			       &scan_id->scan_stats.elapsed_scan);
+	  scan_id->partition_stats->num_fetches += scan_id->scan_stats.num_fetches - old_scan_stats.num_fetches;
+	  scan_id->partition_stats->num_ioreads += scan_id->scan_stats.num_ioreads - old_scan_stats.num_ioreads;
+
+	  switch (scan_id->type)
+	    {
+	    case S_HEAP_SCAN:
+	    case S_HEAP_SCAN_RECORD_INFO:
+	    case S_HEAP_SAMPLING_SCAN:
+	    case S_LIST_SCAN:
+	      scan_id->partition_stats->read_rows += scan_id->scan_stats.read_rows - old_scan_stats.read_rows;
+	      scan_id->partition_stats->qualified_rows +=
+		scan_id->scan_stats.qualified_rows - old_scan_stats.qualified_rows;
+	      perfmon_add_timeval (&scan_id->partition_stats->elapsed_hash_build, &old_scan_stats.elapsed_hash_build,
+				   &scan_id->scan_stats.elapsed_hash_build);
+	      break;
+
+	    case S_INDX_SCAN:
+	      scan_id->partition_stats->read_keys += scan_id->scan_stats.read_keys - old_scan_stats.read_keys;
+	      scan_id->partition_stats->qualified_keys +=
+		scan_id->scan_stats.qualified_keys - old_scan_stats.qualified_keys;
+	      scan_id->partition_stats->key_qualified_rows +=
+		scan_id->scan_stats.key_qualified_rows - old_scan_stats.key_qualified_rows;
+	      scan_id->partition_stats->data_qualified_rows +=
+		scan_id->scan_stats.data_qualified_rows - old_scan_stats.data_qualified_rows;
+	      perfmon_add_timeval (&scan_id->partition_stats->elapsed_lookup, &old_scan_stats.elapsed_lookup,
+				   &scan_id->scan_stats.elapsed_lookup);
+	      break;
+
+	    default:
+	      /* fall through */
+	      break;
+	    }
+
+	  assert (scan_id->partition_stats->covered_index == scan_id->scan_stats.covered_index);
+	  assert (scan_id->partition_stats->multi_range_opt == scan_id->scan_stats.multi_range_opt);
+	  assert (scan_id->partition_stats->index_skip_scan == scan_id->scan_stats.index_skip_scan);
+	  assert (scan_id->partition_stats->loose_index_scan == scan_id->scan_stats.loose_index_scan);
+	  assert (scan_id->partition_stats->noscan == scan_id->scan_stats.noscan);
+	  assert (scan_id->partition_stats->agl == NULL);
+	}
     }
 
   return status;
@@ -8054,7 +8105,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
     }
 }
-#endif
+#endif /* SERVER_MODE */
 
 /*
  * scan_build_hash_list_scan () - build hash table from list

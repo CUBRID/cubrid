@@ -2887,6 +2887,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
   CLS_SPEC_TYPE *cls_node;
   ACCESS_SPEC_TYPE *spec;
   json_t *scan = NULL, *scan_array = NULL;
+  json_t *part_scan = NULL, *part_scan_array = NULL;
   int num_spec = 0;
   char spec_name[1024];
   THREAD_ENTRY *thread_p;
@@ -2952,9 +2953,109 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	    {
 	      free_and_init (class_name);
 	    }
+
 	  if (index_name != NULL)
 	    {
 	      free_and_init (index_name);
+	    }
+
+	  if ((spec->parts != NULL) && (spec->s_id.scan_stats.agl == NULL))
+	    {
+	      PARTITION_SPEC_TYPE *curr_part = NULL, *prev_part = NULL;
+	      SCAN_STATS *scan_stats, *curr_stats, *prev_stats;
+	      SCAN_STATS save_stats;
+
+	      scan_stats = &spec->s_id.scan_stats;
+
+	      /* save */
+	      memcpy (&save_stats, &spec->s_id.scan_stats, sizeof (SCAN_STATS));
+
+	      part_scan_array = json_array ();
+
+	      for (curr_part = spec->parts; curr_part != NULL; prev_part = curr_part, curr_part = curr_part->next)
+		{
+		  curr_stats = &curr_part->scan_stats;
+
+		  if (curr_stats->num_fetches == 0)
+		    {
+		      /* skip */
+		      continue;
+		    }
+
+		  part_scan = json_object ();
+
+		  if (heap_get_class_name (thread_p, &curr_part->oid, &class_name) != NO_ERROR)
+		    {
+		      /* ignore */
+		      er_clear ();
+		    }
+
+		  spec_name[0] = '\0';
+
+		  switch (spec->access)
+		    {
+		    case ACCESS_METHOD_SEQUENTIAL:
+		      {
+			if (class_name != NULL)
+			  {
+			    sprintf (spec_name, "table (%s)", class_name);
+			  }
+			else
+			  {
+			    sprintf (spec_name, "table (unknown)");
+			  }
+
+			break;
+		      }
+
+		    case ACCESS_METHOD_INDEX:
+		      {
+			if (heap_get_indexinfo_of_btid
+			    (thread_p, &curr_part->oid, &curr_part->btid, NULL, NULL, NULL, NULL, &index_name,
+			     NULL) == NO_ERROR)
+			  {
+			    if (class_name != NULL && index_name != NULL)
+			      {
+				sprintf (spec_name, "index (%s.%s)", class_name, index_name);
+			      }
+
+			    else
+			      {
+				sprintf (spec_name, "index (unknown)");
+			      }
+			  }
+			break;
+		      }
+
+		    default:
+		      /* fall through */
+		      break;
+		    }
+
+		  json_object_set_new (part_scan, "access", json_string (spec_name));
+
+		  memcpy (scan_stats, &curr_part->scan_stats, sizeof (SCAN_STATS));
+
+		  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
+		  assert (scan_stats->agl == NULL);
+
+		  scan_print_stats_json (&spec->s_id, part_scan);
+
+		  json_array_append_new (part_scan_array, part_scan);
+
+		  if (class_name != NULL)
+		    {
+		      free_and_init (class_name);
+		    }
+
+		  if (index_name != NULL)
+		    {
+		      free_and_init (index_name);
+		    }
+		}
+
+	      /* restore */
+	      memcpy (&spec->s_id.scan_stats, &save_stats, sizeof (SCAN_STATS));
 	    }
 	}
       else if (type == TARGET_LIST)
@@ -2983,6 +3084,11 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	}
 
       scan_print_stats_json (&spec->s_id, scan);
+
+      if (part_scan_array != NULL)
+	{
+	  json_object_set_new (scan, "PARTITION", part_scan_array);
+	}
 
       if (scan_array != NULL)
 	{
@@ -3408,9 +3514,101 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	    {
 	      free_and_init (class_name);
 	    }
+
 	  if (index_name != NULL)
 	    {
 	      free_and_init (index_name);
+	    }
+
+	  if ((spec->parts != NULL) && (spec->s_id.scan_stats.agl == NULL))
+	    {
+	      PARTITION_SPEC_TYPE *curr_part = NULL, *prev_part = NULL;
+	      SCAN_STATS *scan_stats, *curr_stats, *prev_stats;
+	      SCAN_STATS save_stats;
+
+	      scan_stats = &spec->s_id.scan_stats;
+
+	      /* save */
+	      memcpy (&save_stats, scan_stats, sizeof (SCAN_STATS));
+
+	      for (curr_part = spec->parts; curr_part != NULL; prev_part = curr_part, curr_part = curr_part->next)
+		{
+		  curr_stats = &curr_part->scan_stats;
+
+		  if (curr_stats->num_fetches == 0)
+		    {
+		      /* skip */
+		      continue;
+		    }
+
+		  fprintf (fp, "\n");
+		  fprintf (fp, "%*cPARTITION ", multi_spec_indent + 2, ' ');
+
+		  if (heap_get_class_name (thread_p, &curr_part->oid, &class_name) != NO_ERROR)
+		    {
+		      /* ignore */
+		      er_clear ();
+		    }
+
+		  switch (spec->access)
+		    {
+		    case ACCESS_METHOD_SEQUENTIAL:
+		      {
+			if (class_name != NULL)
+			  {
+			    fprintf (fp, "(table: %s), ", class_name);
+			  }
+			else
+			  {
+			    fprintf (fp, "(table: unknown), ");
+			  }
+
+			break;
+		      }
+
+		    case ACCESS_METHOD_INDEX:
+		      {
+			if (heap_get_indexinfo_of_btid
+			    (thread_p, &curr_part->oid, &curr_part->btid, NULL, NULL, NULL, NULL, &index_name,
+			     NULL) == NO_ERROR)
+			  {
+			    if (class_name != NULL && index_name != NULL)
+			      {
+				fprintf (fp, "(index: %s.%s), ", class_name, index_name);
+			      }
+			    else
+			      {
+				fprintf (fp, "(index: unknown), ");
+			      }
+			  }
+			break;
+		      }
+
+		    default:
+		      /* fall through */
+		      break;
+		    }
+
+		  memcpy (scan_stats, &curr_part->scan_stats, sizeof (SCAN_STATS));
+
+		  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
+		  assert (scan_stats->agl == NULL);
+
+		  scan_print_stats_text (fp, &spec->s_id);
+
+		  if (class_name != NULL)
+		    {
+		      free_and_init (class_name);
+		    }
+
+		  if (index_name != NULL)
+		    {
+		      free_and_init (index_name);
+		    }
+		}
+
+	      /* restore */
+	      memcpy (&spec->s_id.scan_stats, &save_stats, sizeof (SCAN_STATS));
 	    }
 	}
       else

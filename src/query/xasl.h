@@ -1060,6 +1060,7 @@ struct partition_spec_node
   HFID hfid;			/* class hfid */
   BTID btid;			/* index id */
   PARTITION_SPEC_TYPE *next;	/* next partition */
+  SCAN_STATS scan_stats;
 };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
