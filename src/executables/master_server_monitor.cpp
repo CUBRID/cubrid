@@ -110,7 +110,7 @@ server_monitor::register_server_entry (int pid, const std::string &exec_path, co
     {
       entry->second.set_pid (pid);
       entry->second.set_need_revive (false);
-      entry->second.set_registered_time (std::chrono::steady_clock::now ());
+      entry->second.set_last_revived_time (std::chrono::steady_clock::now ());
       _er_log_debug (ARG_FILE_LINE,
 		     "[Server Monitor] [%s] Server entry has been registered. (pid : %d)",
 		     server_name.c_str(), pid);
@@ -118,7 +118,7 @@ server_monitor::register_server_entry (int pid, const std::string &exec_path, co
   else
     {
       m_server_entry_map.emplace (std::move (server_name), server_entry (pid, exec_path, args,
-				  std::chrono::steady_clock::now ()));
+				  std::chrono::steady_clock::time_point ()));
 
       _er_log_debug (ARG_FILE_LINE,
 		     "[Server Monitor] [%s] Server entry has been registered newly. (pid : %d)",
@@ -158,7 +158,8 @@ server_monitor::revive_server (const std::string &server_name)
 
       tv = std::chrono::steady_clock::now ();
       auto timediff = std::chrono::duration_cast<std::chrono::seconds> (tv -
-		      entry->second.get_registered_time()).count();
+		      entry->second.get_last_revived_time()).count();
+      bool revived_before = entry->second.get_last_revived_time () != std::chrono::steady_clock::time_point ();
 
       // If the server is abnormally terminated and revived within a short period of time, it is considered as a repeated failure.
       // For HA server, heartbeat handle this case as demoting the server from master to slave and keep trying to revive the server.
@@ -169,9 +170,9 @@ server_monitor::revive_server (const std::string &server_name)
       // TODO: Consider retry count for repeated failure case, and give up reviving the server after several retries.
       // TODO: The timediff value continues to increase if REVIVE_SERVER handling is repeated. Thus, the if condition will always be
       // true after the first evaluation. Therefore, evaluating the timediff only once when producing the REVIVE_SERVER job is needed.
-      // (Currently, it is impossible since registered_time is stored in server_entry, which is not synchronized structure between monitor and main thread.)
+      // (Currently, it is impossible since last_revived_time is stored in server_entry, which is not synchronized structure between monitor and main thread.)
 
-      if (timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS)
+      if (!revived_before || timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS)
 	{
 	  out_pid = try_revive_server (entry->second.get_exec_path(), entry->second.get_argv());
 	  if (out_pid == -1)
@@ -365,7 +366,7 @@ server_entry (int pid, const std::string &exec_path, const std::string &args,
   : m_pid {pid}
   , m_exec_path {exec_path}
   , m_need_revive {false}
-  , m_registered_time {revive_time}
+  , m_last_revived_time {revive_time}
 {
   if (args.size() > 0)
     {
@@ -398,9 +399,9 @@ server_monitor::server_entry::get_need_revive () const
 }
 
 std::chrono::steady_clock::time_point
-server_monitor::server_entry::get_registered_time () const
+server_monitor::server_entry::get_last_revived_time () const
 {
-  return m_registered_time;
+  return m_last_revived_time;
 }
 
 void
@@ -422,9 +423,9 @@ server_monitor::server_entry::set_need_revive (bool need_revive)
 }
 
 void
-server_monitor::server_entry::set_registered_time (std::chrono::steady_clock::time_point revive_time)
+server_monitor::server_entry::set_last_revived_time (std::chrono::steady_clock::time_point revive_time)
 {
-  m_registered_time = revive_time;
+  m_last_revived_time = revive_time;
 }
 
 void
