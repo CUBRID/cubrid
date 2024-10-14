@@ -57,6 +57,8 @@ static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, 
 static int propagate_revoke (DB_OBJECT_TYPE obj_type, AU_GRANT *grant_list, MOP owner, DB_AUTH mask);
 static int au_propagate_del_new_auth (DB_OBJECT_TYPE obj_type, AU_GRANT *glist, DB_AUTH mask);
 
+static int au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP login_user, MOP class_owner);
+
 /*
  * GRANT STRUCTURE OPERATION
  */
@@ -123,6 +125,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
   SM_CLASS *classobj;
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_grant = 0;
   MOP *sub_partitions = NULL;
+  MOP grantor = NULL;
 
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
   if (error != NO_ERROR)
@@ -191,8 +194,14 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	  error = ER_AU_CANT_GRANT_OWNER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
 	}
-      else if ((error = check_grant_option (class_mop, classobj, type)) == NO_ERROR)
+      else if ((error = au_compare_grantor_and_return (&grantor, class_mop, type, Au_user, classobj->owner)) != NO_ERROR)
 	{
+	  return (error);
+	}
+      else
+	{
+	  assert (grantor != NULL);
+
 	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
 	    {
 	      error = ER_AU_ACCESS_ERROR;
@@ -206,7 +215,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	    }
 	  else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	    {
-	      gindex = find_grant_entry (grants, class_mop, Au_user);
+	      gindex = find_grant_entry (grants, class_mop, grantor);
 	      if (gindex == -1)
 		{
 		  current = AU_NO_AUTHORIZATION;
@@ -239,14 +248,14 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 		  if (ins_bits)
 		    {
 		      error =
-			      accessor.insert_auth (DB_OBJECT_CLASS, Au_user, user, class_mop, ins_bits,
+			      accessor.insert_auth (DB_OBJECT_CLASS, grantor, user, class_mop, ins_bits,
 						    (grant_option) ? ins_bits : DB_AUTH_NONE);
 		    }
 		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
 		  if ((error == NO_ERROR) && upd_bits)
 		    {
 		      error =
-			      accessor.update_auth (DB_OBJECT_CLASS, Au_user, user, class_mop, upd_bits,
+			      accessor.update_auth (DB_OBJECT_CLASS, grantor, user, class_mop, upd_bits,
 						    (grant_option || (current & (type << AU_GRANT_SHIFT))) ? upd_bits : DB_AUTH_NONE);
 		    }
 		}
@@ -268,7 +277,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	      if (gindex == -1)
 		{
 		  /* There is no grant entry, add a new one. */
-		  gindex = add_grant_entry (grants, DB_OBJECT_CLASS, class_mop, Au_user);
+		  gindex = add_grant_entry (grants, DB_OBJECT_CLASS, class_mop, grantor);
 		}
 	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
 	      set_free (grants);
@@ -309,11 +318,24 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
   MOP auth;
   DB_SET *grants;
   int current, save = 0, gindex;
+  MOP grantor = NULL;
 
   assert (type == AU_EXECUTE);
 
   AU_DISABLE (save);
   MOP sp_owner = jsp_get_owner (obj_mop);
+
+  /*
+   * The WITH GRANT OPTION is not yet supported for stored procedures.
+   * Therefore, only the DBA, member of the DBA group, and the owner can grant privileges.
+   */
+  if (!au_is_dba_group_member (Au_user) && !au_is_user_group_member (sp_owner, Au_user))
+    {
+      error = ER_AU_OWNER_ONLY_GRANT_PRIVILEGE;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "EXECUTE");
+      return (error);
+    }
+
   if (ws_is_same_object (user, Au_user))
     {
       /*
@@ -321,16 +343,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
        * statement is a no-op, it is not an indication of no-success.
        * The "privileges" are indeed already granted to self.
        * Note: Revoke from self is an error, because this cannot be done.
-       *
-       * The WITH GRANT OPTION is not yet supported for stored procedures.
-       * Therefore, only the DBA, member of the DBA group, and the owner can grant privileges.
        */
-      if (!au_is_dba_group_member (Au_user) && !ws_is_same_object (sp_owner, Au_user))
-	{
-	  error = ER_AU_OWNER_ONLY_GRANT_PRIVILEGE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "EXECUTE");
-	  return (error);
-	}
     }
   else
     {
@@ -339,8 +352,14 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	  error = ER_AU_CANT_GRANT_OWNER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
 	}
-      else if (au_is_dba_group_member (Au_user) || ws_is_same_object (sp_owner, Au_user))
+      else if ((error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, sp_owner)) != NO_ERROR)
 	{
+	  return (error);
+	}
+      else
+	{
+	  assert (grantor != NULL);
+
 	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
 	    {
 	      error = ER_AU_ACCESS_ERROR;
@@ -354,7 +373,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	    }
 	  else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	    {
-	      gindex = find_grant_entry (grants, obj_mop, Au_user);
+	      gindex = find_grant_entry (grants, obj_mop, grantor);
 	      if (gindex == -1)
 		{
 		  current = AU_NO_AUTHORIZATION;
@@ -383,14 +402,14 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 		  if (ins_bits)
 		    {
 		      error =
-			      accessor.insert_auth (DB_OBJECT_PROCEDURE, Au_user, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
+			      accessor.insert_auth (DB_OBJECT_PROCEDURE, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
 		    }
 
 		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
 		  if ((error == NO_ERROR) && upd_bits)
 		    {
 		      error =
-			      accessor.update_auth (DB_OBJECT_PROCEDURE, Au_user, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
+			      accessor.update_auth (DB_OBJECT_PROCEDURE, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
 		    }
 		}
 
@@ -414,7 +433,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	      if (gindex == -1)
 		{
 		  /* There is no grant entry, add a new one. */
-		  gindex = add_grant_entry (grants, DB_OBJECT_PROCEDURE, obj_mop, Au_user);
+		  gindex = add_grant_entry (grants, DB_OBJECT_PROCEDURE, obj_mop, grantor);
 		}
 	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
 	      set_free (grants);
@@ -438,12 +457,6 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	       */
 	      sm_bump_local_schema_version ();
 	    }
-	}
-      else
-	{
-	  error = ER_AU_OWNER_ONLY_GRANT_PRIVILEGE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "EXECUTE");
-	  return (error);
 	}
     }
 
@@ -1844,6 +1857,109 @@ au_propagate_del_new_auth (DB_OBJECT_TYPE obj_type, AU_GRANT *glist, DB_AUTH mas
 	  if (error != NO_ERROR)
 	    {
 	      break;
+	    }
+	}
+    }
+
+  return error;
+}
+
+/*
+ * au_compare_grantor_and_return -
+ *   return: error code
+ *   grantor(out): return the class_owner or login_user
+ *   obj_mop(in): mop of the object
+ *   type(in) : authorization type
+ *   login_user(in) : current login_user (Au_user)
+ *   class_owner(in) : owner of the object
+ */
+static int
+au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP login_user, MOP class_owner)
+{
+  int error = NO_ERROR;
+  unsigned int cache, mask;
+  MOP auth;
+  DB_VALUE element;
+  DB_SET *grants;
+  int j, gsize;
+
+  *grantor = NULL;
+
+  if (au_is_dba_group_member (login_user) || au_is_user_group_member (class_owner, login_user))
+    {
+      /*
+       * DBA, DBA Member, Owner, Owner Memeber
+       */
+      *grantor = class_owner;
+    }
+  else
+    {
+      /*
+       * Check grantable user
+       */
+      if (au_get_object (login_user, "authorization", &auth) != NO_ERROR)
+	{
+	  error = ER_AU_ACCESS_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
+	}
+      else if ((error = get_grants (auth, &grants, 1)) == NO_ERROR)
+	{
+	  gsize = set_size (grants);
+	  if (gsize)
+	    {
+	      for (j = 0; j < gsize && error == NO_ERROR; j += GRANT_ENTRY_LENGTH)
+		{
+		  cache = AU_NO_AUTHORIZATION;
+		  if (set_get_element (grants, GRANT_ENTRY_CLASS (j), &element))
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      error = er_errid ();
+		      break;
+		    }
+
+		  if (db_get_object (&element) == obj_mop)
+		    {
+		      cache = AU_NO_AUTHORIZATION;
+		      if (set_get_element (grants, GRANT_ENTRY_CACHE (j), &element))
+			{
+			  assert (er_errid () != NO_ERROR);
+			  error = er_errid ();
+			  break;
+			}
+
+		      cache = db_get_int (&element);
+		      mask = (unsigned int) (type | (type << AU_GRANT_SHIFT));
+		      if ((cache & mask) != mask)
+			{
+			  error = appropriate_error (cache, mask);
+			  if (error)
+			    {
+			      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+			      break;
+			    }
+			}
+		      else
+			{
+			  *grantor = login_user;
+			}
+		    }
+		}
+	    }
+	  set_free (grants);
+
+	  /*
+	   * This error condition occurs in the following two cases, both of which are considered as lacking authorization:
+	   * 1. gsize == 0: Indicates no prior authorization
+	   *    When the grants column in the db_authorization catalog is empty.
+	   * 2. db_get_object(&element) != obj_mop: Indicates that permissions exist for other objects but not for the current one
+	   *    When the grants column in the db_authorization catalog contains permissions for other objects (such as classes or procedures), but lacks permissions for the obj_mop object.
+	   */
+	  if (error == NO_ERROR && *grantor == NULL)
+	    {
+	      cache = 0;
+	      mask = (unsigned int) type;
+	      error = appropriate_error (cache, mask);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 	}
     }
