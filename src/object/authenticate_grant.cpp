@@ -530,6 +530,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type)
   SM_CLASS *classobj;
   int is_partition = DB_NOT_PARTITIONED_CLASS, i = 0, savepoint_revoke = 0;
   MOP *sub_partitions = NULL;
+  MOP grantor = NULL;
 
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
   if (error != NO_ERROR)
@@ -580,7 +581,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type)
 	  goto fail_end;
 	}
 
-      error = check_grant_option (class_mop, classobj, type);
+      error = au_compare_grantor_and_return (&grantor, class_mop, type, Au_user, classobj->owner);
       if (error != NO_ERROR)
 	{
 	  goto fail_end;
@@ -600,7 +601,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type)
 	}
       else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
-	  gindex = find_grant_entry (grants, class_mop, Au_user);
+	  gindex = find_grant_entry (grants, class_mop, grantor);
 	  if (gindex == -1)
 	    {
 	      error = ER_AU_GRANT_NOT_FOUND;
@@ -684,7 +685,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type)
 			{
 #endif /* SA_MODE */
 			  au_auth_accessor accessor;
-			  error = accessor.delete_auth (DB_OBJECT_CLASS, Au_user, user, class_mop, type);
+			  error = accessor.delete_auth (DB_OBJECT_CLASS, grantor, user, class_mop, type);
 #if defined(SA_MODE)
 			}
 #endif /* SA_MODE */
@@ -728,6 +729,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type)
   AU_GRANT *grant_list;
   DB_VALUE cache_element;
   MOP sp_owner;
+  MOP grantor = NULL;
 
   AU_DISABLE (save);
   if (ws_is_same_object (user, Au_user))
@@ -767,10 +769,16 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type)
        *   call login(class db_user,'public','');
        *   REVOKE EXECUTE ON FUNCTION u1.hello FROM u2;
        */
-      if (!au_is_dba_group_member (Au_user) && !ws_is_same_object (sp_owner, Au_user))
+      if (!au_is_dba_group_member (Au_user) && !au_is_user_group_member (sp_owner, Au_user))
 	{
 	  error = ER_AU_EXECUTE_FAILURE;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto fail_end;
+	}
+
+      error = au_compare_grantor_and_return (&grantor, sp_owner, type, Au_user, sp_owner);
+      if (error != NO_ERROR)
+	{
 	  goto fail_end;
 	}
 
@@ -788,7 +796,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type)
 	}
       else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
-	  gindex = find_grant_entry (grants, obj_mop, Au_user);
+	  gindex = find_grant_entry (grants, obj_mop, grantor);
 	  if (gindex == -1)
 	    {
 	      error = ER_AU_GRANT_NOT_FOUND;
@@ -868,7 +876,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type)
 			{
 #endif /* SA_MODE */
 			  au_auth_accessor accessor;
-			  error = accessor.delete_auth (DB_OBJECT_PROCEDURE, Au_user, user, obj_mop, type);
+			  error = accessor.delete_auth (DB_OBJECT_PROCEDURE, grantor, user, obj_mop, type);
 #if defined(SA_MODE)
 			}
 #endif /* SA_MODE */
