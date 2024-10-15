@@ -344,9 +344,9 @@ public class DateTimeParser {
 
     private static final List<SimpleDateFormat> timeFormats12 =
             Arrays.asList(
-                    new SimpleDateFormat("KK:mm aa", Locale.US),
-                    new SimpleDateFormat("KK:mm:ss aa", Locale.US),
-                    new SimpleDateFormat("KK:mm:ss.SSS aa", Locale.US) // must go at last
+                    new SimpleDateFormat("HH:mm aa", Locale.US),
+                    new SimpleDateFormat("HH:mm:ss aa", Locale.US),
+                    new SimpleDateFormat("HH:mm:ss.SSS aa", Locale.US) // must go at last
                     );
     private static final List<SimpleDateFormat> timeFormats24 =
             Arrays.asList(
