@@ -4476,7 +4476,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *new_query = parser_new_node (parser, PT_SELECT);
   PT_NODE *new_spec, *v_attr_list;
   PT_NODE *v_attr;
-  PT_NODE *from, *entity_name;
+  PT_NODE *from, *entity_name, *entity, *subquery;
   FIND_ID_INFO info;
   PT_NODE *col;
   bool is_value_query = false;
@@ -4520,6 +4520,26 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
   else
     {
       is_union_translation = mq_is_union_translation (parser, spec);
+
+      if (is_union_translation)
+	{
+	  for (entity = spec->info.spec.flat_entity_list; entity != NULL; entity = entity->next)
+	    {
+	      if (mq_translatable_class (parser, entity))
+		{
+		  subquery = mq_fetch_subqueries (parser, entity);
+
+		  /* If a view contains a UNION, the view’s select-list is not removable.​ */
+		  if (subquery->node_type == PT_UNION)
+		    {
+		      is_union_translation = 0;
+		    }
+
+		  break;
+		}
+	    }
+	}
+
       if (remove_sel_list || is_union_translation)
 	{
 	  new_query->info.query.q.select.list = mq_get_references (parser, statement, spec);
@@ -4533,7 +4553,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 
 	  /* Do not add except for referenced columns. */
-	  if (remove_sel_list && new_query->info.query.q.select.list == NULL)
+	  if (!is_union_translation && new_query->info.query.q.select.list == NULL)
 	    {
 	      /* case of constant attr. e.g.) count(*), count(1) */
 	      /* just add one of integer value */
