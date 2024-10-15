@@ -14104,6 +14104,12 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
       || is_att_prop_set (attr_chg_prop->p[P_M_CONSTR_UNI], ATT_CHG_PROPERTY_PRESENT_OLD)
       || is_att_prop_set (attr_chg_prop->p[P_CONSTR_NON_UNI], ATT_CHG_PROPERTY_PRESENT_OLD))
     {
+      if (attribute->data_type && attribute->data_type->info.data_type.units == INTL_CODESET_LOB)
+	{
+	  error = ER_SM_INVALID_INDEX_TYPE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "LOB");
+	  goto exit;
+	}
       if (!tp_valid_indextype (pt_type_enum_to_db (attribute->type_enum)))
 	{
 	  error = ER_SM_INVALID_INDEX_TYPE;

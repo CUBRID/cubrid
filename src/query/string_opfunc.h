@@ -61,7 +61,7 @@ typedef struct cub_compiled_regex cub_compiled_regex;
                                      ((s)==DB_TYPE_VARNCHAR) || \
                                      ((s)==DB_TYPE_VARBIT))
 
-#define QSTR_NUM_BYTES(a)            (((a) + 7) / 8)
+#define QSTR_NUM_BYTES(a)            (((unsigned)(a) + 7) / 8)
 
 #define QSTR_CHAR_COMPARE(id, string1, size1, string2, size2, ti) \
 	QSTR_COMPARE(id, string1, size1, string2, size2, ti)
