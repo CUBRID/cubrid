@@ -1891,6 +1891,8 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
   DB_SET *grants;
   int j, gsize;
 
+  assert (grantor != NULL && obj_mop != NULL && login_user != NULL && class_owner != NULL);
+
   *grantor = NULL;
 
   if (au_is_dba_group_member (login_user) || au_is_user_group_member (class_owner, login_user))
