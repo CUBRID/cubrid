@@ -409,6 +409,10 @@ static void mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_
 static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by,
 					 PT_NODE * subquery, PT_NODE * class_);
 
+static int pt_find_node_order (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_NODE * node);
+static PT_NODE *mq_update_node_order (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+
+
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
  *  returns: boolean
@@ -2873,10 +2877,11 @@ static PT_NODE *
 mq_substitute_subquery_list_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec_list,
 					  PT_NODE * class_, PT_NODE * order_by, int what_for)
 {
-  PT_NODE *query_spec = query_spec_list;
+  PT_NODE *query_spec;
   PT_NODE *result_list = NULL;
   PT_NODE *result;
 
+  query_spec = parser_copy_tree_list (parser, query_spec_list);
   while (query_spec)
     {
       result = mq_substitute_subquery_in_statement (parser, statement, query_spec, class_, order_by, what_for);
@@ -4474,14 +4479,15 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 				   bool remove_sel_list)
 {
   PT_NODE *new_query = parser_new_node (parser, PT_SELECT);
-  PT_NODE *new_spec, *v_attr_list, *new_select_list;
+  PT_NODE *new_spec, *v_attr_list;
   PT_NODE *v_attr;
-  PT_NODE *from, *entity_name, *entity, *subquery;
+  PT_NODE *from, *entity_name;
   FIND_ID_INFO info;
   PT_NODE *col;
   bool is_value_query = false;
   PT_NODE *attrs = NULL;
-  int is_union_translation = 0;
+  PT_NODE *nth_node, *temp;
+  int select_order = -1;
 
   if (new_query == NULL)
     {
@@ -4519,28 +4525,9 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
   else
     {
-      is_union_translation = mq_is_union_translation (parser, spec);
+      new_query->info.query.q.select.list = mq_get_references (parser, statement, spec);
 
-      if (is_union_translation)
-	{
-	  for (entity = spec->info.spec.flat_entity_list; entity != NULL; entity = entity->next)
-	    {
-	      if (mq_translatable_class (parser, entity))
-		{
-		  subquery = mq_fetch_subqueries (parser, entity);
-
-		  if (subquery->node_type != PT_SELECT)
-		    {
-		      is_union_translation = 0;
-		    }
-
-		  break;
-		}
-	    }
-	}
-
-      new_select_list = mq_get_references (parser, statement, spec);
-      for (col = new_select_list; col; col = col->next)
+      for (col = new_query->info.query.q.select.list; col; col = col->next)
 	{
 	  if (col->flag.is_hidden_column)
 	    {
@@ -4551,32 +4538,15 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
       if (remove_sel_list)
 	{
 	  /* Do not add except for referenced columns. */
-	  if (new_select_list == NULL)
+	  if (new_query->info.query.q.select.list == NULL)
 	    {
 	      /* case of constant attr. e.g.) count(*), count(1) */
 	      /* just add one of integer value */
 	      new_query->info.query.q.select.list = pt_make_integer_value (parser, 1);
 	    }
-	  else
-	    {
-	      new_query->info.query.q.select.list = new_select_list;
-	    }
 	}
-      else if (is_union_translation)
-	{
-	  new_query->info.query.q.select.list = new_select_list;
-	}
-      /* add columns from the view's attributes when the select list cannot be removed. */
       else
 	{
-	  for (col = new_select_list; col; col = col->next)
-	    {
-	      if (col->type_enum == PT_TYPE_OBJECT)
-		{
-		  mq_insert_symbol (parser, &new_query->info.query.q.select.list, col);
-		}
-	    }
-
 	  /* add view's attributes to select list */
 	  v_attr_list = mq_fetch_attributes (parser, spec->info.spec.flat_entity_list);
 	  if (v_attr_list == NULL && (pt_has_error (parser) || er_has_error ()))
@@ -4597,6 +4567,35 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      v_attr->info.name.spec_id = spec->info.spec.id;	/* init spec id */
 	      mq_insert_symbol (parser, &new_query->info.query.q.select.list, v_attr);
 	    }			/* for (v_attr = ...) */
+
+	  if (query_spec != NULL)
+	    {
+	      spec->info.spec.as_attr_list = v_attr_list;
+	      spec->info.spec.referenced_attrs = new_query->info.query.q.select.list;
+
+	      for (col = new_query->info.query.q.select.list; col; col = col->next)
+		{
+		  select_order = pt_find_node_order (parser, v_attr_list, col);
+
+		  if (select_order != -1)
+		    {
+		      nth_node = pt_get_node_from_list (query_spec->info.query.q.select.list, select_order);
+		      assert (nth_node != NULL);
+
+		      if (PT_IS_ANALYTIC_NODE (nth_node))
+			{
+			  temp = nth_node->next;
+			  nth_node->next = NULL;
+			  parser_walk_tree (parser, nth_node, mq_update_node_order, spec, pt_continue_walk, NULL);
+
+			  nth_node->next = temp;
+			}
+		    }
+		}
+
+	      spec->info.spec.as_attr_list = NULL;
+	      spec->info.spec.referenced_attrs = NULL;
+	    }
 
 	  /* free alloced */
 	  if (v_attr_list)
@@ -13954,4 +13953,74 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
 	  dest_query->info.delete_.using_index = parser_append_node (ui, dest_query->info.delete_.using_index);
 	}
     }
+}
+
+/*
+ * mq_update_node_order()
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_update_node_order (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = (PT_NODE *) arg;
+  PT_NODE *nth_node, *value_node;
+  int index, select_order;
+
+  if (tree == NULL || (!PT_IS_SORT_SPEC_NODE (tree) && !pt_is_analytic_function (parser, tree)))
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  if (PT_IS_SORT_SPEC_NODE (tree) && PT_IS_VALUE_NODE (tree->info.sort_spec.expr))
+    {
+      value_node = tree->info.sort_spec.expr;
+      select_order = value_node->info.value.data_value.i;
+
+      nth_node = pt_get_node_from_list (spec->info.spec.as_attr_list, select_order - 1);
+      if (nth_node != NULL)
+	{
+	  mq_insert_symbol (parser, &spec->info.spec.referenced_attrs, nth_node);
+	  index = pt_find_node_order (parser, spec->info.spec.referenced_attrs, nth_node);
+
+	  if (index != -1)
+	    {
+	      value_node->info.value.data_value.i = index;
+	      tree->info.sort_spec.pos_descr.pos_no = index;
+	    }
+	}
+    }
+
+  return tree;
+}
+
+/*
+ * pt_find_node_order() - finds the position of node in a node_list 
+ *   return:
+ *   parser(in):
+ *   node_list(in): 
+ *   node(in):
+ */
+static int
+pt_find_node_order (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * node)
+{
+  PT_NODE *col;
+  int index;
+  const char *col_name, *node_name;
+
+  node_name = (PT_IS_NAME_NODE (node)) ? node->info.name.original : node->alias_print;
+
+  for (col = node_list, index = 1; col; col = col->next, index++)
+    {
+      col_name = (PT_IS_NAME_NODE (col)) ? col->info.name.original : col->alias_print;
+      if (pt_str_compare (col_name, node_name, CASE_INSENSITIVE) == 0)
+	{
+	  return index;
+	}
+    }
+
+  return -1;
 }
