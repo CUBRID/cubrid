@@ -157,7 +157,7 @@ Mevcut hizmetin programları:\n\
     gateway\n\
     manager\n\
     heartbeat\n\
-    javasp\n\
+    pl\n\
 \n\
 Mevcut yönetici programları:\n\
     addvoldb\n\
@@ -262,11 +262,9 @@ Mevcut komut:\n\
 42 Değişken geçersiz.\n
 43 (%1$s) dosya açma hatası.\n
 44 cubrid yardımcı programı, sürüm %1$s\n\
-kullanım: %2$s javasp <komut> [args]\n\
+kullanım: %2$s pl <komut> [args]\n\
 \n\
 Mevcut komut:\n\
-    start       [database-name]\n\
-    stop        [database-name]\n\
     restart     [database-name]\n\
     status      [database-name]\n
 45 cubrid utility, version %1$s\n\

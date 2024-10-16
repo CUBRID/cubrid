@@ -941,8 +941,7 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
       /* If pt_name in group by/ having, maybe it's alias. We will try to resolve it later. */
       if (!is_pt_name_in_group_having (in_node))
 	{
-
-	  if (parser->flag.is_parsing_static_sql == 1)
+	  if (parser->flag.is_parsing_static_sql == 1 && in_node->node_type == PT_NAME)
 	    {
 	      // clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
 	      pt_reset_error (parser);
@@ -3306,6 +3305,19 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      node->info.method_call.on_call_target = node->info.method_call.arg_list;
 	      node->info.method_call.arg_list = node->info.method_call.arg_list->next;
 	      node->info.method_call.on_call_target->next = NULL;
+
+	      /*
+	       * When using a session variable in the first arg_list,
+	       * It is unknown whether the session variable contains a class, object, or constant value.
+	       * So, if it's not a Java stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
+	       * 
+	       * ex) create class x (xint int, xstr string, class cint int) method add_int(int, int) int function add_int file '$METHOD_FILE';
+	       *     insert into x values (4, 'string 4');
+	       *     select x into p1 from x where xint = 4;
+	       *     call add_int(p1, 1, 2);
+	       */
+	      node->info.method_call.method_name->info.name.original =
+		sm_remove_qualifier_name (node->info.method_call.method_name->info.name.original);
 	    }
 
 	  /* make method name look resolved */
@@ -3347,9 +3359,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  node->info.method_call.method_name->info.name.spec_id = entity->info.spec.id;
 		}
 	    }
-
 	}
-
       break;
 
     case PT_DATA_TYPE:
@@ -3406,6 +3416,49 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  {
 	    node = temp;
 	  }
+	else if (PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION (node))
+	  {
+	    /*
+	     * jsp_is_exist_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
+	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
+	     */
+	    char downcase_owner_name[DB_MAX_USER_LENGTH];
+	    downcase_owner_name[0] = '\0';
+	    char *generic_name = NULL;
+
+	    sm_downcase_name (node->info.dot.arg1->info.name.original, downcase_owner_name, DB_MAX_USER_LENGTH);
+	    generic_name = pt_append_string (parser, downcase_owner_name, ".");
+	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
+	    node->info.dot.arg2->info.function.generic_name = generic_name;
+
+	    if (jsp_is_exist_stored_procedure (node->info.dot.arg2->info.function.generic_name))
+	      {
+		/*
+		 * If (dot.arg1->node_type == PT_NAME) & (dot.arg2->node_type == PT_FUNCTION), pt_bind_name_or_path_in_scope() always returns NULL and has an er_errid() value.
+		 */
+		if (er_errid () == NO_ERROR)
+		  {
+		    pt_reset_error (parser);
+		  }
+
+		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
+		if (node1 == NULL)
+		  {
+		    break;	// FIXME: something wrong
+		  }
+		PT_NODE_COPY_NUMBER_OUTERLINK (node1, node);
+
+		PT_NODE_INIT_OUTERLINK (node);
+		parser_free_tree (parser, node);
+		node = node1;	/* return the new node */
+		/* don't revisit leaves */
+		*continue_walk = PT_LIST_WALK;
+	      }
+	    else if (pt_has_error (parser))
+	      {
+		return NULL;
+	      }
+	  }
 	else if (pt_has_error (parser))
 	  {
 	    return NULL;
@@ -3440,7 +3493,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
     case PT_FUNCTION:
       if (node->info.function.function_type == PT_GENERIC)
 	{
-	  const char *generic_name = node->info.function.generic_name;
+	  const char *dot = NULL;
+	  const char *current_schema_name = NULL;
+	  char buffer[SM_MAX_IDENTIFIER_LENGTH];
 	  node->info.function.function_type = pt_find_function_type (node->info.function.generic_name);
 
 	  if (node->info.function.function_type == PT_GENERIC)
@@ -3450,8 +3505,16 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
 	       * translate it into a method_call.
 	       */
-	      if (jsp_is_exist_stored_procedure (generic_name))
+	      if (jsp_is_exist_stored_procedure (node->info.function.generic_name))
 		{
+		  dot = strchr (node->info.function.generic_name, '.');
+		  if (dot == NULL)
+		    {
+		      current_schema_name = sc_current_schema_name ();
+		      sprintf (buffer, "%s.%s", current_schema_name, node->info.function.generic_name);
+		      node->info.function.generic_name = pt_append_string (parser, NULL, buffer);
+		    }
+
 		  node1 = pt_resolve_stored_procedure (parser, node, bind_arg);
 		}
 	      else
@@ -10163,6 +10226,8 @@ pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * f_node, PT_BIND_NAMES_AR
   new_node->info.method_call.arg_list = parser_copy_tree_list (parser, f_node->info.function.arg_list);
   new_node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
   new_node->info.method_call.on_call_target = NULL;
+  new_node->info.method_call.auth_name = NULL;
+  PT_METHOD_CALL_AUTH_NAME (new_node) = ws_copy_string (au_get_user_name (Au_user));	// default
 
   return new_node;
 }				/* pt_make_method_call */
@@ -10257,6 +10322,10 @@ pt_resolve_method (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * 
 static PT_NODE *
 pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
 {
+  char owner[DB_MAX_USER_LENGTH + 1];
+  owner[0] = '\0';
+  char *current_user_owner;
+
   PT_NODE *new_node = pt_make_method_call (parser, node, bind_arg);
   if (new_node == NULL)
     {
@@ -10274,6 +10343,12 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
       return NULL;
     }
 
+  if (jsp_get_owner_name (sp_name, owner, DB_MAX_USER_LENGTH) == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "jsp_get_owner_name");
+      return NULL;
+    }
+
   new_node->type_enum = pt_db_to_type_enum ((DB_TYPE) return_type);
   TP_DOMAIN *d = pt_type_enum_to_db_domain (new_node->type_enum);
   d = tp_domain_cache (d);
@@ -10283,6 +10358,18 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
 
   int sp_type_misc = jsp_get_sp_type (sp_name);
   new_node->info.method_call.method_type = (PT_MISC_TYPE) sp_type_misc;
+
+  PT_METHOD_CALL_AUTH_ID (new_node) = PT_AUTHID_OWNER;	// TODO
+  if (PT_METHOD_CALL_AUTH_ID (new_node) == PT_AUTHID_OWNER)
+    {
+      PT_METHOD_CALL_AUTH_NAME (new_node) = pt_append_string (parser, NULL, owner);
+    }
+  else
+    {
+      current_user_owner = au_get_user_name (Au_user);
+      PT_METHOD_CALL_AUTH_NAME (new_node) = pt_append_string (parser, NULL, current_user_owner);
+      ws_free_string_and_init (current_user_owner);
+    }
 
   return new_node;
 }				/* pt_resolve_stored_procedure */

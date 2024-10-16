@@ -114,6 +114,11 @@ struct json_t;
 #define PT_INTERNAL_ERROR(parser, what) \
 	pt_internal_error((parser), __FILE__, __LINE__, (what))
 
+// macros for PARSER_CONTEXT
+#define PT_IS_FOR_PL_COMPILE(parser) \
+        ((parser)->flag.is_parsing_static_sql == 1)
+
+// macros for PT_NODE */
 #define PT_IS_QUERY_NODE_TYPE(x) \
     (  (x) == PT_SELECT     || (x) == PT_UNION \
     || (x) == PT_DIFFERENCE || (x) == PT_INTERSECTION)
@@ -540,6 +545,12 @@ struct json_t;
         || (n->node_type == PT_UPDATE && n->info.update.spec->info.spec.remote_server_name) \
         || (n->node_type == PT_MERGE && n->info.merge.into->info.spec.remote_server_name))
 
+#define PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION(n) \
+	((n->info.dot.arg1->node_type == PT_NAME) \
+	&& (n->info.dot.arg2->node_type == PT_FUNCTION) \
+	&& (n->info.dot.arg2->info.function.function_type == PT_GENERIC) \
+        && (strchr (n->info.dot.arg2->info.function.generic_name, '.') == NULL))
+
 #if !defined (SERVER_MODE)
 /* the following defines support host variable binding for internal statements.
    internal statements can be generated on TEXT handling, and these statements
@@ -819,6 +830,11 @@ struct json_t;
 #define PT_SYNONYM_OR_REPLACE(n)	((n)->info.synonym.or_replace)
 #define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
 #define PT_SYNONYM_IS_DBLINKED(n)	((n)->info.synonym.is_dblinked)	/* for user.table@server */
+
+/* PT_METHOD_CALL_INFO */
+#define PT_METHOD_CALL_NAME(n)		((n)->info.method_call.method_name)
+#define PT_METHOD_CALL_AUTH_ID(n)	((n)->info.method_call.auth_id)
+#define PT_METHOD_CALL_AUTH_NAME(n)	((n)->info.method_call.auth_name)
 
 /* Check node_type of PT_NODE */
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
@@ -1157,7 +1173,8 @@ typedef enum
   PT_INSERT_PRIV,
   PT_REFERENCES_PRIV,		/* for ANSI compatibility */
   PT_SELECT_PRIV,
-  PT_UPDATE_PRIV
+  PT_UPDATE_PRIV,
+  PT_EXECUTE_PROCEDURE_PRIV
 } PT_PRIV_TYPE;
 
 /* Enumerated Misc Types */
@@ -1327,7 +1344,10 @@ typedef enum
 
   PT_PRIVATE,
   PT_PUBLIC,
-  PT_SYNONYM
+  PT_SYNONYM,
+
+  PT_AUTHID_OWNER,
+  PT_AUTHID_CALLER
     // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
@@ -2511,7 +2531,7 @@ struct pt_grant_info
 {
   PT_NODE *auth_cmd_list;	/* PT_AUTH_CMD(list) */
   PT_NODE *user_list;		/* PT_NAME */
-  PT_NODE *spec_list;		/* PT_SPEC */
+  PT_NODE *spec_list;		/* PT_SPEC (class) or PT_NAME (procedure) */
   PT_MISC_TYPE grant_option;	/* = PT_GRANT_OPTION or PT_NO_GRANT_OPTION */
 };
 
@@ -2576,6 +2596,8 @@ struct pt_method_call_info
   PT_NODE *to_return_var;	/* PT_NAME */
   PT_MISC_TYPE call_or_expr;	/* PT_IS_CALL_STMT or PT_IS_MTHD_EXPR */
   PT_MISC_TYPE method_type;	/* PT_IS_CLASS_MTHD, PT_IS_INST_MTHD, PT_SP_PROCEDURE, PT_SP_FUNCTION */
+  char *auth_name;		/* owner or current user name */
+  PT_MISC_TYPE auth_id;		/* PT_AUTHID_OWNER, PT_AUTHID_CALLER */
   UINTPTR method_id;		/* unique identifier so when copying we know if two methods are copies of the same
 				 * original method call. */
 };
@@ -3376,11 +3398,12 @@ struct pt_stored_proc_info
   PT_NODE *body;
   PT_NODE *comment;
   PT_NODE *owner;		/* for ALTER PROCEDURE/FUNCTION name OWNER TO new_owner */
+  PT_MISC_TYPE auth_id;		/* PT_AUTHID_OWNER, PT_AUTHID_CALLER */
   PT_MISC_TYPE type;
   unsigned or_replace:1;	/* OR REPLACE clause */
   PT_TYPE_ENUM ret_type;
   PT_NODE *ret_data_type;
-
+  int recompile;
 };
 
 struct pt_prepare_info
@@ -3406,8 +3429,9 @@ struct pt_execute_info
 
 struct pt_stored_proc_param_info
 {
-  PT_NODE *name;
-  PT_MISC_TYPE mode;
+  PT_NODE *name;		/* PT_NAME */
+  PT_MISC_TYPE mode;		/* PT_INPUT, PT_OUTPUT, PT_INPUTOUTPUT */
+  PT_NODE *default_value;	/* PT_DATA_DEFAULT */
   PT_NODE *comment;
 };
 

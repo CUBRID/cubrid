@@ -157,7 +157,7 @@ Utilidades de servicio disponible:\n\
     gateway\n\
     manager\n\
     heartbeat\n\
-    javasp\n\
+    pl\n\
 \n\
 Utilidades de administrador disponible:\n\
     addvoldb\n\
@@ -262,11 +262,9 @@ Comando disponible: \n\
 42 Argumento invalido.\n
 43 Error al abrir archivo (%1$s).\n
 44 utilidad de cubrid, version %1$s\n\
-uso: %2$s javasp <command> [args]\n\
+uso: %2$s pl <command> [args]\n\
 \n\
 Comando disponible:\n\
-    start       [database-name]\n\
-    stop        [database-name]\n\
     restart     [database-name]\n\
     status      [database-name]\n
 45 cubrid utility, version %1$s\n\

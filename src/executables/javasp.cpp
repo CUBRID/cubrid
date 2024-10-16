@@ -54,6 +54,10 @@
 #include <io.h>
 #endif /* not WINDOWS */
 
+#include "authenticate.h"
+#include "db_client_type.hpp"
+#include "dbi.h"
+
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "error_code.h"
@@ -69,6 +73,9 @@
 #include "jsp_sr.h"
 
 #include "packer.hpp"
+
+#include "connection_cl.h"
+#include "connection_defs.h"
 
 #include <string>
 #include <algorithm>
@@ -112,19 +119,78 @@ static void javasp_signal_handler (int sig);
 static bool is_signal_handling = false;
 static char executable_path[PATH_MAX];
 
+static bool is_server_connected = false;
+
 static std::string command;
 static std::string db_name;
 static JAVASP_SERVER_INFO running_info = JAVASP_SERVER_INFO_INITIALIZER;
 
+/* DB server state */
+enum DB_SERVER_STATE
+{
+  DB_SERVER_STATE_UNKNOWN = 0,
+  DB_SERVER_STATE_DEAD = 1,
+  DB_SERVER_STATE_DEREGISTERED = 2,
+  DB_SERVER_STATE_STARTED = 3,
+  DB_SERVER_STATE_NOT_REGISTERED = 4,
+  DB_SERVER_STATE_REGISTERED = 5,
+  DB_SERVER_STATE_REGISTERED_AND_TO_BE_STANDBY = 6,
+  DB_SERVER_STATE_REGISTERED_AND_ACTIVE = 7,
+  DB_SERVER_STATE_REGISTERED_AND_TO_BE_ACTIVE = 8
+};
+
+static int
+get_server_state_from_master (CSS_CONN_ENTRY *conn, const char *db_name)
+{
+  unsigned short request_id;
+  int error = NO_ERRORS;
+  int server_state;
+  int buffer_size;
+  int *buffer = NULL;
+
+  if (conn == NULL)
+    {
+      return DB_SERVER_STATE_DEAD;
+    }
+
+  error = css_send_request (conn, GET_SERVER_STATE, &request_id, db_name, (int) strlen (db_name) + 1);
+  if (error != NO_ERRORS)
+    {
+      return DB_SERVER_STATE_DEAD;
+    }
+
+  /* timeout : 5000 milliseconds */
+  error = css_receive_data (conn, request_id, (char **) &buffer, &buffer_size, 5000);
+  if (error == NO_ERRORS)
+    {
+      if (buffer_size == sizeof (int))
+	{
+	  server_state = ntohl (*buffer);
+	  free_and_init (buffer);
+
+	  return server_state;
+	}
+    }
+
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
+    }
+
+  return DB_SERVER_STATE_UNKNOWN;
+}
+
 /*
  * main() - javasp main function
  */
+
 
 int
 main (int argc, char *argv[])
 {
   int status = NO_ERROR;
   FILE *redirect = NULL; /* for ping */
+  CSS_CONN_ENTRY *master_conn = NULL;
 
 #if defined(WINDOWS)
   FARPROC jsp_old_hook = NULL;
@@ -254,14 +320,47 @@ main (int argc, char *argv[])
 	    goto exit;
 	  }
 
+	// bootstrap
+	AU_DISABLE_PASSWORDS ();
+	db_set_client_type (DB_CLIENT_TYPE_PLCSQL_HELPER);
+	if (db_login ("DBA", NULL) != NO_ERROR)
+	  {
+	    JAVASP_PRINT_ERR_MSG ("%s\n", db_error_string (3));
+	    goto exit;
+	  }
+
+	if (db_restart ("pl server", TRUE, db_name.c_str()) != NO_ERROR)
+	  {
+	    PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	    goto exit;
+	  }
+	is_server_connected = true;
+
 	status = javasp_start_server (jsp_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
 	    command = "running";
 	    javasp_read_info (db_name.c_str(), running_info);
+
+	    // check DB server's state through master request
+	    int port_id = prm_get_master_port_id ();
+	    if (port_id <= 0)
+	      {
+		goto exit;
+	      }
+
+	    unsigned short rid;
+	    int state;
+	    master_conn = css_connect_to_master_timeout ("127.0.0.1", port_id, 5000, &rid);
 	    do
 	      {
-		SLEEP_MILISEC (0, 100);
+		state = get_server_state_from_master (master_conn, db_name.c_str ());
+		if (state < DB_SERVER_STATE_REGISTERED && state != DB_SERVER_STATE_UNKNOWN)
+		  {
+		    JAVASP_PRINT_ERR_MSG ("Stopped due to the shutdown of the database server\n");
+		    break;
+		  }
+		SLEEP_MILISEC (1, 0);
 	      }
 	    while (true);
 	  }
@@ -279,14 +378,20 @@ main (int argc, char *argv[])
 	JAVASP_PRINT_ERR_MSG ("Invalid command: %s\n", command.c_str ());
 	status = ER_GENERIC_ERROR;
       }
-
-#if defined(WINDOWS)
-    // socket shutdown for windows
-    windows_socket_shutdown (jsp_old_hook);
-#endif /* WINDOWS */
   }
 
 exit:
+
+  if (master_conn != NULL)
+    {
+      css_free_conn (master_conn);
+      master_conn = NULL;
+    }
+
+#if defined(WINDOWS)
+  // socket shutdown for windows
+  windows_socket_shutdown (jsp_old_hook);
+#endif /* WINDOWS */
 
   if (command.compare ("ping") == 0)
     {
@@ -312,6 +417,11 @@ exit:
 	}
     }
 
+  if (is_server_connected)
+    {
+      (void) db_shutdown ();
+    }
+
   return status;
 }
 
@@ -333,7 +443,7 @@ static void javasp_signal_handler (int sig)
   int status = javasp_get_server_info (db_name, jsp_info); // if failed,
   if (status == NO_ERROR && jsp_info.pid != JAVASP_PID_DISABLED)
     {
-      (void) envvar_bindir_file (executable_path, PATH_MAX, UTIL_JAVASP_NAME);
+      (void) envvar_bindir_file (executable_path, PATH_MAX, UTIL_PL_NAME);
       if (command.compare ("running") != 0 || db_name.empty ())
 	{
 	  return;
@@ -351,7 +461,7 @@ static void javasp_signal_handler (int sig)
       int pid = fork ();
       if (pid == 0) // child
 	{
-	  execl (executable_path, UTIL_JAVASP_NAME, "start", db_name.c_str (), NULL);
+	  execl (executable_path, UTIL_PL_NAME, "start", db_name.c_str (), NULL);
 	  exit (0);
 	}
       else
@@ -376,6 +486,11 @@ static void javasp_signal_handler (int sig)
 		}
 	    }
 	  free (symbols);
+
+	  if (!er_is_initialized ())
+	    {
+	      er_init (NULL, ER_NEVER_EXIT);
+	    }
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
 

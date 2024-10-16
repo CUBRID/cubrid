@@ -88,6 +88,7 @@
 #include "connection_globals.h"
 #include "host_lookup.h"
 #include "schema_system_catalog.hpp"
+#include "sp_catalog.hpp"
 
 #include "authenticate_context.hpp"
 
@@ -565,6 +566,11 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 		   */
 		  sm_mark_system_classes ();
 		  error_code = tran_commit (false);
+		}
+
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = sp_builtin_install ();
 		}
 	    }
 	}
@@ -1381,7 +1387,10 @@ boot_shutdown_client (bool is_er_final)
 #endif /* !CS_MODE */
 	}
 
-      boot_client_all_finalize (is_er_final);
+      if (!boot_Is_client_all_final)
+	{
+	  boot_client_all_finalize (is_er_final);
+	}
     }
 
   return NO_ERROR;

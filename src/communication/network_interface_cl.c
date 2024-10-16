@@ -69,6 +69,7 @@
 #include "compile_context.h"
 #if defined (SA_MODE)
 #include "thread_manager.hpp"
+#include "method_compile.hpp"
 #endif // SA_MODE
 #include "xasl.h"
 #include "lob_locator.hpp"
@@ -11007,7 +11008,7 @@ method_invoke_fold_constants (const method_sig_list & sig_list,
 	method_sig_node *sig = sig_list.method_sig;
 	for (int i = 0; i < sig->num_method_args; i++)
 	  {
-	    if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
+	    if (sig->arg_info->arg_mode[i] == METHOD_ARG_MODE_IN)
 	      {
 		continue;
 	      }
@@ -11306,7 +11307,7 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 }
 
 int
-plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCSQL_COMPILE_INFO & compile_info)
+plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COMPILE_RESPONSE & compile_response)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -11317,7 +11318,7 @@ plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCS
   char *data_reply = NULL;
   int data_reply_size = 0;
 
-  packer.set_buffer_and_pack_all (eb, verbose, input_file);
+  packer.set_buffer_and_pack_all (eb, compile_request);
 
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -11340,7 +11341,7 @@ plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCS
   if (data_reply != NULL)
     {
       packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-      unpacker.unpack_all (compile_info);
+      unpacker.unpack_all (compile_response);
       rc = NO_ERROR;
     }
 
@@ -11359,7 +11360,18 @@ error:
 
   return rc;
 #else /* CS_MODE */
-  return NO_ERROR;
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  cubmem::extensible_block ext_blk;
+  success = cubmethod::invoke_compile (*thread_p, compile_request, ext_blk);
+  packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
+  unpacker.unpack_all (compile_response);
+
+  exit_server (*thread_p);
+
+  return success;
 #endif /* !CS_MODE */
 }
 

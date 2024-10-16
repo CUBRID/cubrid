@@ -100,6 +100,7 @@ namespace cubmethod
 	break;
       }
       case METHOD_TYPE_JAVA_SP:
+      case METHOD_TYPE_PLCSQL:
       {
 	serializator.pack_int (tran_id);
 	serializator.pack_int (args.size ());
@@ -142,6 +143,7 @@ namespace cubmethod
 	break;
       }
       case METHOD_TYPE_JAVA_SP:
+      case METHOD_TYPE_PLCSQL:
       {
 	size += serializator.get_packed_int_size (size);	// tran_id
 	size += serializator.get_packed_int_size (size);	// arg count
@@ -202,20 +204,28 @@ namespace cubmethod
     , tran_id (tid)
   {
     signature.assign (sig->method_name);
+    auth.assign (sig->auth_name);
+    lang = sig->method_type;
     num_args = sig->num_method_args;
-
-    arg_pos.resize (num_args);
-    arg_mode.resize (num_args);
-    arg_type.resize (num_args);
-
-    for (int i = 0; i < num_args; i++)
+    result_type = sig->result_type;
+    if (num_args > 0)
       {
-	arg_pos[i] = sig->method_arg_pos[i];
-	arg_mode[i] = sig->arg_info.arg_mode[i];
-	arg_type[i] = sig->arg_info.arg_type[i];
+	arg_pos.resize (num_args);
+	arg_mode.resize (num_args);
+	arg_type.resize (num_args);
+	arg_default_size.resize (num_args);
+	arg_default.resize (num_args);
+
+	for (int i = 0; i < num_args; i++)
+	  {
+	    arg_pos[i] = sig->method_arg_pos[i];
+	    arg_mode[i] = sig->arg_info->arg_mode[i];
+	    arg_type[i] = sig->arg_info->arg_type[i];
+	    arg_default_size[i] = sig->arg_info->default_value_size[i];
+	    arg_default[i] = sig->arg_info->default_value[i];
+	  }
       }
 
-    result_type = sig->arg_info.result_type;
     transaction_control = tc;
   }
 
@@ -225,6 +235,8 @@ namespace cubmethod
     serializator.pack_bigint (group_id);
     serializator.pack_int (tran_id);
     serializator.pack_string (signature);
+    serializator.pack_string (auth);
+    serializator.pack_int (lang);
     serializator.pack_int (num_args);
 
     for (int i = 0; i < num_args; i++)
@@ -232,6 +244,11 @@ namespace cubmethod
 	serializator.pack_int (arg_pos[i]);
 	serializator.pack_int (arg_mode[i]);
 	serializator.pack_int (arg_type[i]);
+	serializator.pack_int (arg_default_size[i]);
+	if (arg_default_size[i] > 0)
+	  {
+	    serializator.pack_c_string (arg_default[i], arg_default_size[i]);
+	  }
       }
 
     serializator.pack_int (result_type);
@@ -251,6 +268,8 @@ namespace cubmethod
     size_t size = serializator.get_packed_bigint_size (start_offset); // group_id
     size += serializator.get_packed_int_size (size); // tran_id
     size += serializator.get_packed_string_size (signature, size); // signature
+    size += serializator.get_packed_string_size (auth, size); // auth
+    size += serializator.get_packed_int_size (size); // lang
     size += serializator.get_packed_int_size (size); // num_args
 
     for (int i = 0; i < num_args; i++)
@@ -258,6 +277,11 @@ namespace cubmethod
 	size += serializator.get_packed_int_size (size); // arg_pos
 	size += serializator.get_packed_int_size (size); // arg_mode
 	size += serializator.get_packed_int_size (size); // arg_type
+	size += serializator.get_packed_int_size (size); // arg_default_size
+	if (arg_default_size[i] > 0)
+	  {
+	    size += serializator.get_packed_c_string_size (arg_default[i], arg_default_size[i], size); // arg_default
+	  }
       }
 
     size += serializator.get_packed_int_size (size); // return_type

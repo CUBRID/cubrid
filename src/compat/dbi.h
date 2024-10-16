@@ -153,6 +153,9 @@ extern "C"
   extern int db_set_user_comment (DB_OBJECT * user, const char *comment);
   extern int db_grant (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth, int grant_option);
   extern int db_revoke (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth);
+  extern int db_grant_object (DB_OBJECT_TYPE obj_type, DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth,
+			      int grant_option);
+  extern int db_revoke_object (DB_OBJECT_TYPE obj_type, DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth);
   extern int db_check_authorization (DB_OBJECT * op, DB_AUTH auth);
   extern int db_check_authorization_and_grant_option (MOP op, DB_AUTH auth);
   extern int db_get_class_privilege (DB_OBJECT * op, unsigned int *auth);
@@ -415,6 +418,9 @@ extern "C"
   extern int db_trigger_action_time (DB_OBJECT * trobj, DB_TRIGGER_TIME * tr_time);
   extern int db_trigger_action (DB_OBJECT * trobj, char **action);
   extern int db_trigger_comment (DB_OBJECT * trobj, char **comment);
+
+/* Procedure functions */
+  extern DB_OBJECT *db_find_procedure (const char *name);
 
 /* Schema template functions */
   extern DB_CTMPL *dbt_create_class (const char *name);
@@ -742,6 +748,8 @@ extern "C"
 
   extern void db_clear_host_connected (void);
   extern char *db_get_database_version (void);
+
+  extern DB_OBJECT_TYPE db_get_object_type (DB_OBJECT * obj_);
 #ifdef __cplusplus
 }
 #endif

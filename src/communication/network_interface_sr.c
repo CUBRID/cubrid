@@ -91,6 +91,8 @@
 #include "crypt_opfunc.h"
 #include "flashback.h"
 #include "method_compile.hpp"
+#include "method_compile_def.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -6648,50 +6650,6 @@ sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
 }
 
 /*
- * xs_send_method_call_info_to_client -
- *
- * return:
- *
- *   list_id(in):
- *   method_sig_list(in):
- *
- * NOTE:
- */
-int
-xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, qfile_list_id * list_id, method_sig_list * methsg_list)
-{
-  int length = 0;
-  char *databuf;
-  char *ptr;
-  unsigned int rid;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  rid = css_get_comm_request_id (thread_p);
-  length = or_listid_length ((void *) list_id);
-  length += or_method_sig_list_length ((void *) methsg_list);
-  ptr = or_pack_int (reply, (int) METHOD_CALL);
-  ptr = or_pack_int (ptr, length);
-
-#if !defined(NDEBUG)
-  /* suppress valgrind UMW error */
-  memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
-#endif
-
-  databuf = (char *) db_private_alloc (thread_p, length);
-  if (databuf == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  ptr = or_pack_listid (databuf, (void *) list_id);
-  ptr = or_pack_method_sig_list (ptr, (void *) methsg_list);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), databuf, length);
-  db_private_free_and_init (thread_p, databuf);
-  return NO_ERROR;
-}
-
-/*
  * xs_receive_data_from_client -
  *
  * return:
@@ -10593,7 +10551,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
       // *INDENT-ON*
       for (int i = 0; i < sig->num_method_args; i++)
 	{
-	  if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
+	  if (sig->arg_info->arg_mode[i] == METHOD_ARG_MODE_IN)
 	    {
 	      continue;
 	    }
@@ -11282,21 +11240,14 @@ css_send_error:
 void
 splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  packing_unpacker unpacker (request, (size_t) reqlen);
-
-  bool verbose;
-  std::string input_string;
-  unpacker.unpack_all (verbose, input_string);
-
-  cubmethod::runtime_context * ctx = NULL;
-  session_get_method_runtime_context (thread_p, ctx);
-
   int error = ER_FAILED;
+  PLCSQL_COMPILE_REQUEST compile_request;
+
+  packing_unpacker unpacker (request, (size_t) reqlen);
+  unpacker.unpack_all (compile_request);
+
   cubmem::extensible_block ext_blk;
-  if (ctx)
-    {
-      error = cubmethod::invoke_compile (*thread_p, *ctx, input_string, verbose, ext_blk);
-    }
+  error = cubmethod::invoke_compile (*thread_p, compile_request, ext_blk);
 
   // Error code and is_ignored.
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;

@@ -32,7 +32,6 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.sql.*;
-import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class Unit extends AstNode {
@@ -44,23 +43,23 @@ public class Unit extends AstNode {
 
     public final boolean autonomousTransaction;
     public final boolean connectionRequired;
-    public final Set<String> imports;
     public final DeclRoutine routine;
+    public final String revision;
 
     public Unit(
             ParserRuleContext ctx,
             boolean autonomousTransaction,
             boolean connectionRequired,
-            Set<String> imports,
-            DeclRoutine routine) {
+            DeclRoutine routine,
+            String revision) {
         super(ctx);
 
         assert routine.scope.level == 1;
 
         this.autonomousTransaction = autonomousTransaction;
         this.connectionRequired = connectionRequired;
-        this.imports = imports;
         this.routine = routine;
+        this.revision = revision;
     }
 
     public String getJavaSignature() {
@@ -95,25 +94,15 @@ public class Unit extends AstNode {
 
         if (className == null) {
             String kindStr = routine.isProcedure() ? "Proc" : "Func";
-            className = String.format("%s_%s", kindStr, routine.name);
+            className = String.format("%s_%s_%s", kindStr, routine.name, revision);
         }
 
         return className;
     }
 
-    public String[] getImportsArray() {
-        if (imports.size() == 0) {
-            return new String[] {"// no imports"};
-        } else {
-            return imports.toArray(dummyStrArr);
-        }
-    }
-
     // ------------------------------------------
     // Private
     // ------------------------------------------
-
-    private static final String[] dummyStrArr = new String[0];
 
     private String className;
 }

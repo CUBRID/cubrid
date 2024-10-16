@@ -3836,6 +3836,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	  (sig_list->num_methods)++;
 
 	  (*tail)->method_name = (char *) node->info.method_call.method_name->info.name.original;
+	  (*tail)->auth_name = (char *) PT_METHOD_CALL_AUTH_NAME (node);
 
 	  /* num_method_args does not include the target by convention */
 	  (*tail)->num_method_args = pt_length_of_list (node->info.method_call.arg_list);
@@ -3861,20 +3862,64 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	  else if (PT_IS_JAVA_SP (node))
 	    {
 	      (*tail)->class_name = NULL;
-	      (*tail)->method_type = METHOD_TYPE_JAVA_SP;
 
 	      int num_args = (*tail)->num_method_args;
-	      (*tail)->arg_info.arg_mode = regu_int_array_alloc (num_args);
-	      (*tail)->arg_info.arg_type = regu_int_array_alloc (num_args);
 
-	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name);
+	      METHOD_ARG_INFO *&arg_info = (*tail)->arg_info;
+	      regu_alloc (arg_info);
+	      if (num_args > 0)
+		{
+		  arg_info->arg_mode = regu_int_array_alloc (num_args);
+		  arg_info->arg_type = regu_int_array_alloc (num_args);
+		  arg_info->default_value_size = regu_int_array_alloc (num_args);
+
+		  char **c_array = NULL;
+                  // *INDENT-OFF*
+                  regu_array_alloc<char*> (&c_array, num_args);
+                  // *INDENT-ON*
+		  arg_info->default_value = c_array;
+		}
+	      else
+		{
+		  arg_info->arg_mode = nullptr;
+		  arg_info->arg_type = nullptr;
+		  arg_info->default_value_size = nullptr;
+		  arg_info->default_value = nullptr;
+		}
+
+	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name, DB_AUTH_EXECUTE);
 	      if (mop_p)
 		{
 		  /* java stored procedure signature */
-		  DB_VALUE method;
-		  if (db_get (mop_p, SP_ATTR_TARGET, &method) == NO_ERROR)
+		  DB_VALUE cls, method;
+		  db_make_null (&cls);
+		  db_make_null (&method);
+
+		  if (db_get (mop_p, SP_ATTR_TARGET_CLASS, &cls) == NO_ERROR
+		      && db_get (mop_p, SP_ATTR_TARGET_METHOD, &method) == NO_ERROR)
 		    {
-		      (*tail)->method_name = (char *) db_get_string (&method);
+		      std::string target;
+
+		      target.assign (db_get_string (&cls)).append (".").append (db_get_string (&method));
+
+		      (*tail)->method_name = db_private_strndup (NULL, target.c_str (), target.size ());
+		    }
+		  else
+		    {
+		      break;
+		    }
+
+		  DB_VALUE lang;
+		  if (db_get (mop_p, SP_ATTR_LANG, &lang) == NO_ERROR)
+		    {
+		      if (db_get_int (&lang) == SP_LANG_PLCSQL)
+			{
+			  (*tail)->method_type = METHOD_TYPE_PLCSQL;
+			}
+		      else
+			{
+			  (*tail)->method_type = METHOD_TYPE_JAVA_SP;
+			}
 		    }
 		  else
 		    {
@@ -3886,7 +3931,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  if (db_get (mop_p, SP_ATTR_ARGS, &args) == NO_ERROR)
 		    {
 		      DB_SET *param_set = db_get_set (&args);
-		      DB_VALUE mode, type, temp;
+		      DB_VALUE mode, type, temp, optional_val, default_val;
 		      int i, arg_mode, arg_type;
 		      for (i = 0; i < num_args; i++)
 			{
@@ -3904,12 +3949,49 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 				  arg_type = db_get_int (&type);
 				}
 
-			      (*tail)->arg_info.arg_mode[i] = arg_mode;
-			      (*tail)->arg_info.arg_type[i] = arg_type;
+			      if (db_get (arg_mop_p, SP_ATTR_IS_OPTIONAL, &optional_val) == NO_ERROR)
+				{
+				  int is_optional = db_get_int (&optional_val);
+				  if (is_optional == 1)
+				    {
+				      if (db_get (arg_mop_p, SP_ATTR_DEFAULT_VALUE, &default_val) == NO_ERROR)
+					{
+					  if (!DB_IS_NULL (&default_val))
+					    {
+					      (*tail)->arg_info->default_value_size[i] =
+						db_get_string_size (&default_val);
+					      if ((*tail)->arg_info->default_value_size[i] > 0)
+						{
+						  (*tail)->arg_info->default_value[i] =
+						    db_private_strndup (NULL, db_get_string (&default_val),
+									(*tail)->arg_info->default_value_size[i]);
+						}
+					    }
+					  else
+					    {
+					      // default value is NULL
+					      (*tail)->arg_info->default_value_size[i] = -2;	// special value
+					    }
+					}
+				      else
+					{
+					  break;
+					}
+				    }
+				}
+			      else
+				{
+				  break;
+				}
+
+			      (*tail)->arg_info->arg_mode[i] = arg_mode;
+			      (*tail)->arg_info->arg_type[i] = arg_type;
 
 			      pr_clear_value (&mode);
 			      pr_clear_value (&type);
 			      pr_clear_value (&temp);
+			      pr_clear_value (&optional_val);
+			      pr_clear_value (&default_val);
 			    }
 			  else
 			    {
@@ -3934,8 +4016,34 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  DB_VALUE result_type;
 		  if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type) == NO_ERROR)
 		    {
-		      (*tail)->arg_info.result_type = db_get_int (&result_type);
+		      (*tail)->result_type = db_get_int (&result_type);
 		      pr_clear_value (&result_type);
+		    }
+		  else
+		    {
+		      break;
+		    }
+
+		  /* OID */
+		  DB_VALUE target_cls_val;
+		  if (db_get (mop_p, SP_ATTR_TARGET_CLASS, &target_cls_val) == NO_ERROR)
+		    {
+		      MOP code_mop = NULL;
+		      const char *target_cls = db_get_string (&target_cls_val);
+		      if (target_cls != NULL)
+			{
+			  code_mop = jsp_find_stored_procedure_code (target_cls);
+			}
+		      pr_clear_value (&target_cls_val);
+
+		      if (code_mop)
+			{
+			  (*tail)->oid = *WS_OID (code_mop);
+			}
+		      else
+			{
+			  (*tail)->oid = OID_INITIALIZER;
+			}
 		    }
 		  else
 		    {

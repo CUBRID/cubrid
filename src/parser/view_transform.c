@@ -3197,6 +3197,11 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 		      return NULL;
 		    }
 
+		  if (PT_IS_FOR_PL_COMPILE (parser) && sm_is_system_vclass (entity->info.name.original))
+		    {
+		      continue;
+		    }
+
 		  if (!fetch_for_update)
 		    {
 		      subquery = mq_fetch_subqueries (parser, entity);

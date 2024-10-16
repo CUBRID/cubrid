@@ -44,6 +44,9 @@ public class CompileInfo implements PackableObject {
     public String className = null;
     public String signature = null;
 
+    public int compiledType = -1;
+    public byte[] compiledCode = null;
+
     public CompileInfo(int code, int line, int column, String msg) {
         assert code < 0;
 
@@ -73,6 +76,11 @@ public class CompileInfo implements PackableObject {
             packer.packString(createStmt);
             packer.packString(className);
             packer.packString(signature);
+
+            packer.packInt(compiledType);
+            if (compiledType >= 0) {
+                packer.packCString(compiledCode);
+            }
         }
     }
 }

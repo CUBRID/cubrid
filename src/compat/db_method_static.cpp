@@ -20,6 +20,8 @@
  * db_method_static.cpp: implement static method links and their implementation
  */
 
+#include "msgcat_glossary.hpp"
+
 #include "dbi.h" /* db_ */
 #include "dbtype.h"
 #include "dbtype_def.h"
@@ -357,7 +359,7 @@ au_add_member_method (MOP user, DB_VALUE *returnval, DB_VALUE *memval)
 	  else
 	    {
 	      error = ER_AU_NOT_OWNER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
 	    }
 	}
       else
@@ -424,7 +426,7 @@ au_drop_member_method (MOP user, DB_VALUE *returnval, DB_VALUE *memval)
 	  else
 	    {
 	      error = ER_AU_NOT_OWNER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
 	    }
 	}
       else
@@ -976,7 +978,7 @@ au_change_sp_owner_method (MOP obj, DB_VALUE *returnval, DB_VALUE *sp, DB_VALUE 
     {
       if (owner != NULL && DB_IS_STRING (owner) && !DB_IS_NULL (owner) && db_get_string (owner) != NULL)
 	{
-	  sp_mop = jsp_find_stored_procedure (db_get_string (sp));
+	  sp_mop = jsp_find_stored_procedure (db_get_string (sp), DB_AUTH_NONE);
 	  if (sp_mop != NULL)
 	    {
 	      user = au_find_user (db_get_string (owner));
