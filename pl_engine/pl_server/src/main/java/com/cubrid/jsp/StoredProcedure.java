@@ -107,9 +107,12 @@ public class StoredProcedure {
         ClassNotFoundException ex = null;
         if (lang == LANG_PLCSQL) {
             try {
-                CompiledCodeSet codeset = ClassAccess.getObjectCode(conn, sig);
-                if (codeset != null) {
-                    c = ctx.getSessionCLManager().loadClass(codeset);
+                c = ctx.getSessionCLManager().findClass(sig.getClassName());
+                if (c == null) {
+                    CompiledCodeSet codeset = ClassAccess.getObjectCode(conn, sig);
+                    if (codeset != null) {
+                        c = ctx.getSessionCLManager().loadClass(codeset);
+                    }
                 }
             } catch (ClassNotFoundException e) {
                 ex = e;
