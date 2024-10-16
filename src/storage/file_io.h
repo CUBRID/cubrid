@@ -610,9 +610,11 @@ extern int fileio_symlink (const char *src, const char *dest, int overwrite);
 extern int fileio_set_permission (const char *vlabel);
 #endif /* !WINDOWS */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #if defined(SERVER_MODE)
 int fileio_os_sysconf (void);
 #endif /* SERVER_MODE */
+#endif
 
 /* flush control related */
 extern int fileio_flush_control_initialize (void);

@@ -85,6 +85,8 @@
 #include "log_common_impl.h"
 #include "log_volids.hpp"
 #include "fault_injection.h"
+#include "thread_worker_pool.hpp"
+
 #if defined (SERVER_MODE)
 #include "vacuum.h"
 #endif /* SERVER_MODE */
@@ -6632,7 +6634,8 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
     }
 
   /* get the number of CPUs */
-  num_cpus = fileio_os_sysconf ();
+  num_cpus = cubthread::system_core_count ();
+
   /* check for the upper bound of threads */
   if (num_threads == FILEIO_BACKUP_NUM_THREADS_AUTO)
     {
@@ -6640,7 +6643,7 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
     }
   else
     {
-      thread_info_p->num_threads = MIN (num_threads, num_cpus * 2);
+      thread_info_p->num_threads = MIN (num_threads, num_cpus);
     }
   thread_info_p->num_threads = MIN (thread_info_p->num_threads, NUM_NORMAL_TRANS);
 #else /* SERVER_MODE */
@@ -11522,6 +11525,7 @@ fileio_lock_region (int fd, int cmd, int type, off_t offset, int whence, off_t l
 }
 #endif /* !WINDOWS */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #if defined(SERVER_MODE)
 /*
  * fileio_os_sysconf () -
@@ -11551,6 +11555,7 @@ fileio_os_sysconf (void)
   return (nprocs > 1) ? (int) nprocs : 1;
 }
 #endif /* SERVER_MODE */
+#endif
 
 /*
  * fileio_initialize_res () -

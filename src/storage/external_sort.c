@@ -50,6 +50,7 @@
 #include "server_support.h"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
+#include "thread_worker_pool.hpp"
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -1489,12 +1490,10 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 #if defined(SERVER_MODE)
   if (prm_enable_sort_parallel == true)
     {
-      /* TODO - calc n, 2^^n get the number of CPUs TODO - fileio_os_sysconf really get #cores instead of #CPUs -
-       * NEED MORE CONSIDERATION */
-      num_cpus = fileio_os_sysconf ();
+      num_cpus = cubthread::system_core_count ();
 
-      sort_param->px_height_max = (int) sqrt ((double) num_cpus);	/* n */
-      sort_param->px_array_size = num_cpus;	/* 2^^n */
+      sort_param->px_height_max = (int) sqrt ((double) num_cpus);
+      sort_param->px_array_size = num_cpus;
 
       assert_release (sort_param->px_array_size == pow ((double) 2, (double) sort_param->px_height_max));
     }
