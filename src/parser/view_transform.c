@@ -4474,7 +4474,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 				   bool remove_sel_list)
 {
   PT_NODE *new_query = parser_new_node (parser, PT_SELECT);
-  PT_NODE *new_spec, *v_attr_list;
+  PT_NODE *new_spec, *v_attr_list, *new_select_list;
   PT_NODE *v_attr;
   PT_NODE *from, *entity_name, *entity, *subquery;
   FIND_ID_INFO info;
@@ -4529,8 +4529,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 		{
 		  subquery = mq_fetch_subqueries (parser, entity);
 
-		  /* If a view contains a UNION, the view’s select-list is not removable.​ */
-		  if (subquery->node_type == PT_UNION)
+		  if (subquery->node_type != PT_SELECT)
 		    {
 		      is_union_translation = 0;
 		    }
@@ -4540,29 +4539,44 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 	}
 
-      if (remove_sel_list || is_union_translation)
+      new_select_list = mq_get_references (parser, statement, spec);
+      for (col = new_select_list; col; col = col->next)
 	{
-	  new_query->info.query.q.select.list = mq_get_references (parser, statement, spec);
-
-	  for (col = new_query->info.query.q.select.list; col; col = col->next)
+	  if (col->flag.is_hidden_column)
 	    {
-	      if (col->flag.is_hidden_column)
-		{
-		  col->flag.is_hidden_column = 0;
-		}
+	      col->flag.is_hidden_column = 0;
 	    }
+	}
 
+      if (remove_sel_list)
+	{
 	  /* Do not add except for referenced columns. */
-	  if (!is_union_translation && new_query->info.query.q.select.list == NULL)
+	  if (new_select_list == NULL)
 	    {
 	      /* case of constant attr. e.g.) count(*), count(1) */
 	      /* just add one of integer value */
 	      new_query->info.query.q.select.list = pt_make_integer_value (parser, 1);
 	    }
+	  else
+	    {
+	      new_query->info.query.q.select.list = new_select_list;
+	    }
+	}
+      else if (is_union_translation)
+	{
+	  new_query->info.query.q.select.list = new_select_list;
 	}
       /* add columns from the view's attributes when the select list cannot be removed. */
       else
 	{
+	  for (col = new_select_list; col; col = col->next)
+	    {
+	      if (col->type_enum == PT_TYPE_OBJECT)
+		{
+		  mq_insert_symbol (parser, &new_query->info.query.q.select.list, col);
+		}
+	    }
+
 	  /* add view's attributes to select list */
 	  v_attr_list = mq_fetch_attributes (parser, spec->info.spec.flat_entity_list);
 	  if (v_attr_list == NULL && (pt_has_error (parser) || er_has_error ()))
