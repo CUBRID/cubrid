@@ -299,7 +299,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
   for (i = 0; i < br_num; i++)
     {
-      char path[PATH_MAX];
+      char dirpath[PATH_MAX];
 
 #if !defined(WINDOWS)
       /* prevent the broker from hanging due to an excessively long path socket path length =
@@ -312,8 +312,8 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	  return -1;
 	}
 #endif /* !WINDOWS */
-      snprintf (path, PATH_MAX, "%s/query", br_info[i].log_dir);
-      broker_create_dir (path);
+      snprintf (dirpath, PATH_MAX, "%s/query", br_info[i].log_dir);
+      broker_create_dir (dirpath);
       broker_create_dir (br_info[i].slow_log_dir);
       broker_create_dir (br_info[i].err_log_dir);
       broker_create_dir (br_info[i].access_log_dir);
