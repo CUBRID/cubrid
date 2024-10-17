@@ -798,6 +798,7 @@ STATIC_INLINE FILE_TEMPCACHE_ENTRY *file_tempcache_pop_tran_file (THREAD_ENTRY *
 STATIC_INLINE void file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_tempcache_dump (FILE * fp) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool file_tempcache_find_victim_and_destroy (THREAD_ENTRY * thread_p, bool is_numerable);
 
 /************************************************************************/
 /* File tracker section                                                 */
@@ -8535,12 +8536,23 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
     {
       /* expand file by one sector */
       FILE_PARTIAL_SECTOR partsect_new = FILE_PARTIAL_SECTOR_INITIALIZER;
-
+    retry:
       /* reserve a sector */
       error_code =
 	disk_reserve_sectors (thread_p, DB_TEMPORARY_DATA_PURPOSE, fhead->volid_last_expand, 1, &partsect_new.vsid);
       if (error_code != NO_ERROR)
 	{
+	  if (error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED)
+	    {
+	      if (file_tempcache_find_victim_and_destroy (thread_p, FILE_IS_NUMERABLE (fhead)))
+		{
+		  goto retry;
+		}
+	      if (file_tempcache_find_victim_and_destroy (thread_p, !FILE_IS_NUMERABLE (fhead)))
+		{
+		  goto retry;
+		}
+	    }
 	  assert_release (false);
 	  goto exit;
 	}
@@ -9604,6 +9616,69 @@ file_tempcache_dump (FILE * fp)
 
   /* todo: to print transaction temporary files we need some kind of synchronization... right now each transaction
    *       manages its own list freely. */
+}
+
+/*
+ * file_tempcache_find_victim_and_destroy () - find a victim temp file from tempcache and destroy it
+ *
+ * return            : true if a temp file was destroyed, false otherwise
+ * thread_p (in)     : thread entry
+ * is_numerable (in) : true if numerable file is to be destroyed, false otherwise
+ */
+STATIC_INLINE bool
+file_tempcache_find_victim_and_destroy (THREAD_ENTRY * thread_p, bool is_numerable)
+{
+  FILE_TEMPCACHE_ENTRY *victim;
+
+  file_tempcache_lock ();
+  if (is_numerable)
+    {
+      if (file_Tempcache.ncached_numerable > 0)
+	{
+	  victim = file_Tempcache.cached_numerable;
+
+	  if (file_destroy (thread_p, &victim->vfid, true) != NO_ERROR)
+	    {
+	      file_tempcache_unlock ();
+	      assert (false);
+	      return false;
+	    }
+
+	  file_Tempcache.cached_numerable = victim->next;
+	  file_Tempcache.ncached_numerable--;
+	  file_tempcache_unlock ();
+
+	  file_tempcache_retire_entry (victim);
+	  return true;
+	}
+
+      file_tempcache_unlock ();
+      return false;
+    }
+  else
+    {
+      if (file_Tempcache.ncached_not_numerable > 0)
+	{
+	  victim = file_Tempcache.cached_not_numerable;
+
+	  if (file_destroy (thread_p, &victim->vfid, true) != NO_ERROR)
+	    {
+	      file_tempcache_unlock ();
+	      assert (false);
+	      return false;
+	    }
+
+	  file_Tempcache.cached_not_numerable = victim->next;
+	  file_Tempcache.ncached_not_numerable--;
+	  file_tempcache_unlock ();
+
+	  file_tempcache_retire_entry (victim);
+	  return true;
+	}
+
+      file_tempcache_unlock ();
+      return false;
+    }
 }
 
 /************************************************************************/
