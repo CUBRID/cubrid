@@ -272,9 +272,6 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   broker_create_dir (get_cubrid_file (FID_VAR_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_CAS_TMP_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_AS_PID_DIR, path, BROKER_PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_SQL_LOG_DIR, path, BROKER_PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_SLOW_LOG_DIR, path, BROKER_PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_CUBRID_ERR_DIR, path, BROKER_PATH_MAX));
 
   if (admin_log_file != NULL)
     {
@@ -296,13 +293,14 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
     }
 
 #if !defined(WINDOWS)
-  broker_create_dir (get_cubrid_file (FID_SQL_LOG2_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_SOCK_DIR, path, BROKER_PATH_MAX));
 #endif /* !WINDOWS */
 
 
   for (i = 0; i < br_num; i++)
     {
+      char path[PATH_MAX];
+
 #if !defined(WINDOWS)
       /* prevent the broker from hanging due to an excessively long path socket path length =
        * sock_path[broker_name].[as_index] */
@@ -314,7 +312,8 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	  return -1;
 	}
 #endif /* !WINDOWS */
-      broker_create_dir (br_info[i].log_dir);
+      snprintf (path, PATH_MAX, "%s/query", br_info[i].log_dir);
+      broker_create_dir (path);
       broker_create_dir (br_info[i].slow_log_dir);
       broker_create_dir (br_info[i].err_log_dir);
       broker_create_dir (br_info[i].access_log_dir);
