@@ -26,14 +26,31 @@ public class SessionClassLoaderManager {
 
         String className = code.getMainClassName();
         MemoryClass mCls = null;
-        if (sessionScopedLoadedCode.containsKey(className)) {
-            mCls = sessionScopedLoadedCode.get(className);
-        } else {
+        if (!sessionScopedLoadedCode.containsKey(className)) {
             mCls = new MemoryClass(className);
             mCls.setCode(code);
+            sessionScopedLoadedCode.put(className, mCls);
         }
 
-        return sessionClassLoaderGroup.loadClass(code);
+        Class<?> loadedClass = sessionClassLoaderGroup.loadClass(code);
+        if (mCls != null && loadedClass != null) {
+            mCls.setLoadedClass(loadedClass);
+        }
+
+        return loadedClass;
+    }
+
+    public Class<?> findClass(String mainClassName) {
+        MemoryClass mCls = null;
+        if (sessionScopedLoadedCode.containsKey(mainClassName)) {
+            mCls = sessionScopedLoadedCode.get(mainClassName);
+        }
+
+        if (mCls != null) {
+            return mCls.getLoadedClass();
+        }
+
+        return null;
     }
 
     public void clear() {
