@@ -57,7 +57,7 @@ typedef struct or_buf OR_BUF;
 #define MULTI_ROW_DELETE     6
 #define MULTI_ROW_UPDATE     7
 
-#if 1  // ctshim
+#if 1				/* ctshim */
 static const int btree_multi_row_op_flag =
   ((1 << MULTI_ROW_INSERT) | (1 << MULTI_ROW_UPDATE) | (1 << MULTI_ROW_DELETE));
 static const int btree_unique_check_op_flag =
