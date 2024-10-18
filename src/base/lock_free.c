@@ -914,18 +914,13 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
   *tran_id = tran_entry->transaction_id;
 
   /* push to local list */
-  ret = lf_stack_push (&tran_entry->retired_list, entry, edesc);
-  if (ret == NO_ERROR)
-    {
-      /* for stats purposes */
-      ATOMIC_INC_32 (&freelist->retired_cnt, 1);
+  OF_GET_PTR_DEREF (entry, edesc->of_local_next) = tran_entry->retired_list;
+  tran_entry->retired_list = entry;
 
-      LF_UNITTEST_INC (&lf_retires, 1);
-    }
-  else
-    {
-      assert (false);
-    }
+  /* for stats purposes */
+  ATOMIC_INC_32 (&freelist->retired_cnt, 1);
+
+  LF_UNITTEST_INC (&lf_retires, 1);
 
   /* end local transaction */
   if (local_tran)
