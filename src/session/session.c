@@ -761,29 +761,30 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
     }
 
 #if defined (SERVER_MODE)
-  assert (session_p->ref_count > 0);
-
-  if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->session_p != NULL
-      && thread_p->conn_entry->session_p == session_p)
-    {
-      thread_p->conn_entry->session_p = NULL;
-      thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
-
-      session_state_decrease_ref_count (thread_p, session_p);
-    }
-  else
-    {
-      /* do we accept this case?? if we don't, add safe-guard here. */
-    }
-
-  logtb_set_current_user_active (thread_p, false);
-
   if (session_p->ref_count > 0)
     {
-      /* This session_state is busy, I can't remove */
-      pthread_mutex_unlock (&session_p->mutex);
+      if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->session_p != NULL
+	  && thread_p->conn_entry->session_p == session_p)
+	{
+	  thread_p->conn_entry->session_p = NULL;
+	  thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
 
-      return NO_ERROR;
+	  session_state_decrease_ref_count (thread_p, session_p);
+	}
+      else
+	{
+	  /* do we accept this case?? if we don't, add safe-guard here. */
+	}
+
+      logtb_set_current_user_active (thread_p, false);
+
+      if (session_p->ref_count > 0)
+	{
+	  /* This session_state is busy, I can't remove */
+	  pthread_mutex_unlock (&session_p->mutex);
+
+	  return NO_ERROR;
+	}
     }
 
   /* Now we can destroy this session */

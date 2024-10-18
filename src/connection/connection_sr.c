@@ -412,15 +412,6 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
       css_free_net_header_list (conn);
     }
 
-#if defined(SERVER_MODE)
-  if (conn->session_p)
-    {
-      session_state_decrease_ref_count (NULL, conn->session_p);
-      conn->session_p = NULL;
-      conn->session_id = DB_EMPTY_SESSION;
-    }
-#endif
-
   r = rmutex_unlock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
 }
