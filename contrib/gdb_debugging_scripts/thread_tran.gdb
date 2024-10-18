@@ -29,6 +29,15 @@ define thread_find_by_index
   end
 end
 
+# Print some info related to the thread.
+# The function is supposed to be called as an argument to:
+#   thread apply <all|thread list> ....
+#
+define thread_info
+  printf "index: %d\n", (cubthread::get_entry ())->index
+  printf "type: %d\n", (cubthread::get_entry ())->type
+end
+
 # thread_find_by_tran_index
 # $arg0 (in)  : TRAN_INDEX
 # $arg1 (out) : THREAD_ENTRY *
@@ -69,7 +78,7 @@ define thread_find_by_id
       set $arg1 = $thread_entry
       loop_break
     end
-  set $i = $i + 1
+    set $i = $i + 1
   end
 end
 
