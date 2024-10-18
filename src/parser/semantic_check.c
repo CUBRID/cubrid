@@ -15942,12 +15942,10 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func, void *arg, 
       goto error_exit;
     }
 
-  /* replace names/exprs with positions in select list where possible; this also re-processes PT_VALUE sort expressions
-   * so we can identify and reduce cases like: SELECT a, b, a, AVG(b) OVER (PARTITION BY A ORDER BY 1 asc, 3 asc) */
+  /* replace positions with names/exprs in select list where possible */
   for (order = order_list; order; order = order->next)
     {
-      PT_NODE *expr, *col, *temp;
-      int index;
+      PT_NODE *expr, *save_next;
 
       /* resolve sort spec */
       expr = pt_resolve_sort_spec_expr (parser, order, select_list);
@@ -15956,63 +15954,25 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func, void *arg, 
 	  goto error_exit;
 	}
 
-      /* try to match with something in the select list */
-      for (col = select_list, index = 1; col; col = col->next, index++)
+      save_next = expr->next;
+      expr->next = NULL;
+      if (pt_has_analytic (parser, expr))
 	{
-	  if (col->flag.is_hidden_column)
-	    {
-	      /* skip hidden columns; they might disappear later on */
-	      continue;
-	    }
+	  expr->next = save_next;
 
-	  if (pt_compare_sort_spec_expr (parser, expr, col))
-	    {
-	      /* found a match in select list */
-	      break;
-	    }
+	  /* sort expression contains analytic function */
+	  PT_ERRORm (parser, func, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NESTED_ANALYTIC_FUNCTIONS);
+	  goto error_exit;
+	}
+      else
+	{
+	  expr->next = save_next;
 	}
 
-      /* if we have a match in the select list, we can replace it on the spot; otherwise, wait for XASL generation */
-      if (col != NULL)
+      if (PT_IS_VALUE_NODE (order->info.sort_spec.expr))
 	{
-	  PT_NODE *save_next = col->next;
-
-	  col->next = NULL;
-	  if (pt_has_analytic (parser, col))
-	    {
-	      col->next = save_next;
-
-	      /* sort expression contains analytic function */
-	      PT_ERRORm (parser, func, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NESTED_ANALYTIC_FUNCTIONS);
-	      goto error_exit;
-	    }
-	  else
-	    {
-	      col->next = save_next;
-	    }
-
-	  /* create a value node and replace expr with it */
-	  temp = parser_new_node (parser, PT_VALUE);
-	  if (temp == NULL)
-	    {
-	      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      goto error_exit;
-	    }
-	  else
-	    {
-	      temp->type_enum = PT_TYPE_INTEGER;
-	      temp->info.value.data_value.i = index;
-	      (void) pt_value_to_db (parser, temp);
-	      parser_free_tree (parser, order->info.sort_spec.expr);
-	      order->info.sort_spec.expr = temp;
-	    }
-
-	  /* set position descriptor and resolve domain */
-	  order->info.sort_spec.pos_descr.pos_no = index;
-	  if (col->type_enum != PT_TYPE_NONE && col->type_enum != PT_TYPE_MAYBE)
-	    {			/* is resolved */
-	      order->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, col);
-	    }
+	  parser_free_tree (parser, order->info.sort_spec.expr);
+	  order->info.sort_spec.expr = parser_copy_tree (parser, expr);
 	}
     }
 
