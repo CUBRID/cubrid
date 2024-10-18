@@ -423,6 +423,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public TypeSpec visitNumeric_type(Numeric_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.precision != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s091
+                        "precision may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.NUMERIC_ANY);
         }
 
@@ -459,6 +465,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public TypeSpec visitChar_type(Char_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.length != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s092
+                        "length may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
@@ -485,6 +497,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public TypeSpec visitVarchar_type(Varchar_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.length != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s093
+                        "length may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
