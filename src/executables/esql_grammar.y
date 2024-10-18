@@ -3862,7 +3862,7 @@ main (int argc, char **argv)
     {
       exit (1);
     }
-
+  
   if (lang_init () != NO_ERROR)
     {
       exit (1);
