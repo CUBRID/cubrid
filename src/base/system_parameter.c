@@ -233,6 +233,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_TEMP_MEM_BUFFER_PAGES "temp_file_memory_size_in_pages"
 
+#define PRM_NAME_TEMP_MAX_FREE_LIST_SIZE "temp_file_memory_max_free_list_size"
+
 #define PRM_NAME_INDEX_SCAN_KEY_BUFFER_PAGES "index_scan_key_buffer_pages"
 
 #define PRM_NAME_INDEX_SCAN_KEY_BUFFER_SIZE "index_scan_key_buffer_size"
@@ -1137,6 +1139,11 @@ static int prm_temp_mem_buffer_pages_default = 4;
 static int prm_temp_mem_buffer_pages_lower = 0;
 static int prm_temp_mem_buffer_pages_upper = 20;
 static unsigned int prm_temp_mem_buffer_pages_flag = 0;
+
+int PRM_TEMP_MAX_FREE_LIST_SIZE = 100;
+static int prm_temp_mem_max_free_list_size_default = 100;
+static int prm_temp_mem_max_free_list_size_lower = 0;
+static unsigned int prm_temp_mem_max_free_list_size_flag = 0;
 
 int PRM_INDEX_SCAN_KEY_BUFFER_PAGES = 20;
 static int prm_index_scan_key_buffer_pages_default = 20;
@@ -3142,6 +3149,18 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_TEMP_MEM_BUFFER_PAGES,
    (void *) &prm_temp_mem_buffer_pages_upper,
    (void *) &prm_temp_mem_buffer_pages_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TEMP_MAX_FREE_LIST_SIZE,
+   PRM_NAME_TEMP_MAX_FREE_LIST_SIZE,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_temp_mem_max_free_list_size_flag,
+   (void *) &prm_temp_mem_max_free_list_size_default,
+   (void *) &PRM_TEMP_MAX_FREE_LIST_SIZE,
+   (void *) NULL,
+   (void *) &prm_temp_mem_max_free_list_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
