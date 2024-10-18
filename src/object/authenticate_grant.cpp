@@ -767,7 +767,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type)
        * Therefore, if the user is not the dba group or owner, the same error as grant/revoke_class is output.
        * example:
        *   call login(class db_user,'public','');
-       *   REVOKE EXECUTE ON FUNCTION u1.hello FROM u2;
+       *   REVOKE EXECUTE ON PROCEDURE u1.hello FROM u2;
        */
       if (!au_is_dba_group_member (Au_user) && !au_is_user_group_member (sp_owner, Au_user))
 	{
@@ -1328,13 +1328,13 @@ get_grants (MOP auth, DB_SET **grant_ptr, int filter)
       goto end;
     }
 
+  grants = db_get_set (&value);
+  gsize = set_size (grants);
+
   if (!filter)
     {
       goto end;
     }
-
-  grants = db_get_set (&value);
-  gsize = set_size (grants);
 
   /* there might be errors */
   error = er_errid ();
