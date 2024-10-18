@@ -312,7 +312,13 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	  return -1;
 	}
 #endif /* !WINDOWS */
-      snprintf (dirpath, PATH_MAX, "%s/query", br_info[i].log_dir);
+
+#if defined (WINDOWS)
+      snprintf (dirpath, PATH_MAX, "%s", br_info[i].log_dir);
+#else
+      snprintf (dirpath, PATH_MAX, "%s%s", br_info[i].log_dir, br_info[i].sql_log2 ? "/query" : "");
+#endif
+
       broker_create_dir (dirpath);
       broker_create_dir (br_info[i].slow_log_dir);
       broker_create_dir (br_info[i].err_log_dir);
