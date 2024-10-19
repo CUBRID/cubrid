@@ -7865,7 +7865,8 @@ loop:
 	}
       fprintf (session.verbose_fp, "[ Database(%s) %s Backup start ]\n\n", boot_db_name (), str_tmp);
 
-      fprintf (session.verbose_fp, "- num-threads: %d\n\n", session.read_thread_info.num_threads);
+      fprintf (session.verbose_fp, "- num-threads: %d (user-requested: %d)\n\n", session.read_thread_info.num_threads,
+	       num_threads);
 
       if (zip_method == FILEIO_ZIP_NONE_METHOD)
 	{
