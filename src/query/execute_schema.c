@@ -61,6 +61,7 @@
 #include "dbtype.h"
 #include "jsp_cl.h"
 #include "msgcat_glossary.hpp"
+#include "authenticate_access_auth.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -10204,6 +10205,13 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
   if (sm_issystem (sm_class))
     {
       ERROR_SET_ERROR_1ARG (error, ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS, "");
+      return error;
+    }
+
+  /* when changing the owner, all privileges are revoked */
+  error = au_object_revoke_all_privileges (class_mop, NULL);
+  if (error != NO_ERROR)
+    {
       return error;
     }
 
