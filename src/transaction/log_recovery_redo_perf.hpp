@@ -49,7 +49,7 @@ namespace cublog
     PERF_STAT_ID_FINALIZE,
   };
 
-  static constexpr cubperf::statset_definition::init_list_t perf_stats_main_definition_init_list
+  static const cubperf::statset_definition::init_list_t perf_stats_main_definition_init_list
   {
     cubperf::stat_definition (PERF_STAT_ID_FETCH_PAGE, cubperf::stat_definition::COUNTER_AND_TIMER,
 			      "Counter fetch_page", "Timer fetch_page (ms)"),
@@ -83,7 +83,7 @@ namespace cublog
     PERF_STAT_ID_PARALLEL_RETIRE,
   };
 
-  static constexpr cubperf::statset_definition::init_list_t perf_stats_async_definition_init_list
+  static const cubperf::statset_definition::init_list_t perf_stats_async_definition_init_list
   {
     cubperf::stat_definition (PERF_STAT_ID_PARALLEL_POP, cubperf::stat_definition::COUNTER_AND_TIMER,
 			      "Counter pop", "Timer pop (ms)"),
