@@ -14903,8 +14903,8 @@ to_param
                           }
                         else
                           {                               
-                             PT_ERRORm (this_parser, val, MSGCAT_SET_PARSER_SEMANTIC, 
-                                        MSGCAT_SEMANTIC_SP_INTO_FIELD_EXPR_IN_NON_STATIC_SQL);
+                             PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SEMANTIC, 
+                                        MSGCAT_SEMANTIC_SP_INTO_FIELD_EXPR_IN_NON_STATIC_SQL, val->info.name.original);
                           }
                                                  
                         $$ = val;  

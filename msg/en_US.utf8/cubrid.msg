@@ -1943,7 +1943,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 321 %TYPE type specification is allowed only for PL/CSQL
 322 Table column '%1$s.%2$s' has not been defined
 323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
-324 Field expressions in the INTO clause of a Select statement are only allowed in Static SQL inside stored functions/procedures.
+324 '%1$s' is not a record variable.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
