@@ -49,25 +49,20 @@ struct key_val_range;
 struct or_buf;
 typedef struct or_buf OR_BUF;
 
-#define SINGLE_ROW_INSERT    1
-#define SINGLE_ROW_DELETE    2
-#define SINGLE_ROW_UPDATE    3
-#define SINGLE_ROW_MODIFY    4	/* used in case of undo */
-#define MULTI_ROW_INSERT     5
-#define MULTI_ROW_DELETE     6
-#define MULTI_ROW_UPDATE     7
+#define SINGLE_ROW_INSERT    0x01
+#define SINGLE_ROW_DELETE    0x02
+#define SINGLE_ROW_UPDATE    0x04
+#define SINGLE_ROW_MODIFY    0x08	/* used in case of undo */
+#define MULTI_ROW_INSERT     0x10
+#define MULTI_ROW_DELETE     0x20
+#define MULTI_ROW_UPDATE     0x40
 
-static const int btree_multi_row_op_flag =
-  ((1 << MULTI_ROW_INSERT) | (1 << MULTI_ROW_UPDATE) | (1 << MULTI_ROW_DELETE));
-static const int btree_unique_check_op_flag =
-  ((1 << SINGLE_ROW_INSERT) | (1 << MULTI_ROW_INSERT) | (1 << SINGLE_ROW_UPDATE));
+static const int btree_multi_row_op_flag = (MULTI_ROW_INSERT | MULTI_ROW_UPDATE | MULTI_ROW_DELETE);
+#define BTREE_IS_MULTI_ROW_OP(op) (btree_multi_row_op_flag & (op))
 
-#define BTREE_IS_MULTI_ROW_OP(op) \
-  (assert((op) >= SINGLE_ROW_INSERT && (op) <= MULTI_ROW_UPDATE), (btree_multi_row_op_flag & (1 << (op))))
-
+static const int btree_unique_check_op_flag = (SINGLE_ROW_INSERT | MULTI_ROW_INSERT | SINGLE_ROW_UPDATE);
 #define BTREE_NEED_UNIQUE_CHECK(thread_p, op) \
-  (logtb_is_current_active (thread_p) \
-   && (assert((op) >= SINGLE_ROW_INSERT && (op) <= MULTI_ROW_UPDATE), (btree_unique_check_op_flag & (1 << (op)))))
+        (logtb_is_current_active (thread_p) && (btree_unique_check_op_flag & (op)))
 
 /* For next-key locking */
 #define BTREE_CONTINUE                     -1
