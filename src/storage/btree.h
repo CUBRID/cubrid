@@ -57,7 +57,6 @@ typedef struct or_buf OR_BUF;
 #define MULTI_ROW_DELETE     6
 #define MULTI_ROW_UPDATE     7
 
-#if 1				/* ctshim */
 static const int btree_multi_row_op_flag =
   ((1 << MULTI_ROW_INSERT) | (1 << MULTI_ROW_UPDATE) | (1 << MULTI_ROW_DELETE));
 static const int btree_unique_check_op_flag =
@@ -69,14 +68,6 @@ static const int btree_unique_check_op_flag =
 #define BTREE_NEED_UNIQUE_CHECK(thread_p, op) \
   (logtb_is_current_active (thread_p) \
    && (assert((op) >= SINGLE_ROW_INSERT && (op) <= MULTI_ROW_UPDATE), (btree_unique_check_op_flag & (1 << (op)))))
-#else
-#define BTREE_IS_MULTI_ROW_OP(op) \
-  (op == MULTI_ROW_INSERT || op == MULTI_ROW_UPDATE || op == MULTI_ROW_DELETE)
-
-#define BTREE_NEED_UNIQUE_CHECK(thread_p, op) \
-  (logtb_is_current_active (thread_p) \
-   && (op == SINGLE_ROW_INSERT || op == MULTI_ROW_INSERT || op == SINGLE_ROW_UPDATE))
-#endif
 
 /* For next-key locking */
 #define BTREE_CONTINUE                     -1
