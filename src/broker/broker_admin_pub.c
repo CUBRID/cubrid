@@ -320,7 +320,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
        * broker_create_dir () creates all intermediate directories indicated in the path,
        * as well as the leaf directory (.../sql_log, .../sql_log/query).
        */
-      snprintf (dirpath, PATH_MAX, "%s%s", br_info[i].log_dir, br_info[i].sql_log2 ? "/query" : "");
+      snprintf (dirpath, PATH_MAX, "%s/query", br_info[i].log_dir);
 #endif
 
       broker_create_dir (dirpath);
