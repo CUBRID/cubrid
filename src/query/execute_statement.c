@@ -2914,7 +2914,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   obj_tmpl = NULL;
 
 end:
-  if (!OID_ISNULL (&serial_obj_id))
+  if (!OID_ISNULL (&serial_obj_id) && statement->info.serial.serial_decache_flag == true)
     {
       (void) serial_decache ((OID *) (&serial_obj_id));
     }

@@ -3871,6 +3871,7 @@ alter_stmt
 			    node->info.serial.owner_name = owner_name;
 			    node->info.serial.comment = comment;
 			    node->info.serial.code = PT_SERIAL_OPTION;
+			    node->info.serial.serial_decache_flag = true;
 			  }
 
 			$$ = node;
@@ -3880,6 +3881,11 @@ alter_stmt
 			    && cyclic == 0 && no_max == 0 && no_min == 0
 			    && no_cyclic == 0 && !cached_num_val && no_cache == 0)
 			  {
+			    /* 
+			     * When using 'owner' or 'comment' alone, or simultaneously using both 'owner' and 'comment', set serial_decache_flag to false. 
+			     */
+			    node->info.serial.serial_decache_flag = false;
+
 			    if (owner_name != NULL)
 			      {
 			        node->info.serial.code = PT_CHANGE_OWNER;
