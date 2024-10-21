@@ -1400,7 +1400,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
     }
 
-    private static final int ID_LEN_MAX = 222;  // see User Manual
+    private static final int ID_LEN_MAX = 222; // see User Manual
 
     @Override
     public Expr visitIdentifier(IdentifierContext ctx) {
