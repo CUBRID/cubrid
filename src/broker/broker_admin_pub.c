@@ -4181,3 +4181,4 @@ get_upper_str (char *upper_str, int len, char *value)
 
   return;
 }
+
