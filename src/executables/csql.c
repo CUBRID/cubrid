@@ -786,7 +786,6 @@ fatal_error:
 	}
     }
 
-  db_end_session ();
   db_shutdown ();
   csql_Database_connected = false;
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
@@ -1034,7 +1033,6 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       if (csql_Database_connected)
 	{
 	  csql_Database_connected = false;
-	  db_end_session ();
 	  db_shutdown ();
 	}
       er_init ("./csql.err", ER_NEVER_EXIT);
@@ -2727,7 +2725,6 @@ csql_exit_session (int error)
 	  histo_stop ();
 	}
     }
-  db_end_session ();
 
   if (db_shutdown () < 0)
     {
@@ -2810,7 +2807,6 @@ csql_exit_cleanup ()
 	}
 
       csql_Database_connected = false;
-      db_end_session ();
       db_shutdown ();
     }
 
@@ -3553,7 +3549,6 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   if (csql_Database_connected)
     {
       csql_Database_connected = false;
-      db_end_session ();
       db_shutdown ();
 
     }
