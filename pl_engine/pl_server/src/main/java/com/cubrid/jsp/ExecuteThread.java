@@ -224,7 +224,7 @@ public class ExecuteThread extends Thread {
                     try {
                         // TODO: error managing module
                         if (throwable instanceof SQLException) {
-                            sendError(throwable.toString());
+                            sendError(throwable.getMessage());
                         } else if (throwable instanceof PlcsqlRuntimeError) {
                             PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
                             String errMsg =
@@ -235,7 +235,7 @@ public class ExecuteThread extends Thread {
                                             plcsqlError.getMessage());
                             sendError(errMsg);
                         } else {
-                            sendError(throwable.toString());
+                            sendError(throwable.getMessage());
                         }
                     } catch (IOException e1) {
                         Server.log(e1);
