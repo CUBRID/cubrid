@@ -360,7 +360,6 @@ extern "C"
   extern int csql_edit_contents_append (const char *str, bool flag_append_new_line);
   extern void csql_walk_statement (const char *str);
   extern bool csql_is_statement_complete (void);
-  extern bool csql_is_statement_in_block (void);
   extern void csql_edit_contents_clear (void);
   extern void csql_edit_contents_finalize (void);
   extern int csql_edit_read_file (FILE * fp);

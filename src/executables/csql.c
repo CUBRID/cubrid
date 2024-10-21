@@ -502,9 +502,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   bool read_whole_line;
   char *prompt;
 
-  /* check in string block or comment block or identifier block */
-  bool is_in_block = false;
-
   logddl_set_commit_mode (csql_is_auto_commit_requested (csql_arg));
   if (csql_arg->column_output && csql_arg->line_output)
     {
@@ -696,7 +693,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    }
 	}
 
-      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) && is_in_block == false)
+      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]))
 	{
 	  int ret;
 	  ret = csql_do_session_cmd (line_read, csql_arg);
@@ -734,13 +731,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    {
 	      /* if eof is reached, execute all */
 	      csql_execute = true;
-	      is_in_block = false;
 	    }
 	  else
 	    {
 	      csql_walk_statement (line_read);
-	      /* because we don't want to execute session commands in string block or comment block or identifier block */
-	      is_in_block = csql_is_statement_in_block ();
 
 	      if (csql_arg->single_line_execution
 		  /* read_whole_line == false means that fgets couldn't read whole line (exceeds buffer size) so we
