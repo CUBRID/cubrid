@@ -155,9 +155,9 @@ struct json_t;
 #define pt_is_instnum(n) PT_IS_INSTNUM(n)
 #define pt_is_orderbynum(n) PT_IS_ORDERBYNUM(n)
 #define pt_is_distinct(n) PT_IS_DISTINCT(n)
-#define pt_is_meta(n) PT_IS_META(n)
+//#define pt_is_meta(n) PT_IS_META(n)
 #define pt_is_update_object(n) PT_IS_UPDATE_OBJECT(n)
-#define pt_is_unary(op) PT_IS_UNARY(op)
+//#define pt_is_unary(op) PT_IS_UNARY(op)
 
 #define PT_IS_SELECT(n) \
         ( (n) && ((n)->node_type == PT_SELECT) )
@@ -269,7 +269,7 @@ struct json_t;
 
 #define PT_IS_DISTINCT(n) \
         ( (n) && PT_IS_QUERY_NODE_TYPE((n)->node_type) && (n)->info.query.all_distinct != PT_ALL )
-
+#if 0
 #define PT_IS_META(n) \
         ( ((n) ? ((n)->node_type == PT_NAME ? \
                   ((n)->info.name.meta_class == PT_META_CLASS || \
@@ -278,12 +278,14 @@ struct json_t;
                    (n)->info.name.meta_class == PT_OID_ATTR) : \
                   ((n)->node_type == PT_SPEC && ((n)->info.spec.meta_class == PT_META_CLASS))) \
               : false) )
+#endif
 #define PT_IS_HINT_NODE(n) \
         ( (n) && ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_HINT_NAME) )
 
 #define PT_IS_UPDATE_OBJECT(n) \
         ( (n) && (n)->node_type == PT_UPDATE && (n)->info.update.spec == NULL )
 
+#if 0
 #define PT_IS_UNARY(op) \
         ( (op) == PT_NOT || \
           (op) == PT_IS_NULL || \
@@ -293,12 +295,44 @@ struct json_t;
           (op) == PT_CONNECT_BY_ROOT || \
 	  (op) == PT_QPRIOR || \
           (op) == PT_UNARY_MINUS )
+#endif
 
 #define PT_IS_N_COLUMN_UPDATE_EXPR(n) \
         ( (n) && \
           (n)->node_type == PT_EXPR && \
           (n)->info.expr.op == PT_PATH_EXPR_SET )
 
+
+#define CHECK_PT_OP_TYPE_ENUM(v) (assert((v) >= PT_FIRST_OPCODE && (v) < PT_LAST_OPCODE))
+enum
+{
+  DOES_FUNCTION_HAVE_DIFFERENT_ARGS_NO = 0,
+  REQUIRES_HIERARCHICAL_QUERY_NO,
+  CHECK_HQ_OP_EXCEPT_PRIOR_NO,
+  IS_NUMBERING_AFTER_EXECUTION_NO,
+  IS_SERIAL_NO,
+  IS_EXPR_NODE_WITH_COMP_OP_NO,
+  IS_EXPR_NODE_WITH_NON_PUSHABLE_NO,
+  MAX_OPCODE_BIT_MASK_KIND_NO
+};
+
+
+#define PT_DOES_FUNCTION_HAVE_DIFFERENT_ARGS(op) (CHECK_PT_OP_TYPE_ENUM((op)), \
+                CHECK_BIT_BYTE(_pt_op_type_mask_list[DOES_FUNCTION_HAVE_DIFFERENT_ARGS_NO], (op)))
+#define PT_REQUIRES_HIERARCHICAL_QUERY(op) (CHECK_PT_OP_TYPE_ENUM((op)), \
+                CHECK_BIT_BYTE(_pt_op_type_mask_list[REQUIRES_HIERARCHICAL_QUERY_NO], (op)))
+#define PT_CHECK_HQ_OP_EXCEPT_PRIOR(op) (CHECK_PT_OP_TYPE_ENUM((op)), \
+                CHECK_BIT_BYTE(_pt_op_type_mask_list[CHECK_HQ_OP_EXCEPT_PRIOR_NO], (op)))
+#define PT_IS_NUMBERING_AFTER_EXECUTION(op) (CHECK_PT_OP_TYPE_ENUM((op)), \
+                CHECK_BIT_BYTE(_pt_op_type_mask_list[IS_NUMBERING_AFTER_EXECUTION_NO], (op)))
+#define PT_IS_SERIAL(op)  (CHECK_PT_OP_TYPE_ENUM((op)), CHECK_BIT_BYTE(_pt_op_type_mask_list[IS_SERIAL_NO], (op)))
+#define PT_IS_EXPR_NODE_WITH_COMP_OP(n)  ( (PT_IS_EXPR_NODE (n)) && \
+                (CHECK_PT_OP_TYPE_ENUM((n)->info.expr.op), \
+                CHECK_BIT_BYTE(_pt_op_type_mask_list[IS_EXPR_NODE_WITH_COMP_OP_NO], (n)->info.expr.op)) )
+#define PT_IS_EXPR_NODE_WITH_NON_PUSHABLE(n)  ( (PT_IS_EXPR_NODE (n)) && \
+                (CHECK_PT_OP_TYPE_ENUM((n)->info.expr.op), \
+                CHECK_BIT_BYTE(_pt_op_type_mask_list[IS_EXPR_NODE_WITH_NON_PUSHABLE_NO], (n)->info.expr.op)) )
+#if 0
 #define PT_DOES_FUNCTION_HAVE_DIFFERENT_ARGS(op) \
         ((op) == PT_MODULUS || (op) == PT_SUBSTRING || \
          (op) == PT_LPAD || (op) == PT_RPAD || (op) == PT_ADD_MONTHS || \
@@ -335,10 +369,10 @@ struct json_t;
 
 #define PT_IS_SERIAL(op) \
         ( (op) == PT_CURRENT_VALUE || (op) == PT_NEXT_VALUE )
-
+#endif
 #define PT_IS_EXPR_NODE_WITH_OPERATOR(n, op_type) \
         ( (PT_IS_EXPR_NODE (n)) && ((n)->info.expr.op == (op_type)) )
-
+#if 0
 #define PT_IS_EXPR_NODE_WITH_COMP_OP(n) \
         ( (PT_IS_EXPR_NODE (n)) && \
           ((n)->info.expr.op == PT_EQ || \
@@ -357,7 +391,7 @@ struct json_t;
            (n)->info.expr.op == PT_RANDOM || \
            (n)->info.expr.op == PT_RAND || \
            (n)->info.expr.op == PT_SYS_GUID ))
-
+#endif
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
 
@@ -1462,7 +1496,9 @@ typedef enum
 
 typedef enum
 {
-  PT_AND = 400, PT_OR, PT_NOT,
+  PT_FIRST_OPCODE = 400,
+  PT_AND = PT_FIRST_OPCODE,
+  PT_OR, PT_NOT,
   PT_BETWEEN, PT_NOT_BETWEEN,
   PT_LIKE, PT_NOT_LIKE,
   PT_IS_IN, PT_IS_NOT_IN,
@@ -4064,9 +4100,21 @@ extern "C"
   bool pt_is_json_doc_type (PT_TYPE_ENUM type);
   void initialize_bits_mask_variable ();
 
+#ifndef NDEBUG
   extern bool _was_init_node_type_variable;
+#endif
   extern unsigned char _query_node_type[];
   extern unsigned char _synonym_node_type[];
+
+  extern unsigned char _pt_op_type_mask_list[][BIT_BUF_BYTE_SIZE (PT_LAST_OPCODE - PT_FIRST_OPCODE)];
+  extern unsigned char _func_have_diff_args_op_type[];
+  extern unsigned char _requires_hierarchical_query_op_type[];
+  extern unsigned char _hq_op_except_prior_op_type[];
+  extern unsigned char _numbering_after_execution_op_type[];
+  extern unsigned char _is_serial_op_type[];
+  extern unsigned char _is_expr_with_comp_op_type[];
+  extern unsigned char _is_expr_with_non_pushabel_op_type[];
+
 #ifdef __cplusplus
 }
 #endif
