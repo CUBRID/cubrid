@@ -7899,7 +7899,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	    }
 	  else
 	    {
-	      if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
+	      if (BTREE_IS_MULTI_ROW_OP (op_type))
 		{
 		  assert (scan_cache->m_index_stats != NULL);
 		  unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
@@ -8523,7 +8523,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	}
       else
 	{
-	  if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
+	  if (BTREE_IS_MULTI_ROW_OP (op_type))
 	    {
 	      assert (scan_cache->m_index_stats != NULL);
 	      unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);

@@ -279,6 +279,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   pc_init ();
 #endif /* WINDOWS */
 
+  initialize_bits_mask_variable ();
+
   /*
    * initialize language parameters  */
   if (lang_init () != NO_ERROR)
@@ -716,6 +718,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* set up the WINDOWS stream emulations */
   pc_init ();
 #endif /* WINDOWS */
+
+  initialize_bits_mask_variable ();
 
   /* initialize language parameters */
   if (lang_init () != NO_ERROR)
