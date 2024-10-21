@@ -168,7 +168,6 @@ extern bool qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_i
 #endif /* SERVER_MODE */
 
 extern void qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id);
-extern void qmgr_setup_empty_list_file (char *page_buf);
 extern int qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p);
 extern int qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *query, size_t sql_len);
 extern struct drand48_data *qmgr_get_rand_buf (THREAD_ENTRY * thread_p);

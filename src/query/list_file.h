@@ -35,6 +35,7 @@
 #if defined (SERVER_MODE)
 #include "log_comm.h"		// for TRAN_ISOLATION; todo - remove it.
 #endif // SERVER_MODE
+#include "object_representation.h"
 #include "query_list.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
@@ -118,7 +119,10 @@ extern int qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_
 					    QFILE_TUPLE_POSITION * tuple_pos);
 extern int qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, PAGE_PTR ovfl_tpl_pg,
 					     QFILE_LIST_ID * input_list_id);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int qfile_get_first_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
+#endif /* ENABLE_UNUSED_FUNCTION */
+STATIC_INLINE void qfile_initialize_page_header (PAGE_PTR page_p) __attribute__ ((ALWAYS_INLINE));
 
 /* Copy routines */
 extern int qfile_copy_list_id (QFILE_LIST_ID * dest_list_id, const QFILE_LIST_ID * src_list_id, bool include_sort_list);
@@ -229,5 +233,22 @@ extern void qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_
 extern int qfile_get_list_cache_number_of_entries (int ht_no);
 extern bool qfile_has_no_cache_entries ();
 
+STATIC_INLINE void
+qfile_initialize_page_header (PAGE_PTR page_p)
+{
+  OR_PUT_INT (page_p + QFILE_TUPLE_COUNT_OFFSET, 0);
+  OR_PUT_INT (page_p + QFILE_PREV_PAGE_ID_OFFSET, NULL_PAGEID);
+  OR_PUT_INT (page_p + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID);
+  OR_PUT_INT (page_p + QFILE_LAST_TUPLE_OFFSET, QFILE_PAGE_HEADER_SIZE);
+  OR_PUT_INT (page_p + QFILE_OVERFLOW_PAGE_ID_OFFSET, NULL_PAGEID);
+  OR_PUT_SHORT (page_p + QFILE_PREV_VOL_ID_OFFSET, NULL_VOLID);
+  OR_PUT_SHORT (page_p + QFILE_NEXT_VOL_ID_OFFSET, NULL_VOLID);
+  OR_PUT_SHORT (page_p + QFILE_OVERFLOW_VOL_ID_OFFSET, NULL_VOLID);
+
+#if !defined(NDEBUG)
+  /* suppress valgrind UMW error */
+  memset (page_p + QFILE_RESERVED_OFFSET, 0, QFILE_PAGE_HEADER_SIZE - QFILE_RESERVED_OFFSET);
+#endif
+}
 
 #endif /* _LIST_FILE_H_ */

@@ -4847,7 +4847,7 @@ sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 
 empty_page:
   /* setup empty list file page and return it */
-  qmgr_setup_empty_list_file (aligned_page_buf);
+  qfile_initialize_page_header (aligned_page_buf);
   page_size = QFILE_PAGE_HEADER_SIZE;
   ptr = or_pack_int (reply, page_size);
   ptr = or_pack_int (ptr, error);
