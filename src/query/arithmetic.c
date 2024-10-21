@@ -4307,12 +4307,26 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
   const char *type_name;
   char *buf;
 
-  type = DB_VALUE_TYPE (value);
-  type_name = pr_type_name (type);
-  if (type_name == NULL)
+  if (db_get_string_codeset (value) == INTL_CODESET_LOB)
     {
-      db_make_null (result);
-      return NO_ERROR;
+      if (type == DB_TYPE_VARCHAR)
+	{
+	  type_name = "CLOB INTERNAL";
+	}
+      else
+	{
+	  type_name = "BLOB INTERNAL";
+	}
+    }
+  else
+    {
+      type = DB_VALUE_TYPE (value);
+      type_name = pr_type_name (type);
+      if (type_name == NULL)
+	{
+	  db_make_null (result);
+	  return NO_ERROR;
+	}
     }
 
   switch (type)
@@ -4335,6 +4349,10 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
 	{
 	  snprintf (buf, 128, "%s (%u, %u)", type_name, value->domain.numeric_info.precision,
 		    value->domain.numeric_info.scale);
+	}
+      else if (db_get_string_codeset (value) == INTL_CODESET_LOB)
+	{
+	  snprintf (buf, 128, "%s", type_name);
 	}
       else
 	{

@@ -1152,8 +1152,11 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 		}
 	      else
 		{
+		  /* long long type casting is needed
+		     becasue precision would be overflown as the result of plus op. */
 		  result_domain_length =
-		    MIN (DB_MAX_BIT_LENGTH, DB_VALUE_PRECISION (string1) + DB_VALUE_PRECISION (string2));
+		    MIN (DB_MAX_BIT_LENGTH,
+			 (long long) DB_VALUE_PRECISION (string1) + (long long) DB_VALUE_PRECISION (string2));
 		}
 
 	      qstr_make_typed_string (r_type, result, result_domain_length, (char *) r, r_length,
@@ -10052,7 +10055,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
       *dest_length = src_padded_length;
     }
 
-  if (dest_codeset == INTL_CODESET_RAW_BYTES)
+  if (dest_codeset == INTL_CODESET_RAW_BYTES || dest_codeset == INTL_CODESET_LOB)
     {
       /* when coercing multibyte to binary charset, we just reinterpret each byte as one character */
       if (INTL_CODESET_MULT (src_codeset) > 1)
@@ -10166,7 +10169,8 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 	{
 	  assert (copy_size <= alloc_size);
 
-	  if (src_codeset == INTL_CODESET_RAW_BYTES && (INTL_CODESET_MULT (dest_codeset) > 1))
+	  if ((src_codeset == INTL_CODESET_RAW_BYTES || src_codeset == INTL_CODESET_LOB)
+	      && (INTL_CODESET_MULT (dest_codeset) > 1))
 	    {
 	      int conv_size = 0;
 
@@ -17866,18 +17870,22 @@ lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lo
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_BAD_LENGTH, 1, size);
 	  return ER_QSTR_BAD_LENGTH;
 	}
-      if (max_length < 0 || max_length > DB_MAX_STRING_LENGTH)
+
+      if (lob_type == DB_TYPE_BLOB && (size > DB_MAX_BIT_LENGTH / 8))
 	{
-	  max_length = DB_MAX_STRING_LENGTH;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, "blob");
+	  return ER_IT_DATA_OVERFLOW;
 	}
-      if (lob_type == DB_TYPE_BLOB)
+
+      if (lob_type == DB_TYPE_CLOB && (size > DB_MAX_STRING_LENGTH))
 	{
-	  /* convert max_length, which is a number of bits, to number of bytes to read */
-	  max_length = QSTR_NUM_BYTES (max_length);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, "clob");
+	  return ER_IT_DATA_OVERFLOW;
 	}
-      if (max_length > size)
+
+      if (max_length < 0)
 	{
-	  max_length = (int) size;
+	  max_length = size;
 	}
 
       cs = (char *) db_private_alloc (NULL, max_length + 1);
@@ -24952,7 +24960,8 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_
       assert (DB_VALUE_DOMAIN_TYPE (codeset_value) == DB_TYPE_INTEGER);
 
       cs = db_get_int (codeset_value);
-      if (cs != INTL_CODESET_UTF8 && cs != INTL_CODESET_ISO88591 && cs != INTL_CODESET_KSC5601_EUC)
+      if (cs != INTL_CODESET_UTF8 && cs != INTL_CODESET_ISO88591 && cs != INTL_CODESET_KSC5601_EUC
+	  && cs != INTL_CODESET_LOB)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);

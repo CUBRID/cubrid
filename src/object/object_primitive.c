@@ -125,7 +125,7 @@ extern unsigned int db_on_server;
 
 
 #define BITS_IN_BYTE			8
-#define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)
+#define BITS_TO_BYTES(bit_cnt)		(((unsigned)(bit_cnt) + 7) / 8)
 
 /* left for future extension */
 #define DO_CONVERSION_TO_SRVR_STR(codeset)  false

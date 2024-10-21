@@ -4067,6 +4067,12 @@ pt_show_priv (PT_PRIV_TYPE t)
 const char *
 pt_show_type_enum (PT_TYPE_ENUM t)
 {
+  /* for LOB INTERNAL type */
+  if (t == PT_TYPE_LOB_INTERNAL)
+    {
+      return "lob internal";
+    }
+
   if (t <= PT_TYPE_NONE || t >= PT_TYPE_MAX)
     {
       return "unknown data type";
@@ -8565,7 +8571,14 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	bool show_precision;
 	int precision;
 
-	q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+	if (p->info.data_type.units != INTL_CODESET_LOB)
+	  {
+	    q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+	  }
+	else
+	  {
+	    show_precision = false;
+	  }
 
 	precision = p->info.data_type.precision;
 	switch (p->type_enum)
@@ -8584,7 +8597,15 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	      }
 	    else if (p->type_enum == PT_TYPE_VARCHAR)
 	      {
-		show_precision = (precision != DB_MAX_VARCHAR_PRECISION);
+		if (p->info.data_type.units == INTL_CODESET_LOB)
+		  {
+		    sprintf (buf, "clob internal");
+		    q = pt_append_nulstring (parser, q, buf);
+		  }
+		else
+		  {
+		    show_precision = (precision != DB_MAX_VARCHAR_PRECISION);
+		  }
 	      }
 	    else if (p->type_enum == PT_TYPE_VARNCHAR)
 	      {
@@ -8592,7 +8613,15 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	      }
 	    else if (p->type_enum == PT_TYPE_VARBIT)
 	      {
-		show_precision = (precision != DB_MAX_VARBIT_PRECISION);
+		if (p->info.data_type.units == INTL_CODESET_LOB)
+		  {
+		    sprintf (buf, "blob internal");
+		    q = pt_append_nulstring (parser, q, buf);
+		  }
+		else
+		  {
+		    show_precision = (precision != DB_MAX_VARBIT_PRECISION);
+		  }
 	      }
 	    else
 	      {

@@ -269,7 +269,7 @@ sm_define_view_vclass_spec (void)
 const char *
 sm_define_view_attribute_spec (void)
 {
-  static char stmt [2048];
+  static char stmt [3000];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -282,7 +282,14 @@ sm_define_view_attribute_spec (void)
 	  "[a].[from_class_of].[class_name] AS [from_class_name], "
 	  "CAST ([a].[from_class_of].[owner].[name] AS VARCHAR(255)) AS [from_owner_name], " /* string -> varchar(255) */
 	  "[a].[from_attr_name] AS [from_attr_name], "
-	  "[t].[type_name] AS [data_type], "
+	  "CASE [d].[code_set] "
+	     "WHEN 6 THEN "
+		     "CASE [t].[type_id] "
+			 "WHEN  4 THEN 'CLOB INTERNAL' "
+			 "WHEN 24 THEN 'BLOB INTERNAL' "
+		     "END "
+	     "ELSE [t].[type_name] "
+          "END AS [data_type], " 
 	  "[d].[prec] AS [prec], "
 	  "[d].[scale] AS [scale], "
 	  "IF ("

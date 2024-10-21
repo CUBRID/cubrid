@@ -85,7 +85,7 @@
  * mutibyte characters.
  */
 #define INTL_CAN_STEAL_CS(cs_from,cs_to)  \
-    ((cs_from) == (cs_to) || (cs_to) == INTL_CODESET_RAW_BYTES)
+    ((cs_from) == (cs_to) || (cs_to) == INTL_CODESET_RAW_BYTES || (cs_to) == INTL_CODESET_LOB)
 
 /* Checks if string having charset 'cs_from' can be coerced (transformed) as
  * having charset 'cs_to'.
@@ -100,7 +100,8 @@
   do \
     { \
       if (((codeset) == INTL_CODESET_ISO88591) \
-       || ((codeset) == INTL_CODESET_RAW_BYTES)) \
+       || ((codeset) == INTL_CODESET_RAW_BYTES) \
+       || ((codeset) == INTL_CODESET_LOB)) \
 	{ \
 	  (*(current_char_size)) = 1; \
 	  (ptr) = (s) + 1; \
@@ -182,10 +183,11 @@ enum intl_codeset
   INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
   INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
   INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
+  INTL_CODESET_LOB,		/* for LOB INTERNAL */
 
   INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
 
-  INTL_CODESET_LAST = INTL_CODESET_UTF8
+  INTL_CODESET_LAST = INTL_CODESET_LOB
 };
 typedef enum intl_codeset INTL_CODESET;
 
