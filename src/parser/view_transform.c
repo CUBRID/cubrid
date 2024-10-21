@@ -409,6 +409,9 @@ static void mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_
 static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by,
 					 PT_NODE * subquery, PT_NODE * class_);
 
+static int pt_find_node_order (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_NODE * node);
+static PT_NODE *mq_update_node_order (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
  *  returns: boolean
@@ -2498,6 +2501,8 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec;
   PUSHABLE_TYPE is_mergeable;
+  PT_NODE *next_node, *col, *select_list;
+
 
   result = tmp_result = NULL;	/* init */
   class_spec = NULL;
@@ -2614,8 +2619,30 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 				    derived_table->info.query.orderby_for);
 	    }
 
-	  class_spec->info.spec.derived_table =
+	  derived_table =
 	    mq_substitute_select_in_statement (parser, class_spec->info.spec.derived_table, query_spec, tmp_class);
+
+          select_list = query_spec->info.query.q.select.list;
+          if (select_list && select_list->type_enum == PT_TYPE_OBJECT)
+	    {
+	      select_list = select_list->next;	/* skip oid */
+	    }
+
+          query_spec->info.query.q.select.list = select_list;
+          class_spec->info.spec.derived_table = query_spec;
+          
+          for(col = temp_derived_table->info.query.q.select.list; col; col = col->next)
+          {
+                if(PT_IS_ANALYTIC_NODE(col))
+                {
+                        next_node = col->next;
+                        col->next = next_node;
+                        parser_walk_tree (parser, col, mq_update_node_order, class_spec, pt_continue_walk, NULL);
+
+                        col->next = next_node;
+                }
+          }
+          class_spec->info.spec.derived_table = derived_table;
 
 	  if (tmp_class)
 	    {
@@ -13917,4 +13944,75 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
 	  dest_query->info.delete_.using_index = parser_append_node (ui, dest_query->info.delete_.using_index);
 	}
     }
+}
+
+/*
+ * mq_update_node_order()
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_update_node_order (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = (PT_NODE *) arg;
+  PT_NODE *nth_node, *value_node, *derived_query;
+  int index, select_order;
+
+  if (tree == NULL || (!PT_IS_SORT_SPEC_NODE (tree) && !pt_is_analytic_function (parser, tree)))
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  if (PT_IS_SORT_SPEC_NODE (tree) && PT_IS_VALUE_NODE (tree->info.sort_spec.expr))
+    {
+      value_node = tree->info.sort_spec.expr;
+      select_order = value_node->info.value.data_value.i;
+      
+      derived_query = spec->info.spec.derived_table;
+
+      nth_node = pt_get_node_from_list (derived_query->info.query.q.select.list, select_order - 1);
+      if (nth_node != NULL)
+	{
+	  index = pt_find_node_order (parser, spec->info.spec.as_attr_list, nth_node);
+
+	  if (index != -1)
+	    {
+	      value_node->info.value.data_value.i = index;
+	      tree->info.sort_spec.pos_descr.pos_no = index;
+	    }
+	}
+    }
+
+  return tree;
+}
+
+/*
+ * pt_find_node_order() - finds the position of node in a node_list 
+ *   return:
+ *   parser(in):
+ *   node_list(in): 
+ *   node(in):
+ */
+static int
+pt_find_node_order (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * node)
+{
+  PT_NODE *col;
+  int index;
+  const char *col_name, *node_name;
+
+  node_name = (PT_IS_NAME_NODE (node)) ? node->info.name.original : node->alias_print;
+
+  for (col = node_list, index = 1; col; col = col->next, index++)
+    {
+      col_name = (PT_IS_NAME_NODE (col)) ? col->info.name.original : col->alias_print;
+      if (pt_str_compare (col_name, node_name, CASE_INSENSITIVE) == 0)
+	{
+	  return index;
+	}
+    }
+
+  return -1;
 }
