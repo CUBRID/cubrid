@@ -30,8 +30,7 @@
 
 package com.cubrid.plcsql.compiler.type;
 
-import java.util.HashMap;
-import java.util.Map;
+import com.cubrid.plcsql.compiler.InstanceStore;
 
 public class TypeChar extends Type {
 
@@ -39,14 +38,14 @@ public class TypeChar extends Type {
 
     public final int length;
 
-    public static synchronized TypeChar getInstance(int length) {
+    public static TypeChar getInstance(InstanceStore iStore, int length) {
 
         assert length <= MAX_LEN && length >= 1;
 
-        TypeChar ret = instances.get(length);
+        TypeChar ret = iStore.typeChar.get(length);
         if (ret == null) {
             ret = new TypeChar(length);
-            instances.put(length, ret);
+            iStore.typeChar.put(length, ret);
         }
 
         return ret;
@@ -55,8 +54,6 @@ public class TypeChar extends Type {
     // ---------------------------------------------------------------------------
     // Private
     // ---------------------------------------------------------------------------
-
-    private static final Map<Integer, TypeChar> instances = new HashMap<>();
 
     private static String getPlcName(int length) {
         return String.format("Char(%d)", length);

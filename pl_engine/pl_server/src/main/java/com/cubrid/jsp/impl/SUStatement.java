@@ -359,9 +359,10 @@ public class SUStatement {
             // If fetchInfo.numFetched == 0, it means there are no remaining rows.
             fetchedStartCursorPosition = fetchInfo.tuples[0].tupleNumber() - 1;
             fetchedEndCursorPosition = fetchedStartCursorPosition + fetchedTupleNumber;
+
+            // update cursorPosition to the fetched start position
+            cursorPosition = fetchedStartCursorPosition;
         }
-        // update cursorPosition to the fetched start position
-        cursorPosition = fetchedStartCursorPosition;
     }
 
     public void moveCursor(int offset, int origin) {
