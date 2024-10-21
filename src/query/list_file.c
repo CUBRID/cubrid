@@ -39,7 +39,6 @@
 #include "error_manager.h"
 #include "log_append.hpp"
 #include "object_primitive.h"
-#include "object_representation.h"
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "stream_to_xasl.h"
@@ -201,7 +200,6 @@ static int qfile_Max_tuple_page_size;
 
 static int qfile_get_sort_list_size (SORT_LIST * sort_list);
 static int qfile_compare_tuple_values (QFILE_TUPLE tplp1, QFILE_TUPLE tplp2, TP_DOMAIN * domain, int *cmp);
-static void qfile_initialize_page_header (PAGE_PTR page_p);
 static void qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p,
 						   int free_page);
 static bool qfile_is_first_tuple (QFILE_LIST_ID * list_id_p);
@@ -1047,23 +1045,6 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
   fprintf (stdout, " }\n");
 }
 #endif
-
-static void
-qfile_initialize_page_header (PAGE_PTR page_p)
-{
-  OR_PUT_INT (page_p + QFILE_TUPLE_COUNT_OFFSET, 0);
-  OR_PUT_INT (page_p + QFILE_PREV_PAGE_ID_OFFSET, NULL_PAGEID);
-  OR_PUT_INT (page_p + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID);
-  OR_PUT_INT (page_p + QFILE_LAST_TUPLE_OFFSET, 0);
-  OR_PUT_INT (page_p + QFILE_OVERFLOW_PAGE_ID_OFFSET, NULL_PAGEID);
-  OR_PUT_SHORT (page_p + QFILE_PREV_VOL_ID_OFFSET, NULL_VOLID);
-  OR_PUT_SHORT (page_p + QFILE_NEXT_VOL_ID_OFFSET, NULL_VOLID);
-  OR_PUT_SHORT (page_p + QFILE_OVERFLOW_VOL_ID_OFFSET, NULL_VOLID);
-#if !defined(NDEBUG)
-  /* suppress valgrind UMW error */
-  memset (page_p + QFILE_RESERVED_OFFSET, 0, QFILE_PAGE_HEADER_SIZE - QFILE_RESERVED_OFFSET);
-#endif
-}
 
 static void
 qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, int free_page)
@@ -2160,6 +2141,7 @@ qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_
   return NO_ERROR;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * qfile_get_first_page () -
  *   return: int (NO_ERROR or ER_FAILED)
@@ -2205,6 +2187,7 @@ qfile_get_first_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
   qfile_set_dirty_page (thread_p, new_page_p, DONT_FREE, list_id_p->tfile_vfid);
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * qfile_destroy_list () -

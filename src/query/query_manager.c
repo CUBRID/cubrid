@@ -145,7 +145,6 @@ static QMGR_PAGE_TYPE qmgr_get_page_type (PAGE_PTR page_p, QMGR_TEMP_FILE * temp
 static bool qmgr_is_allowed_result_cache (QUERY_FLAG flag);
 static bool qmgr_can_get_from_cache (QUERY_FLAG flag);
 static bool qmgr_can_get_result_from_cache (QUERY_FLAG flag);
-static void qmgr_put_page_header (PAGE_PTR page_p, QFILE_PAGE_HEADER * header_p);
 
 static QMGR_QUERY_ENTRY *qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p);
 static void qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p, QMGR_QUERY_ENTRY * q_ptr);
@@ -233,23 +232,6 @@ qmgr_is_allowed_result_cache (QUERY_FLAG flag)
     }
 
   return true;
-}
-
-static void
-qmgr_put_page_header (PAGE_PTR page_p, QFILE_PAGE_HEADER * header_p)
-{
-  OR_PUT_INT ((page_p) + QFILE_TUPLE_COUNT_OFFSET, (header_p)->pg_tplcnt);
-  OR_PUT_INT ((page_p) + QFILE_PREV_PAGE_ID_OFFSET, (header_p)->prev_pgid);
-  OR_PUT_INT ((page_p) + QFILE_NEXT_PAGE_ID_OFFSET, (header_p)->next_pgid);
-  OR_PUT_INT ((page_p) + QFILE_LAST_TUPLE_OFFSET, (header_p)->lasttpl_off);
-  OR_PUT_INT ((page_p) + QFILE_OVERFLOW_PAGE_ID_OFFSET, (header_p)->ovfl_pgid);
-  OR_PUT_SHORT ((page_p) + QFILE_PREV_VOL_ID_OFFSET, (header_p)->prev_volid);
-  OR_PUT_SHORT ((page_p) + QFILE_NEXT_VOL_ID_OFFSET, (header_p)->next_volid);
-  OR_PUT_SHORT ((page_p) + QFILE_OVERFLOW_VOL_ID_OFFSET, (header_p)->ovfl_volid);
-#if !defined(NDEBUG)
-  /* suppress valgrind UMW error */
-  memset (page_p + QFILE_RESERVED_OFFSET, 0, QFILE_PAGE_HEADER_SIZE - QFILE_RESERVED_OFFSET);
-#endif
 }
 
 static void
@@ -2586,7 +2568,7 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
       vpid_p->volid = NULL_VOLID;
       vpid_p->pageid = ++(tfile_vfid_p->membuf_last);
       page_p = tfile_vfid_p->membuf[tfile_vfid_p->membuf_last];
-      qmgr_setup_empty_list_file (page_p);
+      qfile_initialize_page_header (page_p);
       return page_p;
     }
 
@@ -2641,10 +2623,8 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
 static int
 qmgr_init_external_file_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
 {
-  QFILE_PAGE_HEADER page_header = QFILE_PAGE_HEADER_INITIALIZER;
-
   pgbuf_set_page_ptype (thread_p, page, PAGE_QRESULT);
-  qmgr_put_page_header (page, &page_header);
+  qfile_initialize_page_header (page);
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
   return NO_ERROR;
@@ -3276,15 +3256,6 @@ qmgr_find_leaf (XASL_NODE * xasl_p)
   return xasl_p;
 }
 #endif /* (SERVER_MODE) */
-
-void
-qmgr_setup_empty_list_file (char *page_p)
-{
-  QFILE_PAGE_HEADER header = QFILE_PAGE_HEADER_INITIALIZER;
-  header.lasttpl_off = QFILE_PAGE_HEADER_SIZE;
-
-  qmgr_put_page_header (page_p, &header);
-}
 
 /*
  * qmgr_initialize_temp_file_list () -
