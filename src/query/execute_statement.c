@@ -807,7 +807,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   if (att_name)
     {
       db_make_string (&value, att_name);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATTR_NAME, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
 	{
@@ -948,7 +948,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
 
   /* att name */
   db_make_string (&value, att_name);
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
     {
