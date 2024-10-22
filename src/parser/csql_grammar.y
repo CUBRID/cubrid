@@ -1864,6 +1864,7 @@ stmt
 			parser_hidden_incr_list = NULL;
 
                         g_plcsql_text = NULL;
+                        is_in_sp_func_type = false;
                         assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
 		DBG_PRINT}}
 	stmt_
