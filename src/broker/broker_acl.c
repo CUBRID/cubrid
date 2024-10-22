@@ -284,9 +284,11 @@ error:
 static bool
 is_invalid_acl_entry (const char *acl)
 {
+  char br_name[LINE_MAX];
   int len;
   int num_colon = 0;
   int i;
+  bool ret = false;
 
   if (acl == NULL || (len = strlen (acl)) == 0)
     {
@@ -295,7 +297,17 @@ is_invalid_acl_entry (const char *acl)
 
   if (acl[0] == '[')
     {
-      return (acl[len - 1] != ']');
+      if (sscanf (acl, "[%[^]]", br_name) != 1 || acl[len - 1] != ']')
+	{
+	  ret = true;
+	}
+
+      if (!ret && (br_name[0] != '%' || strchr (br_name, ' ') != NULL))
+	{
+	  ret = true;
+	}
+
+      return ret;
     }
 
   for (i = 0; i < len; i++)
