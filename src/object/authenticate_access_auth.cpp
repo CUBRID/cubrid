@@ -669,6 +669,8 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
       if (jsp_get_unique_name (sp_mop, sp_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
+	  error = ER_UNEXPECTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get stored procedure name of mop.");
 	  goto exit;
 	}
 
@@ -692,7 +694,8 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
   else if (!DB_IS_STRING (&val[0]) || DB_IS_NULL (&val[0])
 	   || db_get_string (&val[0]) == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_OR_INVALID_USER, 0);
+      error = ER_AU_MISSING_OR_INVALID_USER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto exit;
     }
 
@@ -766,6 +769,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
 	      else
 		{
 		  assert (object_type == 0 && object_type == 5);
+		  goto release;
 		}
 	    }
 	  else
