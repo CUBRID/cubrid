@@ -288,7 +288,6 @@ is_invalid_acl_entry (const char *acl)
   int len;
   int num_colon = 0;
   int i;
-  bool ret = false;
 
   if (acl == NULL || (len = strlen (acl)) == 0)
     {
@@ -297,12 +296,9 @@ is_invalid_acl_entry (const char *acl)
 
   if (acl[0] == '[')
     {
-      if (sscanf (acl, "[%[^]]", br_name) != 1 || acl[len - 1] != ']')
-	{
-	  ret = true;
-	}
+      bool ret = false;
 
-      if (!ret && (br_name[0] != '%' || strchr (br_name, ' ') != NULL))
+      if (sscanf(acl, "[%%%[^]]", br_name) != 1 || acl[len - 1] != ']' || strchr (br_name, ' ') != NULL)
 	{
 	  ret = true;
 	}
