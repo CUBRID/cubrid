@@ -1404,6 +1404,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public Expr visitIdentifier(IdentifierContext ctx) {
         String name = Misc.getNormalizedText(ctx);
 
+        if (name.length() > ID_LEN_MAX) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), // s094
+                    "identifier length may not exceed " + ID_LEN_MAX);
+        }
+
         Decl decl = symbolStack.getDeclForIdExpr(name);
         if (decl == null) {
 
@@ -2263,6 +2269,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // --------------------------------------------------------
     // Private Static
     // --------------------------------------------------------
+
+    private static final int ID_LEN_MAX = 222; // see User Manual
 
     private static final BigInteger UINT_LITERAL_MAX =
             new BigInteger("99999999999999999999999999999999999999");
