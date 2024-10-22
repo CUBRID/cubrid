@@ -1422,8 +1422,47 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             connectionRequired = true;
 
-            Expr ret = new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS);
-            semanticQuestions.put(ret, new ServerAPI.FunctionSignature(name));
+            Expr ret = null;
+
+            List<ServerAPI.Question> answered =
+                    ServerAPI.getGlobalSemantics(
+                            Arrays.asList(new ServerAPI.FunctionSignature(name)));
+            assert answered.size() == 1;
+            ServerAPI.Question q = answered.get(0);
+            if (q.errCode == 0) {
+
+                ServerAPI.FunctionSignature fs = (ServerAPI.FunctionSignature) q;
+                assert name.equals(fs.name);
+
+                if (fs.params == null || fs.params.length == 0) {
+
+                    if (!DBTypeAdapter.isSupported(fs.retType.type)) {
+                        String sqlType = DBTypeAdapter.getSqlTypeName(fs.retType.type);
+                        throw new SemanticError( // s437
+                                Misc.getLineColumnOf(ctx),
+                                "function "
+                                        + name
+                                        + " uses unsupported type "
+                                        + sqlType
+                                        + " as its return type");
+                    }
+
+                    Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
+
+                    ExprGlobalFuncCall egfc = new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS);
+                    egfc.decl =
+                            new DeclFunc(
+                                    null, name, EMPTY_PARAMS, TypeSpec.getBogus(iStore, retType));
+                    ret = egfc;
+                }
+            }
+
+            if (ret == null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s094
+                        "undeclared identifier " + name);
+            }
+
             return ret;
         } else {
             Scope scope = symbolStack.getCurrentScope();
