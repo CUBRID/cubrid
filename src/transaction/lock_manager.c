@@ -9435,7 +9435,12 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
       rv = pthread_mutex_lock (&tran_lock->hold_mutex);
 
       logtb_find_client_name_host_pid (waiter->tran_index, &prog, &user, &host, &pid);
-      fprintf (log_fp, "%*cclient: %s@%s|%s(%d)\n", indent, ' ', user, host, prog, pid);
+      fprintf (log_fp, "%*cclient: %s@%s|%s(%d)", indent, ' ', user, host, prog, pid);
+      if (holder->tran_index == tran_index)
+	{
+	  fprintf (log_fp, " (Deadlock Victim)");
+	}
+      fprintf (log_fp, "\n");
 
       for (lock_name = LOCK_TO_LOCKMODE_STRING (waiter->blocked_mode); *lock_name == ' '; lock_name++);
       fprintf (log_fp, "%*clock: %s", indent, ' ', lock_name);
