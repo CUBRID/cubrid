@@ -1,9 +1,14 @@
+#include "cubrid_esql.h"
+#line 1 "method_factorial.ec"
 #include "dbi.h"
 #include "dbtype_def.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+ALTER CLASS cub_meth add method class method_int(int) int function exec_int file '$CUBRID/method/method_demo.so', '$CUBRID/lib/libcubridesql.so';
+
 
 /*
 mkdir $CUBRID/method
