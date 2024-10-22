@@ -298,7 +298,7 @@ is_invalid_acl_entry (const char *acl)
     {
       bool ret = false;
 
-      if (sscanf(acl, "[%%%[^]]", br_name) != 1 || acl[len - 1] != ']' || strchr (br_name, ' ') != NULL)
+      if (sscanf (acl, "[%%%[^]]", br_name) != 1 || acl[len - 1] != ']' || strchr (br_name, ' ') != NULL)
 	{
 	  ret = true;
 	}
