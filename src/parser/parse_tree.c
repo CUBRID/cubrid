@@ -1466,3 +1466,136 @@ pt_is_json_doc_type (PT_TYPE_ENUM type)
 
   return db_is_json_doc_type (converted_type);
 }
+
+bool _was_init_node_type_variable = false;
+BITMASK_ARY_TYPE _query_node_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_LAST_NODE_NUMBER)] = { 0, };
+BITMASK_ARY_TYPE _synonym_node_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_LAST_NODE_NUMBER)] = { 0, };
+BITMASK_ARY_TYPE _has_collation_modifier_node_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_LAST_NODE_NUMBER)] = { 0, };
+
+#define PT_OP_CODES_COUNT  (PT_LAST_OPCODE - PT_FIRST_OPCODE)
+#define SET_OP_BITMASK_ARY(bm, v) SET_BITMASK_ARY((bm), ((v) - PT_FIRST_OPCODE))
+
+BITMASK_ARY_TYPE _func_have_diff_args_op_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_OP_CODES_COUNT)] = { 0, };
+BITMASK_ARY_TYPE _requires_hierarchical_query_op_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_OP_CODES_COUNT)] = { 0, };
+BITMASK_ARY_TYPE _hq_op_except_prior_op_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_OP_CODES_COUNT)] = { 0, };
+BITMASK_ARY_TYPE _numbering_after_execution_op_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_OP_CODES_COUNT)] = { 0, };
+BITMASK_ARY_TYPE _is_serial_op_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_OP_CODES_COUNT)] = { 0, };
+BITMASK_ARY_TYPE _is_expr_with_comp_op_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_OP_CODES_COUNT)] = { 0, };
+BITMASK_ARY_TYPE _is_expr_with_non_pushabel_op_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_OP_CODES_COUNT)] = { 0, };
+
+
+void
+initialize_bits_mask_variable ()
+{
+  if (_was_init_node_type_variable)
+    {
+      return;
+    }
+
+  int idx, i;
+  // NODE TYPE ------------------------------------------------------------------------------------
+  // PT_IS_QUERY_NODE_TYPE
+  SET_BITMASK_ARY (_query_node_type, PT_SELECT);
+  SET_BITMASK_ARY (_query_node_type, PT_UNION);
+  SET_BITMASK_ARY (_query_node_type, PT_DIFFERENCE);
+  SET_BITMASK_ARY (_query_node_type, PT_INTERSECTION);
+
+  // PT_NODE_IS_SYNONYM
+  SET_BITMASK_ARY (_query_node_type, PT_ALTER_SYNONYM);
+  SET_BITMASK_ARY (_query_node_type, PT_CREATE_SYNONYM);
+  SET_BITMASK_ARY (_query_node_type, PT_DROP_SYNONYM);
+  SET_BITMASK_ARY (_query_node_type, PT_RENAME_SYNONYM);
+
+  // PT_GET_COLLATION_MODIFIER, PT_HAS_COLLATION_MODIFIER
+  SET_BITMASK_ARY (_has_collation_modifier_node_type, PT_EXPR);
+  SET_BITMASK_ARY (_has_collation_modifier_node_type, PT_VALUE);
+  SET_BITMASK_ARY (_has_collation_modifier_node_type, PT_NAME);
+  SET_BITMASK_ARY (_has_collation_modifier_node_type, PT_FUNCTION);
+  SET_BITMASK_ARY (_has_collation_modifier_node_type, PT_DOT_);
+
+
+
+
+  // OP CODE ------------------------------------------------------------------------------------  
+  // PT_DOES_FUNCTION_HAVE_DIFFERENT_ARGS
+  PT_OP_TYPE _func_have_diff_args_op_list[] = {
+    PT_MODULUS, PT_SUBSTRING, PT_LPAD, PT_RPAD, PT_ADD_MONTHS,
+    PT_TO_CHAR, PT_TO_NUMBER, PT_POWER, PT_ROUND, PT_TRUNC,
+    PT_INSTR, PT_LEAST, PT_GREATEST, PT_FIELD, PT_REPEAT,
+    PT_MAKEDATE, PT_MAKETIME, PT_IF, PT_STR_TO_DATE, PT_SUBSTRING_INDEX,
+    PT_LAST_OPCODE
+  };
+
+  for (i = 0; _func_have_diff_args_op_list[i] != PT_LAST_OPCODE; i++)
+    {
+      SET_OP_BITMASK_ARY (_func_have_diff_args_op_type, _func_have_diff_args_op_list[i]);
+    }
+
+  // PT_REQUIRES_HIERARCHICAL_QUERY
+  PT_OP_TYPE _requires_hierarchical_query_op_list[] = {
+    PT_LEVEL, PT_SYS_CONNECT_BY_PATH,
+    PT_CONNECT_BY_ISCYCLE, PT_CONNECT_BY_ISLEAF, PT_CONNECT_BY_ROOT,
+    PT_QPRIOR, PT_PRIOR,
+    PT_LAST_OPCODE
+  };
+
+  for (i = 0; _requires_hierarchical_query_op_list[i] != PT_LAST_OPCODE; i++)
+    {
+      SET_OP_BITMASK_ARY (_requires_hierarchical_query_op_type, _requires_hierarchical_query_op_list[i]);
+    }
+
+  // PT_CHECK_HQ_OP_EXCEPT_PRIOR
+  PT_OP_TYPE _hq_op_except_prior_op_list[] = {
+    PT_LEVEL, PT_SYS_CONNECT_BY_PATH,
+    PT_CONNECT_BY_ISCYCLE, PT_CONNECT_BY_ISLEAF, PT_CONNECT_BY_ROOT,
+    PT_LAST_OPCODE
+  };
+
+  for (i = 0; _hq_op_except_prior_op_list[i] != PT_LAST_OPCODE; i++)
+    {
+      SET_OP_BITMASK_ARY (_hq_op_except_prior_op_type, _hq_op_except_prior_op_list[i]);
+    }
+
+  // PT_IS_NUMBERING_AFTER_EXECUTION
+  PT_OP_TYPE _numbering_after_execution_op_list[] = {
+    PT_INST_NUM,
+    PT_ROWNUM,
+    /*PT_GROUPBY_NUM -- TODO: this does not belong here. */
+    PT_ORDERBY_NUM,
+    PT_LAST_OPCODE
+  };
+
+  for (i = 0; _numbering_after_execution_op_list[i] != PT_LAST_OPCODE; i++)
+    {
+      SET_OP_BITMASK_ARY (_numbering_after_execution_op_type, _numbering_after_execution_op_list[i]);
+    }
+
+  // PT_IS_SERIAL
+  SET_OP_BITMASK_ARY (_is_serial_op_type, PT_CURRENT_VALUE);
+  SET_OP_BITMASK_ARY (_is_serial_op_type, PT_NEXT_VALUE);
+
+  // PT_IS_EXPR_NODE_WITH_COMP_OP
+  PT_OP_TYPE _is_expr_with_comp_op_list[] = {
+    PT_EQ, PT_GE, PT_GT, PT_LT, PT_LE, PT_GT_INF, PT_LT_INF, PT_RANGE,
+    PT_LAST_OPCODE
+  };
+
+  for (i = 0; _is_expr_with_comp_op_list[i] != PT_LAST_OPCODE; i++)
+    {
+      SET_OP_BITMASK_ARY (_is_expr_with_comp_op_type, _is_expr_with_comp_op_list[i]);
+    }
+
+  // PT_IS_EXPR_NODE_WITH_NON_PUSHABLE
+  PT_OP_TYPE _is_expr_with_non_pushabel_op_list[] = {
+    PT_DRANDOM, PT_DRAND, PT_RANDOM, PT_RAND, PT_SYS_GUID,
+    PT_LAST_OPCODE
+  };
+
+  for (i = 0; _is_expr_with_non_pushabel_op_list[i] != PT_LAST_OPCODE; i++)
+    {
+      SET_OP_BITMASK_ARY (_is_expr_with_non_pushabel_op_type, _is_expr_with_non_pushabel_op_list[i]);
+    }
+
+  //
+  _was_init_node_type_variable = true;
+}

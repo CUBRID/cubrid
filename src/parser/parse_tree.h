@@ -114,9 +114,16 @@ struct json_t;
 #define PT_INTERNAL_ERROR(parser, what) \
 	pt_internal_error((parser), __FILE__, __LINE__, (what))
 
-#define PT_IS_QUERY_NODE_TYPE(x) \
-    (  (x) == PT_SELECT     || (x) == PT_UNION \
-    || (x) == PT_DIFFERENCE || (x) == PT_INTERSECTION)
+typedef unsigned char BITMASK_ARY_TYPE;
+#define BITMASK_ARY_BUF_BYTE_SIZE(max)     ((((max) - 1) >> 3) + 1)
+#define SET_BITMASK_ARY(buf, v)       ((buf)[((v) >> 3)] |= (0x01 << ((v) & 0x07)))
+#define CHECK_BITMASK_ARY(buf, v)     ( assert(_was_init_node_type_variable == true), \
+                                        (((buf)[((v) >> 3)] & (0x01 << ((v) & 0x07))) != 0) )
+
+#define CHECK_PT_NODE_TYPE_ENUM(v) (assert((v) > PT_NODE_NONE && (v) < PT_LAST_NODE_NUMBER))
+#define CHECK_NODE_TYPE_BIT_MASK(_bitmask, t) (CHECK_PT_NODE_TYPE_ENUM((t)), CHECK_BITMASK_ARY((_bitmask), (t)))
+
+#define PT_IS_QUERY_NODE_TYPE(x) (CHECK_NODE_TYPE_BIT_MASK(_query_node_type, (x)))
 
 #define PT_IS_CLASSOID_NAME(x) \
     (  (x)->info.name.meta_class == PT_CLASSOID_ATTR)
@@ -151,9 +158,13 @@ struct json_t;
 #define pt_is_instnum(n) PT_IS_INSTNUM(n)
 #define pt_is_orderbynum(n) PT_IS_ORDERBYNUM(n)
 #define pt_is_distinct(n) PT_IS_DISTINCT(n)
-#define pt_is_meta(n) PT_IS_META(n)
 #define pt_is_update_object(n) PT_IS_UPDATE_OBJECT(n)
+
+#if defined(UNUSED_MACRO)
+#define pt_is_meta(n) PT_IS_META(n)
 #define pt_is_unary(op) PT_IS_UNARY(op)
+#endif
+
 
 #define PT_IS_SELECT(n) \
         ( (n) && ((n)->node_type == PT_SELECT) )
@@ -265,7 +276,8 @@ struct json_t;
 
 #define PT_IS_DISTINCT(n) \
         ( (n) && PT_IS_QUERY_NODE_TYPE((n)->node_type) && (n)->info.query.all_distinct != PT_ALL )
-
+#if defined(UNUSED_MACRO)
+// ctshim xasl_generation.c 9529 개선 검토
 #define PT_IS_META(n) \
         ( ((n) ? ((n)->node_type == PT_NAME ? \
                   ((n)->info.name.meta_class == PT_META_CLASS || \
@@ -274,12 +286,15 @@ struct json_t;
                    (n)->info.name.meta_class == PT_OID_ATTR) : \
                   ((n)->node_type == PT_SPEC && ((n)->info.spec.meta_class == PT_META_CLASS))) \
               : false) )
+#endif
 #define PT_IS_HINT_NODE(n) \
         ( (n) && ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_HINT_NAME) )
 
 #define PT_IS_UPDATE_OBJECT(n) \
         ( (n) && (n)->node_type == PT_UPDATE && (n)->info.update.spec == NULL )
 
+#if defined(UNUSED_MACRO)
+// ctshim PT_CONNECT_BY_ROOT 로 소스를 찿아봐~
 #define PT_IS_UNARY(op) \
         ( (op) == PT_NOT || \
           (op) == PT_IS_NULL || \
@@ -288,71 +303,32 @@ struct json_t;
           (op) == PT_PRIOR || \
           (op) == PT_CONNECT_BY_ROOT || \
 	  (op) == PT_QPRIOR || \
-          (op) == PT_UNARY_MINUS) )
+          (op) == PT_UNARY_MINUS )
+#endif
 
 #define PT_IS_N_COLUMN_UPDATE_EXPR(n) \
         ( (n) && \
           (n)->node_type == PT_EXPR && \
           (n)->info.expr.op == PT_PATH_EXPR_SET )
 
-#define PT_DOES_FUNCTION_HAVE_DIFFERENT_ARGS(op) \
-        ((op) == PT_MODULUS || (op) == PT_SUBSTRING || \
-         (op) == PT_LPAD || (op) == PT_RPAD || (op) == PT_ADD_MONTHS || \
-         (op) == PT_TO_CHAR || (op) == PT_TO_NUMBER || \
-         (op) == PT_POWER || (op) == PT_ROUND || \
-         (op) == PT_TRUNC || (op) == PT_INSTR || \
-         (op) == PT_LEAST || (op) == PT_GREATEST || \
-	 (op) == PT_FIELD || \
-	 (op) == PT_REPEAT || (op) == PT_SUBSTRING_INDEX || \
-	 (op) == PT_MAKEDATE || (op) == PT_MAKETIME || (op) == PT_IF || \
-	 (op) == PT_STR_TO_DATE)
 
-#define PT_REQUIRES_HIERARCHICAL_QUERY(op) \
-        ( (op) == PT_LEVEL || \
-          (op) == PT_CONNECT_BY_ISCYCLE || \
-          (op) == PT_CONNECT_BY_ISLEAF || \
-          (op) == PT_PRIOR || \
-          (op) == PT_CONNECT_BY_ROOT  || \
-	  (op) == PT_QPRIOR || \
-          (op) == PT_SYS_CONNECT_BY_PATH )
+#define CHECK_PT_OP_TYPE_ENUM(v) (assert((v) >= PT_FIRST_OPCODE && (v) < PT_LAST_OPCODE))
+#define CHECK_OP_TYPE_BIT_MASK(_bitmask, op) \
+        (CHECK_PT_OP_TYPE_ENUM((op)), CHECK_BITMASK_ARY((_bitmask), ((op) - PT_FIRST_OPCODE)))
 
-#define PT_CHECK_HQ_OP_EXCEPT_PRIOR(op) \
-        ( (op) == PT_LEVEL || \
-          (op) == PT_CONNECT_BY_ISCYCLE || \
-          (op) == PT_CONNECT_BY_ISLEAF || \
-          (op) == PT_CONNECT_BY_ROOT  || \
-	  (op) == PT_SYS_CONNECT_BY_PATH )
-
-#define PT_IS_NUMBERING_AFTER_EXECUTION(op) \
-        ( (op) == PT_INST_NUM || \
-          (op) == PT_ROWNUM || \
-          /*(int)(op) == (int)PT_GROUPBY_NUM || - TODO: this does not belong here. */ \
-          (op) == PT_ORDERBY_NUM )
-
-#define PT_IS_SERIAL(op) \
-        ( (op) == PT_CURRENT_VALUE || (op) == PT_NEXT_VALUE )
+#define PT_DOES_FUNCTION_HAVE_DIFFERENT_ARGS(op) CHECK_OP_TYPE_BIT_MASK(_func_have_diff_args_op_type, (op))
+#define PT_REQUIRES_HIERARCHICAL_QUERY(op)       CHECK_OP_TYPE_BIT_MASK(_requires_hierarchical_query_op_type, (op))
+#define PT_CHECK_HQ_OP_EXCEPT_PRIOR(op)          CHECK_OP_TYPE_BIT_MASK(_hq_op_except_prior_op_type, (op))
+#define PT_IS_NUMBERING_AFTER_EXECUTION(op)      CHECK_OP_TYPE_BIT_MASK(_numbering_after_execution_op_type, (op))
+#define PT_IS_SERIAL(op)                         CHECK_OP_TYPE_BIT_MASK(_is_serial_op_type, (op))
 
 #define PT_IS_EXPR_NODE_WITH_OPERATOR(n, op_type) \
         ( (PT_IS_EXPR_NODE (n)) && ((n)->info.expr.op == (op_type)) )
 
-#define PT_IS_EXPR_NODE_WITH_COMP_OP(n) \
-        ( (PT_IS_EXPR_NODE (n)) && \
-          ((n)->info.expr.op == PT_EQ || \
-           (n)->info.expr.op == PT_GE || \
-           (n)->info.expr.op == PT_GT || \
-           (n)->info.expr.op == PT_LT || \
-           (n)->info.expr.op == PT_LE || \
-           (n)->info.expr.op == PT_GT_INF || \
-           (n)->info.expr.op == PT_LT_INF || \
-           (n)->info.expr.op == PT_RANGE ))
-
-#define PT_IS_EXPR_NODE_WITH_NON_PUSHABLE(n) \
-        ( (PT_IS_EXPR_NODE (n)) && \
-          ((n)->info.expr.op == PT_DRANDOM || \
-           (n)->info.expr.op == PT_DRAND || \
-           (n)->info.expr.op == PT_RANDOM || \
-           (n)->info.expr.op == PT_RAND || \
-           (n)->info.expr.op == PT_SYS_GUID ))
+#define PT_IS_EXPR_NODE_WITH_COMP_OP(n)  \
+        ( (PT_IS_EXPR_NODE (n)) && (CHECK_OP_TYPE_BIT_MASK(_is_expr_with_comp_op_type, (n)->info.expr.op)) )
+#define PT_IS_EXPR_NODE_WITH_NON_PUSHABLE(n)  \
+        ( (PT_IS_EXPR_NODE (n)) && (CHECK_OP_TYPE_BIT_MASK(_is_expr_with_non_pushabel_op_type, (n)->info.expr.op)) )
 
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
@@ -512,39 +488,42 @@ struct json_t;
 #define PT_EMPTY	INT_MAX
 #define MAX_NUM_PLAN_TRACE        100
 
-#define PT_GET_COLLATION_MODIFIER(p)					     \
-  (((p)->node_type == PT_EXPR) ? ((p)->info.expr.coll_modifier - 1) :	     \
-  (((p)->node_type == PT_VALUE) ? ((p)->info.value.coll_modifier - 1) :	     \
-  (((p)->node_type == PT_NAME) ? ((p)->info.name.coll_modifier - 1) :	     \
-  (((p)->node_type == PT_FUNCTION) ? ((p)->info.function.coll_modifier - 1) :\
-  (((p)->node_type == PT_DOT_) ? ((p)->info.dot.coll_modifier - 1) : (-1))))))
+#define PT_GET_COLLATION_MODIFIER(p)                                             \
+  (CHECK_NODE_TYPE_BIT_MASK(_has_collation_modifier_node_type, (p)->node_type)   \
+   ? (((p)->node_type == PT_EXPR) ? ((p)->info.expr.coll_modifier - 1) :	 \
+      ((p)->node_type == PT_VALUE) ? ((p)->info.value.coll_modifier - 1) :	 \
+      ((p)->node_type == PT_NAME) ? ((p)->info.name.coll_modifier - 1) :	 \
+      ((p)->node_type == PT_FUNCTION) ? ((p)->info.function.coll_modifier - 1) : \
+      ((p)->info.dot.coll_modifier - 1))                                         \
+   : -1)
+// TODO: ctshim 이 매크로가 불려질 때 "(p)->info.*.coll_modifier"가 0일 수 있는가?
+// 어떤 타입이 더 많이 호출될 것 같은가?
 
 #define PT_HAS_COLLATION_MODIFIER(p) (PT_GET_COLLATION_MODIFIER((p)) != -1)
 
 #define PT_SET_NODE_COLL_MODIFIER(p, coll)                  \
     do {                                                    \
       assert ((p) != NULL);				    \
-      if ((p)->node_type == PT_EXPR)			    \
-	{						    \
+      switch((p)->node_type)                                \
+      {                                                     \
+        case PT_EXPR:			                    \
 	  (p)->info.expr.coll_modifier = (coll) + 1;	    \
-	}						    \
-      else if ((p)->node_type == PT_VALUE)		    \
-	{						    \
+          break; 				            \
+        case PT_VALUE:                       		    \
 	  (p)->info.value.coll_modifier = (coll) + 1;	    \
-	}						    \
-      else if ((p)->node_type == PT_NAME)		    \
-	{						    \
+	  break;					    \
+        case PT_NAME:                     		    \
 	  (p)->info.name.coll_modifier = (coll) + 1;	    \
-	}						    \
-      else if ((p)->node_type == PT_FUNCTION)		    \
-	{						    \
+	  break;					    \
+        case PT_FUNCTION:                 		    \
 	  (p)->info.function.coll_modifier = (coll) + 1;    \
-	}						    \
-      else						    \
-	{						    \
-	  assert ((p)->node_type == PT_DOT_);		    \
-	  (p)->info.dot.coll_modifier = (coll) + 1;	    \
-	}						    \
+	  break;					    \
+        case PT_DOT_:					    \
+      	  (p)->info.dot.coll_modifier = (coll) + 1;	    \
+	  break;					    \
+        default:                                            \
+          assert(false);                                    \
+      }                                                     \
     } while (0)
 
 /* Check if spec is flagged with any of flags_ */
@@ -555,34 +534,19 @@ struct json_t;
   (((spec_)->info.spec.flag &				    \
     (PT_SPEC_FLAG_KEY_INFO_SCAN | PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN)) != 0)
 
-/* Obtain reserved name type from spec flag */
-#define PT_SPEC_GET_RESERVED_NAME_TYPE(spec_)				\
-  (((spec_) == NULL || (spec_)->node_type != PT_SPEC			\
-    || (spec_)->info.spec.flag == 0) ?					\
-   /* is spec is NULL or not a PT_SPEC or flag is 0, return invalid */	\
-   RESERVED_NAME_INVALID :						\
-   /* else */								\
-   ((PT_IS_SPEC_FLAG_SET (spec_, PT_SPEC_FLAG_RECORD_INFO_SCAN)) ?	\
-    /* if spec is flagged for record info */				\
-    RESERVED_NAME_RECORD_INFO :						\
-    /* else */								\
-    ((PT_IS_SPEC_FLAG_SET (spec_, PT_SPEC_FLAG_PAGE_INFO_SCAN)) ?	\
-     /* if spec is flagged for page info */				\
-     RESERVED_NAME_PAGE_INFO :						\
-     /* else */								\
-     ((PT_IS_SPEC_FLAG_SET (spec_, PT_SPEC_FLAG_KEY_INFO_SCAN)) ?	\
-      /* if spec is flagged for key info */				\
-      RESERVED_NAME_KEY_INFO :						\
-      /* else */							\
-      ((PT_IS_SPEC_FLAG_SET(spec_, PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN) ?	\
-	/* if spec is flagged for b-tree node info */			\
-	RESERVED_NAME_BTREE_NODE_INFO :					\
-	/* spec is not flagged for any type of reserved names */	\
-	RESERVED_NAME_INVALID))))))
-
 /* Check if according to spec flag should bind names as reserved */
+#define PT_SHOULD_BIND_RESERVED_NAME_FLAGS ((PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN |       \
+                                             PT_SPEC_FLAG_KEY_INFO_SCAN    | PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN))
 #define PT_SHOULD_BIND_RESERVED_NAME(spec_)				\
-  (PT_SPEC_GET_RESERVED_NAME_TYPE (spec_) != RESERVED_NAME_INVALID)
+   ((spec_) != NULL && (spec_)->node_type == PT_SPEC && (spec_)->info.spec.flag & PT_SHOULD_BIND_RESERVED_NAME_FLAGS)
+
+/* Obtain reserved name type from spec flag */
+#define PT_SPEC_GET_RESERVED_NAME_TYPE(spec_)	                                                    \
+    ((PT_SHOULD_BIND_RESERVED_NAME((spec_)) == false) ? RESERVED_NAME_INVALID                       \
+      : (PT_IS_SPEC_FLAG_SET ((spec_), PT_SPEC_FLAG_RECORD_INFO_SCAN)) ? RESERVED_NAME_RECORD_INFO  \
+      : (PT_IS_SPEC_FLAG_SET ((spec_), PT_SPEC_FLAG_PAGE_INFO_SCAN)) ? RESERVED_NAME_PAGE_INFO 	    \
+      : (PT_IS_SPEC_FLAG_SET ((spec_), PT_SPEC_FLAG_KEY_INFO_SCAN)) ? RESERVED_NAME_KEY_INFO        \
+      : RESERVED_NAME_BTREE_NODE_INFO)
 
 /* PT_SPEC node contains a derived table */
 #define PT_SPEC_IS_DERIVED(spec_) \
@@ -690,11 +654,10 @@ struct json_t;
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
 #define PT_NODE_IS_NAME(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_NAME)
 #define PT_NODE_IS_SPEC(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_SPEC)
-#define PT_NODE_IS_SYNONYM(n)		(PT_ASSERT_NOT_NULL ((n)),		\
-					 (n)->node_type == PT_ALTER_SYNONYM ||	\
-					 (n)->node_type == PT_CREATE_SYNONYM ||	\
-					 (n)->node_type == PT_DROP_SYNONYM ||	\
-					 (n)->node_type == PT_RENAME_SYNONYM)
+
+#define PT_NODE_IS_SYNONYM(n)		(PT_ASSERT_NOT_NULL ((n)), \
+                                         CHECK_NODE_TYPE_BIT_MASK(_synonym_node_type, (n)->node_type))
+
 
 /* Check node_type of PT_SPEC */
 #define PT_SPEC_IS_ONLY(n)		(PT_SPEC_ASSERT ((n)), (n)->info.spec.only_all == PT_ONLY)
@@ -1475,7 +1438,9 @@ typedef enum
 
 typedef enum
 {
-  PT_AND = 400, PT_OR, PT_NOT,
+  PT_FIRST_OPCODE = 400,
+  PT_AND = PT_FIRST_OPCODE,
+  PT_OR, PT_NOT,
   PT_BETWEEN, PT_NOT_BETWEEN,
   PT_LIKE, PT_NOT_LIKE,
   PT_IS_IN, PT_IS_NOT_IN,
@@ -4067,7 +4032,6 @@ typedef struct
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
 
-
 #ifdef __cplusplus
 extern "C"
 {
@@ -4075,6 +4039,23 @@ extern "C"
   void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
   bool pt_is_json_value_type (PT_TYPE_ENUM type);
   bool pt_is_json_doc_type (PT_TYPE_ENUM type);
+  void initialize_bits_mask_variable ();
+
+#ifndef NDEBUG
+  extern bool _was_init_node_type_variable;
+#endif
+  extern BITMASK_ARY_TYPE _query_node_type[];
+  extern BITMASK_ARY_TYPE _synonym_node_type[];
+  extern BITMASK_ARY_TYPE _has_collation_modifier_node_type[];
+
+  extern BITMASK_ARY_TYPE _func_have_diff_args_op_type[];
+  extern BITMASK_ARY_TYPE _requires_hierarchical_query_op_type[];
+  extern BITMASK_ARY_TYPE _hq_op_except_prior_op_type[];
+  extern BITMASK_ARY_TYPE _numbering_after_execution_op_type[];
+  extern BITMASK_ARY_TYPE _is_serial_op_type[];
+  extern BITMASK_ARY_TYPE _is_expr_with_comp_op_type[];
+  extern BITMASK_ARY_TYPE _is_expr_with_non_pushabel_op_type[];
+
 #ifdef __cplusplus
 }
 #endif

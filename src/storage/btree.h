@@ -49,20 +49,20 @@ struct key_val_range;
 struct or_buf;
 typedef struct or_buf OR_BUF;
 
-#define SINGLE_ROW_INSERT    1
-#define SINGLE_ROW_DELETE    2
-#define SINGLE_ROW_UPDATE    3
-#define SINGLE_ROW_MODIFY    4	/* used in case of undo */
-#define MULTI_ROW_INSERT     5
-#define MULTI_ROW_DELETE     6
-#define MULTI_ROW_UPDATE     7
+#define SINGLE_ROW_INSERT    0x01
+#define SINGLE_ROW_DELETE    0x02
+#define SINGLE_ROW_UPDATE    0x04
+#define SINGLE_ROW_MODIFY    0x08	/* used in case of undo */
+#define MULTI_ROW_INSERT     0x10
+#define MULTI_ROW_DELETE     0x20
+#define MULTI_ROW_UPDATE     0x40
 
-#define BTREE_IS_MULTI_ROW_OP(op) \
-  (op == MULTI_ROW_INSERT || op == MULTI_ROW_UPDATE || op == MULTI_ROW_DELETE)
+#define BTREE_MULTI_ROW_OP_MASK (0x70)	/* (MULTI_ROW_INSERT | MULTI_ROW_UPDATE | MULTI_ROW_DELETE) */
+#define BTREE_IS_MULTI_ROW_OP(op) (BTREE_MULTI_ROW_OP_MASK & (op))
 
+#define BTREE_NEED_UNIQUE_OP_MASK = (0x15)	/* (SINGLE_ROW_INSERT | MULTI_ROW_INSERT | SINGLE_ROW_UPDATE) */
 #define BTREE_NEED_UNIQUE_CHECK(thread_p, op) \
-  (logtb_is_current_active (thread_p) \
-   && (op == SINGLE_ROW_INSERT || op == MULTI_ROW_INSERT || op == SINGLE_ROW_UPDATE))
+        (logtb_is_current_active (thread_p) && (BTREE_NEED_UNIQUE_OP_MASK & (op)))
 
 /* For next-key locking */
 #define BTREE_CONTINUE                     -1
