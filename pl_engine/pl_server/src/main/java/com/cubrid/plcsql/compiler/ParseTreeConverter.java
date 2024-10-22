@@ -1400,8 +1400,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
     }
 
-    private static final int ID_LEN_MAX = 222; // see User Manual
-
     @Override
     public Expr visitIdentifier(IdentifierContext ctx) {
         String name = Misc.getNormalizedText(ctx);
@@ -2271,6 +2269,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // --------------------------------------------------------
     // Private Static
     // --------------------------------------------------------
+
+    private static final int ID_LEN_MAX = 222; // see User Manual
 
     private static final BigInteger UINT_LITERAL_MAX =
             new BigInteger("99999999999999999999999999999999999999");
