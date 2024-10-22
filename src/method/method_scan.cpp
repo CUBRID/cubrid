@@ -66,7 +66,6 @@ namespace cubscan
 	  m_list_id = list_id;
 	  int arg_count = m_list_id->type_list.type_cnt;
 	  m_arg_vector.resize (arg_count);
-	  // m_arg_use_vector.resize (arg_count, false);
 	  m_arg_dom_vector.resize (arg_count);
 
 	  for (int i = 0; i < arg_count; i++)
