@@ -9436,7 +9436,7 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
 
       logtb_find_client_name_host_pid (waiter->tran_index, &prog, &user, &host, &pid);
       fprintf (log_fp, "%*cclient: %s@%s|%s(%d)", indent, ' ', user, host, prog, pid);
-      if (holder->tran_index == tran_index)
+      if (waiter->tran_index == tran_index)
 	{
 	  fprintf (log_fp, " (Deadlock Victim)");
 	}
