@@ -313,7 +313,8 @@ typedef unsigned char BITMASK_ARY_TYPE;
 
 
 #define CHECK_PT_OP_TYPE_ENUM(v) (assert((v) >= PT_FIRST_OPCODE && (v) < PT_LAST_OPCODE))
-#define CHECK_OP_TYPE_BIT_MASK(_bitmask, op) (CHECK_PT_OP_TYPE_ENUM((op)), CHECK_BITMASK_ARY((_bitmask), (op)))
+#define CHECK_OP_TYPE_BIT_MASK(_bitmask, op) \
+        (CHECK_PT_OP_TYPE_ENUM((op)), CHECK_BITMASK_ARY((_bitmask), ((op) - PT_FIRST_OPCODE)))
 
 #define PT_DOES_FUNCTION_HAVE_DIFFERENT_ARGS(op) CHECK_OP_TYPE_BIT_MASK(_func_have_diff_args_op_type, (op))
 #define PT_REQUIRES_HIERARCHICAL_QUERY(op)       CHECK_OP_TYPE_BIT_MASK(_requires_hierarchical_query_op_type, (op))

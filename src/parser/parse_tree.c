@@ -1473,6 +1473,8 @@ BITMASK_ARY_TYPE _synonym_node_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_LAST_NODE_NUMB
 BITMASK_ARY_TYPE _has_collation_modifier_node_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_LAST_NODE_NUMBER)] = { 0, };
 
 #define PT_OP_CODES_COUNT  (PT_LAST_OPCODE - PT_FIRST_OPCODE)
+#define SET_OP_BITMASK_ARY(bm, v) SET_BITMASK_ARY((bm), ((v) - PT_FIRST_OPCODE))
+
 BITMASK_ARY_TYPE _func_have_diff_args_op_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_OP_CODES_COUNT)] = { 0, };
 BITMASK_ARY_TYPE _requires_hierarchical_query_op_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_OP_CODES_COUNT)] = { 0, };
 BITMASK_ARY_TYPE _hq_op_except_prior_op_type[BITMASK_ARY_BUF_BYTE_SIZE (PT_OP_CODES_COUNT)] = { 0, };
@@ -1491,7 +1493,7 @@ initialize_bits_mask_variable ()
     }
 
   int idx, i;
-
+  // NODE TYPE ------------------------------------------------------------------------------------
   // PT_IS_QUERY_NODE_TYPE
   SET_BITMASK_ARY (_query_node_type, PT_SELECT);
   SET_BITMASK_ARY (_query_node_type, PT_UNION);
@@ -1513,6 +1515,8 @@ initialize_bits_mask_variable ()
 
 
 
+
+  // OP CODE ------------------------------------------------------------------------------------  
   // PT_DOES_FUNCTION_HAVE_DIFFERENT_ARGS
   PT_OP_TYPE _func_have_diff_args_op_list[] = {
     PT_MODULUS, PT_SUBSTRING, PT_LPAD, PT_RPAD, PT_ADD_MONTHS,
@@ -1524,7 +1528,7 @@ initialize_bits_mask_variable ()
 
   for (i = 0; _func_have_diff_args_op_list[i] != PT_LAST_OPCODE; i++)
     {
-      SET_BITMASK_ARY (_func_have_diff_args_op_type, _func_have_diff_args_op_list[i]);
+      SET_OP_BITMASK_ARY (_func_have_diff_args_op_type, _func_have_diff_args_op_list[i]);
     }
 
   // PT_REQUIRES_HIERARCHICAL_QUERY
@@ -1537,7 +1541,7 @@ initialize_bits_mask_variable ()
 
   for (i = 0; _requires_hierarchical_query_op_list[i] != PT_LAST_OPCODE; i++)
     {
-      SET_BITMASK_ARY (_requires_hierarchical_query_op_type, _requires_hierarchical_query_op_list[i]);
+      SET_OP_BITMASK_ARY (_requires_hierarchical_query_op_type, _requires_hierarchical_query_op_list[i]);
     }
 
   // PT_CHECK_HQ_OP_EXCEPT_PRIOR
@@ -1549,7 +1553,7 @@ initialize_bits_mask_variable ()
 
   for (i = 0; _hq_op_except_prior_op_list[i] != PT_LAST_OPCODE; i++)
     {
-      SET_BITMASK_ARY (_hq_op_except_prior_op_type, _hq_op_except_prior_op_list[i]);
+      SET_OP_BITMASK_ARY (_hq_op_except_prior_op_type, _hq_op_except_prior_op_list[i]);
     }
 
   // PT_IS_NUMBERING_AFTER_EXECUTION
@@ -1563,12 +1567,12 @@ initialize_bits_mask_variable ()
 
   for (i = 0; _numbering_after_execution_op_list[i] != PT_LAST_OPCODE; i++)
     {
-      SET_BITMASK_ARY (_numbering_after_execution_op_type, _numbering_after_execution_op_list[i]);
+      SET_OP_BITMASK_ARY (_numbering_after_execution_op_type, _numbering_after_execution_op_list[i]);
     }
 
   // PT_IS_SERIAL
-  SET_BITMASK_ARY (_is_serial_op_type, PT_CURRENT_VALUE);
-  SET_BITMASK_ARY (_is_serial_op_type, PT_NEXT_VALUE);
+  SET_OP_BITMASK_ARY (_is_serial_op_type, PT_CURRENT_VALUE);
+  SET_OP_BITMASK_ARY (_is_serial_op_type, PT_NEXT_VALUE);
 
   // PT_IS_EXPR_NODE_WITH_COMP_OP
   PT_OP_TYPE _is_expr_with_comp_op_list[] = {
@@ -1578,7 +1582,7 @@ initialize_bits_mask_variable ()
 
   for (i = 0; _is_expr_with_comp_op_list[i] != PT_LAST_OPCODE; i++)
     {
-      SET_BITMASK_ARY (_is_expr_with_comp_op_type, _is_expr_with_comp_op_list[i]);
+      SET_OP_BITMASK_ARY (_is_expr_with_comp_op_type, _is_expr_with_comp_op_list[i]);
     }
 
   // PT_IS_EXPR_NODE_WITH_NON_PUSHABLE
@@ -1589,7 +1593,7 @@ initialize_bits_mask_variable ()
 
   for (i = 0; _is_expr_with_non_pushabel_op_list[i] != PT_LAST_OPCODE; i++)
     {
-      SET_BITMASK_ARY (_is_expr_with_non_pushabel_op_type, _is_expr_with_non_pushabel_op_list[i]);
+      SET_OP_BITMASK_ARY (_is_expr_with_non_pushabel_op_type, _is_expr_with_non_pushabel_op_list[i]);
     }
 
   //
