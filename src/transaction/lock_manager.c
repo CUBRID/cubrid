@@ -270,7 +270,8 @@ struct lk_WFG_edge
   int holder_flag;
   int next;
   INT64 edge_wait_stime;
-  LK_ENTRY *entry;
+  LK_ENTRY *holder;
+  LK_ENTRY *waiter;
 };
 
 typedef struct lk_deadlock_victim LK_DEADLOCK_VICTIM;
@@ -543,8 +544,7 @@ static void lock_decrement_class_granules (LK_ENTRY * class_entry);
 static LK_ENTRY *lock_find_class_entry (int tran_index, const OID * class_oid);
 
 static void lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index);
-static void lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * holder,
-					   LK_ENTRY * waiter);
+static void lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, LK_ENTRY * holder, LK_ENTRY * waiter);
 static void lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
 static void lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * wait_entry);
 static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
@@ -4698,7 +4698,7 @@ lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_ind
  *     'from_tran_index' transaction waits for 'to_tran_index' transaction.
  */
 static int
-lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT64 edge_wait_stime, LK_ENTRY * entry)
+lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT64 edge_wait_stime, LK_ENTRY * holder, LK_ENTRY * waiter)
 {
   int prev, curr;
   int i;
@@ -4810,7 +4810,8 @@ lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT6
   lk_Gl.TWFG_edge[alloc_idx].edge_seq_num = lk_Gl.global_edge_seq_num;
   lk_Gl.TWFG_edge[alloc_idx].holder_flag = holder_flag;
   lk_Gl.TWFG_edge[alloc_idx].edge_wait_stime = edge_wait_stime;
-  lk_Gl.TWFG_edge[alloc_idx].entry = entry;
+  lk_Gl.TWFG_edge[alloc_idx].holder = holder;
+  lk_Gl.TWFG_edge[alloc_idx].waiter = waiter;
 
   /* connect the WFG edge into WFG */
   lk_Gl.TWFG_edge[alloc_idx].next = lk_Gl.TWFG_node[from_tran_index].first_edge;
@@ -4857,7 +4858,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   const char *client_prog_name, *client_user_name, *client_host_name;
   int client_pid;
   int next_node;
-  LK_ENTRY *entry, **target;
+  LK_ENTRY *holder, *waiter;
   int victim_tran_index;
   int tran_log_count, victim_tran_log_count;
 
@@ -5140,16 +5141,18 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
       victims[victim_count].holder = NULL;
       for (v = s;;)
 	{
-	  entry = TWFG_edge[TWFG_node[v].current].entry;
-	  target = entry->granted_mode != NULL_LOCK ? &victims[victim_count].holder : &victims[victim_count].waiter;
+	  holder = TWFG_edge[TWFG_node[v].current].holder;
+	  waiter = TWFG_edge[TWFG_node[v].current].waiter;
 
-	  assert (entry != NULL);
-	  assert (target != NULL);
+	  assert (holder != NULL && waiter != NULL);
 
-	  /* in this case, entry is not on any stack (global or retired) */
-	  /* we can link the lock lists using member accessible via of_local_next */
-	  *((LK_ENTRY * volatile *) (((char *) entry) + obj_lock_entry_desc.of_local_next)) = *target;
-	  *target = entry;
+	  /* In this case, entry is not on any stack (global or local). */
+	  /* we can link the lock lists using member accessible via of_local_next. */
+	  *((LK_ENTRY * volatile *) (((char *) holder) + obj_lock_entry_desc.of_local_next)) = victims[victim_count].holder;
+	  victims[victim_count].holder = holder;
+
+	  *((LK_ENTRY * volatile *) (((char *) waiter) + obj_lock_entry_desc.of_local_next)) = victims[victim_count].waiter;
+	  victims[victim_count].waiter = waiter;
 
 	  if (v == t)
 	    break;
@@ -7815,7 +7818,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 
 	      if (compat1 == LOCK_COMPAT_NO || compat2 == LOCK_COMPAT_NO)
 		{
-		  (void) lock_add_WFG_edge (hj->tran_index, hi->tran_index, true, hj->thrd_entry->lockwait_stime, hj);
+		  (void) lock_add_WFG_edge (hj->tran_index, hi->tran_index, true, hj->thrd_entry->lockwait_stime, hi, hj);
 		}
 
 	      compat1 = lock_Comp[hi->blocked_mode][hj->granted_mode];
@@ -7823,7 +7826,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 
 	      if (compat1 == LOCK_COMPAT_NO)
 		{
-		  (void) lock_add_WFG_edge (hi->tran_index, hj->tran_index, true, hi->thrd_entry->lockwait_stime, hi);
+		  (void) lock_add_WFG_edge (hi->tran_index, hj->tran_index, true, hi->thrd_entry->lockwait_stime, hj, hi);
 		}
 	    }
 	}
@@ -7842,7 +7845,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 
 	      if (compat1 == LOCK_COMPAT_NO || compat2 == LOCK_COMPAT_NO)
 		{
-		  (void) lock_add_WFG_edge (hj->tran_index, hi->tran_index, true, hj->thrd_entry->lockwait_stime, hj);
+		  (void) lock_add_WFG_edge (hj->tran_index, hi->tran_index, true, hj->thrd_entry->lockwait_stime, hi, hj);
 		}
 	    }
 	}
@@ -7859,7 +7862,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 
 	      if (compat1 == LOCK_COMPAT_NO)
 		{
-		  (void) lock_add_WFG_edge (hj->tran_index, hi->tran_index, false, hj->thrd_entry->lockwait_stime, hj);
+		  (void) lock_add_WFG_edge (hj->tran_index, hi->tran_index, false, hj->thrd_entry->lockwait_stime, hi, hj);
 		}
 	    }
 	}
@@ -8007,7 +8010,7 @@ final_:
       log_fp = event_log_start (thread_p, "DEADLOCK");
       if (log_fp != NULL)
 	{
-	  lock_event_log_deadlock_locks (thread_p, log_fp, victims[k].holder, victims[k].waiter);
+	  lock_event_log_deadlock_locks (thread_p, log_fp, victims[k].tran_index, victims[k].holder, victims[k].waiter);
 	  event_log_end (thread_p);
 	}
     }
@@ -9361,16 +9364,17 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
 
 /*
  * lock_event_log_deadlock_locks - dump locks that caused deadlocks to event log file
- *   return:
- *   thread_p(in):
- *   log_fp(in):
- *   holder(in):
- *   waiter(in):
+ *   return: void
+ *   thread_p(in): thread
+ *   log_fp(in): file pointer (log)
+ *   tran_index(in): transaction index selected as victim
+ *   holder(in): holder list
+ *   waiter(in): waiter list
  *
  *   note: for deadlock
  */
 static void
-lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * holder, LK_ENTRY * waiter)
+lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, LK_ENTRY * holder, LK_ENTRY * waiter)
 {
   const char *prog, *user, *host;
   int pid;
@@ -9380,19 +9384,23 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
-  if (holder != NULL)
+  for (i = 0; holder != NULL && waiter != NULL && i < MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG;
+       holder = *((LK_ENTRY * volatile *) (((char *) holder) + obj_lock_entry_desc.of_local_next)),
+       waiter = *((LK_ENTRY * volatile *) (((char *) waiter) + obj_lock_entry_desc.of_local_next)), i += 2)
     {
+      /* holder */
       fprintf (log_fp, "hold:\n");
-    }
 
-  for (i = 0; holder != NULL && i < MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG;
-       holder = *((LK_ENTRY * volatile *) (((char *) holder) + obj_lock_entry_desc.of_local_next)), i++)
-    {
       tran_lock = &lk_Gl.tran_lock_table[holder->tran_index];
       rv = pthread_mutex_lock (&tran_lock->hold_mutex);
 
       logtb_find_client_name_host_pid (holder->tran_index, &prog, &user, &host, &pid);
-      fprintf (log_fp, "%*cclient: %s@%s|%s(%d)\n", indent, ' ', user, host, prog, pid);
+      fprintf (log_fp, "%*cclient: %s@%s|%s(%d)", indent, ' ', user, host, prog, pid);
+      if (holder->tran_index == tran_index)
+      {
+        fprintf (log_fp, " (Deadlock Victim)");
+      }
+      fprintf (log_fp, "\n");
 
       for (lock_name = LOCK_TO_LOCKMODE_STRING (holder->granted_mode); *lock_name == ' '; lock_name++);
       fprintf (log_fp, "%*clock: %s", indent, ' ', lock_name);
@@ -9411,22 +9419,9 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
       pthread_mutex_unlock (&tran_lock->hold_mutex);
 
-      fprintf (log_fp, "\n");
-    }
+      /* waiter */
+      fprintf (log_fp, "\nwait:\n");
 
-  if (holder != NULL)
-    {
-      fprintf (log_fp, "%*c...\n", indent, ' ');
-    }
-
-  if (waiter != NULL)
-    {
-      fprintf (log_fp, "wait:\n");
-    }
-
-  for (i = 0; waiter != NULL && i < MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG;
-       waiter = *((LK_ENTRY * volatile *) (((char *) waiter) + obj_lock_entry_desc.of_local_next)), i++)
-    {
       tran_lock = &lk_Gl.tran_lock_table[waiter->tran_index];
       rv = pthread_mutex_lock (&tran_lock->hold_mutex);
 
@@ -9447,8 +9442,10 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
       fprintf (log_fp, "\n");
     }
+  
+  assert ((holder == NULL && waiter == NULL) || (holder != NULL && waiter != NULL));
 
-  if (waiter != NULL)
+  if (holder != NULL && waiter != NULL)
     {
       fprintf (log_fp, "%*c...\n", indent, ' ');
     }
