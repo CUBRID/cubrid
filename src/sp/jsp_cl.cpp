@@ -1102,7 +1102,6 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   err = au_object_revoke_all_privileges (NULL, sp_mop);
   if (err != NO_ERROR)
     {
-      assert (err != NO_ERROR);
       goto error;
     }
 
