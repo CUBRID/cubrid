@@ -1454,7 +1454,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1362 Dropping system generated stored procedure is not allowed.
 1363 PL/CSQL Stored procedure/function does not support Invoker's rights.
 
-1364 Last Error
+1364 Only DBA and the owner can grant the %1$s privilege.
+
+1365 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1949,7 +1951,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 324 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
 325 Only trailing default parameter is allowed: invalid at '%1$s'.
 326 Stored procedure/function '%1$s' has OUT or IN OUT arguments
-327 Grant option is not allowed for '%1$s'.
+327 Grant option is not allowed for %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
@@ -2133,22 +2135,22 @@ $set 15 MSGCAT_SET_IO
 2 Backup = %1$s is needed. \n It must be mounted/loaded to continue.\n Type 1 to continue after the backup is mounted/loaded.\n Type 0 to quit.\n
 3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
 4 Backup magic file identification %1$s,\n
-5          Release: %1$s\n\
-     Disk Version: %2$g\n
-6    Database Name: %1$s\n\
- DB Creation Time: %2$s\
-         Pagesize: %3$d\n
-7     Backup Level: %1$d (%2$s)\n\
-        Start_lsa: %3$lld|%4$d\n\
-         Last_lsa: %5$lld|%6$d\n
-8      Backup Time: %1$s\
-  Backup Unit Num: %2$d\n
-9  Database Volume name: %1$s\n\
+5 Release: %1$s\n\
+   Disk Version: %2$g\n
+6 Database Name: %1$s\n\
+   DB Creation Time: %2$s\
+   Pagesize: %3$d\n
+7 Backup Level: %1$d (%2$s)\n\
+   Start_lsa: %3$lld|%4$d\n\
+   Last_lsa: %5$lld|%6$d\n
+8 Backup Time: %1$s\
+   Backup Unit Num: %2$d\n
+9 Database Volume Name: %1$s\n\
    Volume Identifier: %2$d, Size: %3$lld bytes (%4$d pages)\n
-10   Database Name: %1$s\n\
-     Volume Name: %2$s\n\
-        Unit Num: %3$d\n\
-    Backup Level: %4$d (%5$s)\n\
+10 Database Name: %1$s\n\
+   Volume Name: %2$s\n\
+   Unit Num: %3$d\n\
+   Backup Level: %4$d (%5$s)\n\
 Enter one of the following options:\n
 11 Type\n \
   -  %1$d to quit.\n \
@@ -2164,14 +2166,16 @@ Enter one of the following options:\n
 19 Backup volume %1$s timestamp mismatch\n  (Timestamp: %2$s, expecting %3$s).\n\n
 20 Backup volume information file error, line %1$d.\n
 21 Backup Volume Label: Level: %1$d, Unit: %2$d, Database %3$s, Backup Time: %4$s\n
-22     Previous Backup level: %1$d Time: %2$s (start_lsa was %3$lld|%4$d)\n
+22 Previous Backup Level: %1$d\n\
+   Time: %2$s\
+   (start_lsa was %3$lld|%4$d)\n
 23 The following database backup volume is needed to continue restoring:\n\n
 24 Backup destination is full, a new destination is required to continue:\n\n
 25 Preceding Backup Volume Name: %1$s\n
-26     Next Backup Volume Name: %1$s\n
-27  Backup Pagesize: %1$d\n
-28       Zip Method: %1$d (%2$s)\n\
-        Zip Level: %3$d (%4$s)\n
+26 Next Backup Volume Name: %1$s\n
+27 Backup Pagesize: %1$d\n
+28 Zip Method: %1$d (%2$s)\n\
+   Zip Level: %3$d (%4$s)\n
 29 Include Active Log: %1$s\n
 
 $set 16 MSGCAT_SET_LOG

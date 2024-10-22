@@ -5218,16 +5218,15 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   hsidp = &scan_id->s.hsid;
   p_current_oid = &hsidp->curr_oid;
 
-#if 0
   if (scan_id->mvcc_select_lock_needed)
     {
-      p_current_oid = &hsidp->curr_oid;
+      COPY_OID (&current_oid, &hsidp->curr_oid);
+      p_current_oid = &current_oid;
     }
   else
     {
       p_current_oid = &hsidp->curr_oid;
     }
-#endif
 
   /* set data filter information */
   scan_init_filter_info (&data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list, scan_id->vd,

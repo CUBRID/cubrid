@@ -2532,7 +2532,7 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
   /* TODO - Do we need to handle NULL fwd_log_lsa? */
   if (!LSA_ISNULL (&fwd_log_lsa))
     {
-      if (LSA_GE (log_lsa, &fwd_log_lsa) || LSA_GE (&fwd_log_lsa, &log_Gl.hdr.eof_lsa))
+      if (LSA_GE (log_lsa, &fwd_log_lsa) || LSA_GT (&fwd_log_lsa, &log_Gl.hdr.eof_lsa))
 	{
 	  // check fwd_log_lsa value if it is corrupted or not
 	  is_log_page_broken = true;
@@ -4526,6 +4526,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
       tsc_start_time_usec (&info_logging_check_time);
     }
 
+  LOG_CS_EXIT (thread_p);
+
   while (!LSA_ISNULL (&max_undo_lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
@@ -4949,6 +4951,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "UNDO");
 
   /* Flush all dirty pages */
+
+  LOG_CS_ENTER (thread_p);
 
   logpb_flush_pages_direct (thread_p);
 

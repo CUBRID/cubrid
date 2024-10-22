@@ -3517,7 +3517,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   if (argument == NULL)
     {
       err_msg = (*csql_get_message) (CSQL_MSG_TOO_FEW_ARGS);
-      fprintf (stderr, err_msg);
+      fprintf (csql_Output_fp, "%s\n", err_msg);
       return DO_CMD_SUCCESS;
     }
 
