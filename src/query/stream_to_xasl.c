@@ -4742,10 +4742,6 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 	}
     }
 
-  access_spec->parts = NULL;
-  access_spec->curent = NULL;
-  access_spec->pruned = false;
-
   ptr = or_unpack_int (ptr, &val);
   access_spec->flags = (ACCESS_SPEC_FLAG) val;
 

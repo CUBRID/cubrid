@@ -6615,7 +6615,7 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* wait_msecs */
 	   + OR_INT_SIZE	/* no_logging */
 	   + OR_INT_SIZE	/* do_replace */
-	   + OR_INT_SIZE	/* needs pruning */
+	   + OR_INT_SIZE	/* pruning_type */
 	   + OR_INT_SIZE	/* num_val_lists */
 	   + PTR_SIZE		/* obj_oid */
 	   + (insert_info->num_val_lists * PTR_SIZE));	/* valptr_lists */
@@ -6999,7 +6999,7 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
 	   + OR_INT_SIZE	/* fixed_scan */
 	   + OR_INT_SIZE	/* qualified_scan */
 	   + OR_INT_SIZE	/* single_fetch */
-	   + OR_INT_SIZE	/* needs pruning */
+	   + OR_INT_SIZE	/* pruning_type */
 	   + PTR_SIZE);		/* s_dbval */
 
   return size;
