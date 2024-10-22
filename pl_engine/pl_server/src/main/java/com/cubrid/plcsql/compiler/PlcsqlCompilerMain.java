@@ -63,7 +63,7 @@ public class PlcsqlCompilerMain {
         int optionFlags = verbose ? OPT_VERBOSE : 0;
         CharStream input = CharStreams.fromString(in);
         try {
-            return compileInner(input, optionFlags, owner, revision);
+            return compileInner(new InstanceStore(), input, optionFlags, owner, revision);
         } catch (SyntaxError e) {
             CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
             return err;
@@ -142,7 +142,7 @@ public class PlcsqlCompilerMain {
     }
 
     private static CompileInfo compileInner(
-            CharStream input, int optionFlags, String owner, String revision) {
+            InstanceStore iStore, CharStream input, int optionFlags, String owner, String revision) {
 
         boolean verbose = (optionFlags & OPT_VERBOSE) > 0;
 
@@ -184,7 +184,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // converting parse tree to AST
 
-        ParseTreeConverter converter = new ParseTreeConverter(owner, revision);
+        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, revision);
         Unit unit = (Unit) converter.visit(tree);
 
         if (verbose) {
@@ -205,7 +205,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // typechecking
 
-        TypeChecker typeChecker = new TypeChecker(converter.symbolStack, converter);
+        TypeChecker typeChecker = new TypeChecker(iStore, converter.symbolStack, converter);
         typeChecker.visitUnit(unit);
 
         if (verbose) {
@@ -215,7 +215,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // Java code generation
 
-        String javaCode = new JavaCodeWriter().buildCodeLines(unit);
+        String javaCode = new JavaCodeWriter(iStore).buildCodeLines(unit);
 
         if (verbose) {
             logElapsedTime(logStore, "Java code generation", t0);
