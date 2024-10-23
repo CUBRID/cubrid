@@ -1440,9 +1440,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         String sqlType = DBTypeAdapter.getSqlTypeName(fs.retType.type);
                         throw new SemanticError( // s437
                                 Misc.getLineColumnOf(ctx),
-                                "function "
+                                "function '"
                                         + name
-                                        + " uses unsupported type "
+                                        + "' uses unsupported type "
                                         + sqlType
                                         + " as its return type");
                     }
@@ -1460,7 +1460,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             if (ret == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s094
-                        "undeclared identifier " + name);
+                        "undeclared identifier '" + name + "'");
             }
 
             return ret;
