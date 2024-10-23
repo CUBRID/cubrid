@@ -1060,7 +1060,6 @@ loop:
       (void) xboot_unregister_client (thread_p, tran_index);
       session_remove_query_entry_all (thread_p);
     }
-
   css_free_conn (conn_p);
 
   css_set_thread_info (thread_p, -1, 0, local_tran_index, -1);
