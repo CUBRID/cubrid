@@ -222,7 +222,7 @@ public class ExecuteThread extends Thread {
                     }
                     Server.log(throwable);
                     try {
-                        // TODO: error manager module
+                        // TODO: error managing module
                         if (throwable instanceof SQLException) {
                             String msg = throwable.getMessage();
                             if (msg == null) {
