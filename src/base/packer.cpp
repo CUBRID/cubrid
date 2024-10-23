@@ -729,6 +729,7 @@ namespace cubpacking
 	std::memcpy (str, m_ptr, len);
 	m_ptr += len;
       }
+
     str[len] = '\0';
 
     align (INT_ALIGNMENT);

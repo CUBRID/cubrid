@@ -47,6 +47,7 @@ call change_owner('record', 'PUBLIC') on class db_root;
 CREATE CLASS history dont_reuse_oid;
 call change_owner('history', 'PUBLIC') on class db_root;
 
+
 CREATE PRIVATE SYNONYM athlete FOR public.athlete;
 CREATE PRIVATE SYNONYM code FOR public.code;
 CREATE PRIVATE SYNONYM [event] FOR public.[event];
@@ -180,5 +181,6 @@ ALTER CLASS public.participant ADD CONSTRAINT [fk_participant_nation_code] FOREI
 ALTER CLASS public.game ADD CONSTRAINT [fk_game_event_code] FOREIGN KEY(event_code) REFERENCES public.[event] ON DELETE RESTRICT ON UPDATE RESTRICT ;
 
 ALTER CLASS public.game ADD CONSTRAINT [fk_game_athlete_code] FOREIGN KEY(athlete_code) REFERENCES public.athlete ON DELETE RESTRICT ON UPDATE RESTRICT ;
+
 
 COMMIT WORK;
