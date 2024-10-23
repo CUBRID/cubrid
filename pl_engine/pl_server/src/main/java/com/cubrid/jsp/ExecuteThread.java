@@ -222,7 +222,7 @@ public class ExecuteThread extends Thread {
                     }
                     Server.log(throwable);
                     try {
-                        // TODO: error managing module
+                        // TODO: error manager module
                         if (throwable instanceof SQLException) {
                             sendError(throwable.getMessage());
                         } else if (throwable instanceof PlcsqlRuntimeError) {
