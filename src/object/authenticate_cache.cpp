@@ -472,71 +472,124 @@ authenticate_cache::extend_class_caches (int *index)
 }
 
 /*
- * au_find_user_cache_index - This determines the cache index for the given
- *                            user.
- *   return: error code
- *   user(in): user object
- *   index(out): returned user index
- *   check_it(in):
+ * make_user_cache - This creates a new user cache and appends it to the user cache list
+ *   return: user cache
+ *   name(in): user name
+ *   user(in): user MOP
  *
- * Note: If the user has never been added to the authorization cache,
- *       we reserve a new index for the user.  Reserving the user index may
- *       result in growing all the existing class caches.
- *       This is the primary work function for AU_SET_USER() and it should
- *       be fast.
  */
-int
-authenticate_cache::find_user_cache_index (DB_OBJECT *user, int *index, int check_it)
+AU_USER_CACHE *
+authenticate_cache::make_user_cache (const char *name, DB_OBJECT *user, bool sanity_check)
 {
-  int error = NO_ERROR;
-  AU_USER_CACHE *u, *new_user_cache;
-  DB_OBJECT *class_mop;
+  AU_USER_CACHE *new_user_cache = nullptr;
+  assert (name != nullptr);
+  assert (user != nullptr);
+
+  if (sanity_check)
+    {
+      /*
+      * User wasn't in the cache, add it and extend the existing class
+      * caches.  First do a little sanity check just to make sure this
+      * is a user object.
+      */
+      DB_OBJECT *class_mop = sm_get_class (user);
+      if (class_mop == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return NULL;
+	}
+      else if (class_mop != Au_user_class)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_CORRUPTED, 0); /* need a better error */
+	  return NULL;
+	}
+    }
+
+  if ((new_user_cache = find_user_cache_by_name (name)) != nullptr)
+    {
+      return new_user_cache;
+    }
+
+  std::string upper_case_name (name);
+  std::transform (upper_case_name.begin(), upper_case_name.end(), upper_case_name.begin(), ::toupper);
+
+  new_user_cache = new AU_USER_CACHE ();
+  if (new_user_cache != nullptr)
+    {
+      new_user_cache->next = user_cache;
+      user_cache = new_user_cache;
+
+      new_user_cache->name = upper_case_name;
+      new_user_cache->user = user;
+      new_user_cache->index = -1;
+
+      user_name_cache[upper_case_name] = new_user_cache;
+    }
+
+  return new_user_cache;
+}
+
+/*
+ * find_user_cache_by_name - This determines the cache for the given user name.
+ *   return: user cache
+ *   name(in): user name
+ *
+ */
+AU_USER_CACHE *
+authenticate_cache::find_user_cache_by_name (const char *name)
+{
+  if (name == nullptr)
+    {
+      return nullptr;
+    }
+
+  AU_USER_CACHE *user_cache = nullptr;
+
+  std::string upper_case_name (name);
+  std::transform (upper_case_name.begin(), upper_case_name.end(), upper_case_name.begin(), ::toupper);
+
+  const auto &it = user_name_cache.find (upper_case_name);
+  if (it != user_name_cache.end())
+    {
+      user_cache = it->second;
+    }
+
+  return user_cache;
+}
+
+/*
+ * find_user_cache_by_mop - This determines the cache for the given user MOP.
+ *   return: user cache
+ *   user(in): user mop
+ *
+ */
+AU_USER_CACHE *
+authenticate_cache::find_user_cache_by_mop (DB_OBJECT *user)
+{
+  AU_USER_CACHE *u;
 
   for (u = user_cache; u != NULL && !ws_is_same_object (u->user, user); u = u->next)
     ;
 
-  if (u != NULL)
+  return u;
+}
+
+int
+authenticate_cache::get_user_cache_index (AU_USER_CACHE *cache, int *index)
+{
+  int error = NO_ERROR;
+
+  if (cache->index == -1)
     {
-      *index = u->index;
+      error = extend_class_caches (index);
+      if (error = NO_ERROR)
+	{
+	  cache->index = *index;
+	}
     }
   else
     {
-      /*
-       * User wasn't in the cache, add it and extend the existing class
-       * caches.  First do a little sanity check just to make sure this
-       * is a user object.
-       */
-      if (check_it)
-	{
-	  class_mop = sm_get_class (user);
-	  if (class_mop == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-	  else if (class_mop != Au_user_class)
-	    {
-	      error = ER_AU_CORRUPTED;	/* need a better error */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      return er_errid ();
-	    }
-	}
-
-      new_user_cache = (AU_USER_CACHE *) malloc (sizeof (AU_USER_CACHE));
-      if (new_user_cache != NULL)
-	{
-	  if ((error = extend_class_caches (index)))
-	    {
-	      free_and_init (new_user_cache);
-	    }
-	  else
-	    {
-	      new_user_cache->next = user_cache;
-	      user_cache = new_user_cache;
-	      new_user_cache->user = user;
-	      new_user_cache->index = *index;
-	    }
-	}
+      *index = cache->index;
     }
 
   return error;
@@ -553,7 +606,11 @@ authenticate_cache::free_user_cache (AU_USER_CACHE *u)
   if (u != NULL)
     {
       u->user = NULL;		/* clear GC roots */
-      free_and_init (u);
+
+      user_name_cache.erase (u->name);
+      u->name.clear ();
+
+      delete u;
     }
 }
 
@@ -646,6 +703,9 @@ authenticate_cache::remove_user_cache_references (MOP user)
       if (ws_is_same_object (u->user, user))
 	{
 	  u->user = NULL;
+
+	  user_name_cache.erase (u->name);
+	  u->name.clear ();
 	}
     }
 }

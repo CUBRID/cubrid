@@ -26,6 +26,9 @@
 
 #include "class_object.h" /* SM_CLASS */
 
+#include <string>
+#include <unordered_map>
+
 /* Invalid cache is identified when the high bit is on. */
 #define AU_CACHE_INVALID        0x80000000
 
@@ -65,6 +68,7 @@ struct au_user_cache
 {
   struct au_user_cache *next;
 
+  std::string name;
   DB_OBJECT *user;
   int index;
 };
@@ -83,6 +87,15 @@ class authenticate_cache
      * The list of cached users.
      */
     AU_USER_CACHE *user_cache;
+
+    /*
+     * Au_user_name_cache
+     *
+     * The map of user name to user cache
+     */
+    using user_name_cache_t = std::unordered_map<std::string, AU_USER_CACHE *>;
+
+    user_name_cache_t user_name_cache;
 
     /*
      * Au_class_caches
@@ -132,7 +145,12 @@ class authenticate_cache
     unsigned int *get_cache_bits (SM_CLASS *sm_class);
 
     void free_authorization_cache (void *cache);
-    int find_user_cache_index (DB_OBJECT *user, int *index, int check_it);
+
+    AU_USER_CACHE *make_user_cache (const char *name, DB_OBJECT *user, bool sanity_check);
+    AU_USER_CACHE *find_user_cache_by_name (const char *name);
+    AU_USER_CACHE *find_user_cache_by_mop (DB_OBJECT *user);
+
+    int get_user_cache_index (AU_USER_CACHE *cache, int *index);
 
     void reset_cache_for_user_and_class (SM_CLASS *sm_class);
     void reset_authorization_caches (void);
@@ -147,6 +165,7 @@ class authenticate_cache
     void free_class_cache (AU_CLASS_CACHE *cache);
     AU_CLASS_CACHE *install_class_cache (SM_CLASS *sm_class);
     int extend_class_caches (int *index);
+
     void free_user_cache (AU_USER_CACHE *u);
 };
 

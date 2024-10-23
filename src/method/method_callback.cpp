@@ -886,10 +886,11 @@ exit:
 
     int command;
     std::string auth_user_name;
-    unpacker.unpack_all (command, auth_user_name);
+    unpacker.unpack_int (command);
 
     if (command == 0) // PUSH
       {
+	unpacker.unpack_string (auth_user_name);
 	MOP user = au_find_user (auth_user_name.c_str ());
 	if (user == NULL)
 	  {
