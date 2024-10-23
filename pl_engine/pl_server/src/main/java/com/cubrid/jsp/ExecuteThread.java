@@ -224,7 +224,11 @@ public class ExecuteThread extends Thread {
                     try {
                         // TODO: error manager module
                         if (throwable instanceof SQLException) {
-                            sendError(throwable.getMessage());
+                            String msg = throwable.getMessage();
+                            if (msg == null) {
+                                msg = "";
+                            }
+                            sendError(msg);
                         } else if (throwable instanceof PlcsqlRuntimeError) {
                             PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
                             String errMsg =
@@ -235,7 +239,11 @@ public class ExecuteThread extends Thread {
                                             plcsqlError.getMessage());
                             sendError(errMsg);
                         } else {
-                            sendError(throwable.getMessage());
+                            String msg = throwable.getMessage();
+                            if (msg == null) {
+                                msg = "";
+                            }
+                            sendError(msg);
                         }
                     } catch (IOException e1) {
                         Server.log(e1);
