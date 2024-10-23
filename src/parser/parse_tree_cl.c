@@ -8351,6 +8351,11 @@ pt_print_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
+  if (sp_info->recompile == 1)
+    {
+      q = pt_append_nulstring (parser, q, " recompile ");
+    }
+
   if (sp_info->comment != NULL)
     {
       r1 = pt_print_bytes (parser, sp_info->comment);
@@ -17567,6 +17572,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	  }
 	  break;
 	case PT_PLUS:
+	case PT_STRCAT:
 	case PT_MINUS:
 	case PT_TIMES:
 	case PT_DIVIDE:

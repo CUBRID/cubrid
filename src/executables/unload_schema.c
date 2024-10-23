@@ -912,7 +912,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
     "from [db_serial] where [class_name] is not null and [att_name] is not null";
 
   const char *query_user =
-    "select [unique_name], [name], [owner].[name], [class_name], [current_val], [increment_val], [max_val], [min_val], "
+    "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
     "from [db_serial] where [class_name] is not null and [att_name] is not null and owner.name='%s'";
 
@@ -4669,7 +4669,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
   int stype;
   PARSER_CONTEXT *parser = NULL;
   PT_NODE **scode_ptr;
-  char *scode_ptr_result;
+  char *scode_ptr_result = NULL;
 
   AU_DISABLE (save);
 
@@ -4721,6 +4721,10 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
       if (scode_ptr_result)
 	{
 	  output_ctx ("\n%s", scode_ptr_result);
+	}
+      else
+	{
+	  output_ctx ("\n/* error occurs: %s \n\n %s; \n*/", parser->error_buffer ? parser->error_buffer : "", scode);
 	}
     }
 

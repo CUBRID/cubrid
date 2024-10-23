@@ -35,6 +35,7 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.compiler.DBTypeAdapter;
+import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.math.BigDecimal;
@@ -62,8 +63,8 @@ public class ExprAutoParam extends Expr {
         this.ty = ty;
     }
 
-    public Type getType() {
-        return DBTypeAdapter.getValueType(ty);
+    public Type getType(InstanceStore iStore) {
+        return DBTypeAdapter.getValueType(iStore, ty);
     }
 
     public String javaCode(Set<String> javaTypesUsed) {
@@ -102,10 +103,10 @@ public class ExprAutoParam extends Expr {
                 return String.format("new BigDecimal(\"%s\")", javaObj);
             case DBType.DB_FLOAT:
                 assert javaObj instanceof Float;
-                return String.format("new Float(%sF)", javaObj);
+                return String.format("checkFloat(new Float(%sF))", javaObj);
             case DBType.DB_DOUBLE:
                 assert javaObj instanceof Double;
-                return String.format("new Double(%s)", javaObj);
+                return String.format("checkDouble(new Double(%s))", javaObj);
             case DBType.DB_DATE:
                 assert javaObj instanceof Date;
                 javaTypesUsed.add("java.sql.Date");

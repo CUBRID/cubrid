@@ -698,15 +698,22 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, db_get_bigint (value)));
       break;
     case DB_TYPE_INTEGER:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, db_get_int (value)));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", db_get_int (value)));
       break;
     case DB_TYPE_SMALLINT:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, db_get_short (value)));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", (int) db_get_short (value)));
       break;
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
       {
 	char *pos;
+
+	if (tout->tail_ptr == NULL)
+	  {
+	    assert (tout->head_ptr == NULL);
+	    CHECK_PRINT_ERROR (get_text_output_mem (tout, -1));
+	  }
+
 	pos = tout->tail_ptr->ptr;
 	CHECK_PRINT_ERROR (text_print
 			   (tout, NULL, 0, "%.*g", (type == DB_TYPE_FLOAT) ? 10 : 17,
@@ -720,7 +727,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       }
       break;
     case DB_TYPE_ENUMERATION:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, db_get_enum_short (value)));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", (int) db_get_enum_short (value)));
       break;
     case DB_TYPE_DATE:
       db_date_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_date (value));

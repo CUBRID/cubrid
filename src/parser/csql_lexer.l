@@ -233,7 +233,10 @@ IDL       [a-zA-Z0-9_]
 [cC][oO][mM][mM][iI][tT]						{ begin_token(yytext);   return COMMIT; }
 [cC][oO][mM][mM][iI][tT][tT][eE][dD]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
-										return COMMITTED; }                                                                            
+										return COMMITTED; }
+[cC][oO][mM][pP][iI][lL][eE]					        { begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return COMPILE; }
 [cC][oO][nN][nN][eE][cC][tT]						{ begin_token(yytext);   return CONNECT; }
 [cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][iI][sS][cC][yY][cC][lL][eE]	{ begin_token(yytext);   return CONNECT_BY_ISCYCLE; }
 [cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][iI][sS][lL][eE][aA][fF]	{ begin_token(yytext);   return CONNECT_BY_ISLEAF; }
@@ -799,7 +802,9 @@ IDL       [a-zA-Z0-9_]
 										return RANGE_; }
 [rR][eE][aA][dD]							{ begin_token(yytext);   return READ; }
 [rR][eE][aA][lL]							{ begin_token(yytext);   return FLOAT_; }
-[rR][eE][bB][uU][iI][lL][dD] 						{ begin_token(yytext);   return REBUILD; }
+[rR][eE][bB][uU][iI][lL][dD] 						{ begin_token(yytext);   
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+									        return REBUILD; }
 [rR][eE][cC][uU][rR][sS][iI][vV][eE]					{ begin_token(yytext);   return RECURSIVE; }
 [rR][eE][fF]								{ begin_token(yytext);   return REF; }
 [rR][eE][fF][eE][rR][eE][nN][cC][eE][sS]				{ begin_token(yytext);   return REFERENCES; }
@@ -1684,9 +1689,9 @@ _[uU][tT][fF]8[']		{
                                                                 plcsql_begin_end_balance++;
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
-<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[iI][fF]             |
-<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[cC][aA][sS][eE]     |
-<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[lL][oO][oO][pP]     |
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[iI][fF][ \t\r\n]*             |
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[cC][aA][sS][eE][ \t\r\n]*     |
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[lL][oO][oO][pP][ \t\r\n]*     |
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]*                     { begin_token(yytext);
                                                                 plcsql_begin_end_balance--;
                                                                 if (plcsql_begin_end_balance < 0) {
@@ -1728,19 +1733,21 @@ _[uU][tT][fF]8[']		{
 
  /* mode POST_PLCSQL_TEXT */
 
-<POST_PLCSQL_TEXT>[cC][oO][mM][mM][eE][nN][tT]          { BEGIN(INITIAL);
+<POST_PLCSQL_TEXT>[cC][oO][mM][mM][eE][nN][tT]        { BEGIN(INITIAL);
                                                                 yybuffer_pos -= csql_yyleng;
                                                                 yyless(0); }
 
-<POST_PLCSQL_TEXT>{IDL}+                                { BEGIN(INITIAL);
+<POST_PLCSQL_TEXT>{IDL}+                              { BEGIN(INITIAL);
                                                                 begin_token(yytext);
                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
 
-<POST_PLCSQL_TEXT>(\n|.)                                { BEGIN(INITIAL);
+<POST_PLCSQL_TEXT>(.)                                 { BEGIN(INITIAL);
                                                                 yybuffer_pos -= csql_yyleng;
                                                                 yyless(0); }
 
+<POST_PLCSQL_TEXT><<EOF>>                             { BEGIN(INITIAL);
+                                                                return 0; }
 
 %%
 

@@ -31,13 +31,13 @@
 package com.cubrid.plcsql.compiler.visitor;
 
 import com.cubrid.plcsql.compiler.Coercion;
+import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -47,6 +47,7 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
+    private InstanceStore iStore;
     private Set<String> javaTypesUsed = new HashSet<>();
 
     private String getJavaCodeOfType(TypeSpec tySpec) {
@@ -56,6 +57,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private String getJavaCodeOfType(Type type) {
         javaTypesUsed.add(type.fullJavaType);
         return type.javaCode;
+    }
+
+    public JavaCodeWriter(InstanceStore iStore) {
+        this.iStore = iStore;
     }
 
     public List<String> codeLines = new ArrayList<>(); // no LinkedList : frequent access by indexes
@@ -177,16 +182,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         // record definitions
         List<String> recordLines = new LinkedList<>();
-        for (TypeRecord rec : TypeRecord.instances.values()) {
+        for (TypeRecord rec : iStore.typeRecord.values()) {
             recordLines.addAll(getRecordDeclCode(rec));
         }
-        TypeRecord.instances = new HashMap<>(); // clear the old accumulation
         String[] recordDefs = recordLines.toArray(DUMMY_STRING_ARRAY);
 
         // add all Java code of record-to-record coercion functions
         recordLines.clear();
-        recordLines.addAll(Coercion.RecordToRecord.getAllJavaCode());
-        Coercion.RecordToRecord.clearMemoized();
+        recordLines.addAll(Coercion.RecordToRecord.getAllJavaCode(iStore));
         String[] recordAssignFuncs = recordLines.toArray(DUMMY_STRING_ARRAY);
 
         // imports
@@ -387,7 +390,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         String code =
                 String.format(
-                        "final Query %s = new Query(\"%s\"); // param-ref-counts: %s, param-marks: %s",
+                        "final Query %s = new Query(\"%s\"); // param-ref-counts: %s, param-num-of-host-expr: %s",
                         node.name,
                         node.staticSql.rewritten,
                         Arrays.toString(node.paramRefCounts),
@@ -1295,6 +1298,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  }",
                 "  ResultSet rs = %'CURSOR'%.rs;",
                 "  if (rs.next()) {",
+                "    %'CURSOR'%.updateRowCount();",
                 "    %'+SET-INTO-VARIABLES'%",
                 "  } else {",
                 "    ;", // TODO: setting nulls to into-variables?
@@ -1360,8 +1364,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "{ // cursor open",
                 "  %'+DUPLICATE-CURSOR-ARG'%",
-                "  %'CURSOR'%.open(conn,",
-                "    %'+HOST-EXPRS'%);",
+                "  %'CURSOR'%.open(conn, new Object[] {",
+                "    %'+HOST-EXPRS'%});",
                 "}"
             };
 
@@ -1577,6 +1581,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
                 "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
+                "    %'CURSOR'%.updateRowCount();",
                 "    %'RECORD'%[0].set(",
                 "      %'+RECORD-FIELD-VALUES'%",
                 "    );",
@@ -1599,6 +1604,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
                 "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
+                "    %'CURSOR'%.updateRowCount();",
                 "    %'RECORD'%[0].set(",
                 "      %'+RECORD-FIELD-VALUES'%",
                 "    );",
@@ -2785,7 +2791,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 }
 
                 // fill updateOutArgs
-                Coercion cRev = c.getReversion();
+                Coercion cRev = c.getReversion(iStore);
                 assert cRev != null; // by earlier check
                 String outVal =
                         String.format(
@@ -2852,7 +2858,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
                     argsToLocal.append("p" + i);
 
-                    Coercion cRev = c.getReversion();
+                    Coercion cRev = c.getReversion(iStore);
                     assert cRev != null; // by earlier check
                     update.add(String.format("o%d[0] = %s;", i, cRev.javaCode("p" + i + "[0]")));
                 }

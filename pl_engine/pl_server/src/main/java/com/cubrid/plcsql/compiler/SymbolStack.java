@@ -66,7 +66,9 @@ public class SymbolStack {
     // Static area - common to all symbol stack instances
     //
 
+    // NOTE: never changing after its initialization in the SymbolStack class initilization
     private static final Map<String, FuncOverloads> operators = new HashMap<>();
+
     private static SymbolTable predefinedSymbols =
             new SymbolTable(new Scope(null, null, "%predefined_0", LEVEL_PREDEFINED));
 
@@ -103,7 +105,8 @@ public class SymbolStack {
                             assert paramType != null;
 
                             DeclParamIn p =
-                                    new DeclParamIn(null, "p" + i, TypeSpec.getBogus(paramType));
+                                    new DeclParamIn(
+                                            null, "p" + i, TypeSpec.getBogus(null, paramType));
                             params.addNode(p);
                             i++;
                         }
@@ -115,7 +118,8 @@ public class SymbolStack {
                         assert retType != null;
 
                         // add op
-                        DeclFunc op = new DeclFunc(null, name, params, TypeSpec.getBogus(retType));
+                        DeclFunc op =
+                                new DeclFunc(null, name, params, TypeSpec.getBogus(null, retType));
                         putOperator(name, op, opAnnot.coercionScheme());
                     }
                 }
@@ -139,7 +143,7 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
-                                                null, "size", TypeSpec.getBogus(Type.INT))));
+                                                null, "size", TypeSpec.getBogus(null, Type.INT))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
 
         // get_line
@@ -152,13 +156,13 @@ public class SymbolStack {
                                         new DeclParamOut(
                                                 null,
                                                 "line",
-                                                TypeSpec.getBogus(Type.STRING_ANY),
+                                                TypeSpec.getBogus(null, Type.STRING_ANY),
                                                 false))
                                 .addNode(
                                         new DeclParamOut(
                                                 null,
                                                 "status",
-                                                TypeSpec.getBogus(Type.INT),
+                                                TypeSpec.getBogus(null, Type.INT),
                                                 true)));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
 
@@ -174,7 +178,9 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
-                                                null, "s", TypeSpec.getBogus(Type.STRING_ANY))));
+                                                null,
+                                                "s",
+                                                TypeSpec.getBogus(null, Type.STRING_ANY))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
 
         // put
@@ -185,7 +191,9 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
-                                                null, "s", TypeSpec.getBogus(Type.STRING_ANY))));
+                                                null,
+                                                "s",
+                                                TypeSpec.getBogus(null, Type.STRING_ANY))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
     }
 
@@ -515,8 +523,9 @@ public class SymbolStack {
         addPredefinedExceptions();
     }
 
-    public static DeclFunc getOperator(List<Coercion> outCoercions, String name, Type... argTypes) {
-        return getFuncOverload(outCoercions, operators, name, argTypes);
+    public static DeclFunc getOperator(
+            InstanceStore iStore, List<Coercion> outCoercions, String name, Type... argTypes) {
+        return getFuncOverload(iStore, outCoercions, operators, name, argTypes);
     }
 
     //
@@ -608,7 +617,7 @@ public class SymbolStack {
                     Misc.getLineColumnOf(decl.ctx), // s062
                     name + " has already been declared in the same scope");
         }
-        if (symbolTable.scope.level == 1 && map.size() == 0) {
+        if (symbolTable.scope.level == LEVEL_MAIN && map.size() == 0) {
             // the first symbol added to the level 1 is the top-level procedure/function being
             // created or replaced
 
@@ -714,6 +723,7 @@ public class SymbolStack {
     }
 
     private static DeclFunc getFuncOverload(
+            InstanceStore iStore,
             List<Coercion> outCoercions,
             Map<String, FuncOverloads> map,
             String name,
@@ -723,7 +733,7 @@ public class SymbolStack {
         if (overloads == null) {
             return null; // TODO: throw?
         } else {
-            return overloads.get(outCoercions, Arrays.asList(argTypes));
+            return overloads.get(iStore, outCoercions, Arrays.asList(argTypes));
         }
     }
 
@@ -786,9 +796,10 @@ public class SymbolStack {
             assert old == null;
         }
 
-        DeclFunc get(List<Coercion> outCoercions, List<Type> argTypes) {
+        DeclFunc get(InstanceStore iStore, List<Coercion> outCoercions, List<Type> argTypes) {
 
-            List<Type> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
+            List<Type> paramTypes =
+                    coercionScheme.getCoercions(iStore, outCoercions, argTypes, name);
             if (paramTypes == null) {
                 return null; // no match
             } else {
@@ -798,7 +809,7 @@ public class SymbolStack {
                     Type ty = paramTypes.get(0);
                     paramTypes.clear();
                     paramTypes.add(ty);
-                    paramTypes.add(TypeVariadic.getInstance(ty));
+                    paramTypes.add(TypeVariadic.getStaticInstance(ty));
                 }
 
                 DeclFunc declFunc = overloads.get(paramTypes);

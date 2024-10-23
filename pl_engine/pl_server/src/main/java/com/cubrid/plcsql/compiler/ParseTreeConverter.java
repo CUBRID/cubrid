@@ -36,12 +36,12 @@ import static com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser.*;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.value.DateTimeParser;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParser.Create_routineContext;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsLexer;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser;
 import com.cubrid.plcsql.compiler.ast.*;
-import com.cubrid.plcsql.compiler.error.SemanticError;
-import com.cubrid.plcsql.compiler.error.UndeclaredId;
+import com.cubrid.plcsql.compiler.error.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
 import java.math.BigDecimal;
@@ -69,7 +69,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     public final SymbolStack symbolStack = new SymbolStack();
 
-    public ParseTreeConverter(String spOwner, String spRevision) {
+    public ParseTreeConverter(InstanceStore iStore, String spOwner, String spRevision) {
+        this.iStore = iStore;
         this.spOwner = Misc.getNormalizedText(spOwner);
         this.spRevision = spRevision;
     }
@@ -176,9 +177,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " as its return type");
                 }
 
-                Type retType = DBTypeAdapter.getValueType(fs.retType.type);
+                Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
 
-                gfc.decl = new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(retType));
+                gfc.decl =
+                        new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(iStore, retType));
 
             } else if (q instanceof ServerAPI.SerialOrNot) {
 
@@ -202,11 +204,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 assert node instanceof TypeSpecPercent;
                 TypeSpecPercent tsp = (TypeSpecPercent) node;
                 if (tsp.forParameterOrReturn) {
-                    tsp.type = DBTypeAdapter.getValueType(ct.colType.type);
+                    tsp.type = DBTypeAdapter.getValueType(iStore, ct.colType.type);
                 } else {
                     tsp.type =
                             DBTypeAdapter.getDeclType(
-                                    ct.colType.type, ct.colType.prec, ct.colType.scale);
+                                    iStore, ct.colType.type, ct.colType.prec, ct.colType.scale);
                 }
             } else {
                 assert false : "unreachable";
@@ -228,9 +230,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public Unit visitCreate_routine(Create_routineContext ctx) {
-
-        previsitRoutine_definition(ctx.routine_definition());
-        assert spName != null;
+        previsitRoutine_definition(ctx.routine_definition(), null);
         DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
         return new Unit(ctx, autonomousTransaction, connectionRequired, decl, spRevision);
     }
@@ -416,13 +416,19 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new RuntimeException(row + " has no columns"); // unlikely ...
         }
 
-        return new TypeSpec(ctx, TypeRecord.getInstance(ofTable, row, selectList));
+        return new TypeSpec(ctx, TypeRecord.getInstance(iStore, ofTable, row, selectList));
     }
 
     @Override
     public TypeSpec visitNumeric_type(Numeric_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.precision != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s091
+                        "precision may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.NUMERIC_ANY);
         }
 
@@ -452,13 +458,19 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        return new TypeSpec(ctx, TypeNumeric.getInstance(precision, scale));
+        return new TypeSpec(ctx, TypeNumeric.getInstance(iStore, precision, scale));
     }
 
     @Override
     public TypeSpec visitChar_type(Char_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.length != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s092
+                        "length may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
@@ -478,13 +490,19 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        return new TypeSpec(ctx, TypeChar.getInstance(length));
+        return new TypeSpec(ctx, TypeChar.getInstance(iStore, length));
     }
 
     @Override
     public TypeSpec visitVarchar_type(Varchar_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.length != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s093
+                        "length may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
@@ -504,7 +522,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        return new TypeSpec(ctx, TypeVarchar.getInstance(length));
+        return new TypeSpec(ctx, TypeVarchar.getInstance(iStore, length));
     }
 
     @Override
@@ -772,7 +790,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
-        ZonedDateTime timestamp = DateTimeParser.ZonedDateTimeLiteral.parse(s, false);
+        ZonedDateTime timestamp = DateTimeParser.TimestampLiteral.parse(s);
         if (timestamp == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx), // s052
@@ -1107,16 +1125,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Map<String, UseAndDeclLevel> saved = idUsedInCurrentDeclPart;
         idUsedInCurrentDeclPart = new HashMap<>();
 
-        // scan the declarations for the procedures and functions
-        // in order for the effect of their forward declarations
-        for (Declare_specContext ds : ctx.declare_spec()) {
-
-            ParserRuleContext routine;
-
-            routine = ds.routine_definition();
-            if (routine != null) {
-                previsitRoutine_definition((Routine_definitionContext) routine);
-            }
+        // previsit declarations to support recursive or mutually recursive calls of local
+        // procedures/functions
+        Map<String, DeclRoutine> store = previsitDeclarations(ctx.declare_spec());
+        // put the declarations of the routines in the current symbol table
+        for (String routineName : store.keySet()) {
+            symbolStack.putDecl(routineName, store.get(routineName));
         }
 
         NodeList<Decl> ret = new NodeList<>();
@@ -1252,7 +1266,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
 
+        if (ctx.LANGUAGE() != null
+                && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+            int[] lineColumn = Misc.getLineColumnOf(ctx);
+            throw new SyntaxError(
+                    lineColumn[0],
+                    lineColumn[1],
+                    "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
+        }
         String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
+
         boolean isFunction = (ctx.PROCEDURE() == null);
         symbolStack.pushSymbolTable(
                 name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
@@ -1402,6 +1425,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitIdentifier(IdentifierContext ctx) {
         String name = Misc.getNormalizedText(ctx);
+
+        if (name.length() > ID_LEN_MAX) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), // s094
+                    "identifier length may not exceed " + ID_LEN_MAX);
+        }
 
         Decl decl = symbolStack.getDeclForIdExpr(name);
         if (decl == null) {
@@ -1705,7 +1734,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         TypeRecord recTy =
-                TypeRecord.getInstance(false, declCursor.name, declCursor.staticSql.selectList);
+                TypeRecord.getInstance(
+                        iStore, false, declCursor.name, declCursor.staticSql.selectList);
         DeclVar recDecl =
                 new DeclVar(
                         ctx.for_cursor().record_name(),
@@ -1759,7 +1789,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             symbolStack.putDeclLabel(label, declLabel);
         }
 
-        TypeRecord recTy = TypeRecord.getInstance(false, record, staticSql.selectList);
+        TypeRecord recTy = TypeRecord.getInstance(iStore, false, record, staticSql.selectList);
         DeclVar declForRecord =
                 new DeclVar(recNameCtx, record, new TypeSpec(null, recTy), false, null);
         symbolStack.putDecl(record, declForRecord);
@@ -2313,6 +2343,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // Private Static
     // --------------------------------------------------------
 
+    private static final int ID_LEN_MAX = 222; // see User Manual
+
     private static final BigInteger UINT_LITERAL_MAX =
             new BigInteger("99999999999999999999999999999999999999");
     private static final BigInteger BIGINT_MAX = new BigInteger("9223372036854775807");
@@ -2337,6 +2369,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         && ((DeclIdTypeSpeced) decl).typeSpec().type == Type.SYS_REFCURSOR));
     }
 
+    // NOTE: never changing after the initilization during the ParseTreeConverter class
+    // initialization
     private static final Map<String, Type> nameToType = new HashMap<>();
 
     static {
@@ -2378,6 +2412,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // Private
     // --------------------------------------------------------
 
+    private InstanceStore iStore;
     private boolean forParameterOrReturn = false;
 
     private static class UseAndDeclLevel {
@@ -2457,7 +2492,24 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
     }
 
-    private void previsitRoutine_definition(Routine_definitionContext ctx) {
+    private void previsitConstant_declaration(Constant_declarationContext ctx) {
+
+        String name = Misc.getNormalizedText(ctx.identifier());
+        TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
+        DeclConst ret = new DeclConst(ctx, name, ty, ctx.NOT() != null, null);
+        symbolStack.putDecl(name, ret);
+    }
+
+    private void previsitVariable_declaration(Variable_declarationContext ctx) {
+
+        String name = Misc.getNormalizedText(ctx.identifier());
+        TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
+        DeclVar ret = new DeclVar(ctx, name, ty, ctx.NOT() != null, null);
+        symbolStack.putDecl(name, ret);
+    }
+
+    private void previsitRoutine_definition(
+            Routine_definitionContext ctx, Map<String, DeclRoutine> store) {
 
         String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
 
@@ -2494,7 +2546,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             assert owner.equals(spOwner);
         }
 
-        // in order not to corrupt the current symbol table with the parameters
+        // push a temporary symbol table, in order not to corrupt the current symbol table with the
+        // parameters
         symbolStack.pushSymbolTable("temp", null);
         NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
         symbolStack.popSymbolTable();
@@ -2527,6 +2580,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
             DeclFunc ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
             symbolStack.putDecl(name, ret);
+            if (store != null) {
+                store.put(name, ret);
+            }
         } else {
             // procedure
             if (ctx.RETURN() != null) {
@@ -2536,6 +2592,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
             DeclProc ret = new DeclProc(ctx, name, paramList);
             symbolStack.putDecl(name, ret);
+            if (store != null) {
+                store.put(name, ret);
+            }
         }
     }
 
@@ -2679,7 +2738,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     }
 
                 } else if (DBTypeAdapter.isSupported(ci.type)) {
-                    ty = DBTypeAdapter.getValueType(ci.type);
+                    ty = DBTypeAdapter.getValueType(iStore, ci.type);
                 } else {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s426
@@ -2764,9 +2823,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
             }
 
-            Type paramType = DBTypeAdapter.getValueType(params[i].type);
+            Type paramType = DBTypeAdapter.getValueType(iStore, params[i].type);
 
-            TypeSpec tySpec = TypeSpec.getBogus(paramType);
+            TypeSpec tySpec = TypeSpec.getBogus(iStore, paramType);
             if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) != 0) {
                 boolean alsoIn = (params[i].mode & ServerConstants.PARAM_MODE_IN) != 0;
                 paramList.nodes.add(new DeclParamOut(null, "p" + i, tySpec, alsoIn));
@@ -2850,13 +2909,17 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private String rewriteUpdateWithFieldsExpansion(
-            String sqlText, Row_setContext rowSet, Static_sqlContext ctx) {
+            String sqlText,
+            Row_setContext rowSet,
+            Table_specContext tableSpec,
+            Static_sqlContext ctx) {
+
         int start = rowSet.getStart().getStartIndex();
         int end = rowSet.getStop().getStopIndex() + 1;
 
         List<String> fieldsSet = new LinkedList<>();
-        String s = Misc.getNormalizedText(rowSet.getStop().getText());
-        ExprId id = visitNonFuncIdentifier(s, ctx);
+        String record = Misc.getNormalizedText(rowSet.getStop().getText());
+        ExprId id = visitNonFuncIdentifier(record, ctx);
         if (!(id.decl.type() instanceof TypeRecord)) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx), // s089
@@ -2865,8 +2928,30 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         TypeRecord recTy = (TypeRecord) id.decl.type();
 
+        String tableSpecText = tableSpec.getText();
+        SqlSemantics sws = getSqlSemanticsFromServer("select * from " + tableSpecText, ctx);
+        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT;
+
+        if (sws.selectList.size() != recTy.selectList.size()) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), // s089
+                    "the number of fields of the record "
+                            + record
+                            + " is not equal to the number of columns of the table "
+                            + tableSpecText);
+        }
+
+        // Type compatibility of each pair of table column and record field is not checked here
+        // because
+        // table columns can have a type that is not supported in PL/CSQL (for example,
+        // TIMESTAMPLTZ), but
+        // the SQL can run successfully.
+        // If the types are not compatible for a pair, then a run-time error will occur for it.
+
+        Iterator<ColumnInfo> columns = sws.selectList.iterator();
         for (Misc.Pair<String, Type> p : recTy.selectList) {
-            fieldsSet.add(String.format("%1$s = %2$s.%1$s", p.e1, s));
+            ColumnInfo ci = columns.next();
+            fieldsSet.add(String.format("%s = %s.%s", ci.colName, record, p.e1));
         }
 
         return sqlText.substring(0, start) + String.join(", ", fieldsSet) + sqlText.substring(end);
@@ -2892,6 +2977,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 Stmt_w_record_valuesContext tree =
                         (Stmt_w_record_valuesContext) parser.stmt_w_record_values();
                 if (!sei.hasError) {
+                    // (INSERT|REPLACE) ... VALUES r1, r2, ..., rn ...
                     return rewriteInsertWithFieldsExpansion(sqlText, tree.record_list(), ctx);
                 }
             }
@@ -2901,7 +2987,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             Stmt_w_record_setContext tree = (Stmt_w_record_setContext) parser.stmt_w_record_set();
             if (!sei.hasError) {
-                return rewriteUpdateWithFieldsExpansion(sqlText, tree.row_set(), ctx);
+                // (UPDATE|INSERT|REPLACE) ... table SET ROW = r ...
+                return rewriteUpdateWithFieldsExpansion(
+                        sqlText, tree.row_set(), tree.table_spec(), ctx);
             }
         }
 
@@ -2909,8 +2997,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private SqlSemantics getSqlSemanticsFromServer(Static_sqlContext ctx) {
-
         String text = expandRecordIfAny(ctx);
+        return getSqlSemanticsFromServer(text, ctx);
+    }
+
+    private SqlSemantics getSqlSemanticsFromServer(String text, ParserRuleContext ctx) {
 
         // server interaction may take a long time
         List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(text));
@@ -2941,5 +3032,46 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             this.hasError = true;
             this.errMsg = msg;
         }
+    }
+
+    private Map<String, DeclRoutine> previsitDeclarations(Iterable<Declare_specContext> declSpecs) {
+
+        Map<String, DeclRoutine> ret = new HashMap<>();
+
+        // Scan the declarations for the procedures and functions (routines)
+        // in order for the effect of their forward declarations.
+        // Variables and constants are also scanned to support their %type appearing in the
+        // parameter and/or return types of the routines
+
+        symbolStack.pushSymbolTable("temp", null);
+        for (Declare_specContext ds : declSpecs) {
+
+            ParserRuleContext d;
+
+            d = ds.item_declaration();
+            if (d != null) {
+                Item_declarationContext item = (Item_declarationContext) d;
+                d = item.constant_declaration();
+                if (d != null) {
+                    // case of constant_declaration
+                    previsitConstant_declaration((Constant_declarationContext) d);
+                } else {
+                    d = item.variable_declaration();
+                    if (d != null) {
+                        // case of variable_declaration
+                        previsitVariable_declaration((Variable_declarationContext) d);
+                    }
+                }
+            } else {
+                d = ds.routine_definition();
+                if (d != null) {
+                    // case of routine_definition
+                    previsitRoutine_definition((Routine_definitionContext) d, ret);
+                }
+            }
+        }
+        symbolStack.popSymbolTable(); // pop the temporary symbol table
+
+        return ret;
     }
 }

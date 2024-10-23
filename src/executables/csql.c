@@ -2310,6 +2310,10 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
 error:
   display_error (session, stmt_start_line_no);
+  if (csql_arg->pl_server_output)
+    {
+      csql_print_server_output (csql_arg);
+    }
   logddl_set_err_code (db_error_code ());
   if (do_abort_transaction)
     {
@@ -3513,7 +3517,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   if (argument == NULL)
     {
       err_msg = (*csql_get_message) (CSQL_MSG_TOO_FEW_ARGS);
-      fprintf (stderr, err_msg);
+      fprintf (csql_Output_fp, "%s\n", err_msg);
       return DO_CMD_SUCCESS;
     }
 
