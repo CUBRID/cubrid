@@ -902,12 +902,12 @@ proc_execute_internal (const char *file, const char *args[], bool wait_child, bo
       signal (SIGCHLD, SIG_DFL);
       if (close_output)
 	{
-	  fclose (stdout);
+	  close (STDOUT_FILENO);
 	}
 
       if (close_err)
 	{
-	  fclose (stderr);
+	  close (STDERR_FILENO);
 	}
 
       if (execv (executable_path, (char *const *) args) == -1)
