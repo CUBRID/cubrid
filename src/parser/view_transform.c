@@ -13938,7 +13938,7 @@ static PT_NODE *
 mq_update_node_position (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   PT_NODE *spec = (PT_NODE *) arg;
-  PT_NODE *nth_node, *value_node, *derived_query;
+  PT_NODE *nth_node, *value_node, *derived_query, *select_list;
   int index, select_order;
 
   if (tree == NULL || (!PT_IS_SORT_SPEC_NODE (tree) && !pt_is_analytic_function (parser, tree)))
@@ -13953,7 +13953,13 @@ mq_update_node_position (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int
 
       derived_query = spec->info.spec.derived_table;
 
-      nth_node = pt_get_node_from_list (derived_query->info.query.q.select.list, select_order - 1);
+      select_list = derived_query->info.query.q.select.list;
+      if (select_list && select_list->type_enum == PT_TYPE_OBJECT)
+	{
+	  select_list = select_list->next;	/* skip oid */
+	}
+
+      nth_node = pt_get_node_from_list (select_list, select_order - 1);
       if (nth_node != NULL)
 	{
 	  index = pt_find_node_order (parser, spec->info.spec.as_attr_list, nth_node);
@@ -13997,28 +14003,21 @@ pt_find_node_order (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * node
   return -1;
 }
 
+/*
+ * mq_update_position() - update PT_VALUE located within the OVER clause of the analytic function.
+ *   return:
+ *   parser(in):
+ *   before_query(in): 
+ *   spec(in):
+ */
 static PT_NODE *
 mq_update_position (PARSER_CONTEXT * parser, PT_NODE * before_query, PT_NODE * spec)
 {
-  PT_NODE *tmp_select_list, *tmp_query, *col, *next_node, *derived_table;
+  PT_NODE *col, *next_node, *derived_table;
 
   derived_table = spec->info.spec.derived_table;
 
-  tmp_select_list = before_query->info.query.q.select.list;
-  if (tmp_select_list && tmp_select_list->type_enum == PT_TYPE_OBJECT)
-    {
-      tmp_select_list = tmp_select_list->next;	/* skip oid */
-    }
-
-  tmp_query = parser_new_node (parser, PT_SELECT);
-  if (tmp_query == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      return NULL;
-    }
-  tmp_query->info.query.q.select.list = tmp_select_list;
-
-  spec->info.spec.derived_table = tmp_query;
+  spec->info.spec.derived_table = before_query;
   for (col = derived_table->info.query.q.select.list; col; col = col->next)
     {
       if (PT_IS_ANALYTIC_NODE (col))
@@ -14029,11 +14028,6 @@ mq_update_position (PARSER_CONTEXT * parser, PT_NODE * before_query, PT_NODE * s
 
 	  col->next = next_node;
 	}
-    }
-
-  if (tmp_query != NULL)
-    {
-      parser_free_node (parser, tmp_query);
     }
 
   return derived_table;
