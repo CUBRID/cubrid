@@ -13993,13 +13993,18 @@ mq_update_position (PARSER_CONTEXT * parser, PT_NODE * old_select_list, PT_NODE 
 
 	      for (new_col = new_select_list, index = 1; new_col; new_col = new_col->next, index++)
 		{
-		  if (pt_compare_sort_spec_expr_without_spec_id (parser, expr, new_col))
+		  if ((expr->node_type == PT_NAME || expr->node_type == PT_DOT_)
+		      && (new_col->node_type == PT_NAME || new_col->node_type == PT_DOT_))
 		    {
-		      /* found a match in select list */
-		      value->info.value.data_value.i = index;
-		      order->info.sort_spec.pos_descr.pos_no = index;
+		      /* we have comparable names */
+		      if (pt_check_path_eq_without_spec_id (parser, expr, new_col) == 0)
+			{
+			  /* name match */
+			  value->info.value.data_value.i = index;
+			  order->info.sort_spec.pos_descr.pos_no = index;
 
-		      break;
+			  break;
+			}
 		    }
 		}
 	    }

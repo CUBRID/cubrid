@@ -15826,48 +15826,6 @@ pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * e
 
 
 /*
- * pt_compare_sort_spec_expr_without_spec_id - compare two sort expressions, excluding spec_id from the comparison.
- *  returns: true if expressions are the same, false otherwise
- *  expr1(in): first expression
- *  expr2(in): second expression
- */
-bool
-pt_compare_sort_spec_expr_without_spec_id (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2)
-{
-  if (parser == NULL || expr1 == NULL || expr2 == NULL)
-    {
-      return false;
-    }
-
-  if ((expr1->node_type == PT_NAME || expr1->node_type == PT_DOT_)
-      && (expr2->node_type == PT_NAME || expr2->node_type == PT_DOT_))
-    {
-      /* we have comparable names */
-      if (pt_check_path_eq_without_spec_id (parser, expr1, expr2) == 0)
-	{
-	  /* name match */
-	  return true;
-	}
-    }
-  else
-    {
-      /* brute method, compare printed trees */
-      char *str_expr = parser_print_tree (parser, expr1);
-      char *str_spec_expr = parser_print_tree (parser, expr2);
-
-      if (pt_str_compare (str_expr, str_spec_expr, CASE_INSENSITIVE) == 0)
-	{
-	  /* match */
-	  return true;
-	}
-    }
-
-  /* no match */
-  return false;
-}
-
-
-/*
  * pt_find_matching_sort_spec - find a matching sort spec in a spec list
  *  return: match or NULL
  *  parser(in): parser context

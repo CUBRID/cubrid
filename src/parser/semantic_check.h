@@ -76,6 +76,5 @@ extern PT_NODE *pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, ST
 extern PT_NODE *pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list);
 
 extern int pt_check_path_eq_without_spec_id (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q);
-extern bool pt_compare_sort_spec_expr_without_spec_id (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
 
 #endif /* _SEMANTIC_CHECK_H_ */
