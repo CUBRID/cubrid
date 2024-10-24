@@ -88,28 +88,4 @@ public class DateValue extends Value {
         return date.toString();
     }
 
-    @Override
-    public Date[] toDateArray() throws TypeMismatchException {
-        return new Date[] {date};
-    }
-
-    @Override
-    public Timestamp[] toTimestampArray() throws TypeMismatchException {
-        return new Timestamp[] {toTimestamp()};
-    }
-
-    @Override
-    public Timestamp[] toDatetimeArray() throws TypeMismatchException {
-        return new Timestamp[] {toDatetime()};
-    }
-
-    @Override
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toDate()};
-    }
-
-    @Override
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
-    }
 }

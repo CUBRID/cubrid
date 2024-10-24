@@ -77,18 +77,4 @@ public class TimeValue extends Value {
         return time.toString();
     }
 
-    @Override
-    public Time[] toTimeArray() throws TypeMismatchException {
-        return new Time[] {toTime()};
-    }
-
-    @Override
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toObject()};
-    }
-
-    @Override
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
-    }
 }

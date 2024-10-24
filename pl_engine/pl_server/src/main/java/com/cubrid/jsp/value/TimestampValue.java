@@ -95,33 +95,4 @@ public class TimestampValue extends Value {
         return timestamp.toString();
     }
 
-    @Override
-    public Date[] toDateArray() throws TypeMismatchException {
-        return new Date[] {toDate()};
-    }
-
-    @Override
-    public Time[] toTimeArray() throws TypeMismatchException {
-        return new Time[] {toTime()};
-    }
-
-    @Override
-    public Timestamp[] toTimestampArray() throws TypeMismatchException {
-        return new Timestamp[] {toTimestamp()};
-    }
-
-    @Override
-    public Timestamp[] toDatetimeArray() throws TypeMismatchException {
-        return new Timestamp[] {toDatetime()};
-    }
-
-    @Override
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toObject()};
-    }
-
-    @Override
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
-    }
 }

@@ -134,87 +134,8 @@ public class NumericValue extends Value {
     }
 
     @Override
-    public Timestamp[] toTimestampArray() throws TypeMismatchException {
-        return new Timestamp[] {toTimestamp()};
-    }
-
-    @Override
     public String toString() {
         return value.toString(); // TODO: using NumberFormat class
     }
 
-    @Override
-    public byte[] toByteArray() throws TypeMismatchException {
-        return new byte[] {value.byteValue()};
-    }
-
-    @Override
-    public short[] toShortArray() throws TypeMismatchException {
-        return new short[] {value.shortValue()};
-    }
-
-    @Override
-    public int[] toIntegerArray() throws TypeMismatchException {
-        return new int[] {value.intValue()};
-    }
-
-    @Override
-    public long[] toLongArray() throws TypeMismatchException {
-        return new long[] {value.longValue()};
-    }
-
-    @Override
-    public float[] toFloatArray() throws TypeMismatchException {
-        return new float[] {value.floatValue()};
-    }
-
-    @Override
-    public double[] toDoubleArray() throws TypeMismatchException {
-        return new double[] {value.doubleValue()};
-    }
-
-    @Override
-    public BigDecimal[] toBigDecimalArray() throws TypeMismatchException {
-        return new BigDecimal[] {toBigDecimal()};
-    }
-
-    @Override
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toObject()};
-    }
-
-    @Override
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
-    }
-
-    @Override
-    public Byte[] toByteObjArray() throws TypeMismatchException {
-        return new Byte[] {toByteObject()};
-    }
-
-    @Override
-    public Double[] toDoubleObjArray() throws TypeMismatchException {
-        return new Double[] {toDoubleObject()};
-    }
-
-    @Override
-    public Float[] toFloatObjArray() throws TypeMismatchException {
-        return new Float[] {toFloatObject()};
-    }
-
-    @Override
-    public Integer[] toIntegerObjArray() throws TypeMismatchException {
-        return new Integer[] {toIntegerObject()};
-    }
-
-    @Override
-    public Long[] toLongObjArray() throws TypeMismatchException {
-        return new Long[] {toLongObject()};
-    }
-
-    @Override
-    public Short[] toShortObjArray() throws TypeMismatchException {
-        return new Short[] {toShortObject()};
-    }
 }

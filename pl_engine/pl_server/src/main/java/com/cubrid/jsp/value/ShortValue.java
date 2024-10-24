@@ -86,18 +86,8 @@ public class ShortValue extends Value {
     }
 
     @Override
-    public byte[] toByteArray() throws TypeMismatchException {
-        return new byte[] {(byte) value};
-    }
-
-    @Override
     public Short toShortObject() throws TypeMismatchException {
         return new Short(value);
-    }
-
-    @Override
-    public short[] toShortArray() throws TypeMismatchException {
-        return new short[] {value};
     }
 
     @Override
@@ -106,18 +96,8 @@ public class ShortValue extends Value {
     }
 
     @Override
-    public int[] toIntegerArray() throws TypeMismatchException {
-        return new int[] {value};
-    }
-
-    @Override
     public Long toLongObject() throws TypeMismatchException {
         return new Long(value);
-    }
-
-    @Override
-    public long[] toLongArray() throws TypeMismatchException {
-        return new long[] {value};
     }
 
     @Override
@@ -126,18 +106,8 @@ public class ShortValue extends Value {
     }
 
     @Override
-    public float[] toFloatArray() throws TypeMismatchException {
-        return new float[] {value};
-    }
-
-    @Override
     public Double toDoubleObject() throws TypeMismatchException {
         return new Double(value);
-    }
-
-    @Override
-    public double[] toDoubleArray() throws TypeMismatchException {
-        return new double[] {value};
     }
 
     @Override
@@ -146,18 +116,8 @@ public class ShortValue extends Value {
     }
 
     @Override
-    public BigDecimal[] toBigDecimalArray() throws TypeMismatchException {
-        return new BigDecimal[] {toBigDecimal()};
-    }
-
-    @Override
     public Object toObject() throws TypeMismatchException {
         return toShortObject();
-    }
-
-    @Override
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toObject()};
     }
 
     @Override
@@ -166,18 +126,8 @@ public class ShortValue extends Value {
     }
 
     @Override
-    public Time[] toTimeArray() throws TypeMismatchException {
-        return new Time[] {toTime()};
-    }
-
-    @Override
     public Timestamp toTimestamp() throws TypeMismatchException {
         return ValueUtilities.longToTimestamp(new Short(value).longValue());
-    }
-
-    @Override
-    public Timestamp[] toTimestampArray() throws TypeMismatchException {
-        return new Timestamp[] {toTimestamp()};
     }
 
     @Override
@@ -185,38 +135,4 @@ public class ShortValue extends Value {
         return "" + value;
     }
 
-    @Override
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
-    }
-
-    @Override
-    public Byte[] toByteObjArray() throws TypeMismatchException {
-        return new Byte[] {toByteObject()};
-    }
-
-    @Override
-    public Double[] toDoubleObjArray() throws TypeMismatchException {
-        return new Double[] {toDoubleObject()};
-    }
-
-    @Override
-    public Float[] toFloatObjArray() throws TypeMismatchException {
-        return new Float[] {toFloatObject()};
-    }
-
-    @Override
-    public Integer[] toIntegerObjArray() throws TypeMismatchException {
-        return new Integer[] {toIntegerObject()};
-    }
-
-    @Override
-    public Long[] toLongObjArray() throws TypeMismatchException {
-        return new Long[] {toLongObject()};
-    }
-
-    @Override
-    public Short[] toShortObjArray() throws TypeMismatchException {
-        return new Short[] {toShortObject()};
-    }
 }
