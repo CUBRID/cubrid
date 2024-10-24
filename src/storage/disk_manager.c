@@ -4276,8 +4276,8 @@ error:
   log_sysop_abort (thread_p);
 
   if (error_code == ER_INTERRUPTED	/* interrupted error */
-      || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE
-      || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ )
+      || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE || error_code == ER_BO_CANNOT_CREATE_VOL	/* IO errors */
+      || error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED /* temp volume is full */ )
     {
       /* this is expected. */
       return error_code;
@@ -4361,7 +4361,6 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 	  >= disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
-	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1, disk_Temp_max_sects);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);
 	  return ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED;
