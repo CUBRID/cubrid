@@ -19,6 +19,25 @@ message(STATUS "======== CMakeLists.txt")
 
 cmake_minimum_required(VERSION 3.21)
 
+
+# Check if ccache is installed
+option(USE_CCACHE "Use ccache as compiler launcher" ON)
+
+if(USE_CCACHE)
+  find_program(CCACHE_PROGRAM ccache)
+  if(CCACHE_PROGRAM)
+    message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
+    # Set the compiler launcher globally
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "C compiler launcher" FORCE)
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "C++ compiler launcher" FORCE)
+  else()
+    message(STATUS "ccache not found. Building without ccache.")
+  endif()
+else()
+  message(STATUS "ccache usage is disabled.")
+endif()
+
+
 function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
   get_cmake_property(vars VARIABLES)
   foreach(var ${vars})
