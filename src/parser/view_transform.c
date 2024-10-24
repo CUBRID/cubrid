@@ -2640,7 +2640,12 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	      goto exit_on_error;
 	    }
 
-          derived_table->info.query.q.select.list = mq_update_position (parser, select_list, derived_table->info.query.q.select.list);
+	  derived_table->info.query.q.select.list =
+	    mq_update_position (parser, select_list, derived_table->info.query.q.select.list);
+	  if (derived_table->info.query.q.select.list == NULL)
+	    {			/* error */
+	      goto exit_on_error;
+	    }
 
 	  if (PT_IS_QUERY (derived_table))
 	    {
@@ -13970,7 +13975,7 @@ mq_update_position (PARSER_CONTEXT * parser, PT_NODE * old_select_list, PT_NODE 
 
 	  for (order = order_list; order; order = order->next)
 	    {
-	      PT_NODE *expr, *new_col, *temp;
+	      PT_NODE *expr, *new_col;
 	      int index;
 
 	      if (!PT_IS_VALUE_NODE (order->info.sort_spec.expr))
@@ -13997,6 +14002,12 @@ mq_update_position (PARSER_CONTEXT * parser, PT_NODE * old_select_list, PT_NODE 
 		      break;
 		    }
 		}
+	    }
+
+	  if (link)
+	    {
+	      col->info.function.analytic.order_by = link->next;
+	      link->next = NULL;
 	    }
 	}
     }
