@@ -1504,31 +1504,6 @@ csql_is_statement_complete (void)
 }
 
 /*
- * csql_is_statement_in_block () - check if statement state is string block or
- *                       comment block or identifier block
- * return : true if yes, false otherwise
- */
-bool
-csql_is_statement_in_block (void)
-{
-  CSQL_STATEMENT_STATE state = csql_Edit_contents.state;
-  if (state == CSQL_STATE_C_COMMENT || state == CSQL_STATE_SINGLE_QUOTE || state == CSQL_STATE_MYSQL_QUOTE
-      || state == CSQL_STATE_DOUBLE_QUOTE_IDENTIFIER || state == CSQL_STATE_BACKTICK_IDENTIFIER
-      || state == CSQL_STATE_BRACKET_IDENTIFIER)
-    {
-      return true;
-    }
-
-  CSQL_STATEMENT_SUBSTATE substate = csql_Edit_contents.substate;
-  if (state == CSQL_STATE_GENERAL && (substate == CSQL_SUBSTATE_PLCSQL_TEXT || substate == CSQL_SUBSTATE_SEEN_END))
-    {
-      return true;
-    }
-
-  return false;
-}
-
-/*
  * csql_edit_buffer_clear() - clear current editor contents
  *   return: none
  * NOTE: allocated memory in csql_Edit_contents is not freed.
@@ -1576,6 +1551,11 @@ csql_edit_read_file (FILE * fp)
 
       if (csql_edit_contents_append (line_begin, false) != CSQL_SUCCESS)
 	return CSQL_FAILURE;
+
+      // to continue recognizing the end of PL/CSQL SP CREATE statements
+      // at the right recognizer status (state, substate, etc of csql_Edit_contents)
+      // after this editor session
+      csql_walk_statement (line_begin);
     }
   return CSQL_SUCCESS;
 }
