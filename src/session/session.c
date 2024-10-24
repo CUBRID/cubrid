@@ -3222,8 +3222,12 @@ session_stop_attached_threads (void *session_arg)
 
   if (session->pl_session_p != NULL)
     {
+
+// TODO (PL/CSQL): The following will be enabled after CBRD-25131
+#if 0
       session->pl_session_p->set_interrupt (er_errid ());
       session->pl_session_p->wait_for_interrupt ();
+#endif
 
       delete session->pl_session_p;
       session->pl_session_p = NULL;
