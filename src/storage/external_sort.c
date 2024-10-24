@@ -4387,13 +4387,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
     }
 
-  if (i != parallel_num - 1)
-    {
-      error = ER_GENERIC_ERROR;
-      goto cleanup;
-    }
-
-  /* alloc get_arg */
+  /* add splitted file info */
   for (i = 0; i < parallel_num; i++)
     {
       px_sort_param[i].get_arg = (void *) db_private_alloc (thread_p, sizeof (SORT_INFO));
