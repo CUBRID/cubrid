@@ -2588,6 +2588,8 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
       return tfile_vfid_p->membuf[tfile_vfid_p->membuf_last];
     }
 
+  assert (tfile_vfid_p->membuf_type != TEMP_FILE_MEMBUF_KEY_BUFFER);
+
   /* memory buffer is exhausted; create temp file */
   if (VFID_ISNULL (&tfile_vfid_p->temp_vfid))
     {
