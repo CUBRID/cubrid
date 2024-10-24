@@ -631,7 +631,7 @@ jsp_evaluate_arguments (PARSER_CONTEXT *parser, PT_NODE *statement,
 	    }
 	}
 
-      args.push_back (std::ref (*db_value));
+      args.emplace_back (std::ref (*db_value));
       vc = vc->next;
     }
 
@@ -687,7 +687,23 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       error = jsp_make_pl_signature (parser, statement, NULL, sig);
       if (error == NO_ERROR && locator_get_sig_interrupt () == 0)
 	{
-	  error = pl_call (sig, args, ret_value);
+          std::vector <DB_VALUE> out_args;
+	  error = pl_call (sig, args, out_args, ret_value);
+
+	for (int i = 0, j = 0; i < sig.arg.arg_size; i++)
+	  {
+	    if (sig.arg.arg_mode[i] == SP_MODE_IN)
+	      {
+		continue;
+	      }
+
+	    DB_VALUE & arg = args[i];
+	    DB_VALUE & out_arg = out_args[j++];
+
+	    db_value_clear (&arg);
+	    db_value_clone (&out_arg, &arg);
+	    db_value_clear (&out_arg);
+	  }
 	}
     }
 

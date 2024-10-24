@@ -3222,8 +3222,8 @@ session_stop_attached_threads (void *session_arg)
 
   if (session->pl_session_p != NULL)
     {
-      //session->pl_session_p->set_interrupt (er_errid ());
-      //session->pl_session_p->wait_for_interrupt ();
+      session->pl_session_p->set_interrupt (er_errid ());
+      session->pl_session_p->wait_for_interrupt ();
 
       delete session->pl_session_p;
       session->pl_session_p = NULL;
