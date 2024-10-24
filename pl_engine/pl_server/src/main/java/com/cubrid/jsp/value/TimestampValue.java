@@ -65,54 +65,62 @@ public class TimestampValue extends Value {
         this.timestamp = timestamp;
     }
 
+    @Override
     public Date toDate() throws TypeMismatchException {
         return new Date(timestamp.getTime());
     }
 
+    @Override
     public Time toTime() throws TypeMismatchException {
         return new Time(timestamp.getTime());
     }
 
+    @Override
     public Timestamp toTimestamp() throws TypeMismatchException {
         return timestamp;
     }
 
+    @Override
     public Timestamp toDatetime() throws TypeMismatchException {
         return timestamp;
     }
 
+    @Override
     public Object toObject() throws TypeMismatchException {
         return timestamp;
     }
 
-    public Object toDefault() throws TypeMismatchException {
-        return toTimestamp();
-    }
-
+    @Override
     public String toString() {
         return timestamp.toString();
     }
 
+    @Override
     public Date[] toDateArray() throws TypeMismatchException {
         return new Date[] {toDate()};
     }
 
+    @Override
     public Time[] toTimeArray() throws TypeMismatchException {
         return new Time[] {toTime()};
     }
 
+    @Override
     public Timestamp[] toTimestampArray() throws TypeMismatchException {
         return new Timestamp[] {toTimestamp()};
     }
 
+    @Override
     public Timestamp[] toDatetimeArray() throws TypeMismatchException {
         return new Timestamp[] {toDatetime()};
     }
 
+    @Override
     public Object[] toObjectArray() throws TypeMismatchException {
         return new Object[] {toObject()};
     }
 
+    @Override
     public String[] toStringArray() throws TypeMismatchException {
         return new String[] {toString()};
     }
