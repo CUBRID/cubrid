@@ -2031,7 +2031,10 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 		  continue;
 		}
 
-	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	      if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+		{
+		  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+		}
 
 	      query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	      if (query_ptr != NULL)
@@ -2087,7 +2090,10 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	      continue;
 	    }
 
-	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	    }
 
 	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	  if (query_ptr != NULL)
@@ -2181,7 +2187,10 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	      continue;
 	    }
 
-	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	    }
 
 	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	  if (query_ptr != NULL)
@@ -2226,7 +2235,10 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	      continue;
 	    }
 
-	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	    }
 
 	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	  if (query_ptr != NULL)
