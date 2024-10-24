@@ -125,7 +125,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
   if (!by_class_owner_change)
     {
       /* It can be checked as one of unique_name, class_name, and att_name. */
-      error = obj_get (serial_mop, SERIAL_ATTR_ATT_NAME, &value);
+      error = obj_get (serial_mop, SERIAL_ATTR_ATTR_NAME, &value);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

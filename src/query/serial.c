@@ -65,7 +65,7 @@ typedef enum
   SERIAL_ATTR_CYCLIC_INDEX,
   SERIAL_ATTR_STARTED_INDEX,
   SERIAL_ATTR_CLASS_NAME_INDEX,
-  SERIAL_ATTR_ATT_NAME_INDEX,
+  SERIAL_ATTR_ATTR_NAME_INDEX,
   SERIAL_ATTR_CACHED_NUM_INDEX,
   SERIAL_ATTR_MAX_INDEX
 } SR_ATTRIBUTES;
@@ -1303,9 +1303,9 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
 	{
 	  serial_Attrs_id[SERIAL_ATTR_CLASS_NAME_INDEX] = i;
 	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_ATT_NAME) == 0)
+      else if (strcmp (attr_name_p, SERIAL_ATTR_ATTR_NAME) == 0)
 	{
-	  serial_Attrs_id[SERIAL_ATTR_ATT_NAME_INDEX] = i;
+	  serial_Attrs_id[SERIAL_ATTR_ATTR_NAME_INDEX] = i;
 	}
       else if (strcmp (attr_name_p, SERIAL_ATTR_CACHED_NUM) == 0)
 	{
