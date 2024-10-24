@@ -3290,9 +3290,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       {
 	PT_NODE *method_name_node = node->info.method_call.method_name;
 	// parser_print_tree is for built-in package names such as DBMS_OUTPUT
-	const char *method_name =
-	  PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
-								   method_name_node) :
+	const char *method_name = PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
+											   method_name_node) :
 	  PT_NAME_ORIGINAL (method_name_node);
 	if (!node->info.method_call.on_call_target && jsp_is_exist_stored_procedure (method_name))
 	  {

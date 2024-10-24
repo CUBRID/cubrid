@@ -687,23 +687,23 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       error = jsp_make_pl_signature (parser, statement, NULL, sig);
       if (error == NO_ERROR && locator_get_sig_interrupt () == 0)
 	{
-          std::vector <DB_VALUE> out_args;
+	  std::vector <DB_VALUE> out_args;
 	  error = pl_call (sig, args, out_args, ret_value);
 
-	for (int i = 0, j = 0; i < sig.arg.arg_size; i++)
-	  {
-	    if (sig.arg.arg_mode[i] == SP_MODE_IN)
-	      {
-		continue;
-	      }
+	  for (int i = 0, j = 0; i < sig.arg.arg_size; i++)
+	    {
+	      if (sig.arg.arg_mode[i] == SP_MODE_IN)
+		{
+		  continue;
+		}
 
-	    DB_VALUE & arg = args[i];
-	    DB_VALUE & out_arg = out_args[j++];
+	      DB_VALUE &arg = args[i];
+	      DB_VALUE &out_arg = out_args[j++];
 
-	    db_value_clear (&arg);
-	    db_value_clone (&out_arg, &arg);
-	    db_value_clear (&out_arg);
-	  }
+	      db_value_clear (&arg);
+	      db_value_clone (&out_arg, &arg);
+	      db_value_clear (&out_arg);
+	    }
 	}
     }
 
