@@ -10524,7 +10524,7 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 
   /* 2) invoke */
   cubpl::executor executor (sig);
-  (void) executor.fetch_args_peek (ref_args);
+  error_code = executor.fetch_args_peek (ref_args);
   if (error_code == NO_ERROR)
     {
       error_code = executor.execute (ret_value);

@@ -67,10 +67,13 @@
 #include "db_query.h"
 #include "dbtype.h"
 #include "compile_context.h"
+
 #if defined (SA_MODE)
 #include "thread_manager.hpp"
 #include "method_compile.hpp"
+#include "pl_executor.hpp"
 #endif // SA_MODE
+
 #include "xasl.h"
 #include "lob_locator.hpp"
 #include "crypt_opfunc.h"
@@ -10967,13 +10970,13 @@ cleanup:
 }
 
 int
-pl_call (const cubpl::pl_signature & sig, std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result)
+pl_call (const cubpl::pl_signature & sig, const std::vector < std::reference_wrapper < DB_VALUE >> &args,
+	 std::vector < DB_VALUE > &out_args, DB_VALUE & result)
 {
-  int error_code = NO_ERROR;
+  int req_error = NO_ERROR;
 #if defined(CS_MODE)
   char *data_reply = NULL;
   int data_reply_size = 0;
-  int req_error = NO_ERROR;
 
   packing_packer packer;
   cubmem::extensible_block eb;
@@ -11001,24 +11004,7 @@ pl_call (const cubpl::pl_signature & sig, std::vector < std::reference_wrapper <
     if (data_reply != NULL)
       {
 	packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-
-	std::vector < DB_VALUE > out_args;
 	unpacker.unpack_all (result, out_args);
-
-	for (int i = 0, j = 0; i < sig.arg.arg_size; i++)
-	  {
-	    if (sig.arg.arg_mode[i] == SP_MODE_IN)
-	      {
-		continue;
-	      }
-
-	    DB_VALUE & arg = args[i];
-	    DB_VALUE & out_arg = out_args[j++];
-
-	    db_value_clear (&arg);
-	    db_value_clone (&out_arg, &arg);
-	    db_value_clear (&out_arg);
-	  }
       }
     else
       {
@@ -11043,33 +11029,62 @@ error:
 
   return req_error;
 #else
-
-#if 0
+  packing_packer packer;
+  cubmem::extensible_block eb;
   THREAD_ENTRY *thread_p = enter_server ();
 
-  cubpl::session * session = cubpl::get_session (thread_p);
-  cubpl::execution_stack * stack = session->create_and_push_stack ();
+  {
+    DB_VALUE ret_value;
+    cubpl::executor executor ((cubpl::pl_signature &) sig);
+    req_error = executor.fetch_args_peek (args);
+    if (req_error == NO_ERROR)
+      {
+	req_error = executor.execute (ret_value);
+      }
 
-  session->push_stack (stack);
+    if (req_error == NO_ERROR)
+      {
+	/* 3) pack */
+	packer.set_buffer_and_pack_all (eb, ret_value, executor.get_out_args ());
+      }
+    else
+      {
+	std::string err_msg = executor.get_stack ()->get_error_message ();
+	if (err_msg.empty ())
+	  {
+	    err_msg.assign (er_msg ());
+	  }
 
-  cubpl::executor executor (*stack, sig);
+	if (req_error != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg);
+	  }
 
-  (void) executor.fetch_args_peek (args);
+	packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
+      }
 
-  error_code = executor.execute (&result);
-  if (error_code != NO_ERROR)
-    {
-      // TODO =
-    }
-
-  session->pop_stack ();
+    db_value_clear (&ret_value);
+  }
 
   exit_server (*thread_p);
-#endif
-  assert (false);
-#endif
 
-  return error_code;
+  // unpack after exit_server (): ownership of the private allocated objects should be out of server mode
+  packing_unpacker unpacker (eb.get_ptr (), (size_t) packer.get_current_size ());
+  if (req_error == NO_ERROR)
+    {
+      db_make_null (&result);
+      unpacker.unpack_all (result, out_args);
+    }
+  else
+    {
+      int error_code;
+      std::string error_msg;
+      unpacker.unpack_all (error_code, error_msg);
+      cubmethod::handle_method_error (error_code, error_msg);
+    }
+
+  return req_error;
+#endif
 }
 
 /*
@@ -11357,10 +11372,12 @@ error:
 
   cubmem::extensible_block ext_blk;
   success = cubmethod::invoke_compile (*thread_p, compile_request, ext_blk);
-  packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
-  unpacker.unpack_all (compile_response);
 
   exit_server (*thread_p);
+
+  // unpack after exit_server (): ownership of the private allocated objects should be out of server mode
+  packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
+  unpacker.unpack_all (compile_response);
 
   return success;
 #endif /* !CS_MODE */

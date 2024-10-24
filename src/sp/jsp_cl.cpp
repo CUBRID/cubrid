@@ -689,7 +689,6 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	{
 	  std::vector <DB_VALUE> out_args;
 	  error = pl_call (sig, args, out_args, ret_value);
-
 	  for (int i = 0, j = 0; i < sig.arg.arg_size; i++)
 	    {
 	      if (sig.arg.arg_mode[i] == SP_MODE_IN)

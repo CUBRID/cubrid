@@ -458,7 +458,8 @@ extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num
 EXPORT_IMPORT extern int plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request,
 					       PLCSQL_COMPILE_RESPONSE & compile_response);
 EXPORT_IMPORT extern int pl_call (const cubpl::pl_signature & sig,
-				  std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result);
+				  const std::vector < std::reference_wrapper < DB_VALUE >> &args,
+				  std::vector < DB_VALUE > &out_args, DB_VALUE & result);
 
 /* memmon */
 extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
