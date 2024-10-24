@@ -6075,6 +6075,8 @@ log_tdes::lock_topop ()
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
       cubthread::entry *thread_p = NULL;
+// TODO [PL/CSQL]: It will be fixed at CBRD-25641.
+// The following code inside of #if block is a workaround for the issue.
 #if 1
       if (rmutex_topop.owner != thread_id_t ())
       {
@@ -6097,6 +6099,8 @@ log_tdes::unlock_topop ()
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
       cubthread::entry *thread_p = NULL;
+// TODO [PL/CSQL]: It will be fixed at CBRD-25641.
+// The following code inside of #if block is a workaround for the issue.
 #if 1
       if (rmutex_topop.owner != thread_id_t ())
       {

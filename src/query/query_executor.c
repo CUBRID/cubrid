@@ -1740,7 +1740,7 @@ qexec_clear_db_val_list (QPROC_DB_VALUE_LIST list)
  *   return: void
  *   xasl_p(in) : xasl
  *   position_descr(in)   : position desc
- *   is_final(in)  : true, if finalize needex
+ *   is_final(in)  : true, if finalize neede
  */
 static void
 qexec_clear_pos_desc (XASL_NODE * xasl_p, QFILE_TUPLE_VALUE_POSITION * position_descr, bool is_final)
@@ -2110,11 +2110,11 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  break;
 	case TARGET_METHOD:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.method_node.method_regu_list, is_final);
-	  //if (is_final)
-	  //  {
+	  if (is_final)
+	    {
 	  delete p->s.method_node.sig_array;
 	  p->s.method_node.sig_array = NULL;
-	  // }
+	    }
 	  break;
 	case TARGET_REGUVAL_LIST:
 	  break;

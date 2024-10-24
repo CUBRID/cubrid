@@ -1294,15 +1294,17 @@ stx_restore_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr)
       return sig_array;
     }
 
-  //sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_ARRAY_TYPE));
-  //if (sig_array == NULL)
-  //  {
-  //   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-  //   return NULL;
-  // }
-  sig_array = new PL_SIGNATURE_ARRAY_TYPE;
+#if 0
+  sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_ARRAY_TYPE));
+  if (sig_array == NULL)
+    {
+     stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+     return NULL;
+   }
+   new (sig_array) PL_SIGNATURE_ARRAY_TYPE;
+#endif
 
-  // new (sig_array) PL_SIGNATURE_ARRAY_TYPE;
+  sig_array = new PL_SIGNATURE_ARRAY_TYPE;
 
   if (stx_mark_struct_visited (thread_p, ptr, sig_array) == ER_FAILED ||
       stx_build_pl_sig_array (thread_p, ptr, sig_array) == NULL)
@@ -2566,6 +2568,7 @@ error:
   return NULL;
 }
 
+// FIXME: use template
 static char *
 stx_build_pl_sig (THREAD_ENTRY * thread_p, char *ptr, PL_SIGNATURE_TYPE * sig)
 {
@@ -2578,6 +2581,7 @@ stx_build_pl_sig (THREAD_ENTRY * thread_p, char *ptr, PL_SIGNATURE_TYPE * sig)
   return (char *) unpacker.get_curr_ptr ();
 }
 
+// FIXME: use template
 static char *
 stx_build_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr, PL_SIGNATURE_ARRAY_TYPE * sig_array)
 {
