@@ -21465,7 +21465,23 @@ primitive_type
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | BLOB_ opt_internal_external );
 
 			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BLOB), NULL);
+			PT_NODE *dt = NULL;
+
+			if ($2 == PT_LOB_INTERNAL)
+			  {
+			    dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			    if (dt)
+			      {
+			        int coll_id, charset;
+
+			        dt->type_enum = PT_TYPE_VARBIT;
+			        dt->info.data_type.precision = DB_MAX_VARBIT_PRECISION;
+		                dt->info.data_type.units = INTL_CODESET_LOB;
+			        dt->info.data_type.has_coll_spec = false;
+			      }
+			  }
+
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BLOB), dt);
 			$$ = ctn;
 
 		DBG_PRINT}}
@@ -21473,7 +21489,24 @@ primitive_type
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | CLOB_ opt_internal_external );
 
 			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_CLOB), NULL);
+			PT_NODE *dt = NULL;
+
+			if ($2 == PT_LOB_INTERNAL)
+			  {
+			    dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			    if (dt)
+			      {
+			        int coll_id, charset;
+
+			        dt->type_enum = PT_TYPE_VARCHAR;
+			        dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
+		                dt->info.data_type.units = INTL_CODESET_LOB;
+			        dt->info.data_type.collation_id = LANG_COLL_BINARY;
+			        dt->info.data_type.has_coll_spec = true;
+			      }
+			  }
+
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_CLOB), dt);
 			$$ = ctn;
 
 		DBG_PRINT}}

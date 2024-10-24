@@ -2125,10 +2125,17 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	{
 	  DB_TYPE type = atts[i]->type->id;
 
-	  if (!tp_valid_indextype (type))
+	  if (atts[i]->domain->codeset == INTL_CODESET_LOB || !tp_valid_indextype (type))
 	    {
 	      error = ER_SM_INVALID_INDEX_TYPE;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pr_type_name (type));
+	      if (atts[i]->domain->codeset == INTL_CODESET_LOB)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "LOB");
+		}
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pr_type_name (type));
+		}
 	      break;
 	    }
 	  else if (attrs_prefix_length && attrs_prefix_length[i] >= 0)
@@ -2185,18 +2192,32 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	      goto error_return;
 	    }
 
-	  if (!tp_valid_indextype (atts[i]->type->id))
+	  if (atts[i]->domain->codeset == INTL_CODESET_LOB || !tp_valid_indextype (atts[i]->type->id))
 	    {
 	      if (SM_IS_ATTFLAG_UNIQUE_FAMILY (constraint))
 		{
-		  ERROR2 (error, ER_SM_INVALID_UNIQUE_TYPE, atts[i]->type->name,
-			  SM_GET_CONSTRAINT_STRING (constraint_type));
+		  if (atts[i]->domain->codeset == INTL_CODESET_LOB)
+		    {
+		      ERROR2 (error, ER_SM_INVALID_UNIQUE_TYPE, "LOB", SM_GET_CONSTRAINT_STRING (constraint_type));
+		    }
+		  else
+		    {
+		      ERROR2 (error, ER_SM_INVALID_UNIQUE_TYPE, atts[i]->type->name,
+			      SM_GET_CONSTRAINT_STRING (constraint_type));
+		    }
 		}
 	      else
 		{
 		  assert (constraint == SM_ATTFLAG_INDEX || constraint == SM_ATTFLAG_REVERSE_INDEX
 			  || constraint == SM_ATTFLAG_FOREIGN_KEY);
-		  ERROR1 (error, ER_SM_INVALID_INDEX_TYPE, atts[i]->type->name);
+		  if (atts[i]->domain->codeset == INTL_CODESET_LOB)
+		    {
+		      ERROR1 (error, ER_SM_INVALID_INDEX_TYPE, "LOB");
+		    }
+		  else
+		    {
+		      ERROR1 (error, ER_SM_INVALID_INDEX_TYPE, atts[i]->type->name);
+		    }
 		}
 	      goto error_return;
 	    }

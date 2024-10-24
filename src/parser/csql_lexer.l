@@ -351,6 +351,7 @@ IDL       [a-zA-Z0-9_]
 [eE][xX][pP][lL][aA][iI][nN]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return EXPLAIN; }
+[iI][nN][tT][eE][rR][nN][aA][lL]					{ begin_token(yytext);   return INTERNAL; }
 [eE][xX][tT][eE][rR][nN][aA][lL]					{ begin_token(yytext);   return EXTERNAL; }
 [eE][xX][tT][rR][aA][cC][tT]						{ begin_token(yytext);   return EXTRACT; }
 [fF][eE][tT][cC][hH]							{ begin_token(yytext);   return FETCH; }

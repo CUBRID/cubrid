@@ -953,6 +953,7 @@ intl_convert_charset (const unsigned char *src, int length_in_chars, INTL_CODESE
     case INTL_CODESET_KSC5601_EUC:
     case INTL_CODESET_UTF8:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
     default:
       error_code = ER_QSTR_BAD_SRC_CODESET;
       break;
@@ -978,6 +979,7 @@ intl_char_count (const unsigned char *src, int length_in_bytes, INTL_CODESET src
     {
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       *char_count = length_in_bytes;
       break;
 
@@ -1017,6 +1019,7 @@ intl_char_size (const unsigned char *src, int length_in_chars, INTL_CODESET src_
     {
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       *byte_count = length_in_chars;
       break;
 
@@ -1131,6 +1134,7 @@ intl_prev_char (const unsigned char *s, const unsigned char *s_start, INTL_CODES
 
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       break;
     default:
       assert (false);
@@ -1213,6 +1217,7 @@ intl_next_char (const unsigned char *s, INTL_CODESET codeset, int *current_char_
     {
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       *current_char_size = 1;
       return ++s;
 
@@ -1300,6 +1305,7 @@ intl_cmp_char (const unsigned char *s1, const unsigned char *s2, INTL_CODESET co
     {
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       *char_size = 1;
       return *s1 - *s2;
 
@@ -1439,6 +1445,7 @@ intl_pad_char (const INTL_CODESET codeset, unsigned char *pad_char, int *pad_siz
     {
     case INTL_CODESET_RAW_BITS:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       pad_char[0] = '\0';
       *pad_size = 1;
       break;
@@ -1487,6 +1494,7 @@ intl_pad_size (INTL_CODESET codeset)
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_UTF8:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
     default:
       size = 1;
       break;
@@ -1516,6 +1524,7 @@ intl_upper_string_size (const ALPHABET_DATA * alphabet, const unsigned char *src
     {
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       break;
 
     case INTL_CODESET_KSC5601_EUC:
@@ -1563,6 +1572,7 @@ intl_upper_string (const ALPHABET_DATA * alphabet, const unsigned char *src, uns
   switch (alphabet->codeset)
     {
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       memcpy (dst, src, length_in_chars);
       char_count = length_in_chars;
       break;
@@ -1627,6 +1637,7 @@ intl_lower_string_size (const ALPHABET_DATA * alphabet, const unsigned char *src
     {
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       break;
 
     case INTL_CODESET_KSC5601_EUC:
@@ -1687,6 +1698,7 @@ intl_lower_string (const ALPHABET_DATA * alphabet, const unsigned char *src, uns
       break;
 
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       memcpy (dst, src, length_in_chars);
       break;
 
@@ -1808,6 +1820,7 @@ intl_reverse_string (const unsigned char *src, unsigned char *dst, int length_in
     {
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       d = dst + length_in_chars - 1;
       end = src + length_in_chars;
       for (; s < end; char_count++)
@@ -1903,6 +1916,7 @@ intl_is_max_bound_chr (INTL_CODESET codeset, const unsigned char *chr)
       return false;
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
     default:
       if (*chr == 0xff)
 	{
@@ -1987,6 +2001,7 @@ intl_set_max_bound_chr (INTL_CODESET codeset, char *chr)
       return 2;
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
     default:
       *chr = (char) 0xff;
       return 1;
@@ -2924,6 +2939,7 @@ intl_identifier_lower_string_size (const char *src)
     case INTL_CODESET_RAW_BYTES:
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_KSC5601_EUC:
+    case INTL_CODESET_LOB:
     default:
       src_lower_size = src_size;
       break;
@@ -3061,6 +3077,7 @@ intl_identifier_upper_string_size (const char *src)
     case INTL_CODESET_RAW_BYTES:
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_KSC5601_EUC:
+    case INTL_CODESET_LOB:
     default:
       src_upper_size = src_size;
       break;
@@ -3290,6 +3307,7 @@ intl_identifier_mht_1strlowerhash (const void *key, const unsigned int ht_size)
 	}
       break;
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
       for (hash = 0; *byte_p; byte_p++)
 	{
 	  ch = *byte_p;
@@ -3400,6 +3418,7 @@ intl_put_char (unsigned char *dest, const unsigned char *char_p, const INTL_CODE
 
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
     default:
       *dest = *char_p;
       return 1;
@@ -3474,6 +3493,7 @@ intl_is_space (const char *str, const char *str_end, const INTL_CODESET codeset,
     case INTL_CODESET_UTF8:
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
     default:
       if (str_end == NULL)
 	{
@@ -3559,6 +3579,7 @@ intl_skip_spaces (const char *str, const char *str_end, const INTL_CODESET codes
     case INTL_CODESET_UTF8:
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
     default:
       if (str_end == NULL)
 	{
@@ -3622,6 +3643,7 @@ intl_backskip_spaces (const char *str_begin, const char *str_end, const INTL_COD
     case INTL_CODESET_UTF8:
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
     default:
       while (str_end > str_begin && char_isspace (*str_end))
 	{
@@ -4315,6 +4337,7 @@ intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET cod
       return intl_check_euckr ((const unsigned char *) buf, size, pos);
 
     case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_LOB:
     default:
       break;
     }

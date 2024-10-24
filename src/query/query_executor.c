@@ -636,7 +636,7 @@ static DEL_LOB_INFO *qexec_change_delete_lob_info (THREAD_ENTRY * thread_p, XASL
 						   UPDDEL_CLASS_INFO_INTERNAL * class_info,
 						   DEL_LOB_INFO ** del_lob_info_list_ptr);
 static void qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p, DEL_LOB_INFO ** del_lob_info_list_ptr);
-static const char *qexec_schema_get_type_name_from_id (DB_TYPE id);
+static const char *qexec_schema_get_type_name_from_id (TP_DOMAIN * domain);
 static int qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result);
 static int qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
@@ -24935,8 +24935,10 @@ exit_on_error:
  *   id(in): a DB_TYPE
  */
 static const char *
-qexec_schema_get_type_name_from_id (DB_TYPE id)
+qexec_schema_get_type_name_from_id (TP_DOMAIN * domain)
 {
+  DB_TYPE id = domain->type->id;
+
   switch (id)
     {
     case DB_TYPE_INTEGER:
@@ -24986,6 +24988,10 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
 
 
     case DB_TYPE_VARCHAR:
+      if (domain->codeset == INTL_CODESET_LOB)
+	{
+	  return "CLOB INTERNAL";
+	}
       return "VARCHAR";
 
     case DB_TYPE_CHAR:
@@ -25014,6 +25020,10 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
       return "BIT";
 
     case DB_TYPE_VARBIT:
+      if (domain->codeset == INTL_CODESET_LOB)
+	{
+	  return "BLOB INTERNAL";
+	}
       return "BIT VARYING";
 
     case DB_TYPE_BLOB:
@@ -25065,6 +25075,11 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
+      if (domain->codeset == INTL_CODESET_LOB)
+	{
+	  precision = -1;
+	  break;
+	}
       precision = domain->precision;
       break;
 
@@ -25104,7 +25119,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       break;
     }
 
-  name = qexec_schema_get_type_name_from_id (id);
+  name = qexec_schema_get_type_name_from_id (domain);
 
   if (enum_elements)
     {
@@ -25216,7 +25231,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 
       for (setdomain = domain->setdomain, i = 0; setdomain; setdomain = setdomain->next, i++)
 	{
-	  ordered_names[i] = (char *) qexec_schema_get_type_name_from_id (setdomain->type->id);
+	  ordered_names[i] = (char *) qexec_schema_get_type_name_from_id (setdomain);
 	}
 
       for (i = 0; i < count_names - 1; i++)

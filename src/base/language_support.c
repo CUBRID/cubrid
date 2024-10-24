@@ -181,6 +181,8 @@ static const DB_CHARSET lang_Db_charsets[] = {
    "euckr", INTL_CODESET_KSC5601_EUC, 2},
   {"utf-8", "UNICODE charset - UTF-8 encoding", " ", "_utf8",
    "utf8", INTL_CODESET_UTF8, 1},
+  {"lob-bytes", "Uninterpreted bytes - Raw encoding", "", "",
+   "", INTL_CODESET_LOB, 1},
   {"", "", "", "", "", INTL_CODESET_NONE, 0}
 };
 
@@ -2587,7 +2589,7 @@ lang_charset_cubrid_name (const INTL_CODESET codeset)
 {
   int i;
 
-  assert (codeset >= INTL_CODESET_BINARY && codeset <= INTL_CODESET_UTF8);
+  assert (codeset >= INTL_CODESET_BINARY && codeset <= INTL_CODESET_LAST);
 
   for (i = 0; lang_Db_charsets[i].charset_id != INTL_CODESET_NONE; i++)
     {
@@ -2800,7 +2802,7 @@ lang_charset_introducer (const INTL_CODESET codeset)
 {
   int i;
 
-  assert (codeset >= INTL_CODESET_BINARY && codeset <= INTL_CODESET_UTF8);
+  assert (codeset >= INTL_CODESET_BINARY && codeset <= INTL_CODESET_LOB);
 
   for (i = 0; lang_Db_charsets[i].charset_id != INTL_CODESET_NONE; i++)
     {
