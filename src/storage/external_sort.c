@@ -1521,6 +1521,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	  return -1;
 	}
 
+      // *INDENT-OFF*
       /* parallel execute */
       for (int i = 0; i < parallel_num; i++)
 	{
@@ -1529,6 +1530,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 						bind (sort_listfile_execute, std::placeholders::_1, &px_sort_param[i]));
 	  css_push_external_task (css_get_current_conn_entry (), task);
 	}
+      // *INDENT-ON*
 
       /* wait for threads */
       /* TO_DO : no busy wait. need to block and wake up */
