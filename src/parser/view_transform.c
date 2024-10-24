@@ -409,6 +409,8 @@ static void mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_
 static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by,
 					 PT_NODE * subquery, PT_NODE * class_);
 
+static PT_NODE *mq_update_position (PARSER_CONTEXT * parser, PT_NODE * old_select_list, PT_NODE * new_select_list);
+
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
  *  returns: boolean
@@ -2498,6 +2500,8 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec;
   PUSHABLE_TYPE is_mergeable;
+  PT_NODE *select_list;
+
 
   result = tmp_result = NULL;	/* init */
   class_spec = NULL;
@@ -2622,8 +2626,23 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	      parser_free_tree (parser, tmp_class);
 	    }
 
+	  select_list = query_spec->info.query.q.select.list;
+
+	  /* exclude the first oid attr, append non-exist attrs to select list */
+	  if (select_list && select_list->type_enum == PT_TYPE_OBJECT)
+	    {
+	      select_list = select_list->next;	/* skip oid attr */
+	    }
+
 	  derived_table = class_spec->info.spec.derived_table;
 	  if (derived_table == NULL)
+	    {			/* error */
+	      goto exit_on_error;
+	    }
+
+	  derived_table->info.query.q.select.list =
+	    mq_update_position (parser, select_list, derived_table->info.query.q.select.list);
+	  if (derived_table->info.query.q.select.list == NULL)
 	    {			/* error */
 	      goto exit_on_error;
 	    }
@@ -13917,4 +13936,86 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
 	  dest_query->info.delete_.using_index = parser_append_node (ui, dest_query->info.delete_.using_index);
 	}
     }
+}
+
+/*
+ * mq_update_position() - update PT_VALUE located within the OVER clause of the analytic function.
+ *   return:
+ *   parser(in):
+ *   before_query(in): 
+ *   spec(in):
+ */
+static PT_NODE *
+mq_update_position (PARSER_CONTEXT * parser, PT_NODE * old_select_list, PT_NODE * new_select_list)
+{
+  PT_NODE *partition_by, *order_by;
+  PT_NODE *col, *link, *order_list, *order, *value;
+
+  for (col = new_select_list; col; col = col->next)
+    {
+      if (PT_IS_ANALYTIC_NODE (col))
+	{
+	  partition_by = col->info.function.analytic.partition_by;
+	  order_by = col->info.function.analytic.order_by;
+
+	  /* link partition and order lists together */
+	  for (link = partition_by; link && link->next; link = link->next)
+	    {
+	      ;
+	    }
+	  if (link)
+	    {
+	      order_list = partition_by;
+	      link->next = order_by;
+	    }
+	  else
+	    {
+	      order_list = order_by;
+	    }
+
+	  for (order = order_list; order; order = order->next)
+	    {
+	      PT_NODE *expr, *new_col;
+	      int index;
+
+	      if (!PT_IS_VALUE_NODE (order->info.sort_spec.expr))
+		{
+		  continue;
+		}
+
+	      value = order->info.sort_spec.expr;
+	      /* resolve sort spec */
+	      expr = pt_resolve_sort_spec_expr (parser, order, old_select_list);
+	      if (expr == NULL)
+		{
+		  return NULL;
+		}
+
+	      for (new_col = new_select_list, index = 1; new_col; new_col = new_col->next, index++)
+		{
+		  if ((expr->node_type == PT_NAME || expr->node_type == PT_DOT_)
+		      && (new_col->node_type == PT_NAME || new_col->node_type == PT_DOT_))
+		    {
+		      /* we have comparable names */
+		      if (pt_check_path_eq_without_spec_id (parser, expr, new_col) == 0)
+			{
+			  /* name match */
+			  value->info.value.data_value.i = index;
+			  order->info.sort_spec.pos_descr.pos_no = index;
+
+			  break;
+			}
+		    }
+		}
+	    }
+
+	  if (link)
+	    {
+	      col->info.function.analytic.order_by = link->next;
+	      link->next = NULL;
+	    }
+	}
+    }
+
+  return new_select_list;
 }
