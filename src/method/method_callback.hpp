@@ -31,7 +31,6 @@
 #include <queue>
 
 #include "method_connection_cl.hpp"
-#include "method_def.hpp"
 #include "method_error.hpp"
 #include "method_oid_handler.hpp"
 #include "method_query_handler.hpp"

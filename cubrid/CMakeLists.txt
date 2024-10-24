@@ -283,8 +283,19 @@ set(SP_SOURCES
   ${SP_DIR}/jsp_comm.c
   ${SP_DIR}/jsp_file.c
   ${SP_DIR}/jsp_sr.c
+  ${SP_DIR}/method_invoke_group.cpp
+  ${SP_DIR}/pl_execution_stack_context.cpp
+  ${SP_DIR}/pl_executor.cpp
+  ${SP_DIR}/pl_query_cursor.cpp
+  ${SP_DIR}/pl_session.cpp
+  ${SP_DIR}/pl_signature.cpp
   ${SP_DIR}/sp_code.cpp
   )
+
+set(SP_HEADERS
+  ${SP_DIR}/pl_execution_stack_context.hpp
+  ${SP_DIR}/pl_signature.hpp
+)
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_connection_java.cpp
@@ -292,12 +303,7 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_connection_pool.cpp
   ${METHOD_DIR}/method_compile_def.cpp
   ${METHOD_DIR}/method_compile.cpp
-  ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
-  ${METHOD_DIR}/method_invoke_builtin.cpp
-  ${METHOD_DIR}/method_invoke_group.cpp
-  ${METHOD_DIR}/method_invoke_java.cpp
-  ${METHOD_DIR}/method_query_cursor.cpp
   ${METHOD_DIR}/method_query_util.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp
@@ -306,7 +312,6 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_struct_schema_info.cpp
   ${METHOD_DIR}/method_struct_parameter_info.cpp
   ${METHOD_DIR}/method_scan.cpp
-  ${METHOD_DIR}/method_runtime_context.cpp
   ${METHOD_DIR}/query_method.cpp
   )
 
@@ -529,6 +534,7 @@ set (CUBRID_LIB_HEADERS
   ${OBJECT_HEADERS}
   ${QUERY_HEADERS}
   ${STORAGE_HEADERS}
+  ${SP_HEADERS}
   ${THREAD_HEADERS}
   ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}

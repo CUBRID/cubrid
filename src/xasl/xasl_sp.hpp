@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,31 +16,32 @@
  *
  */
 
+//
+// xasl_sp.hpp - XASL structures used for stored procedures
+//
 
-/*
- * External definitions for method calls in queries
- */
-
-#ifndef _QUERY_METHOD_H_
-#define _QUERY_METHOD_H_
-
-#ident "$Id$"
-
-#include <vector>
+#ifndef _XASL_STORED_PROCEDURE_HPP_
+#define _XASL_STORED_PROCEDURE_HPP_
 
 #include "dbtype_def.h"
-#include "packer.hpp"
+#include "storage_common.h"
+#include "pl_signature.hpp"
 
-// forward def
-struct method_sig_list;
-struct qfile_list_id;
+// forward definitions
+struct regu_variable_list_node;
+class regu_variable_node;
 
+namespace cubxasl
+{
+  struct sp_node
+  {
+    cubpl::pl_signature *sig;
+    regu_variable_list_node *args;
+    DB_VALUE *value; // return value
+  };
+};
 
-#if defined(CS_MODE)
-extern int method_dispatch (unsigned int rc, char *methoddata, int methoddata_size);
-extern int method_error (unsigned int rc, int error_id);
-#else
-extern int method_dispatch (packing_unpacker &unpacker);
-#endif
+// legacy aliases
+using SP_TYPE = cubxasl::sp_node;
 
-#endif /* _QUERY_METHOD_H_ */
+#endif // _XASL_STORED_PROCEDURE_HPP_

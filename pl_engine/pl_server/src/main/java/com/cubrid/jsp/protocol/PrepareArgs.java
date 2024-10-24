@@ -39,15 +39,14 @@ public class PrepareArgs {
         tranId = unpacker.unpackInt();
         int argCount = unpacker.unpackInt();
 
-        if (arguments == null || argCount != arguments.length) {
+        if (argCount > 0) {
             arguments = new Value[argCount];
-        }
+            for (int i = 0; i < arguments.length; i++) {
+                int paramType = unpacker.unpackInt();
 
-        for (int i = 0; i < arguments.length; i++) {
-            int paramType = unpacker.unpackInt();
-
-            Value arg = unpacker.unpackValue(paramType);
-            arguments[i] = (arg);
+                Value arg = unpacker.unpackValue(paramType);
+                arguments[i] = (arg);
+            }
         }
     }
 }

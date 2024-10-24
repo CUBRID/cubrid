@@ -293,6 +293,7 @@ authenticate_context::install (void)
 {
   MOP root_cls = NULL, user_cls = NULL, pass_cls = NULL, auth_cls = NULL, old_cls = NULL;
   SM_TEMPLATE *def;
+  AU_USER_CACHE *user_cache;
   int exists, save, index;
 
   AU_DISABLE (save);
@@ -490,10 +491,17 @@ authenticate_context::install (void)
     }
 
   /* establish the DBA as the current user */
-  if (caches.find_user_cache_index (dba_user, &index, 0) != NO_ERROR)
+  user_cache = caches.find_user_cache_by_mop (dba_user);
+  if (user_cache == NULL)
+    {
+      user_cache = caches.make_user_cache (AU_DBA_USER_NAME, dba_user, false);
+    }
+
+  if (caches.get_user_cache_index (user_cache, &index) != NO_ERROR)
     {
       goto exit_on_error;
     }
+
   current_user = dba_user;
   Au_cache.set_cache_index (index);
 
@@ -711,26 +719,35 @@ authenticate_context::set_user (MOP newuser)
 {
   int error = NO_ERROR;
   int index;
+  AU_USER_CACHE *user_cache;
 
   if (newuser != NULL && !ws_is_same_object (newuser, current_user))
     {
-      if (! (error = caches.find_user_cache_index (newuser, &index, 1)))
+      user_cache = caches.find_user_cache_by_mop (newuser);
+      if (user_cache)
 	{
+	  if (caches.get_user_cache_index (user_cache, &index) == NO_ERROR)
+	    {
+	      current_user = newuser;
+	      caches.set_cache_index (index);
 
-	  current_user = newuser;
-	  caches.set_cache_index (index);
+	      /*
+	       * it is important that we don't call sm_bump_local_schema_version() here
+	       * because this function is called during the compilation of vclasses
+	       */
 
-	  /*
-	   * it is important that we don't call sm_bump_local_schema_version() here
-	   * because this function is called during the compilation of vclasses
-	   */
-
-	  /*
-	   * Entry-level SQL specifies that the schema name is the same as
-	   * the current user authorization name.  In any case, this is
-	   * the place to set the current schema since the user just changed.
-	   */
-	  error = sc_set_current_schema (current_user);
+	      /*
+	       * Entry-level SQL specifies that the schema name is the same as
+	       * the current user authorization name.  In any case, this is
+	       * the place to set the current schema since the user just changed.
+	       */
+	      error = sc_set_current_schema (current_user);
+	    }
+	}
+      else
+	{
+	  // you can guarantee that user cache is already created in au_find_user ()
+	  assert (false);
 	}
     }
   return (error);

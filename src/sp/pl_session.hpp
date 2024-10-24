@@ -17,11 +17,11 @@
  */
 
 //
-// method_runtime_context.hpp
+// pl_session.hpp
 //
 
-#ifndef _METHOD_RUNTIME_CONTEXT_HPP_
-#define _METHOD_RUNTIME_CONTEXT_HPP_
+#ifndef _PL_SESSION_HPP_
+#define _PL_SESSION_HPP_
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs to server module
@@ -35,7 +35,9 @@
 #include <string>
 
 #include "method_connection_pool.hpp"
-#include "method_def.hpp"
+
+#include "pl_execution_stack_context.hpp"
+#include "pl_signature.hpp"
 
 // thread_entry.hpp
 namespace cubthread
@@ -45,41 +47,58 @@ namespace cubthread
 
 namespace cubmethod
 {
-  // forward declarations
   class method_invoke_group;
-  class query_cursor;
+  class db_parameter_info;
+}
+
+namespace cubsp
+{
   class connection_pool;
+}
+
+namespace cubpl
+{
+  // forward declarations
+  class query_cursor;
+  class execution_stack;
 
   using THREAD_ENTRY_IDX = int;
   using QUERY_ID = std::uint64_t;
 
-  class runtime_context
+  class session
   {
     public:
-      runtime_context ();
-      ~runtime_context ();
+      session ();
+      ~session ();
 
-      using invoke_group_map_type = std::unordered_map <METHOD_GROUP_ID, method_invoke_group *>;
-      using invoke_group_stack_type = std::deque <METHOD_GROUP_ID>;
-      using invoke_group_iter = std::unordered_map <METHOD_GROUP_ID, method_invoke_group *>::iterator;
+      using exec_stack_map_type = std::unordered_map <PL_STACK_ID, execution_stack *>;
+      using exec_stack_id_type = std::vector <PL_STACK_ID>;
+      using exec_stack_iter = std::unordered_map <PL_STACK_ID, execution_stack *>::iterator;
       using cursor_map_type = std::unordered_map <QUERY_ID, query_cursor *>;
       using cursor_iter = std::unordered_map <QUERY_ID, query_cursor *>::iterator;
 
+      /* cursor management */
       query_cursor *create_cursor (cubthread::entry *thread_p, QUERY_ID query_id, bool oid_included = false);
       query_cursor *get_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
       void destroy_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
 
-      void register_returning_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
-      void deregister_returning_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
+      void add_session_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
+      void remove_session_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
+      bool is_session_cursor (QUERY_ID query_id);
 
-      method_invoke_group *create_invoke_group (cubthread::entry *thread_p, const method_sig_list &siglist, bool is_scan);
-
+      /* stack management */
       // Currently these functions are used for debugging purpose.
       // In the recursive call situation, each time the function is called, a new worker from the thread pool is assigned. With this code, you can easily know the current state.
       // In the future, these functions will resolve some cases when it is necessary to set an error for all threads participating in a recursive call e.g. interrupt
-      void push_stack (cubthread::entry *thread_p, method_invoke_group *group);
-      void pop_stack (cubthread::entry *thread_p, method_invoke_group *claimed);
-      method_invoke_group *top_stack ();
+      execution_stack *create_and_push_stack (cubthread::entry *thread_p);
+      void pop_and_destroy_stack (execution_stack *&stack);
+      execution_stack *top_stack ();
+
+      /* thread */
+      bool is_thread_involved (thread_id_t id);
+
+      /* getter */
+      SESSION_ID get_id ();
 
       void set_interrupt (int reason, std::string msg = "");
       bool is_interrupted ();
@@ -98,41 +117,49 @@ namespace cubmethod
 	return m_req_id++;
       }
 
-      connection_pool &get_connection_pool ();
+      cubmethod::connection_pool *get_connection_pool ();
+
+      cubmethod::db_parameter_info *get_db_parameter_info () const;
+      void set_db_parameter_info (cubmethod::db_parameter_info *param_info);
 
     private:
-      void destroy_group (METHOD_GROUP_ID id);
-
-      void destroy_all_groups ();
+      execution_stack *top_stack_internal ();
       void destroy_all_cursors ();
 
       std::mutex m_mutex;
       std::condition_variable m_cond_var;
 
-      invoke_group_stack_type m_group_stack; // runtime stack
-      std::unordered_set <QUERY_ID> m_returning_cursors;
+      std::unordered_set <QUERY_ID> m_session_cursors;
 
-      invoke_group_map_type m_group_map; // method executor storage
+      exec_stack_map_type m_stack_map; // method executor storage
+      exec_stack_id_type m_exec_stack; // runtime stack (implemented using vector)
+      int m_stack_idx;
+
+
       cursor_map_type m_cursor_map; // server-side cursor storage
 
-      invoke_group_stack_type m_deferred_free_stack;
+      exec_stack_id_type m_deferred_free_stack;
 
-      connection_pool m_conn_pool;
+      cubmethod::connection_pool m_conn_pool;
 
       std::atomic <METHOD_REQ_ID> m_req_id;
+
+      cubmethod::db_parameter_info *m_param_info;
 
       bool m_is_interrupted;
       int m_interrupt_id;
       std::string m_interrupt_msg;
 
       bool m_is_running;
+
+      SESSION_ID m_id;
   };
 
   /* global interface */
-  runtime_context *get_rctx (cubthread::entry *thread_p);
+  session *get_session ();
 } // cubmethod
 
 // alias declaration for legacy C files
-using method_runtime_context = cubmethod::runtime_context;
+using PL_SESSION = cubpl::session;
 
-#endif // _METHOD_RUNTIME_CONTEXT_HPP_
+#endif // _PL_SESSION_HPP_

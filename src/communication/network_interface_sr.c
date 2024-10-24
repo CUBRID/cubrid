@@ -86,12 +86,13 @@
 #include "elo.h"
 #include "transaction_transient.hpp"
 #include "method_invoke_group.hpp"
-#include "method_runtime_context.hpp"
 #include "log_manager.h"
 #include "crypt_opfunc.h"
 #include "flashback.h"
 #include "method_compile.hpp"
 #include "method_compile_def.hpp"
+#include "pl_session.hpp"
+#include "pl_executor.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -162,8 +163,8 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
 
   state = xtran_server_commit (thread_p, retain_lock);
 
-  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-  if (!rctx || rctx->is_running () == false || rctx->get_depth () == 0)
+  PL_SESSION *session = cubpl::get_session ();
+  if (!session || session->is_running () == false)
     {
       net_cleanup_server_queues (rid);
     }
@@ -200,8 +201,8 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
 
   state = xtran_server_abort (thread_p);
 
-  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-  if (!rctx || rctx->is_running () == false || rctx->get_depth () == 0)
+  PL_SESSION *session = cubpl::get_session ();
+  if (!session || session->is_running () == false)
     {
       net_cleanup_server_queues (rid);
     }
@@ -10506,6 +10507,84 @@ cdc_check_client_connection ()
 }
 
 void
+spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  DB_VALUE ret_value;
+  db_make_null (&ret_value);
+
+  /* 1) unpack arguments */
+  cubpl::pl_signature sig;
+  std::vector < DB_VALUE > args;
+  unpacker.unpack_all (sig, args);
+
+  std::vector < std::reference_wrapper < DB_VALUE >> ref_args (args.begin (), args.end ());
+
+  /* 2) invoke */
+  cubpl::executor executor (sig);
+  error_code = executor.fetch_args_peek (ref_args);
+  if (error_code == NO_ERROR)
+    {
+      error_code = executor.execute (ret_value);
+    }
+
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  if (error_code == NO_ERROR)
+    {
+      /* 3) pack */
+      packer.set_buffer_and_pack_all (eb, ret_value, executor.get_out_args ());
+    }
+  else
+    {
+      std::string err_msg = executor.get_stack ()->get_error_message ();
+      if (err_msg.empty ())
+	{
+	  err_msg.assign (er_msg ());
+	}
+
+      if (error_code != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg);
+	}
+      packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  char *reply_data = eb.get_ptr ();
+  int reply_data_size = (int) packer.get_current_size ();
+
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = or_pack_int (reply, (int) END_CALLBACK);
+  ptr = or_pack_int (ptr, reply_data_size);
+  ptr = or_pack_int (ptr, error_code);
+
+  // clear
+  //if (top_on_stack)
+  //  {
+  //    top_on_stack->reset (true);
+  //    top_on_stack->end ();
+  //  }
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
+				     reply_data_size);
+
+/*
+  if (top_on_stack)
+    {
+      rctx->pop_stack (thread_p, top_on_stack);
+    }
+*/
+
+  pr_clear_value_vector (args);
+  db_value_clear (&ret_value);
+}
+
+#if 0
+void
 smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   packing_unpacker unpacker (request, (size_t) reqlen);
@@ -10627,6 +10706,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   db_value_clear (&ret_value);
   sig_list.freemem ();
 }
+#endif
 
 void
 scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)

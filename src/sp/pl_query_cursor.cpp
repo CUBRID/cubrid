@@ -16,25 +16,32 @@
  *
  */
 
-#include "method_query_cursor.hpp"
+#include "pl_query_cursor.hpp"
 
 #include "dbtype.h"
 #include "dbtype_def.h"
 #include "list_file.h"
 #include "log_impl.h"
 #include "object_representation.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace cubmethod
+namespace cubpl
 {
   query_cursor::query_cursor (cubthread::entry *thread_p, QMGR_QUERY_ENTRY *query_entry_p, bool oid_included)
     : m_thread (thread_p)
     , m_is_oid_included (oid_included)
     , m_is_opened (false)
     , m_fetch_count (1000) // FIXME: change the fixed value, 1000
+    , m_query_id (0)
   {
     reset (query_entry_p);
+  }
+
+  query_cursor::~query_cursor ()
+  {
+    close ();
   }
 
   int
@@ -127,6 +134,10 @@ namespace cubmethod
 	      }
 	  }
       }
+    else if (scan_code == S_END)
+      {
+	close ();
+      }
 
     return scan_code;
   }
@@ -174,6 +185,10 @@ namespace cubmethod
 	      }
 	  }
       }
+    else if (scan_code == S_END)
+      {
+	close ();
+      }
 
     return scan_code;
   }
@@ -181,7 +196,15 @@ namespace cubmethod
   void
   query_cursor::change_owner (cubthread::entry *thread_p)
   {
-    if (m_thread->get_id () == thread_p->get_id ())
+    if (thread_p == nullptr)
+      {
+	close ();
+	// qfile_update_qlist_count (m_thread, m_list_id, -1);
+	m_thread = nullptr;
+	return;
+      }
+
+    if (m_thread != nullptr && m_thread->get_id () == thread_p->get_id ())
       {
 	return;
       }
@@ -192,7 +215,13 @@ namespace cubmethod
     m_thread = thread_p;
 
     // m_list_id is going to be destoryed on server-side, so that qlist_count has to be updated
-    qfile_update_qlist_count (thread_p, m_list_id, 1);
+    // qfile_update_qlist_count (thread_p, m_list_id, 1);
+  }
+
+  cubthread::entry *
+  query_cursor::get_owner () const
+  {
+    return m_thread;
   }
 
   std::vector<DB_VALUE>
@@ -200,8 +229,6 @@ namespace cubmethod
   {
     return m_current_tuple;
   }
-
-  void clear ();
 
   int
   query_cursor::get_current_index ()
@@ -257,4 +284,5 @@ namespace cubmethod
 	m_fetch_count = cnt;
       }
   }
+
 }

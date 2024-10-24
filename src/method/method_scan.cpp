@@ -21,7 +21,10 @@
 #include "dbtype.h" /* db_value_* */
 #include "list_file.h" /* qfile_ */
 #include "object_representation.h" /* OR_ */
-#include "method_runtime_context.hpp"
+
+#include "pl_session.hpp"
+#include "pl_signature.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -39,7 +42,7 @@ namespace cubscan
     }
 
     int
-    scanner::init (cubthread::entry *thread_p, METHOD_SIG_LIST *sig_list, qfile_list_id *list_id)
+    scanner::init (cubthread::entry *thread_p, PL_SIGNATURE_ARRAY_TYPE *sig_array, qfile_list_id *list_id)
     {
       // check initialized
       if (m_thread_p != thread_p)
@@ -49,7 +52,7 @@ namespace cubscan
 
       if (m_method_group == nullptr) // signature is not initialized
 	{
-	  m_method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, *sig_list, true);
+	  m_method_group = new cubmethod::method_invoke_group (*sig_array);
 	  if (!m_method_group)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -63,7 +66,6 @@ namespace cubscan
 	  m_list_id = list_id;
 	  int arg_count = m_list_id->type_list.type_cnt;
 	  m_arg_vector.resize (arg_count);
-	  m_arg_use_vector.resize (arg_count, false);
 	  m_arg_dom_vector.resize (arg_count);
 
 	  for (int i = 0; i < arg_count; i++)
@@ -77,16 +79,17 @@ namespace cubscan
 	    }
 	}
 
-      method_sig_node *sig = sig_list->method_sig;
-      while (sig)
+#if 0 // TODO
+      for (int i = 0; i < sig_array->num_sigs; i++)
 	{
-	  for (int i = 0; i < sig->num_method_args; i++)
+	  cubpl::pl_signature &sig = sig_array->sigs[i];
+	  for (int j = 0; j < sig.arg.arg_size; j++)
 	    {
-	      int idx = sig->method_arg_pos [i];
+	      int idx = sig.ext.method.arg_pos[i];
 	      m_arg_use_vector [idx] = true;
 	    }
-	  sig = sig->next;
 	}
+#endif
 
       if (m_dbval_list == nullptr)
 	{
@@ -113,8 +116,11 @@ namespace cubscan
 	  m_method_group->reset (true);
 	  m_method_group->end ();
 
+// TODO
+#if 0
 	  cubmethod::runtime_context *rctx = m_method_group->get_runtime_context ();
 	  rctx->pop_stack (m_thread_p, m_method_group);
+#endif
 
 	  m_method_group = nullptr; // will be destroyed by cubmethod::runtime_context
 	}
@@ -155,11 +161,6 @@ namespace cubscan
 
       std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector.begin (), m_arg_vector.end ());
 
-      if (scan_code == S_SUCCESS && (error = m_method_group->prepare (arg_wrapper, m_arg_use_vector)) != NO_ERROR)
-	{
-	  scan_code = S_ERROR;
-	}
-
       if (scan_code == S_SUCCESS && (error = m_method_group->execute (arg_wrapper)) != NO_ERROR)
 	{
 	  scan_code = S_ERROR;
@@ -188,15 +189,17 @@ namespace cubscan
 
 	  m_method_group->reset (false);
 	}
+
       if (scan_code == S_ERROR)
 	{
-	  cubmethod::runtime_context *rctx = m_method_group->get_runtime_context ();
-	  if (rctx->is_interrupted ())
-	    {
-	      rctx->set_local_error_for_interrupt ();
-	    }
-	  else if (error !=
-		   ER_SM_INVALID_METHOD_ENV) /* FIXME: error possibly occured in builtin method, It should be handled at CAS */
+//	  PL_SESSION *session = m_method_group->get_session ();
+//	  if (session->is_interrupted ())
+//	    {
+//	      session->set_local_error_for_interrupt ();
+//	    }
+//	  else
+	  if (error !=
+	      ER_SM_INVALID_METHOD_ENV) /* FIXME: error possibly occured in builtin method, It should be handled at CAS */
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, m_method_group->get_error_msg ().c_str ());
 	    }

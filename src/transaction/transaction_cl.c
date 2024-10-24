@@ -292,7 +292,7 @@ tran_commit (bool retain_lock)
     }
 
   assert (!tran_was_latest_query_aborted ());
-  if (tran_was_latest_query_ended ())
+  if (tran_was_latest_query_ended () || tran_is_in_libcas ())
     {
       /* Query ended with latest executed query. No need to notify server. */
       query_end_notify_server = false;
