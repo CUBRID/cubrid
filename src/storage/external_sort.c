@@ -1525,8 +1525,8 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       for (int i = 0; i < parallel_num; i++)
 	{
 	  cubthread::entry_callable_task * task =
-	    new cubthread::
-	    entry_callable_task (std::bind (sort_listfile_execute, std::placeholders::_1, &px_sort_param[i]));
+	    new cubthread::entry_callable_task (std::
+						bind (sort_listfile_execute, std::placeholders::_1, &px_sort_param[i]));
 	  css_push_external_task (css_get_current_conn_entry (), task);
 	}
 
