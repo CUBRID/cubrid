@@ -69,7 +69,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     public final SymbolStack symbolStack = new SymbolStack();
 
-    public ParseTreeConverter(String spOwner, String spRevision) {
+    public ParseTreeConverter(InstanceStore iStore, String spOwner, String spRevision) {
+        this.iStore = iStore;
         this.spOwner = Misc.getNormalizedText(spOwner);
         this.spRevision = spRevision;
     }
@@ -176,9 +177,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " as its return type");
                 }
 
-                Type retType = DBTypeAdapter.getValueType(fs.retType.type);
+                Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
 
-                gfc.decl = new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(retType));
+                gfc.decl =
+                        new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(iStore, retType));
 
             } else if (q instanceof ServerAPI.SerialOrNot) {
 
@@ -202,11 +204,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 assert node instanceof TypeSpecPercent;
                 TypeSpecPercent tsp = (TypeSpecPercent) node;
                 if (tsp.forParameterOrReturn) {
-                    tsp.type = DBTypeAdapter.getValueType(ct.colType.type);
+                    tsp.type = DBTypeAdapter.getValueType(iStore, ct.colType.type);
                 } else {
                     tsp.type =
                             DBTypeAdapter.getDeclType(
-                                    ct.colType.type, ct.colType.prec, ct.colType.scale);
+                                    iStore, ct.colType.type, ct.colType.prec, ct.colType.scale);
                 }
             } else {
                 assert false : "unreachable";
@@ -414,13 +416,19 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new RuntimeException(row + " has no columns"); // unlikely ...
         }
 
-        return new TypeSpec(ctx, TypeRecord.getInstance(ofTable, row, selectList));
+        return new TypeSpec(ctx, TypeRecord.getInstance(iStore, ofTable, row, selectList));
     }
 
     @Override
     public TypeSpec visitNumeric_type(Numeric_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.precision != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s091
+                        "precision may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.NUMERIC_ANY);
         }
 
@@ -450,13 +458,19 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        return new TypeSpec(ctx, TypeNumeric.getInstance(precision, scale));
+        return new TypeSpec(ctx, TypeNumeric.getInstance(iStore, precision, scale));
     }
 
     @Override
     public TypeSpec visitChar_type(Char_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.length != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s092
+                        "length may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
@@ -476,13 +490,19 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        return new TypeSpec(ctx, TypeChar.getInstance(length));
+        return new TypeSpec(ctx, TypeChar.getInstance(iStore, length));
     }
 
     @Override
     public TypeSpec visitVarchar_type(Varchar_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.length != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s093
+                        "length may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
@@ -502,7 +522,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        return new TypeSpec(ctx, TypeVarchar.getInstance(length));
+        return new TypeSpec(ctx, TypeVarchar.getInstance(iStore, length));
     }
 
     @Override
@@ -1406,6 +1426,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public Expr visitIdentifier(IdentifierContext ctx) {
         String name = Misc.getNormalizedText(ctx);
 
+        if (name.length() > ID_LEN_MAX) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), // s094
+                    "identifier length may not exceed " + ID_LEN_MAX);
+        }
+
         Decl decl = symbolStack.getDeclForIdExpr(name);
         if (decl == null) {
 
@@ -1708,7 +1734,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         TypeRecord recTy =
-                TypeRecord.getInstance(false, declCursor.name, declCursor.staticSql.selectList);
+                TypeRecord.getInstance(
+                        iStore, false, declCursor.name, declCursor.staticSql.selectList);
         DeclVar recDecl =
                 new DeclVar(
                         ctx.for_cursor().record_name(),
@@ -1762,7 +1789,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             symbolStack.putDeclLabel(label, declLabel);
         }
 
-        TypeRecord recTy = TypeRecord.getInstance(false, record, staticSql.selectList);
+        TypeRecord recTy = TypeRecord.getInstance(iStore, false, record, staticSql.selectList);
         DeclVar declForRecord =
                 new DeclVar(recNameCtx, record, new TypeSpec(null, recTy), false, null);
         symbolStack.putDecl(record, declForRecord);
@@ -2316,6 +2343,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // Private Static
     // --------------------------------------------------------
 
+    private static final int ID_LEN_MAX = 222; // see User Manual
+
     private static final BigInteger UINT_LITERAL_MAX =
             new BigInteger("99999999999999999999999999999999999999");
     private static final BigInteger BIGINT_MAX = new BigInteger("9223372036854775807");
@@ -2340,6 +2369,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         && ((DeclIdTypeSpeced) decl).typeSpec().type == Type.SYS_REFCURSOR));
     }
 
+    // NOTE: never changing after the initilization during the ParseTreeConverter class
+    // initialization
     private static final Map<String, Type> nameToType = new HashMap<>();
 
     static {
@@ -2381,6 +2412,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // Private
     // --------------------------------------------------------
 
+    private InstanceStore iStore;
     private boolean forParameterOrReturn = false;
 
     private static class UseAndDeclLevel {
@@ -2706,7 +2738,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     }
 
                 } else if (DBTypeAdapter.isSupported(ci.type)) {
-                    ty = DBTypeAdapter.getValueType(ci.type);
+                    ty = DBTypeAdapter.getValueType(iStore, ci.type);
                 } else {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s426
@@ -2791,9 +2823,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
             }
 
-            Type paramType = DBTypeAdapter.getValueType(params[i].type);
+            Type paramType = DBTypeAdapter.getValueType(iStore, params[i].type);
 
-            TypeSpec tySpec = TypeSpec.getBogus(paramType);
+            TypeSpec tySpec = TypeSpec.getBogus(iStore, paramType);
             if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) != 0) {
                 boolean alsoIn = (params[i].mode & ServerConstants.PARAM_MODE_IN) != 0;
                 paramList.nodes.add(new DeclParamOut(null, "p" + i, tySpec, alsoIn));

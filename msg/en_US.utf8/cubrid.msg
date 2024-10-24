@@ -1623,6 +1623,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
 138 Invalid deduplicate level. Valid level between %1$d and %2$d.
+139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1943,11 +1944,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 316 Rename cannot be changed to the same name.
 317 Identifiers cannot be in a LIMIT clause.321 %TYPE type specification is allowed only for PL/CSQL
 322 Table column '%1$s.%2$s' has not been defined
-323 Stored procedure/function "%1$s" does not exist.
-324 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
-325 Only trailing default parameter is allowed: invalid at '%1$s'.
-326 Stored procedure/function '%1$s' has OUT or IN OUT arguments
-327 Grant option is not allowed for %1$s.
+323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
+324 '%1$s' is not a record variable.
+325 Stored procedure/function "%1$s" does not exist.
+326 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
+327 Only trailing default parameter is allowed: invalid at '%1$s'.
+328 Stored procedure/function '%1$s' has OUT or IN OUT arguments
+329 Grant option is not allowed for %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

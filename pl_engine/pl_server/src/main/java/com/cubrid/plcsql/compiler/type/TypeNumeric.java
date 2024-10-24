@@ -30,24 +30,23 @@
 
 package com.cubrid.plcsql.compiler.type;
 
-import java.util.HashMap;
-import java.util.Map;
+import com.cubrid.plcsql.compiler.InstanceStore;
 
 public class TypeNumeric extends Type {
 
     public final int precision;
     public final short scale;
 
-    public static synchronized TypeNumeric getInstance(int precision, short scale) {
+    public static TypeNumeric getInstance(InstanceStore iStore, int precision, short scale) {
 
         assert precision <= 38 && precision >= 1;
         assert scale <= precision && scale >= 0;
 
         int key = precision * 100 + scale;
-        TypeNumeric ret = instances.get(key);
+        TypeNumeric ret = iStore.typeNumeric.get(key);
         if (ret == null) {
             ret = new TypeNumeric(precision, scale);
-            instances.put(key, ret);
+            iStore.typeNumeric.put(key, ret);
         }
 
         return ret;
@@ -56,8 +55,6 @@ public class TypeNumeric extends Type {
     // ---------------------------------------------------------------------------
     // Private
     // ---------------------------------------------------------------------------
-
-    private static final Map<Integer, TypeNumeric> instances = new HashMap<>();
 
     private static String getPlcName(int precision, short scale) {
         return String.format("Numeric(%d, %d)", precision, scale);
