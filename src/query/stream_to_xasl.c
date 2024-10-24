@@ -1298,10 +1298,10 @@ stx_restore_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr)
   sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_ARRAY_TYPE));
   if (sig_array == NULL)
     {
-     stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-     return NULL;
-   }
-   new (sig_array) PL_SIGNATURE_ARRAY_TYPE;
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
+    }
+  new (sig_array) PL_SIGNATURE_ARRAY_TYPE;
 #endif
 
   sig_array = new PL_SIGNATURE_ARRAY_TYPE;
