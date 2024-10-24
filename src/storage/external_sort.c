@@ -4093,14 +4093,14 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	{
 	  if (sort_param->temp[k].volid != NULL_VOLID)
 	    {
-	      (void) file_temp_retire (thread_p, &sort_param->temp[k]);
+	      (void) file_temp_retire_preserved (thread_p, &sort_param->temp[k]);
 	    }
 	}
     }
 
   if (sort_param->multipage_file.volid != NULL_VOLID)
     {
-      (void) file_temp_retire (thread_p, &(sort_param->multipage_file));
+      (void) file_temp_retire_preserved (thread_p, &(sort_param->multipage_file));
     }
 
   if (parallel_type == PX_SINGLE || parallel_type == PX_THREAD_IN_PARALLEL)
@@ -4188,7 +4188,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
-      file_temp_retire (thread_p, vfid);
+      file_temp_retire_preserved (thread_p, vfid);
       VFID_SET_NULL (vfid);
       return ret;
     }
@@ -4206,7 +4206,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  file_temp_retire (thread_p, vfid);
+	  file_temp_retire_preserved (thread_p, vfid);
 	  VFID_SET_NULL (vfid);
 	  return ret;
 	}
@@ -4769,7 +4769,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  /* If there is a file not to be used anymore, destroy it in order to reuse spaces. */
 	  if (!VFID_ISNULL (&sort_param->temp[i]))
 	    {
-	      error_code = file_temp_retire (thread_p, &sort_param->temp[i]);
+	      error_code = file_temp_retire_preserved (thread_p, &sort_param->temp[i]);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();

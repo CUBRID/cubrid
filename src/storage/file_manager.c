@@ -67,6 +67,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+
 /************************************************************************/
 /* Define structures, globals, and macro's                              */
 /************************************************************************/
@@ -3188,8 +3189,12 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
       *vfid_out = tempcache_entry->vfid;
     }
 
-  /* save to transaction temporary file list */
-  file_tempcache_push_tran_file (thread_p, tempcache_entry);
+  /* if numerable then temporary file is intermediate file for sorting. No transaction info required */
+  if (!is_numerable)
+    {
+      /* save to transaction temporary file list */
+      file_tempcache_push_tran_file (thread_p, tempcache_entry);
+    }
   return NO_ERROR;
 }
 
