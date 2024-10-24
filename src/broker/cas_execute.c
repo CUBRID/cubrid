@@ -2441,6 +2441,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       session = db_open_buffer (sql_stmt);
       if (!session)
 	{
+	  cas_log_compile_end_write_query_string_nonl (sql_stmt, strlen (sql_stmt), NULL);
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}

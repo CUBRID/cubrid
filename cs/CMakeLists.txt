@@ -26,7 +26,8 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
-  ${EXECUTABLES_DIR}/unload_schema.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
+  ${EXECUTABLES_DIR}/unload_schema.c  
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/util_cs.c
@@ -107,6 +108,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/memory_monitor_cl.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
@@ -147,6 +149,8 @@ set(BASE_HEADERS
   ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_monitor_cl.hpp
+  ${BASE_DIR}/memory_monitor_common.hpp
   ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
   ${BASE_DIR}/msgcat_set_log.hpp
@@ -154,10 +158,12 @@ set(BASE_HEADERS
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/perf_monitor.h
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/printer.hpp
+  ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
@@ -184,6 +190,10 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
+  )
+
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
   )
 
 set(PARSER_SOURCES
@@ -250,7 +260,15 @@ set(QUERY_HEADERS
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate.c
+  ${OBJECT_DIR}/authenticate_access_auth.cpp
   ${OBJECT_DIR}/authenticate_cache.cpp
+  ${OBJECT_DIR}/authenticate_context.cpp
+  ${OBJECT_DIR}/authenticate_access_class.cpp
+  ${OBJECT_DIR}/authenticate_grant.cpp
+  ${OBJECT_DIR}/authenticate_owner.cpp
+  ${OBJECT_DIR}/authenticate_password.cpp
+  ${OBJECT_DIR}/authenticate_access_user.cpp
+  ${OBJECT_DIR}/authenticate_migration.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
   ${OBJECT_DIR}/deduplicate_key.c
@@ -429,6 +447,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c
@@ -487,6 +506,7 @@ add_library(cubridcs SHARED
   ${COMPAT_SOURCES_C}
   ${BASE_HEADERS}
   ${BASE_SOURCES}
+  ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
   ${COMMUNICATION_SOURCES}
   ${CONNECTION_SOURCES}
@@ -539,11 +559,12 @@ if(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridcs PUBLIC stdc++fs)
   target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubridcs LINK_PUBLIC rt)
 else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
 # for dblink
-target_link_libraries(cubridcs cascci)
+target_link_libraries(cubridcs PUBLIC cascci)
 
 add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 add_dependencies(cubridcs ${EP_TARGETS})

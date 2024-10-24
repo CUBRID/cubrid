@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -48,6 +49,16 @@ public class DeclForIter extends DeclId {
     public <R> R accept(AstVisitor<R> visitor) {
         assert false : "unreachable";
         throw new RuntimeException("unreachable");
+    }
+
+    @Override
+    public Type type() {
+        return Type.INT;
+    }
+
+    @Override
+    public String name() {
+        return name;
     }
 
     @Override

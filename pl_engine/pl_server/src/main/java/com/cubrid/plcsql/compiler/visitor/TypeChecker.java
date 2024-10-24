@@ -34,16 +34,18 @@ import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.DBTypeAdapter;
+import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
-import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
+import com.cubrid.plcsql.compiler.type.TypeRecord;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -53,7 +55,8 @@ import java.util.Set;
 
 public class TypeChecker extends AstVisitor<Type> {
 
-    public TypeChecker(SymbolStack symbolStack, ParseTreeConverter ptConv) {
+    public TypeChecker(InstanceStore iStore, SymbolStack symbolStack, ParseTreeConverter ptConv) {
+        this.iStore = iStore;
         this.symbolStack = symbolStack;
         this.ptConv = ptConv;
     }
@@ -153,7 +156,7 @@ public class TypeChecker extends AstVisitor<Type> {
                         "NOT NULL variables may not have null as their initial value");
             }
 
-            Coercion c = Coercion.getCoercion(valType, node.typeSpec.type);
+            Coercion c = Coercion.getCoercion(iStore, valType, node.typeSpec.type);
             if (c == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.val.ctx), // s205
@@ -177,7 +180,7 @@ public class TypeChecker extends AstVisitor<Type> {
                     "NOT NULL constants may not have null as their initial value");
         }
 
-        Coercion c = Coercion.getCoercion(valType, node.typeSpec.type);
+        Coercion c = Coercion.getCoercion(iStore, valType, node.typeSpec.type);
         if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.val.ctx), // s207
@@ -202,7 +205,7 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitDeclCursor(DeclCursor node) {
 
-        assert node.staticSql.intoVars == null; // by earlier check
+        assert node.staticSql.intoTargetList == null; // by earlier check
 
         visitNodeList(node.paramList);
         typeCheckHostExprs(node.staticSql); // s400
@@ -228,7 +231,7 @@ public class TypeChecker extends AstVisitor<Type> {
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
                 symbolStack.getOperator(
-                        outCoercions, "opBetween", targetType, lowerType, upperType);
+                        iStore, outCoercions, "opBetween", targetType, lowerType, upperType);
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s208, s209
@@ -269,10 +272,27 @@ public class TypeChecker extends AstVisitor<Type> {
         Type leftType = visit(node.left);
         Type rightType = visit(node.right);
 
-        // in the following line, s210 (no match)
+        // check if it is = or != for two records of the same type
+        if (leftType.idx == Type.IDX_RECORD || rightType.idx == Type.IDX_RECORD) {
+            if (!"Eq".equals(node.opStr) && !"Neq".equals(node.opStr)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(node.ctx), // s237
+                        "only = and != are allowed for a record");
+            }
+            if (leftType != rightType) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(node.ctx), // s238
+                        "= and != are allowed only for records of the same type");
+            }
+            node.recordTypeOfOperands = (TypeRecord) leftType;
+            node.recordTypeOfOperands.generateEq = true;
+            return Type.BOOLEAN;
+        }
+
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc binOp =
-                symbolStack.getOperator(outCoercions, "op" + node.opStr, leftType, rightType);
+                symbolStack.getOperator(
+                        iStore, outCoercions, "op" + node.opStr, leftType, rightType);
         if (binOp == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s210
@@ -340,7 +360,7 @@ public class TypeChecker extends AstVisitor<Type> {
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
                 symbolStack.getOperator(
-                        outCoercions, "opIn", caseComparedTypes.toArray(TYPE_ARRAY_DUMMY));
+                        iStore, outCoercions, "opIn", caseComparedTypes.toArray(TYPE_ARRAY_DUMMY));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s226
@@ -354,7 +374,7 @@ public class TypeChecker extends AstVisitor<Type> {
         for (CaseExpr ce : node.whenParts.nodes) {
             ce.val.setCoercion(outCoercions.get(i));
 
-            Coercion c = Coercion.getCoercion(caseExprTypes.get(i - 1), commonType);
+            Coercion c = Coercion.getCoercion(iStore, caseExprTypes.get(i - 1), commonType);
             assert c != null
                     : ("no coercion from " + caseExprTypes.get(i - 1) + " to " + commonType);
             ce.expr.setCoercion(c);
@@ -362,7 +382,7 @@ public class TypeChecker extends AstVisitor<Type> {
             i++;
         }
         if (node.elsePart != null) {
-            Coercion c = Coercion.getCoercion(caseExprTypes.get(i - 1), commonType);
+            Coercion c = Coercion.getCoercion(iStore, caseExprTypes.get(i - 1), commonType);
             assert c != null
                     : ("no coercion from " + caseExprTypes.get(i - 1) + " to " + commonType);
             node.elsePart.setCoercion(c);
@@ -407,14 +427,14 @@ public class TypeChecker extends AstVisitor<Type> {
         int i = 0;
         for (CondExpr ce : node.condParts.nodes) {
 
-            Coercion c = Coercion.getCoercion(condExprTypes.get(i), commonType);
+            Coercion c = Coercion.getCoercion(iStore, condExprTypes.get(i), commonType);
             assert c != null : ("no coercion from " + condExprTypes.get(i) + " to " + commonType);
             ce.expr.setCoercion(c);
 
             i++;
         }
         if (node.elsePart != null) {
-            Coercion c = Coercion.getCoercion(condExprTypes.get(i), commonType);
+            Coercion c = Coercion.getCoercion(iStore, condExprTypes.get(i), commonType);
             assert c != null : ("no coercion from " + condExprTypes.get(i) + " to " + commonType);
             node.elsePart.setCoercion(c);
             i++;
@@ -454,19 +474,24 @@ public class TypeChecker extends AstVisitor<Type> {
         Type ret = null;
 
         DeclId declId = node.record.decl;
-        assert declId instanceof DeclForRecord;
-        DeclForRecord declForRecord = (DeclForRecord) declId;
-        if (declForRecord.fieldTypes != null) {
-            // this record is for a static SQL
+        Type recTy = declId.type();
+        assert recTy.idx == Type.IDX_RECORD;
+        if (recTy == Type.RECORD_ANY) {
+            // This record is for a dynamic SQL
+            // It cannot be a specific Java type: type unknown at compile time
+            ret = Type.OBJECT;
+        } else {
+            // This record is for a static SQL
+            assert recTy instanceof TypeRecord;
+            TypeRecord recTy2 = (TypeRecord) recTy;
 
-            // ret = declForRecord.fieldTypes.get(node.fieldName);
             int i = 1, found = -1;
-            for (Misc.Pair<String, Type> p : declForRecord.fieldTypes) {
+            for (Misc.Pair<String, Type> p : recTy2.selectList) {
                 if (node.fieldName.equals(p.e1)) {
                     if (found > 0) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(node.ctx), // s420
-                                String.format("column name '%s' is ambiguous", node.fieldName));
+                                String.format("field name '%s' is ambiguous", node.fieldName));
                     }
                     ret = p.e2;
                     found = i;
@@ -477,18 +502,13 @@ public class TypeChecker extends AstVisitor<Type> {
 
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.ctx), // s401
-                        String.format("no such column '%s' in the query result", node.fieldName));
+                        String.format("no field named '%s' in the record type", node.fieldName));
             } else {
 
                 assert found > 0;
                 node.setType(ret);
                 node.setColIndex(found);
             }
-        } else {
-            // this record is for a dynamic SQL
-
-            // it cannot be a specific Java type: type unknown at compile time
-            ret = Type.OBJECT;
         }
 
         return ret;
@@ -503,15 +523,12 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitExprId(ExprId node) {
-        if (node.decl instanceof DeclIdTyped) {
-            return ((DeclIdTyped) node.decl).typeSpec().type;
+        if (node.decl instanceof DeclIdTypeSpeced) {
+            return ((DeclIdTypeSpeced) node.decl).typeSpec().type;
         } else if (node.decl instanceof DeclCursor) {
             return Type.CURSOR;
         } else if (node.decl instanceof DeclForIter) {
             return Type.INT;
-        } else if (node.decl instanceof DeclForRecord) {
-            assert false : "unreachable";
-            throw new RuntimeException("unreachable");
         } else {
             assert false : "unreachable";
             throw new RuntimeException("unreachable");
@@ -538,7 +555,8 @@ public class TypeChecker extends AstVisitor<Type> {
 
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
-                symbolStack.getOperator(outCoercions, "opIn", argTypes.toArray(TYPE_ARRAY_DUMMY));
+                symbolStack.getOperator(
+                        iStore, outCoercions, "opIn", argTypes.toArray(TYPE_ARRAY_DUMMY));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s212
@@ -564,7 +582,7 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitExprLike(ExprLike node) {
         Type targetType = visit(node.target);
-        Coercion c = Coercion.getCoercion(targetType, Type.STRING_ANY);
+        Coercion c = Coercion.getCoercion(iStore, targetType, Type.STRING_ANY);
         if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.target.ctx), // s213
@@ -574,7 +592,7 @@ public class TypeChecker extends AstVisitor<Type> {
         }
 
         Type patternType = visit(node.pattern);
-        c = Coercion.getCoercion(patternType, Type.STRING_ANY);
+        c = Coercion.getCoercion(iStore, patternType, Type.STRING_ANY);
         if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.pattern.ctx), // s232
@@ -603,7 +621,7 @@ public class TypeChecker extends AstVisitor<Type> {
 
             Type ret;
             if (DBTypeAdapter.isSupported(ci.type)) {
-                ret = DBTypeAdapter.getValueType(ci.type);
+                ret = DBTypeAdapter.getValueType(iStore, ci.type);
             } else {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.ctx), // s233
@@ -618,13 +636,13 @@ public class TypeChecker extends AstVisitor<Type> {
             if (node.args.nodes.size() == 1
                     && ((arg0 = node.args.nodes.get(0)) instanceof ExprNull)) {
                 // cast to Object, a hint for Javac compiler. see CBRD-25168
-                arg0.setCoercion(Coercion.Cast.getInstance(Type.NULL, Type.OBJECT));
+                arg0.setCoercion(Coercion.Cast.getStaticInstance(Type.NULL, Type.OBJECT));
             }
 
             return ret;
         } else {
             throw new SemanticError(
-                    Misc.getLineColumnOf(node.ctx), // s230
+                    Misc.getLineColumnOf(node.ctx), // s235
                     "function "
                             + node.name
                             + " is undefined or given wrong number or types of arguments");
@@ -665,7 +683,7 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitExprStr(ExprStr node) {
-        return TypeChar.getInstance(TypeChar.MAX_LEN);
+        return TypeChar.getInstance(iStore, TypeChar.MAX_LEN);
     }
 
     @Override
@@ -683,7 +701,8 @@ public class TypeChecker extends AstVisitor<Type> {
         Type operandType = visit(node.operand);
 
         List<Coercion> outCoercions = new ArrayList<>();
-        DeclFunc unaryOp = symbolStack.getOperator(outCoercions, "op" + node.opStr, operandType);
+        DeclFunc unaryOp =
+                symbolStack.getOperator(iStore, outCoercions, "op" + node.opStr, operandType);
         if (unaryOp == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s215
@@ -703,7 +722,7 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitExprAutoParam(ExprAutoParam node) {
-        return node.getType(); // NOTE: unused yet
+        return node.getType(iStore); // NOTE: unused yet
     }
 
     @Override
@@ -719,21 +738,24 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitStmtAssign(StmtAssign node) {
         Type valType = visit(node.val);
-        Type varType = ((DeclIdTyped) node.var.decl).typeSpec().type;
+        Type targetType = visit(node.target);
 
-        boolean checkNotNull =
-                (node.var.decl instanceof DeclVar) && ((DeclVar) node.var.decl).notNull;
-        if (checkNotNull && valType == Type.NULL) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(node.val.ctx), // s231
-                    "NOT NULL constraint violation");
+        if (node.target instanceof ExprId) {
+            ExprId targetId = (ExprId) node.target;
+            boolean checkNotNull =
+                    (targetId.decl instanceof DeclVar) && ((DeclVar) targetId.decl).notNull;
+            if (checkNotNull && valType == Type.NULL) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(node.val.ctx), // s231
+                        "NOT NULL constraint violation");
+            }
         }
 
-        Coercion c = Coercion.getCoercion(valType, varType);
+        Coercion c = Coercion.getCoercion(iStore, valType, targetType);
         if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.val.ctx), // s216
-                    "type of the value is not compatible with the variable's type");
+                    "type of assigned value is not compatible with the type of target variable");
         } else {
             node.val.setCoercion(c);
         }
@@ -788,7 +810,7 @@ public class TypeChecker extends AstVisitor<Type> {
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
                 symbolStack.getOperator(
-                        outCoercions, "opIn", caseComparedTypes.toArray(TYPE_ARRAY_DUMMY));
+                        iStore, outCoercions, "opIn", caseComparedTypes.toArray(TYPE_ARRAY_DUMMY));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s201
@@ -843,17 +865,20 @@ public class TypeChecker extends AstVisitor<Type> {
         List<Coercion> coercions = new ArrayList<>();
 
         int i = 0;
-        for (ExprId intoVar : node.intoVarList) {
-            Type srcTy = (node.columnTypeList == null) ? Type.OBJECT : node.columnTypeList.get(i);
-            Type dstTy = ((DeclIdTyped) intoVar.decl).typeSpec().type;
+        for (Expr intoTarget : node.intoTargetList) {
 
-            Coercion c = Coercion.getCoercion(srcTy, dstTy);
+            assert intoTarget instanceof AssignTarget;
+
+            Type srcTy = (node.columnTypeList == null) ? Type.OBJECT : node.columnTypeList.get(i);
+            Type dstTy = visit(intoTarget);
+
+            Coercion c = Coercion.getCoercion(iStore, srcTy, dstTy);
             if (c == null) {
                 throw new SemanticError(
-                        Misc.getLineColumnOf(intoVar.ctx), // s403
+                        Misc.getLineColumnOf(intoTarget.ctx), // s403
                         String.format(
                                 "type of column %d of the cursor is not compatible with the type of variable %s",
-                                i + 1, intoVar.name));
+                                i + 1, ((AssignTarget) intoTarget).name()));
             } else {
                 coercions.add(c);
             }
@@ -876,7 +901,7 @@ public class TypeChecker extends AstVisitor<Type> {
                 Type argType = visit(arg);
                 Type paramType = declCursor.paramList.nodes.get(i).typeSpec().type;
                 assert paramType != null;
-                Coercion c = Coercion.getCoercion(argType, paramType);
+                Coercion c = Coercion.getCoercion(iStore, argType, paramType);
                 if (c == null) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(arg.ctx), // s219
@@ -908,31 +933,39 @@ public class TypeChecker extends AstVisitor<Type> {
         if (node.usedExprList != null) {
             for (Expr e : node.usedExprList) {
                 Type tyUsedExpr = visit(e);
-                if (tyUsedExpr == Type.BOOLEAN
-                        || tyUsedExpr == Type.CURSOR
-                        || tyUsedExpr == Type.SYS_REFCURSOR) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(e.ctx), // s428
-                            "expressions in a USING clause cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
+                switch (tyUsedExpr.idx) {
+                    case Type.IDX_CURSOR:
+                    case Type.IDX_RECORD:
+                    case Type.IDX_BOOLEAN:
+                    case Type.IDX_SYS_REFCURSOR:
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(e.ctx), // s430
+                                "expressions in a USING clause cannot be of "
+                                        + tyUsedExpr.plcName
+                                        + " type");
+                    default:; // OK
                 }
             }
         }
 
-        if (node.intoVarList != null) {
+        if (node.intoTargetList != null) {
 
             List<Coercion> coercions = new ArrayList<>();
 
             // check types of into-variables
-            for (ExprId intoVar : node.intoVarList) {
-                Type tyIntoVar = visitExprId(intoVar);
-                Coercion c = Coercion.getCoercion(Type.OBJECT, tyIntoVar);
+            for (Expr intoTarget : node.intoTargetList) {
+
+                assert intoTarget instanceof AssignTarget;
+
+                Type tyIntoTarget = visit(intoTarget);
+                Coercion c = Coercion.getCoercion(iStore, Type.OBJECT, tyIntoTarget);
                 if (c == null) {
                     throw new SemanticError( // s421
-                            Misc.getLineColumnOf(intoVar.ctx),
+                            Misc.getLineColumnOf(intoTarget.ctx),
                             "into-variable "
-                                    + intoVar.name
+                                    + ((AssignTarget) intoTarget).name()
                                     + " has an incompatible type "
-                                    + tyIntoVar.plcName);
+                                    + tyIntoTarget.plcName);
                 } else {
                     coercions.add(c);
                 }
@@ -950,23 +983,23 @@ public class TypeChecker extends AstVisitor<Type> {
 
         typeCheckHostExprs(staticSql); // s404
 
-        if (node.intoVarList != null) {
+        if (node.intoTargetList != null) {
 
             List<Coercion> coercions = new ArrayList<>();
 
-            // check types of into-variables
+            // check types of into-targets
             int i = 0;
             for (Misc.Pair<String, Type> p : staticSql.selectList) {
                 Type tyColumn = p.e2;
-                ExprId intoVar = node.intoVarList.get(i);
-                Type tyIntoVar = visitExprId(intoVar);
-                Coercion c = Coercion.getCoercion(tyColumn, tyIntoVar);
+                Expr intoTarget = node.intoTargetList.get(i);
+                assert intoTarget instanceof AssignTarget;
+                Type tyIntoTarget = visit(intoTarget);
+                Coercion c = Coercion.getCoercion(iStore, tyColumn, tyIntoTarget);
                 if (c == null) {
                     throw new SemanticError( // s405
                             Misc.getLineColumnOf(staticSql.ctx),
-                            "into-variable "
-                                    + intoVar.name
-                                    + " cannot be used there due to its incompatible type");
+                            ((AssignTarget) intoTarget).name()
+                                    + " in the INTO clause has an incompatible type");
                 } else {
                     coercions.add(c);
                 }
@@ -992,7 +1025,7 @@ public class TypeChecker extends AstVisitor<Type> {
         Coercion c;
 
         ty = visit(node.lowerBound);
-        c = Coercion.getCoercion(ty, Type.INT);
+        c = Coercion.getCoercion(iStore, ty, Type.INT);
         if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.lowerBound.ctx), // s222
@@ -1002,7 +1035,7 @@ public class TypeChecker extends AstVisitor<Type> {
         }
 
         ty = visit(node.upperBound);
-        c = Coercion.getCoercion(ty, Type.INT);
+        c = Coercion.getCoercion(iStore, ty, Type.INT);
         if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.upperBound.ctx), // s223
@@ -1013,7 +1046,7 @@ public class TypeChecker extends AstVisitor<Type> {
 
         if (node.step != null) {
             ty = visit(node.step);
-            c = Coercion.getCoercion(ty, Type.INT);
+            c = Coercion.getCoercion(iStore, ty, Type.INT);
             if (c == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.step.ctx), // s224
@@ -1029,7 +1062,7 @@ public class TypeChecker extends AstVisitor<Type> {
     }
 
     @Override
-    public Type visitStmtForExecImmeLoop(StmtForExecImmeLoop node) {
+    public Type visitStmtForDynamicSqlLoop(StmtForDynamicSqlLoop node) {
 
         Type sqlType = visit(node.sql);
         if (sqlType.idx != Type.IDX_STRING) {
@@ -1042,12 +1075,17 @@ public class TypeChecker extends AstVisitor<Type> {
         if (node.usedExprList != null) {
             for (Expr e : node.usedExprList) {
                 Type tyUsedExpr = visit(e); // s429
-                if (tyUsedExpr == Type.BOOLEAN
-                        || tyUsedExpr == Type.CURSOR
-                        || tyUsedExpr == Type.SYS_REFCURSOR) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(e.ctx), // s430
-                            "expressions in a USING clause cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
+                switch (tyUsedExpr.idx) {
+                    case Type.IDX_CURSOR:
+                    case Type.IDX_RECORD:
+                    case Type.IDX_BOOLEAN:
+                    case Type.IDX_SYS_REFCURSOR:
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(e.ctx), // s428
+                                "expressions in a USING clause cannot be of "
+                                        + tyUsedExpr.plcName
+                                        + " type");
+                    default:; // OK
                 }
             }
         }
@@ -1098,7 +1136,7 @@ public class TypeChecker extends AstVisitor<Type> {
         assert ty == Type.SYS_REFCURSOR; // by earlier check
 
         assert node.staticSql != null;
-        assert node.staticSql.intoVars == null; // by earlier check
+        assert node.staticSql.intoTargetList == null; // by earlier check
 
         typeCheckHostExprs(node.staticSql); // s407
         return null;
@@ -1134,7 +1172,7 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitStmtReturn(StmtReturn node) {
         if (node.retVal != null) {
             Type valType = visit(node.retVal);
-            Coercion c = Coercion.getCoercion(valType, node.retTypeSpec.type);
+            Coercion c = Coercion.getCoercion(iStore, valType, node.retTypeSpec.type);
             if (c == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.retVal.ctx), // s217
@@ -1175,6 +1213,7 @@ public class TypeChecker extends AstVisitor<Type> {
 
     private static final Type[] TYPE_ARRAY_DUMMY = new Type[0];
 
+    private InstanceStore iStore;
     private SymbolStack symbolStack;
     private ParseTreeConverter ptConv;
 
@@ -1225,7 +1264,7 @@ public class TypeChecker extends AstVisitor<Type> {
             String typicalValueStr = argType.typicalValueStr;
             if (typicalValueStr == null) {
                 throw new SemanticError(
-                        Misc.getLineColumnOf(arg.ctx), // s229
+                        Misc.getLineColumnOf(arg.ctx), // s234
                         String.format(
                                 "argument %d to the built-in function %s has an invalid type",
                                 i + 1, funcName));
@@ -1250,7 +1289,7 @@ public class TypeChecker extends AstVisitor<Type> {
             Type paramType = declParam.typeSpec().type;
             assert paramType
                     != null; // TODO: paramType can be null if variadic parameters are introduced
-            Coercion c = Coercion.getCoercion(argType, paramType);
+            Coercion c = Coercion.getCoercion(iStore, argType, paramType);
             if (c == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(arg.ctx), // s214
@@ -1258,9 +1297,9 @@ public class TypeChecker extends AstVisitor<Type> {
                                 "argument %d to the call of %s has an incompatible type %s",
                                 i + 1, Misc.detachPkgName(decl.name), argType.plcName));
             } else {
-                if (declParam instanceof DeclParamOut && c.getReversion() == null) {
+                if (declParam instanceof DeclParamOut && c.getReversion(iStore) == null) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(arg.ctx), // s232
+                            Misc.getLineColumnOf(arg.ctx), // s236
                             String.format(
                                     "OUT/INOUT parameter %d has a type %s which is incompatible with the argument type %s",
                                     i + 1, paramType.plcName, argType.plcName));

@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class DeclConst extends DeclIdTyped {
+public class DeclConst extends DeclIdTypeSpeced {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -49,8 +49,6 @@ public class DeclConst extends DeclIdTyped {
             ParserRuleContext ctx, String name, TypeSpec typeSpec, boolean notNull, Expr val) {
         super(ctx);
 
-        assert val != null;
-
         this.name = name;
         this.typeSpec = typeSpec;
         this.notNull = notNull;
@@ -59,6 +57,11 @@ public class DeclConst extends DeclIdTyped {
 
     public TypeSpec typeSpec() {
         return typeSpec;
+    }
+
+    @Override
+    public String name() {
+        return name;
     }
 
     @Override

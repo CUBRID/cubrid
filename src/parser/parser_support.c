@@ -7754,7 +7754,7 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
   const char *user_name = NULL;
   PT_NODE *node = NULL;
 
-  user_name = au_user_name ();
+  user_name = au_get_current_user_name ();
   if (user_name == NULL)
     {
       return NULL;
@@ -8138,7 +8138,9 @@ pt_split_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
   if ((delete_stmt->info.delete_.hint & PT_HINT_ORDERED)
       || ((delete_stmt->info.delete_.hint & PT_HINT_USE_NL) && delete_stmt->info.delete_.use_nl_hint == NULL)
       || ((delete_stmt->info.delete_.hint & PT_HINT_USE_IDX) && delete_stmt->info.delete_.use_idx_hint == NULL)
-      || ((delete_stmt->info.delete_.hint & PT_HINT_USE_MERGE) && delete_stmt->info.delete_.use_merge_hint == NULL))
+      || ((delete_stmt->info.delete_.hint & PT_HINT_USE_MERGE) && delete_stmt->info.delete_.use_merge_hint == NULL)
+      || ((delete_stmt->info.delete_.hint & PT_HINT_NO_USE_HASH) && delete_stmt->info.delete_.no_use_hash_hint == NULL)
+      || ((delete_stmt->info.delete_.hint & PT_HINT_USE_HASH) && delete_stmt->info.delete_.use_hash_hint == NULL))
     {
       return NO_ERROR;
     }

@@ -47,6 +47,8 @@
 #include "thread_entry.hpp"
 #include "xasl_cache.h"
 #include "xasl_unpack_info.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined (SERVER_MODE)
 
@@ -1266,8 +1268,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   DB_VALUE *dbval;
   HL_HEAPID old_pri_heap_id;
   char *data;
-  int i;
 #endif
+  int i;
   DB_VALUE_ARRAY params;
   QMGR_QUERY_ENTRY *query_p;
   int tran_index = -1;
@@ -1366,6 +1368,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       thread_p->trigger_involved = true;
     }
 
+  /* for result-cache only */
+  params.size = dbval_count;
+  params.vals = NULL;
+
 #if defined (SERVER_MODE)
   if (dbval_count)
     {
@@ -1395,9 +1401,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
    * the XASL cache entry of the target query that is obtained from the XASL_ID, because all results of the query with
    * different parameters (host variables - DB_VALUES) are linked at the XASL cache entry.
    */
-  params.size = dbval_count;
-  params.vals = dbvals_p;
-
   if (copy_bind_value_to_tdes (thread_p, dbval_count, dbvals_p) != NO_ERROR)
     {
       goto exit_on_error;
@@ -1405,6 +1408,22 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 
   if (qmgr_is_allowed_result_cache (*flag_p))
     {
+      if (dbval_count > 0)
+	{
+	  params.vals = (DB_VALUE *) malloc (sizeof (DB_VALUE) * dbval_count);
+
+	  if (params.vals == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * dbval_count);
+	      goto exit_on_error;
+	    }
+
+	  for (i = 0; i < dbval_count; i++)
+	    {
+	      pr_clone_value (&dbvals_p[i], &params.vals[i]);
+	    }
+	}
+
       if (qmgr_is_related_class_modified (thread_p, xasl_cache_entry_p, tran_index))
 	{
 	  do_not_cache = true;
@@ -1645,6 +1664,15 @@ end:
 #if defined (SERVER_MODE)
   qmgr_reset_query_exec_info (tran_index);
 #endif
+
+  if (params.vals)
+    {
+      for (i = 0; i < dbval_count; i++)
+	{
+	  pr_clear_value (&params.vals[i]);
+	}
+      free (params.vals);
+    }
 
   return list_id_p;
 

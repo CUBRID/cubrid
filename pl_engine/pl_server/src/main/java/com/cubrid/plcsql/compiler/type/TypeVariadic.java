@@ -42,18 +42,19 @@ public class TypeVariadic extends Type {
         this.elem = elem;
     }
 
-    private static Map<Integer, TypeVariadic> instances = new HashMap<>();
+    // NOTE: never changing after the initilization during the TypeVariadic class initialization
+    private static Map<Integer, TypeVariadic> staticInstances = new HashMap<>();
 
     static {
         for (int i = Type.IDX_OBJECT; i < Type.BOUND_OF_IDX; i++) {
             Type ty = Type.getTypeByIdx(i);
             assert ty != null;
-            instances.put(i, new TypeVariadic(ty));
+            staticInstances.put(i, new TypeVariadic(ty));
         }
     }
 
-    public static synchronized TypeVariadic getInstance(Type ty) {
-        TypeVariadic ret = instances.get(ty.idx);
+    public static TypeVariadic getStaticInstance(Type ty) {
+        TypeVariadic ret = staticInstances.get(ty.idx);
         assert ret != null;
         return ret;
     }

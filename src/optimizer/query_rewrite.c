@@ -2291,6 +2291,42 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		  parser_free_tree (parser, ord_num);
 		  parser_free_tree (parser, grp_num);
 		}
+	      else
+		{
+		  /* for select-list */
+		  PT_NODE *ord_num, *ins_num;
+
+		  ord_num = NULL;
+		  ins_num = NULL;
+
+		  /* generate orderby_num(), inst_num() */
+		  if (!(ord_num = parser_new_node (parser, PT_EXPR)) || !(ins_num = parser_new_node (parser, PT_EXPR)))
+		    {
+		      if (ord_num)
+			{
+			  parser_free_tree (parser, ord_num);
+			}
+		      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      goto exit_on_error;
+		    }
+
+		  ord_num->type_enum = PT_TYPE_BIGINT;
+		  ord_num->info.expr.op = PT_ORDERBY_NUM;
+		  PT_EXPR_INFO_SET_FLAG (ord_num, PT_EXPR_INFO_ORDERBYNUM_C);
+
+		  ins_num->type_enum = PT_TYPE_BIGINT;
+		  ins_num->info.expr.op = PT_INST_NUM;
+		  PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
+
+		  node->info.query.q.select.list =
+		    pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, ins_num,
+					false /* loc_check: DEFAULT */ ,
+					2 /* type: don't walk into subquery */ ,
+					false /* dont_replace: DEFAULT */ );
+
+		  parser_free_tree (parser, ord_num);
+		  parser_free_tree (parser, ins_num);
+		}
 	    }
 	}
     }
@@ -3687,7 +3723,6 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 		  || next_pk_spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER
 		  || next_pk_spec->info.spec.join_type == PT_JOIN_FULL_OUTER))
 	    {
-	      assert (false);
 	      continue;		/* give up */
 	    }
 

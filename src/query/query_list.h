@@ -340,11 +340,11 @@ struct qfile_list_merge_info
   int ls_column_cnt;		/* join columns count */
   int ls_pos_cnt;		/* tuple value fetch count */
   int *ls_outer_column;		/* outer list join columns number */
-  int *ls_outer_unique;		/* outer column values unique? */
-  /* currently, not used */
+  int *ls_outer_unique;		/* outer column values unique?
+				 * currently, not used */
   int *ls_inner_column;		/* inner list join columns number */
-  int *ls_inner_unique;		/* inner column values unique? */
-  /* currently, not used */
+  int *ls_inner_unique;		/* inner column values unique?
+				 * currently, not used */
   int *ls_outer_inner_list;	/* outer/inner list indicators */
   int *ls_pos_list;		/* tuple value positions */
 };

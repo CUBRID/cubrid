@@ -30,6 +30,18 @@
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
 #include "vacuum.h"
+#if 0
+// This file contains `placement new` being used within it, and there are
+// no explicit cases of calling `new`. Since heap memory monitoring does not
+// encounter any holes even without tracking this file, it is considered an
+// exception from the tracked files.
+//
+// To bring this file into the scope of memory monitoring, the usage of
+// `placement new` needs to be removed.
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+#endif
 
 #define MVCC_IS_REC_INSERTER_ACTIVE(thread_p, rec_header_p) \
   (mvcc_is_active_id (thread_p, (rec_header_p)->mvcc_ins_id))

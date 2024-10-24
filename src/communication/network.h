@@ -275,6 +275,10 @@ enum net_server_request
   /* plcsql */
   NET_SERVER_PLCSQL_TRANSFER_FILE,
 
+  /* memmon */
+  NET_SERVER_MMON_GET_SERVER_INFO,
+  NET_SERVER_MMON_DISABLE_FORCE,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
@@ -312,5 +316,20 @@ extern int net_server_start (const char *name);
 /* Misc */
 extern const char *get_capability_string (int cap, int cap_type);
 extern const char *get_net_request_name (int request);
+
+typedef enum
+{
+  NET_ENDIAN_UNKNOWN = 0,
+  NET_ENDIAN_LITTLE = 1,
+  NET_ENDIAN_BIG = 2
+} NET_ENDIAN;
+
+__inline NET_ENDIAN
+get_endian_type ()
+{
+  unsigned int e_v = 0x12345678;
+  unsigned char *e_p = (unsigned char *) (&e_v);
+  return ((e_p[0] == 0x78) ? NET_ENDIAN_LITTLE : (e_p[0] == 0x12) ? NET_ENDIAN_BIG : NET_ENDIAN_UNKNOWN);
+}
 
 #endif /* _NETWORK_H_ */

@@ -29,6 +29,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
   )
@@ -93,6 +94,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/get_clock_freq.c
   ${BASE_DIR}/perf.cpp
   ${BASE_DIR}/perf_monitor.c
+  ${BASE_DIR}/perf_monitor_trackers.cpp
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/printer.cpp
@@ -154,12 +156,15 @@ set(BASE_HEADERS
   ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
+  ${BASE_DIR}/perf_monitor.h
+  ${BASE_DIR}/perf_monitor_trackers.hpp
   ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
+  ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/semaphore.hpp
 )
 
@@ -181,6 +186,10 @@ set(CONNECTION_SOURCES
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
+  )
+
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
   )
 
 set(MONITOR_SOURCES
@@ -288,7 +297,15 @@ set(QUERY_HEADERS
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate.c
+  ${OBJECT_DIR}/authenticate_access_auth.cpp
   ${OBJECT_DIR}/authenticate_cache.cpp
+  ${OBJECT_DIR}/authenticate_context.cpp
+  ${OBJECT_DIR}/authenticate_access_class.cpp
+  ${OBJECT_DIR}/authenticate_grant.cpp
+  ${OBJECT_DIR}/authenticate_owner.cpp
+  ${OBJECT_DIR}/authenticate_password.cpp
+  ${OBJECT_DIR}/authenticate_access_user.cpp
+  ${OBJECT_DIR}/authenticate_migration.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
   ${OBJECT_DIR}/deduplicate_key.c
@@ -394,6 +411,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
@@ -416,6 +434,11 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
+  ${TRANSACTION_DIR}/log_reader.hpp
+  ${TRANSACTION_DIR}/log_recovery.h
+  ${TRANSACTION_DIR}/log_recovery_redo_perf.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
@@ -542,6 +565,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
   ${COMPAT_SOURCES}
@@ -605,6 +629,7 @@ add_library(cubridsa SHARED
   ${COMPAT_SOURCES_C}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
+  ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
@@ -682,9 +707,10 @@ if(UNIX)
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridsa LINK_PUBLIC ${CMAKE_DL_LIBS})
   target_link_libraries(cubridsa PUBLIC stdc++fs)
+  target_link_libraries(cubridsa PUBLIC rt)
 endif(UNIX)
 # for dblink
-target_link_libraries(cubridsa cascci)
+target_link_libraries(cubridsa PUBLIC cascci)
 
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 #add_dependencies(cubridsa ${EP_TARGETS})

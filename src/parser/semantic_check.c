@@ -7255,27 +7255,6 @@ pt_is_compatible_type (const PT_TYPE_ENUM arg1_type, const PT_TYPE_ENUM arg2_typ
 }
 
 /*
- * pt_check_vclass_attr_qspec_compatible () -
- *   return:
- *   parser(in):
- *   attr(in):
- *   col(in):
- */
-static PT_UNION_COMPATIBLE
-pt_check_vclass_attr_qspec_compatible (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * col)
-{
-  bool is_object_type;
-  PT_UNION_COMPATIBLE c = pt_union_compatible (parser, attr, col, true, &is_object_type);
-
-  if (c == PT_UNION_INCOMP && pt_is_compatible_type (attr->type_enum, col->type_enum))
-    {
-      c = PT_UNION_COMP;
-    }
-
-  return c;
-}
-
-/*
  * pt_check_vclass_union_spec () -
  *   return:
  *   parser(in):
@@ -7540,8 +7519,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 	{
 	  if (col->node_type == PT_VALUE && col->type_enum == PT_TYPE_NULL)
 	    {
-	      PT_ERRORmf2 (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
-			   attribute_name (parser, attr), pt_short_print (parser, col));
+	      attr->type_enum = PT_TYPE_VARCHAR;
 	    }
 	  else
 	    {
@@ -7571,11 +7549,6 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 	      PT_ERRORmf2 (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
 			   attribute_name (parser, attr), pt_short_print (parser, col));
 	    }
-	}
-      else if (pt_check_vclass_attr_qspec_compatible (parser, attr, col) != PT_UNION_COMP)
-	{
-	  PT_ERRORmf2 (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
-		       attribute_name (parser, attr), pt_short_print (parser, col));
 	}
 
       /* any shared attribute must correspond to NA in the query_spec */
@@ -8156,8 +8129,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    }
 	  else if (s_attr->node_type == PT_VALUE && s_attr->type_enum == PT_TYPE_NULL)
 	    {
-	      PT_ERRORm (parser, s_attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NULL_NOT_ALLOWED_ON_QUERY_SPEC);
-	      return;
+	      s_attr->type_enum = PT_TYPE_VARCHAR;
 	    }
 
 	  derived_attr = pt_derive_attribute (parser, s_attr);
@@ -8262,6 +8234,25 @@ pt_check_create_user (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       PT_ERRORm (parser, user_name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_NAME_TOO_LONG);
     }
+}
+
+static PT_NODE *
+pt_check_query_cache_in_create_entity (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *has_cache_hint = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_SELECT)
+    {
+      if (node->info.query.hint & PT_HINT_QUERY_CACHE)
+	{
+	  *has_cache_hint = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
 }
 
 /*
@@ -8673,6 +8664,19 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 		}
 
 	      select = pt_semantic_check (parser, select);
+	    }
+	  /* INSERT ... SELECT needs to do a semantic check to handle the subquery cache. */
+	  else
+	    {
+	      bool has_cache_hint = false;
+
+	      (void *) parser_walk_tree (parser, select, pt_check_query_cache_in_create_entity, &has_cache_hint, NULL,
+					 NULL);
+
+	      if (has_cache_hint)
+		{
+		  select = pt_semantic_check (parser, select);
+		}
 	    }
 
 	  if (pt_has_parameters (parser, select))
@@ -10423,7 +10427,14 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
   col_cnt = pt_length_of_select_list (pt_get_select_list (parser, qry), EXCLUDE_HIDDEN_COLUMNS);
   if (tgt_cnt != col_cnt)
     {
-      PT_ERRORmf2 (parser, into, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COL_CNT_NE_INTO_CNT, col_cnt, tgt_cnt);
+      if (parser->flag.is_parsing_static_sql == 1 && tgt_cnt == 1)
+	{
+	  // OK. the single target can be a record
+	}
+      else
+	{
+	  PT_ERRORmf2 (parser, into, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COL_CNT_NE_INTO_CNT, col_cnt, tgt_cnt);
+	}
     }
 
   if (parser->flag.is_parsing_static_sql == 1)
