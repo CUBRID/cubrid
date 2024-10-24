@@ -4314,6 +4314,7 @@ static int
 sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 			    int parallel_num)
 {
+  /* TO_DO : Need a logic to revert it? */
   int error = NO_ERROR;
   int i = 0, j = 0, splitted_num_page;
   bool is_first_vpid = false;
@@ -4336,6 +4337,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       last_vpid[i] = VPID_INITIALIZER;
     }
 
+  /* page_cnt contains ovfl_page. If the length of tuple is longer than page, split by the number of tuples. */
   splitted_num_page = sort_info_p->input_file->page_cnt / parallel_num;
   splitted_num_page = MIN (splitted_num_page, sort_info_p->input_file->tuple_cnt / parallel_num);
 
@@ -4383,6 +4385,12 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
     }
 
+  if (i != parallel_num - 1)
+    {
+      error = ER_GENERIC_ERROR;
+      goto cleanup;
+    }
+
   /* alloc get_arg */
   for (i = 0; i < parallel_num; i++)
     {
@@ -4414,12 +4422,13 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 	  goto cleanup;
 	}
       memcpy (sort_info_p->input_file, org_sort_info_p->input_file, sizeof (QFILE_LIST_ID));
+      /* tuple_cnt and page_cnt put approximately. */
+      /* It can be put precisely through the page header, but not have to be precise for later process. */
       sort_info_p->input_file->tuple_cnt = org_sort_info_p->input_file->tuple_cnt / parallel_num;
-      sort_info_p->input_file->page_cnt = splitted_num_page;	/* TO_DO : Make the page count more accurate */
+      sort_info_p->input_file->page_cnt = splitted_num_page;
       sort_info_p->input_file->first_vpid = (i == 0) ? org_sort_info_p->input_file->first_vpid : first_vpid[i - 1];
       sort_info_p->input_file->last_vpid =
 	(i == parallel_num - 1) ? org_sort_info_p->input_file->last_vpid : last_vpid[i];
-      /* TO_DO : check to need to handle sort_info_p->in_file->tfile_vfid */
     }
 
 cleanup:
