@@ -2640,9 +2640,9 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	      goto exit_on_error;
 	    }
 
-	  derived_table->info.query.q.select.list =
-	    mq_update_position (parser, select_list,
-				derived_table->info.query.q.select.list) if (PT_IS_QUERY (derived_table))
+          derived_table->info.query.q.select.list = mq_update_position (parser, select_list, derived_table->info.query.q.select.list);
+
+	  if (PT_IS_QUERY (derived_table))
 	    {
 	      if (query_spec->info.query.all_distinct == PT_DISTINCT)
 		{
