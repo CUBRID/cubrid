@@ -7769,6 +7769,32 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
   return node;
 }
 
+static PT_NODE *
+pt_set_auth_bypass_mask_for_show (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  DB_AUTH *auth_bypass;
+
+  assert (arg != NULL);
+
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SPEC:
+      auth_bypass = (DB_AUTH *) arg;
+      node->info.spec.auth_bypass_mask = *auth_bypass;
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
+}
+
 /*
  * pt_make_query_show_grants() - builds the query used for SHOW GRANTS for a
  *				 given user
@@ -7894,6 +7920,9 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
 
   if (show_node)
     {
+      DB_AUTH bypass_auth = DB_AUTH_SELECT;
+      show_node = parser_walk_tree (parser, show_node, pt_set_auth_bypass_mask_for_show, &bypass_auth, NULL, NULL);
+
       // for backward compatibiltiy
       char col_alias[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
       const char *const col_header = "Grants for ";
@@ -7906,7 +7935,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
       concat_node->alias_print = pt_append_string (parser, NULL, col_alias);
     }
 
-  return node[0];
+  return show_node;
 }
 
 /*
