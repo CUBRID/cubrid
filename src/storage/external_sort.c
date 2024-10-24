@@ -1452,7 +1452,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
       /* Initilize file contents list */
       sort_param->file_contents[i].num_pages =
-	(int *) db_private_alloc (thread_p, SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
+	(int *) malloc (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
       if (sort_param->file_contents[i].num_pages == NULL)
 	{
 	  sort_param->tot_tempfiles = i;
@@ -4107,7 +4107,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	{
 	  if (sort_param->file_contents[k].num_pages != NULL)
 	    {
-	      db_private_free_and_init (thread_p, sort_param->file_contents[k].num_pages);
+	      free_and_init (sort_param->file_contents[k].num_pages);
 	    }
 	}
     }
@@ -4226,6 +4226,12 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
   int error = NO_ERROR;
   int i, j;
 
+  /* copy from origin sort param */
+  for (i = 0; i < parallel_num; i++)
+    {
+      memcpy (&px_sort_param[i], sort_param, sizeof (SORT_PARAM));
+    }
+
   /* init */
   for (i = 0; i < parallel_num; i++)
     {
@@ -4236,10 +4242,9 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	}
     }
 
-  /* copy from origin sort param */
+  /* alloc new memory */
   for (i = 0; i < parallel_num; i++)
     {
-      memcpy (&px_sort_param[i], sort_param, sizeof (SORT_PARAM));
       px_sort_param[i].internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
       if (px_sort_param[i].internal_memory == NULL)
 	{
@@ -4251,7 +4256,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	{
 	  /* Initilize file contents list */
 	  px_sort_param[i].file_contents[j].num_pages =
-	    (int *) db_private_alloc (thread_p, SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
+	    (int *) malloc (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
 	  if (px_sort_param[i].file_contents[j].num_pages == NULL)
 	    {
 	      sort_param->tot_tempfiles = j;
@@ -4288,7 +4293,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	    {
 	      if (px_sort_param[i].file_contents[j].num_pages != NULL)
 		{
-		  db_private_free_and_init (thread_p, px_sort_param[i].file_contents[j].num_pages);
+		  free_and_init (px_sort_param[i].file_contents[j].num_pages);
 		}
 	    }
 	}
@@ -4455,12 +4460,6 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   int error = NO_ERROR;
   int i = 0;
 
-  /* TO_DO : fix to not alloc in advance. */
-  for (i = 0; i < sort_param->tot_tempfiles; i++)
-    {
-      db_private_free (thread_p, sort_param->file_contents[i].num_pages);
-    }
-
   /* TO_DO : Up to 4 in parallel. Expansion required. SORT_MAX_HALF_FILES */
   if (parallel_num > 4)
     {
@@ -4470,6 +4469,10 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   /* copy temp file from parallel to main */
   for (i = 0; i < parallel_num; i++)
     {
+      /* free num_pages */
+      free_and_init (sort_param->file_contents[i].num_pages);
+
+      /* copy temp file and file contents */
       sort_param->temp[i] = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
       sort_param->file_contents[i] = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx];
     }
@@ -4875,7 +4878,7 @@ sort_run_add_new (FILE_CONTENTS * file_contents, int num_pages)
     {
       new_total_elements = ((int) (((float) file_contents->num_slots * SORT_EXPAND_DYN_ARRAY_RATIO) + 0.5));
       file_contents->num_pages =
-	(int *) db_private_realloc (NULL, file_contents->num_pages, new_total_elements * sizeof (int));
+	(int *) realloc (file_contents->num_pages, new_total_elements * sizeof (int));
       if (file_contents->num_pages == NULL)
 	{
 	  return ER_FAILED;
