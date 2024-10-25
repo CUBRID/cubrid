@@ -630,6 +630,8 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   int stmt_id;
+  char owner_name[DB_MAX_USER_LENGTH];
+  owner_name[0] = '\0';
   const char *sql_query =
 	  "SELECT [au].grantee, [au].object_type, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = ?";
@@ -894,8 +896,6 @@ au_user_revoke_all_privileges (MOP user_mop)
   DB_SESSION *session = NULL;
   int stmt_id;
   int row_count = -1;
-  char owner_name[DB_MAX_USER_LENGTH];
-  owner_name[0] = '\0';
   const char *sql_query =
 	  "SELECT [au].grantee, [au].object_type, [au].object_of, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantor].[name] = ?";
