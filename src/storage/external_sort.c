@@ -1477,6 +1477,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   SORT_INFO *sort_info_p;
 
   /* check parallelism */
+//  is_parallel = sort_check_parallelism (thread_p, px_sort_param, sort_param, parallel_num); /* <== 여기 함수부터 작성 필요. 파라메터부터 입력 필요 */
   if (sort_param->get_fn == qfile_get_next_sort_item)
     {
       /* get scan id of input file */
@@ -4353,7 +4354,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       if (is_first_vpid)
 	{
 	  QFILE_PUT_PREV_VPID_NULL (page_p);
-	  pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
+	  //pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
 	  is_first_vpid = false;
 	}
       QFILE_GET_NEXT_VPID (&next_vpid, page_p);
@@ -4364,7 +4365,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       else if (++j >= splitted_num_page)
 	{
 	  QFILE_PUT_NEXT_VPID_NULL (page_p);
-	  pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
+	  //pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
 	  is_first_vpid = true;
 	  first_vpid[i] = next_vpid;
 	  last_vpid[i] = prev_vpid;
@@ -4381,7 +4382,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 	      /* init prev page id */
 	      page_p = qmgr_get_old_page (thread_p, &next_vpid, sort_info_p->input_file->tfile_vfid);
 	      QFILE_PUT_PREV_VPID_NULL (page_p);
-	      pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
+	      //pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
 	      qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
 	      break;
 	    }
