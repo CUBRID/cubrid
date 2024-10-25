@@ -48,8 +48,8 @@ extern bool catcls_Enable;
 static int au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
 static int au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option);
 
-static int au_revoke_class (MOP user, MOP class_mop, DB_AUTH type);
-static int au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type);
+static int au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user);
+static int au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user);
 
 static int check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type);
 static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index,
@@ -57,7 +57,8 @@ static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, 
 static int propagate_revoke (DB_OBJECT_TYPE obj_type, AU_GRANT *grant_list, MOP owner, DB_AUTH mask);
 static int au_propagate_del_new_auth (DB_OBJECT_TYPE obj_type, AU_GRANT *glist, DB_AUTH mask);
 
-static int au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP login_user, MOP class_owner);
+static int au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP login_user, MOP class_owner,
+    MOP drop_user);
 
 /*
  * GRANT STRUCTURE OPERATION
@@ -194,7 +195,8 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	  error = ER_AU_CANT_GRANT_OWNER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
 	}
-      else if ((error = au_compare_grantor_and_return (&grantor, class_mop, type, Au_user, classobj->owner)) != NO_ERROR)
+      else if ((error = au_compare_grantor_and_return (&grantor, class_mop, type, Au_user, classobj->owner,
+			NULL)) != NO_ERROR)
 	{
 	  return (error);
 	}
@@ -352,7 +354,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	  error = ER_AU_CANT_GRANT_OWNER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
 	}
-      else if ((error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, sp_owner)) != NO_ERROR)
+      else if ((error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, sp_owner, NULL)) != NO_ERROR)
 	{
 	  return (error);
 	}
@@ -472,6 +474,7 @@ end:
  *   user(in): user being revoked
  *   class_mop(in): class being revoked
  *   type(in): type of authorization being revoked
+ *   drop_user(in) : used when executing the drop user statement
  *
  * Note: The authorization of the given type on the given class is removed
  *       from the authorization info stored with the given user.  If this
@@ -482,17 +485,17 @@ end:
  * TODO : LP64
  */
 int
-au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type)
+au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 {
   int error = NO_ERROR;
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      error = au_revoke_class (user, obj_mop, type);
+      error = au_revoke_class (user, obj_mop, type, drop_user);
       break;
 
     case DB_OBJECT_PROCEDURE:
-      error = au_revoke_procedure (user, obj_mop, type);
+      error = au_revoke_procedure (user, obj_mop, type, drop_user);
       break;
     default:
       error = ER_FAILED;
@@ -509,6 +512,7 @@ au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type)
  *   user(in): user being revoked
  *   class_mop(in): class being revoked
  *   type(in): type of authorization being revoked
+ *   drop_user(in) : used when executing the drop user statement
  *
  * Note: The authorization of the given type on the given class is removed
  *       from the authorization info stored with the given user.  If this
@@ -519,7 +523,7 @@ au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type)
  * TODO : LP64
  */
 static int
-au_revoke_class (MOP user, MOP class_mop, DB_AUTH type)
+au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user)
 {
   int error;
   MOP auth;
@@ -549,7 +553,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type)
 
       for (i = 0; sub_partitions[i]; i++)
 	{
-	  error = au_revoke_class (user, sub_partitions[i], type);
+	  error = au_revoke_class (user, sub_partitions[i], type, drop_user);
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -581,7 +585,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type)
 	  goto fail_end;
 	}
 
-      error = au_compare_grantor_and_return (&grantor, class_mop, type, Au_user, classobj->owner);
+      error = au_compare_grantor_and_return (&grantor, class_mop, type, Au_user, classobj->owner, drop_user);
       if (error != NO_ERROR)
 	{
 	  goto fail_end;
@@ -720,7 +724,7 @@ fail_end:
 }
 
 static int
-au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type)
+au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 {
   int error = NO_ERROR;
   DB_SET *grants = NULL;
@@ -776,7 +780,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type)
 	  goto fail_end;
 	}
 
-      error = au_compare_grantor_and_return (&grantor, sp_owner, type, Au_user, sp_owner);
+      error = au_compare_grantor_and_return (&grantor, sp_owner, type, Au_user, sp_owner, drop_user);
       if (error != NO_ERROR)
 	{
 	  goto fail_end;
@@ -1880,9 +1884,10 @@ au_propagate_del_new_auth (DB_OBJECT_TYPE obj_type, AU_GRANT *glist, DB_AUTH mas
  *   type(in) : authorization type
  *   login_user(in) : current login_user (Au_user)
  *   class_owner(in) : owner of the object
+ *   drop_user(in) : used when executing the drop user statement
  */
 static int
-au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP login_user, MOP class_owner)
+au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP login_user, MOP class_owner, MOP drop_user)
 {
   int error = NO_ERROR;
   unsigned int cache, mask;
@@ -1891,11 +1896,18 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
   DB_SET *grants;
   int j, gsize;
 
-  assert (grantor != NULL && obj_mop != NULL && login_user != NULL && class_owner != NULL);
+  assert ((grantor != NULL && obj_mop != NULL && login_user != NULL && class_owner != NULL) || drop_user != NULL);
 
   *grantor = NULL;
 
-  if (au_is_dba_group_member (login_user) || au_is_user_group_member (class_owner, login_user))
+  if (drop_user != NULL)
+    {
+      /*
+       * used when executing the drop user statement.
+       */
+      *grantor = drop_user;
+    }
+  else if (au_is_dba_group_member (login_user) || au_is_user_group_member (class_owner, login_user))
     {
       /*
        * DBA, DBA Member, Owner, Owner Memeber

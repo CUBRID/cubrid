@@ -101,4 +101,9 @@ extern int au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, 
 */
 extern int au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop);
 
+/*
+* when a user is deleted, all of their privileges are revoked.
+*/
+extern int au_user_revoke_all_privileges (MOP user_mop);
+
 #endif // _authenticate_access_auth_HPP_

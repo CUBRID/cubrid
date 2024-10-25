@@ -837,7 +837,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
       assert (obj_mop != NULL);
       assert (db_auth != DB_AUTH_NONE);
 
-      error = db_revoke_object (obj_type, grantee_mop, obj_mop, db_auth);
+      error = db_revoke_object (obj_type, grantee_mop, obj_mop, db_auth, NULL);
       if (error != NO_ERROR)
 	{
 	  goto release;
@@ -868,6 +868,246 @@ exit:
 
   if (er_errid () == NO_ERROR && (grantee_mop == NULL || auth == NULL || db_auth == DB_AUTH_NONE) && (object_type != 0
       && object_type != 5))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error = ER_GENERIC_ERROR;
+    }
+
+  return (error);
+}
+
+/*
+ * au_user_revoke_all_privileges - when a user is deleted, all of their privileges are revoked.
+ *   return: error code
+ *   user_mop(in): a user object
+ */
+int
+au_user_revoke_all_privileges (MOP user_mop)
+{
+  int error = NO_ERROR, save, len;
+  int object_type;
+  DB_OBJECT_TYPE obj_type;
+  const char *auth;
+  const char *class_name = NULL;
+  char sp_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  sp_name[0] = '\0';
+  DB_AUTH db_auth;
+  MOP grantee_mop, obj_mop;
+  DB_VALUE val;
+  DB_VALUE grantee_value, object_type_value, object_of_value, auth_type_value;
+  DB_QUERY_RESULT *result = NULL;
+  DB_SESSION *session = NULL;
+  int stmt_id;
+  char owner_name[DB_MAX_USER_LENGTH];
+  owner_name[0] = '\0';
+  const char *sql_query =
+	  "SELECT [au].grantee, [au].object_type, [au].object_of, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
+	  " WHERE [au].[grantor].[name] = ?";
+
+  assert (user_mop != NULL);
+
+
+  db_make_null (&val);
+  db_make_null (&grantee_value);
+  db_make_null (&object_type_value);
+  db_make_null (&object_of_value);
+  db_make_null (&auth_type_value);
+
+  /* Disable the checking for internal authorization object access */
+  AU_DISABLE (save);
+
+  /* Prepare DB_VALUEs for host variables */
+  error = obj_get (user_mop, "name", &val);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  else if (!DB_IS_STRING (&val) || DB_IS_NULL (&val)
+	   || db_get_string (&val) == NULL)
+    {
+      error = ER_AU_MISSING_OR_INVALID_USER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  session = db_open_buffer (sql_query);
+  if (session == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
+  error = db_push_values (session, 1, &val);
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id != 1)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, &result);
+
+  /* The error value is row count if it's not negative value. */
+  if (error == 0)
+    {
+      goto release;
+    }
+  else if (error < 0)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
+  error = NO_ERROR;
+
+  while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
+    {
+      if (db_query_get_tuple_value (result, 0, &grantee_value) == NO_ERROR)
+	{
+	  grantee_mop = NULL;
+	  if (!DB_IS_NULL (&grantee_value))
+	    {
+	      grantee_mop = db_get_object (&grantee_value);
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      if (db_query_get_tuple_value (result, 1, &object_type_value) == NO_ERROR)
+	{
+	  object_type = 0;
+	  if (!DB_IS_NULL (&object_type_value))
+	    {
+	      object_type = db_get_int (&object_type_value);
+	      if (object_type == 0)
+		{
+		  obj_type = DB_OBJECT_CLASS;
+		}
+	      else if (object_type == 5)
+		{
+		  obj_type = DB_OBJECT_PROCEDURE;
+		}
+	      else
+		{
+		  assert (object_type == 0 && object_type == 5);
+		  goto release;
+		}
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      if (db_query_get_tuple_value (result, 2, &object_of_value) == NO_ERROR)
+	{
+	  obj_mop = NULL;
+	  if (!DB_IS_NULL (&object_of_value))
+	    {
+	      obj_mop = db_get_object (&object_of_value);
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      if (db_query_get_tuple_value (result, 3, &auth_type_value) == NO_ERROR)
+	{
+	  auth = NULL;
+	  if (!DB_IS_NULL (&auth_type_value))
+	    {
+	      auth = db_get_char (&auth_type_value, &len);
+
+	      switch (auth[0])
+		{
+		case 'A':
+		  db_auth = DB_AUTH_ALTER;
+		  break;
+
+		case 'D':
+		  db_auth = DB_AUTH_DELETE;
+		  break;
+
+		case 'E':
+		  db_auth = DB_AUTH_EXECUTE;
+		  break;
+
+		case 'I':
+		  if (auth[2] == 'D')
+		    {
+		      db_auth = DB_AUTH_INDEX;
+		    }
+		  else if (auth[2] == 'S')
+		    {
+		      db_auth = DB_AUTH_INSERT;
+		    }
+		  else
+		    {
+		      db_auth = DB_AUTH_NONE;
+		    }
+		  break;
+
+		case 'S':
+		  db_auth = DB_AUTH_SELECT;
+		  break;
+
+		case 'U':
+		  db_auth = DB_AUTH_UPDATE;
+		  break;
+
+		default:
+		  db_auth = DB_AUTH_NONE;
+		  break;
+		}
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      assert (grantee_mop != NULL);
+      assert (obj_mop != NULL);
+      assert (db_auth != DB_AUTH_NONE);
+
+      error = db_revoke_object (obj_type, grantee_mop, obj_mop, db_auth, user_mop);
+      if (error != NO_ERROR)
+	{
+	  goto release;
+	}
+    }
+
+release:
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+exit:
+  AU_ENABLE (save);
+
+  db_value_clear (&grantee_value);
+  db_value_clear (&object_type_value);
+  db_value_clear (&object_of_value);
+  db_value_clear (&auth_type_value);
+  db_value_clear (&val);
+
+  if (er_errid () == NO_ERROR && (grantee_mop == NULL || obj_mop == NULL || auth == NULL || db_auth == DB_AUTH_NONE)
+      && (object_type != 0
+	  && object_type != 5))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
