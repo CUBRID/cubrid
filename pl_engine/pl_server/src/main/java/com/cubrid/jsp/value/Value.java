@@ -94,11 +94,11 @@ public abstract class Value {
     }
 
     public byte[] toByteArray() throws TypeMismatchException {
-        return new byte[] { toByte() };
+        return new byte[] {toByte()};
     }
 
     public byte[][] toByteArrayArray() throws TypeMismatchException {
-        return new byte[][] { toByteArray() };
+        return new byte[][] {toByteArray()};
     }
 
     public Short toShortObject() throws TypeMismatchException {
@@ -106,11 +106,11 @@ public abstract class Value {
     }
 
     public short[] toShortArray() throws TypeMismatchException {
-        return new short[] { toShort() };
+        return new short[] {toShort()};
     }
 
     public short[][] toShortArrayArray() throws TypeMismatchException {
-        return new short[][] { toShortArray() };
+        return new short[][] {toShortArray()};
     }
 
     public Integer toIntegerObject() throws TypeMismatchException {
@@ -118,11 +118,11 @@ public abstract class Value {
     }
 
     public int[] toIntegerArray() throws TypeMismatchException {
-        return new int[] { toInt() };
+        return new int[] {toInt()};
     }
 
     public int[][] toIntegerArrayArray() throws TypeMismatchException {
-        return new int[][] { toIntegerArray() };
+        return new int[][] {toIntegerArray()};
     }
 
     public Long toLongObject() throws TypeMismatchException {
@@ -130,11 +130,11 @@ public abstract class Value {
     }
 
     public long[] toLongArray() throws TypeMismatchException {
-        return new long[] { toLong() };
+        return new long[] {toLong()};
     }
 
     public long[][] toLongArrayArray() throws TypeMismatchException {
-        return new long[][] { toLongArray() };
+        return new long[][] {toLongArray()};
     }
 
     public Float toFloatObject() throws TypeMismatchException {
@@ -142,11 +142,11 @@ public abstract class Value {
     }
 
     public float[] toFloatArray() throws TypeMismatchException {
-        return new float[] { toFloat() };
+        return new float[] {toFloat()};
     }
 
     public float[][] toFloatArrayArray() throws TypeMismatchException {
-        return new float[][] { toFloatArray() };
+        return new float[][] {toFloatArray()};
     }
 
     public Double toDoubleObject() throws TypeMismatchException {
@@ -154,11 +154,11 @@ public abstract class Value {
     }
 
     public double[] toDoubleArray() throws TypeMismatchException {
-        return new double[] { toDouble() };
+        return new double[] {toDouble()};
     }
 
     public double[][] toDoubleArrayArray() throws TypeMismatchException {
-        return new double[][] { toDoubleArray() };
+        return new double[][] {toDoubleArray()};
     }
 
     public Object toObject() throws TypeMismatchException {
@@ -166,11 +166,11 @@ public abstract class Value {
     }
 
     public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] { toObject() };
+        return new Object[] {toObject()};
     }
 
     public Object[][] toObjectArrayArray() throws TypeMismatchException {
-        return new Object[][] { toObjectArray() };
+        return new Object[][] {toObjectArray()};
     }
 
     public Date toDate() throws TypeMismatchException {
@@ -178,11 +178,11 @@ public abstract class Value {
     }
 
     public Date[] toDateArray() throws TypeMismatchException {
-        return new Date[] { toDate() };
+        return new Date[] {toDate()};
     }
 
     public Date[][] toDateArrayArray() throws TypeMismatchException {
-        return new Date[][] { toDateArray() };
+        return new Date[][] {toDateArray()};
     }
 
     public Time toTime() throws TypeMismatchException {
@@ -190,11 +190,11 @@ public abstract class Value {
     }
 
     public Time[] toTimeArray() throws TypeMismatchException {
-        return new Time[] { toTime() };
+        return new Time[] {toTime()};
     }
 
     public Time[][] toTimeArrayArray() throws TypeMismatchException {
-        return new Time[][] { toTimeArray() };
+        return new Time[][] {toTimeArray()};
     }
 
     public Timestamp toTimestamp() throws TypeMismatchException {
@@ -202,11 +202,11 @@ public abstract class Value {
     }
 
     public Timestamp[] toTimestampArray() throws TypeMismatchException {
-        return new Timestamp[] { toTimestamp() };
+        return new Timestamp[] {toTimestamp()};
     }
 
     public Timestamp[][] toTimestampArrayArray() throws TypeMismatchException {
-        return new Timestamp[][] { toTimestampArray() };
+        return new Timestamp[][] {toTimestampArray()};
     }
 
     public Timestamp toDatetime() throws TypeMismatchException {
@@ -214,11 +214,11 @@ public abstract class Value {
     }
 
     public Timestamp[] toDatetimeArray() throws TypeMismatchException {
-        return new Timestamp[] { toDatetime() };
+        return new Timestamp[] {toDatetime()};
     }
 
     public Timestamp[][] toDatetimeArrayArray() throws TypeMismatchException {
-        return new Timestamp[][] { toDatetimeArray() };
+        return new Timestamp[][] {toDatetimeArray()};
     }
 
     public BigDecimal toBigDecimal() throws TypeMismatchException {
@@ -226,67 +226,67 @@ public abstract class Value {
     }
 
     public BigDecimal[] toBigDecimalArray() throws TypeMismatchException {
-        return new BigDecimal[] { toBigDecimal() };
+        return new BigDecimal[] {toBigDecimal()};
     }
 
     public BigDecimal[][] toBigDecimalArrayArray() throws TypeMismatchException {
-        return new BigDecimal[][] { toBigDecimalArray() };
+        return new BigDecimal[][] {toBigDecimalArray()};
     }
 
     public String[] toStringArray() throws TypeMismatchException {
-        return new String[] { toString() };
+        return new String[] {toString()};
     }
 
     public String[][] toStringArrayArray() throws TypeMismatchException {
-        return new String[][] { toStringArray() };
+        return new String[][] {toStringArray()};
     }
 
     public Byte[] toByteObjArray() throws TypeMismatchException {
-        return new Byte[] { toByteObject() };
+        return new Byte[] {toByteObject()};
     }
 
     public Byte[][] toByteObjArrayArray() throws TypeMismatchException {
-        return new Byte[][] { toByteObjArray() };
+        return new Byte[][] {toByteObjArray()};
     }
 
     public Short[] toShortObjArray() throws TypeMismatchException {
-        return new Short[] { toShortObject() };
+        return new Short[] {toShortObject()};
     }
 
     public Short[][] toShortObjArrayArray() throws TypeMismatchException {
-        return new Short[][] { toShortObjArray() };
+        return new Short[][] {toShortObjArray()};
     }
 
     public Integer[] toIntegerObjArray() throws TypeMismatchException {
-        return new Integer[] { toIntegerObject() };
+        return new Integer[] {toIntegerObject()};
     }
 
     public Integer[][] toIntegerObjArrayArray() throws TypeMismatchException {
-        return new Integer[][] { toIntegerObjArray() };
+        return new Integer[][] {toIntegerObjArray()};
     }
 
     public Long[] toLongObjArray() throws TypeMismatchException {
-        return new Long[] { toLongObject() };
+        return new Long[] {toLongObject()};
     }
 
     public Long[][] toLongObjArrayArray() throws TypeMismatchException {
-        return new Long[][] { toLongObjArray() };
+        return new Long[][] {toLongObjArray()};
     }
 
     public Float[] toFloatObjArray() throws TypeMismatchException {
-        return new Float[] { toFloatObject() };
+        return new Float[] {toFloatObject()};
     }
 
     public Float[][] toFloatObjArrayArray() throws TypeMismatchException {
-        return new Float[][] { toFloatObjArray() };
+        return new Float[][] {toFloatObjArray()};
     }
 
     public Double[] toDoubleObjArray() throws TypeMismatchException {
-        return new Double[] { toDoubleObject() };
+        return new Double[] {toDoubleObject()};
     }
 
     public Double[][] toDoubleObjArrayArray() throws TypeMismatchException {
-        return new Double[][] { toDoubleObjArray() };
+        return new Double[][] {toDoubleObjArray()};
     }
 
     public CUBRIDOID toOid() throws TypeMismatchException {
@@ -294,11 +294,11 @@ public abstract class Value {
     }
 
     public CUBRIDOID[] toOidArray() throws TypeMismatchException {
-        return new CUBRIDOID[] { toOid() };
+        return new CUBRIDOID[] {toOid()};
     }
 
     public CUBRIDOID[][] toOidArrayArray() throws TypeMismatchException {
-        return new CUBRIDOID[][] { toOidArray() };
+        return new CUBRIDOID[][] {toOidArray()};
     }
 
     public ResultSet toResultSet(SUConnection ucon) throws TypeMismatchException {
@@ -306,11 +306,11 @@ public abstract class Value {
     }
 
     public ResultSet[] toResultSetArray(SUConnection ucon) throws TypeMismatchException {
-        return new ResultSet[] { toResultSet(ucon) };
+        return new ResultSet[] {toResultSet(ucon)};
     }
 
     public ResultSet[][] toResultSetArrayArray(SUConnection ucon) throws TypeMismatchException {
-        return new ResultSet[][] { toResultSetArray(ucon) };
+        return new ResultSet[][] {toResultSetArray(ucon)};
     }
 
     public void setResolved(Object val) {

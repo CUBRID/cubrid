@@ -94,5 +94,4 @@ public class TimestampValue extends Value {
     public String toString() {
         return timestamp.toString();
     }
-
 }

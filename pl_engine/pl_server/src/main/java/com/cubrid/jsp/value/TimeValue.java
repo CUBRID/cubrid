@@ -76,5 +76,4 @@ public class TimeValue extends Value {
     public String toString() {
         return time.toString();
     }
-
 }

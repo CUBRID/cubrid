@@ -137,5 +137,4 @@ public class NumericValue extends Value {
     public String toString() {
         return value.toString(); // TODO: using NumberFormat class
     }
-
 }

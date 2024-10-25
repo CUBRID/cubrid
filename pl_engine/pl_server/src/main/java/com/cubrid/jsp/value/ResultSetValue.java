@@ -66,5 +66,4 @@ public class ResultSetValue extends Value {
     public long toLong() {
         return queryId;
     }
-
 }

@@ -228,5 +228,4 @@ public class StringValue extends Value {
     public String toString() {
         return value;
     }
-
 }

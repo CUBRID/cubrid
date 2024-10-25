@@ -134,5 +134,4 @@ public class ShortValue extends Value {
     public String toString() {
         return "" + value;
     }
-
 }

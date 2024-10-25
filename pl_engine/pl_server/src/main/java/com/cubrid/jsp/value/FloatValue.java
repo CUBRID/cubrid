@@ -138,5 +138,4 @@ public class FloatValue extends Value {
     public String toString() {
         return "" + value;
     }
-
 }

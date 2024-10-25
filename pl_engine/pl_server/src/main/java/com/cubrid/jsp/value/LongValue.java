@@ -134,5 +134,4 @@ public class LongValue extends Value {
     public String toString() {
         return "" + value;
     }
-
 }

@@ -331,5 +331,4 @@ public class SetValue extends Value {
         }
         return array;
     }
-
 }
