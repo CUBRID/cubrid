@@ -34,6 +34,8 @@
 #include "variable_string.h"
 #include "error_code.h"
 #include "error_manager.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define FUDGE		16
 #define PREFIX_CUSHION	 8

@@ -141,6 +141,7 @@ static char *xts_process_fetch_proc (char *ptr, const FETCH_PROC_NODE * obj_set_
 static char *xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_proc);
 static char *xts_process_buildvalue_proc (char *ptr, const BUILDVALUE_PROC_NODE * build_value_proc);
 static char *xts_process_mergelist_proc (char *ptr, const MERGELIST_PROC_NODE * merge_list_info);
+static char *xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p);
 static char *xts_process_ls_merge_info (char *ptr, const QFILE_LIST_MERGE_INFO * qfile_list_merge_info);
 static char *xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls);
 static char *xts_save_update_assignment (char *ptr, const UPDATE_ASSIGNMENT * assign);
@@ -202,6 +203,7 @@ static int xts_sizeof_fetch_proc (const FETCH_PROC_NODE * ptr);
 static int xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * ptr);
 static int xts_sizeof_buildvalue_proc (const BUILDVALUE_PROC_NODE * ptr);
 static int xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * ptr);
+static int xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * ptr);
 static int xts_sizeof_ls_merge_info (const QFILE_LIST_MERGE_INFO * ptr);
 static int xts_sizeof_upddel_class_info (const UPDDEL_CLASS_INFO * upd_cls);
 static int xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign);
@@ -3033,6 +3035,13 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_pred_expr (xasl->during_join_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   offset = xts_save_pred_expr (xasl->after_join_pred);
   if (offset == ER_FAILED)
     {
@@ -3186,6 +3195,10 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
     case MERGELIST_PROC:
       ptr = xts_process_mergelist_proc (ptr, &xasl->proc.mergelist);
+      break;
+
+    case HASHJOIN_PROC:
+      ptr = xts_process_hashjoin_proc (ptr, &xasl->proc.hashjoin);
       break;
 
     case CONNECTBY_PROC:
@@ -3645,6 +3658,92 @@ xts_process_mergelist_proc (char *ptr, const MERGELIST_PROC_NODE * merge_list_in
   ptr = or_pack_int (ptr, offset);
 
   return xts_process_ls_merge_info (ptr, &merge_list_info->ls_merge);
+}
+
+/*
+ * xts_process_hashjoin_proc () -
+ *   return: The buffer pointer after the packed XASL node.
+ *   ptr(in): The buffer pointer where the XASL node should be packed.
+ *   node_p(in): The pointer to the XASL node that should be packed.
+ */
+static char *
+xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
+{
+  ACCESS_SPEC_TYPE *spec = NULL;
+  int offset, spec_count;
+
+  /**
+   * outer
+   */
+  offset = xts_save_xasl_node (node_p->outer.xasl);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  spec_count = 0;
+  for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
+    {
+      spec_count++;
+    }
+  ptr = or_pack_int (ptr, spec_count);
+
+  for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
+    {
+      ptr = xts_process_access_spec_type (ptr, spec);
+    }
+
+  offset = xts_save_val_list (node_p->outer.val_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  /**
+   * inner
+   */
+  offset = xts_save_xasl_node (node_p->inner.xasl);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  spec_count = 0;
+  for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
+    {
+      spec_count++;
+    }
+  ptr = or_pack_int (ptr, spec_count);
+
+  for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
+    {
+      ptr = xts_process_access_spec_type (ptr, spec);
+      if (ptr == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  offset = xts_save_val_list (node_p->inner.val_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  /**
+   * merge_info
+   */
+  ptr = xts_process_ls_merge_info (ptr, &node_p->merge_info);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  return ptr;
 }
 
 static char *
@@ -5969,6 +6068,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + PTR_SIZE		/* aptr_list */
 	   + PTR_SIZE		/* bptr_list */
 	   + PTR_SIZE		/* dptr_list */
+	   + PTR_SIZE		/* during_join_pred */
 	   + PTR_SIZE		/* after_join_pred */
 	   + PTR_SIZE		/* if_pred */
 	   + PTR_SIZE		/* instnum_pred */
@@ -6034,6 +6134,15 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 
     case MERGELIST_PROC:
       tmp_size = xts_sizeof_mergelist_proc (&xasl->proc.mergelist);
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
+      break;
+
+    case HASHJOIN_PROC:
+      tmp_size = xts_sizeof_hashjoin_proc (&xasl->proc.hashjoin);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -6318,6 +6427,65 @@ xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * merge_list_info)
     {
       size += xts_sizeof_access_spec_type (access_spec);
     }
+
+  return size;
+}
+
+/*
+ * xts_sizeof_hashjoin_proc () -
+ *   return: The size required for the XASL node to be packed.
+ *   node_p(in): The pointer to the XASL node that should be packed.
+ */
+static int
+xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
+{
+  ACCESS_SPEC_TYPE *spec = NULL;
+  int size = 0;
+  int tmp_size = 0;
+
+  /**
+   * outer
+   */
+  size += (PTR_SIZE		/* Offset of outer.xasl. */
+	   + PTR_SIZE		/* Offset of outer.val_list */
+	   + OR_INT_SIZE);	/* The count of access specs in outer.spec_list. */
+
+  for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
+    {
+      tmp_size = xts_sizeof_access_spec_type (spec);
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
+    }
+
+  /**
+   * inner
+   */
+  size += (PTR_SIZE		/* Offset of inner.xasl */
+	   + PTR_SIZE		/* Offset of inner.val_list */
+	   + OR_INT_SIZE);	/* The count of access specs in inner.spec_list. */
+
+  for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
+    {
+      tmp_size = xts_sizeof_access_spec_type (spec);
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
+    }
+
+  /**
+   * merge_info
+   */
+  tmp_size = xts_sizeof_ls_merge_info (&node_p->merge_info);
+  if (tmp_size == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+  size += tmp_size;
 
   return size;
 }

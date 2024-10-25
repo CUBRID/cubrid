@@ -70,6 +70,8 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
 
@@ -1808,7 +1810,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.fix_req_cnt, 1);
 
-  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
+  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH) && fetch_mode != RECOVERY_PAGE)
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
       /* Suppress errors if fetch mode is OLD_PAGE_IF_IN_BUFFER. */
@@ -15728,11 +15730,10 @@ pgbuf_get_page_flush_interval (bool & is_timed_wait, cubthread::delta_time & per
 static void
 pgbuf_page_maintenance_execute (cubthread::entry & thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED ())
-    {
-      // wait for boot to finish
-      return;
-    }
+  if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
+      {
+        return;
+      }
 
   /* page buffer maintenance thread adjust quota's based on thread activity. */
   pgbuf_adjust_quotas (&thread_ref);
@@ -15761,11 +15762,10 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 
     void execute (cubthread::entry & thread_ref) override
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+      if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
+        {
+          return;
+        }
 
       // did not timeout, someone requested flush... run at least once
       bool force_one_run = pgbuf_Page_flush_daemon->was_woken_up ();
@@ -15805,9 +15805,8 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 static void
 pgbuf_page_post_flush_execute (cubthread::entry & thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED ())
+  if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
     {
-      // wait for boot to finish
       return;
     }
 
@@ -15846,11 +15845,10 @@ class pgbuf_flush_control_daemon_task : public cubthread::entry_task
 
     void execute (cubthread::entry & thread_ref) override
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+      if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
+        {
+          return;
+        }
 
       if (m_first_run)
 	{

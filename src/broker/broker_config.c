@@ -140,6 +140,12 @@ static T_CONF_TABLE tbl_on_off[] = {
   {NULL, 0}
 };
 
+static T_CONF_TABLE tbl_allow_deny[] = {
+  {"ALLOW", ALLOW},
+  {"DENY", DENY},
+  {NULL, 0}
+};
+
 static T_CONF_TABLE tbl_sql_log_mode[] = {
   {"ALL", SQL_LOG_MODE_ALL},
   {"ON", SQL_LOG_MODE_ALL},
@@ -211,6 +217,7 @@ static char *conf_file_loaded[MAX_NUM_OF_CONF_FILE_LOADED];
 const char *broker_keywords[] = {
   "ACCESS_CONTROL",
   "ACCESS_CONTROL_FILE",
+  "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER",
   "ADMIN_LOG_FILE",
   "MASTER_SHM_ID",
   "ACCESS_LIST",
@@ -842,6 +849,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       strncpy_bufsize (time_str, s);
       br_info[num_brs].time_to_kill = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].time_to_kill < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
+      INI_GETSTR_CHK (s, ini, sec_name, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER", "DENY", &lineno);
+      br_info[num_brs].acl_broker_allow = conf_get_value_table_allow_deny (s);
+      if (br_info[num_brs].acl_broker_allow < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
@@ -1611,6 +1626,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	}
       fprintf (fp, "JOB_QUEUE_SIZE\t\t=%d\n", br_info[i].job_queue_size);
       fprintf (fp, "TIME_TO_KILL\t\t=%d\n", br_info[i].time_to_kill);
+      fprintf (fp, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER\t=%s\n", br_info[i].acl_broker_allow ? "ALLOW" : "DENY");
       tmp_str = get_conf_string (br_info[i].access_log, tbl_on_off);
       if (tmp_str)
 	{
@@ -1791,6 +1807,17 @@ int
 conf_get_value_table_on_off (const char *value)
 {
   return (get_conf_value (value, tbl_on_off));
+}
+
+/*
+* conf_get_value_table_allow_deny - get value from allow/deny table
+*   return: 0, 1 or -1 if fail
+*   value(in):
+*/
+int
+conf_get_value_table_allow_deny (const char *value)
+{
+  return (get_conf_value (value, tbl_allow_deny));
 }
 
 /*

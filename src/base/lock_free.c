@@ -30,6 +30,8 @@
 #include "error_manager.h"
 #include "error_code.h"
 #include "memory_alloc.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

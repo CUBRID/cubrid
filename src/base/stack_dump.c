@@ -25,7 +25,6 @@
 #include "printer.hpp"
 
 #if defined(x86_SOLARIS)
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -37,7 +36,37 @@
 #include <sys/elf.h>
 
 #include "stack_dump.h"
+#elif defined(LINUX)
+#if __WORDSIZE == 32
+#include <stdio.h>
+#include <string.h>
 
+#include <ucontext.h>
+#include <dlfcn.h>
+
+#include "error_code.h"
+#include "memory_hash.h"
+#include "stack_dump.h"
+#else // __WORDSIZE == 32
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dlfcn.h>
+#include <execinfo.h>
+
+#include "error_code.h"
+#include "memory_hash.h"
+#include "stack_dump.h"
+#endif // __WORDSIZE == 32
+#else // LINUX
+#include <stdio.h>
+#include "stack_dump.h"
+#endif // x86_SOLARIS, LINUX
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
+#if defined(x86_SOLARIS)
 #define FRAME_PTR_REGISTER      EBP
 #define TR_ARG_MAX              6
 #define PGRAB_RDONLY            0x04
@@ -239,16 +268,6 @@ static int er_resolve_function_name (const void *address, const char *lib_file_n
 
 #if __WORDSIZE == 32
 
-#include <stdio.h>
-#include <string.h>
-
-#include <ucontext.h>
-#include <dlfcn.h>
-
-#include "error_code.h"
-#include "memory_hash.h"
-#include "stack_dump.h"
-
 #define PEEK_DATA(addr)	(*(size_t *)(addr))
 #define MAXARGS		6
 #define BUFFER_SIZE     1024
@@ -347,16 +366,6 @@ er_dump_call_stack_internal (print_output & output)
 }
 
 #else /* __WORDSIZE == 32 */
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <dlfcn.h>
-#include <execinfo.h>
-
-#include "error_code.h"
-#include "memory_hash.h"
-#include "stack_dump.h"
 
 #define MAX_TRACE       32
 #define BUFFER_SIZE     1024
@@ -480,10 +489,6 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p, char
   return NO_ERROR;
 }
 #else /* LINUX */
-
-#include <stdio.h>
-#include "stack_dump.h"
-
 /*
  * er_dump_call_stack_internal - dump call stack
  *   return:

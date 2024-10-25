@@ -22,6 +22,8 @@
 #include "list_file.h" /* qfile_ */
 #include "object_representation.h" /* OR_ */
 #include "method_runtime_context.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubscan
 {

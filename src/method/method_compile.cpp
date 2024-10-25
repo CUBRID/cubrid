@@ -23,6 +23,8 @@
 #include "method_connection_sr.hpp"
 #include "method_connection_java.hpp"
 #include "method_compile_def.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

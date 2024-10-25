@@ -43,7 +43,7 @@
 #include "authenticate.h"
 #include "schema_manager.h"
 #include "trigger_description.hpp"
-#include "load_object.h"
+#include "unload_object_file.h"
 #include "object_primitive.h"
 #include "parser.h"
 #include "printer.hpp"
@@ -907,7 +907,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
     "from [db_serial] where [class_name] is not null and [att_name] is not null";
 
   const char *query_user =
-    "select [unique_name], [name], [owner].[name], [class_name], [current_val], [increment_val], [max_val], [min_val], "
+    "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
     "from [db_serial] where [class_name] is not null and [att_name] is not null and owner.name='%s'";
 
@@ -2031,7 +2031,10 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 		  continue;
 		}
 
-	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	      if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+		{
+		  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+		}
 
 	      query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	      if (query_ptr != NULL)
@@ -2087,7 +2090,10 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	      continue;
 	    }
 
-	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	    }
 
 	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	  if (query_ptr != NULL)
@@ -2181,7 +2187,10 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	      continue;
 	    }
 
-	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	    }
 
 	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	  if (query_ptr != NULL)
@@ -2226,7 +2235,10 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	      continue;
 	    }
 
-	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	    }
 
 	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	  if (query_ptr != NULL)

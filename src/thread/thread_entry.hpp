@@ -122,11 +122,14 @@ enum thread_type
 {
   TT_MASTER,
   TT_SERVER,
+  // used to designate generic 'user' operations threads
   TT_WORKER,
+  // used to designate generic system operations
   TT_DAEMON,
   TT_LOADDB,
   TT_VACUUM_MASTER,
   TT_VACUUM_WORKER,
+  TT_RECOVERY,
   TT_NONE
 };
 
@@ -278,6 +281,14 @@ namespace cubthread
       bool no_supplemental_log;
       bool trigger_involved;
       bool is_cdc_daemon;
+
+      /* support multi-process unloaddb
+       * _unload_parallel_process_idx is only valid when (_unload_cnt_parallel_process > 1).
+       * At this time, _unload_parallel_process_idx can have values ​​between 0 and (_unload_cnt_parallel_process-1).
+       */
+#define  NO_UNLOAD_PARALLEL_PROCESSIING (-1)
+      int _unload_parallel_process_idx;
+      int _unload_cnt_parallel_process;
 
 #if !defined(NDEBUG)
       fi_test_item *fi_test_array;

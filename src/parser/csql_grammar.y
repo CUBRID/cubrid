@@ -258,6 +258,8 @@ static PT_NODE *parser_hidden_incr_list = NULL;
 static bool is_analytic_function = false;
 
 static bool is_in_create_trigger = false;
+static bool is_in_sp_func_type = false;
+
 
 #define PT_EMPTY INT_MAX
 
@@ -1862,6 +1864,7 @@ stmt
 			parser_hidden_incr_list = NULL;
 
                         g_plcsql_text = NULL;
+                        is_in_sp_func_type = false;
                         assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
 		DBG_PRINT}}
 	stmt_
@@ -12599,10 +12602,15 @@ opt_plus
 	;
 
 sp_return_type
-        : data_type
+        : 
+           {
+                is_in_sp_func_type = true;
+           }
+           data_type
                 {{ DBG_TRACE_GRAMMAR(sp_return_type, : data_type);
 
-			$$ = $1;
+                        is_in_sp_func_type = false;
+			$$ = $2;
 
                 DBG_PRINT}}
         | CURSOR
@@ -12700,8 +12708,8 @@ plcsql_text
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, | plcsql_text_part);
 
                         assert(g_plcsql_text == NULL);
-                        g_plcsql_text = g_query_string + @$.buffer_pos;
                         $$ = strlen($1);
+                        g_plcsql_text = g_query_string + @$.buffer_pos - $$;
 
 		DBG_PRINT}}
         ;
@@ -12805,10 +12813,15 @@ sp_param_def
 	;
 
 sp_param_type
-        : data_type
+        :
+          {
+              is_in_sp_func_type = true;
+          }
+         data_type
 		{{ DBG_TRACE_GRAMMAR(sp_param_type, : data_type);
 
-                        $$ = $1;
+                        is_in_sp_func_type = false;
+                        $$ = $2;
 
 		DBG_PRINT}}
         | CURSOR
@@ -14879,6 +14892,39 @@ to_param
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | identifier DOT identifier
+		{{ DBG_TRACE_GRAMMAR(to_param, | identifier DOT identifier);
+
+			PT_NODE *val = $1;
+                        
+                         if (this_parser->flag.is_parsing_static_sql)
+                          {
+                             if (val && $3)
+                              {
+                                val->info.name.original = pt_append_string (this_parser, val->info.name.original, ".");
+                                val->info.name.original = 
+                                     pt_append_string (this_parser, val->info.name.original, $3->info.name.original);
+                                parser_free_tree (this_parser, $3);
+                              }                              
+                                                          
+                             if (val)
+                              {
+                                val->info.name.meta_class = PT_PARAMETER;
+                                val->info.name.spec_id = (UINTPTR) val;
+                                val->info.name.resolved = pt_makename ("out parameter");
+                              }
+                          }
+                        else
+                          {                               
+                             PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SEMANTIC, 
+                                        MSGCAT_SEMANTIC_SP_INTO_FIELD_EXPR_IN_NON_STATIC_SQL, val->info.name.original);
+                          }
+                                                 
+                        $$ = val;  
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+
 	| identifier
 		{{ DBG_TRACE_GRAMMAR(to_param, | identifier);
 
@@ -21457,150 +21503,157 @@ primitive_type
 	  opt_collation
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | char_bit_type opt_prec_1 opt_charset opt_collation );
 
-			container_2 ctn;
-			PT_TYPE_ENUM typ = $1;
-			PT_NODE *len = NULL, *dt = NULL;
-			int l = 1;
-			PT_NODE *charset_node = NULL;
-			PT_NODE *coll_node = NULL;
+                        container_2 ctn;
+                        PT_TYPE_ENUM typ = $1;
+                        PT_NODE *len = NULL, *dt = NULL;
+                        int l = 1;
+                        PT_NODE *charset_node = NULL;
+                        PT_NODE *coll_node = NULL;
 
-			len = $2;
-			charset_node = $3;
-			coll_node = $4;
+                        len = $2;
+                        charset_node = $3;
+                        coll_node = $4;
 
-			if (len)
-			  {
-			    int maxlen = DB_MAX_VARCHAR_PRECISION;
-			    l = len->info.value.data_value.i;
+                        if(is_in_sp_func_type && len)
+                          {                                
+                                PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
+                          }
+                        else
+                          {
+                                if (len)
+                                {
+                                int maxlen = DB_MAX_VARCHAR_PRECISION;
+                                l = len->info.value.data_value.i;
 
-			    switch (typ)
-			      {
-			      case PT_TYPE_CHAR:
-				maxlen = DB_MAX_CHAR_PRECISION;
-				break;
+                                switch (typ)
+                                {
+                                case PT_TYPE_CHAR:
+                                        maxlen = DB_MAX_CHAR_PRECISION;
+                                        break;
 
-			      case PT_TYPE_VARCHAR:
-				maxlen = DB_MAX_VARCHAR_PRECISION;
-				break;
+                                case PT_TYPE_VARCHAR:
+                                        maxlen = DB_MAX_VARCHAR_PRECISION;
+                                        break;
 
-			      case PT_TYPE_NCHAR:
-				maxlen = DB_MAX_NCHAR_PRECISION;
-				break;
+                                case PT_TYPE_NCHAR:
+                                        maxlen = DB_MAX_NCHAR_PRECISION;
+                                        break;
 
-			      case PT_TYPE_VARNCHAR:
-				maxlen = DB_MAX_VARNCHAR_PRECISION;
-				break;
+                                case PT_TYPE_VARNCHAR:
+                                        maxlen = DB_MAX_VARNCHAR_PRECISION;
+                                        break;
 
-			      case PT_TYPE_BIT:
-				maxlen = DB_MAX_BIT_PRECISION;
-				break;
+                                case PT_TYPE_BIT:
+                                        maxlen = DB_MAX_BIT_PRECISION;
+                                        break;
 
-			      case PT_TYPE_VARBIT:
-				maxlen = DB_MAX_VARBIT_PRECISION;
-				break;
+                                case PT_TYPE_VARBIT:
+                                        maxlen = DB_MAX_VARBIT_PRECISION;
+                                        break;
 
-			      default:
-				break;
-			      }
+                                default:
+                                        break;
+                                }                           
 
-			    if ((l > maxlen) || (len->type_enum != PT_TYPE_INTEGER))
-			      {
-				if (typ == PT_TYPE_BIT || typ == PT_TYPE_VARBIT)
-				  {
-				    PT_ERRORmf (this_parser, len, MSGCAT_SET_PARSER_SYNTAX,
-						MSGCAT_SYNTAX_MAX_BITLEN, maxlen);
-				  }
-				else
-				  {
-				    PT_ERRORmf (this_parser, len, MSGCAT_SET_PARSER_SYNTAX,
-				    		MSGCAT_SYNTAX_MAX_BYTELEN, maxlen);
-				  }
-			      }
+                                if ((l > maxlen) || (len->type_enum != PT_TYPE_INTEGER))
+                                {
+                                        if (typ == PT_TYPE_BIT || typ == PT_TYPE_VARBIT)
+                                        {
+                                        PT_ERRORmf (this_parser, len, MSGCAT_SET_PARSER_SYNTAX,
+                                                        MSGCAT_SYNTAX_MAX_BITLEN, maxlen);
+                                        }
+                                        else
+                                        {
+                                        PT_ERRORmf (this_parser, len, MSGCAT_SET_PARSER_SYNTAX,
+                                                        MSGCAT_SYNTAX_MAX_BYTELEN, maxlen);
+                                        }
+                                }
 
-			    l = (l > maxlen ? maxlen : l);
-			  }
-			else
-			  {
-			    switch (typ)
-			      {
-			      case PT_TYPE_CHAR:
-			      case PT_TYPE_NCHAR:
-			      case PT_TYPE_BIT:
-				l = 1;
-				break;
+                                l = (l > maxlen ? maxlen : l);
+                                }
+                                else
+                                {
+                                switch (typ)
+                                {
+                                case PT_TYPE_CHAR:
+                                case PT_TYPE_NCHAR:
+                                case PT_TYPE_BIT:
+                                        l = 1;
+                                        break;
 
-			      case PT_TYPE_VARCHAR:
-				l = DB_MAX_VARCHAR_PRECISION;
-				break;
+                                case PT_TYPE_VARCHAR:
+                                        l = DB_MAX_VARCHAR_PRECISION;
+                                        break;
 
-			      case PT_TYPE_VARNCHAR:
-				l = DB_MAX_VARNCHAR_PRECISION;
-				break;
+                                case PT_TYPE_VARNCHAR:
+                                        l = DB_MAX_VARNCHAR_PRECISION;
+                                        break;
 
-			      case PT_TYPE_VARBIT:
-				l = DB_MAX_VARBIT_PRECISION;
-				break;
+                                case PT_TYPE_VARBIT:
+                                        l = DB_MAX_VARBIT_PRECISION;
+                                        break;
 
-			      default:
-				break;
-			      }
-			  }
+                                default:
+                                        break;
+                                }
+                                }
 
-			dt = parser_new_node (this_parser, PT_DATA_TYPE);
-			if (dt)
-			  {
-			    int coll_id, charset;
+                                dt = parser_new_node (this_parser, PT_DATA_TYPE);
+                                if (dt)
+                                {
+                                int coll_id, charset;
 
-			    dt->type_enum = typ;
-			    dt->info.data_type.precision = l;
-			    switch (typ)
-			      {
-			      case PT_TYPE_CHAR:
-			      case PT_TYPE_VARCHAR:
-			      case PT_TYPE_NCHAR:
-			      case PT_TYPE_VARNCHAR:
-				if (pt_check_grammar_charset_collation
-				      (this_parser, charset_node,
-				       coll_node, &charset, &coll_id) == NO_ERROR)
-				  {
-				    dt->info.data_type.units = charset;
-				    dt->info.data_type.collation_id = coll_id;
-				  }
-				else
-				  {
-				    dt->info.data_type.units = -1;
-				    dt->info.data_type.collation_id = -1;
-				  }
+                                dt->type_enum = typ;
+                                dt->info.data_type.precision = l;
+                                switch (typ)
+                                {
+                                case PT_TYPE_CHAR:
+                                case PT_TYPE_VARCHAR:
+                                case PT_TYPE_NCHAR:
+                                case PT_TYPE_VARNCHAR:
+                                        if (pt_check_grammar_charset_collation
+                                        (this_parser, charset_node,
+                                        coll_node, &charset, &coll_id) == NO_ERROR)
+                                        {
+                                        dt->info.data_type.units = charset;
+                                        dt->info.data_type.collation_id = coll_id;
+                                        }
+                                        else
+                                        {
+                                        dt->info.data_type.units = -1;
+                                        dt->info.data_type.collation_id = -1;
+                                        }
 
-				if (charset_node)
-				  {
-				    dt->info.data_type.has_cs_spec = true;
-				  }
-				else
-				  {
-				    dt->info.data_type.has_cs_spec = false;
-				  }
+                                        if (charset_node)
+                                        {
+                                        dt->info.data_type.has_cs_spec = true;
+                                        }
+                                        else
+                                        {
+                                        dt->info.data_type.has_cs_spec = false;
+                                        }
 
-				if (coll_node)
-				  {
-				    dt->info.data_type.has_coll_spec = true;
-				  }
-				else
-				  {
-				    dt->info.data_type.has_coll_spec = false;
-				  }
+                                        if (coll_node)
+                                        {
+                                        dt->info.data_type.has_coll_spec = true;
+                                        }
+                                        else
+                                        {
+                                        dt->info.data_type.has_coll_spec = false;
+                                        }
 
-				break;
+                                        break;
 
-			      case PT_TYPE_BIT:
-			      case PT_TYPE_VARBIT:
-				dt->info.data_type.units = INTL_CODESET_RAW_BITS;
-				break;
+                                case PT_TYPE_BIT:
+                                case PT_TYPE_VARBIT:
+                                        dt->info.data_type.units = INTL_CODESET_RAW_BITS;
+                                        break;
 
-			      default:
-				break;
-			      }
-			  }
+                                default:
+                                        break;
+                                }
+                                }
+                          }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
 			$$ = ctn;
@@ -21637,24 +21690,35 @@ primitive_type
 			    dt->info.data_type.dec_precision =
 			      scale ? scale->info.value.data_value.i : 0;
 
-			    if (scale && prec)
-			      if (scale->info.value.data_value.i > prec->info.value.data_value.i)
-				{
-				  PT_ERRORmf2 (this_parser, dt,
-					       MSGCAT_SET_PARSER_SEMANTIC,
-					       MSGCAT_SEMANTIC_INV_PREC_SCALE,
-					       prec->info.value.data_value.i,
-					       scale->info.value.data_value.i);
-				}
-			    if (prec)
-			      if (prec->info.value.data_value.i > DB_MAX_NUMERIC_PRECISION)
-				{
-				  PT_ERRORmf2 (this_parser, dt,
-					       MSGCAT_SET_PARSER_SEMANTIC,
-					       MSGCAT_SEMANTIC_PREC_TOO_BIG,
-					       prec->info.value.data_value.i,
-					       DB_MAX_NUMERIC_PRECISION);
-				}
+                            if(is_in_sp_func_type && prec)
+                            {                                
+                                PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
+                            }
+                            else
+                            {
+                                if (scale && prec)
+                                {
+                                    if (scale->info.value.data_value.i > prec->info.value.data_value.i)
+                                      {
+                                        PT_ERRORmf2 (this_parser, dt,
+                                                MSGCAT_SET_PARSER_SEMANTIC,
+                                                MSGCAT_SEMANTIC_INV_PREC_SCALE,
+                                                prec->info.value.data_value.i,
+                                                scale->info.value.data_value.i);
+                                      }
+                                    }
+                                if (prec)
+                                {
+                                    if (prec->info.value.data_value.i > DB_MAX_NUMERIC_PRECISION)
+                                      {
+                                        PT_ERRORmf2 (this_parser, dt,
+                                                MSGCAT_SET_PARSER_SEMANTIC,
+                                                MSGCAT_SEMANTIC_PREC_TOO_BIG,
+                                                prec->info.value.data_value.i,
+                                                DB_MAX_NUMERIC_PRECISION);
+                                      }
+                                }
+                            }
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
@@ -21674,7 +21738,11 @@ primitive_type
 			PT_NODE *prec, *dt = NULL;
 			prec = $2;
 
-			if (prec &&
+                        if(is_in_sp_func_type && prec)
+                          {                                
+                            PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
+                          }
+                        else if (prec &&
 			    prec->info.value.data_value.i >= 8 &&
 			    prec->info.value.data_value.i <= DB_MAX_NUMERIC_PRECISION)
 			  {
@@ -26355,6 +26423,8 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("SELECT_BTREE_NODE_INFO", PT_HINT_SELECT_BTREE_NODE_INFO),
   INIT_PT_HINT("USE_SBR", PT_HINT_USE_SBR),
   INIT_PT_HINT("NO_SUPPLEMENTAL_LOG", PT_HINT_NO_SUPPLEMENTAL_LOG),
+  INIT_PT_HINT("USE_HASH", PT_HINT_USE_HASH),
+  INIT_PT_HINT("NO_USE_HASH", PT_HINT_NO_USE_HASH),
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
 

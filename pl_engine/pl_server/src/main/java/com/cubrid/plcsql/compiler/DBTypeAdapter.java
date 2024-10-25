@@ -59,12 +59,12 @@ public class DBTypeAdapter {
         return false;
     }
 
-    public static Type getDeclType(int dbType, int prec, short scale) {
-        return getType(dbType, true, prec, scale);
+    public static Type getDeclType(InstanceStore iStore, int dbType, int prec, short scale) {
+        return getType(iStore, dbType, true, prec, scale);
     }
 
-    public static Type getValueType(int dbType) {
-        return getType(dbType, false, -1, (short) -1); // ignore precision and scale
+    public static Type getValueType(InstanceStore iStore, int dbType) {
+        return getType(iStore, dbType, false, -1, (short) -1); // ignore precision and scale
     }
 
     public static String getSqlTypeName(int dbType) {
@@ -139,7 +139,8 @@ public class DBTypeAdapter {
     // Private
     // ---------------------------------------------------------
 
-    private static Type getType(int dbType, boolean includePrecision, int prec, short scale) {
+    private static Type getType(
+            InstanceStore iStore, int dbType, boolean includePrecision, int prec, short scale) {
         switch (dbType) {
             case DBType.DB_NULL:
                 return Type.NULL;
@@ -149,7 +150,7 @@ public class DBTypeAdapter {
                         prec = TypeChar.MAX_LEN;
                     }
                     assert prec >= 1 && prec <= TypeChar.MAX_LEN : ("invalid precision " + prec);
-                    return TypeChar.getInstance(prec);
+                    return TypeChar.getInstance(iStore, prec);
                 } else {
                     return Type.STRING_ANY;
                 }
@@ -159,7 +160,7 @@ public class DBTypeAdapter {
                         prec = TypeVarchar.MAX_LEN;
                     }
                     assert prec >= 1 && prec <= TypeVarchar.MAX_LEN : ("invalid precision " + prec);
-                    return TypeVarchar.getInstance(prec);
+                    return TypeVarchar.getInstance(iStore, prec);
                 } else {
                     return Type.STRING_ANY;
                 }
@@ -174,7 +175,7 @@ public class DBTypeAdapter {
                     assert prec >= 1 && prec <= 38 : ("invalid precision " + prec);
                     assert scale >= 0 && scale <= prec
                             : ("invalid scale " + scale + " (with precision " + prec + ")");
-                    return TypeNumeric.getInstance(prec, scale);
+                    return TypeNumeric.getInstance(iStore, prec, scale);
                 } else {
                     return Type.NUMERIC_ANY;
                 }

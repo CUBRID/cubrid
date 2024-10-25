@@ -21,6 +21,8 @@
  */
 
 #include "printer.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 void print_output::operator+= (const char ch)
 {

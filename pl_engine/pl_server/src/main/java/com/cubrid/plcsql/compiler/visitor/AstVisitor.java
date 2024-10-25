@@ -199,7 +199,7 @@ public abstract class AstVisitor<R> {
     DeclId
     DeclParam
     DeclRoutine
-    DeclIdTyped
+    DeclIdTypeSpeced
     Expr
     Stmt
 

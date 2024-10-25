@@ -567,6 +567,8 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
   strcpy (shm_as_p->cgw_link_connect_url_property, br_info_p->cgw_link_connect_url_property);
 #endif
 
+  shm_as_p->acl_broker_allow = br_info_p->acl_broker_allow;
+
   if (shm_as_p->shard_flag == OFF)
     {
       assert (shm_proxy_p == NULL);

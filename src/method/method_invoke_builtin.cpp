@@ -30,6 +30,8 @@
 #else
 #include "query_method.hpp"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

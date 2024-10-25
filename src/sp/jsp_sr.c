@@ -52,6 +52,8 @@
 #include "release_string.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined(sparc)
 #define JVM_LIB_PATH "jre/lib/sparc/client"
