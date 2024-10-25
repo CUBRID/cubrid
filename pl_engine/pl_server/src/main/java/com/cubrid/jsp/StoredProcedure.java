@@ -252,7 +252,11 @@ public class StoredProcedure {
                 resolved = args[i].toTimeArrayArray();
 
             } else if (argsTypes[i] == Timestamp[][].class) {
-                resolved = args[i].toTimestampArrayArray();
+                if (args[i].getDbType() == DBType.DB_DATETIME) {
+                    resolved = args[i].toDatetimeArrayArray();
+                } else {
+                    resolved = args[i].toTimestampArrayArray();
+                }
 
             } else if (argsTypes[i] == BigDecimal[][].class) {
                 resolved = args[i].toBigDecimalArrayArray();

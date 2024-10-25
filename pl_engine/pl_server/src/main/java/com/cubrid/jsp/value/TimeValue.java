@@ -62,27 +62,18 @@ public class TimeValue extends Value {
         assert time.getTime() % 1000L == 0;
     }
 
+    @Override
     public Time toTime() throws TypeMismatchException {
         return time;
     }
 
+    @Override
     public Object toObject() throws TypeMismatchException {
         return toTime();
     }
 
+    @Override
     public String toString() {
         return time.toString();
-    }
-
-    public Time[] toTimeArray() throws TypeMismatchException {
-        return new Time[] {toTime()};
-    }
-
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toObject()};
-    }
-
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
     }
 }

@@ -63,43 +63,28 @@ public class DateValue extends Value {
         assert date.getTime() % 1000L == 0; // millisecond value must be zero
     }
 
+    @Override
     public Date toDate() throws TypeMismatchException {
         return date;
     }
 
+    @Override
     public Timestamp toTimestamp() throws TypeMismatchException {
         return new Timestamp(date.getTime());
     }
 
+    @Override
     public Timestamp toDatetime() throws TypeMismatchException {
         return new Timestamp(date.getTime());
     }
 
+    @Override
     public Object toObject() throws TypeMismatchException {
         return toDate();
     }
 
+    @Override
     public String toString() {
         return date.toString();
-    }
-
-    public Date[] toDateArray() throws TypeMismatchException {
-        return new Date[] {date};
-    }
-
-    public Timestamp[] toTimestampArray() throws TypeMismatchException {
-        return new Timestamp[] {toTimestamp()};
-    }
-
-    public Timestamp[] toDatetimeArray() throws TypeMismatchException {
-        return new Timestamp[] {toDatetime()};
-    }
-
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toDate()};
-    }
-
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
     }
 }

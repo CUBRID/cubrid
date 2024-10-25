@@ -62,6 +62,7 @@ public class ResultSetValue extends Value {
         return rset;
     }
 
+    @Override
     public long toLong() {
         return queryId;
     }
