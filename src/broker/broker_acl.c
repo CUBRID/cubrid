@@ -119,7 +119,8 @@ access_control_find_access_info (ACCESS_INFO ai[], int size, char *dbname, char 
 }
 
 int
-access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, char *admin_err_msg, T_SHM_BROKER * shm_br)
+access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, char *admin_err_msg,
+				 T_SHM_BROKER * shm_br)
 {
   char buf[1024], path_buf[BROKER_PATH_MAX], *files, *token, *save = NULL;
   FILE *fd_access_list;
@@ -163,7 +164,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
       if ((ret = is_invalid_acl_entry (buf, shm_br)))
 	{
 	  sprintf (admin_err_msg, "%s: invalid acl list entry: (%s:%d)%s", shm_appl->broker_name, filename, line,
-		ret == ACL_FMT_UNKOWN_BROKER ? " (unknown broker)" : "");
+		   ret == ACL_FMT_UNKOWN_BROKER ? " (unknown broker)" : "");
 	  goto error;
 	}
 
