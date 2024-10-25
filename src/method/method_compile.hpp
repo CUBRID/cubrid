@@ -28,6 +28,7 @@
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "method_invoke.hpp"
 #include "method_runtime_context.hpp"
+#include "method_compile_def.hpp"
 #endif
 
 #include <vector>
@@ -36,9 +37,8 @@
 namespace cubmethod
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  int invoke_compile (cubthread::entry &thread, runtime_context &ctx, const std::string &program,
-		      const bool &verbose,
-		      cubmem::extensible_block &blk);
+  int invoke_compile (cubthread::entry &thread_ref, const PLCSQL_COMPILE_REQUEST &compile_request,
+		      cubmem::extensible_block &out_blk);
 #endif
 }
 

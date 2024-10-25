@@ -979,3 +979,7 @@ EXPORTS
   gethostbyname_uhost
   getnameinfo_uhost
   trim
+  er_has_error
+  prm_get_name
+  windows_socket_startup
+  windows_socket_shutdown

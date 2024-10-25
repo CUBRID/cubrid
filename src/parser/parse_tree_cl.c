@@ -4043,6 +4043,8 @@ pt_show_priv (PT_PRIV_TYPE t)
       return "drop";
     case PT_EXECUTE_PRIV:
       return "execute";
+    case PT_EXECUTE_PROCEDURE_PRIV:
+      return "execute on procedure";
     case PT_INDEX_PRIV:
       return "index";
     case PT_INSERT_PRIV:
@@ -7564,6 +7566,7 @@ pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.sp.name, arg);
   PT_APPLY_WALK (parser, p->info.sp.param_list, arg);
   PT_APPLY_WALK (parser, p->info.sp.ret_data_type, arg);
   return p;
@@ -7580,6 +7583,7 @@ pt_apply_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *ar
 static PT_NODE *
 pt_apply_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.sp.name, arg);
   return p;
 }
 
@@ -7595,6 +7599,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1, *r2, *r3;
 
   r1 = pt_print_bytes (parser, p->info.sp.name);
+
   q = pt_append_nulstring (parser, q, "create ");
   if (p->info.sp.or_replace)
     {
@@ -7602,7 +7607,14 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp.type));
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_varchar (parser, q, r1);
+  if (parser->custom_print & (PT_PRINT_NO_SPECIFIED_USER_NAME | PT_PRINT_NO_CURRENT_USER_NAME))
+    {
+      q = pt_append_name (parser, q, p->info.sp.name->info.name.original);
+    }
+  else
+    {
+      q = pt_append_varchar (parser, q, r1);
+    }
 
   r2 = pt_print_bytes_l (parser, p->info.sp.param_list);
   q = pt_append_nulstring (parser, q, "(");
@@ -7888,6 +7900,12 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
   else
     {
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+    }
+
+  if (p->info.sp_param.default_value != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.sp_param.default_value);
+      q = pt_append_varchar (parser, q, r1);
     }
 
   if (p->info.sp_param.comment != NULL)
@@ -8331,6 +8349,11 @@ pt_print_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 
       r1 = pt_print_bytes_l (parser, sp_info->owner);
       q = pt_append_varchar (parser, q, r1);
+    }
+
+  if (sp_info->recompile == 1)
+    {
+      q = pt_append_nulstring (parser, q, " recompile ");
     }
 
   if (sp_info->comment != NULL)

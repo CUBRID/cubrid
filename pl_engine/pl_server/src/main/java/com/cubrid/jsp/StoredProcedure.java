@@ -31,6 +31,11 @@
 
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.classloader.ServerClassLoader;
+import com.cubrid.jsp.code.ClassAccess;
+import com.cubrid.jsp.code.CompiledCodeSet;
+import com.cubrid.jsp.code.Signature;
+import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.ExecuteException;
@@ -54,6 +59,7 @@ import com.cubrid.jsp.value.Value;
 import cubrid.sql.CUBRIDOID;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.Time;
@@ -61,21 +67,79 @@ import java.sql.Timestamp;
 
 public class StoredProcedure {
     private String signature;
+    private String authUser;
     private Value[] args;
     private int returnType;
+    private int lang;
+
+    private Class<?> targetClass;
     private TargetMethod target;
 
     private Object[] cachedResolved;
 
-    public StoredProcedure(String signature, Value[] args, int returnType) throws Exception {
+    // METHOD_TYPE in method_def.hpp
+    private static final int LANG_JAVASP = 3;
+    private static final int LANG_PLCSQL = 4;
+
+    public StoredProcedure(
+            String signature, int lang, String authUser, Value[] args, int returnType)
+            throws Exception {
         this.signature = signature;
+        this.authUser = authUser;
         this.args = args;
         this.returnType = returnType;
-        this.target =
-                ContextManager.getContextofCurrentThread().getTargetMethodCache().get(signature);
+        this.lang = lang;
+
+        this.target = findTargetMethod(signature);
+
         this.cachedResolved = null;
 
         checkArgs();
+    }
+
+    private TargetMethod findTargetMethod(String sigString) throws Exception {
+        Context ctx = ContextManager.getContextofCurrentThread();
+
+        Connection conn = ctx.getConnection();
+        Signature sig = Signature.parse(sigString);
+
+        Class<?> c = null;
+        ClassNotFoundException ex = null;
+        if (lang == LANG_PLCSQL) {
+            try {
+                c = ctx.getSessionCLManager().findClass(sig.getClassName());
+                if (c == null) {
+                    CompiledCodeSet codeset = ClassAccess.getObjectCode(conn, sig);
+                    if (codeset != null) {
+                        c = ctx.getSessionCLManager().loadClass(codeset);
+                    }
+                }
+            } catch (ClassNotFoundException e) {
+                ex = e;
+            }
+        } else if (lang == LANG_JAVASP) {
+            try {
+                c = ctx.getOldClassLoader().loadClass(sig.getClassName());
+            } catch (ClassNotFoundException e) {
+                ex = e;
+            }
+        } else {
+            assert false;
+            throw new ClassNotFoundException(sig.getClassName());
+        }
+
+        // find a class in static directory and system loader
+        if (c == null) {
+            c = ServerClassLoader.getInstance().loadClass(sig.getClassName());
+        }
+
+        if (c == null) {
+            throw ex;
+        }
+
+        targetClass = c;
+        TargetMethod target = new TargetMethod(sig);
+        return target;
     }
 
     public Object[] getResolved() {
@@ -276,7 +340,7 @@ public class StoredProcedure {
     }
 
     public Value invoke() throws Exception {
-        Method m = target.getMethod();
+        Method m = target.getMethod(targetClass);
         if (cachedResolved == null) {
             cachedResolved = getResolved();
         }
@@ -391,5 +455,9 @@ public class StoredProcedure {
 
     public TargetMethod getTarget() {
         return target;
+    }
+
+    public String getAuthUser() {
+        return authUser;
     }
 }

@@ -59,6 +59,9 @@
 #include "xasl_to_stream.h"
 #include "parser_support.h"
 #include "dbtype.h"
+#include "jsp_cl.h"
+#include "msgcat_glossary.hpp"
+#include "authenticate_access_auth.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1749,7 +1752,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user_obj, *class_mop;
   PT_NODE *auth_cmd_list, *auth_list, *auth;
   DB_AUTH db_auth;
-  PT_NODE *spec_list, *s_list, *spec;
+  PT_NODE *spec_list;
   PT_NODE *entity_list, *entity;
   int grant_option;
   bool set_savepoint = false;
@@ -1791,24 +1794,52 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  s_list = spec_list;
-	  for (spec = s_list; spec != NULL; spec = spec->next)
+	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
 	    {
-	      entity_list = spec->info.spec.flat_entity_list;
-	      for (entity = entity_list; entity != NULL; entity = entity->next)
+	      // NOTE: db_auth is always DB_AUTH_EXECUTE
+	      assert (db_auth == DB_AUTH_EXECUTE);
+
+	      PT_NODE *p_list = spec_list;
+	      for (PT_NODE * procs = p_list; procs != NULL; procs = procs->next)
 		{
-		  class_mop = db_find_class (entity->info.name.original);
-		  if (class_mop == NULL)
+		  // [TODO] Resovle user schema name, built-in package name
+		  const char *proc_name = procs->info.name.original;
+
+		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
+		  if (proc_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      goto end;
 		    }
 
-		  error = db_grant (user_obj, class_mop, db_auth, grant_option);
+		  error = db_grant_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth, grant_option);
 		  if (error != NO_ERROR)
 		    {
 		      goto end;
+		    }
+		}
+	    }
+	  else
+	    {
+	      for (PT_NODE * spec = spec_list; spec != NULL; spec = spec->next)
+		{
+		  entity_list = spec->info.spec.flat_entity_list;
+		  for (entity = entity_list; entity != NULL; entity = entity->next)
+		    {
+		      class_mop = db_find_class (entity->info.name.original);
+		      if (class_mop == NULL)
+			{
+			  assert (er_errid () != NO_ERROR);
+			  error = er_errid ();
+			  goto end;
+			}
+
+		      error = db_grant_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth, grant_option);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
 		    }
 		}
 	    }
@@ -1871,24 +1902,53 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  s_list = spec_list;
-	  for (spec = s_list; spec != NULL; spec = spec->next)
+	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
 	    {
-	      entity_list = spec->info.spec.flat_entity_list;
-	      for (entity = entity_list; entity != NULL; entity = entity->next)
+	      // NOTE: db_auth is always DB_AUTH_EXECUTE
+	      assert (db_auth == DB_AUTH_EXECUTE);
+
+	      PT_NODE *p_list = spec_list;
+	      for (PT_NODE * procs = p_list; procs != NULL; procs = procs->next)
 		{
-		  class_mop = db_find_class (entity->info.name.original);
-		  if (class_mop == NULL)
+		  // [TODO] Resovle user schema name, built-in package name
+		  const char *proc_name = procs->info.name.original;
+
+		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
+		  if (proc_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      goto end;
 		    }
 
-		  error = db_revoke (user_obj, class_mop, db_auth);
+		  // TODO: In CBRD-24912, GRANT/REVOKE for stored procedure is implemented, the following will be processed properly
+		  error = db_revoke_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth);
 		  if (error != NO_ERROR)
 		    {
 		      goto end;
+		    }
+		}
+	    }
+	  else
+	    {
+	      for (PT_NODE * spec = spec_list; spec != NULL; spec = spec->next)
+		{
+		  entity_list = spec->info.spec.flat_entity_list;
+		  for (entity = entity_list; entity != NULL; entity = entity->next)
+		    {
+		      class_mop = db_find_class (entity->info.name.original);
+		      if (class_mop == NULL)
+			{
+			  assert (er_errid () != NO_ERROR);
+			  error = er_errid ();
+			  goto end;
+			}
+
+		      error = db_revoke_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
 		    }
 		}
 	    }
@@ -2258,7 +2318,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       if (!ws_is_same_object (user, Au_user) && !au_is_dba_group_member (Au_user))
 	{
 	  error = ER_AU_NOT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
 	  goto end;
 	}
 
@@ -10145,6 +10205,13 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
   if (sm_issystem (sm_class))
     {
       ERROR_SET_ERROR_1ARG (error, ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS, "");
+      return error;
+    }
+
+  /* when changing the owner, all privileges are revoked */
+  error = au_object_revoke_all_privileges (class_mop, NULL);
+  if (error != NO_ERROR)
+    {
       return error;
     }
 

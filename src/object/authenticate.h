@@ -91,6 +91,10 @@ class print_output;
 #define au_check_user                   au_ctx ()->check_user
 #define au_has_user_name                au_ctx ()->has_user_name
 
+// execution rights
+#define au_perform_push_user            au_ctx ()->push_user
+#define au_perform_pop_user             au_ctx ()->pop_user
+
 #define AU_SET_USER                     au_set_user
 
 // FIXME: To migrate legacy
@@ -139,8 +143,8 @@ extern int au_login (const char *name, const char *password, bool ignore_dba_pri
  * GRANT/REVOKE OPERATIONS (authenticate_grant.cpp)
  */
 
-extern int au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
-extern int au_revoke (MOP user, MOP class_mop, DB_AUTH type);
+extern int au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
+extern int au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type);
 
 #if defined (SA_MODE)
 extern int au_force_write_new_auth (void);
@@ -242,6 +246,7 @@ extern void au_dump_auth (FILE * fp);
 //
 
 /*
+ * Etc
  * SET TYPE OPERATIONS
  */
 extern int au_get_set (MOP obj, const char *attname, DB_SET ** set);

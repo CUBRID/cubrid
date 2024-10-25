@@ -19,6 +19,8 @@
 #include "method_def.hpp"
 
 #include "memory_private_allocator.hpp"
+#include "oid.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -26,9 +28,13 @@ method_sig_node::method_sig_node ()
 {
   next = nullptr;
   method_name = nullptr;
+  auth_name = nullptr;
   method_type = METHOD_TYPE_NONE;
   num_method_args = 0;
   method_arg_pos = nullptr;
+  class_name = nullptr;
+  arg_info = nullptr;
+  oid = OID_INITIALIZER;
 }
 
 method_sig_node::~method_sig_node ()
@@ -41,29 +47,37 @@ method_sig_node::method_sig_node (method_sig_node &&obj)
   next = std::move (obj.next);
 
   method_name = obj.method_name;
+  auth_name = obj.auth_name;
   method_type = obj.method_type;
   method_arg_pos = obj.method_arg_pos;
   num_method_args = obj.num_method_args;
+  result_type = obj.result_type;
+  oid = obj.oid;
 
   obj.method_name = nullptr;
+  obj.auth_name = nullptr;
   obj.method_arg_pos = nullptr;
+  obj.oid = OID_INITIALIZER;
 
-  if (method_type == METHOD_TYPE_NONE)
-    {
-      //
-    }
-  else if (method_type != METHOD_TYPE_JAVA_SP)
+
+  if (obj.class_name != nullptr)
     {
       class_name = obj.class_name;
       obj.class_name = nullptr;
     }
-  else
-    {
-      arg_info.arg_mode = obj.arg_info.arg_mode;
-      arg_info.arg_type = obj.arg_info.arg_type;
 
-      obj.arg_info.arg_mode = nullptr;
-      obj.arg_info.arg_type = nullptr;
+  if (obj.arg_info != nullptr)
+    {
+      arg_info->arg_mode = obj.arg_info->arg_mode;
+      arg_info->arg_type = obj.arg_info->arg_type;
+      arg_info->default_value = obj.arg_info->default_value;
+      arg_info->default_value_size = obj.arg_info->default_value_size;
+
+      obj.arg_info->arg_mode = nullptr;
+      obj.arg_info->arg_type = nullptr;
+      obj.arg_info->default_value = nullptr;
+      obj.arg_info->default_value_size = nullptr;
+      obj.arg_info = nullptr;
     }
 }
 
@@ -86,8 +100,16 @@ method_sig_node::method_sig_node (const method_sig_node &obj)
       strncpy (method_name, obj.method_name, method_name_len);
     }
 
+  if (obj.auth_name != nullptr)
+    {
+      int auth_name_len = strlen (obj.auth_name);
+      auth_name = (char *) db_private_alloc (NULL, auth_name_len + 1);
+      strncpy (auth_name, obj.auth_name, auth_name_len);
+    }
+
   method_type = obj.method_type;
   num_method_args = obj.num_method_args;
+  oid = obj.oid;
 
   if (obj.num_method_args > 0)
     {
@@ -98,35 +120,48 @@ method_sig_node::method_sig_node (const method_sig_node &obj)
 	}
     }
 
-  if (method_type == METHOD_TYPE_NONE)
+  if (obj.class_name != nullptr)
     {
-      //
-    }
-  else if (method_type != METHOD_TYPE_JAVA_SP)
-    {
-      if (obj.class_name != nullptr)
-	{
-	  int class_name_len = strlen (obj.class_name);
-	  class_name = (char *) db_private_alloc (NULL, class_name_len + 1);
-	  strncpy (class_name, obj.class_name, class_name_len);
-	}
+      int class_name_len = strlen (obj.class_name);
+      class_name = (char *) db_private_alloc (NULL, class_name_len + 1);
+      strncpy (class_name, obj.class_name, class_name_len);
     }
   else
     {
+      class_name = nullptr;
+    }
+
+  result_type = obj.result_type;
+
+  if (obj.arg_info != nullptr)
+    {
       if (num_method_args > 0)
 	{
-	  arg_info.arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-	  arg_info.arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->default_value = (char **) db_private_alloc (NULL, sizeof (char *) * (num_method_args));
+	  arg_info->default_value_size = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 	  for (int n = 0; n < num_method_args; n++)
 	    {
-	      arg_info.arg_mode[n] = obj.arg_info.arg_mode[n];
-	      arg_info.arg_type[n] = obj.arg_info.arg_type[n];
+	      arg_info->arg_mode[n] = obj.arg_info->arg_mode[n];
+	      arg_info->arg_type[n] = obj.arg_info->arg_type[n];
+
+	      arg_info->default_value_size[n] = obj.arg_info->default_value_size[n];
+	      if (obj.arg_info->default_value_size[n] > 0)
+		{
+		  arg_info->default_value[n] = (char *) db_private_alloc (NULL, sizeof (char) * (arg_info->default_value_size[n] + 1));
+		  strncpy (arg_info->default_value[n], obj.arg_info->default_value[n], arg_info->default_value_size[n]);
+		  arg_info->default_value[n][arg_info->default_value_size[n]] = 0;
+		}
+
 	    }
 	}
       else
 	{
-	  arg_info.arg_mode = nullptr;
-	  arg_info.arg_type = nullptr;
+	  arg_info->arg_mode = nullptr;
+	  arg_info->arg_type = nullptr;
+	  arg_info->default_value = nullptr;
+	  arg_info->default_value_size = nullptr;
 	}
     }
 }
@@ -136,34 +171,61 @@ method_sig_node::pack (cubpacking::packer &serializator) const
 {
   serializator.pack_c_string (method_name, strlen (method_name));
 
+  if (auth_name)
+    {
+      serializator.pack_bool (true);
+      serializator.pack_c_string (auth_name, strlen (auth_name));
+    }
+  else
+    {
+      serializator.pack_bool (false);
+    }
+
   serializator.pack_int (method_type);
   serializator.pack_int (num_method_args);
+  serializator.pack_int (result_type);
 
   for (int i = 0; i < num_method_args + 1; i++)
     {
       serializator.pack_int (method_arg_pos[i]);
     }
 
-  if (method_type == METHOD_TYPE_NONE)
+  if (class_name)
     {
-      //
-    }
-  else if (method_type != METHOD_TYPE_JAVA_SP)
-    {
+      serializator.pack_bool (true);
       serializator.pack_c_string (class_name, strlen (class_name));
     }
   else
     {
-      for (int i = 0; i < num_method_args; i++)
-	{
-	  serializator.pack_int (arg_info.arg_mode[i]);
-	}
-      for (int i = 0; i < num_method_args; i++)
-	{
-	  serializator.pack_int (arg_info.arg_type[i]);
-	}
-      serializator.pack_int (arg_info.result_type);
+      serializator.pack_bool (false);
     }
+
+  if (arg_info)
+    {
+      serializator.pack_bool (true);
+      for (int i = 0; i < num_method_args; i++)
+	{
+	  serializator.pack_int (arg_info->arg_mode[i]);
+	}
+      for (int i = 0; i < num_method_args; i++)
+	{
+	  serializator.pack_int (arg_info->arg_type[i]);
+	}
+      for (int i = 0; i < num_method_args; i++)
+	{
+	  serializator.pack_int (arg_info->default_value_size[i]);
+	  if (arg_info->default_value_size[i] > 0)
+	    {
+	      serializator.pack_c_string (arg_info->default_value[i], arg_info->default_value_size[i]);
+	    }
+	}
+    }
+  else
+    {
+      serializator.pack_bool (false);
+    }
+
+  serializator.pack_oid (oid);
 }
 
 size_t
@@ -173,32 +235,50 @@ method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t 
 
   size += serializator.get_packed_c_string_size (method_name, strlen (method_name), size);
 
-  /* method type and num_method_args */
-  size += serializator.get_packed_int_size (size);
-  size += serializator.get_packed_int_size (size);
+  size += serializator.get_packed_bool_size (size); // has auth_name
+  if (auth_name)
+    {
+      size += serializator.get_packed_c_string_size (auth_name, strlen (auth_name), size);
+    }
+
+  size += serializator.get_packed_int_size (size); /* method type */
+  size += serializator.get_packed_int_size (size); /* num_method_args */
+  size += serializator.get_packed_int_size (size); /* result_type */
 
   for (int i = 0; i < num_method_args + 1; i++)
     {
       size += serializator.get_packed_int_size (size); /* method_sig->method_arg_pos[i] */
     }
 
-  if (method_type == METHOD_TYPE_NONE)
-    {
-      //
-    }
-  else if (method_type != METHOD_TYPE_JAVA_SP)
+  size += serializator.get_packed_bool_size (size); // has class_name
+  if (class_name)
     {
       size += serializator.get_packed_c_string_size (class_name, strlen (class_name), size);
     }
-  else
+
+  size += serializator.get_packed_bool_size (size); // has arg_info
+  if (arg_info)
     {
       for (int i = 0; i < num_method_args; i++)
 	{
-	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info.arg_mode[i] */
-	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info.arg_type[i] */
+	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_mode[i] */
 	}
-      size += serializator.get_packed_int_size (size); /* method_sig->arg_info.result_type */
+      for (int i = 0; i < num_method_args; i++)
+	{
+	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_type[i] */
+	}
+      for (int i = 0; i < num_method_args; i++)
+	{
+	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_default_size[i] */
+	  if (arg_info->default_value_size[i] > 0)
+	    {
+	      size += serializator.get_packed_c_string_size ((const char *) arg_info->default_value[i],
+		      (size_t) arg_info->default_value_size[i], size); /* method_sig->arg_info->arg_default[i] */
+	    }
+	}
     }
+
+  size += serializator.get_packed_oid_size (size); /* OID */
 
   return size;
 }
@@ -225,49 +305,73 @@ method_sig_node::operator= (const method_sig_node &obj)
 	  strncpy (method_name, obj.method_name, method_name_len);
 	}
 
+      if (obj.auth_name != nullptr)
+	{
+	  int auth_name_len = strlen (obj.auth_name);
+	  auth_name = (char *) db_private_alloc (NULL, auth_name_len + 1);
+	  strncpy (auth_name, obj.auth_name, auth_name_len);
+	}
+      else
+	{
+	  auth_name = nullptr;
+	}
+
       method_type = obj.method_type;
       num_method_args = obj.num_method_args;
       if (obj.num_method_args > 0)
 	{
-
 	  method_arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args + 1));
 	  for (int n = 0; n < num_method_args + 1; n++)
 	    {
 	      method_arg_pos[n] = obj.method_arg_pos[n];
 	    }
 	}
-
-      if (method_type == METHOD_TYPE_NONE)
+      else
 	{
-	  //
+	  method_arg_pos = nullptr;
 	}
-      else if (method_type != METHOD_TYPE_JAVA_SP)
+
+      result_type = obj.result_type;
+
+      if (obj.class_name != nullptr)
 	{
-	  if (obj.class_name != nullptr)
+	  int class_name_len = strlen (obj.class_name);
+	  class_name = (char *) db_private_alloc (NULL, class_name_len + 1);
+	  strncpy (class_name, obj.class_name, class_name_len);
+	}
+      else
+	{
+	  class_name = nullptr;
+	}
+
+      if (obj.arg_info != nullptr)
+	{
+	  if (num_method_args > 0)
 	    {
-	      int class_name_len = strlen (obj.class_name);
-	      class_name = (char *) db_private_alloc (NULL, class_name_len + 1);
-	      strncpy (class_name, obj.class_name, class_name_len);
+	      arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	      arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	      arg_info->default_value = (char **) db_private_alloc (NULL, sizeof (char *) * (num_method_args));
+	      arg_info->default_value_size = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	      for (int n = 0; n < num_method_args; n++)
+		{
+		  arg_info->arg_mode[n] = obj.arg_info->arg_mode[n];
+		  arg_info->arg_type[n] = obj.arg_info->arg_type[n];
+		  arg_info->default_value_size[n] = obj.arg_info->default_value_size[n];
+		  if (obj.arg_info->default_value_size[n] > 0)
+		    {
+		      arg_info->default_value[n] = (char *) db_private_alloc (NULL, sizeof (char) * (arg_info->default_value_size[n] + 1));
+		      strncpy (arg_info->default_value[n], obj.arg_info->default_value[n], arg_info->default_value_size[n]);
+		      arg_info->default_value[n][arg_info->default_value_size[n]] = 0;
+		    }
+		}
 	    }
 	}
       else
 	{
-	  if (num_method_args > 0)
-	    {
-	      arg_info.arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-	      arg_info.arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-	      for (int n = 0; n < num_method_args; n++)
-		{
-		  arg_info.arg_mode[n] = obj.arg_info.arg_mode[n];
-		  arg_info.arg_type[n] = obj.arg_info.arg_type[n];
-		}
-	    }
-	  else
-	    {
-	      arg_info.arg_mode = nullptr;
-	      arg_info.arg_type = nullptr;
-	    }
+	  arg_info = nullptr;
 	}
+
+      oid = obj.oid;
     }
   return *this;
 }
@@ -281,10 +385,25 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
   deserializator.unpack_string_to_memblock (method_name_blk);
   method_name = method_name_blk.release_ptr ();
 
+  bool has_attr = false;
+
+  deserializator.unpack_bool (has_attr);
+  if (has_attr)
+    {
+      cubmem::extensible_block auth_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+      deserializator.unpack_string_to_memblock (auth_name_blk);
+      auth_name = auth_name_blk.release_ptr ();
+    }
+  else
+    {
+      auth_name = nullptr;
+    }
+
   int type;
   deserializator.unpack_int (type);
   method_type = static_cast<METHOD_TYPE> (type);
   deserializator.unpack_int (num_method_args);
+  deserializator.unpack_int (result_type);
 
   method_arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args + 1));
   for (int n = 0; n < num_method_args + 1; n++)
@@ -292,42 +411,68 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
       deserializator.unpack_int (method_arg_pos[n]);
     }
 
-  if (method_type == METHOD_TYPE_NONE)
+
+  deserializator.unpack_bool (has_attr);
+  if (has_attr)
     {
-      //
-    }
-  else if (method_type != METHOD_TYPE_JAVA_SP)
-    {
-      class_name = nullptr;
       cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
       deserializator.unpack_string_to_memblock (class_name_blk);
       class_name = class_name_blk.release_ptr ();
     }
   else
     {
+      class_name = nullptr;
+    }
+
+  deserializator.unpack_bool (has_attr);
+  if (has_attr)
+    {
+      arg_info = (METHOD_ARG_INFO *) db_private_alloc (NULL, sizeof (METHOD_ARG_INFO));
+
       if (num_method_args > 0)
 	{
-	  arg_info.arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-	  arg_info.arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->default_value = (char **) db_private_alloc (NULL, sizeof (char *) * (num_method_args));
+	  arg_info->default_value_size = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 
 	  for (int i = 0; i < num_method_args; i++)
 	    {
-	      deserializator.unpack_int (arg_info.arg_mode[i]);
+	      deserializator.unpack_int (arg_info->arg_mode[i]);
 	    }
 
 	  for (int i = 0; i < num_method_args; i++)
 	    {
-	      deserializator.unpack_int (arg_info.arg_type[i]);
+	      deserializator.unpack_int (arg_info->arg_type[i]);
+	    }
+
+	  for (int i = 0; i < num_method_args; i++)
+	    {
+	      deserializator.unpack_int (arg_info->default_value_size[i]);
+	      if (arg_info->default_value_size[i] > 0)
+		{
+		  std::string str;
+		  deserializator.unpack_string (str);
+		  arg_info->default_value[i] = (char *) db_private_alloc (NULL, sizeof (char) * (arg_info->default_value_size[i] + 1));
+		  strncpy (arg_info->default_value[i], str.data (), arg_info->default_value_size[i]);
+		}
 	    }
 	}
       else
 	{
-	  arg_info.arg_mode = nullptr;
-	  arg_info.arg_type = nullptr;
+	  arg_info->arg_mode = nullptr;
+	  arg_info->arg_type = nullptr;
+	  arg_info->default_value = nullptr;
+	  arg_info->default_value_size = nullptr;
 	}
 
-      deserializator.unpack_int (arg_info.result_type);
     }
+  else
+    {
+      arg_info = nullptr;
+    }
+
+  deserializator.unpack_oid (oid);
 }
 
 void
@@ -338,32 +483,44 @@ method_sig_node::freemem ()
       db_private_free_and_init (NULL, method_name);
     }
 
+  if (auth_name != nullptr)
+    {
+      db_private_free_and_init (NULL, auth_name);
+    }
+
   if (method_arg_pos != nullptr)
     {
       db_private_free_and_init (NULL, method_arg_pos);
     }
 
-  if (method_type == METHOD_TYPE_NONE)
+  if (class_name != nullptr)
     {
-      //
+      db_private_free_and_init (NULL, class_name);
     }
-  else if (method_type != METHOD_TYPE_JAVA_SP)
+
+  if (arg_info != nullptr)
     {
-      if (class_name != nullptr)
+      if (arg_info->arg_mode != nullptr)
 	{
-	  db_private_free_and_init (NULL, class_name);
+	  db_private_free_and_init (NULL, arg_info->arg_mode);
 	}
-    }
-  else
-    {
-      if (arg_info.arg_mode != nullptr)
+      if (arg_info->arg_type != nullptr)
 	{
-	  db_private_free_and_init (NULL, arg_info.arg_mode);
+	  db_private_free_and_init (NULL, arg_info->arg_type);
 	}
-      if (arg_info.arg_type != nullptr)
+      if (arg_info->default_value_size != nullptr)
 	{
-	  db_private_free_and_init (NULL, arg_info.arg_type);
+	  for (int i = 0; i < num_method_args; i++)
+	    {
+	      if (arg_info->default_value_size[i] > 0)
+		{
+		  db_private_free_and_init (NULL, arg_info->default_value[i]);
+		}
+	    }
+	  db_private_free_and_init (NULL, arg_info->default_value);
+	  db_private_free_and_init (NULL, arg_info->default_value_size);
 	}
+      db_private_free_and_init (NULL, arg_info);
     }
 }
 

@@ -118,8 +118,30 @@ namespace cubmethod
       int callback_make_outresult (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_get_generated_keys (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_end_transaction (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_change_auth_rights (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_get_code_attr (cubthread::entry &thread_ref, packing_unpacker &unpacker);
 
       void erase_query_cursor (const std::uint64_t query_id);
+
+      // TODO: refactoring
+      // When removing method transformation in the other issue (CBRD-25416), the following function will be moved to proper place
+      template <typename ... Args>
+      int send_data_to_client (cubthread::entry *thread_p, Args &&... args)
+      {
+	int error_code = NO_ERROR;
+	auto dummy = [&] (const cubmem::block & b)
+	{
+	  return NO_ERROR;
+	};
+
+	error_code = method_send_data_to_client (thread_p, m_client_header, std::forward<Args> (args)...);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+
+	return xs_receive (thread_p, dummy);
+      }
 
       const cubmethod::header &get_next_java_header (cubmethod::header &header);
 

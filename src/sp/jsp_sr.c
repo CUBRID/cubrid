@@ -46,7 +46,10 @@
 #include "jsp_file.h"
 #include "jsp_comm.h"
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "boot_sr.h"
+#endif
+
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "release_string.h"
@@ -564,6 +567,11 @@ jsp_start_server (const char *db_name, const char *path, int port)
   // enable assertions in PL Server
   opts.insert(opts.begin(), "-ea"); // must be the first option in order not to override ones specified by the user
 #endif // !NDEBUG
+  
+  // CBRD-25364: Prevent JVM crash caused by libzip
+  // Added the following option as a default until the minimum JDK version is upgraded
+  opts.insert(opts.begin(), "-Dsun.zip.disableMemoryMapping=true");
+
   // *INDENT-ON*
     vm_n_ext_options += (int) opts.size ();
     options = new JavaVMOption[vm_n_default_options + vm_n_ext_options];
@@ -751,6 +759,7 @@ jsp_server_port (void)
   return sp_port;
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * jsp_server_port_from_info
  *   return: if jsp is disabled return -2 (JAVASP_PORT_DISABLED)
@@ -775,6 +784,7 @@ jsp_server_port_from_info (void)
   return sp_port = jsp_info.port;
 #endif
 }
+#endif
 
 /*
  * jsp_jvm_is_loaded

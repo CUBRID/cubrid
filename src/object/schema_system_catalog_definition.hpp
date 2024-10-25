@@ -33,7 +33,6 @@
 
 namespace cubschema
 {
-
   enum class attribute_kind
   {
     COLUMN,

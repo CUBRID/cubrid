@@ -516,11 +516,11 @@ authenticate_context::install (void)
    * grant browser access to the authorization objects
    * note that the password class cannot be read by anyone except the DBA
    */
-  au_grant (public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (public_user, old_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (public_user, user_cls, AU_SELECT, false);
-  au_grant (public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (public_user, auth_cls, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, public_user, old_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, public_user, user_cls, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS, public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, public_user, auth_cls, AU_SELECT, false);
 
   au_add_method_check_authorization ();
 
@@ -914,6 +914,40 @@ authenticate_context::get_user_class_name (void)
   return AU_USER_CLASS_NAME;
 }
 
+int
+authenticate_context::push_user (MOP user)
+{
+  MOP save_user = Au_user;
+  if (AU_SET_USER (user) == NO_ERROR)
+    {
+      user_stack.push (save_user);
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+}
+
+int
+authenticate_context::pop_user (void)
+{
+  if (user_stack.size () == 0)
+    {
+      return ER_FAILED;
+    }
+
+  if (AU_SET_USER (user_stack.top ()) == NO_ERROR)
+    {
+      user_stack.pop ();
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+}
+
 //
 // STATIC FUNCTIONS
 //
@@ -949,7 +983,7 @@ au_add_method_check_authorization (void)
   smt_assign_argument_domain (def, "check_authorization", true, NULL, 2, "integer", (DB_DOMAIN *) 0);
   sm_update_class (def, NULL);
 
-  au_grant (Au_public_user, auth, AU_EXECUTE, false);
+  au_grant (DB_OBJECT_CLASS, Au_public_user, auth, AU_EXECUTE, false);
 
   AU_ENABLE (save);
   return NO_ERROR;

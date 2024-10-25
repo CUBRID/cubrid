@@ -32,36 +32,47 @@
 package com.cubrid.jsp;
 
 import com.cubrid.jsp.classloader.ClassLoaderManager;
+import com.cubrid.jsp.code.CompiledCode;
+import com.cubrid.jsp.code.CompiledCodeSet;
+import com.cubrid.jsp.code.SourceCode;
+import com.cubrid.jsp.compiler.MemoryJavaCompiler;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
+import com.cubrid.jsp.data.AuthInfo;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.CompileInfo;
+import com.cubrid.jsp.data.CompileRequest;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.protocol.Header;
 import com.cubrid.jsp.protocol.PrepareArgs;
 import com.cubrid.jsp.protocol.RequestCode;
+import com.cubrid.jsp.value.NullValue;
+import com.cubrid.jsp.value.StringValue;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.compiler.PlcsqlCompilerMain;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.util.Base64;
 import java.util.List;
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
+import java.util.Map;
+import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
+import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
 
 public class ExecuteThread extends Thread {
 
@@ -316,49 +327,86 @@ public class ExecuteThread extends Thread {
         ctx.checkTranId(tid);
 
         StoredProcedure procedure = makeStoredProcedure(unpacker);
+
         Value result = procedure.invoke();
 
         /* send results */
         sendResult(result, procedure);
     }
 
+    private void writeJar(CompiledCodeSet codeSet, OutputStream jarStream) throws IOException {
+        JarArchiveOutputStream jaos = null;
+        try {
+            jaos = new JarArchiveOutputStream(new BufferedOutputStream(jarStream));
+
+            for (Map.Entry<String, CompiledCode> entry : codeSet.getCodeList()) {
+                JarArchiveEntry jae =
+                        new JarArchiveEntry(entry.getValue().getClassNameWithExtention());
+                byte[] arr = entry.getValue().getByteCode();
+                jae.setSize(arr.length);
+                jaos.putArchiveEntry(jae);
+                jaos.write(arr);
+                jaos.flush();
+                // ByteArrayInputStream bis = new
+                // ByteArrayInputStream(entry.getValue().getByteCode());
+                // IOUtils.copy(bis, jaos);
+                // bis.close();
+
+                jaos.closeArchiveEntry();
+            }
+        } catch (IOException e) {
+            throw e;
+        } finally {
+            if (jaos != null) {
+                jaos.flush();
+                jaos.finish();
+                jaos.close();
+            }
+        }
+    }
+
     private void processCompile() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
-        boolean verbose = unpacker.unpackBool();
-        String inSource = unpacker.unpackCString();
+
+        CompileRequest request = new CompileRequest(unpacker);
+
+        // TODO: Pass CompileRequest directly to compilePLCSQL ()
+        boolean verbose = false;
+        if (request.mode.contains("v")) {
+            verbose = true;
+        }
+        String inSource = request.code;
+        String owner = request.owner;
 
         CompileInfo info = null;
         try {
-            info = PlcsqlCompilerMain.compilePLCSQL(inSource, verbose);
+            info = PlcsqlCompilerMain.compilePLCSQL(inSource, owner, verbose);
             if (info.errCode == 0) {
-                Path javaFilePath =
-                        ClassLoaderManager.getDynamicPath().resolve(info.className + ".java");
-                File file = javaFilePath.toFile();
-                if (file.exists()) {
-                    file.delete();
-                }
-                new FileWriter(file).append(info.translated).close();
+                MemoryJavaCompiler compiler = new MemoryJavaCompiler();
+                SourceCode sCode = new SourceCode(info.className, info.translated);
+                CompiledCodeSet codeSet = compiler.compile(sCode);
 
-                JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-                if (compiler == null) {
-                    throw new IllegalStateException(
-                            "Cannot find the system Java compiler. Check that your class path includes tools.jar");
+                int mode = 1; // 0: temp file mode, 1: memory stream mode
+                byte[] data = null;
+
+                // write to persistent
+                if (mode == 0) {
+                    Path jarPath =
+                            ClassLoaderManager.getDynamicPath().resolve(info.className + ".jar");
+                    OutputStream jarStream = Files.newOutputStream(jarPath);
+                    writeJar(codeSet, jarStream);
+                    data = Files.readAllBytes(jarPath);
+                    Files.deleteIfExists(jarPath);
+                } else {
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    writeJar(codeSet, baos);
+                    data = baos.toByteArray();
                 }
 
-                Path cubrid_env_root = Server.getServer().getRootPath();
-                String javacOpts[] = {
-                    "-classpath", cubrid_env_root + "/java/pl_server.jar", file.getPath()
-                };
+                info.compiledType = 1; // TODO: always jar
 
-                if (compiler.run(null, null, null, javacOpts) != 0) {
-                    String command =
-                            "javac "
-                                    + javaFilePath
-                                    + " -cp "
-                                    + cubrid_env_root
-                                    + "/java/pl_server.jar";
-                    throw new RuntimeException(command);
-                }
+                String encodedStr = Base64.getEncoder().encodeToString(data);
+                info.compiledCode = encodedStr.getBytes();
             }
         } catch (Exception e) {
             info =
@@ -367,6 +415,7 @@ public class ExecuteThread extends Thread {
             throw new RuntimeException(e);
         } finally {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+
             info.pack(packer);
             Context.getCurrentExecuteThread().sendCommand(RequestCode.COMPILE, packer.getBuffer());
         }
@@ -374,6 +423,8 @@ public class ExecuteThread extends Thread {
 
     private StoredProcedure makeStoredProcedure(CUBRIDUnpacker unpacker) throws Exception {
         String methodSig = unpacker.unpackCString();
+        String authUser = unpacker.unpackCString();
+        int lang = unpacker.unpackInt();
         int paramCount = unpacker.unpackInt();
 
         Value[] arguments = prepareArgs.getArgs();
@@ -382,8 +433,25 @@ public class ExecuteThread extends Thread {
             int pos = unpacker.unpackInt();
             int mode = unpacker.unpackInt();
             int type = unpacker.unpackInt();
+            int defaultValSize = unpacker.unpackInt();
+            String defaultVal = null;
 
-            Value val = arguments[pos];
+            Value val = null;
+            if (pos != -1) {
+                val = arguments[pos];
+            } else {
+                if (defaultValSize > 0) {
+                    defaultVal = unpacker.unpackCString();
+                    val = new StringValue(defaultVal);
+                } else if (defaultValSize == 0) {
+                    val = new StringValue("");
+                } else if (defaultValSize == -2) {
+                    val = new NullValue();
+                } else {
+                    // internal error
+                    assert false;
+                }
+            }
             val.setMode(mode);
             val.setDbType(type);
 
@@ -394,7 +462,7 @@ public class ExecuteThread extends Thread {
         boolean transactionControl = unpacker.unpackBool();
         getCurrentContext().setTransactionControl(transactionControl);
 
-        storedProcedure = new StoredProcedure(methodSig, methodArgs, returnType);
+        storedProcedure = new StoredProcedure(methodSig, lang, authUser, methodArgs, returnType);
         return storedProcedure;
     }
 
@@ -465,5 +533,21 @@ public class ExecuteThread extends Thread {
 
         resultBuffer = packer.getBuffer();
         writeBuffer(resultBuffer);
+    }
+
+    private void sendAuthCommand(int command, String authName) throws Exception {
+        AuthInfo info = new AuthInfo(command, authName);
+        CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(128));
+        packer.packInt(RequestCode.REQUEST_CHANGE_AUTH_RIGHTS);
+        info.pack(packer);
+        Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
+
+        ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+        CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+        /* read header, dummy */
+        Header header = new Header(unpacker);
+        ByteBuffer payload = unpacker.unpackBuffer();
+        unpacker.setBuffer(payload);
+        int responseCode = unpacker.unpackInt();
     }
 }
