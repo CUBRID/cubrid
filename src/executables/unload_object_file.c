@@ -605,7 +605,7 @@ print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_le
   tout->tail_ptr->count++;
 
   end = str + len;
-  for (st = str; str < end && *str; str++)
+  for (st = str; str < end; str++)
     {
       if (*str == '\'')
 	{
