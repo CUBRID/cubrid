@@ -337,7 +337,7 @@ is_invalid_acl_entry (const char *acl, T_SHM_BROKER * shm_br)
 	}
     }
 
-  return (num_colon == NUM_COLON_EXPECTED) ? ACL_FMT_NO_ERROR : ACL_FMT_INVALID;
+  return ((num_colon == NUM_COLON_EXPECTED) && acl[len-1] != COLON) ? ACL_FMT_NO_ERROR : ACL_FMT_INVALID;
 }
 
 static void
