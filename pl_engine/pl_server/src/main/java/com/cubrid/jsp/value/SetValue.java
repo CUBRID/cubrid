@@ -120,7 +120,7 @@ public class SetValue extends Value {
 
     @Override
     public Object toObject() throws TypeMismatchException {
-        return toObjectArray();
+        return values;
     }
 
     @Override

@@ -32,6 +32,7 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.math.BigDecimal;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -52,12 +53,12 @@ public class IntValue extends Value {
 
     @Override
     public byte toByte() throws TypeMismatchException {
-        return (byte) value;
+        return SpLib.convIntToByte(value);
     }
 
     @Override
     public short toShort() throws TypeMismatchException {
-        return (short) value;
+        return SpLib.convIntToShort(value);
     }
 
     @Override
@@ -67,27 +68,27 @@ public class IntValue extends Value {
 
     @Override
     public long toLong() throws TypeMismatchException {
-        return value;
+        return SpLib.convIntToBigint(value);
     }
 
     @Override
     public float toFloat() throws TypeMismatchException {
-        return value;
+        return SpLib.convIntToFloat(value);
     }
 
     @Override
     public double toDouble() throws TypeMismatchException {
-        return value;
+        return SpLib.convIntToDouble(value);
     }
 
     @Override
     public Byte toByteObject() throws TypeMismatchException {
-        return new Byte((byte) value);
+        return SpLib.convIntToByte(value);
     }
 
     @Override
     public Short toShortObject() throws TypeMismatchException {
-        return new Short((short) value);
+        return SpLib.convIntToShort(value);
     }
 
     @Override
@@ -97,41 +98,41 @@ public class IntValue extends Value {
 
     @Override
     public Long toLongObject() throws TypeMismatchException {
-        return new Long(value);
+        return SpLib.convIntToBigint(value);
     }
 
     @Override
     public Float toFloatObject() throws TypeMismatchException {
-        return new Float(value);
+        return SpLib.convIntToFloat(value);
     }
 
     @Override
     public Double toDoubleObject() throws TypeMismatchException {
-        return new Double(value);
+        return SpLib.convIntToDouble(value);
     }
 
     @Override
     public BigDecimal toBigDecimal() throws TypeMismatchException {
-        return new BigDecimal(value);
+        return SpLib.convIntToNumeric(value);
     }
 
     @Override
     public Object toObject() throws TypeMismatchException {
-        return toIntegerObject();
+        return new Integer(value);
     }
 
     @Override
     public Time toTime() throws TypeMismatchException {
-        return ValueUtilities.longToTime(new Integer(value).longValue());
+        return SpLib.convIntToTime(value);
     }
 
     @Override
     public Timestamp toTimestamp() throws TypeMismatchException {
-        return ValueUtilities.longToTimestamp(new Integer(value).longValue());
+        return SpLib.convIntToTimestamp(value);
     }
 
     @Override
     public String toString() {
-        return "" + value;
+        return SpLib.convIntToString(value);
     }
 }

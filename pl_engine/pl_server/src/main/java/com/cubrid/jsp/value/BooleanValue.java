@@ -72,7 +72,7 @@ public class BooleanValue extends Value {
 
     @Override
     public Object toObject() {
-        return Boolean.valueOf(value == 1 ? true : false);
+        return Boolean.valueOf(value == 1);
     }
 
     @Override

@@ -32,6 +32,7 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.sql.Time;
 import java.util.Calendar;
 
@@ -69,11 +70,11 @@ public class TimeValue extends Value {
 
     @Override
     public Object toObject() throws TypeMismatchException {
-        return toTime();
+        return time;
     }
 
     @Override
     public String toString() {
-        return time.toString();
+        return SpLib.convTimeToString(time);
     }
 }

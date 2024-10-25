@@ -32,14 +32,11 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.ZonedDateTime;
 
 public class StringValue extends Value {
 
@@ -58,170 +55,92 @@ public class StringValue extends Value {
 
     @Override
     public byte toByte() throws TypeMismatchException {
-        try {
-            return Byte.parseByte(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToByte(value);
     }
 
     @Override
     public short toShort() throws TypeMismatchException {
-        try {
-            return Short.parseShort(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToShort(value);
     }
 
     @Override
     public int toInt() throws TypeMismatchException {
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToInt(value);
     }
 
     @Override
     public long toLong() throws TypeMismatchException {
-        try {
-            return Long.parseLong(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToBigint(value);
     }
 
     @Override
     public float toFloat() throws TypeMismatchException {
-        try {
-            return Float.parseFloat(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToFloat(value);
     }
 
     @Override
     public double toDouble() throws TypeMismatchException {
-        try {
-            return Double.parseDouble(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToDouble(value);
     }
 
     @Override
     public Byte toByteObject() throws TypeMismatchException {
-        try {
-            return Byte.valueOf(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToByte(value);
     }
 
     @Override
     public Short toShortObject() throws TypeMismatchException {
-        try {
-            return Short.valueOf(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToShort(value);
     }
 
     @Override
     public Integer toIntegerObject() throws TypeMismatchException {
-        try {
-            return Integer.valueOf(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToInt(value);
     }
 
     @Override
     public Long toLongObject() throws TypeMismatchException {
-        try {
-            return Long.valueOf(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToBigint(value);
     }
 
     @Override
     public Float toFloatObject() throws TypeMismatchException {
-        try {
-            return Float.valueOf(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToFloat(value);
     }
 
     @Override
     public Double toDoubleObject() throws TypeMismatchException {
-        try {
-            return Double.valueOf(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToDouble(value);
     }
 
     @Override
     public Date toDate() throws TypeMismatchException {
-        LocalDate lDate = DateTimeParser.DateLiteral.parse(value);
-        if (lDate == null) {
-            throw new TypeMismatchException("invalid DATE string: " + value);
-        } else if (lDate.equals(DateTimeParser.nullDate)) {
-            return new Date(0 - 1900, 0 - 1, 0); // 0000-00-00
-        } else {
-            return Date.valueOf(lDate);
-        }
+        return SpLib.convStringToDate(value);
     }
 
     @Override
     public Time toTime() throws TypeMismatchException {
-        LocalTime lTime = DateTimeParser.TimeLiteral.parse(value);
-        if (lTime == null) {
-            throw new TypeMismatchException("invalid TIME string: " + value);
-        } else {
-            return Time.valueOf(lTime);
-        }
+        return SpLib.convStringToTime(value);
     }
 
     @Override
     public Timestamp toTimestamp() throws TypeMismatchException {
-        ZonedDateTime lTimestamp = DateTimeParser.TimestampLiteral.parse(value);
-        if (lTimestamp == null) {
-            throw new TypeMismatchException("invalid TIMESTAMP string: " + value);
-        } else if (lTimestamp.equals(DateTimeParser.nullDatetimeGMT)) {
-            return new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0); // 0000-00-00 00:00:00
-        } else {
-            return Timestamp.valueOf(lTimestamp.toLocalDateTime());
-        }
+        return SpLib.convStringToTimestamp(value);
     }
 
     @Override
     public Timestamp toDatetime() throws TypeMismatchException {
-        LocalDateTime lDatetime = DateTimeParser.DatetimeLiteral.parse(value);
-        if (lDatetime == null) {
-            throw new TypeMismatchException("invalid DATETIME string: " + value);
-        } else if (lDatetime.equals(DateTimeParser.nullDatetime)) {
-            return new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0); // 0000-00-00 00:00:00.000
-        } else {
-            return Timestamp.valueOf(lDatetime);
-        }
+        return SpLib.convStringToDatetime(value);
     }
 
     @Override
     public BigDecimal toBigDecimal() throws TypeMismatchException {
-        try {
-            return new BigDecimal(value);
-        } catch (NumberFormatException e) {
-            throw new TypeMismatchException(e.getMessage());
-        }
+        return SpLib.convStringToNumeric(value);
     }
 
     @Override
     public Object toObject() throws TypeMismatchException {
-        return toString();
+        return value;
     }
 
     @Override
