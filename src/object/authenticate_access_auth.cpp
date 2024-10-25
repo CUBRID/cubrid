@@ -630,8 +630,6 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   int stmt_id;
-  char owner_name[DB_MAX_USER_LENGTH];
-  owner_name[0] = '\0';
   const char *sql_query =
 	  "SELECT [au].grantee, [au].object_type, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = ?";
@@ -888,9 +886,6 @@ au_user_revoke_all_privileges (MOP user_mop)
   int object_type;
   DB_OBJECT_TYPE obj_type;
   const char *auth;
-  const char *class_name = NULL;
-  char sp_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-  sp_name[0] = '\0';
   DB_AUTH db_auth;
   MOP grantee_mop, obj_mop;
   DB_VALUE val;
@@ -898,6 +893,7 @@ au_user_revoke_all_privileges (MOP user_mop)
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   int stmt_id;
+  int row_count = -1;
   char owner_name[DB_MAX_USER_LENGTH];
   owner_name[0] = '\0';
   const char *sql_query =
@@ -956,6 +952,7 @@ au_user_revoke_all_privileges (MOP user_mop)
   /* The error value is row count if it's not negative value. */
   if (error == 0)
     {
+      row_count = error;
       goto release;
     }
   else if (error < 0)
@@ -964,6 +961,7 @@ au_user_revoke_all_privileges (MOP user_mop)
       goto release;
     }
 
+  row_count = error;
   error = NO_ERROR;
 
   while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
@@ -1105,9 +1103,8 @@ exit:
   db_value_clear (&auth_type_value);
   db_value_clear (&val);
 
-  if (er_errid () == NO_ERROR && (grantee_mop == NULL || obj_mop == NULL || auth == NULL || db_auth == DB_AUTH_NONE)
-      && (object_type != 0
-	  && object_type != 5))
+  if (row_count < 0 && er_errid () == NO_ERROR && (grantee_mop == NULL || obj_mop == NULL || auth == NULL
+      || db_auth == DB_AUTH_NONE || (object_type != 0 && object_type != 5)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
