@@ -1434,11 +1434,11 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
     }
 
   /* before deleting an object, all permissions are revoked. */
-  sp_mop->drop_object_statement = true;
+  sp_mop->drop_object_statement = 1;
   err = au_object_revoke_all_privileges (NULL, sp_mop);
   if (err != NO_ERROR)
     {
-      sp_mop->drop_object_statement = false;
+      sp_mop->drop_object_statement = 0;
       goto error;
     }
 
