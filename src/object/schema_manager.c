@@ -13827,9 +13827,11 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
     }
 
   /* before deleting an object, all permissions are revoked. */
-  error = au_object_revoke_all_privileges (op, NULL, class_->owner);
+  op->drop_object_statement = true;
+  error = au_object_revoke_all_privileges (op, NULL);
   if (error != NO_ERROR)
     {
+      op->drop_object_statement = false;
       goto end;
     }
 

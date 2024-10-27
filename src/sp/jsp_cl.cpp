@@ -1099,7 +1099,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
 
   /* when changing the owner, all privileges are revoked */
-  err = au_object_revoke_all_privileges (NULL, sp_mop, NULL);
+  err = au_object_revoke_all_privileges (NULL, sp_mop);
   if (err != NO_ERROR)
     {
       goto error;
@@ -1434,9 +1434,11 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
     }
 
   /* before deleting an object, all permissions are revoked. */
-  err = au_object_revoke_all_privileges (NULL, sp_mop, owner);
+  sp_mop->drop_object_statement = true;
+  err = au_object_revoke_all_privileges (NULL, sp_mop);
   if (err != NO_ERROR)
     {
+      sp_mop->drop_object_statement = false;
       goto error;
     }
 

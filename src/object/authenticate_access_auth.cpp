@@ -614,7 +614,7 @@ exit:
  *   sp_mop(in): a stored procedure object
  */
 int
-au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop, MOP drop_class_user)
+au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
 {
   int error = NO_ERROR, save, len, i = 0;
   int object_type;
@@ -637,7 +637,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop, MOP drop_class_user)
 	  "SELECT [au].grantee, [au].object_type, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = ?";
 
-  assert (class_mop != NULL || sp_mop != NULL || drop_class_user != NULL);
+  assert (class_mop != NULL || sp_mop != NULL);
 
   for (i = 0; i < 2; i++)
     {
@@ -685,7 +685,6 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop, MOP drop_class_user)
       ASSERT_ERROR_AND_SET (error);
       goto exit;
     }
-  //drop_class_user = grantor_mop;
 
   /* Prepare DB_VALUEs for host variables */
   error = obj_get (grantor_mop, "name", &val[0]);
@@ -841,7 +840,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop, MOP drop_class_user)
       assert (obj_mop != NULL);
       assert (db_auth != DB_AUTH_NONE);
 
-      error = db_revoke_object (obj_type, grantee_mop, obj_mop, db_auth, drop_class_user);
+      error = db_revoke_object (obj_type, grantee_mop, obj_mop, db_auth);
       if (error != NO_ERROR)
 	{
 	  goto release;

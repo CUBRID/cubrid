@@ -1922,7 +1922,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    }
 
 		  // TODO: In CBRD-24912, GRANT/REVOKE for stored procedure is implemented, the following will be processed properly
-		  error = db_revoke_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth, NULL);
+		  error = db_revoke_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth);
 		  if (error != NO_ERROR)
 		    {
 		      goto end;
@@ -1944,7 +1944,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 			  goto end;
 			}
 
-		      error = db_revoke_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth, NULL);
+		      error = db_revoke_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth);
 		      if (error != NO_ERROR)
 			{
 			  goto end;
@@ -4510,10 +4510,6 @@ do_check_partitioned_class (DB_OBJECT * classop, int check_map, char *keyattr)
   int error = NO_ERROR;
   int is_partition = 0;
   char attr_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-  int test_1 = 0;
-  int test_2 = 0;
-  int test_3 = 0;
-  int test_4 = 0;
 
   if (classop == NULL)
     {
@@ -4527,11 +4523,6 @@ do_check_partitioned_class (DB_OBJECT * classop, int check_map, char *keyattr)
     {
       return error;
     }
-
-  test_1 = check_map & CHECK_PARTITION_PARENT;
-  test_2 = check_map & CHECK_PARTITION_SUBS;
-  test_3 = test_2 && is_partition;
-  test_4 = test_3 && is_partition;
 
   if (is_partition > 0)
     {
@@ -10218,7 +10209,7 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
     }
 
   /* when changing the owner, all privileges are revoked */
-  error = au_object_revoke_all_privileges (class_mop, NULL, NULL);
+  error = au_object_revoke_all_privileges (class_mop, NULL);
   if (error != NO_ERROR)
     {
       return error;

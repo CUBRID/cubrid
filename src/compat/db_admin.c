@@ -1946,7 +1946,7 @@ db_revoke (MOP user, MOP obj_, AU_TYPE auth)
 
   if (!retval)
     {
-      retval = au_revoke (object_type, user, obj_, auth, NULL);
+      retval = au_revoke (object_type, user, obj_, auth);
     }
 
   return (retval);
@@ -1963,7 +1963,7 @@ db_revoke (MOP user, MOP obj_, AU_TYPE auth)
  *
  */
 int
-db_revoke_object (DB_OBJECT_TYPE object_type, MOP user, MOP obj_, AU_TYPE auth, MOP drop_class_user)
+db_revoke_object (DB_OBJECT_TYPE object_type, MOP user, MOP obj_, AU_TYPE auth)
 {
   int retval = NO_ERROR;
 
@@ -1971,14 +1971,14 @@ db_revoke_object (DB_OBJECT_TYPE object_type, MOP user, MOP obj_, AU_TYPE auth, 
   CHECK_2ARGS_ERROR (user, obj_);
   CHECK_MODIFICATION_ERROR ();
 
-  if (object_type == DB_OBJECT_CLASS && drop_class_user == NULL)
+  if (object_type == DB_OBJECT_CLASS && obj_->drop_object_statement == false)
     {
       retval = do_check_partitioned_class (obj_, CHECK_PARTITION_SUBS, NULL);
     }
 
   if (!retval)
     {
-      retval = au_revoke (object_type, user, obj_, auth, drop_class_user);
+      retval = au_revoke (object_type, user, obj_, auth);
     }
 
   return (retval);
