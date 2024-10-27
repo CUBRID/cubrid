@@ -50,26 +50,26 @@ public abstract class Coercion {
 
     public abstract String javaCode(String exprJavaCode);
 
-    // for dummies in the CoercionStore
-    protected Coercion() {
-        src = dst = null;
-    };
-
     protected Coercion(Type src, Type dst) {
         this.src = src;
         this.dst = dst;
     }
 
-    public Coercion getReversion() {
+    public Coercion create(Type src, Type dst) {
+        throw new RuntimeException(
+                "unreachable"); // overridden only by subclasses that are stoed in CoercionStore
+    }
+
+    public Coercion getReversion(InstanceStore iStore) {
         // getReversion() is only used for code generation of argument passing to OUT parameters.
         // and the src and dst types are those written by the users in the program
         assert Type.isUserType(src);
         assert Type.isUserType(dst);
 
-        return getCoercion(dst, src);
+        return getCoercion(iStore, dst, src);
     }
 
-    public static Coercion getCoercion(Type src, Type dst) {
+    public static Coercion getCoercion(InstanceStore iStore, Type src, Type dst) {
 
         if (dst instanceof TypeRecord) {
             if (src == Type.NULL) {
@@ -77,7 +77,7 @@ public abstract class Coercion {
             } else if (src instanceof TypeRecord) {
 
                 if (src == dst) {
-                    return Identity.getInstance(src);
+                    return Identity.getInstance(iStore, src);
                 }
 
                 TypeRecord srcRec = (TypeRecord) src;
@@ -98,7 +98,7 @@ public abstract class Coercion {
                     Misc.Pair<String, Type> srcField = srcRec.selectList.get(i);
                     Misc.Pair<String, Type> dstField = dstRec.selectList.get(i);
 
-                    Coercion c = getCoercion(srcField.e2, dstField.e2);
+                    Coercion c = getCoercion(iStore, srcField.e2, dstField.e2);
                     if (c == null) {
                         return null; // coercion is not available for this field
                     } else {
@@ -106,26 +106,26 @@ public abstract class Coercion {
                     }
                 }
 
-                return RecordToRecord.getInstance(srcRec, dstRec, fieldCoercions);
+                return RecordToRecord.getInstance(iStore, srcRec, dstRec, fieldCoercions);
             }
 
             return null;
         }
 
         if (src == dst) {
-            return Identity.getInstance(src);
+            return Identity.getInstance(iStore, src);
         } else if (src == Type.NULL) {
             // cast NULL: in order for Javac dst pick the right version among operator function
             // overloads when all the arguments are nulls
-            return Cast.getInstance(src, dst);
+            return Cast.getStaticInstance(src, dst);
         } else if (dst == Type.OBJECT) {
-            return Identity.getInstance(src, dst);
+            return Identity.getInstance(iStore, src, dst);
         }
 
-        Coercion ret = Conversion.getInstance(src, dst);
+        Coercion ret = Conversion.getInstance(iStore, src, dst);
         if (ret == null && src.idx == dst.idx) {
             if (src.idx == Type.IDX_NUMERIC || src.idx == Type.IDX_STRING) {
-                ret = Identity.getInstance(src, dst);
+                ret = Identity.getInstance(iStore, src, dst);
             } else {
                 assert false;
             }
@@ -165,15 +165,12 @@ public abstract class Coercion {
             // a new instance of the target record with Null fields
             return String.format("new %s().setNull(%s)", dst.javaCode, exprJavaCode);
         }
-
-        @Override
-        Coercion create(Type src, Type dst) {
-            assert false; // NullToRecord is not memoized in CoercionStore
-            return null;
-        }
     }
 
     public static class RecordToRecord extends Coercion {
+
+        public static final RecordToRecord DUMMY = new RecordToRecord(null, null);
+
         Coercion[] fieldCoercions;
 
         @Override
@@ -185,23 +182,24 @@ public abstract class Coercion {
         }
 
         @Override
-        Coercion create(Type src, Type dst) {
+        public Coercion create(Type src, Type dst) {
             return new RecordToRecord(src, dst);
         }
 
-        public static RecordToRecord getInstance(Type src, Type dst, Coercion[] fieldCoercions) {
-            RecordToRecord ret = (RecordToRecord) memoized.get(src, dst);
+        public static RecordToRecord getInstance(
+                InstanceStore iStore, Type src, Type dst, Coercion[] fieldCoercions) {
+            RecordToRecord ret = (RecordToRecord) iStore.recToRec.get(src, dst);
             if (ret.fieldCoercions == null) {
                 ret.fieldCoercions = fieldCoercions;
             }
             return ret;
         }
 
-        public static List<String> getAllJavaCode() {
+        public static List<String> getAllJavaCode(InstanceStore iStore) {
 
             List<String> lines = new LinkedList<>();
 
-            for (Map<Type, Coercion> inner : memoized.store.values()) {
+            for (Map<Type, Coercion> inner : iStore.recToRec.store.values()) {
                 for (Coercion c : inner.values()) {
                     RecordToRecord rtr = (RecordToRecord) c;
                     lines.addAll(rtr.getCoercionFuncCode());
@@ -211,17 +209,9 @@ public abstract class Coercion {
             return lines;
         }
 
-        public static void clearMemoized() {
-            memoized.clear();
-        }
-
         // ----------------------------------------------
         // Private
         // ----------------------------------------------
-
-        private static CoercionStore memoized = new CoercionStore(new RecordToRecord());
-
-        protected RecordToRecord() {}; // for dummy in the CoercionStore
 
         private RecordToRecord(Type src, Type dst) {
             super(src, dst);
@@ -277,12 +267,6 @@ public abstract class Coercion {
             return String.format(
                     "checkPrecision(%d, (short) %d, %s)", prec, scale, c.javaCode(exprJavaCode));
         }
-
-        @Override
-        Coercion create(Type src, Type dst) {
-            assert false; // CoerceAndCheckPrecision is not memoized in CoercionStore
-            return null;
-        }
     }
 
     public static class CoerceAndCheckStrLength extends Coercion {
@@ -303,15 +287,11 @@ public abstract class Coercion {
             return String.format(
                     "checkStrLength(%s, %d, %s)", isChar, length, c.javaCode(exprJavaCode));
         }
-
-        @Override
-        Coercion create(Type src, Type dst) {
-            assert false; // CoerceAndCheckStrLength is not memoized in CoercionStore
-            return null;
-        }
     }
 
     public static class Identity extends Coercion {
+
+        public static final Identity DUMMY = new Identity(null, null);
 
         @Override
         public String javaCode(String exprJavaCode) {
@@ -319,29 +299,25 @@ public abstract class Coercion {
         }
 
         @Override
-        Identity create(Type src, Type dst) {
+        public Identity create(Type src, Type dst) {
             return new Identity(src, dst);
         }
 
-        public static Identity getInstance(Type ty) {
-            return (Identity) memoized.get(ty, ty);
+        public static Identity getInstance(InstanceStore iStore, Type ty) {
+            return (Identity) iStore.identity.get(ty, ty);
         }
 
-        public static Identity getInstance(Type src, Type dst) {
-            return (Identity) memoized.get(src, dst);
+        public static Identity getInstance(InstanceStore iStore, Type src, Type dst) {
+            return (Identity) iStore.identity.get(src, dst);
         }
 
         // ----------------------------------------------
         // Private
         // ----------------------------------------------
 
-        private static CoercionStore memoized = new CoercionStore(new Identity());
-
         private Identity(Type ty) {
             super(ty, ty);
         }
-
-        protected Identity() {}; // for dummy in the CoercionStore
 
         private Identity(Type src, Type dst) {
             super(src, dst);
@@ -355,13 +331,7 @@ public abstract class Coercion {
             return String.format("(%s) %s", dst.javaCode, exprJavaCode);
         }
 
-        @Override
-        Cast create(Type src, Type dst) {
-            assert false; // Cast is not memoized in CoercionStore
-            return null;
-        }
-
-        public static Cast getInstance(Type src, Type dst) {
+        public static Cast getStaticInstance(Type src, Type dst) {
             assert src == Type.NULL;
             return instances.get(dst.idx);
         }
@@ -370,6 +340,7 @@ public abstract class Coercion {
         // Private
         // ----------------------------------------------
 
+        // NOTE: never changing after the initilization during the Cast class initialization
         private static Map<Integer, Cast> instances = new HashMap<>();
 
         static {
@@ -399,6 +370,8 @@ public abstract class Coercion {
 
     public static class Conversion extends Coercion {
 
+        public static final Conversion DUMMY = new Conversion(null, null);
+
         @Override
         public String javaCode(String exprJavaCode) {
             String srcName = Type.getTypeByIdx(src.idx).plcName;
@@ -407,31 +380,28 @@ public abstract class Coercion {
         }
 
         @Override
-        Conversion create(Type src, Type dst) {
+        public Conversion create(Type src, Type dst) {
             return new Conversion(src, dst);
         }
 
-        public static Conversion getInstance(Type src, Type dst) {
+        public static Conversion getInstance(InstanceStore iStore, Type src, Type dst) {
+
+            assert dst != Type.NULL; // dst cannot be NULL type
 
             Set<Integer> possibleTargets = possibleCasts.get(src.idx);
             if (possibleTargets == null || !possibleTargets.contains(dst.idx)) {
                 return null;
             }
 
-            return (Conversion) memoized.get(src, dst);
+            return (Conversion) iStore.conv.get(src, dst);
         }
 
         // ----------------------------------------------
         // Private
         // ----------------------------------------------
 
-        private static final CoercionStore memoized = new CoercionStore(new Conversion());
-
-        protected Conversion() {}; // for dummy in the CoercionStore
-
         private Conversion(Type src, Type dst) {
             super(src, dst);
-            assert dst != Type.NULL; // dst cannot be NULL type
         }
     }
 
@@ -439,43 +409,7 @@ public abstract class Coercion {
     // Private
     // ----------------------------------------------
 
-    abstract Coercion create(Type src, Type dst); // used inside CoercionStore
-
-    private static class CoercionStore {
-
-        CoercionStore(Coercion dummy) {
-            this.dummy = dummy;
-        }
-
-        synchronized Coercion get(Type src, Type dst) {
-
-            Map<Type, Coercion> storeInner = store.get(src);
-            if (storeInner == null) {
-                storeInner = new HashMap<>();
-                store.put(src, storeInner);
-            }
-
-            Coercion c = storeInner.get(dst);
-            if (c == null) {
-                c = dummy.create(src, dst);
-                storeInner.put(dst, c);
-            }
-
-            return c;
-        }
-
-        synchronized void clear() {
-            store.clear();
-        }
-
-        // ---------------------------------------
-        // Private
-        // ---------------------------------------
-
-        private final Map<Type, Map<Type, Coercion>> store = new HashMap<>();
-        private final Coercion dummy;
-    }
-
+    // NOTE: never changing after the initilization during the Coercion class initialization
     private static final Map<Integer, Set<Integer>> possibleCasts = new HashMap<>();
 
     static {

@@ -96,4 +96,9 @@ extern int au_delete_authorizartion_of_dropping_user (MOP user);
 // delete _db_auth records refers to the given table
 extern int au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char *name);
 
+/*
+* drop a class, virtual class and procedure, or when changing the owner, all privileges are revoked.
+*/
+extern int au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop);
+
 #endif // _authenticate_access_auth_HPP_

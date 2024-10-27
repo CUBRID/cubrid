@@ -727,7 +727,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       }
       break;
     case DB_TYPE_ENUMERATION:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%" PRId64, db_get_enum_short (value)));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", (int) db_get_enum_short (value)));
       break;
     case DB_TYPE_DATE:
       db_date_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_date (value));
