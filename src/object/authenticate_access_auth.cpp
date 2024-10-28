@@ -761,17 +761,18 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
 	  if (!DB_IS_NULL (&object_type_value))
 	    {
 	      object_type = db_get_int (&object_type_value);
-	      if (object_type == 0)
+	      switch (object_type)
 		{
+		case 0:
 		  obj_type = DB_OBJECT_CLASS;
-		}
-	      else if (object_type == 5)
-		{
+		  break;
+
+		case 5:
 		  obj_type = DB_OBJECT_PROCEDURE;
-		}
-	      else
-		{
-		  assert (object_type == 0 && object_type == 5);
+		  break;
+
+		default:
+		  assert (object_type == 0 || object_type == 5);
 		  goto release;
 		}
 	    }
