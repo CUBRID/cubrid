@@ -56,6 +56,14 @@ typedef enum
   SORT_DUP			/* allow duplicate */
 } SORT_DUP_OPTION;
 
+typedef enum
+{
+  SORT_ORDER_BY,
+  SORT_GROUP_BY,
+  SORT_ANALYTIC,
+  SORT_INDEX_LEAF
+} SORT_PARALLEL_TYPE;
+
 typedef SORT_STATUS SORT_GET_FUNC (THREAD_ENTRY * thread_p, RECDES *, void *);
 typedef int SORT_PUT_FUNC (THREAD_ENTRY * thread_p, const RECDES *, void *);
 typedef int SORT_CMP_FUNC (const void *, const void *, void *);
@@ -145,6 +153,6 @@ struct SORT_INFO
 
 extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn,
 			  void *get_arg, SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg,
-			  SORT_DUP_OPTION option, int limit, bool includes_tde_class, bool is_parallel);
+			  SORT_DUP_OPTION option, int limit, bool includes_tde_class, SORT_PARALLEL_TYPE sort_parallel_type);
 
 #endif /* _EXTERNAL_SORT_H_ */

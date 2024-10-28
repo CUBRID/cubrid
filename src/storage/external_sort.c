@@ -256,6 +256,8 @@ static int sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * des
 				       int parallel_num);
 static int sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
 					int parallel_num);
+static int sort_check_parallelism (THREAD_ENTRY * thread_p,SORT_PARALLEL_TYPE sort_parallel_type, SORT_PARAM * sort_param);
+
 #endif
 /* end parallel sort */
 
@@ -1355,7 +1357,7 @@ sort_run_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, char **base, lo
 int
 sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn, void *get_arg,
 	       SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg, SORT_DUP_OPTION option,
-	       int limit, bool includes_tde_class, bool is_parallel)
+	       int limit, bool includes_tde_class, SORT_PARALLEL_TYPE sort_parallel_type)
 {
 
   int error = NO_ERROR;
@@ -1366,7 +1368,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   /* for parallel sort */
   SORT_PARAM px_sort_param[SORT_MAX_PARALLEL];	/* TO_DO : need dynamic alloc */
   QFILE_LIST_SCAN_ID *scan_id_p;
-  int parallel_num = 2;		/* TO_DO : depending on the number of pages in the temp file */
+  int parallel_num = 1;		/* TO_DO : depending on the number of pages in the temp file */
 
   thread_set_sort_stats_active (thread_p, true);
 
@@ -1476,23 +1478,12 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 #if defined(SERVER_MODE)
   SORT_INFO *sort_info_p;
 
-  /* check parallelism */
-//  is_parallel = sort_check_parallelism (thread_p, px_sort_param, sort_param, parallel_num); /* <== 여기 함수부터 작성 필요. 파라메터부터 입력 필요 */
-  if (sort_param->get_fn == qfile_get_next_sort_item)
-    {
-      /* get scan id of input file */
-      sort_info_p = (SORT_INFO *) sort_param->get_arg;
+  /* check the number of parallel process */
+  parallel_num = sort_check_parallelism (thread_p, sort_parallel_type, sort_param);
 
-      /* need to check the appropriate number of parallels depending on the number of pages */
-      if (sort_info_p->input_file->page_cnt < parallel_num || sort_info_p->input_file->tuple_cnt < parallel_num
-	  || parallel_num < 2)
-	{
-	  is_parallel = false;
-	}
-    }
-
-  if (!is_parallel)
+  if (parallel_num == 1)
     {
+      /* single thread */
       sort_param->px_max_index = 1;
       error = sort_listfile_internal (thread_p, sort_param);
     }
@@ -1584,7 +1575,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 #else
   /* no parallel */
   sort_param->px_max_index = 1;
-  is_parallel = false;
+  parallel_num = 1;
   error = sort_listfile_internal (thread_p, sort_param);
 #endif
 
@@ -1594,7 +1585,7 @@ cleanup:
 #endif /* ENABLE_SYSTEMTAP */
 
   /* free sort_param */
-  if (is_parallel)
+  if (parallel_num > 1)
     {
       for (int i = 0; i < parallel_num; i++)
 	{
@@ -4519,6 +4510,36 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
     }
 
   return error;
+}
+
+/*
+ * sort_check_parallelism () - check the number of parallel processes
+ *   return: parallel_num
+ *   sort_parallel_type(in):
+ *   sort_param(in):
+ */
+static int
+sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARALLEL_TYPE sort_parallel_type, SORT_PARAM * sort_param)
+{
+  SORT_INFO *sort_info_p;
+
+  if (sort_parallel_type == SORT_ORDER_BY)
+    {
+      /* get scan id of input file */
+      sort_info_p = (SORT_INFO *) sort_param->get_arg;
+
+      /* Find the number of parallel processes by page_cnt and tuple_cnt */
+      if (sort_info_p->input_file->page_cnt > 2 && sort_info_p->input_file->tuple_cnt > 2)
+	{
+	  /* TO_DO : need to check the appropriate number of parallels depending on the number of pages */
+	  return 2;
+	}
+    }
+  else
+    {
+      /* Not implemented yet */
+      return 1;
+    }
 }
 
 /*
