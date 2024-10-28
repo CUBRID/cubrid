@@ -993,7 +993,7 @@ db_shutdown (void)
 {
   int error = NO_ERROR;
 
-  db_end_session ();
+  (void) db_end_session ();
 
   error = boot_shutdown_client (true);
   db_Database_name[0] = '\0';
