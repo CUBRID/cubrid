@@ -4520,14 +4520,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
       if (sp_lang == SP_LANG_PLCSQL)
 	{
 	  output_ctx ("AS LANGUAGE PLCSQL BEGIN ");
-	  if (sp_type == SP_TYPE_PROCEDURE)
-	    {
-	      output_ctx ("NULL;");
-	    }
-	  else
-	    {
-	      output_ctx ("RETURN NULL;");
-	    }
+          output_ctx ("RAISE_APPLICATION_ERROR(100, '%s.%s: incomplete during loaddb');", owner_name, sp_name);
 	  output_ctx (" END;\n");
 	}
       else
