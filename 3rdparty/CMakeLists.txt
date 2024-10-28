@@ -475,9 +475,11 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
       INSTALL_COMMAND      make -j install
       "${LIBTBB_BYPRODUCTS}"
     )
-    list(APPEND EP_TARGETS ${LIBTBB_TARGET})
-    list(APPEND EP_INCLUDES ${LIBTBB_INCLUDES})
-    list(APPEND EP_LIBS ${LIBTBB_LIBS})
+
+    # Append include directories and libraries for libcubrid.so only
+    list(APPEND TBB_TARGETS ${LIBTBB_TARGET})
+    list(APPEND TBB_INCLUDES ${LIBTBB_INCLUDES})
+    list(APPEND TBB_LIBS ${LIBTBB_LIBS})
   endif(UNIX)
 endif()
 
@@ -485,6 +487,15 @@ endif()
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
 set (EP_INCLUDES ${EP_INCLUDES} PARENT_SCOPE)
+
+# [TODO]
+# EP_TARGETS, EP_LIBS, and EP_INCLUDES are linked everywhere.
+# Howerver, TBB is only used on the server side, so it should only be linked to libcubrid.so.
+# Therefore, we separated it into a TBB list to ensure it links exclusively to libcubrid.so.
+# In the future, please separate any directories and libraries that are exclusively used on the server side into EP_SERVER_XXX.
+set (TBB_TARGETS ${TBB_TARGETS} PARENT_SCOPE)
+set (TBB_INCLUDES ${TBB_INCLUDES} PARENT_SCOPE)
+set (TBB_LIBS ${TBB_LIBS} PARENT_SCOPE)
 
 # Expose targets for sa - FIXME better solutions
 include (3rdparty_util)

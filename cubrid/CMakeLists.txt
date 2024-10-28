@@ -559,6 +559,12 @@ if(WIN32)
   set_target_properties(cubrid PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libcubrid/libcubrid.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
 target_include_directories(cubrid PRIVATE ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCLUDE_DIRS})
+
+# Add TBB
+target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})
+target_link_libraries(cubrid LINK_PRIVATE ${TBB_LIBS})
+add_dependencies(cubrid ${TBB_TARGETS})
+
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
