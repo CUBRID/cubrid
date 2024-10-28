@@ -423,6 +423,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public TypeSpec visitNumeric_type(Numeric_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.precision != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s091
+                        "precision may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.NUMERIC_ANY);
         }
 
@@ -459,6 +465,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public TypeSpec visitChar_type(Char_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.length != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s092
+                        "length may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
@@ -485,6 +497,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public TypeSpec visitVarchar_type(Varchar_typeContext ctx) {
 
         if (forParameterOrReturn) {
+            if (ctx.length != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s093
+                        "length may not be specified in parameter types and return types");
+            }
+
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
@@ -1386,6 +1404,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public Expr visitIdentifier(IdentifierContext ctx) {
         String name = Misc.getNormalizedText(ctx);
 
+        if (name.length() > ID_LEN_MAX) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), // s094
+                    "identifier length may not exceed " + ID_LEN_MAX);
+        }
+
         Decl decl = symbolStack.getDeclForIdExpr(name);
         if (decl == null) {
 
@@ -1398,8 +1422,47 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             connectionRequired = true;
 
-            Expr ret = new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS);
-            semanticQuestions.put(ret, new ServerAPI.FunctionSignature(name));
+            Expr ret = null;
+
+            List<ServerAPI.Question> answered =
+                    ServerAPI.getGlobalSemantics(
+                            Arrays.asList(new ServerAPI.FunctionSignature(name)));
+            assert answered.size() == 1;
+            ServerAPI.Question q = answered.get(0);
+            if (q.errCode == 0) {
+
+                ServerAPI.FunctionSignature fs = (ServerAPI.FunctionSignature) q;
+                assert name.equals(fs.name);
+
+                if (fs.params == null || fs.params.length == 0) {
+
+                    if (!DBTypeAdapter.isSupported(fs.retType.type)) {
+                        String sqlType = DBTypeAdapter.getSqlTypeName(fs.retType.type);
+                        throw new SemanticError( // s437
+                                Misc.getLineColumnOf(ctx),
+                                "function '"
+                                        + name
+                                        + "' uses unsupported type "
+                                        + sqlType
+                                        + " as its return type");
+                    }
+
+                    Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
+
+                    ExprGlobalFuncCall egfc = new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS);
+                    egfc.decl =
+                            new DeclFunc(
+                                    null, name, EMPTY_PARAMS, TypeSpec.getBogus(iStore, retType));
+                    ret = egfc;
+                }
+            }
+
+            if (ret == null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s094
+                        "undeclared identifier '" + name + "'");
+            }
+
             return ret;
         } else {
             Scope scope = symbolStack.getCurrentScope();
@@ -2245,6 +2308,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // --------------------------------------------------------
     // Private Static
     // --------------------------------------------------------
+
+    private static final int ID_LEN_MAX = 222; // see User Manual
 
     private static final BigInteger UINT_LITERAL_MAX =
             new BigInteger("99999999999999999999999999999999999999");
