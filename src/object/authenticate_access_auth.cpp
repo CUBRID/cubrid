@@ -890,7 +890,7 @@ au_user_revoke_all_privileges (MOP user_mop)
   const char *auth;
   DB_AUTH db_auth;
   MOP grantee_mop, obj_mop;
-  DB_VALUE val;
+  DB_VALUE name;
   DB_VALUE grantee_value, object_type_value, object_of_value, auth_type_value;
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
@@ -903,7 +903,7 @@ au_user_revoke_all_privileges (MOP user_mop)
   assert (user_mop != NULL);
 
 
-  db_make_null (&val);
+  db_make_null (&name);
   db_make_null (&grantee_value);
   db_make_null (&object_type_value);
   db_make_null (&object_of_value);
@@ -913,13 +913,13 @@ au_user_revoke_all_privileges (MOP user_mop)
   AU_DISABLE (save);
 
   /* Prepare DB_VALUEs for host variables */
-  error = obj_get (user_mop, "name", &val);
+  error = obj_get (user_mop, "name", &name);
   if (error != NO_ERROR)
     {
       goto exit;
     }
-  else if (!DB_IS_STRING (&val) || DB_IS_NULL (&val)
-	   || db_get_string (&val) == NULL)
+  else if (!DB_IS_STRING (&name) || DB_IS_NULL (&name)
+	   || db_get_string (&name) == NULL)
     {
       error = ER_AU_MISSING_OR_INVALID_USER;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -933,7 +933,7 @@ au_user_revoke_all_privileges (MOP user_mop)
       goto release;
     }
 
-  error = db_push_values (session, 1, &val);
+  error = db_push_values (session, 1, &name);
   if (error != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
@@ -985,17 +985,18 @@ au_user_revoke_all_privileges (MOP user_mop)
 	  if (!DB_IS_NULL (&object_type_value))
 	    {
 	      object_type = db_get_int (&object_type_value);
-	      if (object_type == 0)
+	      switch (object_type)
 		{
+		case 0:
 		  obj_type = DB_OBJECT_CLASS;
-		}
-	      else if (object_type == 5)
-		{
+		  break;
+
+		case 5:
 		  obj_type = DB_OBJECT_PROCEDURE;
-		}
-	      else
-		{
-		  assert (object_type == 0 && object_type == 5);
+		  break;
+
+		default:
+		  assert (object_type == 0 || object_type == 5);
 		  goto release;
 		}
 	    }
@@ -1101,7 +1102,7 @@ exit:
   db_value_clear (&object_type_value);
   db_value_clear (&object_of_value);
   db_value_clear (&auth_type_value);
-  db_value_clear (&val);
+  db_value_clear (&name);
 
   if (row_count < 0 && er_errid () == NO_ERROR && (grantee_mop == NULL || obj_mop == NULL || auth == NULL
       || db_auth == DB_AUTH_NONE || (object_type != 0 && object_type != 5)))
