@@ -46,7 +46,8 @@ typedef enum
 {
   ACL_FMT_NO_ERROR = 0,
   ACL_FMT_UNKOWN_BROKER,
-  ACL_FMT_INVALID
+  ACL_FMT_INVALID,
+  ACL_FMT_EMPTY_ELEM
 } ACL_FMT;
 
 static ACCESS_INFO *access_control_find_access_info (ACCESS_INFO ai[], int size, char *dbname, char *dbuser);
@@ -299,6 +300,7 @@ is_invalid_acl_entry (const char *acl, T_SHM_BROKER * shm_br)
   int num_colon = 0;
   int i;
   bool exist = false;
+  int next_invalid_pos = 0;
 
   if (acl == NULL || (len = strlen (acl)) == 0)
     {
@@ -333,7 +335,12 @@ is_invalid_acl_entry (const char *acl, T_SHM_BROKER * shm_br)
     {
       if (acl[i] == COLON)
 	{
+	  if (i == next_invalid_pos)
+	    {
+	      return ACL_FMT_EMPTY_ELEM;
+	    }
 	  num_colon++;
+	  next_invalid_pos = i + 1;
 	}
     }
 
