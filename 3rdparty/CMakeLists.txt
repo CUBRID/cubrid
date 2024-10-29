@@ -488,11 +488,11 @@ set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
 set (EP_INCLUDES ${EP_INCLUDES} PARENT_SCOPE)
 
-# [TODO]
-# EP_TARGETS, EP_LIBS, and EP_INCLUDES are linked everywhere.
-# Howerver, TBB is only used on the server side, so it should only be linked to libcubrid.so.
-# Therefore, we separated it into a TBB list to ensure it links exclusively to libcubrid.so.
-# In the future, please separate any directories and libraries that are exclusively used on the server side into EP_SERVER_XXX.
+# TODO: EP_TARGETS, EP_LIBS, and EP_INCLUDES are currently linked across all targets.
+# However, TBB is only required on the server side and should only be linked to libcubrid.so.
+# To achieve this, TBB has been separated into a distinct list to ensure exclusive linking with libcubrid.so.
+# Going forward, directories and libraries strictly used on the server side should be categorized
+# under the EP_SERVER_XXX section.
 set (TBB_TARGETS ${TBB_TARGETS} PARENT_SCOPE)
 set (TBB_INCLUDES ${TBB_INCLUDES} PARENT_SCOPE)
 set (TBB_LIBS ${TBB_LIBS} PARENT_SCOPE)
