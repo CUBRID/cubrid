@@ -7776,20 +7776,10 @@ pt_set_auth_bypass_mask_for_show (PARSER_CONTEXT * parser, PT_NODE * node, void 
 
   assert (arg != NULL);
 
-  if (node == NULL)
+  if (node && node->node_type == PT_SPEC)
     {
-      return node;
-    }
-
-  switch (node->node_type)
-    {
-    case PT_SPEC:
       auth_bypass = (DB_AUTH *) arg;
       node->info.spec.auth_bypass_mask = *auth_bypass;
-      break;
-
-    default:
-      break;
     }
 
   return node;
