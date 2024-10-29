@@ -35,8 +35,7 @@
 #define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 #define ACCESS_FILE_DELIMITER ":"
 #define IP_FILE_DELIMITER ","
-#define COLON ':'
-#define NUM_COLON_EXPECTED 2
+#define NUM_ACL_ELEM	3
 
 ACCESS_INFO access_info[ACL_MAX_ITEM_COUNT];
 int num_access_info;
@@ -295,12 +294,11 @@ error:
 static ACL_FMT
 is_invalid_acl_entry (const char *acl, T_SHM_BROKER * shm_br)
 {
-  char br_name[LINE_MAX];
+  char br_name[LINE_MAX], db[LINE_MAX], user[LINE_MAX], file[LINE_MAX];
   int len;
-  int num_colon = 0;
   int i;
   bool exist = false;
-  int next_invalid_pos = 0;
+  ACL_FMT ret = ACL_FMT_NO_ERROR;
 
   if (acl == NULL || (len = strlen (acl)) == 0)
     {
@@ -309,8 +307,6 @@ is_invalid_acl_entry (const char *acl, T_SHM_BROKER * shm_br)
 
   if (acl[0] == '[')
     {
-      ACL_FMT ret = ACL_FMT_NO_ERROR;
-
       if (sscanf (acl, "[%%%[^]]", br_name) != 1 || acl[len - 1] != ']' || strchr (br_name, ' ') != NULL)
 	{
 	  ret = ACL_FMT_INVALID;
@@ -331,20 +327,12 @@ is_invalid_acl_entry (const char *acl, T_SHM_BROKER * shm_br)
       return ret;
     }
 
-  for (i = 0; i < len; i++)
+  if (sscanf (acl, "%[^: ]:%[^: ]:%s", db, user, file) != NUM_ACL_ELEM)
     {
-      if (acl[i] == COLON)
-	{
-	  if (i == next_invalid_pos)
-	    {
-	      return ACL_FMT_EMPTY_ELEM;
-	    }
-	  num_colon++;
-	  next_invalid_pos = i + 1;
-	}
+      ret = ACL_FMT_INVALID;
     }
 
-  return ((num_colon == NUM_COLON_EXPECTED) && acl[len - 1] != COLON) ? ACL_FMT_NO_ERROR : ACL_FMT_INVALID;
+  return ret;
 }
 
 static void
