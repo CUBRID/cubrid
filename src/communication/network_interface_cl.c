@@ -10986,7 +10986,7 @@ pl_call (const cubpl::pl_signature & sig, const std::vector < std::reference_wra
     OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
     char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-    req_error = net_client_request_method_callback (NET_SERVER_METHOD_FOLD_CONSTANTS, eb.get_ptr (),
+    req_error = net_client_request_method_callback (NET_SERVER_PL_CALL, eb.get_ptr (),
 						    (int) packer.get_current_size (), reply,
 						    OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
     if (req_error != NO_ERROR)
