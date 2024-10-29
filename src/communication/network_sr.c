@@ -712,7 +712,7 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_VACUUM_DUMP];
   req_p->processing_function = svacuum_dump;
 
-  req_p = &net_Requests[NET_SERVER_METHOD_FOLD_CONSTANTS];
+  req_p = &net_Requests[NET_SERVER_PL_CALL];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = spl_call;
 
