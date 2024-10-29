@@ -627,7 +627,6 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
       filter_system_classes (&classes);
       if (classes == NULL)
 	{			/* no user class */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NODATA_TOBE_UNLOADED, 0);
 	  return NULL;
 	}
 
@@ -1443,17 +1442,17 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
       err_count++;
     }
 
-  emit_schema (ctxt, schema_output_ctx, EXTRACT_CLASS);
-  if (er_errid () != NO_ERROR)
+  if (ctxt.classes != NULL && (emit_schema (ctxt, schema_output_ctx, EXTRACT_CLASS), er_errid () != NO_ERROR))
     {
       err_count++;
     }
 
-  emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_CLASS);
-  if (er_errid () != NO_ERROR)
+
+  if (ctxt.classes != NULL && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_CLASS), er_errid () != NO_ERROR))
     {
       err_count++;
     }
+
 
   if (emit_class_alter_serial (ctxt, schema_output_ctx) < NO_ERROR)
     {
@@ -1465,8 +1464,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
       err_count++;
     }
 
-  emit_schema (ctxt, schema_output_ctx, EXTRACT_VCLASS);
-  if (er_errid () != NO_ERROR)
+  if (ctxt.classes != NULL && (emit_schema (ctxt, schema_output_ctx, EXTRACT_VCLASS), er_errid () != NO_ERROR))
     {
       err_count++;
     }
@@ -1485,13 +1483,13 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	}
     }
 
-  emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_VCLASS);
-  if (er_errid () != NO_ERROR)
+  if (ctxt.classes != NULL
+      && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_VCLASS), er_errid () != NO_ERROR))
     {
       err_count++;
     }
 
-  if (emit_foreign_key (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR)
+  if (ctxt.classes != NULL && (emit_foreign_key (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR))
     {
       err_count++;
     }
@@ -5288,14 +5286,17 @@ extract_class (extract_context & ctxt)
       err = get_classes (ctxt, output_ctx);
       if (err != NO_ERROR)
 	{
-	  if (output_file != NULL)
-	    {
-	      fclose (output_file);
-	      output_file = NULL;
-	      remove (output_filename);
-	      return ER_FAILED;
-	    }
+	  err = ER_FAILED;
 	}
+      else if (ctxt.classes == NULL)
+	{
+	  err = NO_ERROR;	// Skip object unloading.
+	}
+
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+      return err;
     }
 
   emit_schema (ctxt, output_ctx, EXTRACT_CLASS);
@@ -5386,14 +5387,17 @@ extract_vclass (extract_context & ctxt)
       err = get_classes (ctxt, output_ctx);
       if (err != NO_ERROR)
 	{
-	  if (output_file != NULL)
-	    {
-	      fclose (output_file);
-	      output_file = NULL;
-	      remove (output_filename);
-	      return ER_FAILED;
-	    }
+	  err = ER_FAILED;
 	}
+      else if (ctxt.classes == NULL)
+	{
+	  err = NO_ERROR;	// Skip object unloading.
+	}
+
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+      return err;
     }
 
   emit_schema (ctxt, output_ctx, EXTRACT_VCLASS);
@@ -5461,14 +5465,17 @@ extract_vclass_query_spec (extract_context & ctxt)
       err = get_classes (ctxt, output_ctx);
       if (err != NO_ERROR)
 	{
-	  if (output_file != NULL)
-	    {
-	      fclose (output_file);
-	      output_file = NULL;
-	      remove (output_filename);
-	      return ER_FAILED;
-	    }
+	  err = ER_FAILED;
 	}
+      else if (ctxt.classes == NULL)
+	{
+	  err = NO_ERROR;	// Skip object unloading.
+	}
+
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+      return err;
     }
 
   emit_class_query_spec (ctxt, output_ctx, EXTRACT_VCLASS);
@@ -5534,14 +5541,17 @@ extract_pk (extract_context & ctxt)
       err = get_classes (ctxt, output_ctx);
       if (err != NO_ERROR)
 	{
-	  if (output_file != NULL)
-	    {
-	      fclose (output_file);
-	      output_file = NULL;
-	      remove (output_filename);
-	      return ER_FAILED;
-	    }
+	  err = ER_FAILED;
 	}
+      else if (ctxt.classes == NULL)
+	{
+	  err = NO_ERROR;	// Skip object unloading.
+	}
+
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+      return err;
     }
 
   emit_primary_key (ctxt, output_ctx, ctxt.classes);
@@ -5606,14 +5616,17 @@ extract_fk (extract_context & ctxt)
       err = get_classes (ctxt, output_ctx);
       if (err != NO_ERROR)
 	{
-	  if (output_file != NULL)
-	    {
-	      fclose (output_file);
-	      output_file = NULL;
-	      remove (output_filename);
-	      return ER_FAILED;
-	    }
+	  err = ER_FAILED;
 	}
+      else if (ctxt.classes == NULL)
+	{
+	  err = NO_ERROR;	// Skip object unloading.
+	}
+
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+      return err;
     }
 
   err = emit_foreign_key (ctxt, output_ctx, ctxt.classes);
@@ -5678,14 +5691,17 @@ extract_uk (extract_context & ctxt)
       err = get_classes (ctxt, output_ctx);
       if (err != NO_ERROR)
 	{
-	  if (output_file != NULL)
-	    {
-	      fclose (output_file);
-	      output_file = NULL;
-	      remove (output_filename);
-	      return ER_FAILED;
-	    }
+	  err = ER_FAILED;
 	}
+      else if (ctxt.classes == NULL)
+	{
+	  err = NO_ERROR;	// Skip object unloading.
+	}
+
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+      return err;
     }
 
   emit_unique_key (ctxt, output_ctx, ctxt.classes);
@@ -5747,21 +5763,6 @@ extract_grant (extract_context & ctxt)
     }
 
   file_print_output output_ctx (output_file);
-
-  if (ctxt.classes == NULL)
-    {
-      err = get_classes (ctxt, output_ctx);
-      if (err != NO_ERROR)
-	{
-	  if (output_file != NULL)
-	    {
-	      fclose (output_file);
-	      output_file = NULL;
-	      remove (output_filename);
-	      return ER_FAILED;
-	    }
-	}
-    }
 
   err = emit_grant (ctxt, output_ctx, ctxt.classes);
 
@@ -6009,13 +6010,24 @@ extract_all_schema_file (extract_context & ctxt, const char *output_filename)
   file_print_output output_ctx (output_file);
   err_count = extract_schema (ctxt, output_ctx);
 
-  if (err_count == 0)
-    {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
-    }
 
-  fclose (output_file);
+  if (ftell (output_file) == 0)
+    {
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err_count == 0)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+      fclose (output_file);
+      output_file = NULL;
+    }
 
   return err_count;
 }
@@ -6031,23 +6043,32 @@ get_classes (extract_context & ctxt, print_output & output_ctx)
   ctxt.classes = get_ordered_classes (output_ctx, NULL);
   if (ctxt.classes == NULL)
     {
-      goto no_data;
+      if (db_error_code () != NO_ERROR)
+	{
+	  err = ER_FAILED;
+	  goto error;
+	}
+
     }
 
-  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+  if (!ctxt.is_dba_user && !ctxt.is_dba_group_member)
     {
       filter_user_classes (&ctxt.classes, ctxt.login_user);
       if (ctxt.classes == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NODATA_TOBE_UNLOADED, 0);
-	  goto no_data;
+	  int err_code = db_error_code ();
+	  if (err_code != NO_ERROR && err_code != ER_AU_SELECT_FAILURE)
+	    {
+	      err = ER_FAILED;
+	      goto error;
+	    }
 	}
     }
 
   er_clear ();
   return err;
 
-no_data:
+error:
   if (db_error_code () != NO_ERROR)
     {
       err = ER_FAILED;
