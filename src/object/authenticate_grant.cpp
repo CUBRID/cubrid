@@ -1908,7 +1908,7 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
       *grantor = drop_user;
     }
   else if (obj_mop->drop_object_statement || au_is_dba_group_member (login_user)
-      || au_is_user_group_member (class_owner, login_user))
+	   || au_is_user_group_member (class_owner, login_user))
     {
       /*
        * DBA, DBA Member, Owner, Owner Memeber
