@@ -4520,7 +4520,8 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
       if (sp_lang == SP_LANG_PLCSQL)
 	{
 	  output_ctx ("AS LANGUAGE PLCSQL BEGIN ");
-	  output_ctx ("RAISE_APPLICATION_ERROR(1000, '%s.%s: incomplete during loaddb');", owner_name, sp_name);
+	  output_ctx ("RAISE_APPLICATION_ERROR(1000, '%s.%s: incomplete during loaddb'); /* __CUBRID_NO_BODY__ */",
+		      owner_name, sp_name);
 	  output_ctx (" END;\n");
 	}
       else
