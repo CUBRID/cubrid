@@ -491,8 +491,10 @@ public class SpLib {
         public $APP_ERROR(int code, String msg) {
             super(code, isEmptyStr(msg) ? MSG_APP_ERROR : msg);
             if (code < CODE_APP_ERROR_DEFAULT) {
-                throw new VALUE_ERROR(String.format("error codes below %d are reserved for system built-in errors",
-                    CODE_APP_ERROR_DEFAULT));
+                throw new VALUE_ERROR(
+                        String.format(
+                                "error codes below %d are reserved for system built-in errors",
+                                CODE_APP_ERROR_DEFAULT));
             }
         }
 
