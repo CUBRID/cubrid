@@ -13826,6 +13826,15 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
       goto end;
     }
 
+  /* before deleting an object, all permissions are revoked. */
+  op->drop_object_statement = 1;
+  error = au_object_revoke_all_privileges (op, NULL);
+  if (error != NO_ERROR)
+    {
+      op->drop_object_statement = 0;
+      goto end;
+    }
+
   /* now delete _db_auth tuples refers to the table */
   error = au_delete_auth_of_dropping_database_object (DB_OBJECT_CLASS, table_name);
   if (error != NO_ERROR)
