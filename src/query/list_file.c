@@ -244,6 +244,7 @@ static QFILE_LIST_ID *qfile_union_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 					int flag);
 
 static int qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg);
+static SORT_STATUS qfile_get_next_sort_item (THREAD_ENTRY * thread_p, RECDES * recdes, void *arg);
 static SORT_INFO *qfile_initialize_sort_info (SORT_INFO * info, QFILE_LIST_ID * listid, SORT_LIST * sort_list);
 static void qfile_clear_sort_info (SORT_INFO * info);
 static int qfile_copy_list_pages (THREAD_ENTRY * thread_p, VPID * old_first_vpidp, QMGR_TEMP_FILE * old_tfile_vfidp,
@@ -3370,7 +3371,7 @@ qfile_generate_sort_tuple (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p, 
  * in the list file, or if an error occurs, the sorting module is informed with
  * necessary return codes.
  */
-SORT_STATUS
+static SORT_STATUS
 qfile_get_next_sort_item (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *arg)
 {
   SORT_INFO *sort_info_p;

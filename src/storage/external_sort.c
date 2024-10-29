@@ -185,6 +185,7 @@ struct sort_param
   bool px_status;
   int px_result_file_idx;
   int px_tran_index;
+  SORT_PARALLEL_TYPE px_type;
 };
 
 typedef struct sort_rec_list SORT_REC_LIST;
@@ -256,8 +257,9 @@ static int sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * des
 				       int parallel_num);
 static int sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
 					int parallel_num);
-static int sort_check_parallelism (THREAD_ENTRY * thread_p,SORT_PARALLEL_TYPE sort_parallel_type, SORT_PARAM * sort_param);
-
+static int sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
+static int sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param, int parallel_num);
+static int sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param, int parallel_num);
 #endif
 /* end parallel sort */
 
@@ -1357,7 +1359,7 @@ sort_run_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, char **base, lo
 int
 sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn, void *get_arg,
 	       SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg, SORT_DUP_OPTION option,
-	       int limit, bool includes_tde_class, SORT_PARALLEL_TYPE sort_parallel_type)
+	       int limit, bool includes_tde_class, SORT_PARALLEL_TYPE parallel_type)
 {
 
   int error = NO_ERROR;
@@ -1367,7 +1369,6 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
   /* for parallel sort */
   SORT_PARAM px_sort_param[SORT_MAX_PARALLEL];	/* TO_DO : need dynamic alloc */
-  QFILE_LIST_SCAN_ID *scan_id_p;
   int parallel_num = 1;		/* TO_DO : depending on the number of pages in the temp file */
 
   thread_set_sort_stats_active (thread_p, true);
@@ -1473,48 +1474,29 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tmp_file_pgs = MAX (1, sort_param->tmp_file_pgs);
 
   sort_param->tde_encrypted = includes_tde_class;
-
+  sort_param->px_type = parallel_type;
 
 #if defined(SERVER_MODE)
-  SORT_INFO *sort_info_p;
-
   /* check the number of parallel process */
-  parallel_num = sort_check_parallelism (thread_p, sort_parallel_type, sort_param);
+  parallel_num = sort_check_parallelism (thread_p, sort_param);
 
   if (parallel_num == 1)
     {
-      /* single thread */
+      /* single process */
       sort_param->px_max_index = 1;
       error = sort_listfile_internal (thread_p, sort_param);
     }
   else
     {
-      /* copy sort_param for parallel sort */
-      error = sort_copy_sort_param (thread_p, px_sort_param, sort_param, parallel_num);
+      /* parallel process */
+      error = sort_start_parallelism (thread_p, px_sort_param, sort_param, parallel_num);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
 	}
 
-      /* case of ORDER BY */
-      if (sort_param->get_fn == qfile_get_next_sort_item)
-	{
-	  /* split input temp file. TO_DO : it can be inside sort_copy_sort_param() */
-	  error = sort_split_input_temp_file (thread_p, px_sort_param, sort_param, parallel_num);
-	  /* may need to revert the next page and prev page of temp file. */
-	  if (error != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-	}
-      else
-	{
-	  /* not implemented yet (group by, analytic fuction, create index) */
-	  return -1;
-	}
-
+      /* execute parallel sort */
       // *INDENT-OFF*
-      /* parallel execute */
       for (int i = 0; i < parallel_num; i++)
 	{
 	  cubthread::entry_callable_task * task =
@@ -1546,26 +1528,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	}
       while (1);
 
-      if (sort_param->get_fn == qfile_get_next_sort_item)
-	{
-	  sort_info_p = (SORT_INFO *) sort_param->get_arg;
-	  scan_id_p = sort_info_p->s_id->s_id;
-
-	  /* open origin temp file for read */
-	  if (qfile_open_list_scan (sort_info_p->input_file, scan_id_p) != NO_ERROR)
-	    {
-	      assert (0);
-	      return -1;
-	    }
-	}
-      else
-	{
-	  /* not implemented yet (group by, analytic fuction, create index) */
-	  return -1;
-	}
-
-      /* merging temp files from parallel processed */
-      error = sort_merge_run_for_parallel (thread_p, px_sort_param, sort_param, parallel_num);
+      error = sort_end_parallelism (thread_p, px_sort_param, sort_param, parallel_num);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
@@ -1573,7 +1536,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
     }
 
 #else
-  /* no parallel */
+  /* single process for stand alone mode */
   sort_param->px_max_index = 1;
   parallel_num = 1;
   error = sort_listfile_internal (thread_p, sort_param);
@@ -1614,42 +1577,42 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
   thread_ref.tran_index = sort_param->px_tran_index;
   pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
-/*  printf ("sort_listfie index = %d\n",thread_ref.index); */
-  if (sort_param->get_fn == qfile_get_next_sort_item)
+  if (sort_param->px_type == SORT_ORDER_BY)
     {
       SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
-      /* temporarily, open file for read */
+      /* open splitted temp file for read */
       if (qfile_open_list_scan (sort_info_p->input_file, &t_scan_id) != NO_ERROR)
 	{
-	  /* need to put error into sort_param */
+	  sort_param->px_status = -1;
 	  return;
 	}
       sort_info_p->s_id->s_id = &t_scan_id;
     }
   else
     {
-      /* need to put error into sort_param */
-      assert(0);
+      /* Not implemented yet */
+      sort_param->px_status = -1;
       return;
     }
 
   sort_listfile_internal (&thread_ref, sort_param);
 
-  /* temporarily, close file for read */
-  if (sort_param->get_fn == qfile_get_next_sort_item)
+  if (sort_param->px_type == SORT_ORDER_BY)
     {
       SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
-      /* temporarily, close file for read */
+      /* close splitted temp file for read */
       qfile_close_scan (&thread_ref, sort_info_p->s_id->s_id);
     }
   else
     {
-      /* need to put error into sort_param */
-      assert(0);
+      /* Not implemented yet */
+      sort_param->px_status = -1;
       return;
     }
+
+  /* TO_DO : status enum */
   sort_param->px_status = 1;
 }
 // *INDENT-ON*
@@ -4319,10 +4282,6 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 
   /* get scan id of input file */
   sort_info_p = (SORT_INFO *) sort_param->get_arg;
-  scan_id_p = sort_info_p->s_id->s_id;
-
-  /* close input file for read. it'll be opened in parallel */
-  qfile_close_scan (thread_p, scan_id_p);
 
   /* init vpid */
   for (i = 0; i < parallel_num; i++)
@@ -4519,11 +4478,11 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
  *   sort_param(in):
  */
 static int
-sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARALLEL_TYPE sort_parallel_type, SORT_PARAM * sort_param)
+sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   SORT_INFO *sort_info_p;
 
-  if (sort_parallel_type == SORT_ORDER_BY)
+  if (sort_param->px_type == SORT_ORDER_BY)
     {
       /* get scan id of input file */
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
@@ -4540,6 +4499,100 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARALLEL_TYPE sort_paralle
       /* Not implemented yet */
       return 1;
     }
+}
+
+/*
+ * sort_start_parallelism () - start parallelism
+ *   return: NO_ERROR
+ *   px_sort_param(in):
+ *   sort_param(in):
+ *   parallel_num(in):
+ *   sort_parallel_type(in):
+ */
+static int
+sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
+			int parallel_num)
+{
+  int error = NO_ERROR;
+
+  /* copy sort_param for parallel sort */
+  error = sort_copy_sort_param (thread_p, px_sort_param, sort_param, parallel_num);
+  if (error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  /* case of ORDER BY */
+  if (sort_param->px_type == SORT_ORDER_BY)
+    {
+      QFILE_LIST_SCAN_ID *scan_id_p;
+      SORT_INFO *sort_info_p;
+
+      /* get scan id of input file */
+      sort_info_p = (SORT_INFO *) sort_param->get_arg;
+      scan_id_p = sort_info_p->s_id->s_id;
+
+      /* close input file for read. it'll be opened in parallel */
+      qfile_close_scan (thread_p, scan_id_p);
+
+      /* split input temp file. TO_DO : If writing pages is not possible, need to find another way. */
+      /*                                if possible, may need to revert the splitted pages */
+      error = sort_split_input_temp_file (thread_p, px_sort_param, sort_param, parallel_num);
+      if (error != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      /* not implemented yet (group by, analytic fuction, create index) */
+      return ER_FAILED;
+    }
+
+  return error;
+}
+
+/*
+ * sort_end_parallelism () - end parallelism
+ *   return: NO_ERROR
+ *   px_sort_param(in):
+ *   sort_param(in):
+ *   parallel_num(in):
+ *   sort_parallel_type(in):
+ */
+static int
+sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
+			    int parallel_num)
+{
+  int error = NO_ERROR;
+  SORT_INFO *sort_info_p;
+  QFILE_LIST_SCAN_ID *scan_id_p;
+
+  if (sort_param->px_type == SORT_ORDER_BY)
+    {
+      sort_info_p = (SORT_INFO *) sort_param->get_arg;
+      scan_id_p = sort_info_p->s_id->s_id;
+
+      /* open origin temp file for read */
+      if (qfile_open_list_scan (sort_info_p->input_file, scan_id_p) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      /* not implemented yet (group by, analytic fuction, create index) */
+      return ER_FAILED;
+    }
+
+  /* merging temp files from parallel processed */
+  error = sort_merge_run_for_parallel (thread_p, px_sort_param, sort_param, parallel_num);
+  if (error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return error;
 }
 
 /*
