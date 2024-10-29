@@ -611,10 +611,12 @@ exit:
  * au_object_revoke_all_privileges - drop a class, virtual class and procedure, or when changing the owner, all privileges are revoked.
  *   return: error code
  *   class_mop(in): a class object
+ *   class_owner(in): a class owner
  *   sp_mop(in): a stored procedure object
+ *   sp_owner(in): a stored procedure owner
  */
 int
-au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
+au_object_revoke_all_privileges (MOP class_mop, MOP class_owner, MOP sp_mop, MOP sp_owner)
 {
   int error = NO_ERROR, save, len, i = 0;
   int object_type;
@@ -637,7 +639,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
 	  "SELECT [au].grantee, [au].object_type, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = ?";
 
-  assert (class_mop != NULL || sp_mop != NULL);
+  assert ((class_mop != NULL && class_owner != NULL) || (sp_mop != NULL && sp_owner != NULL));
 
   for (i = 0; i < 2; i++)
     {
@@ -651,39 +653,16 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
   /* Disable the checking for internal authorization object access */
   AU_DISABLE (save);
 
-  if (class_mop != NULL)
+  if (class_mop != NULL && class_owner != NULL)
     {
-      class_name = db_get_class_name (class_mop);
-      if (class_name == NULL)
-	{
-	  error = ER_UNEXPECTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get class name of mop.");
-	  goto exit;
-	}
-
       obj_mop = class_mop;
-      sm_qualifier_name (class_name, owner_name, DB_MAX_USER_LENGTH);
+      grantor_mop = class_owner;
     }
 
-  if (sp_mop != NULL)
+  if (sp_mop != NULL && sp_owner != NULL)
     {
-      if (jsp_get_unique_name (sp_mop, sp_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = ER_UNEXPECTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get stored procedure name of mop.");
-	  goto exit;
-	}
-
       obj_mop = sp_mop;
-      sm_qualifier_name (sp_name, owner_name, DB_MAX_USER_LENGTH);
-    }
-
-  grantor_mop = au_find_user (owner_name);
-  if (grantor_mop == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
+      grantor_mop = sp_owner;
     }
 
   /* Prepare DB_VALUEs for host variables */
@@ -841,7 +820,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
       assert (obj_mop != NULL);
       assert (db_auth != DB_AUTH_NONE);
 
-      error = db_revoke_object (obj_type, grantee_mop, obj_mop, db_auth);
+      error = au_revoke (obj_type, grantee_mop, obj_mop, db_auth);
       if (error != NO_ERROR)
 	{
 	  goto release;

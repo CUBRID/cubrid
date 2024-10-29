@@ -99,6 +99,6 @@ extern int au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, 
 /*
 * drop a class, virtual class and procedure, or when changing the owner, all privileges are revoked.
 */
-extern int au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop);
+extern int au_object_revoke_all_privileges (MOP class_mop, MOP class_owner, MOP sp_mop, MOP sp_owner);
 
 #endif // _authenticate_access_auth_HPP_

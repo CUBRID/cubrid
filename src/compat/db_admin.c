@@ -1971,7 +1971,7 @@ db_revoke_object (DB_OBJECT_TYPE object_type, MOP user, MOP obj_, AU_TYPE auth)
   CHECK_2ARGS_ERROR (user, obj_);
   CHECK_MODIFICATION_ERROR ();
 
-  if (object_type == DB_OBJECT_CLASS && !obj_->drop_object_statement)
+  if (object_type == DB_OBJECT_CLASS)
     {
       retval = do_check_partitioned_class (obj_, CHECK_PARTITION_SUBS, NULL);
     }

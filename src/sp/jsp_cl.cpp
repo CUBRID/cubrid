@@ -1040,7 +1040,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   downcase_owner_name[0] = '\0';
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
-  MOP sp_mop = NULL, new_owner = NULL;
+  MOP sp_mop = NULL, new_owner = NULL, owner = NULL;
   DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val;
 
   assert (statement != NULL);
@@ -1099,7 +1099,14 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
 
   /* when changing the owner, all privileges are revoked */
-  err = au_object_revoke_all_privileges (NULL, sp_mop);
+  owner = jsp_get_owner (sp_mop);
+  if (owner == NULL)
+    {
+      err = ER_FAILED;
+      goto error;
+    }
+
+  err = au_object_revoke_all_privileges (NULL, NULL, sp_mop, owner);
   if (err != NO_ERROR)
     {
       goto error;
@@ -1315,7 +1322,7 @@ jsp_check_stored_procedure_name (const char *str)
 static int
 drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 {
-  MOP sp_mop, arg_mop, owner;
+  MOP sp_mop, arg_mop, owner, save_user;
   DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_cls_val, lang_val, temp;
   SP_TYPE_ENUM real_type;
   std::string class_name;
@@ -1434,13 +1441,18 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
     }
 
   /* before deleting an object, all permissions are revoked. */
-  sp_mop->drop_object_statement = 1;
-  err = au_object_revoke_all_privileges (NULL, sp_mop);
-  if (err != NO_ERROR)
+  save_user = Au_user;
+  if (AU_SET_USER (owner) == NO_ERROR)
     {
-      sp_mop->drop_object_statement = 0;
-      goto error;
+      err = au_object_revoke_all_privileges (NULL, NULL, sp_mop, owner);
+      if (err != NO_ERROR)
+	{
+	  AU_SET_USER (save_user);
+	  goto error;
+	}
     }
+
+  AU_SET_USER (save_user);
 
   err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PROCEDURE, name);
   if (err != NO_ERROR)
