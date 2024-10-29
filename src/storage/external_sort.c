@@ -1477,7 +1477,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   /* check the number of parallel process */
   parallel_num = sort_check_parallelism (thread_p, sort_param);
 
-  if (parallel_num == 1)
+  if (parallel_num <= 1)
     {
       /* single process */
       sort_param->px_max_index = 1;
@@ -4417,7 +4417,7 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   for (i = 0; i < parallel_num; i++)
     {
       /* free num_pages */
-      free_and_init (sort_param->file_contents[i].num_pages);
+      free_and_init (sort_param->file_contents[i].num_pages);  /* 미리 동적할당 안되게 변경해야함. 지금은 px_sort만 해제하고 있다. */
 
       /* copy temp file and file contents */
       sort_param->temp[i] = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
@@ -4486,6 +4486,9 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       /* Not implemented yet */
       return 1;
     }
+
+  /* single process */
+  return 1;
 }
 
 /*
