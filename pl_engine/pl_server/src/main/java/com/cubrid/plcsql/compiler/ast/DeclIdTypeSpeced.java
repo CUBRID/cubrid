@@ -30,12 +30,20 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class DeclIdTyped extends DeclId {
-    public abstract TypeSpec typeSpec();
+public abstract class DeclIdTypeSpeced extends DeclId {
 
-    public DeclIdTyped(ParserRuleContext ctx) {
+    public DeclIdTypeSpeced(ParserRuleContext ctx) {
         super(ctx);
     }
+
+    public abstract TypeSpec typeSpec();
+
+    @Override
+    public Type type() {
+        return typeSpec().type;
+    }
+
 }

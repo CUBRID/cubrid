@@ -83,20 +83,19 @@ public class TargetMethod {
         Class<?> c = null;
         try {
             c = cl.loadClass(name);
+            assert c != null;
             return c;
         } catch (ClassNotFoundException e) {
-            //
+            // ignore
         }
 
-        // TODO: CBRD-24514
         try {
             c = Server.class.getClassLoader().loadClass(name);
+            assert c != null;
             return c;
         } catch (ClassNotFoundException e) {
-            //
+            throw e;
         }
-
-        return c;
     }
 
     private Class<?>[] classesFor(String args) throws ClassNotFoundException, ExecuteException {
@@ -104,23 +103,23 @@ public class TargetMethod {
         if (args.length() == 0) {
             return new Class[0];
         }
-        // Count semicolons occurences.
-        int semiColons = 0;
+        // Count commas occurences.
+        int commas = 0;
         for (int i = 0; i < args.length(); i++) {
             if (args.charAt(i) == ',') {
-                semiColons++;
+                commas++;
             }
         }
-        Class<?>[] classes = new Class[semiColons + 1];
+        Class<?>[] classes = new Class[commas + 1];
 
         int index = 0;
-        for (int i = 0; i < semiColons; i++) {
+        for (int i = 0; i < commas; i++) {
             int sep = args.indexOf(',', index);
             classes[i] = classFor(args.substring(index, sep).trim());
             index = sep + 1;
         }
 
-        classes[semiColons] = classFor(args.substring(index).trim());
+        classes[commas] = classFor(args.substring(index).trim());
         return classes;
     }
 
@@ -130,7 +129,7 @@ public class TargetMethod {
             String arrTag;
             if (className.indexOf("[][]") >= 0) {
                 if (className.indexOf("[][][]") >= 0) {
-                    throw new ExecuteException("Unsupport data type: " + className);
+                    throw new ExecuteException("Unsupported data type: " + className);
                 }
                 arrTag = "[[";
             } else {

@@ -446,6 +446,7 @@ metadata_of_index_capacity (SHOW_ONLY_ALL flag)
     {"Num_distinct_key", "int"},
     {"Total_value", "bigint"},
     {"Deduplicate_distinct_key", "int"},	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+    {"Num_fence_key", "int"},
     {"Avg_num_value_per_key", "int"},
     {"Avg_num_value_per_deduplicate_key", "int"},	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
     {"Num_leaf_page", "int"},

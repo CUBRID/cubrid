@@ -2563,10 +2563,14 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   prepare_info.auto_param_count = prepared_session->parser->auto_param_count;
   /* set recompile */
   prepare_info.recompile = prepared_stmt->flag.recompile;
-  /* set OIDs included */
+
   if (prepare_info.stmt_type == CUBRID_STMT_SELECT)
     {
+      /* set OIDs included */
       prepare_info.oids_included = prepared_stmt->info.query.oids_included;
+
+      /* set result cache */
+      prepare_info.do_cache = prepared_stmt->info.query.flag.do_cache;
     }
 
   err = set_prepare_info_into_list (&prepare_info, prepared_stmt);
@@ -2690,6 +2694,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
       PT_INTERNAL_ERROR (parser, "allocate new node");
     }
   statement->info.execute.recompile = prepare_info.recompile;
+  statement->info.execute.do_cache = prepare_info.do_cache;
   statement->info.execute.oids_included = prepare_info.oids_included;
 
   XASL_ID_COPY (&statement->info.execute.xasl_id, &xasl_id);

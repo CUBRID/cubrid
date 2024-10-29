@@ -179,13 +179,13 @@ $ csql help messages
    ;SChema class-name           - display schema information of a class.\n\
    ;TRIgger [`*'|trigger-name]  - display trigger definition.\n\
    ;Get system_parameter        - get the value of a system parameter.\n\
-   ;SEt system_parameter=value  - set the value of a system parameter.\n\
+   ;SET system_parameter=value  - set the value of a system parameter.\n\
    ;STring-width [width]        - set width that each column which is a string type is displayed.\n\
    ;COLumn-width [name]=[width] - set width that a specific column is displayed.\n\
    ;PLan [simple/detail/off]    - show query execution plan.\n\
    ;Info <command>              - display internal information.\n\
-   ;TIme [ON/OFF]               - enable/disable to display the query\n\
-                                  execution time.\n\
+   ;TIme [ON/OFF]               - enable/disable to display the query execution time.\n\
+   ;SERver-output [ON/OFF]      - enable/disable displaying server messages stored in DBMS_OUTPUT buffer.\n\
    ;LINe-output [ON/OFF]        - enable/disable to display each value in a line\n\
    ;HISTORYList                 - display list of the executed queries.\n\
    ;HISTORYRead <history_num>   - read entry on the history number into command buffer.\n\

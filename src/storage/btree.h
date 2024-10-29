@@ -417,6 +417,7 @@ struct btree_ovfl_oid_capacity
 typedef struct btree_capacity BTREE_CAPACITY;
 struct btree_capacity
 {
+  int fence_key_cnt;		/* Number of fence-keys */
   int dis_key_cnt;		/* Distinct key count (in leaf pages) */
   int64_t tot_val_cnt;		/* Total number of values stored in tree */
   int deduplicate_dis_key_cnt;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */

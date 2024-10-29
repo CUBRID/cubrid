@@ -65,6 +65,9 @@ $set 4 MSGCAT_SET_PARAMETER
 22 Deprecated parameter
 23 The '%1$s' and '%2$s' parameters can not be used together.\n
 31 The '%1$s' parameter:
+32 Invalid IP or Hostname '%1$s' at line %2$d in the '%3$s' file.\n
+33 There is no IP or Hostname in '%1$s' file.\n
+34 File '%1$s' was not found.\n
 
 $set 5 MSGCAT_SET_ERROR
 1 Missing message for error code %1$d.
@@ -1047,7 +1050,7 @@ $ LOADDB
 977 Checkpoint started (previous checkpoint page id: %1$lld, previous redo page id: %2$lld).
 978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 CONNECT BY loop in user data.
-980 A thread is waiting in %1$s more than %2$d msec.
+980 A thread is waiting in %1$s more than %2$d msec(%3$d msec).
 981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.
 982 Set interrupt to the transaction %1$d.
 983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
@@ -1615,6 +1618,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
 138 Invalid deduplicate level. Valid level between %1$d and %2$d.
+139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1940,6 +1944,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 321 %TYPE type specification is allowed only for PL/CSQL
 322 Table column '%1$s.%2$s' has not been defined
 323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
+324 '%1$s' is not a record variable.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
@@ -2123,22 +2128,22 @@ $set 15 MSGCAT_SET_IO
 2 Backup = %1$s is needed. \n It must be mounted/loaded to continue.\n Type 1 to continue after the backup is mounted/loaded.\n Type 0 to quit.\n
 3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
 4 Backup magic file identification %1$s,\n
-5          Release: %1$s\n\
-     Disk Version: %2$g\n
-6    Database Name: %1$s\n\
- DB Creation Time: %2$s\
-         Pagesize: %3$d\n
-7     Backup Level: %1$d (%2$s)\n\
-        Start_lsa: %3$lld|%4$d\n\
-         Last_lsa: %5$lld|%6$d\n
-8      Backup Time: %1$s\
-  Backup Unit Num: %2$d\n
-9  Database Volume name: %1$s\n\
+5 Release: %1$s\n\
+   Disk Version: %2$g\n
+6 Database Name: %1$s\n\
+   DB Creation Time: %2$s\
+   Pagesize: %3$d\n
+7 Backup Level: %1$d (%2$s)\n\
+   Start_lsa: %3$lld|%4$d\n\
+   Last_lsa: %5$lld|%6$d\n
+8 Backup Time: %1$s\
+   Backup Unit Num: %2$d\n
+9 Database Volume Name: %1$s\n\
    Volume Identifier: %2$d, Size: %3$lld bytes (%4$d pages)\n
-10   Database Name: %1$s\n\
-     Volume Name: %2$s\n\
-        Unit Num: %3$d\n\
-    Backup Level: %4$d (%5$s)\n\
+10 Database Name: %1$s\n\
+   Volume Name: %2$s\n\
+   Unit Num: %3$d\n\
+   Backup Level: %4$d (%5$s)\n\
 Enter one of the following options:\n
 11 Type\n \
   -  %1$d to quit.\n \
@@ -2154,14 +2159,16 @@ Enter one of the following options:\n
 19 Backup volume %1$s timestamp mismatch\n  (Timestamp: %2$s, expecting %3$s).\n\n
 20 Backup volume information file error, line %1$d.\n
 21 Backup Volume Label: Level: %1$d, Unit: %2$d, Database %3$s, Backup Time: %4$s\n
-22     Previous Backup level: %1$d Time: %2$s (start_lsa was %3$lld|%4$d)\n
+22 Previous Backup Level: %1$d\n\
+   Time: %2$s\
+   (start_lsa was %3$lld|%4$d)\n
 23 The following database backup volume is needed to continue restoring:\n\n
 24 Backup destination is full, a new destination is required to continue:\n\n
 25 Preceding Backup Volume Name: %1$s\n
-26     Next Backup Volume Name: %1$s\n
-27  Backup Pagesize: %1$d\n
-28       Zip Method: %1$d (%2$s)\n\
-        Zip Level: %3$d (%4$s)\n
+26 Next Backup Volume Name: %1$s\n
+27 Backup Pagesize: %1$d\n
+28 Zip Method: %1$d (%2$s)\n\
+   Zip Level: %3$d (%4$s)\n
 29 Include Active Log: %1$s\n
 
 $set 16 MSGCAT_SET_LOG

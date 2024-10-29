@@ -205,7 +205,7 @@ public class Type {
                 assert false : ("no type for a Java name " + javaName);
                 return null;
             } else {
-                return TypeVariadic.getInstance(elem);
+                return TypeVariadic.getStaticInstance(elem);
             }
         } else {
             return javaNameToType.get(javaName);

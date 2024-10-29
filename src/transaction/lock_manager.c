@@ -6125,10 +6125,8 @@ end:
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "lock object (lock_object)",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      _er_log_debug (ARG_FILE_LINE, "[MONITOR_WAITING_THREAD] lock_object: %6d.%06d\n", elapsed_time.tv_sec,
-		     elapsed_time.tv_usec);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
     }
 #endif
 
@@ -6246,10 +6244,8 @@ end:
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "lock object (lock_object)",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      _er_log_debug (ARG_FILE_LINE, "[MONITOR_WAITING_THREAD] lock_object: %6d.%06d\n", elapsed_time.tv_sec,
-		     elapsed_time.tv_usec);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
     }
 #endif
 
@@ -6360,10 +6356,8 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "lock object (lock_scan)",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      _er_log_debug (ARG_FILE_LINE, "[MONITOR_WAITING_THREAD] lock_scan: %6d.%06d\n", elapsed_time.tv_sec,
-		     elapsed_time.tv_usec);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
     }
 #endif
 
@@ -6570,10 +6564,8 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "lock object (lock_classes_lock_hint)",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      _er_log_debug (ARG_FILE_LINE, "[MONITOR_WAITING_THREAD] lock_classes_lock_hint: %6d.%06d\n", elapsed_time.tv_sec,
-		     elapsed_time.tv_usec);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
     }
 #endif
 

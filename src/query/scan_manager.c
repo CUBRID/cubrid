@@ -5218,6 +5218,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   hsidp = &scan_id->s.hsid;
   if (scan_id->mvcc_select_lock_needed)
     {
+      COPY_OID (&current_oid, &hsidp->curr_oid);
       p_current_oid = &current_oid;
     }
   else

@@ -30,10 +30,11 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class DeclDynamicRecord extends DeclIdTyped {
+public class DeclDynamicRecord extends DeclId {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -42,17 +43,16 @@ public class DeclDynamicRecord extends DeclIdTyped {
     }
 
     public final String name;
-    public final TypeSpec typeSpec;
 
-    public DeclDynamicRecord(ParserRuleContext ctx, String name, TypeSpec typeSpec) {
+    public DeclDynamicRecord(ParserRuleContext ctx, String name) {
         super(ctx);
 
         this.name = name;
-        this.typeSpec = typeSpec;
     }
 
-    public TypeSpec typeSpec() {
-        return typeSpec;
+    @Override
+    public Type type() {
+        return Type.RECORD_ANY;
     }
 
     @Override

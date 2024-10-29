@@ -176,7 +176,7 @@ public class StringValue extends Value {
         ZonedDateTime lTimestamp = DateTimeParser.TimestampLiteral.parse(value);
         if (lTimestamp == null) {
             throw new TypeMismatchException("invalid TIMESTAMP string: " + value);
-        } else if (lTimestamp.equals(DateTimeParser.nullDatetimeUTC)) {
+        } else if (lTimestamp.equals(DateTimeParser.nullDatetimeGMT)) {
             return new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0); // 0000-00-00 00:00:00
         } else {
             return Timestamp.valueOf(lTimestamp.toLocalDateTime());
