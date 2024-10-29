@@ -148,7 +148,7 @@ static void scan_init_scan_attrs (SCAN_ATTRS * scan_attrs_p, int num_attrs, ATTR
 				  HEAP_CACHE_ATTRINFO * attr_cache);
 static int scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_list_node * output_val_list,
 				    regu_variable_list_node * regu_val_list, VAL_DESCR * vd, QUERY_ID query_id,
-				    int max_key_len, int func_index_col_id, INDX_COV * indx_cov);
+				    int bt_num_attrs, int max_key_len, int func_index_col_id, INDX_COV * indx_cov);
 static int scan_alloc_oid_list (BTREE_ISCAN_OID_LIST ** oid_list_p);
 static int scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list);
 static void scan_free_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST * oid_list);
@@ -697,12 +697,10 @@ scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_
  */
 static int
 scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_list_node * output_val_list,
-			 regu_variable_list_node * regu_val_list, VAL_DESCR * vd, QUERY_ID query_id, int max_key_len,
-			 int func_index_col_id, INDX_COV * indx_cov)
+			 regu_variable_list_node * regu_val_list, VAL_DESCR * vd, QUERY_ID query_id, int bt_num_attrs,
+			 int max_key_len, int func_index_col_id, INDX_COV * indx_cov)
 {
   int err = NO_ERROR;
-  int num_membuf_pages = 0;
-  int max_tuple_size = 0;
 
   if (indx_cov == NULL)
     {
@@ -755,16 +753,74 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
       goto exit_on_error;
     }
 
-  num_membuf_pages = qmgr_get_temp_file_membuf_pages (indx_cov->list_id->tfile_vfid);
-  assert (num_membuf_pages > 0);
-
-  if (max_key_len > 0 && num_membuf_pages > 0)
+  /*
+   * When performing covered index scans, we expect that only the key buffer will be used, without using
+   * temporary files. To achieve this, we calculate the maximum number of tuples that can be stored in the
+   * key buffer. Covered index scans are performed in increments of the maximum number of tuples to prevent
+   * exceeding the key buffer with temporary results.
+   *
+   * If only the values of fixed-length columns are stored as temporary results, the maximum number of tuples
+   * can be calculated without wasting space. However, if the temporary results need to store the values of
+   * variable-length columns, we use max_key_len to calculate the maximum number of tuples, which may lead
+   * to some space waste.
+   *
+   * Despite these efforts, temporary files may be used in the following cases: 
+   *   1. If an overflow key exists in the index and is stored in the temporary results. 
+   *   2. If the size of the tuples stored in the temporary results exceeds DB_PAGESIZE. 
+   *   3. If the default value is used for the maximum number of tuples.
+   */
+  if (max_key_len > 0)
     {
-      max_tuple_size =
-	QFILE_TUPLE_LENGTH_SIZE +
-	((QFILE_TUPLE_VALUE_HEADER_SIZE + MAX_ALIGNMENT) * indx_cov->output_val_list->valptr_cnt) + max_key_len;
-      indx_cov->max_tuples = (num_membuf_pages * (DB_PAGESIZE - QFILE_PAGE_HEADER_SIZE)) / max_tuple_size;
-      indx_cov->max_tuples = MAX (indx_cov->max_tuples, 1);
+      int membuf_npages;
+      REGU_VARIABLE_LIST list;
+      int valptr_cnt;
+      int header_size, value_size, align_size, tuple_size;
+      int tuple_count;
+      bool use_max_size;
+
+      membuf_npages = indx_cov->list_id->tfile_vfid->membuf_npages;
+      assert (membuf_npages > 0);
+
+      header_size = (bt_num_attrs > 1) ? or_multi_header_size (bt_num_attrs) : 0;
+      value_size = 0;
+      align_size = 0;
+      use_max_size = false;
+
+      list = indx_cov->output_val_list->valptrp;
+      valptr_cnt = indx_cov->output_val_list->valptr_cnt;
+
+      while (list != NULL)
+	{
+	  int disk_size =
+	    (TP_DOMAIN_TYPE (list->value.domain) ==
+	     DB_TYPE_NUMERIC) ? DB_NUMERIC_BUF_SIZE : list->value.domain->type->disksize;
+	  bool is_variable_size = (disk_size == 0);
+
+	  if (!use_max_size)
+	    {
+	      /* We need to consider how to check using the pr_type::is_always_variable function. */
+	      if (is_variable_size)
+		{
+		  use_max_size = true;
+		  value_size = (max_key_len - header_size);
+		}
+	      else
+		{
+		  value_size += disk_size;
+		}
+	    }
+
+	  align_size += (is_variable_size) ? (MAX_ALIGNMENT - 1) : DB_WASTED_ALIGN (disk_size, MAX_ALIGNMENT);
+
+	  list = list->next;
+	}
+
+      tuple_size = QFILE_TUPLE_LENGTH_SIZE + (QFILE_TUPLE_VALUE_HEADER_SIZE * valptr_cnt) + value_size + align_size;
+
+      /* The number of tuples per page is calculated first, then multiplied by the number of pages. */
+      tuple_count = ((DB_PAGESIZE - QFILE_PAGE_HEADER_SIZE) / tuple_size) * membuf_npages;
+
+      indx_cov->max_tuples = MAX (tuple_count, 1);
     }
   else
     {
@@ -3296,7 +3352,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->iscan_oid_order = iscan_oid_order;
 
   if (scan_init_indx_coverage (thread_p, coverage_enabled, output_val_list, regu_val_list, vd, query_id,
-			       root_header->node.max_key_len, func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
+			       isidp->bt_num_attrs, root_header->node.max_key_len, func_index_col_id,
+			       &(isidp->indx_cov)) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -3514,8 +3571,9 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   isidp->iscan_oid_order = iscan_oid_order;
 
-  if (scan_init_indx_coverage (thread_p, false, NULL, NULL, vd, query_id, root_header->node.max_key_len,
-			       func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
+  if (scan_init_indx_coverage
+      (thread_p, false, NULL, NULL, vd, query_id, isidp->bt_num_attrs, root_header->node.max_key_len, func_index_col_id,
+       &(isidp->indx_cov)) != NO_ERROR)
     {
       goto exit_on_error;
     }
