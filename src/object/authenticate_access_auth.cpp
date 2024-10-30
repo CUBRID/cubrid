@@ -630,6 +630,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   int stmt_id;
+  int row_count = -1;
   char owner_name[DB_MAX_USER_LENGTH];
   owner_name[0] = '\0';
   const char *sql_query =
@@ -727,6 +728,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
   /* The error value is row count if it's not negative value. */
   if (error == 0)
     {
+      row_count = error;
       goto release;
     }
   else if (error < 0)
@@ -735,6 +737,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
       goto release;
     }
 
+  row_count = error;
   error = NO_ERROR;
 
   while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
@@ -758,17 +761,18 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
 	  if (!DB_IS_NULL (&object_type_value))
 	    {
 	      object_type = db_get_int (&object_type_value);
-	      if (object_type == 0)
+	      switch (object_type)
 		{
+		case 0:
 		  obj_type = DB_OBJECT_CLASS;
-		}
-	      else if (object_type == 5)
-		{
+		  break;
+
+		case 5:
 		  obj_type = DB_OBJECT_PROCEDURE;
-		}
-	      else
-		{
-		  assert (object_type == 0 && object_type == 5);
+		  break;
+
+		default:
+		  assert (object_type == 0 || object_type == 5);
 		  goto release;
 		}
 	    }
@@ -866,8 +870,8 @@ exit:
       db_value_clear (&val[i]);
     }
 
-  if (er_errid () == NO_ERROR && (grantee_mop == NULL || auth == NULL || db_auth == DB_AUTH_NONE) && (object_type != 0
-      && object_type != 5))
+  if (row_count < 0 && er_errid () == NO_ERROR && (grantee_mop == NULL || auth == NULL || db_auth == DB_AUTH_NONE
+      || (object_type != 0 && object_type != 5)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
