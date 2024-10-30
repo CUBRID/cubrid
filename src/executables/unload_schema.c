@@ -6051,7 +6051,7 @@ get_classes (extract_context & ctxt, print_output & output_ctx)
 
     }
 
-  if (!ctxt.is_dba_user && !ctxt.is_dba_group_member)
+  if (ctxt.classes != NULL && !ctxt.is_dba_user && !ctxt.is_dba_group_member)
     {
       filter_user_classes (&ctxt.classes, ctxt.login_user);
       if (ctxt.classes == NULL)
