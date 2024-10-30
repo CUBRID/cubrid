@@ -5284,19 +5284,13 @@ extract_class (extract_context & ctxt)
   if (ctxt.classes == NULL)
     {
       err = get_classes (ctxt, output_ctx);
-      if (err != NO_ERROR)
+      if (err != NO_ERROR || ctxt.classes == NULL)
 	{
-	  err = ER_FAILED;
+	  fclose (output_file);
+	  output_file = NULL;
+	  remove (output_filename);
+	  return err;
 	}
-      else if (ctxt.classes == NULL)
-	{
-	  err = NO_ERROR;	// Skip object unloading.
-	}
-
-      fclose (output_file);
-      output_file = NULL;
-      remove (output_filename);
-      return err;
     }
 
   emit_schema (ctxt, output_ctx, EXTRACT_CLASS);
@@ -5385,19 +5379,13 @@ extract_vclass (extract_context & ctxt)
   if (ctxt.classes == NULL)
     {
       err = get_classes (ctxt, output_ctx);
-      if (err != NO_ERROR)
+      if (err != NO_ERROR || ctxt.classes == NULL)
 	{
-	  err = ER_FAILED;
+	  fclose (output_file);
+	  output_file = NULL;
+	  remove (output_filename);
+	  return err;
 	}
-      else if (ctxt.classes == NULL)
-	{
-	  err = NO_ERROR;	// Skip object unloading.
-	}
-
-      fclose (output_file);
-      output_file = NULL;
-      remove (output_filename);
-      return err;
     }
 
   emit_schema (ctxt, output_ctx, EXTRACT_VCLASS);
@@ -5463,19 +5451,13 @@ extract_vclass_query_spec (extract_context & ctxt)
   if (ctxt.classes == NULL)
     {
       err = get_classes (ctxt, output_ctx);
-      if (err != NO_ERROR)
+      if (err != NO_ERROR || ctxt.classes == NULL)
 	{
-	  err = ER_FAILED;
+	  fclose (output_file);
+	  output_file = NULL;
+	  remove (output_filename);
+	  return err;
 	}
-      else if (ctxt.classes == NULL)
-	{
-	  err = NO_ERROR;	// Skip object unloading.
-	}
-
-      fclose (output_file);
-      output_file = NULL;
-      remove (output_filename);
-      return err;
     }
 
   emit_class_query_spec (ctxt, output_ctx, EXTRACT_VCLASS);
@@ -5539,19 +5521,13 @@ extract_pk (extract_context & ctxt)
   if (ctxt.classes == NULL)
     {
       err = get_classes (ctxt, output_ctx);
-      if (err != NO_ERROR)
+      if (err != NO_ERROR || ctxt.classes == NULL)
 	{
-	  err = ER_FAILED;
+	  fclose (output_file);
+	  output_file = NULL;
+	  remove (output_filename);
+	  return err;
 	}
-      else if (ctxt.classes == NULL)
-	{
-	  err = NO_ERROR;	// Skip object unloading.
-	}
-
-      fclose (output_file);
-      output_file = NULL;
-      remove (output_filename);
-      return err;
     }
 
   emit_primary_key (ctxt, output_ctx, ctxt.classes);
@@ -5614,19 +5590,13 @@ extract_fk (extract_context & ctxt)
   if (ctxt.classes == NULL)
     {
       err = get_classes (ctxt, output_ctx);
-      if (err != NO_ERROR)
+      if (err != NO_ERROR || ctxt.classes == NULL)
 	{
-	  err = ER_FAILED;
+	  fclose (output_file);
+	  output_file = NULL;
+	  remove (output_filename);
+	  return err;
 	}
-      else if (ctxt.classes == NULL)
-	{
-	  err = NO_ERROR;	// Skip object unloading.
-	}
-
-      fclose (output_file);
-      output_file = NULL;
-      remove (output_filename);
-      return err;
     }
 
   err = emit_foreign_key (ctxt, output_ctx, ctxt.classes);
@@ -5689,19 +5659,13 @@ extract_uk (extract_context & ctxt)
   if (ctxt.classes == NULL)
     {
       err = get_classes (ctxt, output_ctx);
-      if (err != NO_ERROR)
+      if (err != NO_ERROR || ctxt.classes == NULL)
 	{
-	  err = ER_FAILED;
+	  fclose (output_file);
+	  output_file = NULL;
+	  remove (output_filename);
+	  return err;
 	}
-      else if (ctxt.classes == NULL)
-	{
-	  err = NO_ERROR;	// Skip object unloading.
-	}
-
-      fclose (output_file);
-      output_file = NULL;
-      remove (output_filename);
-      return err;
     }
 
   emit_unique_key (ctxt, output_ctx, ctxt.classes);
