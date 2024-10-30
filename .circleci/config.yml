@@ -101,11 +101,11 @@ jobs:
 
   build-windows:
     machine:
-      image: 'windows-server-2019-vs2019:2022.08.1'
+      image: 'windows-server-2019'
       resource_class: windows.large
       shell: powershell.exe -ExecutionPolicy Bypass
     environment:
-      - CMAKE_GENERATOR: "Visual Studio 16 2019"
+      - CMAKE_GENERATOR: "Visual Studio 15 2017"
       - CMAKE_BUILD_PARALLEL_LEVEL: 10
       - WITH_CCI: true
     steps:
@@ -118,16 +118,17 @@ jobs:
       - run:
           name: Install dependencies
           command: |
-            choco upgrade chocolatey
+            choco upgrade chocolatey -y
             choco install openjdk8redhatbuild --no-progress -y
             choco install cmake --version=3.26.3 --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
             choco install winflexbison wixtoolset --no-progress -y
             choco install ant --ignore-dependencies --no-progress -y
+            choco install visualstudio2017buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.ATLMFC --includeRecommended" --no-progress -y
       - run:
           name: CMake Configure
           command: |
             cmake -E make_directory build
-            cmake -E chdir build cmake -G $env:CMAKE_GENERATOR -DWITH_CCI=$env:WITH_CCI -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+            cmake -E chdir build cmake -G $env:CMAKE_GENERATOR -A x64 -DWITH_CCI=$env:WITH_CCI -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
       - run:
           name: CMake Build
           command: |
