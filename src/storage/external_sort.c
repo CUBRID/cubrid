@@ -4413,15 +4413,14 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
       assert (0);
     }
 
-  /* copy temp file from parallel to main */
-  for (i = 0; i < parallel_num; i++)
+  /* free num_pages */
+  for (i = 0; i < sort_param->tot_tempfiles; i++)
     {
-      /* free num_pages */
-      free_and_init (sort_param->file_contents[i].num_pages);  /* 미리 동적할당 안되게 변경해야함. 지금은 px_sort만 해제하고 있다. */
+      free_and_init (sort_param->file_contents[i].num_pages);
 
-      /* copy temp file and file contents */
-      sort_param->temp[i] = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
-      sort_param->file_contents[i] = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx];
+      sort_param->file_contents[i].num_slots = SORT_INITIAL_DYN_ARRAY_SIZE;
+      sort_param->file_contents[i].first_run = -1;
+      sort_param->file_contents[i].last_run = -1;
     }
 
   /* init file info */
@@ -4429,6 +4428,24 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   sort_param->half_files = parallel_num;
   sort_param->tot_tempfiles = parallel_num * 2;
   sort_param->in_half = 0;
+
+  /* copy temp file and file contents */
+  for (i = 0; i < sort_param->half_files; i++)
+    {
+      sort_param->temp[i] = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
+      sort_param->file_contents[i] = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx];
+    }
+  for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
+    {
+      /* init temp file and contents */
+      px_sort_param[0].temp[i].volid = NULL_VOLID;
+      px_sort_param[0].file_contents[i].first_run = -1;
+      px_sort_param[0].file_contents[i].last_run = -1;
+
+      /* copy from thread 0 */
+      sort_param->temp[i] = px_sort_param[0].temp[i];
+      sort_param->file_contents[i] = px_sort_param[0].file_contents[i];
+    }
 
   /* Create output temporary files make file and temporary volume page count estimates */
   int file_pg_cnt_est = sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
