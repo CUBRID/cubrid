@@ -476,7 +476,6 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
       "${LIBTBB_BYPRODUCTS}"
     )
 
-    # Append include directories and libraries for libcubrid.so only
     list(APPEND TBB_TARGETS ${LIBTBB_TARGET})
     list(APPEND TBB_INCLUDES ${LIBTBB_INCLUDES})
     list(APPEND TBB_LIBS ${LIBTBB_LIBS})

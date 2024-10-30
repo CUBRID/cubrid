@@ -329,9 +329,9 @@ if(UNIX)
   target_include_directories(unittests_lf PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_lf LINK_PRIVATE cubridcs)
 
-# Add TBB
+  # Add TBB
+  target_include_directories(unittests_lf PRIVATE ${TBB_INCLUDES})
   target_link_libraries(unittests_lf LINK_PRIVATE ${TBB_LIBS})
-  target_include_directories(unittests_lf PUBLIC ${TBB_INCLUDES})
   add_dependencies(unittests_lf ${TBB_TARGETS})
 
   set(UNITTESTS_AREA_SOURCES
