@@ -757,66 +757,22 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
    * Covered index scans use only the key buffer, avoiding temporary files.
    * To ensure this, we calculate the max number of tuples that fit in the key buffer
    * and perform each scan within this limit.
-   *
-   * If only fixed-length columns are stored, space is used efficiently.
-   * But if variable-length columns are included, we use max_key_len, which can waste space.
-   *
-   * Temporary files may still be used if:
-   *   1. The index contains an overflow key.
-   *   2. Tuple size exceeds DB_PAGESIZE, excluding QFILE_PAGE_HEADER_SIZE.
-   *   3. The default max tuple count is used.
    */
   if (max_key_len > 0)
     {
-      int membuf_npages;
-      REGU_VARIABLE_LIST list;
-      int valptr_cnt;
-      int header_size, value_size, align_size, tuple_size;
-      int tuple_count;
-      bool use_max_size;
+      int page_count = indx_cov->list_id->tfile_vfid->membuf_npages;
+      int value_count = indx_cov->output_val_list->valptr_cnt;
+      int header_size = (bt_num_attrs > 1) ? or_multi_header_size (bt_num_attrs) : 0;
+      int tuple_size, tuple_count;
 
-      membuf_npages = indx_cov->list_id->tfile_vfid->membuf_npages;
-      assert (membuf_npages > 0);
+      assert (page_count > 0);
 
-      header_size = (bt_num_attrs > 1) ? or_multi_header_size (bt_num_attrs) : 0;
-      value_size = 0;
-      align_size = 0;
-      use_max_size = false;
-
-      list = indx_cov->output_val_list->valptrp;
-      valptr_cnt = indx_cov->output_val_list->valptr_cnt;
-
-      while (list != NULL)
-	{
-	  TP_DOMAIN *domain = list->value.domain;
-	  DB_TYPE type_id = TP_DOMAIN_TYPE (domain);
-	  int disk_size = (type_id == DB_TYPE_NUMERIC) ? DB_NUMERIC_BUF_SIZE : domain->type->disksize;
-	  bool is_variable_size = (disk_size == 0);
-
-	  if (!use_max_size)
-	    {
-	      /* Even though it is not variable length, disk_size can be 0,
-	       * so the pr_type::is_always_variable function cannot be used. */
-	      if (is_variable_size)
-		{
-		  use_max_size = true;
-		  value_size = (max_key_len - header_size);
-		}
-	      else
-		{
-		  value_size += disk_size;
-		}
-	    }
-
-	  align_size += (is_variable_size) ? (MAX_ALIGNMENT - 1) : DB_WASTED_ALIGN (disk_size, MAX_ALIGNMENT);
-
-	  list = list->next;
-	}
-
-      tuple_size = QFILE_TUPLE_LENGTH_SIZE + (QFILE_TUPLE_VALUE_HEADER_SIZE * valptr_cnt) + value_size + align_size;
+      tuple_size =
+	QFILE_TUPLE_LENGTH_SIZE + (QFILE_TUPLE_VALUE_HEADER_SIZE * value_count) + (max_key_len - header_size) +
+	((MAX_ALIGNMENT - 1) * value_count);
 
       /* Do not change the order: calculate tuples per page first, then multiply by page count. */
-      tuple_count = ((DB_PAGESIZE - QFILE_PAGE_HEADER_SIZE) / tuple_size) * membuf_npages;
+      tuple_count = ((DB_PAGESIZE - QFILE_PAGE_HEADER_SIZE) / tuple_size) * page_count;
 
       indx_cov->max_tuples = MAX (tuple_count, 1);
     }
