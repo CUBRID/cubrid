@@ -6041,14 +6041,9 @@ get_classes (extract_context & ctxt, print_output & output_ctx)
    * if we just built the initial list rather than using the table.
    */
   ctxt.classes = get_ordered_classes (output_ctx, NULL);
-  if (ctxt.classes == NULL)
+  if (ctxt.classes == NULL && db_error_code () != NO_ERROR)
     {
-      if (db_error_code () != NO_ERROR)
-	{
-	  err = ER_FAILED;
-	  goto error;
-	}
-
+      return ER_FAILED;
     }
 
   if (ctxt.classes != NULL && !ctxt.is_dba_user && !ctxt.is_dba_group_member)
@@ -6059,26 +6054,12 @@ get_classes (extract_context & ctxt, print_output & output_ctx)
 	  int err_code = db_error_code ();
 	  if (err_code != NO_ERROR && err_code != ER_AU_SELECT_FAILURE)
 	    {
-	      err = ER_FAILED;
-	      goto error;
+	      return ER_FAILED;
 	    }
 	}
     }
 
   er_clear ();
-  return err;
-
-error:
-  if (db_error_code () != NO_ERROR)
-    {
-      err = ER_FAILED;
-    }
-  else
-    {
-      fprintf (stderr, "%s: Unknown database error occurs " "but may not be database error.\n\n", ctxt.exec_name);
-      err = ER_FAILED;
-    }
-
   return err;
 }
 
