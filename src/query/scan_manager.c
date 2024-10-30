@@ -754,20 +754,17 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
     }
 
   /*
-   * When performing covered index scans, we expect that only the key buffer will be used, without using
-   * temporary files. To achieve this, we calculate the maximum number of tuples that can be stored in the
-   * key buffer. Covered index scans are performed in increments of the maximum number of tuples to prevent
-   * exceeding the key buffer with temporary results.
+   * Covered index scans use only the key buffer, avoiding temporary files.
+   * To ensure this, we calculate the max number of tuples that fit in the key buffer
+   * and perform each scan within this limit.
    *
-   * If only the values of fixed-length columns are stored as temporary results, the maximum number of tuples
-   * can be calculated without wasting space. However, if the temporary results need to store the values of
-   * variable-length columns, we use max_key_len to calculate the maximum number of tuples, which may lead
-   * to some space waste.
+   * If only fixed-length columns are stored, space is used efficiently.
+   * But if variable-length columns are included, we use max_key_len, which can waste space.
    *
-   * Despite these efforts, temporary files may be used in the following cases: 
-   *   1. If an overflow key exists in the index and is stored in the temporary results. 
-   *   2. If the size of the tuples stored in the temporary results exceeds DB_PAGESIZE. 
-   *   3. If the default value is used for the maximum number of tuples.
+   * Temporary files may still be used if:
+   *   1. The index contains an overflow key.
+   *   2. Tuple size exceeds DB_PAGESIZE.
+   *   3. The default max tuple count is used.
    */
   if (max_key_len > 0)
     {
@@ -791,14 +788,15 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
 
       while (list != NULL)
 	{
-	  int disk_size =
-	    (TP_DOMAIN_TYPE (list->value.domain) ==
-	     DB_TYPE_NUMERIC) ? DB_NUMERIC_BUF_SIZE : list->value.domain->type->disksize;
-	  bool is_variable_size = (disk_size == 0);
+	  TP_DOMAIN *domain = list->value.domain;
+	  DB_TYPE type_id = TP_DOMAIN_TYPE (domain);
+	  int disk_size = (type_id == DB_TYPE_NUMERIC) ? DB_NUMERIC_BUF_SIZE : domain->type->disksize;
+	  bool is_variable_size = (type_id == DB_TYPE_NUMERIC) ? false : domain->type->is_always_variable ();
+
+	  assert (is_variable_size || (type_id == DB_TYPE_NUMERIC) || (disk_size != 0));
 
 	  if (!use_max_size)
 	    {
-	      /* We need to consider how to check using the pr_type::is_always_variable function. */
 	      if (is_variable_size)
 		{
 		  use_max_size = true;
@@ -817,7 +815,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
 
       tuple_size = QFILE_TUPLE_LENGTH_SIZE + (QFILE_TUPLE_VALUE_HEADER_SIZE * valptr_cnt) + value_size + align_size;
 
-      /* The number of tuples per page is calculated first, then multiplied by the number of pages. */
+      /* Do not change the order: calculate tuples per page first, then multiply by page count. */
       tuple_count = ((DB_PAGESIZE - QFILE_PAGE_HEADER_SIZE) / tuple_size) * membuf_npages;
 
       indx_cov->max_tuples = MAX (tuple_count, 1);
