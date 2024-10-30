@@ -791,12 +791,12 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
 	  TP_DOMAIN *domain = list->value.domain;
 	  DB_TYPE type_id = TP_DOMAIN_TYPE (domain);
 	  int disk_size = (type_id == DB_TYPE_NUMERIC) ? DB_NUMERIC_BUF_SIZE : domain->type->disksize;
-	  bool is_variable_size = (type_id == DB_TYPE_NUMERIC) ? false : domain->type->is_always_variable ();
-
-	  assert (is_variable_size || (type_id == DB_TYPE_NUMERIC) || (disk_size != 0));
+	  bool is_variable_size = (disk_size == 0);
 
 	  if (!use_max_size)
 	    {
+	      /* Even though it is not variable length, disk_size can be 0,
+	       * so the pr_type::is_always_variable function cannot be used. */
 	      if (is_variable_size)
 		{
 		  use_max_size = true;
