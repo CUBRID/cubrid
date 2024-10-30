@@ -763,7 +763,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
    *
    * Temporary files may still be used if:
    *   1. The index contains an overflow key.
-   *   2. Tuple size exceeds DB_PAGESIZE.
+   *   2. Tuple size exceeds DB_PAGESIZE, excluding QFILE_PAGE_HEADER_SIZE.
    *   3. The default max tuple count is used.
    */
   if (max_key_len > 0)
