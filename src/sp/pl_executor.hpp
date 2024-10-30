@@ -64,7 +64,7 @@ namespace cubpl
   class executor
   {
     public:
-      executor () = default; // Not DefaultConstructible
+      executor () = delete; // Not DefaultConstructible
       executor (pl_signature &sig);
 
       executor (executor &&other) = delete; // Not MoveConstructible

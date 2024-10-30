@@ -1740,7 +1740,7 @@ qexec_clear_db_val_list (QPROC_DB_VALUE_LIST list)
  *   return: void
  *   xasl_p(in) : xasl
  *   position_descr(in)   : position desc
- *   is_final(in)  : true, if finalize neede
+ *   is_final(in)  : true, if finalize needed
  */
 static void
 qexec_clear_pos_desc (XASL_NODE * xasl_p, QFILE_TUPLE_VALUE_POSITION * position_descr, bool is_final)
