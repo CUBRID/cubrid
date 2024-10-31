@@ -8156,7 +8156,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		}
 	      else
 		{
-		  status = DOMAIN_INCOMPATIBLE;
+		  status = DOMAIN_NEGATIVE_VALUE;
 		}
 	    }
 	  break;
@@ -8280,7 +8280,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      tmpint = db_get_int (target);
 	      if (tmpint < 0)
 		{
-		  status = DOMAIN_INCOMPATIBLE;
+		  status = DOMAIN_NEGATIVE_VALUE;
 		  break;
 		}
 	      v_timestamptz.timestamp = (DB_UTIME) tmpint;
@@ -8405,7 +8405,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		}
 	      else
 		{
-		  status = DOMAIN_INCOMPATIBLE;
+		  status = DOMAIN_NEGATIVE_VALUE;
 		}
 	    }
 	  break;
@@ -8854,10 +8854,26 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    break;
 	  }
 	case DB_TYPE_SHORT:
-	  v_time = db_get_short (src) % SECONDS_IN_A_DAY;
-	  db_time_decode (&v_time, &hour, &minute, &second);
-	  db_make_time (target, hour, minute, second);
+        case DB_TYPE_INTEGER:
+        case DB_TYPE_BIGINT:
+        case DB_TYPE_FLOAT:
+        case DB_TYPE_DOUBLE:
+          status = tp_value_coerce ((DB_VALUE *) src, target, &tp_Integer_domain);
+          if (status == DOMAIN_COMPATIBLE)
+            {
+              if (db_get_int(target) >= 0)
+                {
+	          v_time = db_get_int (target) % SECONDS_IN_A_DAY;
+	          db_time_decode (&v_time, &hour, &minute, &second);
+	          db_make_time (target, hour, minute, second);
+                }
+              else
+                {
+                  status = DOMAIN_NEGATIVE_VALUE;
+                }
+            }
 	  break;
+#if 0
 	case DB_TYPE_INTEGER:
           if (db_get_int(src) < 0)
             {
@@ -8875,6 +8891,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_time_decode (&v_time, &hour, &minute, &second);
 	  db_make_time (target, hour, minute, second);
 	  break;
+#endif
 	case DB_TYPE_MONETARY:
 	  v_money = db_get_monetary (src);
 	  if (OR_CHECK_INT_OVERFLOW (v_money->amount))
@@ -8888,6 +8905,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      db_make_time (target, hour, minute, second);
 	    }
 	  break;
+#if 0
 	case DB_TYPE_FLOAT:
 	  {
 	    float ftmp = db_get_float (src);
@@ -8918,6 +8936,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      }
 	    break;
 	  }
+#endif
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
