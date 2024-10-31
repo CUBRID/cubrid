@@ -1503,11 +1503,11 @@ csql_is_statement_complete (void)
     }
 }
 
-/* No more used. See CBRD-25633
+/*
  * csql_is_statement_in_block () - check if statement state is string block or
  *                       comment block or identifier block
  * return : true if yes, false otherwise
-
+ */
 bool
 csql_is_statement_in_block (void)
 {
@@ -1519,15 +1519,8 @@ csql_is_statement_in_block (void)
       return true;
     }
 
-  CSQL_STATEMENT_SUBSTATE substate = csql_Edit_contents.substate;
-  if (state == CSQL_STATE_GENERAL && (substate == CSQL_SUBSTATE_PLCSQL_TEXT || substate == CSQL_SUBSTATE_SEEN_END))
-    {
-      return true;
-    }
-
   return false;
 }
- */
 
 /*
  * csql_edit_buffer_clear() - clear current editor contents
