@@ -18,13 +18,13 @@
 
 
 /*
- * jsp_sr.h - Java Stored Procedure Server Module Header
+ * pl_sr.h - PL Server Module Header
  *
  * Note:
  */
 
-#ifndef _JSP_SR_H_
-#define _JSP_SR_H_
+#ifndef _PL_SR_H_
+#define _PL_SR_H_
 
 #ident "$Id$"
 
@@ -35,10 +35,10 @@ extern "C"
 {
 #endif
 
-  extern EXPORT_IMPORT int jsp_start_server (const char *server_name, const char *path, int port_number);
-  extern EXPORT_IMPORT int jsp_server_port (void);
-  extern EXPORT_IMPORT int jsp_server_port_from_info (void);
-  extern EXPORT_IMPORT int jsp_jvm_is_loaded (void);
+  extern EXPORT_IMPORT int pl_start_server (const char *server_name, const char *path, int port_number);
+  extern EXPORT_IMPORT int pl_server_port (void);
+  extern EXPORT_IMPORT int pl_server_port_from_info (void);
+  extern EXPORT_IMPORT int pl_jvm_is_loaded (void);
 
 #if defined(__cplusplus)
 }

@@ -67,7 +67,7 @@
 #include "serial.h"
 #include "server_interface.h"
 #include "jansson.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #include "xserver_interface.h"
 #include "session.h"
 #include "event_log.h"
@@ -2072,8 +2072,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
   char *mk_path;
-  int jsp_port;
-  bool jsp;
+  int pl_port;
+  bool pl;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2302,11 +2302,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
 #if defined (SA_MODE)
   // Initialize java stored procedure server for standalone mode
-  jsp = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
-  if (jsp && !jsp_jvm_is_loaded ())
+  pl = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
+  if (pl && !pl_jvm_is_loaded ())
     {
-      jsp_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
-      error_code = jsp_start_server (db_name, db->pathname, jsp_port);
+      pl_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
+      error_code = pl_start_server (db_name, db->pathname, pl_port);
       if (error_code != NO_ERROR)
 	{
 	  goto error;

@@ -63,7 +63,7 @@
 #include "statistics.h"
 #include "chartype.h"
 #include "heap_file.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #include "replication.h"
 #include "server_support.h"
 #include "connection_sr.h"
@@ -8038,7 +8038,7 @@ stran_get_local_transaction_id (THREAD_ENTRY * thread_p, unsigned int rid, char 
 }
 
 /*
- * sjsp_get_server_port -
+ * spl_get_server_port -
  *
  * return:
  *
@@ -8047,12 +8047,12 @@ stran_get_local_transaction_id (THREAD_ENTRY * thread_p, unsigned int rid, char 
  * NOTE:
  */
 void
-sjsp_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+spl_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_pack_int (reply, jsp_server_port_from_info ());
+  (void) or_pack_int (reply, pl_server_port_from_info ());
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 

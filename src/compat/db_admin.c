@@ -56,7 +56,7 @@
 #include "execute_schema.h"
 #include "network_interface_cl.h"
 #if defined(SA_MODE)
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #endif /* SA_MODE */
 #include "jsp_cl.h"
 #include "execute_statement.h"
@@ -928,7 +928,7 @@ db_restart (const char *program, int print_version, const char *volume)
 	  install_static_methods ();
 #if !defined(WINDOWS)
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS))
-	  if (!jsp_jvm_is_loaded ())
+	  if (!pl_jvm_is_loaded ())
 	    {
 	      prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 	    }

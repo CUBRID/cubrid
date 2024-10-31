@@ -67,8 +67,8 @@ BOOL g_isRunning = false;
 #define		SERVICE_CONTROL_SERVER_STOP	181
 #define		SERVICE_CONTROL_SERVICE_START	190
 #define		SERVICE_CONTROL_SERVICE_STOP	191
-#define		SERVICE_CONTROL_JAVASP_START	210
-#define		SERVICE_CONTROL_JAVASP_STOP		211
+#define		SERVICE_CONTROL_PL_START	210
+#define		SERVICE_CONTROL_PL_STOP		211
 
 #define		CUBRID_UTIL_CUBRID		"cubrid.exe"
 #define		CUBRID_UTIL_SERVICE		"service"
@@ -195,8 +195,8 @@ vHandler (DWORD opcode)
 
   if (opcode == SERVICE_CONTROL_SERVER_START ||
       opcode == SERVICE_CONTROL_SERVER_STOP ||
-      opcode == SERVICE_CONTROL_JAVASP_START ||
-      opcode == SERVICE_CONTROL_JAVASP_STOP ||
+      opcode == SERVICE_CONTROL_PL_START ||
+      opcode == SERVICE_CONTROL_PL_STOP ||
       opcode == SERVICE_CONTROL_BROKER_ON ||
       opcode == SERVICE_CONTROL_BROKER_OFF ||
       opcode == SERVICE_CONTROL_GATEWAY_ON || opcode == SERVICE_CONTROL_GATEWAY_OFF)
@@ -359,7 +359,7 @@ vHandler (DWORD opcode)
       args[5] = NULL;
     }
     break;
-    case SERVICE_CONTROL_JAVASP_START:
+    case SERVICE_CONTROL_PL_START:
     {
       args[1] = CUBRID_UTIL_JAVASP;
       args[2] = CUBRID_COMMAND_START;
@@ -367,7 +367,7 @@ vHandler (DWORD opcode)
       args[5] = NULL;
     }
     break;
-    case SERVICE_CONTROL_JAVASP_STOP:
+    case SERVICE_CONTROL_PL_STOP:
     {
       args[1] = CUBRID_UTIL_JAVASP;
       args[2] = CUBRID_COMMAND_STOP;
@@ -384,8 +384,8 @@ vHandler (DWORD opcode)
 
   if (opcode == SERVICE_CONTROL_SERVER_START ||
       opcode == SERVICE_CONTROL_SERVER_STOP ||
-      opcode == SERVICE_CONTROL_JAVASP_START ||
-      opcode == SERVICE_CONTROL_JAVASP_STOP ||
+      opcode == SERVICE_CONTROL_PL_START ||
+      opcode == SERVICE_CONTROL_PL_STOP ||
       opcode == SERVICE_CONTROL_BROKER_ON ||
       opcode == SERVICE_CONTROL_BROKER_OFF ||
       opcode == SERVICE_CONTROL_GATEWAY_ON || opcode == SERVICE_CONTROL_GATEWAY_OFF)

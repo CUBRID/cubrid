@@ -36,7 +36,7 @@
 #include "system_parameter.h"
 #include "authenticate.h"
 #include "object_accessor.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 
 #define API_PROGRAM_NAME "CUBRID C API"
 
