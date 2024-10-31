@@ -5287,7 +5287,6 @@ extract_class (extract_context & ctxt)
       if (err != NO_ERROR || ctxt.classes == NULL)
 	{
 	  fclose (output_file);
-	  output_file = NULL;
 	  remove (output_filename);
 	  return err;
 	}
@@ -5382,7 +5381,6 @@ extract_vclass (extract_context & ctxt)
       if (err != NO_ERROR || ctxt.classes == NULL)
 	{
 	  fclose (output_file);
-	  output_file = NULL;
 	  remove (output_filename);
 	  return err;
 	}
@@ -5454,7 +5452,6 @@ extract_vclass_query_spec (extract_context & ctxt)
       if (err != NO_ERROR || ctxt.classes == NULL)
 	{
 	  fclose (output_file);
-	  output_file = NULL;
 	  remove (output_filename);
 	  return err;
 	}
@@ -5524,7 +5521,6 @@ extract_pk (extract_context & ctxt)
       if (err != NO_ERROR || ctxt.classes == NULL)
 	{
 	  fclose (output_file);
-	  output_file = NULL;
 	  remove (output_filename);
 	  return err;
 	}
@@ -5593,7 +5589,6 @@ extract_fk (extract_context & ctxt)
       if (err != NO_ERROR || ctxt.classes == NULL)
 	{
 	  fclose (output_file);
-	  output_file = NULL;
 	  remove (output_filename);
 	  return err;
 	}
@@ -5662,7 +5657,6 @@ extract_uk (extract_context & ctxt)
       if (err != NO_ERROR || ctxt.classes == NULL)
 	{
 	  fclose (output_file);
-	  output_file = NULL;
 	  remove (output_filename);
 	  return err;
 	}
