@@ -1082,7 +1082,7 @@ au_user_revoke_all_privileges (MOP user_mop)
       assert (obj_mop != NULL);
       assert (db_auth != DB_AUTH_NONE);
 
-      error = db_revoke_object (obj_type, grantee_mop, obj_mop, db_auth, user_mop);
+      error = au_revoke (obj_type, grantee_mop, obj_mop, db_auth, user_mop);
       if (error != NO_ERROR)
 	{
 	  goto release;
