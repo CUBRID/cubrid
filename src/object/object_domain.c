@@ -8859,9 +8859,16 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_time (target, hour, minute, second);
 	  break;
 	case DB_TYPE_INTEGER:
-	  v_time = db_get_int (src) % SECONDS_IN_A_DAY;
-	  db_time_decode (&v_time, &hour, &minute, &second);
-	  db_make_time (target, hour, minute, second);
+          if (db_get_int(src) < 0)
+            {
+              status = DOMAIN_NEGATIVE_VALUE;
+            }
+          else
+            {
+	      v_time = db_get_int (src) % SECONDS_IN_A_DAY;
+	      db_time_decode (&v_time, &hour, &minute, &second);
+	      db_make_time (target, hour, minute, second);
+            }
 	  break;
 	case DB_TYPE_BIGINT:
 	  v_time = db_get_bigint (src) % SECONDS_IN_A_DAY;
@@ -11784,6 +11791,11 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const i
 
     case DOMAIN_OVERFLOW:
       error = ER_IT_DATA_OVERFLOW;
+      er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+      break;
+
+    case DOMAIN_NEGATIVE_VALUE:
+      error = ER_TP_CANT_COERCE_NEGATIVE_VALUE;
       er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
       break;
 

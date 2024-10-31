@@ -1740,8 +1740,9 @@
 #define ER_SP_COMPILE_ERROR                         -1360
 
 #define ER_QPROC_RESULT_CACHE_INVALID		    -1361
+#define ER_TP_CANT_COERCE_NEGATIVE_VALUE            -1362
 
-#define ER_LAST_ERROR                               -1362
+#define ER_LAST_ERROR                               -1363
 
 /*
  * CAUTION!
