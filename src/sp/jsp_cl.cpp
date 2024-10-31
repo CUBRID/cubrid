@@ -1040,7 +1040,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   downcase_owner_name[0] = '\0';
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
-  MOP sp_mop = NULL, new_owner = NULL, owner = NULL;
+  MOP sp_mop = NULL, new_owner = NULL, owner = NULL, save_user = NULL;
   DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val;
 
   assert (statement != NULL);
@@ -1106,11 +1106,18 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       goto error;
     }
 
-  err = au_object_revoke_all_privileges (NULL, NULL, sp_mop, owner);
-  if (err != NO_ERROR)
+  save_user = Au_user;
+  if (AU_SET_USER (owner) == NO_ERROR)
     {
-      goto error;
+      err = au_object_revoke_all_privileges (NULL, NULL, sp_mop, owner);
+      if (err != NO_ERROR)
+	{
+	  AU_SET_USER (save_user);
+	  goto error;
+	}
     }
+
+  AU_SET_USER (save_user);
 
   /* existence of new owner */
   if (sp_owner != NULL)
