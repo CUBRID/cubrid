@@ -409,8 +409,6 @@ static void mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_
 static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by,
 					 PT_NODE * subquery, PT_NODE * class_);
 
-static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * old_attrs);
-
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
  *  returns: boolean
@@ -2497,7 +2495,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
   PT_NODE *tmp_result, *result, *arg1, *arg2, *statement_next;
   PT_NODE *class_spec, *statement_spec = NULL;
   PT_NODE *derived_table, *derived_spec, *derived_class;
-  PT_NODE *attributes;
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec;
   PUSHABLE_TYPE is_mergeable;
@@ -2629,28 +2626,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  if (derived_table == NULL)
 	    {			/* error */
 	      goto exit_on_error;
-	    }
-
-	  if (pt_has_analytic (parser, derived_table))
-	    {
-	      attributes = mq_fetch_attributes (parser, class_);
-	      if (attributes == NULL)
-		{
-		  goto exit_on_error;
-		}
-
-	      /* exclude the first oid attr */
-	      if (attributes->type_enum == PT_TYPE_OBJECT)
-		{
-		  attributes = attributes->next;	/* skip oid attr */
-		}
-
-	      derived_table->info.query.q.select.list =
-		mq_update_analytic_sort_spec_expr (parser, class_spec, attributes);
-	      if (derived_table->info.query.q.select.list == NULL)
-		{		/* error */
-		  goto exit_on_error;
-		}
 	    }
 
 	  if (PT_IS_QUERY (derived_table))
@@ -13942,92 +13917,4 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
 	  dest_query->info.delete_.using_index = parser_append_node (ui, dest_query->info.delete_.using_index);
 	}
     }
-}
-
-/*
- * mq_update_analytic_sort_spec_expr() - update PT_VALUE located within the OVER clause of the analytic function.
- *   return:
- *   parser(in):
- *   spec(in): 
- *   class_(in):
- * 
- * NOTE: After calling mq_rewrite_vclass_spec_as_derived(), the order of nodes in the select list may change.
- * When analytic functions are included, query results can vary based on the order of nodes in the select list.
- * Therefore, it is necessary to update the sort_spec expression of the analytic functions.
- */
-static PT_NODE *
-mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * old_attrs)
-{
-  PT_NODE *partition_by, *order_by;
-  PT_NODE *col, *link, *order_list, *order, *value;
-  PT_NODE *derived_table, *new_attrs;
-
-  derived_table = spec->info.spec.derived_table;
-  new_attrs = spec->info.spec.as_attr_list;
-
-  for (col = derived_table->info.query.q.select.list; col; col = col->next)
-    {
-      if (PT_IS_ANALYTIC_NODE (col))
-	{
-	  partition_by = col->info.function.analytic.partition_by;
-	  order_by = col->info.function.analytic.order_by;
-
-	  /* link partition and order lists together */
-	  for (link = partition_by; link && link->next; link = link->next)
-	    {
-	      ;			/* move link to the last node of partition_by list */
-	    }
-	  if (link)
-	    {
-	      order_list = partition_by;
-	      link->next = order_by;
-	    }
-	  else
-	    {
-	      order_list = order_by;
-	    }
-
-	  for (order = order_list; order; order = order->next)
-	    {
-	      PT_NODE *old_attr, *new_attr;
-	      int index;
-
-	      if (!PT_IS_VALUE_NODE (order->info.sort_spec.expr))
-		{
-		  continue;
-		}
-
-	      value = order->info.sort_spec.expr;
-	      /* retrieve the order-th node from the old_attrs */
-	      old_attr = pt_resolve_sort_spec_expr (parser, order, old_attrs);
-	      if (old_attr == NULL)
-		{
-		  assert (false);
-		  return NULL;
-		}
-
-	      /* find the position of sort_spec expr in the new_attrs and update it with that position number */
-	      for (new_attr = new_attrs, index = 1; new_attr; new_attr = new_attr->next, index++)
-		{
-		  if (pt_str_compare (old_attr->info.name.original, new_attr->info.name.original, CASE_INSENSITIVE) ==
-		      0)
-		    {
-		      value->info.value.data_value.i = index;
-		      order->info.sort_spec.pos_descr.pos_no = index;
-
-		      break;
-		    }
-		}
-	      assert (new_attr != NULL);
-	    }
-
-	  /* un-link */
-	  if (link)
-	    {
-	      link->next = NULL;
-	    }
-	}
-    }
-
-  return derived_table->info.query.q.select.list;
 }

@@ -247,6 +247,7 @@ static PT_NODE *pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * q
 static int pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
 static bool pt_has_parameters (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static PT_NODE *pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list);
 static bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
 static PT_NODE *pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_list,
 					    PT_NODE * select_list);
@@ -15604,7 +15605,7 @@ pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
  *  sort_spec(in): PT_SORT_SPEC node whose expression must be resolved
  *  select_list(in): statement's select list for PT_VALUE lookup
  */
-PT_NODE *
+static PT_NODE *
 pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list)
 {
   PT_NODE *expr, *resolved;
