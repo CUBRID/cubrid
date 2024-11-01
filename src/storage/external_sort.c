@@ -1570,9 +1570,12 @@ static void
 sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
 {
   QFILE_LIST_SCAN_ID t_scan_id;
+  THREAD_ENTRY * thread_p = &thread_ref;
 
   thread_ref.tran_index = sort_param->px_tran_index;
   pthread_mutex_unlock (&thread_ref.tran_index_lock);
+
+  thread_p->push_resource_tracks ();
 
   if (sort_param->px_type == SORT_ORDER_BY)
     {
@@ -1611,6 +1614,8 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
 
   /* TO_DO : status enum */
   sort_param->px_status = 1;
+
+  thread_p->pop_resource_tracks ();
 }
 // *INDENT-ON*
 #endif
