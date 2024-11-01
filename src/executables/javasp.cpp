@@ -261,7 +261,7 @@ main (int argc, char *argv[])
 	    pl_read_info (db_name.c_str(), running_info);
 	    do
 	      {
-		SLEEP_MILISEC (0, 100);
+		sleep (1);
 	      }
 	    while (true);
 	  }
