@@ -255,8 +255,10 @@ static int sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * des
 static int sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
 					int parallel_num);
 static int sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
-static int sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param, int parallel_num);
-static int sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param, int parallel_num);
+static int sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
+				   int parallel_num);
+static int sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
+				 int parallel_num);
 #endif
 /* end parallel sort */
 
@@ -4523,8 +4525,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
  *   sort_parallel_type(in):
  */
 static int
-sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
-			int parallel_num)
+sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param, int parallel_num)
 {
   int error = NO_ERROR;
 
@@ -4574,8 +4575,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
  *   sort_parallel_type(in):
  */
 static int
-sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
-			    int parallel_num)
+sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param, int parallel_num)
 {
   int error = NO_ERROR;
   SORT_INFO *sort_info_p;

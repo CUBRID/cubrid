@@ -153,6 +153,7 @@ struct SORT_INFO
 
 extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn,
 			  void *get_arg, SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg,
-			  SORT_DUP_OPTION option, int limit, bool includes_tde_class, SORT_PARALLEL_TYPE sort_parallel_type);
+			  SORT_DUP_OPTION option, int limit, bool includes_tde_class,
+			  SORT_PARALLEL_TYPE sort_parallel_type);
 
 #endif /* _EXTERNAL_SORT_H_ */
