@@ -24,9 +24,7 @@
 #include "boot_sr.h"
 #endif
 
-#if defined(WINDOWS)
-#include <Windows.h>
-#else
+#if !defined(WINDOWS)
 #include <sys/types.h>
 #include <sys/wait.h>
 #endif
@@ -148,7 +146,12 @@ pl_monitor (cubthread::entry &thread_ref)
     {
       int status;
 #if defined (WINDOWS)
-      if (WaitForSingleObject (pl_entry->pid, 0) != WAIT_OBJECT_0)
+      HANDLE hProcess = OpenProcess (SYNCHRONIZE, FALSE, pid);
+      if (hProcess != NULL)
+	{
+	  CloseHandle (hProcess);
+	}
+      else
 #else
       if (waitpid (pl_entry->pid, &status, WNOHANG) == -1)
 #endif
