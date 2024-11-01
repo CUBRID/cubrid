@@ -4082,13 +4082,13 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
 	      if (sort_info_p->s_id != NULL)
 		{
-		  free_and_init (sort_info_p->s_id);
+		  db_private_free_and_init (thread_p, sort_info_p->s_id);
 		}
 	      if (sort_info_p->input_file != NULL)
 		{
-		  free_and_init (sort_info_p->input_file);
+		  db_private_free_and_init (thread_p, sort_info_p->input_file);
 		}
-	      free_and_init (sort_param->get_arg);
+	      db_private_free_and_init (thread_p, sort_param->get_arg);
 	    }
 	}
     }
@@ -4336,7 +4336,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
   /* add splitted file info */
   for (i = 0; i < parallel_num; i++)
     {
-      px_sort_param[i].get_arg = (void *) malloc (sizeof (SORT_INFO));
+      px_sort_param[i].get_arg = (void *) db_private_alloc (thread_p, sizeof (SORT_INFO));
       if (px_sort_param[i].get_arg == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -4349,7 +4349,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       sort_info_p->input_file = NULL;
       sort_info_p->s_id = NULL;
 
-      sort_info_p->s_id = (QFILE_SORT_SCAN_ID *) malloc (sizeof (QFILE_SORT_SCAN_ID));
+      sort_info_p->s_id = (QFILE_SORT_SCAN_ID *) db_private_alloc (thread_p, sizeof (QFILE_SORT_SCAN_ID));
       if (sort_info_p->s_id == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -4357,7 +4357,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 	}
       memcpy (sort_info_p->s_id, org_sort_info_p->s_id, sizeof (QFILE_SORT_SCAN_ID));
 
-      sort_info_p->input_file = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
+      sort_info_p->input_file = (QFILE_LIST_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID));
       if (sort_info_p->input_file == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -4384,13 +4384,13 @@ cleanup:
 	      sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
 	      if (sort_info_p->s_id != NULL)
 		{
-		  free_and_init (sort_info_p->s_id);
+		  db_private_free_and_init (thread_p, sort_info_p->s_id);
 		}
 	      if (sort_info_p->input_file != NULL)
 		{
-		  free_and_init (sort_info_p->input_file);
+		  db_private_free_and_init (thread_p, sort_info_p->input_file);
 		}
-	      free_and_init (px_sort_param[i].get_arg);
+	      db_private_free_and_init (thread_p, px_sort_param[i].get_arg);
 	    }
 	}
     }
