@@ -6673,7 +6673,6 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
       if (result_type == DB_TYPE_RESULTSET)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
-	  PT_ERRORc (parser, node, er_msg ());
 	  return NULL;
 	}
 
@@ -7583,6 +7582,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      else
 		{
 		  regu = pt_stored_procedure_to_regu (parser, node);
+		  if (regu == NULL)
+		    {
+		      PT_ERRORc (parser, node, er_msg ());
+		    }
+		  return regu;
 		}
 	      break;
 
