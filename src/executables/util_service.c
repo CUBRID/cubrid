@@ -274,7 +274,6 @@ static int process_gateway (int command_type, int argc, const char **argv, bool 
 static int process_manager (int command_type, bool process_window_service);
 static int process_pl (int command_type, int argc, const char **argv, bool show_usage, bool suppress_message,
 		       bool process_window_service, bool ha_mode);
-static int process_pl_start (const char *db_name, bool suppress_message, bool process_window_service);
 static int process_pl_stop (const char *db_name, bool suppress_message, bool process_window_service);
 static int process_pl_status (const char *db_name, bool suppress_message);
 static int process_heartbeat (int command_type, int argc, const char **argv);
@@ -1361,6 +1360,8 @@ process_service (int command_type, bool process_window_service)
 	{
 	  if (!are_all_services_stopped (0, process_window_service))
 	    {
+	      (void) process_pl (command_type, 0, NULL, false, false, process_window_service, false);
+
 	      if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0
 		  && us_Property_map[SERVER_START_LIST].property_value != NULL
 		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
@@ -1783,10 +1784,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	      break;
 	    }
 
-	  if (is_pl_running (token) == PL_SERVER_RUNNING)
-	    {
-	      (void) process_pl (command_type, 1, (const char **) &token, false, true, process_window_service, false);
-	    }
+	  (void) process_pl (command_type, 1, (const char **) &token, false, true, process_window_service, false);
 
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_STOP, token);
 
@@ -2819,91 +2817,6 @@ is_pl_running (const char *server_name)
 }
 
 static int
-process_pl_start (const char *db_name, bool suppress_message, bool process_window_service)
-{
-  static const int wait_timeout = 30;
-  int waited_secs = 0;
-  int pid = 0;
-  int status = ER_GENERIC_ERROR;
-
-  if (!suppress_message)
-    {
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_PL_NAME, PRINT_CMD_START, db_name);
-    }
-
-  UTIL_PL_SERVER_STATUS_E pl_status = is_pl_running (db_name);
-  if (pl_status == PL_SERVER_RUNNING)
-    {
-      if (!suppress_message)
-	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_PL_NAME, db_name);
-	}
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_PL_NAME, db_name);
-    }
-  else
-    {
-      if (process_window_service)
-	{
-#if defined(WINDOWS)
-	  const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_JAVASP,
-	    COMMAND_TYPE_START, db_name, NULL
-	  };
-	  status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
-#endif
-	}
-      else
-	{
-	  const char *args[] = { UTIL_PL_NAME, db_name, NULL };
-	  status = proc_execute (UTIL_PL_NAME, args, false, false, false, &pid);
-	}
-
-      status = ER_GENERIC_ERROR;
-      while (status != NO_ERROR && waited_secs < wait_timeout)
-	{
-	  if (pid != 0 && is_terminated_process (pid))
-	    {
-	      break;
-	    }
-
-	  pl_status = is_pl_running (db_name);
-	  if (pl_status == PL_SERVER_RUNNING)
-	    {
-	      status = NO_ERROR;
-	      break;
-	    }
-	  else
-	    {
-	      sleep (1);	/* wait to start */
-	      waited_secs++;
-
-	      if (pl_status == PL_SERVER_STOPPED)
-		{
-		  util_log_write_errstr ("Waiting for javasp server to start... (%d / %d)\n", waited_secs,
-					 wait_timeout);
-		}
-	      else
-		{
-		  if (waited_secs > 3)
-		    {
-		      /* invalid database name or failed to open info file, wait upto 3 seconds */
-		      break;
-		    }
-		}
-	    }
-	}
-      if (!suppress_message)
-	{
-	  print_result (PRINT_PL_NAME, status, START);
-	}
-      else
-	{
-	  fprintf (stdout, "Calling java stored procedure %s allowed\n", (status == NO_ERROR) ? "is" : "is not");
-	}
-    }
-  return status;
-}
-
-static int
 process_pl_stop (const char *db_name, bool suppress_message, bool process_window_service)
 {
   int status = NO_ERROR;
@@ -3032,17 +2945,10 @@ process_pl (int command_type, int argc, const char **argv, bool show_usage, bool
       switch (command_type)
 	{
 	case START:
-	  status = process_pl_start (db_name, suppress_message, process_window_service);
 	  break;
 	case STOP:
-	  status = process_pl_stop (db_name, suppress_message, process_window_service);
-	  break;
 	case RESTART:
 	  status = process_pl_stop (db_name, suppress_message, process_window_service);
-#if defined (WINDOWS)
-	  Sleep (500);
-#endif
-	  status = process_pl_start (db_name, suppress_message, process_window_service);
 	  break;
 	case STATUS:
 	  status = process_pl_status (db_name);
@@ -3976,7 +3882,7 @@ us_hb_deactivate (const char *hostname, bool immediate_stop)
       args[opt_idx++] = COMMDB_HB_DEACT_IMMEDIATELY;
     }
 
-  /* stop javasp server */
+  /* stop pl server */
   (void) process_pl (STOP, 0, NULL, false, true, false, true);
 
   /* stop all HA processes including cub_server */
@@ -4027,7 +3933,7 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_STOP);
 
-  /* stop javasp server */
+  /* stop pl server */
   (void) process_pl (STOP, 1, (const char **) &db_name, false, true, false, true);
 
   status = us_hb_copylogdb_stop (ha_conf, db_name, NULL, NULL);
