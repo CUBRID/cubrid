@@ -998,8 +998,6 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       code_info.otype = compile_response.compiled_type;
       code_info.ocode = compile_response.compiled_code;
       code_info.owner = sp_info.owner;
-      code_info.itype = 0; // dummy;
-      code_info.icode = compile_response.translated_code;
 
       err = sp_add_stored_procedure_code (code_info);
       if (err != NO_ERROR)
