@@ -4302,6 +4302,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       QFILE_GET_NEXT_VPID (&next_vpid, page_p);
       if (VPID_ISNULL (&next_vpid))
 	{
+	  qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
 	  break;
 	}
       else if (++j >= splitted_num_page)
