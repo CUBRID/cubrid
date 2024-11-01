@@ -26,22 +26,14 @@
 #ifndef _PL_SR_H_
 #define _PL_SR_H_
 
-#ident "$Id$"
-
 #include "porting.h"
 
-#if defined(__cplusplus)
-extern "C"
-{
-#endif
+extern EXPORT_IMPORT void pl_monitor_init (const char *name);
+extern EXPORT_IMPORT void pl_monitor_destroy ();
 
-  extern EXPORT_IMPORT int pl_start_server (const char *server_name, const char *path, int port_number);
-  extern EXPORT_IMPORT int pl_server_port (void);
-  extern EXPORT_IMPORT int pl_server_port_from_info (void);
-  extern EXPORT_IMPORT int pl_jvm_is_loaded (void);
+extern EXPORT_IMPORT int pl_start_server (const char *server_name, const char *path, int port_number);
+extern EXPORT_IMPORT int pl_server_port (void);
+extern EXPORT_IMPORT int pl_server_port_from_info (void);
+extern EXPORT_IMPORT int pl_jvm_is_loaded (void);
 
-#if defined(__cplusplus)
-}
-#endif
-
-#endif				/* _JSP_SR_H_ */
+#endif /* _PL_SR_H_ */

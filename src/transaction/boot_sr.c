@@ -87,6 +87,7 @@
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #include "server_support.h"
+#include "pl_sr.h"
 #endif /* SERVER_MODE */
 
 #if defined(WINDOWS)
@@ -2509,6 +2510,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   BO_ENABLE_FLUSH_DAEMONS ();
 
   cdc_daemons_init ();
+  pl_monitor_init (db_name);
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
@@ -2816,10 +2818,13 @@ error:
   session_states_finalize (thread_p);
   logtb_finalize_global_unique_stats_table (thread_p);
 
+
   vacuum_stop_workers (thread_p);
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+  pl_monitor_destroy ();
+
   cdc_daemons_destroy ();
 
   BO_DISABLE_FLUSH_DAEMONS ();
@@ -3138,6 +3143,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
+  pl_monitor_destroy ();
 #endif
 
 #if defined (SA_MODE)
