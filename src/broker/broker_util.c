@@ -181,7 +181,7 @@ ut_kill_process (int pid)
       return 0;
     }
 
-  phandle = OpenProcess (SYNCHRONIZE, FALSE, pid);
+  phandle = OpenProcess (PROCESS_TERMINATE, FALSE, pid);
   if (phandle)
     {
       TerminateProcess (phandle, 0);
