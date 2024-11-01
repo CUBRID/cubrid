@@ -62,15 +62,11 @@ seq_of_declare_specs
 
 declare_spec
     : pragma_declaration
-    | item_declaration
-    | cursor_definition
-    | routine_definition
-    ;
-
-item_declaration
-    : constant_declaration
+    | constant_declaration
     | exception_declaration
     | variable_declaration
+    | cursor_definition
+    | routine_definition
     ;
 
 variable_declaration
