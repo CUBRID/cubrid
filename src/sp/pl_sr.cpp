@@ -46,6 +46,7 @@
 #include "release_string.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -93,13 +94,23 @@ pl_check_status (pl_monitor_entrty *entry)
   int status;
   if (entry->pid > 0)
     {
+#if defined (WINDOWS)
+      HANDLE h_process;
+
+      h_process = OpenProcess (PROCESS_QUERY_INFORMATION, FALSE, entry->pid);
+      if (h_process == NULL)
+#else
       if (kill (entry->pid, 0) && errno == ESRCH) // check if the process is teminated
+#endif
 	{
 	  // process was terminated
 	  status = 1;
 	}
       else
 	{
+#if defined (WINDOWS)
+	  CloseHandle (h_process);
+#endif
 	  // TODO [PL/CSQL]: hang check
 	  // If process is running but ping command through UDS (TCP) does not respond, then it is considered as hang
 	  /*
@@ -141,9 +152,9 @@ pl_monitor (cubthread::entry &thread_ref)
 #else
       if (waitpid (pl_entry->pid, &status, WNOHANG) == -1)
 #endif
-        {
-          pl_entry->pid = -1;
-        }
+	{
+	  pl_entry->pid = -1;
+	}
     }
   else
     {
