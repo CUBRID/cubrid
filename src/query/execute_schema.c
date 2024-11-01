@@ -10220,7 +10220,7 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
   save_user = Au_user;
   if (AU_SET_USER (owner) == NO_ERROR)
     {
-      error = au_object_revoke_all_privileges (class_mop, owner, NULL, NULL);
+      error = au_object_revoke_all_privileges (class_mop, owner);
       if (error != NO_ERROR)
 	{
 	  AU_SET_USER (save_user);

@@ -610,13 +610,11 @@ exit:
 /*
  * au_object_revoke_all_privileges - drop a class, virtual class and procedure, or when changing the owner, all privileges are revoked.
  *   return: error code
- *   class_mop(in): a class object
- *   class_owner(in): a class owner
- *   sp_mop(in): a stored procedure object
- *   sp_owner(in): a stored procedure owner
+ *   obj_mop(in): a class/stored procedure object
+ *   grantor_mop(in): a class/stored procedure owner
  */
 int
-au_object_revoke_all_privileges (MOP class_mop, MOP class_owner, MOP sp_mop, MOP sp_owner)
+au_object_revoke_all_privileges (MOP obj_mop, MOP grantor_mop)
 {
   int error = NO_ERROR, save, len, i = 0;
   int object_type;
@@ -626,7 +624,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP class_owner, MOP sp_mop, MOP
   char sp_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   sp_name[0] = '\0';
   DB_AUTH db_auth;
-  MOP grantee_mop, obj_mop, grantor_mop;
+  MOP grantee_mop;
   DB_VALUE val[2];
   DB_VALUE grantee_value, object_type_value, auth_type_value;
   DB_QUERY_RESULT *result = NULL;
@@ -639,7 +637,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP class_owner, MOP sp_mop, MOP
 	  "SELECT [au].grantee, [au].object_type, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = ?";
 
-  assert ((class_mop != NULL && class_owner != NULL) || (sp_mop != NULL && sp_owner != NULL));
+  assert (obj_mop != NULL || grantor_mop != NULL);
 
   for (i = 0; i < 2; i++)
     {
@@ -652,18 +650,6 @@ au_object_revoke_all_privileges (MOP class_mop, MOP class_owner, MOP sp_mop, MOP
 
   /* Disable the checking for internal authorization object access */
   AU_DISABLE (save);
-
-  if (class_mop != NULL && class_owner != NULL)
-    {
-      obj_mop = class_mop;
-      grantor_mop = class_owner;
-    }
-
-  if (sp_mop != NULL && sp_owner != NULL)
-    {
-      obj_mop = sp_mop;
-      grantor_mop = sp_owner;
-    }
 
   /* Prepare DB_VALUEs for host variables */
   error = obj_get (grantor_mop, "name", &val[0]);

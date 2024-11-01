@@ -13839,7 +13839,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   save_user = Au_user;
   if (AU_SET_USER (owner) == NO_ERROR)
     {
-      error = au_object_revoke_all_privileges (op, owner, NULL, NULL);
+      error = au_object_revoke_all_privileges (op, owner);
       if (error != NO_ERROR)
 	{
 	  AU_SET_USER (save_user);

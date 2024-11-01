@@ -1109,7 +1109,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   save_user = Au_user;
   if (AU_SET_USER (owner) == NO_ERROR)
     {
-      err = au_object_revoke_all_privileges (NULL, NULL, sp_mop, owner);
+      err = au_object_revoke_all_privileges (sp_mop, owner);
       if (err != NO_ERROR)
 	{
 	  AU_SET_USER (save_user);
@@ -1451,7 +1451,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   save_user = Au_user;
   if (AU_SET_USER (owner) == NO_ERROR)
     {
-      err = au_object_revoke_all_privileges (NULL, NULL, sp_mop, owner);
+      err = au_object_revoke_all_privileges (sp_mop, owner);
       if (err != NO_ERROR)
 	{
 	  AU_SET_USER (save_user);
