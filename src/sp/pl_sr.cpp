@@ -24,8 +24,12 @@
 #include "boot_sr.h"
 #endif
 
+#if defined(WINDOWS)
+#include <Windows.h>
+#else
 #include <sys/types.h>
 #include <sys/wait.h>
+#endif
 
 #include <mutex>
 
@@ -132,23 +136,27 @@ pl_monitor (cubthread::entry &thread_ref)
   if (pl_check_status (pl_entry) == 0)
     {
       int status;
+#if defined (WINDOWS)
+      if (WaitForSingleObject (pl_entry->pid, 0) != WAIT_OBJECT_0)
+#else
       if (waitpid (pl_entry->pid, &status, WNOHANG) == -1)
-	{
-	  pl_entry->pid = -1;
-	}
+#endif
+        {
+          pl_entry->pid = -1;
+        }
     }
   else
     {
-      pid = fork ();
+      int status;
+      const char *argv[] = {pl_entry->executable_path, pl_entry->binary_name, pl_entry->db_name, 0};
+      pid = create_child_process (argv, 0 /* do not wait */, NULL, NULL, NULL, &status);
       if (pid < 0)
 	{
 	  // error handling
 	}
       else if (pid == 0) // child
 	{
-	  const char *command = "start";
-	  const char *argv[] = {pl_entry->binary_name, pl_entry->db_name, 0};
-	  execv (pl_entry->executable_path, (char **) argv);
+	  // do nothing
 	}
       else // parent
 	{

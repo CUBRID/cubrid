@@ -259,11 +259,27 @@ main (int argc, char *argv[])
 	  {
 	    command = "running";
 	    pl_read_info (db_name.c_str(), running_info);
+#if defined (WINDOWS)
+	    DWORD parent_ppid = GetCurrentProcessId();
+	    HANDLE hParent = OpenProcess (SYNCHRONIZE, FALSE, parent_ppid);
+	    DWORD result = WaitForSingleObject (hParent, INFINITE);
+	    CloseHandle (hParent);
+	    if (result == WAIT_OBJECT_0)
+	      {
+		ExitProcess (0);
+	      }
+#else
 	    do
 	      {
+		if (getppid () == 1)
+		  {
+		    // parent process is terminated
+		    break;
+		  }
 		sleep (1);
 	      }
 	    while (true);
+#endif
 	  }
       }
     else if (command.compare ("stop") == 0)
@@ -421,7 +437,6 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 #endif
       er_clear (); // clear error before string JVM
       status = pl_start_server (db_name.c_str (), path.c_str (), pl_get_port_param ());
-
       if (status == NO_ERROR)
 	{
 	  PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };

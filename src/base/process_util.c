@@ -329,7 +329,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 	    }
 	}
 
-      rc = execv ((const char *) argv[0], (char *const *) argv);
+      rc = execv ((const char *) argv[0], (char *const *) &argv[1]);
       assert (false);
       return rc;
     }
