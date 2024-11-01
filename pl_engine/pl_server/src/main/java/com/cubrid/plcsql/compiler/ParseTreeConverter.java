@@ -1101,11 +1101,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         Map<String, UseAndDeclLevel> saved = idUsedInCurrentDeclPart;
-        idUsedInCurrentDeclPart = new HashMap<>();
 
         // previsit declarations to support recursive or mutually recursive calls of local
         // procedures/functions
+        idUsedInCurrentDeclPart = null; // We must not count the used id during the previsit
         Map<String, DeclRoutine> store = previsitDeclarations(ctx.declare_spec());
+        idUsedInCurrentDeclPart = new HashMap<>();
         // put the declarations of the routines in the current symbol table
         for (String routineName : store.keySet()) {
             symbolStack.putDecl(routineName, store.get(routineName));
