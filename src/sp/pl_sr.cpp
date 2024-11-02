@@ -36,9 +36,9 @@
 #include "thread_manager.hpp"
 #include "thread_looper.hpp"
 #include "thread_daemon.hpp"
-#include "process_util.h"
 #endif
 
+#include "process_util.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "release_string.h"
@@ -47,6 +47,12 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+// forward declaration
+struct pl_monitor_entrty;
+
+static void pl_entry_init (const char *name);
+static int pl_check_status (pl_monitor_entrty *entry);
 
 struct pl_monitor_entrty
 {
@@ -83,32 +89,19 @@ pl_entry_init (const char *name)
     }
 }
 
-// running : 0
-// stopped : 1
-// hang : 2
+/*
+ * pl_check_status() - test if the status of pl server
+ *   return: 0 if the pl server is running, otherwise 1
+ *   pid(in): process id
+ */
 static int
 pl_check_status (pl_monitor_entrty *entry)
 {
-  int status;
+  int status = 1; // stopped
   if (entry->pid > 0)
     {
-#if defined (WINDOWS)
-      HANDLE h_process;
-
-      h_process = OpenProcess (PROCESS_QUERY_INFORMATION, FALSE, entry->pid);
-      if (h_process == NULL)
-#else
-      if (kill (entry->pid, 0) && errno == ESRCH) // check if the process is teminated
-#endif
+      if (!is_terminated_process (entry->pid))
 	{
-	  // process was terminated
-	  status = 1;
-	}
-      else
-	{
-#if defined (WINDOWS)
-	  CloseHandle (h_process);
-#endif
 	  // TODO [PL/CSQL]: hang check
 	  // If process is running but ping command through UDS (TCP) does not respond, then it is considered as hang
 	  /*
@@ -116,17 +109,9 @@ pl_check_status (pl_monitor_entrty *entry)
 	  {
 	    status = 2;
 	  }
-	  else
-	  {
 	  */
-
-	  // running
 	  status = 0;
 	}
-    }
-  else
-    {
-      status = 1;
     }
   return status;
 }
@@ -142,33 +127,12 @@ pl_monitor (cubthread::entry &thread_ref)
       return;
     }
 
-  if (pl_check_status (pl_entry) == 0)
-    {
-      int status;
-#if defined (WINDOWS)
-      HANDLE hProcess = OpenProcess (SYNCHRONIZE, FALSE, pid);
-      if (hProcess != NULL)
-	{
-	  CloseHandle (hProcess);
-	}
-      else
-#else
-      if (waitpid (pl_entry->pid, &status, WNOHANG) == -1)
-#endif
-	{
-	  pl_entry->pid = -1;
-	}
-    }
-  else
+  if (pl_check_status (pl_entry) != 0)
     {
       int status;
       const char *argv[] = {pl_entry->executable_path, pl_entry->binary_name, pl_entry->db_name, 0};
       pid = create_child_process (argv, 0 /* do not wait */, NULL, NULL, NULL, &status);
-      if (pid < 0)
-	{
-	  // error handling
-	}
-      else if (pid == 0) // child
+      if (pid <= 0)
 	{
 	  // do nothing
 	}

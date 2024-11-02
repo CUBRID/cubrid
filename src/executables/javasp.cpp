@@ -54,6 +54,7 @@
 #include <io.h>
 #endif /* not WINDOWS */
 
+#include "process_util.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "error_code.h"
@@ -95,9 +96,6 @@ static int pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db
 static void pl_dump_status (FILE *fp, PL_STATUS_INFO status_info);
 static int pl_ping_server (const int server_port, const char *db_name, char *buf);
 static bool pl_is_running (const int server_port, const std::string &db_name);
-
-static bool pl_is_terminated_process (int pid);
-static void pl_terminate_process (int pid);
 
 static int pl_get_server_info (const std::string &db_name, PL_SERVER_INFO &info);
 static int pl_check_argument (int argc, char *argv[], std::string &command, std::string &db_name);
@@ -207,7 +205,7 @@ main (int argc, char *argv[])
 	  }
 
 	// check process is running
-	if (pl_info.pid == PL_PID_DISABLED || pl_is_terminated_process (pl_info.pid) == true)
+	if (pl_info.pid == PL_PID_DISABLED || is_terminated_process (pl_info.pid) == true)
 	  {
 	    // NO_CONNECTION
 	    pl_reset_info (db_name.c_str ());
@@ -476,9 +474,9 @@ pl_stop_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
       pl_reset_info (db_name.c_str ());
       pl_disconnect_server (socket);
 
-      if (pl_info.pid != -1 && !pl_is_terminated_process (pl_info.pid))
+      if (pl_info.pid != -1 && !is_terminated_process (pl_info.pid))
 	{
-	  pl_terminate_process (pl_info.pid);
+	  terminate_process (pl_info.pid);
 	}
 
       pl_reset_info (db_name.c_str ());
@@ -615,57 +613,6 @@ pl_is_running (const int server_port, const std::string &db_name)
 	}
     }
   return result;
-}
-
-/*
- * pl_is_terminated_process () -
- *   return:
- *   pid(in):
- *   TODO there exists same function in file_io.c and util_service.c
- */
-static bool
-pl_is_terminated_process (int pid)
-{
-#if defined(WINDOWS)
-  HANDLE h_process;
-
-  h_process = OpenProcess (PROCESS_QUERY_INFORMATION, FALSE, pid);
-  if (h_process == NULL)
-    {
-      return true;
-    }
-  else
-    {
-      CloseHandle (h_process);
-      return false;
-    }
-#else /* WINDOWS */
-  if (kill (pid, 0) == -1)
-    {
-      return true;
-    }
-  else
-    {
-      return false;
-    }
-#endif /* WINDOWS */
-}
-
-static void
-pl_terminate_process (int pid)
-{
-#if defined(WINDOWS)
-  HANDLE phandle;
-
-  phandle = OpenProcess (PROCESS_TERMINATE, FALSE, pid);
-  if (phandle)
-    {
-      TerminateProcess (phandle, 0);
-      CloseHandle (phandle);
-    }
-#else /* ! WINDOWS */
-  kill (pid, SIGTERM);
-#endif /* ! WINDOWS */
 }
 
 static int

@@ -52,6 +52,7 @@
 #include "release_string.h"
 #include "dynamic_array.h"
 #include "heartbeat.h"
+#include "process_util.h"
 
 #include <string>
 
@@ -295,7 +296,6 @@ static void hide_cmd_line_args (char **args);
 static int process_master (int command_type);
 static void print_message (FILE * output, int message_id, ...);
 static void print_result (const char *util_name, int status, int command_type);
-static bool is_terminated_process (const int pid);
 static char *make_exec_abspath (char *buf, int buf_len, char *cmd);
 static const char *command_string (int command_type);
 static bool is_server_running (const char *type, const char *server_name, int pid);
@@ -691,7 +691,7 @@ main (int argc, char *argv[])
       status = process_heartbeat (command_type, argc - 3, (const char **) &argv[3]);
 #endif /* !WINDOWs */
       break;
-    case PL_UTIL:		// JAVASP_UTIL
+    case PL_UTIL:		// PL_UTIL, JAVASP_UTIL
       status =
 	process_pl (command_type, argc - 3, (const char **) &argv[3], true, false, process_window_service, false);
       break;
@@ -5207,37 +5207,4 @@ static const char *
 get_property (int property_type)
 {
   return us_Property_map[property_type].property_value;
-}
-
-/*
- * is_terminated_process() - test if the process is terminated
- *   return: true if the process is terminated, otherwise false
- *   pid(in): process id
- */
-static bool
-is_terminated_process (const int pid)
-{
-#if defined(WINDOWS)
-  HANDLE h_process;
-
-  h_process = OpenProcess (PROCESS_QUERY_INFORMATION, FALSE, pid);
-  if (h_process == NULL)
-    {
-      return true;
-    }
-  else
-    {
-      CloseHandle (h_process);
-      return false;
-    }
-#else /* WINDOWS */
-  if (kill (pid, 0) == -1)
-    {
-      return true;
-    }
-  else
-    {
-      return false;
-    }
-#endif /* WINDOWS */
 }

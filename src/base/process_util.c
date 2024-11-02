@@ -363,3 +363,58 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
     }
 }
 #endif
+
+/*
+ * is_terminated_process() - test if the process is terminated
+ *   return: true if the process is terminated, otherwise false
+ *   pid(in): process id
+ */
+bool
+is_terminated_process (const int pid)
+{
+#if defined(WINDOWS)
+  HANDLE h_process;
+
+  h_process = OpenProcess (PROCESS_QUERY_INFORMATION, FALSE, pid);
+  if (h_process == NULL)
+    {
+      return true;
+    }
+  else
+    {
+      CloseHandle (h_process);
+      return false;
+    }
+#else /* WINDOWS */
+  if (kill (pid, 0) == -1)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+#endif /* WINDOWS */
+}
+
+/*
+ * terminate_process() - terminate the process of given pid
+ *   return: void
+ *   pid(in): process id
+ */
+void
+terminate_process (int pid)
+{
+#if defined(WINDOWS)
+  HANDLE phandle;
+
+  phandle = OpenProcess (PROCESS_TERMINATE, FALSE, pid);
+  if (phandle)
+    {
+      TerminateProcess (phandle, 0);
+      CloseHandle (phandle);
+    }
+#else /* ! WINDOWS */
+  kill (pid, SIGTERM);
+#endif /* ! WINDOWS */
+}
