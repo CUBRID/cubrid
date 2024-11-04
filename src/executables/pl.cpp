@@ -18,7 +18,7 @@
 
 
 /*
- * javasp.cpp - utility java stored procedure server main routine
+ * pl.cpp - utility PL JVM server main routine
  *
  */
 
