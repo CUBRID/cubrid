@@ -2725,16 +2725,27 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   if (tfile_vfid_p == NULL)
     {
       tfile_vfid_p = qmgr_allocate_tempfile_with_buffer (num_buffer_pages);
+      if (tfile_vfid_p == NULL)
+	{
+	  return NULL;
+	}
+
       tfile_vfid_p->membuf_type = membuf_type;
     }
-
-  if (tfile_vfid_p == NULL)
+  else
     {
-      return NULL;
-    }
+      assert (tfile_vfid_p->next == NULL);
+      assert (tfile_vfid_p->prev == NULL);
 
-  /* initialize tfile_vfid */
-  VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
+      assert (tfile_vfid_p->temp_file_type == FILE_TEMP);
+      VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
+      tfile_vfid_p->membuf_last = -1;
+      assert (tfile_vfid_p->membuf_npages == num_buffer_pages);
+      assert (tfile_vfid_p->membuf_type == membuf_type);
+
+      tfile_vfid_p->preserved = false;
+      tfile_vfid_p->tde_encrypted = false;
+    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
