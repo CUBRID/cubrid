@@ -532,7 +532,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
       /* return type */
 
       sig.return_type.type = pt_arg_type::NORMAL;
@@ -541,7 +541,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
 
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
@@ -4987,17 +4987,14 @@ static bool
 pt_are_unmatchable_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
 {
   /* PT_TYPE_NONE does not match anything */
-  if (op_type == PT_TYPE_NONE && !(def_type.type == pt_arg_type::NORMAL && def_type.val.type == PT_TYPE_NONE))
+  if (def_type.type == pt_arg_type::NORMAL && def_type.val.type == PT_TYPE_NONE)
     {
-      return true;
+      return (op_type != PT_TYPE_NONE);
     }
-
-  if (op_type != PT_TYPE_NONE && def_type.type == pt_arg_type::NORMAL && def_type.val.type == PT_TYPE_NONE)
+  else
     {
-      return true;
+      return (op_type == PT_TYPE_NONE);
     }
-
-  return false;
 }
 
 static PT_NODE *
