@@ -136,7 +136,7 @@ EXPORTS
     pl_disconnect_server
     pl_writen
     pl_readn
-    pl_start_server
+    pl_start_jvm_server
     pl_server_port
     pl_get_info_file
     pl_get_error_file
