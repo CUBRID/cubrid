@@ -55,9 +55,6 @@
 #define SP_ATTR_OBJECT_TYPE             "otype"
 #define SP_ATTR_OBJECT_CODE             "ocode"
 
-#define SP_ATTR_INTERMEDIATE_TYPE       "itype"
-#define SP_ATTR_INTERMEDIATE_CODE       "icode"
-
 typedef enum
 {
   SP_TYPE_PROCEDURE = 1,
