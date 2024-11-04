@@ -637,7 +637,7 @@ au_object_revoke_all_privileges (MOP obj_mop, MOP grantor_mop)
 	  "SELECT [au].grantee, [au].object_type, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = ?";
 
-  assert (obj_mop != NULL || grantor_mop != NULL);
+  assert (obj_mop != NULL && grantor_mop != NULL);
 
   for (i = 0; i < 2; i++)
     {
