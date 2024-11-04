@@ -347,7 +347,6 @@ static void pl_signal_handler (int sig)
   int status = pl_get_server_info (db_name, pl_info); // if failed,
   if (status == NO_ERROR && pl_info.pid != PL_PID_DISABLED)
     {
-      (void) envvar_bindir_file (executable_path, PATH_MAX, UTIL_PL_NAME);
       if (command.compare ("running") != 0 || db_name.empty ())
 	{
 	  return;
@@ -362,39 +361,30 @@ static void pl_signal_handler (int sig)
 	  return;
 	}
 
-      int pid = fork ();
-      if (pid == 0) // child
+      // error handling in parent
+      std::string err_msg;
+
+      void *addresses[64];
+      int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
+      char **symbols = backtrace_symbols (addresses, nn_addresses);
+
+      err_msg += "pid (";
+      err_msg += std::to_string (getpid ());
+      err_msg += ")\n";
+
+      for (int i = 0; i < nn_addresses; i++)
 	{
-	  execl (executable_path, UTIL_PL_NAME, "start", db_name.c_str (), NULL);
-	  exit (0);
-	}
-      else
-	{
-	  // error handling in parent
-	  std::string err_msg;
-
-	  void *addresses[64];
-	  int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
-	  char **symbols = backtrace_symbols (addresses, nn_addresses);
-
-	  err_msg += "pid (";
-	  err_msg += std::to_string (pid);
-	  err_msg += ")\n";
-
-	  for (int i = 0; i < nn_addresses; i++)
+	  err_msg += symbols[i];
+	  if (i < nn_addresses - 1)
 	    {
-	      err_msg += symbols[i];
-	      if (i < nn_addresses - 1)
-		{
-		  err_msg += "\n";
-		}
+	      err_msg += "\n";
 	    }
-	  free (symbols);
-
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
-
-	  exit (1);
 	}
+      free (symbols);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
+
+      exit (1);
     }
   else
     {
@@ -434,7 +424,7 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
       setsid ();
 #endif
       er_clear (); // clear error before string JVM
-      status = pl_start_server (db_name.c_str (), path.c_str (), pl_get_port_param ());
+      status = pl_start_jvm_server (db_name.c_str (), path.c_str (), pl_get_port_param ());
       if (status == NO_ERROR)
 	{
 	  PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };

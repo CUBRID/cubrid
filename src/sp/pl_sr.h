@@ -28,10 +28,12 @@
 
 #include "porting.h"
 
+#include "thread_compat.hpp"
+
 extern EXPORT_IMPORT void pl_monitor_init (const char *name);
 extern EXPORT_IMPORT void pl_monitor_destroy ();
 
-extern EXPORT_IMPORT int pl_start_server (const char *server_name, const char *path, int port_number);
+extern EXPORT_IMPORT int pl_start_jvm_server (const char *server_name, const char *path, int port_number);
 extern EXPORT_IMPORT int pl_server_port (void);
 extern EXPORT_IMPORT int pl_server_port_from_info (void);
 extern EXPORT_IMPORT int pl_jvm_is_loaded (void);

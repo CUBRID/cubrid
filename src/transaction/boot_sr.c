@@ -2300,20 +2300,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tsc_init ();
 #endif /* !SERVER_MODE */
 
-
 #if defined (SA_MODE)
-  // Initialize java stored procedure server for standalone mode
-  pl = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
-  if (pl && !pl_jvm_is_loaded ())
-    {
-      pl_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
-      error_code = pl_start_server (db_name, db->pathname, pl_port);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
   /* *INDENT-OFF* */
   // thread_manager was not initialized
   assert (thread_p == NULL);
@@ -2326,6 +2313,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
   /* *INDENT-ON* */
+
+  pl_monitor_init (db_name);
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
@@ -2510,7 +2499,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   BO_ENABLE_FLUSH_DAEMONS ();
 
   cdc_daemons_init ();
-  pl_monitor_init (db_name);
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum

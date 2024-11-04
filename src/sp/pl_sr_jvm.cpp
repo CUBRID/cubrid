@@ -462,7 +462,7 @@ pl_tokenize_jvm_options (char *opt_str)
 // *INDENT-ON*
 
 /*
- * pl_start_server -
+ * pl_start_jvm_server -
  *   return: Error Code
  *   db_name(in): db name
  *   path(in): path
@@ -471,7 +471,7 @@ pl_tokenize_jvm_options (char *opt_str)
  */
 
 int
-pl_start_server (const char *db_name, const char *path, int port)
+pl_start_jvm_server (const char *db_name, const char *path, int port)
 {
   jint res;
   jclass cls, string_cls;

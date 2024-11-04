@@ -31,9 +31,9 @@
 
 #include <mutex>
 
+#include "thread_manager.hpp"
 #if defined (SERVER_MODE)
 #include "thread_entry.hpp"
-#include "thread_manager.hpp"
 #include "thread_looper.hpp"
 #include "thread_daemon.hpp"
 #endif
@@ -54,6 +54,11 @@ struct pl_monitor_entrty;
 static void pl_entry_init (const char *name);
 static int pl_check_status (pl_monitor_entrty *entry);
 
+#if defined (SERVER_MODE)
+static void pl_monitor (cubthread::entry &thread_ref);
+#else
+static void pl_monitor (void);
+#endif
 struct pl_monitor_entrty
 {
   pl_monitor_entrty (const char *db)
@@ -116,16 +121,21 @@ pl_check_status (pl_monitor_entrty *entry)
   return status;
 }
 
+static void
 #if defined (SERVER_MODE)
-void
 pl_monitor (cubthread::entry &thread_ref)
+#else
+pl_monitor (void)
+#endif
 {
   int pid;
+#if defined (SERVER_MODE)
   if (!BO_IS_SERVER_RESTARTED ())
     {
       // wait for boot to finish
       return;
     }
+#endif
 
   if (pl_check_status (pl_entry) != 0)
     {
@@ -138,7 +148,6 @@ pl_monitor (cubthread::entry &thread_ref)
 	}
       else // parent
 	{
-	  sleep (1);
 	  pl_entry->pid = pid;
 	  pl_entry->hang = false;
 	}
@@ -150,11 +159,15 @@ pl_monitor_init (const char *name)
 {
   pl_entry_init (name);
 
+#if defined (SERVER_MODE)
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1000));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (std::bind (pl_monitor,
       std::placeholders::_1));
 
   pl_monitor_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pl_monitor");
+#else
+  pl_monitor ();
+#endif
 }
 
 /*
@@ -163,25 +176,14 @@ pl_monitor_init (const char *name)
 void
 pl_monitor_destroy ()
 {
+#if defined (SERVER_MODE)
   if (pl_monitor_helper_daemon)
     {
       cubthread::get_manager ()->destroy_daemon (pl_monitor_helper_daemon);
     }
+#endif
   if (pl_entry != NULL)
     {
       delete pl_entry;
     }
 }
-#else
-void
-pl_monitor_init (const char *name)
-{
-  return;
-}
-
-void
-pl_monitor_destroy ()
-{
-  return;
-}
-#endif
