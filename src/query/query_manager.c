@@ -3373,8 +3373,6 @@ qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p)
   QMGR_TEMP_FILE_LIST *temp_file_list_p;
   int rv;
 
-  static int temp_mem_max_free_list_size = prm_get_integer_value (PRM_ID_TEMP_MAX_FREE_LIST_SIZE);
-
   assert (temp_file_p != NULL);
   if (temp_file_p == NULL)
     {
@@ -3390,7 +3388,7 @@ qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p)
       rv = pthread_mutex_lock (&temp_file_list_p->mutex);
 
       /* add to the free list */
-      if (temp_file_list_p->count < temp_mem_max_free_list_size)
+      if (temp_file_list_p->count < QMGR_TEMP_FILE_FREE_LIST_SIZE)
 	{
 	  temp_file_p->prev = NULL;
 	  temp_file_p->next = temp_file_list_p->list;
