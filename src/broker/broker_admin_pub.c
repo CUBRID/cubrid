@@ -2947,7 +2947,7 @@ admin_acl_reload_cmd (int master_shm_id, const char *broker_name)
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
-	  if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg) != 0)
+	  if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg, shm_br) != 0)
 	    {
 	      uw_shm_detach (shm_appl);
 	      uw_shm_detach (shm_br);
@@ -2968,7 +2968,7 @@ admin_acl_reload_cmd (int master_shm_id, const char *broker_name)
 	  return -1;
 	}
 
-      if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg) != 0)
+      if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg, shm_br) != 0)
 	{
 	  uw_shm_detach (shm_appl);
 	  uw_shm_detach (shm_br);
