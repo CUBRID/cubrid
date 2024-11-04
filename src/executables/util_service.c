@@ -445,6 +445,7 @@ print_message (FILE * output, int message_id, ...)
   va_start (arg_list, message_id);
   vfprintf (output, format, arg_list);
   va_end (arg_list);
+  fflush (output);
 }
 
 /*

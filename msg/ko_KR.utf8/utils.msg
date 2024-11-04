@@ -558,7 +558,7 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -t, --thread-count=COUNT    사용할 스레드 개수를 지정; 기본값: 1 최대값: 127\n\
       --enhanced-estimates    언로드할 테이블의 정확한 레코드 건수 수집; 기본값 : 미적용\n\
   -v, --verbose               많은 상태 메시지를 출력; 기본값: 출력 안 함\n\
-      --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\      
+      --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\
   -S, --SA-mode               독립 모드 실행\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
       --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
