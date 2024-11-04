@@ -4298,7 +4298,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       if (is_first_vpid)
 	{
 	  QFILE_PUT_PREV_VPID_NULL (page_p);
-	  qfile_set_dirty_page (thread_p, page_p, DONT_FREE, sort_info_p->input_file->tfile_vfid);
+	  qmgr_set_dirty_page (thread_p, page_p, DONT_FREE, NULL, sort_info_p->input_file->tfile_vfid);
 	  is_first_vpid = false;
 	}
       QFILE_GET_NEXT_VPID (&next_vpid, page_p);
@@ -4310,7 +4310,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       else if (++j >= splitted_num_page)
 	{
 	  QFILE_PUT_NEXT_VPID_NULL (page_p);
-	  qfile_set_dirty_page (thread_p, page_p, DONT_FREE, sort_info_p->input_file->tfile_vfid);
+	  qmgr_set_dirty_page (thread_p, page_p, DONT_FREE, NULL, sort_info_p->input_file->tfile_vfid);
 	  is_first_vpid = true;
 	  first_vpid[i] = next_vpid;
 	  last_vpid[i] = prev_vpid;
@@ -4327,7 +4327,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 	      /* init prev page id */
 	      page_p = qmgr_get_old_page (thread_p, &next_vpid, sort_info_p->input_file->tfile_vfid);
 	      QFILE_PUT_PREV_VPID_NULL (page_p);
-	      qfile_set_dirty_page (thread_p, page_p, DONT_FREE, sort_info_p->input_file->tfile_vfid);
+	      qmgr_set_dirty_page (thread_p, page_p, DONT_FREE, NULL, sort_info_p->input_file->tfile_vfid);
 	      qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
 	      break;
 	    }
