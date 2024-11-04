@@ -3309,7 +3309,7 @@ public class SpLib {
         if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             return detachTrailingZeros(e.toPlainString());
         } else {
-            return e.toPlainString();
+            return e.toString();
         }
     }
 
