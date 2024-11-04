@@ -814,31 +814,6 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
-  db_make_int (&value, info.itype);
-  err = dbt_put_internal (obt_p, SP_ATTR_INTERMEDIATE_TYPE, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  DB_VALUE elo;
-  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.icode.data (), info.icode.length (), INTL_CODESET_UTF8,
-		   LANG_COLL_UTF8_BINARY);
-  err = db_char_to_clob (&value, &elo);
-  if (err == NO_ERROR)
-    {
-      err = dbt_put_internal (obt_p, SP_ATTR_INTERMEDIATE_CODE, &elo);
-    }
-
-  pr_clear_value (&value);
-  pr_clear_value (&elo);
-
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
   object_p = dbt_finish_object (obt_p);
   if (!object_p)
     {
@@ -912,23 +887,6 @@ sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info)
 		   LANG_COLL_UTF8_BINARY);
   err = dbt_put_internal (obt_p, SP_ATTR_OBJECT_CODE, &value);
   pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  DB_VALUE elo;
-  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.icode.data (), info.icode.length (), INTL_CODESET_UTF8,
-		   LANG_COLL_UTF8_BINARY);
-  err = db_char_to_clob (&value, &elo);
-  if (err == NO_ERROR)
-    {
-      err = dbt_put_internal (obt_p, SP_ATTR_INTERMEDIATE_CODE, &elo);
-    }
-
-  pr_clear_value (&value);
-  pr_clear_value (&elo);
-
   if (err != NO_ERROR)
     {
       goto error;

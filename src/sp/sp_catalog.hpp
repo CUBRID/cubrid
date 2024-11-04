@@ -97,8 +97,6 @@ struct sp_code_info
   std::string scode;
   int otype;
   std::string ocode;
-  int itype;
-  std::string icode;
 };
 typedef sp_code_info SP_CODE_INFO;
 

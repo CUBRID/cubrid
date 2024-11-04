@@ -914,9 +914,7 @@ namespace cubschema
       {"stype", "integer"},
       {"scode", format_varchar (1073741823)},
       {"otype", "integer"},
-      {"ocode", format_varchar (1073741823)},
-      {"itype", "integer"},
-      {"icode", "clob"}
+      {"ocode", format_varchar (1073741823)}
     },
 // constraints
     {
