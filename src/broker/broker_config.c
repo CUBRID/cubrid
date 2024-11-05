@@ -124,6 +124,7 @@ static void write_conf_cache (char *file, bool * acl_flag, int *num_broker, int 
 			      T_BROKER_INFO * br_info, time_t bf_mtime);
 static void clear_conf_cache_entry (int cid);
 static bool is_invalid_buf_size (int size);
+static void convert_abs_path (char *dst, const char *path, size_t dest_len);
 
 static T_CONF_TABLE tbl_appl_server[] = {
   {APPL_SERVER_CAS_TYPE_NAME, APPL_SERVER_CAS},
@@ -386,6 +387,24 @@ dir_repath (char *path, size_t path_len)
     {
       assert (false);
       path[0] = '\0';
+    }
+}
+
+static void
+make_abs_path (char *dest, const char *path, size_t dest_len)
+{
+  if (path == NULL || path[0] == 0)
+    {
+      dest[0] = '\0';
+    }
+
+  if (IS_ABS_PATH (path))
+    {
+      snprintf (dest, dest_len, "%s", path);
+    }
+  else
+    {
+      snprintf (dest, dest_len, "%s/%s", get_cubrid_home (), path);
     }
 }
 
@@ -745,14 +764,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (ini_string, ini, sec_name, "LOG_DIR", DEFAULT_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].log_dir, ini_string, CONF_LOG_FILE_LEN);
+      make_abs_path (br_info[num_brs].log_dir, ini_string, CONF_LOG_FILE_LEN);
       INI_GETSTR_CHK (ini_string, ini, sec_name, "SLOW_LOG_DIR", DEFAULT_SLOW_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].slow_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      make_abs_path (br_info[num_brs].slow_log_dir, ini_string, CONF_LOG_FILE_LEN);
       INI_GETSTR_CHK (ini_string, ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].err_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      make_abs_path (br_info[num_brs].err_log_dir, ini_string, CONF_LOG_FILE_LEN);
 
       INI_GETSTR_CHK (ini_string, ini, sec_name, "ACCESS_LOG_DIR", DEFAULT_ACCESS_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].access_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      make_abs_path (br_info[num_brs].access_log_dir, ini_string, CONF_LOG_FILE_LEN);
       INI_GETSTR_CHK (ini_string, ini, sec_name, "DATABASES_CONNECTION_FILE", DEFAULT_EMPTY_STRING, &lineno);
       MAKE_FILEPATH (br_info[num_brs].db_connection_file, ini_string, BROKER_INFO_PATH_MAX);
 
