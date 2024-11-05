@@ -587,7 +587,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   if (admin_log_file != NULL)
     {
       INI_GETSTR_CHK (ini_string, ini, SECTION_NAME, "ADMIN_LOG_FILE", DEFAULT_ADMIN_LOG_FILE, &lineno);
-      MAKE_FILEPATH (admin_log_file, ini_string, BROKER_PATH_MAX);
+      make_abs_path (admin_log_file, ini_string, BROKER_PATH_MAX);
     }
 
   if (acl_flag != NULL)
@@ -1134,7 +1134,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG_DIR", DEFAULT_SHARD_PROXY_LOG_DIR, &lineno);
-      strcpy (br_info[num_brs].proxy_log_dir, s);
+      make_abs_path (br_info[num_brs].proxy_log_dir, s, BROKER_PATH_MAX);
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG", DEFAULT_SHARD_PROXY_LOG_MODE, &lineno);
       br_info[num_brs].proxy_log_mode = conf_get_value_proxy_log_mode (s);
