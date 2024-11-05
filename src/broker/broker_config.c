@@ -399,6 +399,19 @@ make_abs_path (char *dest, const char *path, size_t dest_len)
       return;
     }
 
+#if defined (WINDOWS)
+  if (IS_ABS_PATH (path))
+    {
+      _fullpath (dest, path, dest_len);
+    }
+  else
+    {
+      char buf[BROKER_PATH_MAX];
+
+      snprintf (buf, dest_len, "%s/%s", get_cubrid_home (), path);
+      _fullpath (dest, buf, dest_len);
+    }
+#else
   if (IS_ABS_PATH (path))
     {
       snprintf (dest, dest_len, "%s", path);
@@ -407,9 +420,6 @@ make_abs_path (char *dest, const char *path, size_t dest_len)
     {
       snprintf (dest, dest_len, "%s/%s", get_cubrid_home (), path);
     }
-
-#if defined (WINDOWS)
-  _fullpath (dest, dest, dest_len);
 #endif
 }
 
