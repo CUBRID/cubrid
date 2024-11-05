@@ -124,7 +124,7 @@ static void write_conf_cache (char *file, bool * acl_flag, int *num_broker, int 
 			      T_BROKER_INFO * br_info, time_t bf_mtime);
 static void clear_conf_cache_entry (int cid);
 static bool is_invalid_buf_size (int size);
-static void convert_abs_path (char *dst, const char *path, size_t dest_len);
+static void make_abs_path (char *dst, const char *path, size_t dest_len);
 
 static T_CONF_TABLE tbl_appl_server[] = {
   {APPL_SERVER_CAS_TYPE_NAME, APPL_SERVER_CAS},
@@ -396,6 +396,7 @@ make_abs_path (char *dest, const char *path, size_t dest_len)
   if (path == NULL || path[0] == 0)
     {
       dest[0] = '\0';
+      return;
     }
 
   if (IS_ABS_PATH (path))
@@ -406,6 +407,10 @@ make_abs_path (char *dest, const char *path, size_t dest_len)
     {
       snprintf (dest, dest_len, "%s/%s", get_cubrid_home (), path);
     }
+
+#if defined (WINDOWS)
+       _fullpath (dest, dest, dest_len);
+#endif
 }
 
 /*
