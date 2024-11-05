@@ -1963,7 +1963,7 @@ db_revoke (MOP user, MOP obj_, AU_TYPE auth)
  * drop_user(in) : used when executing the drop user statement
  */
 int
-db_revoke_object (DB_OBJECT_TYPE object_type, MOP user, MOP obj_, AU_TYPE auth, MOP drop_user)
+db_revoke_object (DB_OBJECT_TYPE object_type, MOP user, MOP obj_, AU_TYPE auth)
 {
   int retval = NO_ERROR;
 
@@ -1978,7 +1978,7 @@ db_revoke_object (DB_OBJECT_TYPE object_type, MOP user, MOP obj_, AU_TYPE auth, 
 
   if (!retval)
     {
-      retval = au_revoke (object_type, user, obj_, auth, drop_user);
+      retval = au_revoke (object_type, user, obj_, auth, NULL);
     }
 
   return (retval);

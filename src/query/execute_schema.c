@@ -1922,7 +1922,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    }
 
 		  // TODO: In CBRD-24912, GRANT/REVOKE for stored procedure is implemented, the following will be processed properly
-		  error = db_revoke_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth, NULL);
+		  error = db_revoke_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth);
 		  if (error != NO_ERROR)
 		    {
 		      goto end;
@@ -1944,7 +1944,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 			  goto end;
 			}
 
-		      error = db_revoke_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth, NULL);
+		      error = db_revoke_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth);
 		      if (error != NO_ERROR)
 			{
 			  goto end;
