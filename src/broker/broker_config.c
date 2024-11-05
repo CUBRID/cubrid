@@ -409,7 +409,7 @@ make_abs_path (char *dest, const char *path, size_t dest_len)
     }
 
 #if defined (WINDOWS)
-       _fullpath (dest, dest, dest_len);
+  _fullpath (dest, dest, dest_len);
 #endif
 }
 
