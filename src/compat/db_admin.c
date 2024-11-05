@@ -1960,7 +1960,7 @@ db_revoke (MOP user, MOP obj_, AU_TYPE auth)
  * user(in) : a user object
  * class_mop(in): a class object
  * auth(in) : the authorization type(s) to revoke
- * drop_user(in) : used when executing the drop user statement
+ *
  */
 int
 db_revoke_object (DB_OBJECT_TYPE object_type, MOP user, MOP obj_, AU_TYPE auth)
