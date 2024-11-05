@@ -7909,8 +7909,8 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, " ");
   q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? (p->info.sp_param.mode == PT_INPUT
 									       || p->info.sp_param.mode ==
-									       PT_NOPUT) ? "IN" : p->info.sp_param.
-			   mode == PT_OUTPUT ? "OUT" : "INOUT" : pt_show_misc_type (p->info.sp_param.mode));
+									       PT_NOPUT) ? "IN" : p->info.
+			   sp_param.mode == PT_OUTPUT ? "OUT" : "INOUT" : pt_show_misc_type (p->info.sp_param.mode));
   q = pt_append_nulstring (parser, q, " ");
   if (p->data_type)
     {
