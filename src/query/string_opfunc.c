@@ -26890,7 +26890,7 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
 	  db_make_short (result, 0);
 	}
     }
-  else if (TP_IS_NUMERIC_TYPE (param_type))
+  else if (TP_IS_NUMERIC_TYPE (param_type) || TP_IS_DATE_OR_TIME_TYPE (param_type))
     {
       DB_VALUE new_value;
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_CHAR);
@@ -26899,7 +26899,6 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  error_code = ER_QSTR_INVALID_DATA_TYPE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
 	  goto error;
 	}
 
