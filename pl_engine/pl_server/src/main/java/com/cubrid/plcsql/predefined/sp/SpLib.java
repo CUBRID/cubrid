@@ -750,7 +750,11 @@ public class SpLib {
         if (l == null) {
             return null;
         }
-        return checkFloat(-l);
+        try {
+            return checkFloat(-l);
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow in negation of a FLOAT value");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -758,7 +762,11 @@ public class SpLib {
         if (l == null) {
             return null;
         }
-        return checkDouble(-l);
+        try {
+            return checkDouble(-l);
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow in negation of a DOUBLE value");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2160,7 +2168,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return checkFloat(l * r);
+        try {
+            return checkFloat(l * r);
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow in multiplication of two FLOAT values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2168,7 +2180,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return checkDouble(l * r);
+        try {
+            return checkDouble(l * r);
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow in multiplication of two DOUBLE values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2263,7 +2279,7 @@ public class SpLib {
                 l.divide(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
                         .setScale(scale, RoundingMode.HALF_UP);
         if (ret.precision() > 38) {
-            throw new VALUE_ERROR("data overflow on data type NUMERIC");
+            throw new VALUE_ERROR("data overflow in division of NUMERIC values");
         }
 
         return ret;
@@ -2277,7 +2293,11 @@ public class SpLib {
         if (r.equals(0.0f)) {
             throw new ZERO_DIVIDE();
         }
-        return checkFloat(l / r);
+        try {
+            return checkFloat(l / r);
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow in division of two FLOAT values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2288,7 +2308,11 @@ public class SpLib {
         if (r.equals(0.0)) {
             throw new ZERO_DIVIDE();
         }
-        return checkDouble(l / r);
+        try {
+            return checkDouble(l / r);
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow in division of two DOUBLE values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2495,7 +2519,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return checkFloat(l + r);
+        try {
+            return checkFloat(l + r);
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow in addition of two FLOAT values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2503,7 +2531,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return checkDouble(l + r);
+        try {
+            return checkDouble(l + r);
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow in addition of two DOUBLE values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2687,7 +2719,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return checkFloat(l - r);
+        try {
+            return checkFloat(l - r);
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow in subtraction of two FLOAT values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2695,7 +2731,11 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return checkDouble(l - r);
+        try {
+            return checkDouble(l - r);
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow in subtraction of two DOUBLE values");
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -3168,7 +3208,11 @@ public class SpLib {
             return null;
         }
 
-        return checkFloat(Float.valueOf(e.floatValue()));
+        try {
+            return checkFloat(Float.valueOf(e.floatValue()));
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow on data type FLOAT: " + e);
+        }
     }
 
     public static BigDecimal convDoubleToNumeric(Double e) {
@@ -3248,7 +3292,11 @@ public class SpLib {
             return null;
         }
 
-        return checkDouble(Double.valueOf(e.doubleValue()));
+        try {
+            return checkDouble(Double.valueOf(e.doubleValue()));
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + e);
+        }
     }
 
     public static BigDecimal convFloatToNumeric(Float e) {
@@ -3318,7 +3366,11 @@ public class SpLib {
             return null;
         }
 
-        return checkDouble(Double.valueOf(e.doubleValue()));
+        try {
+            return checkDouble(Double.valueOf(e.doubleValue()));
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + e);
+        }
     }
 
     public static Float convNumericToFloat(BigDecimal e) {
@@ -3326,7 +3378,11 @@ public class SpLib {
             return null;
         }
 
-        return checkFloat(Float.valueOf(e.floatValue()));
+        try {
+            return checkFloat(Float.valueOf(e.floatValue()));
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow on data type FLOAT: " + e);
+        }
     }
 
     public static Long convNumericToBigint(BigDecimal e) {
@@ -3391,7 +3447,11 @@ public class SpLib {
             return null;
         }
 
-        return checkDouble(Double.valueOf(e.doubleValue()));
+        try {
+            return checkDouble(Double.valueOf(e.doubleValue()));
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + e);
+        }
     }
 
     public static Float convBigintToFloat(Long e) {
@@ -3399,7 +3459,11 @@ public class SpLib {
             return null;
         }
 
-        return checkFloat(Float.valueOf(e.floatValue()));
+        try {
+            return checkFloat(Float.valueOf(e.floatValue()));
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow on data type FLOAT: " + e);
+        }
     }
 
     public static BigDecimal convBigintToNumeric(Long e) {
@@ -3456,7 +3520,11 @@ public class SpLib {
             return null;
         }
 
-        return checkDouble(Double.valueOf(e.doubleValue()));
+        try {
+            return checkDouble(Double.valueOf(e.doubleValue()));
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + e);
+        }
     }
 
     public static Float convIntToFloat(Integer e) {
@@ -3464,7 +3532,11 @@ public class SpLib {
             return null;
         }
 
-        return checkFloat(Float.valueOf(e.floatValue()));
+        try {
+            return checkFloat(Float.valueOf(e.floatValue()));
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow on data type FLOAT: " + e);
+        }
     }
 
     public static BigDecimal convIntToNumeric(Integer e) {
@@ -3529,7 +3601,11 @@ public class SpLib {
             return null;
         }
 
-        return checkDouble(Double.valueOf(e.doubleValue()));
+        try {
+            return checkDouble(Double.valueOf(e.doubleValue()));
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + e);
+        }
     }
 
     public static Float convShortToFloat(Short e) {
@@ -3537,7 +3613,11 @@ public class SpLib {
             return null;
         }
 
-        return checkFloat(Float.valueOf(e.floatValue()));
+        try {
+            return checkFloat(Float.valueOf(e.floatValue()));
+        } catch (VALUE_ERROR ee) {
+            throw new VALUE_ERROR("data overflow on data type FLOAT: " + e);
+        }
     }
 
     public static BigDecimal convShortToNumeric(Short e) {
