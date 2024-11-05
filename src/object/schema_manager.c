@@ -13568,6 +13568,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   SM_CLASS_CONSTRAINT *pk;
   char *fk_name = NULL;
   const char *table_name;
+  MOP save_user, owner;
 
   if (op == NULL)
     {
@@ -13827,13 +13828,26 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
     }
 
   /* before deleting an object, all permissions are revoked. */
-  op->drop_object_statement = 1;
-  error = au_object_revoke_all_privileges (op, NULL);
-  if (error != NO_ERROR)
+  owner = au_get_class_owner (op);
+  if (owner == NULL)
     {
-      op->drop_object_statement = 0;
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
       goto end;
     }
+
+  save_user = Au_user;
+  if (AU_SET_USER (owner) == NO_ERROR)
+    {
+      error = au_object_revoke_all_privileges (op, owner);
+      if (error != NO_ERROR)
+	{
+	  AU_SET_USER (save_user);
+	  goto end;
+	}
+    }
+
+  AU_SET_USER (save_user);
 
   /* now delete _db_auth tuples refers to the table */
   error = au_delete_auth_of_dropping_database_object (DB_OBJECT_CLASS, table_name);
