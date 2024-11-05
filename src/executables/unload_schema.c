@@ -4527,8 +4527,9 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
       if (sp_lang == SP_LANG_PLCSQL)
 	{
 	  output_ctx ("AS LANGUAGE PLCSQL BEGIN ");
-	  output_ctx ("RAISE_APPLICATION_ERROR(1000, '%s%s%s%s: incomplete during loaddb'); /* __CUBRID_NO_BODY__ */",
-		      output_owner, PRINT_IDENTIFIER (sp_name));
+	  output_ctx
+	    ("RAISE_APPLICATION_ERROR(1000, '%s%s%s.%s%s%s: incomplete during loaddb'); /* __CUBRID_NO_BODY__ */",
+	     PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (sp_name));
 	  output_ctx (" END;\n");
 	}
       else
@@ -4731,7 +4732,14 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 	  output_ctx ("\n%s", scode_ptr_result);
 	  if (!DB_IS_NULL (comment))
 	    {
-	      output_ctx ("\nCOMMENT ");
+	      if ((*scode_ptr)->info.sp.comment == NULL)
+		{
+		  output_ctx ("\nCOMMENT ");
+		}
+	      else
+		{
+		  output_ctx ("COMMENT ");
+		}
 	      desc_value_print (output_ctx, comment);
 	    }
 	}
