@@ -1350,6 +1350,13 @@ au_drop_user (MOP user)
 	}
     }
 
+  /* before deleting an user, all permissions are revoked. */
+  error = au_user_revoke_all_privileges (user);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
   error = au_delete_auth_of_dropping_user (user);
   if (error != NO_ERROR)
     {
