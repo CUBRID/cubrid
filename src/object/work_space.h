@@ -151,7 +151,6 @@ struct db_object
 				 * loader only */
   unsigned decached:1;		/* set if mop is decached by calling ws_decache function */
   unsigned trigger_involved:1;	/* set if mop is involved in trigger, it is used only for cdc */
-  unsigned drop_object_statement:1;	/* flag for revoking all privileges before deleting an object (for drop object statement) */
 };
 
 

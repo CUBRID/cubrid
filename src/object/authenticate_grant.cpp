@@ -568,7 +568,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user)
     }
 
   AU_DISABLE (save);
-  if (ws_is_same_object (user, Au_user) && !class_mop->drop_object_statement)
+  if (ws_is_same_object (user, Au_user))
     {
       error = ER_AU_CANT_REVOKE_SELF;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -736,7 +736,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
   MOP grantor = NULL;
 
   AU_DISABLE (save);
-  if (ws_is_same_object (user, Au_user) && !obj_mop->drop_object_statement)
+  if (ws_is_same_object (user, Au_user))
     {
       error = ER_AU_CANT_REVOKE_SELF;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -1907,8 +1907,7 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
        */
       *grantor = drop_user;
     }
-  else if (obj_mop->drop_object_statement || au_is_dba_group_member (login_user)
-	   || au_is_user_group_member (class_owner, login_user))
+  else if (au_is_dba_group_member (login_user) || au_is_user_group_member (class_owner, login_user))
     {
       /*
        * DBA, DBA Member, Owner, Owner Memeber

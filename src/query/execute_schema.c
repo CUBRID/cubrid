@@ -10175,7 +10175,7 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 {
   int error = NO_ERROR;
   DB_OBJECT *obj = NULL;
-  MOP class_mop, user_mop;
+  MOP class_mop, user_mop, save_user, owner;
   PT_NODE *class_, *user;
   SM_CLASS *sm_class = NULL;
 
@@ -10209,11 +10209,26 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
     }
 
   /* when changing the owner, all privileges are revoked */
-  error = au_object_revoke_all_privileges (class_mop, NULL);
-  if (error != NO_ERROR)
+  owner = au_get_class_owner (class_mop);
+  if (owner == NULL)
     {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
       return error;
     }
+
+  save_user = Au_user;
+  if (AU_SET_USER (owner) == NO_ERROR)
+    {
+      error = au_object_revoke_all_privileges (class_mop, owner);
+      if (error != NO_ERROR)
+	{
+	  AU_SET_USER (save_user);
+	  return error;
+	}
+    }
+
+  AU_SET_USER (save_user);
 
   user_mop = au_find_user (user->info.name.original);
   if (user_mop == NULL)

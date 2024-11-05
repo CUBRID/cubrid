@@ -610,11 +610,11 @@ exit:
 /*
  * au_object_revoke_all_privileges - drop a class, virtual class and procedure, or when changing the owner, all privileges are revoked.
  *   return: error code
- *   class_mop(in): a class object
- *   sp_mop(in): a stored procedure object
+ *   obj_mop(in): a class/stored procedure object
+ *   grantor_mop(in): a class/stored procedure owner
  */
 int
-au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
+au_object_revoke_all_privileges (MOP obj_mop, MOP grantor_mop)
 {
   int error = NO_ERROR, save, len, i = 0;
   int object_type;
@@ -624,7 +624,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
   char sp_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   sp_name[0] = '\0';
   DB_AUTH db_auth;
-  MOP grantee_mop, obj_mop, grantor_mop;
+  MOP grantee_mop;
   DB_VALUE val[2];
   DB_VALUE grantee_value, object_type_value, auth_type_value;
   DB_QUERY_RESULT *result = NULL;
@@ -637,7 +637,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
 	  "SELECT [au].grantee, [au].object_type, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = ?";
 
-  assert (class_mop != NULL || sp_mop != NULL);
+  assert (obj_mop != NULL && grantor_mop != NULL);
 
   for (i = 0; i < 2; i++)
     {
@@ -650,41 +650,6 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
 
   /* Disable the checking for internal authorization object access */
   AU_DISABLE (save);
-
-  if (class_mop != NULL)
-    {
-      class_name = db_get_class_name (class_mop);
-      if (class_name == NULL)
-	{
-	  error = ER_UNEXPECTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get class name of mop.");
-	  goto exit;
-	}
-
-      obj_mop = class_mop;
-      sm_qualifier_name (class_name, owner_name, DB_MAX_USER_LENGTH);
-    }
-
-  if (sp_mop != NULL)
-    {
-      if (jsp_get_unique_name (sp_mop, sp_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = ER_UNEXPECTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get stored procedure name of mop.");
-	  goto exit;
-	}
-
-      obj_mop = sp_mop;
-      sm_qualifier_name (sp_name, owner_name, DB_MAX_USER_LENGTH);
-    }
-
-  grantor_mop = au_find_user (owner_name);
-  if (grantor_mop == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
 
   /* Prepare DB_VALUEs for host variables */
   error = obj_get (grantor_mop, "name", &val[0]);
@@ -841,7 +806,7 @@ au_object_revoke_all_privileges (MOP class_mop, MOP sp_mop)
       assert (obj_mop != NULL);
       assert (db_auth != DB_AUTH_NONE);
 
-      error = db_revoke_object (obj_type, grantee_mop, obj_mop, db_auth, NULL);
+      error = au_revoke (obj_type, grantee_mop, obj_mop, db_auth, NULL);
       if (error != NO_ERROR)
 	{
 	  goto release;
@@ -872,6 +837,244 @@ exit:
 
   if (row_count < 0 && er_errid () == NO_ERROR && (grantee_mop == NULL || auth == NULL || db_auth == DB_AUTH_NONE
       || (object_type != 0 && object_type != 5)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error = ER_GENERIC_ERROR;
+    }
+
+  return (error);
+}
+
+/*
+ * au_user_revoke_all_privileges - when a user is deleted, all of their privileges are revoked.
+ *   return: error code
+ *   user_mop(in): a user object
+ */
+int
+au_user_revoke_all_privileges (MOP user_mop)
+{
+  int error = NO_ERROR, save, len;
+  int object_type;
+  DB_OBJECT_TYPE obj_type;
+  const char *auth;
+  DB_AUTH db_auth;
+  MOP grantee_mop, obj_mop;
+  DB_VALUE name;
+  DB_VALUE grantee_value, object_type_value, object_of_value, auth_type_value;
+  DB_QUERY_RESULT *result = NULL;
+  DB_SESSION *session = NULL;
+  int stmt_id;
+  int row_count = -1;
+  const char *sql_query =
+	  "SELECT [au].grantee, [au].object_type, [au].object_of, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
+	  " WHERE [au].[grantor].[name] = ?";
+
+  assert (user_mop != NULL);
+
+
+  db_make_null (&name);
+  db_make_null (&grantee_value);
+  db_make_null (&object_type_value);
+  db_make_null (&object_of_value);
+  db_make_null (&auth_type_value);
+
+  /* Disable the checking for internal authorization object access */
+  AU_DISABLE (save);
+
+  /* Prepare DB_VALUEs for host variables */
+  error = obj_get (user_mop, "name", &name);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  else if (!DB_IS_STRING (&name) || DB_IS_NULL (&name)
+	   || db_get_string (&name) == NULL)
+    {
+      error = ER_AU_MISSING_OR_INVALID_USER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  session = db_open_buffer (sql_query);
+  if (session == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
+  error = db_push_values (session, 1, &name);
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id != 1)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, &result);
+
+  /* The error value is row count if it's not negative value. */
+  if (error == 0)
+    {
+      row_count = error;
+      goto release;
+    }
+  else if (error < 0)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
+  row_count = error;
+  error = NO_ERROR;
+
+  while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
+    {
+      if (db_query_get_tuple_value (result, 0, &grantee_value) == NO_ERROR)
+	{
+	  grantee_mop = NULL;
+	  if (!DB_IS_NULL (&grantee_value))
+	    {
+	      grantee_mop = db_get_object (&grantee_value);
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      if (db_query_get_tuple_value (result, 1, &object_type_value) == NO_ERROR)
+	{
+	  object_type = 0;
+	  if (!DB_IS_NULL (&object_type_value))
+	    {
+	      object_type = db_get_int (&object_type_value);
+	      switch (object_type)
+		{
+		case 0:
+		  obj_type = DB_OBJECT_CLASS;
+		  break;
+
+		case 5:
+		  obj_type = DB_OBJECT_PROCEDURE;
+		  break;
+
+		default:
+		  assert (object_type == 0 || object_type == 5);
+		  goto release;
+		}
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      if (db_query_get_tuple_value (result, 2, &object_of_value) == NO_ERROR)
+	{
+	  obj_mop = NULL;
+	  if (!DB_IS_NULL (&object_of_value))
+	    {
+	      obj_mop = db_get_object (&object_of_value);
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      if (db_query_get_tuple_value (result, 3, &auth_type_value) == NO_ERROR)
+	{
+	  auth = NULL;
+	  if (!DB_IS_NULL (&auth_type_value))
+	    {
+	      auth = db_get_char (&auth_type_value, &len);
+
+	      switch (auth[0])
+		{
+		case 'A':
+		  db_auth = DB_AUTH_ALTER;
+		  break;
+
+		case 'D':
+		  db_auth = DB_AUTH_DELETE;
+		  break;
+
+		case 'E':
+		  db_auth = DB_AUTH_EXECUTE;
+		  break;
+
+		case 'I':
+		  if (auth[2] == 'D')
+		    {
+		      db_auth = DB_AUTH_INDEX;
+		    }
+		  else if (auth[2] == 'S')
+		    {
+		      db_auth = DB_AUTH_INSERT;
+		    }
+		  else
+		    {
+		      db_auth = DB_AUTH_NONE;
+		    }
+		  break;
+
+		case 'S':
+		  db_auth = DB_AUTH_SELECT;
+		  break;
+
+		case 'U':
+		  db_auth = DB_AUTH_UPDATE;
+		  break;
+
+		default:
+		  db_auth = DB_AUTH_NONE;
+		  break;
+		}
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      assert (grantee_mop != NULL);
+      assert (obj_mop != NULL);
+      assert (db_auth != DB_AUTH_NONE);
+
+      error = au_revoke (obj_type, grantee_mop, obj_mop, db_auth, NULL);
+      if (error != NO_ERROR)
+	{
+	  goto release;
+	}
+    }
+
+release:
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+exit:
+  AU_ENABLE (save);
+
+  db_value_clear (&grantee_value);
+  db_value_clear (&object_type_value);
+  db_value_clear (&object_of_value);
+  db_value_clear (&auth_type_value);
+  db_value_clear (&name);
+
+  if (row_count < 0 && er_errid () == NO_ERROR && (grantee_mop == NULL || obj_mop == NULL || auth == NULL
+      || db_auth == DB_AUTH_NONE || (object_type != 0 && object_type != 5)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
