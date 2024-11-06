@@ -2471,6 +2471,25 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         symbolStack.putDecl(name, ret);
     }
 
+    private void previsitCursor_definition(Cursor_definitionContext ctx) {
+
+        String name = Misc.getNormalizedText(ctx.identifier());
+        symbolStack.pushSymbolTable("cursor_def", null);
+        NodeList<DeclParamIn> paramList = visitCursor_parameter_list(ctx.cursor_parameter_list());
+        SqlSemantics sws = getSqlSemanticsFromServer(ctx.static_sql());
+        assert sws != null;
+        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
+        if (sws.intoTargetStrs != null) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx.static_sql()), // s015
+                    "SQL in a cursor definition may not have an INTO clause");
+        }
+        StaticSql staticSql = checkAndConvertStaticSql(sws, ctx.static_sql());
+        symbolStack.popSymbolTable();
+        DeclCursor ret = new DeclCursor(ctx, name, paramList, staticSql);
+        symbolStack.putDecl(name, ret);
+    }
+
     private void previsitRoutine_definition(
             Routine_definitionContext ctx, Map<String, DeclRoutine> store) {
 
@@ -2985,6 +3004,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             } else if ((d = ds.variable_declaration()) != null) {
                 // case of variable_declaration
                 previsitVariable_declaration((Variable_declarationContext) d);
+            } else if ((d = ds.cursor_definition()) != null) {
+                // case of variable_declaration
+                previsitCursor_definition((Cursor_definitionContext) d);
             } else if ((d = ds.routine_definition()) != null) {
                 // case of routine_definition
                 previsitRoutine_definition((Routine_definitionContext) d, ret);
