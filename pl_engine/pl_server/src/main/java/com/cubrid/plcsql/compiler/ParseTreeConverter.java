@@ -1796,48 +1796,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public StmtForSqlLoop visitStmt_for_dynamic_sql_loop(Stmt_for_dynamic_sql_loopContext ctx) {
-
-        connectionRequired = true;
-
-        symbolStack.pushSymbolTable("for_d_sql_loop", null);
-
-        ParserRuleContext recNameCtx = ctx.for_dynamic_sql().record_name();
-        String record = Misc.getNormalizedText(recNameCtx);
-
-        Expr dynSql = visitExpression(ctx.for_dynamic_sql().dyn_sql());
-
-        NodeList<Expr> usedExprList;
-        Restricted_using_clauseContext usingClause =
-                ctx.for_dynamic_sql().restricted_using_clause();
-        if (usingClause == null) {
-            usedExprList = null;
-        } else {
-            usedExprList = visitRestricted_using_clause(usingClause);
-        }
-
-        String label;
-        DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
-        if (declLabel == null) {
-            label = null;
-        } else {
-            label = declLabel.name;
-            symbolStack.putDeclLabel(label, declLabel);
-        }
-
-        DeclDynamicRecord declForRecord = new DeclDynamicRecord(recNameCtx, record);
-        symbolStack.putDecl(record, declForRecord);
-
-        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
-        controlFlowBlocked =
-                false; // every loop is assumed not to block control flow in generated Java code
-
-        symbolStack.popSymbolTable();
-
-        return new StmtForDynamicSqlLoop(ctx, label, declForRecord, dynSql, usedExprList, stmts);
-    }
-
-    @Override
     public StmtNull visitNull_statement(Null_statementContext ctx) {
         return new StmtNull(ctx);
     }
