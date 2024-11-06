@@ -124,7 +124,6 @@ static void write_conf_cache (char *file, bool * acl_flag, int *num_broker, int 
 			      T_BROKER_INFO * br_info, time_t bf_mtime);
 static void clear_conf_cache_entry (int cid);
 static bool is_invalid_buf_size (int size);
-static void make_abs_path (char *dst, const char *path, size_t dest_len);
 
 static T_CONF_TABLE tbl_appl_server[] = {
   {APPL_SERVER_CAS_TYPE_NAME, APPL_SERVER_CAS},
@@ -390,39 +389,6 @@ dir_repath (char *path, size_t path_len)
     }
 }
 
-static void
-make_abs_path (char *dest, const char *path, size_t dest_len)
-{
-  if (path == NULL || path[0] == 0)
-    {
-      dest[0] = '\0';
-      return;
-    }
-
-#if defined (WINDOWS)
-  if (IS_ABS_PATH (path))
-    {
-      _fullpath (dest, path, dest_len);
-    }
-  else
-    {
-      char buf[BROKER_PATH_MAX];
-
-      snprintf (buf, dest_len, "%s/%s", get_cubrid_home (), path);
-      _fullpath (dest, buf, dest_len);
-    }
-#else
-  if (IS_ABS_PATH (path))
-    {
-      snprintf (dest, dest_len, "%s", path);
-    }
-  else
-    {
-      snprintf (dest, dest_len, "%s/%s", get_cubrid_home (), path);
-    }
-#endif
-}
-
 /*
  * get_conf_value_table - get value from table
  *   return: table value or -1 if fail
@@ -597,7 +563,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   if (admin_log_file != NULL)
     {
       INI_GETSTR_CHK (ini_string, ini, SECTION_NAME, "ADMIN_LOG_FILE", DEFAULT_ADMIN_LOG_FILE, &lineno);
-      make_abs_path (admin_log_file, ini_string, BROKER_PATH_MAX);
+      make_abs_path (admin_log_file, NULL, ini_string, BROKER_PATH_MAX);
     }
 
   if (acl_flag != NULL)
@@ -615,7 +581,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   if (acl_file != NULL)
     {
       INI_GETSTR_CHK (ini_string, ini, SECTION_NAME, "ACCESS_CONTROL_FILE", "", &lineno);
-      MAKE_FILEPATH (acl_file, ini_string, BROKER_PATH_MAX);
+      make_abs_path (acl_file, "conf", ini_string, BROKER_PATH_MAX);
     }
 
   for (i = 0; i < ini->nsec; i++)
@@ -779,14 +745,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (ini_string, ini, sec_name, "LOG_DIR", DEFAULT_LOG_DIR, &lineno);
-      make_abs_path (br_info[num_brs].log_dir, ini_string, CONF_LOG_FILE_LEN);
+      make_abs_path (br_info[num_brs].log_dir, NULL, ini_string, CONF_LOG_FILE_LEN);
       INI_GETSTR_CHK (ini_string, ini, sec_name, "SLOW_LOG_DIR", DEFAULT_SLOW_LOG_DIR, &lineno);
-      make_abs_path (br_info[num_brs].slow_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      make_abs_path (br_info[num_brs].slow_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN);
       INI_GETSTR_CHK (ini_string, ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR, &lineno);
-      make_abs_path (br_info[num_brs].err_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      make_abs_path (br_info[num_brs].err_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN);
 
       INI_GETSTR_CHK (ini_string, ini, sec_name, "ACCESS_LOG_DIR", DEFAULT_ACCESS_LOG_DIR, &lineno);
-      make_abs_path (br_info[num_brs].access_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      make_abs_path (br_info[num_brs].access_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN);
       INI_GETSTR_CHK (ini_string, ini, sec_name, "DATABASES_CONNECTION_FILE", DEFAULT_EMPTY_STRING, &lineno);
       MAKE_FILEPATH (br_info[num_brs].db_connection_file, ini_string, BROKER_INFO_PATH_MAX);
 
@@ -1144,7 +1110,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG_DIR", DEFAULT_SHARD_PROXY_LOG_DIR, &lineno);
-      make_abs_path (br_info[num_brs].proxy_log_dir, s, BROKER_PATH_MAX);
+      make_abs_path (br_info[num_brs].proxy_log_dir, NULL, s, BROKER_PATH_MAX);
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG", DEFAULT_SHARD_PROXY_LOG_MODE, &lineno);
       br_info[num_brs].proxy_log_mode = conf_get_value_proxy_log_mode (s);

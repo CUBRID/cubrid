@@ -343,3 +343,36 @@ getenv_cubrid_broker ()
 
   return p;
 }
+
+void
+make_abs_path (char *dest, const char *subdir, const char *path, size_t dest_len)
+{
+  if (path == NULL || path[0] == 0)
+    {
+      dest[0] = '\0';
+      return;
+    }
+
+#if defined (WINDOWS)
+  if (IS_ABS_PATH (path))
+    {
+      _fullpath (dest, path, dest_len);
+    }
+  else
+    {
+      char buf[BROKER_PATH_MAX];
+
+      snprintf (buf, dest_len, "%s%s%s/%s", get_cubrid_home (), subdir ? "/" : "", subdir ? subdir : "", path);
+      _fullpath (dest, buf, dest_len);
+    }
+#else
+  if (IS_ABS_PATH (path))
+    {
+      snprintf (dest, dest_len, "%s", path);
+    }
+  else
+    {
+      snprintf (dest, dest_len, "%s%s%s/%s", get_cubrid_home (), subdir ? "/" : "", subdir ? subdir : "", path);
+    }
+#endif
+}
