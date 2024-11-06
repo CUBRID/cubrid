@@ -257,9 +257,9 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 
 	  if (access_info->ip_files[0] != '\0')
 	    {
-	      strcat (access_info->ip_files, ",");
+	      strncat (access_info->ip_files, ",", LINE_MAX - 1);
 	    }
-	  strcat (access_info->ip_files, path_buf);
+	  strncat (access_info->ip_files, path_buf, LINE_MAX - 1);
 	}
     }
 
