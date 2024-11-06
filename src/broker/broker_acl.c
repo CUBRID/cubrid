@@ -51,7 +51,6 @@ typedef enum
 
 static ACCESS_INFO *access_control_find_access_info (ACCESS_INFO ai[], int size, char *dbname, char *dbuser);
 static int access_control_read_ip_info (IP_INFO * ip_info, char *filename, char *admin_err_msg);
-static void access_control_repath_file (char *path);
 static int access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p, char *dbname, char *dbuser,
 						unsigned char *address);
 static int access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info, unsigned char *address,
@@ -333,30 +332,6 @@ is_invalid_acl_entry (const char *acl, T_SHM_BROKER * shm_br)
     }
 
   return ret;
-}
-
-static void
-access_control_repath_file (char *path)
-{
-  char tmp_str[BROKER_PATH_MAX];
-
-  trim (path);
-  strncpy (tmp_str, path, BROKER_PATH_MAX);
-  tmp_str[BROKER_PATH_MAX - 1] = 0;
-
-  MAKE_FILEPATH (path, tmp_str, BROKER_PATH_MAX);
-
-  if (IS_ABS_PATH (path))
-    {
-      return;
-    }
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  envvar_confdir_file (tmp_str, BROKER_PATH_MAX, path);
-  MAKE_FILEPATH (path, tmp_str, BROKER_PATH_MAX);
-#endif
-
-  return;
 }
 
 static int
