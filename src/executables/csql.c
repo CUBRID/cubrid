@@ -696,7 +696,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    }
 	}
 
-      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) && is_in_block == false)
+      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) && (csql_Is_interactive || (is_in_block == false)))
 	{
 	  int ret;
 	  ret = csql_do_session_cmd (line_read, csql_arg);
@@ -2927,6 +2927,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       csql_Is_interactive = true;
     }
+
 
   /* initialize error log file */
   if (er_init ("./csql.err", ER_NEVER_EXIT) != NO_ERROR)

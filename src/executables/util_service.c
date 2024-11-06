@@ -447,6 +447,7 @@ print_message (FILE * output, int message_id, ...)
   va_start (arg_list, message_id);
   vfprintf (output, format, arg_list);
   va_end (arg_list);
+  fflush (output);
 }
 
 /*
@@ -904,12 +905,12 @@ proc_execute_internal (const char *file, const char *args[], bool wait_child, bo
       signal (SIGCHLD, SIG_DFL);
       if (close_output)
 	{
-	  fclose (stdout);
+	  close (STDOUT_FILENO);
 	}
 
       if (close_err)
 	{
-	  fclose (stderr);
+	  close (STDERR_FILENO);
 	}
 
       if (execv (executable_path, (char *const *) args) == -1)

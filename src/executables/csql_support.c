@@ -1519,12 +1519,6 @@ csql_is_statement_in_block (void)
       return true;
     }
 
-  CSQL_STATEMENT_SUBSTATE substate = csql_Edit_contents.substate;
-  if (state == CSQL_STATE_GENERAL && (substate == CSQL_SUBSTATE_PLCSQL_TEXT || substate == CSQL_SUBSTATE_SEEN_END))
-    {
-      return true;
-    }
-
   return false;
 }
 
@@ -1576,6 +1570,11 @@ csql_edit_read_file (FILE * fp)
 
       if (csql_edit_contents_append (line_begin, false) != CSQL_SUCCESS)
 	return CSQL_FAILURE;
+
+      // to continue recognizing the end of PL/CSQL SP CREATE statements
+      // at the right recognizer status (state, substate, etc of csql_Edit_contents)
+      // after this editor session
+      csql_walk_statement (line_begin);
     }
   return CSQL_SUCCESS;
 }

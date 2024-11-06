@@ -1123,11 +1123,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         Map<String, UseAndDeclLevel> saved = idUsedInCurrentDeclPart;
-        idUsedInCurrentDeclPart = new HashMap<>();
 
         // previsit declarations to support recursive or mutually recursive calls of local
         // procedures/functions
+        idUsedInCurrentDeclPart = null; // We must not count the used id during the previsit
         Map<String, DeclRoutine> store = previsitDeclarations(ctx.declare_spec());
+        idUsedInCurrentDeclPart = new HashMap<>();
         // put the declarations of the routines in the current symbol table
         for (String routineName : store.keySet()) {
             symbolStack.putDecl(routineName, store.get(routineName));
@@ -1444,8 +1445,47 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             connectionRequired = true;
 
-            Expr ret = new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS);
-            semanticQuestions.put(ret, new ServerAPI.FunctionSignature(name));
+            Expr ret = null;
+
+            List<ServerAPI.Question> answered =
+                    ServerAPI.getGlobalSemantics(
+                            Arrays.asList(new ServerAPI.FunctionSignature(name)));
+            assert answered.size() == 1;
+            ServerAPI.Question q = answered.get(0);
+            if (q.errCode == 0) {
+
+                ServerAPI.FunctionSignature fs = (ServerAPI.FunctionSignature) q;
+                assert name.equals(fs.name);
+
+                if (fs.params == null || fs.params.length == 0) {
+
+                    if (!DBTypeAdapter.isSupported(fs.retType.type)) {
+                        String sqlType = DBTypeAdapter.getSqlTypeName(fs.retType.type);
+                        throw new SemanticError( // s437
+                                Misc.getLineColumnOf(ctx),
+                                "function '"
+                                        + name
+                                        + "' uses unsupported type "
+                                        + sqlType
+                                        + " as its return type");
+                    }
+
+                    Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
+
+                    ExprGlobalFuncCall egfc = new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS);
+                    egfc.decl =
+                            new DeclFunc(
+                                    null, name, EMPTY_PARAMS, TypeSpec.getBogus(iStore, retType));
+                    ret = egfc;
+                }
+            }
+
+            if (ret == null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s094
+                        "undeclared identifier '" + name + "'");
+            }
+
             return ret;
         } else {
             Scope scope = symbolStack.getCurrentScope();
@@ -3048,26 +3088,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             ParserRuleContext d;
 
-            d = ds.item_declaration();
+            d = ds.constant_declaration();
             if (d != null) {
-                Item_declarationContext item = (Item_declarationContext) d;
-                d = item.constant_declaration();
-                if (d != null) {
-                    // case of constant_declaration
-                    previsitConstant_declaration((Constant_declarationContext) d);
-                } else {
-                    d = item.variable_declaration();
-                    if (d != null) {
-                        // case of variable_declaration
-                        previsitVariable_declaration((Variable_declarationContext) d);
-                    }
-                }
-            } else {
-                d = ds.routine_definition();
-                if (d != null) {
-                    // case of routine_definition
-                    previsitRoutine_definition((Routine_definitionContext) d, ret);
-                }
+                // case of constant_declaration
+                previsitConstant_declaration((Constant_declarationContext) d);
+            } else if ((d = ds.variable_declaration()) != null) {
+                // case of variable_declaration
+                previsitVariable_declaration((Variable_declarationContext) d);
+            } else if ((d = ds.routine_definition()) != null) {
+                // case of routine_definition
+                previsitRoutine_definition((Routine_definitionContext) d, ret);
             }
         }
         symbolStack.popSymbolTable(); // pop the temporary symbol table
