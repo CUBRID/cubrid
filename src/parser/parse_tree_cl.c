@@ -7907,10 +7907,10 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
   r1 = pt_print_bytes (parser, p->info.sp_param.name);
   q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? (p->info.sp_param.mode == PT_INPUT
-									       || p->info.sp_param.mode ==
-									       PT_NOPUT) ? "IN" : p->info.sp_param.
-			   mode == PT_OUTPUT ? "OUT" : "INOUT" : pt_show_misc_type (p->info.sp_param.mode));
+  q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ?
+			   (p->info.sp_param.mode == PT_INPUT || p->info.sp_param.mode == PT_NOPUT) ?
+			   "IN" : p->info.sp_param.mode == PT_OUTPUT ?
+			   "OUT" : "INOUT" : pt_show_misc_type (p->info.sp_param.mode));
   q = pt_append_nulstring (parser, q, " ");
   if (p->data_type)
     {

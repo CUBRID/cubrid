@@ -1145,8 +1145,10 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   size_t uppercase_user_size = 0;
   size_t query_size = 0;
   char *query = NULL;
-  char synonym_output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
-  char target_output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  char synonym_output_owner[DB_MAX_USER_LENGTH + 4];
+  synonym_output_owner[0] = '\0';
+  char target_output_owner[DB_MAX_USER_LENGTH + 4];
+  target_output_owner[0] = '\0';
   DB_OBJLIST *cl = NULL;
   const char *name = NULL;
   char temp_schema[DB_MAX_CLASS_LENGTH] = { '\0' };
