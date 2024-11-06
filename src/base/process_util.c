@@ -40,8 +40,8 @@
 #include "memory_wrapper.hpp"
 
 int
-create_child_process (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file,
-		      char *stderr_file, int *exit_status)
+create_child_process (const char *path, const char *const argv[], int wait_flag, const char *stdin_file,
+		      char *stdout_file, char *stderr_file, int *exit_status)
 {
 #if defined(WINDOWS)
   int new_pid;
@@ -126,8 +126,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
     }
 
   res =
-    CreateProcess (argv[0], cmd_arg_ptr, NULL, NULL, inherit_flag, CREATE_NO_WINDOW, NULL, NULL, &start_info,
-		   &proc_info);
+    CreateProcess (path, cmd_arg_ptr, NULL, NULL, inherit_flag, CREATE_NO_WINDOW, NULL, NULL, &start_info, &proc_info);
   free (cmd_arg_ptr);
 
   if (res == FALSE)
@@ -329,7 +328,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 	    }
 	}
 
-      rc = execv ((const char *) argv[0], (char *const *) &argv[1]);
+      rc = execv (path, (char *const *) argv);
       assert (false);
       return rc;
     }

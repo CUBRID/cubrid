@@ -140,8 +140,8 @@ pl_monitor (void)
   if (pl_check_status (pl_entry) != 0)
     {
       int status;
-      const char *argv[] = {pl_entry->executable_path, pl_entry->binary_name, pl_entry->db_name, 0};
-      pid = create_child_process (argv, 0 /* do not wait */, NULL, NULL, NULL, &status);
+      const char *argv[] = {pl_entry->binary_name, pl_entry->db_name, 0};
+      pid = create_child_process (pl_entry->executable_path, argv, 0 /* do not wait */, NULL, NULL, NULL, &status);
       if (pid <= 0)
 	{
 	  // do nothing
