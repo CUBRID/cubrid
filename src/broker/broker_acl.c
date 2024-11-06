@@ -234,11 +234,6 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	  num_access_list++;
 	}
 
-      if (access_info->ip_files[0] != '\0')
-	{
-	  strncat (access_info->ip_files, ",", LINE_MAX - 1);
-	}
-      strncat (access_info->ip_files, ip_file, LINE_MAX - 1);
       for (files = ip_file;; files = NULL)
 	{
 	  token = strtok_r (files, IP_FILE_DELIMITER, &save);
@@ -255,12 +250,17 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	      goto error;
 	    }
 
-	  strncpy (path_buf, token, BROKER_PATH_MAX);
-	  access_control_repath_file (path_buf);
+	  make_abs_path (path_buf, "conf", token, BROKER_PATH_MAX);
 	  if (access_control_read_ip_info (&(access_info->ip_info), path_buf, admin_err_msg) < 0)
 	    {
 	      goto error;
 	    }
+
+	  if (access_info->ip_files[0] != '\0')
+	    {
+	      strcat (access_info->ip_files, ",");
+	    }
+	  strcat (access_info->ip_files, path_buf);
 	}
     }
 
