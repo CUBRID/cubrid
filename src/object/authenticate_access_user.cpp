@@ -108,7 +108,7 @@ au_find_user (const char *user_name)
     }
   intl_identifier_upper (user_name, upper_case_name);
 
-  user_cache = Au_cache.find_user_cache_by_name (user_name);
+  user_cache = Au_cache.find_user_cache_by_name (upper_case_name);
   if (user_cache)
     {
       user = user_cache->user;
@@ -1397,7 +1397,7 @@ au_drop_user (MOP user)
   error = obj_delete (user);
   if (error == NO_ERROR)
     {
-      Au_cache.remove_user_cache_references (user);
+      Au_cache.remove_user_cache (user);
     }
 
 error:

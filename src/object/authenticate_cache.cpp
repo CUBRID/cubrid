@@ -28,8 +28,6 @@
 #include "schema_manager.h"
 #include "set_object.h"
 
-static void free_user_cache (AU_USER_CACHE *u);
-
 authenticate_cache::authenticate_cache ()
 {
   init ();
@@ -50,7 +48,6 @@ authenticate_cache::init (void)
   cache_increment = 4;
   cache_index = -1;
 }
-
 
 /*
  * flush_caches - Called during au_final(). Free the authorization cache
@@ -75,6 +72,7 @@ authenticate_cache::flush (void)
       nextu = u->next;
       free_user_cache (u);
     }
+  user_name_cache.clear ();
 
   /* clear the associated globals */
   init ();
@@ -505,15 +503,15 @@ authenticate_cache::make_user_cache (const char *name, DB_OBJECT *user, bool san
 	}
     }
 
-  if ((new_user_cache = find_user_cache_by_name (name)) != nullptr)
+  std::string upper_case_name (name);
+  std::transform (upper_case_name.begin(), upper_case_name.end(), upper_case_name.begin(), ::toupper);
+
+  if ((new_user_cache = find_user_cache_by_name (upper_case_name.c_str ())) != nullptr)
     {
       return new_user_cache;
     }
 
-  std::string upper_case_name (name);
-  std::transform (upper_case_name.begin(), upper_case_name.end(), upper_case_name.begin(), ::toupper);
-
-  new_user_cache = new AU_USER_CACHE ();
+  new_user_cache = new AU_USER_CACHE;
   if (new_user_cache != nullptr)
     {
       new_user_cache->next = user_cache;
@@ -523,7 +521,7 @@ authenticate_cache::make_user_cache (const char *name, DB_OBJECT *user, bool san
       new_user_cache->user = user;
       new_user_cache->index = -1;
 
-      user_name_cache[upper_case_name] = new_user_cache;
+      user_name_cache.insert (std::pair<std::string, AU_USER_CACHE *> (upper_case_name, new_user_cache));
     }
 
   return new_user_cache;
@@ -545,10 +543,7 @@ authenticate_cache::find_user_cache_by_name (const char *name)
 
   AU_USER_CACHE *user_cache = nullptr;
 
-  std::string upper_case_name (name);
-  std::transform (upper_case_name.begin(), upper_case_name.end(), upper_case_name.begin(), ::toupper);
-
-  const auto &it = user_name_cache.find (upper_case_name);
+  const auto &it = user_name_cache.find (name);
   if (it != user_name_cache.end())
     {
       user_cache = it->second;
@@ -582,7 +577,7 @@ authenticate_cache::get_user_cache_index (AU_USER_CACHE *cache, int *index)
   if (cache->index == -1)
     {
       error = extend_class_caches (index);
-      if (error = NO_ERROR)
+      if (error == NO_ERROR)
 	{
 	  cache->index = *index;
 	}
@@ -605,15 +600,17 @@ authenticate_cache::free_user_cache (AU_USER_CACHE *u)
 {
   if (u != NULL)
     {
+      u->next = NULL;
       u->user = NULL;		/* clear GC roots */
 
-      user_name_cache.erase (u->name);
-      u->name.clear ();
+      if (!u->name.empty ())
+	{
+	  user_name_cache.erase (u->name);
+	}
 
       delete u;
     }
 }
-
 
 /*
  * reset_cache_for_user_and_class - This is called whenever a grant or revoke
@@ -683,31 +680,54 @@ authenticate_cache::reset_authorization_caches (void)
 }
 
 /*
- * remove_user_cache_reference - This is called when a user object is deleted.
+ * remove_user_cache - This is called when a user object is deleted.
  *   return: none
  *   user(in): user object
  *
- * Note: If there is an authorization cache entry for this user, we NULL
- *       the user pointer so it will no longer be used.  We could to in
- *       and restructure all the caches to remove the deleted user but user
- *       deletion isn't that common.  Just leave an unused entry in the
- *       cache array.
  */
 void
-authenticate_cache::remove_user_cache_references (MOP user)
+authenticate_cache::remove_user_cache (MOP user)
 {
-  AU_USER_CACHE *u;
+  AU_USER_CACHE *u, *prevu, *nextu;
 
-  for (u = user_cache; u != NULL; u = u->next)
+  prevu = NULL;
+  for (u = user_cache; u != NULL; u = nextu)
     {
+      nextu = u->next;
       if (ws_is_same_object (u->user, user))
 	{
-	  u->user = NULL;
-
-	  user_name_cache.erase (u->name);
-	  u->name.clear ();
+	  if (prevu == NULL)
+	    {
+	      user_cache = nextu;
+	    }
+	  else
+	    {
+	      prevu->next = nextu;
+	    }
+	  free_user_cache (u);
+	}
+      else
+	{
+	  prevu = u;
 	}
     }
+}
+
+/*
+ * reset_user_cache - This is called when a user object is invalidated.
+ *   return: none
+ */
+void
+authenticate_cache::reset_user_cache (void)
+{
+  AU_USER_CACHE *u = user_cache;
+  while (u != NULL)
+    {
+      AU_USER_CACHE *nextu = u->next;
+      free_user_cache (u);
+      u = nextu;
+    }
+  user_cache = NULL;
 }
 
 /*

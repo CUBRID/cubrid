@@ -724,6 +724,12 @@ authenticate_context::set_user (MOP newuser)
   if (newuser != NULL && !ws_is_same_object (newuser, current_user))
     {
       user_cache = caches.find_user_cache_by_mop (newuser);
+      if (!user_cache)
+	{
+	  const char *user_name = au_get_user_name (newuser);
+	  user_cache = caches.make_user_cache (user_name, newuser, false);
+	}
+
       if (user_cache)
 	{
 	  if (caches.get_user_cache_index (user_cache, &index) == NO_ERROR)

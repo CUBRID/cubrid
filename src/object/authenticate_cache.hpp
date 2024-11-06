@@ -71,6 +71,8 @@ struct au_user_cache
   std::string name;
   DB_OBJECT *user;
   int index;
+
+  au_user_cache() = default;
 };
 
 /*
@@ -155,7 +157,8 @@ class authenticate_cache
     void reset_cache_for_user_and_class (SM_CLASS *sm_class);
     void reset_authorization_caches (void);
 
-    void remove_user_cache_references (MOP user);
+    void remove_user_cache (MOP user);
+    void reset_user_cache (void);
 
     void print_cache (int cache, FILE *fp);  // for debugging
 
