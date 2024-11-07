@@ -342,6 +342,7 @@ main (int argc, char **argv)
       }
 
     fprintf (stdout, "\nThis may take a long time depending on the amount " "of recovery works to do.\n");
+    fflush (stdout);
 
     /* save executable path */
     binary_name = basename (argv[0]);
