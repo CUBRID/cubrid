@@ -216,9 +216,6 @@ jsp_find_stored_procedure_code (const char *name)
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
       er_clear ();
-
-      // TODO: error
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_EXIST, 1, name);
     }
 
   AU_ENABLE (save);
