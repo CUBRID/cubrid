@@ -259,7 +259,15 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	    {
 	      strncat (access_info->ip_files, ",", LINE_MAX - 1);
 	    }
-	  strncat (access_info->ip_files, path_buf, LINE_MAX - 1);
+
+	  if ((strlen (access_info->ip_files) + strlen (path_buf)) > LINE_MAX)
+	    {
+	      goto error;
+	    }
+	  else
+	    {
+	      strncat (access_info->ip_files, path_buf, LINE_MAX - 1);
+	    }
 	}
     }
 
