@@ -3431,16 +3431,16 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
 	    node->info.dot.arg2->info.function.generic_name = generic_name;
 
+	    /*
+	     * If (dot.arg1->node_type == PT_NAME) & (dot.arg2->node_type == PT_FUNCTION), pt_bind_name_or_path_in_scope() always returns NULL and has an er_errid() value.
+	     */
+	    if (er_errid () == NO_ERROR)
+	      {
+		pt_reset_error (parser);
+	      }
+
 	    if (jsp_is_exist_stored_procedure (node->info.dot.arg2->info.function.generic_name))
 	      {
-		/*
-		 * If (dot.arg1->node_type == PT_NAME) & (dot.arg2->node_type == PT_FUNCTION), pt_bind_name_or_path_in_scope() always returns NULL and has an er_errid() value.
-		 */
-		if (er_errid () == NO_ERROR)
-		  {
-		    pt_reset_error (parser);
-		  }
-
 		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		if (node1 == NULL)
 		  {
@@ -3544,6 +3544,15 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		    {
 		      PT_NODE *top_node = NULL;
 		      int is_spec_attr = 0;
+		      char downcase_generic_name[DB_MAX_IDENTIFIER_LENGTH];
+		      downcase_generic_name[0] = '\0';
+		      sm_downcase_name (node->info.function.generic_name, downcase_generic_name,
+					DB_MAX_IDENTIFIER_LENGTH);
+
+		      if (er_errid () == NO_ERROR)
+			{
+			  pt_reset_error (parser);
+			}
 
 		      /* get top node */
 		      if (bind_arg != NULL && bind_arg->sc_info != NULL)
@@ -3571,12 +3580,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		      else if (parser_function_code != PT_EMPTY)
 			{
 			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				      MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, node->info.function.generic_name);
+				      MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, downcase_generic_name);
 			}
 		      else
 			{
 			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNKNOWN_FUNCTION,
-				      node->info.function.generic_name);
+				      downcase_generic_name);
 			}
 
 		    }
