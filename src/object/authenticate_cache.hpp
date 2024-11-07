@@ -52,7 +52,11 @@ struct au_class_cache
   struct au_class_cache *next;
 
   SM_CLASS *class_;
-  unsigned int data[1];
+  unsigned int *data;
+
+  au_class_cache () = delete;
+  au_class_cache (int depth);
+  ~au_class_cache ();
 };
 
 /*
