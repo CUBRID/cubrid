@@ -354,7 +354,7 @@ make_abs_path (char *dest, const char *subdir, const char *path, size_t dest_len
   if (path == NULL || path[0] == 0)
     {
       dest[0] = '\0';
-      return -1;
+      return path ? 0 : -1;
     }
 
 #if defined (WINDOWS)
