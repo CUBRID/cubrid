@@ -128,6 +128,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
   ACCESS_INFO *access_info;
   bool is_current_broker_section = false;
   ACL_FMT ret = ACL_FMT_NO_ERROR;
+  size_t filename_len;
 #if defined(WINDOWS)
   char acl_sem_name[BROKER_NAME_LEN];
 #endif
@@ -263,7 +264,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	    {
 	      if (strlen (access_info->ip_files) < LINE_MAX)
 		{
-		  strncat (access_info->ip_files, ",", LINE_MAX - 1);
+		  strncat (access_info->ip_files, ",", 1);
 		}
 	      else
 		{
@@ -271,9 +272,10 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 		}
 	    }
 
-	  if ((strlen (access_info->ip_files) + strlen (path_buf)) < LINE_MAX)
+	  filename_len = strlen (path_buf);
+	  if ((strlen (access_info->ip_files) + filename_len) < LINE_MAX)
 	    {
-	      strncat (access_info->ip_files, path_buf, LINE_MAX - 1);
+	      strncat (access_info->ip_files, path_buf, filename_len);
 	    }
 	  else
 	    {
