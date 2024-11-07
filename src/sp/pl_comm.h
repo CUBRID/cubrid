@@ -23,8 +23,8 @@
  * Note:
  */
 
-#ifndef _pl_COMM_H_
-#define _pl_COMM_H_
+#ifndef _PL_COMM_H_
+#define _PL_COMM_H_
 
 #ident "$Id$"
 
