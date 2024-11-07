@@ -385,7 +385,7 @@ make_abs_path (char *dest, const char *subdir, const char *path, size_t dest_len
     }
   else
     {
-       ret = -1;
+      ret = -1;
     }
 
   return ret;
