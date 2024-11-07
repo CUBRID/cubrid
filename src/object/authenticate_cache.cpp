@@ -28,6 +28,23 @@
 #include "schema_manager.h"
 #include "set_object.h"
 
+au_class_cache::au_class_cache (int depth)
+{
+  next = NULL;
+  class_ = NULL;
+  data = new unsigned int[depth];
+  std::fill_n (data, depth, AU_CACHE_INVALID);
+}
+
+au_class_cache::~au_class_cache ()
+{
+  if (data)
+    {
+      delete [] data;
+      data = nullptr;
+    }
+}
+
 authenticate_cache::authenticate_cache ()
 {
   init ();
@@ -279,6 +296,7 @@ authenticate_cache::free_authorization_cache (void *cache)
 {
   AU_CLASS_CACHE *c, *prev;
 
+  prev = NULL;
   if (cache != NULL)
     {
       for (c = class_caches, prev = NULL; c != NULL && c != cache; c = c->next)
@@ -295,11 +313,10 @@ authenticate_cache::free_authorization_cache (void *cache)
 	    {
 	      prev->next = c->next;
 	    }
+	  free_class_cache ((AU_CLASS_CACHE *) cache);
 	}
-      free_class_cache ((AU_CLASS_CACHE *) cache);
     }
 }
-
 
 /*
  * AUTHORIZATION CACHES
@@ -323,19 +340,11 @@ authenticate_cache::make_class_cache (int depth)
     }
   else
     {
-      size = sizeof (AU_CLASS_CACHE) + ((depth - 1) * sizeof (unsigned int));
-      new_class_cache = (AU_CLASS_CACHE *) malloc (size);
+      new_class_cache = new (std::nothrow) AU_CLASS_CACHE (depth);
       if (new_class_cache == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (AU_CLASS_CACHE));
 	  return NULL;
-	}
-
-      new_class_cache->next = NULL;
-      new_class_cache->class_ = NULL;
-      for (i = 0; i < depth; i++)
-	{
-	  new_class_cache->data[i] = AU_CACHE_INVALID;
 	}
     }
 
@@ -352,7 +361,7 @@ authenticate_cache::free_class_cache (AU_CLASS_CACHE *cache)
 {
   if (cache != NULL)
     {
-      free_and_init (cache);
+      delete cache;
     }
 }
 
@@ -644,7 +653,14 @@ authenticate_cache::reset_cache_for_user_and_class (SM_CLASS *sm_class)
        */
       for (u = user_cache; u != NULL; u = u->next)
 	{
-	  c->data[u->index] = AU_CACHE_INVALID;
+	  // NOTE: u->index is initalized as -1
+	  // This means that the user is cached in a context that is independent of the class,
+	  // for example, obtaining the user object in the execution context of another database object,
+	  // such as the owner's right of procedure or a user management method.
+	  if (u->index >= 0)
+	    {
+	      c->data[u->index] = AU_CACHE_INVALID;
+	    }
 	}
     }
 }
@@ -705,6 +721,7 @@ authenticate_cache::remove_user_cache (MOP user)
 	      prevu->next = nextu;
 	    }
 	  free_user_cache (u);
+	  break;
 	}
       else
 	{
