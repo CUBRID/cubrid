@@ -12484,8 +12484,12 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *arg_list = node->info.function.arg_list;
   if (!arg_list && !pt_is_function_no_arg (fcode))
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
-		  pt_short_print (parser, node));
+      // Set parser error only if the function is not a generic function.
+      if (fcode != PT_GENERIC)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
+		      pt_short_print (parser, node));
+	}
       return node;
     }
 
