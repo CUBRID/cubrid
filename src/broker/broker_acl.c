@@ -249,7 +249,11 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	      goto error;
 	    }
 
-	  make_abs_path (path_buf, "conf", token, BROKER_PATH_MAX);
+	  if (make_abs_path (path_buf, "conf", token, BROKER_PATH_MAX) < 0)
+	    {
+	      goto error;
+	    }
+
 	  if (access_control_read_ip_info (&(access_info->ip_info), path_buf, admin_err_msg) < 0)
 	    {
 	      goto error;
