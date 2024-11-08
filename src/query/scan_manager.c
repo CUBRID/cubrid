@@ -148,7 +148,7 @@ static void scan_init_scan_attrs (SCAN_ATTRS * scan_attrs_p, int num_attrs, ATTR
 				  HEAP_CACHE_ATTRINFO * attr_cache);
 static int scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_list_node * output_val_list,
 				    regu_variable_list_node * regu_val_list, VAL_DESCR * vd, QUERY_ID query_id,
-				    int max_key_len, int func_index_col_id, INDX_COV * indx_cov);
+				    int bt_num_attrs, int max_key_len, int func_index_col_id, INDX_COV * indx_cov);
 static int scan_alloc_oid_list (BTREE_ISCAN_OID_LIST ** oid_list_p);
 static int scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list);
 static void scan_free_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST * oid_list);
@@ -697,11 +697,10 @@ scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_
  */
 static int
 scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_list_node * output_val_list,
-			 regu_variable_list_node * regu_val_list, VAL_DESCR * vd, QUERY_ID query_id, int max_key_len,
-			 int func_index_col_id, INDX_COV * indx_cov)
+			 regu_variable_list_node * regu_val_list, VAL_DESCR * vd, QUERY_ID query_id, int bt_num_attrs,
+			 int max_key_len, int func_index_col_id, INDX_COV * indx_cov)
 {
   int err = NO_ERROR;
-  int num_membuf_pages = 0;
 
   if (indx_cov == NULL)
     {
@@ -754,13 +753,28 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
       goto exit_on_error;
     }
 
-  num_membuf_pages = qmgr_get_temp_file_membuf_pages (indx_cov->list_id->tfile_vfid);
-  assert (num_membuf_pages > 0);
-
-  if (max_key_len > 0 && num_membuf_pages > 0)
+  /*
+   * Covered index scans use only the key buffer, avoiding temporary files.
+   * To ensure this, we calculate the max number of tuples that fit in the key buffer
+   * and perform each scan within this limit.
+   */
+  if (max_key_len > 0)
     {
-      indx_cov->max_tuples = num_membuf_pages * IO_PAGESIZE / max_key_len;
-      indx_cov->max_tuples = MAX (indx_cov->max_tuples, 1);
+      int page_count = indx_cov->list_id->tfile_vfid->membuf_npages;
+      int value_count = indx_cov->output_val_list->valptr_cnt;
+      int header_size = (bt_num_attrs > 1) ? or_multi_header_size (bt_num_attrs) : 0;
+      int tuple_size, tuple_count;
+
+      assert (page_count > 0);
+
+      tuple_size =
+	QFILE_TUPLE_LENGTH_SIZE + (QFILE_TUPLE_VALUE_HEADER_SIZE * value_count) + (max_key_len - header_size) +
+	((MAX_ALIGNMENT - 1) * value_count);
+
+      /* Do not change the order: calculate tuples per page first, then multiply by page count. */
+      tuple_count = ((DB_PAGESIZE - QFILE_PAGE_HEADER_SIZE) / tuple_size) * page_count;
+
+      indx_cov->max_tuples = MAX (tuple_count, 1);
     }
   else
     {
@@ -3292,7 +3306,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->iscan_oid_order = iscan_oid_order;
 
   if (scan_init_indx_coverage (thread_p, coverage_enabled, output_val_list, regu_val_list, vd, query_id,
-			       root_header->node.max_key_len, func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
+			       isidp->bt_num_attrs, root_header->node.max_key_len, func_index_col_id,
+			       &(isidp->indx_cov)) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -3510,8 +3525,9 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   isidp->iscan_oid_order = iscan_oid_order;
 
-  if (scan_init_indx_coverage (thread_p, false, NULL, NULL, vd, query_id, root_header->node.max_key_len,
-			       func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
+  if (scan_init_indx_coverage
+      (thread_p, false, NULL, NULL, vd, query_id, isidp->bt_num_attrs, root_header->node.max_key_len, func_index_col_id,
+       &(isidp->indx_cov)) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -4463,7 +4479,8 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	      qfile_destroy_list (thread_p, indx_cov_p->list_id);
 
 	      indx_cov_p->list_id =
-		qfile_open_list (thread_p, indx_cov_p->type_list, NULL, indx_cov_p->query_id, 0, indx_cov_p->list_id);
+		qfile_open_list (thread_p, indx_cov_p->type_list, NULL, indx_cov_p->query_id, QFILE_FLAG_USE_KEY_BUFFER,
+				 indx_cov_p->list_id);
 	      if (indx_cov_p->list_id == NULL)
 		{
 		  status = S_ERROR;

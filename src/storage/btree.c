@@ -16922,9 +16922,6 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
     }
   else
     {
-      /* resume search */
-      perfmon_inc_stat (thread_p, PSTAT_BT_NUM_RESUMES);
-
       error_code = btree_range_scan_resume (thread_p, bts);
       if (error_code != NO_ERROR)
 	{
@@ -25029,6 +25026,8 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   assert (bts->is_cur_key_compressed == false);
   assert (bts->common_prefix_size == COMMON_PREFIX_UNKNOWN);
+
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_RESUMES);
 
   /* Resume range scan. It can be resumed from same leaf or by looking up the key again from root. */
   if (!bts->force_restart_from_root)
