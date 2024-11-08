@@ -7627,7 +7627,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.sp.type == PT_SP_FUNCTION)
     {
-      q = pt_append_nulstring (parser, q, " return ");
+      q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? " RETURN " : " return ");
       if (p->info.sp.ret_data_type)
 	{
 	  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.sp.ret_data_type));
