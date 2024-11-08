@@ -3416,22 +3416,6 @@ qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p)
     }
 }
 
-/*
- * qmgr_get_temp_file_membuf_pages () -
- *   return: number of membuf pages belonging to the temporary file
- *   temp_file_list_p(in): temporary file
- */
-int
-qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p)
-{
-  assert (temp_file_p != NULL);
-  if (temp_file_p == NULL)
-    {
-      return -1;
-    }
-  return temp_file_p->membuf_npages;
-}
-
 #if defined (SERVER_MODE)
 /*
  * qmgr_set_query_exec_info_to_tdes () - calculate timeout and set to transaction
