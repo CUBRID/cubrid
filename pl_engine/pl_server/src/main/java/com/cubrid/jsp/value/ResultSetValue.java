@@ -51,6 +51,7 @@ public class ResultSetValue extends Value {
         this.queryId = ((CUBRIDServerSideResultSet) rset).getQueryId();
     }
 
+    @Override
     public ResultSet toResultSet(SUConnection ucon) {
         if (rset == null) {
             try {
@@ -62,6 +63,7 @@ public class ResultSetValue extends Value {
         return rset;
     }
 
+    @Override
     public long toLong() {
         return queryId;
     }

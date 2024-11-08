@@ -563,7 +563,10 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   if (admin_log_file != NULL)
     {
       INI_GETSTR_CHK (ini_string, ini, SECTION_NAME, "ADMIN_LOG_FILE", DEFAULT_ADMIN_LOG_FILE, &lineno);
-      MAKE_FILEPATH (admin_log_file, ini_string, BROKER_PATH_MAX);
+      if (make_abs_path (admin_log_file, NULL, ini_string, BROKER_PATH_MAX) < 0)
+	{
+	  goto conf_error;
+	}
     }
 
   if (acl_flag != NULL)
@@ -581,7 +584,10 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   if (acl_file != NULL)
     {
       INI_GETSTR_CHK (ini_string, ini, SECTION_NAME, "ACCESS_CONTROL_FILE", "", &lineno);
-      MAKE_FILEPATH (acl_file, ini_string, BROKER_PATH_MAX);
+      if (make_abs_path (acl_file, "conf", ini_string, BROKER_PATH_MAX) < 0)
+	{
+	  goto conf_error;
+	}
     }
 
   for (i = 0; i < ini->nsec; i++)
@@ -745,14 +751,26 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (ini_string, ini, sec_name, "LOG_DIR", DEFAULT_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
       INI_GETSTR_CHK (ini_string, ini, sec_name, "SLOW_LOG_DIR", DEFAULT_SLOW_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].slow_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].slow_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
       INI_GETSTR_CHK (ini_string, ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].err_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].err_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
 
       INI_GETSTR_CHK (ini_string, ini, sec_name, "ACCESS_LOG_DIR", DEFAULT_ACCESS_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].access_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].access_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
       INI_GETSTR_CHK (ini_string, ini, sec_name, "DATABASES_CONNECTION_FILE", DEFAULT_EMPTY_STRING, &lineno);
       MAKE_FILEPATH (br_info[num_brs].db_connection_file, ini_string, BROKER_INFO_PATH_MAX);
 
@@ -1110,7 +1128,10 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG_DIR", DEFAULT_SHARD_PROXY_LOG_DIR, &lineno);
-      strcpy (br_info[num_brs].proxy_log_dir, s);
+      if (make_abs_path (br_info[num_brs].proxy_log_dir, NULL, s, BROKER_PATH_MAX) < 0)
+	{
+	  goto conf_error;
+	}
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG", DEFAULT_SHARD_PROXY_LOG_MODE, &lineno);
       br_info[num_brs].proxy_log_mode = conf_get_value_proxy_log_mode (s);

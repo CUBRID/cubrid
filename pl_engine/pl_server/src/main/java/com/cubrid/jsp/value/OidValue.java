@@ -68,11 +68,7 @@ public class OidValue extends Value {
         this.dbType = dbType;
     }
 
-    public CUBRIDOID[] toOidArray() throws TypeMismatchException {
-        createInstance();
-        return new CUBRIDOID[] {oidObject};
-    }
-
+    @Override
     public CUBRIDOID toOid() throws TypeMismatchException {
         createInstance();
         return oidObject;
@@ -91,6 +87,7 @@ public class OidValue extends Value {
         }
     }
 
+    @Override
     public String toString() {
         try {
             createInstance();
@@ -101,15 +98,8 @@ public class OidValue extends Value {
         return null;
     }
 
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
-    }
-
+    @Override
     public Object toObject() throws TypeMismatchException {
         return toOid();
-    }
-
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toObject()};
     }
 }
