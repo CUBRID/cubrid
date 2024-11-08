@@ -2568,7 +2568,7 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
       vpid_p->volid = NULL_VOLID;
       vpid_p->pageid = ++(tfile_vfid_p->membuf_last);
       page_p = tfile_vfid_p->membuf[tfile_vfid_p->membuf_last];
-      qfile_initialize_page_header (page_p);
+      qfile_init_page_header (page_p);
       return page_p;
     }
 
@@ -2624,7 +2624,7 @@ static int
 qmgr_init_external_file_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
 {
   pgbuf_set_page_ptype (thread_p, page, PAGE_QRESULT);
-  qfile_initialize_page_header (page);
+  qfile_init_page_header (page);
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
   return NO_ERROR;

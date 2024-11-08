@@ -122,7 +122,7 @@ extern int qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int qfile_get_first_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 #endif /* ENABLE_UNUSED_FUNCTION */
-STATIC_INLINE void qfile_initialize_page_header (PAGE_PTR page_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void qfile_init_page_header (PAGE_PTR page_p) __attribute__ ((ALWAYS_INLINE));
 
 /* Copy routines */
 extern int qfile_copy_list_id (QFILE_LIST_ID * dest_list_id, const QFILE_LIST_ID * src_list_id, bool include_sort_list);
@@ -234,7 +234,7 @@ extern int qfile_get_list_cache_number_of_entries (int ht_no);
 extern bool qfile_has_no_cache_entries ();
 
 STATIC_INLINE void
-qfile_initialize_page_header (PAGE_PTR page_p)
+qfile_init_page_header (PAGE_PTR page_p)
 {
   OR_PUT_INT (page_p + QFILE_TUPLE_COUNT_OFFSET, 0);
   OR_PUT_INT (page_p + QFILE_PREV_PAGE_ID_OFFSET, NULL_PAGEID);
