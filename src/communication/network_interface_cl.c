@@ -11376,8 +11376,19 @@ error:
   exit_server (*thread_p);
 
   // unpack after exit_server (): ownership of the private allocated objects should be out of server mode
-  packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
-  unpacker.unpack_all (compile_response);
+  if (success == NO_ERROR)
+    {
+      packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
+      if (ext_blk.get_size () > 0)
+	{
+	  unpacker.unpack_all (compile_response);
+	}
+    }
+  else
+    {
+      compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : success;
+      compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+    }
 
   return success;
 #endif /* !CS_MODE */

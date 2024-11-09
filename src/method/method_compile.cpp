@@ -73,6 +73,7 @@ namespace cubmethod
       error = mcon_send_data_to_java (socket, header, compile_request);
       if (error != NO_ERROR)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
 	  goto exit;
 	}
 

@@ -933,21 +933,9 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
       else
 	{
-	  // TODO: error handling needs to be improved
 	  err = ER_SP_COMPILE_ERROR;
-
-	  std::string err_msg;
-	  if (compile_response.err_msg.empty ())
-	    {
-	      err_msg = "unknown";
-	    }
-	  else
-	    {
-	      err_msg.assign (compile_response.err_msg);
-	    }
-
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_response.err_line,
-		  compile_response.err_column, err_msg.c_str ());
+		  compile_response.err_column, compile_response.err_msg.c_str ());
 	  pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
 			   NULL);
 	  goto error_exit;
@@ -1637,24 +1625,19 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
     }
   else
     {
-      // TODO: error handling needs to be improved
-      err = ER_SP_COMPILE_ERROR;
-
-      std::string err_msg;
-      if (compile_response.err_msg.empty ())
+      if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
 	{
-	  err_msg = "unknown";
+	  decl = compile_response.java_signature.c_str ();
 	}
       else
 	{
-	  err_msg.assign (compile_response.err_msg);
+	  err = ER_SP_COMPILE_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_response.err_line,
+		  compile_response.err_column, compile_response.err_msg.c_str ());
+	  pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
+			   NULL);
+	  goto error;
 	}
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_response.err_line,
-	      compile_response.err_column, err_msg.c_str ());
-      pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
-		       NULL);
-      goto error;
     }
 
   if (decl)
