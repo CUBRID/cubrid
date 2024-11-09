@@ -56,15 +56,11 @@ namespace cubpl
     num_args = arg.arg_size;
     arg_mode.resize (num_args);
     arg_type.resize (num_args);
-    arg_default_size.resize (num_args);
-    arg_default.resize (num_args);
 
     for (int i = 0; i < num_args; i++)
       {
 	arg_mode[i] = arg.arg_mode[i];
 	arg_type[i] = arg.arg_type[i];
-	arg_default_size[i] = arg.arg_default_value_size[i];
-	arg_default[i] = arg.arg_default_value[i];
       }
 
     transaction_control = (lang == SP_LANG_PLCSQL) ? true : tc;
@@ -84,11 +80,6 @@ namespace cubpl
       {
 	serializator.pack_int (arg_mode[i]);
 	serializator.pack_int (arg_type[i]);
-	serializator.pack_int (arg_default_size[i]);
-	if (arg_default_size[i] > 0)
-	  {
-	    serializator.pack_c_string (arg_default[i], arg_default_size[i]);
-	  }
       }
 
     serializator.pack_int (result_type);
@@ -116,11 +107,6 @@ namespace cubpl
       {
 	size += serializator.get_packed_int_size (size); // arg_mode
 	size += serializator.get_packed_int_size (size); // arg_type
-	size += serializator.get_packed_int_size (size); // arg_default_size
-	if (arg_default_size[i] > 0)
-	  {
-	    size += serializator.get_packed_c_string_size (arg_default[i], arg_default_size[i], size); // arg_default
-	  }
       }
 
     size += serializator.get_packed_int_size (size); // return_type

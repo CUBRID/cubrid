@@ -406,6 +406,7 @@ extern "C"
 
   extern int pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes);
 
+  extern PT_NODE *pt_make_null_value (PARSER_CONTEXT * parser);
   extern PT_NODE *pt_make_string_value (PARSER_CONTEXT * parser, const char *value_string);
 
   extern PT_NODE *pt_make_integer_value (PARSER_CONTEXT * parser, const int value_int);
@@ -677,6 +678,8 @@ extern "C"
 						  int *continue_walk);
   extern void pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
 								DB_DEFAULT_EXPR * default_expr);
+  extern void pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char* str, const int str_size,
+						  DB_DEFAULT_EXPR * default_expr);
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);

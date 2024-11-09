@@ -6669,6 +6669,9 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return NULL;
 	}
 
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig));
+      node->info.method_call.arg_list = parser_append_node (default_next_node_list, node->info.method_call.arg_list);
+
       DB_TYPE result_type = (DB_TYPE) sp->sig->result_type;
       if (result_type == DB_TYPE_RESULTSET)
 	{

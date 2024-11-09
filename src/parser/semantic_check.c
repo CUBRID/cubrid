@@ -9522,6 +9522,7 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 		       default_value_print, pt_get_type_name (param->type_enum, param->data_type));
 	}
     }
+#endif
 
   return error;
 }
