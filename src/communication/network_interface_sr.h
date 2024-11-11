@@ -183,7 +183,7 @@ extern void sprm_server_get_force_parameters (THREAD_ENTRY * thread_p, unsigned 
 extern void sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shf_has_instance (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_get_local_transaction_id (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sjsp_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void spl_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void srepl_log_get_append_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

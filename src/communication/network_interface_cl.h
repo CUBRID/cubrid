@@ -299,7 +299,7 @@ extern int db_local_transaction_id (DB_VALUE * trid);
 extern int qp_get_server_info (PARSER_CONTEXT * parser, int server_info_bits);
 extern int locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_list);
 
-extern int jsp_get_server_port (void);
+extern int pl_get_server_port (void);
 extern int repl_log_get_append_lsa (LOG_LSA * lsa);
 extern int repl_set_info (REPL_INFO * repl_info);
 

@@ -132,20 +132,20 @@ EXPORTS
     er_init
     er_final
     er_clear
-    jsp_connect_server
-    jsp_disconnect_server
-    jsp_writen
-    jsp_readn
-    jsp_start_server
-    jsp_server_port
-    javasp_get_info_file
-    javasp_get_error_file
-    javasp_open_info_dir
-    javasp_open_info
-    javasp_read_info
-    javasp_reset_info
-    javasp_write_info
-    javasp_unlink_info
+    pl_connect_server
+    pl_disconnect_server
+    pl_writen
+    pl_readn
+    pl_start_jvm_server
+    pl_server_port
+    pl_get_info_file
+    pl_get_error_file
+    pl_open_info_dir
+    pl_open_info
+    pl_read_info
+    pl_reset_info
+    pl_write_info
+    pl_unlink_info
 ;
 ; utility functions
 ;

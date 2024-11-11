@@ -29,7 +29,7 @@
 #endif
 
 #include "object_representation.h" /* OR_ */
-#include "jsp_comm.h" /* jsp_writen() */
+#include "pl_comm.h" /* pl_writen() */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 

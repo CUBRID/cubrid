@@ -555,7 +555,7 @@ net_server_init (void)
   /* JSP */
   req_p = &net_Requests[NET_SERVER_JSP_GET_SERVER_PORT];
   req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = sjsp_get_server_port;
+  req_p->processing_function = spl_get_server_port;
 
   /* replication */
   req_p = &net_Requests[NET_SERVER_REPL_INFO];

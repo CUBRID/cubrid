@@ -98,6 +98,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/printer.cpp
+  ${BASE_DIR}/process_util.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/fault_injection.c
@@ -344,9 +345,10 @@ set(OBJECT_HEADERS
 
 set(SP_SOURCES
   ${SP_DIR}/jsp_cl.cpp
-  ${SP_DIR}/jsp_comm.c
-  ${SP_DIR}/jsp_file.c
-  ${SP_DIR}/jsp_sr.c
+  ${SP_DIR}/pl_comm.c
+  ${SP_DIR}/pl_file.c
+  ${SP_DIR}/pl_sr.cpp
+  ${SP_DIR}/pl_sr_jvm.cpp
   ${SP_DIR}/sp_catalog.cpp
   ${SP_DIR}/sp_code.cpp
   )

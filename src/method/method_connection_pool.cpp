@@ -19,9 +19,9 @@
 #include "method_connection_pool.hpp"
 
 #include "boot_sr.h"
-#include "jsp_sr.h" /* jsp_server_port(), jsp_connect_server() */
-#include "jsp_comm.h" /* jsp_disconnect_server (), jsp_ping () */
-#include "jsp_file.h" /* javasp_read_info() */
+#include "pl_sr.h" /* pl_server_port(), pl_connect_server() */
+#include "pl_comm.h" /* pl_disconnect_server (), pl_ping () */
+#include "pl_file.h" /* pl_read_info() */
 
 #if defined (SERVER_MODE)
 #include "server_support.h"
@@ -63,15 +63,15 @@ namespace cubmethod
 	// test socket
 	if (conn->is_valid() == false)
 	  {
-	    jsp_disconnect_server (conn->m_socket); // disconnect connecting with ExecuteThread in invalid state
-	    conn->m_socket = jsp_connect_server (boot_db_name (), jsp_server_port_from_info ());
+	    pl_disconnect_server (conn->m_socket); // disconnect connecting with ExecuteThread in invalid state
+	    conn->m_socket = pl_connect_server (boot_db_name (), pl_server_port_from_info ());
 	  }
 
 	return conn;
       }
 
     // new connection
-    SOCKET socket = jsp_connect_server (boot_db_name (), jsp_server_port_from_info ());
+    SOCKET socket = pl_connect_server (boot_db_name (), pl_server_port_from_info ());
     return new connection (this, socket);
   }
 
@@ -125,7 +125,7 @@ namespace cubmethod
   connection::~connection ()
   {
     m_pool = nullptr;
-    jsp_disconnect_server (m_socket);
+    pl_disconnect_server (m_socket);
   }
 
   bool
@@ -143,8 +143,8 @@ namespace cubmethod
   bool
   connection::is_jvm_running ()
   {
-    JAVASP_SERVER_INFO info;
-    javasp_read_info (boot_db_name (), info);
+    PL_SERVER_INFO info;
+    pl_read_info (boot_db_name (), info);
     if (info.pid == -1)
       {
 	return false;

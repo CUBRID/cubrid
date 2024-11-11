@@ -46,7 +46,7 @@
 #include "locator_sr.h"
 #include "query_executor.h"
 #include "transaction_sr.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #include "vacuum.h"
 #include "serial.h"
 #endif /* defined (SA_MODE) */
@@ -9084,14 +9084,14 @@ sysprm_dump_server_parameters (FILE * outfp)
 }
 
 /*
- * jsp_get_server_port -
+ * pl_get_server_port -
  *
  * return:
  *
  * NOTE:
  */
 int
-jsp_get_server_port (void)
+pl_get_server_port (void)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -9116,7 +9116,7 @@ jsp_get_server_port (void)
 #else /* CS_MODE */
   int port;
   THREAD_ENTRY *thread_p = enter_server ();
-  port = jsp_server_port_from_info ();
+  port = pl_server_port_from_info ();
   exit_server (*thread_p);
   return port;
 #endif /* !CS_MODE */
