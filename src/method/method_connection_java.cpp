@@ -32,7 +32,7 @@ namespace cubmethod
     int request_size = (int) blk.dim;
     or_pack_int (request, request_size);
 
-    int nbytes = jsp_writen (socket, request, OR_INT_SIZE);
+    int nbytes = pl_writen (socket, request, OR_INT_SIZE);
     if (nbytes != OR_INT_SIZE)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
@@ -40,7 +40,7 @@ namespace cubmethod
 	return error;
       }
 
-    nbytes = jsp_writen (socket, blk.ptr, blk.dim);
+    nbytes = pl_writen (socket, blk.ptr, blk.dim);
     if (nbytes != (int) blk.dim)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
@@ -54,7 +54,7 @@ namespace cubmethod
     int res_size = 0;
     int nbytes = 0;
 
-    nbytes = jsp_readn_with_timeout (socket, (char *) &res_size, OR_INT_SIZE, -1);
+    nbytes = pl_readn_with_timeout (socket, (char *) &res_size, OR_INT_SIZE, -1);
     if (nbytes != OR_INT_SIZE)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
@@ -67,7 +67,7 @@ namespace cubmethod
 	cubmem::extensible_block ext_blk;
 	ext_blk.extend_to (res_size);
 
-	nbytes = jsp_readn_with_timeout (socket, ext_blk.get_ptr (), res_size, -1);
+	nbytes = pl_readn_with_timeout (socket, ext_blk.get_ptr (), res_size, -1);
 	if (nbytes != res_size)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
@@ -85,7 +85,7 @@ namespace cubmethod
     int res_size = 0;
     int nbytes = 0;
 
-    nbytes = jsp_readn_with_timeout (socket, (char *) &res_size, OR_INT_SIZE, -1);
+    nbytes = pl_readn_with_timeout (socket, (char *) &res_size, OR_INT_SIZE, -1);
     if (nbytes != OR_INT_SIZE)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
@@ -98,7 +98,7 @@ namespace cubmethod
 	cubmem::extensible_block ext_blk;
 	ext_blk.extend_to (res_size);
 
-	nbytes = jsp_readn_with_timeout (socket, ext_blk.get_ptr (), res_size, -1);
+	nbytes = pl_readn_with_timeout (socket, ext_blk.get_ptr (), res_size, -1);
 	if (nbytes != res_size)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
@@ -125,7 +125,7 @@ namespace cubmethod
 	    return status;
 	  }
 
-	nbytes = jsp_readn (socket, (char *) &res_size, OR_INT_SIZE);
+	nbytes = pl_readn (socket, (char *) &res_size, OR_INT_SIZE);
 	if (nbytes < 0 && errno == ETIMEDOUT)
 	  {
 	    continue;
@@ -152,7 +152,7 @@ namespace cubmethod
 	    cubmem::extensible_block ext_blk;
 	    ext_blk.extend_to (res_size);
 
-	    nbytes = jsp_readn (socket, ext_blk.get_ptr (), res_size);
+	    nbytes = pl_readn (socket, ext_blk.get_ptr (), res_size);
 	    if (nbytes < 0 && errno == ETIMEDOUT)
 	      {
 		continue;

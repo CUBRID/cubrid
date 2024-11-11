@@ -18,13 +18,13 @@
 
 
 /*
- * jsp_comm.h - Functions to communicate with Java Stored Procedure Server
+ * pl_comm.h - Functions to communicate with Java Stored Procedure Server
  *
  * Note:
  */
 
-#ifndef _JSP_COMM_H_
-#define _JSP_COMM_H_
+#ifndef _PL_COMM_H_
+#define _PL_COMM_H_
 
 #ident "$Id$"
 
@@ -58,8 +58,8 @@ typedef enum
   SP_CODE_UTIL_TERMINATE_SERVER = 0xFF
 } SP_CODE;
 
-typedef struct javasp_status_info JAVASP_STATUS_INFO;
-struct javasp_status_info
+typedef struct pl_status_info PL_STATUS_INFO;
+struct pl_status_info
 {
   int pid;
   int port;
@@ -73,14 +73,14 @@ struct javasp_status_info
 extern "C"
 {
 #endif
-  EXPORT_IMPORT SOCKET jsp_connect_server (const char *db_name, int server_port);
-  EXPORT_IMPORT void jsp_disconnect_server (SOCKET & sockfd);
-  EXPORT_IMPORT int jsp_writen (SOCKET fd, const void *vptr, int n);
-  EXPORT_IMPORT int jsp_readn (SOCKET fd, void *vptr, int n);
-  EXPORT_IMPORT int jsp_readn_with_timeout (SOCKET fd, void *vptr, int n, int timeout);
+  EXPORT_IMPORT SOCKET pl_connect_server (const char *db_name, int server_port);
+  EXPORT_IMPORT void pl_disconnect_server (SOCKET & sockfd);
+  EXPORT_IMPORT int pl_writen (SOCKET fd, const void *vptr, int n);
+  EXPORT_IMPORT int pl_readn (SOCKET fd, void *vptr, int n);
+  EXPORT_IMPORT int pl_readn_with_timeout (SOCKET fd, void *vptr, int n, int timeout);
 
-  int jsp_ping (SOCKET fd);
-  char *jsp_get_socket_file_path (const char *db_name);
+  int pl_ping (SOCKET fd);
+  char *pl_get_socket_file_path (const char *db_name);
 
 #if defined(WINDOWS)
   extern int windows_socket_startup (FARPROC hook);
@@ -91,4 +91,4 @@ extern "C"
 }
 #endif
 
-#endif				/* _JSP_COMM_H_ */
+#endif				/* _pl_COMM_H_ */

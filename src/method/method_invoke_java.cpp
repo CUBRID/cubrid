@@ -20,7 +20,7 @@
 
 #include <functional>
 
-#include "jsp_comm.h"		/* common communcation functions for javasp */
+#include "pl_comm.h"		/* common communcation functions for javasp */
 #include "object_representation.h"	/* OR_ */
 
 #include "connection_support.h"

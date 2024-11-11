@@ -18,30 +18,24 @@
 
 
 /*
- * jsp_sr.h - Java Stored Procedure Server Module Header
+ * pl_sr.h - PL Server Module Header
  *
  * Note:
  */
 
-#ifndef _JSP_SR_H_
-#define _JSP_SR_H_
-
-#ident "$Id$"
+#ifndef _PL_SR_H_
+#define _PL_SR_H_
 
 #include "porting.h"
 
-#if defined(__cplusplus)
-extern "C"
-{
-#endif
+#include "thread_compat.hpp"
 
-  extern EXPORT_IMPORT int jsp_start_server (const char *server_name, const char *path, int port_number);
-  extern EXPORT_IMPORT int jsp_server_port (void);
-  extern EXPORT_IMPORT int jsp_server_port_from_info (void);
-  extern EXPORT_IMPORT int jsp_jvm_is_loaded (void);
+extern EXPORT_IMPORT void pl_monitor_init (const char *name);
+extern EXPORT_IMPORT void pl_monitor_destroy ();
 
-#if defined(__cplusplus)
-}
-#endif
+extern EXPORT_IMPORT int pl_start_jvm_server (const char *server_name, const char *path, int port_number);
+extern EXPORT_IMPORT int pl_server_port (void);
+extern EXPORT_IMPORT int pl_server_port_from_info (void);
+extern EXPORT_IMPORT int pl_jvm_is_loaded (void);
 
-#endif				/* _JSP_SR_H_ */
+#endif /* _PL_SR_H_ */

@@ -18,7 +18,8 @@
 
 #include "method_compile.hpp"
 
-#include "jsp_comm.h"
+#include "pl_comm.h"
+#include "method_runtime_context.hpp"
 #include "method_connection_sr.hpp"
 #include "method_connection_java.hpp"
 #include "method_compile_def.hpp"

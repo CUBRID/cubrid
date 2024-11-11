@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,10 +17,8 @@
  */
 
 /*
- * jsp_sr.c - Java Stored Procedure Server Module Source
+ * pl_sr_jvm.cpp - PL Server Module Source related to setup JVM
  */
-
-#ident "$Id$"
 
 #include "config.h"
 
@@ -42,26 +40,21 @@
 #include <sstream>
 #include <iterator>
 
-#include "jsp_sr.h"
-#include "jsp_file.h"
-#include "jsp_comm.h"
+#include "pl_sr.h"
+#include "pl_file.h"
+#include "pl_comm.h"
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "boot_sr.h"
-#endif
-
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "release_string.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#if defined(sparc)
-#define JVM_LIB_PATH "jre/lib/sparc/client"
-#define JVM_LIB_PATH_JDK11 "lib/server"
-#elif defined(WINDOWS)
+#if defined(WINDOWS)
 #if __WORDSIZE == 32
 #define JVM_LIB_PATH_JDK "jre\\bin\\client"
 #define JVM_LIB_PATH_JRE "bin\\client"
@@ -71,42 +64,16 @@
 #define JVM_LIB_PATH_JRE "bin\\server"
 #define JVM_LIB_PATH_JDK11 "bin\\server"
 #endif
-#elif defined(HPUX) && defined(IA64)
-#define JVM_LIB_PATH "jre/lib/IA64N/hotspot"
-#define JVM_LIB_PATH_JDK11 "lib/IA64N/server"
-#elif defined(HPUX) && !defined(IA64)
-#define JVM_LIB_PATH "jre/lib/PA_RISC2.0/hotspot"
-#define JVM_LIB_PATH_JDK11 "lib/PA_RISC2.0/server"
-#elif defined(AIX)
-#if __WORDSIZE == 32
-#define JVM_LIB_PATH "jre/bin/classic"
-#define JVM_LIB_PATH_JDK11 "lib/server"
-#elif __WORDSIZE == 64
-#define JVM_LIB_PATH "jre/lib/ppc64/classic"
-#define JVM_LIB_PATH_JDK11 "lib/server"
-#endif
-#elif defined(__i386) || defined(__x86_64)
-#if __WORDSIZE == 32
-#define JVM_LIB_PATH "jre/lib/i386/client"
-#define JVM_LIB_PATH_JDK11 "lib/server"
 #else
 #define JVM_LIB_PATH "jre/lib/amd64/server"
 #define JVM_LIB_PATH_JDK11 "lib/server"
 #endif
-#else /* ETC */
-#define JVM_LIB_PATH ""
-#define JVM_LIB_PATH_JDK11 ""
-#endif /* ETC */
 
-#if !defined(WINDOWS)
-#if defined(AIX)
+#if defined(WINDOWS)
+#define JVM_LIB_FILE "libjvm.dll"
+#else
 #define JVM_LIB_FILE "libjvm.so"
-#elif defined(HPUX) && !defined(IA64)
-#define JVM_LIB_FILE "libjvm.sl"
-#else /* not AIX , not ( HPUX && (not IA64)) */
-#define JVM_LIB_FILE "libjvm.so"
-#endif /* not AIX , not ( HPUX && (not IA64)) */
-#endif /* !WINDOWS */
+#endif
 
 #if defined(WINDOWS)
 #define REGKEY_JAVA     "Software\\JavaSoft\\Java Runtime Environment"
@@ -148,9 +115,7 @@ typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 
 static JavaVM *jvm = NULL;
 static jint sp_port = -1;
-// *INDENT-OFF*
 static std::string err_msgs;
-// *INDENT-ON*
 
 #if defined(WINDOWS)
 int get_java_root_path (char *path);
@@ -161,8 +126,9 @@ extern PfnDliHook __pfnDliNotifyHook2 = delay_load_hook;
 extern PfnDliHook __pfnDliFailureHook2 = delay_load_hook;
 
 #else /* WINDOWS */
-static void *jsp_get_create_java_vm_function_ptr (void);
+static void *pl_get_create_java_vm_function_ptr (void);
 #endif /* !WINDOWS */
+
 
 #if defined(WINDOWS)
 
@@ -252,86 +218,86 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
   switch (dliNotify)
     {
     case dliFailLoadLib:
-      {
-	char *java_home = NULL, *jvm_path = NULL, *tmp = NULL, *tail;
-	void *libVM = NULL;
+    {
+      char *java_home = NULL, *jvm_path = NULL, *tmp = NULL, *tail;
+      void *libVM = NULL;
 
-	jvm_path = getenv ("JVM_PATH");
-	java_home = getenv ("JAVA_HOME");
+      jvm_path = getenv ("JVM_PATH");
+      java_home = getenv ("JAVA_HOME");
 
-	if (jvm_path)
-	  {
-	    err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' environment variable: ");
-	    err_msgs.append ("\n\t\t");
-	    err_msgs.append (jvm_path);
+      if (jvm_path)
+	{
+	  err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' environment variable: ");
+	  err_msgs.append ("\n\t\t");
+	  err_msgs.append (jvm_path);
 
-	    libVM = LoadLibrary (jvm_path);
-	    if (libVM)
-	      {
-		fp = (FARPROC) (HMODULE) libVM;
-		return fp;
-	      }
-	  }
-	else
-	  {
-	    err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable");
-	  }
+	  libVM = LoadLibrary (jvm_path);
+	  if (libVM)
+	    {
+	      fp = (FARPROC) (HMODULE) libVM;
+	      return fp;
+	    }
+	}
+      else
+	{
+	  err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable");
+	}
 
-	tail = JVM_LIB_PATH_JDK;
-	if (java_home == NULL)
-	  {
-	    tmp = (char *) malloc (BUF_SIZE);
-	    if (tmp)
-	      {
-		if (get_java_root_path (tmp))
-		  {
-		    java_home = tmp;
-		    tail = JVM_LIB_PATH_JRE;
-		  }
-	      }
-	  }
+      tail = JVM_LIB_PATH_JDK;
+      if (java_home == NULL)
+	{
+	  tmp = (char *) malloc (BUF_SIZE);
+	  if (tmp)
+	    {
+	      if (get_java_root_path (tmp))
+		{
+		  java_home = tmp;
+		  tail = JVM_LIB_PATH_JRE;
+		}
+	    }
+	}
 
-	if (java_home)
-	  {
-	    err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' environment variable: ");
+      if (java_home)
+	{
+	  err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' environment variable: ");
 
-	    char jvm_lib_path[BUF_SIZE];
-	    sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
+	  char jvm_lib_path[BUF_SIZE];
+	  sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
 
-	    err_msgs.append ("\n\t\t");
-	    err_msgs.append (jvm_lib_path);
+	  err_msgs.append ("\n\t\t");
+	  err_msgs.append (jvm_lib_path);
 
-	    libVM = LoadLibrary (jvm_lib_path);
+	  libVM = LoadLibrary (jvm_lib_path);
 
-	    if (libVM)
-	      {
-		fp = (FARPROC) (HMODULE) libVM;
-	      }
-	    else
-	      {
-		tail = JVM_LIB_PATH_JDK11;
+	  if (libVM)
+	    {
+	      fp = (FARPROC) (HMODULE) libVM;
+	    }
+	  else
+	    {
+	      tail = JVM_LIB_PATH_JDK11;
 
-		memset (jvm_lib_path, BUF_SIZE, 0);
-		sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
+	      memset (jvm_lib_path, BUF_SIZE, 0);
+	      sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
 
-		err_msgs.append ("\n\t\t");
-		err_msgs.append (jvm_lib_path);
+	      err_msgs.append ("\n\t\t");
+	      err_msgs.append (jvm_lib_path);
 
-		libVM = LoadLibrary (jvm_lib_path);
-		fp = (FARPROC) (HMODULE) libVM;
-	      }
-	  }
-	else
-	  {
-	    err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable");
-	  }
+	      libVM = LoadLibrary (jvm_lib_path);
+	      fp = (FARPROC) (HMODULE) libVM;
+	    }
+	}
+      else
+	{
+	  err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable");
+	}
 
-	if (tmp)
-	  {
-	    free_and_init (tmp);
-	  }
-      }
-      break;
+      if (tmp)
+	{
+	  free_and_init (tmp);
+	}
+    }
+    break;
 
     default:
       break;
@@ -368,14 +334,14 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
 #else /* WINDOWS */
 
 /*
- * jsp_get_create_java_vm_func_ptr
+ * pl_get_create_java_vm_func_ptr
  *   return: return java vm function pointer
  *
  * Note:
  */
 
 static void *
-jsp_get_create_java_vm_function_ptr ()
+pl_get_create_java_vm_function_ptr ()
 {
   void *libVM_p = NULL;
 
@@ -443,26 +409,26 @@ jsp_get_create_java_vm_function_ptr ()
 
 
 /*
- * jsp_create_java_vm
+ * pl_create_java_vm
  *   return: create java vm
  *
  * Note:
  */
 static int
-jsp_create_java_vm (JNIEnv ** env_p, JavaVMInitArgs * vm_arguments)
+pl_create_java_vm (JNIEnv **env_p, JavaVMInitArgs *vm_arguments)
 {
   int res;
 #if defined(WINDOWS)
   __try
-  {
-    res = JNI_CreateJavaVM (&jvm, (void **) env_p, vm_arguments);
-  }
+    {
+      res = JNI_CreateJavaVM (&jvm, (void **) env_p, vm_arguments);
+    }
   __except (delay_load_dll_exception_filter (GetExceptionInformation ()))
-  {
-    res = -1;
-  }
+    {
+      res = -1;
+    }
 #else /* WINDOWS */
-  CREATE_VM_FUNC create_vm_func = (CREATE_VM_FUNC) jsp_get_create_java_vm_function_ptr ();
+  CREATE_VM_FUNC create_vm_func = (CREATE_VM_FUNC) pl_get_create_java_vm_function_ptr ();
   if (create_vm_func)
     {
       res = (*create_vm_func) (&jvm, (void **) env_p, (void *) vm_arguments);
@@ -478,14 +444,13 @@ jsp_create_java_vm (JNIEnv ** env_p, JavaVMInitArgs * vm_arguments)
 }
 
 /*
- * jsp_tokenize_jvm_options
+ * pl_tokenize_jvm_options
  *  return: tokenized array of string
  *
  */
 
-// *INDENT-OFF*
 static std::vector <std::string>
-jsp_tokenize_jvm_options (char *opt_str)
+pl_tokenize_jvm_options (char *opt_str)
 {
   std::string str (opt_str);
   std::istringstream iss (str);
@@ -497,7 +462,7 @@ jsp_tokenize_jvm_options (char *opt_str)
 // *INDENT-ON*
 
 /*
- * jsp_start_server -
+ * pl_start_jvm_server -
  *   return: Error Code
  *   db_name(in): db name
  *   path(in): path
@@ -506,7 +471,7 @@ jsp_tokenize_jvm_options (char *opt_str)
  */
 
 int
-jsp_start_server (const char *db_name, const char *path, int port)
+pl_start_jvm_server (const char *db_name, const char *path, int port)
 {
   jint res;
   jclass cls, string_cls;
@@ -525,12 +490,12 @@ jsp_start_server (const char *db_name, const char *path, int port)
   char debug_jdwp[] = "-agentlib:jdwp=transport=dt_socket,server=y,address=%d,suspend=n";
   const char *envroot;
   const char *uds_path;
-  char jsp_file_path[PATH_MAX];
+  char pl_file_path[PATH_MAX];
   char port_str[6] = { 0 };
   char *loc_p, *locale;
   char *jvm_opt_sysprm = NULL;
   int debug_port = -1;
-  const bool is_uds_mode = (port == JAVASP_PORT_UDS_MODE);
+  const bool is_uds_mode = (port == PL_PORT_UDS_MODE);
   {
     if (jvm != NULL)
       {
@@ -541,7 +506,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
 
     if (is_uds_mode)
       {
-	uds_path = jsp_get_socket_file_path (db_name);
+	uds_path = pl_get_socket_file_path (db_name);
       }
     else
       {
@@ -549,10 +514,10 @@ jsp_start_server (const char *db_name, const char *path, int port)
       }
 
     snprintf (classpath, sizeof (classpath) - 1, "-Djava.class.path=%s",
-	      envvar_javadir_file (jsp_file_path, PATH_MAX, "pl_server.jar"));
+	      envvar_javadir_file (pl_file_path, PATH_MAX, "pl_server.jar"));
 
     snprintf (logging_prop, sizeof (logging_prop) - 1, "-Djava.util.logging.config.file=%s",
-	      envvar_javadir_file (jsp_file_path, PATH_MAX, "logging.properties"));
+	      envvar_javadir_file (pl_file_path, PATH_MAX, "logging.properties"));
 
     debug_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_DEBUG);
     if (debug_port != -1)
@@ -561,18 +526,17 @@ jsp_start_server (const char *db_name, const char *path, int port)
       }
 
     jvm_opt_sysprm = (char *) prm_get_string_value (PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS);
-  // *INDENT-OFF*
-  std::vector <std::string> opts = jsp_tokenize_jvm_options (jvm_opt_sysprm);
+    std::vector <std::string> opts = pl_tokenize_jvm_options (jvm_opt_sysprm);
 #ifndef NDEBUG
-  // enable assertions in PL Server
-  opts.insert(opts.begin(), "-ea"); // must be the first option in order not to override ones specified by the user
+    // enable assertions in PL Server
+    opts.insert (opts.begin(), "-ea"); // must be the first option in order not to override ones specified by the user
 #endif // !NDEBUG
-  
-  // CBRD-25364: Prevent JVM crash caused by libzip
-  // Added the following option as a default until the minimum JDK version is upgraded
-  opts.insert(opts.begin(), "-Dsun.zip.disableMemoryMapping=true");
 
-  // *INDENT-ON*
+    // CBRD-25364: Prevent JVM crash caused by libzip
+    // Added the following option as a default until the minimum JDK version is upgraded
+    opts.insert (opts.begin(), "-Dsun.zip.disableMemoryMapping=true");
+
+    // *INDENT-ON*
     vm_n_ext_options += (int) opts.size ();
     options = new JavaVMOption[vm_n_default_options + vm_n_ext_options];
     if (options == NULL)
@@ -593,9 +557,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
 
     for (auto it = opts.begin (); it != opts.end (); ++it)
       {
-      // *INDENT-OFF*
-      options[ext_idx++].optionString = const_cast <char*> (it->c_str ());
-      // *INDENT-ON*
+	options[ext_idx++].optionString = const_cast <char *> (it->c_str ());
       }
 
     vm_arguments.version = JNI_VERSION_1_6;
@@ -610,10 +572,8 @@ jsp_start_server (const char *db_name, const char *path, int port)
 	locale = strdup (loc_p);
       }
 
-    res = jsp_create_java_vm (&env_p, &vm_arguments);
-  // *INDENT-OFF*
-  delete[] options;
-  // *INDENT-ON*
+    res = pl_create_java_vm (&env_p, &vm_arguments);
+    delete[] options;
 
 #if !defined(WINDOWS)
     if (er_has_error ())
@@ -745,8 +705,8 @@ exit:
 }
 
 /*
- * jsp_server_port
- *   return: if jsp is disabled return -2 (JAVASP_PORT_DISABLED)
+ * pl_server_port
+ *   return: if jsp is disabled return -2 (PL_PORT_DISABLED)
  *           else if jsp is UDS mode return -1
  *           else return a port (TCP mode)
  *
@@ -754,40 +714,38 @@ exit:
  */
 
 int
-jsp_server_port (void)
+pl_server_port (void)
 {
   return sp_port;
 }
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /*
- * jsp_server_port_from_info
- *   return: if jsp is disabled return -2 (JAVASP_PORT_DISABLED)
+ * pl_server_port_from_info
+ *   return: if jsp is disabled return -2 (PL_PORT_DISABLED)
  *           else if jsp is UDS mode return -1
  *           else return a port (TCP mode)
- * 
+ *
  *
  * Note:
  */
 
 int
-jsp_server_port_from_info (void)
+pl_server_port_from_info (void)
 {
 #if defined (SA_MODE)
   return sp_port;
 #else
-  // check $CUBRID/var/javasp_<db_name>.info
-// *INDENT-OFF*
-  JAVASP_SERVER_INFO jsp_info {-1, -1};
-// *INDENT-ON*
-  javasp_read_info (boot_db_name (), jsp_info);
-  return sp_port = jsp_info.port;
+  // check $CUBRID/var/pl_<db_name>.info
+  PL_SERVER_INFO pl_info {-1, -1};
+  pl_read_info (boot_db_name (), pl_info);
+  return sp_port = pl_info.port;
 #endif
 }
 #endif
 
 /*
- * jsp_jvm_is_loaded
+ * pl_jvm_is_loaded
  *   return: if disable jsp function and return false
  *              enable jsp function and return not false
  *
@@ -795,7 +753,7 @@ jsp_server_port_from_info (void)
  */
 
 int
-jsp_jvm_is_loaded (void)
+pl_jvm_is_loaded (void)
 {
   return jvm != NULL;
 }

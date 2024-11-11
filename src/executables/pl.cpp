@@ -18,7 +18,7 @@
 
 
 /*
- * javasp.cpp - utility java stored procedure server main routine
+ * pl.cpp - utility PL JVM server main routine
  *
  */
 
@@ -54,6 +54,7 @@
 #include <io.h>
 #endif /* not WINDOWS */
 
+#include "process_util.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "error_code.h"
@@ -65,8 +66,8 @@
 #include "method_struct_invoke.hpp"
 #include "method_connection_java.hpp"
 
-#include "jsp_file.h"
-#include "jsp_sr.h"
+#include "pl_file.h"
+#include "pl_sr.h"
 
 #include "packer.hpp"
 
@@ -75,9 +76,9 @@
 #include <array>
 #include <atomic>
 
-#define JAVASP_PING_LEN   PATH_MAX
+#define PL_PING_LEN   PATH_MAX
 
-#define JAVASP_PRINT_ERR_MSG(...) \
+#define PL_PRINT_ERR_MSG(...) \
   do {\
       fprintf (stderr, __VA_ARGS__);\
   }while (0)
@@ -88,25 +89,22 @@
 #define NULL_DEVICE "/dev/null"
 #endif
 
-static int javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_name, const std::string &path);
-static int javasp_stop_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_name);
-static int javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_name);
+static int pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const std::string &path);
+static int pl_stop_server (const PL_SERVER_INFO pl_info, const std::string &db_name);
+static int pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name);
 
-static void javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info);
-static int javasp_ping_server (const int server_port, const char *db_name, char *buf);
-static bool javasp_is_running (const int server_port, const std::string &db_name);
+static void pl_dump_status (FILE *fp, PL_STATUS_INFO status_info);
+static int pl_ping_server (const int server_port, const char *db_name, char *buf);
+static bool pl_is_running (const int server_port, const std::string &db_name);
 
-static bool javasp_is_terminated_process (int pid);
-static void javasp_terminate_process (int pid);
+static int pl_get_server_info (const std::string &db_name, PL_SERVER_INFO &info);
+static int pl_check_argument (int argc, char *argv[], std::string &command, std::string &db_name);
+static int pl_check_database (const std::string &db_name, std::string &db_path);
 
-static int javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INFO &info);
-static int javasp_check_argument (int argc, char *argv[], std::string &command, std::string &db_name);
-static int javasp_check_database (const std::string &db_name, std::string &db_path);
-
-static int javasp_get_port_param ();
+static int pl_get_port_param ();
 
 #if !defined(WINDOWS)
-static void javasp_signal_handler (int sig);
+static void pl_signal_handler (int sig);
 #endif
 
 static bool is_signal_handling = false;
@@ -114,7 +112,7 @@ static char executable_path[PATH_MAX];
 
 static std::string command;
 static std::string db_name;
-static JAVASP_SERVER_INFO running_info = JAVASP_SERVER_INFO_INITIALIZER;
+static PL_SERVER_INFO running_info = PL_SERVER_INFO_INITIALIZER;
 
 /*
  * main() - javasp main function
@@ -127,19 +125,19 @@ main (int argc, char *argv[])
   FILE *redirect = NULL; /* for ping */
 
 #if defined(WINDOWS)
-  FARPROC jsp_old_hook = NULL;
+  FARPROC pl_old_hook = NULL;
 #else
   if (os_set_signal_handler (SIGPIPE, SIG_IGN) == SIG_ERR)
     {
       return ER_GENERIC_ERROR;
     }
 
-  os_set_signal_handler (SIGABRT, javasp_signal_handler);
-  os_set_signal_handler (SIGILL, javasp_signal_handler);
-  os_set_signal_handler (SIGFPE, javasp_signal_handler);
-  os_set_signal_handler (SIGBUS, javasp_signal_handler);
-  os_set_signal_handler (SIGSEGV, javasp_signal_handler);
-  os_set_signal_handler (SIGSYS, javasp_signal_handler);
+  os_set_signal_handler (SIGABRT, pl_signal_handler);
+  os_set_signal_handler (SIGILL, pl_signal_handler);
+  os_set_signal_handler (SIGFPE, pl_signal_handler);
+  os_set_signal_handler (SIGBUS, pl_signal_handler);
+  os_set_signal_handler (SIGSEGV, pl_signal_handler);
+  os_set_signal_handler (SIGSYS, pl_signal_handler);
 
 #endif /* WINDOWS */
   {
@@ -151,7 +149,7 @@ main (int argc, char *argv[])
     er_init (NULL_DEVICE, ER_NEVER_EXIT);
 
     /* check arguments, get command and database name */
-    status = javasp_check_argument (argc, argv, command, db_name);
+    status = pl_check_argument (argc, argv, command, db_name);
     if (status != NO_ERROR)
       {
 	return ER_GENERIC_ERROR;
@@ -159,7 +157,7 @@ main (int argc, char *argv[])
 
     /* check database exists and get path name of database */
     std::string pathname;
-    status = javasp_check_database (db_name, pathname);
+    status = pl_check_database (db_name, pathname);
     if (status != NO_ERROR)
       {
 	goto exit;
@@ -177,13 +175,13 @@ main (int argc, char *argv[])
 	er_init (er_msg_file, ER_NEVER_EXIT);
       }
 
-    /* try to create info dir and get absolute path for info file; $CUBRID/var/javasp_<db_name>.info */
-    JAVASP_SERVER_INFO jsp_info = JAVASP_SERVER_INFO_INITIALIZER;
-    status = javasp_get_server_info (db_name, jsp_info);
+    /* try to create info dir and get absolute path for info file; $CUBRID/var/pl_<db_name>.info */
+    PL_SERVER_INFO pl_info = PL_SERVER_INFO_INITIALIZER;
+    status = pl_get_server_info (db_name, pl_info);
     if (status != NO_ERROR && command.compare ("start") != 0)
       {
 	char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
-	javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
+	pl_get_info_file (info_path, PATH_MAX, db_name.c_str ());
 	snprintf (err_msg, sizeof (err_msg), "Error while opening file (%s)", info_path);
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
 	goto exit;
@@ -191,7 +189,7 @@ main (int argc, char *argv[])
 
 #if defined(WINDOWS)
     // socket startup for windows
-    windows_socket_startup (jsp_old_hook);
+    windows_socket_startup (pl_old_hook);
 #endif /* WINDOWS */
 
     /*
@@ -207,23 +205,23 @@ main (int argc, char *argv[])
 	  }
 
 	// check process is running
-	if (jsp_info.pid == JAVASP_PID_DISABLED || javasp_is_terminated_process (jsp_info.pid) == true)
+	if (pl_info.pid == PL_PID_DISABLED || is_terminated_process (pl_info.pid) == true)
 	  {
 	    // NO_CONNECTION
-	    javasp_reset_info (db_name.c_str ());
+	    pl_reset_info (db_name.c_str ());
 	    goto exit;
 	  }
 
-	char buffer[JAVASP_PING_LEN] = {0};
+	char buffer[PL_PING_LEN] = {0};
 	if (status == NO_ERROR)
 	  {
-	    status = javasp_ping_server (jsp_info.port, db_name.c_str (), buffer);
+	    status = pl_ping_server (pl_info.port, db_name.c_str (), buffer);
 	  }
 
 	if (status == NO_ERROR)
 	  {
 	    std::string ping_db_name;
-	    packing_unpacker unpacker (buffer, JAVASP_PING_LEN);
+	    packing_unpacker unpacker (buffer, PL_PING_LEN);
 	    unpacker.unpack_string (ping_db_name);
 
 	    fprintf (stdout, "%s", ping_db_name.c_str ());
@@ -254,35 +252,51 @@ main (int argc, char *argv[])
 	    goto exit;
 	  }
 
-	status = javasp_start_server (jsp_info, db_name, pathname);
+	status = pl_start_server (pl_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
 	    command = "running";
-	    javasp_read_info (db_name.c_str(), running_info);
+	    pl_read_info (db_name.c_str(), running_info);
+#if defined (WINDOWS)
+	    DWORD parent_ppid = GetCurrentProcessId();
+	    HANDLE hParent = OpenProcess (SYNCHRONIZE, FALSE, parent_ppid);
+	    DWORD result = WaitForSingleObject (hParent, INFINITE);
+	    CloseHandle (hParent);
+	    if (result == WAIT_OBJECT_0)
+	      {
+		ExitProcess (0);
+	      }
+#else
 	    do
 	      {
-		SLEEP_MILISEC (0, 100);
+		if (getppid () == 1)
+		  {
+		    // parent process is terminated
+		    break;
+		  }
+		sleep (1);
 	      }
 	    while (true);
+#endif
 	  }
       }
     else if (command.compare ("stop") == 0)
       {
-	status = javasp_stop_server (jsp_info, db_name);
+	status = pl_stop_server (pl_info, db_name);
       }
     else if (command.compare ("status") == 0)
       {
-	status = javasp_status_server (jsp_info, db_name);
+	status = pl_status_server (pl_info, db_name);
       }
     else
       {
-	JAVASP_PRINT_ERR_MSG ("Invalid command: %s\n", command.c_str ());
+	PL_PRINT_ERR_MSG ("Invalid command: %s\n", command.c_str ());
 	status = ER_GENERIC_ERROR;
       }
 
 #if defined(WINDOWS)
     // socket shutdown for windows
-    windows_socket_shutdown (jsp_old_hook);
+    windows_socket_shutdown (pl_old_hook);
 #endif /* WINDOWS */
   }
 
@@ -308,7 +322,7 @@ exit:
     {
       if (er_has_error ())
 	{
-	  JAVASP_PRINT_ERR_MSG ("%s\n", er_msg ());
+	  PL_PRINT_ERR_MSG ("%s\n", er_msg ());
 	}
     }
 
@@ -316,9 +330,9 @@ exit:
 }
 
 #if !defined(WINDOWS)
-static void javasp_signal_handler (int sig)
+static void pl_signal_handler (int sig)
 {
-  JAVASP_SERVER_INFO jsp_info = JAVASP_SERVER_INFO_INITIALIZER;
+  PL_SERVER_INFO pl_info = PL_SERVER_INFO_INITIALIZER;
 
   if (os_set_signal_handler (sig, SIG_DFL) == SIG_ERR)
     {
@@ -330,16 +344,15 @@ static void javasp_signal_handler (int sig)
       return;
     }
 
-  int status = javasp_get_server_info (db_name, jsp_info); // if failed,
-  if (status == NO_ERROR && jsp_info.pid != JAVASP_PID_DISABLED)
+  int status = pl_get_server_info (db_name, pl_info); // if failed,
+  if (status == NO_ERROR && pl_info.pid != PL_PID_DISABLED)
     {
-      (void) envvar_bindir_file (executable_path, PATH_MAX, UTIL_PL_NAME);
       if (command.compare ("running") != 0 || db_name.empty ())
 	{
 	  return;
 	}
 
-      if (running_info.pid == jsp_info.pid && running_info.port == jsp_info.port)
+      if (running_info.pid == pl_info.pid && running_info.port == pl_info.port)
 	{
 	  is_signal_handling = true;
 	}
@@ -348,51 +361,42 @@ static void javasp_signal_handler (int sig)
 	  return;
 	}
 
-      int pid = fork ();
-      if (pid == 0) // child
+      // error handling in parent
+      std::string err_msg;
+
+      void *addresses[64];
+      int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
+      char **symbols = backtrace_symbols (addresses, nn_addresses);
+
+      err_msg += "pid (";
+      err_msg += std::to_string (getpid ());
+      err_msg += ")\n";
+
+      for (int i = 0; i < nn_addresses; i++)
 	{
-	  execl (executable_path, UTIL_PL_NAME, "start", db_name.c_str (), NULL);
-	  exit (0);
-	}
-      else
-	{
-	  // error handling in parent
-	  std::string err_msg;
-
-	  void *addresses[64];
-	  int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
-	  char **symbols = backtrace_symbols (addresses, nn_addresses);
-
-	  err_msg += "pid (";
-	  err_msg += std::to_string (pid);
-	  err_msg += ")\n";
-
-	  for (int i = 0; i < nn_addresses; i++)
+	  err_msg += symbols[i];
+	  if (i < nn_addresses - 1)
 	    {
-	      err_msg += symbols[i];
-	      if (i < nn_addresses - 1)
-		{
-		  err_msg += "\n";
-		}
+	      err_msg += "\n";
 	    }
-	  free (symbols);
-
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
-
-	  exit (1);
 	}
+      free (symbols);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
+
+      exit (1);
     }
   else
     {
       // resume signal hanlding
-      os_set_signal_handler (sig, javasp_signal_handler);
+      os_set_signal_handler (sig, pl_signal_handler);
       is_signal_handling = false;
     }
 }
 #endif
 
 static int
-javasp_get_port_param ()
+pl_get_port_param ()
 {
   int prm_port = 0;
 #if defined (WINDOWS)
@@ -400,16 +404,16 @@ javasp_get_port_param ()
 #else
   const bool is_uds_mode = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS);
 #endif
-  prm_port = (is_uds_mode) ? JAVASP_PORT_UDS_MODE : prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
+  prm_port = (is_uds_mode) ? PL_PORT_UDS_MODE : prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
   return prm_port;
 }
 
 static int
-javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_name, const std::string &path)
+pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const std::string &path)
 {
   int status = NO_ERROR;
 
-  if (jsp_info.pid != JAVASP_PID_DISABLED && javasp_is_running (jsp_info.port, db_name))
+  if (pl_info.pid != PL_PID_DISABLED && pl_is_running (pl_info.port, db_name))
     {
       status = ER_GENERIC_ERROR;
     }
@@ -420,14 +424,13 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
       setsid ();
 #endif
       er_clear (); // clear error before string JVM
-      status = jsp_start_server (db_name.c_str (), path.c_str (), javasp_get_port_param ());
-
+      status = pl_start_jvm_server (db_name.c_str (), path.c_str (), pl_get_port_param ());
       if (status == NO_ERROR)
 	{
-	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
+	  PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };
 
-	  javasp_unlink_info (db_name.c_str ());
-	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info)))
+	  pl_unlink_info (db_name.c_str ());
+	  if ((pl_open_info_dir () && pl_write_info (db_name.c_str (), pl_new_info)))
 	    {
 	      /* succeed */
 	    }
@@ -435,7 +438,7 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 	    {
 	      /* failed to write info file */
 	      char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
-	      javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
+	      pl_get_info_file (info_path, PATH_MAX, db_name.c_str ());
 	      snprintf (err_msg, sizeof (err_msg), "Error while writing to file: (%s)", info_path);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
 	      status = ER_SP_CANNOT_START_JVM;
@@ -447,39 +450,39 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 }
 
 static int
-javasp_stop_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_name)
+pl_stop_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
 {
   SOCKET socket = INVALID_SOCKET;
   int status = NO_ERROR;
 
-  socket = jsp_connect_server (db_name.c_str (), jsp_info.port);
+  socket = pl_connect_server (db_name.c_str (), pl_info.port);
   if (socket != INVALID_SOCKET)
     {
       cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_TERMINATE_SERVER, 0);
       status = mcon_send_data_to_java (socket, header);
 
-      javasp_reset_info (db_name.c_str ());
-      jsp_disconnect_server (socket);
+      pl_reset_info (db_name.c_str ());
+      pl_disconnect_server (socket);
 
-      if (jsp_info.pid != -1 && !javasp_is_terminated_process (jsp_info.pid))
+      if (pl_info.pid != -1 && !is_terminated_process (pl_info.pid))
 	{
-	  javasp_terminate_process (jsp_info.pid);
+	  terminate_process (pl_info.pid);
 	}
 
-      javasp_reset_info (db_name.c_str ());
+      pl_reset_info (db_name.c_str ());
     }
 
   return status;
 }
 
 static int
-javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_name)
+pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
 {
   int status = NO_ERROR;
   SOCKET socket = INVALID_SOCKET;
   cubmem::block buffer;
 
-  socket = jsp_connect_server (db_name.c_str(), jsp_info.port);
+  socket = pl_connect_server (db_name.c_str(), pl_info.port);
   if (socket != INVALID_SOCKET)
     {
       cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_STATUS, 0);
@@ -496,9 +499,9 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_n
 	}
 
       int num_args = 0;
-      JAVASP_STATUS_INFO status_info;
+      PL_STATUS_INFO status_info;
 
-      status_info.pid = jsp_info.pid;
+      status_info.pid = pl_info.pid;
 
       packing_unpacker unpacker (buffer.ptr, buffer.dim);
 
@@ -512,11 +515,11 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_n
 	  status_info.vm_args.push_back (arg);
 	}
 
-      javasp_dump_status (stdout, status_info);
+      pl_dump_status (stdout, status_info);
     }
 
 exit:
-  jsp_disconnect_server (socket);
+  pl_disconnect_server (socket);
 
   if (buffer.ptr)
     {
@@ -527,13 +530,13 @@ exit:
 }
 
 static int
-javasp_ping_server (const int server_port, const char *db_name, char *buf)
+pl_ping_server (const int server_port, const char *db_name, char *buf)
 {
   int status = NO_ERROR;
   SOCKET socket = INVALID_SOCKET;
   cubmem::block ping_blk {0, NULL};
 
-  socket = jsp_connect_server (db_name, server_port);
+  socket = pl_connect_server (db_name, server_port);
   if (socket != INVALID_SOCKET)
     {
       cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_PING, 0);
@@ -557,14 +560,14 @@ exit:
       delete [] ping_blk.ptr;
     }
 
-  jsp_disconnect_server (socket);
+  pl_disconnect_server (socket);
   return er_errid ();
 }
 
 static void
-javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info)
+pl_dump_status (FILE *fp, PL_STATUS_INFO status_info)
 {
-  if (status_info.port == JAVASP_PORT_UDS_MODE)
+  if (status_info.port == PL_PORT_UDS_MODE)
     {
       fprintf (fp, "Java Stored Procedure Server (%s, pid %d, UDS)\n", status_info.db_name.c_str (), status_info.pid);
     }
@@ -587,12 +590,12 @@ javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info)
 }
 
 static bool
-javasp_is_running (const int server_port, const std::string &db_name)
+pl_is_running (const int server_port, const std::string &db_name)
 {
   // check server running
   bool result = false;
-  char buffer[JAVASP_PING_LEN] = {0};
-  if (javasp_ping_server (server_port, db_name.c_str (), buffer) == NO_ERROR)
+  char buffer[PL_PING_LEN] = {0};
+  if (pl_ping_server (server_port, db_name.c_str (), buffer) == NO_ERROR)
     {
       if (db_name.compare (0, db_name.size (), buffer) == 0)
 	{
@@ -602,62 +605,11 @@ javasp_is_running (const int server_port, const std::string &db_name)
   return result;
 }
 
-/*
- * javasp_is_terminated_process () -
- *   return:
- *   pid(in):
- *   TODO there exists same function in file_io.c and util_service.c
- */
-static bool
-javasp_is_terminated_process (int pid)
-{
-#if defined(WINDOWS)
-  HANDLE h_process;
-
-  h_process = OpenProcess (PROCESS_QUERY_INFORMATION, FALSE, pid);
-  if (h_process == NULL)
-    {
-      return true;
-    }
-  else
-    {
-      CloseHandle (h_process);
-      return false;
-    }
-#else /* WINDOWS */
-  if (kill (pid, 0) == -1)
-    {
-      return true;
-    }
-  else
-    {
-      return false;
-    }
-#endif /* WINDOWS */
-}
-
-static void
-javasp_terminate_process (int pid)
-{
-#if defined(WINDOWS)
-  HANDLE phandle;
-
-  phandle = OpenProcess (PROCESS_TERMINATE, FALSE, pid);
-  if (phandle)
-    {
-      TerminateProcess (phandle, 0);
-      CloseHandle (phandle);
-    }
-#else /* ! WINDOWS */
-  kill (pid, SIGTERM);
-#endif /* ! WINDOWS */
-}
-
 static int
-javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INFO &info)
+pl_get_server_info (const std::string &db_name, PL_SERVER_INFO &info)
 {
-  if (javasp_open_info_dir ()
-      && javasp_read_info (db_name.c_str(), info))
+  if (pl_open_info_dir ()
+      && pl_read_info (db_name.c_str(), info))
     {
       return NO_ERROR;
     }
@@ -668,7 +620,7 @@ javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INFO &info)
 }
 
 static int
-javasp_check_database (const std::string &db_name, std::string &path)
+pl_check_database (const std::string &db_name, std::string &path)
 {
   int status = NO_ERROR;
 
@@ -688,7 +640,7 @@ javasp_check_database (const std::string &db_name, std::string &path)
 }
 
 static int
-javasp_check_argument (int argc, char *argv[], std::string &command, std::string &db_name)
+pl_check_argument (int argc, char *argv[], std::string &command, std::string &db_name)
 {
   int status = NO_ERROR;
 
@@ -706,7 +658,7 @@ javasp_check_argument (int argc, char *argv[], std::string &command, std::string
   else
     {
       status = ER_GENERIC_ERROR;
-      JAVASP_PRINT_ERR_MSG ("Invalid number of arguments: %d\n", argc);
+      PL_PRINT_ERR_MSG ("Invalid number of arguments: %d\n", argc);
     }
 
   if (status == NO_ERROR)
@@ -717,7 +669,7 @@ javasp_check_argument (int argc, char *argv[], std::string &command, std::string
       if (it == commands.end())
 	{
 	  status = ER_GENERIC_ERROR;
-	  JAVASP_PRINT_ERR_MSG ("Invalid command: %s\n", command.c_str ());
+	  PL_PRINT_ERR_MSG ("Invalid command: %s\n", command.c_str ());
 	}
     }
 

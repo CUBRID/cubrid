@@ -220,20 +220,20 @@ else(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridcs)
 endif(UNIX)
 
-set(JAVASP_SERVER_SOURCES
-  ${EXECUTABLES_DIR}/javasp.cpp
+set(PL_SERVER_SOURCES
+  ${EXECUTABLES_DIR}/pl.cpp
 )
 SET_SOURCE_FILES_PROPERTIES(
-  ${JAVASP_SERVER_SOURCES}
+  ${PL_SERVER_SOURCES}
   PROPERTIES LANGUAGE CXX
 )
 if(WIN32)
-  list(APPEND JAVASP_SERVER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+  list(APPEND PL_SERVER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
-add_executable(cub_pl ${JAVASP_SERVER_SOURCES})
+add_executable(cub_pl ${PL_SERVER_SOURCES})
 target_include_directories(cub_pl PRIVATE ${JAVA_INC} ${CMAKE_BINARY_DIR} ${EP_INCLUDES})
 target_compile_definitions(cub_pl PRIVATE ${COMMON_DEFS})
-target_link_libraries(cub_pl LINK_PRIVATE cubridcs)
+target_link_libraries(cub_pl LINK_PRIVATE cubridsa)
 
 set(CUB_ADMIN_SOURCES
   ${EXECUTABLES_DIR}/util_admin.c

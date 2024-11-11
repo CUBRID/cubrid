@@ -21,7 +21,7 @@
 #include "boot_sr.h"
 #include "dbtype.h"		/* db_value_* */
 #include "db_value_printer.hpp"
-#include "jsp_comm.h"		/* common communcation functions for javasp */
+#include "pl_comm.h"		/* common communcation functions for javasp */
 #include "mem_block.hpp" /* cubmem::extensible_block */
 #include "method_invoke.hpp"
 #include "method_struct_invoke.hpp"
