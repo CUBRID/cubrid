@@ -8,14 +8,16 @@ jobs:
   run_shell:
     name: run shell test on CircleCI
     if: |
-      github.event.issue.pull_request && 
+      contains(github.event.comment.html_url, '/pull/') &&
       contains(github.event.comment.body, '/run shell')
     runs-on: ubuntu-latest
     steps:
       - name: Trigger CircleCI Shell Test
         env:
           CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
+          GITHUB_CONTEXT: $
         run: |
+          echo "$GITHUB_CONTEXT"
           BRANCH_NAME="${{ github.event.pull_request.head.ref || env.GITHUB_HEAD_REF }}"
           curl --request POST \
             --url https://circleci.com/api/v2/project/gh/tw-kang/cubrid/pipeline \
