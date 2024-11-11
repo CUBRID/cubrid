@@ -59,7 +59,7 @@
 #include "network_interface_cl.h"
 #include "unicode_support.h"
 #include "dbtype.h"
-#include "jsp_comm.h"
+#include "pl_comm.h"
 #include "method_compile_def.hpp"
 #include "sp_catalog.hpp"
 #include "authenticate_access_auth.hpp"

@@ -18,12 +18,12 @@
 
 
 /*
- * jsp_comm.c - Functions to communicate with Java Stored Procedure Server
+ * pl_comm.c - Functions to communicate with Java Stored Procedure Server
  *
  * Note:
  */
 
-#include "jsp_comm.h"
+#include "pl_comm.h"
 
 #include "config.h"
 
@@ -45,7 +45,7 @@
 #include <windows.h>
 #endif /* not WINDOWS */
 
-#include "jsp_file.h"
+#include "pl_file.h"
 #include "connection_support.h"
 #include "porting.h"
 #include "error_manager.h"
@@ -63,12 +63,12 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-static SOCKET jsp_connect_server_tcp (int server_port);
+static SOCKET pl_connect_server_tcp (int server_port);
 #if !defined (WINDOWS)
-static SOCKET jsp_connect_server_uds (const char *db_name);
+static SOCKET pl_connect_server_uds (const char *db_name);
 #endif
 /*
- * jsp_connect_server
+ * pl_connect_server
  *   return: connect fail - return Error Code
  *           connection success - return socket fd
  *
@@ -76,26 +76,26 @@ static SOCKET jsp_connect_server_uds (const char *db_name);
  */
 
 SOCKET
-jsp_connect_server (const char *db_name, int server_port)
+pl_connect_server (const char *db_name, int server_port)
 {
   SOCKET socket = INVALID_SOCKET;
 #if defined (WINDOWS)
-  socket = jsp_connect_server_tcp (server_port);
+  socket = pl_connect_server_tcp (server_port);
 #else
-  if (server_port == JAVASP_PORT_UDS_MODE)
+  if (server_port == PL_PORT_UDS_MODE)
     {
-      socket = jsp_connect_server_uds (db_name);
+      socket = pl_connect_server_uds (db_name);
     }
   else
     {
-      socket = jsp_connect_server_tcp (server_port);
+      socket = pl_connect_server_tcp (server_port);
     }
 #endif
   return socket;
 }
 
 /*
- * jsp_disconnect_server -
+ * pl_disconnect_server -
  *   return: none
  *   sockfd(in) : close connection
  *
@@ -103,7 +103,7 @@ jsp_connect_server (const char *db_name, int server_port)
  */
 
 void
-jsp_disconnect_server (SOCKET & sockfd)
+pl_disconnect_server (SOCKET & sockfd)
 {
   if (!IS_INVALID_SOCKET (sockfd))
     {
@@ -122,7 +122,7 @@ jsp_disconnect_server (SOCKET & sockfd)
 }
 
 /*
- * jsp_writen
+ * pl_writen
  *   return: fail return -1,
  *   fd(in): Specifies the socket file descriptor.
  *   vptr(in): Points to the buffer containing the message to send.
@@ -132,7 +132,7 @@ jsp_disconnect_server (SOCKET & sockfd)
  */
 
 int
-jsp_writen (SOCKET fd, const void *vptr, int n)
+pl_writen (SOCKET fd, const void *vptr, int n)
 {
   int nwritten;
   int nleft = n;
@@ -170,7 +170,7 @@ jsp_writen (SOCKET fd, const void *vptr, int n)
 }
 
 /*
- * jsp_readn
+ * pl_readn
  *   return: read size
  *   fd(in): Specifies the socket file descriptor.
  *   vptr(in/out): Points to a buffer where the message should be stored.
@@ -181,20 +181,20 @@ jsp_writen (SOCKET fd, const void *vptr, int n)
  */
 
 int
-jsp_readn (SOCKET fd, void *vptr, int n)
+pl_readn (SOCKET fd, void *vptr, int n)
 {
   const static int PING_TIMEOUT = 5000;
   return css_readn (fd, (char *) vptr, n, PING_TIMEOUT);
 }
 
 int
-jsp_readn_with_timeout (SOCKET fd, void *vptr, int n, int timeout)
+pl_readn_with_timeout (SOCKET fd, void *vptr, int n, int timeout)
 {
   return css_readn (fd, (char *) vptr, n, timeout);
 }
 
 int
-jsp_ping (SOCKET fd)
+pl_ping (SOCKET fd)
 {
   char buffer[DB_MAX_IDENTIFIER_LENGTH];
 
@@ -203,21 +203,21 @@ jsp_ping (SOCKET fd)
   char *ptr = or_pack_int (request, OR_INT_SIZE);
   ptr = or_pack_int (ptr, SP_CODE_UTIL_PING);
 
-  int nbytes = jsp_writen (fd, request, OR_INT_SIZE * 2);
+  int nbytes = pl_writen (fd, request, OR_INT_SIZE * 2);
   if (nbytes != OR_INT_SIZE * 2)
     {
       return ER_SP_NETWORK_ERROR;
     }
 
   int res_size = 0;
-  nbytes = jsp_readn (fd, (char *) &res_size, OR_INT_SIZE);
+  nbytes = pl_readn (fd, (char *) &res_size, OR_INT_SIZE);
   if (nbytes != OR_INT_SIZE)
     {
       return ER_SP_NETWORK_ERROR;
     }
   res_size = ntohl (res_size);
 
-  nbytes = jsp_readn (fd, buffer, res_size);
+  nbytes = pl_readn (fd, buffer, res_size);
   if (nbytes != res_size)
     {
       return ER_SP_NETWORK_ERROR;
@@ -227,7 +227,7 @@ jsp_ping (SOCKET fd)
 }
 
 char *
-jsp_get_socket_file_path (const char *db_name)
+pl_get_socket_file_path (const char *db_name)
 {
   static char path[PATH_MAX];
   static bool need_init = true;
@@ -255,7 +255,7 @@ jsp_get_socket_file_path (const char *db_name)
 
 #if !defined (WINDOWS)
 static SOCKET
-jsp_connect_server_uds (const char *db_name)
+pl_connect_server_uds (const char *db_name)
 {
   struct sockaddr_un sock_addr;
   SOCKET sockfd = INVALID_SOCKET;
@@ -269,7 +269,7 @@ jsp_connect_server_uds (const char *db_name)
   int slen = sizeof (sock_addr);
   memset (&sock_addr, 0, slen);
   sock_addr.sun_family = AF_UNIX;
-  snprintf (sock_addr.sun_path, sizeof (sock_addr.sun_path), "%s", jsp_get_socket_file_path (db_name));
+  snprintf (sock_addr.sun_path, sizeof (sock_addr.sun_path), "%s", pl_get_socket_file_path (db_name));
 
   int success = connect (sockfd, (struct sockaddr *) &sock_addr, slen);
   if (success < 0)
@@ -285,7 +285,7 @@ jsp_connect_server_uds (const char *db_name)
 #endif
 
 static SOCKET
-jsp_connect_server_tcp (int server_port)
+pl_connect_server_tcp (int server_port)
 {
   struct sockaddr_in tcp_srv_addr;
 

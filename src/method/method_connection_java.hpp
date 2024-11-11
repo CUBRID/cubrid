@@ -29,7 +29,7 @@
 
 #include <functional>
 
-#include "jsp_comm.h"
+#include "pl_comm.h"
 #include "object_representation.h" /* OR_ */
 
 namespace cubmethod
