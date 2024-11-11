@@ -33,7 +33,7 @@
 #include "method_struct_oid_info.hpp"
 #include "method_struct_parameter_info.hpp"
 
-#include "jsp_comm.h"
+#include "pl_comm.h"
 #include "pl_query_cursor.hpp"
 #include "sp_code.hpp"
 
