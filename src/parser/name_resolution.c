@@ -3419,6 +3419,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	else if (PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION (node))
 	  {
 	    /*
+	     * when (dot.arg1->node_type == PT_NAME) && (dot.arg2->node_type == PT_FUNCTION), 
+	     * pt_bind_name_or_path_in_scope() always returns NULL and sets the value PT_ERRORmf(.. MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED ..).
+	     */
+	    pt_reset_error (parser);
+
+	    /*
 	     * jsp_is_exist_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
 	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
 	     */
@@ -3431,14 +3437,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
 	    node->info.dot.arg2->info.function.generic_name = generic_name;
 	    node->info.dot.arg1->info.name.original = generic_name;
-
-	    /*
-	     * If (dot.arg1->node_type == PT_NAME) & (dot.arg2->node_type == PT_FUNCTION), pt_bind_name_or_path_in_scope() always returns NULL and has an er_errid() value.
-	     */
-	    if (er_errid () == NO_ERROR)
-	      {
-		pt_reset_error (parser);
-	      }
 
 	    if (jsp_is_exist_stored_procedure (node->info.dot.arg2->info.function.generic_name))
 	      {
@@ -3454,10 +3452,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		node = node1;	/* return the new node */
 		/* don't revisit leaves */
 		*continue_walk = PT_LIST_WALK;
-	      }
-	    else if (pt_has_error (parser))
-	      {
-		return NULL;
 	      }
 	  }
 	else if (pt_has_error (parser))
@@ -3501,6 +3495,17 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
 	  if (node->info.function.function_type == PT_GENERIC)
 	    {
+	      if (strchr (node->info.function.generic_name, '.'))
+		{
+		  /*
+		   * when checking for a PROCEDURE in a PT_DOT_ type, if the PROCEDURE does not exist, the check moves on to the PT_FUNCTION.
+		   * along the way, it will go through the pt_bind_name_or_path_in_scope() function of PT_NAME, 
+		   * which will always return NULL and set the value of
+		   * PT_ERRORmf(.. MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED ..).
+		   */
+		  pt_reset_error (parser);
+		}
+
 	      /*
 	       * It may be a method call since they are parsed as
 	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
@@ -3545,11 +3550,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		    {
 		      PT_NODE *top_node = NULL;
 		      int is_spec_attr = 0;
-
-		      if (er_errid () == NO_ERROR)
-			{
-			  pt_reset_error (parser);
-			}
 
 		      /* get top node */
 		      if (bind_arg != NULL && bind_arg->sc_info != NULL)
