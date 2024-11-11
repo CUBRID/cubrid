@@ -26,8 +26,9 @@
 #include "mem_block.hpp"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+#include "method_invoke.hpp"
+#include "method_runtime_context.hpp"
 #include "method_compile_def.hpp"
-#include "thread_entry.hpp"
 #endif
 
 #include <vector>

@@ -23,7 +23,7 @@
 
 #include "ddl_log.h"
 
-
+#include "method_def.hpp"
 #include "method_compile.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
@@ -137,28 +137,23 @@ namespace cubmethod
   int
   callback_handler::end_transaction (packing_unpacker &unpacker)
   {
-    int error_code = NO_ERROR;
     int command; // commit : 1, abort : 2
     unpacker.unpack_all (command);
 
     if (command == 1)
       {
-	error_code = db_commit_transaction ();
+	db_commit_transaction ();
       }
     else if (command == 2)
       {
-	error_code = db_abort_transaction ();
+	db_abort_transaction ();
       }
     else
       {
 	assert (false);
-	error_code = ER_FAILED;
       }
 
-    if (error_code != NO_ERROR)
-      {
-	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
-      }
+    free_query_handle_all (true);
 
     if (m_error_ctx.has_error())
       {
@@ -168,6 +163,8 @@ namespace cubmethod
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, 1);
       }
+
+    return NO_ERROR;
   }
 
   int
@@ -886,11 +883,10 @@ exit:
 
     int command;
     std::string auth_user_name;
-    unpacker.unpack_int (command);
+    unpacker.unpack_all (command, auth_user_name);
 
     if (command == 0) // PUSH
       {
-	unpacker.unpack_string (auth_user_name);
 	MOP user = au_find_user (auth_user_name.c_str ());
 	if (user == NULL)
 	  {

@@ -39,22 +39,17 @@
 
 #include "parse_tree.h"
 #include "sp_constants.hpp"
-#include "pl_signature.hpp"
 
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int jsp_check_out_param_in_query (PARSER_CONTEXT * parser, PT_NODE * node, int arg_mode);
+extern int jsp_check_param_type_supported (PT_NODE * node);
 extern int jsp_check_return_type_supported (DB_TYPE type);
 
-extern int jsp_make_pl_signature (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * subquery_as_attr_list,
-				  cubpl::pl_signature & signature);
-extern int jsp_make_pl_args (PARSER_CONTEXT * parser, PT_NODE * node, int num_params, DB_SET * param_set,
-			     cubpl::pl_signature & signature);
-
 extern int jsp_is_exist_stored_procedure (const char *name);
-
 extern char *jsp_get_owner_name (const char *name, char *buf, int buf_size);
 extern int jsp_get_return_type (const char *name);
 extern int jsp_get_sp_type (const char *name);

@@ -43,7 +43,7 @@
 
 #include "mem_block.hpp"	/* cubmem::extensible_block */
 #include "method_callback.hpp"
-
+#include "method_def.hpp"	/* method_sig_list, method_sig_node */
 #include "method_query_handler.hpp"
 
 #include "transaction_cl.h"
@@ -88,7 +88,7 @@ static void method_set_runtime_arguments (UINT64 id, std::vector<DB_VALUE> &args
 
 static int method_prepare_arguments (packing_unpacker &unpacker);
 static int method_invoke_builtin (packing_unpacker &unpacker, DB_VALUE &result);
-static int method_invoke_builtin_internal (DB_VALUE &result, std::vector<DB_VALUE> &args, cubpl::pl_signature &sig);
+static int method_invoke_builtin_internal (DB_VALUE &result, std::vector<DB_VALUE> &args, method_sig_node *meth_sig_p);
 
 static int method_dispatch_internal (packing_unpacker &unpacker);
 
@@ -252,15 +252,13 @@ static int
 method_invoke_builtin (packing_unpacker &unpacker, DB_VALUE &result)
 {
   int error = NO_ERROR;
-  uint64_t group_id;
-  cubpl::pl_signature ib;
-  unpacker.unpack_all (group_id, ib);
 
-  auto search = runtime_args.find (group_id);
+  cubmethod::invoke_builtin ib (unpacker);
+  auto search = runtime_args.find (ib.group_id);
   if (search != runtime_args.end())
     {
       std::vector<DB_VALUE> &args = search->second;
-      error = method_invoke_builtin_internal (result, args, ib);
+      error = method_invoke_builtin_internal (result, args, ib.sig);
       if (error == NO_ERROR)
 	{
 	  /* send a result value to server */
@@ -272,6 +270,7 @@ method_invoke_builtin (packing_unpacker &unpacker, DB_VALUE &result)
       error = ER_GENERIC_ERROR;
     }
 
+  delete ib.sig;
   return error;
 }
 
@@ -337,49 +336,60 @@ method_set_runtime_arguments (UINT64 id, std::vector<DB_VALUE> &args)
  */
 // *INDENT-OFF*
 int
-method_invoke_builtin_internal (DB_VALUE & result, std::vector<DB_VALUE> &args, cubpl::pl_signature &sig)
+method_invoke_builtin_internal (DB_VALUE & result, std::vector<DB_VALUE> &args, method_sig_node * meth_sig_p)
 // *INDENT-ON*
 {
   int error = NO_ERROR;
   int turn_on_auth = 1;
 
+  assert (meth_sig_p != NULL);
+  assert (meth_sig_p->method_type == METHOD_TYPE_CLASS_METHOD || meth_sig_p->method_type == METHOD_TYPE_INSTANCE_METHOD);
+
   /* The first position # is for the object ID */
-  int num_args = sig.arg.arg_size + 1;
+  int num_args = meth_sig_p->num_method_args + 1;
 
   // *INDENT-OFF*
-  std::vector <DB_VALUE *> arg_val_p (num_args + 1, NULL);
+  std::vector <DB_VALUE *> arg_val_p (num_args + 1, NULL); /* + 1 for C method */
   // *INDENT-ON*
   for (int i = 0; i < num_args; ++i)
     {
-      int pos = sig.ext.method.arg_pos[i];
+      int pos = meth_sig_p->method_arg_pos[i];
       arg_val_p[i] = &args[pos];
     }
 
   db_make_null (&result);
-
-  /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is
-  * NULL. */
-  if (!DB_IS_NULL (arg_val_p[0]))
+  if (meth_sig_p->method_type == METHOD_TYPE_INSTANCE_METHOD || meth_sig_p->method_type == METHOD_TYPE_CLASS_METHOD)
     {
-      error = db_is_any_class (db_get_object (arg_val_p[0]));
-      if (error == 0)
+      /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is
+       * NULL. */
+      if (!DB_IS_NULL (arg_val_p[0]))
 	{
-	  error = db_is_instance (db_get_object (arg_val_p[0]));
+	  error = db_is_any_class (db_get_object (arg_val_p[0]));
+	  if (error == 0)
+	    {
+	      error = db_is_instance (db_get_object (arg_val_p[0]));
+	    }
+	}
+      if (error == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  error = NO_ERROR;
+	}
+      else if (error > 0)
+	{
+	  /* methods must run with authorization turned on and database modifications turned off. */
+	  turn_on_auth = 0;
+	  AU_ENABLE (turn_on_auth);
+	  db_disable_modification ();
+	  error = obj_send_array (db_get_object (arg_val_p[0]), meth_sig_p->method_name, &result, &arg_val_p[1]);
+	  db_enable_modification ();
+	  AU_DISABLE (turn_on_auth);
 	}
     }
-  if (error == ER_HEAP_UNKNOWN_OBJECT)
+  else
     {
-      error = NO_ERROR;
-    }
-  else if (error > 0)
-    {
-      /* methods must run with authorization turned on and database modifications turned off. */
-      turn_on_auth = 0;
-      AU_ENABLE (turn_on_auth);
-      db_disable_modification ();
-      error = obj_send_array (db_get_object (arg_val_p[0]), sig.name, &result, &arg_val_p[1]);
-      db_enable_modification ();
-      AU_DISABLE (turn_on_auth);
+      /* java stored procedure is not handled here anymore */
+      assert (false);
+      error = ER_GENERIC_ERROR;
     }
 
   /* error handling */
@@ -582,8 +592,6 @@ method_fixup_vobjs (DB_VALUE *value_p)
 #endif
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-
-#if 0
 /*
  *  xmethod_invoke_fold_constants () - perform constant folding for method
  *  return	  : error code
@@ -617,6 +625,4 @@ int xmethod_invoke_fold_constants (THREAD_ENTRY *thread_p, const method_sig_list
   db_value_clone (&res, &result);
   return error_code;
 }
-#endif
-
 #endif

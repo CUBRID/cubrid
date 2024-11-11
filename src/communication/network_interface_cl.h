@@ -51,11 +51,10 @@
 #include "parse_tree.h"
 #include "load_common.hpp"
 #include "timezone_lib_common.h"
-
+#include "method_def.hpp"
 #include "dynamic_array.h"
 #include "flashback_cl.h"
 #include "method_compile_def.hpp"
-#include "pl_signature.hpp"
 #include "memory_monitor_common.hpp"
 
 // forward declarations
@@ -447,6 +446,8 @@ extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
 extern int loaddb_update_stats (bool verbose);
 
+extern int method_invoke_fold_constants (const method_sig_list & sig_list,
+					 std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result);
 extern int flashback_get_and_show_summary (dynamic_array * class_list, const char *user, time_t start_time,
 					   time_t end_time, FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list,
 					   char **invalid_class, time_t * invalid_time);
@@ -457,9 +458,6 @@ extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num
 /* PL/CSQL */
 EXPORT_IMPORT extern int plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request,
 					       PLCSQL_COMPILE_RESPONSE & compile_response);
-EXPORT_IMPORT extern int pl_call (const cubpl::pl_signature & sig,
-				  const std::vector < std::reference_wrapper < DB_VALUE >> &args,
-				  std::vector < DB_VALUE > &out_args, DB_VALUE & result);
 
 /* memmon */
 extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);

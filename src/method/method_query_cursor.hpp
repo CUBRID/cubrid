@@ -17,11 +17,11 @@
  */
 
 //
-// pl_query_cursor.hpp
+// method_query_cursor.hpp
 //
 
-#ifndef _PL_QUERY_CURSOR_HPP_
-#define _PL_QUERY_CURSOR_HPP_
+#ifndef _METHOD_QUERY_CURSOR_HPP_
+#define _METHOD_QUERY_CURSOR_HPP_
 
 #ident "$Id$"
 
@@ -29,7 +29,7 @@
 
 #include "dbtype_def.h"
 #include "query_list.h" /* QUERY_ID, QFILE_LIST_ID */
-#include "query_manager.h" /* QMGR_QUERY_ENTRY */
+#include "query_manager.h"
 
 // thread_entry.hpp
 namespace cubthread
@@ -37,13 +37,12 @@ namespace cubthread
   class entry;
 }
 
-namespace cubpl
+namespace cubmethod
 {
   class query_cursor
   {
     public:
       query_cursor (cubthread::entry *thread_p, QMGR_QUERY_ENTRY *query_entry_p, bool is_oid_included = false);
-      ~query_cursor ();
 
       int open ();
       void close ();
@@ -69,10 +68,9 @@ namespace cubpl
       int get_tuple_value (int index, DB_VALUE &result);
       bool get_is_oid_included ();
       bool get_is_opened ();
+
       int get_fetch_count ();
       void set_fetch_count (int cnt);
-
-      cubthread::entry *get_owner () const;
 
     private:
       cubthread::entry *m_thread; /* which thread owns this cursor */
@@ -92,6 +90,4 @@ namespace cubpl
   };
 }		// namespace cubmethod
 
-using PL_QUERY_CURSOR = cubpl::query_cursor;
-
-#endif				/* _PL_QUERY_CURSOR_HPP_ */
+#endif				/* _METHOD_QUERY_CURSOR_HPP_ */

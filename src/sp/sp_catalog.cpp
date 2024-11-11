@@ -43,38 +43,6 @@
 // memory representation of built-in stored procedures
 static std::vector <sp_info> sp_builtin_definition;
 
-static const std::vector<std::string> sp_entry_names
-{
-  SP_ATTR_UNIQUE_NAME,
-  SP_ATTR_NAME,
-  SP_ATTR_SP_TYPE,
-  SP_ATTR_RETURN_TYPE,
-  SP_ATTR_ARG_COUNT,
-  SP_ATTR_ARGS,
-  SP_ATTR_LANG,
-  SP_ATTR_PKG,
-  SP_ATTR_IS_SYSTEM_GENERATED,
-  SP_ATTR_TARGET_CLASS,
-  SP_ATTR_TARGET_METHOD,
-  SP_ATTR_DIRECTIVE,
-  SP_ATTR_OWNER,
-  SP_ATTR_COMMENT
-};
-
-static const std::vector<std::string> sp_args_entry_names
-{
-  SP_ATTR_SP_OF,
-  SP_ATTR_PKG,
-  SP_ATTR_INDEX_OF_NAME,
-  SP_ATTR_IS_SYSTEM_GENERATED,
-  SP_ATTR_ARG_NAME,
-  SP_ATTR_DATA_TYPE,
-  SP_ATTR_MODE,
-  SP_ATTR_DEFAULT_VALUE,
-  SP_ATTR_IS_OPTIONAL,
-  SP_ATTR_COMMENT
-};
-
 static int sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint);
 static int sp_builtin_init ();
 
@@ -269,23 +237,6 @@ static int sp_builtin_init ()
   //
 
   return sp_builtin_definition.size ();
-}
-
-sp_entry::sp_entry (int size)
-{
-  vals.resize (size);
-  for (DB_VALUE &val : vals)
-    {
-      db_make_null (&val);
-    }
-}
-
-sp_entry::~sp_entry ()
-{
-  for (DB_VALUE &val : vals)
-    {
-      db_value_clear (&val);
-    }
 }
 
 int sp_builtin_install ()
@@ -1001,16 +952,4 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
 
   target_cls = s.substr (0, pos);
   target_mth = s.substr (pos + 1); // +1 to skip the '.'
-}
-
-std::string
-sp_get_entry_name (int index)
-{
-  return sp_entry_names[index];
-}
-
-std::string
-sp_args_get_entry_name (int index)
-{
-  return sp_args_entry_names[index];
 }

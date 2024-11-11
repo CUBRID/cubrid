@@ -720,8 +720,7 @@ namespace cubpacking
 
     if (len >= max_str_size)
       {
-	assert (max_str_size == 0);
-	align (INT_ALIGNMENT);
+	assert (false);
 	return;
       }
     if (len > 0)

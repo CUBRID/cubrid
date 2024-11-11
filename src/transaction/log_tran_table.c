@@ -77,8 +77,7 @@
 #include "thread_manager.hpp"
 #include "xasl.h"
 #include "xasl_cache.h"
-#include "pl_session.hpp"
-
+#include "method_runtime_context.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -2835,10 +2834,10 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 #endif
 	}
 
-      PL_SESSION *session = cubpl::get_session ();
-      if (session)
+      cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
+      if (rctx)
 	{
-	  session->set_interrupt (ER_INTERRUPTED);
+	  rctx->set_interrupt (ER_INTERRUPTED);
 	}
     }
   else if (interrupt == false && tdes->query_timeout > 0)
@@ -6074,21 +6073,7 @@ log_tdes::lock_topop ()
 {
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
-      cubthread::entry *thread_p = NULL;
-// TODO [PL/CSQL]: It will be fixed at CBRD-25641.
-// The following code inside of #if block is a workaround for the issue.
-#if 1
-      if (rmutex_topop.owner != thread_id_t ())
-      {
-        cubpl::session *session = cubpl::get_session();
-      if (session 
-        && session->is_thread_involved (rmutex_topop.owner))
-        {
-        thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
-        }
-      }
-#endif
-      int r = rmutex_lock (thread_p, &rmutex_topop);
+      int r = rmutex_lock (NULL, &rmutex_topop);
       assert (r == NO_ERROR);
     }
 }
@@ -6098,21 +6083,7 @@ log_tdes::unlock_topop ()
 {
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
-      cubthread::entry *thread_p = NULL;
-// TODO [PL/CSQL]: It will be fixed at CBRD-25641.
-// The following code inside of #if block is a workaround for the issue.
-#if 1
-      if (rmutex_topop.owner != thread_id_t ())
-      {
-        cubpl::session *session = cubpl::get_session();
-      if (session 
-        && session->is_thread_involved (rmutex_topop.owner))
-        {
-        thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
-        }
-      }
-#endif
-      int r = rmutex_unlock (thread_p, &rmutex_topop);
+      int r = rmutex_unlock (NULL, &rmutex_topop);
       assert (r == NO_ERROR);
     }
 }

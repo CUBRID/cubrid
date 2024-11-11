@@ -1522,7 +1522,7 @@ pt_is_method_call (PT_NODE * node)
     }
 
   node = pt_get_end_path_node (node);
-  return (PT_IS_METHOD (node));
+  return (node->node_type == PT_METHOD_CALL);
 }
 
 /*

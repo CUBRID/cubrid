@@ -1979,8 +1979,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   short i, k, lhs_location, rhs_location, level;
   PT_JOIN_TYPE join_type;
   void *save_etc = NULL;
-  PT_NODE *method_name_node = NULL;
-  const char *method_name;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3289,16 +3287,13 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        * first parameter to the on_call_target.  If there is no parameter,
        * it will be caught in pt_semantic_check_local()
        */
-      method_name_node = node->info.method_call.method_name;
-      // parser_print_tree is for built-in package names such as DBMS_OUTPUT
-      method_name = PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
-									     method_name_node) :
-	PT_NAME_ORIGINAL (method_name_node);
-      if (!node->info.method_call.on_call_target && jsp_is_exist_stored_procedure (method_name))
+      if (!node->info.method_call.on_call_target
+	  && jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
 	{
-	  method_name_node->info.name.spec_id = (UINTPTR) method_name_node;
-	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name);
-	  method_name_node->info.name.meta_class = PT_METHOD;
+	  PT_NODE *method_name = node->info.method_call.method_name;
+	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) method_name;
+	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name->info.name.original);
+	  node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
 	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 	  /* don't revisit leaves */
 	  *continue_walk = PT_LIST_WALK;

@@ -66,7 +66,6 @@
 #include "db_json.hpp"
 #include "jsp_cl.h"
 #include "subquery_cache.h"
-#include "pl_signature.hpp"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -225,6 +224,9 @@ static void pt_fill_in_attrid_array (REGU_VARIABLE_LIST attr_list, ATTR_ID * att
 static SORT_LIST *pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * col_list,
 				   SORT_LIST_MODE sort_mode);
 
+static int *pt_to_method_arglist (PARSER_CONTEXT * parser, PT_NODE * target, PT_NODE * node_list,
+				  PT_NODE * subquery_as_attr_list);
+
 static int regu_make_constant_vid (DB_VALUE * val, DB_VALUE ** dbvalptr);
 static int set_has_objs (DB_SET * seq);
 static int setof_mop_to_setof_vobj (PARSER_CONTEXT * parser, DB_SET * seq, DB_VALUE * new_val);
@@ -235,8 +237,6 @@ static REGU_VARIABLE *pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE *
 static REGU_VARIABLE *pt_make_regu_pred (const PRED_EXPR * pred);
 static REGU_VARIABLE *pt_make_function (PARSER_CONTEXT * parser, int function_code, const REGU_VARIABLE_LIST arg_list,
 					const DB_TYPE result_type, const PT_NODE * node);
-
-static REGU_VARIABLE *pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node);
 static REGU_VARIABLE *pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function);
 static REGU_VARIABLE *pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX unbox,
 					     const PT_NODE * node);
@@ -334,7 +334,7 @@ static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * p
   ((r)->type == TYPE_CONSTANT || (r)->type == TYPE_DBVAL || (r)->type == TYPE_POS_VALUE || (r)->type == TYPE_INARITH)
 
 #define VALIDATE_REGU_KEY(r) \
-  ((r)->type == TYPE_CONSTANT || (r)->type == TYPE_DBVAL || (r)->type == TYPE_POS_VALUE || (r)->type == TYPE_SP \
+  ((r)->type == TYPE_CONSTANT || (r)->type == TYPE_DBVAL || (r)->type == TYPE_POS_VALUE \
    || ((r)->type == TYPE_INARITH && validate_regu_key_function_index ((r))))
 
 typedef struct xasl_supp_info
@@ -552,7 +552,7 @@ static ACCESS_SPEC_TYPE *pt_make_showstmt_access_spec (PRED_EXPR * where_pred, S
 static ACCESS_SPEC_TYPE *pt_make_set_access_spec (REGU_VARIABLE * set_expr, ACCESS_METHOD access, INDX_INFO * indexptr,
 						  PRED_EXPR * where_pred, REGU_VARIABLE_LIST attr_list);
 
-static ACCESS_SPEC_TYPE *pt_make_cselect_access_spec (XASL_NODE * xasl, PL_SIGNATURE_ARRAY_TYPE * sig_array,
+static ACCESS_SPEC_TYPE *pt_make_cselect_access_spec (XASL_NODE * xasl, METHOD_SIG_LIST * method_sig_list,
 						      ACCESS_METHOD access, INDX_INFO * indexptr,
 						      PRED_EXPR * where_pred, REGU_VARIABLE_LIST attr_list);
 
@@ -567,6 +567,9 @@ static TABLE_INFO *pt_find_table_info (UINTPTR spec_id, TABLE_INFO * exposed_lis
 static PT_NODE *pt_build_do_stmt_aptr_list_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static XASL_NODE *pt_build_do_stmt_aptr_list (PARSER_CONTEXT * parser, PT_NODE * node);
+
+static METHOD_SIG_LIST *pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
+					       PT_NODE * subquery_as_attr_list);
 
 static int pt_is_subquery (PT_NODE * node);
 
@@ -3751,6 +3754,328 @@ pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
+ * pt_to_method_arglist () - converts a parse expression tree list of
+ *                           method call arguments to method argument array
+ *   return: A NULL on error occurred
+ *   parser(in):
+ *   target(in):
+ *   node_list(in): should be parse name nodes
+ *   subquery_as_attr_list(in):
+ */
+static int *
+pt_to_method_arglist (PARSER_CONTEXT * parser, PT_NODE * target, PT_NODE * node_list, PT_NODE * subquery_as_attr_list)
+{
+  int *arg_list = NULL;
+  int i = 1;
+  int num_args = pt_length_of_list (node_list) + 1;
+  PT_NODE *node;
+
+  arg_list = regu_int_array_alloc (num_args);
+  if (!arg_list)
+    {
+      return NULL;
+    }
+
+  if (target != NULL)
+    {
+      /* the method call target is the first element in the array */
+      arg_list[0] = pt_find_attribute (parser, target, subquery_as_attr_list);
+      if (arg_list[0] == -1)
+	{
+	  return NULL;
+	}
+    }
+  else
+    {
+      i = 0;
+    }
+
+  for (node = node_list; node != NULL; node = node->next)
+    {
+      arg_list[i] = pt_find_attribute (parser, node, subquery_as_attr_list);
+      if (arg_list[i] == -1)
+	{
+	  return NULL;
+	}
+      i++;
+    }
+
+  return arg_list;
+}
+
+
+/*
+ * pt_to_method_sig_list () - converts a parse expression tree list of
+ *                            method calls to method signature list
+ *   return: A NULL return indicates a (memory) error occurred
+ *   parser(in):
+ *   node_list(in): should be parse method nodes
+ *   subquery_as_attr_list(in):
+ */
+static METHOD_SIG_LIST *
+pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * subquery_as_attr_list)
+{
+  METHOD_SIG_LIST *sig_list = NULL;
+  METHOD_SIG **tail = NULL;
+  PT_NODE *node;
+
+  regu_alloc (sig_list);
+  if (!sig_list)
+    {
+      return NULL;
+    }
+
+  tail = &(sig_list->method_sig);
+
+  for (node = node_list; node != NULL; node = node->next)
+    {
+      regu_alloc (*tail);
+
+      if (*tail)
+	{
+	  (sig_list->num_methods)++;
+
+	  (*tail)->method_name = (char *) node->info.method_call.method_name->info.name.original;
+	  (*tail)->auth_name = (char *) PT_METHOD_CALL_AUTH_NAME (node);
+
+	  /* num_method_args does not include the target by convention */
+	  (*tail)->num_method_args = pt_length_of_list (node->info.method_call.arg_list);
+	  (*tail)->method_arg_pos =
+	    pt_to_method_arglist (parser, node->info.method_call.on_call_target, node->info.method_call.arg_list,
+				  subquery_as_attr_list);
+
+	  if (PT_IS_METHOD (node))
+	    {
+	      PT_NODE *dt = node->info.method_call.on_call_target->data_type;
+	      /* beware of virtual classes */
+	      if (dt->info.data_type.virt_object)
+		{
+		  (*tail)->class_name = (char *) db_get_class_name (dt->info.data_type.virt_object);
+		}
+	      else
+		{
+		  (*tail)->class_name = (char *) dt->info.data_type.entity->info.name.original;
+		}
+
+	      (*tail)->method_type = PT_IS_CLASS_METHOD (node) ? METHOD_TYPE_CLASS_METHOD : METHOD_TYPE_INSTANCE_METHOD;
+	    }
+	  else if (PT_IS_JAVA_SP (node))
+	    {
+	      (*tail)->class_name = NULL;
+
+	      int num_args = (*tail)->num_method_args;
+
+	      METHOD_ARG_INFO *&arg_info = (*tail)->arg_info;
+	      regu_alloc (arg_info);
+	      if (num_args > 0)
+		{
+		  arg_info->arg_mode = regu_int_array_alloc (num_args);
+		  arg_info->arg_type = regu_int_array_alloc (num_args);
+		  arg_info->default_value_size = regu_int_array_alloc (num_args);
+
+		  char **c_array = NULL;
+                  // *INDENT-OFF*
+                  regu_array_alloc<char*> (&c_array, num_args);
+                  // *INDENT-ON*
+		  arg_info->default_value = c_array;
+		}
+	      else
+		{
+		  arg_info->arg_mode = nullptr;
+		  arg_info->arg_type = nullptr;
+		  arg_info->default_value_size = nullptr;
+		  arg_info->default_value = nullptr;
+		}
+
+	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name, DB_AUTH_EXECUTE);
+	      if (mop_p)
+		{
+		  /* java stored procedure signature */
+		  DB_VALUE cls, method;
+		  db_make_null (&cls);
+		  db_make_null (&method);
+
+		  if (db_get (mop_p, SP_ATTR_TARGET_CLASS, &cls) == NO_ERROR
+		      && db_get (mop_p, SP_ATTR_TARGET_METHOD, &method) == NO_ERROR)
+		    {
+		      std::string target;
+
+		      target.assign (db_get_string (&cls)).append (".").append (db_get_string (&method));
+
+		      (*tail)->method_name = db_private_strndup (NULL, target.c_str (), target.size ());
+		    }
+		  else
+		    {
+		      break;
+		    }
+
+		  DB_VALUE lang;
+		  if (db_get (mop_p, SP_ATTR_LANG, &lang) == NO_ERROR)
+		    {
+		      if (db_get_int (&lang) == SP_LANG_PLCSQL)
+			{
+			  (*tail)->method_type = METHOD_TYPE_PLCSQL;
+			}
+		      else
+			{
+			  (*tail)->method_type = METHOD_TYPE_JAVA_SP;
+			}
+		    }
+		  else
+		    {
+		      break;
+		    }
+
+		  DB_VALUE args;
+		  /* arg_mode, arg_type */
+		  if (db_get (mop_p, SP_ATTR_ARGS, &args) == NO_ERROR)
+		    {
+		      DB_SET *param_set = db_get_set (&args);
+		      DB_VALUE mode, type, temp, optional_val, default_val;
+		      int i, arg_mode, arg_type;
+		      for (i = 0; i < num_args; i++)
+			{
+			  set_get_element (param_set, i, &temp);
+			  DB_OBJECT *arg_mop_p = db_get_object (&temp);
+			  if (arg_mop_p)
+			    {
+			      if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
+				{
+				  arg_mode = db_get_int (&mode);
+				}
+
+			      if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &type) == NO_ERROR)
+				{
+				  arg_type = db_get_int (&type);
+				}
+
+			      if (db_get (arg_mop_p, SP_ATTR_IS_OPTIONAL, &optional_val) == NO_ERROR)
+				{
+				  int is_optional = db_get_int (&optional_val);
+				  if (is_optional == 1)
+				    {
+				      if (db_get (arg_mop_p, SP_ATTR_DEFAULT_VALUE, &default_val) == NO_ERROR)
+					{
+					  if (!DB_IS_NULL (&default_val))
+					    {
+					      (*tail)->arg_info->default_value_size[i] =
+						db_get_string_size (&default_val);
+					      if ((*tail)->arg_info->default_value_size[i] > 0)
+						{
+						  (*tail)->arg_info->default_value[i] =
+						    db_private_strndup (NULL, db_get_string (&default_val),
+									(*tail)->arg_info->default_value_size[i]);
+						}
+					    }
+					  else
+					    {
+					      // default value is NULL
+					      (*tail)->arg_info->default_value_size[i] = -2;	// special value
+					    }
+					}
+				      else
+					{
+					  break;
+					}
+				    }
+				}
+			      else
+				{
+				  break;
+				}
+
+			      (*tail)->arg_info->arg_mode[i] = arg_mode;
+			      (*tail)->arg_info->arg_type[i] = arg_type;
+
+			      pr_clear_value (&mode);
+			      pr_clear_value (&type);
+			      pr_clear_value (&temp);
+			      pr_clear_value (&optional_val);
+			      pr_clear_value (&default_val);
+			    }
+			  else
+			    {
+			      break;
+			    }
+
+
+			  if (jsp_check_out_param_in_query (parser, node, arg_mode) != NO_ERROR)
+			    {
+			      pr_clear_value (&args);
+			      return NULL;
+			    }
+			}
+		      pr_clear_value (&args);
+		    }
+		  else
+		    {
+		      break;
+		    }
+
+		  /* result type */
+		  DB_VALUE result_type;
+		  if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type) == NO_ERROR)
+		    {
+		      (*tail)->result_type = db_get_int (&result_type);
+		      pr_clear_value (&result_type);
+		    }
+		  else
+		    {
+		      break;
+		    }
+
+		  /* OID */
+		  DB_VALUE target_cls_val;
+		  if (db_get (mop_p, SP_ATTR_TARGET_CLASS, &target_cls_val) == NO_ERROR)
+		    {
+		      MOP code_mop = NULL;
+		      const char *target_cls = db_get_string (&target_cls_val);
+		      if (target_cls != NULL)
+			{
+			  code_mop = jsp_find_stored_procedure_code (target_cls);
+			}
+		      pr_clear_value (&target_cls_val);
+
+		      if (code_mop)
+			{
+			  (*tail)->oid = *WS_OID (code_mop);
+			}
+		      else
+			{
+			  (*tail)->oid = OID_INITIALIZER;
+			}
+		    }
+		  else
+		    {
+		      break;
+		    }
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	  else
+	    {
+	      /* should be never happened */
+	      assert (false);
+	      break;
+	    }
+	  tail = &(*tail)->next;
+	}
+      else
+	{
+	  /* something failed */
+	  sig_list = NULL;
+	  assert (false);
+	  break;
+	}
+    }
+
+  return sig_list;
+}
+
+/*
  * pt_make_val_list () - Makes a val list with a DB_VALUE place holder
  *                       for every attribute on an attribute list
  *   return:
@@ -4343,7 +4668,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       /* Do not proceed down the leaves. */
       *continue_walk = PT_LIST_WALK;
     }
-  else if (PT_IS_METHOD (tree))
+  else if (tree->node_type == PT_METHOD_CALL)
     {
       /* Do not proceed down the leaves */
       *continue_walk = PT_LIST_WALK;
@@ -4802,10 +5127,6 @@ pt_cnt_attrs (const REGU_VARIABLE_LIST attr_list)
 	  /* need to check all the operands for the function */
 	  cnt += pt_cnt_attrs (tmp->value.value.funcp->operand);
 	}
-      else if (tmp->value.type == TYPE_SP)
-	{
-	  cnt += pt_cnt_attrs (tmp->value.value.sp_ptr->args);
-	}
     }
 
   return cnt;
@@ -4838,10 +5159,6 @@ pt_fill_in_attrid_array (REGU_VARIABLE_LIST attr_list, ATTR_ID * attr_array, int
 	{
 	  /* need to check all the operands for the function */
 	  pt_fill_in_attrid_array (tmp->value.value.funcp->operand, attr_array, next_pos);
-	}
-      else if (tmp->value.type == TYPE_SP)
-	{
-	  pt_fill_in_attrid_array (tmp->value.value.sp_ptr->args, attr_array, next_pos);
 	}
     }
 }
@@ -5211,14 +5528,14 @@ pt_make_set_access_spec (REGU_VARIABLE * set_expr, ACCESS_METHOD access, INDX_IN
  * 				    ACCESS_SPEC_TYPE TARGET_METHOD structure
  *   return:
  *   xasl(in):
- *   sig_array(in):
+ *   method_sig_list(in):
  *   access(in):
  *   indexptr(in):
  *   where_pred(in):
  *   attr_list(in):
  */
 static ACCESS_SPEC_TYPE *
-pt_make_cselect_access_spec (XASL_NODE * xasl, PL_SIGNATURE_ARRAY_TYPE * sig_array, ACCESS_METHOD access,
+pt_make_cselect_access_spec (XASL_NODE * xasl, METHOD_SIG_LIST * method_sig_list, ACCESS_METHOD access,
 			     INDX_INFO * indexptr, PRED_EXPR * where_pred, REGU_VARIABLE_LIST attr_list)
 {
   ACCESS_SPEC_TYPE *spec;
@@ -5234,7 +5551,7 @@ pt_make_cselect_access_spec (XASL_NODE * xasl, PL_SIGNATURE_ARRAY_TYPE * sig_arr
     {
       spec->s.method_node.method_regu_list = attr_list;
       spec->s.method_node.xasl_node = xasl;
-      spec->s.method_node.sig_array = sig_array;
+      spec->s.method_node.method_sig_list = method_sig_list;
     }
 
   return spec;
@@ -6638,55 +6955,6 @@ pt_make_function (PARSER_CONTEXT * parser, int function_code, const REGU_VARIABL
 
 
 /*
- * pt_stored_procedure_to_regu () - takes a PT_METHOD_CALL and converts to a regu_variable
- *   return: A NULL return indicates an error occurred
- *   parser(in):
- *   function(in/out):
- *
- */
-static REGU_VARIABLE *
-pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
-{
-  int error = NO_ERROR;
-  REGU_VARIABLE *regu = NULL;
-  REGU_VARIABLE_LIST args;
-  SP_TYPE *sp = NULL;
-
-  regu_alloc (regu);
-  if (!regu)
-    {
-      return NULL;
-    }
-
-  regu_alloc (regu->value.sp_ptr);
-
-  sp = regu->value.sp_ptr;
-  if (sp)
-    {
-      error = jsp_make_pl_signature (parser, node, NULL, *(sp->sig));
-      if (error != NO_ERROR)
-	{
-	  return NULL;
-	}
-
-      DB_TYPE result_type = (DB_TYPE) sp->sig->result_type;
-      if (result_type == DB_TYPE_RESULTSET)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
-	  return NULL;
-	}
-
-      regu_dbval_type_init (sp->value, result_type);
-      sp->args = pt_to_regu_variable_list (parser, node->info.method_call.arg_list, UNBOX_AS_VALUE, NULL, NULL);
-    }
-
-  regu->type = TYPE_SP;
-  regu->domain = pt_xasl_node_to_domain (parser, node);
-
-  return regu;
-}
-
-/*
  * pt_function_to_regu () - takes a PT_FUNCTION and converts to a regu_variable
  *   return: A NULL return indicates an error occurred
  *   parser(in):
@@ -7569,24 +7837,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	       */
 
 	      /* a method call that can be evaluated as a constant expression. */
-	      if (PT_IS_METHOD (node))
+	      regu_alloc (val);
+	      pt_evaluate_tree (parser, node, val, 1);
+	      if (!pt_has_error (parser))
 		{
-		  /* a method call that can be evaluated as a constant expression. */
-		  regu_alloc (val);
-		  pt_evaluate_tree (parser, node, val, 1);
-		  if (!pt_has_error (parser))
-		    {
-		      regu = pt_make_regu_constant (parser, val, pt_node_to_db_type (node), node);
-		    }
-		}
-	      else
-		{
-		  regu = pt_stored_procedure_to_regu (parser, node);
-		  if (regu == NULL)
-		    {
-		      PT_ERRORc (parser, node, er_msg ());
-		    }
-		  return regu;
+		  regu = pt_make_regu_constant (parser, val, pt_node_to_db_type (node), node);
 		}
 	      break;
 
@@ -10726,12 +10981,11 @@ pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool
 	{
 	  /* PT_IS_IN or PT_EQ_SOME */
 
-	  if (rhs->node_type == PT_FUNCTION || rhs->node_type == PT_METHOD_CALL)
+	  if (rhs->node_type == PT_FUNCTION)
 	    {
 	      /* PT_FUNCTION */
-	      elem = (rhs->node_type == PT_FUNCTION) ? rhs->info.function.arg_list : rhs->info.method_call.arg_list;
 
-	      for (j = 0; j < n_elem && elem; j++, elem = elem->next)
+	      for (j = 0, elem = rhs->info.function.arg_list; j < n_elem && elem; j++, elem = elem->next)
 		{
 
 		  regu_var_list[j] = pt_to_regu_variable (parser, elem, UNBOX_AS_VALUE);
@@ -12760,42 +13014,30 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   XASL_NODE *subquery_proc;
   REGU_VARIABLE_LIST regu_attributes;
   ACCESS_SPEC_TYPE *access;
-  PL_SIGNATURE_ARRAY_TYPE *sig_array;
-  int idx = 0;
+  METHOD_SIG_LIST *method_sig_list;
 
   /* every cselect must have a subquery for its source list file, this is pointed to by the methods of the cselect */
-  if (!cselect || !(PT_IS_METHOD (cselect)) || !src_derived_tbl || !PT_SPEC_IS_DERIVED (src_derived_tbl))
+  if (!cselect || !(cselect->node_type == PT_METHOD_CALL) || !src_derived_tbl || !PT_SPEC_IS_DERIVED (src_derived_tbl))
     {
       return NULL;
     }
 
   subquery_proc = (XASL_NODE *) src_derived_tbl->info.spec.derived_table->info.query.xasl;
 
-  regu_new (sig_array, pt_length_of_list (cselect));
-  if (sig_array == NULL)
+  method_sig_list = pt_to_method_sig_list (parser, cselect, src_derived_tbl->info.spec.as_attr_list);
+  if (method_sig_list == NULL)
     {
       return NULL;
     }
-
-  for (PT_NODE * node = cselect; node != NULL; node = node->next)
-    {
-      int error = jsp_make_pl_signature (parser, node, src_derived_tbl->info.spec.as_attr_list, sig_array->sigs[idx]);
-      if (error != NO_ERROR)
-	{
-	  regu_delete (sig_array);
-	  return NULL;
-	}
-      idx++;
-    }
-
   /* This generates a list of TYPE_POSITION regu_variables There information is stored in a QFILE_TUPLE_VALUE_POSITION,
    * which describes a type and index into a list file. */
+
   regu_attributes = pt_to_position_regu_variable_list (parser, spec->info.spec.as_attr_list, NULL, NULL);
 
   access =
-    pt_make_cselect_access_spec (subquery_proc, sig_array, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, regu_attributes);
+    pt_make_cselect_access_spec (subquery_proc, method_sig_list, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, regu_attributes);
 
-  if (access && subquery_proc && sig_array && (regu_attributes || !spec->info.spec.as_attr_list))
+  if (access && subquery_proc && method_sig_list && (regu_attributes || !spec->info.spec.as_attr_list))
     {
       return access;
     }
@@ -23062,32 +23304,6 @@ pt_get_var_regu_variable_p_list (const REGU_VARIABLE * regu, bool is_prior, int 
       }
       break;
 
-    case TYPE_SP:
-      {
-	REGU_VARIABLE_LIST r = regu->value.sp_ptr->args;
-	while (r)
-	  {
-	    list1 = pt_get_var_regu_variable_p_list (&r->value, is_prior, err);
-
-	    if (!list)
-	      {
-		list = list1;
-	      }
-	    else
-	      {
-		list2 = list;
-		while (list2->next)
-		  {
-		    list2 = list2->next;
-		  }
-		list2->next = list1;
-	      }
-
-	    r = r->next;
-	  }
-      }
-      break;
-
     default:
       break;
     }
@@ -27570,7 +27786,6 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	case TYPE_REGUVAL_LIST:
 	case TYPE_REGU_VAR_LIST:
 	case TYPE_FUNC:
-	case TYPE_SP:
 	  /* Result Cache not supported */
 	  return ER_FAILED;
 	  break;

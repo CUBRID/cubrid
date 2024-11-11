@@ -37,6 +37,7 @@
 #include "thread_compat.hpp"
 
 // forward definitions
+struct method_sig_list;
 struct qfile_list_id;
 
 extern TRAN_STATE return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid);
@@ -242,6 +243,8 @@ extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (void *session);
 
+extern void smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
 /* For CDC */
 extern void slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -254,9 +257,8 @@ extern void scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 extern void sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
-/* PL */
+/* PL/CSQL */
 extern void splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 /* memmon */
 extern void smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

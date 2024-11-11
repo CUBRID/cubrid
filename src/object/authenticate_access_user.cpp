@@ -73,7 +73,6 @@ au_find_user (const char *user_name)
   char *upper_case_name;
   size_t upper_case_name_size;
   DB_VALUE user_name_string;
-  AU_USER_CACHE *user_cache = nullptr;
 
   if (user_name == NULL)
     {
@@ -97,6 +96,9 @@ au_find_user (const char *user_name)
       }
   }
 
+  /* disable checking of internal authorization object access */
+  AU_DISABLE (save);
+
   user = NULL;
 
   upper_case_name_size = intl_identifier_upper_string_size (user_name);
@@ -107,17 +109,6 @@ au_find_user (const char *user_name)
       return NULL;
     }
   intl_identifier_upper (user_name, upper_case_name);
-
-  user_cache = Au_cache.find_user_cache_by_name (upper_case_name);
-  if (user_cache)
-    {
-      user = user_cache->user;
-      assert (user != NULL);
-      return user;
-    }
-
-  /* disable checking of internal authorization object access */
-  AU_DISABLE (save);
 
   /*
    * first try to find the user id by index. This is faster than
@@ -181,11 +172,6 @@ au_find_user (const char *user_name)
 	    }
 	  free_and_init (query);
 	}
-    }
-
-  if (user)
-    {
-      (void) Au_cache.make_user_cache (user_name, user, false);
     }
 
 exit:
@@ -650,12 +636,6 @@ au_add_user (const char *name, int *exists)
 	}
       AU_ENABLE (save);
     }
-
-  if (user != NULL)
-    {
-      (void) Au_cache.make_user_cache (name, user, false);
-    }
-
   return (user);
 }
 
@@ -1397,7 +1377,7 @@ au_drop_user (MOP user)
   error = obj_delete (user);
   if (error == NO_ERROR)
     {
-      Au_cache.remove_user_cache (user);
+      Au_cache.remove_user_cache_references (user);
     }
 
 error:

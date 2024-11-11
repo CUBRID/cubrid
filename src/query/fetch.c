@@ -54,7 +54,6 @@
 #include "query_executor.h"
 #include "thread_entry.hpp"
 #include "subquery_cache.h"
-#include "pl_executor.hpp"
 
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -3962,71 +3961,6 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
       assert (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST)
 	      || REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
-      break;
-
-    case TYPE_SP:		/* fetch stored procedure value */
-      {
-	if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST))
-	  {
-	    *peek_dbval = regu_var->value.sp_ptr->value;
-	    return NO_ERROR;
-	  }
-
-	assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-
-	{
-	  /* clear any value from a previous iteration */
-
-	  pr_clear_value (regu_var->value.sp_ptr->value);
-	  cubpl::executor executor (*regu_var->value.sp_ptr->sig);
-
-	  error = executor.fetch_args_peek (regu_var->value.sp_ptr->args, vd, obj_oid, tpl);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  error = executor.execute (*regu_var->value.sp_ptr->value);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  *peek_dbval = regu_var->value.sp_ptr->value;
-
-	  // const operands
-
-	  /* check for the first time */
-	  if (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST)
-	      && !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST))
-	    {
-	      int not_const = 0;
-
-	      regu_variable_list_node *operand;
-	      operand = regu_var->value.sp_ptr->args;
-	      while (operand != NULL)
-		{
-		  if (!REGU_VARIABLE_IS_FLAGED (&(operand->value), REGU_VARIABLE_FETCH_ALL_CONST))
-		    {
-		      not_const++;
-		      break;
-		    }
-		  operand = operand->next;
-		}
-
-	      if (not_const == 0)
-		{
-		  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
-		  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
-		}
-	      else
-		{
-		  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
-		  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-		}
-	    }
-	}
-      }
       break;
 
     case TYPE_FUNC:		/* fetch function value */

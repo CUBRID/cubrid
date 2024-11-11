@@ -19,11 +19,11 @@
 #include "method_compile.hpp"
 
 #include "jsp_comm.h"
+#include "method_runtime_context.hpp"
 #include "method_connection_sr.hpp"
 #include "method_connection_java.hpp"
 #include "method_compile_def.hpp"
 #include "session.h"
-#include "pl_session.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -31,13 +31,13 @@
 namespace cubmethod
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  int callback_send_and_receive (cubthread::entry &thread_ref, PL_SESSION &session,
+  int callback_send_and_receive (cubthread::entry &thread_ref, runtime_context &ctx,
 				 const SOCKET java_socket, cubpacking::packable_object &obj)
   {
     int error = NO_ERROR;
 
-    SESSION_ID s_id = session.get_id ();
-    header header (s_id, METHOD_REQUEST_CALLBACK, session.get_and_increment_request_id ());
+    SESSION_ID s_id = thread_ref.conn_entry->session_id;
+    header header (s_id, METHOD_REQUEST_CALLBACK, ctx.get_and_increment_request_id ());
     error = method_send_data_to_client (&thread_ref, header, obj);
     if (error != NO_ERROR)
       {
@@ -46,7 +46,7 @@ namespace cubmethod
 
     auto reponse_lambda = [&] (cubmem::block & b)
     {
-      header.req_id = session.get_and_increment_request_id ();
+      header.req_id = ctx.get_and_increment_request_id ();
       return mcon_send_data_to_java (java_socket, header, b);
     };
 
@@ -59,21 +59,22 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    PL_SESSION *session = cubpl::get_session ();
-    if (!session)
+    SESSION_ID s_id = -1;
+    session_get_session_id (&thread_ref, &s_id);
+
+    cubmethod::runtime_context *ctx = get_rctx (&thread_ref);
+    if (!ctx)
       {
 	return ER_FAILED;
       }
-    SESSION_ID s_id = session->get_id ();
 
-    connection *conn = session->get_connection_pool()->claim();
-    header header (s_id, SP_CODE_COMPILE, session->get_and_increment_request_id ());
+    connection *conn = ctx->get_connection_pool().claim();
+    header header (s_id, SP_CODE_COMPILE, ctx->get_and_increment_request_id ());
     SOCKET socket = conn->get_socket ();
     {
       error = mcon_send_data_to_java (socket, header, compile_request);
       if (error != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
 	  goto exit;
 	}
 
@@ -110,7 +111,7 @@ namespace cubmethod
 	      packing_unpacker respone_unpacker (payload_blk);
 	      sql_semantics_request request;
 	      respone_unpacker.unpack_all (request);
-	      error = callback_send_and_receive (thread_ref, *session, socket, request);
+	      error = callback_send_and_receive (thread_ref, *ctx, socket, request);
 	      break;
 	    }
 
@@ -119,7 +120,7 @@ namespace cubmethod
 	      packing_unpacker respone_unpacker (payload_blk);
 	      global_semantics_request request;
 	      respone_unpacker.unpack_all (request);
-	      error = callback_send_and_receive (thread_ref, *session, socket, request);
+	      error = callback_send_and_receive (thread_ref, *ctx, socket, request);
 	      break;
 	    }
 	    }
@@ -138,10 +139,7 @@ namespace cubmethod
       while (code != METHOD_REQUEST_COMPILE);
 
 exit:
-      if (session)
-	{
-	  session->get_connection_pool()->retire (conn, true);
-	}
+      ctx->get_connection_pool().retire (conn, true);
 
       return error;
     }

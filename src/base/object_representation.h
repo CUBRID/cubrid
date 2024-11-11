@@ -1111,6 +1111,7 @@ extern char *or_unpack_setref (char *ptr, DB_SET ** ref);
 extern char *or_pack_listid (char *ptr, void *listid);
 extern char *or_pack_lock (char *ptr, LOCK lock);
 extern char *or_pack_set_header (char *buf, DB_TYPE stype, DB_TYPE etype, int bound_bits, int size);
+extern char *or_pack_method_sig_list (char *ptr, void *method_sig_list);
 extern char *or_pack_set_node (char *ptr, void *set_node);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_pack_elo (char *ptr, void *elo);

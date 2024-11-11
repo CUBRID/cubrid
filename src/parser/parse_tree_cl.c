@@ -13319,10 +13319,7 @@ pt_print_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_method_call (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  if (PT_IS_METHOD (p))
-    {
-      PT_APPLY_WALK (parser, p->info.method_call.method_name, arg);
-    }
+  PT_APPLY_WALK (parser, p->info.method_call.method_name, arg);
   PT_APPLY_WALK (parser, p->info.method_call.arg_list, arg);
   PT_APPLY_WALK (parser, p->info.method_call.on_call_target, arg);
   PT_APPLY_WALK (parser, p->info.method_call.to_return_var, arg);
@@ -18887,8 +18884,7 @@ pt_json_table_column_behavior_to_string (const json_table_column_behavior_type &
 // column_behavior (in) : column behavior
 //
 static PARSER_VARCHAR *
-pt_print_json_table_column_error_or_empty_behavior (PARSER_CONTEXT * parser,
-						    PARSER_VARCHAR * pstr,
+pt_print_json_table_column_error_or_empty_behavior (PARSER_CONTEXT * parser, PARSER_VARCHAR * pstr,
 						    const struct json_table_column_behavior &column_behavior)
 {
   PARSER_VARCHAR *substr = NULL;

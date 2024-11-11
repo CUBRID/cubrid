@@ -148,6 +148,11 @@ public class ExecuteThread extends Thread {
                          * the following two request codes are for processing java stored procedure
                          * routine
                          */
+                    case RequestCode.PREPARE_ARGS:
+                        {
+                            processPrepare();
+                            break;
+                        }
                     case RequestCode.INVOKE_SP:
                         {
                             processStoredProcedure();
@@ -279,15 +284,12 @@ public class ExecuteThread extends Thread {
         ctx = ContextManager.getContext(header.id);
         ctx.checkHeader(header);
 
-        int startOffset = unpacker.getCurrentPosition();
-        int payloadSize = unpacker.getCurrentLimit() - startOffset;
-        if (payloadSize > 0) {
-            ByteBuffer payloadBuffer =
-                    ByteBuffer.wrap(inputBuffer.array(), startOffset, payloadSize);
-
-            ctx.getInboundQueue().add(payloadBuffer);
-        }
-
+        ByteBuffer payloadBuffer =
+                ByteBuffer.wrap(
+                        inputBuffer.array(),
+                        unpacker.getCurrentPosition(),
+                        unpacker.getCurrentLimit() - unpacker.getCurrentPosition());
+        ctx.getInboundQueue().add(payloadBuffer);
         return header;
     }
 
@@ -313,16 +315,18 @@ public class ExecuteThread extends Thread {
         return unpacker;
     }
 
-    private void processStoredProcedure() throws Exception {
+    private void processPrepare() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
-
-        // prepare
         if (prepareArgs == null) {
             prepareArgs = new PrepareArgs(unpacker);
         } else {
             prepareArgs.readArgs(unpacker);
         }
+        ctx.checkTranId(prepareArgs.getTranId());
+    }
 
+    private void processStoredProcedure() throws Exception {
+        unpacker.setBuffer(ctx.getInboundQueue().take());
         long id = unpacker.unpackBigint();
         int tid = unpacker.unpackInt();
 
@@ -432,25 +436,28 @@ public class ExecuteThread extends Thread {
         Value[] arguments = prepareArgs.getArgs();
         Value[] methodArgs = new Value[paramCount];
         for (int i = 0; i < paramCount; i++) {
+            int pos = unpacker.unpackInt();
             int mode = unpacker.unpackInt();
             int type = unpacker.unpackInt();
             int defaultValSize = unpacker.unpackInt();
             String defaultVal = null;
 
             Value val = null;
-            if (defaultValSize == -1) {
-                val = arguments[i];
-            } else if (defaultValSize > 0) {
-                defaultVal = unpacker.unpackCString();
-                val = new StringValue(defaultVal);
-            } else if (defaultValSize == 0) {
-                val = new NullValue();
+            if (pos != -1) {
+                val = arguments[pos];
             } else {
-                assert false;
-                // internal error
-                val = new NullValue();
+                if (defaultValSize > 0) {
+                    defaultVal = unpacker.unpackCString();
+                    val = new StringValue(defaultVal);
+                } else if (defaultValSize == 0) {
+                    val = new StringValue("");
+                } else if (defaultValSize == -2) {
+                    val = new NullValue();
+                } else {
+                    // internal error
+                    assert false;
+                }
             }
-
             val.setMode(mode);
             val.setDbType(type);
 

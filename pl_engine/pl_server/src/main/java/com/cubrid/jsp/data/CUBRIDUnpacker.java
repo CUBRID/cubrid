@@ -244,7 +244,7 @@ public class CUBRIDUnpacker {
             case DBType.DB_OID:
             case DBType.DB_OBJECT:
                 {
-                    SOID soid = unpackOID();
+                    SOID soid = new SOID(this);
                     arg = new OidValue(soid);
                 }
                 break;
