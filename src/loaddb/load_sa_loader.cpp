@@ -6544,6 +6544,8 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 
   ldr_final ();
 
+  pl_monitor_destroy ();
+
   if (ldr_Driver != NULL)
     {
       delete ldr_Driver;
