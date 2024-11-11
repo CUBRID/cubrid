@@ -19,7 +19,7 @@
 #include "pl_execution_stack_context.hpp"
 
 #include "session.h"
-#include "jsp_comm.h"
+#include "pl_comm.h"
 #include "method_connection_pool.hpp"
 #include "pl_query_cursor.hpp"
 
