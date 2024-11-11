@@ -1,27 +1,16 @@
-name: Manual Trigger for Shell Test on CircleCI
+name: Comment trigger
 
 on:
   issue_comment:
-    types: [created]  # PR에 새로운 커맨트가 생성될 때 트리거
+    types: [created, edited]
 
 jobs:
-  trigger-circleci:
-    if: |
-      github.event.comment.body == 'run shell test' &&
-      startsWith(github.event.issue.pull_request.url, 'https://api.github.com/repos/tw-kang/cubrid/pulls/')
+  run_shell:
+    name: run shell test on CircleCI
+    if: ${{ github.event.issue.pull_request }}
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger CircleCI Shell Test
+      - name: Run CircleCI Shell Test
         env:
           CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
-        run: |
-          curl -u "${{ secrets.CIRCLECI_TOKEN }}:" \
-          -X POST \
-          --header "Content-Type: application/json" \
-          -d '{
-                "branch": "'"${{ github.event.issue.pull_request.head.ref }}"'",
-                "parameters": {
-                  "run_shell_test": true
-                }
-              }' \
-          https://circleci.com/api/v2/project/gh/tw-kang/cubrid/pipeline
+        run: echo "/run test"
