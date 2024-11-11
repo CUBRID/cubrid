@@ -7,7 +7,9 @@ on:
 jobs:
   run_shell:
     name: run shell test on CircleCI
-    if: ${{ github.event.issue.pull_request }}
+    if: |
+      github.event.issue.pull_request && 
+      github.event.comment.body == '/run shell'
     runs-on: ubuntu-latest
     steps:
       - name: Run CircleCI Shell Test
