@@ -12,23 +12,20 @@ jobs:
       github.event.comment.body == '/run shell'
     runs-on: ubuntu-latest
     steps:
-      - name: Set Branch Name
-        id: set_branch
+      - name: Get Branch Name from GitHub API
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -z "${{ github.event.issue.pull_request.head.ref }}" ]; then
-            BRANCH_NAME="${GITHUB_HEAD_REF}"
-          else
-            BRANCH_NAME="${{ github.event.issue.pull_request.head.ref }}"
-          fi
+          BRANCH_NAME=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "${{ github.event.issue.pull_request.url }}" | jq -r .head.ref)
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+          echo "Branch Name: $BRANCH_NAME"  # 디버깅용 출력
 
       - name: Trigger CircleCI Shell Test
         env:
           CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
           BRANCH_NAME: ${{ env.BRANCH_NAME }}
         run: |
-          echo "$GITHUB_HEAD_REF"
-          echo "Branch Name: $BRANCH_NAME"
           curl --request POST \
             --url https://circleci.com/api/v2/project/gh/tw-kang/cubrid/pipeline \
             --header "Circle-Token: $CIRCLECI_TOKEN" \
