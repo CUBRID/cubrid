@@ -16,6 +16,7 @@ jobs:
         env:
           CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
         run: |
+          BRANCH_NAME="${{ github.event.pull_request.head.ref || env.GITHUB_HEAD_REF }}"
           curl --request POST \
             --url https://circleci.com/api/v2/project/gh/tw-kang/cubrid/pipeline \
             --header "Circle-Token: ${CIRCLECI_TOKEN}" \
