@@ -350,7 +350,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
     }
 
   /* create master shared memory */
-  shm_br = broker_shm_initialize_shm_broker (master_shm_id, br_info, br_num, acl_flag, acl_file);
+  shm_br = broker_shm_initialize_shm_broker (master_shm_id, br_info, br_num, acl_flag, acl_file, admin_log_file);
 
   if (shm_br == NULL)
     {
@@ -1309,7 +1309,7 @@ admin_info_cmd (int master_shm_id)
       return -1;
     }
 
-  broker_config_dump (stdout, shm_br->br_info, shm_br->num_broker, master_shm_id);
+  broker_config_dump (stdout, shm_br->br_info, shm_br->num_broker, master_shm_id, shm_br->admin_log_file);
 
   uw_shm_detach (shm_br);
   return 0;
@@ -2947,7 +2947,7 @@ admin_acl_reload_cmd (int master_shm_id, const char *broker_name)
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
-	  if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg) != 0)
+	  if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg, shm_br) != 0)
 	    {
 	      uw_shm_detach (shm_appl);
 	      uw_shm_detach (shm_br);
@@ -2968,7 +2968,7 @@ admin_acl_reload_cmd (int master_shm_id, const char *broker_name)
 	  return -1;
 	}
 
-      if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg) != 0)
+      if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg, shm_br) != 0)
 	{
 	  uw_shm_detach (shm_appl);
 	  uw_shm_detach (shm_br);

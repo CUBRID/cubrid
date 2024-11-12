@@ -163,6 +163,7 @@ static PT_NODE *pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE
 static PT_NODE *pt_find_aggregate_analytic_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						 int *continue_walk);
 static PT_NODE *pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_find_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static void pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC_TYPE class_type,
 				       const char *self, const bool reuse_oid, PT_NODE * stmt);
 static void pt_check_mutable_attributes (PARSER_CONTEXT * parser, DB_OBJECT * cls, PT_NODE * attr_defs);
@@ -247,7 +248,6 @@ static PT_NODE *pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * q
 static int pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
 static bool pt_has_parameters (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static PT_NODE *pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list);
 static bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
 static PT_NODE *pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_list,
 					    PT_NODE * select_list);
@@ -4063,6 +4063,17 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  goto end;
 	}
 
+      node_ptr = NULL;
+      parser_walk_tree (parser, default_value, pt_find_stored_procedure, &node_ptr, NULL, NULL);
+      if (node_ptr != NULL)
+	{
+	  PT_ERRORmf (parser,
+		      node_ptr,
+		      MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED, parser_print_tree (parser, default_value));
+	  goto end;
+	}
+
     end:
       data_default->next = save_next;
       prev = data_default;
@@ -4181,6 +4192,35 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
   attr->data_type->info.data_type.collation_id = attr_coll;
 
   return err;
+}
+
+/*
+ * pt_find_stored_procedure () - search for a stored procedure
+ *
+ * result	  : parser tree node
+ * parser(in)	  : parser
+ * tree(in)	  : parser tree node
+ * arg(in/out)	  : true, if the stored procedure is found
+ * continue_walk  : Continue walk.
+ */
+static PT_NODE *
+pt_find_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  PT_NODE **sp = (PT_NODE **) arg;
+
+  if (tree == NULL)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  if (tree->node_type == PT_METHOD_CALL || (tree->node_type == PT_FUNCTION && tree->info.function.function_type == PT_GENERIC)	/* not resolved yet */
+    )
+    {
+      *sp = tree;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
 }
 
 /*
@@ -15605,7 +15645,7 @@ pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
  *  sort_spec(in): PT_SORT_SPEC node whose expression must be resolved
  *  select_list(in): statement's select list for PT_VALUE lookup
  */
-static PT_NODE *
+PT_NODE *
 pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list)
 {
   PT_NODE *expr, *resolved;

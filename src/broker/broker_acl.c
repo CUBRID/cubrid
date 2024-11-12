@@ -35,22 +35,28 @@
 #define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 #define ACCESS_FILE_DELIMITER ":"
 #define IP_FILE_DELIMITER ","
-#define COLON ':'
-#define NUM_COLON_EXPECTED 2
+#define NUM_ACL_ELEM	3
 
 ACCESS_INFO access_info[ACL_MAX_ITEM_COUNT];
 int num_access_info;
 int access_info_changed;
 
+typedef enum
+{
+  ACL_FMT_NO_ERROR = 0,
+  ACL_FMT_UNKOWN_BROKER,
+  ACL_FMT_INVALID,
+  ACL_FMT_EMPTY_ELEM
+} ACL_FMT;
+
 static ACCESS_INFO *access_control_find_access_info (ACCESS_INFO ai[], int size, char *dbname, char *dbuser);
 static int access_control_read_ip_info (IP_INFO * ip_info, char *filename, char *admin_err_msg);
-static void access_control_repath_file (char *path);
 static int access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p, char *dbname, char *dbuser,
 						unsigned char *address);
 static int access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info, unsigned char *address,
 				    int info_index);
 static int record_ip_access_time (T_SHM_APPL_SERVER * shm_as_p, int info_index, int list_index);
-static bool is_invalid_acl_entry (const char *buf);
+static ACL_FMT is_invalid_acl_entry (const char *buf, T_SHM_BROKER * shm_br);
 
 int
 access_control_set_shm (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p, T_SHM_BROKER * shm_br,
@@ -83,7 +89,7 @@ access_control_set_shm (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p,
 	{
 	  set_cubrid_file (FID_ACCESS_CONTROL_FILE, shm_br->access_control_file);
 	  access_file_name = get_cubrid_file_ptr (FID_ACCESS_CONTROL_FILE);
-	  if (access_control_read_config_file (shm_as_p, access_file_name, admin_err_msg) != 0)
+	  if (access_control_read_config_file (shm_as_p, access_file_name, admin_err_msg, shm_br) != 0)
 	    {
 	      return -1;
 	    }
@@ -112,7 +118,8 @@ access_control_find_access_info (ACCESS_INFO ai[], int size, char *dbname, char 
 }
 
 int
-access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, char *admin_err_msg)
+access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, char *admin_err_msg,
+				 T_SHM_BROKER * shm_br)
 {
   char buf[1024], path_buf[BROKER_PATH_MAX], *files, *token, *save = NULL;
   FILE *fd_access_list;
@@ -120,6 +127,8 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
   ACCESS_INFO new_access_info[ACL_MAX_ITEM_COUNT];
   ACCESS_INFO *access_info;
   bool is_current_broker_section = false;
+  ACL_FMT ret = ACL_FMT_NO_ERROR;
+  size_t filename_len;
 #if defined(WINDOWS)
   char acl_sem_name[BROKER_NAME_LEN];
 #endif
@@ -152,9 +161,10 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	  continue;
 	}
 
-      if (is_invalid_acl_entry (buf))
+      if ((ret = is_invalid_acl_entry (buf, shm_br)))
 	{
-	  sprintf (admin_err_msg, "%s: invalid acl list entry: (%s:%d)", shm_appl->broker_name, filename, line);
+	  sprintf (admin_err_msg, "%s: invalid acl list entry: (%s:%d)%s", shm_appl->broker_name, filename, line,
+		   ret == ACL_FMT_UNKOWN_BROKER ? " (unknown broker)" : "");
 	  goto error;
 	}
 
@@ -224,11 +234,6 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	  num_access_list++;
 	}
 
-      if (access_info->ip_files[0] != '\0')
-	{
-	  strncat (access_info->ip_files, ",", LINE_MAX - 1);
-	}
-      strncat (access_info->ip_files, ip_file, LINE_MAX - 1);
       for (files = ip_file;; files = NULL)
 	{
 	  token = strtok_r (files, IP_FILE_DELIMITER, &save);
@@ -245,9 +250,44 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	      goto error;
 	    }
 
-	  strncpy (path_buf, token, BROKER_PATH_MAX);
-	  access_control_repath_file (path_buf);
+#if defined (WINDOWS)
+	  if (token[0] == '\\' || token[0] == '/')
+	    {
+	      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+			"%s: error while loading access control file (%s)"
+			" - when using an absolute path name, the driver name must be specified (%s). ",
+			shm_appl->broker_name, filename, token);
+	      goto error;
+	    }
+#endif
+	  if (make_abs_path (path_buf, "conf", token, BROKER_PATH_MAX) < 0)
+	    {
+	      goto error;
+	    }
+
 	  if (access_control_read_ip_info (&(access_info->ip_info), path_buf, admin_err_msg) < 0)
+	    {
+	      goto error;
+	    }
+
+	  if (access_info->ip_files[0] != '\0')
+	    {
+	      if (strlen (access_info->ip_files) < LINE_MAX)
+		{
+		  strncat (access_info->ip_files, ",", 1);
+		}
+	      else
+		{
+		  goto error;
+		}
+	    }
+
+	  filename_len = strlen (path_buf);
+	  if ((strlen (access_info->ip_files) + filename_len) < LINE_MAX)
+	    {
+	      strncat (access_info->ip_files, path_buf, filename_len);
+	    }
+	  else
 	    {
 	      goto error;
 	    }
@@ -281,64 +321,48 @@ error:
   return -1;
 }
 
-static bool
-is_invalid_acl_entry (const char *acl)
+static ACL_FMT
+is_invalid_acl_entry (const char *acl, T_SHM_BROKER * shm_br)
 {
-  char br_name[LINE_MAX];
+  char br_name[LINE_MAX], db[LINE_MAX], user[LINE_MAX], file[LINE_MAX];
   int len;
-  int num_colon = 0;
   int i;
+  bool exist = false;
+  ACL_FMT ret = ACL_FMT_NO_ERROR;
 
   if (acl == NULL || (len = strlen (acl)) == 0)
     {
-      return false;
+      return ACL_FMT_INVALID;;
     }
 
   if (acl[0] == '[')
     {
-      bool ret = false;
-
       if (sscanf (acl, "[%%%[^]]", br_name) != 1 || acl[len - 1] != ']' || strchr (br_name, ' ') != NULL)
 	{
-	  ret = true;
+	  ret = ACL_FMT_INVALID;
+	}
+      else
+	{
+	  for (i = 0; i < shm_br->num_broker; i++)
+	    {
+	      if (strcasecmp (br_name, shm_br->br_info[i].name) == 0)
+		{
+		  exist = true;
+		  break;
+		}
+	    }
+	  ret = exist ? ACL_FMT_NO_ERROR : ACL_FMT_UNKOWN_BROKER;
 	}
 
       return ret;
     }
 
-  for (i = 0; i < len; i++)
+  if (sscanf (acl, "%[^: ]:%[^: ]:%s", db, user, file) != NUM_ACL_ELEM)
     {
-      if (acl[i] == COLON)
-	{
-	  num_colon++;
-	}
+      ret = ACL_FMT_INVALID;
     }
 
-  return (num_colon != NUM_COLON_EXPECTED);
-}
-
-static void
-access_control_repath_file (char *path)
-{
-  char tmp_str[BROKER_PATH_MAX];
-
-  trim (path);
-  strncpy (tmp_str, path, BROKER_PATH_MAX);
-  tmp_str[BROKER_PATH_MAX - 1] = 0;
-
-  MAKE_FILEPATH (path, tmp_str, BROKER_PATH_MAX);
-
-  if (IS_ABS_PATH (path))
-    {
-      return;
-    }
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  envvar_confdir_file (tmp_str, BROKER_PATH_MAX, path);
-  MAKE_FILEPATH (path, tmp_str, BROKER_PATH_MAX);
-#endif
-
-  return;
+  return ret;
 }
 
 static int
