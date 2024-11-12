@@ -14643,6 +14643,12 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  /* test assignment compatibility. This sets parser->error_msgs */
 	  PT_NODE *new_node;
 
+          if (a->node_type != PT_NAME)
+          {
+                PT_ERRORmf2 (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_HAS_NO_ATTR,
+			       pt_short_print (parser, stmt->info.insert.spec), pt_short_print (parser, a));
+          }
+
 	  new_node = pt_assignment_compatible (parser, a, v);
 	  if (new_node == NULL)
 	    {
