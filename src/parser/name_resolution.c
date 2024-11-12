@@ -946,7 +946,7 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
       if (!is_pt_name_in_group_having (in_node))
 	{
 	  if (parser->flag.is_parsing_static_sql == 1
-	      && ((in_node->node_type == PT_DOT_ && (!pt_resolved (in_node->info.dot.arg2)))
+	      && ((in_node->node_type == PT_DOT_ && !pt_resolved (in_node->info.dot.arg2))
 		  || in_node->node_type == PT_NAME))
 	    {
 	      // clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
