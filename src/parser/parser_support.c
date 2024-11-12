@@ -10329,14 +10329,14 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
 	      return DB_DEFAULT_SYSTIME;
 	    }
 	}
-      if (str_size >= 11 && strncmp (str, "SYS_DATETIME", 11) == 0)
-	{
-	  *next_len = 11;
-	  return DB_DEFAULT_SYSDATETIME;
-	}
-      if (str_size >= 12 && strncmp (str, "SYS_TIMESTAMP", 12) == 0)
+      if (str_size >= 12 && strncmp (str, "SYS_DATETIME", 12) == 0)
 	{
 	  *next_len = 12;
+	  return DB_DEFAULT_SYSDATETIME;
+	}
+      if (str_size >= 13 && strncmp (str, "SYS_TIMESTAMP", 13) == 0)
+	{
+	  *next_len = 13;
 	  return DB_DEFAULT_SYSTIMESTAMP;
 	}
       break;
@@ -10373,9 +10373,9 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
       break;
 
     case 'U':
-      if (str_size >= 15 && strncmp (str, "UNIX_TIMESTAMP()", 15) == 0)
+      if (str_size >= 16 && strncmp (str, "UNIX_TIMESTAMP()", 16) == 0)
 	{
-	  *next_len = 15;
+	  *next_len = 16;
 	  return DB_DEFAULT_UNIX_TIMESTAMP;
 	}
       if (str_size >= 6 && strncmp (str, "USER()", 6) == 0)
