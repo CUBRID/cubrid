@@ -412,7 +412,14 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    if (jsp_check_return_type_supported (info.return_type) != NO_ERROR)
+    err = jsp_check_return_type_supported (info.return_type);
+    if (err == ER_SP_CANNOT_RETURN_RESULTSET)
+      {
+	// ignore this error here
+	err = NO_ERROR;
+	er_clear ();
+      }
+    else if (err != NO_ERROR)
       {
 	err = er_errid ();
 	goto error;
