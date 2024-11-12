@@ -69,15 +69,15 @@ namespace cubpl
       {
 	CHECK_NULL_AND_FREE (owner, arg_mode);
 	CHECK_NULL_AND_FREE (owner, arg_type);
-       for (int i = 0; i < arg_size; i++)
-         {
-           if (arg_default_value_size && arg_default_value_size[i] > 0)
-             {
-               CHECK_NULL_AND_FREE (owner, arg_default_value[i]);
-             }
-         }
-       CHECK_NULL_AND_FREE (owner, arg_default_value_size);
-       CHECK_NULL_AND_FREE (owner, arg_default_value);
+	for (int i = 0; i < arg_size; i++)
+	  {
+	    if (arg_default_value_size && arg_default_value_size[i] > 0)
+	      {
+		CHECK_NULL_AND_FREE (owner, arg_default_value[i]);
+	      }
+	  }
+	CHECK_NULL_AND_FREE (owner, arg_default_value_size);
+	CHECK_NULL_AND_FREE (owner, arg_default_value);
       }
   }
 
@@ -132,14 +132,14 @@ namespace cubpl
 	arg_size = num_args;
 	arg_mode = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_type = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
-       arg_default_value_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
-       arg_default_value = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
+	arg_default_value_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
+	arg_default_value = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
 	for (int i = 0; i < num_args; i++)
 	  {
 	    arg_mode[i] = 0;
 	    arg_type[i] = 0;
-           arg_default_value_size[i] = 0;
-           arg_default_value[i] = nullptr;
+	    arg_default_value_size[i] = 0;
+	    arg_default_value[i] = nullptr;
 	  }
       }
     else
@@ -147,8 +147,8 @@ namespace cubpl
 	arg_size = 0;
 	arg_mode = nullptr;
 	arg_type = nullptr;
-        arg_default_value_size = nullptr;
-        arg_default_value = nullptr;
+	arg_default_value_size = nullptr;
+	arg_default_value = nullptr;
       }
   }
 

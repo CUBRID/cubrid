@@ -10303,7 +10303,6 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
   return node;
 }
 
-
 static DB_DEFAULT_EXPR_TYPE
 parse_default_expr_type (const char *str, const int str_size, int *next_len)
 {
