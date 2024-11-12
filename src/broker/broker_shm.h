@@ -665,6 +665,7 @@ struct t_shm_broker
   uid_t owner_uid;
 #endif				/* !WINDOWS */
   int num_broker;		/* number of broker */
+  char admin_log_file[SHM_BROKER_PATH_MAX];
   char access_control_file[SHM_BROKER_PATH_MAX];
   bool access_control;
   T_BROKER_INFO br_info[1];
@@ -697,7 +698,7 @@ int uw_sem_post (sem_t * sem_t);
 int uw_sem_destroy (sem_t * sem_t);
 #endif
 T_SHM_BROKER *broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag,
-						char *acl_file);
+						char *acl_file, char *admin_log_file);
 T_SHM_APPL_SERVER *broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p);
 
 #endif /* _BROKER_SHM_H_ */
