@@ -28,7 +28,22 @@
 #include "schema_manager.h"
 #include "set_object.h"
 
-static void free_user_cache (AU_USER_CACHE *u);
+au_class_cache::au_class_cache (int depth)
+{
+  next = NULL;
+  class_ = NULL;
+  data = new unsigned int[depth];
+  std::fill_n (data, depth, AU_CACHE_INVALID);
+}
+
+au_class_cache::~au_class_cache ()
+{
+  if (data)
+    {
+      delete [] data;
+      data = nullptr;
+    }
+}
 
 authenticate_cache::authenticate_cache ()
 {
@@ -50,7 +65,6 @@ authenticate_cache::init (void)
   cache_increment = 4;
   cache_index = -1;
 }
-
 
 /*
  * flush_caches - Called during au_final(). Free the authorization cache
@@ -75,6 +89,7 @@ authenticate_cache::flush (void)
       nextu = u->next;
       free_user_cache (u);
     }
+  user_name_cache.clear ();
 
   /* clear the associated globals */
   init ();
@@ -281,6 +296,7 @@ authenticate_cache::free_authorization_cache (void *cache)
 {
   AU_CLASS_CACHE *c, *prev;
 
+  prev = NULL;
   if (cache != NULL)
     {
       for (c = class_caches, prev = NULL; c != NULL && c != cache; c = c->next)
@@ -297,11 +313,10 @@ authenticate_cache::free_authorization_cache (void *cache)
 	    {
 	      prev->next = c->next;
 	    }
+	  free_class_cache ((AU_CLASS_CACHE *) cache);
 	}
-      free_class_cache ((AU_CLASS_CACHE *) cache);
     }
 }
-
 
 /*
  * AUTHORIZATION CACHES
@@ -325,19 +340,11 @@ authenticate_cache::make_class_cache (int depth)
     }
   else
     {
-      size = sizeof (AU_CLASS_CACHE) + ((depth - 1) * sizeof (unsigned int));
-      new_class_cache = (AU_CLASS_CACHE *) malloc (size);
+      new_class_cache = new (std::nothrow) AU_CLASS_CACHE (depth);
       if (new_class_cache == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (AU_CLASS_CACHE));
 	  return NULL;
-	}
-
-      new_class_cache->next = NULL;
-      new_class_cache->class_ = NULL;
-      for (i = 0; i < depth; i++)
-	{
-	  new_class_cache->data[i] = AU_CACHE_INVALID;
 	}
     }
 
@@ -354,7 +361,7 @@ authenticate_cache::free_class_cache (AU_CLASS_CACHE *cache)
 {
   if (cache != NULL)
     {
-      free_and_init (cache);
+      delete cache;
     }
 }
 
@@ -472,71 +479,121 @@ authenticate_cache::extend_class_caches (int *index)
 }
 
 /*
- * au_find_user_cache_index - This determines the cache index for the given
- *                            user.
- *   return: error code
- *   user(in): user object
- *   index(out): returned user index
- *   check_it(in):
+ * make_user_cache - This creates a new user cache and appends it to the user cache list
+ *   return: user cache
+ *   name(in): user name
+ *   user(in): user MOP
  *
- * Note: If the user has never been added to the authorization cache,
- *       we reserve a new index for the user.  Reserving the user index may
- *       result in growing all the existing class caches.
- *       This is the primary work function for AU_SET_USER() and it should
- *       be fast.
  */
-int
-authenticate_cache::find_user_cache_index (DB_OBJECT *user, int *index, int check_it)
+AU_USER_CACHE *
+authenticate_cache::make_user_cache (const char *name, DB_OBJECT *user, bool sanity_check)
 {
-  int error = NO_ERROR;
-  AU_USER_CACHE *u, *new_user_cache;
-  DB_OBJECT *class_mop;
+  AU_USER_CACHE *new_user_cache = nullptr;
+  assert (name != nullptr);
+  assert (user != nullptr);
+
+  if (sanity_check)
+    {
+      /*
+      * User wasn't in the cache, add it and extend the existing class
+      * caches.  First do a little sanity check just to make sure this
+      * is a user object.
+      */
+      DB_OBJECT *class_mop = sm_get_class (user);
+      if (class_mop == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return NULL;
+	}
+      else if (class_mop != Au_user_class)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_CORRUPTED, 0); /* need a better error */
+	  return NULL;
+	}
+    }
+
+  std::string upper_case_name (name);
+  std::transform (upper_case_name.begin(), upper_case_name.end(), upper_case_name.begin(), ::toupper);
+
+  if ((new_user_cache = find_user_cache_by_name (upper_case_name.c_str ())) != nullptr)
+    {
+      return new_user_cache;
+    }
+
+  new_user_cache = new AU_USER_CACHE;
+  if (new_user_cache != nullptr)
+    {
+      new_user_cache->next = user_cache;
+      user_cache = new_user_cache;
+
+      new_user_cache->name = upper_case_name;
+      new_user_cache->user = user;
+      new_user_cache->index = -1;
+
+      user_name_cache.insert (std::pair<std::string, AU_USER_CACHE *> (upper_case_name, new_user_cache));
+    }
+
+  return new_user_cache;
+}
+
+/*
+ * find_user_cache_by_name - This determines the cache for the given user name.
+ *   return: user cache
+ *   name(in): user name
+ *
+ */
+AU_USER_CACHE *
+authenticate_cache::find_user_cache_by_name (const char *name)
+{
+  if (name == nullptr)
+    {
+      return nullptr;
+    }
+
+  AU_USER_CACHE *user_cache = nullptr;
+
+  const auto &it = user_name_cache.find (name);
+  if (it != user_name_cache.end())
+    {
+      user_cache = it->second;
+    }
+
+  return user_cache;
+}
+
+/*
+ * find_user_cache_by_mop - This determines the cache for the given user MOP.
+ *   return: user cache
+ *   user(in): user mop
+ *
+ */
+AU_USER_CACHE *
+authenticate_cache::find_user_cache_by_mop (DB_OBJECT *user)
+{
+  AU_USER_CACHE *u;
 
   for (u = user_cache; u != NULL && !ws_is_same_object (u->user, user); u = u->next)
     ;
 
-  if (u != NULL)
+  return u;
+}
+
+int
+authenticate_cache::get_user_cache_index (AU_USER_CACHE *cache, int *index)
+{
+  int error = NO_ERROR;
+
+  if (cache->index == -1)
     {
-      *index = u->index;
+      error = extend_class_caches (index);
+      if (error == NO_ERROR)
+	{
+	  cache->index = *index;
+	}
     }
   else
     {
-      /*
-       * User wasn't in the cache, add it and extend the existing class
-       * caches.  First do a little sanity check just to make sure this
-       * is a user object.
-       */
-      if (check_it)
-	{
-	  class_mop = sm_get_class (user);
-	  if (class_mop == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-	  else if (class_mop != Au_user_class)
-	    {
-	      error = ER_AU_CORRUPTED;	/* need a better error */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      return er_errid ();
-	    }
-	}
-
-      new_user_cache = (AU_USER_CACHE *) malloc (sizeof (AU_USER_CACHE));
-      if (new_user_cache != NULL)
-	{
-	  if ((error = extend_class_caches (index)))
-	    {
-	      free_and_init (new_user_cache);
-	    }
-	  else
-	    {
-	      new_user_cache->next = user_cache;
-	      user_cache = new_user_cache;
-	      new_user_cache->user = user;
-	      new_user_cache->index = *index;
-	    }
-	}
+      *index = cache->index;
     }
 
   return error;
@@ -552,11 +609,17 @@ authenticate_cache::free_user_cache (AU_USER_CACHE *u)
 {
   if (u != NULL)
     {
+      u->next = NULL;
       u->user = NULL;		/* clear GC roots */
-      free_and_init (u);
+
+      if (!u->name.empty ())
+	{
+	  user_name_cache.erase (u->name);
+	}
+
+      delete u;
     }
 }
-
 
 /*
  * reset_cache_for_user_and_class - This is called whenever a grant or revoke
@@ -590,7 +653,14 @@ authenticate_cache::reset_cache_for_user_and_class (SM_CLASS *sm_class)
        */
       for (u = user_cache; u != NULL; u = u->next)
 	{
-	  c->data[u->index] = AU_CACHE_INVALID;
+	  // NOTE: u->index is initalized as -1
+	  // This means that the user is cached in a context that is independent of the class,
+	  // for example, obtaining the user object in the execution context of another database object,
+	  // such as the owner's right of procedure or a user management method.
+	  if (u->index >= 0)
+	    {
+	      c->data[u->index] = AU_CACHE_INVALID;
+	    }
 	}
     }
 }
@@ -626,28 +696,55 @@ authenticate_cache::reset_authorization_caches (void)
 }
 
 /*
- * remove_user_cache_reference - This is called when a user object is deleted.
+ * remove_user_cache - This is called when a user object is deleted.
  *   return: none
  *   user(in): user object
  *
- * Note: If there is an authorization cache entry for this user, we NULL
- *       the user pointer so it will no longer be used.  We could to in
- *       and restructure all the caches to remove the deleted user but user
- *       deletion isn't that common.  Just leave an unused entry in the
- *       cache array.
  */
 void
-authenticate_cache::remove_user_cache_references (MOP user)
+authenticate_cache::remove_user_cache (MOP user)
 {
-  AU_USER_CACHE *u;
+  AU_USER_CACHE *u, *prevu, *nextu;
 
-  for (u = user_cache; u != NULL; u = u->next)
+  prevu = NULL;
+  for (u = user_cache; u != NULL; u = nextu)
     {
+      nextu = u->next;
       if (ws_is_same_object (u->user, user))
 	{
-	  u->user = NULL;
+	  if (prevu == NULL)
+	    {
+	      user_cache = nextu;
+	    }
+	  else
+	    {
+	      prevu->next = nextu;
+	    }
+	  free_user_cache (u);
+	  break;
+	}
+      else
+	{
+	  prevu = u;
 	}
     }
+}
+
+/*
+ * reset_user_cache - This is called when a user object is invalidated.
+ *   return: none
+ */
+void
+authenticate_cache::reset_user_cache (void)
+{
+  AU_USER_CACHE *u = user_cache;
+  while (u != NULL)
+    {
+      AU_USER_CACHE *nextu = u->next;
+      free_user_cache (u);
+      u = nextu;
+    }
+  user_cache = NULL;
 }
 
 /*

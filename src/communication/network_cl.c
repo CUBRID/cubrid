@@ -48,7 +48,7 @@
 #include "environment_variable.h"
 #include "boot_cl.h"
 #include "query_method.hpp"
-#include "method_def.hpp"
+
 #include "release_string.h"
 #include "log_comm.h"
 #include "file_io.h"

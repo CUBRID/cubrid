@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "jsp_cl.h"
+#include "dbi.h"
 
 #define SAVEPOINT_ADD_STORED_PROC "ADDSTOREDPROC"
 #define SAVEPOINT_CREATE_STORED_PROC "CREATESTOREDPROC"
@@ -44,6 +45,52 @@ enum sp_object_code_type
 {
   SPOC_JAVA_CLASS,
   SPOC_JAVA_JAR
+};
+
+enum sp_entry_index
+{
+  SP_ATTR_INDEX_UNIQUE_NAME,
+  SP_ATTR_INDEX_NAME,
+  SP_ATTR_INDEX_SP_TYPE,
+  SP_ATTR_INDEX_RETURN_TYPE,
+  SP_ATTR_INDEX_ARG_COUNT,
+  SP_ATTR_INDEX_ARGS,
+  SP_ATTR_INDEX_LANG,
+  SP_ATTR_INDEX_PKG,
+  SP_ATTR_INDEX_IS_SYSTEM_GENERATED,
+  SP_ATTR_INDEX_TARGET_CLASS,
+  SP_ATTR_INDEX_TARGET_METHOD,
+  SP_ATTR_INDEX_DIRECTIVE,
+  SP_ATTR_INDEX_OWNER,
+  SP_ATTR_INDEX_COMMENT,
+  SP_ATTR_INDEX_LAST
+};
+
+
+enum sp_args_entry_index
+{
+  SP_ARGS_ATTR_INDEX_SP_OF,
+  SP_ARGS_ATTR_INDEX_PKG,
+  SP_ARGS_ATTR_INDEX_OF,
+  SP_ARGS_ATTR_INDEX_IS_SYSTEM_GENERATED,
+  SP_ARGS_ATTR_INDEX_ARG_NAME,
+  SP_ARGS_ATTR_INDEX_DATA_TYPE,
+  SP_ARGS_ATTR_INDEX_MODE,
+  SP_ARGS_ATTR_INDEX_DEFAULT_VALUE,
+  SP_ARGS_ATTR_INDEX_IS_OPTIONAL,
+  SP_ARGS_ATTR_INDEX_COMMENT,
+  SP_ARGS_ATTR_INDEX_LAST
+};
+
+// entry
+// TODO: move to proper place to commonly use for any catalog
+struct sp_entry
+{
+  OID oid;			/* catalog row's oid */
+  std::vector<DB_VALUE> vals;
+
+  sp_entry (int size);
+  ~sp_entry ();
 };
 
 // *INDENT-OFF*
@@ -144,6 +191,10 @@ int sp_add_stored_procedure_code (SP_CODE_INFO &info);
 
 // update into system catalogs
 int sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info);
+
+// getter
+std::string sp_get_entry_name (int index);
+std::string sp_args_get_entry_name (int index);
 
 // misc
 void sp_normalize_name (std::string &s);

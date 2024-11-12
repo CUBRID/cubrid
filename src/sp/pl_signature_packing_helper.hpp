@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,31 +16,15 @@
  *
  */
 
+//
+// pl_signature_packing_helper.hpp
+//
 
-/*
- * External definitions for method calls in queries
- */
+#ifndef _PL_SIGNATURE_PACKING_HELPER_HPP_
+#define _PL_SIGNATURE_PACKING_HELPER_HPP_
 
-#ifndef _QUERY_METHOD_H_
-#define _QUERY_METHOD_H_
-
-#ident "$Id$"
-
-#include <vector>
-
-#include "dbtype_def.h"
-#include "packer.hpp"
-
-// forward def
-struct method_sig_list;
-struct qfile_list_id;
+#include "pl_signature.hpp"
 
 
-#if defined(CS_MODE)
-extern int method_dispatch (unsigned int rc, char *methoddata, int methoddata_size);
-extern int method_error (unsigned int rc, int error_id);
-#else
-extern int method_dispatch (packing_unpacker &unpacker);
+
 #endif
-
-#endif /* _QUERY_METHOD_H_ */

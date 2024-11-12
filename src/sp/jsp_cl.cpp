@@ -63,6 +63,8 @@
 #include "method_compile_def.hpp"
 #include "sp_catalog.hpp"
 #include "authenticate_access_auth.hpp"
+#include "pl_signature.hpp"
+#include "oid.h"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
@@ -121,13 +123,14 @@ static PT_MISC_TYPE jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type);
 static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid);
 
 static char *jsp_check_stored_procedure_name (const char *str);
+static int jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, int num_args);
+static int jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode);
+static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
+
 static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
 static int drop_stored_procedure_code (const char *name);
 static int alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *name, const char *owner_str,
 					int sp_recompile);
-
-static int jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node_list, method_sig_list &sig_list);
-static int *jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list);
 
 static int check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
 
@@ -213,9 +216,6 @@ jsp_find_stored_procedure_code (const char *name)
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
       er_clear ();
-
-      // TODO: error
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_EXIST, 1, name);
     }
 
   AU_ENABLE (save);
@@ -234,7 +234,7 @@ jsp_is_exist_stored_procedure (const char *name)
   return mop != NULL;
 }
 
-int
+static int
 jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode)
 {
   int error = NO_ERROR;
@@ -261,15 +261,10 @@ jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mod
  * Note:
  */
 
-int
-jsp_check_param_type_supported (PT_NODE *node)
+static int
+jsp_check_param_type_supported (DB_TYPE type, int mode)
 {
-  assert (node && node->node_type == PT_SP_PARAMETERS);
-
-  PT_TYPE_ENUM pt_type = node->type_enum;
-  DB_TYPE domain_type = pt_type_enum_to_db (pt_type);
-
-  switch (domain_type)
+  switch (type)
     {
     case DB_TYPE_INTEGER:
     case DB_TYPE_FLOAT:
@@ -292,14 +287,22 @@ jsp_check_param_type_supported (PT_NODE *node)
       break;
 
     case DB_TYPE_RESULTSET:
-      if (node->info.sp_param.mode != PT_OUTPUT)
+      if (mode != SP_MODE_OUT)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_INPUT_RESULTSET, 0);
+	}
+      else if (!jsp_is_prepare_call ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
+	}
+      else
+	{
+	  return NO_ERROR;
 	}
       break;
 
     default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1, pr_type_name (domain_type));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1, pr_type_name (type));
       break;
     }
 
@@ -335,8 +338,12 @@ jsp_check_return_type_supported (DB_TYPE type)
     case DB_TYPE_CHAR:
     case DB_TYPE_BIGINT:
     case DB_TYPE_DATETIME:
-    case DB_TYPE_RESULTSET:
       return NO_ERROR;
+    case DB_TYPE_RESULTSET:
+      if (!jsp_is_prepare_call ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
+	}
       break;
 
     default:
@@ -584,40 +591,17 @@ jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type)
     }
 }
 
-/*
- * jsp_call_stored_procedure - call java stored procedure in constant folding
- *   return: call jsp failed return error code
- *   parser(in/out): parser environment
- *   statement(in): a statement node
- *
- * Note:
- */
-
-int
-jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
+static int
+jsp_evaluate_arguments (PARSER_CONTEXT *parser, PT_NODE *statement,
+			std::vector <std::reference_wrapper <DB_VALUE>> &args)
 {
-  int error = NO_ERROR;
-  PT_NODE *method;
-  const char *method_name;
-  if (!statement || ! (method = statement->info.method_call.method_name) || method->node_type != PT_NAME
-      || ! (method_name = method->info.name.original))
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return er_errid ();
-    }
-
-  DB_VALUE ret_value;
-  db_make_null (&ret_value);
-
-  // *INDENT-OFF*
-  std::vector <std::reference_wrapper <DB_VALUE>> args;
-  // *INDENT-ON*
+  assert (statement);
+  assert (statement->node_type == PT_METHOD_CALL);
 
   PT_NODE *vc = statement->info.method_call.arg_list;
   while (vc)
     {
       DB_VALUE *db_value;
-      bool to_break = false;
 
       /*
        * Don't clone host vars; they may actually be acting as output variables (e.g., a character array that is
@@ -633,28 +617,65 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  db_value = (DB_VALUE *) malloc (sizeof (DB_VALUE));
 	  if (db_value == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE));
-	      return er_errid ();
+	      goto exit_on_error;
 	    }
+
+	  db_make_null (db_value);
 
 	  /* must call pt_evaluate_tree */
 	  pt_evaluate_tree (parser, vc, db_value, 1);
 	  if (pt_has_error (parser))
 	    {
 	      /* to maintain the list to free all the allocated */
-	      to_break = true;
+	      db_value_clear (db_value);
+	      goto exit_on_error;
 	    }
 	}
 
-      if (to_break)
-	{
-	  break;
-	}
-
-      args.push_back (std::ref (*db_value));
+      args.emplace_back (std::ref (*db_value));
       vc = vc->next;
     }
 
+  return NO_ERROR;
+
+exit_on_error:
+
+  for (DB_VALUE &val : args)
+    {
+      db_value_clear (&val);
+    }
+  args.clear ();
+
+  return ER_FAILED;
+}
+
+/*
+ * jsp_call_stored_procedure - call java stored procedure in constant folding
+ *   return: call jsp failed return error code
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *
+ * Note:
+ */
+
+int
+jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  int error = NO_ERROR;
+  PT_NODE *method;
+  const char *method_name;
+  if (!statement || ! (method = statement->info.method_call.method_name) || method->node_type != PT_NAME)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return er_errid ();
+    }
+
+  DB_VALUE ret_value;
+  db_make_null (&ret_value);
+
+  std::vector <std::reference_wrapper <DB_VALUE>> args;
+
+  error = jsp_evaluate_arguments (parser, statement, args);
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -663,22 +684,35 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   else
     {
       /* call sp */
-      method_sig_list sig_list;
-
-      sig_list.method_sig = nullptr;
-      sig_list.num_methods = 0;
-
-      error = jsp_make_method_sig_list (parser, statement, sig_list);
+      cubpl::pl_signature sig;
+      error = jsp_make_pl_signature (parser, statement, NULL, sig);
       if (error == NO_ERROR && locator_get_sig_interrupt () == 0)
 	{
-	  error = method_invoke_fold_constants (sig_list, args, ret_value);
+	  std::vector <DB_VALUE> out_args;
+	  error = pl_call (sig, args, out_args, ret_value);
+	  if (error == NO_ERROR)
+	    {
+	      for (int i = 0, j = 0; i < sig.arg.arg_size; i++)
+		{
+		  if (sig.arg.arg_mode[i] == SP_MODE_IN)
+		    {
+		      continue;
+		    }
+
+		  DB_VALUE &arg = args[i];
+		  DB_VALUE &out_arg = out_args[j++];
+
+		  db_value_clear (&arg);
+		  db_value_clone (&out_arg, &arg);
+		  db_value_clear (&out_arg);
+		}
+	    }
 	}
-      sig_list.freemem ();
     }
 
   if (error == NO_ERROR)
     {
-      vc = statement->info.method_call.arg_list;
+      PT_NODE *vc = statement->info.method_call.arg_list;
       for (int i = 0; i < (int) args.size () && vc; i++)
 	{
 	  if (!PT_IS_CONST (vc))
@@ -903,21 +937,9 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
       else
 	{
-	  // TODO: error handling needs to be improved
 	  err = ER_SP_COMPILE_ERROR;
-
-	  std::string err_msg;
-	  if (compile_response.err_msg.empty ())
-	    {
-	      err_msg = "unknown";
-	    }
-	  else
-	    {
-	      err_msg.assign (compile_response.err_msg);
-	    }
-
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_response.err_line,
-		  compile_response.err_column, err_msg.c_str ());
+		  compile_response.err_column, compile_response.err_msg.c_str ());
 	  pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
 			   NULL);
 	  goto error_exit;
@@ -1300,7 +1322,7 @@ jsp_check_stored_procedure_name (const char *str)
   owner_name[0] = '\0';
 
 
-  if (memcmp (str, "dbms_output.", dbms_output_len) == 0)
+  if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0)
     {
       sprintf (buffer, "public.dbms_output.%s",
 	       sm_downcase_name (str + dbms_output_len, tmp, strlen (str + dbms_output_len) + 1));
@@ -1309,6 +1331,8 @@ jsp_check_stored_procedure_name (const char *str)
     {
       sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
     }
+
+  // sm_downcase_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
 
   name = strdup (buffer);
 
@@ -1605,24 +1629,19 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
     }
   else
     {
-      // TODO: error handling needs to be improved
-      err = ER_SP_COMPILE_ERROR;
-
-      std::string err_msg;
-      if (compile_response.err_msg.empty ())
+      if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
 	{
-	  err_msg = "unknown";
+	  decl = compile_response.java_signature.c_str ();
 	}
       else
 	{
-	  err_msg.assign (compile_response.err_msg);
+	  err = ER_SP_COMPILE_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_response.err_line,
+		  compile_response.err_column, compile_response.err_msg.c_str ());
+	  pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
+			   NULL);
+	  goto error;
 	}
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_response.err_line,
-	      compile_response.err_column, err_msg.c_str ());
-      pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
-		       NULL);
-      goto error;
     }
 
   if (decl)
@@ -1737,387 +1756,20 @@ jsp_is_prepare_call ()
   return is_prepare_call[depth];
 }
 
-/*
- * jsp_make_method_sig_list () - converts a parse expression tree list of
- *                            method calls to method signature list
- *   return: A NULL return indicates a (memory) error occurred
- *   parser(in):
- *   node_list(in): should be parse method nodes
- *   subquery_as_attr_list(in):
- */
 static int
-jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list &sig_list)
+jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, int num_args)
 {
-  int error = NO_ERROR;
-  int save;
-  DB_VALUE cls, method, auth, param_cnt_val, mode, arg_type, optional_val, default_val, temp, lang_val, directive_val,
-	   result_type, target_cls_val;
-
-  int sig_num_args = pt_length_of_list (node->info.method_call.arg_list);
-  std::vector <int> sig_arg_mode;
-  std::vector <int> sig_arg_type;
-
-  std::vector <char *> sig_arg_default;
-  std::vector <int> sig_arg_default_size;
-
-  int sig_result_type;
-  int param_cnt = 0;
-  MOP code_mop = NULL;
-
-  METHOD_SIG *sig = nullptr;
-
-  char owner[DB_MAX_USER_LENGTH + 1];
-  owner[0] = '\0';
-
-  db_make_null (&cls);
-  db_make_null (&method);
-  db_make_null (&auth);
-  db_make_null (&param_cnt_val);
-  db_make_null (&mode);
-  db_make_null (&arg_type);
-  db_make_null (&default_val);
-  db_make_null (&temp);
-  db_make_null (&result_type);
-  db_make_null (&target_cls_val);
-
-  {
-    char *parsed_method_name = (char *) node->info.method_call.method_name->info.name.original;
-    DB_OBJECT *mop_p = jsp_find_stored_procedure (parsed_method_name, DB_AUTH_EXECUTE);
-    AU_DISABLE (save);
-    if (mop_p)
-      {
-	/* check java stored prcedure target */
-	error = db_get (mop_p, SP_ATTR_TARGET_CLASS, &cls);
-	if (error != NO_ERROR)
-	  {
-	    goto end;
-	  }
-
-	error = db_get (mop_p, SP_ATTR_TARGET_METHOD, &method);
-	if (error != NO_ERROR)
-	  {
-	    goto end;
-	  }
-
-	/* check arg count */
-	error = db_get (mop_p, SP_ATTR_ARG_COUNT, &param_cnt_val);
-	if (error != NO_ERROR)
-	  {
-	    goto end;
-	  }
-
-	int num_trailing_default_args = 0;
-	param_cnt = db_get_int (&param_cnt_val);
-	if (sig_num_args > param_cnt)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, param_cnt, sig_num_args);
-	    error = er_errid ();
-	    goto end;
-	  }
-	else if (sig_num_args < param_cnt)
-	  {
-	    // there are trailing default arguments
-	    num_trailing_default_args = param_cnt - sig_num_args;
-	  }
-
-	sig_arg_default.resize (param_cnt);
-	sig_arg_default_size.resize (param_cnt);
-
-	DB_VALUE args;
-	/* arg_mode, arg_type */
-	error = db_get (mop_p, SP_ATTR_ARGS, &args);
-	if (error != NO_ERROR)
-	  {
-	    goto end;
-	  }
-
-	DB_SET *param_set = db_get_set (&args);
-	for (int i = 0; i < param_cnt; i++)
-	  {
-	    set_get_element (param_set, i, &temp);
-	    DB_OBJECT *arg_mop_p = db_get_object (&temp);
-	    if (arg_mop_p)
-	      {
-		error = db_get (arg_mop_p, SP_ATTR_MODE, &mode);
-		int arg_mode = db_get_int (&mode);
-
-		error = jsp_check_out_param_in_query (parser, node, arg_mode);
-
-		if (error == NO_ERROR)
-		  {
-		    sig_arg_mode.push_back (arg_mode);
-		  }
-		else
-		  {
-		    goto end;
-		  }
-
-		error = db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type);
-		if (error == NO_ERROR)
-		  {
-		    int type_val = db_get_int (&arg_type);
-		    if (type_val == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
-		      {
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
-			error = er_errid ();
-			goto end;
-		      }
-		    sig_arg_type.push_back (type_val);
-		  }
-		else
-		  {
-		    goto end;
-		  }
-
-		sig_arg_default[i] = NULL;
-		sig_arg_default_size[i] = -1;
-
-		if (i >= sig_num_args)
-		  {
-		    error = db_get (arg_mop_p, SP_ATTR_IS_OPTIONAL, &optional_val);
-		    if (error == NO_ERROR)
-		      {
-			int is_optional = db_get_int (&optional_val);
-			if (is_optional == 1)
-			  {
-			    error = db_get (arg_mop_p, SP_ATTR_DEFAULT_VALUE, &default_val);
-			    if (error == NO_ERROR)
-			      {
-				if (!DB_IS_NULL (&default_val))
-				  {
-				    sig_arg_default_size[i] = db_get_string_size (&default_val);
-				    if (sig_arg_default_size[i] > 0)
-				      {
-					sig_arg_default[i] = db_private_strndup (NULL, db_get_string (&default_val), sig_arg_default_size[i]);
-				      }
-				  }
-				else
-				  {
-				    // default value is NULL
-				    sig_arg_default_size[i] = -2; // special value
-				  }
-			      }
-			    else
-			      {
-				goto end;
-			      }
-			  }
-			else
-			  {
-			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, param_cnt, sig_num_args);
-			    error = er_errid ();
-			    goto end;
-			  }
-		      }
-		    else
-		      {
-			goto end;
-		      }
-		  }
-
-		pr_clear_value (&mode);
-		pr_clear_value (&arg_type);
-		pr_clear_value (&temp);
-		pr_clear_value (&default_val);
-	      }
-	  }
-	pr_clear_value (&args);
-
-	/* result type */
-	error = db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type);
-	if (error != NO_ERROR)
-	  {
-	    goto end;
-	  }
-	sig_result_type = db_get_int (&result_type);
-	if (sig_result_type == DB_TYPE_RESULTSET && !jsp_is_prepare_call ())
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
-	    error = er_errid ();
-	    goto end;
-	  }
-
-	/* OID */
-	error = db_get (mop_p, SP_ATTR_TARGET_CLASS, &target_cls_val);
-	if (error != NO_ERROR)
-	  {
-	    goto end;
-	  }
-
-	const char *target_cls = db_get_string (&target_cls_val);
-	if (target_cls != NULL)
-	  {
-	    code_mop = jsp_find_stored_procedure_code (target_cls);
-	  }
-	pr_clear_value (&target_cls_val);
-      }
-    else
-      {
-	error = er_errid ();
-	goto end;
-      }
-
-    sig = sig_list.method_sig = (METHOD_SIG *) db_private_alloc (NULL, sizeof (METHOD_SIG));
-    if (sig)
-      {
-	sig->next = nullptr;
-	sig->num_method_args = param_cnt;
-	sig->method_type = METHOD_TYPE_JAVA_SP;
-	sig->result_type = sig_result_type;
-
-	std::string target;
-
-	target.assign (db_get_string (&cls))
-	.append (".")
-	.append (db_get_string (&method));
-
-	sig->method_name = db_private_strndup (NULL, target.c_str (), target.size ());
-	if (!sig->method_name)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
-	// lang
-	error = db_get (mop_p, SP_ATTR_LANG, &lang_val);
-	if (error != NO_ERROR)
-	  {
-	    goto end;
-	  }
-
-	if (db_get_int (&lang_val) == SP_LANG_PLCSQL)
-	  {
-	    sig->method_type = METHOD_TYPE_PLCSQL;
-	  }
-	else
-	  {
-	    sig->method_type = METHOD_TYPE_JAVA_SP;
-	  }
-
-	// auth_name
-	error = db_get (mop_p, SP_ATTR_DIRECTIVE, &directive_val);
-	if (error != NO_ERROR)
-	  {
-	    goto end;
-	  }
-
-	int directive = db_get_int (&directive_val);
-
-	if (jsp_get_owner_name (parsed_method_name, owner, DB_MAX_USER_LENGTH) == NULL)
-	  {
-	    error = ER_FAILED;
-	    goto end;
-	  }
-
-	const char *auth_name = (directive == SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER ? owner :
-				 au_get_current_user_name ());
-	int auth_name_len = strlen (auth_name);
-
-	sig->auth_name = (char *) db_private_alloc (NULL, auth_name_len * sizeof (char));
-	if (!sig->auth_name)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
-	memcpy (sig->auth_name, auth_name, auth_name_len);
-	sig->auth_name[auth_name_len] = 0;
-
-	sig->method_arg_pos = (int *) db_private_alloc (NULL, (param_cnt + 1) * sizeof (int));
-	if (!sig->method_arg_pos)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
-	for (int i = 0; i < param_cnt + 1; i++)
-	  {
-	    sig->method_arg_pos[i] = (i < sig_num_args) ? i : -1;
-	  }
-
-	sig->class_name = nullptr;
-
-
-	sig->arg_info = (METHOD_ARG_INFO *) db_private_alloc (NULL, sizeof (METHOD_ARG_INFO));
-	if (sig->arg_info)
-	  {
-	    if (param_cnt > 0)
-	      {
-		sig->arg_info->arg_mode = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
-		if (!sig->arg_info->arg_mode)
-		  {
-		    sig->arg_info->arg_mode = nullptr;
-		    error = ER_OUT_OF_VIRTUAL_MEMORY;
-		    goto end;
-		  }
-
-		sig->arg_info->arg_type = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
-		if (!sig->arg_info->arg_type)
-		  {
-		    sig->arg_info->arg_type = nullptr;
-		    error = ER_OUT_OF_VIRTUAL_MEMORY;
-		    goto end;
-		  }
-
-		sig->arg_info->default_value = (char **) db_private_alloc (NULL, (param_cnt) * sizeof (char *));
-		sig->arg_info->default_value_size = (int *) db_private_alloc (NULL, (param_cnt) * sizeof (int));
-
-		for (int i = 0; i < param_cnt; i++)
-		  {
-		    sig->arg_info->arg_mode[i] = sig_arg_mode[i];
-		    sig->arg_info->arg_type[i] = sig_arg_type[i];
-
-		    sig->arg_info->default_value_size[i] = sig_arg_default_size[i];
-		    if (sig->arg_info->default_value_size[i] > 0)
-		      {
-			sig->arg_info->default_value[i] = sig_arg_default[i];
-		      }
-		  }
-	      }
-	    else
-	      {
-		sig->arg_info->arg_mode = nullptr;
-		sig->arg_info->arg_type = nullptr;
-		sig->arg_info->default_value = nullptr;
-		sig->arg_info->default_value_size = nullptr;
-	      }
-
-	    sig_list.num_methods = 1;
-	  }
-	else
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
-	if (code_mop)
-	  {
-	    sig->oid  = *WS_OID (code_mop);
-	  }
-	else
-	  {
-	    sig->oid  = OID_INITIALIZER;
-	  }
-      }
-  }
-
-end:
-  AU_ENABLE (save);
-  if (error != NO_ERROR)
+  if (num_args > num_params)
     {
-      if (sig)
-	{
-	  sig->freemem ();
-	}
-      sig_list.method_sig = nullptr;
-      sig_list.num_methods = 0;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, num_params, num_args);
+      return er_errid ();
     }
-
-  pr_clear_value (&method);
-  pr_clear_value (&param_cnt_val);
-  pr_clear_value (&result_type);
-
-  return error;
+  else if (num_args < num_params)
+    {
+      // there are trailing default arguments
+      return num_params - num_args;
+    }
+  return 0;
 }
 
 /*
@@ -2130,34 +1782,284 @@ end:
  *   subquery_as_attr_list(in):
  */
 static int *
-jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list)
+pt_to_method_arglist (PARSER_CONTEXT *parser, PT_NODE *target, PT_NODE *node_list, PT_NODE *subquery_as_attr_list)
 {
   int *arg_list = NULL;
-  int i = 0;
-  int num_args = pt_length_of_list (node_list);
+  int i = 1;
+  int num_args = pt_length_of_list (node_list) + 1;
   PT_NODE *node;
 
-  arg_list = (int *) db_private_alloc (NULL, num_args * sizeof (int));
+  arg_list = (int *) db_private_alloc (NULL, num_args);
   if (!arg_list)
     {
       return NULL;
     }
 
-  for (node = node_list; node != NULL; node = node->next)
+  if (subquery_as_attr_list != NULL)
     {
-      arg_list[i] = i;
-      i++;
-      /*
-         arg_list[i] = pt_find_attribute (parser, node, subquery_as_attr_list);
-         if (arg_list[i] == -1)
-         {
-         return NULL;
-         }
-         i++;
-       */
+      if (target != NULL)
+	{
+	  /* the method call target is the first element in the array */
+	  arg_list[0] = pt_find_attribute (parser, target, subquery_as_attr_list);
+	  if (arg_list[0] == -1)
+	    {
+	      return NULL;
+	    }
+	}
+      else
+	{
+	  i = 0;
+	}
+
+      for (node = node_list; node != NULL; node = node->next)
+	{
+	  arg_list[i] = pt_find_attribute (parser, node, subquery_as_attr_list);
+	  if (arg_list[i] == -1)
+	    {
+	      return NULL;
+	    }
+	  i++;
+	}
+    }
+  else
+    {
+      for (node = node_list; node != NULL; node = node->next)
+	{
+	  arg_list[i] = i;
+	  i++;
+	}
     }
 
   return arg_list;
+}
+
+/*
+ * jsp_make_pl_signature () - converts a parse expression tree list of pl calls to pl_signature struct
+ *   return: error_code
+ *   parser(in):
+ *   node_list(in): should be parse pl nodes
+ *   subquery_as_attr_list(in):
+ *   sig(out): pl_signature struct
+ */
+int
+jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_as_attr_list, cubpl::pl_signature &sig)
+{
+  int save;
+  int error = NO_ERROR;
+  char user_name_buffer [DB_MAX_USER_LENGTH + 1];
+
+  assert (node);
+
+  sp_entry entry (SP_ATTR_INDEX_LAST);
+
+  {
+    PT_NODE *method_name_node = node->info.method_call.method_name;
+    const char *name = PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
+		       method_name_node) : PT_NAME_ORIGINAL (method_name_node);
+
+    sig.name = db_private_strdup (NULL, name);
+    if (PT_IS_METHOD (node))
+      {
+	sig.type = PT_IS_CLASS_METHOD (node) ? PL_TYPE_CLASS_METHOD : PL_TYPE_INSTANCE_METHOD;
+      }
+    else
+      {
+	DB_OBJECT *mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
+	if (mop_p == NULL)
+	  {
+	    error = er_errid ();
+	    assert (error != NO_ERROR);
+	    goto exit;
+	  }
+
+	AU_DISABLE (save);
+	entry.oid = *WS_OID (mop_p);
+
+	for (int i = 0; i < SP_ATTR_INDEX_LAST; i++)
+	  {
+	    error = obj_get (mop_p, sp_get_entry_name (i).data (), &entry.vals[i]);
+	    if (error != NO_ERROR)
+	      {
+		goto exit;
+	      }
+	  }
+
+	int lang = db_get_int (&entry.vals[SP_ATTR_INDEX_LANG]);
+	sig.type = (lang == SP_LANG_PLCSQL) ? PL_TYPE_PLCSQL : PL_TYPE_JAVA_SP;
+
+	/* semantic check */
+	int directive = db_get_int (&entry.vals[SP_ATTR_INDEX_DIRECTIVE]);
+	const char *auth_name = (directive == SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER ? jsp_get_owner_name (
+					 name, user_name_buffer, DB_MAX_USER_LENGTH) : au_get_current_user_name ());
+
+	int result_type = db_get_int (&entry.vals[SP_ATTR_INDEX_RETURN_TYPE]);
+	error = jsp_check_return_type_supported ((DB_TYPE) result_type);
+	if (error != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	// args
+	int num_params = db_get_int (&entry.vals[SP_ATTR_INDEX_ARG_COUNT]);
+	DB_SET *param_set = db_get_set (&entry.vals[SP_ATTR_INDEX_ARGS]);
+	error = jsp_make_pl_args (parser, node, num_params, param_set, sig);
+	if (error != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	sig.auth = db_private_strdup (NULL, auth_name);
+	sig.result_type = result_type;
+	if (directive == SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER)
+	  {
+	    jsp_get_owner_name (name, user_name_buffer, DB_MAX_USER_LENGTH);
+	    sig.auth = db_private_strndup (NULL, user_name_buffer, DB_MAX_USER_LENGTH);
+	  }
+	else
+	  {
+	    sig.auth = db_private_strdup (NULL, au_get_current_user_name ());
+	  }
+      }
+
+    // make pl_ext
+    if (PT_IS_METHOD (node))
+      {
+	PT_NODE *dt = node->info.method_call.on_call_target->data_type;
+	/* beware of virtual classes */
+
+	sig.ext.method.class_name = (dt->info.data_type.virt_object) ? (char *) db_get_class_name (
+					    dt->info.data_type.virt_object) : (char *) dt->info.data_type.entity->info.name.original;
+	sig.arg.set_arg_size (pt_length_of_list (node->info.method_call.arg_list) + 1);
+	sig.ext.method.arg_pos = pt_to_method_arglist (parser, node->info.method_call.on_call_target,
+				 node->info.method_call.arg_list, subquery_as_attr_list);
+      }
+    else
+      {
+	sig.ext.sp.target_class_name = db_private_strdup (NULL, db_get_string (&entry.vals[SP_ATTR_INDEX_TARGET_CLASS]));
+	sig.ext.sp.target_method_name = db_private_strdup (NULL, db_get_string (&entry.vals[SP_ATTR_INDEX_TARGET_METHOD]));
+	if (sig.ext.sp.target_class_name != NULL)
+	  {
+	    MOP code_mop = jsp_find_stored_procedure_code (sig.ext.sp.target_class_name);
+	    if (code_mop)
+	      {
+		sig.ext.sp.code_oid = *WS_OID (code_mop);
+	      }
+	    else
+	      {
+		// Java SP
+		sig.ext.sp.code_oid = OID_INITIALIZER;
+	      }
+	  }
+      }
+  }
+
+exit:
+  AU_ENABLE (save);
+  return error;
+}
+
+int
+jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET *param_set, cubpl::pl_signature &sig)
+{
+  int error = NO_ERROR;
+
+  DB_VALUE temp;
+  db_make_null (&temp);
+
+  {
+    sig.arg.set_arg_size (num_params);
+
+    // check default arguments
+    int num_args = pt_length_of_list (node->info.method_call.arg_list);
+    int num_trailing_default_args = jsp_check_overflow_args (parser, node, num_params, num_args);
+    if (num_trailing_default_args < 0)
+      {
+	error = er_errid ();
+	goto exit_on_error;
+      }
+
+    sp_entry entry (SP_ARGS_ATTR_INDEX_LAST);
+
+    for (int i = 0; i < num_params; i++)
+      {
+	set_get_element (param_set, i, &temp);
+
+	MOP arg_mop_p = db_get_object (&temp);
+	if (arg_mop_p == NULL)
+	  {
+	    error = er_errid ();
+	    assert (error != NO_ERROR);
+	    goto exit_on_error;
+	  }
+
+	for (int i = 0; i < SP_ARGS_ATTR_INDEX_LAST; i++)
+	  {
+	    error = obj_get (arg_mop_p, sp_args_get_entry_name (i).data (), &entry.vals[i]);
+	    if (error != NO_ERROR)
+	      {
+		goto exit_on_error;
+	      }
+	  }
+
+	int arg_mode = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_MODE]);
+	error = jsp_check_out_param_in_query (parser, node, arg_mode);
+	if (error != NO_ERROR)
+	  {
+	    goto exit_on_error;
+	  }
+
+	int arg_type = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_DATA_TYPE]);
+	error = jsp_check_param_type_supported ((DB_TYPE) arg_type, arg_mode);
+	if (error != NO_ERROR)
+	  {
+	    goto exit_on_error;
+	  }
+
+	const char *default_value_str = NULL;
+	int default_value_size = PL_ARG_DEFAULT_NONE;
+
+	int num_required_args = num_params - num_trailing_default_args;
+
+	if (i >= num_required_args)
+	  {
+	    int is_optional = db_get_int (&entry.vals[SP_ARGS_ATTR_INDEX_IS_OPTIONAL]);
+	    if (is_optional == 1)
+	      {
+		const DB_VALUE &default_val = entry.vals[SP_ARGS_ATTR_INDEX_DEFAULT_VALUE];
+		if (!DB_IS_NULL (&default_val))
+		  {
+		    default_value_size = db_get_string_size (&default_val); // null character
+		    if (default_value_size > 0)
+		      {
+			default_value_str = db_get_string (&default_val);
+		      }
+		  }
+		else
+		  {
+		    default_value_size = PL_ARG_DEFAULT_NULL; // special value when default value is *NULL*
+		  }
+	      }
+	    else
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, num_params, num_args);
+		error = er_errid ();
+		goto exit_on_error;
+	      }
+	  }
+
+	sig.arg.arg_mode[i] = arg_mode;
+	sig.arg.arg_type[i] = arg_type;
+
+	sig.arg.arg_default_value_size[i] = default_value_size;
+	if (default_value_str)
+	  {
+	    sig.arg.arg_default_value[i] = db_private_strndup (NULL, default_value_str, default_value_size);
+	  }
+      }
+  }
+
+exit_on_error:
+  return error;
 }
 
 static int

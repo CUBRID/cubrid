@@ -308,6 +308,7 @@ set(OBJECT_HEADERS
 
 set(SP_SOURCES
   ${SP_DIR}/jsp_cl.cpp
+  ${SP_DIR}/pl_signature.cpp
   ${SP_DIR}/pl_comm.c
   ${SP_DIR}/sp_catalog.cpp
   )
@@ -317,7 +318,6 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_connection_java.cpp
   ${METHOD_DIR}/method_compile_def.cpp
   ${METHOD_DIR}/method_callback.cpp
-  ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_oid_handler.cpp
   ${METHOD_DIR}/method_query_handler.cpp

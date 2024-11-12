@@ -65,6 +65,19 @@ regu_variable_node::map_regu (const map_regu_func_type &func, bool &stop)
       map_regu_not_null_and_check_stop (value.arithptr->rightptr);
       break;
 
+    case TYPE_SP:
+      if (value.sp_ptr == NULL)
+	{
+	  assert (false);
+	  return;
+	}
+
+      for (regu_variable_list_node *arg = value.sp_ptr->args; arg != NULL; arg = arg->next)
+	{
+	  map_regu_and_check_stop (&arg->value);
+	}
+      break;
+
     case TYPE_FUNC:
       if (value.funcp == NULL)
 	{
@@ -141,6 +154,11 @@ regu_variable_node::clear_xasl_local ()
 	{
 	  value.arithptr->pred->clear_xasl ();
 	}
+      break;
+
+    case TYPE_SP:
+      assert (value.sp_ptr != NULL);
+      pr_clear_value (value.sp_ptr->value);
       break;
 
     case TYPE_FUNC:
