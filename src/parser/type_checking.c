@@ -18625,6 +18625,43 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  result = parser_copy_tree_list (parser, result);
 	}
 
+      /* inst_num() is not allowed to compare with any negative number */
+      if (opd1 && opd1->node_type == PT_EXPR && opd2 && opd2->node_type == PT_VALUE
+	  && opd1->info.expr.op == PT_INST_NUM)
+	{
+	  double rvalue = -1;
+
+	  switch (opd2->type_enum)
+	    {
+	    case PT_TYPE_INTEGER:
+	      rvalue = opd2->info.value.data_value.i;
+	      break;
+	    case PT_TYPE_BIGINT:
+	      rvalue = opd2->info.value.data_value.bigint;
+	      break;
+	    case PT_TYPE_NUMERIC:
+	      if (opd2->info.value.data_value.str->bytes[0] == '-')
+		{
+		  rvalue = -1;
+		}
+	      break;
+	    case PT_TYPE_FLOAT:
+	      rvalue = opd2->info.value.data_value.f;
+	      break;
+	    case PT_TYPE_DOUBLE:
+	      rvalue = opd2->info.value.data_value.d;
+	      break;
+	    default:
+	      break;
+	    }
+
+	  if (rvalue < 0)
+	    {
+	      result = NULL;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+	    }
+	}
+
 #if 0
       /* We tried to fold trivial expressions which is always true: e.g, inst_num() > 0
        * This looks like a nice optimization but it causes defects with rewrite optimization of limit clause.
