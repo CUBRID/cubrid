@@ -62,15 +62,11 @@ seq_of_declare_specs
 
 declare_spec
     : pragma_declaration
-    | item_declaration
-    | cursor_definition
-    | routine_definition
-    ;
-
-item_declaration
-    : constant_declaration
+    | constant_declaration
     | exception_declaration
     | variable_declaration
+    | cursor_definition
+    | routine_definition
     ;
 
 variable_declaration
@@ -174,7 +170,6 @@ loop_statement
     | label_declaration? FOR iterator LOOP seq_of_statements END LOOP label_name?          # stmt_for_iter_loop
     | label_declaration? FOR for_cursor LOOP seq_of_statements END LOOP label_name?        # stmt_for_cursor_loop
     | label_declaration? FOR for_static_sql LOOP seq_of_statements END LOOP label_name?    # stmt_for_static_sql_loop
-    | label_declaration? FOR for_dynamic_sql LOOP seq_of_statements END LOOP label_name?   # stmt_for_dynamic_sql_loop
     ;
 
  // actually far more complicated according to the Spec.
@@ -188,10 +183,6 @@ for_cursor
 
 for_static_sql
     : record_name IN LPAREN static_sql RPAREN
-    ;
-
-for_dynamic_sql
-    : record_name IN LPAREN EXECUTE IMMEDIATE dyn_sql restricted_using_clause? RPAREN
     ;
 
 lower_bound

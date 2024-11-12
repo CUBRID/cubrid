@@ -1101,11 +1101,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         Map<String, UseAndDeclLevel> saved = idUsedInCurrentDeclPart;
-        idUsedInCurrentDeclPart = new HashMap<>();
 
         // previsit declarations to support recursive or mutually recursive calls of local
         // procedures/functions
+        idUsedInCurrentDeclPart = null; // We must not count the used id during the previsit
         Map<String, DeclRoutine> store = previsitDeclarations(ctx.declare_spec());
+        idUsedInCurrentDeclPart = new HashMap<>();
         // put the declarations of the routines in the current symbol table
         for (String routineName : store.keySet()) {
             symbolStack.putDecl(routineName, store.get(routineName));
@@ -1795,48 +1796,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public StmtForSqlLoop visitStmt_for_dynamic_sql_loop(Stmt_for_dynamic_sql_loopContext ctx) {
-
-        connectionRequired = true;
-
-        symbolStack.pushSymbolTable("for_d_sql_loop", null);
-
-        ParserRuleContext recNameCtx = ctx.for_dynamic_sql().record_name();
-        String record = Misc.getNormalizedText(recNameCtx);
-
-        Expr dynSql = visitExpression(ctx.for_dynamic_sql().dyn_sql());
-
-        NodeList<Expr> usedExprList;
-        Restricted_using_clauseContext usingClause =
-                ctx.for_dynamic_sql().restricted_using_clause();
-        if (usingClause == null) {
-            usedExprList = null;
-        } else {
-            usedExprList = visitRestricted_using_clause(usingClause);
-        }
-
-        String label;
-        DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
-        if (declLabel == null) {
-            label = null;
-        } else {
-            label = declLabel.name;
-            symbolStack.putDeclLabel(label, declLabel);
-        }
-
-        DeclDynamicRecord declForRecord = new DeclDynamicRecord(recNameCtx, record);
-        symbolStack.putDecl(record, declForRecord);
-
-        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
-        controlFlowBlocked =
-                false; // every loop is assumed not to block control flow in generated Java code
-
-        symbolStack.popSymbolTable();
-
-        return new StmtForDynamicSqlLoop(ctx, label, declForRecord, dynSql, usedExprList, stmts);
-    }
-
-    @Override
     public StmtNull visitNull_statement(Null_statementContext ctx) {
         return new StmtNull(ctx);
     }
@@ -2470,6 +2429,25 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         symbolStack.putDecl(name, ret);
     }
 
+    private void previsitCursor_definition(Cursor_definitionContext ctx) {
+
+        String name = Misc.getNormalizedText(ctx.identifier());
+        symbolStack.pushSymbolTable("cursor_def", null);
+        NodeList<DeclParamIn> paramList = visitCursor_parameter_list(ctx.cursor_parameter_list());
+        SqlSemantics sws = getSqlSemanticsFromServer(ctx.static_sql());
+        assert sws != null;
+        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
+        if (sws.intoTargetStrs != null) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx.static_sql()), // s015
+                    "SQL in a cursor definition may not have an INTO clause");
+        }
+        StaticSql staticSql = checkAndConvertStaticSql(sws, ctx.static_sql());
+        symbolStack.popSymbolTable();
+        DeclCursor ret = new DeclCursor(ctx, name, paramList, staticSql);
+        symbolStack.putDecl(name, ret);
+    }
+
     private void previsitRoutine_definition(
             Routine_definitionContext ctx, Map<String, DeclRoutine> store) {
 
@@ -2977,26 +2955,19 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             ParserRuleContext d;
 
-            d = ds.item_declaration();
+            d = ds.constant_declaration();
             if (d != null) {
-                Item_declarationContext item = (Item_declarationContext) d;
-                d = item.constant_declaration();
-                if (d != null) {
-                    // case of constant_declaration
-                    previsitConstant_declaration((Constant_declarationContext) d);
-                } else {
-                    d = item.variable_declaration();
-                    if (d != null) {
-                        // case of variable_declaration
-                        previsitVariable_declaration((Variable_declarationContext) d);
-                    }
-                }
-            } else {
-                d = ds.routine_definition();
-                if (d != null) {
-                    // case of routine_definition
-                    previsitRoutine_definition((Routine_definitionContext) d, ret);
-                }
+                // case of constant_declaration
+                previsitConstant_declaration((Constant_declarationContext) d);
+            } else if ((d = ds.variable_declaration()) != null) {
+                // case of variable_declaration
+                previsitVariable_declaration((Variable_declarationContext) d);
+            } else if ((d = ds.cursor_definition()) != null) {
+                // case of variable_declaration
+                previsitCursor_definition((Cursor_definitionContext) d);
+            } else if ((d = ds.routine_definition()) != null) {
+                // case of routine_definition
+                previsitRoutine_definition((Routine_definitionContext) d, ret);
             }
         }
         symbolStack.popSymbolTable(); // pop the temporary symbol table

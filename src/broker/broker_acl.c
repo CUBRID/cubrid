@@ -51,7 +51,6 @@ typedef enum
 
 static ACCESS_INFO *access_control_find_access_info (ACCESS_INFO ai[], int size, char *dbname, char *dbuser);
 static int access_control_read_ip_info (IP_INFO * ip_info, char *filename, char *admin_err_msg);
-static void access_control_repath_file (char *path);
 static int access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p, char *dbname, char *dbuser,
 						unsigned char *address);
 static int access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info, unsigned char *address,
@@ -129,6 +128,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
   ACCESS_INFO *access_info;
   bool is_current_broker_section = false;
   ACL_FMT ret = ACL_FMT_NO_ERROR;
+  size_t filename_len;
 #if defined(WINDOWS)
   char acl_sem_name[BROKER_NAME_LEN];
 #endif
@@ -234,11 +234,6 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	  num_access_list++;
 	}
 
-      if (access_info->ip_files[0] != '\0')
-	{
-	  strncat (access_info->ip_files, ",", LINE_MAX - 1);
-	}
-      strncat (access_info->ip_files, ip_file, LINE_MAX - 1);
       for (files = ip_file;; files = NULL)
 	{
 	  token = strtok_r (files, IP_FILE_DELIMITER, &save);
@@ -255,9 +250,44 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	      goto error;
 	    }
 
-	  strncpy (path_buf, token, BROKER_PATH_MAX);
-	  access_control_repath_file (path_buf);
+#if defined (WINDOWS)
+	  if (token[0] == '\\' || token[0] == '/')
+	    {
+	      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+			"%s: error while loading access control file (%s)"
+			" - when using an absolute path name, the driver name must be specified (%s). ",
+			shm_appl->broker_name, filename, token);
+	      goto error;
+	    }
+#endif
+	  if (make_abs_path (path_buf, "conf", token, BROKER_PATH_MAX) < 0)
+	    {
+	      goto error;
+	    }
+
 	  if (access_control_read_ip_info (&(access_info->ip_info), path_buf, admin_err_msg) < 0)
+	    {
+	      goto error;
+	    }
+
+	  if (access_info->ip_files[0] != '\0')
+	    {
+	      if (strlen (access_info->ip_files) < LINE_MAX)
+		{
+		  strncat (access_info->ip_files, ",", 1);
+		}
+	      else
+		{
+		  goto error;
+		}
+	    }
+
+	  filename_len = strlen (path_buf);
+	  if ((strlen (access_info->ip_files) + filename_len) < LINE_MAX)
+	    {
+	      strncat (access_info->ip_files, path_buf, filename_len);
+	    }
+	  else
 	    {
 	      goto error;
 	    }
@@ -333,30 +363,6 @@ is_invalid_acl_entry (const char *acl, T_SHM_BROKER * shm_br)
     }
 
   return ret;
-}
-
-static void
-access_control_repath_file (char *path)
-{
-  char tmp_str[BROKER_PATH_MAX];
-
-  trim (path);
-  strncpy (tmp_str, path, BROKER_PATH_MAX);
-  tmp_str[BROKER_PATH_MAX - 1] = 0;
-
-  MAKE_FILEPATH (path, tmp_str, BROKER_PATH_MAX);
-
-  if (IS_ABS_PATH (path))
-    {
-      return;
-    }
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  envvar_confdir_file (tmp_str, BROKER_PATH_MAX, path);
-  MAKE_FILEPATH (path, tmp_str, BROKER_PATH_MAX);
-#endif
-
-  return;
 }
 
 static int

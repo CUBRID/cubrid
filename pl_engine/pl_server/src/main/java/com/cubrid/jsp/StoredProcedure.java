@@ -38,6 +38,7 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.BooleanValue;
 import com.cubrid.jsp.value.ByteValue;
 import com.cubrid.jsp.value.DateValue;
+import com.cubrid.jsp.value.DatetimeValue;
 import com.cubrid.jsp.value.DoubleValue;
 import com.cubrid.jsp.value.FloatValue;
 import com.cubrid.jsp.value.IntValue;
@@ -49,7 +50,6 @@ import com.cubrid.jsp.value.SetValue;
 import com.cubrid.jsp.value.ShortValue;
 import com.cubrid.jsp.value.StringValue;
 import com.cubrid.jsp.value.TimeValue;
-import com.cubrid.jsp.value.TimestampValue;
 import com.cubrid.jsp.value.Value;
 import cubrid.sql.CUBRIDOID;
 import java.lang.reflect.Method;
@@ -252,7 +252,11 @@ public class StoredProcedure {
                 resolved = args[i].toTimeArrayArray();
 
             } else if (argsTypes[i] == Timestamp[][].class) {
-                resolved = args[i].toTimestampArrayArray();
+                if (args[i].getDbType() == DBType.DB_DATETIME) {
+                    resolved = args[i].toDatetimeArrayArray();
+                } else {
+                    resolved = args[i].toTimestampArrayArray();
+                }
 
             } else if (argsTypes[i] == BigDecimal[][].class) {
                 resolved = args[i].toBigDecimalArrayArray();
@@ -284,7 +288,7 @@ public class StoredProcedure {
         return makeReturnValue(result);
     }
 
-    public Value makeOutValue(Object object) throws ExecuteException {
+    public Value makeOutValue(Object object) throws ExecuteException, TypeMismatchException {
         Object obj = null;
         if (object instanceof byte[]) {
             obj = new Byte(((byte[]) object)[0]);
@@ -317,7 +321,7 @@ public class StoredProcedure {
         return makeReturnValue(obj);
     }
 
-    public Value makeReturnValue(Object o) throws ExecuteException {
+    public Value makeReturnValue(Object o) throws ExecuteException, TypeMismatchException {
         Value val = null;
 
         if (o == null) {
@@ -347,7 +351,10 @@ public class StoredProcedure {
         } else if (o instanceof java.sql.Time) {
             val = new TimeValue((java.sql.Time) o);
         } else if (o instanceof java.sql.Timestamp) {
-            val = new TimestampValue((java.sql.Timestamp) o);
+            val =
+                    new DatetimeValue(
+                            (java.sql.Timestamp)
+                                    o); // DatetimeValue allows more values than TimestampValue
         } else if (o instanceof CUBRIDOID) {
             val = new OidValue((CUBRIDOID) o);
         } else if (o instanceof ResultSet) {

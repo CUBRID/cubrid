@@ -2766,6 +2766,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       strncpy_size (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_DATABASE_INIT),
 		    BOOT_FORMAT_MAX_LENGTH);
       fprintf (stdout, format, rel_name ());
+      fflush (stdout);
 #else /* NDEBUG */
       fprintf (stdout, "\n%s (%s) (%d %s build)\n\n", rel_name (), rel_build_number (), rel_bit_platform (),
 	       rel_build_type ());
