@@ -993,6 +993,8 @@ db_shutdown (void)
 {
   int error = NO_ERROR;
 
+  (void) db_end_session ();
+
   error = boot_shutdown_client (true);
   db_Database_name[0] = '\0';
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
