@@ -18629,30 +18629,43 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       if (opd1 && opd1->node_type == PT_EXPR && opd2 && opd2->node_type == PT_VALUE
 	  && opd1->info.expr.op == PT_INST_NUM)
 	{
-	  double rvalue = -1;
+	  double rvalue = 0;
+	  PT_NODE *opd;
 
-	  switch (opd2->type_enum)
+	  opd = opd2;
+	  if (opd2->type_enum == PT_TYPE_MULTISET)
 	    {
-	    case PT_TYPE_INTEGER:
-	      rvalue = opd2->info.value.data_value.i;
-	      break;
-	    case PT_TYPE_BIGINT:
-	      rvalue = opd2->info.value.data_value.bigint;
-	      break;
-	    case PT_TYPE_NUMERIC:
-	      if (opd2->info.value.data_value.str->bytes[0] == '-')
+	      opd = opd2->info.value.data_value.set;
+	    }
+
+	  while (opd && rvalue >= 0)
+	    {
+	      switch (opd->type_enum)
 		{
+		case PT_TYPE_INTEGER:
+		  rvalue = opd->info.value.data_value.i;
+		  break;
+		case PT_TYPE_BIGINT:
+		  rvalue = opd->info.value.data_value.bigint;
+		  break;
+		case PT_TYPE_NUMERIC:
+		  if (opd->info.value.data_value.str->bytes[0] == '-')
+		    {
+		      rvalue = -1;
+		    }
+		  break;
+		case PT_TYPE_FLOAT:
+		  rvalue = opd->info.value.data_value.f;
+		  break;
+		case PT_TYPE_DOUBLE:
+		  rvalue = opd->info.value.data_value.d;
+		  break;
+		defalut:
 		  rvalue = -1;
+		  break;
 		}
-	      break;
-	    case PT_TYPE_FLOAT:
-	      rvalue = opd2->info.value.data_value.f;
-	      break;
-	    case PT_TYPE_DOUBLE:
-	      rvalue = opd2->info.value.data_value.d;
-	      break;
-	    default:
-	      break;
+
+	      opd = opd->next;
 	    }
 
 	  if (rvalue < 0)
