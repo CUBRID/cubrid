@@ -65,8 +65,6 @@
 #include "authenticate_access_auth.hpp"
 #include "pl_signature.hpp"
 #include "oid.h"
-#include "string_buffer.hpp"
-#include "db_value_printer.hpp"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
