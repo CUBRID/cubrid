@@ -37,7 +37,7 @@
 #include "error_manager.h"
 #include "file_io.h"
 #include "log_lsa.hpp"
-#include "method_def.hpp"
+
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "oid.h"

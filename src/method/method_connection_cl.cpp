@@ -18,6 +18,7 @@
 
 #include "method_connection_cl.hpp"
 
+#include "sp_constants.hpp"
 
 namespace cubmethod
 {

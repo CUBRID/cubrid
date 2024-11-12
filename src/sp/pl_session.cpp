@@ -16,95 +16,115 @@
  *
  */
 
-#include "method_runtime_context.hpp"
+#include "pl_session.hpp"
 
-#include "method_query_cursor.hpp"
+#include "pl_query_cursor.hpp"
 #include "query_manager.h"
 #include "session.h"
 #include "xserver_interface.h"
 #include "thread_manager.hpp"
 #include "method_error.hpp"
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
 
-namespace cubmethod
+#include "method_struct_parameter_info.hpp"
+
+namespace cubpl
 {
 //////////////////////////////////////////////////////////////////////////
 // Global interface
 //////////////////////////////////////////////////////////////////////////
 
-  runtime_context *get_rctx (cubthread::entry *thread_p)
+  session *get_session ()
   {
-    method_runtime_context *rctx = nullptr;
-    session_get_method_runtime_context (thread_p, rctx);
-    return rctx;
+    session *s = nullptr;
+    cubthread::entry *thread_p  = thread_get_thread_entry_info ();
+    session_get_pl_session (thread_p, s);
+    return s;
   }
 
 //////////////////////////////////////////////////////////////////////////
 // Runtime Context
 //////////////////////////////////////////////////////////////////////////
 
-  runtime_context::runtime_context ()
+  session::session ()
     : m_mutex ()
-    , m_group_stack {}
-    , m_returning_cursors {}
-    , m_group_map {}
+    , m_exec_stack {}
+    , m_stack_idx {-1}
+    , m_session_cursors {}
+    , m_stack_map {}
     , m_cursor_map {}
     , m_is_interrupted (false)
     , m_interrupt_id (NO_ERROR)
     , m_is_running (false)
     , m_conn_pool (METHOD_MAX_RECURSION_DEPTH + 1)
     , m_req_id {0}
+    , m_param_info {nullptr}
   {
-    //
+    m_exec_stack.reserve (METHOD_MAX_RECURSION_DEPTH + 1);
   }
 
-  runtime_context::~runtime_context ()
+  session::~session ()
   {
-    destroy_all_groups ();
+
   }
 
-  method_invoke_group *
-  runtime_context::create_invoke_group (cubthread::entry *thread_p, const method_sig_list &sig_list, bool is_scan)
+  execution_stack *
+  session::create_and_push_stack (cubthread::entry *thread_p)
   {
+    if (thread_p == nullptr)
+      {
+	thread_p = thread_get_thread_entry_info ();
+      }
+
+    // check interrupt
+    if (is_interrupted ())
+      {
+	// block creating a new stack
+	return nullptr;
+      }
+
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    method_invoke_group *group = new cubmethod::method_invoke_group (thread_p, sig_list, is_scan);
-    if (group)
+    execution_stack *stack = new (std::nothrow) execution_stack (thread_p);
+    if (stack)
       {
-	m_group_map [group->get_id ()] = group;
+	m_stack_map [stack->get_id ()] = stack;
+
+	// update stack index
+	m_stack_idx++;
+
+	// push to exec_stack
+	int stack_size = (int) m_exec_stack.size ();
+	PL_STACK_ID stack_id = stack->get_id ();
+	if (m_stack_idx < stack_size)
+	  {
+	    m_exec_stack [m_stack_idx] = stack_id;
+	  }
+	else
+	  {
+	    m_exec_stack.emplace_back (stack_id);
+	  }
+
+	m_is_running = true;
       }
-    return group;
+    else
+      {
+	set_interrupt (ER_OUT_OF_VIRTUAL_MEMORY);
+      }
+
+    return stack;
   }
 
   void
-  runtime_context::push_stack (cubthread::entry *thread_p, method_invoke_group *group)
+  session::pop_and_destroy_stack (execution_stack *&claimed)
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    m_is_running = true;
-    m_group_stack.push_back (group->get_id ());
-  }
-
-  void
-  runtime_context::pop_stack (cubthread::entry *thread_p, method_invoke_group *claimed)
-  {
-    std::unique_lock<std::mutex> ulock (m_mutex);
-
-    if (claimed->is_for_scan () && m_group_stack.back() != claimed->get_id ())
-      {
-	// push deferred
-	// When beginning method_invoke_group with method scan, method_invoke_group belonging to child node in XASL is pushed first (postorder)
-	// When method_invoke_group is ended while clearing XASL by qexec_clear_xasl(), method_invoke_group belonging to the parent node in XASL is poped first (preorder)
-	// Because of these differences, I've introduced the m_deferred_free_stack structure to follow the order of clearing according to the XASL structure when clearing method_invoke_groups from the m_group_stack.
-	m_deferred_free_stack.push_back (claimed->get_id ());
-	return;
-      }
+    assert (claimed != nullptr);
 
     auto pred = [&] () -> bool
     {
       // condition to check
-      return m_group_stack.back() == claimed->get_id ();
+      return m_exec_stack[m_stack_idx] == claimed->get_id ();
     };
 
     // Guaranteed to be removed from the topmost element
@@ -112,43 +132,40 @@ namespace cubmethod
 
     if (pred ())
       {
-	destroy_group (m_group_stack.back ());
-	m_group_stack.pop_back ();
+	m_exec_stack[m_stack_idx] = -1;
+	m_stack_idx--;
+
+	m_stack_map.erase (claimed->get_id ());
+
+	delete claimed;
+	claimed = nullptr;
       }
 
-    // should be freed for all XASL structure
-    while (m_deferred_free_stack.empty () == false && m_deferred_free_stack.back () == m_group_stack.back())
+    if (m_stack_idx < 0)
       {
-	destroy_group (m_group_stack.back ());
-	m_group_stack.pop_back ();
-	m_deferred_free_stack.pop_back ();
-      }
-
-    if (m_group_stack.empty())
-      {
-	// reset interrupt state
-	m_is_interrupted = false;
-	m_interrupt_id = NO_ERROR;
 	m_is_running = false;
-
-	// notify m_group_stack becomes empty ();
-	ulock.unlock ();
-	m_cond_var.notify_all ();
       }
   }
 
-  method_invoke_group *
-  runtime_context::top_stack ()
+  execution_stack *
+  session::top_stack ()
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
-    if (m_group_stack.empty())
+
+    return top_stack_internal ();
+  }
+
+  execution_stack *
+  session::top_stack_internal ()
+  {
+    if (m_exec_stack.empty())
       {
 	return nullptr;
       }
 
-    METHOD_GROUP_ID top = m_group_stack.back ();
-    const auto &it = m_group_map.find (top);
-    if (it == m_group_map.end ())
+    PL_STACK_ID top = m_exec_stack[m_stack_idx];
+    const auto &it = m_stack_map.find (top);
+    if (it == m_stack_map.end ())
       {
 	// should not happended
 	assert (false);
@@ -158,8 +175,25 @@ namespace cubmethod
     return it->second;
   }
 
+  bool
+  session::is_thread_involved (thread_id_t id)
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    for (const auto &it : m_stack_map)
+      {
+	execution_stack *stack = it.second;
+	if (stack->get_thread_entry () && id == stack->get_thread_entry ()->get_id ())
+	  {
+	    return true;
+	  }
+      }
+
+    return false;
+  }
+
   void
-  runtime_context::set_interrupt (int reason, std::string msg)
+  session::set_interrupt (int reason, std::string msg)
   {
     switch (reason)
       {
@@ -189,36 +223,36 @@ namespace cubmethod
   }
 
   void
-  runtime_context::set_local_error_for_interrupt ()
+  session::set_local_error_for_interrupt ()
   {
-    handle_method_error (get_interrupt_id (), get_interrupt_msg ());
+    cubmethod::handle_method_error (get_interrupt_id (), get_interrupt_msg ());
   }
 
   bool
-  runtime_context::is_interrupted ()
+  session::is_interrupted ()
   {
     return m_is_interrupted;
   }
 
   int
-  runtime_context::get_interrupt_id ()
+  session::get_interrupt_id ()
   {
     return m_interrupt_id;
   }
 
   std::string
-  runtime_context::get_interrupt_msg ()
+  session::get_interrupt_msg ()
   {
     return m_interrupt_msg;
   }
 
   void
-  runtime_context::wait_for_interrupt ()
+  session::wait_for_interrupt ()
   {
     auto pred = [this] () -> bool
     {
       // condition of finish
-      return m_group_stack.empty () && is_running () == false;
+      return m_exec_stack.empty () && is_running () == false;
     };
 
     if (pred ())
@@ -231,19 +265,25 @@ namespace cubmethod
   }
 
   int
-  runtime_context::get_depth ()
+  session::get_depth ()
   {
-    return m_group_map.size () - m_deferred_free_stack.size ();
+    return m_stack_map.size () - m_deferred_free_stack.size ();
+  }
+
+  SESSION_ID
+  session::get_id ()
+  {
+    return m_id;
   }
 
   bool
-  runtime_context::is_running ()
+  session::is_running ()
   {
     return m_is_running;
   }
 
   query_cursor *
-  runtime_context::get_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
+  session::get_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
   {
     if (query_id == NULL_QUERY_ID)
       {
@@ -264,7 +304,7 @@ namespace cubmethod
   }
 
   query_cursor *
-  runtime_context::create_cursor (cubthread::entry *thread_p, QUERY_ID query_id, bool is_oid_included)
+  session::create_cursor (cubthread::entry *thread_p, QUERY_ID query_id, bool is_oid_included)
   {
     if (query_id == NULL_QUERY_ID || query_id >= SHRT_MAX)
       {
@@ -297,7 +337,7 @@ namespace cubmethod
 	    qfile_update_qlist_count (thread_p, query_entry_p->list_id, 1);
 
 	    // store a new cursor in map
-	    cursor = new query_cursor (thread_p, query_entry_p, is_oid_included);
+	    cursor = new (std::nothrow) query_cursor (thread_p, query_entry_p, is_oid_included);
 	    m_cursor_map [query_id] = cursor;
 
 	    assert (cursor != nullptr);
@@ -308,7 +348,7 @@ namespace cubmethod
   }
 
   void
-  runtime_context::destroy_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
+  session::destroy_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
   {
     if (query_id == NULL_QUERY_ID)
       {
@@ -316,7 +356,11 @@ namespace cubmethod
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_mutex);
+    // TODo
+    // std::unique_lock<std::mutex> ulock (m_mutex);
+
+    // remove from session cursor map
+    // m_session_cursors.erase (query_id); // safe guard
 
     // find in map
     auto search = m_cursor_map.find (query_id);
@@ -338,7 +382,7 @@ namespace cubmethod
   }
 
   void
-  runtime_context::register_returning_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
+  session::add_session_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
   {
     if (query_id == NULL_QUERY_ID)
       {
@@ -346,84 +390,71 @@ namespace cubmethod
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_mutex);
-
-    m_returning_cursors.insert (query_id);
-    // m_cursor_map.erase (query_id);
-  }
-
-  void
-  runtime_context::deregister_returning_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
-  {
-    if (query_id == NULL_QUERY_ID)
-      {
-	/* do nothing */
-	return;
-      }
-
-    std::unique_lock<std::mutex> ulock (m_mutex);
-
-    m_returning_cursors.erase (query_id);
-  }
-
-  void
-  runtime_context::destroy_group (METHOD_GROUP_ID id)
-  {
-    // assume that lock is already acquired
     // std::unique_lock<std::mutex> ulock (m_mutex);
 
-    // find in map
-    auto search = m_group_map.find (id);
-    if (search != m_group_map.end ())
-      {
-	method_invoke_group *group = search->second;
-	if (group)
-	  {
-	    delete group;
-	  }
-	m_group_map.erase (search);
-      }
+    m_session_cursors.insert (query_id);
   }
 
   void
-  runtime_context::destroy_all_groups ()
+  session::remove_session_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
   {
-    std::unique_lock<std::mutex> ulock (m_mutex);
-    for (auto &it : m_group_map)
+    if (query_id == NULL_QUERY_ID)
       {
-	if (it.second)
-	  {
-	    delete it.second;
-	  }
+	/* do nothing */
+	return;
       }
-    m_group_map.clear ();
+
+    // std::unique_lock<std::mutex> ulock (m_mutex);
+
+    m_session_cursors.erase (query_id);
+  }
+
+  bool
+  session::is_session_cursor (QUERY_ID query_id)
+  {
+    if (m_session_cursors.find (query_id) != m_session_cursors.end ())
+      {
+	return true;
+      }
+    else
+      {
+	return false;
+      }
   }
 
   void
-  runtime_context::destroy_all_cursors ()
+  session::destroy_all_cursors ()
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
     for (auto &it : m_cursor_map)
       {
-	/*
-	if (cubthread::get_manager () != NULL)
+	query_cursor *cursor = it.second;
+	if (cursor)
 	  {
-	    destroy_cursor (&cubthread::get_entry (), it.first);
-	  }
-	*/
-	if (it.second)
-	  {
+	    destroy_cursor (cursor->get_owner (), it.first /* QUERY_ID */);
 	    delete it.second;
 	  }
       }
     m_cursor_map.clear ();
-    m_returning_cursors.clear ();
+    m_session_cursors.clear ();
   }
 
-  connection_pool &
-  runtime_context::get_connection_pool ()
+  cubmethod::connection_pool *
+  session::get_connection_pool ()
   {
-    return m_conn_pool;
+    return &m_conn_pool;
+  }
+
+  cubmethod::db_parameter_info *
+  session::get_db_parameter_info () const
+  {
+    return m_param_info;
+  }
+
+  void
+  session::set_db_parameter_info (cubmethod::db_parameter_info *param_info)
+  {
+    m_param_info = param_info;
   }
 
 } // cubmethod

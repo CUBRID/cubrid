@@ -212,6 +212,7 @@ extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
   do \
     { \
       Au_cache.reset_authorization_caches (); \
+      Au_cache.reset_user_cache (); \
     } \
   while (0)
 //
