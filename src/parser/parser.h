@@ -406,7 +406,6 @@ extern "C"
 
   extern int pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes);
 
-  extern PT_NODE *pt_make_null_value (PARSER_CONTEXT * parser);
   extern PT_NODE *pt_make_string_value (PARSER_CONTEXT * parser, const char *value_string);
 
   extern PT_NODE *pt_make_integer_value (PARSER_CONTEXT * parser, const int value_int);
