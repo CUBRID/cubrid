@@ -17729,6 +17729,50 @@ pt_is_dblink_related (PT_NODE * p)
 }
 
 /*
+ * pt_check_inst_num_expr () - evaluate inst_num() expression
+ *   return: the evaluated positive value if successful
+ *           -1 if not successful.
+ */
+
+static double
+pt_check_inst_num_expr (PT_NODE * opd)
+{
+  double rvalue = 0;
+
+  while (opd && rvalue >= 0)
+    {
+      switch (opd->type_enum)
+	{
+	case PT_TYPE_INTEGER:
+	  rvalue = opd->info.value.data_value.i;
+	  break;
+	case PT_TYPE_BIGINT:
+	  rvalue = opd->info.value.data_value.bigint;
+	  break;
+	case PT_TYPE_NUMERIC:
+	  if (opd->info.value.data_value.str->bytes[0] == '-')
+	    {
+	      rvalue = -1;
+	    }
+	  break;
+	case PT_TYPE_FLOAT:
+	  rvalue = opd->info.value.data_value.f;
+	  break;
+	case PT_TYPE_DOUBLE:
+	  rvalue = opd->info.value.data_value.d;
+	  break;
+	defalut:
+	  rvalue = -1;
+	  break;
+	}
+
+      opd = opd->next;
+    }
+
+  return rvalue;
+}
+
+/*
  * pt_fold_const_expr () - evaluate constant expression
  *   return: the evaluated expression, if successful,
  *           unchanged expr, if not successful.
@@ -18640,32 +18684,13 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
 	  while (opd && rvalue >= 0)
 	    {
-	      switch (opd->type_enum)
-		{
-		case PT_TYPE_INTEGER:
-		  rvalue = opd->info.value.data_value.i;
-		  break;
-		case PT_TYPE_BIGINT:
-		  rvalue = opd->info.value.data_value.bigint;
-		  break;
-		case PT_TYPE_NUMERIC:
-		  if (opd->info.value.data_value.str->bytes[0] == '-')
-		    {
-		      rvalue = -1;
-		    }
-		  break;
-		case PT_TYPE_FLOAT:
-		  rvalue = opd->info.value.data_value.f;
-		  break;
-		case PT_TYPE_DOUBLE:
-		  rvalue = opd->info.value.data_value.d;
-		  break;
-		defalut:
-		  rvalue = -1;
-		  break;
-		}
-
+	      rvalue = pt_check_inst_num_expr (opd);
 	      opd = opd->next;
+	    }
+
+	  if (rvalue >= 0 && opd3)
+	    {
+	      rvalue = pt_check_inst_num_expr (opd3);
 	    }
 
 	  if (rvalue < 0)
