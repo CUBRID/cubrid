@@ -533,7 +533,7 @@ pt_resolved (const PT_NODE * expr)
 	case PT_FUNCTION:
 	  // Resolved as a function node.  
 	  // If it's actually a user-defined function, this node will be resolved in the next phase (function resolution).
-	  return 1;
+	  return (expr->info.function.function_type == PT_GENERIC);
 	default:
 	  break;
 	}
