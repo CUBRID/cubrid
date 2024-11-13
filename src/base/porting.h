@@ -155,6 +155,8 @@ extern char *realpath (const char *path, char *resolved_path);
 #define vfprintf        _vfprintf_p
 #define vprintf         _vprintf_p
 #define strtof		strtof_win
+#define strndup         strndup_win
+
 #if defined (_WIN32)
 #define mktime         mktime_for_win32
 #endif
