@@ -999,7 +999,7 @@ extern int str_to_float (float *ret_p, char **end_p, const char *str_p);
 
 #if defined (WINDOWS)
 extern float strtof_win (const char *nptr, char **endptr);
-extern char *strndup_win (char *src, int size);
+extern char *strndup_win (const char *src, size_t size);
 #endif
 
 #ifndef HAVE_STRLCPY

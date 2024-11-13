@@ -2551,7 +2551,7 @@ strtof_win (const char *nptr, char **endptr)
 }
 
 char *
-strndup_win (char *src, int size)
+strndup_win (const char *src, size_t size)
 {
   char *dest = (char *) malloc (size + 1);
   if (dest == NULL)
