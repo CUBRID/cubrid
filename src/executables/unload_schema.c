@@ -159,12 +159,10 @@ typedef enum
 
 typedef enum
 {
-  SYNONYM_NAME,
+  SYNONYM_UNIQUE_NAME,
   SYNONYM_OWNER,
-  SYNONYM_OWNER_NAME,
   SYNONYM_IS_PUBLIC,
-  SYNONYM_TARGET_NAME,
-  SYNONYM_TARGET_OWNER_NAME,
+  SYNONYM_TARGET_UNIQUE_NAME,
   SYNONYM_COMMENT,
 
   SYNONYM_VALUE_INDEX_MAX
@@ -237,7 +235,7 @@ static int emit_stored_procedure_pre (extract_context & ctxt, print_output & out
 static int emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx);
 static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg_set);
 static int emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, const char *code_name,
-				       const char *owner_name);
+				       const char *owner_name, DB_VALUE * comment);
 
 static int emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
@@ -1129,12 +1127,12 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
   DB_VALUE values[SYNONYM_VALUE_INDEX_MAX];
-  const char *synonym_name = NULL;
+  char *synonym_name = NULL;
   DB_OBJECT *synonym_owner = NULL;
-  const char *synonym_owner_name = NULL;
+  const char *synonym_unique_name = NULL;
   int is_public = 0;
-  const char *target_name = NULL;
-  const char *target_owner_name = NULL;
+  char *target_name = NULL;
+  const char *target_unique_name = NULL;
   const char *comment = NULL;
   bool is_dba_group_member = false;
   int i = 0;
@@ -1144,27 +1142,30 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   size_t uppercase_user_size = 0;
   size_t query_size = 0;
   char *query = NULL;
-  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  char synonym_output_owner[DB_MAX_USER_LENGTH + 4];
+  synonym_output_owner[0] = '\0';
+  char target_output_owner[DB_MAX_USER_LENGTH + 4];
+  target_output_owner[0] = '\0';
   DB_OBJLIST *cl = NULL;
   const char *name = NULL;
   char temp_schema[DB_MAX_CLASS_LENGTH] = { '\0' };
+  char synonym_owner_name[DB_MAX_IDENTIFIER_LENGTH];
+  synonym_owner_name[0] = '\0';
+  char target_owner_name[DB_MAX_IDENTIFIER_LENGTH];
+  target_owner_name[0] = '\0';
 
   // *INDENT-OFF*
-  const char *query_all = "SELECT [name], "
-			     "[owner], "
-			     "[owner].[name], "
+  const char *query_all = "SELECT [unique_name], "
+                             "[owner], "
 			     "[is_public], "
-			     "[target_name], "
-			     "[target_owner].[name], "
+			     "[target_unique_name], "
 			     "[comment] "
 			"FROM [_db_synonym]";
 
-  const char *query_user = "SELECT [name], "
+  const char *query_user = "SELECT [unique_name], "
                                "[owner], "
-                               "[owner].[name], "
                                "[is_public], "
-                               "[target_name], "
-                               "[target_owner].[name], "
+                               "[target_unique_name], "
                                "[comment] "
                            "FROM [_db_synonym]"
                            "WHERE [owner].[name] = '%s'";
@@ -1228,10 +1229,8 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	      /* Validation of the result value */
 	      switch (i)
 		{
-		case SYNONYM_NAME:
-		case SYNONYM_OWNER_NAME:
-		case SYNONYM_TARGET_NAME:
-		case SYNONYM_TARGET_OWNER_NAME:
+		case SYNONYM_UNIQUE_NAME:
+		case SYNONYM_TARGET_UNIQUE_NAME:
 		  {
 		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
 		      {
@@ -1277,12 +1276,10 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 		}
 	    }
 
-	  synonym_name = db_get_string (&values[SYNONYM_NAME]);
+	  synonym_unique_name = db_get_string (&values[SYNONYM_UNIQUE_NAME]);
 	  synonym_owner = db_get_object (&values[SYNONYM_OWNER]);
-	  synonym_owner_name = db_get_string (&values[SYNONYM_OWNER_NAME]);
 	  is_public = db_get_int (&values[SYNONYM_IS_PUBLIC]);
-	  target_name = db_get_string (&values[SYNONYM_TARGET_NAME]);
-	  target_owner_name = db_get_string (&values[SYNONYM_TARGET_OWNER_NAME]);
+	  target_unique_name = db_get_string (&values[SYNONYM_TARGET_UNIQUE_NAME]);
 
 	  if (!is_dba_group_member && !ws_is_same_object (Au_user, synonym_owner))
 	    {
@@ -1296,10 +1293,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 		{
 		  name = db_get_class_name (cl->op);
 
-		  str_tolower ((char *) target_owner_name);
-		  snprintf (temp_schema, DB_MAX_CLASS_LENGTH, "%s%s%s", (target_owner_name), ".", target_name);
-
-		  if (strcmp (temp_schema, name) == 0)
+		  if (strcmp (target_unique_name, name) == 0)
 		    {
 		      same_schema++;
 		    }
@@ -1322,12 +1316,16 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	      output_ctx ("CREATE PRIVATE");
 	    }
 
-	  PRINT_OWNER_NAME (synonym_owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-			    sizeof (output_owner));
+	  SPLIT_USER_SPECIFIED_NAME (synonym_unique_name, synonym_owner_name, synonym_name);
+	  PRINT_OWNER_NAME (synonym_owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), synonym_output_owner,
+			    sizeof (synonym_owner_name));
 
-	  output_ctx (" SYNONYM %s%s%s%s FOR %s%s%s.%s%s%s", output_owner,
-		      PRINT_IDENTIFIER (synonym_name), PRINT_IDENTIFIER (target_owner_name),
-		      PRINT_IDENTIFIER (target_name));
+	  SPLIT_USER_SPECIFIED_NAME (target_unique_name, target_owner_name, target_name);
+	  PRINT_OWNER_NAME (target_owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), target_output_owner,
+			    sizeof (target_owner_name));
+
+	  output_ctx (" SYNONYM %s%s%s%s FOR %s%s%s%s", synonym_output_owner,
+		      PRINT_IDENTIFIER (synonym_name), target_output_owner, PRINT_IDENTIFIER (target_name));
 
 	  if (DB_IS_NULL (&values[SYNONYM_COMMENT]) == false)
 	    {
@@ -4488,8 +4486,6 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	{
 	  output_ctx (" %s%s%s%s (", output_owner, PRINT_IDENTIFIER (sp_name));
 	}
-      db_value_clear (&sp_name_val);
-      db_value_clear (&unique_name_val);
 
       arg_cnt = db_get_int (&arg_cnt_val);
       arg_set = db_get_set (&args_val);
@@ -4530,8 +4526,9 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
       if (sp_lang == SP_LANG_PLCSQL)
 	{
 	  output_ctx ("AS LANGUAGE PLCSQL BEGIN ");
-	  output_ctx ("RAISE_APPLICATION_ERROR(1000, '%s.%s: incomplete during loaddb'); /* __CUBRID_NO_BODY__ */",
-		      owner_name, sp_name);
+	  output_ctx
+	    ("RAISE_APPLICATION_ERROR(1000, '%s%s%s%s: incomplete during loaddb'); /* __CUBRID_NO_BODY__ */",
+	     output_owner, PRINT_IDENTIFIER (sp_name));
 	  output_ctx (" END;\n");
 	}
       else
@@ -4556,6 +4553,8 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 
 	  output_ctx (";\n");
 	}
+      db_value_clear (&sp_name_val);
+      db_value_clear (&unique_name_val);
       db_value_clear (&owner_name_val);
     }
 
@@ -4575,7 +4574,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
-  DB_VALUE lang_val, owner_val, owner_name_val, generated_val, class_val;
+  DB_VALUE lang_val, owner_val, owner_name_val, generated_val, class_val, comment_val;
   int save;
   int err;
   int err_count = 0;
@@ -4597,7 +4596,8 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 
       if ((err = db_get (obj, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_LANG, &lang_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR)
+	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
@@ -4637,7 +4637,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 	    }
 
 	  const char *target_class = db_get_string (&class_val);
-	  err = emit_stored_procedure_code (ctxt, output_ctx, target_class, owner_name);
+	  err = emit_stored_procedure_code (ctxt, output_ctx, target_class, owner_name, &comment_val);
 	  output_ctx ("\n");
 
 	  db_value_clear (&class_val);
@@ -4665,7 +4665,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
  */
 static int
 emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, const char *code_name,
-			    const char *owner_name)
+			    const char *owner_name, DB_VALUE * comment)
 {
   MOP obj;
   int save, err = NO_ERROR;
@@ -4674,6 +4674,8 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
   PARSER_CONTEXT *parser = NULL;
   PT_NODE **scode_ptr;
   char *scode_ptr_result = NULL;
+  char downcase_owner_name[DB_MAX_USER_LENGTH];
+  downcase_owner_name[0] = '\0';
 
   AU_DISABLE (save);
 
@@ -4715,22 +4717,37 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 	      PT_NODE *sp_name = (*scode_ptr)->info.sp.name;
 	      if (sp_name->info.name.resolved == NULL)
 		{
-		  sp_name->info.name.resolved = pt_append_string (parser, NULL, owner_name);
+		  sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
+		  sp_name->info.name.resolved = pt_append_string (parser, NULL, downcase_owner_name);
 		}
 	    }
 
+	  parser->flag.is_parsing_unload_schema = 1;
 	  scode_ptr_result = parser_print_tree_with_quotes (parser, *scode_ptr);
 	}
 
       if (scode_ptr_result)
 	{
 	  output_ctx ("\n%s", scode_ptr_result);
+	  if (!DB_IS_NULL (comment))
+	    {
+	      if ((*scode_ptr)->info.sp.comment == NULL)
+		{
+		  output_ctx ("\nCOMMENT ");
+		}
+	      else
+		{
+		  output_ctx ("COMMENT ");
+		}
+	      desc_value_print (output_ctx, comment);
+	    }
 	}
       else
 	{
 	  output_ctx ("\n/* error occurs: %s \n\n %s; \n*/", parser->error_buffer ? parser->error_buffer : "", scode);
 	}
     }
+  output_ctx (";");
 
 exit:
 
