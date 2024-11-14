@@ -530,6 +530,10 @@ pt_resolved (const PT_NODE * expr)
 	  return (expr->info.name.spec_id != 0);
 	case PT_DOT_:
 	  return (pt_resolved (expr->info.dot.arg1) && pt_resolved (expr->info.dot.arg2));
+	case PT_FUNCTION:
+	  // Resolved as a function node.  
+	  // If it's actually a user-defined function, this node will be resolved in the next phase (function resolution).
+	  return (expr->info.function.function_type == PT_GENERIC);
 	default:
 	  break;
 	}
@@ -941,7 +945,9 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
       /* If pt_name in group by/ having, maybe it's alias. We will try to resolve it later. */
       if (!is_pt_name_in_group_having (in_node))
 	{
-	  if (parser->flag.is_parsing_static_sql == 1 && in_node->node_type == PT_NAME)
+	  if (parser->flag.is_parsing_static_sql == 1
+	      && ((in_node->node_type == PT_DOT_ && !pt_resolved (in_node->info.dot.arg2))
+		  || in_node->node_type == PT_NAME))
 	    {
 	      // clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
 	      pt_reset_error (parser);
