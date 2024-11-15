@@ -973,6 +973,31 @@ PR_TYPE tp_Null = {
 
 PR_TYPE *tp_Type_null = &tp_Null;
 
+PR_TYPE tp_Vimkim = {
+  "vimkim", DB_TYPE_VIMKIM, 0, sizeof (int), sizeof (int), 4,
+  mr_initmem_int,
+  mr_initval_int,
+  mr_setmem_int,
+  mr_getmem_int,
+  mr_setval_int,
+  NULL,				/* data_lengthmem */
+  NULL,				/* data_lengthval */
+  mr_data_writemem_int,
+  mr_data_readmem_int,
+  mr_data_writeval_int,
+  mr_data_readval_int,
+  NULL,				/* index_lengthmem */
+  NULL,				/* index_lengthval */
+  mr_index_writeval_int,
+  mr_index_readval_int,
+  mr_index_cmpdisk_int,
+  NULL,				/* freemem */
+  mr_data_cmpdisk_int,
+  mr_cmpval_int
+};
+
+PR_TYPE *tp_Type_Vimkim = &tp_Vimkim;
+
 PR_TYPE tp_Integer = {
   "integer", DB_TYPE_INTEGER, 0, sizeof (int), sizeof (int), 4,
   mr_initmem_int,
@@ -1790,6 +1815,7 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_Datetimetz,
   &tp_Datetimeltz,
   &tp_Json,
+  &tp_Vimkim,
 };
 
 PR_TYPE tp_ResultSet = {
