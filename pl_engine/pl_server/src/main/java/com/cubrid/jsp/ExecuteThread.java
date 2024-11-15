@@ -428,7 +428,6 @@ public class ExecuteThread extends Thread {
         int paramCount = unpacker.unpackInt();
 
         Value[] arguments = prepareArgs.getArgs();
-        Value[] methodArgs = new Value[paramCount];
         for (int i = 0; i < paramCount; i++) {
             int mode = unpacker.unpackInt();
             int type = unpacker.unpackInt();
@@ -442,7 +441,7 @@ public class ExecuteThread extends Thread {
         boolean transactionControl = unpacker.unpackBool();
         getCurrentContext().setTransactionControl(transactionControl);
 
-        storedProcedure = new StoredProcedure(methodSig, lang, authUser, methodArgs, returnType);
+        storedProcedure = new StoredProcedure(methodSig, lang, authUser, arguments, returnType);
         return storedProcedure;
     }
 
