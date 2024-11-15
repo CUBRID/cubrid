@@ -530,6 +530,10 @@ pt_resolved (const PT_NODE * expr)
 	  return (expr->info.name.spec_id != 0);
 	case PT_DOT_:
 	  return (pt_resolved (expr->info.dot.arg1) && pt_resolved (expr->info.dot.arg2));
+	case PT_FUNCTION:
+	  // Resolved as a function node.  
+	  // If it's actually a user-defined function, this node will be resolved in the next phase (function resolution).
+	  return (expr->info.function.function_type == PT_GENERIC);
 	default:
 	  break;
 	}
@@ -941,7 +945,9 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
       /* If pt_name in group by/ having, maybe it's alias. We will try to resolve it later. */
       if (!is_pt_name_in_group_having (in_node))
 	{
-	  if (parser->flag.is_parsing_static_sql == 1 && in_node->node_type == PT_NAME)
+	  if (parser->flag.is_parsing_static_sql == 1
+	      && ((in_node->node_type == PT_DOT_ && !pt_resolved (in_node->info.dot.arg2))
+		  || in_node->node_type == PT_NAME))
 	    {
 	      // clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
 	      pt_reset_error (parser);
@@ -3424,6 +3430,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	else if (PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION (node))
 	  {
 	    /*
+	     * when (dot.arg1->node_type == PT_NAME) && (dot.arg2->node_type == PT_FUNCTION), 
+	     * pt_bind_name_or_path_in_scope() always returns NULL and sets the value PT_ERRORmf(.. MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED ..).
+	     */
+	    pt_reset_error (parser);
+
+	    /*
 	     * jsp_is_exist_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
 	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
 	     */
@@ -3435,17 +3447,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    generic_name = pt_append_string (parser, downcase_owner_name, ".");
 	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
 	    node->info.dot.arg2->info.function.generic_name = generic_name;
+	    node->info.dot.arg1->info.name.original = generic_name;
 
 	    if (jsp_is_exist_stored_procedure (node->info.dot.arg2->info.function.generic_name))
 	      {
-		/*
-		 * If (dot.arg1->node_type == PT_NAME) & (dot.arg2->node_type == PT_FUNCTION), pt_bind_name_or_path_in_scope() always returns NULL and has an er_errid() value.
-		 */
-		if (er_errid () == NO_ERROR)
-		  {
-		    pt_reset_error (parser);
-		  }
-
 		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		if (node1 == NULL)
 		  {
@@ -3458,10 +3463,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		node = node1;	/* return the new node */
 		/* don't revisit leaves */
 		*continue_walk = PT_LIST_WALK;
-	      }
-	    else if (pt_has_error (parser))
-	      {
-		return NULL;
 	      }
 	  }
 	else if (pt_has_error (parser))
@@ -3505,6 +3506,17 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
 	  if (node->info.function.function_type == PT_GENERIC)
 	    {
+	      if (strchr (node->info.function.generic_name, '.'))
+		{
+		  /*
+		   * when checking for a PROCEDURE in a PT_DOT_ type, if the PROCEDURE does not exist, the check moves on to the PT_FUNCTION.
+		   * along the way, it will go through the pt_bind_name_or_path_in_scope() function of PT_NAME, 
+		   * which will always return NULL and set the value of
+		   * PT_ERRORmf(.. MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED ..).
+		   */
+		  pt_reset_error (parser);
+		}
+
 	      /*
 	       * It may be a method call since they are parsed as
 	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
@@ -3573,17 +3585,24 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 				     MSGCAT_SEMANTIC_PREFIX_IN_FUNC_INDX_NOT_ALLOWED);
 			}
-		      else if (parser_function_code != PT_EMPTY)
-			{
-			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				      MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, node->info.function.generic_name);
-			}
 		      else
 			{
-			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNKNOWN_FUNCTION,
-				      node->info.function.generic_name);
-			}
+			  char downcase_generic_name[DB_MAX_IDENTIFIER_LENGTH];
+			  downcase_generic_name[0] = '\0';
+			  sm_downcase_name (node->info.function.generic_name, downcase_generic_name,
+					    DB_MAX_IDENTIFIER_LENGTH);
 
+			  if (parser_function_code != PT_EMPTY)
+			    {
+			      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					  MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, downcase_generic_name);
+			    }
+			  else
+			    {
+			      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNKNOWN_FUNCTION,
+					  downcase_generic_name);
+			    }
+			}
 		    }
 		}
 	    }
