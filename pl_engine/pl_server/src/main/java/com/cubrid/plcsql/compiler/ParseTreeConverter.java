@@ -202,12 +202,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 assert node instanceof TypeSpecPercent;
                 TypeSpecPercent tsp = (TypeSpecPercent) node;
-                if (tsp.forParameterOrReturn) {
-                    tsp.type = DBTypeAdapter.getValueType(iStore, ct.colType.type);
-                } else {
+                if (tsp.typeVisitMode == TYPE_VISIT_NORMAL
+                        || (tsp.typeVisitMode == TYPE_VISIT_RETURN
+                                && ct.colType.type == DBType.DB_NUMERIC)) {
                     tsp.type =
                             DBTypeAdapter.getDeclType(
                                     iStore, ct.colType.type, ct.colType.prec, ct.colType.scale);
+                } else {
+                    tsp.type = DBTypeAdapter.getValueType(iStore, ct.colType.type);
                 }
             } else {
                 assert false : "unreachable";
@@ -285,10 +287,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
         try {
-            forParameterOrReturn = true;
+            typeVisitMode = TYPE_VISIT_PARAM;
             typeSpec = (TypeSpec) visit(ctx.type_spec());
         } finally {
-            forParameterOrReturn = false;
+            typeVisitMode = TYPE_VISIT_NORMAL;
         }
 
         DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec);
@@ -302,10 +304,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
         try {
-            forParameterOrReturn = true;
+            typeVisitMode = TYPE_VISIT_PARAM;
             typeSpec = (TypeSpec) visit(ctx.type_spec());
         } finally {
-            forParameterOrReturn = false;
+            typeVisitMode = TYPE_VISIT_NORMAL;
         }
 
         DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec);
@@ -319,10 +321,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
         try {
-            forParameterOrReturn = true;
+            typeVisitMode = TYPE_VISIT_PARAM;
             typeSpec = (TypeSpec) visit(ctx.type_spec());
         } finally {
-            forParameterOrReturn = false;
+            typeVisitMode = TYPE_VISIT_NORMAL;
         }
 
         boolean alsoIn = ctx.IN() != null || ctx.INOUT() != null;
@@ -356,7 +358,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
             String column = Misc.getNormalizedText(ctx.identifier());
 
-            TypeSpec ret = new TypeSpecPercent(ctx, table, column, forParameterOrReturn);
+            TypeSpec ret = new TypeSpecPercent(ctx, table, column, typeVisitMode);
             semanticQuestions.put(ret, new ServerAPI.ColumnType(table, column));
             return ret;
         }
@@ -422,7 +424,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public TypeSpec visitNumeric_type(Numeric_typeContext ctx) {
 
-        if (forParameterOrReturn) {
+        if (typeVisitMode != TYPE_VISIT_NORMAL) {
             if (ctx.precision != null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s091
@@ -464,7 +466,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public TypeSpec visitChar_type(Char_typeContext ctx) {
 
-        if (forParameterOrReturn) {
+        if (typeVisitMode != TYPE_VISIT_NORMAL) {
             if (ctx.length != null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s092
@@ -496,7 +498,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public TypeSpec visitVarchar_type(Varchar_typeContext ctx) {
 
-        if (forParameterOrReturn) {
+        if (typeVisitMode != TYPE_VISIT_NORMAL) {
             if (ctx.length != null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s093
@@ -2333,12 +2335,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return val.replace("''", "'");
     }
 
+    private static final int TYPE_VISIT_NORMAL = 0;
+    private static final int TYPE_VISIT_PARAM = 1;
+    private static final int TYPE_VISIT_RETURN = 2;
+
     // --------------------------------------------------------
     // Private
     // --------------------------------------------------------
 
     private InstanceStore iStore;
-    private boolean forParameterOrReturn = false;
+    private int typeVisitMode = TYPE_VISIT_NORMAL;
 
     private static class UseAndDeclLevel {
         ParserRuleContext use;
@@ -2469,10 +2475,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             TypeSpec retTypeSpec;
             try {
-                forParameterOrReturn = true;
+                typeVisitMode = TYPE_VISIT_RETURN;
                 retTypeSpec = (TypeSpec) visit(ctx.type_spec());
             } finally {
-                forParameterOrReturn = false;
+                typeVisitMode = TYPE_VISIT_NORMAL;
             }
 
             Type retType = retTypeSpec.type;
