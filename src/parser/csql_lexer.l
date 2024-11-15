@@ -480,6 +480,8 @@ IDL       [a-zA-Z0-9_]
                                                                                 }
                                                                                 return IS; }
 [iI][sS][oO][lL][aA][tT][iI][oO][nN]					{ begin_token(yytext);   return ISOLATION; }
+vimkim { begin_token(yytext); return VIMKIM; }
+VIMKIM { begin_token(yytext); return VIMKIM; }
 [iI][nN][tT]								{ begin_token(yytext);   return INTEGER; }
 [iI][nN][tT][eE][gG][eE][rR]						{ begin_token(yytext);   return INTEGER; }
 [jJ][aA][vV][aA]							{ begin_token(yytext);

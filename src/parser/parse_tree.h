@@ -1087,6 +1087,7 @@ enum pt_type_enum
   PT_TYPE_NONE = 1000,		/* type not known yet */
   PT_TYPE_MIN = PT_TYPE_NONE,
   /* primitive types */
+  PT_TYPE_VIMKIM,
   PT_TYPE_INTEGER,
   PT_TYPE_FLOAT,
   PT_TYPE_DOUBLE,

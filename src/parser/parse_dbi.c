@@ -1554,6 +1554,9 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
   domain_type = pt_type_enum_to_db (t);
   switch (domain_type)
     {
+    case DB_TYPE_VIMKIM:
+      retval = tp_domain_construct (domain_type, NULL, DB_INTEGER_PRECISION, 0, NULL);
+      break;
     case DB_TYPE_INTEGER:
       retval = tp_domain_construct (domain_type, NULL, DB_INTEGER_PRECISION, 0, NULL);
       break;
@@ -2324,6 +2327,10 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
     case PT_TYPE_LOGICAL:
     case PT_TYPE_INTEGER:
       db_type = DB_TYPE_INTEGER;
+      break;
+
+    case PT_TYPE_VIMKIM:
+      db_type = DB_TYPE_VIMKIM;
       break;
 
     case PT_TYPE_BIGINT:
