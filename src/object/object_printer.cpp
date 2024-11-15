@@ -213,6 +213,7 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
       has_collation = 0;
       switch (TP_DOMAIN_TYPE (temp_domain))
 	{
+	case DB_TYPE_VIMKIM:
 	case DB_TYPE_INTEGER:
 	case DB_TYPE_BIGINT:
 	case DB_TYPE_FLOAT:
