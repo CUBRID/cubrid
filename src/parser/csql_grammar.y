@@ -1461,6 +1461,7 @@ static char *g_plcsql_text;
 %token VARIABLE_
 %token VARYING
 %token VCLASS
+%token VIMKIM
 %token VIEW
 %token WHEN
 %token WHENEVER
@@ -21217,7 +21218,13 @@ json_schema
 		;
 
 primitive_type
-	: INTEGER opt_padding
+  : VIMKIM opt_padding
+    {{
+      container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_VIMKIM), NULL);
+			$$ = ctn;
+    }}
+	| INTEGER opt_padding
 		{{ DBG_TRACE_GRAMMAR(primitive_type, : INTEGER opt_padding );
 
 			container_2 ctn;
