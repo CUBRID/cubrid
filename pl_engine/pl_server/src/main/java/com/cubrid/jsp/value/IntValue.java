@@ -38,6 +38,11 @@ import java.sql.Time;
 import java.sql.Timestamp;
 
 public class IntValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_INT;
+    }
+
     private int value;
 
     public IntValue(int value) {

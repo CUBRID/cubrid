@@ -37,6 +37,11 @@ import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import java.sql.ResultSet;
 
 public class ResultSetValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_RESULTSET;
+    }
+
     private long queryId;
     private ResultSet rset = null;
 
