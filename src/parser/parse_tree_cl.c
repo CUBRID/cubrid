@@ -10504,21 +10504,34 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	r1 = pt_print_bytes (parser, p->info.expr.arg1);
 	q = pt_append_varchar (parser, q, r1);
 
-	flags = p->info.expr.arg3->info.value.data_value.i;
-	lang_id = lang_get_lang_id_from_flag (flags, &has_user_format, &has_user_lang);
-	if (has_user_format)
+	if (p->info.expr.arg3 && p->info.expr.arg3->node_type == PT_HOST_VAR)
 	  {
-	    const char *lang_name = lang_get_lang_name_from_id (lang_id);
-
 	    q = pt_append_nulstring (parser, q, ", ");
 	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
 	    q = pt_append_varchar (parser, q, r1);
 
-	    if (lang_name != NULL && has_user_lang)
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg3);
+	    q = pt_append_varchar (parser, q, r1);
+	  }
+	else
+	  {
+	    flags = p->info.expr.arg3->info.value.data_value.i;
+	    lang_id = lang_get_lang_id_from_flag (flags, &has_user_format, &has_user_lang);
+	    if (has_user_format)
 	      {
-		q = pt_append_nulstring (parser, q, ", '");
-		q = pt_append_nulstring (parser, q, lang_name);
-		q = pt_append_nulstring (parser, q, "'");
+		const char *lang_name = lang_get_lang_name_from_id (lang_id);
+
+		q = pt_append_nulstring (parser, q, ", ");
+		r1 = pt_print_bytes (parser, p->info.expr.arg2);
+		q = pt_append_varchar (parser, q, r1);
+
+		if (lang_name != NULL && has_user_lang)
+		  {
+		    q = pt_append_nulstring (parser, q, ", '");
+		    q = pt_append_nulstring (parser, q, lang_name);
+		    q = pt_append_nulstring (parser, q, "'");
+		  }
 	      }
 	  }
 	q = pt_append_nulstring (parser, q, ")");
