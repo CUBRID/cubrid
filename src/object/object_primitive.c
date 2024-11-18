@@ -418,6 +418,12 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_null (void *mem1, void *mem2, TP_
 						     int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_null (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 					       int *start_colp, int collation);
+
+
+
+static int mr_setval_vimkim (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+
+
 static void mr_initmem_int (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_int (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_int (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -979,7 +985,7 @@ PR_TYPE tp_Vimkim = {
   mr_initval_int,
   mr_setmem_int,
   mr_getmem_int,
-  mr_setval_int,
+  mr_setval_vimkim,
   NULL,				/* data_lengthmem */
   NULL,				/* data_lengthval */
   mr_data_writemem_int,
@@ -2420,6 +2426,26 @@ mr_cmpval_null (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   return DB_UNK;
 }
 
+
+/*
+ * TYPE VIMKIM
+ *
+ * Your basic 32 bit signed integral value, named vimkim for prototype research.
+ * At the storage level, we don't really care whether it is signed or unsigned.
+ */
+
+static int
+mr_setval_vimkim (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  if (src && !DB_IS_NULL (src))
+    {
+      return db_make_vimkim (dest, db_get_vimkim (src));
+    }
+  else
+    {
+      return db_value_domain_init (dest, DB_TYPE_VIMKIM, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+}
 
 /*
  * TYPE INTEGER
