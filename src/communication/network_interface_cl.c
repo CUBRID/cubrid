@@ -11018,14 +11018,7 @@ error:
       packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
       int error_code;
       std::string error_msg;
-      if (req_error != ER_SP_EXECUTE_ERROR)
-	{
-	  unpacker.unpack_all (error_code, error_msg);
-	}
-      else
-	{
-	  error_code = req_error;
-	}
+      unpacker.unpack_all (error_code, error_msg);
       cubmethod::handle_method_error (error_code, error_msg);
     }
 
