@@ -157,7 +157,6 @@ public class StoredProcedure {
 
     private void checkArgs() throws TypeMismatchException {
         if (args == null) {
-            args = new Value[0];
             return;
         }
 

@@ -448,7 +448,7 @@ public class ExecuteThread extends Thread {
     private void returnOutArgs(StoredProcedure sp, CUBRIDPacker packer)
             throws IOException, ExecuteException, TypeMismatchException {
         Value[] args = sp.getArgs();
-        for (int i = 0; i < args.length; i++) {
+        for (int i = 0; args != null && i < args.length; i++) {
             if (args[i].getMode() > Value.IN) {
                 Value v = sp.makeOutValue(args[i].getResolved());
                 packer.packValue(
