@@ -422,6 +422,7 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_null (DB_VALUE * value1, DB_VALUE * val
 
 
 static int mr_setval_vimkim (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_data_writeval_vimkim (OR_BUF * buf, DB_VALUE * value);
 
 
 static void mr_initmem_int (void *mem, TP_DOMAIN * domain);
@@ -990,7 +991,7 @@ PR_TYPE tp_Vimkim = {
   NULL,				/* data_lengthval */
   mr_data_writemem_int,
   mr_data_readmem_int,
-  mr_data_writeval_int,
+  mr_data_writeval_vimkim,
   mr_data_readval_int,
   NULL,				/* index_lengthmem */
   NULL,				/* index_lengthval */
@@ -2445,6 +2446,12 @@ mr_setval_vimkim (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     {
       return db_value_domain_init (dest, DB_TYPE_VIMKIM, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
+}
+
+static int
+mr_data_writeval_vimkim (OR_BUF * buf, DB_VALUE * value)
+{
+  return or_put_int (buf, db_get_vimkim (value));
 }
 
 /*
