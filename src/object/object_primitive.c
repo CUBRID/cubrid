@@ -423,6 +423,8 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_null (DB_VALUE * value1, DB_VALUE * val
 
 static int mr_setval_vimkim (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_writeval_vimkim (OR_BUF * buf, DB_VALUE * value);
+static int mr_data_readval_vimkim (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+				int copy_buf_len);
 
 
 static void mr_initmem_int (void *mem, TP_DOMAIN * domain);
@@ -992,7 +994,7 @@ PR_TYPE tp_Vimkim = {
   mr_data_writemem_int,
   mr_data_readmem_int,
   mr_data_writeval_vimkim,
-  mr_data_readval_int,
+  mr_data_readval_vimkim,
   NULL,				/* index_lengthmem */
   NULL,				/* index_lengthval */
   mr_index_writeval_int,
@@ -2452,6 +2454,28 @@ static int
 mr_data_writeval_vimkim (OR_BUF * buf, DB_VALUE * value)
 {
   return or_put_int (buf, db_get_vimkim (value));
+}
+
+static int
+mr_data_readval_vimkim (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+		     int copy_buf_len)
+{
+  int temp_int, rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, tp_Integer.disksize);
+    }
+  else
+    {
+      temp_int = or_get_int (buf, &rc);
+      if (rc == NO_ERROR)
+	{
+	  db_make_vimkim (value, temp_int);
+	}
+      value->need_clear = false;
+    }
+  return rc;
 }
 
 /*
