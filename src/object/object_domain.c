@@ -7529,6 +7529,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       break;
 
+    case DB_TYPE_VIMKIM:
+      switch (original_type)
+	{
+	  case DB_TYPE_INTEGER:
+	    db_make_vimkim(target, db_get_int(src));
+	    break;
+	default:
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+      break;
     case DB_TYPE_INTEGER:
       switch (original_type)
 	{

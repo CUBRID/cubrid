@@ -349,6 +349,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       break;
 
     case DB_TYPE_NULL:
+    case DB_TYPE_VIMKIM:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
     case DB_TYPE_FLOAT:
