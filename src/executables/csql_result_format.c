@@ -1471,6 +1471,15 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	  len = strlen (result);
 	}
       break;
+    case DB_TYPE_VIMKIM:
+      result =
+	bigint_to_string (db_get_vimkim (value), default_int_profile.fieldwidth, default_int_profile.leadingzeros,
+			  default_int_profile.leadingsymbol, default_int_profile.commas, default_int_profile.format);
+      if (result)
+	{
+	  len = strlen (result);
+	}
+      break;
     case DB_TYPE_INTEGER:
       result =
 	bigint_to_string (db_get_int (value), default_int_profile.fieldwidth, default_int_profile.leadingzeros,
