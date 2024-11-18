@@ -358,5 +358,5 @@ public abstract class Value {
 
     protected static final String TYPE_NAME_OID = "OID";
     protected static final String TYPE_NAME_RESULTSET = "RESULTSET";
-    protected static final String TYPE_NAME_SET = "SET";
+    protected static final String TYPE_NAME_SET = "COLLECTION"; // actually, it is not only SET but also MULTISET and LIST
 }
