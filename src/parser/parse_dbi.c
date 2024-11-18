@@ -616,6 +616,9 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       pt_add_type_to_set (parser, result->info.value.data_value.set, &result->data_type);
       break;
 
+    case DB_TYPE_VIMKIM:
+      result->info.value.data_value.i = db_get_vimkim (val);
+      break;
     case DB_TYPE_INTEGER:
       result->info.value.data_value.i = db_get_int (val);
       break;
@@ -2614,6 +2617,9 @@ pt_db_to_type_enum (const DB_TYPE t)
 
   switch (t)
     {
+    case DB_TYPE_VIMKIM:
+      pt_type = PT_TYPE_VIMKIM;
+      break;
     case DB_TYPE_INTEGER:
       pt_type = PT_TYPE_INTEGER;
       break;
