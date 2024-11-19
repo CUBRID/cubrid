@@ -16018,8 +16018,15 @@ limit_term
           ;
 
 limit_factor
-        : signed_literal_
-                {{ DBG_TRACE_GRAMMAR(limit_factor, : signed_literal_);
+        : host_param_input
+                {{ DBG_TRACE_GRAMMAR(limit_factor, : host_param_input);
+
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | unsigned_integer
+                {{ DBG_TRACE_GRAMMAR(limit_factor, : unsigned_integer);
 
                         $$ = $1;
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
