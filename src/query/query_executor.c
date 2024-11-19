@@ -16294,8 +16294,7 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     {
       /* When limit_row_count is
        *   > 0, go to execute the query.
-       *   = 0, no result will be generated. stop execution for optimization.
-       *   < 0, raise an error.
+       *   <= 0, no result will be generated. stop execution for optimization.
        */
       if (fetch_peek_dbval (thread_p, xasl->limit_row_count, &xasl_state->vd, NULL, NULL, NULL, &limit_valp) !=
 	  NO_ERROR)
@@ -16309,16 +16308,10 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  /* validated */
 	  return NO_ERROR;
 	}
-      else if (cmp_with_zero == DB_EQ)
+      else
 	{
 	  *empty_result = true;
 	  return NO_ERROR;
-	}
-      else
-	{
-	  /* still want better error code */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-	  return ER_FAILED;
 	}
     }
 

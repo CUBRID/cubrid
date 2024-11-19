@@ -17729,50 +17729,6 @@ pt_is_dblink_related (PT_NODE * p)
 }
 
 /*
- * pt_check_inst_num_expr () - evaluate inst_num() expression
- *   return: the evaluated positive value if successful
- *           -1 if not successful.
- */
-
-static double
-pt_check_inst_num_expr (PT_NODE * opd)
-{
-  double rvalue = 0;
-
-  while (opd && rvalue >= 0)
-    {
-      switch (opd->type_enum)
-	{
-	case PT_TYPE_INTEGER:
-	  rvalue = opd->info.value.data_value.i;
-	  break;
-	case PT_TYPE_BIGINT:
-	  rvalue = opd->info.value.data_value.bigint;
-	  break;
-	case PT_TYPE_NUMERIC:
-	  if (opd->info.value.data_value.str->bytes[0] == '-')
-	    {
-	      rvalue = -1;
-	    }
-	  break;
-	case PT_TYPE_FLOAT:
-	  rvalue = opd->info.value.data_value.f;
-	  break;
-	case PT_TYPE_DOUBLE:
-	  rvalue = opd->info.value.data_value.d;
-	  break;
-	defalut:
-	  rvalue = -1;
-	  break;
-	}
-
-      opd = opd->next;
-    }
-
-  return rvalue;
-}
-
-/*
  * pt_fold_const_expr () - evaluate constant expression
  *   return: the evaluated expression, if successful,
  *           unchanged expr, if not successful.
@@ -18667,37 +18623,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    }
 
 	  result = parser_copy_tree_list (parser, result);
-	}
-
-      /* inst_num() is not allowed to compare with any negative number */
-      if (opd1 && opd1->node_type == PT_EXPR && opd2 && opd2->node_type == PT_VALUE
-	  && opd1->info.expr.op == PT_INST_NUM)
-	{
-	  double rvalue = 0;
-	  PT_NODE *opd;
-
-	  opd = opd2;
-	  if (opd2->type_enum == PT_TYPE_MULTISET)
-	    {
-	      opd = opd2->info.value.data_value.set;
-	    }
-
-	  while (opd && rvalue >= 0)
-	    {
-	      rvalue = pt_check_inst_num_expr (opd);
-	      opd = opd->next;
-	    }
-
-	  if (rvalue >= 0 && opd3)
-	    {
-	      rvalue = pt_check_inst_num_expr (opd3);
-	    }
-
-	  if (rvalue < 0)
-	    {
-	      result = NULL;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-	    }
 	}
 
 #if 0
