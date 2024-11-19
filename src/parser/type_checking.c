@@ -5039,6 +5039,10 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1, PT_TYPE_ENUM * a
   /* We ignore PT_TYPE_NONE arguments because, in the context of this function, if an argument is of type PT_TYPE_NONE
    * then it is not defined in the signature that we have decided to use. */
 
+  if (*arg1 == PT_TYPE_VIMKIM && *arg2 == PT_TYPE_INTEGER) {
+      return PT_TYPE_VIMKIM;
+  }
+
   if (expected_domain != NULL)
     {
       expected_type = pt_db_to_type_enum (TP_DOMAIN_TYPE (expected_domain));
