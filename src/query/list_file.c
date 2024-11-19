@@ -2230,7 +2230,7 @@ qfile_destroy_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 	  /* because qmgr_free_list_temp_file() destroy only FILE_TEMP file */
 	  if (!VFID_ISNULL (&list_id_p->temp_vfid))
 	    {
-	      file_temp_retire (thread_p, &list_id_p->temp_vfid);
+	      file_temp_retire (thread_p, &list_id_p->temp_vfid, false);
 	    }
 	}
 

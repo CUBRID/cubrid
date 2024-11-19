@@ -271,7 +271,7 @@ static int sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * s
 static int sort_get_avg_numpages_of_nonempty_tmpfile (SORT_PARAM * sort_param);
 static void sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PARALLEL_TYPE parallel_type);
 static int sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc,
-			      bool tde_encrypted);
+			      bool tde_encrypted, bool is_parallel);
 
 static int sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start,
 			    bool tde_encrypted);
@@ -1657,7 +1657,8 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
 	{
 	  error =
-	    sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
+	    sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted,
+			       IS_PARALLEL_EXECUTION (sort_param));
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -1964,7 +1965,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		  /* Create the multipage file */
 		  sort_param->multipage_file.volid = sort_param->temp[0].volid;
 
-		  error = file_create_temp (thread_p, 1, &sort_param->multipage_file);
+		  error =
+		    file_create_temp (thread_p, 1, &sort_param->multipage_file, IS_PARALLEL_EXECUTION (sort_param));
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -1976,7 +1978,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		    }
 		  if (file_apply_tde_algorithm (thread_p, &sort_param->multipage_file, tde_algo) != NO_ERROR)
 		    {
-		      file_temp_retire (thread_p, &sort_param->multipage_file);
+		      file_temp_retire (thread_p, &sort_param->multipage_file, IS_PARALLEL_EXECUTION (sort_param));
 		      ASSERT_ERROR ();
 		      goto exit_on_error;
 		    }
@@ -2189,7 +2191,7 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int out_file, 
     {
       error =
 	sort_add_new_file (thread_p, &sort_param->temp[out_file], sort_param->tmp_file_pgs, false,
-			   sort_param->tde_encrypted);
+			   sort_param->tde_encrypted, IS_PARALLEL_EXECUTION (sort_param));
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4054,14 +4056,14 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	{
 	  if (sort_param->temp[k].volid != NULL_VOLID)
 	    {
-	      (void) file_temp_retire_preserved (thread_p, &sort_param->temp[k]);
+	      (void) file_temp_retire (thread_p, &sort_param->temp[k], false);
 	    }
 	}
     }
 
   if (sort_param->multipage_file.volid != NULL_VOLID)
     {
-      (void) file_temp_retire (thread_p, &(sort_param->multipage_file));
+      (void) file_temp_retire (thread_p, &(sort_param->multipage_file), false);
     }
 
   if (parallel_type == PX_SINGLE || parallel_type == PX_THREAD_IN_PARALLEL)
@@ -4110,7 +4112,8 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
  *   tde_encrypted(in): whether the file has to be encrypted or not for TDE
  */
 static int
-sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc, bool tde_encrypted)
+sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc, bool tde_encrypted,
+		   bool is_parallel)
 {
   VPID new_vpid;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
@@ -4119,7 +4122,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   /* todo: sort file is a case I missed that seems to use file_find_nthpages. I don't know if it can be optimized to
    *       work without numerable files, that remains to be seen. */
 
-  ret = file_create_temp_numerable (thread_p, file_pg_cnt_est, vfid);
+  ret = file_create_temp_numerable (thread_p, file_pg_cnt_est, vfid, is_parallel);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4139,7 +4142,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
-      file_temp_retire_preserved (thread_p, vfid);
+      file_temp_retire (thread_p, vfid, is_parallel);
       VFID_SET_NULL (vfid);
       return ret;
     }
@@ -4157,7 +4160,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  file_temp_retire_preserved (thread_p, vfid);
+	  file_temp_retire (thread_p, vfid, is_parallel);
 	  VFID_SET_NULL (vfid);
 	  return ret;
 	}
@@ -4461,7 +4464,9 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 
   for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
     {
-      error = sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
+      error =
+	sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted,
+			   IS_PARALLEL_EXECUTION (sort_param));
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4863,7 +4868,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  /* If there is a file not to be used anymore, destroy it in order to reuse spaces. */
 	  if (!VFID_ISNULL (&sort_param->temp[i]))
 	    {
-	      error_code = file_temp_retire_preserved (thread_p, &sort_param->temp[i]);
+	      error_code = file_temp_retire (thread_p, &sort_param->temp[i], IS_PARALLEL_EXECUTION (sort_param));
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();

@@ -2602,7 +2602,7 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
   if (VFID_ISNULL (&tfile_vfid_p->temp_vfid))
     {
       TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-      if (file_create_temp (thread_p, 1, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+      if (file_create_temp (thread_p, 1, &tfile_vfid_p->temp_vfid, false) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return NULL;
@@ -2617,7 +2617,7 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
       if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+	  file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid, false);
 	  VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
 	  return NULL;
 	}
@@ -2881,7 +2881,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     {
       /* query entry is not found */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
-      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid, false);
       free_and_init (tfile_vfid_p);
       return NULL;
     }
@@ -2894,7 +2894,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
     {
-      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid, false);
       free_and_init (tfile_vfid_p);
       return NULL;
     }
@@ -2964,7 +2964,7 @@ qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p
 	    }
 	  else
 	    {
-	      fd_ret = file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+	      fd_ret = file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid, false);
 	      if (fd_ret != NO_ERROR)
 		{
 		  /* set error but continue with the destroy process */
@@ -3105,7 +3105,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 		  rc = ER_FAILED;
 		}
 	    }
-	  else if (file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+	  else if (file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid, false) != NO_ERROR)
 	    {
 	      /* stop; return error */
 	      rc = ER_FAILED;
