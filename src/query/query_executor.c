@@ -13933,7 +13933,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      result_domain = attr->domain;
 	    }
 
-	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain);
+	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain, false);
 
 	  if (has_user_format)
 	    {

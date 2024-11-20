@@ -297,6 +297,7 @@ namespace cubthread
 #endif
       int m_qlist_count;
       int read_ovfl_pages_count; // For Vacuum only.
+      bool on_execute_prepare;  /* If true, it means that the execute statement is being performed. */
 
       cubload::driver *m_loaddb_driver;
 

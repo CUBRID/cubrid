@@ -615,7 +615,8 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		  result_domain = att->domain;
 		}
 
-	      error = db_to_char (&default_value, &format_val, &lang_val, &att->default_value.value, result_domain);
+	      error =
+		db_to_char (&default_value, &format_val, &lang_val, &att->default_value.value, result_domain, false);
 
 	      if (has_user_format)
 		{
@@ -14877,7 +14878,7 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 
       err =
 	execute_query (&info[q].xasl_id, &query_id, info[q].host_var_count, host_variables,
-		       &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
+		       &list_id, RESULT_CACHE_REQUIRED | EXECUTE_PREPARED_MODE, NULL, NULL);
 
       if (host_variables)
 	{
@@ -15054,7 +15055,8 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   err =
     execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		   parser->host_variables, &list_id, query_flag, &clt_cache_time, &statement->cache_time);
+		   parser->host_variables, &list_id, query_flag | EXECUTE_PREPARED_MODE, &clt_cache_time,
+		   &statement->cache_time);
 
   AU_RESTORE (au_save);
 

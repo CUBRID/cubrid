@@ -2311,36 +2311,6 @@ lang_set_flag_from_lang (const char *lang_str, bool has_user_format, bool has_us
       status = lang_get_lang_id_from_name (lang_str, &lang);
     }
 
-  if (lang_set_flag_from_lang_id (lang, has_user_format, has_user_lang, flag) == 0)
-    {
-      return status;
-    }
-
-  assert (lang == INTL_LANG_ENGLISH);
-
-  return 1;
-}
-
-/*
- * lang_set_flag_from_lang - set a flag according to language identifier
- *
- *   return: 0 if language string OK and flag was set, non-zero otherwise
- *   lang(in): language identier
- *   has_user_format(in): true if user has given a format, false otherwise
- *   has_user_lang(in): true if user has given a language, false otherwise
- *   flag(out): bit flag : bits 0 and 1 are user flags, bits 2 - 31 are for
- *		language identification
- *		Bit 0 : if set, the format was given by user
-*		Bit 1 : if set, the language was given by user
- *		Bit 2 - 31 : INTL_LANG
- *		Consider change this flag to store the language as value
- *		instead of as bit map
- *
- *  Note : function is used in context of some date-string functions.
- */
-int
-lang_set_flag_from_lang_id (const INTL_LANG lang, bool has_user_format, bool has_user_lang, int *flag)
-{
   int lang_val = (int) lang;
 
   *flag = 0;
@@ -2351,13 +2321,15 @@ lang_set_flag_from_lang_id (const INTL_LANG lang, bool has_user_format, bool has
   if (lang_val >= lang_Count_locales)
     {
       lang_val = (int) INTL_LANG_ENGLISH;
-      *flag |= lang_val << 2;
-      return 1;
+      status = 1;
     }
 
-  *flag |= lang_val << 2;
+  *flag |= (lang_val << 2);
 
-  return 0;
+  assert (((*flag) & LANG_LOADED_LOCALES_PARITY_MASK) == 0);
+  *flag |= LANG_LOADED_LOCALES_PARITY;
+
+  return status;
 }
 
 /*
@@ -2378,7 +2350,8 @@ lang_get_lang_id_from_flag (const int flag, bool * has_user_format, bool * has_u
   *has_user_format = ((flag & 0x1) == 0x1) ? true : false;
   *has_user_lang = ((flag & 0x2) == 0x2) ? true : false;
 
-  lang_val = flag >> 2;
+  assert ((flag & LANG_LOADED_LOCALES_PARITY_MASK) == LANG_LOADED_LOCALES_PARITY);
+  lang_val = (flag & ~LANG_LOADED_LOCALES_PARITY_MASK) >> 2;
 
   if (lang_val >= 0 && lang_val < lang_Count_locales)
     {

@@ -2413,7 +2413,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_TO_DATE:
       num = 0;
 
-      /* one overload */
+      /* two overload */
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
@@ -2422,21 +2422,29 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
       /* arg3 */
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
+      sig.arg3_type.type = pt_arg_type::GENERIC;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_STRING;
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_DATE;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      /* arg2 */
+      /* arg3 */
+      sig.arg3_type.type = pt_arg_type::NORMAL;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      /* return type */
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
       break;
 
     case PT_TO_DATETIME:
+    case PT_TO_DATETIME_TZ:
       num = 0;
 
-      /* two overloads */
+      /* four overloads */
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
@@ -2445,12 +2453,19 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
       /* arg3 */
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
+      sig.arg3_type.type = pt_arg_type::GENERIC;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_STRING;
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_DATETIME;
+      sig.return_type.val.type = (op == PT_TO_DATETIME) ? PT_TYPE_DATETIME : PT_TYPE_DATETIMETZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      /* arg2 */
+      /* arg3 */
+      sig.arg3_type.type = pt_arg_type::NORMAL;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      /* return type */
       def->overloads[num++] = sig;
 
       /* arg1 */
@@ -2460,12 +2475,19 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
       /* arg3 */
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
+      sig.arg3_type.type = pt_arg_type::GENERIC;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_STRING;
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_DATETIME;
+      sig.return_type.val.type = (op == PT_TO_DATETIME) ? PT_TYPE_DATETIME : PT_TYPE_DATETIMETZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      /* arg2 */
+      /* arg3 */
+      sig.arg3_type.type = pt_arg_type::NORMAL;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      /* return type */
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -2474,7 +2496,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_TO_TIME:
       num = 0;
 
-      /* two overloads */
+      /* four overloads */
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
@@ -2483,12 +2505,20 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
       /* arg3 */
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      sig.arg3_type.type = pt_arg_type::GENERIC;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_STRING;
 
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_TIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      /* arg2 */
+      /* arg3 */
+      sig.arg3_type.type = pt_arg_type::NORMAL;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      /* return type */
       def->overloads[num++] = sig;
 
       /* arg1 */
@@ -2498,21 +2528,29 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
       /* arg3 */
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
+      sig.arg3_type.type = pt_arg_type::GENERIC;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_STRING;
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_TIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      /* arg2 */
+      /* arg3 */
+      sig.arg3_type.type = pt_arg_type::NORMAL;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      /* return type */
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
       break;
 
     case PT_TO_TIMESTAMP:
+    case PT_TO_TIMESTAMP_TZ:
       num = 0;
 
-      /* two overloads */
+      /* four overloads */
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
@@ -2521,12 +2559,19 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
       /* arg3 */
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
+      sig.arg3_type.type = pt_arg_type::GENERIC;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_STRING;
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_TIMESTAMP;
+      sig.return_type.val.type = (op == PT_TO_TIMESTAMP) ? PT_TYPE_TIMESTAMP : PT_TYPE_TIMESTAMPTZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      /* arg2 */
+      /* arg3 */
+      sig.arg3_type.type = pt_arg_type::NORMAL;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      /* return type */
       def->overloads[num++] = sig;
 
       /* arg1 */
@@ -2536,12 +2581,19 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
       /* arg3 */
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
+      sig.arg3_type.type = pt_arg_type::GENERIC;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_STRING;
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_TIMESTAMP;
+      sig.return_type.val.type = (op == PT_TO_TIMESTAMP) ? PT_TYPE_TIMESTAMP : PT_TYPE_TIMESTAMPTZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      /* arg2 */
+      /* arg3 */
+      sig.arg3_type.type = pt_arg_type::NORMAL;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      /* return type */
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -3646,32 +3698,40 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_TO_CHAR:
       num = 0;
 
-      /* two overloads */
+      /* four overloads */
 
+      /* arg1, arg2, arg3, return type */
       sig.arg1_type.type = pt_arg_type::GENERIC;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
-
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
-
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
+      sig.arg3_type.type = pt_arg_type::GENERIC;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_STRING;
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_VARCHAR;
       def->overloads[num++] = sig;
 
+      /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_DATETIME;
+      /* arg2, arg3, return type  */
+      def->overloads[num++] = sig;
 
+      /* arg1, arg2, arg3, return type */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
-
       sig.arg3_type.type = pt_arg_type::NORMAL;
       sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_DATETIME;
+      /* arg2, arg3, return type  */
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -4640,81 +4700,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
-    case PT_TO_DATETIME_TZ:
-      num = 0;
-
-      /* two overloads */
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
-      /* arg2 */
-      sig.arg2_type.type = pt_arg_type::GENERIC;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
-      /* arg3 */
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_DATETIMETZ;
-      def->overloads[num++] = sig;
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
-      /* arg2 */
-      sig.arg2_type.type = pt_arg_type::GENERIC;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
-      /* arg3 */
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_DATETIMETZ;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-
-    case PT_TO_TIMESTAMP_TZ:
-      num = 0;
-
-      /* two overloads */
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
-      /* arg2 */
-      sig.arg2_type.type = pt_arg_type::GENERIC;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
-      /* arg3 */
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_TIMESTAMPTZ;
-      def->overloads[num++] = sig;
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
-      /* arg2 */
-      sig.arg2_type.type = pt_arg_type::GENERIC;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
-      /* arg3 */
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_INTEGER;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_TIMESTAMPTZ;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
     case PT_CRC32:
       num = 0;
 
@@ -9204,17 +9189,22 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  bool has_user_lang = false;
 	  const char *lang_str;
 
-	  assert (arg3 != NULL && arg3->node_type == PT_VALUE && arg3_type == PT_TYPE_INTEGER);
-	  /* change locale from date_lang (set by grammar) to number_lang */
-	  (void) lang_get_lang_id_from_flag (arg3->info.value.data_value.i, &has_user_format, &has_user_lang);
-	  if (!has_user_lang)
+	  assert (arg3 != NULL &&
+		  (arg3->node_type == PT_HOST_VAR || (arg3->node_type == PT_VALUE && arg3_type == PT_TYPE_INTEGER)));
+
+	  if (arg3->node_type != PT_HOST_VAR)
 	    {
-	      int lang_flag;
-	      lang_str = prm_get_string_value (PRM_ID_INTL_NUMBER_LANG);
-	      (void) lang_set_flag_from_lang (lang_str, has_user_format, has_user_lang, &lang_flag);
-	      arg3->info.value.data_value.i = lang_flag;
-	      arg3->info.value.db_value_is_initialized = 0;
-	      pt_value_to_db (parser, arg3);
+	      /* change locale from date_lang (set by grammar) to number_lang */
+	      (void) lang_get_lang_id_from_flag (arg3->info.value.data_value.i, &has_user_format, &has_user_lang);
+	      if (!has_user_lang)
+		{
+		  int lang_flag;
+		  lang_str = prm_get_string_value (PRM_ID_INTL_NUMBER_LANG);
+		  (void) lang_set_flag_from_lang (lang_str, has_user_format, has_user_lang, &lang_flag);
+		  arg3->info.value.data_value.i = lang_flag;
+		  arg3->info.value.db_value_is_initialized = 0;
+		  pt_value_to_db (parser, arg3);
+		}
 	    }
 	}
 
@@ -16761,7 +16751,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       return 1;
 
     case PT_TO_CHAR:
-      error = db_to_char (arg1, arg2, arg3, result, domain);
+      error = db_to_char (arg1, arg2, arg3, result, domain, false);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16881,7 +16871,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_TO_DATE:
-      error = db_to_date (arg1, arg2, arg3, result);
+      error = db_to_date (arg1, arg2, arg3, result, false);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16893,7 +16883,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_TO_TIME:
-      error = db_to_time (arg1, arg2, arg3, DB_TYPE_TIME, result);
+      error = db_to_time (arg1, arg2, arg3, DB_TYPE_TIME, result, false);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16905,7 +16895,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_TO_TIMESTAMP:
-      error = db_to_timestamp (arg1, arg2, arg3, DB_TYPE_TIMESTAMP, result);
+      error = db_to_timestamp (arg1, arg2, arg3, DB_TYPE_TIMESTAMP, result, false);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16917,7 +16907,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_TO_DATETIME:
-      error = db_to_datetime (arg1, arg2, arg3, DB_TYPE_DATETIME, result);
+      error = db_to_datetime (arg1, arg2, arg3, DB_TYPE_DATETIME, result, false);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17567,7 +17557,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       break;
 
     case PT_TO_DATETIME_TZ:
-      error = db_to_datetime (arg1, arg2, arg3, DB_TYPE_DATETIMETZ, result);
+      error = db_to_datetime (arg1, arg2, arg3, DB_TYPE_DATETIMETZ, result, false);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17593,7 +17583,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       break;
 
     case PT_TO_TIMESTAMP_TZ:
-      error = db_to_timestamp (arg1, arg2, arg3, DB_TYPE_TIMESTAMPTZ, result);
+      error = db_to_timestamp (arg1, arg2, arg3, DB_TYPE_TIMESTAMPTZ, result, false);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

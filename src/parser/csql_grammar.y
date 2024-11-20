@@ -26187,6 +26187,7 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 
       if (date_lang == NULL)
 	{
+                //ER_QSTR_INVALID_DATA_TYPE
 	  PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'"); // TODO:  ctshim
 	  date_lang = arg3;
 	}
