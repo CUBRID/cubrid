@@ -615,9 +615,9 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->info.value.data_value.set = pt_set_elements_to_value (parser, val);
       pt_add_type_to_set (parser, result->info.value.data_value.set, &result->data_type);
       break;
-
     case DB_TYPE_VIMKIM:
-      result->info.value.data_value.i = db_get_vimkim (val);
+      // TODO: Why is this required?
+      result->info.value.data_value.vector_buf = db_get_vimkim(val);
       break;
     case DB_TYPE_INTEGER:
       result->info.value.data_value.i = db_get_int (val);
