@@ -16,7 +16,7 @@
  *
  */
 
-#include "method_connection_pool.hpp"
+#include "pl_connection.hpp"
 
 #include "boot_sr.h"
 #include "pl_sr.h" /* pl_server_port(), pl_connect_server() */
@@ -26,17 +26,19 @@
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace cubmethod
+namespace cubpl
 {
   connection_pool::connection_pool (int pool_size)
     : m_pool_size (pool_size)
+    , m_serial_val (0)
     , m_queue ()
     , m_mutex ()
   {
-    //
+    assert (pool_size > 0);
   }
 
   connection_pool::~connection_pool ()
@@ -52,13 +54,12 @@ namespace cubmethod
   connection *
   connection_pool::claim ()
   {
-    std::unique_lock<std::mutex> ulock (m_mutex);
+    pl_server_wait_for_ready ();
 
     if (!m_queue.empty ())
       {
 	connection *conn = m_queue.front ();
 	m_queue.pop ();
-	ulock.unlock ();
 
 	// test socket
 	if (conn->is_valid() == false)
@@ -72,7 +73,7 @@ namespace cubmethod
 
     // new connection
     SOCKET socket = pl_connect_server (boot_db_name (), pl_server_port_from_info ());
-    return new connection (this, socket);
+    return new connection (this, socket, m_serial_val);
   }
 
   void
@@ -116,8 +117,10 @@ namespace cubmethod
     return m_pool_size;
   }
 
-  connection::connection (connection_pool *pool, SOCKET socket)
-    : m_pool (pool), m_socket (socket)
+  connection::connection (connection_pool *pool, SOCKET socket, int serial_val)
+    : m_pool (pool)
+    , m_socket (socket)
+    , m_serial_val (serial_val)
   {
     //
   }
@@ -131,7 +134,8 @@ namespace cubmethod
   bool
   connection::is_valid ()
   {
-    return (m_socket != INVALID_SOCKET);
+    return (m_pool->get_serial_val () == m_serial_val)
+	   && (m_socket != INVALID_SOCKET);
   }
 
   SOCKET
@@ -139,20 +143,4 @@ namespace cubmethod
   {
     return m_socket;
   }
-
-  bool
-  connection::is_jvm_running ()
-  {
-    PL_SERVER_INFO info;
-    pl_read_info (boot_db_name (), info);
-    if (info.pid == -1)
-      {
-	return false;
-      }
-    else
-      {
-	return true;
-      }
-  }
-
 } // namespace cubmethod

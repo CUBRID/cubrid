@@ -232,7 +232,7 @@ if(WIN32)
 endif(WIN32)
 add_executable(cub_pl ${PL_SERVER_SOURCES})
 target_include_directories(cub_pl PRIVATE ${JAVA_INC} ${CMAKE_BINARY_DIR} ${EP_INCLUDES})
-target_compile_definitions(cub_pl PRIVATE ${COMMON_DEFS})
+target_compile_definitions(cub_pl PRIVATE PL_MODE ${COMMON_DEFS})
 target_link_libraries(cub_pl LINK_PRIVATE cubridsa)
 
 set(CUB_ADMIN_SOURCES

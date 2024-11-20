@@ -346,6 +346,7 @@ set(OBJECT_HEADERS
 set(SP_SOURCES
   ${SP_DIR}/jsp_cl.cpp
   ${SP_DIR}/method_invoke_group.cpp
+  ${SP_DIR}/pl_connection.cpp
   ${SP_DIR}/pl_execution_stack_context.cpp
   ${SP_DIR}/pl_executor.cpp
   ${SP_DIR}/pl_query_cursor.cpp
@@ -369,7 +370,6 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_connection_cl.cpp
   ${METHOD_DIR}/method_connection_sr.cpp
   ${METHOD_DIR}/method_connection_java.cpp
-  ${METHOD_DIR}/method_connection_pool.cpp
   ${METHOD_DIR}/method_compile_def.cpp
   ${METHOD_DIR}/method_compile.cpp
   ${METHOD_DIR}/method_error.cpp

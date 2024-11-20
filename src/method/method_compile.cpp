@@ -19,6 +19,8 @@
 #include "method_compile.hpp"
 
 #include "pl_comm.h"
+#include "pl_sr.h"
+#include "pl_connection.hpp"
 #include "method_connection_sr.hpp"
 #include "method_connection_java.hpp"
 #include "method_compile_def.hpp"
@@ -66,7 +68,7 @@ namespace cubmethod
       }
     SESSION_ID s_id = session->get_id ();
 
-    connection *conn = session->get_connection_pool()->claim();
+    cubpl::connection *conn = get_connection_pool()->claim();
     header header (s_id, SP_CODE_COMPILE, session->get_and_increment_request_id ());
     SOCKET socket = conn->get_socket ();
     {
@@ -140,7 +142,7 @@ namespace cubmethod
 exit:
       if (session)
 	{
-	  session->get_connection_pool()->retire (conn, true);
+	  get_connection_pool()->retire (conn, true);
 	}
 
       return error;

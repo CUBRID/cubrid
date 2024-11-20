@@ -55,7 +55,6 @@ namespace cubpl
     , m_is_interrupted (false)
     , m_interrupt_id (NO_ERROR)
     , m_is_running (false)
-    , m_conn_pool (METHOD_MAX_RECURSION_DEPTH + 1)
     , m_req_id {0}
     , m_param_info {nullptr}
   {
@@ -437,12 +436,6 @@ namespace cubpl
       }
     m_cursor_map.clear ();
     m_session_cursors.clear ();
-  }
-
-  cubmethod::connection_pool *
-  session::get_connection_pool ()
-  {
-    return &m_conn_pool;
   }
 
   cubmethod::db_parameter_info *

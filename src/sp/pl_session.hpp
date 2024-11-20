@@ -34,7 +34,7 @@
 #include <condition_variable>
 #include <string>
 
-#include "method_connection_pool.hpp"
+#include "pl_connection.hpp"
 
 #include "pl_execution_stack_context.hpp"
 #include "pl_signature.hpp"
@@ -49,11 +49,6 @@ namespace cubmethod
 {
   class method_invoke_group;
   class db_parameter_info;
-}
-
-namespace cubsp
-{
-  class connection_pool;
 }
 
 namespace cubpl
@@ -117,8 +112,6 @@ namespace cubpl
 	return m_req_id++;
       }
 
-      cubmethod::connection_pool *get_connection_pool ();
-
       cubmethod::db_parameter_info *get_db_parameter_info () const;
       void set_db_parameter_info (cubmethod::db_parameter_info *param_info);
 
@@ -139,8 +132,6 @@ namespace cubpl
       cursor_map_type m_cursor_map; // server-side cursor storage
 
       exec_stack_id_type m_deferred_free_stack;
-
-      cubmethod::connection_pool m_conn_pool;
 
       std::atomic <METHOD_REQ_ID> m_req_id;
 

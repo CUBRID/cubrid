@@ -2314,8 +2314,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   /* *INDENT-ON* */
 
-  pl_monitor_init (db_name);
-
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
   /*
@@ -2779,6 +2777,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   json_set_alloc_funcs (malloc, free);
 #endif
 
+  pl_server_init (db_name);
+
   return NO_ERROR;
 
 error:
@@ -2812,7 +2812,7 @@ error:
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
-  pl_monitor_destroy ();
+  pl_server_destroy ();
 
   cdc_daemons_destroy ();
 
@@ -3132,7 +3132,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
-  pl_monitor_destroy ();
+  pl_server_destroy ();
 #endif
 
 #if defined (SA_MODE)

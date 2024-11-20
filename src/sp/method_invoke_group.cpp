@@ -30,7 +30,7 @@
 #include "packer.hpp"
 #include "method_connection_sr.hpp"
 #include "method_connection_java.hpp"
-#include "method_connection_pool.hpp"
+#include "pl_connection.hpp"
 #include "session.h"
 #include "string_buffer.hpp"
 #include "pl_session.hpp"

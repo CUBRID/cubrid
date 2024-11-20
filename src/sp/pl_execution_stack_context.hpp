@@ -36,7 +36,7 @@
 #include "packer.hpp"
 
 #include "method_struct_invoke.hpp"
-#include "method_connection_pool.hpp"
+#include "pl_connection.hpp"
 #include "method_connection_sr.hpp"
 #include "method_connection_java.hpp"
 
@@ -65,7 +65,7 @@ namespace cubpl
       /* resources */
       std::unordered_set <int> m_stack_handler_id;
       std::unordered_set <std::uint64_t> m_stack_cursor_id;
-      cubmethod::connection *m_connection;
+      connection *m_connection;
 
       /* error */
       std::string m_error_message;
@@ -92,7 +92,7 @@ namespace cubpl
       cubthread::entry *get_thread_entry () const;
 
       /* connection */
-      cubmethod::connection *get_connection ();
+      connection *get_connection ();
       std::queue<cubmem::block> &get_data_queue ();
 
       /* resource management */
