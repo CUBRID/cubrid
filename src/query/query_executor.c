@@ -16280,7 +16280,7 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	{
 	  return ER_FAILED;
 	}
-#if 0
+
       cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
       if (cmp_with_zero != DB_GT && cmp_with_zero != DB_EQ)
 	{
@@ -16288,7 +16288,6 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
 	  return ER_FAILED;
 	}
-#endif
     }
 
   if (xasl->limit_row_count != NULL)

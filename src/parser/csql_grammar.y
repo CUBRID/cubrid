@@ -16026,7 +16026,7 @@ limit_factor
 
                 DBG_PRINT}}
         | unsigned_integer
-                {{ DBG_TRACE_GRAMMAR(limit_factor, : unsigned_integer);
+                {{ DBG_TRACE_GRAMMAR(limit_factor, | unsigned_integer);
 
                         $$ = $1;
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
