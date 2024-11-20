@@ -384,7 +384,7 @@ make_abs_path (char *dest, const char *subdir, const char *path, size_t dest_len
     {
       if (new_path[path_len] == '/' || new_path[path_len] == '\\')
 	{
-	  new_path [path_len] = '\0';
+	  new_path[path_len] = '\0';
 	}
       else
 	{
