@@ -1052,6 +1052,13 @@ extern "C"
     JSON_DOC *document;
   };
 
+  typedef struct db_vector DB_VECTOR;
+  struct db_vector
+  {
+    const float *buf;
+    int length;
+  };
+
   /* A union of all of the possible basic type values. This is used in the definition of the DB_VALUE which is the fundamental
    * structure used in passing data in and out of the db_ function layer.
    */
@@ -1083,6 +1090,7 @@ extern "C"
     DB_RESULTSET rset;
     DB_ENUM_ELEMENT enumeration;
     DB_JSON json;
+    DB_VECTOR vector;
   };
 
   /* This is the primary structure used for passing values in and out of the db_ function layer. Values are always tagged with
