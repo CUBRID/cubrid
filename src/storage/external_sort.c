@@ -192,7 +192,7 @@ struct sort_param
   int px_tran_index;
   SORT_PARALLEL_TYPE px_type;
 #if defined(SERVER_MODE)
-  pthread_mutex_t *px_mtx;		/* px_status mutex */
+  pthread_mutex_t *px_mtx;	/* px_status mutex */
   pthread_cond_t *complete_cond;	/* complete condition */
 #endif
 };
