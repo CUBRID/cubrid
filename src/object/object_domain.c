@@ -7090,6 +7090,52 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
   return err;
 }
 
+
+// Function to parse the string into a dynamically allocated float array
+float* parseFloatArray(const std::string& input, int& outSize) {
+    // Check if the input starts with '[' and ends with ']'
+    if (input.empty() || input.front() != '[' || input.back() != ']') {
+        outSize = 0;
+        return nullptr;
+    }
+
+    // Remove the square brackets
+    std::string content = input.substr(1, input.size() - 2);
+
+    // Use a stringstream to parse floats
+    std::stringstream ss(content);
+    std::vector<float> temp;
+
+    // Extract floats separated by commas
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        try {
+            // Trim whitespace and convert to float
+            temp.push_back(std::stof(item));
+        } catch (...) {
+            // Handle conversion errors (invalid input)
+            outSize = 0;
+            return nullptr;
+        }
+    }
+
+    printf("%d\n", (int)temp.size());
+    for (float f : temp) {
+	printf("%f\n", f);
+    }
+    printf("\n");
+
+    // Allocate a dynamic array and copy values from the vector
+    outSize = temp.size();
+    float* result(new float[outSize]);
+    for (int i = 0; i < outSize; ++i) {
+        result[i] = temp[i];
+    }
+
+    return result;
+}
+
+
 /*
  * tp_value_coerce_internal - Coerce a value into one of another domain.
  *    return: error code
@@ -7427,6 +7473,14 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
     }
 
+  float * vimkim = new float[6];
+  vimkim[0] = 1.0;
+  vimkim[1] = 3.0;
+  vimkim[2] = 5.0;
+  vimkim[3] = 6.0;
+  vimkim[4] = 1.0;
+  vimkim[5] = 2.0;
+
   switch (desired_type)
     {
     case DB_TYPE_SHORT:
@@ -7533,11 +7587,23 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	  case DB_TYPE_INTEGER:
-	    db_make_vimkim(target, db_get_int(src));
+	    // todo: memory leak
+	    db_make_vimkim(target, vimkim, 6);
 	    break;
-	default:
-	  status = DOMAIN_INCOMPATIBLE;
-	  break;
+	  case DB_TYPE_CHAR:
+	      {
+	    const char *str = db_get_string(src);
+
+	      int size;
+	      auto farray = parseFloatArray(std::string(str), size);
+
+
+	      db_make_vimkim(target, farray, (int)size);
+	    break;
+	      }
+	  default:
+	    status = DOMAIN_INCOMPATIBLE;
+	    break;
 	}
       break;
     case DB_TYPE_INTEGER:
