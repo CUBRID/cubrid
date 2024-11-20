@@ -26,7 +26,8 @@
 #if !defined (_NO_INLINE_DBTYPE_FUNCTION_)
 #include "porting_inline.hpp"
 
-STATIC_INLINE int db_get_vimkim (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const float *db_get_vimkim (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const int db_get_vimkim_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -70,7 +71,7 @@ STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const
 				   const int size) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_null (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_vimkim (DB_VALUE * value, const int num) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_make_vimkim (DB_VALUE * value, const float * buf, const int size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_int (DB_VALUE * value, const int num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_float (DB_VALUE * value, const DB_C_FLOAT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_double (DB_VALUE * value, const DB_C_DOUBLE num) __attribute__ ((ALWAYS_INLINE));
@@ -152,7 +153,7 @@ STATIC_INLINE DB_TYPE db_value_domain_type (const DB_VALUE * value) __attribute_
  * return :
  * value(in):
  */
-int
+const float *
 db_get_vimkim (const DB_VALUE * value)
 {
 #if defined (API_ACTIVE_CHECKS)
@@ -161,7 +162,24 @@ db_get_vimkim (const DB_VALUE * value)
 
   assert (value->domain.general_info.type == DB_TYPE_VIMKIM);
 
-  return value->data.i;
+  return value->data.vector.buf;
+}
+
+/*
+ * db_get_vimkim() -
+ * return :
+ * value(in):
+ */
+const int
+db_get_vimkim_size (const DB_VALUE * value)
+{
+#if defined (API_ACTIVE_CHECKS)
+  CHECK_1ARG_ZERO (value);
+#endif
+
+  assert (value->domain.general_info.type == DB_TYPE_VIMKIM);
+
+  return value->data.vector.length;
 }
 
 /*
@@ -1070,14 +1088,16 @@ db_make_null (DB_VALUE * value)
  * num(in):
  */
 int
-db_make_vimkim (DB_VALUE * value, const int num)
+db_make_vimkim (DB_VALUE * value, const float *buf, const int size)
 {
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_ERROR (value);
 #endif
 
   value->domain.general_info.type = DB_TYPE_VIMKIM;
-  value->data.i = num;
+  value->data.vector.buf = buf;
+  value->data.vector.length = size;
+
   value->domain.general_info.is_null = 0;
   value->need_clear = false;
 
