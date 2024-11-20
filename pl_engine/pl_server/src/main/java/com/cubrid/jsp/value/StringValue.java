@@ -40,6 +40,10 @@ import java.sql.Timestamp;
 
 public class StringValue extends Value {
 
+    protected String getTypeName() {
+        return TYPE_NAME_STRING;
+    }
+
     private String value;
 
     public StringValue(String value) {
