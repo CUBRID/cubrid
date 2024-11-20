@@ -2067,15 +2067,16 @@ check_execute_authorization_by_query (const MOP sp_obj)
 {
   int error = NO_ERROR, save;
   const char *query = "SELECT [au] FROM " CT_CLASSAUTH_NAME
-		      " [au] WHERE [object_type] = ? and [auth_type] = 'EXECUTE' and [object_of] = ?";
+		      " [au] WHERE [object_type] = ? and [auth_type] = 'EXECUTE' and [object_of] = ? and [grantee] = ?";
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
-  DB_VALUE val[2];
+  DB_VALUE val[3];
   int stmt_id;
   int cnt = 0;
 
   db_make_null (&val[0]);
   db_make_null (&val[1]);
+  db_make_null (&val[2]);
 
   /* Disable the checking for internal authorization object access */
   AU_DISABLE (save);
@@ -2102,8 +2103,9 @@ check_execute_authorization_by_query (const MOP sp_obj)
 
   db_make_int (&val[0], (int) DB_OBJECT_PROCEDURE);
   db_make_object (&val[1], sp_obj);
+  db_make_object (&val[2], Au_user);
 
-  error = db_push_values (session, 2, val);
+  error = db_push_values (session, 3, val);
   if (error != NO_ERROR)
     {
       goto release;
@@ -2124,6 +2126,7 @@ release:
     }
   pr_clear_value (&val[0]);
   pr_clear_value (&val[1]);
+  pr_clear_value (&val[2]);
 
   AU_ENABLE (save);
 
