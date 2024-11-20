@@ -269,9 +269,22 @@ public class DateTimeParser {
         }
     }
 
+    private static int getCurrentYear() {
+        ZoneOffset timezone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+        return ZonedDateTime.now(timezone).getYear();
+    }
+
     private static LocalDate parseDateFragment(String s) {
 
         s = s.trim();
+
+        if (s.split("/").length == 2) {
+            // s can be of the form MM/dd (year omitted)
+            s = s + "/" + getCurrentYear();
+        } else if (s.split("-").length == 2) {
+            // s can be of the form MM-dd (year omitted)
+            s = getCurrentYear() + "-" + s;
+        }
 
         int i = 0;
         for (SimpleDateFormat f : dateFormats) {

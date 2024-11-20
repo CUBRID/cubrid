@@ -41,6 +41,11 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class OidValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_OID;
+    }
+
     private SOID oidValue = null;
     private CUBRIDOID oidObject = null;
 

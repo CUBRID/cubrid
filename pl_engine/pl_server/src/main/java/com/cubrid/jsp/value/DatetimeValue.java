@@ -39,6 +39,11 @@ import java.sql.Timestamp;
 import java.util.Calendar;
 
 public class DatetimeValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_DATETIME;
+    }
+
     private Timestamp timestamp;
 
     public DatetimeValue(int year, int mon, int day, int hour, int min, int sec, int msec)

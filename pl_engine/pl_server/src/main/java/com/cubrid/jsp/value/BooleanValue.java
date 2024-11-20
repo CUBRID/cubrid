@@ -34,6 +34,11 @@ package com.cubrid.jsp.value;
 import com.cubrid.jsp.exception.TypeMismatchException;
 
 public class BooleanValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_BOOLEAN;
+    }
+
     private byte value = 0;
 
     public BooleanValue(boolean b) {
