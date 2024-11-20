@@ -108,6 +108,14 @@ enum parallel_type
 };
 typedef enum parallel_type PARALLEL_TYPE;
 
+enum px_status
+{
+  PX_ERR_FAILED = -1,
+  PX_DONE = 0,
+  PX_PROGRESS
+};
+typedef enum px_status PX_STATUS;
+
 typedef struct file_contents FILE_CONTENTS;
 struct file_contents
 {				/* node of the file_contents linked list */
@@ -179,10 +187,14 @@ struct sort_param
   /* support parallelism */
   int px_max_index;
   int px_index;
-  bool px_status;
+  PX_STATUS px_status;
   int px_result_file_idx;
   int px_tran_index;
   SORT_PARALLEL_TYPE px_type;
+#if defined(SERVER_MODE)
+  pthread_mutex_t *px_mtx;		/* px_status mutex */
+  pthread_cond_t *complete_cond;	/* complete condition */
+#endif
 };
 
 typedef struct sort_rec_list SORT_REC_LIST;
@@ -1369,6 +1381,10 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   /* for parallel sort */
   SORT_PARAM px_sort_param[SORT_MAX_PARALLEL];	/* TO_DO : need dynamic alloc */
   int parallel_num = 1;		/* TO_DO : depending on the number of pages in the temp file */
+#if defined(SERVER_MODE)
+  pthread_mutex_t px_mtx;	/* px_status mutex */
+  pthread_cond_t complete_cond;	/* complete condition */
+#endif
 
   thread_set_sort_stats_active (thread_p, true);
 
@@ -1383,6 +1399,25 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (SORT_PARAM));
       return error;
     }
+
+#if defined(SERVER_MODE)
+  if (pthread_mutex_init (&px_mtx, NULL) != 0)
+    {
+      error = ER_CSS_PTHREAD_MUTEX_INIT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      free_and_init (sort_param);
+      return error;
+    }
+  if (pthread_cond_init (&complete_cond, NULL) != 0)
+    {
+      error = ER_CSS_PTHREAD_COND_INIT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      free_and_init (sort_param);
+      return error;
+    }
+  sort_param->px_mtx = &px_mtx;
+  sort_param->complete_cond = &complete_cond;
+#endif /* SERVER_MODE */
 
   sort_param->cmp_fn = cmp_fn;
   sort_param->cmp_arg = cmp_arg;
@@ -1506,26 +1541,33 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       // *INDENT-ON*
 
       /* wait for threads */
-      /* TO_DO : no busy wait. need to block and wake up */
-      int done;
-      do
+      pthread_mutex_lock (sort_param->px_mtx);
+      while (1)
 	{
-	  thread_sleep (10);
-	  done = true;
+	  int done = true;
 	  for (int i = 0; i < parallel_num; i++)
 	    {
-	      if (px_sort_param[i].px_status != 1)
+	      if (px_sort_param[i].px_status == PX_PROGRESS)
 		{
 		  done = false;
 		  break;
+		}
+	      else if (px_sort_param[i].px_status == PX_ERR_FAILED)
+		{
+		  error = ER_FAILED;
 		}
 	    }
 	  if (done)
 	    {
 	      break;
 	    }
+	  pthread_cond_wait (sort_param->complete_cond, sort_param->px_mtx);
 	}
-      while (1);
+      pthread_mutex_unlock (sort_param->px_mtx);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
 
       error = sort_end_parallelism (thread_p, px_sort_param, sort_param, parallel_num);
       if (error != NO_ERROR)
@@ -1545,6 +1587,11 @@ cleanup:
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_SORT_END (sort_param->total_numrecs, error);
 #endif /* ENABLE_SYSTEMTAP */
+
+#if defined(SERVER_MODE)
+  pthread_mutex_destroy (&px_mtx);
+  pthread_cond_destroy (&complete_cond);
+#endif
 
   /* free sort_param */
   if (parallel_num > 1)
@@ -1586,16 +1633,16 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
       /* open splitted temp file for read */
       if (qfile_open_list_scan (sort_info_p->input_file, &t_scan_id) != NO_ERROR)
 	{
-	  sort_param->px_status = -1;
-	  return;
+	  sort_param->px_status = PX_ERR_FAILED;
+	  goto cleanup;
 	}
       sort_info_p->s_id->s_id = &t_scan_id;
     }
   else
     {
       /* Not implemented yet */
-      sort_param->px_status = -1;
-      return;
+      sort_param->px_status = PX_ERR_FAILED;
+      goto cleanup;
     }
 
   sort_listfile_internal (&thread_ref, sort_param);
@@ -1610,13 +1657,17 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
   else
     {
       /* Not implemented yet */
-      sort_param->px_status = -1;
-      return;
+      sort_param->px_status = PX_ERR_FAILED;
+      goto cleanup;
     }
 
   /* TO_DO : status enum */
-  sort_param->px_status = 1;
+  pthread_mutex_lock(sort_param->px_mtx);
+  sort_param->px_status = PX_DONE;
+  pthread_cond_signal(sort_param->complete_cond);
+  pthread_mutex_unlock(sort_param->px_mtx);
 
+cleanup:
   thread_p->pop_resource_tracks ();
 }
 // *INDENT-ON*
@@ -4225,7 +4276,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	}
 
       /* init px variable */
-      px_sort_param[i].px_status = 0;
+      px_sort_param[i].px_status = PX_PROGRESS;
       px_sort_param[i].px_max_index = parallel_num;
       px_sort_param[i].px_index = i + 1;
       px_sort_param[i].px_result_file_idx = 0;
