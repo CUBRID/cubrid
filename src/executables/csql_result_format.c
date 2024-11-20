@@ -1472,9 +1472,24 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	}
       break;
     case DB_TYPE_VIMKIM:
-      result =
-	bigint_to_string (db_get_vimkim (value), default_int_profile.fieldwidth, default_int_profile.leadingzeros,
-			  default_int_profile.leadingsymbol, default_int_profile.commas, default_int_profile.format);
+	{
+	  const float * vimkim = db_get_vimkim (value);
+	  const int vimkim_size = db_get_vimkim_size (value);
+
+	  
+	  std::ostringstream oss;
+	  oss << "[";
+
+	  // Add elements to the string stream
+	  for (int i = 0; i < vimkim_size; ++i) {
+	      if (i > 0) {
+		  oss << ", ";
+	      }
+	      oss << vimkim[i];
+	  }
+	  oss << "]";
+	  result = strdup(oss.str().c_str());
+	}
       if (result)
 	{
 	  len = strlen (result);
