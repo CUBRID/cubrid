@@ -22,6 +22,7 @@
  *                      the disk representation.
  */
 
+#include "error_code.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -422,6 +423,9 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_null (DB_VALUE * value1, DB_VALUE * val
 
 
 static int mr_setval_vimkim (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_data_lengthmem_vimkim (void *memptr, TP_DOMAIN * domain, int disk);
+static int mr_data_lengthval_vimkim (DB_VALUE * value, int disk);
+static void mr_data_readmem_vimkim (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size);
 static int mr_data_writeval_vimkim (OR_BUF * buf, DB_VALUE * value);
 static int mr_data_readval_vimkim (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 				int copy_buf_len);
@@ -984,26 +988,27 @@ PR_TYPE tp_Null = {
 
 PR_TYPE *tp_Type_null = &tp_Null;
 
+// TODO: VIMKIM study args
 PR_TYPE tp_Vimkim = {
-  "vimkim", DB_TYPE_VIMKIM, 0, sizeof (int), sizeof (int), 4,
-  mr_initmem_int,
-  mr_initval_int,
-  mr_setmem_int,
-  mr_getmem_int,
+  "vimkim", DB_TYPE_VIMKIM, 1, sizeof(const char *), 0, 1,
+  NULL,				
+  NULL,				
+  NULL,				
+  NULL,				
   mr_setval_vimkim,
-  NULL,				/* data_lengthmem */
-  NULL,				/* data_lengthval */
-  mr_data_writemem_int,
-  mr_data_readmem_int,
+  mr_data_lengthmem_vimkim,
+  mr_data_lengthval_vimkim,
+  NULL,				
+  mr_data_readmem_vimkim,
   mr_data_writeval_vimkim,
   mr_data_readval_vimkim,
-  NULL,				/* index_lengthmem */
-  NULL,				/* index_lengthval */
-  mr_index_writeval_int,
-  mr_index_readval_int,
-  mr_index_cmpdisk_int,
-  NULL,				/* freemem */
-  mr_data_cmpdisk_int,
+  NULL,		
+  NULL,	
+  NULL,
+  NULL,
+  NULL,
+  NULL,	
+  NULL,
   mr_cmpval_vimkim
 };
 
@@ -2435,60 +2440,219 @@ mr_cmpval_null (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 /*
  * TYPE VIMKIM
  *
- * Your basic 32 bit signed integral value, named vimkim for prototype research.
- * At the storage level, we don't really care whether it is signed or unsigned.
  */
 
-static int
-mr_setval_vimkim (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+static void
+mr_data_readmem_vimkim (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 {
-  if (src && !DB_IS_NULL (src))
+  int mem_length, padding;
+  int rc;
+
+  if (mem == NULL)
     {
-      return db_make_vimkim (dest, db_get_vimkim (src));
+      assert(false);
+      /*
+       * If we passed in a size, then use it.  Otherwise, determine the
+       * size from the domain.
+       */
+      if (size > 0)
+	{
+	  or_advance (buf, size);
+	}
+      else
+	{
+	  mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
+	  or_advance (buf, mem_length);
+	}
     }
   else
     {
+      size = or_get_int (buf, &rc);
+      mem_length = size * sizeof(float);
+
+      or_get_data (buf, (char *) mem, mem_length);
+    }
+}
+
+
+// TODO: VIMKIM it must deepcopy, not just shallow copy
+static int
+mr_setval_vimkim (DB_VALUE *dest, const DB_VALUE *src, bool copy)
+{
+  // Initialize dest value to default if src is NULL or contains NULL
+  if (src == NULL || DB_IS_NULL (src))
+    {
       return db_value_domain_init (dest, DB_TYPE_VIMKIM, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
+
+  // Get the size of the float array from the source
+  int src_size = db_get_vimkim_size (src);
+
+  // Allocate memory for the float array in dest
+  float *new_array = (float *) malloc (src_size * sizeof (float));
+  if (new_array == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY; // Error code for memory allocation failure
+    }
+
+  // Copy the float array from src to the newly allocated array
+  memcpy (new_array, db_get_vimkim (src), src_size * sizeof (float));
+
+  // Use db_make_vimkim to set the value in dest with the new deep-copied array
+  int result = db_make_vimkim (dest, new_array, src_size);
+
+  if (result != NO_ERROR)
+    {
+      free (new_array); // Free the allocated memory if db_make_vimkim fails
+      return result;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+mr_data_lengthmem_vimkim (void *memptr, TP_DOMAIN * domain, int disk)
+{
+  char **mem, *cur;
+  int len = 0;
+
+  if (!disk)
+    {
+      return sizeof(float *);
+    }
+
+  if (memptr == NULL) {
+      assert(false);
+  }
+
+  assert(false);
+
+  return len;
+}
+
+static int
+mr_data_lengthval_vimkim (DB_VALUE * value, int disk)
+{
+  int size = value->data.vector.length;
+  if (size == 0) assert(false);
+
+  return sizeof(int) + size * sizeof(float);
 }
 
 static int
 mr_data_writeval_vimkim (OR_BUF * buf, DB_VALUE * value)
 {
-  return or_put_int (buf, db_get_vimkim (value));
+
+  // Validate input parameters
+  if (buf == NULL || value == NULL)
+    {
+      assert(false);
+    }
+
+  int rc = NO_ERROR;
+
+  // Get the vector and its size from the DB_VALUE
+  const float *vector = db_get_vimkim (value);
+  const int size = db_get_vimkim_size (value);
+
+  // Check if the vector is NULL or size is invalid
+  if (vector == NULL || size <= 0)
+    {
+      assert(false);
+    }
+
+  // Write the size of the vector to the buffer
+  rc = or_put_int (buf, size);
+  if (rc != NO_ERROR)
+    {
+      assert(false);
+    }
+
+  // Write the vector data to the buffer
+  rc = or_put_data (buf, (const char *)vector, size * sizeof (float));
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  return rc; // Return NO_ERROR if all operations succeed
 }
+
 
 static int
-mr_data_readval_vimkim (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-		     int copy_buf_len)
+mr_data_readval_vimkim (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf, int copy_buf_len)
 {
-  int temp_int, rc = NO_ERROR;
+  if (buf == NULL || value == NULL)
+    {
+      assert(false);
+    }
 
-  if (value == NULL)
+  int rc = NO_ERROR;
+  float *vector = NULL;
+  int vector_size = 0;
+
+  // Read the vector size from the buffer
+  vector_size = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
     {
-      rc = or_advance (buf, tp_Integer.disksize);
+      assert(false);
+      return rc; // Return immediately on error
     }
-  else
+
+  // Allocate memory for the vector
+  vector = (float *) malloc (vector_size * sizeof (float));
+  if (vector == NULL)
     {
-      temp_int = or_get_int (buf, &rc);
-      if (rc == NO_ERROR)
-	{
-	  db_make_vimkim (value, temp_int);
-	}
-      value->need_clear = false;
+      assert(false);
+      return ER_OUT_OF_VIRTUAL_MEMORY; // Return error if memory allocation fails
     }
+
+  // Read the vector data from the buffer
+  rc = or_get_data (buf, (char *) vector, vector_size * sizeof (float));
+  if (rc != NO_ERROR)
+    {
+      free (vector); // Free allocated memory on error
+      assert(false);
+      return rc;
+    }
+
+  // Create a DB_VALUE with the vector data
+  rc = db_make_vimkim (value, vector, vector_size);
+  if (rc != NO_ERROR)
+    {
+      free (vector); // Free allocated memory if db_make_vimkim fails
+      assert(false);
+      return rc;
+    }
+
+  // Set the need_clear flag to indicate ownership of the vector
+  value->need_clear = true;
+
   return rc;
 }
+
 
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_vimkim (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
-  int i1, i2;
 
-  i1 = db_get_vimkim (value1);
-  i2 = db_get_vimkim (value2);
+  const float * vector1 = db_get_vimkim (value1);
+  const int size1 = db_get_vimkim_size (value1);
 
-  return MR_CMP (i1, i2);
+  const float * vector2 = db_get_vimkim (value2);
+  const int size2 = db_get_vimkim_size (value2);
+
+  if (size1 != size2)
+  		{
+		  assert(false);
+  		}
+
+  for (int i = 0; i < size1; i++){
+      if (vector1[i] != vector2[i]){
+      		  return MR_CMP(vector1[i], vector2[i]);
+      	  }
+  }
+  return DB_EQ;
 }
 
 /*
