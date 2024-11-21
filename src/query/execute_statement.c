@@ -9628,6 +9628,11 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      query_flag |= TRAN_AUTO_COMMIT;
 	    }
 
+	  if (parser->flag.is_on_execute_prepared)
+	    {
+	      query_flag |= EXECUTE_PREPARED_MODE;
+	    }
+
 	  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
 	    {
 	      do_set_trace_to_query_flag (&query_flag);
@@ -10932,6 +10937,11 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (parser->flag.is_auto_commit)
 	{
 	  query_flag |= TRAN_AUTO_COMMIT;
+	}
+
+      if (parser->flag.is_on_execute_prepared)
+	{
+	  query_flag |= EXECUTE_PREPARED_MODE;
 	}
 
       if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
@@ -13971,6 +13981,11 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= TRAN_AUTO_COMMIT;
     }
 
+  if (parser->flag.is_on_execute_prepared)
+    {
+      query_flag |= EXECUTE_PREPARED_MODE;
+    }
+
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
     {
       do_set_trace_to_query_flag (&query_flag);
@@ -14939,6 +14954,12 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
     }
 
+
+  if (parser->flag.is_on_execute_prepared)
+    {
+      flag |= EXECUTE_PREPARED_MODE;
+    }
+
   err =
     execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id, flag, &clt_cache_time,
 		   &stmt->cache_time);
@@ -14999,6 +15020,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   query_flag = DEFAULT_EXEC_MODE;
+  query_flag |= EXECUTE_PREPARED_MODE;
 
   if (parser->flag.is_holdable)
     {
@@ -15055,8 +15077,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   err =
     execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		   parser->host_variables, &list_id, query_flag | EXECUTE_PREPARED_MODE, &clt_cache_time,
-		   &statement->cache_time);
+		   parser->host_variables, &list_id, query_flag, &clt_cache_time, &statement->cache_time);
 
   AU_RESTORE (au_save);
 
@@ -15184,6 +15205,11 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (parser->flag.dont_collect_exec_stats)
     {
       query_flag |= DONT_COLLECT_EXEC_STATS;
+    }
+
+  if (parser->flag.is_on_execute_prepared)
+    {
+      query_flag |= EXECUTE_PREPARED_MODE;
     }
 
   if (statement->flag.use_auto_commit)
@@ -17840,6 +17866,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  query_flag |= TRAN_AUTO_COMMIT;
 	}
 
+      if (parser->flag.is_on_execute_prepared)
+	{
+	  query_flag |= EXECUTE_PREPARED_MODE;
+	}
+
       if (ws_need_flush ())
 	{
 	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
@@ -17925,6 +17956,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (parser->flag.is_xasl_pinned_reference)
 	    {
 	      query_flag |= XASL_CACHE_PINNED_REFERENCE;
+	    }
+
+	  if (parser->flag.is_on_execute_prepared)
+	    {
+	      query_flag |= EXECUTE_PREPARED_MODE;
 	    }
 
 	  query_flag |= NOT_FROM_RESULT_CACHE;

@@ -238,6 +238,10 @@ namespace cubmethod
     // 0) clear qresult
     end_qresult ();
 
+    assert (is_prepared ());
+    int on_prepared_bk = m_session->parser->flag.is_on_execute_prepared;
+    m_session->parser->flag.is_on_execute_prepared = 1;
+
     if (m_prepare_flag & PREPARE_CALL)
       {
 	error = execute_internal_call (flag, max_col_size, max_row, bind_values, request.param_modes);
@@ -246,6 +250,8 @@ namespace cubmethod
       {
 	error = execute_internal (flag, max_col_size, max_row, bind_values);
       }
+
+    m_session->parser->flag.is_on_execute_prepared = on_prepared_bk;
 
     if (error == NO_ERROR)
       {

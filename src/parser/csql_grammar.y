@@ -26183,7 +26183,18 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
       else if (arg3->node_type == PT_HOST_VAR)
 	{
 	  date_lang = arg3;
-	}      
+	} 
+      else if(this_parser->flag.is_parsing_static_sql)
+        {
+           if (arg3->node_type == PT_EXPR && arg3->info.expr.op == PT_CAST)
+             {
+                PT_NODE * node = arg3->info.expr.cast_type; 
+                if(node->node_type == PT_DATA_TYPE && PT_IS_SIMPLE_CHAR_STRING_TYPE(node->type_enum))
+                  {  
+                    date_lang = arg3;
+                  }
+             }
+        }
 
       if (date_lang == NULL)
 	{

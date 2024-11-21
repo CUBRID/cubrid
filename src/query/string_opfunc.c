@@ -13186,11 +13186,11 @@ check_date_lang_on_prepared (const DB_VALUE * date_lang, INTL_LANG * date_lang_i
       if (lang_set_flag_from_lang (db_get_string (date_lang), 1, 1, &flag) == 0)
 	{
 	  *date_lang_id = lang_get_lang_id_from_flag (flag, has_user_format, &has_user_lang);
-#if 0  // ctshim
-           if (lang_set_flag_from_lang (lang_str, 1, 1, &flag))
-		{
-		  PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
-		}
+#if 0				// ctshim
+	  if (lang_set_flag_from_lang (lang_str, 1, 1, &flag))
+	    {
+	      PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
+	    }
 #endif
 	  return NO_ERROR;
 	}
@@ -13209,7 +13209,10 @@ check_date_lang_on_prepared (const DB_VALUE * date_lang, INTL_LANG * date_lang_i
       break;
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0); // TODO:  ctshim
+  // PT_ERRORmf2 (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
+  //                           pt_node_to_db_domain_name (value));  
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);	// TODO:  ctshim
   return ER_QSTR_INVALID_DATA_TYPE;
 }
 

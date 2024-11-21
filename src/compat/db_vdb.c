@@ -3026,6 +3026,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 
   new_session->parser->flag.is_holdable = session->parser->flag.is_holdable;
   new_session->parser->flag.is_auto_commit = session->parser->flag.is_auto_commit;
+  new_session->parser->flag.is_on_execute_prepared = 1;
   return db_execute_and_keep_statement_local (new_session, 1, result);
 }
 
