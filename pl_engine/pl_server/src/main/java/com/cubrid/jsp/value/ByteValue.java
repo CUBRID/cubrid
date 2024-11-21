@@ -35,6 +35,11 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import java.math.BigDecimal;
 
 public class ByteValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_BYTE;
+    }
+
     private byte value;
 
     public ByteValue(byte value) {
