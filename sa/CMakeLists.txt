@@ -185,6 +185,8 @@ set(CONNECTION_SOURCES
   )
 
 set(COMMUNICATION_SOURCES
+  ${COMMUNICATION_DIR}/network_callback_cl.cpp
+  ${COMMUNICATION_DIR}/network_callback_sr.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
   )
@@ -361,15 +363,13 @@ set(SP_SOURCES
   )
 
 set(SP_HEADERS
+  ${SP_DIR}/pl_connection.hpp
   ${SP_DIR}/pl_execution_stack_context.hpp
   ${SP_DIR}/pl_signature.hpp
 )
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
-  ${METHOD_DIR}/method_connection_cl.cpp
-  ${METHOD_DIR}/method_connection_sr.cpp
-  ${METHOD_DIR}/method_connection_java.cpp
   ${METHOD_DIR}/method_compile_def.cpp
   ${METHOD_DIR}/method_compile.cpp
   ${METHOD_DIR}/method_error.cpp
