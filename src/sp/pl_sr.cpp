@@ -53,8 +53,15 @@
 
 namespace cubpl
 {
+//////////////////////////////////////////////////////////////////////////
+// Declarations
+//////////////////////////////////////////////////////////////////////////
+
   class server_monitor_task;
 
+  /*********************************************************************
+   * server_manager - declaration
+   *********************************************************************/
   class server_manager final
   {
     public:
@@ -94,6 +101,10 @@ namespace cubpl
 #endif
   };
 
+  /*********************************************************************
+   * server_monitor_task - declaration
+   *********************************************************************/
+
 #if defined (SERVER_MODE)
   class server_monitor_task : public cubthread::entry_task
 #else
@@ -110,7 +121,7 @@ namespace cubpl
 	SERVER_MONITOR_STATE_UNKNOWN
       };
 
-      server_monitor_task (const char *db_name);
+      server_monitor_task (server_manager *manager, const char *db_name);
       ~server_monitor_task ();
 
       server_monitor_task (const server_monitor_task &copy) = delete;	// Not CopyConstructible
@@ -138,6 +149,8 @@ namespace cubpl
       void do_check_state (bool hang_check);
       int do_check_connection ();
 
+      server_manager *m_manager;
+
       int m_pid;
       server_monitor_state m_state;
       std::string m_db_name;
@@ -152,16 +165,19 @@ namespace cubpl
   };
 
 //////////////////////////////////////////////////////////////////////////
-// Implementations
+// Definitions
 //////////////////////////////////////////////////////////////////////////
 
+  /*********************************************************************
+   * server_manager - definition
+   *********************************************************************/
   server_manager::server_manager (const char *db_name)
-    : m_connection_pool (new connection_pool (server_manager::CONNECTION_POOL_SIZE))
   {
-    m_server_monitor_task = new server_monitor_task (db_name);
+    m_server_monitor_task = new server_monitor_task (this, db_name);
 #if defined (SERVER_MODE)
     m_monitor_helper_daemon = nullptr;
 #endif
+    m_connection_pool = new connection_pool (server_manager::CONNECTION_POOL_SIZE, db_name, pl_server_port_from_info ());
   }
 
   server_manager::~server_manager ()
@@ -203,8 +219,12 @@ namespace cubpl
     return m_connection_pool;
   }
 
-  server_monitor_task::server_monitor_task (const char *db_name)
-    : m_pid (-1)
+  /*********************************************************************
+   * server_monitor_task - definition
+   *********************************************************************/
+  server_monitor_task::server_monitor_task (server_manager *manager, const char *db_name)
+    : m_manager (manager)
+    , m_pid (-1)
     , m_state (SERVER_MONITOR_STATE_INIT)
     , m_db_name (db_name)
     , m_binary_name ("cub_pl")
@@ -292,8 +312,13 @@ namespace cubpl
 	  }
       }
 
-    // TODO: bootstrap the PL server
+    // bootstrap the PL server
 
+
+    // re-initialize connection pool
+    m_manager->get_connection_pool ()->increment_epoch ();
+
+    // notify server is ready
     m_state = SERVER_MONITOR_STATE_RUNNING;
     m_monitor_cv.notify_all();
   }
@@ -343,11 +368,12 @@ namespace cubpl
   }
 }
 
-static cubpl::server_manager *pl_server_manager = nullptr;
-
 //////////////////////////////////////////////////////////////////////////
 // High Level API for PL server module
 //////////////////////////////////////////////////////////////////////////
+
+static cubpl::server_manager *pl_server_manager = nullptr;
+
 void
 pl_server_init (const char *db_name)
 {

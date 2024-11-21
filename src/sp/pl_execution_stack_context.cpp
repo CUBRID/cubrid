@@ -53,8 +53,7 @@ namespace cubpl
 	// retire connection
 	if (m_connection)
 	  {
-	    connection *conn = std::move (m_connection);
-	    get_connection_pool ()->retire (conn, false);
+	    m_connection.reset ();
 	  }
       }
 
@@ -148,13 +147,16 @@ namespace cubpl
     m_stack_cursor_id.clear ();
   }
 
-  connection *
+  connection_view &
   execution_stack::get_connection ()
   {
     if (m_connection == nullptr)
       {
-	cubpl::connection_pool *pool = get_connection_pool ();
-	m_connection = pool->claim ();
+	connection_pool *pool = get_connection_pool ();
+	if (pool)
+	  {
+	    m_connection = pool->claim ();
+	  }
       }
 
     return m_connection;

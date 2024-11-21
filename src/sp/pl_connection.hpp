@@ -30,30 +30,42 @@
 #include <atomic>
 #include <queue>
 #include <mutex>
+#include <memory>
 
 #include "porting.h" // SOCKET
 
 #include "error_code.h"
 #include "mem_block.hpp"
+#include "packer.hpp"
+#include "network_callback_sr.hpp"
 
 namespace cubthread
 {
   class entry;
 }
 
+using pl_callback_func = std::function <int ()>;
+using pl_callback_func_with_sock = std::function <int (SOCKET socket, cubmem::block &)>;
+
 namespace cubpl
 {
-  using xs_callback_func = std::function <int (cubmem::block &)>;
-  using xs_callback_func_with_sock = std::function <int (SOCKET socket, cubmem::block &)>;
-
+  //////////////////////////////////////////////////////////////////////////
+  // Declarations
+  //////////////////////////////////////////////////////////////////////////
   // forward declaration
   class connection;
 
+  using connection_view = std::unique_ptr<connection, std::function<void (connection *)>>;
+
+  /*********************************************************************
+   * connection_pool - declaration
+   *********************************************************************/
   class connection_pool
   {
     public:
       connection_pool () = delete;
       explicit connection_pool (int pool_size);
+      explicit connection_pool (int pool_size, const std::string &db_name, int db_port);
       ~connection_pool ();
 
       connection_pool (connection_pool &&other) = delete; // Not MoveConstructible
@@ -62,26 +74,42 @@ namespace cubpl
       connection_pool &operator= (connection_pool &&other) = delete; // Not MoveAssignable
       connection_pool &operator= (const connection_pool &copy) = delete; // Not CopyAssignable
 
-      connection *claim ();
-      void retire (connection *&claimed, bool kill);
+      connection_view claim ();
+      void retire (connection *claimed);
 
-      int max_size () const;
+      void increment_epoch ();
 
-      int get_serial_val ()
-      {
-	return m_serial_val.load ();
-      }
+      int get_pool_size () const;
+      int get_epoch () const;
+
+      const char *get_db_name () const;
+      int get_db_port () const;
 
     private:
-      int m_pool_size;
+      void create_new_connection (int index);
+      connection_view get_connection_view (int index);
+
+      void initialize_pool ();
+      void cleanup_pool ();
+
+      std::vector <connection *> m_pool;
+      std::atomic<int> m_epoch; // Whenever PL server is restarted, server_manager increments this value
+
+      int m_min_conn_size; // minimum connection size
+      int m_inc_conn_size; // increment connection size for lazy initialization
+
+      // for connection
+      std::string m_db_name;
+      int m_db_port;
 
       // blocking queue
-      std::queue <connection *> m_queue;
+      std::queue <int> m_queue;
       std::mutex m_mutex;
-
-      std::atomic<int> m_serial_val; // if PL server is restarted, this value is incremented
   };
 
+  /*********************************************************************
+   * connection - declaration
+   *********************************************************************/
   class connection
   {
       friend connection_pool;
@@ -96,54 +124,46 @@ namespace cubpl
       connection (connection &&c) = delete;
       connection &operator= (connection &&other) = delete;
 
-      bool is_valid ();
+      bool is_connected () const;
+      bool is_valid () const;
 
-      SOCKET get_socket ();
+      int get_index () const;
 
-    private:
-      explicit connection (connection_pool *pool, SOCKET socket, int serial_val);
+      int send_buffer (const cubmem::block &mem);
 
-      connection_pool *m_pool;
-      SOCKET m_socket;
-      int m_serial_val; // see connection_pool::m_serial_val
-  };
+      int receive_buffer (cubmem::block &b); // simplified version
+      int receive_buffer (cubmem::block &b, const pl_callback_func *interrupt_func, int timeout_ms);
 
-  //////////////////////////////////////////////////////////////////////////
-  // Interface to communicate with PL server
-  //////////////////////////////////////////////////////////////////////////
-  
-
-
-  //////////////////////////////////////////////////////////////////////////
-  // Interface to communicate with CAS
-  //////////////////////////////////////////////////////////////////////////
-  int xs_receive (cubthread::entry *thread_p, const xs_callback_func &func);
-  int xs_receive (cubthread::entry *thread_p, SOCKET socket, const xs_callback_func_with_sock &func);
-  int xs_send (cubthread::entry *thread_p, const cubmem::extensible_block &mem);
-
-  template <typename ... Args>
-  int xs_send_args (cubthread::entry *thread_p, Args &&... args)
-  {
-    const cubmem::extensible_block b = std::move (mcon_pack_data (std::forward<Args> (args)...));
-    return xs_send (thread_p, b);
-  }
-
-  template <typename ... Args>
-  int xs_send_and_receive (cubthread::entry *thread_p, const xs_callback_func &func, Args &&... args)
-  {
-    int error_code = NO_ERROR;
-
-    error_code = xs_send_args (thread_p, std::forward<Args> (args)...);
-    if (error_code != NO_ERROR)
+      template <typename ... Args>
+      int send_buffer_args (Args &&... args)
       {
-	return error_code;
+	cubmem::block b = pack_data_block (std::forward<Args> (args)...);
+	int status = send_buffer (b);
+	if (b.is_valid ())
+	  {
+	    delete [] b.ptr;
+	    b.ptr = NULL;
+	    b.dim = 0;
+	  }
+	return status;
       }
 
-    return xs_receive (thread_p, func);
-  }
+    private:
+      explicit connection (connection_pool *pool, int index);
+
+      void reconnect ();
+
+      SOCKET get_socket () const;
+
+      connection_pool *m_pool;
+      int m_index;
+      SOCKET m_socket;
+      int m_epoch; // see connection_pool::m_epoch
+  };
 }; // namespace cubpl
 
 using PL_CONNECTION_POOL = cubpl::connection_pool;
+using PL_CONNECTION_VIEW = cubpl::connection_view;
 using PL_CONNECTION = cubpl::connection;
 
 #endif // _PL_CONNECTION_POOL_HPP_
