@@ -30,7 +30,6 @@
 #include <unordered_map>
 #include <queue>
 
-#include "method_connection_cl.hpp"
 #include "method_error.hpp"
 #include "method_oid_handler.hpp"
 #include "method_query_handler.hpp"
@@ -80,6 +79,8 @@ namespace cubmethod
 
       oid_handler *get_oid_handler ();
 
+      std::queue <cubmem::extensible_block> &get_data_queue ();
+
     private:
       /* handle related to query */
       int end_transaction (packing_unpacker &unpacker);
@@ -114,6 +115,8 @@ namespace cubmethod
 
       std::vector<query_handler *> m_query_handlers;
       oid_handler *m_oid_handler;
+
+      std::queue <cubmem::extensible_block> m_data_queue;
   };
 
   //////////////////////////////////////////////////////////////////////////

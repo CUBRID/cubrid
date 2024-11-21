@@ -48,6 +48,7 @@
 
 #include "transaction_cl.h"
 #include "packer.hpp"		/* packing_packer */
+#include "network_callback_cl.hpp"
 #endif
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -124,7 +125,7 @@ method_dispatch (unsigned int rc, char *methoddata, int methoddata_size)
 
   if (error == NO_ERROR)
     {
-      cubmethod::mcon_set_connection_info (depth - 1, rc);
+      xs_set_conn_info (depth - 1, rc);
       error = method_dispatch_internal (unpacker);
     }
 
@@ -146,8 +147,8 @@ method_error (unsigned int rc, int error_id)
   int error = NO_ERROR;
   tran_begin_libcas_function();
   int depth = tran_get_libcas_depth ();
-  cubmethod::mcon_set_connection_info (depth - 1, rc);
-  error = cubmethod::mcon_send_data_to_server (METHOD_ERROR, error_id);
+  xs_set_conn_info (depth - 1, rc);
+  error = xs_send_queue (METHOD_ERROR, error_id);
   tran_end_libcas_function();
   return error;
 }
@@ -264,7 +265,7 @@ method_invoke_builtin (packing_unpacker &unpacker, DB_VALUE &result)
       if (error == NO_ERROR)
 	{
 	  /* send a result value to server */
-	  error = cubmethod::mcon_send_data_to_server (METHOD_SUCCESS, result);
+	  error = xs_send_queue (METHOD_SUCCESS, result);
 	}
     }
   else
