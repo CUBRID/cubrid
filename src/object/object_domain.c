@@ -7119,12 +7119,6 @@ float* parseFloatArray(const std::string& input, int& outSize) {
         }
     }
 
-    printf("%d\n", (int)temp.size());
-    for (float f : temp) {
-	printf("%f\n", f);
-    }
-    printf("\n");
-
     // Allocate a dynamic array and copy values from the vector
     outSize = temp.size();
     float* result(new float[outSize]);
@@ -7473,14 +7467,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
     }
 
-  float * vimkim = new float[6];
-  vimkim[0] = 1.0;
-  vimkim[1] = 3.0;
-  vimkim[2] = 5.0;
-  vimkim[3] = 6.0;
-  vimkim[4] = 1.0;
-  vimkim[5] = 2.0;
-
   switch (desired_type)
     {
     case DB_TYPE_SHORT:
@@ -7586,20 +7572,15 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     case DB_TYPE_VIMKIM:
       switch (original_type)
 	{
-	  case DB_TYPE_INTEGER:
-	    // todo: memory leak
-	    db_make_vimkim(target, vimkim, 6);
-	    break;
 	  case DB_TYPE_CHAR:
 	      {
-	    const char *str = db_get_string(src);
+		const char *str = db_get_string(src);
 
-	      int size;
-	      auto farray = parseFloatArray(std::string(str), size);
+		int size;
+		auto farray = parseFloatArray(std::string(str), size);
 
-
-	      db_make_vimkim(target, farray, (int)size);
-	    break;
+		db_make_vimkim(target, farray, (int)size);
+		break;
 	      }
 	  default:
 	    status = DOMAIN_INCOMPATIBLE;
