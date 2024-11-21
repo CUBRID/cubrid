@@ -39,6 +39,11 @@ import java.sql.Timestamp;
 import java.util.Calendar;
 
 public class TimestampValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_TIMESTAMP;
+    }
+
     private Timestamp timestamp;
 
     public TimestampValue(int year, int mon, int day, int hour, int min, int sec)

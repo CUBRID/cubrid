@@ -38,6 +38,11 @@ import java.sql.Time;
 import java.sql.Timestamp;
 
 public class ShortValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_SHORT;
+    }
+
     private short value;
 
     public ShortValue(short value) {
