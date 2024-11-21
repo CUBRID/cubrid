@@ -16281,13 +16281,18 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  return ER_FAILED;
 	}
 
-      cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
-      if (cmp_with_zero != DB_GT && cmp_with_zero != DB_EQ)
-	{
-	  /* still want better error code */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-	  return ER_FAILED;
-	}
+      /*
+       * The below routine is skipped for consistance with PL/CSQL's execution
+       * because OFFSET will be processed with 0 for negative value
+       *
+       * cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
+       * if (cmp_with_zero != DB_GT && cmp_with_zero != DB_EQ)
+       * {
+       *   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+       *   return ER_FAILED;
+       * }
+       *
+       */
     }
 
   if (xasl->limit_row_count != NULL)
