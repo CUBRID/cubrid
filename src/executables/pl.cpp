@@ -64,8 +64,8 @@
 #include "databases_file.h"
 #include "object_representation.h"
 #include "method_struct_invoke.hpp"
-#include "method_connection_java.hpp"
-
+#include "pl_connection.hpp"
+#include "pl_comm.h"
 #include "pl_file.h"
 #include "pl_sr.h"
 
@@ -452,17 +452,15 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 static int
 pl_stop_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
 {
-  SOCKET socket = INVALID_SOCKET;
   int status = NO_ERROR;
 
-  socket = pl_connect_server (db_name.c_str (), pl_info.port);
-  if (socket != INVALID_SOCKET)
+  cubpl::connection_pool connection_pool (1, db_name, pl_info.port);
+  cubpl::connection_view cv = connection_pool.claim ();
+  if (cv->is_valid())
     {
       cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_TERMINATE_SERVER, 0);
-      status = mcon_send_data_to_java (socket, header);
-
+      cv->send_buffer_args (header);
       pl_reset_info (db_name.c_str ());
-      pl_disconnect_server (socket);
 
       if (pl_info.pid != -1 && !is_terminated_process (pl_info.pid))
 	{
@@ -479,48 +477,49 @@ static int
 pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
 {
   int status = NO_ERROR;
-  SOCKET socket = INVALID_SOCKET;
   cubmem::block buffer;
 
-  socket = pl_connect_server (db_name.c_str(), pl_info.port);
-  if (socket != INVALID_SOCKET)
+  cubpl::connection_pool connection_pool (1, db_name, pl_info.port);
+  cubpl::connection_view cv = connection_pool.claim ();
+  if (cv->is_valid())
     {
       cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_STATUS, 0);
-      status = mcon_send_data_to_java (socket, header);
+      status = cv->send_buffer_args (header);
       if (status != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      status = cubmethod::mcon_read_data_from_java (socket, buffer);
+      status = cv->receive_buffer (buffer);
       if (status != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      int num_args = 0;
-      PL_STATUS_INFO status_info;
-
-      status_info.pid = pl_info.pid;
-
-      packing_unpacker unpacker (buffer.ptr, buffer.dim);
-
-      unpacker.unpack_int (status_info.port);
-      unpacker.unpack_string (status_info.db_name);
-      unpacker.unpack_int (num_args);
-      std::string arg;
-      for (int i = 0; i < num_args; i++)
+      if (status == NO_ERROR)
 	{
-	  unpacker.unpack_string (arg);
-	  status_info.vm_args.push_back (arg);
-	}
+	  int num_args = 0;
+	  PL_STATUS_INFO status_info;
 
-      pl_dump_status (stdout, status_info);
+	  status_info.pid = pl_info.pid;
+
+	  packing_unpacker unpacker (buffer.ptr, buffer.dim);
+
+	  unpacker.unpack_int (status_info.port);
+	  unpacker.unpack_string (status_info.db_name);
+	  unpacker.unpack_int (num_args);
+	  std::string arg;
+	  for (int i = 0; i < num_args; i++)
+	    {
+	      unpacker.unpack_string (arg);
+	      status_info.vm_args.push_back (arg);
+	    }
+
+	  pl_dump_status (stdout, status_info);
+	}
     }
 
 exit:
-  pl_disconnect_server (socket);
-
   if (buffer.ptr)
     {
       free_and_init (buffer.ptr);
@@ -533,20 +532,21 @@ static int
 pl_ping_server (const int server_port, const char *db_name, char *buf)
 {
   int status = NO_ERROR;
-  SOCKET socket = INVALID_SOCKET;
   cubmem::block ping_blk {0, NULL};
 
-  socket = pl_connect_server (db_name, server_port);
-  if (socket != INVALID_SOCKET)
+  cubpl::connection_pool connection_pool (1, db_name, server_port);
+  cubpl::connection_view cv = connection_pool.claim ();
+
+  if (cv->is_valid())
     {
       cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_PING, 0);
-      status = mcon_send_data_to_java (socket, header);
+      status = cv->send_buffer_args (header);
       if (status != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      status = cubmethod::mcon_read_data_from_java (socket, ping_blk);
+      status = cv->receive_buffer (ping_blk);
       if (status != NO_ERROR)
 	{
 	  goto exit;
@@ -560,7 +560,6 @@ exit:
       delete [] ping_blk.ptr;
     }
 
-  pl_disconnect_server (socket);
   return er_errid ();
 }
 
