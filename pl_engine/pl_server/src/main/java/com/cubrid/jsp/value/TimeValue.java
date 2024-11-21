@@ -37,6 +37,11 @@ import java.sql.Time;
 import java.util.Calendar;
 
 public class TimeValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_TIME;
+    }
+
     private Time time;
 
     public TimeValue(int hour, int min, int sec) {

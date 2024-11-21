@@ -38,6 +38,11 @@ import java.sql.Time;
 import java.sql.Timestamp;
 
 public class DoubleValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_DOUBLE;
+    }
+
     private double value;
 
     public DoubleValue(double value) throws TypeMismatchException {

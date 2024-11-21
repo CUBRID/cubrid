@@ -166,6 +166,7 @@ const int REGU_VARIABLE_FETCH_NOT_CONST = 0x80;	/* is not constant */
 const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable at clone decache */
 const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
+const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
 
 class regu_variable_node
 {

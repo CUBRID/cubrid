@@ -38,6 +38,11 @@ import java.sql.Time;
 import java.sql.Timestamp;
 
 public class LongValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_BIGINT;
+    }
+
     private long value;
 
     public LongValue(long value) {

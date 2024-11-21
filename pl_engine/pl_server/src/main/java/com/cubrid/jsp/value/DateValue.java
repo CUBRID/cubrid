@@ -38,6 +38,11 @@ import java.sql.Timestamp;
 import java.util.Calendar;
 
 public class DateValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_DATE;
+    }
+
     private Date date;
 
     public DateValue(int year, int mon, int day) throws TypeMismatchException {
