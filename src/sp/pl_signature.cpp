@@ -90,18 +90,6 @@ namespace cubpl
       {
 	serializator.pack_int_array (arg_mode, arg_size);
 	serializator.pack_int_array (arg_type, arg_size);
-	serializator.pack_int_array (arg_default_value_size, arg_size);
-	for (int i = 0; i < arg_size; i++)
-	  {
-	    if (arg_default_value_size[i] > 0)
-	      {
-		serializator.pack_c_string (arg_default_value[i], arg_default_value_size[i]);
-	      }
-	    else
-	      {
-		// do not pack anything
-	      }
-	  }
       }
   }
 
@@ -120,22 +108,6 @@ namespace cubpl
 
 	deserializator.unpack_int_array (arg_type, cnt);
 	assert (arg_size == cnt);
-
-	deserializator.unpack_int_array (arg_default_value_size, cnt);
-	assert (arg_size == cnt);
-
-	for (int i = 0; i < arg_size; i++)
-	  {
-	    if (arg_default_value_size[i] > 0)
-	      {
-		arg_default_value[i] = (char *) db_private_alloc (NULL, sizeof (char) * (arg_default_value_size[i] + 1));
-		deserializator.unpack_c_string (arg_default_value[i], SP_MAX_DEFAULT_VALUE_LEN);
-	      }
-	    else
-	      {
-		arg_default_value[i] = nullptr;
-	      }
-	  }
       }
   }
 
@@ -147,20 +119,6 @@ namespace cubpl
       {
 	size += serializator.get_packed_int_vector_size (size, arg_size); // arg_mode
 	size += serializator.get_packed_int_vector_size (size, arg_size); // arg_type
-	size += serializator.get_packed_int_vector_size (size, arg_size); // arg_default_value_size
-
-	for (int i = 0; i < arg_size; i++)
-	  {
-	    if (arg_default_value_size[i] > 0)
-	      {
-		size += serializator.get_packed_c_string_size ((const char *) arg_default_value[i],
-			(size_t) arg_default_value_size[i], size);
-	      }
-	    else
-	      {
-		size += serializator.get_packed_c_string_size (EMPTY_STRING, 0, size);
-	      }
-	  }
       }
     return size;
   }
@@ -176,7 +134,6 @@ namespace cubpl
 	arg_type = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_default_value_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_default_value = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
-
 	for (int i = 0; i < num_args; i++)
 	  {
 	    arg_mode[i] = 0;

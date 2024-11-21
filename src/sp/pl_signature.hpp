@@ -53,8 +53,10 @@ namespace cubpl
     int arg_size;
     int *arg_mode;  // array of (IN|OUT|IN/OUT)
     int *arg_type;  // array of DB_TYPE
-    int   *arg_default_value_size; // -1: Non-optional, 0: NULL, else: optional
-    char **arg_default_value; // array of VARCHAR (256)
+
+    // Only used in runtime
+    int   *arg_default_value_size;
+    char **arg_default_value;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;

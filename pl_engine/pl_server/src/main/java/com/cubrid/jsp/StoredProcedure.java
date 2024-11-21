@@ -143,14 +143,23 @@ public class StoredProcedure {
     }
 
     public Object[] getResolved() {
+        if (args == null) {
+            return null;
+        }
+
         Object[] resolved = new Object[args.length];
         for (int i = 0; i < args.length; i++) {
             resolved[i] = args[i].getResolved();
         }
+
         return resolved;
     }
 
     private void checkArgs() throws TypeMismatchException {
+        if (args == null) {
+            return;
+        }
+
         Class<?>[] argsTypes = target.getArgsTypes();
         if (argsTypes.length != args.length) {
             throw new TypeMismatchException(
