@@ -29,6 +29,7 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
 namespace cubpl
 {
 //////////////////////////////////////////////////////////////////////////
@@ -85,7 +86,7 @@ namespace cubpl
 
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    execution_stack *stack = new (std::nothrow) execution_stack (thread_p);
+    execution_stack *stack = new execution_stack (thread_p);
     if (stack)
       {
 	m_stack_map [stack->get_id ()] = stack;
@@ -338,7 +339,7 @@ namespace cubpl
 	    qfile_update_qlist_count (thread_p, query_entry_p->list_id, 1);
 
 	    // store a new cursor in map
-	    cursor = new (std::nothrow) query_cursor (thread_p, query_entry_p, is_oid_included);
+	    cursor = new query_cursor (thread_p, query_entry_p, is_oid_included);
 	    m_cursor_map [query_id] = cursor;
 
 	    assert (cursor != nullptr);
