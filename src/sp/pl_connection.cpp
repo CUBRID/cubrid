@@ -341,11 +341,14 @@ namespace cubpl
   void
   connection::reconnect ()
   {
-    m_epoch = m_pool->get_epoch ();
     if (m_socket != INVALID_SOCKET)
       {
 	pl_disconnect_server (m_socket);
       }
     m_socket = pl_connect_server (m_pool->get_db_name (), m_pool->get_db_port ());
+    if (m_socket != INVALID_SOCKET)
+      {
+	m_epoch = m_pool->get_epoch ();
+      }
   }
 } // namespace cubpl
