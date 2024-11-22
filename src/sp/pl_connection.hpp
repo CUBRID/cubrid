@@ -60,7 +60,7 @@ namespace cubpl
   /*********************************************************************
    * connection_pool - declaration
    *********************************************************************/
-  class connection_pool
+  class EXPORT_IMPORT connection_pool
   {
     public:
       connection_pool () = delete;
@@ -110,7 +110,7 @@ namespace cubpl
   /*********************************************************************
    * connection - declaration
    *********************************************************************/
-  class connection
+  class EXPORT_IMPORT connection
   {
       friend connection_pool;
 

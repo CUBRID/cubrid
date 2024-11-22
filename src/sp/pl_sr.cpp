@@ -50,7 +50,6 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
 namespace cubpl
 {
 //////////////////////////////////////////////////////////////////////////
@@ -377,7 +376,10 @@ static cubpl::server_manager *pl_server_manager = nullptr;
 void
 pl_server_init (const char *db_name)
 {
-  assert (pl_server_manager == nullptr); // only init once
+  if (pl_server_manager != nullptr)
+    {
+      return;
+    }
 
   pl_server_manager = new cubpl::server_manager (db_name);
   pl_server_manager->start ();
