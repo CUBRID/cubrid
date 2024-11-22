@@ -278,9 +278,9 @@ namespace cubpl
   connection::receive_buffer (cubmem::block &b, const pl_callback_func *interrupt_func, int timeout_ms)
   {
     if (!is_valid ())
-    {
-        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, -1);  
-    }
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, -1);
+      }
 
     int res_size = 0;
     int nbytes = pl_readn_with_timeout (m_socket, (char *)&res_size, OR_INT_SIZE, timeout_ms);
