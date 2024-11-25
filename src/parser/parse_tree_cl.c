@@ -69,7 +69,7 @@
 #define MAX_STRING_SEGMENT_LENGTH 254
 #define DONT_PRT_LONG_STRING_LENGTH 256
 
-#define DEBUG_PT_APPLY_WALK true
+#define DEBUG_PT_APPLY_WALK false
 #if defined (DEBUG_PT_APPLY_WALK) && DEBUG_PT_APPLY_WALK
 
 int depth = -1;
