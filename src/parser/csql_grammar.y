@@ -109,8 +109,9 @@ extern int expecting_pl_lang_spec;
      ** 2: Display the contents of application of grammar rules in csql_grammar on the screen
      ** 3: Expression of both 1 and 2 above
      */
-#    define DBG_TRACE_LEVEL      0
+// #define DBG_TRACE_LEVEL      3
 #endif
+#define DBG_TRACE_LEVEL 3
 
 #if (DBG_TRACE_LEVEL == 1 || DBG_TRACE_LEVEL == 3) 
 #    define DBG_PRINT_TOKEN(token)            fprintf(stdout, " *** Token) [%s]\n", token);
@@ -138,6 +139,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define YYMAXDEPTH	1000000
 
 /* #define PARSER_DEBUG */
+#define PARSER_DEBUG 1
 
 #include "config.h"
 
@@ -1080,6 +1082,7 @@ static char *g_plcsql_text;
 %type <c2> sp_param_type
 %type <c2> primitive_type
 %type <c2> opt_prec_2
+%type <c2> opt_vector_2
 %type <c2> in_pred_operand
 %type <c2> opt_as_identifier_attr_name
 %type <c2> insert_assignment_list
@@ -1462,6 +1465,7 @@ static char *g_plcsql_text;
 %token VARYING
 %token VCLASS
 %token VIMKIM
+%token VECTOR
 %token VIEW
 %token WHEN
 %token WHENEVER
@@ -21678,6 +21682,40 @@ primitive_type
 			  }
 
 		DBG_PRINT}}
+	| VECTOR opt_vector_2
+		{{ DBG_TRACE_GRAMMAR(primitive_type, | VECTOR opt_vector_2 );
+    // hello world
+
+			container_2 ctn;
+			PT_TYPE_ENUM typ;
+            PT_NODE *dt;
+
+			dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			typ = PT_TYPE_VECTOR;
+
+            int dimension = 1000;
+            PT_NODE *vector_dimension = CONTAINER_AT_0 ($2);
+            if (dimension) {
+                dimension = vector_dimension->info.value.data_value.i;
+            }
+
+            PT_TYPE_ENUM element_type = PT_TYPE_FLOAT;
+			PT_NODE *pr_type_node = CONTAINER_AT_1 ($2);
+            if (pr_type_node) {
+                element_type = pr_type_node->type_enum;
+            }
+
+			if (dt)
+			  {
+			    dt->type_enum = typ;
+			    dt->info.data_type.vector_dimension = dimension;
+			    dt->info.data_type.vector_element_type = element_type;
+			  }
+
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
+			$$ = ctn;
+
+		DBG_PRINT}}
 	| NUMERIC opt_prec_2
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | NUMERIC opt_prec_2 );
 
@@ -21960,6 +21998,40 @@ opt_padding
 		{{ DBG_TRACE_GRAMMAR(opt_padding, | '(' unsigned_integer ')' );
 
 			$$ = NULL;
+
+		DBG_PRINT}}
+	;
+
+opt_vector_2
+	: /* empty */
+		{{ DBG_TRACE_GRAMMAR(opt_vector_2, : );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| '(' unsigned_integer ')'
+		{{ DBG_TRACE_GRAMMAR(unsigned_integer, | '(' unsigned_integer ')' );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $2, NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| '(' primitive_type ',' unsigned_integer ')'
+		{{ DBG_TRACE_GRAMMAR(opt_vector_2, | '(' primitive_type ',' unsigned_integer ')' );
+			container_2 ctn;
+
+            PT_NODE *node = parser_new_node (this_parser, PT_ATTR_DEF);
+            if (node)
+            {
+                node->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
+                node->data_type = CONTAINER_AT_1 ($2);
+            }
+
+			SET_CONTAINER_2 (ctn, $4, node); // the order must be 'dimension' and then 'element type'
+			$$ = ctn;
 
 		DBG_PRINT}}
 	;
