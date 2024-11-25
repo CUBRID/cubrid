@@ -99,7 +99,7 @@ extern int au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, 
 /*
 * drop a class, virtual class and procedure, or when changing the owner, all privileges are revoked.
 */
-extern int au_object_revoke_all_privileges (MOP obj_mop, MOP grantor_mop);
+extern int au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const char *unique_name);
 
 /*
 * when a user is deleted, all of their privileges are revoked.
