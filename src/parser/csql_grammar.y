@@ -111,7 +111,7 @@ extern int expecting_pl_lang_spec;
      */
 // #define DBG_TRACE_LEVEL      3
 #endif
-#define DBG_TRACE_LEVEL 2
+#define DBG_TRACE_LEVEL 0
 
 #if (DBG_TRACE_LEVEL == 1 || DBG_TRACE_LEVEL == 3) 
 #    define DBG_PRINT_TOKEN(token)            fprintf(stdout, " *** Token) [%s]\n", token);
@@ -139,7 +139,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define YYMAXDEPTH	1000000
 
 /* #define PARSER_DEBUG */
-#define PARSER_DEBUG 1
+// #define PARSER_DEBUG 1 // must be commented out. Even if it is set to 0, the debugging utils still function
 
 #include "config.h"
 
