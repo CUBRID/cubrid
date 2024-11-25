@@ -301,6 +301,8 @@ extern "C"
   extern bool db_is_json_value_type (DB_TYPE type);
   extern bool db_is_json_doc_type (DB_TYPE type);
 
+  extern const float *db_get_vimkim (const DB_VALUE * value);
+  extern int db_get_vimkim_size (const DB_VALUE * value);
   extern int db_get_int (const DB_VALUE * value);
   extern DB_C_SHORT db_get_short (const DB_VALUE * value);
   extern DB_BIGINT db_get_bigint (const DB_VALUE * value);
@@ -341,6 +343,7 @@ extern "C"
   extern JSON_DOC *db_get_json_document (const DB_VALUE * value);
 
   extern int db_make_null (DB_VALUE * value);
+  extern int db_make_vimkim (DB_VALUE * value, const float * buf, const int size);
   extern int db_make_int (DB_VALUE * value, const int num);
   extern int db_make_float (DB_VALUE * value, const DB_C_FLOAT num);
   extern int db_make_double (DB_VALUE * value, const DB_C_DOUBLE num);
