@@ -111,7 +111,7 @@ extern int expecting_pl_lang_spec;
      */
 // #define DBG_TRACE_LEVEL      3
 #endif
-#define DBG_TRACE_LEVEL 3
+#define DBG_TRACE_LEVEL 2
 
 #if (DBG_TRACE_LEVEL == 1 || DBG_TRACE_LEVEL == 3) 
 #    define DBG_PRINT_TOKEN(token)            fprintf(stdout, " *** Token) [%s]\n", token);
