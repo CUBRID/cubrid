@@ -27,7 +27,7 @@
 #include "porting_inline.hpp"
 
 STATIC_INLINE const float *db_get_vimkim (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE const int db_get_vimkim_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_vimkim_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -170,7 +170,7 @@ db_get_vimkim (const DB_VALUE * value)
  * return :
  * value(in):
  */
-const int
+int
 db_get_vimkim_size (const DB_VALUE * value)
 {
 #if defined (API_ACTIVE_CHECKS)
