@@ -69,12 +69,82 @@
 #define MAX_STRING_SEGMENT_LENGTH 254
 #define DONT_PRT_LONG_STRING_LENGTH 256
 
+#define DEBUG_PT_APPLY_WALK true
+#if defined (DEBUG_PT_APPLY_WALK) && DEBUG_PT_APPLY_WALK
+
+int depth = -1;
+
+#include <execinfo.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+char* getStackTrace() {
+    const int maxFrames = 100;
+    void* frames[maxFrames];
+    int frameCount = backtrace(frames, maxFrames);
+    char** symbols = backtrace_symbols(frames, frameCount);
+
+    if (!symbols) {
+        return strdup("Failed to capture stack trace.\n");
+    }
+
+    // Calculate the required buffer size
+    size_t bufferSize = 1; // For null terminator
+    for (int i = 0; i < frameCount; ++i) {
+        bufferSize += strlen(symbols[i]) + 1; // +1 for newline
+    }
+
+    // Allocate buffer
+    char* result = (char*)malloc(bufferSize);
+    if (!result) {
+        free(symbols);
+        return strdup("Memory allocation failed.\n");
+    }
+
+    result[0] = '\0'; // Initialize as an empty string
+
+    // Build the stack trace string
+    for (int i = 0; i < frameCount; ++i) {
+        strcat(result, symbols[i]);
+        strcat(result, "\n");
+    }
+
+    free(symbols);
+    return result;
+}
+
 #define PT_APPLY_WALK(parser, ptr, arg) do { \
          if((ptr))                           \
            {                                 \
-                (ptr) = pt_walk_private ((parser), (ptr), (arg)); \
+	     depth++; \
+	     printf("\n"); \
+	     if (depth == 0) { \
+		 printf("###############################\n"); \
+		 char *stackTrace = getStackTrace(); \
+		 printf("Stack Trace: %s\n", stackTrace); \
+		 free(stackTrace); \
+		 printf("###############################\n"); \
+	     } \
+	     for (int i = 0; i < depth; i++) printf("    "); \
+	     printf("At %s(), %s is:\n", __func__, #ptr); \
+	     for (int i = 0; i < depth; i++) { printf("    "); } \
+	     printf("%s", pt_show_node_type((ptr))); \
+	     auto res = pt_print_f[(ptr)->node_type]((parser), (ptr)); \
+	     if (res) { printf(" %s", res->bytes); } \
+	     printf("\n"); \
+	     (ptr) = pt_walk_private ((parser), (ptr), (arg)); \
+	     depth--; \
            }                                 \
       } while (0)
+#else
+#define PT_APPLY_WALK(parser, ptr, arg) do { \
+         if((ptr))                           \
+           {                                 \
+	      (ptr) = pt_walk_private ((parser), (ptr), (arg)); \
+           }                                 \
+      } while (0)
+#endif
 
 typedef struct pt_lambda_arg PT_LAMBDA_ARG;
 struct pt_lambda_arg
@@ -2015,6 +2085,8 @@ pt_init_one_statement_parser (PARSER_CONTEXT * parser, FILE * file)
 void
 pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no, int col_no, const char *msg, const char *context)
 {
+  printf("%s\n", msg);
+  assert(false);
   char *context_copy;
   char buf[MAX_PRINT_ERROR_CONTEXT_LENGTH + 1];
   PT_NODE *node;
@@ -4084,6 +4156,8 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "bigint";
     case PT_TYPE_SMALLINT:
       return "smallint";
+    case PT_TYPE_VECTOR:
+      return "vector";
     case PT_TYPE_NUMERIC:
       return "numeric";
     case PT_TYPE_FLOAT:
@@ -8543,6 +8617,15 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       break;
 
+    case PT_TYPE_VECTOR:
+      q = pt_append_nulstring (parser, q, pt_show_type_enum(p->type_enum));
+      if (p->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION
+	  || p->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE)
+	{
+	  sprintf (buf, "(%s,%d)", pt_show_type_enum(p->info.data_type.vector_element_type), p->info.data_type.vector_dimension);
+	  q = pt_append_nulstring (parser, q, buf);
+	}
+      break;
     case PT_TYPE_NUMERIC:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       if (p->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION

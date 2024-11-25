@@ -1089,6 +1089,7 @@ enum pt_type_enum
   /* primitive types */
   PT_TYPE_VIMKIM,
   PT_TYPE_INTEGER,
+  PT_TYPE_VECTOR,
   PT_TYPE_FLOAT,
   PT_TYPE_DOUBLE,
   PT_TYPE_SMALLINT,
@@ -2253,6 +2254,9 @@ struct pt_data_type_info
 				 * set, false otherwise (charset defaulted to that of the system) */
   PT_MISC_TYPE inout;		/* input or output method parameter */
   PARSER_VARCHAR *json_schema;
+
+  PT_TYPE_ENUM vector_element_type;
+  int vector_dimension;
 };
 
 /* DELETE */
