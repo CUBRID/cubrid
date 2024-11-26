@@ -39,6 +39,7 @@
 #include "thread_daemon.hpp"
 #endif
 
+#include "dbtype.h"
 #include "pl_comm.h"
 #include "pl_connection.hpp"
 #include "process_util.h"
@@ -47,6 +48,8 @@
 #include "release_string.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
+#include "method_struct_invoke.hpp"
+#include "method_struct_value.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -92,6 +95,7 @@ namespace cubpl
       connection_pool *get_connection_pool ();
 
     private:
+
       server_monitor_task *m_server_monitor_task;
       connection_pool *m_connection_pool;
 
@@ -132,11 +136,13 @@ namespace cubpl
 #if defined (SERVER_MODE)
       // called by daemon thread
       void execute (context_type &thread_ref) override;
-#endif
 
       // internal main routine
       // This function is called by daemon thread (SERVER_MODE) or main thread (SA_MODE)
       void do_monitor ();
+#else // SA MODE
+      void do_monitor ();
+#endif
 
       // wait until PL server is initialized
       void wait_for_ready ();
@@ -148,6 +154,11 @@ namespace cubpl
       void do_check_state (bool hang_check);
       int do_check_connection ();
 
+      /*
+      * do_bootstrap_request() - send a bootstrap request to PL server
+      */
+      int do_bootstrap_request ();
+
       server_manager *m_manager;
 
       int m_pid;
@@ -157,10 +168,29 @@ namespace cubpl
       std::string m_executable_path;
       const char *m_argv[3];
 
-      SOCKET m_system_socket;
+      connection_pool *m_sys_conn_pool;
 
       std::mutex m_monitor_mutex;
       std::condition_variable m_monitor_cv;
+  };
+
+  struct pl_ctx_params
+  {
+    int param_num;
+    int param_id;
+    DB_VALUE param_value;
+  };
+
+  struct bootstrap_request : public cubpacking::packable_object
+  {
+    std::vector <pl_ctx_params> static_params;
+
+    bootstrap_request ();
+    ~bootstrap_request ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
   };
 
 //////////////////////////////////////////////////////////////////////////
@@ -228,7 +258,7 @@ namespace cubpl
     , m_db_name (db_name)
     , m_binary_name ("cub_pl")
     , m_argv {m_binary_name.c_str (), m_db_name.c_str (), 0}
-    , m_system_socket {INVALID_SOCKET}
+    , m_sys_conn_pool {nullptr}
     , m_monitor_mutex {}
     , m_monitor_cv {}
   {
@@ -295,15 +325,19 @@ namespace cubpl
   void
   server_monitor_task::do_initialize ()
   {
+    int error = ER_FAILED;
     std::lock_guard<std::mutex> lock (m_monitor_mutex);
     // wait PL server is ready to accept connection (polling)
+
+    constexpr int MAX_FAIL_COUNT = 10;
     int fail_count = 0;
-    while (1)
+    while (fail_count < MAX_FAIL_COUNT)
       {
-	if (do_check_connection () != NO_ERROR)
+	error = do_check_connection ();
+	if (error != NO_ERROR)
 	  {
 	    fail_count++;
-	    sleep (1);
+	    (void) sleep (1);
 	  }
 	else
 	  {
@@ -311,14 +345,25 @@ namespace cubpl
 	  }
       }
 
-    // bootstrap the PL server
+    if (error == NO_ERROR)
+      {
+	error = do_bootstrap_request ();
+      }
 
+    if (error != NO_ERROR)
+      {
+	m_state = SERVER_MONITOR_STATE_UNKNOWN;
+	terminate_process (m_pid);
+      }
+    else
+      {
+	// re-initialize connection pool
+	m_manager->get_connection_pool ()->increment_epoch ();
 
-    // re-initialize connection pool
-    m_manager->get_connection_pool ()->increment_epoch ();
+	// notify server is ready
+	m_state = SERVER_MONITOR_STATE_RUNNING;
+      }
 
-    // notify server is ready
-    m_state = SERVER_MONITOR_STATE_RUNNING;
     m_monitor_cv.notify_all();
   }
 
@@ -350,22 +395,190 @@ namespace cubpl
   server_monitor_task::do_check_connection ()
   {
     int error = NO_ERROR;
-    if (m_system_socket == INVALID_SOCKET)
+
+    if (m_sys_conn_pool == nullptr)
       {
-	m_system_socket = pl_connect_server (m_db_name.c_str (), pl_server_port_from_info ());
+	m_sys_conn_pool = new connection_pool (5, m_db_name, pl_server_port_from_info (), true);
       }
 
-    error = pl_ping (m_system_socket);
+    cubmem::block ping_response;
+    connection_view cv = m_sys_conn_pool->claim ();
+    cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_PING, 0);
+
+    auto ping = [&] ()
+    {
+      int error = cv->send_buffer_args (header);
+      if (error == NO_ERROR)
+	{
+	  error = cv->receive_buffer (ping_response);
+	}
+      return error;
+    };
+
+    error = ping ();
     if (error != NO_ERROR)
       {
-	// retry ping
-	m_system_socket = pl_connect_server (m_db_name.c_str (), pl_server_port_from_info ());
-	error = pl_ping (m_system_socket);
+	// retry
+	error = ping ();
       }
+
+exit:
+    if (ping_response.is_valid ())
+      {
+	delete [] ping_response.ptr;
+	ping_response.ptr = NULL;
+	ping_response.dim = 0;
+      }
+
+    cv.reset ();
 
     return (error);
   }
-}
+
+  int
+  server_monitor_task::do_bootstrap_request ()
+  {
+    cubmem::block bootstrap_response;
+    cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0);
+    connection_view cv = m_sys_conn_pool->claim ();
+
+    int error = NO_ERROR;
+    if (cv->is_valid ())
+      {
+	bootstrap_request bootstrap_request;
+	error = cv->send_buffer_args (header, bootstrap_request);
+	if (error == NO_ERROR)
+	  {
+	    error = cv->receive_buffer (bootstrap_response);
+	  }
+      }
+
+    if (error == NO_ERROR && bootstrap_response.is_valid ())
+      {
+	packing_unpacker deserializator (bootstrap_response);
+	deserializator.unpack_int (error);
+      }
+
+    return error;
+  }
+
+  /*********************************************************************
+   * bootstrap_request - definition
+   *********************************************************************/
+  bootstrap_request::bootstrap_request ()
+    : static_params ()
+  {
+    const PARAM_ID PRM_ID_INTL_CHARSET = PRM_FIRST_ID; // dummy
+    std::vector<PARAM_ID> system_param_ids =
+    {
+      PRM_ID_INTL_CHARSET, //
+      PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE,
+      PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR,
+      PRM_ID_ORACLE_STYLE_EMPTY_STRING,
+      PRM_ID_TIMEZONE,
+      PRM_ID_INTL_DATE_LANG,
+      PRM_ID_INTL_NUMBER_LANG,
+      PRM_ID_INTL_COLLATION
+    };
+
+    static_params.resize (system_param_ids.size ());
+
+    int idx = 0;
+
+    for (PARAM_ID param_id : system_param_ids)
+      {
+	static_params[idx].param_num = idx;
+	static_params[idx].param_id = (int) param_id;
+
+	if (idx == 0)
+	  {
+	    // charset
+	    db_make_int (&static_params[idx].param_value, (int) lang_charset ());
+	  }
+	else if (PRM_IS_BOOLEAN (GET_PRM (param_id)))
+	  {
+	    int val = prm_get_bool_value (param_id) ? 1 : 0;
+	    db_make_int (&static_params[idx].param_value, val);
+	  }
+	else if (PRM_IS_STRING (GET_PRM (param_id)))
+	  {
+	    const char *val = prm_get_string_value (param_id);
+	    if (val == NULL)
+	      {
+		switch (param_id)
+		  {
+		  case PRM_ID_INTL_COLLATION:
+		    val = lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET));
+		    break;
+		  case PRM_ID_INTL_DATE_LANG:
+		  case PRM_ID_INTL_NUMBER_LANG:
+		    val = lang_get_Lang_name ();
+		    break;
+		  case PRM_ID_TIMEZONE:
+		    val = prm_get_string_value (PRM_ID_SERVER_TIMEZONE);
+		    break;
+		  default:
+		    /* do nothing */
+		    break;
+		  }
+	      }
+	    db_make_string (&static_params[idx].param_value, val);
+	  }
+	else
+	  {
+	    // not implemented yet
+	    assert (false);
+	  }
+	idx++;
+      }
+  }
+
+  bootstrap_request::~bootstrap_request ()
+  {
+    for (pl_ctx_params &param : static_params)
+      {
+	db_value_clear (&param.param_value);
+      }
+  }
+
+  void
+  bootstrap_request::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (static_params.size ());
+    cubmethod::dbvalue_java sp_val;
+    for (const pl_ctx_params &param : static_params)
+      {
+	serializator.pack_int (param.param_num);
+	serializator.pack_int (param.param_id);
+	sp_val.value = (DB_VALUE *) &param.param_value;
+	sp_val.pack (serializator);
+      }
+  }
+
+  void
+  bootstrap_request::unpack (cubpacking::unpacker &deserializator)
+  {
+    // do nothing
+  }
+
+  size_t
+  bootstrap_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // static_params.size ()
+
+    cubmethod::dbvalue_java sp_val;
+    for (const pl_ctx_params &param : static_params)
+      {
+	size += serializator.get_packed_int_size (size); // param.param_num
+	size += serializator.get_packed_int_size (size); // param.param_id
+	sp_val.value = (DB_VALUE *) &param.param_value;
+	size += sp_val.get_packed_size (serializator, size);
+      }
+
+    return size;
+  }
+
+} // namespace cubpl
 
 //////////////////////////////////////////////////////////////////////////
 // High Level API for PL server module
