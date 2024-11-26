@@ -1945,6 +1945,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 322 Table column '%1$s.%2$s' has not been defined
 323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 324 '%1$s' is not a record variable.
+325 The argument specifying the language must be a string literal.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

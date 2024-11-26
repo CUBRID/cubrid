@@ -1945,6 +1945,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 322 테이블 컬럼 '%1$s.%2$s'이 정의되지 않았습니다
 323 Stored procedure/function '%1$s' 이(가) OUT 또는 IN OUT 인수를 가지고 있습니다.
 324 '%1$s'은 레코드 변수가 아닙니다.
+325 언어를 지정하는 인수는 문자열 리터럴이어야 합니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
