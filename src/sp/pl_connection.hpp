@@ -65,7 +65,6 @@ namespace cubpl
   {
     public:
       connection_pool () = delete;
-      explicit connection_pool (int pool_size);
       explicit connection_pool (int pool_size, const std::string &db_name, int pl_port = PL_PORT_DISABLED,
 				bool is_for_sys = false);
       ~connection_pool ();
@@ -90,6 +89,7 @@ namespace cubpl
       bool is_system_pool () const;
 
     private:
+      explicit connection_pool (int pool_size);
       void create_new_connection (int index);
       connection_view get_connection_view (int index);
 
