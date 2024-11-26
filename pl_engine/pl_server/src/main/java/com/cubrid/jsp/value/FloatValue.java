@@ -38,6 +38,11 @@ import java.sql.Time;
 import java.sql.Timestamp;
 
 public class FloatValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_FLOAT;
+    }
+
     private float value;
 
     public FloatValue(float value) throws TypeMismatchException {
