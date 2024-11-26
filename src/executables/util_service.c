@@ -377,6 +377,9 @@ command_string (int command_type)
     case START:
       command = PRINT_CMD_START;
       break;
+    case RESTART:
+      command = PRINT_CMD_RESTART;
+      break;
     case STATUS:
       command = PRINT_CMD_STATUS;
       break;
@@ -1361,7 +1364,7 @@ process_service (int command_type, bool process_window_service)
 	{
 	  if (!are_all_services_stopped (0, process_window_service))
 	    {
-	      (void) process_pl (command_type, 0, NULL, false, false, process_window_service, false);
+	      (void) process_pl (command_type, 0, NULL, false, true, process_window_service, false);
 
 	      if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0
 		  && us_Property_map[SERVER_START_LIST].property_value != NULL
@@ -2818,7 +2821,7 @@ is_pl_running (const char *server_name)
 }
 
 static int
-process_pl_stop (const char *db_name, bool suppress_message, bool process_window_service)
+process_pl_restart (const char *db_name, bool suppress_message, bool process_window_service)
 {
   int status = NO_ERROR;
   static const int wait_timeout = 5;
@@ -2835,7 +2838,7 @@ process_pl_stop (const char *db_name, bool suppress_message, bool process_window
 	{
 #if defined(WINDOWS)
 	  const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_JAVASP,
-	    COMMAND_TYPE_STOP, db_name, NULL
+	    COMMAND_TYPE_RESTART, db_name, NULL
 	  };
 
 	  status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
@@ -2853,19 +2856,25 @@ process_pl_stop (const char *db_name, bool suppress_message, bool process_window
 	    }
 	  while (status != NO_ERROR && waited_secs < wait_timeout);
 	}
-      if (!suppress_message)
-	{
-	  print_result (PRINT_PL_NAME, status, STOP);
-	}
     }
   else
     {
       status = ER_GENERIC_ERROR;
-      if (!suppress_message)
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
+    }
+
+  if (!suppress_message)
+    {
+      if (status == ER_GENERIC_ERROR)
 	{
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
 	}
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
+      else
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_PL_NAME, db_name);
+	}
+
+      print_result (PRINT_PL_NAME, status, RESTART);
     }
 
   return status;
@@ -2946,10 +2955,19 @@ process_pl (int command_type, int argc, const char **argv, bool show_usage, bool
       switch (command_type)
 	{
 	case START:
+	  if (!suppress_message)
+	    {
+	      print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_CMD, PRINT_CMD_START);
+	    }
 	  break;
 	case STOP:
+	  if (!suppress_message)
+	    {
+	      print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_CMD, PRINT_CMD_STOP);
+	    }
+	  break;
 	case RESTART:
-	  status = process_pl_stop (db_name, suppress_message, process_window_service);
+	  status = process_pl_restart (db_name, suppress_message, process_window_service);
 	  break;
 	case STATUS:
 	  status = process_pl_status (db_name);
