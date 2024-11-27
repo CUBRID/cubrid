@@ -37,6 +37,7 @@
 #include "error_code.h"
 #include "mem_block.hpp"
 #include "packer.hpp"
+#include "pl_file.h" /* pl_read_info() */
 #include "network_callback_sr.hpp"
 
 namespace cubthread
@@ -65,7 +66,7 @@ namespace cubpl
     public:
       connection_pool () = delete;
       explicit connection_pool (int pool_size);
-      explicit connection_pool (int pool_size, const std::string &db_name);
+      explicit connection_pool (int pool_size, const std::string &db_name, int pl_port = PL_PORT_DISABLED);
       ~connection_pool ();
 
       connection_pool (connection_pool &&other) = delete; // Not MoveConstructible

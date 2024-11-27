@@ -24,7 +24,6 @@
 #include "boot_sr.h"
 #include "pl_sr.h" /* pl_server_port(), pl_connect_server() */
 #include "pl_comm.h" /* pl_disconnect_server (), pl_ping () */
-#include "pl_file.h" /* pl_read_info() */
 #include "object_representation.h" /* OR_ */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -56,11 +55,11 @@ namespace cubpl
     initialize_pool ();
   }
 
-  connection_pool::connection_pool (int pool_size, const std::string &db_name)
+  connection_pool::connection_pool (int pool_size, const std::string &db_name, int pl_port)
     : connection_pool (pool_size)
   {
     m_db_name = db_name;
-    m_db_port = PL_PORT_DISABLED;
+    m_db_port = pl_port;
   }
 
   connection_pool::~connection_pool ()
