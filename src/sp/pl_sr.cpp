@@ -136,13 +136,11 @@ namespace cubpl
 #if defined (SERVER_MODE)
       // called by daemon thread
       void execute (context_type &thread_ref) override;
+#endif
 
       // internal main routine
       // This function is called by daemon thread (SERVER_MODE) or main thread (SA_MODE)
       void do_monitor ();
-#else // SA MODE
-      void do_monitor ();
-#endif
 
       // wait until PL server is initialized
       void wait_for_ready ();
