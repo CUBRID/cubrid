@@ -247,11 +247,10 @@ public class Server {
     public static void bootstrap(BootstrapRequest request) {
         SysParam[] systemParameters = request.getSystemParameters();
         for (SysParam sysParam : systemParameters) {
-            config.getSystemParameters().put(sysParam.getParamNum(), sysParam);
+            config.getSystemParameters().put(sysParam.getParamId(), sysParam);
         }
 
         ExecuteThread.charSet = config.getCharsetString();
-
         System.out.println(config.getSystemParameters().toString());
     }
 

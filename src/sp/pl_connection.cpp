@@ -79,7 +79,6 @@ namespace cubpl
       {
 	pl_server_wait_for_ready ();
       }
-
     if (m_db_port == PL_PORT_DISABLED)
       {
 	// TODO: move this to proper place

@@ -176,7 +176,6 @@ namespace cubpl
 
   struct pl_ctx_params
   {
-    int param_num;
     int param_id;
     DB_VALUE param_value;
   };
@@ -185,7 +184,7 @@ namespace cubpl
   {
     std::vector <pl_ctx_params> static_params;
 
-    bootstrap_request ();
+    bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values);
     ~bootstrap_request ();
 
     void pack (cubpacking::packer &serializator) const override;
@@ -443,7 +442,9 @@ exit:
     connection_view cv = m_sys_conn_pool->claim ();
 
     int error = NO_ERROR;
-    bootstrap_request bootstrap_request;
+
+    SYSPRM_ASSIGN_VALUE *pl_ctx_params_assignments = xsysprm_get_pl_context_parameters ();
+    bootstrap_request bootstrap_request (pl_ctx_params_assignments);
     error = cv->send_buffer_args (header, bootstrap_request);
     if (error == NO_ERROR)
       {
@@ -456,39 +457,29 @@ exit:
 	deserializator.unpack_int (error);
       }
 
+    sysprm_free_assign_values (&pl_ctx_params_assignments);
+
     return error;
   }
 
   /*********************************************************************
    * bootstrap_request - definition
    *********************************************************************/
-  bootstrap_request::bootstrap_request ()
+  bootstrap_request::bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values)
     : static_params ()
   {
-    std::vector<PARAM_ID> system_param_ids =
-    {
-      PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE,
-      PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR,
-      PRM_ID_ORACLE_STYLE_EMPTY_STRING,
-      PRM_ID_TIMEZONE,
-      PRM_ID_INTL_DATE_LANG,
-      PRM_ID_INTL_NUMBER_LANG,
-      PRM_ID_INTL_COLLATION
-    };
-
-    static_params.resize (system_param_ids.size ());
-
     int idx = 0;
-
-    for (PARAM_ID param_id : system_param_ids)
+    while (pl_ctx_values != nullptr)
       {
-	static_params[idx].param_num = idx;
-	static_params[idx].param_id = (int) param_id;
+	PARAM_ID param_id = pl_ctx_values->prm_id;
+
+	pl_ctx_params param_obj;
+	param_obj.param_id = (int) param_id;
 
 	if (PRM_IS_BOOLEAN (GET_PRM (param_id)))
 	  {
 	    int val = prm_get_bool_value (param_id) ? 1 : 0;
-	    db_make_int (&static_params[idx].param_value, val);
+	    db_make_int (&param_obj.param_value, val);
 	  }
 	else if (PRM_IS_STRING (GET_PRM (param_id)))
 	  {
@@ -512,14 +503,17 @@ exit:
 		    break;
 		  }
 	      }
-	    db_make_string (&static_params[idx].param_value, val);
+	    db_make_string (&param_obj.param_value, val);
 	  }
 	else
 	  {
 	    // not implemented yet
 	    assert (false);
 	  }
+	static_params.push_back (param_obj);
+
 	idx++;
+	pl_ctx_values = pl_ctx_values->next;
       }
   }
 
@@ -538,7 +532,6 @@ exit:
     cubmethod::dbvalue_java sp_val;
     for (const pl_ctx_params &param : static_params)
       {
-	serializator.pack_int (param.param_num);
 	serializator.pack_int (param.param_id);
 	sp_val.value = (DB_VALUE *) &param.param_value;
 	sp_val.pack (serializator);
@@ -559,7 +552,6 @@ exit:
     cubmethod::dbvalue_java sp_val;
     for (const pl_ctx_params &param : static_params)
       {
-	size += serializator.get_packed_int_size (size); // param.param_num
 	size += serializator.get_packed_int_size (size); // param.param_id
 	sp_val.value = (DB_VALUE *) &param.param_value;
 	size += sp_val.get_packed_size (serializator, size);

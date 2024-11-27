@@ -1,7 +1,8 @@
 package com.cubrid.jsp;
 
-import com.cubrid.jsp.exception.TypeMismatchException;
 import java.io.File;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.HashMap;
@@ -26,7 +27,9 @@ public class ServerConfig {
 
     // System settings
     private HashMap<Integer, SysParam> systemParameters;
-    private ZoneId timeZone;
+
+    private Charset serverCharset;
+    private ZoneId serverTimeZone;
 
     public ServerConfig(
             String name, String version, String rPath, String dbPath, String socketInfo) {
@@ -47,7 +50,7 @@ public class ServerConfig {
         this.socketType = StringUtils.isNumeric(socketInfo) ? "TCP" : "UDS";
 
         this.systemParameters = new HashMap<Integer, SysParam>();
-        this.timeZone = null;
+        this.serverTimeZone = null;
     }
 
     public String getName() {
@@ -87,35 +90,40 @@ public class ServerConfig {
     }
 
     public ZoneId getTimeZone() {
-        if (timeZone == null) {
+        if (serverTimeZone == null) {
             // get the timezone from the system parameters
             SysParam sysParam = systemParameters.get(SysParam.TIMEZONE);
-            timeZone = ZoneId.of(sysParam.getParamValue().toString());
+            serverTimeZone = ZoneId.of(sysParam.getParamValue().toString());
         }
 
-        if (timeZone == null) {
+        if (serverTimeZone == null) {
             // if the timezone is not set, use the default timezone (UTC)
-            timeZone = ZoneOffset.UTC;
+            serverTimeZone = ZoneOffset.UTC;
         }
 
-        return timeZone;
+        return serverTimeZone;
     }
 
     public String getCharsetString() {
-        SysParam sysParam = systemParameters.get(SysParam.CHARSET);
-        int code;
-        try {
-            code = sysParam.getParamValue().toInt();
-            if (code == SysParam.CODESET_UTF8) {
-                return "UTF-8";
-            } else if (code == SysParam.CODESET_ISO88591) {
-                return "ISO-8859-1";
-            } else if (code == SysParam.CODESET_KSC5601_EUC) {
-                return "EUC-KR";
-            }
-        } catch (TypeMismatchException e) {
+        SysParam sysParam = systemParameters.get(SysParam.INTL_COLLATION);
+        String collation = sysParam.getParamValue().toString();
+        String codeset = null;
+        String[] codesetList = collation.split("_");
+        if (codesetList == null) {
+            codeset = collation;
+        } else {
+            codeset = codesetList[0];
         }
 
-        return "ASCII";
+        // test charset
+        try {
+            serverCharset = Charset.forName(codeset);
+        } catch (Exception e) {
+            // java.nio.charset.IllegalCharsetNameException
+            serverCharset = StandardCharsets.UTF_8;
+            codeset = "utf-8";
+        }
+        System.out.println(serverCharset);
+        return codeset;
     }
 }
