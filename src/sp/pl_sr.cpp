@@ -176,7 +176,7 @@ namespace cubpl
 #if defined (SERVER_MODE)
     m_monitor_helper_daemon = nullptr;
 #endif
-    m_connection_pool = new connection_pool (server_manager::CONNECTION_POOL_SIZE, db_name, pl_server_port_from_info ());
+    m_connection_pool = new connection_pool (server_manager::CONNECTION_POOL_SIZE, db_name);
   }
 
   server_manager::~server_manager ()

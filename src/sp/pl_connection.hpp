@@ -65,7 +65,7 @@ namespace cubpl
     public:
       connection_pool () = delete;
       explicit connection_pool (int pool_size);
-      explicit connection_pool (int pool_size, const std::string &db_name, int db_port);
+      explicit connection_pool (int pool_size, const std::string &db_name);
       ~connection_pool ();
 
       connection_pool (connection_pool &&other) = delete; // Not MoveConstructible

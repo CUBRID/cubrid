@@ -56,11 +56,11 @@ namespace cubpl
     initialize_pool ();
   }
 
-  connection_pool::connection_pool (int pool_size, const std::string &db_name, int db_port)
+  connection_pool::connection_pool (int pool_size, const std::string &db_name)
     : connection_pool (pool_size)
   {
     m_db_name = db_name;
-    m_db_port = db_port;
+    m_db_port = PL_PORT_DISABLED;
   }
 
   connection_pool::~connection_pool ()
