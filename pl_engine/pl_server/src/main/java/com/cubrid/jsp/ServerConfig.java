@@ -123,7 +123,7 @@ public class ServerConfig {
             serverCharset = StandardCharsets.UTF_8;
             codeset = "utf-8";
         }
-        System.out.println(serverCharset);
+        // System.out.println(serverCharset);
         return codeset;
     }
 }
