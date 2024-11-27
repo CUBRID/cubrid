@@ -13176,15 +13176,7 @@ check_date_lang_on_prepared (bool bprepared, const DB_VALUE * date_lang, INTL_LA
 {
   bool has_user_lang = false;
   int flag;
-/*
-  if (!bprepared)
-    {
-      assert (DB_VALUE_TYPE (date_lang) == DB_TYPE_INTEGER);
-      *date_lang_id = lang_get_lang_id_from_flag (db_get_int (date_lang), has_user_fmt, &has_user_lang);
 
-      return NO_ERROR;
-    }
-*/
   switch (DB_VALUE_TYPE (date_lang))
     {
     case DB_TYPE_CHAR:
@@ -13193,7 +13185,11 @@ check_date_lang_on_prepared (bool bprepared, const DB_VALUE * date_lang, INTL_LA
     case DB_TYPE_VARNCHAR:
       /* We got here because we used HOST_VAR.  And using HOST_VAR means we didn't omit format. */
       assert (bprepared);
-      lang_get_lang_id_from_name (db_get_string (date_lang), date_lang_id);
+      if (lang_get_lang_id_from_name (db_get_string (date_lang), date_lang_id))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOCALE_LANG_NOT_AVAILABLE, 1, db_get_string (date_lang));
+	  return ER_LOCALE_LANG_NOT_AVAILABLE;
+	}
       *has_user_fmt = true;
 
       return NO_ERROR;

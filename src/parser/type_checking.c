@@ -20377,7 +20377,14 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_HOURF:
     case PT_MINUTEF:
     case PT_SECONDF:
+    case PT_TO_DATE:
+    case PT_TO_DATETIME:
+    case PT_TO_DATETIME_TZ:
+    case PT_TO_TIME:
+    case PT_TO_TIMESTAMP:
+    case PT_TO_TIMESTAMP_TZ:
       return true;
+
     default:
       return false;
     }

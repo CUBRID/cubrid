@@ -26173,7 +26173,8 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	      lang_str = (char *) arg3->info.value.data_value.str->bytes;
 	      if (lang_set_flag_from_lang (lang_str, 1, 1, &flag))
 		{
-		  PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
+		  //PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
+                  PT_ERRORmf (this_parser, arg3, MSGCAT_SET_ERROR, -(ER_LOCALE_LANG_NOT_AVAILABLE), lang_str);
 		}
 	      date_lang->info.value.data_value.i = (long) flag;
 	      date_lang->type_enum = PT_TYPE_INTEGER;
