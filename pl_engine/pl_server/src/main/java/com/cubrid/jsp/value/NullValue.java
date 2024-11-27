@@ -41,6 +41,11 @@ import java.sql.Time;
 import java.sql.Timestamp;
 
 public class NullValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_NULL;
+    }
+
     public NullValue() {
         super();
     }

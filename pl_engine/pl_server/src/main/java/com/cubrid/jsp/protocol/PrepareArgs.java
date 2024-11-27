@@ -24,7 +24,7 @@ public class PrepareArgs {
 
     public int getArgCount() {
         if (arguments == null) {
-            return -1;
+            return 0;
         } else {
             return arguments.length;
         }
@@ -47,6 +47,8 @@ public class PrepareArgs {
                 Value arg = unpacker.unpackValue(paramType);
                 arguments[i] = (arg);
             }
+        } else {
+            arguments = null;
         }
     }
 }

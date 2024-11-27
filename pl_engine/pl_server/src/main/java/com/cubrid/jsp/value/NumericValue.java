@@ -37,6 +37,11 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 
 public class NumericValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_NUMERIC;
+    }
+
     private BigDecimal value;
 
     public NumericValue(String value) {

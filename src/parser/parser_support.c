@@ -10303,6 +10303,144 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
   return node;
 }
 
+static DB_DEFAULT_EXPR_TYPE
+parse_default_expr_type (const char *str, const int str_size, int *next_len)
+{
+  if (str_size < 4)
+    {
+      *next_len = 0;
+      return DB_DEFAULT_NONE;
+    }
+
+  switch (str[0])
+    {
+    case 'S':
+      if (str_size >= 8)
+	{
+	  if (strncmp (str, "SYS_DATE", 8) == 0)
+	    {
+	      *next_len = 8;
+	      return DB_DEFAULT_SYSDATE;
+	    }
+	  if (strncmp (str, "SYS_TIME", 8) == 0)
+	    {
+	      *next_len = 8;
+	      return DB_DEFAULT_SYSTIME;
+	    }
+	}
+      if (str_size >= 12 && strncmp (str, "SYS_DATETIME", 12) == 0)
+	{
+	  *next_len = 12;
+	  return DB_DEFAULT_SYSDATETIME;
+	}
+      if (str_size >= 13 && strncmp (str, "SYS_TIMESTAMP", 13) == 0)
+	{
+	  *next_len = 13;
+	  return DB_DEFAULT_SYSTIMESTAMP;
+	}
+      break;
+
+    case 'C':
+      if (str_size >= 12)
+	{
+	  if (strncmp (str, "CURRENT_DATE", 12) == 0)
+	    {
+	      *next_len = 12;
+	      return DB_DEFAULT_CURRENTDATE;
+	    }
+	  if (strncmp (str, "CURRENT_TIME", 12) == 0)
+	    {
+	      *next_len = 12;
+	      return DB_DEFAULT_CURRENTTIME;
+	    }
+	  if (strncmp (str, "CURRENT_USER", 12) == 0)
+	    {
+	      *next_len = 12;
+	      return DB_DEFAULT_CURR_USER;
+	    }
+	}
+      if (str_size >= 16 && strncmp (str, "CURRENT_DATETIME", 16) == 0)
+	{
+	  *next_len = 16;
+	  return DB_DEFAULT_CURRENTDATETIME;
+	}
+      if (str_size >= 17 && strncmp (str, "CURRENT_TIMESTAMP", 17) == 0)
+	{
+	  *next_len = 17;
+	  return DB_DEFAULT_CURRENTTIMESTAMP;
+	}
+      break;
+
+    case 'U':
+      if (str_size >= 16 && strncmp (str, "UNIX_TIMESTAMP()", 16) == 0)
+	{
+	  *next_len = 16;
+	  return DB_DEFAULT_UNIX_TIMESTAMP;
+	}
+      if (str_size >= 6 && strncmp (str, "USER()", 6) == 0)
+	{
+	  *next_len = 6;
+	  return DB_DEFAULT_USER;
+	}
+      if (str_size >= 4 && strncmp (str, "USER", 4) == 0)
+	{
+	  *next_len = 4;
+	  return DB_DEFAULT_CURR_USER;
+	}
+      break;
+    }
+
+  *next_len = 0;
+  return DB_DEFAULT_NONE;
+}
+
+/*
+ * pt_get_default_expression_from_string () - get default value from string
+ * return : error code or NO_ERROR
+ *
+ * parser (in)		  : parser context
+ * str (in) : default expression string
+ * str_size (in) : default expression string size
+ * default_expr (out)	  : default expression
+ */
+void
+pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size,
+				       DB_DEFAULT_EXPR * default_expr)
+{
+  assert (parser != NULL && default_expr != NULL);
+  assert (str != NULL && str_size > 0);
+
+  classobj_initialize_default_expr (default_expr);
+
+  std::string expr_str (str, str_size);
+
+  int curr_idx = 0;
+  int curr_len = str_size;
+
+  const int to_char_size = sizeof ("TO_CHAR(") - 1;
+  if (str_size > to_char_size && strncmp (str, "TO_CHAR(", to_char_size) == 0)
+    {
+      curr_idx += to_char_size;
+      curr_len -= to_char_size;
+      default_expr->default_expr_op = T_TO_CHAR;
+    }
+
+  int parsed_len;
+  default_expr->default_expr_type = parse_default_expr_type (&str[curr_idx], curr_len, &parsed_len);
+  curr_idx += parsed_len;
+  curr_len -= parsed_len;
+
+  if (default_expr->default_expr_op == T_TO_CHAR)
+    {
+      // find next ',' 
+      const char *formatted_string = strchr (&str[curr_idx], ',') + 1;
+
+      // get remaining length before the last ')'
+      int remaining_len = str_size - (formatted_string - &str[curr_idx]);
+      default_expr->default_expr_format = strndup (formatted_string, remaining_len - 1);
+    }
+}
+
 /*
  * pt_get_default_value_from_attrnode () - get default value from data default node
  * return : error code or NO_ERROR

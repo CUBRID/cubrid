@@ -39,6 +39,11 @@ import java.sql.Time;
 import java.sql.Timestamp;
 
 public class SetValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_SET;
+    }
+
     private Object[] values;
 
     public SetValue(Value[] args) throws TypeMismatchException {

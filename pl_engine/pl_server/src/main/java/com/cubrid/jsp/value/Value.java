@@ -66,31 +66,31 @@ public abstract class Value {
     }
 
     public byte toByte() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_BYTE));
     }
 
     public short toShort() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_SHORT));
     }
 
     public int toInt() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_INT));
     }
 
     public long toLong() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_BIGINT));
     }
 
     public float toFloat() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_FLOAT));
     }
 
     public double toDouble() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_DOUBLE));
     }
 
     public Byte toByteObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_BYTE));
     }
 
     public byte[] toByteArray() throws TypeMismatchException {
@@ -102,7 +102,7 @@ public abstract class Value {
     }
 
     public Short toShortObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_SHORT));
     }
 
     public short[] toShortArray() throws TypeMismatchException {
@@ -114,7 +114,7 @@ public abstract class Value {
     }
 
     public Integer toIntegerObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_INT));
     }
 
     public int[] toIntegerArray() throws TypeMismatchException {
@@ -126,7 +126,7 @@ public abstract class Value {
     }
 
     public Long toLongObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_BIGINT));
     }
 
     public long[] toLongArray() throws TypeMismatchException {
@@ -138,7 +138,7 @@ public abstract class Value {
     }
 
     public Float toFloatObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_FLOAT));
     }
 
     public float[] toFloatArray() throws TypeMismatchException {
@@ -150,7 +150,7 @@ public abstract class Value {
     }
 
     public Double toDoubleObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_DOUBLE));
     }
 
     public double[] toDoubleArray() throws TypeMismatchException {
@@ -162,7 +162,7 @@ public abstract class Value {
     }
 
     public Object toObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_OBJECT));
     }
 
     public Object[] toObjectArray() throws TypeMismatchException {
@@ -174,7 +174,7 @@ public abstract class Value {
     }
 
     public Date toDate() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_DATE));
     }
 
     public Date[] toDateArray() throws TypeMismatchException {
@@ -186,7 +186,7 @@ public abstract class Value {
     }
 
     public Time toTime() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_TIME));
     }
 
     public Time[] toTimeArray() throws TypeMismatchException {
@@ -198,7 +198,7 @@ public abstract class Value {
     }
 
     public Timestamp toTimestamp() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_TIMESTAMP));
     }
 
     public Timestamp[] toTimestampArray() throws TypeMismatchException {
@@ -210,7 +210,7 @@ public abstract class Value {
     }
 
     public Timestamp toDatetime() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_DATETIME));
     }
 
     public Timestamp[] toDatetimeArray() throws TypeMismatchException {
@@ -222,7 +222,7 @@ public abstract class Value {
     }
 
     public BigDecimal toBigDecimal() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_NUMERIC));
     }
 
     public BigDecimal[] toBigDecimalArray() throws TypeMismatchException {
@@ -290,7 +290,7 @@ public abstract class Value {
     }
 
     public CUBRIDOID toOid() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_OID));
     }
 
     public CUBRIDOID[] toOidArray() throws TypeMismatchException {
@@ -302,7 +302,7 @@ public abstract class Value {
     }
 
     public ResultSet toResultSet(SUConnection ucon) throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_RESULTSET));
     }
 
     public ResultSet[] toResultSetArray(SUConnection ucon) throws TypeMismatchException {
@@ -328,4 +328,36 @@ public abstract class Value {
     public void setDbType(int type) {
         dbType = type;
     }
+
+    // -----------------------------------------------------
+
+    private String getCastErrMsg(String targetType) {
+        return String.format("cannot convert %s to %s", getTypeName(), targetType);
+    }
+
+    protected abstract String getTypeName();
+
+    protected static final String TYPE_NAME_NULL = "NULL";
+    protected static final String TYPE_NAME_OBJECT = "OBJECT";
+
+    protected static final String TYPE_NAME_BOOLEAN = "BOOLEAN";
+    protected static final String TYPE_NAME_STRING = "STRING";
+
+    protected static final String TYPE_NAME_BYTE = "BYTE";
+    protected static final String TYPE_NAME_SHORT = "SHORT";
+    protected static final String TYPE_NAME_INT = "INT";
+    protected static final String TYPE_NAME_BIGINT = "BIGINT";
+    protected static final String TYPE_NAME_FLOAT = "FLOAT";
+    protected static final String TYPE_NAME_DOUBLE = "DOUBLE";
+    protected static final String TYPE_NAME_NUMERIC = "NUMERIC";
+
+    protected static final String TYPE_NAME_DATE = "DATE";
+    protected static final String TYPE_NAME_TIME = "TIME";
+    protected static final String TYPE_NAME_DATETIME = "DATETIME";
+    protected static final String TYPE_NAME_TIMESTAMP = "TIMESTAMP";
+
+    protected static final String TYPE_NAME_OID = "OID";
+    protected static final String TYPE_NAME_RESULTSET = "RESULTSET";
+    protected static final String TYPE_NAME_SET =
+            "COLLECTION"; // actually, it is not only SET but also MULTISET and LIST
 }

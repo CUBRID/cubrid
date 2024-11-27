@@ -65,6 +65,8 @@
 #include "authenticate_access_auth.hpp"
 #include "pl_signature.hpp"
 #include "oid.h"
+#include "string_buffer.hpp"
+#include "db_value_printer.hpp"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
@@ -132,6 +134,7 @@ static int drop_stored_procedure_code (const char *name);
 static int alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *name, const char *owner_str,
 					int sp_recompile);
 
+static int jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out);
 static int check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
 
 extern bool ssl_client;
@@ -623,7 +626,7 @@ jsp_evaluate_arguments (PARSER_CONTEXT *parser, PT_NODE *statement,
 	  db_make_null (db_value);
 
 	  /* must call pt_evaluate_tree */
-	  pt_evaluate_tree (parser, vc, db_value, 1);
+	  pt_evaluate_tree_having_serial (parser, vc, db_value, 1);
 	  if (pt_has_error (parser))
 	    {
 	      /* to maintain the list to free all the allocated */
@@ -673,56 +676,60 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   DB_VALUE ret_value;
   db_make_null (&ret_value);
 
+  /* call sp */
   std::vector <std::reference_wrapper <DB_VALUE>> args;
-
-  error = jsp_evaluate_arguments (parser, statement, args);
-  if (pt_has_error (parser))
-    {
-      pt_report_to_ersys (parser, PT_SEMANTIC);
-      error = er_errid ();
-    }
-  else
-    {
-      /* call sp */
-      cubpl::pl_signature sig;
-      error = jsp_make_pl_signature (parser, statement, NULL, sig);
-      if (error == NO_ERROR && locator_get_sig_interrupt () == 0)
-	{
-	  std::vector <DB_VALUE> out_args;
-	  error = pl_call (sig, args, out_args, ret_value);
-	  if (error == NO_ERROR)
-	    {
-	      for (int i = 0, j = 0; i < sig.arg.arg_size; i++)
-		{
-		  if (sig.arg.arg_mode[i] == SP_MODE_IN)
-		    {
-		      continue;
-		    }
-
-		  DB_VALUE &arg = args[i];
-		  DB_VALUE &out_arg = out_args[j++];
-
-		  db_value_clear (&arg);
-		  db_value_clone (&out_arg, &arg);
-		  db_value_clear (&out_arg);
-		}
-	    }
-	}
-    }
-
+  cubpl::pl_signature sig;
+  error = jsp_make_pl_signature (parser, statement, NULL, sig);
   if (error == NO_ERROR)
     {
-      PT_NODE *vc = statement->info.method_call.arg_list;
-      for (int i = 0; i < (int) args.size () && vc; i++)
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig);
+      if (default_next_node_list != NULL)
 	{
-	  if (!PT_IS_CONST (vc))
-	    {
-	      DB_VALUE &arg = args[i];
-	      db_value_clear (&arg);
-	      free (&arg);
-	    }
-	  vc = vc->next;
+	  error = qp_get_server_info (parser, SI_SYS_DATETIME);
 	}
+      statement->info.method_call.arg_list = parser_append_node (default_next_node_list,
+					     statement->info.method_call.arg_list);
+      error = jsp_evaluate_arguments (parser, statement, args);
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  error = er_errid ();
+	}
+    }
+
+  if (error == NO_ERROR && locator_get_sig_interrupt () == 0)
+    {
+      std::vector <DB_VALUE> out_args;
+      error = pl_call (sig, args, out_args, ret_value);
+      if (error == NO_ERROR)
+	{
+	  for (int i = 0, j = 0; i < sig.arg.arg_size; i++)
+	    {
+	      if (sig.arg.arg_mode[i] == SP_MODE_IN)
+		{
+		  continue;
+		}
+
+	      DB_VALUE &arg = args[i];
+	      DB_VALUE &out_arg = out_args[j++];
+
+	      db_value_clear (&arg);
+	      db_value_clone (&out_arg, &arg);
+	      db_value_clear (&out_arg);
+	    }
+	}
+    }
+
+  PT_NODE *vc = statement->info.method_call.arg_list;
+  for (int i = 0; i < (int) args.size () && vc; i++)
+    {
+      if (!PT_IS_CONST (vc))
+	{
+	  DB_VALUE &arg = args[i];
+	  db_value_clear (&arg);
+	  free (&arg);
+	}
+      vc = vc->next;
     }
 
   if (error == NO_ERROR)
@@ -795,6 +802,91 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
 
   return err;
+}
+
+/*
+ * jsp_default_value_string
+ *   return:
+ *   parser(in/out): parser environment
+ *   statement(in): a default_value node
+ *
+ * Note:
+ */
+static int
+jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out)
+{
+  int error = NO_ERROR;
+
+  DB_DEFAULT_EXPR default_expr;
+  pt_get_default_expression_from_data_default_node (parser, node, &default_expr);
+
+  out.clear ();
+  if (default_expr.default_expr_type != DB_DEFAULT_NONE)
+    {
+      if (default_expr.default_expr_type == NULL_DEFAULT_EXPRESSION_OPERATOR)
+	{
+	  DB_VALUE *value = pt_value_to_db (parser, node->info.data_default.default_value);
+	  if (!DB_IS_NULL (value))
+	    {
+	      string_buffer sb;
+	      sb.clear ();
+	      db_sprint_value (value, sb);
+
+	      out.append (sb.get_buffer ());
+	    }
+	  else
+	    {
+	      // empty out consider as NULL
+	    }
+	}
+      else
+	{
+	  if (default_expr.default_expr_op == T_TO_CHAR)
+	    {
+	      out.append ("TO_CHAR(");
+	    }
+
+	  const char *default_value_expr_type_string = db_default_expression_string (default_expr.default_expr_type);
+	  if (default_value_expr_type_string != NULL)
+	    {
+	      out.append (default_value_expr_type_string);
+	    }
+	  else
+	    {
+	      out.append (parser_print_tree (parser, node));
+	    }
+
+	  if (default_expr.default_expr_op == T_TO_CHAR)
+	    {
+	      if (default_expr.default_expr_format != NULL)
+		{
+		  out.append (", \'");
+		  out.append (default_expr.default_expr_format);
+		  out.append ("\'");
+		}
+
+	      out.append (")");
+	    }
+	}
+    }
+  else
+    {
+      DB_VALUE *value = pt_value_to_db (parser, node->info.data_default.default_value);
+      if (!DB_IS_NULL (value))
+	{
+	  string_buffer sb;
+	  sb.clear ();
+	  db_sprint_value (value, sb);
+
+	  out.append (sb.get_buffer ());
+	}
+      else
+	{
+	  // empty out consider as NULL
+	}
+    }
+
+  return error;
 }
 
 /*
@@ -886,12 +978,30 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       PT_NODE *default_value = p->info.sp_param.default_value;
       if (default_value)
 	{
-	  pt_evaluate_tree (parser, default_value->info.data_default.default_value, &arg_info.default_value, 1);
-	  arg_info.is_optional = true;
+	  std::string default_value_str;
+	  if (jsp_default_value_string (parser, default_value, default_value_str) == NO_ERROR)
+	    {
+	      if (!default_value_str.empty ())
+		{
+		  db_make_string (&arg_info.default_value, ws_copy_string (default_value_str.c_str ()));
+		}
+	      else
+		{
+		  db_make_null (&arg_info.default_value);
+		}
+
+	      arg_info.is_optional = true;
+	    }
+	  else
+	    {
+	      ASSERT_ERROR ();
+	      goto error_exit;
+	    }
 	}
       else
 	{
 	  db_make_null (&arg_info.default_value);
+	  arg_info.is_optional = false; // explicitly
 	}
 
       arg_info.comment = (char *) PT_NODE_SP_ARG_COMMENT (p);
@@ -2067,15 +2177,16 @@ check_execute_authorization_by_query (const MOP sp_obj)
 {
   int error = NO_ERROR, save;
   const char *query = "SELECT [au] FROM " CT_CLASSAUTH_NAME
-		      " [au] WHERE [object_type] = ? and [auth_type] = 'EXECUTE' and [object_of] = ?";
+		      " [au] WHERE [object_type] = ? and [auth_type] = 'EXECUTE' and [object_of] = ? and [grantee] = ?";
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
-  DB_VALUE val[2];
+  DB_VALUE val[3];
   int stmt_id;
   int cnt = 0;
 
   db_make_null (&val[0]);
   db_make_null (&val[1]);
+  db_make_null (&val[2]);
 
   /* Disable the checking for internal authorization object access */
   AU_DISABLE (save);
@@ -2102,8 +2213,9 @@ check_execute_authorization_by_query (const MOP sp_obj)
 
   db_make_int (&val[0], (int) DB_OBJECT_PROCEDURE);
   db_make_object (&val[1], sp_obj);
+  db_make_object (&val[2], Au_user);
 
-  error = db_push_values (session, 2, val);
+  error = db_push_values (session, 3, val);
   if (error != NO_ERROR)
     {
       goto release;
@@ -2124,6 +2236,7 @@ release:
     }
   pr_clear_value (&val[0]);
   pr_clear_value (&val[1]);
+  pr_clear_value (&val[2]);
 
   AU_ENABLE (save);
 
@@ -2168,4 +2281,91 @@ check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
     }
 
   return error;
+}
+
+PT_NODE *
+jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig)
+{
+  PT_NODE *default_next_node_list = NULL;
+  PT_NODE *default_next_node = NULL;
+  for (int i = 0; i < sig.arg.arg_size; i++)
+    {
+      if (sig.arg.arg_default_value_size[i] == 0)
+	{
+	  default_next_node = pt_make_string_value (parser, NULL);
+	}
+      else if (sig.arg.arg_default_value_size[i] > 0)
+	{
+	  DB_DEFAULT_EXPR default_expr;
+	  pt_get_default_expression_from_string (parser, sig.arg.arg_default_value[i], sig.arg.arg_default_value_size[i],
+						 &default_expr);
+
+	  // from pt_resolve_default_value
+	  if (default_expr.default_expr_type != DB_DEFAULT_NONE)
+	    {
+	      PT_OP_TYPE op = pt_op_type_from_default_expr_type (default_expr.default_expr_type);
+	      PT_NODE *default_op_value_node = pt_expression_0 (parser, op);
+
+	      if (default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+		{
+		  default_next_node = default_op_value_node;
+		}
+	      else
+		{
+		  PT_NODE *arg1, *arg2, *arg3;
+		  arg1 = default_op_value_node;
+		  bool has_user_format = default_expr.default_expr_format ? true : false;
+		  arg2 = pt_make_string_value (parser, default_expr.default_expr_format);
+
+		  if (arg2 == NULL)
+		    {
+		      parser_free_tree (parser, default_op_value_node);
+		      return NULL;
+		    }
+
+		  arg3 = parser_new_node (parser, PT_VALUE);
+		  if (arg3 == NULL)
+		    {
+		      parser_free_tree (parser, default_op_value_node);
+		      parser_free_tree (parser, arg2);
+		      return NULL;
+		    }
+
+		  arg3->type_enum = PT_TYPE_INTEGER;
+		  const char *lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+		  int flag = 0;
+		  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+		  arg3->info.value.data_value.i = (long) flag;
+
+		  default_next_node = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+		  if (default_next_node == NULL)
+		    {
+		      parser_free_tree (parser, default_op_value_node);
+		      parser_free_tree (parser, arg2);
+		      parser_free_tree (parser, arg3);
+		      return NULL;
+		    }
+		}
+	    }
+	  else
+	    {
+	      default_next_node = pt_make_string_value (parser, sig.arg.arg_default_value[i]);
+	      default_next_node = pt_wrap_with_cast_op (parser, default_next_node, pt_db_to_type_enum ((DB_TYPE) sig.arg.arg_type[i]),
+				  TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	    }
+	}
+
+      if (default_next_node != NULL)
+	{
+	  default_next_node = pt_semantic_type (parser, default_next_node, NULL);
+	  if (default_next_node == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  default_next_node_list = parser_append_node (default_next_node, default_next_node_list);
+	}
+    }
+
+  return default_next_node_list;
 }

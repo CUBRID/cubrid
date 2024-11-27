@@ -49,8 +49,6 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.protocol.Header;
 import com.cubrid.jsp.protocol.PrepareArgs;
 import com.cubrid.jsp.protocol.RequestCode;
-import com.cubrid.jsp.value.NullValue;
-import com.cubrid.jsp.value.StringValue;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.compiler.PlcsqlCompilerMain;
@@ -430,45 +428,27 @@ public class ExecuteThread extends Thread {
         int paramCount = unpacker.unpackInt();
 
         Value[] arguments = prepareArgs.getArgs();
-        Value[] methodArgs = new Value[paramCount];
         for (int i = 0; i < paramCount; i++) {
             int mode = unpacker.unpackInt();
             int type = unpacker.unpackInt();
-            int defaultValSize = unpacker.unpackInt();
-            String defaultVal = null;
-
-            Value val = null;
-            if (defaultValSize == -1) {
-                val = arguments[i];
-            } else if (defaultValSize > 0) {
-                defaultVal = unpacker.unpackCString();
-                val = new StringValue(defaultVal);
-            } else if (defaultValSize == 0) {
-                val = new NullValue();
-            } else {
-                assert false;
-                // internal error
-                val = new NullValue();
-            }
+            Value val = arguments[i];
 
             val.setMode(mode);
             val.setDbType(type);
-
-            methodArgs[i] = val;
         }
         int returnType = unpacker.unpackInt();
 
         boolean transactionControl = unpacker.unpackBool();
         getCurrentContext().setTransactionControl(transactionControl);
 
-        storedProcedure = new StoredProcedure(methodSig, lang, authUser, methodArgs, returnType);
+        storedProcedure = new StoredProcedure(methodSig, lang, authUser, arguments, returnType);
         return storedProcedure;
     }
 
     private void returnOutArgs(StoredProcedure sp, CUBRIDPacker packer)
             throws IOException, ExecuteException, TypeMismatchException {
         Value[] args = sp.getArgs();
-        for (int i = 0; i < args.length; i++) {
+        for (int i = 0; args != null && i < args.length; i++) {
             if (args[i].getMode() > Value.IN) {
                 Value v = sp.makeOutValue(args[i].getResolved());
                 packer.packValue(
