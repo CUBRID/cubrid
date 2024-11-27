@@ -2829,7 +2829,7 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
 
   if (!suppress_message)
     {
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_PL_NAME, PRINT_CMD_STOP, db_name);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_PL_NAME, PRINT_CMD_RESTART, db_name);
     }
   UTIL_PL_SERVER_STATUS_E pl_status = is_pl_running (db_name);
   if (pl_status == PL_SERVER_RUNNING)
@@ -2838,7 +2838,7 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
 	{
 #if defined(WINDOWS)
 	  const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_JAVASP,
-	    COMMAND_TYPE_RESTART, db_name, NULL
+	    COMMAND_TYPE_STOP, db_name, NULL
 	  };
 
 	  status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
