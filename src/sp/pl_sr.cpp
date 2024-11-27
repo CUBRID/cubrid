@@ -443,14 +443,11 @@ exit:
     connection_view cv = m_sys_conn_pool->claim ();
 
     int error = NO_ERROR;
-    if (cv->is_valid ())
+    bootstrap_request bootstrap_request;
+    error = cv->send_buffer_args (header, bootstrap_request);
+    if (error == NO_ERROR)
       {
-	bootstrap_request bootstrap_request;
-	error = cv->send_buffer_args (header, bootstrap_request);
-	if (error == NO_ERROR)
-	  {
-	    error = cv->receive_buffer (bootstrap_response);
-	  }
+	error = cv->receive_buffer (bootstrap_response);
       }
 
     if (error == NO_ERROR && bootstrap_response.is_valid ())
@@ -468,10 +465,8 @@ exit:
   bootstrap_request::bootstrap_request ()
     : static_params ()
   {
-    const PARAM_ID PRM_ID_INTL_CHARSET = PRM_FIRST_ID; // dummy
     std::vector<PARAM_ID> system_param_ids =
     {
-      PRM_ID_INTL_CHARSET, //
       PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE,
       PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR,
       PRM_ID_ORACLE_STYLE_EMPTY_STRING,
@@ -490,12 +485,7 @@ exit:
 	static_params[idx].param_num = idx;
 	static_params[idx].param_id = (int) param_id;
 
-	if (idx == 0)
-	  {
-	    // charset
-	    db_make_int (&static_params[idx].param_value, (int) lang_charset ());
-	  }
-	else if (PRM_IS_BOOLEAN (GET_PRM (param_id)))
+	if (PRM_IS_BOOLEAN (GET_PRM (param_id)))
 	  {
 	    int val = prm_get_bool_value (param_id) ? 1 : 0;
 	    db_make_int (&static_params[idx].param_value, val);
