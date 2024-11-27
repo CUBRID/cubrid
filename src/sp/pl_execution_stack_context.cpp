@@ -19,8 +19,9 @@
 #include "pl_execution_stack_context.hpp"
 
 #include "session.h"
+#include "pl_sr.h"
 #include "pl_comm.h"
-#include "method_connection_pool.hpp"
+#include "pl_connection.hpp"
 #include "pl_query_cursor.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -52,8 +53,7 @@ namespace cubpl
 	// retire connection
 	if (m_connection)
 	  {
-	    cubmethod::connection *conn = std::move (m_connection);
-	    m_session->get_connection_pool ()->retire (conn, false);
+	    m_connection.reset ();
 	  }
       }
 
@@ -147,13 +147,16 @@ namespace cubpl
     m_stack_cursor_id.clear ();
   }
 
-  cubmethod::connection *
+  connection_view &
   execution_stack::get_connection ()
   {
     if (m_connection == nullptr)
       {
-	cubmethod::connection_pool *pool = m_session->get_connection_pool ();
-	m_connection = pool->claim ();
+	connection_pool *pool = get_connection_pool ();
+	if (pool)
+	  {
+	    m_connection = pool->claim ();
+	  }
       }
 
     return m_connection;

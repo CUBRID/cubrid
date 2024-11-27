@@ -27,6 +27,9 @@
 
 #include "method_struct_parameter_info.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubpl
 {
 //////////////////////////////////////////////////////////////////////////
@@ -55,7 +58,6 @@ namespace cubpl
     , m_is_interrupted (false)
     , m_interrupt_id (NO_ERROR)
     , m_is_running (false)
-    , m_conn_pool (METHOD_MAX_RECURSION_DEPTH + 1)
     , m_req_id {0}
     , m_param_info {nullptr}
   {
@@ -84,7 +86,7 @@ namespace cubpl
 
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    execution_stack *stack = new (std::nothrow) execution_stack (thread_p);
+    execution_stack *stack = new execution_stack (thread_p);
     if (stack)
       {
 	m_stack_map [stack->get_id ()] = stack;
@@ -337,7 +339,7 @@ namespace cubpl
 	    qfile_update_qlist_count (thread_p, query_entry_p->list_id, 1);
 
 	    // store a new cursor in map
-	    cursor = new (std::nothrow) query_cursor (thread_p, query_entry_p, is_oid_included);
+	    cursor = new query_cursor (thread_p, query_entry_p, is_oid_included);
 	    m_cursor_map [query_id] = cursor;
 
 	    assert (cursor != nullptr);
@@ -437,12 +439,6 @@ namespace cubpl
       }
     m_cursor_map.clear ();
     m_session_cursors.clear ();
-  }
-
-  cubmethod::connection_pool *
-  session::get_connection_pool ()
-  {
-    return &m_conn_pool;
   }
 
   cubmethod::db_parameter_info *

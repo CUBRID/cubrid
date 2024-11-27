@@ -35,10 +35,9 @@
 #include "mem_block.hpp"
 #include "packer.hpp"
 
+#include "network_callback_sr.hpp"
 #include "method_struct_invoke.hpp"
-#include "method_connection_pool.hpp"
-#include "method_connection_sr.hpp"
-#include "method_connection_java.hpp"
+#include "pl_connection.hpp"
 
 // thread_entry.hpp
 namespace cubthread
@@ -65,7 +64,7 @@ namespace cubpl
       /* resources */
       std::unordered_set <int> m_stack_handler_id;
       std::unordered_set <std::uint64_t> m_stack_cursor_id;
-      cubmethod::connection *m_connection;
+      connection_view m_connection;
 
       /* error */
       std::string m_error_message;
@@ -92,7 +91,7 @@ namespace cubpl
       cubthread::entry *get_thread_entry () const;
 
       /* connection */
-      cubmethod::connection *get_connection ();
+      connection_view &get_connection ();
       std::queue<cubmem::block> &get_data_queue ();
 
       /* resource management */
@@ -117,31 +116,34 @@ namespace cubpl
       bool m_transaction_control;
 
       template <typename ... Args>
-      int send_data_to_client (const cubmethod::xs_callback_func &func, Args &&... args)
+      int send_data_to_client (const xs_callback_func &func, Args &&... args)
       {
-	int error_code = NO_ERROR;
-
-	cubthread::entry *thread_p = get_thread_entry ();
-	error_code = cubmethod::method_send_data_to_client (thread_p, m_client_header, std::forward<Args> (args)...);
-	if (error_code != NO_ERROR)
-	  {
-	    return error_code;
-	  }
-
-	return cubmethod::xs_receive (thread_p, func);
+	return xs_callback_send_and_receive (m_thread_p, func, m_client_header, std::forward<Args> (args)...);
       }
 
       template <typename ... Args>
       int send_data_to_java (Args &&... args)
       {
 	m_java_header.req_id = get_and_increment_request_id ();
-	return cubmethod::mcon_send_data_to_java (get_connection()->get_socket (), m_java_header, std::forward<Args> (args)...);
+	connection_view &conn = get_connection();
+	if (!conn)
+	  {
+	    return ER_FAILED; // Handle the case where connection is unavailable
+	  }
+
+	return conn->send_buffer_args (m_java_header, std::forward<Args> (args)...);
       }
 
       int
       read_data_from_java (cubmem::block &b)
       {
-	return cubmethod::mcon_read_data_from_java (get_connection()->get_socket (), b);
+	connection_view &conn = get_connection();
+	if (!conn)
+	  {
+	    return ER_FAILED; // Handle the case where connection is unavailable
+	  }
+
+	return conn->receive_buffer (b, nullptr, -1);
       }
 
       void

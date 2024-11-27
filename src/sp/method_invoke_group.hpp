@@ -37,7 +37,7 @@
 #include <set>
 #include <queue>
 
-#include "method_connection_pool.hpp" /* cubmethod::connection */
+#include "pl_connection.hpp" /* cubpl::connection */
 
 #include "method_struct_parameter_info.hpp" /* db_parameter_info */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */

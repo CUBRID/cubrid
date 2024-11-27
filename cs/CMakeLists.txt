@@ -188,6 +188,7 @@ set(CONNECTION_SOURCES
 
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_common.cpp
+  ${COMMUNICATION_DIR}/network_callback_cl.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
@@ -314,8 +315,6 @@ set(SP_SOURCES
   )
 
 set(METHOD_SOURCES
-  ${METHOD_DIR}/method_connection_cl.cpp
-  ${METHOD_DIR}/method_connection_java.cpp
   ${METHOD_DIR}/method_compile_def.cpp
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_error.cpp

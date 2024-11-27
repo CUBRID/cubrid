@@ -19,11 +19,12 @@
 #include "method_compile.hpp"
 
 #include "pl_comm.h"
-#include "method_connection_sr.hpp"
-#include "method_connection_java.hpp"
+#include "pl_sr.h"
+#include "pl_connection.hpp"
 #include "method_compile_def.hpp"
 #include "session.h"
 #include "pl_session.hpp"
+#include "network_callback_sr.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -32,13 +33,13 @@ namespace cubmethod
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
   int callback_send_and_receive (cubthread::entry &thread_ref, PL_SESSION &session,
-				 const SOCKET java_socket, cubpacking::packable_object &obj)
+				 const cubpl::connection_view &cv, cubpacking::packable_object &obj)
   {
     int error = NO_ERROR;
 
     SESSION_ID s_id = session.get_id ();
     header header (s_id, METHOD_REQUEST_CALLBACK, session.get_and_increment_request_id ());
-    error = method_send_data_to_client (&thread_ref, header, obj);
+    error = xs_callback_send_args (&thread_ref, header, obj);
     if (error != NO_ERROR)
       {
 	return error;
@@ -47,10 +48,10 @@ namespace cubmethod
     auto reponse_lambda = [&] (cubmem::block & b)
     {
       header.req_id = session.get_and_increment_request_id ();
-      return mcon_send_data_to_java (java_socket, header, b);
+      return cv->send_buffer_args (header, b);
     };
 
-    error = xs_receive (&thread_ref, reponse_lambda);
+    error = xs_callback_receive (&thread_ref, reponse_lambda);
     return error;
   }
 
@@ -66,11 +67,11 @@ namespace cubmethod
       }
     SESSION_ID s_id = session->get_id ();
 
-    connection *conn = session->get_connection_pool()->claim();
+    cubpl::connection_view cv = get_connection_pool ()->claim ();
     header header (s_id, SP_CODE_COMPILE, session->get_and_increment_request_id ());
-    SOCKET socket = conn->get_socket ();
+
     {
-      error = mcon_send_data_to_java (socket, header, compile_request);
+      error = cv->send_buffer_args (header, compile_request);
       if (error != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
@@ -81,7 +82,7 @@ namespace cubmethod
       do
 	{
 	  cubmem::block response_blk;
-	  error = cubmethod::mcon_read_data_from_java (socket, response_blk);
+	  error = cv->receive_buffer (response_blk);
 	  if (error != NO_ERROR || response_blk.dim == 0)
 	    {
 	      error = ER_FAILED;
@@ -110,7 +111,7 @@ namespace cubmethod
 	      packing_unpacker respone_unpacker (payload_blk);
 	      sql_semantics_request request;
 	      respone_unpacker.unpack_all (request);
-	      error = callback_send_and_receive (thread_ref, *session, socket, request);
+	      error = callback_send_and_receive (thread_ref, *session, cv, request);
 	      break;
 	    }
 
@@ -119,7 +120,7 @@ namespace cubmethod
 	      packing_unpacker respone_unpacker (payload_blk);
 	      global_semantics_request request;
 	      respone_unpacker.unpack_all (request);
-	      error = callback_send_and_receive (thread_ref, *session, socket, request);
+	      error = callback_send_and_receive (thread_ref, *session, cv, request);
 	      break;
 	    }
 	    }
@@ -138,9 +139,9 @@ namespace cubmethod
       while (code != METHOD_REQUEST_COMPILE);
 
 exit:
-      if (session)
+      if (cv)
 	{
-	  session->get_connection_pool()->retire (conn, true);
+	  cv.reset ();
 	}
 
       return error;

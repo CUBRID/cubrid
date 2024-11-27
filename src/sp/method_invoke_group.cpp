@@ -28,12 +28,11 @@
 #include "object_primitive.h"
 #include "object_representation.h"	/* OR_ */
 #include "packer.hpp"
-#include "method_connection_sr.hpp"
-#include "method_connection_java.hpp"
-#include "method_connection_pool.hpp"
+#include "pl_connection.hpp"
 #include "session.h"
 #include "string_buffer.hpp"
 #include "pl_session.hpp"
+#include "network_callback_sr.hpp"
 
 #if defined (SA_MODE)
 #include "query_method.hpp"
@@ -60,8 +59,6 @@ namespace cubmethod
 	assert (PL_TYPE_IS_METHOD (sig_array.sigs[i].type));
       }
 #endif
-
-
 
     DB_VALUE v;
     db_make_null (&v);
@@ -104,7 +101,7 @@ namespace cubmethod
     cubmethod::header header (s_id, METHOD_REQUEST_ARG_PREPARE, req_id);
     cubmethod::prepare_args arg (m_id, t_id, METHOD_TYPE_CLASS_METHOD, arg_base); // TOD
 
-    error = method_send_data_to_client (m_stack->get_thread_entry (), header, arg);
+    error = xs_callback_send_args (m_stack->get_thread_entry (), header, arg);
     return error;
   }
 
@@ -130,7 +127,7 @@ namespace cubmethod
 	int req_id = m_stack->get_and_increment_request_id ();
 	// invoke
 	cubmethod::header header (s_id, METHOD_REQUEST_INVOKE /* default */, 0);
-	error = method_send_data_to_client (m_stack->get_thread_entry (), header, m_id, m_sig_array.sigs[i]);
+	error = xs_callback_send_args (m_stack->get_thread_entry (), header, m_id, m_sig_array.sigs[i]);
 	if (error != NO_ERROR)
 	  {
 	    break;
@@ -157,7 +154,7 @@ namespace cubmethod
 	};
 
 	// get_return
-	error = xs_receive (m_stack->get_thread_entry (), get_method_result);
+	error = xs_callback_receive (m_stack->get_thread_entry (), get_method_result);
 	if (error != NO_ERROR)
 	  {
 	    break;
@@ -203,7 +200,7 @@ exit:
       {
 	cubmethod::header header (get_session_id(), METHOD_REQUEST_END, get_and_increment_request_id ());
 	std::vector<int> handler_vec (m_handler_set.begin (), m_handler_set.end ());
-	error = method_send_data_to_client (m_thread_p, header, handler_vec);
+	error = xs_callback_send_args (m_thread_p, header, handler_vec);
 	m_handler_set.clear ();
       }
 

@@ -921,6 +921,7 @@ typedef struct _ha_config
 #define PRINT_CMD_JAVASP        "javasp"
 
 #define PRINT_CMD_START         "start"
+#define PRINT_CMD_RESTART       "restart"
 #define PRINT_CMD_STOP          "stop"
 #define PRINT_CMD_STATUS        "status"
 #define PRINT_CMD_DEREG         "deregister"

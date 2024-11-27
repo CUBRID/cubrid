@@ -6370,7 +6370,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   locator_Dont_check_foreign_key = true;
   ldr_init (args);
 
-  pl_monitor_init (NULL);
+  pl_server_init (args->volume.c_str ());
 
   /* set the flag to indicate what type of interrupts to raise If logging has been disabled set commit flag. If
    * logging is enabled set abort flag. */
@@ -6544,7 +6544,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 
   ldr_final ();
 
-  pl_monitor_destroy ();
+  pl_server_destroy ();
 
   if (ldr_Driver != NULL)
     {

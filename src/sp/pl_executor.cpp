@@ -25,8 +25,6 @@
 // runtime
 #include "dbtype.h"
 
-#include "method_connection_java.hpp"
-
 #include "method_struct_invoke.hpp"
 #include "method_struct_query.hpp"
 #include "method_struct_value.hpp"
@@ -338,7 +336,7 @@ exit:
     do
       {
 	cubmem::block response_blk;
-	error_code = mcon_read_data_from_java (m_stack->get_connection ()->get_socket (), response_blk);
+	error_code = m_stack->read_data_from_java (response_blk);
 	if (error_code != NO_ERROR)
 	  {
 	    break;
@@ -559,12 +557,12 @@ exit:
     cubmem::block blk;
     if (parameter_info)
       {
-	blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info));
+	blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info));
       }
     else
       {
-	blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
-					       ARG_FILE_LINE));
+	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+					  ARG_FILE_LINE));
       }
 
     if (blk.is_valid ())
@@ -669,7 +667,7 @@ exit:
     if (cursor == nullptr)
       {
 	assert (false);
-	cubmem::block b = std::move (mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
 				     ARG_FILE_LINE));
 	error = m_stack->send_data_to_java (b);
 	return error;
@@ -720,12 +718,12 @@ exit:
     cubmem::block blk;
     if (s_code != S_ERROR)
       {
-	blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info));
+	blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS, info));
       }
     else
       {
-	blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
-					       ARG_FILE_LINE));
+	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+					  ARG_FILE_LINE));
       }
 
     error = m_stack->send_data_to_java (blk);
@@ -934,11 +932,11 @@ exit:
 	dbvalue_java java_packer;
 	java_packer.value = &res;
 
-	blk = std::move (mcon_pack_data_block (error, java_packer));
+	blk = std::move (pack_data_block (error, java_packer));
       }
     else
       {
-	blk = std::move (mcon_pack_data_block (error));
+	blk = std::move (pack_data_block (error));
       }
 
     db_value_clear (&res);

@@ -19,12 +19,10 @@
 #include "method_callback.hpp"
 
 #include "dbi.h"
-#include "api_compat.h"
-
 #include "ddl_log.h"
 
-
 #include "method_compile.hpp"
+#include "method_compile_def.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
 #include "method_schema_info.hpp"
@@ -44,6 +42,7 @@
 #include "transform.h"
 #include "execute_statement.h"
 #include "schema_manager.h"
+#include "network_callback_cl.hpp"
 
 extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
     DB_QUERY_TYPE *column_info, bool is_holdable);
@@ -126,7 +125,7 @@ namespace cubmethod
       }
 
 #if defined (CS_MODE)
-    mcon_send_queue_data_to_server ();
+    xs_queue_send ();
 #else
     /* do nothing for SA_MODE */
 #endif
@@ -162,11 +161,11 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, 1);
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, 1);
       }
   }
 
@@ -218,11 +217,11 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, handler->get_prepare_info ());
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, handler->get_prepare_info ());
       }
   }
 
@@ -274,11 +273,11 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, handler->get_execute_info ());
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, handler->get_execute_info ());
       }
   }
 
@@ -296,12 +295,12 @@ namespace cubmethod
 	make_outresult_info info;
 	query_handler->set_prepare_column_list_info (info.column_infos);
 	query_handler->set_qresult_info (info.qresult_info);
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
 
     /* unexpected error, should not be here */
     m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
-    return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+    return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
   }
 
   int
@@ -321,11 +320,11 @@ namespace cubmethod
     get_generated_keys_info info = handler->generated_keys ();
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
   }
 
@@ -360,11 +359,11 @@ namespace cubmethod
     oid_get_info info = get_oid_handler()->oid_get (request.oid, request.attr_names);
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, info);
       }
   }
 
@@ -377,11 +376,11 @@ namespace cubmethod
     int result = get_oid_handler()->oid_put (request.oid, request.attr_names, request.db_values);
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
       }
   }
 
@@ -399,11 +398,11 @@ namespace cubmethod
     int res_code = get_oid_handler()->oid_cmd (oid, cmd, res);
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, res_code, res);
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, res_code, res);
       }
   }
 
@@ -423,11 +422,11 @@ namespace cubmethod
 
     if (m_error_ctx.has_error())
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, result);
       }
   }
 
@@ -585,11 +584,11 @@ namespace cubmethod
 
     if (error == NO_ERROR)
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, response);
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, response);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, response);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, response);
       }
   }
 
@@ -871,11 +870,11 @@ exit:
 
     if (error == NO_ERROR)
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, response);
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, response);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, response);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, response);
       }
   }
 
@@ -908,11 +907,11 @@ exit:
 
     if (error == NO_ERROR)
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, 1);
+	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, 1);
       }
     else
       {
-	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, 0);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, 0);
       }
   }
 
@@ -1032,12 +1031,19 @@ exit:
     return nullptr;
   }
 
+  std::queue <cubmem::extensible_block> &
+  callback_handler::get_data_queue ()
+  {
+    return m_data_queue;
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // Global method callback handler interface
   //////////////////////////////////////////////////////////////////////////
   static callback_handler handler (100);
 
-  callback_handler *get_callback_handler (void)
+  callback_handler *
+  get_callback_handler (void)
   {
     return &handler;
   }

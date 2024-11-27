@@ -26,12 +26,18 @@
 #ifndef _PL_SR_H_
 #define _PL_SR_H_
 
+#include <mutex>
+#include <condition_variable>
+
 #include "porting.h"
-
 #include "thread_compat.hpp"
+#include "pl_connection.hpp"
 
-extern EXPORT_IMPORT void pl_monitor_init (const char *name);
-extern EXPORT_IMPORT void pl_monitor_destroy ();
+extern EXPORT_IMPORT void pl_server_init (const char *db_name);
+extern EXPORT_IMPORT void pl_server_destroy ();
+extern EXPORT_IMPORT void pl_server_wait_for_ready ();
+
+extern EXPORT_IMPORT PL_CONNECTION_POOL *get_connection_pool ();
 
 extern EXPORT_IMPORT int pl_start_jvm_server (const char *server_name, const char *path, int port_number);
 extern EXPORT_IMPORT int pl_server_port (void);

@@ -719,7 +719,6 @@ pl_server_port (void)
   return sp_port;
 }
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * pl_server_port_from_info
  *   return: if jsp is disabled return -2 (PL_PORT_DISABLED)
@@ -733,16 +732,17 @@ pl_server_port (void)
 int
 pl_server_port_from_info (void)
 {
-#if defined (SA_MODE)
-  return sp_port;
-#else
+#if defined (SERVER_MODE)
   // check $CUBRID/var/pl_<db_name>.info
-  PL_SERVER_INFO pl_info {-1, -1};
-  pl_read_info (boot_db_name (), pl_info);
-  return sp_port = pl_info.port;
+  if (sp_port != PL_PORT_DISABLED)
+    {
+      PL_SERVER_INFO pl_info {-1, -1};
+      pl_read_info (boot_db_name (), pl_info);
+      sp_port = pl_info.port;
+    }
 #endif
+  return sp_port;
 }
-#endif
 
 /*
  * pl_jvm_is_loaded
