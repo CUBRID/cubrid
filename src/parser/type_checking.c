@@ -533,8 +533,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
-      /* return type */
 
+      /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_INTEGER;
       def->overloads[num++] = sig;
@@ -20387,6 +20387,8 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_HOURF:
     case PT_MINUTEF:
     case PT_SECONDF:
+    case PT_BIT_LENGTH:
+    case PT_OCTET_LENGTH:
       return true;
     default:
       return false;
