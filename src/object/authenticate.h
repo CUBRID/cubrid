@@ -75,7 +75,7 @@ class print_output;
 #define Au_cache                        au_ctx ()->caches
 
 /* Functions */
-#define au_init                         au_ctx ()->init_ctx
+#define au_init                         au_ctx
 #define au_final                        au_ctx ()->final_ctx
 #define au_install                      au_ctx ()->install
 #define au_start                        au_ctx ()->start
