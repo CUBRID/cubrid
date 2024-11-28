@@ -162,7 +162,8 @@ typedef enum
   SYNONYM_UNIQUE_NAME,
   SYNONYM_OWNER,
   SYNONYM_IS_PUBLIC,
-  SYNONYM_TARGET_UNIQUE_NAME,
+  SYNONYM_TARGET_NAME,
+  SYNONYM_TARGET_OWNER_NAME,
   SYNONYM_COMMENT,
 
   SYNONYM_VALUE_INDEX_MAX
@@ -1130,9 +1131,11 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   char *synonym_name = NULL;
   DB_OBJECT *synonym_owner = NULL;
   const char *synonym_unique_name = NULL;
+  char synonym_owner_name[DB_MAX_IDENTIFIER_LENGTH];
+  synonym_owner_name[0] = '\0';
   int is_public = 0;
-  char *target_name = NULL;
-  const char *target_unique_name = NULL;
+  const char *target_name = NULL;
+  const char *target_owner_name = NULL;
   const char *comment = NULL;
   bool is_dba_group_member = false;
   int i = 0;
@@ -1144,28 +1147,24 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   char *query = NULL;
   char synonym_output_owner[DB_MAX_USER_LENGTH + 4];
   synonym_output_owner[0] = '\0';
-  char target_output_owner[DB_MAX_USER_LENGTH + 4];
-  target_output_owner[0] = '\0';
   DB_OBJLIST *cl = NULL;
   const char *name = NULL;
-  char temp_schema[DB_MAX_CLASS_LENGTH] = { '\0' };
-  char synonym_owner_name[DB_MAX_IDENTIFIER_LENGTH];
-  synonym_owner_name[0] = '\0';
-  char target_owner_name[DB_MAX_IDENTIFIER_LENGTH];
-  target_owner_name[0] = '\0';
+  char temp_schema[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   // *INDENT-OFF*
   const char *query_all = "SELECT [unique_name], "
                              "[owner], "
 			     "[is_public], "
-			     "[target_unique_name], "
+			     "[target_name], "
+			     "LOWER([target_owner].[name]), "
 			     "[comment] "
 			"FROM [_db_synonym]";
 
   const char *query_user = "SELECT [unique_name], "
                                "[owner], "
                                "[is_public], "
-                               "[target_unique_name], "
+                               "[target_name], "
+			       "LOWER([target_owner].[name]), "
                                "[comment] "
                            "FROM [_db_synonym]"
                            "WHERE [owner].[name] = '%s'";
@@ -1230,7 +1229,8 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	      switch (i)
 		{
 		case SYNONYM_UNIQUE_NAME:
-		case SYNONYM_TARGET_UNIQUE_NAME:
+		case SYNONYM_TARGET_NAME:
+		case SYNONYM_TARGET_OWNER_NAME:
 		  {
 		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
 		      {
@@ -1279,7 +1279,8 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	  synonym_unique_name = db_get_string (&values[SYNONYM_UNIQUE_NAME]);
 	  synonym_owner = db_get_object (&values[SYNONYM_OWNER]);
 	  is_public = db_get_int (&values[SYNONYM_IS_PUBLIC]);
-	  target_unique_name = db_get_string (&values[SYNONYM_TARGET_UNIQUE_NAME]);
+	  target_name = db_get_string (&values[SYNONYM_TARGET_NAME]);
+	  target_owner_name = db_get_string (&values[SYNONYM_TARGET_OWNER_NAME]);
 
 	  if (!is_dba_group_member && !ws_is_same_object (Au_user, synonym_owner))
 	    {
@@ -1293,7 +1294,9 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 		{
 		  name = db_get_class_name (cl->op);
 
-		  if (strcmp (target_unique_name, name) == 0)
+		  snprintf (temp_schema, DB_MAX_IDENTIFIER_LENGTH, "%s%s%s", (target_owner_name), ".", target_name);
+
+		  if (strcmp (temp_schema, name) == 0)
 		    {
 		      same_schema++;
 		    }
@@ -1320,12 +1323,9 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	  PRINT_OWNER_NAME (synonym_owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), synonym_output_owner,
 			    sizeof (synonym_owner_name));
 
-	  SPLIT_USER_SPECIFIED_NAME (target_unique_name, target_owner_name, target_name);
-	  PRINT_OWNER_NAME (target_owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), target_output_owner,
-			    sizeof (target_owner_name));
-
-	  output_ctx (" SYNONYM %s%s%s%s FOR %s%s%s%s", synonym_output_owner,
-		      PRINT_IDENTIFIER (synonym_name), target_output_owner, PRINT_IDENTIFIER (target_name));
+	  output_ctx (" SYNONYM %s%s%s%s FOR %s%s%s.%s%s%s", synonym_output_owner,
+		      PRINT_IDENTIFIER (synonym_name), PRINT_IDENTIFIER (target_owner_name),
+		      PRINT_IDENTIFIER (target_name));
 
 	  if (DB_IS_NULL (&values[SYNONYM_COMMENT]) == false)
 	    {
