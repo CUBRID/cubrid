@@ -81,7 +81,7 @@ namespace cubpl
       }
     if (m_db_port == PL_PORT_DISABLED)
       {
-	    m_db_port = pl_server_port_from_info ();
+	m_db_port = pl_server_port_from_info ();
       }
 
     std::lock_guard<std::mutex> lock (m_mutex);
