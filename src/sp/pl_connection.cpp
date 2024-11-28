@@ -78,10 +78,10 @@ namespace cubpl
     if (!is_system_pool ())
       {
 	pl_server_wait_for_ready ();
-	if (m_db_port == PL_PORT_DISABLED)
-	  {
+      }
+    if (m_db_port == PL_PORT_DISABLED)
+      {
 	    m_db_port = pl_server_port_from_info ();
-	  }
       }
 
     std::lock_guard<std::mutex> lock (m_mutex);
@@ -386,6 +386,7 @@ namespace cubpl
       {
 	pl_disconnect_server (m_socket);
       }
+
     m_socket = pl_connect_server (m_pool->get_db_name (), m_pool->get_db_port ());
     if (m_socket != INVALID_SOCKET)
       {
