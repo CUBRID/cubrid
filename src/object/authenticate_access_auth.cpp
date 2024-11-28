@@ -164,7 +164,7 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
   char obj_fetch_query[256];
   const char *class_unique_name = NULL;
   char sp_unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-  sp_unique_name[0] = '\0';
+  char error_msg[ERR_MSG_SIZE];
 
   for (i = 0; i < COUNT_FOR_VARIABLES; i++)
     {
@@ -191,6 +191,7 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
       sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
       break;
     case DB_OBJECT_PROCEDURE:
+      sp_unique_name[0] = '\0';
       if (jsp_get_unique_name (obj_mop, sp_unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
 	{
 	  assert (false);
@@ -203,7 +204,10 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
       break;
     default:
       assert (false);
-      error = ER_FAILED;
+      error = ER_UNEXPECTED;
+      error_msg[0] = '\0';
+      snprintf (error_msg, sizeof (error_msg) - 1, "unknown database object id: %d.", obj_type);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, error_msg);
       goto exit;
     }
 
