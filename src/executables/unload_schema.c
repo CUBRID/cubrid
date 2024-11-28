@@ -6026,7 +6026,7 @@ static int
 emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
 {
   int err = NO_ERROR;
-  DB_OBJLIST *cl;
+  DB_OBJLIST *cl, *cls, *sp_list = NULL;
   const char *name;
   int is_partitioned = 0;
 
@@ -6039,7 +6039,13 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
 	    {
 	      continue;
 	    }
-	  err = au_export_grants (ctxt, output_ctx, cl->op);
+	  err = au_export_grants (ctxt, output_ctx, cl->op, DB_OBJECT_CLASS);
+	}
+
+      sp_list = db_get_all_objects (db_find_class (SP_CLASS_NAME));
+      for (cls = sp_list; cls; cls = cls->next)
+	{
+	  err = au_export_grants (ctxt, output_ctx, cls->op, DB_OBJECT_PROCEDURE);
 	}
     }
 
