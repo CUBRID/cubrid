@@ -78,12 +78,10 @@ namespace cubpl
     if (!is_system_pool ())
       {
 	pl_server_wait_for_ready ();
-      }
-    if (m_db_port == PL_PORT_DISABLED)
-      {
-	// TODO: move this to proper place
-	// maybe pl server's port is not initialized yet
-	m_db_port = pl_server_port_from_info ();
+	if (m_db_port == PL_PORT_DISABLED)
+	  {
+	    m_db_port = pl_server_port_from_info ();
+	  }
       }
 
     std::lock_guard<std::mutex> lock (m_mutex);
@@ -302,11 +300,35 @@ namespace cubpl
       }
 
     int res_size = 0;
-    int nbytes = pl_readn_with_timeout (m_socket, (char *)&res_size, OR_INT_SIZE, timeout_ms);
-    if (nbytes != OR_INT_SIZE)
+    int nbytes;
+    int elapsed = 0;
+
+    /* read data length */
+    while (true)
       {
-	return do_handle_network_error (nbytes);
+	nbytes = pl_readn_with_timeout (m_socket, (char *)&res_size, OR_INT_SIZE, timeout_ms);
+	if (nbytes < 0)
+	  {
+	    if (errno == ETIMEDOUT)
+	      {
+		if (interrupt_func && (*interrupt_func)() != NO_ERROR)
+		  {
+		    return er_errid ();
+		  }
+		continue;
+	      }
+	    return do_handle_network_error (-1);
+	  }
+	if (nbytes != sizeof (int))
+	  {
+	    return do_handle_network_error (nbytes);
+	  }
+	else
+	  {
+	    break;
+	  }
       }
+
     res_size = ntohl (res_size);
 
     // To avoid invalid res_size is returned by PL server, and to prevent memory exhaustion of cub_server
@@ -331,19 +353,16 @@ namespace cubpl
     while (total_read < res_size)
       {
 	nbytes = pl_readn_with_timeout (m_socket, ext_blk.get_ptr() + total_read, res_size - total_read, timeout_ms);
-	if (nbytes <= 0)
+	if (errno == ETIMEDOUT && interrupt_func && (*interrupt_func)() != NO_ERROR)
+	  {
+	    return er_errid ();
+	  }
+	if (nbytes < 0)
 	  {
 	    return do_handle_network_error (nbytes);
 	  }
 
 	total_read += nbytes;
-
-	// Call interrupt function if provided
-	if (interrupt_func && (*interrupt_func)() != NO_ERROR)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	    return er_errid();
-	  }
       }
 
     // Step 5: Move the data into the block
@@ -351,6 +370,12 @@ namespace cubpl
     b = std::move (blk);
 
     return NO_ERROR; // Successfully received the buffer
+  }
+
+  void
+  connection::invalidate ()
+  {
+    pl_disconnect_server (m_socket);
   }
 
   // private
@@ -361,7 +386,6 @@ namespace cubpl
       {
 	pl_disconnect_server (m_socket);
       }
-
     m_socket = pl_connect_server (m_pool->get_db_name (), m_pool->get_db_port ());
     if (m_socket != INVALID_SOCKET)
       {
@@ -372,7 +396,7 @@ namespace cubpl
   int
   connection::do_handle_network_error (int nbytes)
   {
-    m_socket = INVALID_SOCKET;
+    (void) invalidate ();
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
     return er_errid ();
   }

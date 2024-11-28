@@ -2762,6 +2762,12 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	      pgbuf_force_to_check_for_interrupts ();
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
 	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
+
+	      cubpl::session * session = cubpl::get_session ();
+	      if (session)
+		{
+		  session->set_interrupt (ER_INTERRUPTED);
+		}
 	    }
 
 	  return true;
@@ -2835,7 +2841,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 #endif
 	}
 
-      PL_SESSION *session = cubpl::get_session ();
+      cubpl::session * session = cubpl::get_session ();
       if (session)
 	{
 	  session->set_interrupt (ER_INTERRUPTED);

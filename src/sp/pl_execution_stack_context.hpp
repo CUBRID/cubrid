@@ -71,6 +71,8 @@ namespace cubpl
 
       bool m_is_running;
 
+      int interrupt_handler ();
+
     public:
       execution_stack () = delete; // Not DefaultConstructible
       execution_stack (cubthread::entry *thread_p);
@@ -143,7 +145,12 @@ namespace cubpl
 	    return ER_FAILED; // Handle the case where connection is unavailable
 	  }
 
-	return conn->receive_buffer (b, nullptr, -1);
+	pl_callback_func interrupt_func = [this]()
+	{
+	  return interrupt_handler ();
+	};
+
+	return conn->receive_buffer (b, &interrupt_func, 500);
       }
 
       void

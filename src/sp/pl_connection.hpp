@@ -93,6 +93,7 @@ namespace cubpl
       void create_new_connection (int index);
       connection_view get_connection_view (int index);
 
+
       void initialize_pool ();
       void cleanup_pool ();
 
@@ -130,7 +131,6 @@ namespace cubpl
 
       bool is_connected () const;
       bool is_valid () const;
-
       int get_index () const;
 
       int send_buffer (const cubmem::block &mem);
@@ -151,6 +151,8 @@ namespace cubpl
 	  }
 	return status;
       }
+
+      void invalidate ();
 
     private:
       explicit connection (connection_pool *pool, int index);

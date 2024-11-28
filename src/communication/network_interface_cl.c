@@ -11004,7 +11004,10 @@ pl_call (const cubpl::pl_signature & sig, const std::vector < std::reference_wra
     if (data_reply != NULL)
       {
 	packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-	unpacker.unpack_all (result, out_args);
+	if (data_reply_size > 0)
+	  {
+	    unpacker.unpack_all (result, out_args);
+	  }
       }
     else
       {
@@ -11018,8 +11021,11 @@ error:
       packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
       int error_code;
       std::string error_msg;
-      unpacker.unpack_all (error_code, error_msg);
-      cubmethod::handle_method_error (error_code, error_msg);
+      if (data_reply_size > 0)
+	{
+	  unpacker.unpack_all (error_code, error_msg);
+	  cubmethod::handle_method_error (error_code, error_msg);
+	}
     }
 
   if (data_reply != NULL)

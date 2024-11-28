@@ -139,7 +139,13 @@ namespace cubpl
     int index = 0;
     REGU_VARIABLE_LIST operand;
 
+    if (m_stack == NULL)
+      {
+	return ER_FAILED;
+      }
+
     cubthread::entry *m_thread_p = m_stack->get_thread_entry ();
+
     if (m_sig.has_args ())
       {
 	DB_VALUE *value = NULL;
@@ -343,6 +349,13 @@ exit:
 	  }
 
 	cubpacking::unpacker unpacker (response_blk);
+	if (!response_blk.is_valid ())
+	  {
+	    error_code = ER_SP_NETWORK_ERROR;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, sizeof (int));
+	    break;
+	  }
+
 	unpacker.unpack_int (start_code);
 
 	cubmem::block payload_blk = std::move (m_stack->get_payload_block (unpacker));
@@ -436,6 +449,7 @@ exit:
       {
 	// it is handled in response_invoke_command
 	assert (false);
+	return ER_FAILED;
       }
 
     return NO_ERROR;
