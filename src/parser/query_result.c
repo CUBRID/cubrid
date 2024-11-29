@@ -337,6 +337,7 @@ pt_report_to_ersys (const PARSER_CONTEXT * parser, const PT_ERROR_TYPE error_typ
 void
 pt_report_to_ersys_with_statement (PARSER_CONTEXT * parser, const PT_ERROR_TYPE error_type, PT_NODE * statement)
 {
+  assert(false);
   PT_NODE *error_node;
   char buf[1000];
   char *stmt_string = NULL;

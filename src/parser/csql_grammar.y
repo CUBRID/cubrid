@@ -21222,7 +21222,7 @@ json_schema
 		;
 
 primitive_type
-  : VIMKIM opt_padding
+  : VECTOR opt_padding
     {{
       container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_VIMKIM), NULL);
@@ -21682,6 +21682,7 @@ primitive_type
 			  }
 
 		DBG_PRINT}}
+    /*
 	| VECTOR opt_vector_2
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | VECTOR opt_vector_2 );
     // hello world
@@ -21716,6 +21717,7 @@ primitive_type
 			$$ = ctn;
 
 		DBG_PRINT}}
+    */
 	| NUMERIC opt_prec_2
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | NUMERIC opt_prec_2 );
 
