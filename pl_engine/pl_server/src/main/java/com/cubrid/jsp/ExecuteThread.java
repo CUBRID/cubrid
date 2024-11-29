@@ -46,6 +46,7 @@ import com.cubrid.jsp.data.CompileRequest;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.protocol.BootstrapRequest;
 import com.cubrid.jsp.protocol.Header;
 import com.cubrid.jsp.protocol.PrepareArgs;
 import com.cubrid.jsp.protocol.RequestCode;
@@ -159,7 +160,12 @@ public class ExecuteThread extends Thread {
                             break;
                         }
 
-                        /* the following request codes are for javasp utility */
+                        /* the following request codes are for system requests */
+                    case RequestCode.UTIL_BOOTSTRAP:
+                        {
+                            processBootstrap();
+                            break;
+                        }
                     case RequestCode.UTIL_PING:
                         {
                             String ping = Server.getServer().getServerName();
@@ -363,6 +369,25 @@ public class ExecuteThread extends Thread {
                 jaos.close();
             }
         }
+    }
+
+    private void processBootstrap() throws Exception {
+        unpacker.setBuffer(ctx.getInboundQueue().take());
+
+        int result = 1; // failed
+        try {
+            BootstrapRequest request = new BootstrapRequest(unpacker);
+            Server.bootstrap(request);
+            result = 0; // no error
+        } catch (Exception e) {
+            // ignore, 1 will be returned
+        }
+
+        resultBuffer.clear(); /* prepare to put */
+        packer.setBuffer(resultBuffer);
+        packer.packInt(result);
+        resultBuffer = packer.getBuffer();
+        writeBuffer(resultBuffer);
     }
 
     private void processCompile() throws Exception {

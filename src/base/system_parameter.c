@@ -4665,7 +4665,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INTL_NUMBER_LANG,
    PRM_NAME_INTL_NUMBER_LANG,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
    PRM_STRING,
    &prm_intl_number_lang_flag,
    (void *) &prm_intl_number_lang_default,
@@ -4676,7 +4676,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INTL_DATE_LANG,
    PRM_NAME_INTL_DATE_LANG,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
    PRM_STRING,
    &prm_intl_date_lang_flag,
    (void *) &prm_intl_date_lang_default,
@@ -4817,7 +4817,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INTL_COLLATION,
    PRM_NAME_INTL_COLLATION,
-   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
    PRM_STRING,
    &prm_intl_collation_flag,
    (void *) &prm_intl_collation_default,
@@ -9204,6 +9204,53 @@ void
 xsysprm_dump_server_parameters (FILE * outfp)
 {
   sysprm_dump_parameters (outfp);
+}
+
+/*
+ * xsysprm_get_pl_context_parameters () - obtain values for parameters
+ *					    marked as PRM_FOR_PL_CONTEXT
+ *
+ * return : list of values
+ *
+ */
+SYSPRM_ASSIGN_VALUE *
+xsysprm_get_pl_context_parameters (void)
+{
+  SYSPRM_ASSIGN_VALUE *pl_ctx_values = NULL, *last_assign = NULL;
+  SYSPRM_PARAM *prm = NULL;
+  int i;
+
+  for (i = 0; i < NUM_PRM; i++)
+    {
+      prm = GET_PRM (i);
+      if (PRM_IS_FOR_PL_CONTEXT (prm->static_flag))
+	{
+	  SYSPRM_ASSIGN_VALUE *change_val = (SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
+	  if (change_val == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
+	      goto cleanup;
+	    }
+	  change_val->prm_id = (PARAM_ID) i;
+	  change_val->next = NULL;
+	  sysprm_set_sysprm_value_from_parameter (&change_val->value, prm);
+	  if (pl_ctx_values != NULL)
+	    {
+	      last_assign->next = change_val;
+	      last_assign = change_val;
+	    }
+	  else
+	    {
+	      pl_ctx_values = last_assign = change_val;
+	    }
+	}
+    }
+
+  return pl_ctx_values;
+
+cleanup:
+  sysprm_free_assign_values (&pl_ctx_values);
+  return NULL;
 }
 #endif /* !CS_MODE */
 
