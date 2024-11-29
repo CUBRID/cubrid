@@ -6028,6 +6028,7 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
   int err = NO_ERROR;
   DB_OBJLIST *cl, *cls, *sp_list = NULL;
   const char *name;
+  MOP sp_owner;
   int is_partitioned = 0;
 
   if (ctxt.do_auth)
@@ -6045,6 +6046,14 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
       sp_list = db_get_all_objects (db_find_class (SP_CLASS_NAME));
       for (cls = sp_list; cls; cls = cls->next)
 	{
+	  if (!au_is_dba_group_member (Au_user))
+	    {
+	      sp_owner = jsp_get_owner (cls->op);
+	      if (!ws_is_same_object (sp_owner, Au_user))
+		{
+		  continue;
+		}
+	    }
 	  err = au_export_grants (ctxt, output_ctx, cls->op, DB_OBJECT_PROCEDURE);
 	}
     }
