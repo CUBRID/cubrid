@@ -39,7 +39,8 @@ namespace cubpl
    * connection_pool - definition
    *********************************************************************/
 
-  constexpr int INITIAL_REVISION = -1;
+  constexpr int SYSTEM_REVISION = -1;
+  constexpr int INITIAL_REVISION = 0;
 
   connection_pool::connection_pool (int pool_size)
     : m_pool (pool_size, nullptr)
@@ -55,11 +56,15 @@ namespace cubpl
     initialize_pool ();
   }
 
-  connection_pool::connection_pool (int pool_size, const std::string &db_name, int pl_port)
+  connection_pool::connection_pool (int pool_size, const std::string &db_name, int pl_port, bool is_for_sys)
     : connection_pool (pool_size)
   {
     m_db_name = db_name;
     m_db_port = pl_port;
+    if (is_for_sys)
+      {
+	m_epoch = SYSTEM_REVISION;
+      }
   }
 
   connection_pool::~connection_pool ()
@@ -70,7 +75,10 @@ namespace cubpl
   connection_view
   connection_pool::claim ()
   {
-    pl_server_wait_for_ready ();
+    if (!is_system_pool ())
+      {
+	pl_server_wait_for_ready ();
+      }
     if (m_db_port == PL_PORT_DISABLED)
       {
 	// TODO: move this to proper place
@@ -110,7 +118,10 @@ namespace cubpl
   void
   connection_pool::increment_epoch ()
   {
-    m_epoch++;
+    if (!is_system_pool ())
+      {
+	m_epoch++;
+      }
   }
 
   int
@@ -137,6 +148,12 @@ namespace cubpl
     return m_db_port;
   }
 
+  bool
+  connection_pool::is_system_pool () const
+  {
+    return (m_epoch.load (std::memory_order::memory_order_relaxed) == SYSTEM_REVISION);
+  }
+
   // private
   void
   connection_pool::retire (connection *conn)
@@ -149,7 +166,7 @@ namespace cubpl
   void
   connection_pool::initialize_pool()
   {
-    for (int i = 0; i < m_min_conn_size; ++i)
+    for (int i = 0; i < m_min_conn_size && i < m_pool.size (); ++i)
       {
 	m_queue.push (i); // Pre-fill the queue with indices
       }
@@ -203,10 +220,10 @@ namespace cubpl
     : m_pool (pool)
     , m_index (index)
     , m_socket (INVALID_SOCKET)
-    , m_epoch (INITIAL_REVISION)
+    , m_epoch (pool->get_epoch ())
   {
     //
-    reconnect ();
+    do_reconnect ();
   }
 
   connection::~connection ()
@@ -226,8 +243,7 @@ namespace cubpl
   bool
   connection::is_valid () const
   {
-    return (m_pool->get_epoch () == m_epoch)
-	   && (m_socket != INVALID_SOCKET);
+    return (m_socket != INVALID_SOCKET) && (m_pool->get_epoch () == m_epoch || m_pool->get_epoch () == SYSTEM_REVISION);
   }
 
   int
@@ -247,7 +263,7 @@ namespace cubpl
   {
     if (!is_valid ())
       {
-	reconnect ();
+	do_reconnect ();
       }
 
     OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
@@ -259,15 +275,13 @@ namespace cubpl
     int nbytes = pl_writen (m_socket, request, OR_INT_SIZE);
     if (nbytes != OR_INT_SIZE)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	return er_errid();
+	return do_handle_network_error (nbytes);
       }
 
     nbytes = pl_writen (m_socket, blk.ptr, blk.dim);
     if (nbytes != static_cast<int> (blk.dim))
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	return er_errid();
+	return do_handle_network_error (nbytes);
       }
 
     return NO_ERROR;
@@ -284,15 +298,14 @@ namespace cubpl
   {
     if (!is_valid ())
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, -1);
+	return do_handle_network_error (-1);
       }
 
     int res_size = 0;
     int nbytes = pl_readn_with_timeout (m_socket, (char *)&res_size, OR_INT_SIZE, timeout_ms);
     if (nbytes != OR_INT_SIZE)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	return er_errid();
+	return do_handle_network_error (nbytes);
       }
     res_size = ntohl (res_size);
 
@@ -300,8 +313,7 @@ namespace cubpl
     constexpr int MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB max size
     if (res_size > MAX_BUFFER_SIZE || res_size < 0)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, res_size);
-	return er_errid();
+	return do_handle_network_error (nbytes);
       }
 
     if (res_size == 0)
@@ -321,8 +333,7 @@ namespace cubpl
 	nbytes = pl_readn_with_timeout (m_socket, ext_blk.get_ptr() + total_read, res_size - total_read, timeout_ms);
 	if (nbytes <= 0)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	    return er_errid();
+	    return do_handle_network_error (nbytes);
 	  }
 
 	total_read += nbytes;
@@ -344,16 +355,26 @@ namespace cubpl
 
   // private
   void
-  connection::reconnect ()
+  connection::do_reconnect ()
   {
     if (m_socket != INVALID_SOCKET)
       {
 	pl_disconnect_server (m_socket);
       }
+
     m_socket = pl_connect_server (m_pool->get_db_name (), m_pool->get_db_port ());
     if (m_socket != INVALID_SOCKET)
       {
 	m_epoch = m_pool->get_epoch ();
       }
   }
+
+  int
+  connection::do_handle_network_error (int nbytes)
+  {
+    m_socket = INVALID_SOCKET;
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+    return er_errid ();
+  }
+
 } // namespace cubpl
