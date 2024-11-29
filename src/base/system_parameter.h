@@ -732,6 +732,7 @@ extern "C"
   extern void xsysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE * prm_values);
   extern SYSPRM_ASSIGN_VALUE *xsysprm_get_force_server_parameters (void);
   extern void xsysprm_dump_server_parameters (FILE * fp);
+  extern SYSPRM_ASSIGN_VALUE *xsysprm_get_pl_context_parameters (void);
 #endif				/* !CS_MODE */
 
   extern int sysprm_set_force (const char *pname, const char *pvalue);
