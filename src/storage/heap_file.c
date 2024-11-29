@@ -20456,7 +20456,8 @@ static int
 heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 				    PGBUF_WATCHER * home_hint_p)
 {
-  int slot_count, slot_id, lk_result;
+  int slot_count, lk_result;
+  int slot_id = 0;
   LOCK lock;
   int error_code = NO_ERROR;
 
@@ -20520,14 +20521,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   slot_count = spage_number_of_slots (context->home_page_watcher_p->pgptr);
 
   /* find REC_DELETED_WILL_REUSE slot or add new slot */
-  /* slot_id == slot_count means add new slot */
-  for (slot_id = 0; slot_id <= slot_count; slot_id++)
-    {
       slot_id = spage_find_free_slot (context->home_page_watcher_p->pgptr, NULL, slot_id);
-      if (slot_id == SP_ERROR)
-	{
-	  break;		/* this will not happen */
-	}
 
       context->res_oid.slotid = slot_id;
 
@@ -20557,9 +20551,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	      assert (false);	/* unknown locking error */
 	    }
 #endif
-	  break;		/* go to error case */
 	}
-    }
 
   /* either lock error or no slot was found in page (which should not happen) */
   OID_SET_NULL (&context->res_oid);
