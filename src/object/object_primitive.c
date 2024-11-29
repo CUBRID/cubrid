@@ -990,7 +990,7 @@ PR_TYPE *tp_Type_null = &tp_Null;
 
 // TODO: VIMKIM study args
 PR_TYPE tp_Vimkim = {
-  "vimkim", DB_TYPE_VIMKIM, 1, sizeof(const char *), 0, 1,
+  "vector", DB_TYPE_VIMKIM, 1, sizeof(const char *), 0, 1,
   NULL,				
   NULL,				
   NULL,				

@@ -24938,7 +24938,7 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
   switch (id)
     {
     case DB_TYPE_VIMKIM:
-      return "VIMKIM";
+      return "VECTOR";
 
     case DB_TYPE_INTEGER:
       return "INTEGER";
