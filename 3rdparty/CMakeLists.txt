@@ -168,7 +168,7 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBEXPAT" ${LIBEXPAT_LIBS})
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
-      URL_HASH                  ${WITH_LIBEXPAT_URL_HASH}
+      URL_HASH             ${WITH_LIBEXPAT_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -220,7 +220,7 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBJANSSON" ${LIBJANSSON_LIBS})
     externalproject_add(${LIBJANSSON_TARGET}
       URL                  ${WITH_LIBJANSSON_URL}
-      URL_HASH                  ${WITH_LIBJANSSON_URL_HASH}
+      URL_HASH             ${WITH_LIBJANSSON_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -270,7 +270,7 @@ if(UNIX)
     ADD_BY_PRODUCTS_VARIABLE ("LIBEDIT" ${LIBEDIT_LIBS})
     externalproject_add(${LIBEDIT_TARGET}
       URL                  ${WITH_LIBEDIT_URL}
-      URL_HASH                  ${WITH_LIBEDIT_URL_HASH}
+      URL_HASH             ${WITH_LIBEDIT_URL_HASH}
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
       TIMEOUT              600
@@ -346,7 +346,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
-      URL_HASH                  ${WITH_LIBOPENSSL_URL_HASH}
+      URL_HASH             ${WITH_LIBOPENSSL_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -389,7 +389,7 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBUNIXODBC" ${LIBUNIXODBC_LIBS})
     externalproject_add(${LIBUNIXODBC_TARGET}
       URL                  ${WITH_LIBUNIXODBC_URL}
-      URL_HASH                  ${WITH_LIBUNIXODBC_URL_HASH}
+      URL_HASH             ${WITH_LIBUNIXODBC_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -416,7 +416,7 @@ ADD_BY_PRODUCTS_VARIABLE ("RAPIDJSON" ${RAPIDJSON_INCLUDES})
 externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL                  ${WITH_RAPIDJSON_URL}
-  URL_HASH                  ${WITH_RAPIDJSON_URL_HASH}
+  URL_HASH             ${WITH_RAPIDJSON_URL_HASH}
   LOG_CONFIGURE        TRUE
   LOG_BUILD            TRUE
   LOG_INSTALL          TRUE
@@ -480,7 +480,7 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBTBB" ${LIBTBB_LIBS})
     externalproject_add(${LIBTBB_TARGET}
       URL                  ${WITH_LIBTBB_URL}
-      URL_HASH                  ${WITH_LIBTBB_URL_HASH}
+      URL_HASH             ${WITH_LIBTBB_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
