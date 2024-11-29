@@ -251,7 +251,6 @@ public class Server {
         }
 
         ExecuteThread.charSet = config.getCharsetString();
-        System.out.println(config.getSystemParameters().toString());
     }
 
     public static boolean getSystemParameterBool(int id) {
