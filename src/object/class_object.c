@@ -3007,6 +3007,9 @@ classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
     {
       goto error;
     }
+
+  filter_predicate->pred_stream = NULL;
+
   if (val_str_len > 0)
     {
       filter_predicate->pred_string = (char *) db_ws_alloc (val_str_len + 1);
