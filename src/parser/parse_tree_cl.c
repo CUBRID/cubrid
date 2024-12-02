@@ -942,13 +942,13 @@ pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg)
 	  /* this is an optimization to remove a procedure call per node from the recursion path. It is the same as
 	   * calling pt_apply. */
 	  node_type = node->node_type;
-
-	  if (node_type == PT_NODE_NONE || node_type == PT_LAST_NODE_NUMBER)
+ 
+          assert (node_type >= PT_NODE_NONE);
+          if (node_type == PT_NODE_NONE)
 	    {
               assert (pt_has_error (parser));
 	      return NULL;
-	    }
-	  assert (node_type > PT_NODE_NONE && node_type < PT_LAST_NODE_NUMBER);
+	    }	  
 
 	  if (node_type >= PT_LAST_NODE_NUMBER || !(apply = pt_apply_f[node_type]))
 	    {
