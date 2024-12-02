@@ -20456,8 +20456,7 @@ static int
 heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 				    PGBUF_WATCHER * home_hint_p)
 {
-  int slot_count, lk_result;
-  int slot_id = 0;
+  int slot_count, lk_result, slot_id = 0;
   LOCK lock;
   int error_code = NO_ERROR;
 
