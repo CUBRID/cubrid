@@ -67,6 +67,7 @@
 #include "oid.h"
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
+#include "execute_statement.h"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
@@ -154,6 +155,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
   DB_VALUE value;
   int save, err = NO_ERROR;
   char *checked_name;
+  char other_class_name[DB_MAX_IDENTIFIER_LENGTH];
 
   if (!name)
     {
@@ -169,8 +171,29 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
       er_clear ();
-      err = ER_SP_NOT_EXIST;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, checked_name);
+
+      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	{
+	  other_class_name[0] = '\0';
+
+	  err = do_find_stored_procedure_by_query (name, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
+	  if (other_class_name[0] != '\0')
+	    {
+	      db_make_string (&value, other_class_name);
+	      mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
+	      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+		{
+		  err = ER_SP_NOT_EXIST;
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, other_class_name);
+		}
+	    }
+	}
+      else
+	{
+	  err = ER_SP_NOT_EXIST;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, checked_name);
+	}
     }
 
   if (mop)
@@ -1428,8 +1451,6 @@ jsp_check_stored_procedure_name (const char *str)
   char tmp[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
   static int dbms_output_len = strlen ("dbms_output.");
-  char owner_name[DB_MAX_USER_LENGTH];
-  owner_name[0] = '\0';
 
 
   if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0)
@@ -1441,8 +1462,6 @@ jsp_check_stored_procedure_name (const char *str)
     {
       sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
     }
-
-  // sm_downcase_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
 
   name = strdup (buffer);
 
