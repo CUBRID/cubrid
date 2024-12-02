@@ -6146,6 +6146,10 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
   best_match = 0;
   switch (op)
     {
+    case PT_IS_NULL:
+    case PT_IS_NOT_NULL:
+      break;
+
     case PT_BLOB_LENGTH:
     case PT_BLOB_TO_BIT:
       if (arg1_type != PT_TYPE_BLOB)
