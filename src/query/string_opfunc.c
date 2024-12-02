@@ -69,7 +69,7 @@
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-//#define TEST_OLD_VERSION
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -26595,10 +26595,7 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
   const char *str = NULL;
   char *hexval = NULL;
   int str_size = 0, hexval_len = 0, i = 0, error_code = NO_ERROR;
-
-#if !defined(TEST_OLD_VERSION)
   DB_VALUE tval, *ptval = NULL;
-#endif
 
   /* check parameters for NULL values */
   if (param == NULL || result == NULL)
@@ -26613,9 +26610,7 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
       return NO_ERROR;
     }
 
-#if !defined(TEST_OLD_VERSION)
 coerce_pos:
-#endif
   /* compute hex representation */
   param_type = DB_VALUE_DOMAIN_TYPE (param);
 
@@ -26717,7 +26712,6 @@ coerce_pos:
       db_make_string (result, hexval);
       result->need_clear = true;
     }
-#if !defined(TEST_OLD_VERSION)
   else
     {
       db_make_null (&tval);
@@ -26737,25 +26731,15 @@ coerce_pos:
     {
       db_value_clear (ptval);
     }
-#else
-  else
-    {
-      error_code = ER_QSTR_INVALID_DATA_TYPE;
-      goto error;
-    }
-#endif
-
 
   /* all ok */
   return NO_ERROR;
 
 error:
-#if !defined(TEST_OLD_VERSION)
   if (ptval)
     {
       db_value_clear (ptval);
     }
-#endif
 
   if (result)
     {

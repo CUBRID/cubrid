@@ -58,7 +58,6 @@
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-//#define TEST_OLD_VERSION
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
 static int fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VALUE ** peek_dbval,
@@ -1210,7 +1209,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-#if !defined(TEST_OLD_VERSION)
       else if (!TP_IS_STRING_TYPE (DB_VALUE_TYPE (peek_right)))
 	{
 	  DB_VALUE tval;
@@ -1226,7 +1224,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  db_make_int (arithptr->value, db_get_string_size (&tval));
 	  db_value_clear (&tval);
 	}
-#endif
       else
 	{
 	  db_make_int (arithptr->value, db_get_string_size (peek_right));
@@ -1245,27 +1242,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  db_get_bit (peek_right, &len);
 	  db_make_int (arithptr->value, len);
 	}
-#if !defined(TEST_OLD_VERSION)
-#if 0
-      else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BLOB)
-	{
-	  int len = 0;
-	  DB_VALUE tval;
-
-	  db_make_null (&tval);
-	  dom_status = tp_value_cast (peek_right, &tval, &tp_VarBit_domain, false);
-	  //dom_status = tp_value_cast (peek_right, &tval, &tp_Char_domain, true);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, arithptr->domain);
-	      goto error;
-	    }
-
-	  db_get_bit (&tval, &len);
-	  db_make_int (arithptr->value, len);
-	  db_value_clear (&tval);
-	}
-#endif
       else if (!TP_IS_STRING_TYPE (DB_VALUE_TYPE (peek_right)))
 	{
 	  DB_VALUE tval;
@@ -1281,7 +1257,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  db_make_int (arithptr->value, 8 * db_get_string_size (&tval));
 	  db_value_clear (&tval);
 	}
-#endif
       else
 	{
 	  /* must be a char string type */

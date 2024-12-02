@@ -62,7 +62,6 @@
 #include "func_type.hpp"
 
 #include "dbtype.h"
-//#define TEST_OLD_VERSION
 
 #define SET_EXPECTED_DOMAIN(node, dom) \
   do \
@@ -530,7 +529,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       num = 0;
 
       /* two overloads */
-#if !defined(TEST_OLD_VERSION)
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
@@ -548,36 +546,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_INTEGER;
       def->overloads[num++] = sig;
-#if 0
-      // for TestAPIS825.java  
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = (op == PT_BIT_LENGTH) ? PT_TYPE_BLOB : PT_TYPE_CLOB;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-      def->overloads[num++] = sig;
-#endif
-#else
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-      def->overloads[num++] = sig;
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-      def->overloads[num++] = sig;
-#endif
 
       def->overloads_count = num;
       break;
@@ -6174,7 +6142,6 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       return NO_ERROR;
     }
 
-#if !defined(TEST_OLD_VERSION)
   // Check if LOB type is supported
   best_match = 0;
   switch (op)
@@ -6211,7 +6178,6 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
     }
 
   if (best_match == 0)
-#endif
     {
       matches = -1;
       best_match = 0;
@@ -15855,28 +15821,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
       if (!PT_IS_STRING_TYPE (o1->type_enum))
 	{
-#if !defined(TEST_OLD_VERSION)
-#if 0
-	  if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BLOB)
-	    {
-	      int len = 0;
-	      DB_VALUE tval;
-
-	      db_make_null (&tval);
-	      dom_status = tp_value_cast (peek_right, &tval, &tp_VarBit_domain, false);
-	      //dom_status = tp_value_cast (peek_right, &tval, &tp_Char_domain, true);
-	      if (dom_status != DOMAIN_COMPATIBLE)
-		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, arithptr->domain);
-		  goto error;
-		}
-
-	      db_get_bit (&tval, &len);
-	      db_make_int (arithptr->value, len);
-	      db_value_clear (&tval);
-	    }
-#endif
-#endif
 	  return 0;
 	}
 
@@ -20485,10 +20429,8 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_HOURF:
     case PT_MINUTEF:
     case PT_SECONDF:
-#if !defined(TEST_OLD_VERSION)
     case PT_BIT_LENGTH:
     case PT_OCTET_LENGTH:
-#endif
       return true;
     default:
       return false;
