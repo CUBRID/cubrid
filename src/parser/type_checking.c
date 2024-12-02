@@ -62,6 +62,7 @@
 #include "func_type.hpp"
 
 #include "dbtype.h"
+//#define TEST_OLD_VERSION
 
 #define SET_EXPECTED_DOMAIN(node, dom) \
   do \
@@ -529,6 +530,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       num = 0;
 
       /* two overloads */
+#if !defined(TEST_OLD_VERSION)
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
@@ -546,6 +548,36 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_INTEGER;
       def->overloads[num++] = sig;
+#if 0
+      // for TestAPIS825.java  
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = (op == PT_BIT_LENGTH) ? PT_TYPE_BLOB : PT_TYPE_CLOB;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+#endif
+#else
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+#endif
 
       def->overloads_count = num;
       break;
@@ -6142,47 +6174,87 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       return NO_ERROR;
     }
 
-  matches = -1;
+#if !defined(TEST_OLD_VERSION)
+  // Check if LOB type is supported
   best_match = 0;
-  for (i = 0; i < def.overloads_count; i++)
+  switch (op)
     {
-      int match_cnt = 0;
-      if (pt_are_unmatchable_types (def.overloads[i].arg1_type, arg1_type))
+    case PT_BLOB_LENGTH:
+    case PT_BLOB_TO_BIT:
+      if (arg1_type != PT_TYPE_BLOB)
 	{
-	  match_cnt = -1;
-	  continue;
+	  best_match = -1;
 	}
-      if (pt_are_equivalent_types (def.overloads[i].arg1_type, arg1_type))
+      break;
+
+    case PT_CLOB_LENGTH:
+    case PT_CLOB_TO_CHAR:
+      if (arg1_type != PT_TYPE_CLOB)
 	{
-	  match_cnt++;
+	  best_match = -1;
 	}
-      if (pt_are_unmatchable_types (def.overloads[i].arg2_type, arg2_type))
+      break;
+
+      //case PT_BIT_TO_BLOB:
+      //case PT_CHAR_TO_BLOB:
+      //case PT_CHAR_TO_CLOB:
+      //case PT_BLOB_FROM_FILE:
+      //case PT_CLOB_FROM_FILE:
+    default:
+      if ((arg1_type == PT_TYPE_BLOB || arg1_type == PT_TYPE_CLOB) ||
+	  (arg2_type == PT_TYPE_BLOB || arg3_type == PT_TYPE_CLOB) ||
+	  (arg2_type == PT_TYPE_BLOB || arg3_type == PT_TYPE_CLOB))
 	{
-	  match_cnt = -1;
-	  continue;
+	  best_match = -1;
 	}
-      if (pt_are_equivalent_types (def.overloads[i].arg2_type, arg2_type))
+      break;
+    }
+
+  if (best_match == 0)
+#endif
+    {
+      matches = -1;
+      best_match = 0;
+      for (i = 0; i < def.overloads_count; i++)
 	{
-	  match_cnt++;
-	}
-      if (pt_are_unmatchable_types (def.overloads[i].arg3_type, arg3_type))
-	{
-	  match_cnt = -1;
-	  continue;
-	}
-      if (pt_are_equivalent_types (def.overloads[i].arg3_type, arg3_type))
-	{
-	  match_cnt++;
-	}
-      if (match_cnt == 3)
-	{
-	  best_match = i;
-	  break;
-	}
-      else if (match_cnt > matches)
-	{
-	  matches = match_cnt;
-	  best_match = i;
+	  int match_cnt = 0;
+	  if (pt_are_unmatchable_types (def.overloads[i].arg1_type, arg1_type))
+	    {
+	      match_cnt = -1;
+	      continue;
+	    }
+	  if (pt_are_equivalent_types (def.overloads[i].arg1_type, arg1_type))
+	    {
+	      match_cnt++;
+	    }
+	  if (pt_are_unmatchable_types (def.overloads[i].arg2_type, arg2_type))
+	    {
+	      match_cnt = -1;
+	      continue;
+	    }
+	  if (pt_are_equivalent_types (def.overloads[i].arg2_type, arg2_type))
+	    {
+	      match_cnt++;
+	    }
+	  if (pt_are_unmatchable_types (def.overloads[i].arg3_type, arg3_type))
+	    {
+	      match_cnt = -1;
+	      continue;
+	    }
+	  if (pt_are_equivalent_types (def.overloads[i].arg3_type, arg3_type))
+	    {
+	      match_cnt++;
+	    }
+	  if (match_cnt == 3)
+	    {
+	      best_match = i;
+	      break;
+	    }
+	  else if (match_cnt > matches)
+	    {
+	      matches = match_cnt;
+	      best_match = i;
+	    }
 	}
     }
 
@@ -15783,6 +15855,28 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
       if (!PT_IS_STRING_TYPE (o1->type_enum))
 	{
+#if !defined(TEST_OLD_VERSION)
+#if 0
+	  if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BLOB)
+	    {
+	      int len = 0;
+	      DB_VALUE tval;
+
+	      db_make_null (&tval);
+	      dom_status = tp_value_cast (peek_right, &tval, &tp_VarBit_domain, false);
+	      //dom_status = tp_value_cast (peek_right, &tval, &tp_Char_domain, true);
+	      if (dom_status != DOMAIN_COMPATIBLE)
+		{
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, arithptr->domain);
+		  goto error;
+		}
+
+	      db_get_bit (&tval, &len);
+	      db_make_int (arithptr->value, len);
+	      db_value_clear (&tval);
+	    }
+#endif
+#endif
 	  return 0;
 	}
 
@@ -19212,6 +19306,11 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
     }
   /* do type checking */
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
+  if (pt_has_error (parser))
+    {
+      tree = NULL;
+      return tree;
+    }
   /* do constant folding */
   tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
   if (pt_has_error (parser))
@@ -20386,8 +20485,10 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_HOURF:
     case PT_MINUTEF:
     case PT_SECONDF:
+#if !defined(TEST_OLD_VERSION)
     case PT_BIT_LENGTH:
     case PT_OCTET_LENGTH:
+#endif
       return true;
     default:
       return false;
