@@ -549,7 +549,7 @@ extern "C"
 /* The maximum precision that can be specified for a NATIONAL CHAR(n) domain. This probably isn't restrictive enough.
  * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
  */
-#define DB_MAX_NCHAR_PRECISION 2048
+#define DB_MAX_NCHAR_PRECISION (DB_MAX_STRING_LENGTH/2)
 
 /* The maximum precision that can be specified for a NATIONAL CHARACTER VARYING domain. This probably isn't restrictive enough.
  * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
