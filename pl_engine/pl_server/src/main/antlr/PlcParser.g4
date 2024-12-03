@@ -119,6 +119,7 @@ label_declaration
 statement
     : block                                 # stmt_block
     | sql_statement                         # stmt_sql              // must go before procedure_call
+    | cursor_manipulation_statement         # stmt_cursor_manipulation
     | raise_application_error_statement     # stmt_raise_app_err    // must go before procedure_call
     | execute_immediate                     # stmt_exec_imme
     | assignment_statement                  # stmt_assign
@@ -241,7 +242,6 @@ block
 
 sql_statement
     : static_sql
-    | cursor_manipulation_statement
     | transaction_control_statement
     ;
 
