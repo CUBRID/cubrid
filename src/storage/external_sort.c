@@ -67,6 +67,7 @@
  * or total output files at each stage of the merging process.
  */
 #define SORT_MAX_HALF_FILES      4
+#define SORT_MAX_TOT_FILES      SORT_MAX_HALF_FILES * 2
 
 /* Lower limit on the half of the total number of the temporary files.
  * The exact lower limit on total number of temp files is twice this number.
@@ -75,7 +76,7 @@
  */
 #define SORT_MIN_HALF_FILES      2
 
-#define SORT_MAX_PARALLEL      16
+#define SORT_MAX_PARALLEL      32
 
 /* Initial size of the dynamic array that keeps the file contents list */
 #define SORT_INITIAL_DYN_ARRAY_SIZE 30
@@ -145,9 +146,9 @@ struct vol_list
 typedef struct sort_param SORT_PARAM;
 struct sort_param
 {
-  VFID temp[2 * SORT_MAX_HALF_FILES];	/* Temporary file identifiers */
+  VFID temp[SORT_MAX_TOT_FILES];	/* Temporary file identifiers */
   VFID multipage_file;		/* Temporary file for multi page sorting records */
-  FILE_CONTENTS file_contents[2 * SORT_MAX_HALF_FILES];	/* Contents of each temporary file */
+  FILE_CONTENTS file_contents[SORT_MAX_TOT_FILES];	/* Contents of each temporary file */
 
   bool tde_encrypted;		/* whether related temp files are encrypted (TDE) or not */
 
@@ -250,6 +251,13 @@ struct sort_stack
   SRUN *srun;
 };
 
+typedef struct result_run RESULT_RUN;
+struct result_run
+{
+  VFID temp_file;
+  int num_pages;
+};
+
 typedef void FIND_RUN_FN (char **, long *, SORT_STACK *, long, SORT_CMP_FUNC *, void *);
 typedef void MERGE_RUN_FN (char **, char **, SORT_STACK *, SORT_CMP_FUNC *, void *);
 
@@ -257,7 +265,6 @@ typedef void MERGE_RUN_FN (char **, char **, SORT_STACK *, SORT_CMP_FUNC *, void
 static int sort_validate (char **vector, long size, SORT_CMP_FUNC * compare, void *comp_arg);
 #endif
 
-#if defined(SERVER_MODE)
 /* start parallel sort */
 static void sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
 static int sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
@@ -266,12 +273,13 @@ static int sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * des
 				       int parallel_num);
 static int sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
 					int parallel_num);
+static int sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM * sort_param, int first_idx,
+			     int remaining_run, int level);
 static int sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
 				   int parallel_num);
 static int sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
 				 int parallel_num);
-#endif
 /* end parallel sort */
 
 static int sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
@@ -1433,7 +1441,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tot_tempfiles = 0;
 
   /* initialize memory allocable fields */
-  for (i = 0; i < 2 * SORT_MAX_HALF_FILES; i++)
+  for (i = 0; i < SORT_MAX_TOT_FILES; i++)
     {
       sort_param->temp[i].volid = NULL_VOLID;
       sort_param->file_contents[i].num_pages = NULL;
@@ -1484,7 +1492,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tot_tempfiles = sort_param->half_files << 1;
   sort_param->in_half = 0;
 
-  for (i = 0; i < sort_param->tot_tempfiles; i++)
+  for (i = 0; i < SORT_MAX_TOT_FILES; i++)
     {
       /* Initilize temporary file identifier; real value will be set in "sort_add_new_file () */
       sort_param->temp[i].volid = NULL_VOLID;
@@ -4117,14 +4125,11 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
       (void) file_temp_retire (thread_p, &(sort_param->multipage_file), false);
     }
 
-  if (parallel_type == PX_SINGLE || parallel_type == PX_THREAD_IN_PARALLEL)
+  for (k = 0; k < SORT_MAX_TOT_FILES; k++)
     {
-      for (k = 0; k < sort_param->tot_tempfiles; k++)
+      if (sort_param->file_contents[k].num_pages != NULL)
 	{
-	  if (sort_param->file_contents[k].num_pages != NULL)
-	    {
-	      free_and_init (sort_param->file_contents[k].num_pages);
-	    }
+	  free_and_init (sort_param->file_contents[k].num_pages);
 	}
     }
 
@@ -4243,7 +4248,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
   for (i = 0; i < parallel_num; i++)
     {
       px_sort_param[i].internal_memory = NULL;
-      for (j = 0; j < px_sort_param[i].tot_tempfiles; j++)
+      for (j = 0; j < SORT_MAX_TOT_FILES; j++)
 	{
 	  px_sort_param[i].file_contents[j].num_pages = NULL;
 	}
@@ -4259,7 +4264,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (sort_param->tot_buffers * DB_PAGESIZE));
 	  break;
 	}
-      for (j = 0; j < px_sort_param[i].tot_tempfiles; j++)
+      for (j = 0; j < SORT_MAX_TOT_FILES; j++)
 	{
 	  /* Initilize file contents list */
 	  px_sort_param[i].file_contents[j].num_pages = (int *) malloc (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
@@ -4295,7 +4300,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	    {
 	      free_and_init (px_sort_param[i].internal_memory);
 	    }
-	  for (j = 0; j < px_sort_param[i].tot_tempfiles; j++)
+	  for (j = 0; j < SORT_MAX_TOT_FILES; j++)
 	    {
 	      if (px_sort_param[i].file_contents[j].num_pages != NULL)
 		{
@@ -4467,57 +4472,98 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 			     int parallel_num)
 {
   int error = NO_ERROR;
-  int i = 0;
+  int i = 0, idx = 0, file_pg_cnt_est;
+  int remaining_run, level, merge_num;
+  RESULT_RUN result_run[SORT_MAX_PARALLEL];
 
-  /* TO_DO : Up to 4 in parallel. Expansion required. SORT_MAX_HALF_FILES */
-  if (parallel_num > 4)
+  if (parallel_num > SORT_MAX_PARALLEL)
     {
-      assert (0);
+      return ER_FAILED;
     }
 
-  /* free num_pages */
-  for (i = 0; i < sort_param->tot_tempfiles; i++)
+  /* init result_run */
+  for (i = 0; i < parallel_num; i++)
     {
-      free_and_init (sort_param->file_contents[i].num_pages);
+      result_run[i].temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
+      result_run[i].num_pages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
+    }
 
-      sort_param->file_contents[i].num_slots = SORT_INITIAL_DYN_ARRAY_SIZE;
-      sort_param->file_contents[i].first_run = -1;
-      sort_param->file_contents[i].last_run = -1;
+  remaining_run = parallel_num;
+  level = 0;
+
+  while (remaining_run > 1)
+    {
+      merge_num = (remaining_run + (SORT_MAX_HALF_FILES - 1)) / SORT_MAX_HALF_FILES;
+
+      for (i = 0; i < merge_num; i++)
+	{
+	  idx = i * pow (SORT_MAX_HALF_FILES, level + 1);
+	  error = sort_merge_nruns (thread_p, result_run, sort_param, idx, remaining_run, level);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+
+      remaining_run = merge_num;
+      level++;
+    }
+
+  return error;
+}
+
+/*
+ * sort_merge_nruns () - merge n run
+ *   return: NO_ERROR
+ *   px_sort_param(in):
+ *   sort_param(in):
+ *   parallel_num(in):
+ */
+static int
+sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM * sort_param, int first_idx,
+		  int remaining_run, int level)
+{
+  int error = NO_ERROR;
+  int i = 0, idx = 0, file_pg_cnt_est;
+  int half_files = MIN (remaining_run - (first_idx / pow (SORT_MAX_HALF_FILES, level)), SORT_MAX_HALF_FILES);
+
+  if (half_files > remaining_run)
+    {
+      return ER_FAILED;
     }
 
   /* init file info */
   sort_param->px_result_file_idx = 0;
-  sort_param->half_files = parallel_num;
-  sort_param->tot_tempfiles = parallel_num * 2;
+  sort_param->half_files = half_files;
+  sort_param->tot_tempfiles = half_files * 2;
   sort_param->in_half = 0;
 
   /* copy temp file and file contents */
   for (i = 0; i < sort_param->half_files; i++)
     {
-      sort_param->temp[i] = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
-      sort_param->file_contents[i] = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx];
+      idx = (level == 0) ? (i + first_idx) : ((i * pow (SORT_MAX_HALF_FILES, level)) + first_idx);
+      sort_param->temp[i] = result_run[idx].temp_file;
+      /* copy the number of pages for one run */
+      sort_param->file_contents[i].num_pages[0] = result_run[idx].num_pages;
+      sort_param->file_contents[i].first_run = 0;
+      sort_param->file_contents[i].last_run = 0;
     }
   for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
     {
       /* init temp file and contents */
-      px_sort_param[0].temp[i].volid = NULL_VOLID;
-      px_sort_param[0].file_contents[i].first_run = -1;
-      px_sort_param[0].file_contents[i].last_run = -1;
-
-      /* copy from thread 0 */
-      sort_param->temp[i] = px_sort_param[0].temp[i];
-      sort_param->file_contents[i] = px_sort_param[0].file_contents[i];
+      sort_param->temp[i].volid = NULL_VOLID;
+      sort_param->file_contents[i].first_run = -1;
+      sort_param->file_contents[i].last_run = -1;
     }
 
   /* Create output temporary files make file and temporary volume page count estimates */
-  int file_pg_cnt_est = sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
+  file_pg_cnt_est = sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
   file_pg_cnt_est = MAX (1, file_pg_cnt_est);
 
   for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
     {
       error =
-	sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted,
-			   IS_PARALLEL_EXECUTION (sort_param));
+	sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted, false);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4525,7 +4571,7 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
     }
 
   /* Merge the parallel processed results. */
-  sort_param->px_max_index = 1;
+  sort_param->px_max_index = (remaining_run <= SORT_MAX_HALF_FILES) ? 1 : 2;
   if (sort_param->option == SORT_ELIM_DUP)
     {
       error = sort_exphase_merge_elim_dup (thread_p, sort_param);
@@ -4534,6 +4580,20 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
     {
       /* SORT_DUP */
       error = sort_exphase_merge (thread_p, sort_param);
+    }
+
+  /* save result run */
+  result_run[first_idx].temp_file = sort_param->temp[sort_param->px_result_file_idx];
+  result_run[first_idx].num_pages = sort_param->file_contents[sort_param->px_result_file_idx].num_pages[0];
+
+  /* retire temp file */
+  for (i = 0; i < sort_param->tot_tempfiles; i++)
+    {
+      if (sort_param->temp[i].volid != NULL_VOLID && i != sort_param->px_result_file_idx)
+	{
+	  (void) file_temp_retire (thread_p, &sort_param->temp[i], false);
+	  VFID_SET_NULL (&sort_param->temp[i]);
+	}
     }
 
   return error;
@@ -4549,6 +4609,7 @@ static int
 sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   SORT_INFO *sort_info_p;
+  int parallel_num = 18;
 
   if (sort_param->px_type == SORT_ORDER_BY)
     {
@@ -4556,10 +4617,10 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
       /* Find the number of parallel processes by page_cnt and tuple_cnt */
-      if (sort_info_p->input_file->page_cnt > 2 && sort_info_p->input_file->tuple_cnt > 2)
+      if (sort_info_p->input_file->page_cnt > parallel_num && sort_info_p->input_file->tuple_cnt > parallel_num)
 	{
 	  /* TO_DO : need to check the appropriate number of parallels depending on the number of pages */
-	  return 2;
+	  return parallel_num;
 	}
     }
   else
