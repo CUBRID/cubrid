@@ -1732,6 +1732,56 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 		  activity->parser = NULL;
 		}
 	    }
+
+	  {
+	    unsigned int save_custom;
+	    PARSER_CONTEXT *temp_parser = (PARSER_CONTEXT *) activity->parser;
+	    PT_NODE **temp_statement =
+	      &((PT_NODE *) activity->statement)->info.scope.stmt->info.trigger_action.expression;
+	    char *new_source;
+
+	    switch (activity->type)
+	      {
+	      case TR_ACT_EXPRESSION:
+		if (!with_evaluate)
+		  {
+		    /* trigger->action */
+		    save_custom = temp_parser->custom_print;
+		    temp_parser->custom_print |= PT_SUPPRESS_RESOLVED;
+		    new_source = parser_print_tree_with_quotes (temp_parser, *temp_statement);
+#if !defined (NDEBUG)
+		    assert (parser_parse_string_use_sys_charset (temp_parser, new_source) != NULL);
+#endif
+		    if (activity->source)
+		      {
+			free_and_init (activity->source);
+		      }
+
+		    activity->source = strdup (new_source);
+		    temp_parser->custom_print = save_custom;
+		  }
+		else
+		  {
+		    /* trigger->condition */
+		    new_source = parser_print_tree_with_quotes (temp_parser, *temp_statement);
+#if !defined (NDEBUG)
+		    assert (parser_parse_string_use_sys_charset (temp_parser, new_source) != NULL);
+#endif
+		    if (activity->source)
+		      {
+			free_and_init (activity->source);
+		      }
+
+		    activity->source = strdup (new_source);
+		  }
+		break;
+	      case TR_ACT_REJECT:
+	      case TR_ACT_INVALIDATE:
+	      case TR_ACT_PRINT:
+	      default:
+		break;
+	      }
+	  }
 	}
 
       /* free the computed string */
