@@ -94,8 +94,8 @@ static int pl_stop_server (const PL_SERVER_INFO pl_info, const std::string &db_n
 static int pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name);
 
 static void pl_dump_status (FILE *fp, PL_STATUS_INFO status_info);
-static int pl_ping_server (const int server_port, const char *db_name, char *buf);
-static bool pl_is_running (const int server_port, const std::string &db_name);
+static int pl_ping_server (const PL_SERVER_INFO pl_info, const char *db_name, char *buf);
+static bool pl_is_running (const PL_SERVER_INFO pl_info, const std::string &db_name);
 
 static int pl_get_server_info (const std::string &db_name, PL_SERVER_INFO &info);
 static int pl_check_argument (int argc, char *argv[], std::string &command, std::string &db_name);
@@ -208,14 +208,13 @@ main (int argc, char *argv[])
 	if (pl_info.pid == PL_PID_DISABLED || is_terminated_process (pl_info.pid) == true)
 	  {
 	    // NO_CONNECTION
-	    pl_reset_info (db_name.c_str ());
 	    goto exit;
 	  }
 
 	char buffer[PL_PING_LEN] = {0};
 	if (status == NO_ERROR)
 	  {
-	    status = pl_ping_server (pl_info.port, db_name.c_str (), buffer);
+	    status = pl_ping_server (pl_info, db_name.c_str (), buffer);
 	  }
 
 	if (status == NO_ERROR)
@@ -257,27 +256,27 @@ main (int argc, char *argv[])
 	  {
 	    command = "running";
 	    pl_read_info (db_name.c_str(), running_info);
-#if defined (WINDOWS)
-	    DWORD parent_ppid = GetCurrentProcessId();
-	    HANDLE hParent = OpenProcess (SYNCHRONIZE, FALSE, parent_ppid);
-	    DWORD result = WaitForSingleObject (hParent, INFINITE);
-	    CloseHandle (hParent);
-	    if (result == WAIT_OBJECT_0)
-	      {
-		ExitProcess (0);
-	      }
-#else
 	    do
 	      {
+#if defined (WINDOWS)
+		DWORD parent_ppid = GetCurrentProcessId();
+		HANDLE hParent = OpenProcess (SYNCHRONIZE, FALSE, parent_ppid);
+		DWORD result = WaitForSingleObject (hParent, INFINITE);
+		CloseHandle (hParent);
+		if (result == WAIT_OBJECT_0)
+		  {
+		    ExitProcess (0);
+		  }
+#else
 		if (getppid () == 1)
 		  {
 		    // parent process is terminated
 		    break;
 		  }
+#endif
 		sleep (1);
 	      }
 	    while (true);
-#endif
 	  }
       }
     else if (command.compare ("stop") == 0)
@@ -413,7 +412,7 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 {
   int status = NO_ERROR;
 
-  if (pl_info.pid != PL_PID_DISABLED && pl_is_running (pl_info.port, db_name))
+  if (pl_info.pid != PL_PID_DISABLED && pl_is_running (pl_info, db_name))
     {
       status = ER_GENERIC_ERROR;
     }
@@ -452,22 +451,24 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 static int
 pl_stop_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
 {
-  int status = NO_ERROR;
+#define MAX_RETRY_COUNT 10
+  int status = ER_FAILED;
+  int retry_count = 0;
 
-  cubpl::connection_pool connection_pool (1, db_name, pl_info.port);
-  cubpl::connection_view cv = connection_pool.claim ();
-  if (cv->is_valid())
+  if (pl_info.pid != -1 && !is_terminated_process (pl_info.pid))
     {
-      cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_TERMINATE_SERVER, 0);
-      cv->send_buffer_args (header);
-      pl_reset_info (db_name.c_str ());
+      terminate_process (pl_info.pid);
 
-      if (pl_info.pid != -1 && !is_terminated_process (pl_info.pid))
+      while (retry_count < MAX_RETRY_COUNT)
 	{
-	  terminate_process (pl_info.pid);
+	  if (kill (pl_info.pid, 0) == -1)
+	    {
+	      status = NO_ERROR;
+	      break;
+	    }
+	  usleep (10);
+	  retry_count++;
 	}
-
-      pl_reset_info (db_name.c_str ());
     }
 
   return status;
@@ -479,7 +480,7 @@ pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
   int status = NO_ERROR;
   cubmem::block buffer;
 
-  cubpl::connection_pool connection_pool (1, db_name, pl_info.port);
+  cubpl::connection_pool connection_pool (1, db_name, pl_info.port, true);
   cubpl::connection_view cv = connection_pool.claim ();
   if (cv->is_valid())
     {
@@ -529,12 +530,12 @@ exit:
 }
 
 static int
-pl_ping_server (const int server_port, const char *db_name, char *buf)
+pl_ping_server (const PL_SERVER_INFO pl_info, const char *db_name, char *buf)
 {
   int status = NO_ERROR;
   cubmem::block ping_blk {0, NULL};
 
-  cubpl::connection_pool connection_pool (1, db_name, server_port);
+  cubpl::connection_pool connection_pool (1, db_name, pl_info.port, true);
   cubpl::connection_view cv = connection_pool.claim ();
 
   if (cv->is_valid())
@@ -589,12 +590,12 @@ pl_dump_status (FILE *fp, PL_STATUS_INFO status_info)
 }
 
 static bool
-pl_is_running (const int server_port, const std::string &db_name)
+pl_is_running (const PL_SERVER_INFO pl_info, const std::string &db_name)
 {
   // check server running
   bool result = false;
   char buffer[PL_PING_LEN] = {0};
-  if (pl_ping_server (server_port, db_name.c_str (), buffer) == NO_ERROR)
+  if (pl_ping_server (pl_info, db_name.c_str (), buffer) == NO_ERROR)
     {
       if (db_name.compare (0, db_name.size (), buffer) == 0)
 	{

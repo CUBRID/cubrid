@@ -467,9 +467,6 @@ pl_tokenize_jvm_options (char *opt_str)
 static std::vector <std::string>
 pl_jvm_options ()
 {
-  const char debug_flag[] = "-Xdebug";
-  const char debug_jdwp[] = "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=";
-
   char buffer[PATH_MAX];
 
   envvar_javadir_file (buffer, PATH_MAX, "");
