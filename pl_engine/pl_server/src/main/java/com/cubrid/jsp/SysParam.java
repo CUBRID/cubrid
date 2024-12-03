@@ -38,10 +38,10 @@ public class SysParam implements UnPackableObject {
             case CODESET_ISO88591:
                 return StandardCharsets.ISO_8859_1.toString();
             case CODESET_KSC5601_EUC:
-                if (CHARSET_EUCKR != null) {
+                if (CHARSET_EUCKR == null) {
                     CHARSET_EUCKR = Charset.forName("EUC-KR");
                 }
-                CHARSET_EUCKR.toString();
+                return CHARSET_EUCKR.toString();
             default:
                 break;
         }

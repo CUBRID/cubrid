@@ -40,36 +40,35 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 
 public class ConnectionHandler {
-        private Socket client;
-        private DataInputStream input;
-        private DataOutputStream output;
-    
-        public ConnectionHandler(Socket client) throws IOException {
-            this.client = client;
-            this.input = new DataInputStream(new BufferedInputStream(client.getInputStream()));
-            this.output = new DataOutputStream(new BufferedOutputStream(client.getOutputStream()));
-        }
+    private Socket client;
+    private DataInputStream input;
+    private DataOutputStream output;
 
-        public ByteBuffer receiveBuffer() throws IOException {
-            int size = input.readInt(); // size
-            byte[] bytes = new byte[size];
-            input.readFully(bytes);
-            return ByteBuffer.wrap(bytes);
+    public ConnectionHandler(Socket client) throws IOException {
+        this.client = client;
+        this.input = new DataInputStream(new BufferedInputStream(client.getInputStream()));
+        this.output = new DataOutputStream(new BufferedOutputStream(client.getOutputStream()));
+    }
+
+    public ByteBuffer receiveBuffer() throws IOException {
+        int size = input.readInt(); // size
+        byte[] bytes = new byte[size];
+        input.readFully(bytes);
+        return ByteBuffer.wrap(bytes);
+    }
+
+    public void sendBuffer(ByteBuffer buffer) throws IOException {
+        output.writeInt(buffer.position());
+        output.write(buffer.array(), 0, buffer.position());
+        output.flush();
+    }
+
+    public void close() {
+        try {
+            input.close();
+            output.close();
+            client.close();
+        } catch (IOException e) {
         }
-    
-        public void sendBuffer(ByteBuffer buffer) throws IOException {
-            output.writeInt(buffer.position());
-            output.write(buffer.array(), 0, buffer.position());
-            output.flush();
-        }
-    
-        public void close() {
-            try {
-                input.close();
-                output.close();
-                client.close();
-            } catch (IOException e) {
-            }
-        }
+    }
 }
-    

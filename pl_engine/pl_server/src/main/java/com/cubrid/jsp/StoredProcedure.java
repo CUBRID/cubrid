@@ -431,7 +431,7 @@ public class StoredProcedure {
         } else if (o instanceof ResultSet) {
             val = new ResultSetValue((ResultSet) o);
         } else if (o instanceof byte[]) {
-            val = new SetValue((byte[]) o);
+            val = new StringValue((byte[]) o);
         } else if (o instanceof short[]) {
             val = new SetValue((short[]) o);
         } else if (o instanceof int[]) {

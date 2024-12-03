@@ -29,17 +29,16 @@
  *
  */
 
- package com.cubrid.jsp;
-
-import java.io.IOException;
-import java.net.Socket;
-import java.nio.ByteBuffer;
+package com.cubrid.jsp;
 
 import com.cubrid.jsp.command.CommandHandler;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.protocol.Header;
+import java.io.IOException;
+import java.net.Socket;
+import java.nio.ByteBuffer;
 
 public class ExecuteThreadNG extends Thread {
     private final ConnectionHandler connectionHandler;
@@ -54,19 +53,19 @@ public class ExecuteThreadNG extends Thread {
     @Override
     public void run() {
         try {
-                while (!Thread.interrupted()) {
-                    ByteBuffer inputBuffer = connectionHandler.receiveBuffer();
-                    Header header = processHeader(inputBuffer);
-    
-                    ContextManager.registerThread(Thread.currentThread().getId(), ctx.getSessionId());
-                    commandHandler.handleRequest(header, ctx, connectionHandler);
-                    ContextManager.deregisterThread(Thread.currentThread().getId());
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            } finally {
-                connectionHandler.close();
+            while (!Thread.interrupted()) {
+                ByteBuffer inputBuffer = connectionHandler.receiveBuffer();
+                Header header = processHeader(inputBuffer);
+
+                ContextManager.registerThread(Thread.currentThread().getId(), ctx.getSessionId());
+                commandHandler.handleRequest(header, ctx, connectionHandler);
+                ContextManager.deregisterThread(Thread.currentThread().getId());
             }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            connectionHandler.close();
+        }
     }
 
     private Header processHeader(ByteBuffer inputBuffer) throws Exception {
@@ -77,5 +76,4 @@ public class ExecuteThreadNG extends Thread {
         ctx.checkHeader(header);
         return header;
     }
- }
- 
+}

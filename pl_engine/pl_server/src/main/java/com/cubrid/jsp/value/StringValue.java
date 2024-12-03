@@ -56,10 +56,15 @@ public class StringValue extends Value {
         this.resolved = null;
     }
 
+    public StringValue(byte[] value) {
+        super();
+        this.primitiveValue = value;
+        this.codeset = Server.getConfig().getServerCodesetId();
+        this.resolved = null;
+    }
+
     public StringValue(String value) {
-        this(
-                value.getBytes(Server.getConfig().getServerCharset()),
-                Server.getConfig().getServerCodesetId());
+        this(value.getBytes(Server.getConfig().getServerCharset()));
     }
 
     @Override

@@ -109,11 +109,11 @@ public class ServerConfig {
         return serverCharset;
     }
 
-    public int getServerCodesetId () {
+    public int getServerCodesetId() {
         return SysParam.getCodesetId(serverCharset);
     }
 
-    public void initCharset() {
+    public void initializeCharset() {
         SysParam sysParam = systemParameters.get(SysParam.INTL_COLLATION);
         String collation = sysParam.getParamValue().toString();
         String codeset = null;
@@ -124,13 +124,12 @@ public class ServerConfig {
             codeset = codesetList[0];
         }
 
-        // test charset
         try {
             serverCharset = Charset.forName(codeset);
         } catch (Exception e) {
             // java.nio.charset.IllegalCharsetNameException
             serverCharset = StandardCharsets.UTF_8;
         }
-        codeset = serverCharset.toString();
+        System.setProperty("file.encoding", serverCharset.toString());
     }
 }

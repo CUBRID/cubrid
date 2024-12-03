@@ -127,11 +127,6 @@ public class ExecuteThread extends Thread {
 
         client = null;
         output = null;
-        // charSet = null;
-    }
-
-    public void setCharSet(String conCharsetName) {
-        // this.charSet = conCharsetName;
     }
 
     @Override
@@ -430,9 +425,7 @@ public class ExecuteThread extends Thread {
                 }
 
                 info.compiledType = 1; // TODO: always jar
-
-                String encodedStr = Base64.getEncoder().encodeToString(data);
-                info.compiledCode = encodedStr.getBytes();
+                info.compiledCode = Base64.getEncoder().encode(data);
             }
         } catch (Exception e) {
             info =

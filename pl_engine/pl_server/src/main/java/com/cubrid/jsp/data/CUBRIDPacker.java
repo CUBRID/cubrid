@@ -159,7 +159,6 @@ public class CUBRIDPacker {
 
     public void packValue(Value value, int dbType)
             throws UnsupportedEncodingException, TypeMismatchException {
-        Object resolvedResult = null;
         if (value == null) {
             packInt(DBType.DB_NULL);
             return;
@@ -191,7 +190,7 @@ public class CUBRIDPacker {
             case DBType.DB_STRING:
                 packInt(dbType);
                 packInt(value.getCodeSet());
-                packString(value.toString());
+                packCString(value.toByteArray());
                 break;
 
             case DBType.DB_NUMERIC:

@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.data;
 
+import com.cubrid.jsp.Server;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.*;
 import java.nio.ByteBuffer;
@@ -105,7 +106,7 @@ public class CUBRIDUnpacker {
             byte[] str = new byte[len];
             buffer.get(str);
             align(DataUtilities.INT_ALIGNMENT);
-            return new String(str);
+            return new String(str, Server.getConfig().getServerCharset());
         } else {
             align(DataUtilities.INT_ALIGNMENT);
             return "";
@@ -115,14 +116,14 @@ public class CUBRIDUnpacker {
     public byte[] unpackCStringByteArray() {
         int len = unpackStringSize();
         if (len > 0) {
-                byte[] str = new byte[len];
-                buffer.get(str);
-                align(DataUtilities.INT_ALIGNMENT);
-                return str;
-            } else {
-                align(DataUtilities.INT_ALIGNMENT);
-                return new byte[0];
-            }
+            byte[] str = new byte[len];
+            buffer.get(str);
+            align(DataUtilities.INT_ALIGNMENT);
+            return str;
+        } else {
+            align(DataUtilities.INT_ALIGNMENT);
+            return new byte[0];
+        }
     }
 
     public int unpackStringSize() {

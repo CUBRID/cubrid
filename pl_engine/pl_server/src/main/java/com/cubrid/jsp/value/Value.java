@@ -332,7 +332,7 @@ public abstract class Value {
         dbType = type;
     }
 
-    public int getCodeSet () {
+    public int getCodeSet() {
         return codeset;
     }
 
