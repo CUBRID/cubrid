@@ -6148,6 +6148,12 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
     {
     case PT_IS_NULL:
     case PT_IS_NOT_NULL:
+    case PT_ISNULL:
+    case PT_TYPEOF:
+      break;
+
+    case PT_CAST:
+      assert (false);
       break;
 
     case PT_BLOB_LENGTH:
