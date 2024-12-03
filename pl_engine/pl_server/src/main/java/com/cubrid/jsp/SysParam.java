@@ -1,12 +1,11 @@
 package com.cubrid.jsp;
 
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.protocol.UnPackableObject;
 import com.cubrid.jsp.value.Value;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 
 public class SysParam implements UnPackableObject {
 
@@ -40,17 +39,17 @@ public class SysParam implements UnPackableObject {
                 return StandardCharsets.ISO_8859_1.toString();
             case CODESET_KSC5601_EUC:
                 if (CHARSET_EUCKR != null) {
-                        CHARSET_EUCKR = Charset.forName("EUC_KR");
+                    CHARSET_EUCKR = Charset.forName("EUC-KR");
                 }
                 CHARSET_EUCKR.toString();
             default:
                 break;
         }
 
-        return "UTF_8"; // default
+        return "UTF-8"; // default
     }
 
-    public static int getCodesetId (Charset charset) {
+    public static int getCodesetId(Charset charset) {
         if (charset.equals(StandardCharsets.US_ASCII)) {
             return CODESET_ASCII;
         } else if (charset.equals(StandardCharsets.ISO_8859_1)) {

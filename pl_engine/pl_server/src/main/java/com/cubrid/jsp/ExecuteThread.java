@@ -51,7 +51,6 @@ import com.cubrid.jsp.protocol.Header;
 import com.cubrid.jsp.protocol.PrepareArgs;
 import com.cubrid.jsp.protocol.RequestCode;
 import com.cubrid.jsp.value.Value;
-import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.compiler.PlcsqlCompilerMain;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.io.BufferedInputStream;
@@ -382,6 +381,7 @@ public class ExecuteThread extends Thread {
             result = 0; // no error
         } catch (Exception e) {
             // ignore, 1 will be returned
+            Server.log(e);
         }
 
         resultBuffer.clear(); /* prepare to put */
@@ -477,9 +477,7 @@ public class ExecuteThread extends Thread {
         for (int i = 0; args != null && i < args.length; i++) {
             if (args[i].getMode() > Value.IN) {
                 Value v = sp.makeOutValue(args[i].getResolved());
-                packer.packValue(
-                        v,
-                        args[i].getDbType());
+                packer.packValue(v, args[i].getDbType());
             }
         }
     }

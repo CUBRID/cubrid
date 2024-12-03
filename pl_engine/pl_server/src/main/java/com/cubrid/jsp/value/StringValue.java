@@ -35,7 +35,6 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
-
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.sql.Date;
@@ -58,7 +57,9 @@ public class StringValue extends Value {
     }
 
     public StringValue(String value) {
-        this(value.getBytes(Server.getConfig().getServerCharset()), Server.getConfig().getServerCodesetId());
+        this(
+                value.getBytes(Server.getConfig().getServerCharset()),
+                Server.getConfig().getServerCodesetId());
     }
 
     @Override
@@ -159,11 +160,12 @@ public class StringValue extends Value {
     @Override
     public String toString() {
         if (resolved == null) {
-                try {
-                        resolved = new String (primitiveValue, SysParam.getCodesetString(this.codeset));
-                } catch (UnsupportedEncodingException e) {
-                        // just return null
-                }
+            try {
+                resolved = new String(primitiveValue, SysParam.getCodesetString(this.codeset));
+            } catch (UnsupportedEncodingException e) {
+                // just return null
+                Server.log(e);
+            }
         }
         return (String) resolved;
     }
