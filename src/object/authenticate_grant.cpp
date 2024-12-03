@@ -1578,6 +1578,7 @@ collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked
   DB_QUERY_ERROR query_error;
   DB_VALUE user_val;
   const char *qp1 = "select [%s] from [%s];";
+  int saved_opt_level;
 
   *return_grants = NULL;
 
@@ -1590,7 +1591,14 @@ collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked
     }
 
   sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
+
+  saved_opt_level = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
+  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, 1);
+
   error = db_compile_and_execute_local (query, &query_result, &query_error);
+
+  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, saved_opt_level);
+
   if (error < 0)
     /* error is row count if not negative. */
     {
