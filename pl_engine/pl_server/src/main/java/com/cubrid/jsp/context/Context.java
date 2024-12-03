@@ -32,6 +32,7 @@
 package com.cubrid.jsp.context;
 
 import com.cubrid.jsp.ExecuteThread;
+import com.cubrid.jsp.Server;
 import com.cubrid.jsp.TargetMethodCache;
 import com.cubrid.jsp.classloader.ClassLoaderManager;
 import com.cubrid.jsp.classloader.ContextClassLoader;
@@ -40,6 +41,7 @@ import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.jsp.protocol.Header;
 import com.cubrid.plcsql.builtin.MessageBuffer;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Properties;
@@ -56,7 +58,7 @@ public class Context {
     private int prevRequestId = 0;
 
     // charset
-    private String charSet = "UTF-8";
+    private Charset sessionCharset = null;
 
     // single server-side connection per Context
     private CUBRIDServerSideConnection connection = null;
@@ -123,8 +125,11 @@ public class Context {
         return inBound;
     }
 
-    public String getCharset() {
-        return charSet;
+    public Charset getSessionCharset() {
+        if (sessionCharset == null) {
+            sessionCharset = Server.getConfig().getServerCharset();
+        }
+        return sessionCharset;
     }
 
     public void checkHeader(Header header) {
