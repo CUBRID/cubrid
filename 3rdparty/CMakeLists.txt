@@ -25,7 +25,21 @@ set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f
 set(WITH_LIBUNIXODBC_URL "https://ftp.osuosl.org/pub/blfs/conglomeration/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
 set(WITH_LIBTBB_URL "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.11.0.tar.gz")               # intel oneTBB library sources URL
 
-# create hash for each tar file with: sha256sum <file>
+# URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
+# It is optional but highly recommended to set this value. If not set, the file will be downloaded
+# every time Ninja reconfigures the project, which can be inefficient.
+#
+# Specifying the URL_HASH ensures:
+# 1. The file's integrity is verified against its hash.
+# 2. Ninja avoids unnecessary downloads if the file already exists and matches the hash.
+#
+# How to generate the URL_HASH:
+# - Use the `sha256sum` command to compute the hash of the downloaded tarball.
+#   Example:
+#   $ sha256sum openssl-1.1.1f.tar.gz
+#   Then set the resulting SHA256 hash in the format: "SHA256=<hash_value>"
+#
+# Below are the URL_HASH values for different libraries used in this project:
 set(WITH_LIBEXPAT_URL_HASH "SHA256=d9dc32efba7e74f788fcc4f212a43216fc37cf5f23f4c2339664d473353aedf6")
 set(WITH_LIBJANSSON_URL_HASH "SHA256=78215ad1e277b42681404c1d66870097a50eb084be9d771b1d15576575cf6447")                          # jansson library sources URL
 set(WITH_LIBEDIT_URL_HASH "SHA256=972c7d46844b7b56adde028bb2269546938272dd8d7a58978b7a18a6f6e44141")                  # editline library sources URL
