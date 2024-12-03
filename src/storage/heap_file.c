@@ -20534,9 +20534,9 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
       /* successfully locked! */
       return NO_ERROR;
     }
+#if !defined(NDEBUG)
   else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
     {
-#if !defined(NDEBUG)
       if (lk_result == LK_NOTGRANTED_DUE_ABORTED)
 	{
 	  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
@@ -20546,8 +20546,8 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	{
 	  assert (false);	/* unknown locking error */
 	}
-#endif
     }
+#endif
 
   /* either lock error or no slot was found in page (which should not happen) */
   OID_SET_NULL (&context->res_oid);
