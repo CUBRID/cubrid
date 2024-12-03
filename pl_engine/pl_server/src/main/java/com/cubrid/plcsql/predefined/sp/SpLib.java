@@ -531,7 +531,8 @@ public class SpLib {
 
     private static int checkAppErrCode(int code) {
         if (code <= CODE_APP_ERROR) {
-            throw new VALUE_ERROR("exception codes below " + (CODE_APP_ERROR + 1) + " are reserved");
+            throw new VALUE_ERROR(
+                    "exception codes below " + (CODE_APP_ERROR + 1) + " are reserved");
         }
 
         return code;
