@@ -74,8 +74,6 @@ import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
 
 public class ExecuteThread extends Thread {
-    public static Charset charSet = null;
-
     private Socket client;
 
     private DataInputStream input;
@@ -107,7 +105,6 @@ public class ExecuteThread extends Thread {
         resultBuffer = ByteBuffer.allocate(4096);
 
         packer = new CUBRIDPacker(resultBuffer);
-        charSet = Server.getConfig().getServerCharset();
     }
 
     public Socket getSocket() {
