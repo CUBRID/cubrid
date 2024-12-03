@@ -10178,6 +10178,7 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
   MOP class_mop, user_mop, save_user, owner;
   PT_NODE *class_, *user;
   SM_CLASS *sm_class = NULL;
+  const char *table_name;
 
   assert (alter != NULL);
 
@@ -10196,6 +10197,13 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 
   error = au_fetch_class_force (class_mop, &sm_class, AU_FETCH_UPDATE);
   if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  table_name = sm_get_ch_name (class_mop);
+  if (table_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
@@ -10220,7 +10228,7 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
   save_user = Au_user;
   if (AU_SET_USER (owner) == NO_ERROR)
     {
-      error = au_object_revoke_all_privileges (class_mop, owner);
+      error = au_object_revoke_all_privileges (DB_OBJECT_CLASS, owner, table_name);
       if (error != NO_ERROR)
 	{
 	  AU_SET_USER (save_user);

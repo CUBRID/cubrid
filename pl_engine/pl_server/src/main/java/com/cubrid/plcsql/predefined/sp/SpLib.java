@@ -530,24 +530,25 @@ public class SpLib {
     // builtin exceptions
     // ---------------------------------------------------------------------------------------
 
+    private static int checkAppErrCode(int code) {
+        if (code <= CODE_APP_ERROR) {
+            throw new VALUE_ERROR(
+                    "exception codes below " + (CODE_APP_ERROR + 1) + " are reserved");
+        }
+
+        return code;
+    }
+
     // user defined exception
     public static class $APP_ERROR extends PlcsqlRuntimeError {
         public $APP_ERROR(int code, String msg) {
-            super(code, isEmptyStr(msg) ? MSG_APP_ERROR : msg);
-            if (code < CODE_APP_ERROR_DEFAULT) {
-                throw new VALUE_ERROR(
-                        String.format(
-                                "error codes below %d are reserved for system built-in errors",
-                                CODE_APP_ERROR_DEFAULT));
-            }
-        }
-
-        public $APP_ERROR(String msg) {
-            this(CODE_APP_ERROR_DEFAULT, msg);
+            // called for raise_application_error(...)
+            super(checkAppErrCode(code), isEmptyStr(msg) ? MSG_APP_ERROR : msg);
         }
 
         public $APP_ERROR() {
-            this(CODE_APP_ERROR_DEFAULT, MSG_APP_ERROR);
+            // called for user defined exceptions
+            super(CODE_APP_ERROR, MSG_APP_ERROR);
         }
     }
 
@@ -4132,7 +4133,7 @@ public class SpLib {
     private static final int CODE_TOO_MANY_ROWS = 7;
     private static final int CODE_VALUE_ERROR = 8;
     private static final int CODE_ZERO_DIVIDE = 9;
-    private static final int CODE_APP_ERROR_DEFAULT = 1000;
+    private static final int CODE_APP_ERROR = 1000;
 
     private static final String MSG_CASE_NOT_FOUND = "case not found";
     private static final String MSG_CURSOR_ALREADY_OPEN = "cursor already open";
