@@ -403,8 +403,6 @@ public class StoredProcedure {
             val = new BooleanValue(((Boolean) o).booleanValue());
         } else if (o instanceof Byte) {
             val = new ByteValue(((Byte) o).byteValue());
-        } else if (o instanceof Character) {
-            val = new StringValue(((Character) o).toString());
         } else if (o instanceof Short) {
             val = new ShortValue(((Short) o).shortValue());
         } else if (o instanceof Integer) {

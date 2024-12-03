@@ -64,6 +64,7 @@ import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
@@ -74,8 +75,7 @@ import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
 
 public class ExecuteThread extends Thread {
-
-    public static String charSet = "UTF-8";
+    public static Charset charSet = null;
 
     private Socket client;
 
@@ -108,6 +108,7 @@ public class ExecuteThread extends Thread {
         resultBuffer = ByteBuffer.allocate(4096);
 
         packer = new CUBRIDPacker(resultBuffer);
+        charSet = Server.getConfig().getServerCharset();
     }
 
     public Socket getSocket() {
@@ -477,26 +478,20 @@ public class ExecuteThread extends Thread {
             if (args[i].getMode() > Value.IN) {
                 Value v = sp.makeOutValue(args[i].getResolved());
                 packer.packValue(
-                        ValueUtilities.resolveValue(args[i].getDbType(), v),
-                        args[i].getDbType(),
-                        this.charSet);
+                        v,
+                        args[i].getDbType());
             }
         }
     }
 
     private void sendResult(Value result, StoredProcedure procedure)
             throws IOException, ExecuteException, TypeMismatchException {
-        Object resolvedResult = null;
-        if (result != null) {
-            resolvedResult = ValueUtilities.resolveValue(procedure.getReturnType(), result);
-        }
-
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
 
         packer.packInt(RequestCode.RESULT);
         packer.align(DataUtilities.MAX_ALIGNMENT);
-        packer.packValue(resolvedResult, procedure.getReturnType(), this.charSet);
+        packer.packValue(result, procedure.getReturnType());
         returnOutArgs(procedure, packer);
 
         resultBuffer = packer.getBuffer();

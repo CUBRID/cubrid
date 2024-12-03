@@ -1,5 +1,8 @@
 package com.cubrid.jsp;
 
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.protocol.UnPackableObject;
@@ -23,6 +26,41 @@ public class SysParam implements UnPackableObject {
     public static final int CODESET_ISO88591 = 3;
     public static final int CODESET_KSC5601_EUC = 4;
     public static final int CODESET_UTF8 = 5;
+
+    public static Charset CHARSET_EUCKR = null;
+
+    public static String getCodesetString(int codeset) {
+        switch (codeset) {
+            case CODESET_ASCII:
+                return StandardCharsets.US_ASCII.toString();
+            case CODESET_RAW_BITS:
+            case CODESET_RAW_BYTES:
+                break;
+            case CODESET_ISO88591:
+                return StandardCharsets.ISO_8859_1.toString();
+            case CODESET_KSC5601_EUC:
+                if (CHARSET_EUCKR != null) {
+                        CHARSET_EUCKR = Charset.forName("EUC_KR");
+                }
+                CHARSET_EUCKR.toString();
+            default:
+                break;
+        }
+
+        return "UTF_8"; // default
+    }
+
+    public static int getCodesetId (Charset charset) {
+        if (charset.equals(StandardCharsets.US_ASCII)) {
+            return CODESET_ASCII;
+        } else if (charset.equals(StandardCharsets.ISO_8859_1)) {
+            return CODESET_ISO88591;
+        } else if (charset.equals(CHARSET_EUCKR)) {
+            return CODESET_KSC5601_EUC;
+        } else {
+            return CODESET_UTF8;
+        }
+    }
 
     private int paramId;
     private int paramType;

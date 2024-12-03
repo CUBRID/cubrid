@@ -51,6 +51,7 @@ public class ServerConfig {
 
         this.systemParameters = new HashMap<Integer, SysParam>();
         this.serverTimeZone = null;
+        this.serverCharset = StandardCharsets.UTF_8;
     }
 
     public String getName() {
@@ -104,7 +105,15 @@ public class ServerConfig {
         return serverTimeZone;
     }
 
-    public String getCharsetString() {
+    public Charset getServerCharset() {
+        return serverCharset;
+    }
+
+    public int getServerCodesetId () {
+        return SysParam.getCodesetId(serverCharset);
+    }
+
+    public void initCharset() {
         SysParam sysParam = systemParameters.get(SysParam.INTL_COLLATION);
         String collation = sysParam.getParamValue().toString();
         String codeset = null;
@@ -121,9 +130,7 @@ public class ServerConfig {
         } catch (Exception e) {
             // java.nio.charset.IllegalCharsetNameException
             serverCharset = StandardCharsets.UTF_8;
-            codeset = "utf-8";
         }
-        // System.out.println(serverCharset);
-        return codeset;
+        codeset = serverCharset.toString();
     }
 }
