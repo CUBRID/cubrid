@@ -6157,6 +6157,13 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       best_match = 0;
       break;
 
+    case PT_LIKE:
+    case PT_NOT_LIKE:
+    case PT_LIKE_LOWER_BOUND:
+    case PT_LIKE_UPPER_BOUND:
+      best_match = (arg1_type == PT_TYPE_BLOB) ? -1 : 0;
+      break;
+
     case PT_CAST:
       assert (false);
       best_match = 0;
@@ -6169,11 +6176,6 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
 
     case PT_CLOB_LENGTH:
     case PT_CLOB_TO_CHAR:
-      //
-    case PT_LIKE:
-    case PT_NOT_LIKE:
-    case PT_LIKE_LOWER_BOUND:
-    case PT_LIKE_UPPER_BOUND:
       best_match = (arg1_type != PT_TYPE_CLOB) ? -1 : 0;
       break;
 
