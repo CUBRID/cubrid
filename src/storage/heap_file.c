@@ -20519,32 +20519,35 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   /* find REC_DELETED_WILL_REUSE slot or add new slot */
   slot_id = spage_find_free_slot (context->home_page_watcher_p->pgptr, NULL, slot_id);
 
-  context->res_oid.slotid = slot_id;
+  if (slot_id != SP_ERROR)
+    {
+      context->res_oid.slotid = slot_id;
 
-  if (lock == NULL_LOCK)
-    {
-      /* immediately return without locking it */
-      return NO_ERROR;
-    }
-
-  /* lock the object to be inserted conditionally */
-  lk_result = lock_object (thread_p, &context->res_oid, &context->class_oid, lock, LK_COND_LOCK);
-  if (lk_result == LK_GRANTED)
-    {
-      /* successfully locked! */
-      return NO_ERROR;
-    }
-#if !defined(NDEBUG)
-  else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
-    {
-      if (lk_result == LK_NOTGRANTED_DUE_ABORTED)
+      if (lock == NULL_LOCK)
 	{
-	  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-	  assert (tdes->tran_abort_reason == TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
+	  /* immediately return without locking it */
+	  return NO_ERROR;
 	}
-      else
+
+      /* lock the object to be inserted conditionally */
+      lk_result = lock_object (thread_p, &context->res_oid, &context->class_oid, lock, LK_COND_LOCK);
+      if (lk_result == LK_GRANTED)
 	{
-	  assert (false);	/* unknown locking error */
+	  /* successfully locked! */
+	  return NO_ERROR;
+	}
+#if !defined(NDEBUG)
+      else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
+	{
+	  if (lk_result == LK_NOTGRANTED_DUE_ABORTED)
+	    {
+	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+	      assert (tdes->tran_abort_reason == TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
+	    }
+	  else
+	    {
+	      assert (false);	/* unknown locking error */
+	    }
 	}
     }
 #endif
