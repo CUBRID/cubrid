@@ -565,11 +565,19 @@ exit:
 //////////////////////////////////////////////////////////////////////////
 
 static cubpl::server_manager *pl_server_manager = nullptr;
+static bool pl_enable = true;
+
+// For SA utilities
+void
+pl_server_disable ()
+{
+  pl_enable = false;
+}
 
 void
 pl_server_init (const char *db_name)
 {
-  if (pl_server_manager != nullptr)
+  if (pl_server_manager != nullptr || pl_enable == false)
     {
       return;
     }
@@ -581,8 +589,11 @@ pl_server_init (const char *db_name)
 void
 pl_server_destroy ()
 {
-  delete pl_server_manager;
-  pl_server_manager = nullptr;
+  if (pl_server_manager != nullptr)
+    {
+      delete pl_server_manager;
+      pl_server_manager = nullptr;
+    }
 }
 
 void

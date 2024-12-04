@@ -263,7 +263,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+  pl_server_disable ();
 
   AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -482,7 +482,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+  pl_server_disable ();
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -786,7 +786,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+  pl_server_disable ();
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -973,7 +973,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+  pl_server_disable ();
 
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
@@ -2293,7 +2293,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+  pl_server_disable ();
 
 #if defined (CS_MODE)
   /* should have little copyright herald message ? */
@@ -3672,7 +3672,7 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+  pl_server_disable ();
 
   AU_DISABLE_PASSWORDS ();
   if (dump_flag)

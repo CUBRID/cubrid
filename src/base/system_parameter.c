@@ -424,7 +424,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS "ha_check_disk_failure_interval"
 
-#define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
+#define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"	/* deprecated */
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE_PORT "java_stored_procedure_port"
 
