@@ -20549,8 +20549,8 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	      assert (false);	/* unknown locking error */
 	    }
 	}
-    }
 #endif
+    }
 
   /* either lock error or no slot was found in page (which should not happen) */
   OID_SET_NULL (&context->res_oid);
