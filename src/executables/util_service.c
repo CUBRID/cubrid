@@ -145,7 +145,6 @@ typedef struct
 #define UTIL_TYPE_HEARTBEAT     "heartbeat"
 #define UTIL_TYPE_HB_SHORT      "hb"
 #define UTIL_TYPE_PL            "pl"
-#define UTIL_TYPE_JAVASP        "javasp"	// for backward compatibility
 #define UTIL_TYPE_GATEWAY       "gateway"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
@@ -156,7 +155,6 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {HEARTBEAT, UTIL_TYPE_HEARTBEAT, MASK_HEARTBEAT},
   {HEARTBEAT, UTIL_TYPE_HB_SHORT, MASK_HEARTBEAT},
   {PL_UTIL, UTIL_TYPE_PL, MASK_PL},
-  {PL_UTIL, UTIL_TYPE_JAVASP, MASK_JAVASP},
   {GATEWAY, UTIL_TYPE_GATEWAY, MASK_GATEWAY},
   {UTIL_HELP, "--help", MASK_ALL},
   {UTIL_VERSION, "--version", MASK_ALL},
@@ -226,7 +224,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
   {STOP, COMMAND_TYPE_STOP, MASK_ALL},
-  {RESTART, COMMAND_TYPE_RESTART, MASK_SERVICE | MASK_SERVER | MASK_BROKER | MASK_GATEWAY | MASK_JAVASP},
+  {RESTART, COMMAND_TYPE_RESTART, MASK_SERVICE | MASK_SERVER | MASK_BROKER | MASK_GATEWAY | MASK_PL},
   {STATUS, COMMAND_TYPE_STATUS, MASK_ALL},
   {DEREGISTER, COMMAND_TYPE_DEREG, MASK_HEARTBEAT},
   {LIST, COMMAND_TYPE_LIST, MASK_HEARTBEAT},
@@ -695,7 +693,7 @@ main (int argc, char *argv[])
       status = process_heartbeat (command_type, argc - 3, (const char **) &argv[3]);
 #endif /* !WINDOWs */
       break;
-    case PL_UTIL:		// PL_UTIL, JAVASP_UTIL
+    case PL_UTIL:		// PL_UTIL
       status =
 	process_pl (command_type, argc - 3, (const char **) &argv[3], true, false, process_window_service, false);
       break;
@@ -2835,7 +2833,7 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
       if (process_window_service)
 	{
 #if defined(WINDOWS)
-	  const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_JAVASP,
+	  const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_PL,
 	    COMMAND_TYPE_STOP, db_name, NULL
 	  };
 
@@ -2920,7 +2918,7 @@ process_pl (int command_type, int argc, const char **argv, bool show_usage, bool
 	  get_server_names (server_type, &buf);
 	}
     }
-  else				/* cubrid javasp command */
+  else				/* cubrid pl command */
     {
       buf = (char *) calloc (sizeof (char), buf_size);
       strncpy (buf, argv[0], buf_size);

@@ -126,7 +126,7 @@ typedef enum
   MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED = 41,
   MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT = 42,
   MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR = 43,
-  /* javasp usage = 44 ? */
+  /* pl usage = 44 ? */
   /* gateway usage = 45 ? */
   MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH = 46,
   MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT = 47,
@@ -894,7 +894,6 @@ typedef struct _ha_config
 #define UTIL_CUBRID             "cubrid" UTIL_EXE_EXT
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
-#define UTIL_JAVASP_NAME        "cub_javasp" UTIL_EXE_EXT
 #define UTIL_PL_NAME            "cub_pl" UTIL_EXE_EXT
 #define UTIL_PLCSQL_HELPER_NAME "plcsql_helper" UTIL_EXE_EXT
 
@@ -909,7 +908,6 @@ typedef struct _ha_config
 #define PRINT_GATEWAY_NAME      "cubrid gateway"
 #define PRINT_MANAGER_NAME      "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
-#define PRINT_JAVASP_NAME       "cubrid javasp"
 #define PRINT_PL_NAME           "cubrid pl"
 #define PRINT_HA_PROCS_NAME     "HA processes"
 
@@ -918,7 +916,7 @@ typedef struct _ha_config
 #define PRINT_CMD_GATEWAY       "gateway"
 #define PRINT_CMD_MANAGER       "manager"
 #define PRINT_CMD_SERVER        "server"
-#define PRINT_CMD_JAVASP        "javasp"
+#define PRINT_CMD_PL            "pl"
 
 #define PRINT_CMD_START         "start"
 #define PRINT_CMD_RESTART       "restart"
@@ -973,7 +971,6 @@ typedef struct _ha_config
 #define MASK_GATEWAY            0x10
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
-#define MASK_JAVASP             0x80
 #define MASK_PL                 0x80
 
 /* utility option list */
