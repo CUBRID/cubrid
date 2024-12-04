@@ -579,9 +579,9 @@ pl_server_init (const char *db_name)
 
 #if defined (SA_MODE)
   if (!BOOT_NORMAL_CLIENT_TYPE (db_get_client_type ()))
-  {
-        return;
-  }
+    {
+      return;
+    }
 #endif
 
   pl_server_manager = new cubpl::server_manager (db_name);
