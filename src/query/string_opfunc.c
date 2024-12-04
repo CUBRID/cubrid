@@ -8874,11 +8874,11 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
     }
   if (QSTR_IS_NATIONAL_CHAR (src_type))
     {
-      result_type = DB_TYPE_NCHAR;
+      result_type = DB_TYPE_VARNCHAR;
     }
   else
     {
-      result_type = DB_TYPE_CHAR;
+      result_type = DB_TYPE_VARCHAR;
     }
 
   codeset = db_get_string_codeset (src_string);
