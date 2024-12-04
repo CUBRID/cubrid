@@ -6142,34 +6142,39 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       return NO_ERROR;
     }
 
-  // Check if LOB type is supported
-  best_match = 0;
+  // Check if LOB type is supported  
   switch (op)
     {
     case PT_IS_NULL:
     case PT_IS_NOT_NULL:
     case PT_ISNULL:
     case PT_TYPEOF:
+      //
+    case PT_IFNULL:
+    case PT_NVL:
+    case PT_NVL2:
+    case PT_COALESCE:
+      best_match = 0;
       break;
 
     case PT_CAST:
       assert (false);
+      best_match = 0;
       break;
 
     case PT_BLOB_LENGTH:
     case PT_BLOB_TO_BIT:
-      if (arg1_type != PT_TYPE_BLOB)
-	{
-	  best_match = -1;
-	}
+      best_match = (arg1_type != PT_TYPE_BLOB) ? -1 : 0;
       break;
 
     case PT_CLOB_LENGTH:
     case PT_CLOB_TO_CHAR:
-      if (arg1_type != PT_TYPE_CLOB)
-	{
-	  best_match = -1;
-	}
+      //
+    case PT_LIKE:
+    case PT_NOT_LIKE:
+    case PT_LIKE_LOWER_BOUND:
+    case PT_LIKE_UPPER_BOUND:
+      best_match = (arg1_type != PT_TYPE_CLOB) ? -1 : 0;
       break;
 
       //case PT_BIT_TO_BLOB:
@@ -6178,11 +6183,16 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       //case PT_BLOB_FROM_FILE:
       //case PT_CLOB_FROM_FILE:
     default:
+      best_match = (arg1_type != PT_TYPE_CLOB) ? -1 : 0;
       if ((arg1_type == PT_TYPE_BLOB || arg1_type == PT_TYPE_CLOB) ||
 	  (arg2_type == PT_TYPE_BLOB || arg3_type == PT_TYPE_CLOB) ||
 	  (arg2_type == PT_TYPE_BLOB || arg3_type == PT_TYPE_CLOB))
 	{
 	  best_match = -1;
+	}
+      else
+	{
+	  best_match = 0;
 	}
       break;
     }
@@ -6190,7 +6200,6 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
   if (best_match == 0)
     {
       matches = -1;
-      best_match = 0;
       for (i = 0; i < def.overloads_count; i++)
 	{
 	  int match_cnt = 0;
