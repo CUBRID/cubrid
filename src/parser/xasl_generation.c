@@ -10125,6 +10125,7 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 	    {
 	      /* The attribute is correlated variable. Find it in an enclosing scope(s). Note that this subquery has
 	       * also just been determined to be a correlated subquery. */
+	      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_CORRELATED);
 	      if (symbols->stack == NULL)
 		{
 		  if (!pt_has_error (parser))
@@ -27436,6 +27437,7 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
   ACCESS_SPEC_TYPE *spec;
   PRED_EXPR *pred_src;
   REGU_VARIABLE *regu_src;
+  REGU_VARIABLE_LIST regu_var_list_p;
   if (!p)
     {
       return 0;
@@ -27546,6 +27548,54 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	      cnt += ret;
 	    }
 	}
+      if (xasl_src->outptr_list)
+	{
+	  regu_var_list_p = xasl_src->outptr_list->valptrp;
+	  for (i = 0; i < xasl_src->outptr_list->valptr_cnt; i++)
+	    {
+	      if (!regu_var_list_p)
+		{
+		  assert (false);
+		  return ER_FAILED;
+		}
+	      regu_src = &regu_var_list_p->value;
+	      ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src, SQ_TYPE_REGU_VAR);
+	      if (ret == ER_FAILED)
+		{
+		  return ER_FAILED;
+		}
+	      else
+		{
+		  cnt += ret;
+		}
+	      regu_var_list_p = regu_var_list_p->next;
+	    }
+	}
+      if (xasl_src->type == BUILDVALUE_PROC || xasl_src->type == BUILDLIST_PROC)
+	{
+	  AGGREGATE_TYPE *agg_list =
+	    (xasl_src->type ==
+	     BUILDVALUE_PROC) ? xasl_src->proc.buildvalue.agg_list : xasl_src->proc.buildlist.g_agg_list;
+	  while (agg_list)
+	    {
+	      regu_var_list_p = agg_list->operands;
+	      while (regu_var_list_p)
+		{
+		  ret = pt_make_sq_cache_key_struct (key_struct, (void *) &regu_var_list_p->value, SQ_TYPE_REGU_VAR);
+		  if (ret == ER_FAILED)
+		    {
+		      return ER_FAILED;
+		    }
+		  else
+		    {
+		      cnt += ret;
+		    }
+		  regu_var_list_p = regu_var_list_p->next;
+		}
+	      agg_list = agg_list->next;
+	    }
+
+	}
       break;
     case SQ_TYPE_PRED:
       pred_src = (PRED_EXPR *) p;
@@ -27614,6 +27664,10 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
       switch (regu_src->type)
 	{
 	case TYPE_CONSTANT:
+	  if (!REGU_VARIABLE_IS_FLAGED (regu_src, REGU_VARIABLE_CORRELATED))
+	    {
+	      break;
+	    }
 	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.dbvalptr, SQ_TYPE_DBVAL);
 	  if (ret == ER_FAILED)
 	    {

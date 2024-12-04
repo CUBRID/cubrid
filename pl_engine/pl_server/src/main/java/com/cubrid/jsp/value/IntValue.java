@@ -32,11 +32,17 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.math.BigDecimal;
 import java.sql.Time;
 import java.sql.Timestamp;
 
 public class IntValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_INT;
+    }
+
     private int value;
 
     public IntValue(int value) {
@@ -50,139 +56,88 @@ public class IntValue extends Value {
         this.dbType = dbType;
     }
 
+    @Override
     public byte toByte() throws TypeMismatchException {
-        return (byte) value;
+        return SpLib.convIntToByte(value);
     }
 
+    @Override
     public short toShort() throws TypeMismatchException {
-        return (short) value;
+        return SpLib.convIntToShort(value);
     }
 
+    @Override
     public int toInt() throws TypeMismatchException {
         return value;
     }
 
+    @Override
     public long toLong() throws TypeMismatchException {
-        return value;
+        return SpLib.convIntToBigint(value);
     }
 
+    @Override
     public float toFloat() throws TypeMismatchException {
-        return value;
+        return SpLib.convIntToFloat(value);
     }
 
+    @Override
     public double toDouble() throws TypeMismatchException {
-        return value;
+        return SpLib.convIntToDouble(value);
     }
 
+    @Override
     public Byte toByteObject() throws TypeMismatchException {
-        return new Byte((byte) value);
+        return SpLib.convIntToByte(value);
     }
 
-    public byte[] toByteArray() throws TypeMismatchException {
-        return new byte[] {(byte) value};
-    }
-
+    @Override
     public Short toShortObject() throws TypeMismatchException {
-        return new Short((short) value);
+        return SpLib.convIntToShort(value);
     }
 
-    public short[] toShortArray() throws TypeMismatchException {
-        return new short[] {(short) value};
-    }
-
+    @Override
     public Integer toIntegerObject() throws TypeMismatchException {
         return new Integer(value);
     }
 
-    public int[] toIntegerArray() throws TypeMismatchException {
-        return new int[] {value};
-    }
-
+    @Override
     public Long toLongObject() throws TypeMismatchException {
-        return new Long(value);
+        return SpLib.convIntToBigint(value);
     }
 
-    public long[] toLongArray() throws TypeMismatchException {
-        return new long[] {value};
-    }
-
+    @Override
     public Float toFloatObject() throws TypeMismatchException {
-        return new Float(value);
+        return SpLib.convIntToFloat(value);
     }
 
-    public float[] toFloatArray() throws TypeMismatchException {
-        return new float[] {value};
-    }
-
+    @Override
     public Double toDoubleObject() throws TypeMismatchException {
-        return new Double(value);
+        return SpLib.convIntToDouble(value);
     }
 
-    public double[] toDoubleArray() throws TypeMismatchException {
-        return new double[] {value};
-    }
-
+    @Override
     public BigDecimal toBigDecimal() throws TypeMismatchException {
-        return new BigDecimal(value);
+        return SpLib.convIntToNumeric(value);
     }
 
-    public BigDecimal[] toBigDecimalArray() throws TypeMismatchException {
-        return new BigDecimal[] {toBigDecimal()};
-    }
-
+    @Override
     public Object toObject() throws TypeMismatchException {
-        return toIntegerObject();
+        return new Integer(value);
     }
 
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toObject()};
-    }
-
+    @Override
     public Time toTime() throws TypeMismatchException {
-        return ValueUtilities.longToTime(new Integer(value).longValue());
+        return SpLib.convIntToTime(value);
     }
 
-    public Time[] toTimeArray() throws TypeMismatchException {
-        return new Time[] {toTime()};
-    }
-
+    @Override
     public Timestamp toTimestamp() throws TypeMismatchException {
-        return ValueUtilities.longToTimestamp(new Integer(value).longValue());
+        return SpLib.convIntToTimestamp(value);
     }
 
-    public Timestamp[] toTimestampArray() throws TypeMismatchException {
-        return new Timestamp[] {toTimestamp()};
-    }
-
+    @Override
     public String toString() {
-        return "" + value;
-    }
-
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
-    }
-
-    public Byte[] toByteObjArray() throws TypeMismatchException {
-        return new Byte[] {toByteObject()};
-    }
-
-    public Double[] toDoubleObjArray() throws TypeMismatchException {
-        return new Double[] {toDoubleObject()};
-    }
-
-    public Float[] toFloatObjArray() throws TypeMismatchException {
-        return new Float[] {toFloatObject()};
-    }
-
-    public Integer[] toIntegerObjArray() throws TypeMismatchException {
-        return new Integer[] {toIntegerObject()};
-    }
-
-    public Long[] toLongObjArray() throws TypeMismatchException {
-        return new Long[] {toLongObject()};
-    }
-
-    public Short[] toShortObjArray() throws TypeMismatchException {
-        return new Short[] {toShortObject()};
+        return SpLib.convIntToString(value);
     }
 }

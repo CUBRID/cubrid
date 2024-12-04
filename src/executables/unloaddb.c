@@ -440,12 +440,14 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	      status = 1;
 	    }
 
-	  if (!status && extract_triggers_to_file (unload_context, trigger_output_filename) != 0)
+	  if (!status && unload_context.classes &&
+	      extract_triggers_to_file (unload_context, trigger_output_filename) != 0)
 	    {
 	      status = 1;
 	    }
 
-	  if (!status && extract_indexes_to_file (unload_context, indexes_output_filename) != 0)
+	  if (!status && unload_context.classes
+	      && extract_indexes_to_file (unload_context, indexes_output_filename) != 0)
 	    {
 	      status = 1;
 	    }

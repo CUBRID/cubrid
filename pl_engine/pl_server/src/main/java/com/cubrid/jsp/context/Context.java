@@ -132,9 +132,8 @@ public class Context {
     public void checkTranId(int tid) {
         if (tranactionId == -1) {
             tranactionId = tid;
-        }
-
-        if (tranactionId != tid) {
+            classLoader = new ContextClassLoader();
+        } else if (tranactionId != tid) {
             // re-cretae dynamic class loader
             if (classLoader
                             .getInitializedTime()

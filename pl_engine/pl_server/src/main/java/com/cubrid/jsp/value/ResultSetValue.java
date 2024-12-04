@@ -37,6 +37,11 @@ import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import java.sql.ResultSet;
 
 public class ResultSetValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_RESULTSET;
+    }
+
     private long queryId;
     private ResultSet rset = null;
 
@@ -51,6 +56,7 @@ public class ResultSetValue extends Value {
         this.queryId = ((CUBRIDServerSideResultSet) rset).getQueryId();
     }
 
+    @Override
     public ResultSet toResultSet(SUConnection ucon) {
         if (rset == null) {
             try {
@@ -62,6 +68,7 @@ public class ResultSetValue extends Value {
         return rset;
     }
 
+    @Override
     public long toLong() {
         return queryId;
     }

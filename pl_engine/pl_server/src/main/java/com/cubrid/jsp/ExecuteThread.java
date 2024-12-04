@@ -224,18 +224,32 @@ public class ExecuteThread extends Thread {
                     try {
                         // TODO: error managing module
                         if (throwable instanceof SQLException) {
-                            sendError(throwable.toString());
+                            String msg = throwable.getMessage();
+                            if (msg == null) {
+                                msg = "";
+                            }
+                            sendError(msg);
                         } else if (throwable instanceof PlcsqlRuntimeError) {
                             PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
-                            String errMsg =
-                                    String.format(
-                                            "\n  (line %d, column %d) %s",
-                                            plcsqlError.getLine(),
-                                            plcsqlError.getColumn(),
-                                            plcsqlError.getMessage());
+                            int line = plcsqlError.getLine();
+                            int col = plcsqlError.getColumn();
+                            String errMsg;
+                            if (line == -1 && col == -1) {
+                                // exception was thrown not in the SP code but in the PL engine code
+                                errMsg = String.format("\n  %s", plcsqlError.getMessage());
+                            } else {
+                                errMsg =
+                                        String.format(
+                                                "\n  (line %d, column %d) %s",
+                                                line, col, plcsqlError.getMessage());
+                            }
                             sendError(errMsg);
                         } else {
-                            sendError(throwable.toString());
+                            String msg = throwable.getMessage();
+                            if (msg == null) {
+                                msg = "";
+                            }
+                            sendError(msg);
                         }
                     } catch (IOException e1) {
                         Server.log(e1);

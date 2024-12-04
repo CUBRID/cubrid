@@ -8874,11 +8874,11 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
     }
   if (QSTR_IS_NATIONAL_CHAR (src_type))
     {
-      result_type = DB_TYPE_NCHAR;
+      result_type = DB_TYPE_VARNCHAR;
     }
   else
     {
-      result_type = DB_TYPE_CHAR;
+      result_type = DB_TYPE_VARCHAR;
     }
 
   codeset = db_get_string_codeset (src_string);
@@ -26889,6 +26889,31 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
 	{
 	  db_make_short (result, 0);
 	}
+    }
+  else if (TP_IS_NUMERIC_TYPE (param_type) || TP_IS_DATE_OR_TIME_TYPE (param_type))
+    {
+      DB_VALUE new_value;
+      const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_CHAR);
+      db_make_null (&new_value);
+      TP_DOMAIN_STATUS status = tp_value_auto_cast (param, &new_value, new_domain);
+      if (status != DOMAIN_COMPATIBLE)
+	{
+	  error_code = ER_QSTR_INVALID_DATA_TYPE;
+	  goto error;
+	}
+
+      str_size = db_get_string_size (&new_value);
+      if (str_size > 0)
+	{
+	  str = db_get_string (&new_value);
+	  db_make_short (result, (unsigned char) str[0]);
+	}
+      else
+	{
+	  db_make_short (result, 0);
+	}
+
+      db_value_clear (&new_value);
     }
   else
     {

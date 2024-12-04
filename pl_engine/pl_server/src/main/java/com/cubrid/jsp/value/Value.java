@@ -66,251 +66,251 @@ public abstract class Value {
     }
 
     public byte toByte() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_BYTE));
     }
 
     public short toShort() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_SHORT));
     }
 
     public int toInt() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_INT));
     }
 
     public long toLong() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_BIGINT));
     }
 
     public float toFloat() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_FLOAT));
     }
 
     public double toDouble() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_DOUBLE));
     }
 
     public Byte toByteObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_BYTE));
     }
 
     public byte[] toByteArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new byte[] {toByte()};
     }
 
     public byte[][] toByteArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new byte[][] {toByteArray()};
     }
 
     public Short toShortObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_SHORT));
     }
 
     public short[] toShortArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new short[] {toShort()};
     }
 
     public short[][] toShortArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new short[][] {toShortArray()};
     }
 
     public Integer toIntegerObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_INT));
     }
 
     public int[] toIntegerArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new int[] {toInt()};
     }
 
     public int[][] toIntegerArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new int[][] {toIntegerArray()};
     }
 
     public Long toLongObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_BIGINT));
     }
 
     public long[] toLongArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new long[] {toLong()};
     }
 
     public long[][] toLongArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new long[][] {toLongArray()};
     }
 
     public Float toFloatObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_FLOAT));
     }
 
     public float[] toFloatArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new float[] {toFloat()};
     }
 
     public float[][] toFloatArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new float[][] {toFloatArray()};
     }
 
     public Double toDoubleObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_DOUBLE));
     }
 
     public double[] toDoubleArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new double[] {toDouble()};
     }
 
     public double[][] toDoubleArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new double[][] {toDoubleArray()};
     }
 
     public Object toObject() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_OBJECT));
     }
 
     public Object[] toObjectArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Object[] {toObject()};
     }
 
     public Object[][] toObjectArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Object[][] {toObjectArray()};
     }
 
     public Date toDate() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_DATE));
     }
 
     public Date[] toDateArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Date[] {toDate()};
     }
 
     public Date[][] toDateArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Date[][] {toDateArray()};
     }
 
     public Time toTime() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_TIME));
     }
 
     public Time[] toTimeArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Time[] {toTime()};
     }
 
     public Time[][] toTimeArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Time[][] {toTimeArray()};
     }
 
     public Timestamp toTimestamp() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_TIMESTAMP));
     }
 
     public Timestamp[] toTimestampArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Timestamp[] {toTimestamp()};
     }
 
     public Timestamp[][] toTimestampArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Timestamp[][] {toTimestampArray()};
     }
 
     public Timestamp toDatetime() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_DATETIME));
     }
 
     public Timestamp[] toDatetimeArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Timestamp[] {toDatetime()};
     }
 
     public Timestamp[][] toDatetimeArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Timestamp[][] {toDatetimeArray()};
     }
 
     public BigDecimal toBigDecimal() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_NUMERIC));
     }
 
     public BigDecimal[] toBigDecimalArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new BigDecimal[] {toBigDecimal()};
     }
 
     public BigDecimal[][] toBigDecimalArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new BigDecimal[][] {toBigDecimalArray()};
     }
 
     public String[] toStringArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new String[] {toString()};
     }
 
     public String[][] toStringArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new String[][] {toStringArray()};
     }
 
     public Byte[] toByteObjArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Byte[] {toByteObject()};
     }
 
     public Byte[][] toByteObjArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Byte[][] {toByteObjArray()};
     }
 
     public Short[] toShortObjArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Short[] {toShortObject()};
     }
 
     public Short[][] toShortObjArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Short[][] {toShortObjArray()};
     }
 
     public Integer[] toIntegerObjArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Integer[] {toIntegerObject()};
     }
 
     public Integer[][] toIntegerObjArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Integer[][] {toIntegerObjArray()};
     }
 
     public Long[] toLongObjArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Long[] {toLongObject()};
     }
 
     public Long[][] toLongObjArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Long[][] {toLongObjArray()};
     }
 
     public Float[] toFloatObjArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Float[] {toFloatObject()};
     }
 
     public Float[][] toFloatObjArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Float[][] {toFloatObjArray()};
     }
 
     public Double[] toDoubleObjArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Double[] {toDoubleObject()};
     }
 
     public Double[][] toDoubleObjArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new Double[][] {toDoubleObjArray()};
     }
 
     public CUBRIDOID toOid() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_OID));
     }
 
     public CUBRIDOID[] toOidArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new CUBRIDOID[] {toOid()};
     }
 
     public CUBRIDOID[][] toOidArrayArray() throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new CUBRIDOID[][] {toOidArray()};
     }
 
     public ResultSet toResultSet(SUConnection ucon) throws TypeMismatchException {
-        throw new TypeMismatchException();
+        throw new TypeMismatchException(getCastErrMsg(TYPE_NAME_RESULTSET));
     }
 
     public ResultSet[] toResultSetArray(SUConnection ucon) throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new ResultSet[] {toResultSet(ucon)};
     }
 
     public ResultSet[][] toResultSetArrayArray(SUConnection ucon) throws TypeMismatchException {
-        throw new TypeMismatchException();
+        return new ResultSet[][] {toResultSetArray(ucon)};
     }
 
     public void setResolved(Object val) {
@@ -328,4 +328,36 @@ public abstract class Value {
     public void setDbType(int type) {
         dbType = type;
     }
+
+    // -----------------------------------------------------
+
+    private String getCastErrMsg(String targetType) {
+        return String.format("cannot convert %s to %s", getTypeName(), targetType);
+    }
+
+    protected abstract String getTypeName();
+
+    protected static final String TYPE_NAME_NULL = "NULL";
+    protected static final String TYPE_NAME_OBJECT = "OBJECT";
+
+    protected static final String TYPE_NAME_BOOLEAN = "BOOLEAN";
+    protected static final String TYPE_NAME_STRING = "STRING";
+
+    protected static final String TYPE_NAME_BYTE = "BYTE";
+    protected static final String TYPE_NAME_SHORT = "SHORT";
+    protected static final String TYPE_NAME_INT = "INT";
+    protected static final String TYPE_NAME_BIGINT = "BIGINT";
+    protected static final String TYPE_NAME_FLOAT = "FLOAT";
+    protected static final String TYPE_NAME_DOUBLE = "DOUBLE";
+    protected static final String TYPE_NAME_NUMERIC = "NUMERIC";
+
+    protected static final String TYPE_NAME_DATE = "DATE";
+    protected static final String TYPE_NAME_TIME = "TIME";
+    protected static final String TYPE_NAME_DATETIME = "DATETIME";
+    protected static final String TYPE_NAME_TIMESTAMP = "TIMESTAMP";
+
+    protected static final String TYPE_NAME_OID = "OID";
+    protected static final String TYPE_NAME_RESULTSET = "RESULTSET";
+    protected static final String TYPE_NAME_SET =
+            "COLLECTION"; // actually, it is not only SET but also MULTISET and LIST
 }

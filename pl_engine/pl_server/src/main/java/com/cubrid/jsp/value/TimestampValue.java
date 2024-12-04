@@ -32,25 +32,36 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.Calendar;
 
 public class TimestampValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_TIMESTAMP;
+    }
+
     private Timestamp timestamp;
 
-    public TimestampValue(int year, int mon, int day, int hour, int min, int sec) {
+    public TimestampValue(int year, int mon, int day, int hour, int min, int sec)
+            throws TypeMismatchException {
         super();
         Calendar cal = Calendar.getInstance();
         cal.set(year, mon, day, hour, min, sec);
         cal.set(Calendar.MILLISECOND, 0);
 
         this.timestamp = new Timestamp(cal.getTimeInMillis());
+        if (SpLib.checkTimestamp(timestamp) == null) {
+            throw new TypeMismatchException("invalid Timestamp " + timestamp);
+        }
     }
 
     public TimestampValue(
-            int year, int mon, int day, int hour, int min, int sec, int mode, int dbType) {
+            int year, int mon, int day, int hour, int min, int sec, int mode, int dbType)
+            throws TypeMismatchException {
         super(mode);
         Calendar cal = Calendar.getInstance();
         cal.clear();
@@ -58,62 +69,47 @@ public class TimestampValue extends Value {
         cal.set(Calendar.MILLISECOND, 0);
 
         this.timestamp = new Timestamp(cal.getTimeInMillis());
+        if (SpLib.checkTimestamp(timestamp) == null) {
+            throw new TypeMismatchException("invalid Timestamp " + timestamp);
+        }
         this.dbType = dbType;
     }
 
-    public TimestampValue(Timestamp timestamp) {
+    public TimestampValue(Timestamp timestamp) throws TypeMismatchException {
+        if (timestamp != null
+                && (timestamp.getTime() % 1000L != 0L || SpLib.checkTimestamp(timestamp) == null)) {
+            throw new TypeMismatchException("invalid Timestamp " + timestamp);
+        }
         this.timestamp = timestamp;
     }
 
+    @Override
     public Date toDate() throws TypeMismatchException {
-        return new Date(timestamp.getTime());
+        return SpLib.convTimestampToDate(timestamp);
     }
 
+    @Override
     public Time toTime() throws TypeMismatchException {
-        return new Time(timestamp.getTime());
+        return SpLib.convTimestampToTime(timestamp);
     }
 
+    @Override
     public Timestamp toTimestamp() throws TypeMismatchException {
         return timestamp;
     }
 
+    @Override
     public Timestamp toDatetime() throws TypeMismatchException {
-        return timestamp;
+        return SpLib.convTimestampToDatetime(timestamp);
     }
 
+    @Override
     public Object toObject() throws TypeMismatchException {
         return timestamp;
     }
 
-    public Object toDefault() throws TypeMismatchException {
-        return toTimestamp();
-    }
-
+    @Override
     public String toString() {
-        return timestamp.toString();
-    }
-
-    public Date[] toDateArray() throws TypeMismatchException {
-        return new Date[] {toDate()};
-    }
-
-    public Time[] toTimeArray() throws TypeMismatchException {
-        return new Time[] {toTime()};
-    }
-
-    public Timestamp[] toTimestampArray() throws TypeMismatchException {
-        return new Timestamp[] {toTimestamp()};
-    }
-
-    public Timestamp[] toDatetimeArray() throws TypeMismatchException {
-        return new Timestamp[] {toDatetime()};
-    }
-
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toObject()};
-    }
-
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
+        return SpLib.convTimestampToString(timestamp);
     }
 }

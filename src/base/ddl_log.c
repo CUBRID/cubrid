@@ -1182,9 +1182,10 @@ logddl_create_log_msg (FILE * fp)
 	  snprintf (ddl_audit_handle.elapsed_time, sizeof (ddl_audit_handle.elapsed_time), "elapsed time 0.000");
 	}
 
-      fprintf (fp, "%s %s|%s|%s|%s|%s|%s\n",
+      fprintf (fp, "%s %s|%s|%s|%s|%s|%s|%s\n",
 	       ddl_audit_handle.str_qry_exec_begin_time,
 	       ddl_audit_handle.ip_addr,
+	       ddl_audit_handle.db_name,
 	       ddl_audit_handle.user_name, result, ddl_audit_handle.elapsed_time, ddl_audit_handle.msg,
 	       ddl_audit_handle.sql_text);
     }
