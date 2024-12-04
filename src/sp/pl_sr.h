@@ -36,7 +36,6 @@
 extern EXPORT_IMPORT void pl_server_init (const char *db_name);
 extern EXPORT_IMPORT void pl_server_destroy ();
 extern EXPORT_IMPORT void pl_server_wait_for_ready ();
-extern EXPORT_IMPORT void pl_server_disable ();
 
 extern EXPORT_IMPORT PL_CONNECTION_POOL *get_connection_pool ();
 

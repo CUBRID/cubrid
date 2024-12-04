@@ -37,6 +37,9 @@
 #include "thread_entry.hpp"
 #include "thread_looper.hpp"
 #include "thread_daemon.hpp"
+#else
+#include "dbi.h"
+#include "boot.h"
 #endif
 
 #include "dbtype.h"
@@ -565,22 +568,21 @@ exit:
 //////////////////////////////////////////////////////////////////////////
 
 static cubpl::server_manager *pl_server_manager = nullptr;
-static bool pl_enable = true;
-
-// For SA utilities
-void
-pl_server_disable ()
-{
-  pl_enable = false;
-}
 
 void
 pl_server_init (const char *db_name)
 {
-  if (pl_server_manager != nullptr || pl_enable == false)
+  if (pl_server_manager != nullptr)
     {
       return;
     }
+
+#if defined (SA_MODE)
+  if (!BOOT_NORMAL_CLIENT_TYPE (db_get_client_type ()))
+  {
+        return;
+  }
+#endif
 
   pl_server_manager = new cubpl::server_manager (db_name);
   pl_server_manager->start ();
