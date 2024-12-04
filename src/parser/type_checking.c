@@ -6161,7 +6161,7 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
     case PT_NOT_LIKE:
     case PT_LIKE_LOWER_BOUND:
     case PT_LIKE_UPPER_BOUND:
-      best_match = (arg1_type == PT_TYPE_BLOB || arg2_type == PT_TYPE_BLOB || arg2_type == PT_TYPE_CLOB) ? -1 : 0;
+      best_match = (arg1_type == PT_TYPE_BLOB || arg2_type == PT_TYPE_BLOB) ? -1 : 0;
       break;
 
     case PT_CAST:
