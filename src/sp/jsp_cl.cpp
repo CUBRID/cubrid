@@ -1191,6 +1191,8 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   new_name_str[0] = '\0';
   char downcase_owner_name[DB_MAX_USER_LENGTH];
   downcase_owner_name[0] = '\0';
+  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  unique_name[0] = '\0';
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
   MOP sp_mop = NULL, new_owner = NULL, owner = NULL, save_user = NULL;
@@ -1252,6 +1254,11 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
 
   /* when changing the owner, all privileges are revoked */
+  if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+    }
+
   owner = jsp_get_owner (sp_mop);
   if (owner == NULL)
     {
@@ -1262,7 +1269,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   save_user = Au_user;
   if (AU_SET_USER (owner) == NO_ERROR)
     {
-      err = au_object_revoke_all_privileges (sp_mop, owner);
+      err = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner, unique_name);
       if (err != NO_ERROR)
 	{
 	  AU_SET_USER (save_user);
@@ -1488,6 +1495,8 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   DB_SET *arg_set_p;
   int save, i, arg_cnt, lang;
   int err;
+  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  unique_name[0] = '\0';
 
   AU_DISABLE (save);
 
@@ -1599,10 +1608,15 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
     }
 
   /* before deleting an object, all permissions are revoked. */
+  if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+    }
+
   save_user = Au_user;
   if (AU_SET_USER (owner) == NO_ERROR)
     {
-      err = au_object_revoke_all_privileges (sp_mop, owner);
+      err = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner, unique_name);
       if (err != NO_ERROR)
 	{
 	  AU_SET_USER (save_user);

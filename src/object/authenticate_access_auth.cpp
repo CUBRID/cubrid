@@ -159,7 +159,12 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
   const char *name;
   const char *sql_query =
 	  "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
-	  " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?" " AND [au].[object_of] = ? AND [au].[auth_type] = ?";
+	  " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?"
+	  " AND [au].[object_of] = (%s) AND [au].[auth_type] = ?";
+  char obj_fetch_query[256];
+  const char *class_unique_name = NULL;
+  char sp_unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  char error_msg[ERR_MSG_SIZE];
 
   for (i = 0; i < COUNT_FOR_VARIABLES; i++)
     {
@@ -171,32 +176,99 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
   /* Disable the checking for internal authorization object access */
   AU_DISABLE (save);
 
+  switch (obj_type)
+    {
+    case DB_OBJECT_CLASS:
+      class_unique_name = sm_get_ch_name (obj_mop);
+      if (class_unique_name == NULL)
+	{
+	  assert (false);
+	  error = ER_UNEXPECTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get class name of mop.");
+	  goto exit;
+	}
+
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PROCEDURE:
+      sp_unique_name[0] = '\0';
+      if (jsp_get_unique_name (obj_mop, sp_unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+	{
+	  assert (false);
+	  error = ER_UNEXPECTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get stored procedure name of mop.");
+	  goto exit;
+	}
+
+      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      break;
+    default:
+      assert (false);
+      error = ER_UNEXPECTED;
+      error_msg[0] = '\0';
+      snprintf (error_msg, sizeof (error_msg) - 1, "unknown database object id: %d.", obj_type);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, error_msg);
+      goto exit;
+    }
+
+  session = db_open_buffer_local (obj_fetch_query);
+  if (session == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto exit;
+    }
+
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id != 1)
+    {
+      assert (er_errid () != NO_ERROR);
+      goto release;
+    }
+
   /* Prepare DB_VALUEs for host variables */
   error = obj_get (user, "name", &val[INDEX_FOR_GRANTEE_NAME]);
   if (error != NO_ERROR)
     {
-      goto exit;
+      goto release;
     }
   else if (!DB_IS_STRING (&val[INDEX_FOR_GRANTEE_NAME]) || DB_IS_NULL (&val[INDEX_FOR_GRANTEE_NAME])
 	   || db_get_string (&val[INDEX_FOR_GRANTEE_NAME]) == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_OR_INVALID_USER, 0);
-      goto exit;
+      goto release;
     }
 
   error = obj_get (grantor, "name", &val[INDEX_FOR_GRANTOR_NAME]);
   if (error != NO_ERROR)
     {
-      goto exit;
+      goto release;
     }
   else if (!DB_IS_STRING (&val[INDEX_FOR_GRANTOR_NAME]) || DB_IS_NULL (&val[INDEX_FOR_GRANTOR_NAME])
 	   || db_get_string (&val[INDEX_FOR_GRANTOR_NAME]) == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_OR_INVALID_USER, 0);
-      goto exit;
+      goto release;
     }
 
-  db_make_object (&val[INDEX_FOR_OBJECT_NAME], obj_mop);
+  switch (obj_type)
+    {
+    case DB_OBJECT_CLASS:
+      db_make_string (&val[INDEX_FOR_OBJECT_NAME], class_unique_name);
+      break;
+    case DB_OBJECT_PROCEDURE:
+      db_make_string (&val[INDEX_FOR_OBJECT_NAME], sp_unique_name);
+      break;
+    default:
+      assert (false);
+      error = ER_FAILED;
+      goto release;
+    }
 
   i = 0;
   for (DB_AUTH type = DB_AUTH_SELECT; type != auth_type; type = (DB_AUTH) (type << 1))
@@ -205,22 +277,8 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
     }
   db_make_string (&val[INDEX_FOR_AUTH_TYPE], AU_TYPE_SET[i]);
 
-  session = db_open_buffer (sql_query);
-  if (session == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto release;
-    }
-
   error = db_push_values (session, COUNT_FOR_VARIABLES, val);
   if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto release;
-    }
-
-  stmt_id = db_compile_statement (session);
-  if (stmt_id != 1)
     {
       assert (er_errid () != NO_ERROR);
       goto release;
@@ -479,7 +537,7 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
       sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
       break;
     case DB_OBJECT_PROCEDURE:
-      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [sp_name] = ?");
+      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
       break;
     default:
       assert (false);
@@ -614,25 +672,24 @@ exit:
  *   grantor_mop(in): a class/stored procedure owner
  */
 int
-au_object_revoke_all_privileges (MOP obj_mop, MOP grantor_mop)
+au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const char *unique_name)
 {
   int error = NO_ERROR, save, len, i = 0;
-  int object_type;
-  DB_OBJECT_TYPE obj_type;
   const char *auth;
   DB_AUTH db_auth;
-  MOP grantee_mop;
+  MOP grantee_mop, object_of_mop;
   DB_VALUE val[2];
-  DB_VALUE grantee_value, object_type_value, auth_type_value;
+  DB_VALUE grantee_value, object_of_value, auth_type_value;
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   int stmt_id;
   int row_count = -1;
+  char obj_fetch_query[256];
   const char *sql_query =
-	  "SELECT [au].grantee, [au].object_type, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
-	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = ?";
+	  "SELECT [au].grantee, [au].object_of, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
+	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = (%s);";
 
-  assert (obj_mop != NULL && grantor_mop != NULL);
+  assert (grantor_mop != NULL && unique_name != NULL);
 
   for (i = 0; i < 2; i++)
     {
@@ -640,44 +697,64 @@ au_object_revoke_all_privileges (MOP obj_mop, MOP grantor_mop)
     }
 
   db_make_null (&grantee_value);
-  db_make_null (&object_type_value);
+  db_make_null (&object_of_value);
   db_make_null (&auth_type_value);
 
   /* Disable the checking for internal authorization object access */
   AU_DISABLE (save);
 
+  switch (obj_type)
+    {
+    case DB_OBJECT_CLASS:
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PROCEDURE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      break;
+    default:
+      assert (false);
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  session = db_open_buffer_local (obj_fetch_query);
+  if (session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
   /* Prepare DB_VALUEs for host variables */
   error = obj_get (grantor_mop, "name", &val[0]);
   if (error != NO_ERROR)
     {
-      goto exit;
+      goto release;
     }
   else if (!DB_IS_STRING (&val[0]) || DB_IS_NULL (&val[0])
 	   || db_get_string (&val[0]) == NULL)
     {
       error = ER_AU_MISSING_OR_INVALID_USER;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto exit;
-    }
-
-  db_make_object (&val[1], obj_mop);
-
-  session = db_open_buffer (sql_query);
-  if (session == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
       goto release;
     }
+
+  db_make_string (&val[1], unique_name);
 
   error = db_push_values (session, 2, val);
   if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto release;
-    }
-
-  stmt_id = db_compile_statement (session);
-  if (stmt_id != 1)
     {
       assert (er_errid () != NO_ERROR);
       goto release;
@@ -715,26 +792,12 @@ au_object_revoke_all_privileges (MOP obj_mop, MOP grantor_mop)
 	    }
 	}
 
-      if (db_query_get_tuple_value (result, 1, &object_type_value) == NO_ERROR)
+      if (db_query_get_tuple_value (result, 1, &object_of_value) == NO_ERROR)
 	{
-	  object_type = 0;
-	  if (!DB_IS_NULL (&object_type_value))
+	  object_of_mop = NULL;
+	  if (!DB_IS_NULL (&object_of_value))
 	    {
-	      object_type = db_get_int (&object_type_value);
-	      switch (object_type)
-		{
-		case 0:
-		  obj_type = DB_OBJECT_CLASS;
-		  break;
-
-		case 5:
-		  obj_type = DB_OBJECT_PROCEDURE;
-		  break;
-
-		default:
-		  assert (object_type == 0 || object_type == 5);
-		  goto release;
-		}
+	      object_of_mop = db_get_object (&object_of_value);
 	    }
 	  else
 	    {
@@ -798,10 +861,10 @@ au_object_revoke_all_privileges (MOP obj_mop, MOP grantor_mop)
 	}
 
       assert (grantee_mop != NULL);
-      assert (obj_mop != NULL);
+      assert (object_of_mop != NULL);
       assert (db_auth != DB_AUTH_NONE);
 
-      error = au_revoke (obj_type, grantee_mop, obj_mop, db_auth, NULL);
+      error = au_revoke (obj_type, grantee_mop, object_of_mop, db_auth, NULL);
       if (error != NO_ERROR)
 	{
 	  goto release;
@@ -822,7 +885,7 @@ exit:
   AU_ENABLE (save);
 
   db_value_clear (&grantee_value);
-  db_value_clear (&object_type_value);
+  db_value_clear (&object_of_value);
   db_value_clear (&auth_type_value);
 
   for (i = 0; i < 2; i++)
@@ -830,8 +893,8 @@ exit:
       db_value_clear (&val[i]);
     }
 
-  if (row_count < 0 && er_errid () == NO_ERROR && (grantee_mop == NULL || auth == NULL || db_auth == DB_AUTH_NONE
-      || (object_type != 0 && object_type != 5)))
+  if (row_count < 0 && er_errid () == NO_ERROR && (grantee_mop == NULL || object_of_mop == NULL
+      || auth == NULL || db_auth == DB_AUTH_NONE))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
@@ -876,36 +939,42 @@ au_user_revoke_all_privileges (MOP user_mop)
   /* Disable the checking for internal authorization object access */
   AU_DISABLE (save);
 
+  session = db_open_buffer_local (sql_query);
+  if (session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
   /* Prepare DB_VALUEs for host variables */
   error = obj_get (user_mop, "name", &name);
   if (error != NO_ERROR)
     {
-      goto exit;
+      goto release;
     }
   else if (!DB_IS_STRING (&name) || DB_IS_NULL (&name)
 	   || db_get_string (&name) == NULL)
     {
       error = ER_AU_MISSING_OR_INVALID_USER;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto exit;
-    }
-
-  session = db_open_buffer (sql_query);
-  if (session == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
       goto release;
     }
 
   error = db_push_values (session, 1, &name);
   if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      goto release;
-    }
-
-  stmt_id = db_compile_statement (session);
-  if (stmt_id != 1)
     {
       assert (er_errid () != NO_ERROR);
       goto release;
