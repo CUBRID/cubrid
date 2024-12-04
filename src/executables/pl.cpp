@@ -461,7 +461,7 @@ pl_stop_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
 
       while (retry_count < MAX_RETRY_COUNT)
 	{
-	  if (kill (pl_info.pid, 0) == -1)
+	  if (is_terminated_process (pl_info.pid) == true)
 	    {
 	      status = NO_ERROR;
 	      break;
