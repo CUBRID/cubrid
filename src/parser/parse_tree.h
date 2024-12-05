@@ -3992,7 +3992,9 @@ struct parser_context
     unsigned is_system_generated_stmt:1;
     unsigned is_auto_commit:1;	/* set to true, if auto commit. */
     unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
+#if !defined (NDEBUG)
     unsigned is_on_execute_prepared:1;
+#endif
   } flag;
 };
 

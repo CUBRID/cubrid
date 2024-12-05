@@ -239,8 +239,10 @@ namespace cubmethod
     end_qresult ();
 
     assert (is_prepared ());
+#if !defined(NDEBUG)
     int on_prepared_bk = m_session->parser->flag.is_on_execute_prepared;
     m_session->parser->flag.is_on_execute_prepared = 1;
+#endif
 
     if (m_prepare_flag & PREPARE_CALL)
       {
@@ -250,8 +252,9 @@ namespace cubmethod
       {
 	error = execute_internal (flag, max_col_size, max_row, bind_values);
       }
-
+#if !defined(NDEBUG)
     m_session->parser->flag.is_on_execute_prepared = on_prepared_bk;
+#endif
 
     if (error == NO_ERROR)
       {

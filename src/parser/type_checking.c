@@ -16871,7 +16871,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_TO_DATE:
+#if !defined(NDEBUG)
       error = db_to_date (arg1, arg2, arg3, result, false);
+#else
+      error = db_to_date (arg1, arg2, arg3, result);
+#endif
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

@@ -1232,8 +1232,9 @@ parser_create_parser (void)
   parser->max_print_len = 0;
   parser->flag.is_auto_commit = 0;
   parser->flag.is_parsing_static_sql = 0;
+#if !defined(NDEBUG)
   parser->flag.is_on_execute_prepared = 0;
-
+#endif
   parser->external_into_label = NULL;
   parser->external_into_label_cnt = 0;
 

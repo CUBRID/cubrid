@@ -232,10 +232,17 @@ static void left_nshift (const unsigned char *bit_string, int bit_string_size, i
 static int qstr_ffs (int v);
 static int hextoi (char hex_char);
 static int adjust_precision (char *data, int precision, int scale);
+#if defined(NDEBUG)
+static int date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * date_lang,
+			 DB_VALUE * result_str, const TP_DOMAIN * domain);
+static int number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * number_lang,
+			   DB_VALUE * result_str, const TP_DOMAIN * domain);
+#else
 static int date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * date_lang,
 			 DB_VALUE * result_str, const TP_DOMAIN * domain, bool on_prepared);
 static int number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * number_lang,
 			   DB_VALUE * result_str, const TP_DOMAIN * domain, bool on_prepared);
+#endif
 static int lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lob_type, int max_length);
 static int lob_from_file (const char *path, const DB_VALUE * src_value, DB_VALUE * lob_value, DB_TYPE lob_type);
 static int lob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
@@ -12787,7 +12794,11 @@ get_last_day (int month, int year)
  */
 int
 db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const DB_VALUE * lang_str,
-	    DB_VALUE * result_str, const TP_DOMAIN * domain, bool on_prepared)
+	    DB_VALUE * result_str, const TP_DOMAIN * domain
+#if !defined(NDEBUG)
+	    , bool on_prepared
+#endif
+  )
 {
   int error_status = NO_ERROR;
   DB_TYPE type;
@@ -12795,11 +12806,19 @@ db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const
   type = DB_VALUE_DOMAIN_TYPE (src_value);
   if (type == DB_TYPE_NULL || is_number (src_value))
     {
+#if !defined(NDEBUG)
       return number_to_char (src_value, format_or_length, lang_str, result_str, domain, on_prepared);
+#else
+      return number_to_char (src_value, format_or_length, lang_str, result_str, domain);
+#endif
     }
   else if (TP_IS_DATE_OR_TIME_TYPE (type))
     {
+#if !defined(NDEBUG)
       return date_to_char (src_value, format_or_length, lang_str, result_str, domain, on_prepared);
+#else
+      return date_to_char (src_value, format_or_length, lang_str, result_str, domain);
+#endif
     }
   else if (TP_IS_CHAR_TYPE (type))
     {
@@ -13172,7 +13191,11 @@ const char *Am_Pm_name_EUCKR[][12] = {
 };
 
 static inline int
-check_date_lang_on_prepared (bool bprepared, const DB_VALUE * date_lang, INTL_LANG * date_lang_id, bool * has_user_fmt)
+check_date_lang_on_prepared (const DB_VALUE * date_lang, INTL_LANG * date_lang_id, bool * has_user_fmt
+#if !defined(NDEBUG)
+			     , bool bprepared
+#endif
+  )
 {
   bool has_user_lang = false;
   int flag;
@@ -13221,8 +13244,11 @@ check_date_lang_on_prepared (bool bprepared, const DB_VALUE * date_lang, INTL_LA
  * db_to_date () -
  */
 int
-db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang, DB_VALUE * result_date,
-	    bool on_prepared)
+db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang, DB_VALUE * result_date
+#if !defined(NDEBUG)
+	    , bool on_prepared
+#endif
+  )
 {
   int error_status = NO_ERROR;
   const char *cur_format_str_ptr, *next_format_str_ptr;
@@ -13260,7 +13286,11 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
       return error_status;
     }
 
-  error_status = check_date_lang_on_prepared (on_prepared, date_lang, &date_lang_id, &has_user_format);
+  error_status = check_date_lang_on_prepared (date_lang, &date_lang_id, &has_user_format
+#if !defined(NDEBUG)
+					      , on_prepared
+#endif
+    );
   if (error_status != NO_ERROR)
     {
       return error_status;
@@ -13787,7 +13817,11 @@ exit:
  */
 int
 db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang, const DB_TYPE type,
-	    DB_VALUE * result_time, bool on_prepared)
+	    DB_VALUE * result_time
+#if !defined(NDEBUG)
+	    , bool on_prepared
+#endif
+  )
 {
   int error_status = NO_ERROR;
 
@@ -13833,7 +13867,11 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
       return error_status;
     }
 
-  error_status = check_date_lang_on_prepared (on_prepared, date_lang, &date_lang_id, &has_user_format);
+  error_status = check_date_lang_on_prepared (date_lang, &date_lang_id, &has_user_format
+#if !defined(NDEBUG)
+					      , on_prepared
+#endif
+    );
   if (error_status != NO_ERROR)
     {
       return error_status;
@@ -14352,7 +14390,11 @@ exit:
  */
 int
 db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang, const DB_TYPE type,
-		 DB_VALUE * result_timestamp, bool on_prepared)
+		 DB_VALUE * result_timestamp
+#if !defined(NDEBUG)
+		 , bool on_prepared
+#endif
+  )
 {
   int error_status = NO_ERROR;
 
@@ -14407,7 +14449,11 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
       return error_status;
     }
 
-  error_status = check_date_lang_on_prepared (on_prepared, date_lang, &date_lang_id, &has_user_format);
+  error_status = check_date_lang_on_prepared (date_lang, &date_lang_id, &has_user_format
+#if !defined(NDEBUG)
+					      , on_prepared
+#endif
+    );
   if (error_status != NO_ERROR)
     {
       return error_status;
@@ -15268,7 +15314,11 @@ exit:
  */
 int
 db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang, const DB_TYPE type,
-		DB_VALUE * result_datetime, bool on_prepared)
+		DB_VALUE * result_datetime
+#if !defined(NDEBUG)
+		, bool on_prepared
+#endif
+  )
 {
   int error_status = NO_ERROR;
 
@@ -15321,7 +15371,11 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
       return error_status;
     }
 
-  error_status = check_date_lang_on_prepared (on_prepared, date_lang, &date_lang_id, &has_user_format);
+  error_status = check_date_lang_on_prepared (date_lang, &date_lang_id, &has_user_format
+#if !defined(NDEBUG)
+					      , on_prepared
+#endif
+    );
   if (error_status != NO_ERROR)
     {
       return error_status;
@@ -16718,7 +16772,10 @@ exit:
  */
 static int
 date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * date_lang,
-	      DB_VALUE * result_str, const TP_DOMAIN * domain, bool on_prepared)
+	      DB_VALUE * result_str, const TP_DOMAIN * domain
+#if !defined(NDEBUG)
+	      , bool on_prepared)
+#endif				/* ) */
 {
   int error_status = NO_ERROR;
   DB_TYPE src_type;
@@ -16778,7 +16835,11 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
       return error_status;
     }
 
-  error_status = check_date_lang_on_prepared (on_prepared, date_lang, &date_lang_id, &has_user_format);
+  error_status = check_date_lang_on_prepared (date_lang, &date_lang_id, &has_user_format
+#if !defined(NDEBUG)
+					      , on_prepared
+#endif
+    );
   if (error_status != NO_ERROR)
     {
       return error_status;
@@ -17549,7 +17610,11 @@ zerodate_exit:
  */
 static int
 number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * number_lang,
-		DB_VALUE * result_str, const TP_DOMAIN * domain, bool on_prepared)
+		DB_VALUE * result_str, const TP_DOMAIN * domain
+#if !defined(NDEBUG)
+		, bool on_prepared
+#endif
+  )
 {
   int error_status = NO_ERROR;
   char tmp_str[NUMERIC_MAX_STRING_SIZE];
@@ -17591,7 +17656,11 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
       return error_status;
     }
 
-  error_status = check_date_lang_on_prepared (on_prepared, number_lang, &number_lang_id, &has_user_format);
+  error_status = check_date_lang_on_prepared (number_lang, &number_lang_id, &has_user_format
+#if !defined(NDEBUG)
+					      , on_prepared
+#endif
+    );
   if (error_status != NO_ERROR)
     {
       return error_status;

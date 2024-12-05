@@ -192,9 +192,8 @@ namespace cubthread
     _unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
     _unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
 
-    on_execute_prepare = false;
-
 #if !defined (NDEBUG)
+    on_execute_prepare = false;
     fi_thread_init (this);
 #endif /* DEBUG */
   }
@@ -273,7 +272,9 @@ namespace cubthread
 
     is_cdc_daemon = false;
 
+#if !defined (NDEBUG)
     on_execute_prepare = false;
+#endif
 
     end_resource_tracks ();
 
