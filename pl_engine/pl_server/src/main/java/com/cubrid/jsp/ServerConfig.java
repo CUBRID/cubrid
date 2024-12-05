@@ -124,10 +124,20 @@ public class ServerConfig {
             codeset = codesetList[0];
         }
 
+        // tune the codeset name java understands
+        if (codeset.equalsIgnoreCase("utf-8") || codeset.equalsIgnoreCase("utf8")) {
+            codeset = "UTF-8";
+        } else if (codeset.equalsIgnoreCase("ksc-euc") || codeset.equalsIgnoreCase("euckr")) {
+            codeset = "EUC-KR";
+        } else if (codeset.equalsIgnoreCase("iso88591")) {
+            codeset = "ISO-8859-1";
+        }
+
         try {
             serverCharset = Charset.forName(codeset);
         } catch (Exception e) {
             // java.nio.charset.IllegalCharsetNameException
+            Server.log(e);
             serverCharset = StandardCharsets.UTF_8;
         }
         System.setProperty("file.encoding", serverCharset.toString());
