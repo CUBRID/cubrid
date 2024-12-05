@@ -36,6 +36,8 @@ import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import com.cubrid.jsp.protocol.PackableObject;
+import com.cubrid.jsp.value.SetValue;
+import com.cubrid.jsp.value.StringValue;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import cubrid.sql.CUBRIDOID;
@@ -172,6 +174,7 @@ public class CUBRIDPacker {
             case DBType.DB_SHORT:
                 packInt(dbType);
                 packShort(value.toShort());
+                break;
             case DBType.DB_BIGINT:
                 packInt(dbType);
                 packBigInt(value.toLong());
@@ -189,8 +192,13 @@ public class CUBRIDPacker {
             case DBType.DB_CHAR:
             case DBType.DB_STRING:
                 packInt(dbType);
-                packInt(value.getCodeSet());
-                packCString(value.toByteArray());
+                if (value instanceof StringValue) {
+                    packInt(value.getCodeSet());
+                    packCString(value.toByteArray());
+                } else {
+                    packInt(Server.getConfig().getServerCodesetId());
+                    packString(value.toString());
+                }
                 break;
 
             case DBType.DB_NUMERIC:
@@ -245,7 +253,32 @@ public class CUBRIDPacker {
             case DBType.DB_SET:
             case DBType.DB_MULTISET:
             case DBType.DB_SEQUENCE:
-                // unsupported
+                packInt(dbType);
+
+                Object[] values = null;
+                if (value instanceof SetValue) {
+                    values = (Value[]) ((SetValue) value).toValueArray();
+                    if (values != null) {
+                        packInt(values.length);
+                        for (int i = 0; i < values.length; i++) {
+                            int dt = DBType.DB_NULL;
+                            if (values[i] != null) {
+                                dt = ((Value) values[i]).getDbType();
+                            }
+                            packValue((Value) values[i], dt);
+                        }
+                    }
+                }
+
+                if (values == null) {
+                    values = value.toObjectArray();
+                    packObject(values, dbType, value.getCodeSet());
+                }
+                break;
+
+            case DBType.DB_RESULTSET:
+                packInt(dbType);
+                packBigInt(value.toLong());
                 break;
 
             default:
@@ -254,8 +287,7 @@ public class CUBRIDPacker {
         }
     }
 
-    // TODO: legacy implementation, this function will be modified
-    public void packValue(Object result, int ret_type, int codeset)
+    public void packObject(Object result, int ret_type, int codeset)
             throws UnsupportedEncodingException {
         if (result == null) {
             packInt(DBType.DB_NULL);
@@ -272,7 +304,7 @@ public class CUBRIDPacker {
             packInt(DBType.DB_FLOAT);
             packFloat(((Float) result).floatValue());
         } else if (result instanceof Double) {
-            packInt(ret_type);
+            packInt(DBType.DB_DOUBLE);
             packDouble(((Double) result).doubleValue());
         } else if (result instanceof BigDecimal) {
             packInt(DBType.DB_NUMERIC);
@@ -322,16 +354,15 @@ public class CUBRIDPacker {
             packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Integer(((int[]) result)[i]);
-                packValue(array[i], ret_type, codeset);
+                packObject(array[i], DBType.DB_INT, codeset);
             }
-            packValue(array, ret_type, codeset);
         } else if (result instanceof short[]) {
             int length = ((short[]) result).length;
             Short[] array = new Short[length];
             packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Short(((short[]) result)[i]);
-                packValue(array, ret_type, codeset);
+                packObject(array, DBType.DB_SHORT, codeset);
             }
         } else if (result instanceof float[]) {
             int length = ((float[]) result).length;
@@ -339,7 +370,7 @@ public class CUBRIDPacker {
             packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Float(((float[]) result)[i]);
-                packValue(array[i], ret_type, codeset);
+                packObject(array[i], DBType.DB_FLOAT, codeset);
             }
         } else if (result instanceof double[]) {
             int length = ((double[]) result).length;
@@ -347,7 +378,7 @@ public class CUBRIDPacker {
             packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Double(((double[]) result)[i]);
-                packValue(array[i], ret_type, codeset);
+                packObject(array[i], DBType.DB_DOUBLE, codeset);
             }
         } else if (result instanceof Object[]) {
             packInt(ret_type);
@@ -355,7 +386,7 @@ public class CUBRIDPacker {
 
             packInt(arr.length);
             for (int i = 0; i < arr.length; i++) {
-                packValue(arr[i], ret_type, codeset);
+                packObject(arr[i], ret_type, codeset);
             }
         } else {
             // FIXME: treat as NULL
