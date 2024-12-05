@@ -13932,12 +13932,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    {
 	      result_domain = attr->domain;
 	    }
-#if !defined(NDEBUG)
-	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain, false);
-#else
-	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain);
-#endif
 
+	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain);
 	  if (has_user_format)
 	    {
 	      pr_clear_value (&format_val);

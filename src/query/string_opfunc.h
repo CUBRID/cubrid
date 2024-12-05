@@ -291,7 +291,6 @@ extern int db_sys_timestamp (DB_VALUE * result_timestamp);
 extern int db_sys_datetime (DB_VALUE * result_datetime);
 extern int db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval);
 extern int db_sys_timezone (DB_VALUE * result_timezone);
-#if defined(NDEBUG)
 extern int db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const DB_VALUE * lang_str,
 		       DB_VALUE * result_str, const TP_DOMAIN * domain);
 extern int db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang,
@@ -302,19 +301,6 @@ extern int db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_st
 			    const DB_TYPE type, DB_VALUE * result_timestamp);
 extern int db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang,
 			   const DB_TYPE type, DB_VALUE * result_datetime);
-#else
-extern int db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const DB_VALUE * lang_str,
-		       DB_VALUE * result_str, const TP_DOMAIN * domain, bool on_prepared);
-extern int db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang,
-		       DB_VALUE * result_date, bool on_prepared);
-extern int db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang,
-		       const DB_TYPE type, DB_VALUE * result_time, bool on_prepared);
-extern int db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang,
-			    const DB_TYPE type, DB_VALUE * result_timestamp, bool on_prepared);
-extern int db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * date_lang,
-			   const DB_TYPE type, DB_VALUE * result_datetime, bool on_prepared);
-#endif
-
 extern int db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALUE * number_lang,
 			 DB_VALUE * result_num);
 extern int db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str);

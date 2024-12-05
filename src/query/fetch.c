@@ -90,9 +90,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
   DB_VALUE tmp_value;
   TP_DOMAIN *original_domain = NULL;
   TP_DOMAIN_STATUS dom_status;
-#if !defined(NDEBUG)
-  bool on_prepared = thread_p->on_execute_prepare;
-#endif
 
   assert (regu_var != NULL);
   arithptr = regu_var->value.arithptr;
@@ -2128,12 +2125,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-#if !defined (NDEBUG)
-      else
-	if (db_to_char (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain, on_prepared) != NO_ERROR)
-#else
       else if (db_to_char (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain) != NO_ERROR)
-#endif
 	{
 	  goto error;
 	}
@@ -2237,22 +2229,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
 	      goto error;
 	    }
-#if !defined(NDEBUG)
-	  if (db_to_date (&tval, peek_right, peek_third, arithptr->value, on_prepared) != NO_ERROR)
-#else
 	  if (db_to_date (&tval, peek_right, peek_third, arithptr->value) != NO_ERROR)
-#endif
 	    {
 	      db_value_clear (&tval);
 	      goto error;
 	    }
 	  db_value_clear (&tval);
 	}
-#if !defined(NDEBUG)
-      else if (db_to_date (peek_left, peek_right, peek_third, arithptr->value, on_prepared) != NO_ERROR)
-#else
       else if (db_to_date (peek_left, peek_right, peek_third, arithptr->value) != NO_ERROR)
-#endif
 	{
 	  goto error;
 	}
@@ -2274,22 +2258,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
 	      goto error;
 	    }
-#if !defined(NDEBUG)
-	  if (db_to_time (&tval, peek_right, peek_third, DB_TYPE_TIME, arithptr->value, on_prepared) != NO_ERROR)
-#else
 	  if (db_to_time (&tval, peek_right, peek_third, DB_TYPE_TIME, arithptr->value) != NO_ERROR)
-#endif
 	    {
 	      db_value_clear (&tval);
 	      goto error;
 	    }
 	  db_value_clear (&tval);
 	}
-#if !defined(NDEBUG)
-      else if (db_to_time (peek_left, peek_right, peek_third, DB_TYPE_TIME, arithptr->value, on_prepared) != NO_ERROR)
-#else
       else if (db_to_time (peek_left, peek_right, peek_third, DB_TYPE_TIME, arithptr->value) != NO_ERROR)
-#endif
 	{
 	  goto error;
 	}
@@ -2315,23 +2291,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
 		  goto error;
 		}
-#if !defined(NDEBUG)
-	      if (db_to_timestamp (&tval, peek_right, peek_third, db_type, arithptr->value, on_prepared) != NO_ERROR)
-#else
 	      if (db_to_timestamp (&tval, peek_right, peek_third, db_type, arithptr->value) != NO_ERROR)
-#endif
 		{
 		  db_value_clear (&tval);
 		  goto error;
 		}
 	      db_value_clear (&tval);
 	    }
-#if !defined(NDEBUG)
-	  else
-	    if (db_to_timestamp (peek_left, peek_right, peek_third, db_type, arithptr->value, on_prepared) != NO_ERROR)
-#else
 	  else if (db_to_timestamp (peek_left, peek_right, peek_third, db_type, arithptr->value) != NO_ERROR)
-#endif
 	    {
 	      goto error;
 	    }
@@ -2358,23 +2325,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
 		  goto error;
 		}
-#if !defined(NDEBUG)
-	      if (db_to_datetime (&tval, peek_right, peek_third, db_type, arithptr->value, on_prepared) != NO_ERROR)
-#else
 	      if (db_to_datetime (&tval, peek_right, peek_third, db_type, arithptr->value) != NO_ERROR)
-#endif
 		{
 		  db_value_clear (&tval);
 		  goto error;
 		}
 	      db_value_clear (&tval);
 	    }
-#if !defined(NDEBUG)
-	  else
-	    if (db_to_datetime (peek_left, peek_right, peek_third, db_type, arithptr->value, on_prepared) != NO_ERROR)
-#else
 	  else if (db_to_datetime (peek_left, peek_right, peek_third, db_type, arithptr->value) != NO_ERROR)
-#endif
 	    {
 	      goto error;
 	    }

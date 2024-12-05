@@ -1189,13 +1189,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
     }
 
   /* execute the query with the value list, if any */
-#if !defined (NDEBUG)
-  thread_p->on_execute_prepare = ((flag & EXECUTE_PREPARED_MODE) != 0);
-#endif
   query_p->list_id = qexec_execute_query (thread_p, xasl_p, dbval_count, dbvals_p, query_p->query_id);
-#if !defined (NDEBUG)
-  thread_p->on_execute_prepare = false;
-#endif
   thread_p->no_logging = false;
   thread_p->no_supplemental_log = false;
 
