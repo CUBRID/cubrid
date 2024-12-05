@@ -26717,7 +26717,6 @@ coerce_pos:
       db_make_null (&tval);
       ptval = &tval;
       if (tp_value_cast (param, &tval, &tp_Char_domain, false) != DOMAIN_COMPATIBLE)
-	//if (tp_value_cast (param, &tval, &tp_Char_domain, true) != DOMAIN_COMPATIBLE)
 	{
 	  error_code = ER_QSTR_INVALID_DATA_TYPE;
 	  goto error;
