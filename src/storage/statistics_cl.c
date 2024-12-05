@@ -327,7 +327,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
   fprintf (file_p, " Class name: %s", class_name_p);
   if (tloc == 0)
     {
-      fprintf (file_p, " (The stats is not updated)\n");
+      fprintf (file_p, " (The 'stats' is not updated)\n");
     }
   else
     {
