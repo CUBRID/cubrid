@@ -97,7 +97,7 @@ public class ValueUtilities {
         return resolvedResult;
     }
 
-    public static Value createValueFrom(Object o) throws Exception {
+    public static Value createValueFrom(Object o) throws TypeMismatchException, ExecuteException {
         Value val = null;
 
         if (o == null) {

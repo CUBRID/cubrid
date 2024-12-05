@@ -32,6 +32,7 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import cubrid.sql.CUBRIDOID;
 import java.math.BigDecimal;
@@ -64,7 +65,12 @@ public class SetValue extends Value {
         if (objects != null) {
             this.values = new Value[objects.length];
             for (int i = 0; i < objects.length; i++) {
-                this.values[i] = ValueUtilities.createValueFrom(objects[i]);
+                try {
+                    this.values[i] = ValueUtilities.createValueFrom(objects[i]);
+                } catch (ExecuteException e) {
+                    this.values[i] = new NullValue();
+                    assert false; // This should never happen
+                }
             }
         }
         this.dbType = DBType.DB_SET;

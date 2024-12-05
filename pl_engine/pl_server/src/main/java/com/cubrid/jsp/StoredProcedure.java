@@ -38,6 +38,7 @@ import com.cubrid.jsp.code.Signature;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
@@ -346,7 +347,7 @@ public class StoredProcedure {
         return ValueUtilities.createValueFrom(result);
     }
 
-    public Value makeOutValue(Object object) throws Exception {
+    public Value makeOutValue(Object object) throws TypeMismatchException, ExecuteException {
         Object obj = null;
         if (object instanceof byte[]) {
             obj = new Byte(((byte[]) object)[0]);
