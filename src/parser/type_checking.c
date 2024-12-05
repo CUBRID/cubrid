@@ -16751,7 +16751,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       return 1;
 
     case PT_TO_CHAR:
+#if !defined(NDEBUG)
       error = db_to_char (arg1, arg2, arg3, result, domain, false);
+#else
+      error = db_to_char (arg1, arg2, arg3, result, domain);
+#endif
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16887,7 +16891,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_TO_TIME:
+#if !defined(NDEBUG)
       error = db_to_time (arg1, arg2, arg3, DB_TYPE_TIME, result, false);
+#else
+      error = db_to_time (arg1, arg2, arg3, DB_TYPE_TIME, result);
+#endif
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16899,7 +16907,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_TO_TIMESTAMP:
+#if !defined(NDEBUG)
       error = db_to_timestamp (arg1, arg2, arg3, DB_TYPE_TIMESTAMP, result, false);
+#else
+      error = db_to_timestamp (arg1, arg2, arg3, DB_TYPE_TIMESTAMP, result);
+#endif
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16911,7 +16923,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_TO_DATETIME:
+#if !defined(NDEBUG)
       error = db_to_datetime (arg1, arg2, arg3, DB_TYPE_DATETIME, result, false);
+#else
+      error = db_to_datetime (arg1, arg2, arg3, DB_TYPE_DATETIME, result);
+#endif
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17561,7 +17577,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       break;
 
     case PT_TO_DATETIME_TZ:
+#if !defined(NDEBUG)
       error = db_to_datetime (arg1, arg2, arg3, DB_TYPE_DATETIMETZ, result, false);
+#else
+      error = db_to_datetime (arg1, arg2, arg3, DB_TYPE_DATETIMETZ, result);
+#endif
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17587,7 +17607,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       break;
 
     case PT_TO_TIMESTAMP_TZ:
+#if !defined(NDEBUG)
       error = db_to_timestamp (arg1, arg2, arg3, DB_TYPE_TIMESTAMPTZ, result, false);
+#else
+      error = db_to_timestamp (arg1, arg2, arg3, DB_TYPE_TIMESTAMPTZ, result);
+#endif
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

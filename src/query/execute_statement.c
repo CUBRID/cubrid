@@ -614,9 +614,12 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		{
 		  result_domain = att->domain;
 		}
-
+#if !defined(NDEBUG)
 	      error =
 		db_to_char (&default_value, &format_val, &lang_val, &att->default_value.value, result_domain, false);
+#else
+	      error = db_to_char (&default_value, &format_val, &lang_val, &att->default_value.value, result_domain);
+#endif
 
 	      if (has_user_format)
 		{

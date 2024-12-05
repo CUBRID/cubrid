@@ -16774,8 +16774,9 @@ static int
 date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * date_lang,
 	      DB_VALUE * result_str, const TP_DOMAIN * domain
 #if !defined(NDEBUG)
-	      , bool on_prepared)
-#endif				/* ) */
+	      , bool on_prepared
+#endif
+  )				/* ) */
 {
   int error_status = NO_ERROR;
   DB_TYPE src_type;
@@ -20121,8 +20122,11 @@ db_format (const DB_VALUE * value, const DB_VALUE * decimals, const DB_VALUE * n
     }
 
   db_make_string (&format_val, format);
-
+#if !defined(NDEBUG)
   error = number_to_char (num_dbval_p, &format_val, number_lang, &formatted_val, domain, false);
+#else
+  error = number_to_char (num_dbval_p, &format_val, number_lang, &formatted_val, domain);
+#endif
   if (error == NO_ERROR)
     {
       /* number_to_char function returns a string with leading empty characters. So, we need to remove them. */
