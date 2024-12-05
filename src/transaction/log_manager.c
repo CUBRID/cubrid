@@ -13851,6 +13851,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 
       db_make_char (&format, strlen (timestampltz_frmt), timestampltz_frmt,
 		    strlen (timestampltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
+
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
       line_length = db_get_string_length (&result);
@@ -13866,6 +13867,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_DATETIMELTZ:
       db_make_char (&format, strlen (datetimeltz_frmt), datetimeltz_frmt,
 		    strlen (datetimeltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
+
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
 
       line_length = db_get_string_length (&result);

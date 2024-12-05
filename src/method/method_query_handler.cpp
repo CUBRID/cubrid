@@ -238,8 +238,6 @@ namespace cubmethod
     // 0) clear qresult
     end_qresult ();
 
-    assert (is_prepared ());
-
     if (m_prepare_flag & PREPARE_CALL)
       {
 	error = execute_internal_call (flag, max_col_size, max_row, bind_values, request.param_modes);

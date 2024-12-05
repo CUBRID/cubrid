@@ -616,6 +616,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		}
 
 	      error = db_to_char (&default_value, &format_val, &lang_val, &att->default_value.value, result_domain);
+
 	      if (has_user_format)
 		{
 		  pr_clear_value (&format_val);
@@ -14874,8 +14875,9 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 	    }
 	}
 
-      err = execute_query (&info[q].xasl_id, &query_id, info[q].host_var_count, host_variables, &list_id,
-			   RESULT_CACHE_REQUIRED, NULL, NULL);
+      err =
+	execute_query (&info[q].xasl_id, &query_id, info[q].host_var_count, host_variables,
+		       &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
 
       if (host_variables)
 	{
