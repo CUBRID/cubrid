@@ -117,7 +117,7 @@ namespace cubmethod
       case DB_TYPE_STRING:
 	// TODO: support unicode decomposed string
       {
-        serializator.pack_int (db_get_string_codeset (&v));
+	serializator.pack_int (db_get_string_codeset (&v));
 	serializator.pack_c_string (db_get_string (&v), db_get_string_size (&v));
       }
       break;
@@ -331,7 +331,7 @@ namespace cubmethod
       case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
       {
-        size += serializator.get_packed_int_size (size); /* codeset */
+	size += serializator.get_packed_int_size (size); /* codeset */
 	size += serializator.get_packed_int_size (size); /* dummy size */
 	size += serializator.get_packed_c_string_size (db_get_string (value), db_get_string_size (value), size);
       }
@@ -521,9 +521,9 @@ namespace cubmethod
       case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
       {
-        int codeset;
+	int codeset;
 	cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
-        deserializator.unpack_int (codeset);
+	deserializator.unpack_int (codeset);
 	deserializator.unpack_string_to_memblock (blk);
 
 	// TODO: unicode compose hanlding
