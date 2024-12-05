@@ -122,7 +122,8 @@ typedef enum
 {
   PL_SERVER_RUNNING = 0,
   PL_SERVER_STOPPED,
-  PL_SERVER_STATUS_ERROR
+  PL_SERVER_STATUS_ERROR,
+  PL_SERVER_STARTING
 } UTIL_PL_SERVER_STATUS_E;
 
 typedef struct
@@ -145,7 +146,6 @@ typedef struct
 #define UTIL_TYPE_HEARTBEAT     "heartbeat"
 #define UTIL_TYPE_HB_SHORT      "hb"
 #define UTIL_TYPE_PL            "pl"
-#define UTIL_TYPE_JAVASP        "javasp"	// for backward compatibility
 #define UTIL_TYPE_GATEWAY       "gateway"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
@@ -156,7 +156,6 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {HEARTBEAT, UTIL_TYPE_HEARTBEAT, MASK_HEARTBEAT},
   {HEARTBEAT, UTIL_TYPE_HB_SHORT, MASK_HEARTBEAT},
   {PL_UTIL, UTIL_TYPE_PL, MASK_PL},
-  {PL_UTIL, UTIL_TYPE_JAVASP, MASK_JAVASP},
   {GATEWAY, UTIL_TYPE_GATEWAY, MASK_GATEWAY},
   {UTIL_HELP, "--help", MASK_ALL},
   {UTIL_VERSION, "--version", MASK_ALL},
@@ -226,7 +225,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
   {STOP, COMMAND_TYPE_STOP, MASK_ALL},
-  {RESTART, COMMAND_TYPE_RESTART, MASK_SERVICE | MASK_SERVER | MASK_BROKER | MASK_GATEWAY | MASK_JAVASP},
+  {RESTART, COMMAND_TYPE_RESTART, MASK_SERVICE | MASK_SERVER | MASK_BROKER | MASK_GATEWAY | MASK_PL},
   {STATUS, COMMAND_TYPE_STATUS, MASK_ALL},
   {DEREGISTER, COMMAND_TYPE_DEREG, MASK_HEARTBEAT},
   {LIST, COMMAND_TYPE_LIST, MASK_HEARTBEAT},
@@ -695,7 +694,7 @@ main (int argc, char *argv[])
       status = process_heartbeat (command_type, argc - 3, (const char **) &argv[3]);
 #endif /* !WINDOWs */
       break;
-    case PL_UTIL:		// PL_UTIL, JAVASP_UTIL
+    case PL_UTIL:		// PL_UTIL
       status =
 	process_pl (command_type, argc - 3, (const char **) &argv[3], true, false, process_window_service, false);
       break;
@@ -2804,10 +2803,15 @@ is_pl_running (const char *server_name)
       pclose (input);
       return PL_SERVER_RUNNING;
     }
-  else if (strcmp (buf, "NO_CONNECTION") == 0)
+  else if (strcmp (buf, "NO_PROCESS") == 0)
     {
       pclose (input);
       return PL_SERVER_STOPPED;
+    }
+  else if (strcmp (buf, "NO_CONNECTION") == 0)
+    {
+      pclose (input);
+      return PL_SERVER_STARTING;
     }
   else
     {
@@ -2842,7 +2846,7 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
       if (process_window_service)
 	{
 #if defined(WINDOWS)
-	  const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_JAVASP,
+	  const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_PL,
 	    COMMAND_TYPE_STOP, db_name, NULL
 	  };
 
@@ -2854,15 +2858,38 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
 	  const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STOP, db_name, NULL };
 	  status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
 	  sleep (1);
+<<<<<<< HEAD
 	  do
 	    {
 	      /* The pl server needs a few seconds to accept ping request */
 	      status = (is_pl_running (db_name) == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
 	      sleep (1);	/* wait to stop */
 	      waited_secs++;
-	    }
-	  while (status != NO_ERROR && waited_secs < wait_timeout);
+=======
 	}
+
+      UTIL_PL_SERVER_STATUS_E pl_status;
+      do
+	{
+	  // The pl server needs a few seconds to accept ping request
+	  pl_status = is_pl_running (db_name);
+	  status = (pl_status == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
+	  sleep (1);		// wait to stop
+
+	  if (!is_server_running (CHECK_SERVER, db_name, 0))
+	    {
+	      status = ER_GENERIC_ERROR;
+	      if (!suppress_message)
+		{
+		  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+		}
+	      break;
+>>>>>>> upstream/feature/plcsql-p1n
+	    }
+
+	  waited_secs++;
+	}
+<<<<<<< HEAD
 
       if (waited_secs == wait_timeout)
 	{
@@ -2870,6 +2897,11 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
 	}
     }
 
+=======
+      while (status != NO_ERROR && waited_secs < wait_timeout);
+    }
+
+>>>>>>> upstream/feature/plcsql-p1n
   if (!suppress_message)
     {
       print_result (PRINT_PL_NAME, status, RESTART);
@@ -2886,26 +2918,40 @@ process_pl_status (const char *db_name)
   static const int wait_timeout = 10;
   int waited_secs = 0;
   UTIL_PL_SERVER_STATUS_E pl_status;
+
   do
     {
-      pl_status = is_pl_running (db_name);
-      if (pl_status != PL_SERVER_RUNNING)
+      if (!is_server_running (CHECK_SERVER, db_name, 0))
 	{
-	  // retry
-	  sleep (1);
-	  waited_secs++;
+	  status = ER_GENERIC_ERROR;
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+	  return status;
 	}
-    }
-  while (pl_status != PL_SERVER_RUNNING && waited_secs < wait_timeout);
 
-  if (pl_status == PL_SERVER_RUNNING)
-    {
-      const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
-      status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
+
+      pl_status = is_pl_running (db_name);
+      if (pl_status == PL_SERVER_RUNNING)
+	{
+	  const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
+	  status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
+	  if (status == NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+      else
+	{
+	  status = ER_GENERIC_ERROR;
+	}
+
+      // retry
+      sleep (1);
+      waited_secs++;
     }
-  else
+  while (status != NO_ERROR && waited_secs < wait_timeout);
+
+  if (status != NO_ERROR)
     {
-      status = ER_GENERIC_ERROR;
       print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
     }
@@ -2935,7 +2981,7 @@ process_pl (int command_type, int argc, const char **argv, bool show_usage, bool
 	  get_server_names (server_type, &buf);
 	}
     }
-  else				/* cubrid javasp command */
+  else				/* cubrid pl command */
     {
       buf = (char *) calloc (sizeof (char), buf_size);
       strncpy (buf, argv[0], buf_size);

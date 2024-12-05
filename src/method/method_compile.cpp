@@ -60,21 +60,32 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    PL_SESSION *session = cubpl::get_session ();
-    if (!session)
-      {
-	return ER_FAILED;
-      }
-    SESSION_ID s_id = session->get_id ();
-
-    cubpl::connection_view cv = get_connection_pool ()->claim ();
-    header header (s_id, SP_CODE_COMPILE, session->get_and_increment_request_id ());
+    PL_SESSION *session = nullptr;
+    cubpl::connection_pool *cp = nullptr;
 
     {
+      session = cubpl::get_session ();
+      if (!session)
+	{
+	  error = er_errid ();
+	  goto exit;
+	}
+      SESSION_ID s_id = session->get_id ();
+
+      cp = get_connection_pool ();
+      if (cp == nullptr)
+	{
+	  error = er_errid ();
+	  goto exit;
+	}
+
+      cubpl::connection_view cv = cp->claim ();
+      header header (s_id, SP_CODE_COMPILE, session->get_and_increment_request_id ());
+
+
       error = cv->send_buffer_args (header, compile_request);
       if (error != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
 	  goto exit;
 	}
 
@@ -137,15 +148,22 @@ namespace cubmethod
 	    }
 	}
       while (code != METHOD_REQUEST_COMPILE);
+    }
 
 exit:
-      if (cv)
-	{
-	  cv.reset ();
-	}
+    if (out_blk.get_size () == 0)
+      {
+	cubmethod::compile_response compile_response;
+	compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : error;
+	compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+	compile_response.err_line = -1;
+	compile_response.err_column = -1;
 
-      return error;
-    }
+	packing_packer packer;
+	packer.set_buffer_and_pack_all (out_blk, compile_response);
+      }
+
+    return error;
   }
 #endif
 }

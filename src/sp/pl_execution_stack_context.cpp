@@ -24,6 +24,8 @@
 #include "pl_connection.hpp"
 #include "pl_query_cursor.hpp"
 
+#include "log_impl.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 namespace cubpl
@@ -207,5 +209,18 @@ namespace cubpl
   execution_stack::get_data_queue ()
   {
     return m_data_queue;
+  }
+
+  int
+  execution_stack::interrupt_handler ()
+  {
+    bool dummy_continue;
+    if (logtb_is_interrupted (m_thread_p, true, &dummy_continue))
+      {
+	m_session->set_local_error_for_interrupt ();
+	m_connection->invalidate ();
+	return m_session->get_interrupt_id ();
+      }
+    return NO_ERROR;
   }
 }
