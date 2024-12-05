@@ -201,13 +201,13 @@ main (int argc, char *argv[])
 	if ((redirect = freopen (NULL_DEVICE, "w", stderr)) == NULL)
 	  {
 	    assert (false);
-	    return ER_GENERIC_ERROR;
+	    goto exit;
 	  }
 
 	// check process is running
 	if (pl_info.pid == PL_PID_DISABLED || is_terminated_process (pl_info.pid) == true)
 	  {
-	    // NO_CONNECTION
+	    fprintf (stdout, "NO_PROCESS");
 	    goto exit;
 	  }
 
@@ -227,6 +227,8 @@ main (int argc, char *argv[])
 	  }
 	else
 	  {
+	    fprintf (stdout, "NO_CONNECTION");
+	    status = NO_ERROR;
 	    goto exit;
 	  }
 
@@ -298,10 +300,6 @@ exit:
       if (status != NO_ERROR)
 	{
 	  fprintf (stdout, "ERROR");
-	}
-      else
-	{
-	  fprintf (stdout, "NO_CONNECTION");
 	}
 
       if (redirect)

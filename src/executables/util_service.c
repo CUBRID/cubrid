@@ -122,7 +122,8 @@ typedef enum
 {
   PL_SERVER_RUNNING = 0,
   PL_SERVER_STOPPED,
-  PL_SERVER_STATUS_ERROR
+  PL_SERVER_STATUS_ERROR,
+  PL_SERVER_STARTING
 } UTIL_PL_SERVER_STATUS_E;
 
 typedef struct
@@ -2802,10 +2803,15 @@ is_pl_running (const char *server_name)
       pclose (input);
       return PL_SERVER_RUNNING;
     }
-  else if (strcmp (buf, "NO_CONNECTION") == 0)
+  else if (strcmp (buf, "NO_PROCESS") == 0)
     {
       pclose (input);
       return PL_SERVER_STOPPED;
+    }
+  else if (strcmp (buf, "NO_CONNECTION") == 0)
+    {
+      pclose (input);
+      return PL_SERVER_STARTING;
     }
   else
     {
@@ -2854,19 +2860,27 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
 	  sleep (1);
 	}
 
+      UTIL_PL_SERVER_STATUS_E pl_status;
       do
 	{
 	  // The pl server needs a few seconds to accept ping request
-	  status = (is_pl_running (db_name) == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
+	  pl_status = is_pl_running (db_name);
+	  status = (pl_status == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
 	  sleep (1);		// wait to stop
+
+	  if (!is_server_running (CHECK_SERVER, db_name, 0))
+	    {
+	      status = ER_GENERIC_ERROR;
+	      if (!suppress_message)
+		{
+		  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+		}
+	      break;
+	    }
+
 	  waited_secs++;
 	}
       while (status != NO_ERROR && waited_secs < wait_timeout);
-
-      if (waited_secs == wait_timeout)
-	{
-	  status = ER_GENERIC_ERROR;
-	}
     }
 
   if (!suppress_message)
@@ -2886,35 +2900,39 @@ process_pl_status (const char *db_name)
   int waited_secs = 0;
   UTIL_PL_SERVER_STATUS_E pl_status;
 
-  if (!is_server_running (CHECK_SERVER, db_name, 0))
-    {
-      status = ER_GENERIC_ERROR;
-      if (!suppress_message)
-	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
-	}
-    }
-
   do
     {
-      pl_status = is_pl_running (db_name);
-      if (pl_status != PL_SERVER_RUNNING)
+      if (!is_server_running (CHECK_SERVER, db_name, 0))
 	{
-	  // retry
-	  sleep (1);
-	  waited_secs++;
+	  status = ER_GENERIC_ERROR;
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+	  return status;
 	}
-    }
-  while (pl_status != PL_SERVER_RUNNING && waited_secs < wait_timeout);
 
-  if (pl_status == PL_SERVER_RUNNING)
-    {
-      const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
-      status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
+
+      pl_status = is_pl_running (db_name);
+      if (pl_status == PL_SERVER_RUNNING)
+	{
+	  const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
+	  status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
+	  if (status == NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+      else
+	{
+	  status = ER_GENERIC_ERROR;
+	}
+
+      // retry
+      sleep (1);
+      waited_secs++;
     }
-  else
+  while (status != NO_ERROR && waited_secs < wait_timeout);
+
+  if (status != NO_ERROR)
     {
-      status = ER_GENERIC_ERROR;
       print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
     }
