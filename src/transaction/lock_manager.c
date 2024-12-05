@@ -8306,8 +8306,10 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
        * lock wait duration       : LK_INFINITE_WAIT
        * conditional lock request : false
        */
-      r = lock_internal_perform_lock_object (thread_p, tran_index, &acqlocks->obj[i].oid, &acqlocks->obj[i].class_oid,
-					     acqlocks->obj[i].lock, LK_INFINITE_WAIT, &dummy_ptr, NULL);
+      r =
+	lock_internal_perform_lock_object (thread_p, tran_index, &acqlocks->obj[i].oid,
+					   OID_IS_ROOTOID (&acqlocks->obj[i].oid) ? NULL : &acqlocks->obj[i].class_oid,
+					   acqlocks->obj[i].lock, LK_INFINITE_WAIT, &dummy_ptr, NULL);
       if (r != LK_GRANTED)
 	{
 	  er_log_debug (ARG_FILE_LINE, "lk_reacquire_crash_locks: The lock cannot be reacquired...");
