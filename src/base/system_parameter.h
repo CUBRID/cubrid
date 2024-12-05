@@ -486,8 +486,9 @@ enum param_id
 
   PRM_ID_ENABLE_MEMORY_MONITORING,
   PRM_ID_MAX_SUBQUERY_CACHE_SIZE,
+  PRM_ID_MAX_PARALLEL_THREAD,
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_MAX_SUBQUERY_CACHE_SIZE
+  PRM_LAST_ID = PRM_ID_MAX_PARALLEL_THREAD
 };
 typedef enum param_id PARAM_ID;
 

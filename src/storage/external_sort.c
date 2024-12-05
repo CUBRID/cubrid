@@ -1634,6 +1634,13 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
 
   thread_p->push_resource_tracks ();
 
+#if !defined(NDEBUG)
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  struct timeval orderby_time;
+  tsc_getticks (&start_tick);
+#endif
+
   if (sort_param->px_type == SORT_ORDER_BY)
     {
       SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
@@ -1669,7 +1676,14 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
       goto cleanup;
     }
 
-  /* TO_DO : status enum */
+#if !defined(NDEBUG)
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  TSC_ADD_TIMEVAL (orderby_time, tv_diff);
+  printf ("thread %d done, time: %d\n",thread_p->index, TO_MSEC (orderby_time));
+#endif
+
+  /* done */
   pthread_mutex_lock(sort_param->px_mtx);
   sort_param->px_status = PX_DONE;
   pthread_cond_signal(sort_param->complete_cond);
@@ -1700,11 +1714,28 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
    * space that is going to be needed.
    */
 
+#if !defined(NDEBUG)
+  TSC_TICKS start_tick, end_tick;
+  TSC_TICKS start_tick2, end_tick2;
+  TSCTIMEVAL tv_diff, tv_diff2;
+  struct timeval orderby_time, orderby_time2;
+  tsc_getticks (&start_tick);
+#endif
+
   error = sort_inphase_sort (thread_p, sort_param, sort_param->get_fn, sort_param->get_arg, &sort_param->total_numrecs);
   if (error != NO_ERROR)
     {
       return error;
     }
+
+#if !defined(NDEBUG)
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  TSC_ADD_TIMEVAL (orderby_time, tv_diff);
+  printf ("sort_inphase_sort time: %d\n", TO_MSEC (orderby_time));
+
+  tsc_getticks (&start_tick2);
+#endif
 
   if (sort_param->tot_runs > 1 || IS_PARALLEL_EXECUTION (sort_param))
     {
@@ -1734,6 +1765,13 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  error = sort_exphase_merge (thread_p, sort_param);
 	}
     }				/* if (sort_param->tot_runs > 1) */
+
+#if !defined(NDEBUG)
+  tsc_getticks (&end_tick2);
+  tsc_elapsed_time_usec (&tv_diff2, end_tick2, start_tick2);
+  TSC_ADD_TIMEVAL (orderby_time2, tv_diff2);
+  printf ("sort_exphase_merge time: %d\n", TO_MSEC (orderby_time2));
+#endif
 
   return error;
 }
@@ -4570,8 +4608,16 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
 	}
     }
 
+#if !defined(NDEBUG)
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  struct timeval orderby_time;
+  tsc_getticks (&start_tick);
+#endif
+
   /* Merge the parallel processed results. */
   sort_param->px_max_index = (remaining_run <= SORT_MAX_HALF_FILES) ? 1 : 2;
+  sort_param->px_max_index  = 2;
   if (sort_param->option == SORT_ELIM_DUP)
     {
       error = sort_exphase_merge_elim_dup (thread_p, sort_param);
@@ -4581,6 +4627,13 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
       /* SORT_DUP */
       error = sort_exphase_merge (thread_p, sort_param);
     }
+
+#if !defined(NDEBUG)
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  TSC_ADD_TIMEVAL (orderby_time, tv_diff);
+  printf ("n-merge time: %d\n", TO_MSEC (orderby_time));
+#endif
 
   /* save result run */
   result_run[first_idx].temp_file = sort_param->temp[sort_param->px_result_file_idx];
@@ -4609,7 +4662,7 @@ static int
 sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   SORT_INFO *sort_info_p;
-  int parallel_num = 18;
+  int parallel_num = prm_get_integer_value (PRM_ID_MAX_PARALLEL_THREAD);
 
   if (sort_param->px_type == SORT_ORDER_BY)
     {
@@ -4715,12 +4768,26 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       return ER_FAILED;
     }
 
+#if !defined(NDEBUG)
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  struct timeval orderby_time;
+  tsc_getticks (&start_tick);
+#endif
+
   /* merging temp files from parallel processed */
   error = sort_merge_run_for_parallel (thread_p, px_sort_param, sort_param, parallel_num);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
     }
+
+#if !defined(NDEBUG)
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  TSC_ADD_TIMEVAL (orderby_time, tv_diff);
+  printf ("merge time: %d\n", TO_MSEC (orderby_time));
+#endif
 
   return error;
 }
