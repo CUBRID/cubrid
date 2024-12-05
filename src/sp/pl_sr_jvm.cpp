@@ -519,13 +519,13 @@ pl_start_jvm_server (const char *db_name, const char *path, int port)
     snprintf (logging_prop, sizeof (logging_prop) - 1, "-Djava.util.logging.config.file=%s",
 	      envvar_javadir_file (pl_file_path, PATH_MAX, "logging.properties"));
 
-    debug_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_DEBUG);
+    debug_port = prm_get_integer_value (PRM_ID_STORED_PROCEDURE_DEBUG);
     if (debug_port != -1)
       {
 	vm_n_default_options += 2;	/* set debug flag and debugging port */
       }
 
-    jvm_opt_sysprm = (char *) prm_get_string_value (PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS);
+    jvm_opt_sysprm = (char *) prm_get_string_value (PRM_ID_STORED_PROCEDURE_JVM_OPTIONS);
     std::vector <std::string> opts = pl_tokenize_jvm_options (jvm_opt_sysprm);
 #ifndef NDEBUG
     // enable assertions in PL Server

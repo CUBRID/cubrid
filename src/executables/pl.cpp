@@ -243,14 +243,6 @@ main (int argc, char *argv[])
     /* javasp command main routine */
     if (command.compare ("start") == 0)
       {
-	// check java stored procedure is not enabled
-	if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE) == false)
-	  {
-	    fprintf (stdout, "%s system parameter is not enabled\n", prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE));
-	    status = ER_SP_CANNOT_START_JVM;
-	    goto exit;
-	  }
-
 	status = pl_start_server (pl_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
@@ -401,9 +393,9 @@ pl_get_port_param ()
 #if defined (WINDOWS)
   const bool is_uds_mode = false;
 #else
-  const bool is_uds_mode = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE_UDS);
+  const bool is_uds_mode = prm_get_bool_value (PRM_ID_STORED_PROCEDURE_UDS);
 #endif
-  prm_port = (is_uds_mode) ? PL_PORT_UDS_MODE : prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
+  prm_port = (is_uds_mode) ? PL_PORT_UDS_MODE : prm_get_integer_value (PRM_ID_STORED_PROCEDURE_PORT);
   return prm_port;
 }
 

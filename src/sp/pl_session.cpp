@@ -78,7 +78,7 @@ namespace cubpl
       }
 
     // check interrupt
-    if (is_interrupted ())
+    if (is_interrupted () && m_stack_idx > -1)
       {
 	// block creating a new stack
 	return nullptr;
@@ -126,7 +126,7 @@ namespace cubpl
     auto pred = [&] () -> bool
     {
       // condition to check
-      return m_exec_stack[m_stack_idx] == claimed->get_id ();
+      return m_stack_idx == -1 || m_exec_stack[m_stack_idx] == claimed->get_id ();
     };
 
     // Guaranteed to be removed from the topmost element
@@ -134,18 +134,29 @@ namespace cubpl
 
     if (pred ())
       {
-	m_exec_stack[m_stack_idx] = -1;
-	m_stack_idx--;
+	if (m_stack_idx > -1)
+	  {
+	    m_exec_stack[m_stack_idx] = -1;
+	    m_stack_idx--;
+	  }
 
 	m_stack_map.erase (claimed->get_id ());
 
-	delete claimed;
-	claimed = nullptr;
+	if (claimed)
+	  {
+	    delete claimed;
+	    claimed = nullptr;
+	  }
       }
 
     if (m_stack_idx < 0)
       {
 	m_is_running = false;
+
+	// clear interrupt
+	m_is_interrupted = false;
+	m_interrupt_id = NO_ERROR;
+	m_interrupt_msg.clear ();
       }
   }
 

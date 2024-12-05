@@ -221,7 +221,7 @@ extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
  * MIGRATION OPERATIONS (authenticate_migration.cpp)
  */
 extern int au_export_users (extract_context & ctxt, print_output & output_ctx);
-extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_mop);
+extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_mop, DB_OBJECT_TYPE obj_type);
 //
 
 /*
