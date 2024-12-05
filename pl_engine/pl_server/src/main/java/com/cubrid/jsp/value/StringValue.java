@@ -33,6 +33,7 @@ package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.SysParam;
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.io.UnsupportedEncodingException;
@@ -54,13 +55,11 @@ public class StringValue extends Value {
         this.primitiveValue = value;
         this.codeset = codeset;
         this.resolved = null;
+        this.dbType = DBType.DB_STRING;
     }
 
     public StringValue(byte[] value) {
-        super();
-        this.primitiveValue = value;
-        this.codeset = Server.getConfig().getServerCodesetId();
-        this.resolved = null;
+        this(value, Server.getConfig().getServerCodesetId());
     }
 
     public StringValue(String value) {

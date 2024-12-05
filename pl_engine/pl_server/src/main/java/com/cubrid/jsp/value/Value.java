@@ -56,10 +56,6 @@ public abstract class Value {
         this.codeset = Server.getConfig().getServerCodesetId();
     }
 
-    public Value(int mode) {
-        this.mode = mode;
-    }
-
     public void setMode(int mode) {
         this.mode = mode;
     }
