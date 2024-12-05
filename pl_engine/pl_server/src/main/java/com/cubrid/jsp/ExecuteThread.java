@@ -465,7 +465,7 @@ public class ExecuteThread extends Thread {
         Value[] args = sp.getArgs();
         for (int i = 0; args != null && i < args.length; i++) {
             if (args[i].getMode() > Value.IN) {
-                Value v = sp.makeOutValue(args[i].getResolved());
+                Value v = sp.makeOutValue(i);
                 packer.packValue(v, args[i].getDbType());
             }
         }

@@ -40,6 +40,8 @@ import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.value.NullValue;
+import com.cubrid.jsp.value.SetValue;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
 import cubrid.sql.CUBRIDOID;
@@ -154,7 +156,6 @@ public class StoredProcedure {
                             + ", but "
                             + args.length);
         }
-
         for (int i = 0; i < argsTypes.length; i++) {
             Object resolved;
             if (args[i] == null) {
@@ -347,37 +348,18 @@ public class StoredProcedure {
         return ValueUtilities.createValueFrom(result);
     }
 
-    public Value makeOutValue(Object object) throws TypeMismatchException, ExecuteException {
-        Object obj = null;
-        if (object instanceof byte[]) {
-            obj = new Byte(((byte[]) object)[0]);
-        } else if (object instanceof short[]) {
-            obj = new Short(((short[]) object)[0]);
-        } else if (object instanceof int[]) {
-            obj = new Integer(((int[]) object)[0]);
-        } else if (object instanceof long[]) {
-            obj = new Long(((long[]) object)[0]);
-        } else if (object instanceof float[]) {
-            obj = new Float(((float[]) object)[0]);
-        } else if (object instanceof double[]) {
-            obj = new Double(((double[]) object)[0]);
-        } else if (object instanceof byte[][]) {
-            obj = ((byte[][]) object)[0];
-        } else if (object instanceof short[][]) {
-            obj = ((short[][]) object)[0];
-        } else if (object instanceof int[][]) {
-            obj = ((int[][]) object)[0];
-        } else if (object instanceof long[][]) {
-            obj = ((long[][]) object)[0];
-        } else if (object instanceof float[][]) {
-            obj = ((float[][]) object)[0];
-        } else if (object instanceof double[][]) {
-            obj = ((double[][]) object)[0];
-        } else if (object instanceof Object[]) {
-            obj = ((Object[]) object)[0];
+    public Value makeOutValue (int idx) throws TypeMismatchException, ExecuteException {
+        Class<?>[] argsTypes = target.getArgsTypes();
+        if (argsTypes[idx].isArray()) {
+            Value resolved = ValueUtilities.createValueFrom (cachedResolved[idx]);
+            if (resolved instanceof SetValue) {
+                return ((SetValue) resolved).toValueArray()[0];
+            } else {
+                return resolved;
+            }
+        } else {
+            return new NullValue ();
         }
-
-        return ValueUtilities.createValueFrom(obj);
     }
 
     public int getReturnType() {

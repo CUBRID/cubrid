@@ -36,6 +36,7 @@ import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import com.cubrid.jsp.protocol.PackableObject;
+import com.cubrid.jsp.value.NullValue;
 import com.cubrid.jsp.value.SetValue;
 import com.cubrid.jsp.value.StringValue;
 import com.cubrid.jsp.value.Value;
@@ -161,9 +162,8 @@ public class CUBRIDPacker {
 
     public void packValue(Value value, int dbType)
             throws UnsupportedEncodingException, TypeMismatchException {
-        if (value == null) {
-            packInt(DBType.DB_NULL);
-            return;
+        if (value == null || value instanceof NullValue) {
+            dbType = DBType.DB_NULL;
         }
 
         switch (dbType) {
@@ -196,8 +196,8 @@ public class CUBRIDPacker {
                     packInt(value.getCodeSet());
                     packCString(value.toByteArray());
                 } else {
-                    packInt(Server.getConfig().getServerCodesetId());
-                    packString(value.toString());
+                    packInt(value.getCodeSet());
+                    packString(value.toString(), value.getCodeSet());
                 }
                 break;
 
