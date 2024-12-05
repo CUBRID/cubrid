@@ -2858,14 +2858,6 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
 	  const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STOP, db_name, NULL };
 	  status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
 	  sleep (1);
-<<<<<<< HEAD
-	  do
-	    {
-	      /* The pl server needs a few seconds to accept ping request */
-	      status = (is_pl_running (db_name) == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
-	      sleep (1);	/* wait to stop */
-	      waited_secs++;
-=======
 	}
 
       UTIL_PL_SERVER_STATUS_E pl_status;
@@ -2884,24 +2876,13 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
 		  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
 		}
 	      break;
->>>>>>> upstream/feature/plcsql-p1n
 	    }
 
 	  waited_secs++;
 	}
-<<<<<<< HEAD
-
-      if (waited_secs == wait_timeout)
-	{
-	  status = ER_GENERIC_ERROR;
-	}
-    }
-
-=======
       while (status != NO_ERROR && waited_secs < wait_timeout);
     }
 
->>>>>>> upstream/feature/plcsql-p1n
   if (!suppress_message)
     {
       print_result (PRINT_PL_NAME, status, RESTART);
