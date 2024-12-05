@@ -2852,15 +2852,16 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
 	  const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STOP, db_name, NULL };
 	  status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
 	  sleep (1);
-	  do
-	    {
-	      /* The pl server needs a few seconds to accept ping request */
-	      status = (is_pl_running (db_name) == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
-	      sleep (1);	/* wait to stop */
-	      waited_secs++;
-	    }
-	  while (status != NO_ERROR && waited_secs < wait_timeout);
 	}
+
+      do
+	{
+	  // The pl server needs a few seconds to accept ping request
+	  status = (is_pl_running (db_name) == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
+	  sleep (1);		// wait to stop
+	  waited_secs++;
+	}
+      while (status != NO_ERROR && waited_secs < wait_timeout);
 
       if (waited_secs == wait_timeout)
 	{
@@ -2884,6 +2885,16 @@ process_pl_status (const char *db_name)
   static const int wait_timeout = 10;
   int waited_secs = 0;
   UTIL_PL_SERVER_STATUS_E pl_status;
+
+  if (!is_server_running (CHECK_SERVER, db_name, 0))
+    {
+      status = ER_GENERIC_ERROR;
+      if (!suppress_message)
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+	}
+    }
+
   do
     {
       pl_status = is_pl_running (db_name);
