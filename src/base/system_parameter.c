@@ -438,7 +438,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STORED_PROCEDURE_PORT "stored_procedure_port"
 
-#define PRM_NAME_STORED_PROCEDURE_JVM_OPTIONS "stored_procedure_jvm_options"
+#define PRM_NAME_STORED_PROCEDURE_JVM_OPTIONS "stored_procedure_vm_options"
 
 #define PRM_NAME_STORED_PROCEDURE_DEBUG "stored_procedure_debug"
 
