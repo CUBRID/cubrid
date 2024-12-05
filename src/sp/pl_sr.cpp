@@ -572,7 +572,7 @@ static cubpl::server_manager *pl_server_manager = nullptr;
 void
 pl_server_init (const char *db_name)
 {
-  if (pl_server_manager != nullptr)
+  if (pl_server_manager != nullptr || prm_get_bool_value (PRM_ID_STORED_PROCEDURE) == false)
     {
       return;
     }
@@ -615,6 +615,7 @@ PL_CONNECTION_POOL *get_connection_pool ()
     }
   else
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
       return nullptr;
     }
 }
