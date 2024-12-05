@@ -4617,7 +4617,7 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
 
   /* Merge the parallel processed results. */
   sort_param->px_max_index = (remaining_run <= SORT_MAX_HALF_FILES) ? 1 : 2;
-  sort_param->px_max_index  = 2;
+  sort_param->px_max_index = 2;
   if (sort_param->option == SORT_ELIM_DUP)
     {
       error = sort_exphase_merge_elim_dup (thread_p, sort_param);
