@@ -13836,7 +13836,6 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (datetimetz_frmt), datetimetz_frmt,
 		    strlen (datetimetz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
-
       line_length = db_get_string_length (&result);
       strncpy (line, db_get_string (&result), line_length);
 
@@ -13869,7 +13868,6 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 		    strlen (datetimeltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
       db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
-
       line_length = db_get_string_length (&result);
       strncpy (line, db_get_string (&result), line_length);
 
