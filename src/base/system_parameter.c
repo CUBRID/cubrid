@@ -424,7 +424,17 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS "ha_check_disk_failure_interval"
 
-#define PRM_NAME_GENERAL_RESERVE_02 "general_reserve_02"
+#define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
+
+#define PRM_NAME_JAVA_STORED_PROCEDURE_PORT "java_stored_procedure_port"
+
+#define PRM_NAME_JAVA_STORED_PROCEDURE_JVM_OPTIONS "java_stored_procedure_jvm_options"
+
+#define PRM_NAME_JAVA_STORED_PROCEDURE_DEBUG "java_stored_procedure_debug"
+
+#define PRM_NAME_JAVA_STORED_PROCEDURE_UDS "java_stored_procedure_uds"
+
+#define PRM_NAME_STORED_PROCEDURE "stored_procedure"
 
 #define PRM_NAME_STORED_PROCEDURE_PORT "stored_procedure_port"
 
@@ -2305,9 +2315,9 @@ int PRM_ER_LOG_TDE = false;
 static int prm_er_log_tde_default = false;
 static unsigned int prm_er_log_tde_flag = 0;
 
-bool PRM_GENERAL_RESERVE_02 = false;
-static bool prm_general_reserve_02_default = false;
-static unsigned int prm_general_reserve_02_flag = 0;
+bool PRM_STORED_PROCEDURE = true;
+static bool prm_stored_procedure_default = true;
+static unsigned int prm_stored_procedure_flag = 0;
 
 int PRM_STORED_PROCEDURE_PORT = 0;
 static int prm_stored_procedure_port_default = 0;
@@ -6024,20 +6034,20 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_GENERAL_RESERVE_02,
-   PRM_NAME_GENERAL_RESERVE_02,
+  {PRM_ID_JAVA_STORED_PROCEDURE,
+   PRM_NAME_STORED_PROCEDURE,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_general_reserve_01_flag,
-   (void *) &prm_general_reserve_01_default,
-   (void *) &PRM_GENERAL_RESERVE_01,
+   &prm_stored_procedure_flag,
+   (void *) &prm_stored_procedure_default,
+   (void *) &PRM_STORED_PROCEDURE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_STORED_PROCEDURE_PORT,
+  {PRM_ID_JAVA_STORED_PROCEDURE_PORT,
    PRM_NAME_STORED_PROCEDURE_PORT,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    &prm_stored_procedure_port_flag,
    (void *) &prm_stored_procedure_port_default,
@@ -6048,7 +6058,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_STORED_PROCEDURE_JVM_OPTIONS,
    PRM_NAME_STORED_PROCEDURE_JVM_OPTIONS,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_STRING,
    &prm_stored_procedure_jvm_options_flag,
    (void *) &prm_stored_procedure_jvm_options_default,
@@ -6057,7 +6067,7 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_STORED_PROCEDURE_DEBUG,
+  {PRM_ID_JAVA_STORED_PROCEDURE_DEBUG,
    PRM_NAME_STORED_PROCEDURE_DEBUG,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
@@ -6068,9 +6078,9 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_STORED_PROCEDURE_UDS,
+  {PRM_ID_JAVA_STORED_PROCEDURE_UDS,
    PRM_NAME_STORED_PROCEDURE_UDS,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_stored_procedure_uds_flag,
    (void *) &prm_stored_procedure_uds_default,
@@ -6447,6 +6457,61 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_MAX_SUBQUERY_CACHE_SIZE,
    (void *) &prm_max_subquery_cache_size_upper,
    (void *) &prm_max_subquery_cache_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE,
+   PRM_NAME_STORED_PROCEDURE,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_stored_procedure_flag,
+   (void *) &prm_stored_procedure_default,
+   (void *) &PRM_STORED_PROCEDURE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_PORT,
+   PRM_NAME_STORED_PROCEDURE_PORT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_stored_procedure_port_flag,
+   (void *) &prm_stored_procedure_port_default,
+   (void *) &PRM_STORED_PROCEDURE_PORT,
+   (void *) &prm_stored_procedure_port_upper, (void *) &prm_stored_procedure_port_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_JVM_OPTIONS,
+   PRM_NAME_STORED_PROCEDURE_JVM_OPTIONS,
+   (PRM_FOR_SERVER),
+   PRM_STRING,
+   &prm_stored_procedure_jvm_options_flag,
+   (void *) &prm_stored_procedure_jvm_options_default,
+   (void *) &PRM_STORED_PROCEDURE_JVM_OPTIONS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_DEBUG,
+   PRM_NAME_STORED_PROCEDURE_DEBUG,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_stored_procedure_debug_flag,
+   (void *) &prm_stored_procedure_debug_default,
+   (void *) &PRM_STORED_PROCEDURE_DEBUG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_UDS,
+   PRM_NAME_STORED_PROCEDURE_UDS,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_stored_procedure_uds_flag,
+   (void *) &prm_stored_procedure_uds_default,
+   (void *) &PRM_STORED_PROCEDURE_UDS,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
