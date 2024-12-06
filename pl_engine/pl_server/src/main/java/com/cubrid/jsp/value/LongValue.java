@@ -68,7 +68,7 @@ public class LongValue extends Value {
 
     @Override
     public int toInt() throws TypeMismatchException {
-        return SpLib.convBigintToShort(value);
+        return SpLib.convBigintToInt(value);
     }
 
     @Override
