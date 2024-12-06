@@ -68,7 +68,7 @@ au_auth_accessor::create_new_auth ()
   if (au_class_mop == nullptr)
     {
       au_class_mop = sm_find_class (CT_CLASSAUTH_NAME);
-      if (au_class_mop == NULL || WS_MOP_IS_NULL (au_class_mop))
+      if (au_class_mop == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_CLASS, 1, CT_CLASSAUTH_NAME);
 	}

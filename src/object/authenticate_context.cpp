@@ -55,7 +55,6 @@ void
 authenticate_context::reset (void)
 {
   root = nullptr;
-  auth_class = nullptr;
   authorizations_class = nullptr;
   authorization_class = nullptr;
   user_class = nullptr;
@@ -135,15 +134,6 @@ authenticate_context::start (void)
       return (error);
     }
   authorizations_class = class_mop;
-
-  class_mop = sm_find_class (CT_CLASSAUTH_NAME);
-  if (class_mop == NULL)
-    {
-      error = ER_AU_NO_AUTHORIZATION;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      return (error);
-    }
-  auth_class = class_mop;
 
   class_mop = sm_find_class (AU_AUTH_CLASS_NAME);
   if (class_mop == NULL)

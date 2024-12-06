@@ -102,16 +102,6 @@ au_ctx (void)
   return au_ctx_obj;
 }
 
-void
-au_finalize ()
-{
-  if (au_ctx_obj != nullptr)
-    {
-      delete au_ctx_obj;
-      au_ctx_obj = nullptr;
-    }
-}
-
 /*
  * DB_ EXTENSION FUNCTIONS
  */
