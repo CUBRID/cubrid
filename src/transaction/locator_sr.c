@@ -1729,8 +1729,8 @@ locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key
   int *class_no_p = (int *) args;
   LOCATOR_CLASSNAME_ACTION *action;
   const char *str_action;
-  size_t i;
-  size_t key_size;
+  int i;
+  int key_size;
 
   assert (class_no_p != NULL);
 

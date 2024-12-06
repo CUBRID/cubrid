@@ -324,7 +324,15 @@ stats_dump (const char *class_name_p, FILE * file_p)
 
   fprintf (file_p, "\nCLASS STATISTICS\n");
   fprintf (file_p, "****************\n");
-  fprintf (file_p, " Class name: %s Timestamp: %s", class_name_p, ctime (&tloc));
+  fprintf (file_p, " Class name: %s", class_name_p);
+  if (tloc == 0)
+    {
+      fprintf (file_p, " (The 'stats' is not updated)\n");
+    }
+  else
+    {
+      fprintf (file_p, " Timestamps: %s", ctime (&tloc));
+    }
   fprintf (file_p, " Total pages in class heap: %d\n", class_stats_p->heap_num_pages);
   fprintf (file_p, " Total objects: %d\n", class_stats_p->heap_num_objects);
   fprintf (file_p, " Number of attributes: %d\n", class_stats_p->n_attrs);

@@ -5947,7 +5947,10 @@ extract_split_schema_files (extract_context & ctxt)
       err_count++;
     }
 
-  create_schema_info (ctxt);
+  if (create_schema_info (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
 
   return err_count;
 }
@@ -5974,6 +5977,8 @@ extract_all_schema_file (extract_context & ctxt, const char *output_filename)
       fclose (output_file);
       output_file = NULL;
       remove (output_filename);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NODATA_TOBE_UNLOADED, 0);
+      err_count++;
     }
   else
     {
@@ -6131,6 +6136,8 @@ create_schema_info (extract_context & ctxt)
       fclose (output_file);
       output_file = NULL;
       remove (output_filename);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NODATA_TOBE_UNLOADED, 0);
+      err = ER_FAILED;
     }
   else
     {
