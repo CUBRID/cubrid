@@ -25,6 +25,30 @@ set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f
 set(WITH_LIBUNIXODBC_URL "https://ftp.osuosl.org/pub/blfs/conglomeration/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
 set(WITH_LIBTBB_URL "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.11.0.tar.gz")               # intel oneTBB library sources URL
 
+# URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
+# It is optional but highly recommended to set this value. If not set, the file will be downloaded
+# every time Ninja reconfigures the project, which can be inefficient.
+#
+# Specifying the URL_HASH ensures:
+# 1. The file's integrity is verified against its hash.
+# 2. Ninja avoids unnecessary downloads if the file already exists and matches the hash.
+#
+# How to generate the URL_HASH:
+# - Use the `sha256sum` command to compute the hash of the downloaded tarball.
+#   Example:
+#   $ sha256sum openssl-1.1.1f.tar.gz
+#   Then set the resulting SHA256 hash in the format: "SHA256=<hash_value>"
+#
+# Below are the URL_HASH values for different libraries used in this project:
+set(WITH_LIBEXPAT_URL_HASH "SHA256=d9dc32efba7e74f788fcc4f212a43216fc37cf5f23f4c2339664d473353aedf6")
+set(WITH_LIBJANSSON_URL_HASH "SHA256=78215ad1e277b42681404c1d66870097a50eb084be9d771b1d15576575cf6447")                          # jansson library sources URL
+set(WITH_LIBEDIT_URL_HASH "SHA256=972c7d46844b7b56adde028bb2269546938272dd8d7a58978b7a18a6f6e44141")                  # editline library sources URL
+set(WITH_RAPIDJSON_URL_HASH "SHA256=bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e")                          # rapidjson library sources URL
+set(WITH_LIBOPENSSL_URL_HASH "SHA256=186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35")                     # openssl library sources URL
+set(WITH_LIBUNIXODBC_URL_HASH "SHA256=52833eac3d681c8b0c9a5a65f2ebd745b3a964f208fc748f977e44015a31b207")     # unixODBC library sources URL
+set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")               # intel oneTBB library sources URL
+
+
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
@@ -158,6 +182,7 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBEXPAT" ${LIBEXPAT_LIBS})
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
+      URL_HASH             ${WITH_LIBEXPAT_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -209,6 +234,7 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBJANSSON" ${LIBJANSSON_LIBS})
     externalproject_add(${LIBJANSSON_TARGET}
       URL                  ${WITH_LIBJANSSON_URL}
+      URL_HASH             ${WITH_LIBJANSSON_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -258,6 +284,7 @@ if(UNIX)
     ADD_BY_PRODUCTS_VARIABLE ("LIBEDIT" ${LIBEDIT_LIBS})
     externalproject_add(${LIBEDIT_TARGET}
       URL                  ${WITH_LIBEDIT_URL}
+      URL_HASH             ${WITH_LIBEDIT_URL_HASH}
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
       TIMEOUT              600
@@ -333,6 +360,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
+      URL_HASH             ${WITH_LIBOPENSSL_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -375,6 +403,7 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBUNIXODBC" ${LIBUNIXODBC_LIBS})
     externalproject_add(${LIBUNIXODBC_TARGET}
       URL                  ${WITH_LIBUNIXODBC_URL}
+      URL_HASH             ${WITH_LIBUNIXODBC_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -401,6 +430,7 @@ ADD_BY_PRODUCTS_VARIABLE ("RAPIDJSON" ${RAPIDJSON_INCLUDES})
 externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL                  ${WITH_RAPIDJSON_URL}
+  URL_HASH             ${WITH_RAPIDJSON_URL_HASH}
   LOG_CONFIGURE        TRUE
   LOG_BUILD            TRUE
   LOG_INSTALL          TRUE
@@ -464,6 +494,7 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBTBB" ${LIBTBB_LIBS})
     externalproject_add(${LIBTBB_TARGET}
       URL                  ${WITH_LIBTBB_URL}
+      URL_HASH             ${WITH_LIBTBB_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
