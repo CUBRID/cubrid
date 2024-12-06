@@ -53,6 +53,7 @@ class EXPORT_IMPORT authenticate_context
 
     MOP authorizations_class;     /* db_root */
 
+    MOP auth_class;              /* _db_auth */
 
     MOP authorization_class;     /* db_authorization */
 

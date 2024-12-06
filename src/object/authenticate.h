@@ -60,6 +60,7 @@ class print_output;
 #define Au_public_user                  au_ctx ()->public_user
 #define Au_disable                      au_ctx ()->disable_auth_check
 
+#define AU_auth_class                   au_ctx ()->auth_class
 #define Au_authorizations_class         au_ctx ()->authorizations_class
 #define Au_authorization_class          au_ctx ()->authorization_class
 #define Au_user_class                   au_ctx ()->user_class
@@ -76,7 +77,8 @@ class print_output;
 
 /* Functions */
 #define au_init                         au_ctx
-#define au_final                        au_ctx ()->final_ctx
+#define au_final                        au_finalize
+
 #define au_install                      au_ctx ()->install
 #define au_start                        au_ctx ()->start
 
@@ -136,6 +138,7 @@ class print_output;
   while (0)
 
 extern EXPORT_IMPORT authenticate_context *au_ctx (void);
+extern EXPORT_IMPORT void au_finalize (void);
 
 extern int au_login (const char *name, const char *password, bool ignore_dba_privilege);
 
