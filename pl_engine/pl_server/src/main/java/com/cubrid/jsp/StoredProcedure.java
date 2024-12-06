@@ -138,9 +138,26 @@ public class StoredProcedure {
         Object[] resolved = new Object[args.length];
         for (int i = 0; i < args.length; i++) {
             resolved[i] = args[i].getResolved();
+            if (resolved[i] == null && target.getArgsTypes()[i].isPrimitive()) {
+                resolved[i] = getDefaultValueForPrimitive(target.getArgsTypes()[i]);
+            }
         }
 
         return resolved;
+    }
+
+    private Object getDefaultValueForPrimitive(Class<?> primitiveType) {
+        if (primitiveType == boolean.class) return false;
+        if (primitiveType == char.class) return '\0';
+        if (primitiveType == byte.class) return (byte) 0;
+        if (primitiveType == short.class) return (short) 0;
+        if (primitiveType == int.class) return 0;
+        if (primitiveType == long.class) return 0L;
+        if (primitiveType == float.class) return 0f;
+        if (primitiveType == double.class) return 0d;
+
+        throw new IllegalArgumentException(
+                "Unsupported primitive type with null: " + primitiveType);
     }
 
     private void checkArgs() throws TypeMismatchException {
