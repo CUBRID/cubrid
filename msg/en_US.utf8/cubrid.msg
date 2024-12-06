@@ -1451,7 +1451,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1361 Invalid result cache for subquery.
 
-1362 Locale for language '%1$s' is not available.
+1362 Locale '%1$s' is unavailable.
 
 1363 Last Error
 
