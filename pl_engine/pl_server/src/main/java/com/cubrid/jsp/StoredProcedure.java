@@ -348,17 +348,17 @@ public class StoredProcedure {
         return ValueUtilities.createValueFrom(result);
     }
 
-    public Value makeOutValue (int idx) throws TypeMismatchException, ExecuteException {
+    public Value makeOutValue(int idx) throws TypeMismatchException, ExecuteException {
         Class<?>[] argsTypes = target.getArgsTypes();
         if (argsTypes[idx].isArray()) {
-            Value resolved = ValueUtilities.createValueFrom (cachedResolved[idx]);
+            Value resolved = ValueUtilities.createValueFrom(cachedResolved[idx]);
             if (resolved instanceof SetValue) {
                 return ((SetValue) resolved).toValueArray()[0];
             } else {
                 return resolved;
             }
         } else {
-            return new NullValue ();
+            return new NullValue();
         }
     }
 
