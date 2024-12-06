@@ -541,10 +541,13 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::GENERIC;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
-
       /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_BLOB;
+      /* return type */
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -6142,106 +6145,47 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       return NO_ERROR;
     }
 
-  // Check if LOB type is supported  
-  switch (op)
+  best_match = 0;
+  matches = -1;
+  for (i = 0; i < def.overloads_count; i++)
     {
-    case PT_IS_NULL:
-    case PT_IS_NOT_NULL:
-    case PT_ISNULL:
-    case PT_TYPEOF:
-      //
-    case PT_IFNULL:
-    case PT_NVL:
-    case PT_NVL2:
-    case PT_COALESCE:
-      best_match = 0;
-      break;
-
-    case PT_LIKE:
-    case PT_NOT_LIKE:
-    case PT_LIKE_LOWER_BOUND:
-    case PT_LIKE_UPPER_BOUND:
-      best_match = (arg1_type == PT_TYPE_BLOB || arg2_type == PT_TYPE_BLOB) ? -1 : 0;
-      break;
-
-    case PT_CAST:
-      assert (false);
-      best_match = 0;
-      break;
-
-    case PT_BLOB_LENGTH:
-    case PT_BLOB_TO_BIT:
-      best_match = (arg1_type != PT_TYPE_BLOB) ? -1 : 0;
-      break;
-
-    case PT_CLOB_LENGTH:
-    case PT_CLOB_TO_CHAR:
-      best_match = (arg1_type != PT_TYPE_CLOB) ? -1 : 0;
-      break;
-
-      //case PT_BIT_TO_BLOB:
-      //case PT_CHAR_TO_BLOB:
-      //case PT_CHAR_TO_CLOB:
-      //case PT_BLOB_FROM_FILE:
-      //case PT_CLOB_FROM_FILE:
-    default:
-      best_match = (arg1_type != PT_TYPE_CLOB) ? -1 : 0;
-      if ((arg1_type == PT_TYPE_BLOB || arg1_type == PT_TYPE_CLOB) ||
-	  (arg2_type == PT_TYPE_BLOB || arg3_type == PT_TYPE_CLOB) ||
-	  (arg2_type == PT_TYPE_BLOB || arg3_type == PT_TYPE_CLOB))
+      int match_cnt = 0;
+      if (pt_are_unmatchable_types (def.overloads[i].arg1_type, arg1_type))
 	{
-	  best_match = -1;
+	  match_cnt = -1;
+	  continue;
 	}
-      else
+      if (pt_are_equivalent_types (def.overloads[i].arg1_type, arg1_type))
 	{
-	  best_match = 0;
+	  match_cnt++;
 	}
-      break;
-    }
-
-  if (best_match == 0)
-    {
-      matches = -1;
-      for (i = 0; i < def.overloads_count; i++)
+      if (pt_are_unmatchable_types (def.overloads[i].arg2_type, arg2_type))
 	{
-	  int match_cnt = 0;
-	  if (pt_are_unmatchable_types (def.overloads[i].arg1_type, arg1_type))
-	    {
-	      match_cnt = -1;
-	      continue;
-	    }
-	  if (pt_are_equivalent_types (def.overloads[i].arg1_type, arg1_type))
-	    {
-	      match_cnt++;
-	    }
-	  if (pt_are_unmatchable_types (def.overloads[i].arg2_type, arg2_type))
-	    {
-	      match_cnt = -1;
-	      continue;
-	    }
-	  if (pt_are_equivalent_types (def.overloads[i].arg2_type, arg2_type))
-	    {
-	      match_cnt++;
-	    }
-	  if (pt_are_unmatchable_types (def.overloads[i].arg3_type, arg3_type))
-	    {
-	      match_cnt = -1;
-	      continue;
-	    }
-	  if (pt_are_equivalent_types (def.overloads[i].arg3_type, arg3_type))
-	    {
-	      match_cnt++;
-	    }
-	  if (match_cnt == 3)
-	    {
-	      best_match = i;
-	      break;
-	    }
-	  else if (match_cnt > matches)
-	    {
-	      matches = match_cnt;
-	      best_match = i;
-	    }
+	  match_cnt = -1;
+	  continue;
+	}
+      if (pt_are_equivalent_types (def.overloads[i].arg2_type, arg2_type))
+	{
+	  match_cnt++;
+	}
+      if (pt_are_unmatchable_types (def.overloads[i].arg3_type, arg3_type))
+	{
+	  match_cnt = -1;
+	  continue;
+	}
+      if (pt_are_equivalent_types (def.overloads[i].arg3_type, arg3_type))
+	{
+	  match_cnt++;
+	}
+      if (match_cnt == 3)
+	{
+	  best_match = i;
+	  break;
+	}
+      else if (match_cnt > matches)
+	{
+	  matches = match_cnt;
+	  best_match = i;
 	}
     }
 
@@ -15827,6 +15771,24 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
       if (!PT_IS_STRING_TYPE (o1->type_enum))
 	{
+	  if (o1->type_enum == PT_TYPE_BLOB)
+	    {
+	      DB_VALUE tval;
+
+	      db_make_null (&tval);
+	      dom_status = tp_value_cast (arg1, &tval, &tp_VarBit_domain, false);
+	      if (dom_status != DOMAIN_COMPATIBLE)
+		{
+		  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			       pt_short_print (parser, o1), pt_show_type_enum (rTyp));
+		  db_value_clear (&tval);
+		  return 0;
+		}
+	      db_make_int (result, db_get_string_size (&tval));
+	      db_value_clear (&tval);
+	      return 1;
+	    }
+
 	  return 0;
 	}
 
@@ -15842,6 +15804,27 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
       if (!PT_IS_STRING_TYPE (o1->type_enum))
 	{
+	  if (o1->type_enum == PT_TYPE_BLOB)
+	    {
+	      DB_VALUE tval;
+	      int len = 0;
+
+	      db_make_null (&tval);
+	      dom_status = tp_value_cast (arg1, &tval, &tp_VarBit_domain, false);
+	      if (dom_status != DOMAIN_COMPATIBLE)
+		{
+		  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			       pt_short_print (parser, o1), pt_show_type_enum (rTyp));
+		  db_value_clear (&tval);
+		  return 0;
+		}
+
+	      db_get_bit (&tval, &len);
+	      db_make_int (result, len);
+	      db_value_clear (&tval);
+	      return 1;
+	    }
+
 	  return 0;
 	}
 
