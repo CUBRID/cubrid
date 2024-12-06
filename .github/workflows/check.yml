@@ -107,7 +107,7 @@ jobs:
           cd ..
 
           # download google-java-format-1.7-all-deps.jar
-          wget https://github.com/CUBRID/3rdparty/raw/develop/google-java-format/google-java-format-1.7-all-deps.jarormat-1.7-all-deps.jar
+          wget https://github.com/CUBRID/3rdparty/blob/develop/google-java-format/google-java-format-1.7-all-deps.jar
         working-directory: ${{ env.working-directory }}
       - uses: actions/setup-java@v3
         with:
