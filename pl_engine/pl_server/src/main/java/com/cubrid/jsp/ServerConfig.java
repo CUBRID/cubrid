@@ -131,6 +131,8 @@ public class ServerConfig {
             codeset = "EUC-KR";
         } else if (codeset.equalsIgnoreCase("iso88591")) {
             codeset = "ISO-8859-1";
+        } else if (codeset.equalsIgnoreCase("ascii")) {
+            codeset = "UTF-8"; // ascii is a subset of UTF-8
         }
 
         try {
