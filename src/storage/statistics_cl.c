@@ -331,7 +331,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
     }
   else
     {
-      fprintf (file_p, " Timestamp %s", ctime (&tloc));
+      fprintf (file_p, " Timestamp: %s", ctime (&tloc));
     }
   fprintf (file_p, " Total pages in class heap: %d\n", class_stats_p->heap_num_pages);
   fprintf (file_p, " Total objects: %d\n", class_stats_p->heap_num_objects);
