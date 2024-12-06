@@ -448,7 +448,6 @@ pl_create_java_vm (JNIEnv **env_p, JavaVMInitArgs *vm_arguments)
  *  return: tokenized array of string
  *
  */
-
 static std::vector <std::string>
 pl_tokenize_jvm_options (char *opt_str)
 {
@@ -459,7 +458,55 @@ pl_tokenize_jvm_options (char *opt_str)
 	     std::istream_iterator <std::string> (), std::back_inserter (options));
   return options;
 }
-// *INDENT-ON*
+
+/*
+ * pl_jvm_options
+ *  return: jvm options
+ *
+ */
+static std::vector <std::string>
+pl_jvm_options ()
+{
+  char buffer[PATH_MAX];
+
+  envvar_javadir_file (buffer, PATH_MAX, "");
+  std::string pl_file_path (buffer);
+
+  std::vector <std::string> options;
+
+#ifndef NDEBUG
+  // enable assertions in PL Server
+  options.push_back ("-ea"); // must be the first option in order not to override ones specified by the user
+#endif // !NDEBUG
+
+  // defaults
+  options.push_back ("-Djava.awt.headless=true");
+  options.push_back ("-Dfile.encoding=UTF-8");
+
+  // CBRD-25364: Prevent JVM crash caused by libzip
+  // Added the following option as a default until the minimum JDK version is upgraded
+  options.push_back ("-Dsun.zip.disableMemoryMapping=true");
+
+  //
+  options.push_back ("-Djava.class.path=" + pl_file_path + "pl_server.jar");
+  options.push_back ("-Djava.util.logging.config.file=" + pl_file_path + "logging.properties");
+
+  int debug_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_DEBUG);
+  if (debug_port != -1)
+    {
+      options.push_back ("-Xdebug");
+      options.push_back ("-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=" + std::to_string (debug_port));
+    }
+
+  char *jvm_opt_sysprm = (char *) prm_get_string_value (PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS);
+  if (jvm_opt_sysprm != NULL)
+    {
+      std::vector <std::string> ext_opts = pl_tokenize_jvm_options (jvm_opt_sysprm);
+      options.insert (options.end(), ext_opts.begin(), ext_opts.end());
+    }
+
+  return options;
+}
 
 /*
  * pl_start_jvm_server -
@@ -481,20 +528,10 @@ pl_start_jvm_server (const char *db_name, const char *path, int port)
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
   JavaVMOption *options;
-  int vm_n_default_options = 2;
-  int vm_n_ext_options = 0;
-  char classpath[PATH_MAX + 32] = { 0 };
-  char logging_prop[PATH_MAX + 32] = { 0 };
-  char option_debug[70];
-  char debug_flag[] = "-Xdebug";
-  char debug_jdwp[] = "-agentlib:jdwp=transport=dt_socket,server=y,address=%d,suspend=n";
+  int vm_n_options = 0;
   const char *envroot;
   const char *uds_path;
-  char pl_file_path[PATH_MAX];
-  char port_str[6] = { 0 };
   char *loc_p, *locale;
-  char *jvm_opt_sysprm = NULL;
-  int debug_port = -1;
   const bool is_uds_mode = (port == PL_PORT_UDS_MODE);
   {
     if (jvm != NULL)
@@ -503,65 +540,26 @@ pl_start_jvm_server (const char *db_name, const char *path, int port)
       }
 
     envroot = envvar_root ();
+    uds_path = (is_uds_mode) ? pl_get_socket_file_path (db_name) : "";
 
-    if (is_uds_mode)
-      {
-	uds_path = pl_get_socket_file_path (db_name);
-      }
-    else
-      {
-	uds_path = "";
-      }
+    std::vector <std::string> opts = pl_jvm_options ();
 
-    snprintf (classpath, sizeof (classpath) - 1, "-Djava.class.path=%s",
-	      envvar_javadir_file (pl_file_path, PATH_MAX, "pl_server.jar"));
-
-    snprintf (logging_prop, sizeof (logging_prop) - 1, "-Djava.util.logging.config.file=%s",
-	      envvar_javadir_file (pl_file_path, PATH_MAX, "logging.properties"));
-
-    debug_port = prm_get_integer_value (PRM_ID_STORED_PROCEDURE_DEBUG);
-    if (debug_port != -1)
-      {
-	vm_n_default_options += 2;	/* set debug flag and debugging port */
-      }
-
-    jvm_opt_sysprm = (char *) prm_get_string_value (PRM_ID_STORED_PROCEDURE_JVM_OPTIONS);
-    std::vector <std::string> opts = pl_tokenize_jvm_options (jvm_opt_sysprm);
-#ifndef NDEBUG
-    // enable assertions in PL Server
-    opts.insert (opts.begin(), "-ea"); // must be the first option in order not to override ones specified by the user
-#endif // !NDEBUG
-
-    // CBRD-25364: Prevent JVM crash caused by libzip
-    // Added the following option as a default until the minimum JDK version is upgraded
-    opts.insert (opts.begin(), "-Dsun.zip.disableMemoryMapping=true");
-
-    // *INDENT-ON*
-    vm_n_ext_options += (int) opts.size ();
-    options = new JavaVMOption[vm_n_default_options + vm_n_ext_options];
+    vm_n_options = (int) opts.size ();
+    options = new JavaVMOption[vm_n_options];
     if (options == NULL)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	goto exit;
       }
 
-    int ext_idx = vm_n_default_options;
-    options[0].optionString = classpath;
-    options[1].optionString = logging_prop;
-    if (debug_port != -1)
-      {
-	snprintf (option_debug, sizeof (option_debug) - 1, debug_jdwp, debug_port);
-	options[2].optionString = debug_flag;
-	options[3].optionString = option_debug;
-      }
-
+    int idx = 0;
     for (auto it = opts.begin (); it != opts.end (); ++it)
       {
-	options[ext_idx++].optionString = const_cast <char *> (it->c_str ());
+	options[idx++].optionString = const_cast <char *> (it->c_str ());
       }
 
     vm_arguments.version = JNI_VERSION_1_6;
-    vm_arguments.nOptions = vm_n_default_options + vm_n_ext_options;
+    vm_arguments.nOptions = vm_n_options;
     vm_arguments.options = options;
     vm_arguments.ignoreUnrecognized = JNI_TRUE;
 
@@ -653,6 +651,7 @@ pl_start_jvm_server (const char *db_name, const char *path, int port)
 	goto exit;
       }
 
+    char port_str[6] = { 0 };
     sprintf (port_str, "%d", port);
     jstr_port = JVM_NewStringUTF (env_p, port_str);
     if (jstr_port == NULL)

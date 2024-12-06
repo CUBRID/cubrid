@@ -51,7 +51,6 @@ import com.cubrid.jsp.protocol.Header;
 import com.cubrid.jsp.protocol.PrepareArgs;
 import com.cubrid.jsp.protocol.RequestCode;
 import com.cubrid.jsp.value.Value;
-import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.compiler.PlcsqlCompilerMain;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.io.BufferedInputStream;
@@ -74,9 +73,6 @@ import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
 
 public class ExecuteThread extends Thread {
-
-    public static String charSet = "UTF-8";
-
     private Socket client;
 
     private DataInputStream input;
@@ -127,11 +123,6 @@ public class ExecuteThread extends Thread {
 
         client = null;
         output = null;
-        // charSet = null;
-    }
-
-    public void setCharSet(String conCharsetName) {
-        // this.charSet = conCharsetName;
     }
 
     @Override
@@ -381,6 +372,7 @@ public class ExecuteThread extends Thread {
             result = 0; // no error
         } catch (Exception e) {
             // ignore, 1 will be returned
+            Server.log(e);
         }
 
         resultBuffer.clear(); /* prepare to put */
@@ -429,9 +421,7 @@ public class ExecuteThread extends Thread {
                 }
 
                 info.compiledType = 1; // TODO: always jar
-
-                String encodedStr = Base64.getEncoder().encodeToString(data);
-                info.compiledCode = encodedStr.getBytes();
+                info.compiledCode = Base64.getEncoder().encode(data);
             }
         } catch (Exception e) {
             info =
@@ -475,28 +465,20 @@ public class ExecuteThread extends Thread {
         Value[] args = sp.getArgs();
         for (int i = 0; args != null && i < args.length; i++) {
             if (args[i].getMode() > Value.IN) {
-                Value v = sp.makeOutValue(args[i].getResolved());
-                packer.packValue(
-                        ValueUtilities.resolveValue(args[i].getDbType(), v),
-                        args[i].getDbType(),
-                        this.charSet);
+                Value v = sp.makeOutValue(i);
+                packer.packValue(v, args[i].getDbType());
             }
         }
     }
 
     private void sendResult(Value result, StoredProcedure procedure)
             throws IOException, ExecuteException, TypeMismatchException {
-        Object resolvedResult = null;
-        if (result != null) {
-            resolvedResult = ValueUtilities.resolveValue(procedure.getReturnType(), result);
-        }
-
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
 
         packer.packInt(RequestCode.RESULT);
         packer.align(DataUtilities.MAX_ALIGNMENT);
-        packer.packValue(resolvedResult, procedure.getReturnType(), this.charSet);
+        packer.packValue(result, procedure.getReturnType());
         returnOutArgs(procedure, packer);
 
         resultBuffer = packer.getBuffer();
