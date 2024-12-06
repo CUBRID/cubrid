@@ -5321,6 +5321,11 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* evaluate the predicates to see if the object qualifies */
       scan_id->scan_stats.read_rows++;
 
+      if (OID_ISNULL (p_current_oid))
+	{
+	  COPY_OID (p_current_oid, &hsidp->curr_oid);
+	}
+
       ev_res = eval_data_filter (thread_p, p_current_oid, &recdes, &hsidp->scan_cache, &data_filter);
       if (ev_res == V_ERROR)
 	{
