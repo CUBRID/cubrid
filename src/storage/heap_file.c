@@ -3557,10 +3557,6 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   if (isnew_rec == true)
     {
       heap_hdr->estimates.num_recs += 1;
-      if (newrec_size > DB_PAGESIZE)
-	{
-	  heap_hdr->estimates.num_pages += CEIL_PTVDIV (newrec_size, DB_PAGESIZE);
-	}
     }
   heap_hdr->estimates.recs_sumlen += (float) newrec_size;
 
