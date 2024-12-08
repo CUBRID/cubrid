@@ -89,8 +89,8 @@
 #include "log_manager.h"
 #include "crypt_opfunc.h"
 #include "flashback.h"
-#include "method_compile.hpp"
-#include "method_compile_def.hpp"
+#include "pl_struct_compile.hpp"
+#include "pl_compile_handler.hpp"
 #include "pl_session.hpp"
 #include "pl_executor.hpp"
 
@@ -11327,9 +11327,9 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   unpacker.unpack_all (compile_request);
 
   cubmem::extensible_block ext_blk;
-  error = cubmethod::invoke_compile (*thread_p, compile_request, ext_blk);
+  cubpl::compile_handler compile_handler;
+  error = compile_handler.compile (compile_request, ext_blk);
 
-  // Error code and is_ignored.
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = or_pack_int (reply, (int) END_CALLBACK);

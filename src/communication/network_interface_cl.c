@@ -70,7 +70,7 @@
 
 #if defined (SA_MODE)
 #include "thread_manager.hpp"
-#include "method_compile.hpp"
+#include "pl_compile_handler.hpp"
 #include "pl_executor.hpp"
 #endif // SA_MODE
 
@@ -11321,8 +11321,8 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 int
 plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COMPILE_RESPONSE & compile_response)
 {
+  int req_error = NO_ERROR;
 #if defined(CS_MODE)
-  int rc = ER_FAILED;
   packing_packer packer;
   cubmem::extensible_block eb;
   char *ptr = NULL;
@@ -11334,7 +11334,7 @@ plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COM
 
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
+  req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
 						      (int) packer.get_current_size (),
 						      reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply,
 						      &data_reply_size);
@@ -11353,19 +11353,30 @@ plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COM
   if (data_reply != NULL)
     {
       packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-      unpacker.unpack_all (compile_response);
-      rc = NO_ERROR;
+      if (data_reply_size > 0)
+	{
+	  unpacker.unpack_all (compile_response);
+	}
     }
 
 error:
   // TODO error handling
   if (req_error != NO_ERROR)
     {
-      // TODO: er_set (...): set proper error
-      rc = req_error;
+      if (data_reply != NULL)
+	{
+	  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+	  if (data_reply_size > 0)
+	    {
+	      unpacker.unpack_all (compile_response);
+	    }
+	}
 
-      packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-      unpacker.unpack_all (compile_response);
+      if (er_errid () != NO_ERROR)
+      {
+        compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : req_error;
+        compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+      }
     }
 
   if (data_reply != NULL)
@@ -11373,22 +11384,25 @@ error:
       free_and_init (data_reply);
     }
 
-  return rc;
+  return req_error;
 #else /* CS_MODE */
   int success = ER_FAILED;
 
+  cubmem::extensible_block eb;
   THREAD_ENTRY *thread_p = enter_server ();
 
-  cubmem::extensible_block ext_blk;
-  success = cubmethod::invoke_compile (*thread_p, compile_request, ext_blk);
+  {
+    cubpl::compile_handler compile_handler;
+    success = compile_handler.compile (compile_request, eb);
+  }
 
   exit_server (*thread_p);
 
   // unpack after exit_server (): ownership of the private allocated objects should be out of server mode
   if (success == NO_ERROR)
     {
-      packing_unpacker unpacker (ext_blk.get_ptr (), ext_blk.get_size ());
-      if (ext_blk.get_size () > 0)
+      packing_unpacker unpacker (eb.get_ptr (), eb.get_size ());
+      if (eb.get_size () > 0)
 	{
 	  unpacker.unpack_all (compile_response);
 	}
