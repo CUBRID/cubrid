@@ -8718,7 +8718,6 @@ pr_type_from_id (DB_TYPE id)
 {
   PR_TYPE *type = NULL;
 
-  assert((unsigned long)id < (sizeof (tp_Type_id_map) / sizeof *tp_Type_id_map));
   if (id <= DB_TYPE_LAST && id != DB_TYPE_TABLE)
     {
       type = tp_Type_id_map[(int) id];
