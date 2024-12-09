@@ -26158,32 +26158,51 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
   if (arg3 && arg_cnt == 3)
     {
       char *lang_str;
-      if ((arg3->type_enum == PT_TYPE_CHAR || arg3->type_enum == PT_TYPE_NCHAR) && arg3->info.value.data_value.str != NULL)
+      if (arg3->node_type == PT_VALUE)
 	{
-	  date_lang = parser_new_node (this_parser, PT_VALUE);
-          if (!date_lang)
+	  if ((arg3->type_enum == PT_TYPE_CHAR || arg3->type_enum == PT_TYPE_NCHAR)
+	      && arg3->info.value.data_value.str != NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PT_NODE));
-	      return NULL;
+	      date_lang = parser_new_node (this_parser, PT_VALUE);
+	      if (!date_lang)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PT_NODE));
+		  return NULL;
+		}
+	      int flag = 0;
+	      lang_str = (char *) arg3->info.value.data_value.str->bytes;
+	      if (lang_set_flag_from_lang (lang_str, 1, 1, &flag))
+		{
+		  //PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
+                  PT_ERRORmf (this_parser, arg3, MSGCAT_SET_ERROR, -(ER_LOCALE_LANG_NOT_AVAILABLE), lang_str);
+		}
+	      date_lang->info.value.data_value.i = (long) flag;
+	      date_lang->type_enum = PT_TYPE_INTEGER;
+	      parser_free_node (this_parser, arg3);
 	    }
-	  int flag = 0;
-	  lang_str = (char *) arg3->info.value.data_value.str->bytes;
-	  if (lang_set_flag_from_lang (lang_str, 1, 1, &flag))
-	    {
-	      PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
-	    }
-	  date_lang->info.value.data_value.i = (long) flag;
 	}
-
-      if (date_lang)
+      else if (arg3->node_type == PT_HOST_VAR)
 	{
-	  date_lang->type_enum = PT_TYPE_INTEGER;
-          parser_free_node (this_parser, arg3);
-	}
-      else
+	  date_lang = arg3;
+	} 
+      else if(this_parser->flag.is_parsing_static_sql)
         {
-          date_lang = arg3;
+           if (arg3->node_type == PT_EXPR && arg3->info.expr.op == PT_CAST)
+             {
+                PT_NODE * node = arg3->info.expr.cast_type; 
+                if(node->node_type == PT_DATA_TYPE && PT_IS_SIMPLE_CHAR_STRING_TYPE(node->type_enum))
+                  {  
+                    date_lang = arg3;
+                  }
+             }
         }
+
+      if (date_lang == NULL)
+	{ 	  
+          PT_ERRORm (this_parser, arg3, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SUPPORT_TYPE_TO_DATE_LANG);
+
+	  date_lang = arg3;
+	}
     }
   else
     {
@@ -26207,7 +26226,7 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	}
 
     }
-    return date_lang;
+  return date_lang;
 }
 
 static PT_NODE *
