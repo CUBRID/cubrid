@@ -1093,6 +1093,7 @@ static char *g_plcsql_text;
 %type <c2> class_name_with_server_name
 %type <c2> opt_index_with_clause
 %type <c2> index_with_item_list
+%type <c2> opt_vector_args
 
 
 /*}}}*/
@@ -21890,7 +21891,7 @@ primitive_type
 
 			$$ = ctn;
 	  DBG_PRINT}}
-  | VECTOR
+  | VECTOR opt_vector_args
 		{{ DBG_TRACE_GRAMMAR(data_type, | vector_type);
 
 			container_2 ctn;
@@ -21899,6 +21900,37 @@ primitive_type
 
 		DBG_PRINT}}
 	;
+
+opt_vector_args
+  : /* empty */
+		{{ DBG_TRACE_GRAMMAR(opt_vector_args, : );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| '(' unsigned_integer ')'
+		{{ DBG_TRACE_GRAMMAR(opt_vector_args, | '(' unsigned_integer ')' );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $2, NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| '(' unsigned_integer ',' primitive_type ')'
+		{{ DBG_TRACE_GRAMMAR(opt_vector_args, | '(' unsigned_integer ',' primitive_type ')' );
+
+			container_2 ctn;
+      // TODO: primitive_type not yet handled.
+      container_2 primitive_type_container = $4;
+
+			SET_CONTAINER_2 (ctn, $2, NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	;
+
 
 opt_internal_external
 	: /* empty */
