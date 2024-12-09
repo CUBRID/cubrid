@@ -2537,16 +2537,6 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page, LO
 		     QMGR_TEMP_FILE * tfile_vfid_p)
 {
   QMGR_PAGE_TYPE page_type;
-  LOG_DATA_ADDR addr;
-
-  if (addr_p == NULL)
-    {
-      addr.vfid = NULL;
-      addr.pgptr = page_p;
-      addr.offset = -1;
-
-      addr_p = &addr;
-    }
 
   page_type = qmgr_get_page_type (page_p, tfile_vfid_p);
   if (page_type == QMGR_UNKNOWN_PAGE)

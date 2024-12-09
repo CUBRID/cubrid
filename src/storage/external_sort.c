@@ -4718,8 +4718,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
       /* close input file for read. it'll be opened in parallel */
       qfile_close_scan (thread_p, scan_id_p);
 
-      /* split input temp file. TO_DO : If writing pages is not possible, need to find another way. */
-      /*                                if possible, may need to revert the splitted pages */
+      /* split input temp file. TO_DO : may need to revert the splitted pages */
       error = sort_split_input_temp_file (thread_p, px_sort_param, sort_param, parallel_num);
       if (error != NO_ERROR)
 	{
