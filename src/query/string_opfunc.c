@@ -26610,10 +26610,10 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
       return NO_ERROR;
     }
 
-coerce_pos:
   /* compute hex representation */
   param_type = DB_VALUE_DOMAIN_TYPE (param);
 
+coerce_pos:
   if (TP_IS_CHAR_TYPE (param_type) || TP_IS_BIT_TYPE (param_type))
     {
       if (TP_IS_CHAR_TYPE (param_type))
@@ -26723,6 +26723,8 @@ coerce_pos:
 	}
 
       param = &tval;
+      param_type = DB_VALUE_DOMAIN_TYPE (param);
+      assert (TP_IS_CHAR_TYPE (param_type));
       goto coerce_pos;
     }
 
