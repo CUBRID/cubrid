@@ -25042,6 +25042,9 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
     case DB_TYPE_SEQUENCE:
       return "SEQUENCE";
 
+    case DB_TYPE_VECTOR:
+      return "VECTOR";
+
     case DB_TYPE_NCHAR:
       return "NCHAR";
 

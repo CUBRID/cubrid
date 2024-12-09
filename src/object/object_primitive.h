@@ -225,6 +225,7 @@ extern PR_TYPE tp_Datetimeltz;
 extern PR_TYPE tp_Timetz;
 extern PR_TYPE tp_Timeltz;
 extern PR_TYPE tp_Json;
+extern PR_TYPE tp_Vector;
 
 extern PR_TYPE *tp_Type_null;
 extern PR_TYPE *tp_Type_integer;
