@@ -1461,6 +1461,7 @@ static char *g_plcsql_text;
 %token VARIABLE_
 %token VARYING
 %token VCLASS
+%token VECTOR
 %token VIEW
 %token WHEN
 %token WHENEVER
@@ -21889,6 +21890,14 @@ primitive_type
 
 			$$ = ctn;
 	  DBG_PRINT}}
+  | VECTOR
+		{{ DBG_TRACE_GRAMMAR(data_type, | vector_type);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_VECTOR), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
 	;
 
 opt_internal_external
