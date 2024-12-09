@@ -99,7 +99,7 @@
         }                         \
     } while (0)
 
-#define IS_PARALLEL_EXECUTION(t) ((t)->px_max_index > 1)
+#define IS_PARALLEL_SORT(t) ((t)->px_max_index > 1)
 
 enum parallel_type
 {
@@ -187,7 +187,6 @@ struct sort_param
 
   /* support parallelism */
   int px_max_index;
-  int px_index;
   PX_STATUS px_status;
   int px_result_file_idx;
   int px_tran_index;
@@ -1737,7 +1736,7 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   tsc_getticks (&start_tick2);
 #endif
 
-  if (sort_param->tot_runs > 1 || IS_PARALLEL_EXECUTION (sort_param))
+  if (sort_param->tot_runs > 1 || IS_PARALLEL_SORT (sort_param))
     {
       assert (sort_param->tot_runs > 0);
       /* Create output temporary files make file and temporary volume page count estimates */
@@ -1748,7 +1747,7 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	{
 	  error =
 	    sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted,
-			       IS_PARALLEL_EXECUTION (sort_param));
+			       IS_PARALLEL_SORT (sort_param));
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -2063,7 +2062,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		  sort_param->multipage_file.volid = sort_param->temp[0].volid;
 
 		  error =
-		    file_create_temp (thread_p, 1, &sort_param->multipage_file, IS_PARALLEL_EXECUTION (sort_param));
+		    file_create_temp (thread_p, 1, &sort_param->multipage_file, IS_PARALLEL_SORT (sort_param));
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -2075,7 +2074,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		    }
 		  if (file_apply_tde_algorithm (thread_p, &sort_param->multipage_file, tde_algo) != NO_ERROR)
 		    {
-		      file_temp_retire (thread_p, &sort_param->multipage_file, IS_PARALLEL_EXECUTION (sort_param));
+		      file_temp_retire (thread_p, &sort_param->multipage_file, IS_PARALLEL_SORT (sort_param));
 		      ASSERT_ERROR ();
 		      goto exit_on_error;
 		    }
@@ -2157,7 +2156,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	  goto exit_on_error;
 	}
 
-      if (sort_param->tot_runs > 0 || IS_PARALLEL_EXECUTION (sort_param))
+      if (sort_param->tot_runs > 0 || IS_PARALLEL_SORT (sort_param))
 	{
 	  /* There has been other runs produced already */
 
@@ -2191,7 +2190,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	    }
 	}
     }
-  else if (sort_param->tot_runs == 1 && !IS_PARALLEL_EXECUTION (sort_param))
+  else if (sort_param->tot_runs == 1 && !IS_PARALLEL_SORT (sort_param))
     {
       if (once_flushed)
 	{
@@ -2288,7 +2287,7 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int out_file, 
     {
       error =
 	sort_add_new_file (thread_p, &sort_param->temp[out_file], sort_param->tmp_file_pgs, false,
-			   sort_param->tde_encrypted, IS_PARALLEL_EXECUTION (sort_param));
+			   sort_param->tde_encrypted, IS_PARALLEL_SORT (sort_param));
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -2539,7 +2538,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   /* OUTER LOOP */
 
   /* for one temporary file, put result from the temp file instead of merging it. */
-  if (!IS_PARALLEL_EXECUTION (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
+  if (!IS_PARALLEL_SORT (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
     {
       error = sort_put_result_from_tmpfile (thread_p, sort_param);
       if (error != NO_ERROR)
@@ -2861,7 +2860,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  out_runsize = 0;
 
 	  /* In parallel sort, put_fn will be performed by the parent thread. save last file index. */
-	  if (very_last_run && IS_PARALLEL_EXECUTION (sort_param))
+	  if (very_last_run && IS_PARALLEL_SORT (sort_param))
 	    {
 	      sort_param->px_result_file_idx = cur_outfile;
 	    }
@@ -2878,7 +2877,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		{
 		  /* we found first unique sort_key record */
 
-		  if (very_last_run && !IS_PARALLEL_EXECUTION (sort_param))
+		  if (very_last_run && !IS_PARALLEL_SORT (sort_param))
 		    {
 		      /* OUTPUT THE RECORD */
 		      /* Obtain the output record for this temporary record */
@@ -3164,7 +3163,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		}
 	    }
 
-	  if (!(very_last_run && !IS_PARALLEL_EXECUTION (sort_param)))
+	  if (!(very_last_run && !IS_PARALLEL_SORT (sort_param)))
 	    {
 	      /* Flush whatever is left on the output section */
 	      out_act_bufno++;	/* Since 0 refers to the first active buffer */
@@ -3430,7 +3429,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
     }
 
   /* for one temporary file, put result from the temp file instead of merging it. */
-  if (!IS_PARALLEL_EXECUTION (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
+  if (!IS_PARALLEL_SORT (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
     {
       error = sort_put_result_from_tmpfile (thread_p, sort_param);
       if (error != NO_ERROR)
@@ -3742,7 +3741,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  out_runsize = 0;
 
 	  /* In parallel sort, put_fn will be performed by the parent thread. save last file index. */
-	  if (very_last_run && IS_PARALLEL_EXECUTION (sort_param))
+	  if (very_last_run && IS_PARALLEL_SORT (sort_param))
 	    {
 	      sort_param->px_result_file_idx = cur_outfile;
 	    }
@@ -3754,7 +3753,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      /* FIND MINIMUM RECORD IN THE INPUT AREA */
 	      min = min_p->rec_pos;
 
-	      if (very_last_run && !IS_PARALLEL_EXECUTION (sort_param))
+	      if (very_last_run && !IS_PARALLEL_SORT (sort_param))
 		{
 		  /* OUTPUT THE RECORD */
 		  /* Obtain the output record for this temporary record */
@@ -4023,7 +4022,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		}
 	    }
 
-	  if (!(very_last_run && !IS_PARALLEL_EXECUTION (sort_param)))
+	  if (!(very_last_run && !IS_PARALLEL_SORT (sort_param)))
 	    {
 	      /* Flush whatever is left on the output section */
 
@@ -4321,7 +4320,6 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       /* init px variable */
       px_sort_param[i].px_status = PX_PROGRESS;
       px_sort_param[i].px_max_index = parallel_num;
-      px_sort_param[i].px_index = i + 1;
       px_sort_param[i].px_result_file_idx = 0;
       /* Copy the parent's tran_index. */
       px_sort_param[i].px_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -5045,7 +5043,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  /* If there is a file not to be used anymore, destroy it in order to reuse spaces. */
 	  if (!VFID_ISNULL (&sort_param->temp[i]))
 	    {
-	      error_code = file_temp_retire (thread_p, &sort_param->temp[i], IS_PARALLEL_EXECUTION (sort_param));
+	      error_code = file_temp_retire (thread_p, &sort_param->temp[i], IS_PARALLEL_SORT (sort_param));
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
