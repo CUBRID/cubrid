@@ -1951,6 +1951,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 322 Table column '%1$s.%2$s' has not been defined
 323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 324 '%1$s' is not a record variable.
+325 The argument specifying the language must be a string literal.
 
 325 The argument specifying the language must be a string literal.
 326 Stored procedure/function "%1$s" does not exist.
