@@ -10218,6 +10218,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 		case DB_TYPE_CLOB:
 		case DB_TYPE_SET:	/* it may be just a little bit fast */
 		case DB_TYPE_MULTISET:
+		case DB_TYPE_SEQ_VECTOR:
 		case DB_TYPE_SEQUENCE:
 		  OR_VAR_LENGTH (disk_length, recdes->data, value->read_attrepr->location,
 				 attr_info->read_classrepr->n_variable);

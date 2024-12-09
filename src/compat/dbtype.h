@@ -216,7 +216,7 @@ extern "C"
   extern DB_TYPE setobj_type (struct setobj *set);
 
 /* Use the inline version of the functions. */
-#include "dbtype_function.i"
+#include "dbtype_function_internal.h"
 
 #ifdef __cplusplus
 

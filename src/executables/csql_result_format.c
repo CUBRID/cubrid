@@ -1476,7 +1476,6 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	  const float * vimkim = db_get_vimkim (value);
 	  const int vimkim_size = db_get_vimkim_size (value);
 
-	  
 	  std::ostringstream oss;
 	  oss << "[";
 
@@ -1679,6 +1678,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
       break;
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQ_VECTOR:
     case DB_TYPE_SEQUENCE:
       result =
 	set_to_string (value, default_set_profile.begin_notation, default_set_profile.end_notation,

@@ -22,6 +22,8 @@
  */
 
 #include "dbtype_def.h"
+#include <stddef.h>
+#include <stdbool.h>
 
 #if !defined (_NO_INLINE_DBTYPE_FUNCTION_)
 #include "porting_inline.hpp"
@@ -122,6 +124,7 @@ STATIC_INLINE int db_make_oid (DB_VALUE * value, const OID * oid) __attribute__ 
 
 STATIC_INLINE int db_make_set (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_multiset (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_make_seq_vector (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_sequence (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_collection (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 
@@ -960,6 +963,7 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_OBJECT:
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQ_VECTOR:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
@@ -2016,6 +2020,42 @@ db_make_multiset (DB_VALUE * value, DB_SET * set)
   value->need_clear = false;
 
   return error;
+}
+
+int db_make_seq_vector (DB_VALUE * value, DB_SET * set)
+{
+
+  int error = NO_ERROR;
+
+#if defined (API_ACTIVE_CHECKS)
+  CHECK_1ARG_ERROR (value);
+#endif
+
+  value->domain.general_info.type = DB_TYPE_SEQ_VECTOR;
+
+  value->data.set = set;
+  if (set)
+    {
+      if ((set->set && setobj_type (set->set) == DB_TYPE_SEQ_VECTOR) || set->disk_set)
+	{
+	  value->domain.general_info.is_null = 0;
+	}
+      else
+	{
+	  assert(false);
+	  error = ER_QPROC_INVALID_DATATYPE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	}
+    }
+  else
+    {
+      value->domain.general_info.is_null = 1;
+    }
+
+  value->need_clear = false;
+
+  return error;
+
 }
 
 /*

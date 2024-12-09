@@ -25002,6 +25002,9 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
     case DB_TYPE_MULTISET:
       return "MULTISET";
 
+    case DB_TYPE_SEQ_VECTOR:
+      return "SEQ_VECTOR";
+
     case DB_TYPE_SEQUENCE:
       return "SEQUENCE";
 

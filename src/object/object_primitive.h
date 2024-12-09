@@ -192,6 +192,7 @@ extern PR_TYPE tp_Double;
 extern PR_TYPE tp_String;
 extern PR_TYPE tp_Set;
 extern PR_TYPE tp_Multiset;
+extern PR_TYPE tp_Seq_vector;
 extern PR_TYPE tp_Sequence;
 extern PR_TYPE tp_Object;
 extern PR_TYPE tp_Midxkey;

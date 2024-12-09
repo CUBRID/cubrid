@@ -857,6 +857,9 @@ col_new (long size, int settype)
 	    case DB_TYPE_MULTISET:
 	      col->domain = &tp_Multiset_domain;
 	      break;
+	    case DB_TYPE_SEQ_VECTOR:
+	      col->domain = &tp_Seq_vector_domain;
+	      break;
 	    case DB_TYPE_SEQUENCE:
 	      col->domain = &tp_Sequence_domain;
 	      break;
@@ -864,12 +867,16 @@ col_new (long size, int settype)
 	      col->domain = &tp_Vobj_domain;
 	      break;
 	    default:
+	      assert(false);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SET_INVALID_DOMAIN, 1, pr_type_name ((DB_TYPE) settype));
 	      setobj_free (col);
 	      col = NULL;
 	      break;
 	    }
 	}
+      else {
+	  assert(false);
+      }
     }
   return col;
 }
@@ -2389,6 +2396,7 @@ set_create (DB_TYPE type, int initial_size)
 
   if (col == NULL)
     {
+      assert(false);
       setobj_free (setobj);
     }
   else
@@ -2421,6 +2429,12 @@ DB_COLLECTION *
 set_create_multi (void)
 {
   return set_create (DB_TYPE_MULTISET, 1);
+}
+
+DB_COLLECTION *
+set_create_seq_vector (int size)
+{
+  return set_create (DB_TYPE_SEQ_VECTOR, size);
 }
 
 /*
@@ -4292,6 +4306,7 @@ setobj_create (DB_TYPE collection_type, int size)
 {
   if (!TP_IS_SET_TYPE (collection_type) && collection_type != DB_TYPE_VOBJ)
     {
+      assert(false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return (NULL);
     }
@@ -4619,6 +4634,9 @@ setobj_get_domain (COL * set)
       break;
     case DB_TYPE_MULTISET:
       set->domain = &tp_Multiset_domain;
+      break;
+    case DB_TYPE_SEQ_VECTOR:
+      set->domain = &tp_Seq_vector_domain;
       break;
     case DB_TYPE_SEQUENCE:
       set->domain = &tp_Sequence_domain;

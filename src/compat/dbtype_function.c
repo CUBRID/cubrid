@@ -38,4 +38,4 @@ int db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int col
 		     const int size);
 DB_TYPE setobj_type (struct setobj *set);
 
-#include "dbtype_function.i"
+#include "dbtype_function_internal.h"

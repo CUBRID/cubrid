@@ -300,6 +300,7 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
+	case DB_TYPE_SEQ_VECTOR:
 	case DB_TYPE_SEQUENCE:
 	  strcpy (temp_buffer, temp_domain->type->name);
 	  ustr_upper (temp_buffer);

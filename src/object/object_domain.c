@@ -253,6 +253,7 @@ TP_DOMAIN tp_Set_domain = { NULL, NULL, &tp_Set, DOMAIN_INIT3 };
 
 TP_DOMAIN tp_Multiset_domain = { NULL, NULL, &tp_Multiset, DOMAIN_INIT3 };
 
+TP_DOMAIN tp_Seq_vector_domain = { NULL, NULL, &tp_Seq_vector, DOMAIN_INIT3 };
 TP_DOMAIN tp_Sequence_domain = { NULL, NULL, &tp_Sequence, DOMAIN_INIT3 };
 
 TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
@@ -377,6 +378,7 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Datetimeltz_domain,
   &tp_Json_domain,
   &tp_Null_domain,
+  &tp_Seq_vector_domain,
   &tp_Null_domain,
   &tp_Null_domain,
   &tp_Null_domain,
@@ -7566,6 +7568,47 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
+	}
+      break;
+    case DB_TYPE_SEQ_VECTOR:
+      switch (original_type)
+	{
+	  case DB_TYPE_SEQUENCE:
+	    // assert(false);
+	      {
+		DB_SET * setref = db_get_set (src);
+		setref->set->coltype = DB_TYPE_SEQ_VECTOR;
+		db_make_seq_vector(target, setref);
+	      }
+	    break;
+	  case DB_TYPE_CHAR:
+	      {
+		const char *str = db_get_string(src);
+		printf("%s\n", str);
+
+		DB_VALUE val;
+		DB_SET* seq_vec = set_create_seq_vector(3);
+		assert(seq_vec != nullptr);
+
+		db_make_float(&val, 123.456f);
+		// db_make_string(&val, "hello");
+		set_put_element(seq_vec, 0, &val);
+
+		db_make_float(&val, 222.456f);
+		// db_make_string(&val, "world");
+		set_put_element(seq_vec, 1, &val);
+
+		db_make_float(&val, 333.456f);
+		// db_make_string(&val, "wow");
+		set_put_element(seq_vec, 2, &val);
+
+		db_make_seq_vector(target, seq_vec);
+
+		break;
+	      }
+	  default:
+	    status = DOMAIN_INCOMPATIBLE;
+	    break;
 	}
       break;
 

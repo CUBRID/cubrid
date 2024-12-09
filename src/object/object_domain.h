@@ -151,6 +151,7 @@ extern TP_DOMAIN tp_String_domain;
 extern TP_DOMAIN tp_Object_domain;
 extern TP_DOMAIN tp_Set_domain;
 extern TP_DOMAIN tp_Multiset_domain;
+extern TP_DOMAIN tp_Seq_vector_domain;
 extern TP_DOMAIN tp_Sequence_domain;
 extern TP_DOMAIN tp_Elo_domain;
 extern TP_DOMAIN tp_Blob_domain;
@@ -224,6 +225,7 @@ typedef enum tp_match
 
 #define TP_IS_SET_TYPE(typenum) \
   ((((typenum) == DB_TYPE_SET) || ((typenum) == DB_TYPE_MULTISET) || \
+    ((typenum) == DB_TYPE_SEQ_VECTOR) || \
     ((typenum) == DB_TYPE_SEQUENCE)) ? true : false)
 
 /*
