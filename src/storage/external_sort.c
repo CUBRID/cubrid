@@ -2061,8 +2061,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		  /* Create the multipage file */
 		  sort_param->multipage_file.volid = sort_param->temp[0].volid;
 
-		  error =
-		    file_create_temp (thread_p, 1, &sort_param->multipage_file, IS_PARALLEL_SORT (sort_param));
+		  error = file_create_temp (thread_p, 1, &sort_param->multipage_file, IS_PARALLEL_SORT (sort_param));
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
