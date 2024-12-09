@@ -141,9 +141,30 @@ static int check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 extern bool ssl_client;
 
 /*
+ * jsp_is_exist_stored_procedure
+ *   return: name is exist then return true
+ *                         else return false
+ *   name(in): find java stored procedure name
+ *
+ * Note:
+ */
+
+int
+jsp_is_exist_stored_procedure (const char *name)
+{
+  MOP mop = NULL;
+
+  mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  er_clear ();
+
+  return mop != NULL;
+}
+
+/*
  * jsp_find_stored_procedure
  *   return: MOP
  *   name(in): find java stored procedure name
+ *   purpose(in): DB_AUTH_NONE or DB_AUTH_SELECT
  *
  * Note:
  */
@@ -200,14 +221,12 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
 }
 
 /*
- * jsp_is_exist_stored_procedure
- *   return: name is exist then return true
- *                         else return false
+ * jsp_find_stored_procedure_code
+ *   return: MOP
  *   name(in): find java stored procedure name
  *
  * Note:
  */
-
 
 MOP
 jsp_find_stored_procedure_code (const char *name)
@@ -236,6 +255,15 @@ jsp_find_stored_procedure_code (const char *name)
   return mop;
 }
 
+/*
+ * jsp_find_sp_of_another_owner
+ *   return: if fail return error code
+ *   name(in): find java stored procedure name
+ *   return_mop(in): retrieves the name of a java stored procedure and returns its MOP value.
+ *
+ * Note: This is a function for finding the unique_name of an SP when running the loaddb utility with the --no-user-specified-name option as a dba user.
+ */
+
 int
 jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
 {
@@ -260,16 +288,11 @@ jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
   return error;
 }
 
-int
-jsp_is_exist_stored_procedure (const char *name)
-{
-  MOP mop = NULL;
-
-  mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
-  er_clear ();
-
-  return mop != NULL;
-}
+/*
+ * jsp_check_out_param_in_query
+ *
+ * Note:
+ */
 
 static int
 jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode)
