@@ -843,8 +843,8 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
-  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.scode.data (), info.scode.length (), INTL_CODESET_UTF8,
-		   LANG_COLL_UTF8_BINARY);
+  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.scode.data (), info.scode.length (), LANG_SYS_CODESET,
+		   LANG_SYS_COLLATION);
   err = dbt_put_internal (obt_p, SP_ATTR_SOURCE_CODE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -861,8 +861,8 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
-  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.ocode.data (), info.ocode.length (), INTL_CODESET_UTF8,
-		   LANG_COLL_UTF8_BINARY);
+  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.ocode.data (), info.ocode.length (), LANG_SYS_CODESET,
+		   LANG_SYS_COLLATION);
   err = dbt_put_internal (obt_p, SP_ATTR_OBJECT_CODE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -939,8 +939,8 @@ sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info)
 	}
     }
 
-  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.ocode.data (), info.ocode.length (), INTL_CODESET_UTF8,
-		   LANG_COLL_UTF8_BINARY);
+  db_make_varchar (&value, DB_DEFAULT_PRECISION, info.ocode.data (), info.ocode.length (), LANG_SYS_CODESET,
+		   LANG_SYS_COLLATION);
   err = dbt_put_internal (obt_p, SP_ATTR_OBJECT_CODE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)

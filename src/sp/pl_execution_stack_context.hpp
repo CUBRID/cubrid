@@ -30,6 +30,7 @@
 #include <unordered_set>
 
 #include "dbtype_def.h"
+#include "error_manager.h"
 #include "query_list.h"
 #include "query_executor.h"
 #include "mem_block.hpp"
@@ -70,6 +71,8 @@ namespace cubpl
       std::string m_error_message;
 
       bool m_is_running;
+
+      int interrupt_handler ();
 
     public:
       execution_stack () = delete; // Not DefaultConstructible
@@ -128,7 +131,8 @@ namespace cubpl
 	connection_view &conn = get_connection();
 	if (!conn)
 	  {
-	    return ER_FAILED; // Handle the case where connection is unavailable
+	    assert (er_errid () != NO_ERROR);
+	    return er_errid (); // Handle the case where connection is unavailable
 	  }
 
 	return conn->send_buffer_args (m_java_header, std::forward<Args> (args)...);
@@ -140,10 +144,16 @@ namespace cubpl
 	connection_view &conn = get_connection();
 	if (!conn)
 	  {
-	    return ER_FAILED; // Handle the case where connection is unavailable
+	    assert (er_errid () != NO_ERROR);
+	    return er_errid (); // Handle the case where connection is unavailable
 	  }
 
-	return conn->receive_buffer (b, nullptr, -1);
+	pl_callback_func interrupt_func = [this]()
+	{
+	  return interrupt_handler ();
+	};
+
+	return conn->receive_buffer (b, &interrupt_func, 500);
       }
 
       void

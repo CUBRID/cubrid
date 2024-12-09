@@ -1,3 +1,34 @@
+/*
+ *
+ * Copyright (c) 2016 CUBRID Corporation.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ *
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
+ *
+ */
+
 package com.cubrid.jsp;
 
 import java.io.File;
@@ -51,6 +82,7 @@ public class ServerConfig {
 
         this.systemParameters = new HashMap<Integer, SysParam>();
         this.serverTimeZone = null;
+        this.serverCharset = StandardCharsets.UTF_8;
     }
 
     public String getName() {
@@ -104,7 +136,15 @@ public class ServerConfig {
         return serverTimeZone;
     }
 
-    public String getCharsetString() {
+    public Charset getServerCharset() {
+        return serverCharset;
+    }
+
+    public int getServerCodesetId() {
+        return SysParam.getCodesetId(serverCharset);
+    }
+
+    public void initializeCharset() {
         SysParam sysParam = systemParameters.get(SysParam.INTL_COLLATION);
         String collation = sysParam.getParamValue().toString();
         String codeset = null;
@@ -115,15 +155,24 @@ public class ServerConfig {
             codeset = codesetList[0];
         }
 
-        // test charset
+        // tune the codeset name java understands
+        if (codeset.equalsIgnoreCase("utf-8") || codeset.equalsIgnoreCase("utf8")) {
+            codeset = "UTF-8";
+        } else if (codeset.equalsIgnoreCase("ksc-euc") || codeset.equalsIgnoreCase("euckr")) {
+            codeset = "EUC-KR";
+        } else if (codeset.equalsIgnoreCase("iso88591")) {
+            codeset = "ISO-8859-1";
+        } else if (codeset.equalsIgnoreCase("ascii")) {
+            codeset = "UTF-8"; // ascii is a subset of UTF-8
+        }
+
         try {
             serverCharset = Charset.forName(codeset);
         } catch (Exception e) {
             // java.nio.charset.IllegalCharsetNameException
+            Server.log(e);
             serverCharset = StandardCharsets.UTF_8;
-            codeset = "utf-8";
         }
-        // System.out.println(serverCharset);
-        return codeset;
+        System.setProperty("file.encoding", serverCharset.toString());
     }
 }

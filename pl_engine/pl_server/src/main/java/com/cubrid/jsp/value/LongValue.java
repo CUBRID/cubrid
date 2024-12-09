@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.math.BigDecimal;
@@ -48,12 +49,7 @@ public class LongValue extends Value {
     public LongValue(long value) {
         super();
         this.value = value;
-    }
-
-    public LongValue(long value, int mode, int dbType) {
-        super(mode);
-        this.value = value;
-        this.dbType = dbType;
+        this.dbType = DBType.DB_BIGINT;
     }
 
     @Override
@@ -68,7 +64,7 @@ public class LongValue extends Value {
 
     @Override
     public int toInt() throws TypeMismatchException {
-        return SpLib.convBigintToShort(value);
+        return SpLib.convBigintToInt(value);
     }
 
     @Override

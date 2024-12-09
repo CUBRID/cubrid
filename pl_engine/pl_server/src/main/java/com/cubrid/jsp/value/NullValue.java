@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.impl.SUConnection;
 import cubrid.sql.CUBRIDOID;
@@ -48,11 +49,7 @@ public class NullValue extends Value {
 
     public NullValue() {
         super();
-    }
-
-    public NullValue(int mode, int dbType) {
-        super(mode);
-        this.dbType = dbType;
+        this.dbType = DBType.DB_NULL;
     }
 
     @Override
