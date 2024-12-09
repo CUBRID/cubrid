@@ -23,6 +23,9 @@
 #include "pl_comm.h"
 #include "pl_execution_stack_context.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubpl
 {
   compile_handler::compile_handler ()
@@ -50,11 +53,12 @@ namespace cubpl
       {
 	error_code = ER_SP_NETWORK_ERROR;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, sizeof (int));
-	return ER_SP_NETWORK_ERROR;
       }
-
-    unpacker.unpack_int (code);
-    (void) m_stack->read_payload_block (unpacker);
+    else
+      {
+	unpacker.unpack_int (code);
+	(void) m_stack->read_payload_block (unpacker);
+      }
 
     return error_code;
   }
@@ -101,15 +105,15 @@ namespace cubpl
 
 	if (code == METHOD_REQUEST_COMPILE)
 	  {
-            if (payload_blk.dim > 0)
-            {
-	      out_blk.extend_to (payload_blk.dim);
-	      std::memcpy (out_blk.get_ptr (), payload_blk.ptr, payload_blk.dim);
-            }
-            else
-            {
-                create_error_response (out_blk, error_code);
-            }
+	    if (payload_blk.dim > 0)
+	      {
+		out_blk.extend_to (payload_blk.dim);
+		std::memcpy (out_blk.get_ptr (), payload_blk.ptr, payload_blk.dim);
+	      }
+	    else
+	      {
+		create_error_response (out_blk, error_code);
+	      }
 	  }
 	else if (code == METHOD_REQUEST_SQL_SEMANTICS)
 	  {

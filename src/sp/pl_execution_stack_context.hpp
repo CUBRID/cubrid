@@ -179,7 +179,7 @@ namespace cubpl
 	return m_error_message;
       }
 
-      size_t read_payload_block (cubpacking::unpacker &unpacker);
+      void read_payload_block (cubpacking::unpacker &unpacker);
   };
 }
 

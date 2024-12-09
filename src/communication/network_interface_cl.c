@@ -11335,9 +11335,8 @@ plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COM
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
-						      (int) packer.get_current_size (),
-						      reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply,
-						      &data_reply_size);
+						  (int) packer.get_current_size (),
+						  reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
   if (req_error != NO_ERROR)
     {
       goto error;
@@ -11373,10 +11372,10 @@ error:
 	}
 
       if (er_errid () != NO_ERROR)
-      {
-        compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : req_error;
-        compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
-      }
+	{
+	  compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : req_error;
+	  compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+	}
     }
 
   if (data_reply != NULL)

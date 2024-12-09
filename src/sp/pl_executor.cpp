@@ -358,7 +358,7 @@ exit:
 
 	unpacker.unpack_int (start_code);
 
-        (void) m_stack->read_payload_block (unpacker);
+	(void) m_stack->read_payload_block (unpacker);
 
 	/* processing */
 	if (start_code == SP_CODE_INTERNAL_JDBC)
