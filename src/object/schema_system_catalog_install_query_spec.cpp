@@ -1240,14 +1240,16 @@ sm_define_view_stored_procedure_spec (void)
           "CASE [sp].[directive] & 1 WHEN 0 THEN 'DEFINER' ELSE 'CURRENT_USER' END AS [authid], "
 	  "CONCAT ([sp].[target_class], '.', [sp].[target_method]) AS [target], "
 	  "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
+          "[sp_code].[scode] AS [code], "
 	  "[sp].[comment] AS [comment] "
 	"FROM "
 	  /* CT_STORED_PROC_NAME */
-	  "[%s] AS [sp] "
+	  "[%s] AS [sp], [%s] AS [sp_code]"
         "WHERE "
-          "[sp].[is_system_generated] = 0",
+          "[sp].[is_system_generated] = 0 AND [sp].[target_class] = [sp_code].[name]",
 	CT_DATATYPE_NAME,
-	CT_STORED_PROC_NAME);
+	CT_STORED_PROC_NAME,
+        CT_STORED_PROC_CODE_NAME);
   // *INDENT-ON*
 
   return stmt;
