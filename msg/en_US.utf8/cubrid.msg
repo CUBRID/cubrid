@@ -1451,7 +1451,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1361 Invalid result cache for subquery.
 
-1362 Last Error
+1362 Locale '%1$s' is unavailable.
+
+1363 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1945,6 +1947,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 322 Table column '%1$s.%2$s' has not been defined
 323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 324 '%1$s' is not a record variable.
+325 The argument specifying the language must be a string literal.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

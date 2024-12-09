@@ -1741,7 +1741,9 @@
 
 #define ER_QPROC_RESULT_CACHE_INVALID		    -1361
 
-#define ER_LAST_ERROR                               -1362
+#define ER_LOCALE_LANG_NOT_AVAILABLE		    -1362
+
+#define ER_LAST_ERROR                               -1363
 
 /*
  * CAUTION!

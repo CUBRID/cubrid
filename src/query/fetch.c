@@ -2218,6 +2218,24 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
+      else if (!TP_IS_CHAR_TYPE (DB_VALUE_TYPE (peek_left)))
+	{
+	  DB_VALUE tval;
+
+	  db_make_null (&tval);
+	  dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
+	      goto error;
+	    }
+	  if (db_to_date (&tval, peek_right, peek_third, arithptr->value) != NO_ERROR)
+	    {
+	      db_value_clear (&tval);
+	      goto error;
+	    }
+	  db_value_clear (&tval);
+	}
       else if (db_to_date (peek_left, peek_right, peek_third, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
@@ -2229,6 +2247,24 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
+      else if (!TP_IS_CHAR_TYPE (DB_VALUE_TYPE (peek_left)))
+	{
+	  DB_VALUE tval;
+
+	  db_make_null (&tval);
+	  dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
+	      goto error;
+	    }
+	  if (db_to_time (&tval, peek_right, peek_third, DB_TYPE_TIME, arithptr->value) != NO_ERROR)
+	    {
+	      db_value_clear (&tval);
+	      goto error;
+	    }
+	  db_value_clear (&tval);
+	}
       else if (db_to_time (peek_left, peek_right, peek_third, DB_TYPE_TIME, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
@@ -2236,24 +2272,70 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_TO_TIMESTAMP:
+    case T_TO_TIMESTAMP_TZ:
       if (DB_IS_NULL (peek_left))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_to_timestamp (peek_left, peek_right, peek_third, DB_TYPE_TIMESTAMP, arithptr->value) != NO_ERROR)
+      else
 	{
-	  goto error;
+	  DB_TYPE db_type = (arithptr->opcode == T_TO_TIMESTAMP) ? DB_TYPE_TIMESTAMP : DB_TYPE_TIMESTAMPTZ;
+	  if (!TP_IS_CHAR_TYPE (DB_VALUE_TYPE (peek_left)))
+	    {
+	      DB_VALUE tval;
+
+	      db_make_null (&tval);
+	      dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+	      if (dom_status != DOMAIN_COMPATIBLE)
+		{
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
+		  goto error;
+		}
+	      if (db_to_timestamp (&tval, peek_right, peek_third, db_type, arithptr->value) != NO_ERROR)
+		{
+		  db_value_clear (&tval);
+		  goto error;
+		}
+	      db_value_clear (&tval);
+	    }
+	  else if (db_to_timestamp (peek_left, peek_right, peek_third, db_type, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       break;
 
     case T_TO_DATETIME:
+    case T_TO_DATETIME_TZ:
       if (DB_IS_NULL (peek_left))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_to_datetime (peek_left, peek_right, peek_third, DB_TYPE_DATETIME, arithptr->value) != NO_ERROR)
+      else
 	{
-	  goto error;
+	  DB_TYPE db_type = (arithptr->opcode == T_TO_DATETIME) ? DB_TYPE_DATETIME : DB_TYPE_DATETIMETZ;
+	  if (!TP_IS_CHAR_TYPE (DB_VALUE_TYPE (peek_left)))
+	    {
+	      DB_VALUE tval;
+
+	      db_make_null (&tval);
+	      dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+	      if (dom_status != DOMAIN_COMPATIBLE)
+		{
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
+		  goto error;
+		}
+	      if (db_to_datetime (&tval, peek_right, peek_third, db_type, arithptr->value) != NO_ERROR)
+		{
+		  db_value_clear (&tval);
+		  goto error;
+		}
+	      db_value_clear (&tval);
+	    }
+	  else if (db_to_datetime (peek_left, peek_right, peek_third, db_type, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       break;
 
@@ -3560,28 +3642,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    {
 	      goto error;
 	    }
-	}
-      break;
-
-    case T_TO_DATETIME_TZ:
-      if (DB_IS_NULL (peek_left))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_to_datetime (peek_left, peek_right, peek_third, DB_TYPE_DATETIMETZ, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
-    case T_TO_TIMESTAMP_TZ:
-      if (DB_IS_NULL (peek_left))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_to_timestamp (peek_left, peek_right, peek_third, DB_TYPE_TIMESTAMPTZ, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
 	}
       break;
 

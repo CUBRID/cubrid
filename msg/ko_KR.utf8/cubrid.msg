@@ -1451,7 +1451,9 @@ $ LOADDB
 
 1361 부질의 캐시가 잘못되었습니다.
 
-1362 마지막 에러
+1362 언어 '%1$s'에 대한 로캘은 사용 가능하지 않습니다.
+
+1363 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1945,6 +1947,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 322 테이블 컬럼 '%1$s.%2$s'이 정의되지 않았습니다
 323 Stored procedure/function '%1$s' 이(가) OUT 또는 IN OUT 인수를 가지고 있습니다.
 324 '%1$s'은 레코드 변수가 아닙니다.
+325 언어를 지정하는 인수는 문자열 리터럴이어야 합니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
