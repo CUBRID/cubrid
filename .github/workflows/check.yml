@@ -99,7 +99,7 @@ jobs:
           sudo apt-get -yq install astyle
           
           # indent 2.2.11, the lastest version (2.2.12) make a different result
-          wget https://ftp.gnu.org/gnu/indent/indent-2.2.11.tar.gz
+          wget https://github.com/CUBRID/3rdparty/raw/develop/indent/indent-2.2.11.tar.gz
           tar xf indent-2.2.11.tar.gz
           cd indent-2.2.11
           ./configure
@@ -107,7 +107,7 @@ jobs:
           cd ..
 
           # download google-java-format-1.7-all-deps.jar
-          wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar
+          wget https://github.com/CUBRID/3rdparty/raw/develop/google-java-format/google-java-format-1.7-all-deps.jar
         working-directory: ${{ env.working-directory }}
       - uses: actions/setup-java@v3
         with:
@@ -140,7 +140,7 @@ jobs:
           # Download cppcheck-2.4.1 source
           wd=`pwd`
           cd ..
-          wget https://github.com/danmar/cppcheck/archive/2.4.1.tar.gz
+          wget https://github.com/CUBRID/3rdparty/raw/develop/cppcheck/2.4.1.tar.gz
           tar xf 2.4.1.tar.gz
 
           # build cppcheck-2.4.1
