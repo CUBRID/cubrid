@@ -11359,7 +11359,6 @@ plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COM
     }
 
 error:
-  // TODO error handling
   if (req_error != NO_ERROR)
     {
       if (data_reply != NULL)
@@ -11371,7 +11370,7 @@ error:
 	    }
 	}
 
-      if (er_errid () != NO_ERROR)
+      if (compile_response.err_code == NO_ERROR)
 	{
 	  compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : req_error;
 	  compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
