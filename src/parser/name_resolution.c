@@ -3499,9 +3499,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
     case PT_FUNCTION:
       if (node->info.function.function_type == PT_GENERIC)
 	{
-	  const char *dot = NULL;
-	  const char *current_schema_name = NULL;
-	  char buffer[SM_MAX_IDENTIFIER_LENGTH];
+	  MOP sp_mop = NULL;
+	  char sp_unique_name[SM_MAX_IDENTIFIER_LENGTH + 1];
 	  node->info.function.function_type = pt_find_function_type (node->info.function.generic_name);
 
 	  if (node->info.function.function_type == PT_GENERIC)
@@ -3522,14 +3521,14 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
 	       * translate it into a method_call.
 	       */
-	      if (jsp_is_exist_stored_procedure (node->info.function.generic_name))
+	      sp_mop = jsp_find_stored_procedure (node->info.function.generic_name, DB_AUTH_NONE);
+	      if (sp_mop != NULL)
 		{
-		  dot = strchr (node->info.function.generic_name, '.');
-		  if (dot == NULL)
+		  sp_unique_name[0] = '\0';
+		  jsp_get_unique_name (sp_mop, sp_unique_name, DB_MAX_IDENTIFIER_LENGTH + 1);
+		  if (sp_unique_name[0] != '\0')
 		    {
-		      current_schema_name = sc_current_schema_name ();
-		      sprintf (buffer, "%s.%s", current_schema_name, node->info.function.generic_name);
-		      node->info.function.generic_name = pt_append_string (parser, NULL, buffer);
+		      node->info.function.generic_name = pt_append_string (parser, NULL, sp_unique_name);
 		    }
 
 		  node1 = pt_resolve_stored_procedure (parser, node, bind_arg);
