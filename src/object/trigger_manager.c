@@ -1766,7 +1766,7 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 		    /* trigger->condition */
 		    char *p = NULL;
 		    const char *eval_prefix = "evaluate (";
-		    const char *eval_suffix = " )";
+		    size_t eval_suffix_len;
 
 		    new_source = parser_print_tree_with_quotes (temp_parser, *temp_statement);
 #if !defined (NDEBUG)
@@ -1780,10 +1780,10 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 			p = (char *) memmove (p, p + strlen (eval_prefix), strlen (p) - strlen (eval_prefix) + 1);
 		      }
 
-		    p = strstr (new_source, eval_suffix);
-		    if (p != NULL)
+		    eval_suffix_len = strlen (p);
+		    if (eval_suffix_len > 0 && p[eval_suffix_len - 1] == ')')
 		      {
-			p = (char *) memmove (p, p + strlen (eval_suffix), strlen (p) - strlen (eval_suffix) + 1);
+			p[eval_suffix_len - 1] = '\0';
 		      }
 
 		    if (activity->source)
