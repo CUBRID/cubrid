@@ -34,7 +34,7 @@ import com.cubrid.plcsql.compiler.InstanceStore;
 
 public class TypeChar extends Type {
 
-    public static final int MAX_LEN = 268435455;
+    public static final int MAX_LEN = 2048;
 
     public final int length;
 

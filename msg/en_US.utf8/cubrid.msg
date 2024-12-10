@@ -1451,12 +1451,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1361 Invalid result cache for subquery.
 
-1362 Dropping system generated stored procedure is not allowed.
-1363 PL/CSQL Stored procedure/function does not support Invoker's rights.
+1362 Locale '%1$s' is unavailable.
+1363 Dropping system generated stored procedure is not allowed.
+1364 PL/CSQL Stored procedure/function does not support Invoker's rights.
 
-1364 Only DBA and the owner can grant the %1$s privilege.
+1365 Only DBA and the owner can grant the %1$s privilege.
 
-1365 Last Error
+1366 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1950,11 +1951,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 322 Table column '%1$s.%2$s' has not been defined
 323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 324 '%1$s' is not a record variable.
-325 Stored procedure/function "%1$s" does not exist.
-326 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
-327 Only trailing default parameter is allowed: invalid at '%1$s'.
-328 Stored procedure/function '%1$s' has OUT or IN OUT arguments
-329 Grant option is not allowed for %1$s.
+325 The argument specifying the language must be a string literal.
+326 Stored procedure/function "%1$s" does not exist.
+327 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
+328 Only trailing default parameter is allowed: invalid at '%1$s'.
+329 Stored procedure/function '%1$s' has OUT or IN OUT arguments
+330 Grant option is not allowed for %1$s.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
