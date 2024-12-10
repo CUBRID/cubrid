@@ -3626,7 +3626,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_AUTO_RESTART_SERVER,
    PRM_NAME_AUTO_RESTART_SERVER,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    &prm_auto_restart_server_flag,
    (void *) &prm_auto_restart_server_default,

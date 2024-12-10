@@ -10504,22 +10504,62 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	r1 = pt_print_bytes (parser, p->info.expr.arg1);
 	q = pt_append_varchar (parser, q, r1);
 
-	flags = p->info.expr.arg3->info.value.data_value.i;
-	lang_id = lang_get_lang_id_from_flag (flags, &has_user_format, &has_user_lang);
-	if (has_user_format)
+	assert (p->info.expr.arg3);
+	if (p->info.expr.arg3->node_type == PT_HOST_VAR)
 	  {
-	    const char *lang_name = lang_get_lang_name_from_id (lang_id);
-
 	    q = pt_append_nulstring (parser, q, ", ");
 	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
 	    q = pt_append_varchar (parser, q, r1);
 
-	    if (lang_name != NULL && has_user_lang)
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg3);
+	    q = pt_append_varchar (parser, q, r1);
+	  }
+	else if (p->info.expr.arg3->node_type == PT_VALUE)
+	  {
+	    flags = p->info.expr.arg3->info.value.data_value.i;
+	    lang_id = lang_get_lang_id_from_flag (flags, &has_user_format, &has_user_lang);
+	    if (has_user_format)
 	      {
-		q = pt_append_nulstring (parser, q, ", '");
-		q = pt_append_nulstring (parser, q, lang_name);
-		q = pt_append_nulstring (parser, q, "'");
+		const char *lang_name = lang_get_lang_name_from_id (lang_id);
+
+		q = pt_append_nulstring (parser, q, ", ");
+		r1 = pt_print_bytes (parser, p->info.expr.arg2);
+		q = pt_append_varchar (parser, q, r1);
+
+		if (lang_name != NULL && has_user_lang)
+		  {
+		    q = pt_append_nulstring (parser, q, ", '");
+		    q = pt_append_nulstring (parser, q, lang_name);
+		    q = pt_append_nulstring (parser, q, "'");
+		  }
 	      }
+	  }
+	else if (parser->flag.is_parsing_static_sql)
+	  {
+	    assert (p->info.expr.arg3->node_type == PT_EXPR && p->info.expr.arg3->info.expr.op == PT_CAST);
+	    assert (p->info.expr.arg3->info.expr.cast_type->node_type == PT_DATA_TYPE);
+	    assert (PT_IS_SIMPLE_CHAR_STRING_TYPE (p->info.expr.arg3->info.expr.cast_type->type_enum));
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
+	    q = pt_append_varchar (parser, q, r1);
+
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg3);
+	    q = pt_append_varchar (parser, q, r1);
+	  }
+	else
+	  {
+	    /*    
+	       create table foo(a char(20), b varchar, c nchar(20), d nchar varying, e sequence(int));
+	       insert into foo values('aaa', 'bbb', n'ccc', n'ddd', {1, 2, 3, 4, 5});
+	       select to_char(e) from foo order by 1;
+
+	       --In a case like "select to_char(e) from foo", it enters the second step.
+	     */
+	    assert ((pt_has_error (parser) || er_errid () != NO_ERROR)
+		    || (p->info.expr.arg2 &&
+			p->info.expr.arg2->node_type == PT_VALUE && p->info.expr.arg2->type_enum == PT_TYPE_NULL));
 	  }
 	q = pt_append_nulstring (parser, q, ")");
       }
