@@ -27644,7 +27644,7 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	case TYPE_CLASSOID:
 	case TYPE_REGUVAL_LIST:
 	case TYPE_REGU_VAR_LIST:
-	case TYPE_FUNC:
+
 	case TYPE_SP:
 	  /* Result Cache not supported */
 	  return ER_FAILED;

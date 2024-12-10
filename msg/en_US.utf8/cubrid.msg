@@ -1951,12 +1951,15 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 322 Table column '%1$s.%2$s' has not been defined
 323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 324 '%1$s' is not a record variable.
+
 325 The argument specifying the language must be a string literal.
 326 Stored procedure/function "%1$s" does not exist.
 327 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
 328 Only trailing default parameter is allowed: invalid at '%1$s'.
 329 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 330 Grant option is not allowed for %1$s.
+
+
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

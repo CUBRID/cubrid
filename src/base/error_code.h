@@ -1744,9 +1744,13 @@
 #define ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED     -1363
 #define ER_SP_INVOKERS_RIGHTS_NOT_SUPPORTED         -1364
 
+
 #define ER_AU_OWNER_ONLY_GRANT_PRIVILEGE            -1365
 
 #define ER_LAST_ERROR                               -1366
+
+
+
 
 /*
  * CAUTION!
