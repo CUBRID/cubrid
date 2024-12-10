@@ -93,6 +93,15 @@ public class PlcsqlCompilerMain {
         }
 
         PlcLexerEx lexer = new PlcLexerEx(input);
+
+        LexerErrorIndicator lei = new LexerErrorIndicator();
+        lexer.removeErrorListeners();
+        lexer.addErrorListener(lei);
+
+        if (lei.hasError) {
+            throw new SyntaxError(lei.line, lei.column, lei.msg);
+        }
+
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         PlcParser parser = new PlcParser(tokens);
 
@@ -239,6 +248,31 @@ public class PlcsqlCompilerMain {
                         unit.getClassName(),
                         javaSig);
         return info;
+    }
+
+    private static class LexerErrorIndicator extends BaseErrorListener {
+
+        boolean hasError;
+        int line;
+        int column;
+        String msg;
+
+        @Override
+        public void syntaxError(
+                Recognizer<?, ?> recognizer,
+                Object offendingSymbol,
+                int line,
+                int charPositionInLine,
+                String msg,
+                RecognitionException e) {
+
+            if (msg.startsWith("token recognition error")) {
+                this.hasError = true;
+                this.line = line;
+                this.column = charPositionInLine + 1; // charPositionInLine starts from 0
+                this.msg = msg;
+            }
+        }
     }
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {

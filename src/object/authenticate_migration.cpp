@@ -32,6 +32,7 @@
 #include "schema_manager.h" /* sm_get_ch_name () */
 #include "extract_schema.hpp" /* extract_context */
 #include "printer.hpp" /* print_output */
+#include "jsp_cl.h" /* jsp_get_owner () */
 
 /*
  * CLASS_GRANT
@@ -86,8 +87,9 @@ static int add_class_grant (CLASS_AUTH *auth, MOP source, MOP user, int cache);
 static int build_class_grant_list (CLASS_AUTH *cl_auth, MOP class_mop);
 
 static void issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AUTH *auth,
-				   CLASS_GRANT *grant, int authbits);
-static int class_grant_loop (extract_context &ctxt, print_output &output_ctx, CLASS_AUTH *auth);
+				   CLASS_GRANT *grant, int authbits, DB_OBJECT_TYPE obj_type);
+static int class_grant_loop (extract_context &ctxt, print_output &output_ctx, CLASS_AUTH *auth,
+			     DB_OBJECT_TYPE obj_type);
 
 /*
  * MIGRATION SUPPORT
@@ -576,7 +578,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
  *   quoted_id_flag(in):
  */
 int
-au_export_grants (extract_context &ctxt, print_output &output_ctx, MOP class_mop)
+au_export_grants (extract_context &ctxt, print_output &output_ctx, MOP class_mop, DB_OBJECT_TYPE obj_type)
 {
   int error = NO_ERROR;
   CLASS_AUTH cl_auth;
@@ -584,9 +586,23 @@ au_export_grants (extract_context &ctxt, print_output &output_ctx, MOP class_mop
   int statements, ecount;
   char *uname;
 
-  cl_auth.class_mop = class_mop;
-  cl_auth.owner = au_get_class_owner (class_mop);
-  cl_auth.users = NULL;
+  switch (obj_type)
+    {
+    case DB_OBJECT_CLASS:
+      cl_auth.class_mop = class_mop;
+      cl_auth.owner = au_get_class_owner (class_mop);
+      cl_auth.users = NULL;
+      break;
+    case DB_OBJECT_PROCEDURE:
+      cl_auth.class_mop = class_mop;
+      cl_auth.owner = jsp_get_owner (class_mop);
+      cl_auth.users = NULL;
+      break;
+    default:
+      assert (false);
+      error = ER_FAILED;
+      return (error);
+    }
 
   /* make an entry for the owner with complete authorization */
   u = find_or_add_user (&cl_auth, cl_auth.owner);
@@ -597,7 +613,7 @@ au_export_grants (extract_context &ctxt, print_output &output_ctx, MOP class_mop
   if (error == NO_ERROR)
     {
       /* loop through the grant list, issuing grant statements */
-      while ((statements = class_grant_loop (ctxt, output_ctx, &cl_auth)))
+      while ((statements = class_grant_loop (ctxt, output_ctx, &cl_auth, obj_type)))
 	;
 
       for (u = cl_auth.users, ecount = 0; u != NULL; u = u->next)
@@ -941,10 +957,11 @@ build_class_grant_list (CLASS_AUTH *cl_auth, MOP class_mop)
  */
 static void
 issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AUTH *auth, CLASS_GRANT *grant,
-		       int authbits)
+		       int authbits, DB_OBJECT_TYPE obj_type)
 {
   const char *gtype;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   char *class_name = NULL;
   char *username;
   int typebit;
@@ -977,10 +994,29 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
       gtype = "???";
       break;
     }
-  SPLIT_USER_SPECIFIED_NAME (sm_get_ch_name (auth->class_mop), owner_name, class_name);
-  username = au_get_user_name (grant->user->obj);
 
-  output_ctx ("GRANT %s ON ", gtype);
+  output_ctx ("\n");
+
+  switch (obj_type)
+    {
+    case DB_OBJECT_CLASS:
+      SPLIT_USER_SPECIFIED_NAME (sm_get_ch_name (auth->class_mop), owner_name, class_name);
+      username = au_get_user_name (grant->user->obj);
+
+      output_ctx ("GRANT %s ON ", gtype);
+      break;
+    case DB_OBJECT_PROCEDURE:
+      unique_name[0] = '\0';
+      jsp_get_unique_name (auth->class_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH + 1);
+      SPLIT_USER_SPECIFIED_NAME (unique_name, owner_name, class_name);
+      username = au_get_user_name (grant->user->obj);
+
+      output_ctx ("GRANT %s ON PROCEDURE ", gtype);
+      break;
+    default:
+      output_ctx ("GRANT %s ON ", gtype);
+      break;
+    }
 
   if (ctxt.is_dba_user || ctxt.is_dba_group_member)
     {
@@ -1036,7 +1072,7 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
  * TODO : LP64
  */
 static int
-class_grant_loop (extract_context &ctxt, print_output &output_ctx, CLASS_AUTH *auth)
+class_grant_loop (extract_context &ctxt, print_output &output_ctx, CLASS_AUTH *auth, DB_OBJECT_TYPE obj_type)
 {
 #define AU_MIN_BIT 1		/* AU_SELECT */
 #define AU_MAX_BIT 0x40		/* AU_EXECUTE */
@@ -1066,7 +1102,7 @@ class_grant_loop (extract_context &ctxt, print_output &output_ctx, CLASS_AUTH *a
 		    {
 		      if (!ws_is_same_object (auth->users->obj, grant->user->obj))
 			{
-			  issue_grant_statement (ctxt, output_ctx, auth, grant, authbits);
+			  issue_grant_statement (ctxt, output_ctx, auth, grant, authbits, obj_type);
 			}
 
 		      /* turn on grant bits in the granted user */

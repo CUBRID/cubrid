@@ -35,7 +35,9 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.SourceCode;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -45,7 +47,7 @@ import javax.tools.ToolProvider;
 public class MemoryJavaCompiler {
 
     private JavaCompiler compiler;
-    private Iterable<String> options = null;
+    private List<String> options = new ArrayList<>();
 
     public MemoryJavaCompiler() {
         compiler = ToolProvider.getSystemJavaCompiler();
@@ -55,11 +57,12 @@ public class MemoryJavaCompiler {
         }
 
         Path cubrid_env_root = Server.getServer().getRootPath();
+        useOptions("-encoding", Server.getConfig().getServerCharset().toString());
         useOptions("-classpath", cubrid_env_root + "/java/pl_server.jar");
     }
 
     public synchronized void useOptions(String... options) {
-        this.options = Arrays.asList(options);
+        this.options.addAll(Arrays.asList(options));
     }
 
     public synchronized CompiledCodeSet compile(SourceCode code) {

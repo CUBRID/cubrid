@@ -1817,6 +1817,7 @@ namespace cubschema
       {"authid", "varchar(16)"},
       {"target", "varchar(4096)"},
       {"owner", "varchar(256)"},
+      {"code", format_varchar (1073741823)},
       {"comment", "varchar(1024)"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_spec ()}
