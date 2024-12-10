@@ -39,7 +39,7 @@ namespace cubpl
   session *get_session ()
   {
     session *s = nullptr;
-    cubthread::entry *thread_p  = thread_get_thread_entry_info ();
+    cubthread::entry *thread_p = thread_get_thread_entry_info ();
     session_get_pl_session (thread_p, s);
     return s;
   }
@@ -81,6 +81,8 @@ namespace cubpl
     if (is_interrupted () && m_stack_idx > -1)
       {
 	// block creating a new stack
+	set_local_error_for_interrupt ();
+	m_cond_var.notify_all ();
 	return nullptr;
       }
 
@@ -117,19 +119,22 @@ namespace cubpl
   }
 
   void
-  session::pop_and_destroy_stack (execution_stack *&claimed)
+  session::pop_and_destroy_stack (const PL_STACK_ID sid)
   {
-    std::unique_lock<std::mutex> ulock (m_mutex);
-
-    assert (claimed != nullptr);
+    if (m_stack_idx == -1)
+      {
+	// interrupted
+	return;
+      }
 
     auto pred = [&] () -> bool
     {
       // condition to check
-      return m_stack_idx == -1 || m_exec_stack[m_stack_idx] == claimed->get_id ();
+      return m_exec_stack[m_stack_idx] == sid;
     };
 
     // Guaranteed to be removed from the topmost element
+    std::unique_lock<std::mutex> ulock (m_mutex);
     m_cond_var.wait (ulock, pred);
 
     if (pred ())
@@ -140,13 +145,7 @@ namespace cubpl
 	    m_stack_idx--;
 	  }
 
-	m_stack_map.erase (claimed->get_id ());
-
-	if (claimed)
-	  {
-	    delete claimed;
-	    claimed = nullptr;
-	  }
+	m_stack_map.erase (sid);
       }
 
     if (m_stack_idx < 0)
@@ -158,6 +157,9 @@ namespace cubpl
 	m_interrupt_id = NO_ERROR;
 	m_interrupt_msg.clear ();
       }
+
+    ulock.unlock ();
+    m_cond_var.notify_all ();
   }
 
   execution_stack *
@@ -265,13 +267,15 @@ namespace cubpl
     auto pred = [this] () -> bool
     {
       // condition of finish
-      return m_exec_stack.empty () && is_running () == false;
+      return is_running () == false;
     };
 
     if (pred ())
       {
 	return;
       }
+
+    m_cond_var.notify_all ();
 
     std::unique_lock<std::mutex> ulock (m_mutex);
     m_cond_var.wait (ulock, pred);

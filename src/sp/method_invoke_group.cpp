@@ -175,6 +175,10 @@ namespace cubmethod
 #endif
       }
 
+    if (m_stack)
+      {
+	delete m_stack;
+      }
 exit:
     return error;
   }
