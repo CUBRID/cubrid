@@ -1734,7 +1734,6 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 	    }
 
 	  {
-	    unsigned int save_custom;
 	    PARSER_CONTEXT *temp_parser = (PARSER_CONTEXT *) activity->parser;
 	    PT_NODE **temp_statement =
 	      &((PT_NODE *) activity->statement)->info.scope.stmt->info.trigger_action.expression;
@@ -1746,6 +1745,8 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 		if (!with_evaluate)
 		  {
 		    /* trigger->action */
+		    unsigned int save_custom;
+
 		    save_custom = temp_parser->custom_print;
 		    temp_parser->custom_print |= PT_SUPPRESS_RESOLVED;
 		    new_source = parser_print_tree_with_quotes (temp_parser, *temp_statement);
@@ -1763,10 +1764,28 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 		else
 		  {
 		    /* trigger->condition */
+		    char *p = NULL;
+		    const char *eval_prefix = "evaluate (";
+		    const char *eval_suffix = " )";
+
 		    new_source = parser_print_tree_with_quotes (temp_parser, *temp_statement);
 #if !defined (NDEBUG)
 		    assert (parser_parse_string_use_sys_charset (temp_parser, new_source) != NULL);
 #endif
+
+		    /* remove appended trigger info */
+		    p = strstr (new_source, eval_prefix);
+		    if (p != NULL)
+		      {
+			p = (char *) memmove (p, p + strlen (eval_prefix), strlen (p) - strlen (eval_prefix) + 1);
+		      }
+
+		    p = strstr (new_source, eval_suffix);
+		    if (p != NULL)
+		      {
+			p = (char *) memmove (p, p + strlen (eval_suffix), strlen (p) - strlen (eval_suffix) + 1);
+		      }
+
 		    if (activity->source)
 		      {
 			free_and_init (activity->source);
