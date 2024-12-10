@@ -67,6 +67,7 @@
 #include "oid.h"
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
+#include "execute_statement.h"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
@@ -140,9 +141,30 @@ static int check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 extern bool ssl_client;
 
 /*
+ * jsp_is_exist_stored_procedure
+ *   return: name is exist then return true
+ *                         else return false
+ *   name(in): find java stored procedure name
+ *
+ * Note:
+ */
+
+int
+jsp_is_exist_stored_procedure (const char *name)
+{
+  MOP mop = NULL;
+
+  mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  er_clear ();
+
+  return mop != NULL;
+}
+
+/*
  * jsp_find_stored_procedure
  *   return: MOP
  *   name(in): find java stored procedure name
+ *   purpose(in): DB_AUTH_NONE or DB_AUTH_SELECT
  *
  * Note:
  */
@@ -169,8 +191,17 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
   if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
       er_clear ();
-      err = ER_SP_NOT_EXIST;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, checked_name);
+
+      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	{
+	  err = jsp_find_sp_of_another_owner (name, &mop);
+	}
+      else
+	{
+	  err = ER_SP_NOT_EXIST;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, checked_name);
+	}
     }
 
   if (mop)
@@ -190,14 +221,12 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
 }
 
 /*
- * jsp_is_exist_stored_procedure
- *   return: name is exist then return true
- *                         else return false
+ * jsp_find_stored_procedure_code
+ *   return: MOP
  *   name(in): find java stored procedure name
  *
  * Note:
  */
-
 
 MOP
 jsp_find_stored_procedure_code (const char *name)
@@ -226,16 +255,44 @@ jsp_find_stored_procedure_code (const char *name)
   return mop;
 }
 
+/*
+ * jsp_find_sp_of_another_owner
+ *   return: if fail return error code
+ *   name(in): find java stored procedure name
+ *   return_mop(in): retrieves the name of a java stored procedure and returns its MOP value.
+ *
+ * Note: This is a function for finding the unique_name of an SP when running the loaddb utility with the --no-user-specified-name option as a dba user.
+ */
+
 int
-jsp_is_exist_stored_procedure (const char *name)
+jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
 {
-  MOP mop = NULL;
+  int error = NO_ERROR;
+  DB_VALUE value;
+  char other_class_name[DB_MAX_IDENTIFIER_LENGTH];
+  other_class_name[0] = '\0';
+  *return_mop = NULL;
 
-  mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
-  er_clear ();
+  error = do_find_stored_procedure_by_query (name, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
+  if (other_class_name[0] != '\0')
+    {
+      db_make_string (&value, other_class_name);
+      *return_mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  error = ER_SP_NOT_EXIST;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, other_class_name);
+	}
+    }
 
-  return mop != NULL;
+  return error;
 }
+
+/*
+ * jsp_check_out_param_in_query
+ *
+ * Note:
+ */
 
 static int
 jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode)
@@ -1435,8 +1492,6 @@ jsp_check_stored_procedure_name (const char *str)
   char tmp[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
   static int dbms_output_len = strlen ("dbms_output.");
-  char owner_name[DB_MAX_USER_LENGTH];
-  owner_name[0] = '\0';
 
 
   if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0)
@@ -1448,8 +1503,6 @@ jsp_check_stored_procedure_name (const char *str)
     {
       sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
     }
-
-  // sm_downcase_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
 
   name = strdup (buffer);
 
