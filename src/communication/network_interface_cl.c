@@ -11363,6 +11363,9 @@ error:
     {
       // TODO: er_set (...): set proper error
       rc = req_error;
+
+      packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+      unpacker.unpack_all (compile_response);
     }
 
   if (data_reply != NULL)

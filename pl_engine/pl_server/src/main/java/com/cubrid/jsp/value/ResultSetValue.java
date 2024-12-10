@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.impl.SUConnection;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideOutResultSet;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
@@ -48,12 +49,14 @@ public class ResultSetValue extends Value {
     public ResultSetValue(long queryId) {
         super();
         this.queryId = queryId;
+        this.dbType = DBType.DB_RESULTSET;
     }
 
     public ResultSetValue(ResultSet rset) {
         super();
         this.rset = rset;
         this.queryId = ((CUBRIDServerSideResultSet) rset).getQueryId();
+        this.dbType = DBType.DB_RESULTSET;
     }
 
     @Override

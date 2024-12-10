@@ -40,22 +40,10 @@ import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
-import com.cubrid.jsp.value.BooleanValue;
-import com.cubrid.jsp.value.ByteValue;
-import com.cubrid.jsp.value.DateValue;
-import com.cubrid.jsp.value.DatetimeValue;
-import com.cubrid.jsp.value.DoubleValue;
-import com.cubrid.jsp.value.FloatValue;
-import com.cubrid.jsp.value.IntValue;
-import com.cubrid.jsp.value.LongValue;
-import com.cubrid.jsp.value.NumericValue;
-import com.cubrid.jsp.value.OidValue;
-import com.cubrid.jsp.value.ResultSetValue;
+import com.cubrid.jsp.value.NullValue;
 import com.cubrid.jsp.value.SetValue;
-import com.cubrid.jsp.value.ShortValue;
-import com.cubrid.jsp.value.StringValue;
-import com.cubrid.jsp.value.TimeValue;
 import com.cubrid.jsp.value.Value;
+import com.cubrid.jsp.value.ValueUtilities;
 import cubrid.sql.CUBRIDOID;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -168,7 +156,6 @@ public class StoredProcedure {
                             + ", but "
                             + args.length);
         }
-
         for (int i = 0; i < argsTypes.length; i++) {
             Object resolved;
             if (args[i] == null) {
@@ -358,99 +345,21 @@ public class StoredProcedure {
             cachedResolved = getResolved();
         }
         Object result = m.invoke(null, cachedResolved);
-        return makeReturnValue(result);
+        return ValueUtilities.createValueFrom(result);
     }
 
-    public Value makeOutValue(Object object) throws ExecuteException, TypeMismatchException {
-        Object obj = null;
-        if (object instanceof byte[]) {
-            obj = new Byte(((byte[]) object)[0]);
-        } else if (object instanceof short[]) {
-            obj = new Short(((short[]) object)[0]);
-        } else if (object instanceof int[]) {
-            obj = new Integer(((int[]) object)[0]);
-        } else if (object instanceof long[]) {
-            obj = new Long(((long[]) object)[0]);
-        } else if (object instanceof float[]) {
-            obj = new Float(((float[]) object)[0]);
-        } else if (object instanceof double[]) {
-            obj = new Double(((double[]) object)[0]);
-        } else if (object instanceof byte[][]) {
-            obj = ((byte[][]) object)[0];
-        } else if (object instanceof short[][]) {
-            obj = ((short[][]) object)[0];
-        } else if (object instanceof int[][]) {
-            obj = ((int[][]) object)[0];
-        } else if (object instanceof long[][]) {
-            obj = ((long[][]) object)[0];
-        } else if (object instanceof float[][]) {
-            obj = ((float[][]) object)[0];
-        } else if (object instanceof double[][]) {
-            obj = ((double[][]) object)[0];
-        } else if (object instanceof Object[]) {
-            obj = ((Object[]) object)[0];
-        }
-
-        return makeReturnValue(obj);
-    }
-
-    public Value makeReturnValue(Object o) throws ExecuteException, TypeMismatchException {
-        Value val = null;
-
-        if (o == null) {
-            return null;
-        } else if (o instanceof Boolean) {
-            val = new BooleanValue(((Boolean) o).booleanValue());
-        } else if (o instanceof Byte) {
-            val = new ByteValue(((Byte) o).byteValue());
-        } else if (o instanceof Character) {
-            val = new StringValue(((Character) o).toString());
-        } else if (o instanceof Short) {
-            val = new ShortValue(((Short) o).shortValue());
-        } else if (o instanceof Integer) {
-            val = new IntValue(((Integer) o).intValue());
-        } else if (o instanceof Long) {
-            val = new LongValue(((Long) o).longValue());
-        } else if (o instanceof Float) {
-            val = new FloatValue(((Float) o).floatValue());
-        } else if (o instanceof Double) {
-            val = new DoubleValue(((Double) o).doubleValue());
-        } else if (o instanceof BigDecimal) {
-            val = new NumericValue(((BigDecimal) o));
-        } else if (o instanceof String) {
-            val = new StringValue((String) o);
-        } else if (o instanceof java.sql.Date) {
-            val = new DateValue((java.sql.Date) o);
-        } else if (o instanceof java.sql.Time) {
-            val = new TimeValue((java.sql.Time) o);
-        } else if (o instanceof java.sql.Timestamp) {
-            val =
-                    new DatetimeValue(
-                            (java.sql.Timestamp)
-                                    o); // DatetimeValue allows more values than TimestampValue
-        } else if (o instanceof CUBRIDOID) {
-            val = new OidValue((CUBRIDOID) o);
-        } else if (o instanceof ResultSet) {
-            val = new ResultSetValue((ResultSet) o);
-        } else if (o instanceof byte[]) {
-            val = new SetValue((byte[]) o);
-        } else if (o instanceof short[]) {
-            val = new SetValue((short[]) o);
-        } else if (o instanceof int[]) {
-            val = new SetValue((int[]) o);
-        } else if (o instanceof long[]) {
-            val = new SetValue((long[]) o);
-        } else if (o instanceof float[]) {
-            val = new SetValue((float[]) o);
-        } else if (o instanceof double[]) {
-            val = new SetValue((double[]) o);
-        } else if (o instanceof Object[]) {
-            val = new SetValue((Object[]) o);
+    public Value makeOutValue(int idx) throws TypeMismatchException, ExecuteException {
+        Class<?>[] argsTypes = target.getArgsTypes();
+        if (argsTypes[idx].isArray()) {
+            Value resolved = ValueUtilities.createValueFrom(cachedResolved[idx]);
+            if (resolved instanceof SetValue) {
+                return ((SetValue) resolved).toValueArray()[0];
+            } else {
+                return resolved;
+            }
         } else {
-            throw new ExecuteException("Not supported data type: '" + o.getClass().getName() + "'");
+            return new NullValue();
         }
-
-        return val;
     }
 
     public int getReturnType() {
