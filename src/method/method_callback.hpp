@@ -29,6 +29,7 @@
 
 #include <unordered_map>
 #include <queue>
+#include <list>
 
 #include "method_error.hpp"
 #include "method_oid_handler.hpp"
@@ -71,11 +72,13 @@ namespace cubmethod
 
       void free_query_handle (int id, bool is_free);
       void free_query_handle_all (bool is_free);
+      void free_deferred_query_handler ();
 
       /* find query handler */
       query_handler *get_query_handler_by_id (const int id);
       query_handler *get_query_handler_by_query_id (const uint64_t qid); /* used for out resultset */
-      query_handler *get_query_handler_by_sql (const std::string &sql); /* used for statement handler cache */
+      query_handler *get_query_handler_by_sql (const std::string &sql,
+	  std::function<bool (query_handler *)> cond); /* used for statement handler cache */
 
       oid_handler *get_oid_handler ();
 
@@ -117,6 +120,8 @@ namespace cubmethod
       oid_handler *m_oid_handler;
 
       std::queue <cubmem::extensible_block> m_data_queue;
+
+      std::list <cubmethod::query_handler *> m_deferred_query_free_handler;
   };
 
   //////////////////////////////////////////////////////////////////////////

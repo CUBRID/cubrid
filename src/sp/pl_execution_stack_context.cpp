@@ -60,6 +60,8 @@ namespace cubpl
       }
 
     destory_all_cursors ();
+
+    m_session->pop_and_destroy_stack (get_id ());
   }
 
   void

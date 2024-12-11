@@ -122,13 +122,14 @@ namespace cubpl
 
   executor::~executor ()
   {
-    assert (m_stack != nullptr);
-
     // destory local resources
     pr_clear_value_vector (m_out_args);
 
     // exit stack
-    (void) get_session ()->pop_and_destroy_stack (m_stack);
+    if (m_stack != nullptr)
+      {
+	delete m_stack;
+      }
   }
 
   int
@@ -262,6 +263,11 @@ namespace cubpl
   executor::execute (DB_VALUE &value)
   {
     int error = NO_ERROR;
+
+    if (m_stack == NULL)
+      {
+	return ER_FAILED;
+      }
 
     // execution rights
     assert (m_sig.auth != NULL);
@@ -617,7 +623,7 @@ exit:
       return error;
     };
 
-    error = m_stack->send_data_to_client (get_prepare_info, code, sql, flag);
+    error = m_stack->send_data_to_client (get_prepare_info, code, sql, flag, m_stack->get_tran_id ());
     return error;
   }
 

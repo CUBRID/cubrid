@@ -175,16 +175,16 @@ namespace cubmethod
   {
     std::string sql;
     int flag;
-    unpacker.unpack_all (sql, flag);
+    TRANID tid;
+    unpacker.unpack_all (sql, flag, tid);
 
     /* find in m_sql_handler_map */
-    query_handler *handler = get_query_handler_by_sql (sql);
-    if (handler != nullptr)
-      {
-	/* found in statement handler cache */
-	handler->set_is_occupied (true);
-      }
-    else
+    query_handler *handler = get_query_handler_by_sql (sql, [&] (query_handler *h)
+    {
+      return h->get_is_occupied() == false && (h->get_tran_id () == NULL_TRANID || h->get_tran_id() == tid);
+    });
+
+    if (handler == nullptr)
       {
 	/* not found in statement handler cache */
 	handler = new_query_handler ();
@@ -200,6 +200,7 @@ namespace cubmethod
 	      {
 		// add to statement handler cache
 		m_sql_handler_map.emplace (sql, handler->get_id ());
+		handler->set_tran_id (tid);
 	      }
 	    else
 	      {
@@ -208,9 +209,11 @@ namespace cubmethod
 	  }
       }
 
-    /* DDL audit */
-    if (handler)
+    if (handler != nullptr)
       {
+	handler->set_is_occupied (true);
+
+	/* DDL audit */
 	DB_SESSION *hdl_session = handler->get_db_session();
 	logddl_set_callback_stmt (handler->get_statement_type(), (char *) sql.c_str (), sql.size (), m_error_ctx.get_error (),
 				  ((hdl_session && hdl_session->parser) ?  & (hdl_session->parser->hide_pwd_info) : NULL));
@@ -983,7 +986,7 @@ exit:
 	    // clear <SQL string -> handler ID>
 	    m_sql_handler_map.erase (m_query_handlers[id]->get_sql_stmt());
 
-	    delete m_query_handlers[id];
+	    m_deferred_query_free_handler.push_back (m_query_handlers[id]);
 	    m_query_handlers[id] = nullptr;
 	  }
 	else
@@ -1002,6 +1005,16 @@ exit:
       }
   }
 
+  void
+  callback_handler::free_deferred_query_handler ()
+  {
+    for (auto it = m_deferred_query_free_handler.begin(); it != m_deferred_query_free_handler.end(); it++)
+      {
+	delete *it;
+      }
+    m_deferred_query_free_handler.clear();
+  }
+
   query_handler *
   callback_handler::get_query_handler_by_query_id (const uint64_t qid)
   {
@@ -1017,12 +1030,12 @@ exit:
   }
 
   query_handler *
-  callback_handler::get_query_handler_by_sql (const std::string &sql)
+  callback_handler::get_query_handler_by_sql (const std::string &sql, std::function<bool (query_handler *)> cond)
   {
     for (auto it = m_sql_handler_map.lower_bound (sql); it != m_sql_handler_map.upper_bound (sql); it++)
       {
 	query_handler *handler = get_query_handler_by_id (it->second);
-	if (handler != nullptr && handler->get_is_occupied() == false)
+	if (handler != nullptr && cond (handler))
 	  {
 	    /* found */
 	    return handler;
