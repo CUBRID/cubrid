@@ -36,7 +36,10 @@ namespace cubpl
   compile_handler::~compile_handler ()
   {
     // exit stack
-    (void) get_session ()->pop_and_destroy_stack (m_stack);
+    if (m_stack != nullptr)
+      {
+	delete m_stack;
+      }
   }
 
   int
