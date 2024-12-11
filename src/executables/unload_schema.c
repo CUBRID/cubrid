@@ -688,6 +688,9 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   size_t uppercase_user_size = 0;
   size_t query_size = 0;
   char *query = NULL;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *serial_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   /*
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
@@ -823,7 +826,12 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 		}
 	    }
 
-	  output_ctx ("\ncreate serial %s%s%s\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+	  SPLIT_USER_SPECIFIED_NAME (db_get_string (&values[SERIAL_UNIQUE_NAME]), owner_name, serial_name);
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  output_ctx ("\ncreate serial %s%s%s%s\n", output_owner,
+		      PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
 	  output_ctx ("\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
 	  output_ctx ("\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
 	  output_ctx ("\t minvalue %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL], str_buf));
@@ -847,12 +855,6 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 	  if (db_get_int (&values[SERIAL_STARTED]) == 1)
 	    {
 	      output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
-	    }
-
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n",
-			  db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
 	    }
 
 	  db_value_clear (&diff_value);
