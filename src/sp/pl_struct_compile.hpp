@@ -17,11 +17,11 @@
  */
 
 //
-// method_compile_def.hpp - define structures used by method feature
+// pl_struct_compile.hpp - define structures used by method feature
 //
 
-#ifndef _METHOD_COMPILE_DEF_HPP_
-#define _METHOD_COMPILE_DEF_HPP_
+#ifndef _PL_STRUCT_COMPILE_HPP_
+#define _PL_STRUCT_COMPILE_HPP_
 
 #include "mem_block.hpp"
 #include "packer.hpp"
@@ -33,7 +33,7 @@
 #include <algorithm>
 #include <memory>
 
-namespace cubmethod
+namespace cubpl
 {
   struct pl_parameter_info;
 
@@ -84,7 +84,7 @@ namespace cubmethod
     int sql_type;
     std::string rewritten_query;
 
-    std::vector <column_info> columns;
+    std::vector <cubmethod::column_info> columns;
     std::vector <pl_parameter_info> hvs;
     std::vector <std::string> into_vars;
   };
@@ -196,7 +196,7 @@ namespace cubmethod
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-    column_info c_info;
+    cubmethod::column_info c_info;
   };
 
   struct EXPORT_IMPORT global_semantics_response : public cubpacking::packable_object
@@ -209,7 +209,7 @@ namespace cubmethod
   };
 }
 
-using PLCSQL_COMPILE_REQUEST = cubmethod::compile_request;
-using PLCSQL_COMPILE_RESPONSE = cubmethod::compile_response;
+using PLCSQL_COMPILE_REQUEST = cubpl::compile_request;
+using PLCSQL_COMPILE_RESPONSE = cubpl::compile_response;
 
-#endif //_METHOD_COMPILE_DEF_HPP_
+#endif //_PL_STRUCT_COMPILE_HPP_

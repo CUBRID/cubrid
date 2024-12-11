@@ -60,7 +60,7 @@
 #include "unicode_support.h"
 #include "dbtype.h"
 #include "pl_comm.h"
-#include "method_compile_def.hpp"
+#include "pl_struct_compile.hpp"
 #include "sp_catalog.hpp"
 #include "authenticate_access_auth.hpp"
 #include "pl_signature.hpp"

@@ -349,6 +349,7 @@ set(SP_SOURCES
   ${SP_DIR}/jsp_cl.cpp
   ${SP_DIR}/method_invoke_group.cpp
   ${SP_DIR}/pl_connection.cpp
+  ${SP_DIR}/pl_compile_handler.cpp
   ${SP_DIR}/pl_execution_stack_context.cpp
   ${SP_DIR}/pl_executor.cpp
   ${SP_DIR}/pl_query_cursor.cpp
@@ -366,12 +367,11 @@ set(SP_HEADERS
   ${SP_DIR}/pl_connection.hpp
   ${SP_DIR}/pl_execution_stack_context.hpp
   ${SP_DIR}/pl_signature.hpp
+  ${SP_DIR}/pl_struct_compile.cpp
 )
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
-  ${METHOD_DIR}/method_compile_def.cpp
-  ${METHOD_DIR}/method_compile.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_scan.cpp
   ${METHOD_DIR}/method_struct_parameter_info.cpp

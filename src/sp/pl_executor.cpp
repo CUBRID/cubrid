@@ -358,8 +358,7 @@ exit:
 
 	unpacker.unpack_int (start_code);
 
-	cubmem::block payload_blk = std::move (m_stack->get_payload_block (unpacker));
-	m_stack->get_data_queue ().emplace (std::move (payload_blk));
+	(void) m_stack->read_payload_block (unpacker);
 
 	/* processing */
 	if (start_code == SP_CODE_INTERNAL_JDBC)
