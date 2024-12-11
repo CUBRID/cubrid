@@ -1956,8 +1956,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 326 Stored procedure/function "%1$s" does not exist.
 327 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
 328 Only trailing default parameter is allowed: invalid at '%1$s'.
-329 Stored procedure/function '%1$s' has OUT or IN OUT arguments
-330 Grant option is not allowed for %1$s.
+329 Grant option is not allowed for %1$s.
 
 
 
