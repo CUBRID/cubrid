@@ -9189,21 +9189,37 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  bool has_user_lang = false;
 	  const char *lang_str;
 
-	  assert (arg3 != NULL &&
-		  (arg3->node_type == PT_HOST_VAR || (arg3->node_type == PT_VALUE && arg3_type == PT_TYPE_INTEGER)));
+	  assert (arg3 != NULL);
+	  assert ((arg3->node_type == PT_HOST_VAR) ||
+		  (arg3->node_type == PT_VALUE && arg3_type == PT_TYPE_INTEGER) ||
+		  (parser->flag.is_parsing_static_sql && arg3->node_type == PT_EXPR && arg3->info.expr.op == PT_CAST));
 
 	  if (arg3->node_type != PT_HOST_VAR)
 	    {
-	      /* change locale from date_lang (set by grammar) to number_lang */
-	      (void) lang_get_lang_id_from_flag (arg3->info.value.data_value.i, &has_user_format, &has_user_lang);
-	      if (!has_user_lang)
+	      if (arg3_type != PT_TYPE_INTEGER)
 		{
-		  int lang_flag;
-		  lang_str = prm_get_string_value (PRM_ID_INTL_NUMBER_LANG);
-		  (void) lang_set_flag_from_lang (lang_str, has_user_format, has_user_lang, &lang_flag);
-		  arg3->info.value.data_value.i = lang_flag;
-		  arg3->info.value.db_value_is_initialized = 0;
-		  pt_value_to_db (parser, arg3);
+		  assert (parser->flag.is_parsing_static_sql &&
+			  arg3->node_type == PT_EXPR && arg3->info.expr.op == PT_CAST);
+		  /* This part is not supported normally.
+		   * This is a problem that has persisted since the previous version.
+		   * I assume that you can enter here only when it is written as static sql in PLCSQL.
+		   * Also, in this case, it is promised that actual execution will not be performed separately. 
+		   * For this reason, we skip over the actual lang_id, etc. without obtaining them.
+		   */
+		}
+	      else
+		{
+		  /* change locale from date_lang (set by grammar) to number_lang */
+		  (void) lang_get_lang_id_from_flag (arg3->info.value.data_value.i, &has_user_format, &has_user_lang);
+		  if (!has_user_lang)
+		    {
+		      int lang_flag;
+		      lang_str = prm_get_string_value (PRM_ID_INTL_NUMBER_LANG);
+		      (void) lang_set_flag_from_lang (lang_str, has_user_format, has_user_lang, &lang_flag);
+		      arg3->info.value.data_value.i = lang_flag;
+		      arg3->info.value.db_value_is_initialized = 0;
+		      pt_value_to_db (parser, arg3);
+		    }
 		}
 	    }
 	}
