@@ -16,7 +16,7 @@
  *
  */
 
-#include "method_compile_def.hpp"
+#include "pl_struct_compile.hpp"
 
 #include "byte_order.h"
 #include "connection_support.h"
@@ -28,7 +28,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace cubmethod
+namespace cubpl
 {
 //////////////////////////////////////////////////////////////////////////
 // compile info
@@ -375,7 +375,7 @@ namespace cubmethod
 
     if (!DB_IS_NULL (&value))
       {
-	dbvalue_java sp_val;
+	cubmethod::dbvalue_java sp_val;
 	serializator.pack_int (1);
 	sp_val.value = (DB_VALUE *) &value;
 	sp_val.pack (serializator);
@@ -401,7 +401,7 @@ namespace cubmethod
     size += serializator.get_packed_int_size (size); // value is null
     if (!DB_IS_NULL (&value))
       {
-	dbvalue_java sp_val;
+	cubmethod::dbvalue_java sp_val;
 	sp_val.value = (DB_VALUE *) &value;
 	size += sp_val.get_packed_size (serializator, size);
       }
@@ -426,7 +426,7 @@ namespace cubmethod
 
     if (value_is_null == 1)
       {
-	dbvalue_java value_unpacker;
+	cubmethod::dbvalue_java value_unpacker;
 	value_unpacker.value = &value;
 	value_unpacker.unpack (deserializator);
       }

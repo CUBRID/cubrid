@@ -196,13 +196,13 @@ namespace cubpl
     return &m_stack_cursor_id;
   }
 
-  cubmem::block
-  execution_stack::get_payload_block (cubpacking::unpacker &unpacker)
+  void
+  execution_stack::read_payload_block (cubpacking::unpacker &unpacker)
   {
     char *aligned_ptr = PTR_ALIGN (unpacker.get_curr_ptr(), MAX_ALIGNMENT);
-    cubmem::block payload_blk ((size_t) (unpacker.get_buffer_end() - aligned_ptr),
-			       aligned_ptr);
-    return payload_blk;
+    size_t payload_size = (size_t) (unpacker.get_buffer_end() - aligned_ptr);
+    cubmem::block payload_blk (payload_size, aligned_ptr);
+    m_data_queue.emplace (std::move (payload_blk));
   }
 
   std::queue<cubmem::block> &

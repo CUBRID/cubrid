@@ -54,7 +54,7 @@
 
 #include "dynamic_array.h"
 #include "flashback_cl.h"
-#include "method_compile_def.hpp"
+#include "pl_struct_compile.hpp"
 #include "pl_signature.hpp"
 #include "memory_monitor_common.hpp"
 

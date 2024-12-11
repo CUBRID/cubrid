@@ -21,8 +21,7 @@
 #include "dbi.h"
 #include "ddl_log.h"
 
-#include "method_compile.hpp"
-#include "method_compile_def.hpp"
+#include "pl_struct_compile.hpp"
 #include "method_query_util.hpp"
 #include "method_struct_oid_info.hpp"
 #include "method_schema_info.hpp"
@@ -46,6 +45,8 @@
 
 extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
     DB_QUERY_TYPE *column_info, bool is_holdable);
+
+using namespace cubpl;
 
 namespace cubmethod
 {
