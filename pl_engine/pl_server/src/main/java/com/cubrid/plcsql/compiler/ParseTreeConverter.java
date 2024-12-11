@@ -36,13 +36,12 @@ import static com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser.*;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.value.DateTimeParser;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParser.Create_routineContext;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsLexer;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser;
 import com.cubrid.plcsql.compiler.ast.*;
-import com.cubrid.plcsql.compiler.error.SemanticError;
-import com.cubrid.plcsql.compiler.error.SyntaxError;
-import com.cubrid.plcsql.compiler.error.UndeclaredId;
+import com.cubrid.plcsql.compiler.error.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
 import java.math.BigDecimal;
@@ -70,8 +69,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     public final SymbolStack symbolStack = new SymbolStack();
 
-    public ParseTreeConverter(InstanceStore iStore) {
+    public ParseTreeConverter(InstanceStore iStore, String spOwner, String spRevision) {
         this.iStore = iStore;
+        this.spOwner = Misc.getNormalizedText(spOwner);
+        this.spRevision = spRevision;
     }
 
     public void askServerSemanticQuestions() {
@@ -231,10 +232,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public Unit visitCreate_routine(Create_routineContext ctx) {
-
         previsitRoutine_definition(ctx.routine_definition(), null);
         DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
-        return new Unit(ctx, autonomousTransaction, connectionRequired, imports, decl);
+        return new Unit(ctx, autonomousTransaction, connectionRequired, decl, spRevision);
     }
 
     @Override
@@ -244,7 +244,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return EMPTY_PARAMS;
         }
 
-        boolean ofTopLevel = symbolStack.getCurrentScope().level == 2;
+        boolean ofTopLevel = symbolStack.getCurrentScope().level == (SymbolStack.LEVEL_MAIN + 1);
         NodeList<DeclParam> ret = new NodeList<>();
         if (ofTopLevel) {
             for (ParameterContext pc : ctx.parameter()) {
@@ -947,8 +947,30 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitFunction_call(Function_callContext ctx) {
 
-        String name = Misc.getNormalizedText(ctx.function_name());
+        String name = Misc.getNormalizedText(ctx.func_call_name().name);
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
+
+        if (ctx.func_call_name().owner != null) {
+            // This has an owner name
+
+            String owner = Misc.getNormalizedText(ctx.func_call_name().owner);
+            if (owner.equals(spOwner) && name.equals(spName) && isSpFunc) {
+
+                // OK: recursive call of the stored function being defined
+                // Note that owner name is unused afterwards.
+            } else {
+
+                // This has an owner name and the target function is not the SP being defined
+                // Take this as a global function call.
+                connectionRequired = true;
+
+                String uniqName = owner + '.' + name;
+                ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, uniqName, args);
+                semanticQuestions.put(ret, new ServerAPI.FunctionSignature(uniqName));
+
+                return ret; // done
+            }
+        }
 
         DeclFunc decl = symbolStack.getDeclFunc(name);
         if (decl == null) {
@@ -1247,17 +1269,17 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
 
-        if (ctx.LANGUAGE() != null && symbolStack.getCurrentScope().level > 1) {
+        if (ctx.LANGUAGE() != null
+                && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
             int[] lineColumn = Misc.getLineColumnOf(ctx);
             throw new SyntaxError(
                     lineColumn[0],
                     lineColumn[1],
                     "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
         }
+        String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
 
-        String name = Misc.getNormalizedText(ctx.identifier());
         boolean isFunction = (ctx.PROCEDURE() == null);
-
         symbolStack.pushSymbolTable(
                 name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
 
@@ -1418,7 +1440,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             if (idUsedInCurrentDeclPart != null) {
                 idUsedInCurrentDeclPart.put(
-                        name, new UseAndDeclLevel(ctx, symbolStack.LEVEL_PREDEFINED));
+                        name, new UseAndDeclLevel(ctx, SymbolStack.LEVEL_PREDEFINED));
             }
 
             // this is possibly a global function call
@@ -1482,6 +1504,32 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 } else {
                     return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
                 }
+            }
+        }
+
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    @Override
+    public Expr visitKeyword_builtin_func(Keyword_builtin_funcContext ctx) {
+        String name = Misc.getNormalizedText(ctx);
+
+        Decl decl = symbolStack.getDeclForIdExpr(name);
+        assert decl != null;
+        Scope scope = symbolStack.getCurrentScope();
+        if (idUsedInCurrentDeclPart != null && decl.scope.level < scope.level) {
+            idUsedInCurrentDeclPart.put(name, new UseAndDeclLevel(ctx, decl.scope.level));
+        }
+
+        if (decl instanceof DeclId) {
+            return new ExprId(ctx, name, scope, (DeclId) decl);
+        } else if (decl instanceof DeclFunc) {
+            if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
+                connectionRequired = true;
+                return new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS);
+            } else {
+                return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
             }
         }
 
@@ -2107,15 +2155,40 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitProcedure_call(Procedure_callContext ctx) {
 
-        String name = Misc.getNormalizedText(ctx.routine_name());
-        if (ctx.DBMS_OUTPUT() != null && dbmsOutputProc.contains(name)) {
+        String name = Misc.getNormalizedText(ctx.proc_call_name().name);
+        NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
+
+        if (ctx.proc_call_name().owner != null) {
+            // This has an owner name
+
+            String owner = Misc.getNormalizedText(ctx.proc_call_name().owner);
+            if (owner.equals(spOwner)
+                    && ctx.proc_call_name().DBMS_OUTPUT() == null
+                    && name.equals(spName)
+                    && !isSpFunc) {
+
+                // OK: recursive call of the stored procedure being defined
+                // Note that owner name is unused afterwards.
+            } else {
+
+                // This has an owner name and the target procedure is not the SP being defined
+                // Take this as a global procedure call.
+                connectionRequired = true;
+
+                String uniqName = owner + '.' + name;
+                StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, uniqName, args);
+                semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(uniqName));
+
+                return ret; // done
+            }
+        }
+
+        if (ctx.proc_call_name().DBMS_OUTPUT() != null && dbmsOutputProc.contains(name)) {
             // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease
             // migration from Oracle.
             // NOTE: users cannot define a procedure of this name because of '$'
             name = "DBMS_OUTPUT$" + name;
         }
-
-        NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
         DeclProc decl = symbolStack.getDeclProc(name);
         if (decl == null) {
@@ -2361,7 +2434,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private final LinkedHashMap<AstNode, ServerAPI.Question> semanticQuestions =
             new LinkedHashMap<>();
 
-    private final Set<String> imports = new TreeSet<>();
+    private final String spOwner;
+    private final String spRevision;
+
+    private String spName;
+    private boolean isSpFunc;
 
     private int exHandlerDepth;
 
@@ -2457,7 +2534,40 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private void previsitRoutine_definition(
             Routine_definitionContext ctx, Map<String, DeclRoutine> store) {
 
-        String name = Misc.getNormalizedText(ctx.identifier());
+        String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
+
+        if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+
+            // local procedure/function
+
+            if (ctx.LANGUAGE() != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.LANGUAGE()), // s083
+                        "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
+            }
+            if (ctx.authid_spec() != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.LANGUAGE()), // s084
+                        "illegal keyword AUTHID for a local procedure/function");
+            }
+            if (ctx.routine_uniq_name().owner != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.routine_uniq_name().owner), // s085
+                        "owner specification is not allowed for local procedures/functions");
+            }
+        } else {
+
+            // SP being defined
+
+            assert symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN;
+            spName = name;
+            isSpFunc = (ctx.PROCEDURE() == null);
+        }
+
+        if (ctx.routine_uniq_name().owner != null) {
+            String owner = Misc.getNormalizedText(ctx.routine_uniq_name().owner);
+            assert owner.equals(spOwner);
+        }
 
         // push a temporary symbol table, in order not to corrupt the current symbol table with the
         // parameters

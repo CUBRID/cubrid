@@ -452,6 +452,7 @@ enum param_id
   PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
   PRM_ID_JAVA_STORED_PROCEDURE_DEBUG,
   PRM_ID_JAVA_STORED_PROCEDURE_UDS,
+
   PRM_ID_ALLOW_TRUNCATED_STRING,
   PRM_ID_TB_DEFAULT_REUSE_OID,
   PRM_ID_USE_STAT_ESTIMATION,
@@ -486,8 +487,14 @@ enum param_id
 
   PRM_ID_ENABLE_MEMORY_MONITORING,
   PRM_ID_MAX_SUBQUERY_CACHE_SIZE,
+
+  PRM_ID_STORED_PROCEDURE,
+  PRM_ID_STORED_PROCEDURE_PORT,
+  PRM_ID_STORED_PROCEDURE_JVM_OPTIONS,
+  PRM_ID_STORED_PROCEDURE_DEBUG,
+  PRM_ID_STORED_PROCEDURE_UDS,
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_MAX_SUBQUERY_CACHE_SIZE
+  PRM_LAST_ID = PRM_ID_STORED_PROCEDURE_UDS
 };
 typedef enum param_id PARAM_ID;
 
@@ -571,6 +578,7 @@ extern "C"
 #define PRM_HAS_TIME_UNIT(x)      (x & PRM_TIME_UNIT)
 #define PRM_DIFFERENT_UNIT(x)     (x & PRM_DIFFER_UNIT)
 #define PRM_IS_FOR_HA_CONTEXT(x)  (x & PRM_FOR_HA_CONTEXT)
+#define PRM_IS_FOR_PL_CONTEXT(x)  (x & PRM_FOR_PL_CONTEXT)
 #define PRM_IS_GET_SERVER(x)      (x & PRM_GET_SERVER)
 #define PRM_IS_DEPRECATED(x)      (x & PRM_DEPRECATED)
 #define PRM_IS_OBSOLETED(x)       (x & PRM_OBSOLETED)
@@ -607,6 +615,8 @@ extern "C"
 #define PRM_GET_SERVER      0x00010000	/* return the value of server parameter from client/server parameter. Note that
 					 * this flag only can be set if the parameter has PRM_FOR_CLIENT,
 					 * PRM_FOR_SERVER, and PRM_USER_CHANGE flags. */
+
+#define PRM_FOR_PL_CONTEXT  0x00020000	/* is for PL parameter */
 
 #define PRM_DEPRECATED      0x40000000	/* is deprecated */
 #define PRM_OBSOLETED       0x80000000	/* is obsoleted */
@@ -729,6 +739,7 @@ extern "C"
   extern void xsysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE * prm_values);
   extern SYSPRM_ASSIGN_VALUE *xsysprm_get_force_server_parameters (void);
   extern void xsysprm_dump_server_parameters (FILE * fp);
+  extern SYSPRM_ASSIGN_VALUE *xsysprm_get_pl_context_parameters (void);
 #endif				/* !CS_MODE */
 
   extern int sysprm_set_force (const char *pname, const char *pvalue);

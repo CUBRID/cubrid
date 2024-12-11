@@ -54,6 +54,7 @@
 #include "query_executor.h"
 #include "thread_entry.hpp"
 #include "subquery_cache.h"
+#include "pl_executor.hpp"
 
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -4023,6 +4024,30 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      || REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
       break;
 
+    case TYPE_SP:		/* fetch stored procedure value */
+      {
+	/* clear any value from a previous iteration */
+	pr_clear_value (regu_var->value.sp_ptr->value);
+	fetch_force_not_const_recursive (*regu_var);
+
+	cubpl::executor executor (*regu_var->value.sp_ptr->sig);
+
+	error = executor.fetch_args_peek (regu_var->value.sp_ptr->args, vd, obj_oid, tpl);
+	if (error != NO_ERROR)
+	  {
+	    goto exit_on_error;
+	  }
+
+	error = executor.execute (*regu_var->value.sp_ptr->value);
+	if (error != NO_ERROR)
+	  {
+	    goto exit_on_error;
+	  }
+
+	*peek_dbval = regu_var->value.sp_ptr->value;
+      }
+      break;
+
     case TYPE_FUNC:		/* fetch function value */
       if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST))
 	{
@@ -4957,6 +4982,7 @@ fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
       case TYPE_INARITH:
       case TYPE_OUTARITH:
       case TYPE_FUNC:
+      case TYPE_SP:
         REGU_VARIABLE_SET_FLAG (&regu, REGU_VARIABLE_FETCH_NOT_CONST);
         break;
       default:

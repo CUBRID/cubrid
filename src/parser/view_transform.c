@@ -1632,7 +1632,7 @@ mq_substitute_spec_in_method_and_hints (PARSER_CONTEXT * parser, PT_NODE * node,
   switch (node->node_type)
     {
     case PT_METHOD_CALL:
-      if ((node->info.method_call.method_name)
+      if (PT_IS_METHOD (node) && (node->info.method_call.method_name)
 	  && (node->info.method_call.method_name->info.name.spec_id == info->old_id))
 	{
 	  node->info.method_call.method_name->info.name.spec_id = info->new_id;
@@ -3222,6 +3222,11 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 		      return NULL;
 		    }
 
+		  if (PT_IS_FOR_PL_COMPILE (parser) && sm_is_system_vclass (entity->info.name.original))
+		    {
+		      continue;
+		    }
+
 		  if (!fetch_for_update)
 		    {
 		      subquery = mq_fetch_subqueries (parser, entity);
@@ -3394,13 +3399,10 @@ mq_class_meth_corr_subq_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (node->node_type == PT_METHOD_CALL)
+  if (PT_IS_CLASS_METHOD (node))
     {
       /* found class method */
-      if (node->info.method_call.method_type == PT_IS_CLASS_MTHD)
-	{
-	  *found = true;
-	}
+      *found = true;
     }
   else if (pt_is_query (node))
     {
@@ -8364,7 +8366,7 @@ mq_reset_spec_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int 
 static PT_NODE *
 mq_reset_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
 {
-  if (node->node_type == PT_METHOD_CALL)
+  if (PT_IS_METHOD (node))
     {
       PT_NODE *method_name;
       method_name = node->info.method_call.method_name;

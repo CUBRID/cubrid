@@ -100,6 +100,10 @@ namespace cubmethod
       int get_num_markers ();
       bool get_is_occupied ();
       void set_is_occupied (bool flag);
+
+      TRANID get_tran_id ();
+      void set_tran_id (TRANID tid);
+
       DB_SESSION *get_db_session ();
       DB_QUERY_TYPE *get_column_info ();
 
@@ -148,6 +152,7 @@ namespace cubmethod
 
     private:
       int m_id;
+      TRANID m_tid;
 
       /* error */
       error_context &m_error_ctx;

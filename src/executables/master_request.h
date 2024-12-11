@@ -57,5 +57,4 @@ extern SOCKET_QUEUE_ENTRY *css_add_request_to_socket_queue (CSS_CONN_ENTRY * con
 							    SOCKET fd, int fd_type, int pid,
 							    SOCKET_QUEUE_ENTRY ** anchor_p);
 extern SOCKET_QUEUE_ENTRY *css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_p);
-extern void css_process_start_shutdown_by_name (char *server_name);
 #endif /* _MASTER_REQUEST_H_ */
