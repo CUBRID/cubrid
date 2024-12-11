@@ -46,7 +46,7 @@ class au_auth_accessor
 {
   private:
     // TODO: thread safe?
-    static MOP au_class_mop;
+    MOP m_au_class_mop;
 
     MOP m_au_obj;
 
@@ -72,9 +72,9 @@ class au_auth_accessor
     int update_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type, int grant_option);
     int delete_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type);
 
-    static MOP get_auth_class_mop ()
+    MOP get_auth_class_mop ()
     {
-      return au_class_mop;
+      return m_au_class_mop;
     }
 
     MOP get_auth_object ()

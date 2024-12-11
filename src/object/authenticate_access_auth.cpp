@@ -56,25 +56,24 @@ const int AU_TYPE_SET_LEN[] =
   strlen ("EXECUTE")		/* DB_AUTH_EXECUTE */
 };
 
-MOP au_auth_accessor::au_class_mop = nullptr;
-
 au_auth_accessor::au_auth_accessor ()
   : m_au_obj (nullptr)
+  , m_au_class_mop (nullptr)
 {}
 
 int
 au_auth_accessor::create_new_auth ()
 {
-  if (au_class_mop == nullptr)
+  if (m_au_class_mop == nullptr)
     {
-      au_class_mop = sm_find_class (CT_CLASSAUTH_NAME);
-      if (au_class_mop == NULL)
+      m_au_class_mop = sm_find_class (CT_CLASSAUTH_NAME);
+      if (m_au_class_mop == nullptr)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_CLASS, 1, CT_CLASSAUTH_NAME);
 	}
     }
 
-  m_au_obj = db_create_internal (au_class_mop);
+  m_au_obj = db_create_internal (m_au_class_mop);
   if (m_au_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
