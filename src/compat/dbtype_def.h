@@ -541,7 +541,7 @@ extern "C"
  * Change the maximum length of CHAR type to 2048 for memory allocation and performance.
  * Refer to CBRD-25713
  */
-#define DB_MAX_CHAR_PRECISION 2048
+#define DB_MAX_CHAR_PRECISION (DB_MAX_STRING_LENGTH/4)
 
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
