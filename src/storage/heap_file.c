@@ -3557,6 +3557,8 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   if (isnew_rec == true)
     {
       heap_hdr->estimates.num_recs += 1;
+
+      assert (!heap_is_big_length (newrec_size));
     }
   heap_hdr->estimates.recs_sumlen += (float) newrec_size;
 
