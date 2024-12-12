@@ -39,16 +39,26 @@
 #define STRFREE_W(string)                               \
   if (string != NULL) db_string_free((char *) (string))
 
-static int is_required_trigger (TR_TRIGGER * trigger, DB_OBJLIST * classes);
-static char *get_user_name (DB_OBJECT * user);
+static int is_required_trigger (TR_TRIGGER *trigger, DB_OBJLIST *classes);
+static char *get_user_name (DB_OBJECT *user);
 
-trigger_description::trigger_description ():name (0), event (0), class_name (0), attribute (0), full_event (0), status (0), priority (0), condition_time (0),
-condition (0), action_time (0), action (0), comment (0)
+trigger_description::trigger_description ()
+  : name (0)
+  , event (0)
+  , class_name (0)
+  , attribute (0)
+  , full_event (0)
+  , status (0)
+  , priority (0)
+  , condition_time (0)
+  , condition (0)
+  , action_time (0)
+  , action (0)
+  , comment (0)
 {
 }
 
-int
-trigger_description::init (const char *name)
+int trigger_description::init (const char *name)
 {
   struct db_object *trobj = tr_find_trigger (name);
 
@@ -60,8 +70,7 @@ trigger_description::init (const char *name)
   return init (trobj);
 }
 
-int
-trigger_description::init (struct db_object *trobj)
+int trigger_description::init (struct db_object *trobj)
 {
   assert (trobj != NULL);
 
@@ -177,8 +186,7 @@ trigger_description::~trigger_description ()
  *   name(in): trigger name
  *   file(in):
  */
-void
-trigger_description::fprint (FILE * file)
+void trigger_description::fprint (FILE *file)
 {
   if (name != NULL)
     {
@@ -227,7 +235,7 @@ trigger_description::fprint (FILE * file)
  *    quoted_id_flag(in):
  */
 int
-tr_dump_trigger (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * trigger_object)
+tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *trigger_object)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
@@ -358,7 +366,7 @@ tr_dump_trigger (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * 
  *    classes(in):
  */
 int
-tr_dump_selective_triggers (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
+tr_dump_selective_triggers (extract_context &ctxt, print_output &output_ctx, DB_OBJLIST *classes)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
@@ -448,7 +456,7 @@ tr_dump_selective_triggers (extract_context & ctxt, print_output & output_ctx, D
  *    classes(in):
  */
 static int
-is_required_trigger (TR_TRIGGER * trigger, DB_OBJLIST * classes)
+is_required_trigger (TR_TRIGGER *trigger, DB_OBJLIST *classes)
 {
   DB_OBJLIST *cl;
 
@@ -470,7 +478,7 @@ is_required_trigger (TR_TRIGGER * trigger, DB_OBJLIST * classes)
  *    user(in): user object
  */
 static char *
-get_user_name (DB_OBJECT * user)
+get_user_name (DB_OBJECT *user)
 {
 #define MAX_USER_NAME 32	/* actually its 8 */
 
