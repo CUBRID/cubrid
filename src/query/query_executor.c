@@ -1590,6 +1590,15 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
     case TYPE_OUTARITH:
       pg_cnt += qexec_clear_arith_list (thread_p, xasl_p, regu_var->value.arithptr, is_final);
       break;
+    case TYPE_SP:
+      pr_clear_value (regu_var->value.sp_ptr->value);
+      pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, regu_var->value.sp_ptr->args, is_final);
+      if (is_final)
+	{
+	  delete regu_var->value.sp_ptr->sig;
+	  regu_var->value.sp_ptr->sig = nullptr;
+	}
+      break;
     case TYPE_FUNC:
       pr_clear_value (regu_var->value.funcp->value);
       pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, regu_var->value.funcp->operand, is_final);
@@ -2101,6 +2110,11 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  break;
 	case TARGET_METHOD:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.method_node.method_regu_list, is_final);
+	  if (is_final)
+	    {
+	      delete p->s.method_node.sig_array;
+	      p->s.method_node.sig_array = NULL;
+	    }
 	  break;
 	case TARGET_REGUVAL_LIST:
 	  break;
@@ -9326,7 +9340,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
     case TARGET_METHOD:
       error_code =
 	scan_open_method_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-			       ACCESS_SPEC_METHOD_LIST_ID (curr_spec), ACCESS_SPEC_METHOD_SIG_LIST (curr_spec));
+			       ACCESS_SPEC_METHOD_LIST_ID (curr_spec), ACCESS_SPEC_METHOD_SIG_ARRAY (curr_spec));
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -10154,6 +10168,10 @@ qexec_reset_regu_variable (REGU_VARIABLE * var)
       qexec_reset_regu_variable (var->value.arithptr->rightptr);
       qexec_reset_regu_variable (var->value.arithptr->thirdptr);
       /* use arithptr */
+      break;
+    case TYPE_SP:
+      /* use sp_ptr */
+      qexec_reset_regu_variable_list (var->value.sp_ptr->args);
       break;
     case TYPE_FUNC:
       /* use funcp */
@@ -18854,6 +18872,17 @@ qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, regu_variable
       qexec_replace_prior_regu_vars_prior_expr (thread_p, regu->value.arithptr->thirdptr, xasl, connect_by_ptr);
       break;
 
+    case TYPE_SP:
+      {
+	REGU_VARIABLE_LIST r = regu->value.sp_ptr->args;
+	while (r)
+	  {
+	    qexec_replace_prior_regu_vars_prior_expr (thread_p, &r->value, xasl, connect_by_ptr);
+	    r = r->next;
+	  }
+      }
+      break;
+
     case TYPE_FUNC:
       {
 	REGU_VARIABLE_LIST r = regu->value.funcp->operand;
@@ -18899,6 +18928,17 @@ qexec_replace_prior_regu_vars (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu, XA
 	  qexec_replace_prior_regu_vars (thread_p, regu->value.arithptr->rightptr, xasl);
 	  qexec_replace_prior_regu_vars (thread_p, regu->value.arithptr->thirdptr, xasl);
 	}
+      break;
+
+    case TYPE_SP:
+      {
+	REGU_VARIABLE_LIST r = regu->value.sp_ptr->args;
+	while (r)
+	  {
+	    qexec_replace_prior_regu_vars (thread_p, &r->value, xasl);
+	    r = r->next;
+	  }
+      }
       break;
 
     case TYPE_FUNC:

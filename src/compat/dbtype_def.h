@@ -484,6 +484,17 @@ extern "C"
     DB_INSTANCE_OF_A_VCLASS_OF_A_CLASS = 'c',
     DB_INSTANCE_OF_A_VCLASS_OF_A_PROXY = 'd',
     DB_INSTANCE_OF_NONUPDATABLE_OBJECT = 'e'
+  } DB_INSTANCE_TYPE;
+
+  typedef enum
+  {
+    DB_OBJECT_UNKNOWN = -1,
+    DB_OBJECT_CLASS = 0,	/* TABLE, VIEW (_db_class) */
+    DB_OBJECT_TRIGGER = 1,	/* TRIGGER (_db_trigger) */
+    DB_OBJECT_SERIAL = 2,	/* SERIAL (db_serial) */
+    DB_OBJECT_SERVER = 3,	/* SERVER (db_server) */
+    DB_OBJECT_SYNONYM = 4,	/* SYNONYM (_db_synonym) */
+    DB_OBJECT_PROCEDURE = 5	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
   } DB_OBJECT_TYPE;
 
   /* session state id */
@@ -537,11 +548,10 @@ extern "C"
 /* The lower limit for a number that can be represented by a numeric type */
 #define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
 
-/*
- * Change the maximum length of CHAR type to 2048 for memory allocation and performance.
- * Refer to CBRD-25713
+/* The maximum precision of CHAR(n) domain that can be specified for an INTL_UTF8_MAX_CHAR_SIZE.
+ * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
  */
-#define DB_MAX_CHAR_PRECISION 2048
+#define DB_MAX_CHAR_PRECISION (DB_MAX_STRING_LENGTH/4)
 
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH

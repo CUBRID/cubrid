@@ -122,6 +122,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/printer.cpp
+  ${BASE_DIR}/process_util.c
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/sha1.c
@@ -187,6 +188,7 @@ set(CONNECTION_SOURCES
 
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_common.cpp
+  ${COMMUNICATION_DIR}/network_callback_cl.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
@@ -306,16 +308,15 @@ set(OBJECT_HEADERS
 )
 
 set(SP_SOURCES
-  ${SP_DIR}/jsp_cl.c
-  ${SP_DIR}/jsp_comm.c
-  ${SP_DIR}/jsp_file.c
+  ${SP_DIR}/jsp_cl.cpp
+  ${SP_DIR}/pl_signature.cpp
+  ${SP_DIR}/pl_comm.c
+  ${SP_DIR}/pl_struct_compile.cpp
+  ${SP_DIR}/sp_catalog.cpp
   )
 
 set(METHOD_SOURCES
-  ${METHOD_DIR}/method_connection_cl.cpp
-  ${METHOD_DIR}/method_compile_def.cpp
   ${METHOD_DIR}/method_callback.cpp
-  ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_oid_handler.cpp
   ${METHOD_DIR}/method_query_handler.cpp
@@ -554,14 +555,14 @@ if(WIN32)
   target_link_libraries(cubridcs LINK_PRIVATE ws2_32)
   set_target_properties(cubridcs PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridcs/cubridcs.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
-target_include_directories(cubridcs PRIVATE ${FLEX_INCLUDE_DIRS} ${EP_INCLUDES})
+target_include_directories(cubridcs PRIVATE ${FLEX_INCLUDE_DIRS} ${JAVA_INC} ${EP_INCLUDES})
 if(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridcs PUBLIC stdc++fs)
   target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubridcs LINK_PUBLIC rt)
 else(UNIX)
-  target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
+  target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS} ${JVM_LIBS})
 endif(UNIX)
 # for dblink
 target_link_libraries(cubridcs PUBLIC cascci)

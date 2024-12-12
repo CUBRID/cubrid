@@ -528,7 +528,7 @@ namespace cubschema
 	STATEMENT_ID stmt_id;
 	DB_VALUE value;
 	char select_query[DB_MAX_IDENTIFIER_LENGTH + 256] = { 0 };
-	constexpr int CNT_CATCLS_OBJECTS = 5;
+	constexpr int CNT_CATCLS_OBJECTS = 6;
 	DB_BIGINT cnt_refers = CNT_CATCLS_OBJECTS + 1;
 	int au_save;
 
@@ -544,13 +544,13 @@ namespace cubschema
 	 * To do this, we use an walkaround in which we count the number of general object domains in existing system catalogs
 	 * and if the SELECT result is over this, we asuume that there are some general object domain in some user class.
 	 *
-	 * The number is now 5 and hard-coded, so we MUST consider it when add or remove a general object domain in a system class.
+	 * The number is now 6 and hard-coded, so we MUST consider it when add or remove a general object domain in a system class.
 	 * If it is changed, we MUST also change the value of CNT_CATCLS_OBJECTS.
 	 *
-	 * We add a QA test case to confirm there are only 5 general object domains in system classes, which will help notice this constraint
+	 * We add a QA test case to confirm there are only 6 general object domains in system classes, which will help notice this constraint
 	 * and this test case also has to be changed along if CNT_CATCLS_OBJECTS is changed.
 	 *
-	 * See CBRD-23983 for the details.
+	 * See CBRD-23983 and CBRD-25697 for the details.
 	 */
 
 	AU_DISABLE (au_save);

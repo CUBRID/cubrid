@@ -215,12 +215,12 @@ $set 5 MSGCAT_SET_ERROR
 143 Encountered a class with no owner.
 144 Unable to access user object.
 145 Cannot issue grant/revoke commands to yourself.
-146 Cannot issue GRANT/REVOKE to owner of a class.
+146 Cannot issue GRANT/REVOKE to owner of a %1$s.
 147 No GRANT option.
 148 Cannot obtain write lock on authorization object.
 149 Cannot create instance of authorization object.
 150 Cannot revoke privileges from self.
-151 Cannot revoke privileges from owner of a class.
+151 Cannot revoke privileges from owner of a %1$s.
 152 GRANT not found.
 153 No authorization privileges in effect for the database.
 154 Incomplete authorization installation - no authorization privileges in effect for the database.
@@ -236,7 +236,7 @@ $set 5 MSGCAT_SET_ERROR
 164 User "%1$s" already exists.
 165 User "%1$s" is invalid.
 166 Invalid user specified.
-167 DBA, members of DBA group and class owner can perform the operation.
+167 DBA, members of DBA group and %1$s owner can perform the operation.
 168 Member not found.
 169 Cannot remove user %1$s from the database.
 170 No user logged in.
@@ -1452,8 +1452,12 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1361 Invalid result cache for subquery.
 
 1362 Locale '%1$s' is unavailable.
+1363 Dropping system generated stored procedure is not allowed.
+1364 PL/CSQL Stored procedure/function does not support Invoker's rights.
 
-1363 Last Error
+1365 Only DBA and the owner can grant the %1$s privilege.
+
+1366 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1949,6 +1953,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 324 '%1$s' is not a record variable.
 325 The argument specifying the language must be a string literal.
 
+325 The argument specifying the language must be a string literal.
+326 Stored procedure/function "%1$s" does not exist.
+327 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
+328 Only trailing default parameter is allowed: invalid at '%1$s'.
+329 Grant option is not allowed for %1$s.
+
+
+
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
 2 Transaction isolation level must be 4, 5 or 6.
@@ -2232,3 +2244,11 @@ including those from the current backup level and higher.\n
 28 The time(%1$s) specified must be after the time(%2$s) of the specified backup.\n
 29 COMMENT: Log archive %1$s, which contains log pages before %2$lld, is not needed any longer by any HA utilities.\n
 30 Number of active log archives has been exceeded the max desired number.
+
+$set 17 MSGCAT_SET_GLOSSARY
+1 class
+2 trigger
+3 serial
+4 server
+5 synonym
+6 procedure

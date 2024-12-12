@@ -66,7 +66,7 @@
 #include "log_manager.h"
 #include "network.h"
 #include "object_representation.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #include "show_scan.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -321,7 +321,7 @@ css_setup_server_loop (void)
 #endif /* not WINDOWS */
 
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS) || defined(HPUX))
-  if (!jsp_jvm_is_loaded ())
+  if (!pl_jvm_is_loaded ())
     {
       (void) os_set_signal_handler (SIGFPE, SIG_IGN);
     }

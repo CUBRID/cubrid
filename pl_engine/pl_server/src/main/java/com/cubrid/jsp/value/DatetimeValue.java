@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.sql.Date;
@@ -55,25 +56,10 @@ public class DatetimeValue extends Value {
         c.set(Calendar.MILLISECOND, msec);
 
         timestamp = new Timestamp(c.getTimeInMillis());
+        this.dbType = DBType.DB_DATETIME;
         if (!SpLib.checkDatetime(timestamp)) {
             throw new TypeMismatchException("invalid Datetime " + timestamp);
         }
-    }
-
-    public DatetimeValue(
-            int year, int mon, int day, int hour, int min, int sec, int msec, int mode, int dbType)
-            throws TypeMismatchException {
-        super(mode);
-
-        Calendar c = Calendar.getInstance();
-        c.set(year, mon, day, hour, min, sec);
-        c.set(Calendar.MILLISECOND, msec);
-
-        timestamp = new Timestamp(c.getTimeInMillis());
-        if (!SpLib.checkDatetime(timestamp)) {
-            throw new TypeMismatchException("invalid Datetime " + timestamp);
-        }
-        this.dbType = dbType;
     }
 
     public DatetimeValue(Timestamp timestamp) throws TypeMismatchException {
@@ -81,6 +67,7 @@ public class DatetimeValue extends Value {
             throw new TypeMismatchException("invalid Datetime " + timestamp);
         }
         this.timestamp = timestamp;
+        this.dbType = DBType.DB_DATETIME;
     }
 
     @Override

@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.math.BigDecimal;
@@ -51,15 +52,7 @@ public class FloatValue extends Value {
             throw new TypeMismatchException("invalid float " + value);
         }
         this.value = value;
-    }
-
-    public FloatValue(float value, int mode, int dbType) throws TypeMismatchException {
-        super(mode);
-        if (!Float.isFinite(value)) {
-            throw new TypeMismatchException("invalid float " + value);
-        }
-        this.value = value;
-        this.dbType = dbType;
+        this.dbType = DBType.DB_FLOAT;
     }
 
     @Override

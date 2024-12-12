@@ -12,6 +12,7 @@ test_defaults: &test_defaults
         shell: /bin/bash
         environment:
           _JAVA_OPTIONS: -Xmx1g
+          BRANCH_TESTCASES: feature/plcsql-p1
         command: |
           ulimit -c 1
           /entrypoint.sh checkout
@@ -50,7 +51,7 @@ jobs:
   build:
     <<: *defaults
     environment:
-      MAKEFLAGS: -j 10
+      MAKEFLAGS: -j 8
     resource_class: large
     steps:
       - checkout
@@ -149,4 +150,6 @@ workflows:
           requires:
             - build
 
-      - build-windows
+      - build-windows:
+          requires:
+            - build

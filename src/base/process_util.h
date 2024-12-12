@@ -24,8 +24,11 @@
 #ifndef _PROCESS_UTIL_H_
 #define _PROCESS_UTIL_H_
 
-int
-create_child_process (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file,
-		      char *stderr_file, int *exit_status);
+#include "porting.h"
 
+EXPORT_IMPORT int create_child_process (const char *path, const char *const argv[], int wait_flag,
+					const char *stdin_file, char *stdout_file, char *stderr_file, int *exit_status);
+
+EXPORT_IMPORT bool is_terminated_process (const int pid);
+EXPORT_IMPORT void terminate_process (const int pid);
 #endif /* _PROCESS_UTIL_H_ */

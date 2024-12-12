@@ -555,7 +555,7 @@ net_server_init (void)
   /* JSP */
   req_p = &net_Requests[NET_SERVER_JSP_GET_SERVER_PORT];
   req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = sjsp_get_server_port;
+  req_p->processing_function = spl_get_server_port;
 
   /* replication */
   req_p = &net_Requests[NET_SERVER_REPL_INFO];
@@ -712,9 +712,9 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_VACUUM_DUMP];
   req_p->processing_function = svacuum_dump;
 
-  req_p = &net_Requests[NET_SERVER_METHOD_FOLD_CONSTANTS];
+  req_p = &net_Requests[NET_SERVER_PL_CALL];
   req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = smethod_invoke_fold_constants;
+  req_p->processing_function = spl_call;
 
   req_p = &net_Requests[NET_SERVER_SUPPLEMENT_STMT];
   req_p->processing_function = slog_supplement_statement;
