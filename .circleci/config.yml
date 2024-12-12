@@ -51,7 +51,7 @@ jobs:
     <<: *defaults
     environment:
       MAKEFLAGS: -j 10
-    resource_class: large
+    resource_class: xlarge
     steps:
       - checkout
       - run:
