@@ -1156,17 +1156,17 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
                              "[owner], "
 			     "[is_public], "
 			     "[target_name], "
-			     "LOWER([target_owner].[name]), "
+			     "DECODE((SELECT 1 from [_db_class] WHERE [class_name] = [target_name] and [is_system_class] = 1), NULL, LOWER([target_owner].[name]), '') target_owner, "
 			     "[comment] "
-			"FROM [_db_synonym]";
+			  "FROM [_db_synonym]";
 
   const char *query_user = "SELECT [unique_name], "
-                               "[owner], "
-                               "[is_public], "
-                               "[target_name], "
-			       "LOWER([target_owner].[name]), "
-                               "[comment] "
-                           "FROM [_db_synonym]"
+                             "[owner], "
+			     "[is_public], "
+			     "[target_name], "
+			     "DECODE((SELECT 1 from [_db_class] WHERE [class_name] = [target_name] and [is_system_class] = 1), NULL, LOWER([target_owner].[name]), '') target_owner, "
+			     "[comment] "
+			   "FROM [_db_synonym]";
                            "WHERE [owner].[name] = '%s'";
   // *INDENT-ON*
 
@@ -1323,9 +1323,16 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	  PRINT_OWNER_NAME (synonym_owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), synonym_output_owner,
 			    sizeof (synonym_owner_name));
 
-	  output_ctx (" SYNONYM %s%s%s%s FOR %s%s%s.%s%s%s", synonym_output_owner,
-		      PRINT_IDENTIFIER (synonym_name), PRINT_IDENTIFIER (target_owner_name),
-		      PRINT_IDENTIFIER (target_name));
+	  output_ctx (" SYNONYM %s%s%s%s FOR ", synonym_output_owner, PRINT_IDENTIFIER (synonym_name));
+
+	  if (target_owner_name[0] == 0x00)
+	    {
+	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (target_name));
+	    }
+	  else
+	    {
+	      output_ctx ("%s%s%s.%s%s%s", PRINT_IDENTIFIER (target_owner_name), PRINT_IDENTIFIER (target_name));
+	    }
 
 	  if (DB_IS_NULL (&values[SYNONYM_COMMENT]) == false)
 	    {
