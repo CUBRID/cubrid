@@ -62,11 +62,12 @@ xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
  *  return	    : error code
  *  id (in) : session id
  *  thread_p (in)
+ *  is_keep_session (in) : whether to keep the session
  */
 int
-xsession_end_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
+xsession_end_session (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_keep_session)
 {
-  return session_state_destroy (thread_p, id);
+  return session_state_destroy (thread_p, id, is_keep_session);
 }
 
 /*

@@ -101,6 +101,8 @@ static int net_Deferred_end_queries_count = 0;
  */
 unsigned int db_on_server = 0;
 
+extern bool db_Keep_session;
+
 #if defined(CS_MODE)
 static char *pack_const_string (char *buffer, const char *cstring);
 static char *pack_string_with_null_padding (char *buffer, const char *stream, int len);
@@ -4742,7 +4744,7 @@ csession_end_session (SESSION_ID session_id)
   int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
   char *request;
   char *ptr;
 
@@ -4750,6 +4752,7 @@ csession_end_session (SESSION_ID session_id)
   request = OR_ALIGNED_BUF_START (a_request);
 
   ptr = or_pack_int (request, session_id);
+  ptr = or_pack_int (ptr, db_Keep_session);
 
   req_error =
     net_client_request (NET_SERVER_SES_END_SESSION, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
@@ -4765,7 +4768,7 @@ csession_end_session (SESSION_ID session_id)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  result = xsession_end_session (thread_p, session_id);
+  result = xsession_end_session (thread_p, session_id, db_Keep_session);
 
   exit_server (*thread_p);
 

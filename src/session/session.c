@@ -118,6 +118,7 @@ struct session_state
   pthread_mutex_t mutex;	/* state mutex */
   UINT64 del_id;		/* delete transaction ID (for lock free) */
 
+  bool is_keep_session;
   bool is_trigger_involved;
   bool is_last_insert_id_generated;
   bool auto_commit;
@@ -302,6 +303,7 @@ session_state_init (void *st)
   /* initialize fields */
   db_make_null (&session_p->cur_insert_id);
   db_make_null (&session_p->last_insert_id);
+  session_p->is_keep_session = false;
   session_p->is_trigger_involved = false;
   session_p->is_last_insert_id_generated = false;
   session_p->row_count = -1;
@@ -743,9 +745,10 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
  * session_state_destroy () - close a session state
  *   return	    : NO_ERROR or error code
  *   id(in) : the identifier for the session
+ *   is_keep_session(in) : whether to keep the session
  */
 int
-session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
+session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_keep_session)
 {
   SESSION_STATE *session_p;
   int error = NO_ERROR, success = 0;
@@ -760,6 +763,13 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_SES_SESSION_EXPIRED;
+    }
+
+  if (is_keep_session == true)
+    {
+      session_p->is_keep_session = true;
+      pthread_mutex_unlock (&session_p->mutex);
+      return NO_ERROR;
     }
 
 #if defined (SERVER_MODE)
@@ -936,8 +946,17 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 
 	      expired_sid_buffer[n_expired_sids++] = state->id;
 
-	      /* Destroy the session related resources like session parameters */
-	      (void) session_state_uninit (state);
+	      if (state->is_keep_session == true)
+		{
+		  /* keep session */
+		  pthread_mutex_unlock (&state->mutex);
+		  continue;
+		}
+	      else
+		{
+		  /* Destroy the session related resources like session parameters */
+		  (void) session_state_uninit (state);
+		}
 
 	      if (n_expired_sids == EXPIRED_SESSION_BUFFER_SIZE)
 		{

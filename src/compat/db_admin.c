@@ -101,6 +101,8 @@ struct db_host_status_list
  The macros for testing this variable were moved to db.h so the query
  interface functions can use them as well. */
 
+extern bool db_Keep_session;
+
 char db_Database_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 char db_Program_name[PATH_MAX];
 char db_Client_ip_addr[16] = { 0 };

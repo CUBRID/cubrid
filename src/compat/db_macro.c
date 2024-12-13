@@ -90,6 +90,7 @@ int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 #endif
 int db_Disable_modifications = 0;
+bool db_Keep_session = false;
 
 static int transfer_string (char *dst, int *xflen, int *outlen,
 			    const int dstlen, const char *src,
