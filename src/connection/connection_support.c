@@ -84,6 +84,8 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "show_scan.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined(CS_MODE)
 extern bool tran_is_in_libcas (void);

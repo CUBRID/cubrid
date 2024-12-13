@@ -30,12 +30,14 @@
 #include "access_json_table.hpp"
 #include "access_spec.hpp"
 #include "memory_hash.h"
-#include "method_def.hpp"
+
+#include "query_hash_scan.h"
 #include "query_list.h"
 #include "regu_var.hpp"
 #include "storage_common.h"
 #include "string_opfunc.h"
 #include "subquery_cache.h"
+#include "pl_signature.hpp"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "external_sort.h"
@@ -46,6 +48,7 @@
 #include "object_representation_sr.h"
 #include "scan_manager.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "memory_cwrapper.h"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 // forward definition
@@ -181,6 +184,7 @@ typedef enum
   BUILDVALUE_PROC,
   SCAN_PROC,
   MERGELIST_PROC,
+  HASHJOIN_PROC,
   UPDATE_PROC,
   DELETE_PROC,
   INSERT_PROC,
@@ -365,6 +369,92 @@ struct mergelist_proc_node
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
 };
 
+typedef struct hashjoin_input HASHJOIN_INPUT;
+struct hashjoin_input
+{
+  XASL_NODE *xasl;
+  ACCESS_SPEC_TYPE *spec_list;
+  VAL_LIST *val_list;
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  TP_DOMAIN **domains;
+  int *value_indexes;
+#endif
+};
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+typedef struct hashjoin_stats HASHJOIN_STATS;
+struct hashjoin_stats
+{
+  HASH_METHOD hash_method;
+
+  struct
+  {
+    struct timeval elapsed_time;
+    struct timeval build_time;
+    UINT64 fetches;
+    UINT64 fetch_time;
+    UINT64 ioreads;
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+    struct
+    {
+      struct timeval fetch;	/* qexec_hash_join_fetch_key */
+      struct timeval hash;	/* qdata_hash_scan_key */
+      struct timeval insert;	/* qexec_hash_join_build_key */
+    } profile;
+#endif
+  } build;
+
+  struct
+  {
+    struct timeval elapsed_time;
+    struct timeval probe_time;
+    UINT64 fetches;
+    UINT64 fetch_time;
+    UINT64 ioreads;
+    UINT64 readkeys;
+    UINT64 rows;
+    UINT32 max_collisions;
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+    struct
+    {
+      struct timeval fetch;	/* qexec_hash_join_fetch_key */
+      struct timeval hash;	/* qdata_hash_scan_key */
+      struct timeval search;	/* qexec_hash_join_probe_key */
+      struct timeval match;	/* qexec_hash_join_fetch_key */
+      struct timeval add;	/* qexec_merge_tuple_add_list */
+    } profile;
+#endif
+  } probe;
+};
+#endif
+
+typedef struct hashjoin_proc_node HASHJOIN_PROC_NODE;
+struct hashjoin_proc_node
+{
+  HASHJOIN_INPUT outer;
+  HASHJOIN_INPUT inner;
+
+  QFILE_LIST_MERGE_INFO merge_info;
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  HASHJOIN_STATS stats;
+
+  HASH_LIST_SCAN hash_scan;
+
+  HASHJOIN_INPUT *build;
+  HASHJOIN_INPUT *probe;
+
+  /* The common domains between the domains of values used in the build and probe inputs. */
+  TP_DOMAIN **coerce_domains;
+
+  /* Whether there is a need to use the coerce domain. */
+  bool need_coerce_domains;
+#endif
+};
+
 typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node
 {
@@ -521,23 +611,21 @@ struct cte_proc_node
 		      /* execute xasl for subquery's result-cache */ \
 		      if (qexec_execute_subquery_for_result_cache ((thread_p), _x, (v)->xasl_state) != NO_ERROR) \
 			{ \
-			  /* execute without result-cache */ \
-			  free_and_init (_x->sub_xasl_id); \
-		  	  if (qexec_execute_mainblock ((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR) \
-		    	    { \
-		      	      (_x)->status = XASL_FAILURE; \
-			    } \
+			  _x->status = XASL_FAILURE; \
 			} \
 		      /* fetch the single tuple from list_id */ \
-		      else if (_x->status == XASL_SUCCESS) \
+		      else \
 		        { \
-		          if (qdata_get_single_tuple_from_list_id ((thread_p), _x->list_id, _x->single_tuple) != NO_ERROR) \
+			  if (_x->single_tuple) \
 			    { \
-		              _x->status = XASL_FAILURE; \
-			    } \
-		          else \
-			    { \
-		              (r)->value.dbvalptr = _x->single_tuple->valp->val; \
+		              if (qdata_get_single_tuple_from_list_id ((thread_p), _x->list_id, _x->single_tuple) != NO_ERROR) \
+			        { \
+		                  _x->status = XASL_FAILURE; \
+			        } \
+		              else \
+			        { \
+		                  (r)->value.dbvalptr = _x->single_tuple->valp->val; \
+			        } \
 			    } \
 		        } \
 		    } \
@@ -804,7 +892,7 @@ struct method_spec_node
   XASL_NODE *xasl_node;		/* the XASL node that contains the */
   /* list file ID for the method */
   /* arguments */
-  METHOD_SIG_LIST *method_sig_list;	/* method signature list */
+  PL_SIGNATURE_ARRAY_TYPE *sig_array;	/* method signature array */
 };
 
 struct dblink_spec_node
@@ -897,8 +985,8 @@ union hybrid_node
 #define ACCESS_SPEC_METHOD_REGU_LIST(ptr) \
         ((ptr)->s.method_node.method_regu_list)
 
-#define ACCESS_SPEC_METHOD_SIG_LIST(ptr) \
-        ((ptr)->s.method_node.method_sig_list)
+#define ACCESS_SPEC_METHOD_SIG_ARRAY(ptr) \
+        ((ptr)->s.method_node.sig_array)
 
 #define ACCESS_SPEC_METHOD_LIST_ID(ptr) \
         (ACCESS_SPEC_METHOD_XASL_NODE(ptr)->list_id)
@@ -1030,6 +1118,7 @@ struct xasl_node
   XASL_NODE *aptr_list;		/* CTEs and uncorrelated subquery. CTEs are guaranteed always before the subqueries */
   XASL_NODE *bptr_list;		/* OBJFETCH_PROC list */
   XASL_NODE *dptr_list;		/* corr. subquery list */
+  PRED_EXPR *during_join_pred;	/* during-join predicate */
   PRED_EXPR *after_join_pred;	/* after-join predicate */
   PRED_EXPR *if_pred;		/* if predicate */
   PRED_EXPR *instnum_pred;	/* inst_num() predicate */
@@ -1074,6 +1163,7 @@ struct xasl_node
     BUILDLIST_PROC_NODE buildlist;	/* BUILDLIST_PROC */
     BUILDVALUE_PROC_NODE buildvalue;	/* BUILDVALUE_PROC */
     MERGELIST_PROC_NODE mergelist;	/* MERGELIST_PROC */
+    HASHJOIN_PROC_NODE hashjoin;	/* HASHJOIN_PROC */
     UPDATE_PROC_NODE update;	/* UPDATE_PROC */
     INSERT_PROC_NODE insert;	/* INSERT_PROC */
     DELETE_PROC_NODE delete_;	/* DELETE_PROC */

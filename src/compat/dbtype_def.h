@@ -484,6 +484,17 @@ extern "C"
     DB_INSTANCE_OF_A_VCLASS_OF_A_CLASS = 'c',
     DB_INSTANCE_OF_A_VCLASS_OF_A_PROXY = 'd',
     DB_INSTANCE_OF_NONUPDATABLE_OBJECT = 'e'
+  } DB_INSTANCE_TYPE;
+
+  typedef enum
+  {
+    DB_OBJECT_UNKNOWN = -1,
+    DB_OBJECT_CLASS = 0,	/* TABLE, VIEW (_db_class) */
+    DB_OBJECT_TRIGGER = 1,	/* TRIGGER (_db_trigger) */
+    DB_OBJECT_SERIAL = 2,	/* SERIAL (db_serial) */
+    DB_OBJECT_SERVER = 3,	/* SERVER (db_server) */
+    DB_OBJECT_SYNONYM = 4,	/* SYNONYM (_db_synonym) */
+    DB_OBJECT_PROCEDURE = 5	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
   } DB_OBJECT_TYPE;
 
   /* session state id */
@@ -877,12 +888,6 @@ extern "C"
     MIN_MAX_COLUMN_INFO min_max_val;	/* info about coerced column */
   };
 
-  /*
-   * DB_ELO
-   * This is the run-time state structure for an ELO. The ELO is part of the implementation of large object type and not intended
-   * to be used directly by the API.
-   */
-
   typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
   struct vpid
   {
@@ -942,6 +947,12 @@ extern "C"
   };
 #define VSID_INITIALIZER { NULL_SECTID, NULL_VOLID }
 #define VSID_AS_ARGS(vsidp) (vsidp)->volid, (vsidp)->sectid
+
+  /*
+   * DB_ELO
+   * This is the run-time state structure for an ELO. The ELO is part of the implementation of large object type and not intended
+   * to be used directly by the API.
+   */
 
   typedef struct db_elo DB_ELO;
 

@@ -42,9 +42,14 @@
 #include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
 #include "xasl_unpack_info.hpp"
+#include "pl_signature.hpp"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg);
 static AGGREGATE_TYPE *stx_restore_aggregate_type (THREAD_ENTRY * thread_p, char *ptr);
+static SP_TYPE *stx_restore_sp_type (THREAD_ENTRY * thread_p, char *ptr);
 static FUNCTION_TYPE *stx_restore_function_type (THREAD_ENTRY * thread_p, char *ptr);
 static ANALYTIC_TYPE *stx_restore_analytic_type (THREAD_ENTRY * thread_p, char *ptr);
 static ANALYTIC_EVAL_TYPE *stx_restore_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr);
@@ -74,8 +79,10 @@ static HEAP_CACHE_ATTRINFO *stx_restore_cache_attrinfo (THREAD_ENTRY * thread_p,
 static DB_VALUE **stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr, int size, int total_size);
 static int *stx_restore_int_array (THREAD_ENTRY * thread_p, char *ptr, int size);
 static OID *stx_restore_OID_array (THREAD_ENTRY * thread_p, char *ptr, int size);
-static METHOD_SIG_LIST *stx_restore_method_sig_list (THREAD_ENTRY * thread_p, char *ptr);
-static METHOD_SIG *stx_restore_method_sig (THREAD_ENTRY * thread_p, char *ptr, int size);
+
+static PL_SIGNATURE_ARRAY_TYPE *stx_restore_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr);
+static PL_SIGNATURE_TYPE *stx_restore_pl_sig (THREAD_ENTRY * thread_p, char *ptr);
+
 static KEY_RANGE *stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr, int size);
 
 static char *stx_build_xasl_node (THREAD_ENTRY * thread_p, char *tmp, XASL_NODE * ptr);
@@ -85,13 +92,16 @@ static char *stx_build_func_pred (THREAD_ENTRY * thread_p, char *tmp, FUNC_PRED 
 static char *stx_build_cache_attrinfo (char *tmp);
 static char *stx_build_list_id (THREAD_ENTRY * thread_p, char *tmp, QFILE_LIST_ID * ptr);
 static char *stx_build_sub_xasl_id (THREAD_ENTRY * thread_p, char *tmp, XASL_ID * ptr);
-static char *stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *tmp, METHOD_SIG_LIST * ptr);
-static char *stx_build_method_sig (THREAD_ENTRY * thread_p, char *tmp, METHOD_SIG * ptr, int size);
+
+static char *stx_build_pl_sig (THREAD_ENTRY * thread_p, char *ptr, PL_SIGNATURE_TYPE * sig);
+static char *stx_build_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr, PL_SIGNATURE_ARRAY_TYPE * sig_array);
+
 static char *stx_build_union_proc (THREAD_ENTRY * thread_p, char *tmp, UNION_PROC_NODE * ptr);
 static char *stx_build_fetch_proc (THREAD_ENTRY * thread_p, char *tmp, FETCH_PROC_NODE * ptr);
 static char *stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDLIST_PROC_NODE * ptr);
 static char *stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDVALUE_PROC_NODE * ptr);
 static char *stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *tmp, MERGELIST_PROC_NODE * ptr);
+static char *stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * node_p);
 static char *stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *tmp, QFILE_LIST_MERGE_INFO * ptr);
 static char *stx_build_update_class_info (THREAD_ENTRY * thread_p, char *tmp, UPDDEL_CLASS_INFO * ptr);
 static char *stx_build_update_assignment (THREAD_ENTRY * thread_p, char *tmp, UPDATE_ASSIGNMENT * ptr);
@@ -137,6 +147,7 @@ static char *stx_build_srlist_id (THREAD_ENTRY * thread_p, char *tmp, QFILE_SORT
 static char *stx_build_sort_list (THREAD_ENTRY * thread_p, char *tmp, SORT_LIST * ptr);
 static char *stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *tmp, CONNECTBY_PROC_NODE * ptr);
 static char *stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p);
+static char *stx_build_sp_type (THREAD_ENTRY * thread_p, char *tmp, SP_TYPE * ptr);
 
 static REGU_VALUE_LIST *stx_regu_value_list_alloc_and_init (THREAD_ENTRY * thread_p);
 static REGU_VALUE_ITEM *stx_regu_value_item_alloc_and_init (THREAD_ENTRY * thread_p);
@@ -419,6 +430,37 @@ stx_restore_aggregate_type (THREAD_ENTRY * thread_p, char *ptr)
     }
 
   return aggregate;
+}
+
+static SP_TYPE *
+stx_restore_sp_type (THREAD_ENTRY * thread_p, char *ptr)
+{
+  SP_TYPE *sp;
+
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  sp = (SP_TYPE *) stx_get_struct_visited_ptr (thread_p, ptr);
+  if (sp != NULL)
+    {
+      return sp;
+    }
+
+  sp = (SP_TYPE *) stx_alloc_struct (thread_p, sizeof (*sp));
+  if (sp == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
+    }
+
+  if (stx_mark_struct_visited (thread_p, ptr, sp) == ER_FAILED || stx_build_sp_type (thread_p, ptr, sp) == NULL)
+    {
+      return NULL;
+    }
+
+  return sp;
 }
 
 static FUNCTION_TYPE *
@@ -1195,74 +1237,82 @@ stx_restore_list_id (THREAD_ENTRY * thread_p, char *ptr)
 }
 
 /*
- * stx_restore_method_sig_list () -
+ * stx_restore_pl_sig () -
  *
- * Note: do not use or_unpack_method_sig_list ()
  */
-static METHOD_SIG_LIST *
-stx_restore_method_sig_list (THREAD_ENTRY * thread_p, char *ptr)
+static PL_SIGNATURE_TYPE *
+stx_restore_pl_sig (THREAD_ENTRY * thread_p, char *ptr)
 {
-  METHOD_SIG_LIST *method_sig_list;
+  PL_SIGNATURE_TYPE *sig = NULL;
 
   if (ptr == NULL)
     {
       return NULL;
     }
 
-  method_sig_list = (METHOD_SIG_LIST *) stx_get_struct_visited_ptr (thread_p, ptr);
-  if (method_sig_list != NULL)
+  sig = (PL_SIGNATURE_TYPE *) stx_get_struct_visited_ptr (thread_p, ptr);
+  if (sig != NULL)
     {
-      return method_sig_list;
+      return sig;
     }
 
-  method_sig_list = (METHOD_SIG_LIST *) stx_alloc_struct (thread_p, sizeof (METHOD_SIG_LIST));
-  if (method_sig_list == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-  if (stx_mark_struct_visited (thread_p, ptr, method_sig_list) == ER_FAILED
-      || stx_build_method_sig_list (thread_p, ptr, method_sig_list) == NULL)
+  //sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_ARRAY_TYPE));
+  //if (sig_array == NULL)
+  //  {
+  //   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  //   return NULL;
+  // }
+  sig = new PL_SIGNATURE_TYPE;
+
+  // new (sig_array) PL_SIGNATURE_ARRAY_TYPE;
+
+  if (stx_mark_struct_visited (thread_p, ptr, sig) == ER_FAILED || stx_build_pl_sig (thread_p, ptr, sig) == NULL)
     {
       return NULL;
     }
 
-  return method_sig_list;
+  return sig;
 }
 
-static METHOD_SIG *
-stx_restore_method_sig (THREAD_ENTRY * thread_p, char *ptr, int count)
+/*
+ * stx_restore_pl_sig_array () -
+ *
+ */
+static PL_SIGNATURE_ARRAY_TYPE *
+stx_restore_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr)
 {
-  METHOD_SIG *method_sig;
+  PL_SIGNATURE_ARRAY_TYPE *sig_array = NULL;
 
   if (ptr == NULL)
     {
-      assert (count == 0);
       return NULL;
     }
 
-  assert (count > 0);
-
-  method_sig = (METHOD_SIG *) stx_get_struct_visited_ptr (thread_p, ptr);
-  if (method_sig != NULL)
+  sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_get_struct_visited_ptr (thread_p, ptr);
+  if (sig_array != NULL)
     {
-      return method_sig;
+      return sig_array;
     }
 
-  method_sig = (METHOD_SIG *) stx_alloc_struct (thread_p, sizeof (METHOD_SIG));
-  if (method_sig == NULL)
+#if 0
+  sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_ARRAY_TYPE));
+  if (sig_array == NULL)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       return NULL;
     }
+  new (sig_array) PL_SIGNATURE_ARRAY_TYPE;
+#endif
 
-  if (stx_mark_struct_visited (thread_p, ptr, method_sig) == ER_FAILED
-      || stx_build_method_sig (thread_p, ptr, method_sig, count) == NULL)
+  sig_array = new PL_SIGNATURE_ARRAY_TYPE;
+
+  if (stx_mark_struct_visited (thread_p, ptr, sig_array) == ER_FAILED ||
+      stx_build_pl_sig_array (thread_p, ptr, sig_array) == NULL)
     {
       return NULL;
     }
 
-  return method_sig;
+  return sig_array;
 }
 
 static DB_VALUE **
@@ -1948,6 +1998,20 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
+      xasl->during_join_pred = NULL;
+    }
+  else
+    {
+      xasl->during_join_pred = stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->during_join_pred == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
       xasl->after_join_pred = NULL;
     }
   else
@@ -2207,6 +2271,10 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       ptr = stx_build_mergelist_proc (thread_p, ptr, &xasl->proc.mergelist);
       break;
 
+    case HASHJOIN_PROC:
+      ptr = stx_build_hashjoin_proc (thread_p, ptr, &xasl->proc.hashjoin);
+      break;
+
     case UPDATE_PROC:
       ptr = stx_build_update_proc (thread_p, ptr, &xasl->proc.update);
       break;
@@ -2255,6 +2323,9 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     {
       return NULL;
     }
+
+  /* Prevent faults when qdump_print_xasl is called. */
+  xasl->n_oid_list = 0;
 
   ptr = or_unpack_int (ptr, &tmp);
   xasl->iscan_oid_order = (bool) tmp;
@@ -2497,129 +2568,30 @@ error:
   return NULL;
 }
 
+// FIXME: use template
 static char *
-stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG_LIST * method_sig_list)
+stx_build_pl_sig (THREAD_ENTRY * thread_p, char *ptr, PL_SIGNATURE_TYPE * sig)
 {
-  int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  int size, offset;
 
-  ptr = or_unpack_int (ptr, (int *) &method_sig_list->num_methods);
+  ptr = or_unpack_int (ptr, (int *) &size);
+  packing_unpacker unpacker (ptr, size);
+  unpacker.unpack_all (*sig);
 
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      method_sig_list->method_sig = NULL;
-    }
-  else
-    {
-      method_sig_list->method_sig =
-	stx_restore_method_sig (thread_p, &xasl_unpack_info->packed_xasl[offset], method_sig_list->num_methods);
-      if (method_sig_list->method_sig == NULL)
-	{
-	  goto error;
-	}
-    }
-
-#if !defined(NDEBUG)
-  {
-    int i = 0;
-    METHOD_SIG *sig;
-
-    for (sig = method_sig_list->method_sig; sig; sig = sig->next)
-      {
-	i++;
-      }
-    assert (method_sig_list->num_methods == i);
-  }
-#endif
-
-  return ptr;
-
-error:
-  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-  return NULL;
+  return (char *) unpacker.get_curr_ptr ();
 }
 
+// FIXME: use template
 static char *
-stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_sig, int count)
+stx_build_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr, PL_SIGNATURE_ARRAY_TYPE * sig_array)
 {
-  int offset;
-  int num_args, n;
-  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  int size, offset;
 
-  method_sig->method_name = stx_restore_string (thread_p, ptr);
-  if (method_sig->method_name == NULL)
-    {
-      assert (false);
-      goto error;
-    }
+  ptr = or_unpack_int (ptr, (int *) &size);
+  packing_unpacker unpacker (ptr, size);
+  unpacker.unpack_all (*sig_array);
 
-  ptr = or_unpack_int (ptr, (int *) &method_sig->method_type);
-  ptr = or_unpack_int (ptr, &method_sig->num_method_args);
-
-  num_args = method_sig->num_method_args + 1;
-
-  method_sig->method_arg_pos = (int *) stx_alloc_struct (thread_p, sizeof (int) * num_args);
-  if (method_sig->method_arg_pos == NULL)
-    {
-      goto error;
-    }
-
-  for (n = 0; n < num_args; n++)
-    {
-      ptr = or_unpack_int (ptr, &(method_sig->method_arg_pos[n]));
-    }
-
-  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
-    {
-      method_sig->arg_info.arg_mode = (int *) stx_alloc_struct (thread_p, sizeof (int) * method_sig->num_method_args);
-      if (method_sig->arg_info.arg_mode == NULL)
-	{
-	  goto error;
-	}
-
-      method_sig->arg_info.arg_type = (int *) stx_alloc_struct (thread_p, sizeof (int) * method_sig->num_method_args);
-      if (method_sig->arg_info.arg_type == NULL)
-	{
-	  goto error;
-	}
-
-      for (n = 0; n < method_sig->num_method_args; n++)
-	{
-	  ptr = or_unpack_int (ptr, &method_sig->arg_info.arg_mode[n]);
-	}
-      for (n = 0; n < method_sig->num_method_args; n++)
-	{
-	  ptr = or_unpack_int (ptr, &method_sig->arg_info.arg_type[n]);
-	}
-
-      ptr = or_unpack_int (ptr, &method_sig->arg_info.result_type);
-    }
-  else				/* method */
-    {
-      /* is can be null */
-      method_sig->class_name = stx_restore_string (thread_p, ptr);
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      method_sig->next = NULL;
-    }
-  else
-    {
-      method_sig->next = stx_restore_method_sig (thread_p, &xasl_unpack_info->packed_xasl[offset], count - 1);
-      if (method_sig->next == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  return ptr;
-
-error:
-  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-  return NULL;
+  return (char *) unpacker.get_curr_ptr ();
 }
 
 static char *
@@ -3175,6 +3147,162 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr, MERGELIST_PROC_NOD
 
 error:
   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
+}
+
+/*
+ * stx_build_hashjoin_proc () -
+ *   return: The buffer pointer after the unpacked XASL node.
+ *   thread_p(in): The current thread entry.
+ *   ptr(in): The buffer pointer where the XASL node is packed.
+ *   node_p(in): The pointer to the unpacked XASL node.
+ */
+static char *
+stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * node_p)
+{
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  int offset;
+
+  int error = NO_ERROR;
+
+  memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
+
+  /**
+   * outer
+   */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      error = ER_QPROC_INVALID_XASLNODE;
+      stx_set_xasl_errcode (thread_p, error);
+      goto exit_on_error;
+    }
+  else
+    {
+      node_p->outer.xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->outer.xasl == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  node_p->outer.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
+  if (ptr == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      node_p->outer.val_list = NULL;
+    }
+  else
+    {
+      node_p->outer.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->outer.val_list == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  /**
+   * inner
+   */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      error = ER_QPROC_INVALID_XASLNODE;
+      stx_set_xasl_errcode (thread_p, error);
+      goto exit_on_error;
+    }
+  else
+    {
+      node_p->inner.xasl = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->inner.xasl == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  node_p->inner.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
+  if (ptr == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      node_p->inner.val_list = NULL;
+    }
+  else
+    {
+      node_p->inner.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->inner.val_list == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  /**
+   * merge_info
+   */
+  ptr = stx_build_ls_merge_info (thread_p, ptr, &node_p->merge_info);
+  if (ptr == NULL)
+    {
+      goto exit_on_error;
+    }
+
+  /**
+   * domains, value_indexes
+   */
+  if (node_p->merge_info.ls_column_cnt == 0)
+    {
+      error = ER_QPROC_INVALID_XASLNODE;
+      stx_set_xasl_errcode (thread_p, error);
+      goto exit_on_error;
+    }
+  else
+    {
+      node_p->outer.domains =
+	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
+      if (node_p->outer.domains == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  stx_set_xasl_errcode (thread_p, error);
+	  return NULL;
+	}
+
+      node_p->outer.value_indexes = node_p->merge_info.ls_outer_column;
+
+      node_p->inner.domains =
+	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
+      if (node_p->inner.domains == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  stx_set_xasl_errcode (thread_p, error);
+	  return NULL;
+	}
+
+      node_p->inner.value_indexes = node_p->merge_info.ls_inner_column;
+    }
+
+  node_p->build = NULL;
+  node_p->probe = NULL;
+
+  return ptr;
+
+exit_on_error:
+  if (error == NO_ERROR)
+    {
+      error = stx_get_xasl_errcode (thread_p);
+      if (error == NO_ERROR)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+	}
+    }
+
   return NULL;
 }
 
@@ -5204,12 +5332,12 @@ stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *ptr, METHOD_SPEC_TYPE
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      method_spec->method_sig_list = NULL;
+      method_spec->sig_array = NULL;
     }
   else
     {
-      method_spec->method_sig_list = stx_restore_method_sig_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (method_spec->method_sig_list == NULL)
+      method_spec->sig_array = stx_restore_pl_sig_array (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (method_spec->sig_array == NULL)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
@@ -5523,6 +5651,22 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	{
 	  regu_var->value.funcp = stx_restore_function_type (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
 	  if (regu_var->value.funcp == NULL)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case TYPE_SP:
+      ptr = or_unpack_int (ptr, &offset);
+      if (offset == 0)
+	{
+	  regu_var->value.sp_ptr = NULL;
+	}
+      else
+	{
+	  regu_var->value.sp_ptr = stx_restore_sp_type (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
+	  if (regu_var->value.sp_ptr == NULL)
 	    {
 	      goto error;
 	    }
@@ -5886,6 +6030,62 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 error:
   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
   return NULL;
+}
+
+
+static char *
+stx_build_sp_type (THREAD_ENTRY * thread_p, char *ptr, SP_TYPE * sp)
+{
+  int tmp, offset;
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      sp->value = NULL;
+    }
+  else
+    {
+      sp->value = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (sp->value == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      assert (sp->value->need_clear == false);
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      sp->args = NULL;
+    }
+  else
+    {
+      sp->args = stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (sp->args == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      sp->sig = NULL;
+    }
+  else
+    {
+      sp->sig = stx_restore_pl_sig (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (sp->sig == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+    }
+
+  return ptr;
 }
 
 static char *

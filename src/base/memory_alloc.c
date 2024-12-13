@@ -46,6 +46,8 @@
 #endif // SERVER_MODE
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 #endif // SERVER_MODE
 
 #define DEFAULT_OBSTACK_CHUNK_SIZE      32768	/* 1024 x 32 */
@@ -481,6 +483,17 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 
   return ptr;
 #else /* SA_MODE */
+
+  if (db_is_utility_thread ())
+    {
+      ptr = malloc (size);
+      if (ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	}
+      return ptr;
+    }
+
   if (!db_on_server)
     {
       return db_ws_alloc (size);
@@ -613,6 +626,16 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
       return db_private_alloc (thrd, size);
     }
 
+  if (db_is_utility_thread ())
+    {
+      new_ptr = realloc (ptr, size);
+      if (new_ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	}
+      return new_ptr;
+    }
+
   if (!db_on_server)
     {
       return db_ws_realloc (ptr, size);
@@ -695,6 +718,37 @@ db_private_strdup (THREAD_ENTRY * thrd, const char *s)
   return cp;
 }
 
+
+/*
+ * db_private_strndup () - duplicate string with size. memory for the duplicated
+ *   string is obtanined by db_private_alloc
+ *   return: pointer to duplicated str
+ *   thrd(in): thread conext if it is server, otherwise NULL
+ *   s(in): source string
+ *   size(in): source string size
+ */
+char *
+db_private_strndup (THREAD_ENTRY * thrd, const char *s, size_t size)
+{
+  char *cp;
+
+  /* fast return */
+  if (s == NULL)
+    {
+      return NULL;
+    }
+
+  cp = (char *) db_private_alloc (thrd, size + 1);
+
+  if (cp != NULL)
+    {
+      memcpy (cp, s, size);
+      cp[size] = '\0';
+    }
+
+  return cp;
+}
+
 /*
  * db_private_free () - call free function for current private heap
  *   return:
@@ -762,6 +816,12 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 
 #else /* SA_MODE */
 
+  if (db_is_utility_thread ())
+    {
+      free (ptr);
+      return;
+    }
+
   if (!db_on_server)
     {
       db_ws_free (ptr);
@@ -780,6 +840,7 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
       if (h->magic != PRIVATE_MALLOC_HEADER_MAGIC)
 	{
 	  /* assertion point */
+	  assert (false);
 	  return;
 	}
 

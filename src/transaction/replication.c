@@ -33,6 +33,8 @@
 
 #include <assert.h>
 #include <stdio.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * EXTERN TO ALL SERVER RECOVERY FUNCTION CODED SOMEWHERE ELSE

@@ -37,6 +37,8 @@
 #include "storage_common.h"
 
 #include <string.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define OVERFLOW_ALLOCVPID_ARRAY_SIZE 64
 

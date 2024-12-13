@@ -94,6 +94,10 @@
 #if !defined (SERVER_MODE)
 #include "optimizer.h"
 #endif
+#include "host_lookup.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -399,6 +403,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_SQL_LOG_MAX_COUNT "ha_sql_log_max_count"
 
+#define PRM_NAME_RECOVERY_REDO_MINIMUM_JOB_COUNT "recovery_redo_minimum_job_count"
+#define PRM_NAME_RECOVERY_REDO_JOB_PERIOD_IN_SECS "recovery_redo_job_period_in_secs"
+
 #define PRM_NAME_HA_COPY_LOG_MAX_ARCHIVES "ha_copy_log_max_archives"
 
 #define PRM_NAME_HA_COPY_LOG_TIMEOUT "ha_copy_log_timeout"
@@ -426,6 +433,16 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_JAVA_STORED_PROCEDURE_DEBUG "java_stored_procedure_debug"
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE_UDS "java_stored_procedure_uds"
+
+#define PRM_NAME_STORED_PROCEDURE "stored_procedure"
+
+#define PRM_NAME_STORED_PROCEDURE_PORT "stored_procedure_port"
+
+#define PRM_NAME_STORED_PROCEDURE_JVM_OPTIONS "stored_procedure_vm_options"
+
+#define PRM_NAME_STORED_PROCEDURE_DEBUG "stored_procedure_debug"
+
+#define PRM_NAME_STORED_PROCEDURE_UDS "stored_procedure_uds"
 
 #define PRM_NAME_ALLOW_TRUNCATED_STRING "allow_truncated_string"
 
@@ -743,6 +760,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_MAX_SUBQUERY_CACHE_SIZE    "max_subquery_cache_size"
 
 #define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
+
+#define PRM_NAME_ENABLE_MEMORY_MONITORING "enable_memory_monitoring"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1525,6 +1544,18 @@ static int prm_ha_sql_log_max_count_upper = 5;
 static int prm_ha_sql_log_max_count_lower = 2;
 static unsigned int prm_ha_sql_log_max_count_flag = 0;
 
+int PRM_RECOVERY_REDO_MINIMUM_JOB_COUNT = 100;
+static int prm_recovery_redo_minimum_job_count_default = 100;
+static int prm_recovery_redo_minimum_job_count_upper = INT_MAX;
+static int prm_recovery_redo_minimum_job_count_lower = 1;
+static unsigned int prm_recovery_redo_minimum_job_count_flag = 0;
+
+int PRM_RECOVERY_REDO_JOB_PERIOD_IN_SECS = 1;
+static int prm_recovery_redo_job_period_in_secs_default = 1;
+static int prm_recovery_redo_job_period_in_secs_upper = INT_MAX;
+static int prm_recovery_redo_job_period_in_secs_lower = 1;
+static unsigned int prm_recovery_redo_job_period_in_secs_flag = 0;
+
 int PRM_HA_SQL_LOG_MAX_SIZE_IN_MB = INT_MIN;
 static int prm_ha_sql_log_max_size_in_mb_default = 50;
 static int prm_ha_sql_log_max_size_in_mb_upper = 2048;
@@ -2096,8 +2127,10 @@ bool PRM_FORCE_RESTART_TO_SKIP_RECOVERY = false;
 static bool prm_force_restart_to_skip_recovery_default = false;
 static unsigned int prm_force_restart_to_skip_recovery_flag = 0;
 
-int PRM_EXTENDED_STATISTICS = 15;
-static int prm_extended_statistics_default = 15;
+static int prm_extended_statistics_default =
+  PERFMON_ACTIVATION_FLAG_DETAILED_BTREE_PAGE | PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT |
+  PERFMON_ACTIVATION_FLAG_LOCK_OBJECT | PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR;
+int PRM_EXTENDED_STATISTICS = prm_extended_statistics_default;
 static int prm_extended_statistics_lower = 0;
 static int prm_extended_statistics_upper = PERFMON_ACTIVATION_FLAG_MAX_VALUE;
 static unsigned int prm_extended_statistics_flag = 0;
@@ -2282,29 +2315,29 @@ int PRM_ER_LOG_TDE = false;
 static int prm_er_log_tde_default = false;
 static unsigned int prm_er_log_tde_flag = 0;
 
-bool PRM_JAVA_STORED_PROCEDURE = true;
-static bool prm_java_stored_procedure_default = true;
-static unsigned int prm_java_stored_procedure_flag = 0;
+bool PRM_STORED_PROCEDURE = true;
+static bool prm_stored_procedure_default = true;
+static unsigned int prm_stored_procedure_flag = 0;
 
-int PRM_JAVA_STORED_PROCEDURE_PORT = 0;
-static int prm_java_stored_procedure_port_default = 0;
-static int prm_java_stored_procedure_port_upper = 65535;
-static int prm_java_stored_procedure_port_lower = 0;
-static unsigned int prm_java_stored_procedure_port_flag = 0;
+int PRM_STORED_PROCEDURE_PORT = 0;
+static int prm_stored_procedure_port_default = 0;
+static int prm_stored_procedure_port_upper = 65535;
+static int prm_stored_procedure_port_lower = 0;
+static unsigned int prm_stored_procedure_port_flag = 0;
 
-const char *PRM_JAVA_STORED_PROCEDURE_JVM_OPTIONS = "";
-static const char *prm_java_stored_procedure_jvm_options_default = "";
-static unsigned int prm_java_stored_procedure_jvm_options_flag = 0;
+const char *PRM_STORED_PROCEDURE_JVM_OPTIONS = "";
+static const char *prm_stored_procedure_jvm_options_default = "";
+static unsigned int prm_stored_procedure_jvm_options_flag = 0;
 
-int PRM_JAVA_STORED_PROCEDURE_DEBUG = -1;
-static int prm_java_stored_procedure_debug_default = -1;
-static int prm_java_stored_procedure_debug_upper = 65535;
-static int prm_java_stored_procedure_debug_lower = -1;
-static unsigned int prm_java_stored_procedure_debug_flag = 0;
+int PRM_STORED_PROCEDURE_DEBUG = -1;
+static int prm_stored_procedure_debug_default = -1;
+static int prm_stored_procedure_debug_upper = 65535;
+static int prm_stored_procedure_debug_lower = -1;
+static unsigned int prm_stored_procedure_debug_flag = 0;
 
-bool PRM_JAVA_STORED_PROCEDURE_UDS = true;
-static bool prm_java_stored_procedure_uds_default = true;
-static unsigned int prm_java_stored_procedure_uds_flag = 0;
+bool PRM_STORED_PROCEDURE_UDS = true;
+static bool prm_stored_procedure_uds_default = true;
+static unsigned int prm_stored_procedure_uds_flag = 0;
 
 bool PRM_ALLOW_TRUNCATED_STRING = false;
 static bool prm_allow_truncated_string_default = false;
@@ -2423,6 +2456,10 @@ static int prm_vacuum_ovfp_check_threshold_default = 1000;
 static int prm_vacuum_ovfp_check_threshold_upper = INT_MAX;
 static int prm_vacuum_ovfp_check_threshold_lower = 2;
 static unsigned int prm_vacuum_ovfp_check_threshold_flag = 0;
+
+bool PRM_ENABLE_MEMORY_MONITORING = false;
+static bool prm_enable_memory_monitoring_default = false;
+static unsigned int prm_enable_memory_monitoring_flag = 0;
 
 UINT64 PRM_MAX_SUBQUERY_CACHE_SIZE = 2 * 1024 * 1024;	/* 2 MB */
 static UINT64 prm_max_subquery_cache_size_default = 2 * 1024 * 1024;	/* 2 MB */
@@ -3521,7 +3558,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ORACLE_STYLE_EMPTY_STRING,
    PRM_NAME_ORACLE_STYLE_EMPTY_STRING,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_QRY_STRING | PRM_FORCE_SERVER),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_QRY_STRING | PRM_FORCE_SERVER | PRM_FOR_PL_CONTEXT),
    PRM_BOOLEAN,
    &prm_oracle_style_empty_string_flag,
    (void *) &prm_oracle_style_empty_string_default,
@@ -3577,7 +3614,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE,
    PRM_NAME_COMPAT_NUMERIC_DIVISION_SCALE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
    PRM_BOOLEAN,
    &prm_compat_numeric_division_scale_flag,
    (void *) &prm_compat_numeric_division_scale_default,
@@ -4570,7 +4607,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_MNT_WAITING_THREAD,
    PRM_NAME_MNT_WAITING_THREAD,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    &prm_mnt_waiting_thread_flag,
    (void *) &prm_mnt_waiting_thread_default,
@@ -4638,7 +4675,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INTL_NUMBER_LANG,
    PRM_NAME_INTL_NUMBER_LANG,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
    PRM_STRING,
    &prm_intl_number_lang_flag,
    (void *) &prm_intl_number_lang_default,
@@ -4649,7 +4686,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INTL_DATE_LANG,
    PRM_NAME_INTL_DATE_LANG,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
    PRM_STRING,
    &prm_intl_date_lang_flag,
    (void *) &prm_intl_date_lang_default,
@@ -4790,7 +4827,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INTL_COLLATION,
    PRM_NAME_INTL_COLLATION,
-   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
    PRM_STRING,
    &prm_intl_collation_flag,
    (void *) &prm_intl_collation_default,
@@ -4943,7 +4980,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_MAX_HASH_LIST_SCAN_SIZE,
    PRM_NAME_MAX_HASH_LIST_SCAN_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT),
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_SIZE_UNIT),
    PRM_BIGINT,
    &prm_max_hash_list_scan_size_flag,
    (void *) &prm_max_hash_list_scan_size_default,
@@ -5284,7 +5321,8 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_TIMEZONE,
    PRM_NAME_TIMEZONE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT |
+    PRM_FOR_PL_CONTEXT),
    PRM_STRING,
    &prm_timezone_flag,
    (void *) &prm_timezone_default,
@@ -5998,55 +6036,55 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_java_stored_procedure_flag,
-   (void *) &prm_java_stored_procedure_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE,
+   &prm_stored_procedure_flag,
+   (void *) &prm_stored_procedure_default,
+   (void *) &PRM_STORED_PROCEDURE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE_PORT,
    PRM_NAME_JAVA_STORED_PROCEDURE_PORT,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
-   &prm_java_stored_procedure_port_flag,
-   (void *) &prm_java_stored_procedure_port_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE_PORT,
-   (void *) &prm_java_stored_procedure_port_upper, (void *) &prm_java_stored_procedure_port_lower,
+   &prm_stored_procedure_port_flag,
+   (void *) &prm_stored_procedure_port_default,
+   (void *) &PRM_STORED_PROCEDURE_PORT,
+   (void *) &prm_stored_procedure_port_upper, (void *) &prm_stored_procedure_port_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
+  {PRM_ID_STORED_PROCEDURE_JVM_OPTIONS,
    PRM_NAME_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_STRING,
-   &prm_java_stored_procedure_jvm_options_flag,
-   (void *) &prm_java_stored_procedure_jvm_options_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
+   &prm_stored_procedure_jvm_options_flag,
+   (void *) &prm_stored_procedure_jvm_options_default,
+   (void *) &PRM_STORED_PROCEDURE_JVM_OPTIONS,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE_DEBUG,
    PRM_NAME_JAVA_STORED_PROCEDURE_DEBUG,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
-   &prm_java_stored_procedure_debug_flag,
-   (void *) &prm_java_stored_procedure_debug_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE_DEBUG,
+   &prm_stored_procedure_debug_flag,
+   (void *) &prm_stored_procedure_debug_default,
+   (void *) &PRM_STORED_PROCEDURE_DEBUG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE_UDS,
    PRM_NAME_JAVA_STORED_PROCEDURE_UDS,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_java_stored_procedure_uds_flag,
-   (void *) &prm_java_stored_procedure_uds_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE_UDS,
+   &prm_stored_procedure_uds_flag,
+   (void *) &prm_stored_procedure_uds_default,
+   (void *) &PRM_STORED_PROCEDURE_UDS,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -6250,7 +6288,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR,
    PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_FOR_PL_CONTEXT),
    PRM_BOOLEAN,
    &prm_oracle_compat_number_behavior_flag,
    (void *) &prm_oracle_compat_number_behavior_default,
@@ -6375,6 +6413,41 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_RECOVERY_REDO_MINIMUM_JOB_COUNT,
+   PRM_NAME_RECOVERY_REDO_MINIMUM_JOB_COUNT,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_recovery_redo_minimum_job_count_flag,
+   (void *) &prm_recovery_redo_minimum_job_count_default,
+   (void *) &PRM_RECOVERY_REDO_MINIMUM_JOB_COUNT,
+   (void *) &prm_recovery_redo_minimum_job_count_upper,
+   (void *) &prm_recovery_redo_minimum_job_count_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_RECOVERY_REDO_JOB_PERIOD_IN_SECS,
+   PRM_NAME_RECOVERY_REDO_JOB_PERIOD_IN_SECS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_recovery_redo_job_period_in_secs_flag,
+   (void *) &prm_recovery_redo_job_period_in_secs_default,
+   (void *) &PRM_RECOVERY_REDO_JOB_PERIOD_IN_SECS,
+   (void *) &prm_recovery_redo_job_period_in_secs_upper,
+   (void *) &prm_recovery_redo_job_period_in_secs_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_MEMORY_MONITORING,
+   PRM_NAME_ENABLE_MEMORY_MONITORING,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER),
+   PRM_BOOLEAN,
+   &prm_enable_memory_monitoring_flag,
+   (void *) &prm_enable_memory_monitoring_default,
+   (void *) &PRM_ENABLE_MEMORY_MONITORING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_MAX_SUBQUERY_CACHE_SIZE,
    PRM_NAME_MAX_SUBQUERY_CACHE_SIZE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT),
@@ -6387,6 +6460,61 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE,
+   PRM_NAME_STORED_PROCEDURE,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_stored_procedure_flag,
+   (void *) &prm_stored_procedure_default,
+   (void *) &PRM_STORED_PROCEDURE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_PORT,
+   PRM_NAME_STORED_PROCEDURE_PORT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_stored_procedure_port_flag,
+   (void *) &prm_stored_procedure_port_default,
+   (void *) &PRM_STORED_PROCEDURE_PORT,
+   (void *) &prm_stored_procedure_port_upper, (void *) &prm_stored_procedure_port_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_JVM_OPTIONS,
+   PRM_NAME_STORED_PROCEDURE_JVM_OPTIONS,
+   (PRM_FOR_SERVER),
+   PRM_STRING,
+   &prm_stored_procedure_jvm_options_flag,
+   (void *) &prm_stored_procedure_jvm_options_default,
+   (void *) &PRM_STORED_PROCEDURE_JVM_OPTIONS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_DEBUG,
+   PRM_NAME_STORED_PROCEDURE_DEBUG,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_stored_procedure_debug_flag,
+   (void *) &prm_stored_procedure_debug_default,
+   (void *) &PRM_STORED_PROCEDURE_DEBUG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_UDS,
+   PRM_NAME_STORED_PROCEDURE_UDS,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_stored_procedure_uds_flag,
+   (void *) &prm_stored_procedure_uds_default,
+   (void *) &PRM_STORED_PROCEDURE_UDS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 static int num_session_parameters = 0;
@@ -7308,6 +7436,22 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	    }
 	}
 #endif
+      /* The contents of the cubrid_hosts.conf file associated with use_user_hosts are also considered system parameters. */
+      if (strcmp (prm->name, PRM_NAME_USE_USER_HOSTS) == 0)
+	{
+	  if (value != NULL)
+	    {
+	      const KEYVAL *keyvalp = NULL;
+	      keyvalp = prm_keyword (-1, value, boolean_words, DIM (boolean_words));
+	      if (keyvalp != NULL && keyvalp->val == 1)
+		{
+		  if (validate_uhost_conf () == false)
+		    {
+		      return PRM_ERR_BAD_VALUE;
+		    }
+		}
+	    }
+	}
 
       if (strcmp (prm->name, PRM_NAME_SERVER_TIMEZONE) == 0)
 	{
@@ -7372,7 +7516,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	    }
 	}
 
-      if (strcmp (section, "common") == 0 && strcmp (prm->name, PRM_NAME_JAVA_STORED_PROCEDURE_PORT) == 0)
+      if (strcmp (section, "common") == 0 && strcmp (prm->name, PRM_NAME_STORED_PROCEDURE_PORT) == 0)
 	{
 	  error = PRM_ERR_CANNOT_CHANGE;
 	  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
@@ -9125,6 +9269,53 @@ void
 xsysprm_dump_server_parameters (FILE * outfp)
 {
   sysprm_dump_parameters (outfp);
+}
+
+/*
+ * xsysprm_get_pl_context_parameters () - obtain values for parameters
+ *					    marked as PRM_FOR_PL_CONTEXT
+ *
+ * return : list of values
+ *
+ */
+SYSPRM_ASSIGN_VALUE *
+xsysprm_get_pl_context_parameters (void)
+{
+  SYSPRM_ASSIGN_VALUE *pl_ctx_values = NULL, *last_assign = NULL;
+  SYSPRM_PARAM *prm = NULL;
+  int i;
+
+  for (i = 0; i < NUM_PRM; i++)
+    {
+      prm = GET_PRM (i);
+      if (PRM_IS_FOR_PL_CONTEXT (prm->static_flag))
+	{
+	  SYSPRM_ASSIGN_VALUE *change_val = (SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
+	  if (change_val == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
+	      goto cleanup;
+	    }
+	  change_val->prm_id = (PARAM_ID) i;
+	  change_val->next = NULL;
+	  sysprm_set_sysprm_value_from_parameter (&change_val->value, prm);
+	  if (pl_ctx_values != NULL)
+	    {
+	      last_assign->next = change_val;
+	      last_assign = change_val;
+	    }
+	  else
+	    {
+	      pl_ctx_values = last_assign = change_val;
+	    }
+	}
+    }
+
+  return pl_ctx_values;
+
+cleanup:
+  sysprm_free_assign_values (&pl_ctx_values);
+  return NULL;
 }
 #endif /* !CS_MODE */
 

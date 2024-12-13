@@ -73,7 +73,8 @@ public abstract class BaseClassLoader extends URLClassLoader {
         }
     }
 
-    public Class<?> loadClass(String name) {
+    @Override
+    public Class<?> loadClass(String name) throws ClassNotFoundException {
         Class c = findLoadedClass(name);
         if (c == null) {
             // find child first
@@ -96,7 +97,7 @@ public abstract class BaseClassLoader extends URLClassLoader {
             try {
                 c = getSystemClassLoader().loadClass(name);
             } catch (ClassNotFoundException e) {
-                // ignore
+                throw e;
             }
         }
 

@@ -3512,9 +3512,25 @@ end:
 }
 
 static PT_NODE *
-do_check_cte_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+do_clear_subquery_cache_flag (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
-  bool *has_cte_spec = (bool *) arg;
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_QUERY (stmt))
+    {
+      if (stmt->info.query.flag.subquery_cached)
+	{
+	  stmt->info.query.flag.subquery_cached = false;
+	}
+    }
+
+  return stmt;
+}
+
+static PT_NODE *
+do_check_cte_or_system_class_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  PT_NODE *q = (PT_NODE *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3525,9 +3541,37 @@ do_check_cte_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *cont
 
   if (stmt->info.spec.cte_pointer)
     {
-      *has_cte_spec = true;
-      *continue_walk = PT_STOP_WALK;
+      if (q->info.query.is_subquery == PT_IS_SUBQUERY || q->info.query.is_subquery == PT_IS_UNION_QUERY
+	  || q->info.query.is_subquery == PT_IS_UNION_SUBQUERY)
+	{
+	  goto stop_walk;
+	}
     }
+
+  if (stmt->info.spec.entity_name)
+    {
+      const char *class_name = stmt->info.spec.entity_name->info.name.original;
+
+      if (class_name)
+	{
+	  if (sm_check_system_class_by_name (class_name))
+	    {
+	      goto stop_walk;
+	    }
+	}
+    }
+  else if (stmt->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+    {
+      goto stop_walk;
+    }
+
+  return stmt;
+
+stop_walk:
+
+  q->info.query.flag.do_cache = 0;
+  q->info.query.flag.do_not_cache = 1;
+  *continue_walk = PT_STOP_WALK;
 
   return stmt;
 }
@@ -3536,6 +3580,7 @@ static PT_NODE *
 do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int *err = (int *) arg;
+  PT_NODE *saved;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3544,13 +3589,7 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
     case PT_UNION:
     case PT_INTERSECTION:
     case PT_DIFFERENCE:
-      (void *) parser_walk_tree (parser, stmt->info.query.q.union_.arg1, do_prepare_subquery_pre, err, NULL, NULL);
-      if (*err != NO_ERROR)
-	{
-	  goto stop_walk;
-	}
-      (void *) parser_walk_tree (parser, stmt->info.query.q.union_.arg2, do_prepare_subquery_pre, err, NULL, NULL);
-      goto stop_walk;
+      return stmt;
 
     case PT_CREATE_TRIGGER:
     case PT_ALTER:
@@ -3564,26 +3603,39 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       return stmt;
 
     case PT_SELECT:
+      /* 
+       * SYSDATE, SERIAL related functions and other queries that should not be cached
+       * The parser sets the do_not_cache flag for these queries.
+       */
+      if (stmt->info.query.flag.do_not_cache)
+	{
+	  return stmt;
+	}
+
+      if (stmt->info.query.hint & PT_HINT_QUERY_CACHE)
+	{
+	  /* exclude cache from CTE, system class, or dblink referencing */
+	  saved = stmt->next;
+	  stmt->next = NULL;
+	  parser_walk_tree (parser, stmt, do_check_cte_or_system_class_spec, stmt, NULL, NULL);
+	  stmt->next = saved;
+
+	  if (stmt->info.query.flag.do_not_cache)
+	    {
+	      return stmt;
+	    }
+	}
       break;
 
     default:
       return stmt;
     }
 
-  if ((stmt->info.query.is_subquery == PT_IS_SUBQUERY || stmt->info.query.is_subquery == PT_IS_UNION_SUBQUERY
+  if ((stmt->info.query.is_subquery == PT_IS_SUBQUERY || stmt->info.query.is_subquery == PT_IS_UNION_QUERY
+       || stmt->info.query.is_subquery == PT_IS_UNION_SUBQUERY
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
-      bool has_cte_spec = false;
-
-      /* exclude cache from CTE referencing */
-      parser_walk_tree (parser, stmt, do_check_cte_spec, &has_cte_spec, NULL, NULL);
-
-      if (has_cte_spec)
-	{
-	  goto stop_walk;
-	}
-
       *err = do_prepare_subquery (parser, stmt);
 
       if (*err != NO_ERROR)
@@ -3609,10 +3661,16 @@ do_check_subquery_cache (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
 
+  if (statement->flag.do_not_use_subquery_cache)
+    {
+      (void *) parser_walk_tree (parser, statement, do_clear_subquery_cache_flag, NULL, NULL, NULL);
+      return NO_ERROR;
+    }
+
   /* All CTE and sub-queries included in the query must be prepared first. */
   if (pt_is_allowed_result_cache ())
     {
-      parser_walk_tree (parser, statement, do_prepare_subquery_pre, &err, NULL, NULL);
+      (void *) parser_walk_tree (parser, statement, do_prepare_subquery_pre, &err, NULL, NULL);
     }
 
   return err;
@@ -3639,6 +3697,13 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   init_compile_context (parser);
 
+  /* All CTE and sub-queries included in the query must be prepared first. */
+  err = do_check_subquery_cache (parser, statement);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
   switch (statement->node_type)
     {
     case PT_DELETE:
@@ -3657,30 +3722,13 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_UNION:
-      /* All CTE and sub-queries included in the query must be prepared first. */
-      err = do_check_subquery_cache (parser, statement);
-      if (err == NO_ERROR)
-	{
-	  err = do_prepare_select (parser, statement);
-	}
+      err = do_prepare_select (parser, statement);
       break;
     case PT_EXECUTE_PREPARE:
       err = do_prepare_session_statement (parser, statement);
       break;
     default:
       /* there are no actions for other types of statements */
-      break;
-    }
-
-  switch (statement->node_type)
-    {
-    case PT_DELETE:
-    case PT_INSERT:
-    case PT_UPDATE:
-      /* All CTE and sub-queries included in DML query must be prepared after the query.
-         because that the select subqueries of DML should be transformed first */
-      err = do_check_subquery_cache (parser, statement);
-    default:
       break;
     }
 
@@ -14399,17 +14447,25 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 static PT_NODE *
 pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  int i = parser->host_var_count;
+  PT_NODE **host_var_p = (PT_NODE **) arg;
 
+
+  if (node->node_type == PT_NAME && node->info.name.constant_value)
+    {
+      PT_NODE *hv = node->info.name.constant_value;
+
+      /* the host var. by lambda node should be excluded from subquery's host variable */
+      if (hv->node_type == PT_HOST_VAR)
+	{
+	  hv->info.host_var.saved = hv->info.host_var.index + 1;
+	}
+    }
+
+  /* the host var. having same index should be linked each other */
   if (node->node_type == PT_HOST_VAR && node->info.host_var.index >= 0)
     {
-      /* to exclude already setting host variable */
-      if (parser->sub_host_var_index[node->info.host_var.index] < 0)
-	{
-	  parser->sub_host_var_index[i] = node->info.host_var.index;
-	  node->info.host_var.index = parser->host_var_count;
-	  parser->host_var_count++;
-	}
+      node->info.host_var.next = host_var_p[node->info.host_var.index];
+      host_var_p[node->info.host_var.index] = node;
     }
 
   *continue_walk = PT_CONTINUE_WALK;
@@ -14650,40 +14706,85 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   int err = NO_ERROR;
   PARSER_CONTEXT context;
-  int i, var_count;
-  PT_NODE *save_next = NULL;
+  int i, sub_idx, var_count;
+  PT_NODE *hv, *save_next = NULL;
+  PT_NODE **host_var_p, *prev;
   PT_MISC_TYPE save_flag;
 
   context = *parser;
 
-  context.host_var_count = 0;
   var_count = parser->host_var_count + parser->auto_param_count;
 
   stmt->info.query.flag.subquery_cached = 1;
 
+  context.host_var_count = 0;
+  context.host_variables = NULL;
+  stmt->sub_host_var_index = NULL;
+  stmt->sub_host_var_count = 0;
+
   if (var_count > 0)
     {
-      context.sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
-      if (context.sub_host_var_index == NULL)
+      host_var_p = (PT_NODE **) calloc (var_count, sizeof (PT_NODE *));
+      if (host_var_p == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (PT_NODE *));
+	  goto err_exit;
+	}
+
+      context.host_variables = (DB_VALUE *) malloc (var_count * sizeof (DB_VALUE));
+      if (context.host_variables == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
+	  goto err_exit;
+	}
+
+      stmt->sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+      if (stmt->sub_host_var_index == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto err_exit;
 	}
-      /* to ininitialize empty index */
-      memset (context.sub_host_var_index, -1, var_count * sizeof (int));
+
+      /* not to traverse next subquery */
+      save_next = stmt->next;
+      stmt->next = NULL;
+
+      parser_walk_tree (&context, stmt, pt_sub_host_vars_index, host_var_p, NULL, NULL);
+
+      /* restore next subquery */
+      stmt->next = save_next;
     }
 
-  /* not to traverse next subquery */
-  save_next = stmt->next;
-  stmt->next = NULL;
+  for (i = 0; i < var_count; i++)
+    {
+      if (host_var_p[i])
+	{
+	  for (hv = host_var_p[i]; hv; hv = hv->info.host_var.next)
+	    {
+	      /* saved flag indicates whether it can be used as a host variable. */
+	      if (!hv->info.host_var.saved)
+		{
+		  sub_idx = stmt->sub_host_var_count;
+		  stmt->sub_host_var_index[sub_idx] = i;
+		  db_value_clone (&parser->host_variables[i], &context.host_variables[sub_idx]);
+		  stmt->sub_host_var_count++;
+		  break;
+		}
+	    }
 
-  parser_walk_tree (&context, stmt, pt_sub_host_vars_index, NULL, NULL, NULL);
+	  for (; hv; hv = hv->info.host_var.next)
+	    {
+	      if (!hv->info.host_var.saved)
+		{
+		  /* set the saved flag for host variables */
+		  hv->info.host_var.saved = hv->info.host_var.index + 1;
+		  hv->info.host_var.index = sub_idx;
+		}
+	    }
+	}
+    }
 
-  /* restore next subquery */
-  stmt->next = save_next;
-
-  stmt->sub_host_var_count = context.host_var_count;
-  stmt->sub_host_var_index = context.sub_host_var_index;
+  context.host_var_count = stmt->sub_host_var_count;
 
   /* save the flag for main query's prepare */
   save_flag = stmt->info.query.is_subquery;
@@ -14693,7 +14794,49 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   /* restore the flag */
   stmt->info.query.is_subquery = save_flag;
 
+  /* restore host var index */
+  for (i = 0; i < var_count; i++)
+    {
+      prev = NULL;
+      for (hv = host_var_p[i]; hv; hv = hv->info.host_var.next)
+	{
+	  if (prev)
+	    {
+	      prev->info.host_var.next = NULL;
+	    }
+	  hv->info.host_var.index = hv->info.host_var.saved - 1;
+	  hv->info.host_var.saved = 0;
+	  prev = hv;
+	}
+    }
+
+  if (var_count > 0)
+    {
+      free (host_var_p);
+
+      /* clear for only cloned */
+      for (i = 0; i < stmt->sub_host_var_count; i++)
+	{
+	  db_value_clear (&context.host_variables[i]);
+	}
+      free (context.host_variables);
+    }
+
   return err;
+
+err_exit:
+
+  if (host_var_p)
+    {
+      free (host_var_p);
+    }
+
+  if (context.host_variables)
+    {
+      free (context.host_variables);
+    }
+
+  return ER_OUT_OF_VIRTUAL_MEMORY;
 }
 
 /*
@@ -14706,33 +14849,44 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 int
 do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query, DB_PREPARE_SUBQUERY_INFO * info)
 {
-  int i, k, err = NO_ERROR;
-  DB_VALUE *host_variables;
+  int i, q, err = NO_ERROR;
   QUERY_ID query_id;
   QFILE_LIST_ID *list_id;
 
-  for (i = 0; i < num_query; i++)
+  for (q = 0; q < num_query; q++)
     {
-      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * info[i].host_var_count);
+      DB_VALUE *host_variables = NULL;
 
-      if (host_variables == NULL)
+      if (info[q].host_var_count > 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  sizeof (DB_VALUE) * info[i].host_var_count);
-	  err = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto clear_and_exit;
-	}
+	  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * info[q].host_var_count);
 
-      for (k = 0; k < info[i].host_var_count; k++)
-	{
-	  pr_clone_value (&parser->host_variables[info[i].host_var_index[k]], &host_variables[k]);
+	  if (host_variables == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (DB_VALUE) * info[q].host_var_count);
+	      err = ER_OUT_OF_VIRTUAL_MEMORY;
+	      return err;
+	    }
+
+	  for (i = 0; i < info[q].host_var_count; i++)
+	    {
+	      pr_clone_value (&parser->host_variables[info[q].host_var_index[i]], &host_variables[i]);
+	    }
 	}
 
       err =
-	execute_query (&info[i].xasl_id, &query_id, info[i].host_var_count, host_variables,
+	execute_query (&info[q].xasl_id, &query_id, info[q].host_var_count, host_variables,
 		       &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
 
-      free (host_variables);
+      if (host_variables)
+	{
+	  for (i = 0; i < info[q].host_var_count; i++)
+	    {
+	      db_value_clear (&host_variables[i]);
+	    }
+	  free (host_variables);
+	}
 
       if (err != NO_ERROR)
 	{
@@ -14745,17 +14899,6 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 	    }
 	  break;
 	}
-    }
-
-clear_and_exit:
-  /* clear prepare info. */
-  if (info)
-    {
-      for (i = 0; i < num_query; i++)
-	{
-	  free_and_init (info[i].host_var_index);
-	}
-      free_and_init (info);
     }
 
   return err;
@@ -14773,39 +14916,49 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   QUERY_ID query_id;
   QFILE_LIST_ID *list_id;
-  DB_VALUE *host_variables;
+  DB_VALUE *host_variables = NULL;
   CACHE_TIME clt_cache_time;
   int err, i, flag = RESULT_CACHE_REQUIRED;
 
   CACHE_TIME_RESET (&clt_cache_time);
 
-  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->sub_host_var_count);
-  if (host_variables == NULL)
+  if (stmt->sub_host_var_count > 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (DB_VALUE) * stmt->sub_host_var_count);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->sub_host_var_count);
+      if (host_variables == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (DB_VALUE) * stmt->sub_host_var_count);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
 
-  for (i = 0; i < stmt->sub_host_var_count; i++)
-    {
-      pr_clone_value (&parser->host_variables[stmt->sub_host_var_index[i]], &host_variables[i]);
+      for (i = 0; i < stmt->sub_host_var_count; i++)
+	{
+	  pr_clone_value (&parser->host_variables[stmt->sub_host_var_index[i]], &host_variables[i]);
+	}
     }
 
   err =
     execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id, flag, &clt_cache_time,
 		   &stmt->cache_time);
 
-  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+  if (host_variables)
+    {
+      for (i = 0; i < stmt->sub_host_var_count; i++)
+	{
+	  db_value_clear (&host_variables[i]);
+	}
+      free (host_variables);
+    }
+
+  if (err == ER_QPROC_RESULT_CACHE_INVALID)
     {
       /* retry the statement once */
-      if (do_prepare_statement (parser, stmt) == NO_ERROR)
+      if ((err = do_prepare_statement (parser, stmt)) == NO_ERROR)
 	{
 	  err = do_execute_statement (parser, stmt);
 	}
     }
-
-  free (host_variables);
 
   return err;
 }
@@ -14857,6 +15010,11 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (parser->flag.is_auto_commit)
     {
       query_flag |= TRAN_AUTO_COMMIT;
+    }
+
+  if (statement->info.execute.do_cache)
+    {
+      query_flag |= RESULT_CACHE_REQUIRED;
     }
 
   if (query_trace == true)
@@ -20072,6 +20230,98 @@ do_find_synonym_by_query (const char *name, char *buf, int buf_size)
     {
       /* unique_name must not be null. */
       assert (false);
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because unique_name is not unique. */
+      buf[0] = '\0';
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+#undef QUERY_BUF_SIZE
+}
+
+int
+do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
+{
+#define QUERY_BUF_SIZE 2048
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  const char *query = NULL;
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
+  const char *current_schema_name = NULL;
+  const char *sp_name = NULL;
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  assert (buf != NULL);
+
+  current_schema_name = sc_current_schema_name ();
+
+  sp_name = sm_remove_qualifier_name (name);
+  query = "SELECT [unique_name] FROM [%s] WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, current_schema_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, current_schema_name);
+  assert (query_buf[0] != '\0');
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      if (error == DB_CURSOR_END)
+	{
+	  ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (!DB_IS_NULL (&value))
+    {
+      assert (strlen (db_get_string (&value)) < buf_size);
+      strcpy (buf, db_get_string (&value));
+    }
+  else
+    {
+      /* unique_name must not be null. */
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
 
   error = db_query_next_tuple (query_result);

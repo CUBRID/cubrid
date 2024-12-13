@@ -37,6 +37,8 @@
 #include "encryption.h"
 #include "memory_alloc.h"
 #include "sha1.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (WINDOWS)
 static BYTE des_Keyblob[] = {

@@ -66,7 +66,7 @@
 #include "log_manager.h"
 #include "network.h"
 #include "object_representation.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #include "show_scan.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -81,6 +81,8 @@
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
@@ -319,7 +321,7 @@ css_setup_server_loop (void)
 #endif /* not WINDOWS */
 
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS) || defined(HPUX))
-  if (!jsp_jvm_is_loaded ())
+  if (!pl_jvm_is_loaded ())
     {
       (void) os_set_signal_handler (SIGFPE, SIG_IGN);
     }

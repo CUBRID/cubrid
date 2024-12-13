@@ -47,6 +47,8 @@
 #include "thread_manager.hpp"	// for thread_sleep
 #include "xasl.h"
 #include "xasl_cache.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* TODO */
 #if !defined (SERVER_MODE)
@@ -1020,10 +1022,11 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 	{
 	  pr_type_p = type_list_p->domp[i]->type;
 	  or_init (&buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
-	  pr_type_p->data_readval (&buf, &dbval, type_list_p->domp[i], -1, true, NULL, 0);
+	  pr_type_p->data_readval (&buf, &dbval, type_list_p->domp[i], -1, false /* Don't copy */ , NULL, 0);
 
 	  db_fprint_value (stdout, &dbval);
-	  if (pr_is_set_type (pr_type_p->id))
+
+	  if (db_value_need_clear (&dbval))
 	    {
 	      pr_clear_value (&dbval);
 	    }

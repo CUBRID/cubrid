@@ -42,6 +42,8 @@
 #if !defined (WINDOWS)
 #include <pthread.h>
 #endif // WINDOWS
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {
@@ -186,6 +188,9 @@ namespace cubthread
     tran_entries[THREAD_TS_HFID_TABLE] = NULL;
     tran_entries[THREAD_TS_XCACHE] = NULL;
     tran_entries[THREAD_TS_FPCACHE] = NULL;
+
+    _unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+    _unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
 
 #if !defined (NDEBUG)
     fi_thread_init (this);
@@ -717,6 +722,8 @@ thread_type_to_string (thread_type type)
       return "VACUUM_MASTER";
     case TT_VACUUM_WORKER:
       return "VACUUM_WORKER";
+    case TT_RECOVERY:
+      return "RECOVERY";
     case TT_NONE:
       return "NONE";
     }

@@ -23,36 +23,10 @@
 #ifndef _QUERY_HASH_SCAN_H_
 #define _QUERY_HASH_SCAN_H_
 
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
-#error Wrong module
-#endif // not server and not SA mode
-
 #include "regu_var.hpp"
 
-#define MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p) \
-  do \
-    { \
-      tuple_pos.status = scan_id_p->status; \
-      tuple_pos.position = S_ON; \
-      tuple_pos.vpid = simple_pos->vpid; \
-      tuple_pos.offset = simple_pos->offset; \
-      tuple_pos.tpl = NULL; \
-      tuple_pos.tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
-    } \
-  while (0)
-
-#define MAKE_TFTID_TO_TUPLE_POSTION(tuple_pos, tftid, scan_id_p) \
-  do \
-    { \
-      tuple_pos.status = scan_id_p->status; \
-      tuple_pos.position = S_ON; \
-      tuple_pos.vpid.pageid = tftid.pageid; \
-      tuple_pos.vpid.volid = tftid.volid; \
-      tuple_pos.offset = tftid.offset; \
-      tuple_pos.tpl = NULL; \
-      tuple_pos.tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
-    } \
-  while (0)
+struct val_descr;
+typedef struct val_descr VAL_DESCR;
 
 /* kind of hash list scan method */
 enum hash_method
@@ -63,6 +37,33 @@ enum hash_method
   HASH_METH_HASH_FILE = 3
 };
 typedef enum hash_method HASH_METHOD;
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+
+#define MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p) \
+  do \
+    { \
+      (tuple_pos).status = (scan_id_p)->status; \
+      (tuple_pos).position = S_ON; \
+      (tuple_pos).vpid = (simple_pos)->vpid; \
+      (tuple_pos).offset = (simple_pos)->offset; \
+      (tuple_pos).tpl = NULL; \
+      (tuple_pos).tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
+    } \
+  while (0)
+
+#define MAKE_TFTID_TO_TUPLE_POSTION(tuple_pos, tftid, scan_id_p) \
+  do \
+    { \
+      (tuple_pos).status = (scan_id_p)->status; \
+      (tuple_pos).position = S_ON; \
+      (tuple_pos).vpid.pageid = (tftid).pageid; \
+      (tuple_pos).vpid.volid = (tftid).volid; \
+      (tuple_pos).offset = (tftid).offset; \
+      (tuple_pos).tpl = NULL; \
+      (tuple_pos).tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
+    } \
+  while (0)
 
 /* Tuple position structure for hash value */
 typedef struct qfile_tuple_simple_pos QFILE_TUPLE_SIMPLE_POS;
@@ -106,13 +107,13 @@ struct hash_list_scan
 {
   regu_variable_list_node *build_regu_list;	/* regulator variable list */
   regu_variable_list_node *probe_regu_list;	/* regulator variable list */
-  hash_scan_key *temp_key;	/* temp probe key */
-  hash_scan_key *temp_new_key;	/* temp probe key with db_value */
+  HASH_SCAN_KEY *temp_key;	/* temp probe key */
+  HASH_SCAN_KEY *temp_new_key;	/* temp probe key with db_value */
   union
   {
     struct
     {
-      mht_hls_table *hash_table;	/* memory hash table for hash list scan */
+      MHT_HLS_TABLE *hash_table;	/* memory hash table for hash list scan */
       HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
     } memory;
     struct
@@ -137,14 +138,15 @@ int qdata_free_hscan_entry (const void *key, void *data, void *args);
 
 int qdata_hscan_key_eq (const void *key1, const void *key2);
 
-int qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
+int qdata_build_hscan_key (THREAD_ENTRY * thread_p, VAL_DESCR * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
 HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
-				     REGU_VARIABLE_LIST probe_regu_list, val_descr * vd);
+				     REGU_VARIABLE_LIST probe_regu_list, VAL_DESCR * vd);
 HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
 						   REGU_VARIABLE_LIST probe_regu_list, HASH_SCAN_KEY * new_key);
 
-int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args);
+int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
+				 void *args);
 
 /* FILE HASH STRUCTURE */
 typedef struct temp_file_tuple_id TFTID;
@@ -171,5 +173,7 @@ extern EH_SEARCH fhs_search (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid, TF
 extern EH_SEARCH fhs_search_next (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid, TFTID * value_ptr);
 extern void fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid);
 /* end : FILE HASH SCAN */
+
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #endif /* _QUERY_HASH_SCAN_H_ */

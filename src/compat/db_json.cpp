@@ -71,6 +71,8 @@
 #include <algorithm>
 #include <sstream>
 #include <stack>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define TODO_OPTIMIZE_JSON_BODY_STRING true
 
@@ -870,7 +872,23 @@ JSON_VALIDATOR &JSON_VALIDATOR::operator= (const JSON_VALIDATOR &copy)
   if (this != &copy)
     {
       this->~JSON_VALIDATOR ();
-      new (this) JSON_VALIDATOR (copy);
+      if (copy.m_document == NULL)
+	{
+	  /* no schema actually */
+	  assert (copy.m_schema == NULL && copy.m_validator == NULL && copy.m_schema_raw == NULL);
+
+	  m_schema_raw = NULL;
+	}
+      else
+	{
+	  m_schema_raw = strdup (copy.m_schema_raw);
+
+	  /* TODO: is this safe? */
+	  m_document.CopyFrom (copy.m_document, m_document.GetAllocator ());
+	  generate_schema_validator ();
+	}
+
+      m_is_loaded = true;
     }
 
   return *this;

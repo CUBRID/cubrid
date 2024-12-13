@@ -29,7 +29,7 @@
 #include "cm_defines.h"
 #define INT64 int64_t		/* broker_admin_so.h need this type */
 #include "broker_admin_so.h"
-#undef NT64
+#undef INT64
 #include "broker_config.h"
 
 #include <stdio.h>

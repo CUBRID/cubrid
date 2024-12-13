@@ -28,6 +28,8 @@
 
 #include "oid.h"
 #include "schema_system_catalog_constants.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 typedef struct oid_cache_entry OID_CACHE_ENTRY;
 struct oid_cache_entry
@@ -55,6 +57,7 @@ static OID oid_Datatype_class = { 0, 0, 0 };
 static OID oid_Classauth_class = { 0, 0, 0 };
 static OID oid_Stored_proc_class = { 0, 0, 0 };
 static OID oid_Stored_proc_args_class = { 0, 0, 0 };
+static OID oid_Stored_proc_code_class = { 0, 0, 0 };
 static OID oid_Charset_class = { 0, 0, 0 };
 static OID oid_Trigger_class = { 0, 0, 0 };
 static OID oid_User_class = { 0, 0, 0 };
@@ -78,7 +81,7 @@ OID *oid_Root_class_oid = &oid_Root_class;
 OID *oid_Serial_class_oid = &oid_Serial_class;
 OID *oid_Partition_class_oid = &oid_Partition_class;
 OID *oid_User_class_oid = &oid_User_class;
-
+OID *oid_Sp_code_class_oid = &oid_Stored_proc_code_class;
 
 OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Root_class, NULL},	/* Root class is not identifiable by a name */
@@ -108,7 +111,8 @@ OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Authorizations_class, CT_AUTHORIZATIONS_NAME},
   {&oid_DB_root_class, CT_ROOT_NAME},
   {&oid_DBServer_class, CT_DB_SERVER_NAME},
-  {&oid_Synonym_class, CT_SYNONYM_NAME}
+  {&oid_Synonym_class, CT_SYNONYM_NAME},
+  {&oid_Stored_proc_code_class, CT_STORED_PROC_CODE_NAME},
 };
 
 /*

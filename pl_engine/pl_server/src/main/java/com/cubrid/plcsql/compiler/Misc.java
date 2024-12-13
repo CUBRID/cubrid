@@ -38,6 +38,7 @@ import java.util.Objects;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.ParseTree;
+import org.antlr.v4.runtime.tree.TerminalNode;
 
 public class Misc {
 
@@ -89,6 +90,17 @@ public class Misc {
     public static String detachPkgName(String routineName) {
         int idx = routineName.indexOf('$');
         return idx >= 0 ? routineName.substring(idx + 1) : routineName;
+    }
+
+    public static int[] getLineColumnOf(TerminalNode node) {
+        if (node == null) {
+            return UNKNOWN_LINE_COLUMN;
+        }
+
+        Token start = node.getSymbol();
+        assert start != null;
+
+        return new int[] {start.getLine(), start.getCharPositionInLine() + 1};
     }
 
     public static int[] getLineColumnOf(ParserRuleContext ctx) {
@@ -182,8 +194,10 @@ public class Misc {
         return nonTerminal.toLowerCase();
     }
 
+    private static final int SMALL_INDENT_LEVEL_BOUND = 20;
+
     public static String getIndent(int indentLevel) {
-        if (indentLevel < 10) {
+        if (indentLevel < SMALL_INDENT_LEVEL_BOUND) {
             return smallIndents[indentLevel];
         } else {
             String ret;
@@ -202,11 +216,14 @@ public class Misc {
     // Private
     // ----------------------------------------------
 
-    private static final String[] smallIndents =
-            new String[] {
-                makeIndent(0), makeIndent(1), makeIndent(2), makeIndent(3), makeIndent(4),
-                makeIndent(5), makeIndent(6), makeIndent(7), makeIndent(8), makeIndent(9)
-            };
+    private static final String[] smallIndents = new String[SMALL_INDENT_LEVEL_BOUND];
+
+    static {
+        for (int i = 0; i < SMALL_INDENT_LEVEL_BOUND; i++) {
+            smallIndents[i] = makeIndent(i);
+        }
+    }
+
     private static final Map<Integer, String> bigIndents = new HashMap<Integer, String>();
 
     private static String peelId(String id) {

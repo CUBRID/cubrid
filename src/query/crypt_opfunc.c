@@ -55,6 +55,8 @@
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/rand.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define AES128_BLOCK_LEN (128/8)
 #define AES128_KEY_LEN (128/8)

@@ -26,6 +26,8 @@
 #include "object_representation.h"
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 static int stx_Xasl_errcode = NO_ERROR;

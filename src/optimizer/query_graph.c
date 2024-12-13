@@ -3749,13 +3749,6 @@ pt_is_pseudo_const (PT_NODE * expr)
        */
       return true;
 
-    case PT_METHOD_CALL:
-      /*
-       * Even if there are columns(PT_NAME) in the parameter of the Java Stored Procedure(METHOD_CALL),
-       * it can be guaranteed to be evaluated by the time it is referenced.
-       */
-      return true;
-
     case PT_DOT_:
       /*
        * It would be nice if we could use expressions that are
@@ -4033,6 +4026,21 @@ pt_is_pseudo_const (PT_NODE * expr)
 	default:
 	  return false;
 	}
+
+    case PT_METHOD_CALL:
+      PT_NODE * p;
+      /*
+       * Even if there are columns(PT_NAME) in the parameter of the Java Stored Procedure(METHOD_CALL),
+       * it can be guaranteed to be evaluated by the time it is referenced.
+       */
+      for (p = expr->info.method_call.arg_list; p; p = p->next)
+	{
+	  if (!pt_is_pseudo_const (p))
+	    {
+	      return false;
+	    }
+	}
+      return true;
 
     case PT_FUNCTION:
       {
@@ -4459,7 +4467,6 @@ add_hint (QO_ENV * env, PT_NODE * tree)
     {
       add_hint_args (env, tree->info.query.q.select.use_nl, PT_HINT_USE_NL);
     }
-
   if (hint & PT_HINT_USE_IDX)
     {
       add_hint_args (env, tree->info.query.q.select.use_idx, PT_HINT_USE_IDX);
@@ -4472,11 +4479,17 @@ add_hint (QO_ENV * env, PT_NODE * tree)
     {
       add_hint_args (env, tree->info.query.q.select.index_ls, PT_HINT_INDEX_LS);
     }
-
-
   if (hint & PT_HINT_USE_MERGE)
     {
       add_hint_args (env, tree->info.query.q.select.use_merge, PT_HINT_USE_MERGE);
+    }
+  if (hint & PT_HINT_NO_USE_HASH)
+    {
+      add_hint_args (env, tree->info.query.q.select.no_use_hash, PT_HINT_NO_USE_HASH);
+    }
+  if (hint & PT_HINT_USE_HASH)
+    {
+      add_hint_args (env, tree->info.query.q.select.use_hash, PT_HINT_USE_HASH);
     }
 }
 

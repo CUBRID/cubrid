@@ -46,7 +46,7 @@
 #include "locator_sr.h"
 #include "query_executor.h"
 #include "transaction_sr.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #include "vacuum.h"
 #include "serial.h"
 #endif /* defined (SA_MODE) */
@@ -67,15 +67,20 @@
 #include "db_query.h"
 #include "dbtype.h"
 #include "compile_context.h"
+
 #if defined (SA_MODE)
 #include "thread_manager.hpp"
+#include "pl_compile_handler.hpp"
+#include "pl_executor.hpp"
 #endif // SA_MODE
+
 #include "xasl.h"
 #include "lob_locator.hpp"
 #include "crypt_opfunc.h"
 #include "method_error.hpp"
 #include "message_catalog.h"
 #include "utility.h"
+#include "sp_constants.hpp"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -399,15 +404,17 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
  */
 int
 locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oidp,
-		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea)
+		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea,
+		   int request_pages, int nparallel_process, int nparallel_process_idx)
 {
 #if defined(CS_MODE)
   int req_error;
   char *ptr;
   int return_value = ER_FAILED;
-  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 4) + (OR_OID_SIZE * 2)) a_request;
+  int client_endian = (int) get_endian_type ();
+  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 8) + (OR_OID_SIZE * 2)) a_request;
   char *request;
-  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 4) + OR_OID_SIZE) a_reply;
+  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 5) + OR_OID_SIZE) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -420,6 +427,10 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   ptr = or_pack_int (ptr, *nobjects);
   ptr = or_pack_int (ptr, *nfetched);
   ptr = or_pack_oid (ptr, last_oidp);
+  ptr = or_pack_int (ptr, request_pages);
+  ptr = or_pack_int (ptr, nparallel_process);
+  ptr = or_pack_int (ptr, nparallel_process_idx);
+  ptr = or_pack_int (ptr, client_endian);
   *fetch_copyarea = NULL;
 
   req_error =
@@ -428,6 +439,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   if (req_error == NO_ERROR)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
+      ptr += OR_INT_SIZE;	//  or_unpack_int (ptr, &client_endian);
       ptr = or_unpack_lock (ptr, lock);
       ptr = or_unpack_int (ptr, nobjects);
       ptr = or_unpack_int (ptr, nfetched);
@@ -445,9 +457,28 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   THREAD_ENTRY *thread_p = enter_server ();
 
+  assert ((nparallel_process <= 1) || (nparallel_process_idx >= 0 && nparallel_process_idx < nparallel_process));
+
+  if (nparallel_process > 1)
+    {
+      thread_p->_unload_cnt_parallel_process = nparallel_process;
+      thread_p->_unload_parallel_process_idx = nparallel_process_idx;
+    }
+  else
+    {
+      thread_p->_unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+      thread_p->_unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
+    }
+
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
-			fetch_copyarea);
+			fetch_copyarea, request_pages);
+
+  if (nparallel_process > 1)
+    {
+      thread_p->_unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+      thread_p->_unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
+    }
 
   exit_server (*thread_p);
 
@@ -616,7 +647,7 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
+  num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size, true);
 
   request_ptr = or_pack_int (request, num_objs);
   request_ptr = or_pack_int (request_ptr, desc_size);
@@ -690,7 +721,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  num_objs = locator_send_copy_area (copy_area, &content_ptr, NULL, &desc_ptr, &desc_size);
+  num_objs = locator_send_copy_area (copy_area, &content_ptr, NULL, &desc_ptr, &desc_size, true);
 
   request_ptr = or_pack_int (request, num_objs);
   request_ptr = or_pack_int (request_ptr, mobjs->multi_update_flags);
@@ -717,7 +748,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
       (void) or_unpack_int (reply, &error_code);
       if (error_code == NO_ERROR)
 	{
-	  locator_unpack_copy_area_descriptor (num_objs, copy_area, desc_ptr);
+	  locator_unpack_copy_area_descriptor (num_objs, copy_area, desc_ptr, -1);
 	}
     }
   if (desc_ptr)
@@ -9057,14 +9088,14 @@ sysprm_dump_server_parameters (FILE * outfp)
 }
 
 /*
- * jsp_get_server_port -
+ * pl_get_server_port -
  *
  * return:
  *
  * NOTE:
  */
 int
-jsp_get_server_port (void)
+pl_get_server_port (void)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -9089,7 +9120,7 @@ jsp_get_server_port (void)
 #else /* CS_MODE */
   int port;
   THREAD_ENTRY *thread_p = enter_server ();
-  port = jsp_server_port_from_info ();
+  port = pl_server_port_from_info ();
   exit_server (*thread_p);
   return port;
 #endif /* !CS_MODE */
@@ -10939,23 +10970,23 @@ cleanup:
 }
 
 int
-method_invoke_fold_constants (const method_sig_list & sig_list,
-			      std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result)
+pl_call (const cubpl::pl_signature & sig, const std::vector < std::reference_wrapper < DB_VALUE >> &args,
+	 std::vector < DB_VALUE > &out_args, DB_VALUE & result)
 {
+  int req_error = NO_ERROR;
 #if defined(CS_MODE)
   char *data_reply = NULL;
   int data_reply_size = 0;
-  int req_error = NO_ERROR;
 
   packing_packer packer;
   cubmem::extensible_block eb;
-  packer.set_buffer_and_pack_all (eb, sig_list, args);
+  packer.set_buffer_and_pack_all (eb, sig, args);
 
   {
     OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
     char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-    req_error = net_client_request_method_callback (NET_SERVER_METHOD_FOLD_CONSTANTS, eb.get_ptr (),
+    req_error = net_client_request_method_callback (NET_SERVER_PL_CALL, eb.get_ptr (),
 						    (int) packer.get_current_size (), reply,
 						    OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
     if (req_error != NO_ERROR)
@@ -10973,29 +11004,10 @@ method_invoke_fold_constants (const method_sig_list & sig_list,
     if (data_reply != NULL)
       {
 	packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-	    // *INDENT-OFF*
-	    std::vector <DB_VALUE> out_args;
-	    // *INDENT-ON*
-	unpacker.unpack_all (result, out_args);
-
-	method_sig_node *sig = sig_list.method_sig;
-	for (int i = 0; i < sig->num_method_args; i++)
+	if (data_reply_size > 0)
 	  {
-	    if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
-	      {
-		continue;
-	      }
-
-	    int pos = sig->method_arg_pos[i];
-
-	    DB_VALUE & arg = args[pos];
-	    DB_VALUE & out_arg = out_args[pos];
-
-	    db_value_clear (&arg);
-	    db_value_clone (&out_arg, &arg);
+	    unpacker.unpack_all (result, out_args);
 	  }
-
-	pr_clear_value_vector (out_args);
       }
     else
       {
@@ -11009,8 +11021,11 @@ error:
       packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
       int error_code;
       std::string error_msg;
-      unpacker.unpack_all (error_code, error_msg);
-      cubmethod::handle_method_error (error_code, error_msg);
+      if (data_reply_size > 0)
+	{
+	  unpacker.unpack_all (error_code, error_msg);
+	  cubmethod::handle_method_error (error_code, error_msg);
+	}
     }
 
   if (data_reply != NULL)
@@ -11019,39 +11034,63 @@ error:
     }
 
   return req_error;
-#else /* CS_MODE */
-  int error_code = NO_ERROR;
-
+#else
+  packing_packer packer;
+  cubmem::extensible_block eb;
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xmethod_invoke_fold_constants (thread_p, sig_list, args, result);
+  {
+    DB_VALUE ret_value;
+    cubpl::executor executor ((cubpl::pl_signature &) sig);
+    req_error = executor.fetch_args_peek (args);
+    if (req_error == NO_ERROR)
+      {
+	req_error = executor.execute (ret_value);
+      }
 
-  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-  assert (rctx);
+    if (req_error == NO_ERROR)
+      {
+	/* 3) pack */
+	packer.set_buffer_and_pack_all (eb, ret_value, executor.get_out_args ());
+      }
+    else
+      {
+	std::string err_msg = executor.get_stack ()->get_error_message ();
+	if (err_msg.empty () && req_error != ER_SP_EXECUTE_ERROR)
+	  {
+	    err_msg.assign (er_msg ());
+	  }
 
-  cubmethod::method_invoke_group * top_on_stack = rctx->top_stack ();
-  assert (top_on_stack);
+	if (req_error != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg);
+	  }
 
-  if (error_code != NO_ERROR)
-    {
-      if (rctx->is_interrupted ())
-	{
-	  rctx->set_local_error_for_interrupt ();
-	}
-      else if (error_code != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, top_on_stack->get_error_msg ().c_str ());
-	}
-    }
+	packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
+      }
 
-  top_on_stack->reset (true);
-  top_on_stack->end ();
-  rctx->pop_stack (thread_p, top_on_stack);
+    db_value_clear (&ret_value);
+  }
 
   exit_server (*thread_p);
 
-  return error_code;
-#endif /* !CS_MODE */
+  // unpack after exit_server (): ownership of the private allocated objects should be out of server mode
+  packing_unpacker unpacker (eb.get_ptr (), (size_t) packer.get_current_size ());
+  if (req_error == NO_ERROR)
+    {
+      db_make_null (&result);
+      unpacker.unpack_all (result, out_args);
+    }
+  else
+    {
+      int error_code;
+      std::string error_msg;
+      unpacker.unpack_all (error_code, error_msg);
+      cubmethod::handle_method_error (error_code, error_msg);
+    }
+
+  return req_error;
+#endif
 }
 
 /*
@@ -11280,10 +11319,10 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
 }
 
 int
-plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCSQL_COMPILE_INFO & compile_info)
+plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COMPILE_RESPONSE & compile_response)
 {
+  int req_error = NO_ERROR;
 #if defined(CS_MODE)
-  int rc = ER_FAILED;
   packing_packer packer;
   cubmem::extensible_block eb;
   char *ptr = NULL;
@@ -11291,14 +11330,13 @@ plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCS
   char *data_reply = NULL;
   int data_reply_size = 0;
 
-  packer.set_buffer_and_pack_all (eb, verbose, input_file);
+  packer.set_buffer_and_pack_all (eb, compile_request);
 
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
-						      (int) packer.get_current_size (),
-						      reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply,
-						      &data_reply_size);
+  req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
+						  (int) packer.get_current_size (),
+						  reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
   if (req_error != NO_ERROR)
     {
       goto error;
@@ -11314,16 +11352,29 @@ plcsql_transfer_file (const std::string & input_file, const bool & verbose, PLCS
   if (data_reply != NULL)
     {
       packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-      unpacker.unpack_all (compile_info);
-      rc = NO_ERROR;
+      if (data_reply_size > 0)
+	{
+	  unpacker.unpack_all (compile_response);
+	}
     }
 
 error:
-  // TODO error handling
   if (req_error != NO_ERROR)
     {
-      // TODO: er_set (...): set proper error
-      rc = req_error;
+      if (data_reply != NULL)
+	{
+	  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+	  if (data_reply_size > 0)
+	    {
+	      unpacker.unpack_all (compile_response);
+	    }
+	}
+
+      if (compile_response.err_code == NO_ERROR)
+	{
+	  compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : req_error;
+	  compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+	}
     }
 
   if (data_reply != NULL)
@@ -11331,8 +11382,147 @@ error:
       free_and_init (data_reply);
     }
 
-  return rc;
+  return req_error;
 #else /* CS_MODE */
-  return NO_ERROR;
+  int success = ER_FAILED;
+
+  cubmem::extensible_block eb;
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  {
+    cubpl::compile_handler compile_handler;
+    success = compile_handler.compile (compile_request, eb);
+  }
+
+  exit_server (*thread_p);
+
+  // unpack after exit_server (): ownership of the private allocated objects should be out of server mode
+  if (success == NO_ERROR)
+    {
+      packing_unpacker unpacker (eb.get_ptr (), eb.get_size ());
+      if (eb.get_size () > 0)
+	{
+	  unpacker.unpack_all (compile_response);
+	}
+    }
+  else
+    {
+      compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : success;
+      compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+    }
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * mmon_get_server_info - request to server to get server memory usage info
+ *
+ * return : cubrid error
+ *
+ *   server_info(in/out): save memory usage information of the server
+ */
+int
+mmon_get_server_info (MMON_SERVER_INFO & server_info)
+{
+#if defined(CS_MODE)
+  char *buffer, *ptr, *temp_str;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, dummy;
+  int error = NO_ERROR;
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_GET_SERVER_INFO, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
+    }
+
+  if (error == NO_ERROR)
+    {
+      // unpack server name
+      ptr = or_unpack_string_nocopy (buffer, &temp_str);
+      memcpy (server_info.server_name, temp_str, strlen (temp_str) + 1);
+
+      // unpack server total memory usage
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_mem_usage));
+
+      // unpack metainfo total memory usage
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_metainfo_mem_usage));
+
+      // unpack the number of stat
+      ptr = or_unpack_int (ptr, (int *) &(server_info.num_stat));
+
+      // unpack file name and its memory usage
+      server_info.stat_info.resize (server_info.num_stat);
+
+      // *INDENT-OFF*
+      // unpack memory usage entry info
+      for (auto &s_info : server_info.stat_info)
+        {
+          ptr = or_unpack_string_nocopy (ptr, &temp_str);
+          s_info.first = temp_str;
+          ptr = or_unpack_int64 (ptr, (int64_t *) &(s_info.second));
+        }
+      // *INDENT-ON*
+    }
+  free_and_init (buffer);
+
+  return error;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * mmon_disable_force - request to server to disable memory_monitor forcely
+ *
+ * return : cubrid error
+ */
+int
+mmon_disable_force ()
+{
+#if defined(CS_MODE)
+  char *buffer, *ptr;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, dummy;
+  int error = NO_ERROR;
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_DISABLE_FORCE, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
+    }
+
+  free_and_init (buffer);
+
+  return error;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }

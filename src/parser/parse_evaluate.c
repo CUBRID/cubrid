@@ -1369,6 +1369,14 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
       break;
 
     case PT_METHOD_CALL:
+
+      if (!PT_IS_METHOD (tree)
+	  && !(tree->info.method_call.call_or_expr == PT_IS_CALL_STMT) && do_Trigger_involved == false)
+	{
+	  // do not perform constant folding
+	  break;
+	}
+
       if (qo_need_skip_execution ())
 	{
 	  // It is for the get_query_info.

@@ -17,6 +17,10 @@ public class RequestCode {
     public static final int REQUEST_GLOBAL_SEMANTICS = 0xA1;
     public static final int REQUEST_BUILTIN_FUNCTION = 0xA4;
 
+    public static final int REQUEST_CHANGE_AUTH_RIGHTS = 0xC8;
+    public static final int REQUEST_CODE_ATTR = 0xC9;
+
+    public static final int UTIL_BOOTSTRAP = 0xDD;
     public static final int UTIL_PING = 0xDE;
     public static final int UTIL_STATUS = 0xEE;
     public static final int UTIL_TERMINATE_THREAD = 0xFE;

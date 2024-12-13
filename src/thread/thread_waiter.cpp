@@ -24,6 +24,8 @@
 #include "perf.hpp"
 
 #include <cassert>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 // todo: fix time unit
 

@@ -28,24 +28,32 @@
 #endif
 
 #include <cassert>
+#include <cstring>
 #include <cinttypes>
 #include <cstddef>
 
 struct log_lsa
 {
   std::int64_t pageid:48;		/* Log page identifier : 6 bytes length */
-  std::int64_t offset:16;		/* Offset in page : 2 bytes length */
+  std::int64_t offset:16;		/* Offset in page : 2 bytes length.
+                                          offset == 'area offset' */
   /* The offset field is defined as 16bit-INT64 type (not short), because of alignment */
 
   inline log_lsa () = default;
-  inline log_lsa (std::int64_t log_pageid, std::int16_t log_offset);
+  inline constexpr log_lsa (std::int64_t log_pageid, std::int16_t log_offset)
+    : pageid (log_pageid)
+    , offset (log_offset)
+  {
+  }
   inline log_lsa (const log_lsa &olsa) = default;
   inline log_lsa &operator= (const log_lsa &olsa) = default;
 
-  inline bool is_null () const;
+  constexpr inline bool is_null () const;
+  constexpr inline bool is_max () const;
   inline void set_null ();
 
-  inline bool operator== (const log_lsa &olsa) const;
+  constexpr inline bool operator== (const log_lsa &olsa) const;
+  inline bool operator!= (const log_lsa &olsa) const;
   inline bool operator< (const log_lsa &olsa) const;
   inline bool operator<= (const log_lsa &olsa) const;
   inline bool operator> (const log_lsa &olsa) const;
@@ -54,9 +62,14 @@ struct log_lsa
 
 using LOG_LSA = log_lsa;	/* Log address identifier */
 
-static const std::int64_t NULL_LOG_PAGEID = -1;
-static const std::int16_t NULL_LOG_OFFSET = -1;
-const log_lsa NULL_LSA = { NULL_LOG_PAGEID, NULL_LOG_OFFSET };
+constexpr std::int64_t NULL_LOG_PAGEID = -1;
+constexpr std::int16_t NULL_LOG_OFFSET = -1;
+constexpr log_lsa NULL_LSA { NULL_LOG_PAGEID, NULL_LOG_OFFSET };
+
+// maximum representable log lsa value based on bit-field members
+constexpr std::int64_t MAX_LOG_LSA_PAGEID = (static_cast<std::int64_t> (1u) << (48u - 1)) - 1;
+constexpr std::int16_t MAX_LOG_LSA_OFFSET = (static_cast<std::int16_t> (1u) << (16u - 1)) - 1;
+constexpr log_lsa MAX_LSA = { MAX_LOG_LSA_PAGEID, MAX_LOG_LSA_OFFSET };
 
 // functions
 void lsa_to_string (char *buf, int buf_size, const log_lsa *lsa);
@@ -81,17 +94,16 @@ inline bool LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2);
 // inline/template implementation
 //////////////////////////////////////////////////////////////////////////
 
-log_lsa::log_lsa (std::int64_t log_pageid, std::int16_t log_offset)
-  : pageid (log_pageid)
-  , offset (log_offset)
-{
-  //
-}
-
-bool
+constexpr bool
 log_lsa::is_null () const
 {
   return pageid == NULL_LOG_PAGEID;
+}
+
+constexpr bool
+log_lsa::is_max () const
+{
+  return *this == MAX_LSA;
 }
 
 void
@@ -102,10 +114,16 @@ log_lsa::set_null ()
   // we'll have "conditional jump or move on uninitialized value"
 }
 
-bool
+constexpr bool
 log_lsa::operator== (const log_lsa &olsa) const
 {
   return pageid == olsa.pageid && offset == olsa.offset;
+}
+
+bool
+log_lsa::operator!= (const log_lsa &olsa) const
+{
+  return ! (*this == olsa);
 }
 
 bool

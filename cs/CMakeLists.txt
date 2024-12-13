@@ -26,7 +26,8 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
-  ${EXECUTABLES_DIR}/unload_schema.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
+  ${EXECUTABLES_DIR}/unload_schema.c  
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/util_cs.c
@@ -107,6 +108,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/memory_monitor_cl.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
@@ -120,6 +122,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/printer.cpp
+  ${BASE_DIR}/process_util.c
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/sha1.c
@@ -147,6 +150,8 @@ set(BASE_HEADERS
   ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_monitor_cl.hpp
+  ${BASE_DIR}/memory_monitor_common.hpp
   ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
   ${BASE_DIR}/msgcat_set_log.hpp
@@ -154,10 +159,12 @@ set(BASE_HEADERS
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/perf_monitor.h
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/printer.hpp
+  ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
@@ -181,9 +188,14 @@ set(CONNECTION_SOURCES
 
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_common.cpp
+  ${COMMUNICATION_DIR}/network_callback_cl.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
+  )
+
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
   )
 
 set(PARSER_SOURCES
@@ -296,16 +308,15 @@ set(OBJECT_HEADERS
 )
 
 set(SP_SOURCES
-  ${SP_DIR}/jsp_cl.c
-  ${SP_DIR}/jsp_comm.c
-  ${SP_DIR}/jsp_file.c
+  ${SP_DIR}/jsp_cl.cpp
+  ${SP_DIR}/pl_signature.cpp
+  ${SP_DIR}/pl_comm.c
+  ${SP_DIR}/pl_struct_compile.cpp
+  ${SP_DIR}/sp_catalog.cpp
   )
 
 set(METHOD_SOURCES
-  ${METHOD_DIR}/method_connection_cl.cpp
-  ${METHOD_DIR}/method_compile_def.cpp
   ${METHOD_DIR}/method_callback.cpp
-  ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_oid_handler.cpp
   ${METHOD_DIR}/method_query_handler.cpp
@@ -437,6 +448,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c
@@ -495,6 +507,7 @@ add_library(cubridcs SHARED
   ${COMPAT_SOURCES_C}
   ${BASE_HEADERS}
   ${BASE_SOURCES}
+  ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
   ${COMMUNICATION_SOURCES}
   ${CONNECTION_SOURCES}
@@ -542,17 +555,17 @@ if(WIN32)
   target_link_libraries(cubridcs LINK_PRIVATE ws2_32)
   set_target_properties(cubridcs PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridcs/cubridcs.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
-target_include_directories(cubridcs PRIVATE ${FLEX_INCLUDE_DIRS} ${EP_INCLUDES})
+target_include_directories(cubridcs PRIVATE ${FLEX_INCLUDE_DIRS} ${JAVA_INC} ${EP_INCLUDES})
 if(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridcs PUBLIC stdc++fs)
   target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubridcs LINK_PUBLIC rt)
 else(UNIX)
-  target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
+  target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS} ${JVM_LIBS})
 endif(UNIX)
 # for dblink
-target_link_libraries(cubridcs cascci)
+target_link_libraries(cubridcs PUBLIC cascci)
 
 add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 add_dependencies(cubridcs ${EP_TARGETS})

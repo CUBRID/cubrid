@@ -36,6 +36,7 @@ namespace cubmethod
 {
   query_handler::query_handler (error_context &ctx, int id)
     : m_id (id)
+    , m_tid (NULL_TRANID)
     , m_error_ctx (ctx)
     , m_sql_stmt ()
     , m_stmt_type (CUBRID_STMT_NONE)
@@ -67,6 +68,7 @@ namespace cubmethod
   {
     end_qresult ();
     m_is_occupied = false;
+
   }
 
   query_result::query_result ()
@@ -130,6 +132,18 @@ namespace cubmethod
   void query_handler::set_is_occupied (bool flag)
   {
     m_is_occupied = flag;
+  }
+
+  TRANID
+  query_handler::get_tran_id ()
+  {
+    return m_tid;
+  }
+
+  void
+  query_handler::set_tran_id (TRANID tid)
+  {
+    m_tid = tid;
   }
 
   prepare_info &
@@ -541,11 +555,8 @@ namespace cubmethod
 
     if (qres && qres->type == T_SELECT)
       {
-	if (qresult.tuple_count > 0)
-	  {
-	    result_info.query_id = qres->res.s.query_id;
-	  }
-	else
+	result_info.query_id = qres->res.s.query_id;
+	if (result_info.query_id >= SHRT_MAX) // handle invalid value
 	  {
 	    result_info.query_id = NULL_QUERY_ID; // initialized value
 	  }

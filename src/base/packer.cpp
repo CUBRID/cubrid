@@ -33,6 +33,8 @@
 #include <cstring>
 #include <vector>
 #include <string>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubpacking
 {
@@ -718,7 +720,8 @@ namespace cubpacking
 
     if (len >= max_str_size)
       {
-	assert (false);
+	assert (max_str_size == 0);
+	align (INT_ALIGNMENT);
 	return;
       }
     if (len > 0)

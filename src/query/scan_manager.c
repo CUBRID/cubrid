@@ -51,6 +51,8 @@
 #include "xasl.h"
 #include "query_hash_scan.h"
 #include "statistics.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -3746,6 +3748,20 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  return S_ERROR;
 	}
+
+#if !defined(NDEBUG) && defined(DEBUG_HASH_LIST_SCAN_DUMP_HASH_TABLE)
+      if (llsidp->hlsid.hash_list_scan_type != HASH_METH_HASH_FILE)
+	{
+	  if (llsidp->list_id->tuple_cnt <= 100)
+	    {
+	      mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
+			    (void *) &(llsidp->list_id->type_list), (void *) &(llsidp->hlsid.hash_list_scan_type));
+	      printf ("temp file : tuple count = %lld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		      llsidp->list_id->page_cnt * 16);
+	    }
+	}
+#endif
+
       scan_end_scan (thread_p, scan_id);
 
       if (on_trace)
@@ -4006,7 +4022,7 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		       VAL_DESCR * vd,
 		       /* */
-		       QFILE_LIST_ID * list_id, method_sig_list * meth_sig_list)
+		       QFILE_LIST_ID * list_id, PL_SIGNATURE_ARRAY_TYPE * sig_array)
 {
   /* scan type is METHOD SCAN */
   scan_id->type = S_METHOD_SCAN;
@@ -4015,7 +4031,7 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* mvcc_select_lock_needed = false, fixed = true */
   scan_init_scan_id (scan_id, false, S_SELECT, true, grouped, single_fetch, join_dbval, val_list, vd);
 
-  int error = scan_id->s.msid.init (thread_p, meth_sig_list, list_id);
+  int error = scan_id->s.msid.init (thread_p, sig_array, list_id);
   if (error == NO_ERROR)
     {
       error = scan_id->s.msid.open ();
@@ -4900,12 +4916,17 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM
 	  || llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	{
-#if 0
-	  (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
-			       (void *) &llsidp->hlsid.hash_list_scan_type);
-	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
-		  llsidp->list_id->page_cnt * 16);
+#if !defined(NDEBUG) && defined(DEBUG_HASH_LIST_SCAN_DUMP_HASH_TABLE)
+	  if (llsidp->list_id->tuple_cnt <= 100)
+	    {
+	      (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
+				   (void *) &(llsidp->list_id->type_list),
+				   (void *) &(llsidp->hlsid.hash_list_scan_type));
+	      printf ("temp file : tuple count = %lld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		      llsidp->list_id->page_cnt * 16);
+	    }
 #endif
+
 	  mht_clear_hls (llsidp->hlsid.memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
 	  mht_destroy_hls (llsidp->hlsid.memory.hash_table);
 	}
@@ -5195,8 +5216,11 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   regu_variable_list_node *p;
 
   hsidp = &scan_id->s.hsid;
+  p_current_oid = &hsidp->curr_oid;
+
   if (scan_id->mvcc_select_lock_needed)
     {
+      COPY_OID (&current_oid, &hsidp->curr_oid);
       p_current_oid = &current_oid;
     }
   else
@@ -8236,6 +8260,13 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      return S_ERROR;
 	    }
 	}
+
+      if (llsidp->tplrecp)
+	{
+	  llsidp->tplrecp->size = tplrec.size;
+	  llsidp->tplrecp->tpl = tplrec.tpl;
+	}
+
       return S_SUCCESS;
     }
 
@@ -8243,7 +8274,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
- * scan_next_hash_list_scan () - The scan is moved to the next hash list scan item.
+ * scan_hash_probe_next () - The scan is moved to the next hash list scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
  *

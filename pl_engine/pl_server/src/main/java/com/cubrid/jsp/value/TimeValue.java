@@ -31,11 +31,18 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.sql.Time;
 import java.util.Calendar;
 
 public class TimeValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_TIME;
+    }
+
     private Time time;
 
     public TimeValue(int hour, int min, int sec) {
@@ -45,44 +52,27 @@ public class TimeValue extends Value {
         cal.set(Calendar.MILLISECOND, 0);
 
         this.time = new Time(cal.getTimeInMillis());
-    }
-
-    public TimeValue(int hour, int min, int sec, int mode, int dbType) {
-        super(mode);
-        Calendar cal = Calendar.getInstance();
-        cal.set(0, 0, 0, hour, min, sec);
-        cal.set(Calendar.MILLISECOND, 0);
-
-        this.time = new Time(cal.getTimeInMillis());
-        this.dbType = dbType;
+        this.dbType = DBType.DB_TIME;
     }
 
     public TimeValue(Time time) {
         this.time = time;
+        this.dbType = DBType.DB_TIME;
         assert time.getTime() % 1000L == 0;
     }
 
+    @Override
     public Time toTime() throws TypeMismatchException {
         return time;
     }
 
+    @Override
     public Object toObject() throws TypeMismatchException {
-        return toTime();
+        return time;
     }
 
+    @Override
     public String toString() {
-        return time.toString();
-    }
-
-    public Time[] toTimeArray() throws TypeMismatchException {
-        return new Time[] {toTime()};
-    }
-
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toObject()};
-    }
-
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
+        return SpLib.convTimeToString(time);
     }
 }

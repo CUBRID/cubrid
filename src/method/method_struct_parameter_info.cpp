@@ -20,6 +20,8 @@
 
 #include "dbtran_def.h"
 #include "language_support.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {

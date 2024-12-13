@@ -140,6 +140,12 @@ static T_CONF_TABLE tbl_on_off[] = {
   {NULL, 0}
 };
 
+static T_CONF_TABLE tbl_allow_deny[] = {
+  {"ALLOW", ALLOW},
+  {"DENY", DENY},
+  {NULL, 0}
+};
+
 static T_CONF_TABLE tbl_sql_log_mode[] = {
   {"ALL", SQL_LOG_MODE_ALL},
   {"ON", SQL_LOG_MODE_ALL},
@@ -211,6 +217,7 @@ static char *conf_file_loaded[MAX_NUM_OF_CONF_FILE_LOADED];
 const char *broker_keywords[] = {
   "ACCESS_CONTROL",
   "ACCESS_CONTROL_FILE",
+  "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER",
   "ADMIN_LOG_FILE",
   "MASTER_SHM_ID",
   "ACCESS_LIST",
@@ -556,7 +563,10 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   if (admin_log_file != NULL)
     {
       INI_GETSTR_CHK (ini_string, ini, SECTION_NAME, "ADMIN_LOG_FILE", DEFAULT_ADMIN_LOG_FILE, &lineno);
-      MAKE_FILEPATH (admin_log_file, ini_string, BROKER_PATH_MAX);
+      if (make_abs_path (admin_log_file, NULL, ini_string, BROKER_PATH_MAX) < 0)
+	{
+	  goto conf_error;
+	}
     }
 
   if (acl_flag != NULL)
@@ -574,7 +584,10 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   if (acl_file != NULL)
     {
       INI_GETSTR_CHK (ini_string, ini, SECTION_NAME, "ACCESS_CONTROL_FILE", "", &lineno);
-      MAKE_FILEPATH (acl_file, ini_string, BROKER_PATH_MAX);
+      if (make_abs_path (acl_file, "conf", ini_string, BROKER_PATH_MAX) < 0)
+	{
+	  goto conf_error;
+	}
     }
 
   for (i = 0; i < ini->nsec; i++)
@@ -738,14 +751,26 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (ini_string, ini, sec_name, "LOG_DIR", DEFAULT_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
       INI_GETSTR_CHK (ini_string, ini, sec_name, "SLOW_LOG_DIR", DEFAULT_SLOW_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].slow_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].slow_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
       INI_GETSTR_CHK (ini_string, ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].err_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].err_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
 
       INI_GETSTR_CHK (ini_string, ini, sec_name, "ACCESS_LOG_DIR", DEFAULT_ACCESS_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].access_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].access_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
       INI_GETSTR_CHK (ini_string, ini, sec_name, "DATABASES_CONNECTION_FILE", DEFAULT_EMPTY_STRING, &lineno);
       MAKE_FILEPATH (br_info[num_brs].db_connection_file, ini_string, BROKER_INFO_PATH_MAX);
 
@@ -842,6 +867,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       strncpy_bufsize (time_str, s);
       br_info[num_brs].time_to_kill = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].time_to_kill < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
+      INI_GETSTR_CHK (s, ini, sec_name, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER", "DENY", &lineno);
+      br_info[num_brs].acl_broker_allow = conf_get_value_table_allow_deny (s);
+      if (br_info[num_brs].acl_broker_allow < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
@@ -1095,7 +1128,10 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG_DIR", DEFAULT_SHARD_PROXY_LOG_DIR, &lineno);
-      strcpy (br_info[num_brs].proxy_log_dir, s);
+      if (make_abs_path (br_info[num_brs].proxy_log_dir, NULL, s, BROKER_PATH_MAX) < 0)
+	{
+	  goto conf_error;
+	}
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG", DEFAULT_SHARD_PROXY_LOG_MODE, &lineno);
       br_info[num_brs].proxy_log_mode = conf_get_value_proxy_log_mode (s);
@@ -1525,7 +1561,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
  *   fp(in):
  */
 void
-broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, int br_shm_id)
+broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, int br_shm_id, char *admin_log_file)
 {
   int i;
   const char *tmp_str;
@@ -1558,7 +1594,11 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 
   fprintf (fp, "[broker]\n");
 #endif
-  fprintf (fp, "MASTER_SHM_ID\t=%x\n\n", br_shm_id);
+  fprintf (fp, "MASTER_SHM_ID\t=%x\n", br_shm_id);
+  if (admin_log_file)
+    {
+      fprintf (fp, "ADMIN_LOG_FILE\t=%s\n\n", admin_log_file);
+    }
 
   for (i = 0; i < num_broker; i++)
     {
@@ -1611,6 +1651,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	}
       fprintf (fp, "JOB_QUEUE_SIZE\t\t=%d\n", br_info[i].job_queue_size);
       fprintf (fp, "TIME_TO_KILL\t\t=%d\n", br_info[i].time_to_kill);
+      fprintf (fp, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER\t=%s\n", br_info[i].acl_broker_allow ? "ALLOW" : "DENY");
       tmp_str = get_conf_string (br_info[i].access_log, tbl_on_off);
       if (tmp_str)
 	{
@@ -1791,6 +1832,17 @@ int
 conf_get_value_table_on_off (const char *value)
 {
   return (get_conf_value (value, tbl_on_off));
+}
+
+/*
+* conf_get_value_table_allow_deny - get value from allow/deny table
+*   return: 0, 1 or -1 if fail
+*   value(in):
+*/
+int
+conf_get_value_table_allow_deny (const char *value)
+{
+  return (get_conf_value (value, tbl_allow_deny));
 }
 
 /*

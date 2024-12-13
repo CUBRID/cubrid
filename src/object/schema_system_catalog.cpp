@@ -23,6 +23,8 @@
 #include "identifier_store.hpp"
 #include "oid.h"
 #include "schema_system_catalog_constants.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 using namespace cubbase;
 
@@ -70,6 +72,7 @@ namespace cubschema
     CT_PARTITION_NAME,		// "_db_partition"
     CT_STORED_PROC_NAME,		// "_db_stored_procedure"
     CT_STORED_PROC_ARGS_NAME,	// "_db_stored_procedure_args"
+    CT_STORED_PROC_CODE_NAME,   // "_db_stored_procedure_code"
     CT_SERIAL_NAME,			// "db_serial"
     CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
     CT_COLLATION_NAME,		// "_db_collation"
