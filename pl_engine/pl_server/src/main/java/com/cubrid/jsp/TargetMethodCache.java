@@ -45,7 +45,8 @@ public class TargetMethodCache {
 
         method = methods.get(signature);
         if (method == null) {
-            method = new TargetMethod(signature);
+            // TODO (CBRD-25370) : disabled temporary
+            // method = new TargetMethod(signature);
             methods.put(signature, method);
         }
 

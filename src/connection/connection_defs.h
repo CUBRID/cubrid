@@ -107,7 +107,6 @@ enum css_client_request
   CANCEL_SHUTDOWN = 15,
   GET_SHUTDOWN_TIME = 16,
   KILL_SERVER_IMMEDIATE = 17,
-  SHUTDOWN_REVIVING_SERVER = 18,
   GET_REPL_LIST = 20,		/* REPL: get the info. for a process */
   GET_ALL_LIST = 21,		/* REPL: get the info. for all processes */
   GET_REPL_COUNT = 22,		/* REPL: get the # of repl processes */

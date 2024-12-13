@@ -871,8 +871,6 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   AU_DISABLE_PASSWORDS ();
 
   if (standby_compactdb_flag)

@@ -196,6 +196,7 @@ set(CONNECTION_SOURCES
 
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_common.cpp
+  ${COMMUNICATION_DIR}/network_callback_sr.cpp
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   )
@@ -280,23 +281,30 @@ set(OBJECT_HEADERS
 )
 
 set(SP_SOURCES
-  ${SP_DIR}/jsp_comm.c
-  ${SP_DIR}/jsp_file.c
-  ${SP_DIR}/jsp_sr.c
+  ${SP_DIR}/method_invoke_group.cpp
+  ${SP_DIR}/pl_connection.cpp
+  ${SP_DIR}/pl_compile_handler.cpp
+  ${SP_DIR}/pl_execution_stack_context.cpp
+  ${SP_DIR}/pl_executor.cpp
+  ${SP_DIR}/pl_query_cursor.cpp
+  ${SP_DIR}/pl_session.cpp
+  ${SP_DIR}/pl_signature.cpp
+  ${SP_DIR}/pl_comm.c
+  ${SP_DIR}/pl_file.c
+  ${SP_DIR}/pl_sr.cpp
+  ${SP_DIR}/pl_sr_jvm.cpp
+  ${SP_DIR}/sp_code.cpp
   )
 
+set(SP_HEADERS
+  ${SP_DIR}/pl_connection.hpp
+  ${SP_DIR}/pl_execution_stack_context.hpp
+  ${SP_DIR}/pl_signature.hpp
+  ${SP_DIR}/pl_struct_compile.cpp
+)
+
 set(METHOD_SOURCES
-  ${METHOD_DIR}/method_connection_java.cpp
-  ${METHOD_DIR}/method_connection_sr.cpp
-  ${METHOD_DIR}/method_connection_pool.cpp
-  ${METHOD_DIR}/method_compile_def.cpp
-  ${METHOD_DIR}/method_compile.cpp
-  ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
-  ${METHOD_DIR}/method_invoke_builtin.cpp
-  ${METHOD_DIR}/method_invoke_group.cpp
-  ${METHOD_DIR}/method_invoke_java.cpp
-  ${METHOD_DIR}/method_query_cursor.cpp
   ${METHOD_DIR}/method_query_util.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp
@@ -305,7 +313,6 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_struct_schema_info.cpp
   ${METHOD_DIR}/method_struct_parameter_info.cpp
   ${METHOD_DIR}/method_scan.cpp
-  ${METHOD_DIR}/method_runtime_context.cpp
   ${METHOD_DIR}/query_method.cpp
   )
 
@@ -528,6 +535,7 @@ set (CUBRID_LIB_HEADERS
   ${OBJECT_HEADERS}
   ${QUERY_HEADERS}
   ${STORAGE_HEADERS}
+  ${SP_HEADERS}
   ${THREAD_HEADERS}
   ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}

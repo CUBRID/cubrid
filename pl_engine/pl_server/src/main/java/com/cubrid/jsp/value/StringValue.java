@@ -31,8 +31,12 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.Server;
+import com.cubrid.jsp.SysParam;
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
+import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
@@ -44,111 +48,129 @@ public class StringValue extends Value {
         return TYPE_NAME_STRING;
     }
 
-    private String value;
+    private byte[] primitiveValue;
 
-    public StringValue(String value) {
+    public StringValue(byte[] value, int codeset) {
         super();
-        this.value = value;
+        this.primitiveValue = value;
+        this.codeset = codeset;
+        this.resolved = null;
+        this.dbType = DBType.DB_STRING;
     }
 
-    public StringValue(String value, int mode, int dbType) {
-        super(mode);
-        this.value = value;
-        this.dbType = dbType;
+    public StringValue(byte[] value) {
+        this(value, Server.getConfig().getServerCodesetId());
+    }
+
+    public StringValue(String value) {
+        this(value.getBytes(Server.getConfig().getServerCharset()));
     }
 
     @Override
     public byte toByte() throws TypeMismatchException {
-        return SpLib.convStringToByte(value);
+        return SpLib.convStringToByte(toString());
+    }
+
+    @Override
+    public byte[] toByteArray() throws TypeMismatchException {
+        return primitiveValue;
     }
 
     @Override
     public short toShort() throws TypeMismatchException {
-        return SpLib.convStringToShort(value);
+        return SpLib.convStringToShort(toString());
     }
 
     @Override
     public int toInt() throws TypeMismatchException {
-        return SpLib.convStringToInt(value);
+        return SpLib.convStringToInt(toString());
     }
 
     @Override
     public long toLong() throws TypeMismatchException {
-        return SpLib.convStringToBigint(value);
+        return SpLib.convStringToBigint(toString());
     }
 
     @Override
     public float toFloat() throws TypeMismatchException {
-        return SpLib.convStringToFloat(value);
+        return SpLib.convStringToFloat(toString());
     }
 
     @Override
     public double toDouble() throws TypeMismatchException {
-        return SpLib.convStringToDouble(value);
+        return SpLib.convStringToDouble(toString());
     }
 
     @Override
     public Byte toByteObject() throws TypeMismatchException {
-        return SpLib.convStringToByte(value);
+        return SpLib.convStringToByte(toString());
     }
 
     @Override
     public Short toShortObject() throws TypeMismatchException {
-        return SpLib.convStringToShort(value);
+        return SpLib.convStringToShort(toString());
     }
 
     @Override
     public Integer toIntegerObject() throws TypeMismatchException {
-        return SpLib.convStringToInt(value);
+        return SpLib.convStringToInt(toString());
     }
 
     @Override
     public Long toLongObject() throws TypeMismatchException {
-        return SpLib.convStringToBigint(value);
+        return SpLib.convStringToBigint(toString());
     }
 
     @Override
     public Float toFloatObject() throws TypeMismatchException {
-        return SpLib.convStringToFloat(value);
+        return SpLib.convStringToFloat(toString());
     }
 
     @Override
     public Double toDoubleObject() throws TypeMismatchException {
-        return SpLib.convStringToDouble(value);
+        return SpLib.convStringToDouble(toString());
     }
 
     @Override
     public Date toDate() throws TypeMismatchException {
-        return SpLib.convStringToDate(value);
+        return SpLib.convStringToDate(toString());
     }
 
     @Override
     public Time toTime() throws TypeMismatchException {
-        return SpLib.convStringToTime(value);
+        return SpLib.convStringToTime(toString());
     }
 
     @Override
     public Timestamp toTimestamp() throws TypeMismatchException {
-        return SpLib.convStringToTimestamp(value);
+        return SpLib.convStringToTimestamp(toString());
     }
 
     @Override
     public Timestamp toDatetime() throws TypeMismatchException {
-        return SpLib.convStringToDatetime(value);
+        return SpLib.convStringToDatetime(toString());
     }
 
     @Override
     public BigDecimal toBigDecimal() throws TypeMismatchException {
-        return SpLib.convStringToNumeric(value);
+        return SpLib.convStringToNumeric(toString());
     }
 
     @Override
     public Object toObject() throws TypeMismatchException {
-        return value;
+        return toString();
     }
 
     @Override
     public String toString() {
-        return value;
+        if (resolved == null) {
+            try {
+                resolved = new String(primitiveValue, SysParam.getCodesetString(this.codeset));
+            } catch (UnsupportedEncodingException e) {
+                // just return null
+                Server.log(e);
+            }
+        }
+        return (String) resolved;
     }
 }

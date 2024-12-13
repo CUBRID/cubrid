@@ -67,7 +67,7 @@
 #include "serial.h"
 #include "server_interface.h"
 #include "jansson.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #include "xserver_interface.h"
 #include "session.h"
 #include "event_log.h"
@@ -87,6 +87,7 @@
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #include "server_support.h"
+#include "pl_sr.h"
 #endif /* SERVER_MODE */
 
 #if defined(WINDOWS)
@@ -2072,8 +2073,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
   char *mk_path;
-  int jsp_port;
-  bool jsp;
+  int pl_port;
+  bool pl;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2299,20 +2300,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tsc_init ();
 #endif /* !SERVER_MODE */
 
-
 #if defined (SA_MODE)
-  // Initialize java stored procedure server for standalone mode
-  jsp = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
-  if (jsp && !jsp_jvm_is_loaded ())
-    {
-      jsp_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
-      error_code = jsp_start_server (db_name, db->pathname, jsp_port);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
   /* *INDENT-OFF* */
   // thread_manager was not initialized
   assert (thread_p == NULL);
@@ -2789,6 +2777,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   json_set_alloc_funcs (malloc, free);
 #endif
 
+  pl_server_init (db_name);
+
   return NO_ERROR;
 
 error:
@@ -2817,10 +2807,13 @@ error:
   session_states_finalize (thread_p);
   logtb_finalize_global_unique_stats_table (thread_p);
 
+
   vacuum_stop_workers (thread_p);
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+  pl_server_destroy ();
+
   cdc_daemons_destroy ();
 
   BO_DISABLE_FLUSH_DAEMONS ();
@@ -3139,6 +3132,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
+  pl_server_destroy ();
 #endif
 
 #if defined (SA_MODE)

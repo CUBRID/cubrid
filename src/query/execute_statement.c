@@ -20250,6 +20250,98 @@ end:
 #undef QUERY_BUF_SIZE
 }
 
+int
+do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
+{
+#define QUERY_BUF_SIZE 2048
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  const char *query = NULL;
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
+  const char *current_schema_name = NULL;
+  const char *sp_name = NULL;
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  assert (buf != NULL);
+
+  current_schema_name = sc_current_schema_name ();
+
+  sp_name = sm_remove_qualifier_name (name);
+  query = "SELECT [unique_name] FROM [%s] WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, current_schema_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, current_schema_name);
+  assert (query_buf[0] != '\0');
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      if (error == DB_CURSOR_END)
+	{
+	  ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (!DB_IS_NULL (&value))
+    {
+      assert (strlen (db_get_string (&value)) < buf_size);
+      strcpy (buf, db_get_string (&value));
+    }
+  else
+    {
+      /* unique_name must not be null. */
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because unique_name is not unique. */
+      buf[0] = '\0';
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+#undef QUERY_BUF_SIZE
+}
+
 /*
  * do_set_trace_to_query_flag() -
  *   return: void
