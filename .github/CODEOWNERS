@@ -18,37 +18,4 @@
 # assign reviewers about all files
 
 # required default reviewer
-/src/base/ @beyondykk9
-/src/base/memory_monitor_* @hornetmj
-/src/broker/ @kisoo-han
-/src/cm_common/ @kisoo-han
-/src/compat/ @beyondykk9
-/src/sp/ @beyondykk9
-/src/method/ @beyondykk9
-/src/optimizer/ @shparkcubrid
-/src/parser/ @beyondykk9
-/src/parser/view_transform.* @shparkcubrid
-/src/query/ @beyondykk9
-/src/query/query_executor.* @shparkcubrid
-/src/query/query_hash_scan.* @shparkcubrid
-/src/query/scan_manager.* @shparkcubrid
-/src/query/subquery_cache.* @shparkcubrid
-/src/query/vacuum.* @hornetmj
-/src/storage/ @hornetmj
-/src/storage/statistics* @shparkcubrid
-/src/transaction/ @hornetmj
-/src/win_tools/ @kisoo-han
-/src/xasl/ @beyondykk9
-
-# added directories
-/src/object @beyondykk9
-/src/connection @beyondykk9
-/src/communication @beyondykk9
-/src/executable @beyondykk9 @kisoo-han
-/src/heaplayers @beyondykk9
-/src/monitor @beyondykk9
-/src/session @beyondykk9
-/src/thread @beyondykk9
-/src/loaddb @kisoo-han
-
-/pl_engine @beyondykk9
+* @CUBRID/cubvec-team
