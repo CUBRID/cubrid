@@ -21905,19 +21905,25 @@ opt_vector_args
   : /* empty */
 		{{ DBG_TRACE_GRAMMAR(opt_vector_args, : );
 
-      // TODO
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, NULL);
+			$$ = ctn;
 
 		DBG_PRINT}}
 	| '(' unsigned_integer ')'
 		{{ DBG_TRACE_GRAMMAR(opt_vector_args, | '(' unsigned_integer ')' );
 
-      // TODO
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $2, NULL);
+			$$ = ctn;
 
 		DBG_PRINT}}
-	| '(' unsigned_integer ',' primitive_type ')'
+	| '(' unsigned_integer ',' FLOAT_ ')'
 		{{ DBG_TRACE_GRAMMAR(opt_vector_args, | '(' unsigned_integer ',' primitive_type ')' );
 
-      // TODO
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $2, FROM_NUMBER(PT_TYPE_FLOAT));
+			$$ = ctn;
 
 		DBG_PRINT}}
 	;
