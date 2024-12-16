@@ -21898,6 +21898,11 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_VECTOR), NULL);
 			$$ = ctn;
 
+            // TODO: The opt_vector_args are not covered in this milestone.
+			// Dimension and type validation for VECTOR arguments must be included
+			// in the milestone that checks user input for correctness.
+
+
 		DBG_PRINT}}
 	;
 
