@@ -308,8 +308,21 @@ public class ExecuteThread extends Thread {
         return unpacker;
     }
 
+    private void readSessionParameter(CUBRIDUnpacker unpacker) {
+        int paramCnt = (int) unpacker.unpackBigint();
+        if (paramCnt > 0) {
+            for (int i = 0; i < paramCnt; i++) {
+                SysParam sysParam = new SysParam(unpacker);
+                ctx.getSystemParameters().put(sysParam.getParamId(), sysParam);
+            }
+        }
+    }
+
     private void processStoredProcedure() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
+
+        // session parameters
+        readSessionParameter(unpacker);
 
         // prepare
         if (prepareArgs == null) {
@@ -384,6 +397,9 @@ public class ExecuteThread extends Thread {
 
     private void processCompile() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
+
+        // session parameters
+        readSessionParameter(unpacker);
 
         CompileRequest request = new CompileRequest(unpacker);
 

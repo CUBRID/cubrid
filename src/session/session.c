@@ -3056,6 +3056,26 @@ session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * session
  *
  */
 #if defined (SERVER_MODE)
+
+int
+session_set_pl_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (state_p->pl_session_p != NULL)
+    {
+      state_p->pl_session_p->mark_session_param_changed (id);
+    }
+
+  return NO_ERROR;
+}
+
 int
 session_state_increase_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * state_p)
 {

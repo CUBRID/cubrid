@@ -33,6 +33,7 @@ package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.SysParam;
+import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
@@ -59,11 +60,11 @@ public class StringValue extends Value {
     }
 
     public StringValue(byte[] value) {
-        this(value, Server.getConfig().getServerCodesetId());
+        this(value, Context.getCodesetId());
     }
 
     public StringValue(String value) {
-        this(value.getBytes(Server.getConfig().getServerCharset()));
+        this(value.getBytes(Context.getSessionCharset()));
     }
 
     @Override

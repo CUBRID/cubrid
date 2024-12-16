@@ -621,6 +621,8 @@ extern "C"
 #define PRM_DEPRECATED      0x40000000	/* is deprecated */
 #define PRM_OBSOLETED       0x80000000	/* is obsoleted */
 
+#define PRM_ALL_FLAGS       0xFFFFFFFF	/* all flags */
+
 /*
  * Dynamic flags
  */
@@ -739,7 +741,7 @@ extern "C"
   extern void xsysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE * prm_values);
   extern SYSPRM_ASSIGN_VALUE *xsysprm_get_force_server_parameters (void);
   extern void xsysprm_dump_server_parameters (FILE * fp);
-  extern SYSPRM_ASSIGN_VALUE *xsysprm_get_pl_context_parameters (void);
+  extern SYSPRM_ASSIGN_VALUE *xsysprm_get_pl_context_parameters (int flag);
 #endif				/* !CS_MODE */
 
   extern int sysprm_set_force (const char *pname, const char *pvalue);

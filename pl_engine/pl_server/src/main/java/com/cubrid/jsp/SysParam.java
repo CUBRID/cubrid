@@ -1,9 +1,7 @@
 package com.cubrid.jsp;
 
 import com.cubrid.jsp.data.CUBRIDUnpacker;
-import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.protocol.UnPackableObject;
-import com.cubrid.jsp.value.Value;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
@@ -17,6 +15,15 @@ public class SysParam implements UnPackableObject {
     public static final int INTL_COLLATION = 206;
     public static final int TIMEZONE = 249;
     public static final int ORACLE_COMPAT_NUMBER_BEHAVIOR = 334;
+
+    // paramType
+    public static final int PRM_TYPE_INTEGER = 0;
+    public static final int PRM_TYPE_FLOAT = 1;
+    public static final int PRM_TYPE_BOOLEAN = 2;
+    public static final int PRM_TYPE_KEYWORD = 3;
+    public static final int PRM_TYPE_BIGINT = 4;
+    public static final int PRM_TYPE_STRING = 5;
+    public static final int PRM_TYPE_INTEGER_LIST = 6;
 
     // codeset
     public static final int CODESET_ASCII = 0;
@@ -63,7 +70,7 @@ public class SysParam implements UnPackableObject {
 
     private int paramId;
     private int paramType;
-    private Value paramValue;
+    private String paramValue;
 
     public SysParam(CUBRIDUnpacker unpacker) {
         unpack(unpacker);
@@ -73,7 +80,7 @@ public class SysParam implements UnPackableObject {
         return paramId;
     }
 
-    public Value getParamValue() {
+    public String getParamValue() {
         return paramValue;
     }
 
@@ -93,11 +100,8 @@ public class SysParam implements UnPackableObject {
 
     @Override
     public void unpack(CUBRIDUnpacker unpacker) {
-        try {
-            this.paramId = unpacker.unpackInt(); // paramId
-            this.paramType = unpacker.unpackInt(); // paramType
-            this.paramValue = unpacker.unpackValue(paramType);
-        } catch (TypeMismatchException e) {
-        }
+        this.paramId = unpacker.unpackInt(); // paramId
+        this.paramType = unpacker.unpackInt(); // paramType
+        this.paramValue = new String(unpacker.unpackCStringByteArray());
     }
 }

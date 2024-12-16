@@ -31,7 +31,7 @@
 
 package com.cubrid.jsp.data;
 
-import com.cubrid.jsp.Server;
+import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.*;
 import java.nio.ByteBuffer;
@@ -106,7 +106,7 @@ public class CUBRIDUnpacker {
             byte[] str = new byte[len];
             buffer.get(str);
             align(DataUtilities.INT_ALIGNMENT);
-            return new String(str, Server.getConfig().getServerCharset());
+            return new String(str, Context.getSessionCharset());
         } else {
             align(DataUtilities.INT_ALIGNMENT);
             return "";
