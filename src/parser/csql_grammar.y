@@ -1093,6 +1093,7 @@ static char *g_plcsql_text;
 %type <c2> class_name_with_server_name
 %type <c2> opt_index_with_clause
 %type <c2> index_with_item_list
+%type <c2> opt_vector_args
 
 
 /*}}}*/
@@ -1461,6 +1462,7 @@ static char *g_plcsql_text;
 %token VARIABLE_
 %token VARYING
 %token VCLASS
+%token VECTOR
 %token VIEW
 %token WHEN
 %token WHENEVER
@@ -21889,7 +21891,48 @@ primitive_type
 
 			$$ = ctn;
 	  DBG_PRINT}}
+  | VECTOR opt_vector_args
+		{{ DBG_TRACE_GRAMMAR(data_type, | vector_type);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_VECTOR), NULL);
+			$$ = ctn;
+
+            // TODO: The opt_vector_args are not covered in this milestone.
+			// Dimension and type validation for VECTOR arguments must be included
+			// in the milestone that checks user input for correctness.
+
+
+		DBG_PRINT}}
 	;
+
+opt_vector_args
+  : /* empty */
+		{{ DBG_TRACE_GRAMMAR(opt_vector_args, : );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| '(' unsigned_integer ')'
+		{{ DBG_TRACE_GRAMMAR(opt_vector_args, | '(' unsigned_integer ')' );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $2, NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| '(' unsigned_integer ',' FLOAT_ ')'
+		{{ DBG_TRACE_GRAMMAR(opt_vector_args, | '(' unsigned_integer ',' FLOAT_ ')' );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $2, FROM_NUMBER(PT_TYPE_FLOAT));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	;
+
 
 opt_internal_external
 	: /* empty */
