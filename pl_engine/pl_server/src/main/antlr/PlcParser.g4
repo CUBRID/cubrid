@@ -39,8 +39,13 @@ create_routine
     ;
 
 routine_definition
-    : (PROCEDURE | FUNCTION) identifier ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
-      (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
+    : (PROCEDURE | FUNCTION) routine_uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
+      (authid_spec)? (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
+    ;
+
+routine_uniq_name
+    : (owner=identifier '.')? name=identifier
+    | '[' (owner=identifier '.')? name=identifier ']'   /* rewritten query */
     ;
 
 parameter_list
@@ -48,8 +53,13 @@ parameter_list
     ;
 
 parameter
-    : parameter_name IN? type_spec (COMMENT CHAR_STRING)?                   # parameter_in
-    | parameter_name ( IN? OUT | INOUT ) type_spec (COMMENT CHAR_STRING)?   # parameter_out
+    : parameter_name IN? type_spec default_value_part? (COMMENT CHAR_STRING)?                     # parameter_in
+    | parameter_name ( IN? OUT | INOUT ) type_spec (COMMENT CHAR_STRING)?                         # parameter_out
+    ;
+
+authid_spec
+    : AUTHID (DEFINER | OWNER)                          # authid_owner
+    | AUTHID (CALLER | CURRENT_USER)                    # authid_caller
     ;
 
 default_value_part
@@ -211,7 +221,11 @@ return_statement
     ;
 
 procedure_call
-    : (DBMS_OUTPUT '.')? routine_name function_argument?
+    : proc_call_name function_argument?
+    ;
+
+proc_call_name
+    : (owner=identifier '.')? (DBMS_OUTPUT '.')? name=identifier
     ;
 
 body
@@ -345,6 +359,7 @@ atom
     | record_field                              # field_exp
     | function_call                             # call_exp
     | identifier                                # id_exp
+    | keyword_builtin_func                      # builtin_func
     | case_expression                           # case_exp
     | SQL PERCENT_ROWCOUNT                      # sql_rowcount_exp  // this must go before the cursor_attr_exp line
     | cursor_exp ( PERCENT_ISOPEN | PERCENT_FOUND | PERCENT_NOTFOUND | PERCENT_ROWCOUNT )   # cursor_attr_exp
@@ -358,7 +373,29 @@ record_field
     ;
 
 function_call
-    : function_name function_argument
+    : func_call_name function_argument
+    ;
+
+func_call_name
+    : (owner=identifier '.')? name=func_name
+    ;
+
+func_name
+    : identifier
+    | keyword_builtin_func
+    ;
+
+keyword_builtin_func
+    : CURRENT_USER
+    | DATE
+    | DEFAULT
+    | IF
+    | INSERT
+    | MOD
+    | REPLACE
+    | TIME
+    | TIMESTAMP
+    | TRUNCATE
     ;
 
 relational_operator
@@ -447,10 +484,6 @@ restricted_using_clause
 
 restricted_using_element
     : (IN)? expression
-    ;
-
-routine_name
-    : identifier
     ;
 
 parameter_name
@@ -574,20 +607,7 @@ quoted_string
 identifier
     : REGULAR_ID
     | DELIMITED_ID
-    ;
-
-function_name
-    : identifier
-    | DATE
-    | DEFAULT
-    | IF
-    | INSERT
-    | MOD
-    | REPLACE
     | REVERSE
-    | TIME
-    | TIMESTAMP
-    | TRUNCATE
     ;
 
 

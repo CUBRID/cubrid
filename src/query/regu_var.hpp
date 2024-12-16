@@ -29,6 +29,7 @@
 #include "string_opfunc.h"
 #include "object_primitive.h"
 #include "db_function.hpp"
+#include "xasl_sp.hpp"
 
 #include <functional>
 
@@ -58,7 +59,8 @@ typedef enum
   TYPE_CLASSOID,		/* does not have corresponding field use current class identifier value */
   TYPE_FUNC,			/* use funcp */
   TYPE_REGUVAL_LIST,		/* use reguval_list */
-  TYPE_REGU_VAR_LIST		/* use regu_variable_list for 'CUME_DIST' and 'PERCENT_RANK' */
+  TYPE_REGU_VAR_LIST,		/* use regu_variable_list for 'CUME_DIST' and 'PERCENT_RANK' */
+  TYPE_SP                       /* use sp_ptr */
 } REGU_DATATYPE;
 
 /* declare ahead REGU_VARIABLE */
@@ -192,6 +194,7 @@ class regu_variable_node
       struct function_node *funcp;	/* function */
       REGU_VALUE_LIST *reguval_list;	/* for "values" query */
       REGU_VARIABLE_LIST regu_var_list;	/* for CUME_DIST and PERCENT_RANK */
+      cubxasl::sp_node *sp_ptr; /* stored procedure */
     } value;
 
     regu_variable_node () = default;

@@ -224,6 +224,7 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_DATATYPE_NAME, system_catalog_initializer::get_data_type());
   ADD_TABLE_DEFINITION (CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure());
   ADD_TABLE_DEFINITION (CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_arguments());
+  ADD_TABLE_DEFINITION (CT_STORED_PROC_CODE_NAME, system_catalog_initializer::get_stored_procedure_code());
   ADD_TABLE_DEFINITION (CT_SERIAL_NAME, system_catalog_initializer::get_serial());
   ADD_TABLE_DEFINITION (CT_HA_APPLY_INFO_NAME, system_catalog_initializer::get_ha_apply_info());
   ADD_TABLE_DEFINITION (CT_COLLATION_NAME, system_catalog_initializer::get_collations());
@@ -743,7 +744,8 @@ namespace cubschema
     {
       {"grantor", AU_USER_CLASS_NAME},
       {"grantee", AU_USER_CLASS_NAME},
-      {"class_of", CT_CLASS_NAME},
+      {"object_type", "integer"},
+      {"object_of", "object"},
       {"auth_type", format_varchar (7)},
       {"is_grantable", "integer"}
     },
@@ -756,7 +758,7 @@ namespace cubschema
       // owner, grants
       Au_dba_user, {}
     },
-// initializer
+// initializers
     nullptr
 	   );
 
@@ -831,19 +833,24 @@ namespace cubschema
 		   CT_STORED_PROC_NAME,
 		   // columns
     {
+      {"unique_name", format_varchar (255)},
       {"sp_name", format_varchar (255)},
       {"sp_type", "integer"},
       {"return_type", "integer"},
       {"arg_count", "integer"},
       {"args", format_sequence (CT_STORED_PROC_ARGS_NAME)},
       {"lang", "integer"},
-      {"target", format_varchar (4096)},
+      {"pkg_name", format_varchar (255)},
+      {"is_system_generated", "integer"},
+      {"directive", "integer"},
+      {"target_class", format_varchar (1024)},
+      {"target_method", format_varchar (1024)},
       {"owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (1024)}
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {"sp_name", nullptr}, false},
+      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {"unique_name", nullptr}, false}
     },
 // authorization
     {
@@ -853,8 +860,6 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
@@ -866,16 +871,20 @@ namespace cubschema
 		   CT_STORED_PROC_ARGS_NAME,
 		   // columns
     {
-      {"sp_name", format_varchar (255)},
+      {"sp_of", CT_STORED_PROC_NAME},
+      {"pkg_name", format_varchar (255)},
       {"index_of", "integer"},
+      {"is_system_generated", "integer"},
       {"arg_name", format_varchar (255)},
       {"data_type", "integer"},
       {"mode", "integer"},
+      {"default_value", format_varchar (255)}, // TODO: CBRD-25261
+      {"is_optional", "integer"}, // default_value is used only when is_optional is 1
       {"comment", format_varchar (1024)},
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"sp_name", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"sp_of", nullptr}, false},
     },
 // authorization
     {
@@ -885,8 +894,40 @@ namespace cubschema
 // initializer
     nullptr
 	   );
+  }
 
 
+  system_catalog_definition
+  system_catalog_initializer::get_stored_procedure_code ()
+  {
+
+    return system_catalog_definition (
+		   // name
+		   CT_STORED_PROC_CODE_NAME,
+		   // columns
+    {
+      {"name", format_varchar (1024)}, // same with [_db_stored_procedure].[target_class]
+      {"created_time", format_varchar (16)},
+      {"owner", AU_USER_CLASS_NAME},
+      {"is_static", "integer"},
+      {"is_system_generated", "integer"},
+      {"stype", "integer"},
+      {"scode", format_varchar (1073741823)},
+      {"otype", "integer"},
+      {"ocode", format_varchar (1073741823)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"name", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
   }
 
   system_catalog_definition
@@ -927,7 +968,7 @@ namespace cubschema
 	}
       },
       {"class_name", "string"},
-      {"att_name", "string"},
+      {"attr_name", "string"},
       {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method"},
       {
 	"cached_num", "integer", [] (DB_VALUE* val)
@@ -1658,7 +1699,8 @@ namespace cubschema
     {
       {"grantor_name", "varchar(255)"},
       {"grantee_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
+      {"object_type", "varchar(16)"},
+      {"object_name", "varchar(255)"},
       {"owner_name", "varchar(255)"},
       {"auth_type", "varchar(7)"},
       {"is_grantable", "varchar(3)"},
@@ -1767,12 +1809,15 @@ namespace cubschema
 		   // columns
     {
       {"sp_name", "varchar(255)"},
+      {"pkg_name", "varchar (255)"},
       {"sp_type", "varchar(16)"},
       {"return_type", "varchar(16)"},
       {"arg_count", "integer"},
       {"lang", "varchar(16)"},
+      {"authid", "varchar(16)"},
       {"target", "varchar(4096)"},
       {"owner", "varchar(256)"},
+      {"code", format_varchar (1073741823)},
       {"comment", "varchar(1024)"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_spec ()}
@@ -1804,6 +1849,8 @@ namespace cubschema
 		   // columns
     {
       {"sp_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"pkg_name", "varchar (255)"},
       {"index_of", "integer"},
       {"arg_name", "varchar(255)"},
       {"data_type", "varchar(16)"},

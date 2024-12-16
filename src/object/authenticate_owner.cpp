@@ -125,7 +125,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
   if (!by_class_owner_change)
     {
       /* It can be checked as one of unique_name, class_name, and att_name. */
-      error = obj_get (serial_mop, SERIAL_ATTR_ATT_NAME, &value);
+      error = obj_get (serial_mop, SERIAL_ATTR_ATTR_NAME, &value);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -478,7 +478,16 @@ au_change_sp_owner (MOP sp, MOP owner)
 {
   int error = NO_ERROR;
   int save;
-  DB_VALUE value;
+  const char *name_str = NULL, *owner_str = NULL;
+  char new_name_str[DB_MAX_IDENTIFIER_LENGTH];
+  new_name_str[0]= '\0';
+  char downcase_owner_name[DB_MAX_USER_LENGTH];
+  downcase_owner_name[0] = '\0';
+  DB_VALUE value, name_value, owner_value;
+
+  db_make_null (&value);
+  db_make_null (&name_value);
+  db_make_null (&owner_value);
 
   AU_DISABLE (save);
   if (!au_is_dba_group_member (Au_user))
@@ -488,6 +497,31 @@ au_change_sp_owner (MOP sp, MOP owner)
     }
   else
     {
+      error = obj_get (sp, "sp_name", &name_value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      error = obj_get (owner, "name", &owner_value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      name_str = db_get_string (&name_value);
+      owner_str = db_get_string (&owner_value);
+
+      sm_downcase_name (owner_str, downcase_owner_name, DB_MAX_USER_LENGTH);
+      sprintf (new_name_str, "%s.%s", downcase_owner_name, name_str);
+
+      /* change the unique_name */
+      db_make_string (&value, new_name_str);
+      error = obj_set (sp, SP_ATTR_UNIQUE_NAME, &value);
+      if (error < 0)
+	{
+	  goto end;
+	}
+
       db_make_object (&value, owner);
       error = obj_set (sp, SP_ATTR_OWNER, &value);
       if (error < 0)

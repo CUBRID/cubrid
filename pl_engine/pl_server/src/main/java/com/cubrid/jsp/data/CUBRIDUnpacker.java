@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.data;
 
+import com.cubrid.jsp.Server;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.*;
 import java.nio.ByteBuffer;
@@ -105,7 +106,7 @@ public class CUBRIDUnpacker {
             byte[] str = new byte[len];
             buffer.get(str);
             align(DataUtilities.INT_ALIGNMENT);
-            return new String(str);
+            return new String(str, Server.getConfig().getServerCharset());
         } else {
             align(DataUtilities.INT_ALIGNMENT);
             return "";
@@ -114,9 +115,15 @@ public class CUBRIDUnpacker {
 
     public byte[] unpackCStringByteArray() {
         int len = unpackStringSize();
-        byte[] str = new byte[len];
-        buffer.get(str);
-        return str;
+        if (len > 0) {
+            byte[] str = new byte[len];
+            buffer.get(str);
+            align(DataUtilities.INT_ALIGNMENT);
+            return str;
+        } else {
+            align(DataUtilities.INT_ALIGNMENT);
+            return new byte[0];
+        }
     }
 
     public int unpackStringSize() {
@@ -181,7 +188,8 @@ public class CUBRIDUnpacker {
                 break;
             case DBType.DB_CHAR:
             case DBType.DB_STRING:
-                arg = new StringValue(unpackCString());
+                int codeset = unpackInt();
+                arg = new StringValue(unpackCStringByteArray(), codeset);
                 break;
             case DBType.DB_DATE:
                 {
@@ -244,7 +252,7 @@ public class CUBRIDUnpacker {
             case DBType.DB_OID:
             case DBType.DB_OBJECT:
                 {
-                    SOID soid = new SOID(this);
+                    SOID soid = unpackOID();
                     arg = new OidValue(soid);
                 }
                 break;
@@ -258,113 +266,11 @@ public class CUBRIDUnpacker {
         return arg;
     }
 
-    public Value unpackValue(int paramType, int mode, int dbType) throws TypeMismatchException {
-        Value arg = null;
-        switch (paramType) {
-            case DBType.DB_SHORT:
-                arg = new ShortValue(unpackShort(), mode, dbType);
-                break;
-            case DBType.DB_INT:
-                arg = new IntValue(unpackInt(), mode, dbType);
-                break;
-            case DBType.DB_BIGINT:
-                arg = new LongValue(unpackBigint(), mode, dbType);
-                break;
-            case DBType.DB_FLOAT:
-                arg = new FloatValue(unpackFloat(), mode, dbType);
-                break;
-            case DBType.DB_DOUBLE:
-            case DBType.DB_MONETARY:
-                arg = new DoubleValue(unpackDouble(), mode, dbType);
-                break;
-            case DBType.DB_NUMERIC:
-                arg = new NumericValue(unpackCString(), mode, dbType);
-                break;
-            case DBType.DB_CHAR:
-            case DBType.DB_STRING:
-                arg = new StringValue(unpackCString(), mode, dbType);
-                break;
-            case DBType.DB_DATE:
-                {
-                    int year = unpackInt();
-                    int month = unpackInt();
-                    int day = unpackInt();
-
-                    arg = new DateValue(year, month, day, mode, dbType);
-                }
-                break;
-            case DBType.DB_TIME:
-                {
-                    int hour = unpackInt();
-                    int min = unpackInt();
-                    int sec = unpackInt();
-
-                    Calendar cal = Calendar.getInstance();
-                    cal.set(0, 0, 0, hour, min, sec);
-
-                    arg = new TimeValue(hour, min, sec, mode, dbType);
-                }
-                break;
-            case DBType.DB_TIMESTAMP:
-                {
-                    int year = unpackInt();
-                    int month = unpackInt();
-                    int day = unpackInt();
-                    int hour = unpackInt();
-                    int min = unpackInt();
-                    int sec = unpackInt();
-                    arg = new TimestampValue(year, month, day, hour, min, sec, mode, dbType);
-                }
-                break;
-            case DBType.DB_DATETIME:
-                {
-                    int year = unpackInt();
-                    int month = unpackInt();
-                    int day = unpackInt();
-                    int hour = unpackInt();
-                    int min = unpackInt();
-                    int sec = unpackInt();
-                    int msec = unpackInt();
-                    arg = new DatetimeValue(year, month, day, hour, min, sec, msec, mode, dbType);
-                }
-                break;
-            case DBType.DB_SET:
-            case DBType.DB_MULTISET:
-            case DBType.DB_SEQUENCE:
-                {
-                    int nCol = unpackInt();
-                    arg = new SetValue(unpackSetValue(nCol), mode, dbType);
-                }
-                break;
-            case DBType.DB_OID:
-            case DBType.DB_OBJECT:
-                {
-                    SOID oid = new SOID(this);
-                    arg = new OidValue(oid, mode, dbType);
-                }
-                break;
-            case DBType.DB_RESULTSET:
-                {
-                    long queryId = unpackBigint();
-                    arg = new ResultSetValue(queryId);
-                }
-                break;
-            case DBType.DB_NULL:
-                arg = new NullValue(mode, dbType);
-                break;
-            default:
-                // unknown type
-                break;
-        }
-        return arg;
-    }
-
     private Value[] unpackSetValue(int paramCount) throws TypeMismatchException {
         Value[] args = new Value[paramCount];
         for (int i = 0; i < paramCount; i++) {
             int paramType = unpackInt();
-            // FIXME: dbType=0 is dummy, it is from legacy code. I'm not sure about it
-            Value arg = unpackValue(paramType, Value.IN, 0);
+            Value arg = unpackValue(paramType);
             args[i] = (arg);
         }
         return args;

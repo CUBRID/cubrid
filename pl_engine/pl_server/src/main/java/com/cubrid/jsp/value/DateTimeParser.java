@@ -38,6 +38,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Arrays;
@@ -150,12 +151,12 @@ public class DateTimeParser {
 
         // get timezone offset
         LocalDateTime localPart;
-        ZoneOffset zone;
+        ZoneId zone;
         int delim = s.lastIndexOf(" ");
         if (delim < 0) {
             // no timezone offset
             localPart = parseLocalDateAndTime(s, forDatetime);
-            zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+            zone = Server.getConfig().getTimeZone();
         } else {
             String dt = s.substring(0, delim);
             String z = s.substring(delim + 1);
@@ -165,7 +166,7 @@ public class DateTimeParser {
             } catch (DateTimeException e) {
                 // z turn out not to be a timezone offset. try timezone omitted string
                 localPart = parseLocalDateAndTime(s, forDatetime);
-                zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+                zone = Server.getConfig().getTimeZone();
             }
         }
 
@@ -270,7 +271,7 @@ public class DateTimeParser {
     }
 
     private static int getCurrentYear() {
-        ZoneOffset timezone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+        ZoneId timezone = Server.getConfig().getTimeZone();
         return ZonedDateTime.now(timezone).getYear();
     }
 
