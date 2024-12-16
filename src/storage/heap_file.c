@@ -3554,15 +3554,14 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
 
+  assert (!heap_is_big_length (needed_space) && !heap_is_big_length (newrec_size));
+
   if (isnew_rec == true)
     {
       heap_hdr->estimates.num_recs += 1;
-
-      assert (!heap_is_big_length (newrec_size));
     }
   heap_hdr->estimates.recs_sumlen += (float) newrec_size;
 
-  assert (!heap_is_big_length (needed_space));
   /* Take into consideration the unfill factor for pages with objects */
   total_space = needed_space + heap_Slotted_overhead + heap_hdr->unfill_space;
   if (heap_is_big_length (total_space))
