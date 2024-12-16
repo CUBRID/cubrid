@@ -763,6 +763,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ENABLE_MEMORY_MONITORING "enable_memory_monitoring"
 
+#define PRM_NAME_STORED_PROCEDURE_DUMP_ICODE "stored_procedure_dump_icode"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2338,6 +2340,10 @@ static unsigned int prm_stored_procedure_debug_flag = 0;
 bool PRM_STORED_PROCEDURE_UDS = true;
 static bool prm_stored_procedure_uds_default = true;
 static unsigned int prm_stored_procedure_uds_flag = 0;
+
+bool PRM_STORED_PROCEDURE_DUMP_ICODE = false;
+static bool prm_stored_procedure_dump_icode_default = false;
+static unsigned int prm_stored_procedure_dump_icode_flag = 0;
 
 bool PRM_ALLOW_TRUNCATED_STRING = false;
 static bool prm_allow_truncated_string_default = false;
@@ -6511,6 +6517,17 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_stored_procedure_uds_flag,
    (void *) &prm_stored_procedure_uds_default,
    (void *) &PRM_STORED_PROCEDURE_UDS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_DUMP_ICODE,
+   PRM_NAME_STORED_PROCEDURE_DUMP_ICODE,
+   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_PL_CONTEXT),
+   PRM_BOOLEAN,
+   &prm_stored_procedure_dump_icode_flag,
+   (void *) &prm_stored_procedure_dump_icode_default,
+   (void *) &PRM_STORED_PROCEDURE_DUMP_ICODE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

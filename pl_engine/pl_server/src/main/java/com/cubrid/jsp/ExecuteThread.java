@@ -65,6 +65,7 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.Base64;
 import java.util.List;
@@ -417,6 +418,18 @@ public class ExecuteThread extends Thread {
             if (info.errCode == 0) {
                 MemoryJavaCompiler compiler = new MemoryJavaCompiler();
                 SourceCode sCode = new SourceCode(info.className, info.translated);
+
+                // dump translated code into $CUBRID_TMP
+                if (Context.getSystemParameterBool(SysParam.STORED_PROCEDURE_DUMP_ICODE)) {
+                    Path path =
+                            Paths.get(
+                                    Server.getConfig().getTmpPath()
+                                            + "/"
+                                            + info.className
+                                            + ".java");
+                    Files.write(path, info.translated.getBytes(Context.getSessionCharset()));
+                }
+
                 CompiledCodeSet codeSet = compiler.compile(sCode);
 
                 int mode = 1; // 0: temp file mode, 1: memory stream mode
