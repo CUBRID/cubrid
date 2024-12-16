@@ -827,7 +827,8 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			    sizeof (output_owner));
 
-	  output_ctx ("\nCREATE SERIAL %s%s%s%s\n", output_owner, PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+	  output_ctx ("\nCREATE SERIAL %s%s%s%s\n", output_owner,
+		      PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
 	  output_ctx ("\t START WITH %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
 	  output_ctx ("\t INCREMENT BY %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
 	  output_ctx ("\t MINVALUE %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL], str_buf));
