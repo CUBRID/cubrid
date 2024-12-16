@@ -1125,6 +1125,7 @@ enum pt_type_enum
   PT_TYPE_LOGICAL,
   PT_TYPE_MAYBE,
   PT_TYPE_JSON,
+  PT_TYPE_VECTOR,
 
   /* special values */
   PT_TYPE_NA,			/* in SELECT NA */
