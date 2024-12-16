@@ -9279,7 +9279,7 @@ xsysprm_dump_server_parameters (FILE * outfp)
  *
  */
 SYSPRM_ASSIGN_VALUE *
-xsysprm_get_pl_context_parameters (void)
+xsysprm_get_pl_context_parameters (int flag)
 {
   SYSPRM_ASSIGN_VALUE *pl_ctx_values = NULL, *last_assign = NULL;
   SYSPRM_PARAM *prm = NULL;
@@ -9288,7 +9288,7 @@ xsysprm_get_pl_context_parameters (void)
   for (i = 0; i < NUM_PRM; i++)
     {
       prm = GET_PRM (i);
-      if (PRM_IS_FOR_PL_CONTEXT (prm->static_flag))
+      if (PRM_IS_FOR_PL_CONTEXT (prm->static_flag) && (prm->static_flag & flag))
 	{
 	  SYSPRM_ASSIGN_VALUE *change_val = (SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
 	  if (change_val == NULL)
@@ -10383,7 +10383,12 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
 	    }
 	}
 
-      return sysprm_set_session_parameter_value (param, id, value);
+      SYSPRM_ERR err = sysprm_set_session_parameter_value (param, id, value);
+
+      // err always returns PRM_ERR_NO_ERROR
+      (void) session_set_pl_session_parameter (thread_p, id);
+
+      return err;
     }
 
   /* if prm is not for session or if session_parameters have not been initialized just set the system parameter stored

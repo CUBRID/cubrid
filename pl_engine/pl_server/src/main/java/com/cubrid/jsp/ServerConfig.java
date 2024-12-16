@@ -144,9 +144,7 @@ public class ServerConfig {
         return SysParam.getCodesetId(serverCharset);
     }
 
-    public void initializeCharset() {
-        SysParam sysParam = systemParameters.get(SysParam.INTL_COLLATION);
-        String collation = sysParam.getParamValue().toString();
+    public static String parseCollationString(String collation) {
         String codeset = null;
         String[] codesetList = collation.split("_");
         if (codesetList == null) {
@@ -165,6 +163,14 @@ public class ServerConfig {
         } else if (codeset.equalsIgnoreCase("ascii")) {
             codeset = "UTF-8"; // ascii is a subset of UTF-8
         }
+
+        return codeset;
+    }
+
+    public void initializeCharset() {
+        SysParam sysParam = systemParameters.get(SysParam.INTL_COLLATION);
+        String collation = sysParam.getParamValue();
+        String codeset = parseCollationString(collation);
 
         try {
             serverCharset = Charset.forName(codeset);

@@ -31,7 +31,6 @@
 
 package com.cubrid.jsp.impl;
 
-import com.cubrid.jsp.Server;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
@@ -265,7 +264,7 @@ public class SUConnection {
                 }
 
                 int type = DBType.getObjectDBtype(values[i]);
-                packer.packObject(values[i], type, Server.getConfig().getServerCodesetId());
+                packer.packObject(values[i], type, Context.getCodesetId());
             }
         } else {
             packer.packInt(0);
@@ -314,7 +313,7 @@ public class SUConnection {
         if (value != null) {
             packer.packInt(1); // has value
             int type = DBType.getObjectDBtype(value);
-            packer.packObject(value, type, Server.getConfig().getServerCodesetId());
+            packer.packObject(value, type, Context.getCodesetId());
         } else {
             packer.packInt(0); // has value
         }

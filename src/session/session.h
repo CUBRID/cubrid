@@ -75,6 +75,7 @@ extern bool session_is_queryid_idle (THREAD_ENTRY * thread_p, const QUERY_ID que
 extern int session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE * result);
 extern SESSION_PARAM *session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id);
 #if defined (SERVER_MODE)
+extern int session_set_pl_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id);
 extern int session_state_increase_ref_count (THREAD_ENTRY * thread_p, struct session_state *state_p);
 extern int session_state_decrease_ref_count (THREAD_ENTRY * thread_p, struct session_state *state_p);
 #endif

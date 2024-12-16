@@ -34,6 +34,7 @@ package com.cubrid.jsp.compiler;
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.SourceCode;
+import com.cubrid.jsp.context.Context;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -57,7 +58,7 @@ public class MemoryJavaCompiler {
         }
 
         Path cubrid_env_root = Server.getServer().getRootPath();
-        useOptions("-encoding", Server.getConfig().getServerCharset().toString());
+        useOptions("-encoding", Context.getSessionCharset().toString());
         useOptions("-classpath", cubrid_env_root + "/java/pl_server.jar");
     }
 

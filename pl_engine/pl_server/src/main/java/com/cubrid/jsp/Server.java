@@ -32,7 +32,6 @@
 package com.cubrid.jsp;
 
 import com.cubrid.jsp.classloader.ClassLoaderManager;
-import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.protocol.BootstrapRequest;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -251,18 +250,6 @@ public class Server {
         }
 
         config.initializeCharset();
-    }
-
-    public static boolean getSystemParameterBool(int id) {
-        try {
-            SysParam param = config.getSystemParameters().get(id);
-            if (param != null) {
-                return param.getParamValue().toInt() != 0;
-            }
-        } catch (TypeMismatchException e) {
-        }
-
-        return false;
     }
 
     public static void main(String[] args) throws Exception {

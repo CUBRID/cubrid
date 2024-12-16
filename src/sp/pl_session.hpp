@@ -34,8 +34,10 @@
 #include <condition_variable>
 #include <string>
 
-#include "pl_connection.hpp"
+#include "system_parameter.h"
+#include "packable_object.hpp"
 
+#include "pl_connection.hpp"
 #include "pl_execution_stack_context.hpp"
 #include "pl_signature.hpp"
 
@@ -59,6 +61,21 @@ namespace cubpl
 
   using THREAD_ENTRY_IDX = int;
   using QUERY_ID = std::uint64_t;
+
+  struct EXPORT_IMPORT sys_param : public cubpacking::packable_object
+  {
+    int prm_id;
+    int prm_type;
+    std::string prm_value;
+
+    sys_param (SYSPRM_ASSIGN_VALUE *db_param);
+
+    void set_prm_value (const SYSPRM_PARAM *prm);
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+  };
 
   class session
   {
@@ -115,6 +132,9 @@ namespace cubpl
       cubmethod::db_parameter_info *get_db_parameter_info () const;
       void set_db_parameter_info (cubmethod::db_parameter_info *param_info);
 
+      const std::vector <sys_param> obtain_session_parameters (bool reset);
+      void mark_session_param_changed (PARAM_ID prm_id);
+
     private:
       execution_stack *top_stack_internal ();
       void destroy_all_cursors ();
@@ -128,7 +148,6 @@ namespace cubpl
       exec_stack_id_type m_exec_stack; // runtime stack (implemented using vector)
       int m_stack_idx;
 
-
       cursor_map_type m_cursor_map; // server-side cursor storage
 
       exec_stack_id_type m_deferred_free_stack;
@@ -137,6 +156,10 @@ namespace cubpl
 
       cubmethod::db_parameter_info *m_param_info;
 
+      // session parameters
+      std::unordered_set<PARAM_ID> m_session_param_changed_ids;
+
+      // interrupt
       bool m_is_interrupted;
       int m_interrupt_id;
       std::string m_interrupt_msg;

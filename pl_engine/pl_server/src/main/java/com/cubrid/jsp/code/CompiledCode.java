@@ -31,7 +31,7 @@
 
 package com.cubrid.jsp.code;
 
-import com.cubrid.jsp.Server;
+import com.cubrid.jsp.context.Context;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -79,7 +79,7 @@ public class CompiledCode extends SimpleJavaFileObject {
 
     @Override
     public CharSequence getCharContent(boolean ignoreEncodingErrors) {
-        return new String(getByteCode(), Server.getConfig().getServerCharset());
+        return new String(getByteCode(), Context.getSessionCharset());
     }
 
     @Override
