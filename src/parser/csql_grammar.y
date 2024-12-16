@@ -21919,7 +21919,7 @@ opt_vector_args
 
 		DBG_PRINT}}
 	| '(' unsigned_integer ',' FLOAT_ ')'
-		{{ DBG_TRACE_GRAMMAR(opt_vector_args, | '(' unsigned_integer ',' primitive_type ')' );
+		{{ DBG_TRACE_GRAMMAR(opt_vector_args, | '(' unsigned_integer ',' FLOAT_ ')' );
 
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, $2, FROM_NUMBER(PT_TYPE_FLOAT));
