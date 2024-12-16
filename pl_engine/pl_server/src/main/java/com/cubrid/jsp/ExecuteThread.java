@@ -321,15 +321,15 @@ public class ExecuteThread extends Thread {
     private void processStoredProcedure() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
 
+        // session parameters
+        readSessionParameter(unpacker);
+
         // prepare
         if (prepareArgs == null) {
             prepareArgs = new PrepareArgs(unpacker);
         } else {
             prepareArgs.readArgs(unpacker);
         }
-
-        // session parameters
-        readSessionParameter(unpacker);
 
         long id = unpacker.unpackBigint();
         int tid = unpacker.unpackInt();
@@ -397,6 +397,9 @@ public class ExecuteThread extends Thread {
 
     private void processCompile() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
+
+        // session parameters
+        readSessionParameter(unpacker);
 
         CompileRequest request = new CompileRequest(unpacker);
 
