@@ -92,7 +92,7 @@ namespace cubpl
     int type; // PL_TYPE
     char *name;
     char *auth;
-    int dtrm; // DETERMINISTIC
+    bool is_deterministic; // DETERMINISTIC
     int result_type; // DB_TYPE
 
     pl_arg arg;
