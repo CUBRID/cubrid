@@ -59,7 +59,6 @@
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
 static int fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VALUE ** peek_dbval,
@@ -1211,6 +1210,37 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
+      else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BLOB)
+	{
+	  DB_VALUE tval;
+
+	  db_make_null (&tval);
+	  dom_status = tp_value_cast (peek_right, &tval, &tp_VarBit_domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_VarBit_domain);
+	      db_value_clear (&tval);
+	      goto error;
+	    }
+
+	  db_make_int (arithptr->value, db_get_string_size (&tval));
+	  db_value_clear (&tval);
+	}
+      else if (!TP_IS_STRING_TYPE (DB_VALUE_TYPE (peek_right)))
+	{
+	  DB_VALUE tval;
+
+	  db_make_null (&tval);
+	  dom_status = tp_value_cast (peek_right, &tval, &tp_Char_domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Char_domain);
+	      db_value_clear (&tval);
+	      goto error;
+	    }
+	  db_make_int (arithptr->value, db_get_string_size (&tval));
+	  db_value_clear (&tval);
+	}
       else
 	{
 	  db_make_int (arithptr->value, db_get_string_size (peek_right));
@@ -1228,6 +1258,39 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	  db_get_bit (peek_right, &len);
 	  db_make_int (arithptr->value, len);
+	}
+      else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BLOB)
+	{
+	  DB_VALUE tval;
+	  int len = 0;
+
+	  db_make_null (&tval);
+	  dom_status = tp_value_cast (peek_right, &tval, &tp_VarBit_domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_VarBit_domain);
+	      db_value_clear (&tval);
+	      goto error;
+	    }
+
+	  db_get_bit (&tval, &len);
+	  db_make_int (arithptr->value, len);
+	  db_value_clear (&tval);
+	}
+      else if (!TP_IS_CHAR_TYPE (DB_VALUE_TYPE (peek_right)))
+	{
+	  DB_VALUE tval;
+
+	  db_make_null (&tval);
+	  dom_status = tp_value_cast (peek_right, &tval, &tp_Char_domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Char_domain);
+	      db_value_clear (&tval);
+	      goto error;
+	    }
+	  db_make_int (arithptr->value, 8 * db_get_string_size (&tval));
+	  db_value_clear (&tval);
 	}
       else
 	{

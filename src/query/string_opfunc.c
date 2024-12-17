@@ -26659,6 +26659,7 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
   const char *str = NULL;
   char *hexval = NULL;
   int str_size = 0, hexval_len = 0, i = 0, error_code = NO_ERROR;
+  DB_VALUE tval, *ptval = NULL;
 
   /* check parameters for NULL values */
   if (param == NULL || result == NULL)
@@ -26676,6 +26677,7 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
   /* compute hex representation */
   param_type = DB_VALUE_DOMAIN_TYPE (param);
 
+coerce_pos:
   if (TP_IS_CHAR_TYPE (param_type) || TP_IS_BIT_TYPE (param_type))
     {
       if (TP_IS_CHAR_TYPE (param_type))
@@ -26776,14 +26778,34 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
     }
   else
     {
-      error_code = ER_QSTR_INVALID_DATA_TYPE;
-      goto error;
+      db_make_null (&tval);
+      ptval = &tval;
+      if (tp_value_cast (param, &tval, &tp_Char_domain, false) != DOMAIN_COMPATIBLE)
+	{
+	  error_code = ER_QSTR_INVALID_DATA_TYPE;
+	  goto error;
+	}
+
+      param = &tval;
+      param_type = DB_VALUE_DOMAIN_TYPE (param);
+      assert (TP_IS_CHAR_TYPE (param_type));
+      goto coerce_pos;
+    }
+
+  if (ptval)
+    {
+      db_value_clear (ptval);
     }
 
   /* all ok */
   return NO_ERROR;
 
 error:
+  if (ptval)
+    {
+      db_value_clear (ptval);
+    }
+
   if (result)
     {
       db_make_null (result);

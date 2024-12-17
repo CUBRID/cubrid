@@ -100,7 +100,7 @@ LANGUAGE:                     L A N G U A G E ;
 LIKE:                         L I K E ;
 LIST:                         L I S T ;
 LOOP:                         L O O P ;
-MOD:                          ( M O D | '%' ) ;
+MOD:                          M O D ;
 MULTISET:                     M U L T I S E T ;
 NOT:                          N O T ;
 NULL_:                        N U L L ;
