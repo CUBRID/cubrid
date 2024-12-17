@@ -26,15 +26,6 @@ public class SysParam implements UnPackableObject {
     public static final int PRM_TYPE_STRING = 5;
     public static final int PRM_TYPE_INTEGER_LIST = 6;
 
-    // paramType
-    public static final int PRM_TYPE_INTEGER = 0;
-    public static final int PRM_TYPE_FLOAT = 1;
-    public static final int PRM_TYPE_BOOLEAN = 2;
-    public static final int PRM_TYPE_KEYWORD = 3;
-    public static final int PRM_TYPE_BIGINT = 4;
-    public static final int PRM_TYPE_STRING = 5;
-    public static final int PRM_TYPE_INTEGER_LIST = 6;
-
     // codeset
     public static final int CODESET_ASCII = 0;
     public static final int CODESET_RAW_BITS = 1;
