@@ -7655,6 +7655,18 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  q = pt_append_nulstring (parser, q, " AUTHID CALLER");
 	}
+
+      if (p->info.sp.type == PT_SP_FUNCTION)
+	{
+	  if (p->info.sp.dtrm_type == PT_NOT_DETERMINISTIC)
+	    {
+	      q = pt_append_nulstring (parser, q, " NOT DETERMINISTIC");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " DETERMINISTIC");
+	    }
+	}
     }
 
   r3 = pt_print_bytes (parser, p->info.sp.body);

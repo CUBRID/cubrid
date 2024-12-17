@@ -4531,6 +4531,19 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	  output_ctx ("AUTHID OWNER ");
 	}
 
+      // dtrm_type
+      if (sp_type == SP_TYPE_FUNCTION)
+	{
+	  if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_DETERMINISTIC)
+	    {
+	      output_ctx ("DETERMINISTIC ");
+	    }
+	  else
+	    {
+	      output_ctx ("NOT DETERMINISTIC ");
+	    }
+	}
+
       int sp_lang = db_get_int (&lang_val);
       if (sp_lang == SP_LANG_PLCSQL)
 	{
