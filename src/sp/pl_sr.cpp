@@ -466,23 +466,20 @@ exit:
 	m_bootstrap_request = new bootstrap_request (m_manager->get_pl_ctx_params ());
       }
 
-    if (m_bootstrap_request != nullptr)
+    cubmem::block bootstrap_response;
+    cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0);
+    connection_view cv = m_sys_conn_pool->claim ();
+
+    error = cv->send_buffer_args (header, *m_bootstrap_request);
+    if (error == NO_ERROR)
       {
-	cubmem::block bootstrap_response;
-	cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0);
-	connection_view cv = m_sys_conn_pool->claim ();
+	error = cv->receive_buffer (bootstrap_response);
+      }
 
-	error = cv->send_buffer_args (header, *m_bootstrap_request);
-	if (error == NO_ERROR)
-	  {
-	    error = cv->receive_buffer (bootstrap_response);
-	  }
-
-	if (error == NO_ERROR && bootstrap_response.is_valid ())
-	  {
-	    packing_unpacker deserializator (bootstrap_response);
-	    deserializator.unpack_int (error);
-	  }
+    if (error == NO_ERROR && bootstrap_response.is_valid ())
+      {
+	packing_unpacker deserializator (bootstrap_response);
+	deserializator.unpack_int (error);
       }
 
     return error;
