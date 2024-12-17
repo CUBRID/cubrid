@@ -79,6 +79,7 @@ struct valcnv_buffer
 };
 
 SESSION_ID db_Session_id = DB_EMPTY_SESSION;
+bool db_Keep_session = false;
 
 int db_Row_count = DB_ROW_COUNT_NOT_SET;
 
@@ -90,7 +91,6 @@ int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 #endif
 int db_Disable_modifications = 0;
-bool db_Keep_session = false;
 
 static int transfer_string (char *dst, int *xflen, int *outlen,
 			    const int dstlen, const char *src,

@@ -127,7 +127,6 @@ static void set_db_connection_info (void);
 static void clear_db_connection_info (void);
 static bool need_database_reconnect (void);
 
-extern bool db_Keep_session;
 extern bool ssl_client;
 extern int cas_init_ssl (int);
 extern void cas_ssl_close (int client_sock_fd);
@@ -1975,13 +1974,13 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	      cas_log_msg = "RESET";
 	      cas_log_write_and_end (0, true, cas_log_msg);
 	      fn_ret = FN_KEEP_SESS;
-	      db_Keep_session = true;
+	      db_set_keep_session (true);
 	    }
 	  if (as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
 	    {
 	      cas_log_msg = "CHANGE CLIENT";
 	      fn_ret = FN_KEEP_SESS;
-	      db_Keep_session = true;
+	      db_set_keep_session (true);
 	    }
 
 	  if (cas_log_msg == NULL)
@@ -2175,7 +2174,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
   if (fn_ret == FN_KEEP_SESS)
     {
-      db_Keep_session = true;
+      db_set_keep_session (true);
     }
   set_hang_check_time ();
 
@@ -2249,7 +2248,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  else if (restart_is_needed ())
 	    {
 	      fn_ret = FN_KEEP_SESS;
-	      db_Keep_session = true;
+	      db_set_keep_session (true);
 	    }
 	  if (shm_appl->sql_log2 != as_info->cur_sql_log2)
 	    {
@@ -2360,7 +2359,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       cas_log_debug (ARG_FILE_LINE, "process_request: reset_flag && !CON_STATUS_IN_TRAN");
       fn_ret = FN_KEEP_SESS;
-      db_Keep_session = true;
+      db_set_keep_session (true);
       goto exit_on_end;
     }
 

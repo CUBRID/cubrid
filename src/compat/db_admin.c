@@ -101,8 +101,6 @@ struct db_host_status_list
  The macros for testing this variable were moved to db.h so the query
  interface functions can use them as well. */
 
-extern bool db_Keep_session;
-
 char db_Database_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 char db_Program_name[PATH_MAX];
 char db_Client_ip_addr[16] = { 0 };
@@ -1064,7 +1062,7 @@ db_end_session (void)
 
   CHECK_CONNECT_ERROR ();
 
-  retval = csession_end_session (db_get_session_id ());
+  retval = csession_end_session (db_get_session_id (), db_get_keep_session ());
 
   cubmethod::get_callback_handler ()->free_query_handle_all (true);
 
@@ -3073,6 +3071,26 @@ void
 db_set_session_id (const SESSION_ID session_id)
 {
   db_Session_id = session_id;
+}
+
+/*
+ * db_get_keep_session () - get keep session flag
+ */
+bool
+db_get_keep_session (void)
+{
+  return db_Keep_session;
+}
+
+/*
+ * db_set_keep_session () - set keep session flag
+ * return : void
+ * keep_session (in): keep session flag
+ */
+void
+db_set_keep_session (const bool keep_session)
+{
+  db_Keep_session = keep_session;
 }
 
 /*
