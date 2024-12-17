@@ -56,7 +56,7 @@
 #include "execute_schema.h"
 #include "network_interface_cl.h"
 #if defined(SA_MODE)
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #endif /* SA_MODE */
 #include "jsp_cl.h"
 #include "execute_statement.h"
@@ -928,7 +928,7 @@ db_restart (const char *program, int print_version, const char *volume)
 	  install_static_methods ();
 #if !defined(WINDOWS)
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS))
-	  if (!jsp_jvm_is_loaded ())
+	  if (!pl_jvm_is_loaded ())
 	    {
 	      prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 	    }
@@ -1812,6 +1812,39 @@ db_set_user_comment (DB_OBJECT * user, const char *comment)
 }
 
 /*
+ * db_get_object_type() - This returns database object type of given MOP
+ * return    : DB_OBJECT_TYPE
+ * obj_(in) : an object
+ *
+ */
+// TODO: find better solution
+DB_OBJECT_TYPE
+db_get_object_type (MOP obj_)
+{
+  DB_OBJECT_TYPE ret_val = DB_OBJECT_UNKNOWN;
+
+  assert (obj_->class_mop != NULL);
+
+  OID *mop = WS_OID (obj_->class_mop);
+  if (OID_EQ (mop, WS_OID (sm_Root_class_mop)))
+    {
+      // table, view
+      ret_val = DB_OBJECT_CLASS;
+    }
+  else
+    {
+      // database object types except (v)class
+      MOP sp_class_mop = sm_find_class (CT_STORED_PROC_NAME);
+      if (sp_class_mop && OID_EQ (mop, WS_OID (sp_class_mop)))
+	{
+	  ret_val = DB_OBJECT_PROCEDURE;
+	}
+    }
+
+  return ret_val;
+}
+
+/*
  * db_grant() -This is the basic mechanism for passing permissions to other
  *    users.  The authorization type is one of the numeric values defined
  *    by the DB_AUTH enumeration.  If more than one authorization is to
@@ -1827,18 +1860,62 @@ db_set_user_comment (DB_OBJECT * user, const char *comment)
  *
  */
 int
-db_grant (MOP user, MOP class_, AU_TYPE auth, int grant_option)
+db_grant (MOP user, MOP obj_, AU_TYPE auth, int grant_option)
 {
-  int retval;
+  int retval = NO_ERROR;
+  DB_OBJECT_TYPE object_type;
 
   CHECK_CONNECT_ERROR ();
-  CHECK_2ARGS_ERROR (user, class_);
+  CHECK_2ARGS_ERROR (user, obj_);
   CHECK_MODIFICATION_ERROR ();
 
-  retval = do_check_partitioned_class (class_, CHECK_PARTITION_SUBS, NULL);
+  object_type = db_get_object_type (obj_);
+  if (object_type == DB_OBJECT_CLASS)
+    {
+      retval = do_check_partitioned_class (obj_, CHECK_PARTITION_SUBS, NULL);
+    }
+
   if (!retval)
     {
-      retval = au_grant (user, class_, auth, (bool) grant_option);
+      retval = au_grant (object_type, user, obj_, auth, (bool) grant_option);
+    }
+
+  return (retval);
+}
+
+/*
+ * db_grant_object() -This is the basic mechanism for passing permissions to other
+ *    users.  The authorization type is one of the numeric values defined
+ *    by the DB_AUTH enumeration.  If more than one authorization is to
+ *    be granted, the values in DB_AUTH can be combined using the C bitwise
+ *    "or" operator |.  Errors are likely if the currently logged in user
+ *    was not the owner of the class and was not given the grant_option for
+ *    the desired authorization types.
+ * return  : error code
+ * object_type(in)  : an object type
+ * user(in)         : a user object
+ * obj_(in)        : an object
+ * auth(in)         : an authorization type
+ * grant_option(in) : true if the grant option is to be added
+ *
+ */
+int
+db_grant_object (DB_OBJECT_TYPE object_type, DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth, int grant_option)
+{
+  int retval = NO_ERROR;
+
+  CHECK_CONNECT_ERROR ();
+  CHECK_2ARGS_ERROR (user, obj_);
+  CHECK_MODIFICATION_ERROR ();
+
+  if (object_type == DB_OBJECT_CLASS)
+    {
+      retval = do_check_partitioned_class (obj_, CHECK_PARTITION_SUBS, NULL);
+    }
+
+  if (!retval)
+    {
+      retval = au_grant (object_type, user, obj_, auth, (bool) grant_option);
     }
 
   return (retval);
@@ -1854,18 +1931,56 @@ db_grant (MOP user, MOP class_, AU_TYPE auth, int grant_option)
  *
  */
 int
-db_revoke (MOP user, MOP class_mop, AU_TYPE auth)
+db_revoke (MOP user, MOP obj_, AU_TYPE auth)
 {
-  int retval;
+  int retval = NO_ERROR;
+  DB_OBJECT_TYPE object_type;
 
   CHECK_CONNECT_ERROR ();
-  CHECK_2ARGS_ERROR (user, class_mop);
+  CHECK_2ARGS_ERROR (user, obj_);
   CHECK_MODIFICATION_ERROR ();
 
-  retval = do_check_partitioned_class (class_mop, CHECK_PARTITION_SUBS, NULL);
+  object_type = db_get_object_type (obj_);
+  if (object_type == DB_OBJECT_CLASS)
+    {
+      retval = do_check_partitioned_class (obj_, CHECK_PARTITION_SUBS, NULL);
+    }
+
   if (!retval)
     {
-      retval = au_revoke (user, class_mop, auth);
+      retval = au_revoke (object_type, user, obj_, auth, NULL);
+    }
+
+  return (retval);
+}
+
+/*
+ * db_revoke_object() - This is the basic mechanism for revoking previously granted
+ *    authorizations.  A prior authorization must have been made.
+ * returns  : error code
+ * object_type(in)  : an object type
+ * user(in) : a user object
+ * class_mop(in): a class object
+ * auth(in) : the authorization type(s) to revoke
+ *
+ */
+int
+db_revoke_object (DB_OBJECT_TYPE object_type, MOP user, MOP obj_, AU_TYPE auth)
+{
+  int retval = NO_ERROR;
+
+  CHECK_CONNECT_ERROR ();
+  CHECK_2ARGS_ERROR (user, obj_);
+  CHECK_MODIFICATION_ERROR ();
+
+  if (object_type == DB_OBJECT_CLASS)
+    {
+      retval = do_check_partitioned_class (obj_, CHECK_PARTITION_SUBS, NULL);
+    }
+
+  if (!retval)
+    {
+      retval = au_revoke (object_type, user, obj_, auth, NULL);
     }
 
   return (retval);

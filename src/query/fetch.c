@@ -54,11 +54,11 @@
 #include "query_executor.h"
 #include "thread_entry.hpp"
 #include "subquery_cache.h"
+#include "pl_executor.hpp"
 
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
 static int fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VALUE ** peek_dbval,
@@ -1210,6 +1210,37 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
+      else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BLOB)
+	{
+	  DB_VALUE tval;
+
+	  db_make_null (&tval);
+	  dom_status = tp_value_cast (peek_right, &tval, &tp_VarBit_domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_VarBit_domain);
+	      db_value_clear (&tval);
+	      goto error;
+	    }
+
+	  db_make_int (arithptr->value, db_get_string_size (&tval));
+	  db_value_clear (&tval);
+	}
+      else if (!TP_IS_STRING_TYPE (DB_VALUE_TYPE (peek_right)))
+	{
+	  DB_VALUE tval;
+
+	  db_make_null (&tval);
+	  dom_status = tp_value_cast (peek_right, &tval, &tp_Char_domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Char_domain);
+	      db_value_clear (&tval);
+	      goto error;
+	    }
+	  db_make_int (arithptr->value, db_get_string_size (&tval));
+	  db_value_clear (&tval);
+	}
       else
 	{
 	  db_make_int (arithptr->value, db_get_string_size (peek_right));
@@ -1227,6 +1258,39 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	  db_get_bit (peek_right, &len);
 	  db_make_int (arithptr->value, len);
+	}
+      else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BLOB)
+	{
+	  DB_VALUE tval;
+	  int len = 0;
+
+	  db_make_null (&tval);
+	  dom_status = tp_value_cast (peek_right, &tval, &tp_VarBit_domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_VarBit_domain);
+	      db_value_clear (&tval);
+	      goto error;
+	    }
+
+	  db_get_bit (&tval, &len);
+	  db_make_int (arithptr->value, len);
+	  db_value_clear (&tval);
+	}
+      else if (!TP_IS_CHAR_TYPE (DB_VALUE_TYPE (peek_right)))
+	{
+	  DB_VALUE tval;
+
+	  db_make_null (&tval);
+	  dom_status = tp_value_cast (peek_right, &tval, &tp_Char_domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Char_domain);
+	      db_value_clear (&tval);
+	      goto error;
+	    }
+	  db_make_int (arithptr->value, 8 * db_get_string_size (&tval));
+	  db_value_clear (&tval);
 	}
       else
 	{
@@ -4023,6 +4087,30 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      || REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
       break;
 
+    case TYPE_SP:		/* fetch stored procedure value */
+      {
+	/* clear any value from a previous iteration */
+	pr_clear_value (regu_var->value.sp_ptr->value);
+	fetch_force_not_const_recursive (*regu_var);
+
+	cubpl::executor executor (*regu_var->value.sp_ptr->sig);
+
+	error = executor.fetch_args_peek (regu_var->value.sp_ptr->args, vd, obj_oid, tpl);
+	if (error != NO_ERROR)
+	  {
+	    goto exit_on_error;
+	  }
+
+	error = executor.execute (*regu_var->value.sp_ptr->value);
+	if (error != NO_ERROR)
+	  {
+	    goto exit_on_error;
+	  }
+
+	*peek_dbval = regu_var->value.sp_ptr->value;
+      }
+      break;
+
     case TYPE_FUNC:		/* fetch function value */
       if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST))
 	{
@@ -4957,6 +5045,7 @@ fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
       case TYPE_INARITH:
       case TYPE_OUTARITH:
       case TYPE_FUNC:
+      case TYPE_SP:
         REGU_VARIABLE_SET_FLAG (&regu, REGU_VARIABLE_FETCH_NOT_CONST);
         break;
       default:

@@ -37,7 +37,6 @@
 #include "thread_compat.hpp"
 
 // forward definitions
-struct method_sig_list;
 struct qfile_list_id;
 
 extern TRAN_STATE return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid);
@@ -151,8 +150,7 @@ extern void smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid, c
 extern void smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern int xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
-					       method_sig_list * methsg_list);
+
 extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize);
 extern int xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout);
 
@@ -184,7 +182,7 @@ extern void sprm_server_get_force_parameters (THREAD_ENTRY * thread_p, unsigned 
 extern void sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shf_has_instance (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_get_local_transaction_id (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sjsp_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void spl_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void srepl_log_get_append_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -244,8 +242,6 @@ extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (void *session);
 
-extern void smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-
 /* For CDC */
 extern void slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -258,8 +254,9 @@ extern void scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 extern void sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
-/* PL/CSQL */
+/* PL */
 extern void splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 /* memmon */
 extern void smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

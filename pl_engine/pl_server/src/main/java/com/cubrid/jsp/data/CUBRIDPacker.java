@@ -31,14 +31,24 @@
 
 package com.cubrid.jsp.data;
 
+import com.cubrid.jsp.Server;
+import com.cubrid.jsp.SysParam;
+import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import com.cubrid.jsp.protocol.PackableObject;
+import com.cubrid.jsp.value.NullValue;
+import com.cubrid.jsp.value.SetValue;
+import com.cubrid.jsp.value.StringValue;
+import com.cubrid.jsp.value.Value;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import cubrid.sql.CUBRIDOID;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.sql.Date;
 import java.sql.ResultSet;
+import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 
 public class CUBRIDPacker {
@@ -98,11 +108,12 @@ public class CUBRIDPacker {
     }
 
     public void packString(String value) {
-        packCString(value.getBytes());
+        Charset charset = Server.getConfig().getServerCharset();
+        packCString(value.getBytes(charset));
     }
 
-    public void packString(String value, String charset) throws UnsupportedEncodingException {
-        packCString(value.getBytes(charset));
+    public void packString(String value, int codeset) throws UnsupportedEncodingException {
+        packCString(value.getBytes(SysParam.getCodesetString(codeset)));
     }
 
     public void packOID(SOID oid) {
@@ -149,8 +160,134 @@ public class CUBRIDPacker {
         buffer.put(b.array(), 0, b.position());
     }
 
-    // TODO: legacy implementation, this function will be modified
-    public void packValue(Object result, int ret_type, String charset)
+    public void packValue(Value value, int dbType)
+            throws UnsupportedEncodingException, TypeMismatchException {
+        if (value == null || value instanceof NullValue) {
+            dbType = DBType.DB_NULL;
+        }
+
+        switch (dbType) {
+            case DBType.DB_INT:
+                packInt(dbType);
+                packInt(value.toInt());
+                break;
+            case DBType.DB_SHORT:
+                packInt(dbType);
+                packShort(value.toShort());
+                break;
+            case DBType.DB_BIGINT:
+                packInt(dbType);
+                packBigInt(value.toLong());
+                break;
+            case DBType.DB_FLOAT:
+                packInt(dbType);
+                packFloat(value.toFloat());
+                break;
+            case DBType.DB_DOUBLE:
+            case DBType.DB_MONETARY:
+                packInt(dbType);
+                packDouble(value.toDouble());
+                break;
+
+            case DBType.DB_CHAR:
+            case DBType.DB_STRING:
+                packInt(dbType);
+                if (value instanceof StringValue) {
+                    packInt(value.getCodeSet());
+                    packCString(value.toByteArray());
+                } else {
+                    packInt(value.getCodeSet());
+                    packString(value.toString(), value.getCodeSet());
+                }
+                break;
+
+            case DBType.DB_NUMERIC:
+                packInt(dbType);
+                packString(value.toBigDecimal().toPlainString());
+                break;
+
+            case DBType.DB_DATE:
+                packInt(dbType);
+                Date d = value.toDate();
+                if (d.equals(SpLib.ZERO_DATE)) {
+                    packString("0000-00-00");
+                } else {
+                    packString(d.toString());
+                }
+                break;
+            case DBType.DB_TIME:
+                packInt(dbType);
+                packString(value.toTime().toString());
+                break;
+
+            case DBType.DB_TIMESTAMP:
+            case DBType.DB_DATETIME:
+                packInt(dbType);
+
+                Timestamp ts = null;
+                if (dbType == DBType.DB_DATETIME) {
+                    ts = value.toDatetime();
+                    if (ts.equals(SpLib.ZERO_DATETIME)) {
+                        packString("0000-00-00 00:00:00.000");
+                    } else {
+                        packString(ts.toString());
+                    }
+                } else {
+                    ts = value.toTimestamp();
+                    if (SpLib.isZeroTimestamp((java.sql.Timestamp) ts)) {
+                        packString("0000-00-00 00:00:00");
+                    } else {
+                        SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                        packString(formatter.format(ts));
+                    }
+                }
+                break;
+
+            case DBType.DB_OID:
+            case DBType.DB_OBJECT:
+                packInt(dbType);
+                byte[] oid = value.toOid().getOID();
+                packOID(new SOID(oid));
+                break;
+
+            case DBType.DB_SET:
+            case DBType.DB_MULTISET:
+            case DBType.DB_SEQUENCE:
+                packInt(dbType);
+
+                Object[] values = null;
+                if (value instanceof SetValue) {
+                    values = (Value[]) ((SetValue) value).toValueArray();
+                    if (values != null) {
+                        packInt(values.length);
+                        for (int i = 0; i < values.length; i++) {
+                            int dt = DBType.DB_NULL;
+                            if (values[i] != null) {
+                                dt = ((Value) values[i]).getDbType();
+                            }
+                            packValue((Value) values[i], dt);
+                        }
+                    }
+                }
+
+                if (values == null) {
+                    values = value.toObjectArray();
+                    packObject(values, dbType, value.getCodeSet());
+                }
+                break;
+
+            case DBType.DB_RESULTSET:
+                packInt(dbType);
+                packBigInt(value.toLong());
+                break;
+
+            default:
+                packInt(DBType.DB_NULL);
+                break;
+        }
+    }
+
+    public void packObject(Object result, int ret_type, int codeset)
             throws UnsupportedEncodingException {
         if (result == null) {
             packInt(DBType.DB_NULL);
@@ -167,24 +304,25 @@ public class CUBRIDPacker {
             packInt(DBType.DB_FLOAT);
             packFloat(((Float) result).floatValue());
         } else if (result instanceof Double) {
-            packInt(ret_type);
+            packInt(DBType.DB_DOUBLE);
             packDouble(((Double) result).doubleValue());
         } else if (result instanceof BigDecimal) {
             packInt(DBType.DB_NUMERIC);
-            packString(((BigDecimal) result).toPlainString(), charset);
+            packString(((BigDecimal) result).toPlainString(), codeset);
         } else if (result instanceof String) {
             packInt(DBType.DB_STRING);
-            packString((String) result, charset);
+            packInt(codeset);
+            packString((String) result, codeset);
         } else if (result instanceof java.sql.Date) {
             packInt(DBType.DB_DATE);
             if (result.equals(SpLib.ZERO_DATE)) {
-                packString("0000-00-00", charset);
+                packString("0000-00-00", codeset);
             } else {
-                packString(result.toString(), charset);
+                packString(result.toString(), codeset);
             }
         } else if (result instanceof java.sql.Time) {
             packInt(DBType.DB_TIME);
-            packString(result.toString(), charset);
+            packString(result.toString(), codeset);
         } else if (result instanceof java.sql.Timestamp) {
             packInt(ret_type);
             if (ret_type == DBType.DB_DATETIME) {
@@ -216,16 +354,15 @@ public class CUBRIDPacker {
             packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Integer(((int[]) result)[i]);
-                packValue(array[i], ret_type, charset);
+                packObject(array[i], DBType.DB_INT, codeset);
             }
-            packValue(array, ret_type, charset);
         } else if (result instanceof short[]) {
             int length = ((short[]) result).length;
             Short[] array = new Short[length];
             packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Short(((short[]) result)[i]);
-                packValue(array, ret_type, charset);
+                packObject(array, DBType.DB_SHORT, codeset);
             }
         } else if (result instanceof float[]) {
             int length = ((float[]) result).length;
@@ -233,7 +370,7 @@ public class CUBRIDPacker {
             packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Float(((float[]) result)[i]);
-                packValue(array[i], ret_type, charset);
+                packObject(array[i], DBType.DB_FLOAT, codeset);
             }
         } else if (result instanceof double[]) {
             int length = ((double[]) result).length;
@@ -241,7 +378,7 @@ public class CUBRIDPacker {
             packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Double(((double[]) result)[i]);
-                packValue(array[i], ret_type, charset);
+                packObject(array[i], DBType.DB_DOUBLE, codeset);
             }
         } else if (result instanceof Object[]) {
             packInt(ret_type);
@@ -249,7 +386,7 @@ public class CUBRIDPacker {
 
             packInt(arr.length);
             for (int i = 0; i < arr.length; i++) {
-                packValue(arr[i], ret_type, charset);
+                packObject(arr[i], ret_type, codeset);
             }
         } else {
             // FIXME: treat as NULL

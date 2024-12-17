@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.sql.Date;
@@ -55,20 +56,7 @@ public class DateValue extends Value {
         if (!SpLib.checkDate(date)) {
             throw new TypeMismatchException("invalid Date " + date);
         }
-    }
-
-    public DateValue(int year, int mon, int day, int mode, int dbType)
-            throws TypeMismatchException {
-        super(mode);
-        Calendar cal = Calendar.getInstance();
-        cal.set(year, mon, day, 0, 0, 0);
-        cal.set(Calendar.MILLISECOND, 0);
-
-        date = new Date(cal.getTimeInMillis());
-        if (!SpLib.checkDate(date)) {
-            throw new TypeMismatchException("invalid Date " + date);
-        }
-        this.dbType = dbType;
+        this.dbType = DBType.DB_DATE;
     }
 
     public DateValue(Date date) throws TypeMismatchException {
@@ -76,6 +64,7 @@ public class DateValue extends Value {
             throw new TypeMismatchException("invalid Date " + date);
         }
         this.date = date;
+        this.dbType = DBType.DB_DATE;
     }
 
     @Override

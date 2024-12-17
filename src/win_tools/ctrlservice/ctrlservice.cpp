@@ -62,8 +62,8 @@
 #define		SERVICE_CONTROL_SERVER_STOP	181
 #define		SERVICE_CONTROL_SERVICE_START	190
 #define		SERVICE_CONTROL_SERVICE_STOP	191
-#define		SERVICE_CONTROL_JAVASP_START	210
-#define		SERVICE_CONTROL_JAVASP_STOP		211
+#define		SERVICE_CONTROL_PL_START	210
+#define		SERVICE_CONTROL_PL_STOP		211
 
 void WriteLog (char *p_logfile, char *p_format, ...);
 void GetCurDateTime (char *p_buf, char *p_form);
@@ -335,11 +335,11 @@ _tmain (int argc, char *argv[])
 	    }
 	  else if (_stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0 && _stricmp (argv[2], CUBRID_COMMAND_START) == 0)
 	    {
-	      service_control_code = SERVICE_CONTROL_JAVASP_START;
+	      service_control_code = SERVICE_CONTROL_PL_START;
 	    }
 	  else if (_stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0 && _stricmp (argv[2], CUBRID_COMMAND_STOP) == 0)
 	    {
-	      service_control_code = SERVICE_CONTROL_JAVASP_STOP;
+	      service_control_code = SERVICE_CONTROL_PL_STOP;
 	    }
 	  else
 	    {

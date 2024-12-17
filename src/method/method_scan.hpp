@@ -29,7 +29,7 @@
 #include <vector>
 
 #include "dbtype_def.h" /* DB_VALUE */
-#include "method_def.hpp" /* method_sig_list */
+
 #include "method_invoke_group.hpp" /* cubmethod::method_invoke_group */
 #include "object_domain.h" /* TP_DOMAIN */
 #include "query_list.h" /* qfile_list_id, qfile_list_scan_id */
@@ -58,7 +58,7 @@ namespace cubscan
 
 	scanner ();
 
-	int init (cubthread::entry *thread_p, method_sig_list *sig_list, qfile_list_id *list_id);
+	int init (cubthread::entry *thread_p, PL_SIGNATURE_ARRAY_TYPE *sig_array, qfile_list_id *list_id);
 	void clear (bool is_final);
 
 //////////////////////////////////////////////////////////////////////////
