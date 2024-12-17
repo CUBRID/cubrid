@@ -10403,7 +10403,10 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
       SYSPRM_ERR err = sysprm_set_session_parameter_value (param, id, value);
 
       // err always returns PRM_ERR_NO_ERROR
-      (void) session_set_pl_session_parameter (thread_p, id);
+      if (PRM_IS_FOR_PL_CONTEXT (GET_PRM_STATIC_FLAG (id)))
+	{
+	  (void) session_set_pl_session_parameter (thread_p, id);
+	}
 
       return err;
     }
