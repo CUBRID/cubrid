@@ -944,8 +944,6 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 	      /* Now we can destroy this session */
 	      assert (state->ref_count == 0);
 
-	      expired_sid_buffer[n_expired_sids++] = state->id;
-
 	      if (state->is_keep_session == true)
 		{
 		  /* keep session */
@@ -954,6 +952,8 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 		}
 	      else
 		{
+		  expired_sid_buffer[n_expired_sids++] = state->id;
+
 		  /* Destroy the session related resources like session parameters */
 		  (void) session_state_uninit (state);
 		}
