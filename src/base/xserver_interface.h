@@ -56,7 +56,6 @@ struct compile_context;
 struct xasl_cache_ent;
 struct xasl_stream;
 struct xasl_node_header;
-struct method_sig_list;
 
 extern int xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 				    bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
@@ -99,7 +98,7 @@ extern int xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int cla
 			       int prefetching, LC_COPYAREA ** fetch_area);
 extern int xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
 			       LC_FETCH_VERSION_TYPE fetch_type, OID * class_oid, int *nobjects, int *nfetched,
-			       OID * last_oid, LC_COPYAREA ** fetch_area);
+			       OID * last_oid, LC_COPYAREA ** fetch_area, int request_pages);
 extern int xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * instance_lock,
 					int *instance_lock_timeout, OID * class_oid, LOCK * class_lock, int *nobjects,
 					int *nfetched, int *nfailed_instance_locks, OID * last_oid,
@@ -294,11 +293,6 @@ extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *
 extern int xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock);
 extern bool xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated);
 extern int xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
-
-// *INDENT-OFF*
-extern int xmethod_invoke_fold_constants (THREAD_ENTRY * thread_p, const method_sig_list &sig_list, std::vector<std::reference_wrapper<DB_VALUE>> &args, DB_VALUE &result);
-// *INDENT-ON*
-
 extern void xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp);
 
 #endif /* _XSERVER_INTERFACE_H_ */

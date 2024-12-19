@@ -49,8 +49,6 @@ public class DeclConst extends DeclIdTypeSpeced {
             ParserRuleContext ctx, String name, TypeSpec typeSpec, boolean notNull, Expr val) {
         super(ctx);
 
-        assert val != null;
-
         this.name = name;
         this.typeSpec = typeSpec;
         this.notNull = notNull;

@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeVariadic;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
@@ -51,23 +52,30 @@ public class TypeSpec extends AstNode {
         this.type = type;
     }
 
-    private static Map<Type, TypeSpec> bogus =
-            new HashMap<>(); // bogus TypeSpec means one with the null context
+    // bogus TypeSpec means one with the null context
+    // TODO: use Type instead of TypeSpec in the symbol table and remove bogus TypeSpecs
+
+    // NOTE: knownBogus never changes after the initilization during the TypeSpec class
+    // initialization
+    private static Map<Type, TypeSpec> knownBogus = new HashMap<>();
 
     static {
         for (int i = Type.IDX_OBJECT; i < Type.BOUND_OF_IDX; i++) {
             Type ty = Type.getTypeByIdx(i);
-            TypeVariadic vty = TypeVariadic.getInstance(ty);
-            bogus.put(ty, new TypeSpec(null, ty));
-            bogus.put(vty, new TypeSpec(null, vty));
+            TypeVariadic vty = TypeVariadic.getStaticInstance(ty);
+            knownBogus.put(ty, new TypeSpec(null, ty));
+            knownBogus.put(vty, new TypeSpec(null, vty));
         }
     }
 
-    public static TypeSpec getBogus(Type type) {
-        TypeSpec ret = bogus.get(type);
-        if (ret == null) {
-            ret = new TypeSpec(null, type);
-            bogus.put(type, ret);
+    public static TypeSpec getBogus(InstanceStore iStore, Type type) {
+        TypeSpec ret = knownBogus.get(type);
+        if (ret == null && iStore != null) {
+            ret = iStore.bogusTypeSpec.get(type);
+            if (ret == null) {
+                ret = new TypeSpec(null, type);
+                iStore.bogusTypeSpec.put(type, ret);
+            }
         }
 
         return ret;

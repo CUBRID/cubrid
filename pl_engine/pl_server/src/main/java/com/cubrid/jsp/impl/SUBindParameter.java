@@ -30,7 +30,7 @@
  */
 package com.cubrid.jsp.impl;
 
-import com.cubrid.jsp.ExecuteThread;
+import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode;
@@ -108,7 +108,7 @@ public class SUBindParameter extends SUParameter {
         int cnt = paramMode.length;
         packer.packInt(cnt);
         for (int i = 0; i < cnt; i++) {
-            packer.packValue(values[i], types[i], ExecuteThread.charSet);
+            packer.packObject(values[i], types[i], Context.getCodesetId());
             packer.packInt((int) paramMode[i]);
         }
     }

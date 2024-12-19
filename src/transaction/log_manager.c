@@ -322,7 +322,7 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
-
+static void log_build_full_path (const char *input_path, char *full_path);
 /*for CDC */
 static int cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENTRY * log_info_entry);
 static int cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES * recdes,
@@ -670,14 +670,14 @@ log_get_final_restored_lsa (void)
 static bool
 log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation)
 {
-  INT64 vol_dbcreation;		/* Database creation time in volume */
+  INT64 db_creation;		/* Database creation time in volume */
 
-  if (disk_get_creation_time (thread_p, volid, &vol_dbcreation) != NO_ERROR)
+  if (disk_get_db_creation (thread_p, volid, &db_creation) != NO_ERROR)
     {
       return false;
     }
 
-  if (difftime ((time_t) vol_dbcreation, (time_t) (*log_dbcreation)) == 0)
+  if (difftime ((time_t) db_creation, (time_t) (*log_dbcreation)) == 0)
     {
       return true;
     }
@@ -1194,6 +1194,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       r_args->db_creation = log_Gl.hdr.db_creation;
       LSA_COPY (&r_args->restart_repl_lsa, &log_Gl.hdr.smallest_lsa_at_last_chkpt);
+      LSA_COPY (&r_args->restart_committed_lsa, &log_Gl.hdr.append_lsa);
     }
 
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &log_Gl.hdr.chkpt_lsa);
@@ -6227,24 +6228,27 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log
 static void
 log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 {
-  time_t tmp_time;
-  char time_val[CTIME_MAX];
+  char db_creation_time_val[CTIME_MAX];
+  char vol_creation_time_val[CTIME_MAX];
+
+  (void) ctime_r ((time_t *) & log_header_p->db_creation, db_creation_time_val);
+  (void) ctime_r ((time_t *) & log_header_p->vol_creation, vol_creation_time_val);
 
   fprintf (out_fp, "\n ** DUMP LOG HEADER **\n");
 
-  tmp_time = (time_t) log_header_p->db_creation;
-  (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp,
-	   "HDR: Magic Symbol = %s at disk location = %lld\n     Creation_time = %s"
+	   "HDR: Magic Symbol = %s at disk location = %lld\n"
+	   "     Db_creation_time = %s"
+	   "     Vol_creation_time = %s"
 	   "     Release = %s, Compatibility_disk_version = %g,\n"
 	   "     Db_pagesize = %d, log_pagesize= %d, Shutdown = %d,\n"
 	   "     Next_trid = %d, Next_mvcc_id = %llu, Num_avg_trans = %d, Num_avg_locks = %d,\n"
 	   "     Num_active_log_pages = %d, First_active_log_page = %lld,\n"
 	   "     Current_append = %lld|%d, Checkpoint = %lld|%d,\n", log_header_p->magic,
-	   (long long) offsetof (LOG_PAGE, area), time_val, log_header_p->db_release, log_header_p->db_compatibility,
-	   log_header_p->db_iopagesize, log_header_p->db_logpagesize, log_header_p->is_shutdown,
-	   log_header_p->next_trid, (long long int) log_header_p->mvcc_next_id, log_header_p->avg_ntrans,
-	   log_header_p->avg_nlocks, log_header_p->npages, (long long) log_header_p->fpageid,
+	   (long long) offsetof (LOG_PAGE, area), db_creation_time_val, vol_creation_time_val, log_header_p->db_release,
+	   log_header_p->db_compatibility, log_header_p->db_iopagesize, log_header_p->db_logpagesize,
+	   log_header_p->is_shutdown, log_header_p->next_trid, (long long int) log_header_p->mvcc_next_id,
+	   log_header_p->avg_ntrans, log_header_p->avg_nlocks, log_header_p->npages, (long long) log_header_p->fpageid,
 	   LSA_AS_ARGS (&log_header_p->append_lsa), LSA_AS_ARGS (&log_header_p->chkpt_lsa));
 
   fprintf (out_fp,
@@ -8841,7 +8845,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
   LOG_LSA init_nontemp_lsa;
   int ret = NO_ERROR;
 
-  ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &db_creation);
+  ret = disk_get_db_creation (thread_p, LOG_DBFIRST_VOLID, &db_creation);
   if (ret != NO_ERROR)
     {
       return ret;
@@ -9201,7 +9205,7 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 				  void **ptr)
 {
   int error = NO_ERROR;
-  const char *path;
+  char path[PATH_MAX];
   int fd = -1;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
 
@@ -9231,7 +9235,8 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
       LOG_PAGE *page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 
       assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
-      path = db_get_string (arg_values[0]);
+
+      log_build_full_path (db_get_string (arg_values[0]), path);
 
       fd = fileio_open (path, O_RDONLY, 0);
       if (fd == -1)
@@ -9257,7 +9262,8 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
       close (fd);
       fd = -1;
 
-      if (memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ACTIVE, strlen (CUBRID_MAGIC_LOG_ACTIVE)) != 0)
+      if ((memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ACTIVE, strlen (CUBRID_MAGIC_LOG_ACTIVE)) != 0) ||
+	  (ctx->header.db_creation != log_Gl.hdr.db_creation))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, path);
 	  error = ER_IO_MOUNT_FAIL;
@@ -9300,7 +9306,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   int val;
   const char *str;
   char buf[256];
-  DB_DATETIME time_val;
+  DB_DATETIME vol_creation;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_HEADER *header = &ctx->header;
 
@@ -9324,8 +9330,8 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], val);
   idx++;
 
-  db_localdatetime ((time_t *) (&header->db_creation), &time_val);
-  error = db_make_datetime (out_values[idx], &time_val);
+  db_localdatetime ((time_t *) (&header->vol_creation), &vol_creation);
+  error = db_make_datetime (out_values[idx], &vol_creation);
   idx++;
   if (error != NO_ERROR)
     {
@@ -9559,8 +9565,8 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
 				   void **ptr)
 {
   int error = NO_ERROR;
-  const char *path;
-  int fd;
+  char path[PATH_MAX];
+  int fd = -1;
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *page_hdr;
   ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
@@ -9577,7 +9583,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
       goto exit_on_error;
     }
 
-  path = db_get_string (arg_values[0]);
+  log_build_full_path (db_get_string (arg_values[0]), path);
 
   page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -9602,7 +9608,8 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
 
   ctx->header.magic[sizeof (ctx->header.magic) - 1] = 0;
 
-  if (memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ARCHIVE, strlen (CUBRID_MAGIC_LOG_ARCHIVE)) != 0)
+  if ((memcmp (ctx->header.magic, CUBRID_MAGIC_LOG_ARCHIVE, strlen (CUBRID_MAGIC_LOG_ARCHIVE)) != 0) ||
+      (ctx->header.db_creation != log_Gl.hdr.db_creation))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, path);
       error = ER_IO_MOUNT_FAIL;
@@ -9613,6 +9620,11 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
   ctx = NULL;
 
 exit_on_error:
+  if (fd != -1)
+    {
+      close (fd);
+    }
+
   if (ctx != NULL)
     {
       db_private_free_and_init (thread_p, ctx);
@@ -9637,7 +9649,7 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   int error = NO_ERROR;
   int idx = 0;
   int val;
-  DB_DATETIME time_val;
+  DB_DATETIME vol_creation;
 
   ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = (ARCHIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_ARV_HEADER *header = &ctx->header;
@@ -9662,8 +9674,8 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   db_make_int (out_values[idx], val);
   idx++;
 
-  db_localdatetime ((time_t *) (&header->db_creation), &time_val);
-  error = db_make_datetime (out_values[idx], &time_val);
+  db_localdatetime ((time_t *) (&header->vol_creation), &vol_creation);
+  error = db_make_datetime (out_values[idx], &vol_creation);
   idx++;
   if (error != NO_ERROR)
     {
@@ -10610,6 +10622,25 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 					       false);
 
   return error_code;
+}
+
+/*
+ * log_build_full_path() - Build a full path by combining the base path and input path
+ *   return: void
+ *   input_path(in): Input path (relative or absolute)
+ *   full_path(out): Output buffer for the full path
+ */
+static void
+log_build_full_path (const char *input_path, char *full_path)
+{
+  if (IS_ABS_PATH (input_path))
+    {
+      snprintf (full_path, PATH_MAX, "%s", input_path);
+    }
+  else
+    {
+      snprintf (full_path, PATH_MAX, "%s%s%s", log_Path, FILEIO_PATH_SEPARATOR (log_Path), input_path);
+    }
 }
 
 static int

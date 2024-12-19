@@ -51,6 +51,8 @@
 #define LANG_MAX_COLLATIONS  256
 #define LANG_MAX_BUILTIN_COLLATIONS  32
 #define LANG_MAX_LOADED_LOCALES  32
+#define LANG_LOADED_LOCALES_PARITY_MASK    0xFFFFF000
+#define LANG_LOADED_LOCALES_PARITY         0x75A5C000
 
 #define LANG_COERCIBLE_COLL LANG_SYS_COLLATION
 #define LANG_COERCIBLE_CODESET LANG_SYS_CODESET
@@ -300,7 +302,6 @@ extern "C"
   extern int lang_get_lang_id_from_name (const char *lang_name, INTL_LANG * lang_id);
   extern const char *lang_get_lang_name_from_id (const INTL_LANG lang_id);
   extern int lang_set_flag_from_lang (const char *lang_str, bool has_user_format, bool has_user_lang, int *flag);
-  extern int lang_set_flag_from_lang_id (const INTL_LANG lang, bool has_user_format, bool has_user_lang, int *flag);
   extern INTL_LANG lang_get_lang_id_from_flag (const int flag, bool * has_user_format, bool * has_user_lang);
   extern const char *lang_date_format_parse (const INTL_LANG lang_id, const INTL_CODESET codeset, const DB_TYPE type,
 					     INTL_CODESET * format_codeset);

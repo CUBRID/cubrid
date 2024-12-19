@@ -65,6 +65,9 @@ $set 4 MSGCAT_SET_PARAMETER
 22 권장되지 않는 파라미터 입니다.
 23 '%1$s'와 '%2$s' 시스템 설정은 같이 사용할 수 없습니다.\n
 31 파라미터 "%1$s":
+32 '%3$s' 파일 %2$d 줄에 잘못된 IP 또는 호스트이름 '%1$s' 가 있습니다.\n
+33 '%1$s' 파일에 IP 또는 호스트이름이 없습니다.\n
+34 '%1$s' 파일을 찾을 수 없습니다.\n
 
 $set 5 MSGCAT_SET_ERROR
 1 에러 코드 %1$d에 대한 메시지가 없습니다.
@@ -212,12 +215,12 @@ $set 5 MSGCAT_SET_ERROR
 143 소유자가 없는 클래스가 발생하였습니다.
 144 사용자 오브젝트를 액세스할 수 없습니다.
 145 자기 자신에 대해 GRANT/REVOKE 명령할 수 없습니다. 
-146 클래스 소유자에 대해 GRANT/REVOKE 명령할 수 없습니다.
+146 %1$s 소유자에 대해 GRANT/REVOKE 명령할 수 없습니다.
 147 GRANT 옵션이 없습니다.
 148 권한 부여 오브젝트에 대해 쓰기 락을 얻을 수 없습니다.
 149 권한 부여 오브젝트의 인스턴스를 생성할 수 없습니다.
 150 자기 자신의 권한은 해제할 수 없습니다.
-151 클래스 소유자의 권한은 해제할 수 없습니다.
+151 %1$s 소유자의 권한은 해제할 수 없습니다.
 152 GRANT가 없습니다.
 153 데이터베이스에 대한 권한 부여 권리가 없습니다. 
 154 불완전한 권한 부여 설정 - 데이터베이스에 대한 권한 부여 권리가 없습니다. 
@@ -233,7 +236,7 @@ $set 5 MSGCAT_SET_ERROR
 164 사용자 "%1$s" 이(가) 이미 존재합니다.
 165 사용자 "%1$s" 을(를) 확인하십시오.
 166 유효하지 않은 사용자가 지정되었습니다.
-167 클래스 소유자만이 오퍼레이션을 수행할 수 있습니다.
+167 %1$s 소유자만이 오퍼레이션을 수행할 수 있습니다.
 168 멤버를 찾을 수 없습니다.
 169 데이터베이스에서 사용자를 제거할 수 없습니다.
 170 로그인된 사용자가 없습니다.
@@ -1047,7 +1050,7 @@ $ LOADDB
 977 체크포인트가 시작되었습니다. (이전 체크포인트 페이지: %1$lld, 이전 체크포인트 redo 페이지: %2$lld)
 978 체크포인트가 완료되었습니다. (체크포인트 페이지: %1$lld, 체크포인트 redo 페이지: %2$lld, flush된 페이지 개수: %3$d)
 979 CONNECT BY 질의문 수행 중에 루프가 발견되었습니다.
-980 쓰레드가 %2$d msec 동안 %1$s 대기했습니다.
+980 쓰레드가 %1$s 에서 %2$d msec 이상 대기했습니다(%3$d msec).
 981 트랜잭션 %1$d이 모니터링 통계값 %2$s의 임계치를 넘었습니다.
 982 트랜잭션 %1$d에 인터럽트 설정
 983 해당 테이블에 대해 허용되지 않는 작업이 시도되었습니다. REUSE_OID 옵션이 정의된 테이블 내 레코드를 참조할 수 없습니다.
@@ -1447,8 +1450,13 @@ $ LOADDB
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
 1361 부질의 캐시가 잘못되었습니다.
+1362 언어 '%1$s'에 대한 로캘은 사용 가능하지 않습니다.
+1363 시스템 생성 stored procedure를 삭제(drop)할 수 없습니다.
+1364 PL/CSQL 저장 프로시저/함수는 호출자 권한을 지원하지 않습니다.
 
-1362 마지막 에러
+1365 DBA 및 소유자만 %1$s 권한을 부여할 수 있습니다.
+
+1366 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1615,6 +1623,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 136 Server의 DBNAME 최대 길이는 %1$d 바이트입니다.
 137 Server의 USER 최대 길이는 %1$d 바이트입니다.
 138 Invalid level. 유효값은 %1$d부터 %2$d까지 입니다.
+139 저장 프로시저/함수의 인수 타입과 결과 타입에는 정밀도를 지정할 수 없습니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1939,7 +1948,17 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 320 '%1$s'는 Stored Procedure에서 지원하지 않는 결과 타입입니다
 321 %TYPE 타입 지정은 PL/CSQL에서만 사용 가능합니다
 322 테이블 컬럼 '%1$s.%2$s'이 정의되지 않았습니다
-323 Stored procedure/function '%1$s' 이(가) OUT 또는 IN OUT 인수를 가지고 있습니다.
+323 저장 프로시저/함수 '%1$s' 이(가) OUT 또는 IN OUT 인수를 가지고 있습니다.
+324 '%1$s'은 레코드 변수가 아닙니다.
+325 언어를 지정하는 인수는 문자열 리터럴이어야 합니다.
+
+325 언어를 지정하는 인수는 문자열 리터럴이어야 합니다.
+326 저장 프로시저/함수 "%1$s"이(가) 존재하지 않습니다.
+327 Out 매개변수에 DEFAULT를 할당하는 것은 허용되지 않습니다: '%1$s'.
+328 오직 후행 기본 인수만 허용합니다: '%1$s' 에서 유효하지 않음.
+329 %1$s에 대해 GRANT 옵션을 부여할 수 없습니다.
+
+
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
@@ -2123,22 +2142,22 @@ $set 15 MSGCAT_SET_IO
 2 백업 = %1$s 이(가) 필요합니다. \n 계속하려면 마운트/로드되어야 합니다.\n 마운트/로드 이후 계속하려면 1을 입력하세요.\n 종료하려면 0을 입력하세요.\n
 3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
 4 Backup magic file identification %1$s,\n
-5           Release: %1$s\n\
-     Disk Version: %2$g\n
-6     Database Name: %1$s\n\
- DB Creation Time: %2$s\
-         Pagesize: %3$d\n
-7      Backup Level: %1$d (%2$s)\n\
-        Start_lsa: %3$lld|%4$d\n\
-         Last_lsa: %5$lld|%6$d\n
-8       Backup Time: %1$s\
-  Backup Unit Num: %2$d\n
-9  Database Volume name: %1$s\n\
+5 Release: %1$s\n\
+   Disk Version: %2$g\n
+6 Database Name: %1$s\n\
+   DB Creation Time: %2$s\
+   Pagesize: %3$d\n
+7 Backup Level: %1$d (%2$s)\n\
+   Start_lsa: %3$lld|%4$d\n\
+   Last_lsa: %5$lld|%6$d\n
+8 Backup Time: %1$s\
+   Backup Unit Num: %2$d\n
+9 Database Volume Name: %1$s\n\
    Volume Identifier: %2$d, Size: %3$lld bytes (%4$d pages)\n
-10    Database Name: %1$s\n\
-     Volume Name: %2$s\n\
-        Unit Num: %3$d\n\
-    Backup Level: %4$d (%5$s)\n\
+10 Database Name: %1$s\n\
+   Volume Name: %2$s\n\
+   Unit Num: %3$d\n\
+   Backup Level: %4$d (%5$s)\n\
 다음 옵션 중 하나를 선택하시오:\n
 11 입력\n \
   -  %1$d: 종료\n \
@@ -2154,14 +2173,16 @@ $set 15 MSGCAT_SET_IO
 19 백업 볼륨 %1$s의 timestamp가 올바르지 않습니다.\n   (Timestamp: %2$s, 예상: %3$s).\n\n
 20 백업 볼륨 정보 파일 에러, 라인 %1$d.\n
 21 백업 볼륨 라벨: Level: %1$d, Unit: %2$d, Database %3$s, Backup Time: %4$s\n
-22      이전 백업 Level: %1$d Time: %2$s (start_lsa was %3$lld|%4$d)\n
+22 이전 백업 Level: %1$d\n\
+   Time: %2$s\
+   (start_lsa was %3$lld|%4$d)\n
 23 데이터베이스 복구를 위해서 다음의 백업 볼륨이 필요합니다:\n\n
 24 백업 장치의 여유 공간이 없습니다. 계속 진행하기 위해서 새로운 백업 장치가 필요합니다:\n\n
 25 이전 백업 볼륨 이름: %1$s\n
-26      다음 백업 볼륨 이름: %1$s\n
-27   Backup Pagesize: %1$d\n
-28        Zip Method: %1$d (%2$s)\n\
-        Zip Level: %3$d (%4$s)\n
+26 다음 백업 볼륨 이름: %1$s\n
+27 Backup Pagesize: %1$d\n
+28 Zip Method: %1$d (%2$s)\n\
+   Zip Level: %3$d (%4$s)\n
 29 Include Active Log: %1$s\n
 
 $set 16 MSGCAT_SET_LOG
@@ -2222,3 +2243,11 @@ $set 16 MSGCAT_SET_LOG
 28 복구 시점(%1$s)은 반드시 백업 시점(%2$s) 이후로 지정해야 합니다. \n
 29 COMMENT: 보관 로그 %1$s는 로그 페이지 %2$lld 이전까지만 포함되어 HA 유틸리티에서 더 이상 사용되지 않습니다.
 30 보관 로그의 개수가 허용 최대치를 초과했습니다.
+
+$set 17 MSGCAT_SET_GLOSSARY
+1 클래스
+2 트리거
+3 시리얼
+4 서버
+5 동의어
+6 프로시저

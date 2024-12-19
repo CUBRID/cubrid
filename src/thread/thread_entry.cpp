@@ -189,6 +189,9 @@ namespace cubthread
     tran_entries[THREAD_TS_XCACHE] = NULL;
     tran_entries[THREAD_TS_FPCACHE] = NULL;
 
+    _unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
+    _unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
+
 #if !defined (NDEBUG)
     fi_thread_init (this);
 #endif /* DEBUG */

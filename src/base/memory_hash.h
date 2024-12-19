@@ -32,6 +32,8 @@
 
 #include <stdio.h>
 
+#define ROTL32(x,r) \
+  (((x) << (r)) | ((x) >> (32 - (r))))
 
 #define MHT2STR_COLL(id, str, size) \
   (lang_get_collation (id))->mht2str ((lang_get_collation (id)), (str), (size))

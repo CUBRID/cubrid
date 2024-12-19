@@ -34,9 +34,11 @@ import com.cubrid.jsp.Server;
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
 import java.time.DateTimeException;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Arrays;
@@ -48,10 +50,20 @@ import java.util.Locale;
 
 public class DateTimeParser {
 
-    // zoneless part of min timestamp: 1970-01-01 00:00:01
+    private static final ZoneOffset TIMEZONE_0 = ZoneOffset.of("Z");
+
+    // local(zoneless) part of min timestamp: 1970-01-01 00:00:01
     public static final LocalDateTime minTimestampLocal = LocalDateTime.of(1970, 1, 1, 0, 0, 1);
-    // zoneless part of max timestamp local part: 2038-01-19 03:14:07
+    // local(zoneless) part of max timestamp local part: 2038-01-19 03:14:07
     public static final LocalDateTime maxTimestampLocal = LocalDateTime.of(2038, 1, 19, 3, 14, 7);
+
+    public static final ZonedDateTime minTimestamp =
+            ZonedDateTime.of(minTimestampLocal, TIMEZONE_0);
+    public static final ZonedDateTime maxTimestamp =
+            ZonedDateTime.of(maxTimestampLocal, TIMEZONE_0);
+
+    private static final Instant minTimestampInstant = minTimestamp.toInstant();
+    private static final Instant maxTimestampInstant = maxTimestamp.toInstant();
 
     // min datetime: 0001-01-01 00:00:00.000
     public static final LocalDateTime minDatetimeLocal = LocalDateTime.of(1, 1, 1, 0, 0, 0, 0);
@@ -59,22 +71,17 @@ public class DateTimeParser {
     public static final LocalDateTime maxDatetimeLocal =
             LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999000000);
 
-    private static final ZoneOffset TIMEZONE_0 = ZoneOffset.of("Z");
-    // TODO: update the following value along with the server
-    private static final ZoneOffset TIMEZONE_SESSION = ZoneOffset.of("+09:00");
-
-    private static final ZonedDateTime minTimestamp =
-            ZonedDateTime.of(minTimestampLocal, TIMEZONE_0);
-    private static final ZonedDateTime maxTimestamp =
-            ZonedDateTime.of(maxTimestampLocal, TIMEZONE_0);
-    private static final ZonedDateTime minDatetimeUTC =
+    private static final ZonedDateTime minDatetimeGMT =
             ZonedDateTime.of(minDatetimeLocal, TIMEZONE_0);
-    private static final ZonedDateTime maxDatetimeUTC =
+    private static final ZonedDateTime maxDatetimeGMT =
             ZonedDateTime.of(maxDatetimeLocal, TIMEZONE_0);
+
+    private static final Instant minDatetimeGMTInstant = minDatetimeGMT.toInstant();
+    private static final Instant maxDatetimeGMTInstant = maxDatetimeGMT.toInstant();
 
     public static final LocalDate nullDate = LocalDate.MAX;
     public static final LocalDateTime nullDatetime = LocalDateTime.MAX;
-    public static final ZonedDateTime nullDatetimeUTC = ZonedDateTime.of(nullDatetime, TIMEZONE_0);
+    public static final ZonedDateTime nullDatetimeGMT = ZonedDateTime.of(nullDatetime, TIMEZONE_0);
 
     public static class DateLiteral {
 
@@ -117,7 +124,7 @@ public class DateTimeParser {
 
         public static LocalDateTime parse(String s) {
 
-            LocalDateTime ret = parseDateAndTime(s, true);
+            LocalDateTime ret = parseLocalDateAndTime(s, true);
             if (ret != null
                     && ret != nullDatetime
                     && (ret.compareTo(minDatetimeLocal) < 0
@@ -144,22 +151,22 @@ public class DateTimeParser {
 
         // get timezone offset
         LocalDateTime localPart;
-        ZoneOffset zone;
+        ZoneId zone;
         int delim = s.lastIndexOf(" ");
         if (delim < 0) {
             // no timezone offset
-            localPart = parseDateAndTime(s, forDatetime);
-            zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+            localPart = parseLocalDateAndTime(s, forDatetime);
+            zone = Server.getConfig().getTimeZone();
         } else {
             String dt = s.substring(0, delim);
             String z = s.substring(delim + 1);
             try {
-                localPart = parseDateAndTime(dt, forDatetime);
+                localPart = parseLocalDateAndTime(dt, forDatetime);
                 zone = ZoneOffset.of(z);
             } catch (DateTimeException e) {
                 // z turn out not to be a timezone offset. try timezone omitted string
-                localPart = parseDateAndTime(s, forDatetime);
-                zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+                localPart = parseLocalDateAndTime(s, forDatetime);
+                zone = Server.getConfig().getTimeZone();
             }
         }
 
@@ -167,17 +174,21 @@ public class DateTimeParser {
             return null;
         }
         if (localPart == nullDatetime) {
-            return nullDatetimeUTC;
+            return nullDatetimeGMT;
         }
 
         ZonedDateTime ret = ZonedDateTime.of(localPart, zone);
+        Instant instant = ret.toInstant();
         if (forDatetime) {
-            if (ret.compareTo(minDatetimeUTC) < 0 || ret.compareTo(maxDatetimeUTC) > 0) {
+            // for DATETIME*
+            if (instant.compareTo(minDatetimeGMTInstant) < 0
+                    || instant.compareTo(maxDatetimeGMTInstant) > 0) {
                 return null;
             }
         } else {
             // in this case, for TIMESTAMP*
-            if (ret.compareTo(minTimestamp) < 0 || ret.compareTo(maxTimestamp) > 0) {
+            if (instant.compareTo(minTimestampInstant) < 0
+                    || instant.compareTo(maxTimestampInstant) > 0) {
                 return null;
             }
         }
@@ -185,7 +196,7 @@ public class DateTimeParser {
         return ret;
     }
 
-    private static LocalDateTime parseDateAndTime(String s, boolean millis) {
+    private static LocalDateTime parseLocalDateAndTime(String s, boolean millis) {
 
         s = s.trim();
 
@@ -259,9 +270,22 @@ public class DateTimeParser {
         }
     }
 
+    private static int getCurrentYear() {
+        ZoneId timezone = Server.getConfig().getTimeZone();
+        return ZonedDateTime.now(timezone).getYear();
+    }
+
     private static LocalDate parseDateFragment(String s) {
 
         s = s.trim();
+
+        if (s.split("/").length == 2) {
+            // s can be of the form MM/dd (year omitted)
+            s = s + "/" + getCurrentYear();
+        } else if (s.split("-").length == 2) {
+            // s can be of the form MM-dd (year omitted)
+            s = getCurrentYear() + "-" + s;
+        }
 
         int i = 0;
         for (SimpleDateFormat f : dateFormats) {
@@ -332,13 +356,22 @@ public class DateTimeParser {
     // for parsing time fragment
     // ------------------------------------------------------
 
-    private static final List<SimpleDateFormat> timeFormats12 =
+    // hour 0 ~ 11
+    private static final List<SimpleDateFormat> timeFormats11 =
             Arrays.asList(
                     new SimpleDateFormat("KK:mm aa", Locale.US),
                     new SimpleDateFormat("KK:mm:ss aa", Locale.US),
                     new SimpleDateFormat("KK:mm:ss.SSS aa", Locale.US) // must go at last
                     );
-    private static final List<SimpleDateFormat> timeFormats24 =
+    // hour 1 ~ 12
+    private static final List<SimpleDateFormat> timeFormats12 =
+            Arrays.asList(
+                    new SimpleDateFormat("hh:mm aa", Locale.US),
+                    new SimpleDateFormat("hh:mm:ss aa", Locale.US),
+                    new SimpleDateFormat("hh:mm:ss.SSS aa", Locale.US) // must go at last
+                    );
+    // hour 0 ~ 23
+    private static final List<SimpleDateFormat> timeFormats23 =
             Arrays.asList(
                     new SimpleDateFormat("HH:mm"),
                     new SimpleDateFormat("HH:mm:ss"),
@@ -346,11 +379,15 @@ public class DateTimeParser {
                     );
 
     static {
+        for (SimpleDateFormat f : timeFormats11) {
+            f.setLenient(false);
+            assert f.getCalendar() instanceof GregorianCalendar;
+        }
         for (SimpleDateFormat f : timeFormats12) {
             f.setLenient(false);
             assert f.getCalendar() instanceof GregorianCalendar;
         }
-        for (SimpleDateFormat f : timeFormats24) {
+        for (SimpleDateFormat f : timeFormats23) {
             f.setLenient(false);
             assert f.getCalendar() instanceof GregorianCalendar;
         }
@@ -359,7 +396,16 @@ public class DateTimeParser {
     private static LocalTime parseTimeFragment(String s, boolean millis) {
 
         s = s.trim();
-        List<SimpleDateFormat> formats = (s.indexOf(" ") >= 0) ? timeFormats12 : timeFormats24;
+        List<SimpleDateFormat> formats;
+        if (s.indexOf(" ") >= 0) {
+            if (s.startsWith("00")) {
+                formats = timeFormats11;
+            } else {
+                formats = timeFormats12;
+            }
+        } else {
+            formats = timeFormats23;
+        }
 
         int j = 0;
         for (SimpleDateFormat f : formats) {

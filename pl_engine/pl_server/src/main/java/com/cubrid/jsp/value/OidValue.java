@@ -32,6 +32,7 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
@@ -41,38 +42,27 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class OidValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_OID;
+    }
+
     private SOID oidValue = null;
     private CUBRIDOID oidObject = null;
 
     public OidValue(SOID oid) {
         oidValue = oid;
+        this.dbType = DBType.DB_OID;
     }
 
     public OidValue(CUBRIDOID oid) {
         byte[] bOid = oid.getOID();
         oidValue = new SOID(bOid);
         this.oidObject = oid;
+        this.dbType = DBType.DB_OID;
     }
 
-    public OidValue(SOID oid, int mode, int dbType) {
-        super(mode);
-        this.oidValue = oid;
-        this.dbType = dbType;
-    }
-
-    public OidValue(CUBRIDOID oid, int mode, int dbType) {
-        super(mode);
-        this.oidObject = oid;
-        byte[] bOid = oid.getOID();
-        oidValue = new SOID(bOid);
-        this.dbType = dbType;
-    }
-
-    public CUBRIDOID[] toOidArray() throws TypeMismatchException {
-        createInstance();
-        return new CUBRIDOID[] {oidObject};
-    }
-
+    @Override
     public CUBRIDOID toOid() throws TypeMismatchException {
         createInstance();
         return oidObject;
@@ -91,6 +81,7 @@ public class OidValue extends Value {
         }
     }
 
+    @Override
     public String toString() {
         try {
             createInstance();
@@ -101,15 +92,8 @@ public class OidValue extends Value {
         return null;
     }
 
-    public String[] toStringArray() throws TypeMismatchException {
-        return new String[] {toString()};
-    }
-
+    @Override
     public Object toObject() throws TypeMismatchException {
         return toOid();
-    }
-
-    public Object[] toObjectArray() throws TypeMismatchException {
-        return new Object[] {toObject()};
     }
 }

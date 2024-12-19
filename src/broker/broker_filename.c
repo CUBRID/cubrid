@@ -343,3 +343,64 @@ getenv_cubrid_broker ()
 
   return p;
 }
+
+int
+make_abs_path (char *dest, const char *subdir, const char *path, size_t dest_len)
+{
+  int ret = 0;
+  char buf[BROKER_PATH_MAX * 4];
+  char new_path[BROKER_PATH_MAX * 4];
+  int path_len;
+
+  if (path == NULL || path[0] == 0)
+    {
+      dest[0] = '\0';
+      return path ? 0 : -1;
+    }
+
+#if defined (WINDOWS)
+  if (IS_ABS_PATH (path))
+    {
+      _fullpath (new_path, path, dest_len);
+    }
+  else
+    {
+      snprintf (buf, dest_len, "%s%s%s\\%s", get_cubrid_home (), subdir ? "\\" : "", subdir ? subdir : "", path);
+      _fullpath (new_path, buf, dest_len);
+    }
+#else
+  if (IS_ABS_PATH (path))
+    {
+      snprintf (new_path, dest_len, "%s", path);
+    }
+  else
+    {
+      snprintf (new_path, dest_len, "%s%s%s/%s", get_cubrid_home (), subdir ? "/" : "", subdir ? subdir : "", path);
+    }
+#endif
+
+  path_len = strlen (new_path) - 1;
+  while (path_len > 0)
+    {
+      if (new_path[path_len] == '/' || new_path[path_len] == '\\')
+	{
+	  new_path[path_len] = '\0';
+	}
+      else
+	{
+	  break;
+	}
+      path_len--;
+    }
+
+  if (strlen (new_path) < dest_len)
+    {
+      snprintf (dest, dest_len, "%s", new_path);
+    }
+  else
+    {
+      ret = -1;
+    }
+
+  return ret;
+}

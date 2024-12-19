@@ -818,6 +818,8 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_ANALYSIS_STARTED, 0);
+
   log_recovery_analysis (thread_p, &rcv_lsa, &start_redolsa, &end_redo_lsa, ismedia_crash, stopat,
 			 &did_incom_recovery, &num_redo_log_records);
 
@@ -2532,17 +2534,25 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
   /* TODO - Do we need to handle NULL fwd_log_lsa? */
   if (!LSA_ISNULL (&fwd_log_lsa))
     {
-      assert (fwd_log_lsa.pageid >= log_lsa->pageid);
-
-      if (fwd_log_lsa.pageid != log_lsa->pageid
-	  && (fwd_log_lsa.offset != 0 || fwd_log_lsa.pageid > log_lsa->pageid + 1))
+      /* log_Gl.hdr.eof_lsa can have a NULL_LSA value if recovery is started without an active log volume. Its value will be recovered during the log_recovery_analysis process. */
+      if (LSA_GE (log_lsa, &fwd_log_lsa)
+	  || (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && LSA_GT (&fwd_log_lsa, &log_Gl.hdr.eof_lsa)))
 	{
-	  // The current log record spreads into several log pages.
-	  // Check whether the last page of the record exists.
-	  if (logpb_fetch_page (thread_p, &fwd_log_lsa, LOG_CS_FORCE_USE, log_fwd_page_p) != NO_ERROR)
+	  // check fwd_log_lsa value if it is corrupted or not
+	  is_log_page_broken = true;
+	}
+      else
+	{
+	  if (fwd_log_lsa.pageid != log_lsa->pageid
+	      && (fwd_log_lsa.offset != 0 || fwd_log_lsa.pageid > log_lsa->pageid + 1))
 	    {
-	      /* The forward log page does not exists. */
-	      is_log_page_broken = true;
+	      // The current log record spreads into several log pages.
+	      // Check whether the last page of the record exists.
+	      if (logpb_fetch_page (thread_p, &fwd_log_lsa, LOG_CS_FORCE_USE, log_fwd_page_p) != NO_ERROR)
+		{
+		  /* The forward log page does not exists. */
+		  is_log_page_broken = true;
+		}
 	    }
 	}
     }
@@ -2674,8 +2684,9 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		    {
 		      LSA_COPY (&last_log_tdes->tail_lsa, &log_rec->prev_tranlsa);
 		      LSA_COPY (&last_log_tdes->undo_nxlsa, &log_rec->prev_tranlsa);
-		      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: trid = %d, tail_lsa=%lld|%d\n",
-				    log_rec->trid, last_log_tdes->tail_lsa.pageid, last_log_tdes->tail_lsa.offset);
+		      er_log_debug (ARG_FILE_LINE, "%s: trid = %d, tail_lsa=%lld|%d\n",
+				    __func__, log_rec->trid, last_log_tdes->tail_lsa.pageid,
+				    last_log_tdes->tail_lsa.offset);
 		    }
 		}
 	      assert (!prev_lsa.is_null ());
@@ -2737,8 +2748,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  if (last_checked_page_id != log_lsa.pageid)
 	    {
 #if !defined(NDEBUG)
-	      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
-			    log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
+	      er_log_debug (ARG_FILE_LINE, "%s: log page %lld, checksum %d\n",
+			    __func__, log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
 	      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 		{
 		  fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
@@ -2767,9 +2778,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  /* Found corrupted log page. */
 		  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 		    {
-		      _er_log_debug (ARG_FILE_LINE,
-				     "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
-				     (long long int) log_lsa.pageid);
+		      _er_log_debug (ARG_FILE_LINE, "%s: log page %lld is corrupted due to partial flush.\n",
+				     __func__, (long long int) log_lsa.pageid);
 		    }
 		}
 
@@ -2791,8 +2801,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  LSA_COPY (end_redo_lsa, &lsa);
 		  LSA_COPY (&prev_lsa, end_redo_lsa);
 		  prev_prev_lsa = prev_lsa;
-		  er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: broken record at LSA=%lld|%d ",
-				log_lsa.pageid, log_lsa.offset);
+		  er_log_debug (ARG_FILE_LINE, "%s: broken record at LSA=%lld|%d ",
+				__func__, log_lsa.pageid, log_lsa.offset);
 		  break;
 		}
 	    }
@@ -2889,8 +2899,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 			{
 			  _er_log_debug (ARG_FILE_LINE,
-					 "logpb_recovery_analysis: Partial page flush - first corrupted log record LSA = (%lld, %d)\n",
-					 (long long int) log_lsa.pageid, log_lsa.offset);
+					 "%s: Partial page flush - first corrupted log record LSA = (%lld, %d)\n",
+					 __func__, (long long int) log_lsa.pageid, log_lsa.offset);
 			}
 		      LOG_RESET_APPEND_LSA (&log_lsa);
 		      LSA_SET_NULL (&lsa);
@@ -3763,7 +3773,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_ABORT:
 	      {
 		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
-		assert (logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX);
+
+		/* This is a check to verify whether completed transactions exist in the transaction table.
+		 * In the analysis phase, completed transactions are cleared from the transaction table.
+		 * However, system transactions are not cleared, so they are excluded from the assert condition
+		 */
+		assert (tran_id == LOG_SYSTEM_TRANID ||
+			(tran_id > LOG_SYSTEM_TRANID && logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX));
+
 		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_COMMIT_ABORT);
 	      }
 	      break;
@@ -4513,6 +4530,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
       tsc_start_time_usec (&info_logging_check_time);
     }
 
+  LOG_CS_EXIT (thread_p);
+
   while (!LSA_ISNULL (&max_undo_lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
@@ -4937,6 +4956,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
   /* Flush all dirty pages */
 
+  LOG_CS_ENTER (thread_p);
+
   logpb_flush_pages_direct (thread_p);
 
   logpb_flush_header (thread_p);
@@ -5158,7 +5179,7 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
       vdes = fileio_mount (thread_p, log_Db_fullname, vol_fullname, volid, false, false);
       if (vdes != NULL_VOLDES)
 	{
-	  ret = disk_get_creation_time (thread_p, volid, &vol_dbcreation);
+	  ret = disk_get_db_creation (thread_p, volid, &vol_dbcreation);
 	  fileio_dismount (thread_p, vdes);
 	  if (difftime ((time_t) vol_dbcreation, (time_t) log_Gl.hdr.db_creation) != 0)
 	    {
@@ -5277,7 +5298,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
       if (log_Gl.append.vdes == NULL_VOLDES)
 	{
 	  /* Create the log active since we do not have one */
-	  ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &log_Gl.hdr.db_creation);
+	  ret = disk_get_db_creation (thread_p, LOG_DBFIRST_VOLID, &log_Gl.hdr.db_creation);
 	  if (ret != NO_ERROR)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");

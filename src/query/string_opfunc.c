@@ -8874,11 +8874,11 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
     }
   if (QSTR_IS_NATIONAL_CHAR (src_type))
     {
-      result_type = DB_TYPE_NCHAR;
+      result_type = DB_TYPE_VARNCHAR;
     }
   else
     {
-      result_type = DB_TYPE_CHAR;
+      result_type = DB_TYPE_VARCHAR;
     }
 
   codeset = db_get_string_codeset (src_string);
@@ -13171,6 +13171,51 @@ const char *Am_Pm_name_EUCKR[][12] = {
    "a.m.", "p.m.", "A.m.", "P.m.", "A.M.", "P.M."},	/* TR */
 };
 
+static inline int
+check_date_lang_on_prepared (const DB_VALUE * date_lang, INTL_LANG * date_lang_id, bool * has_user_fmt)
+{
+  bool has_user_lang = false;
+  int flag;
+
+  switch (DB_VALUE_TYPE (date_lang))
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      /* We got here because we used HOST_VAR.  And using HOST_VAR means we didn't omit format. */
+      if (lang_get_lang_id_from_name (db_get_string (date_lang), date_lang_id))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOCALE_LANG_NOT_AVAILABLE, 1, db_get_string (date_lang));
+	  return ER_LOCALE_LANG_NOT_AVAILABLE;
+	}
+      *has_user_fmt = true;
+
+      return NO_ERROR;
+
+    case DB_TYPE_INTEGER:
+      flag = db_get_int (date_lang);
+      if ((flag & LANG_LOADED_LOCALES_PARITY_MASK) == LANG_LOADED_LOCALES_PARITY)
+	{
+	  *date_lang_id = lang_get_lang_id_from_flag (flag, has_user_fmt, &has_user_lang);
+
+	  return NO_ERROR;
+	}
+      else
+	{
+	  /* We got here because we used HOST_VAR.  This may be the case when the bound value is int. */
+	}
+
+      break;
+
+    default:
+      break;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+  return ER_QSTR_INVALID_DATA_TYPE;
+}
+
 /*
  * db_to_date () -
  */
@@ -13213,8 +13258,11 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
       return error_status;
     }
 
-  assert (DB_VALUE_TYPE (date_lang) == DB_TYPE_INTEGER);
-  date_lang_id = lang_get_lang_id_from_flag (db_get_int (date_lang), &has_user_format, &dummy);
+  error_status = check_date_lang_on_prepared (date_lang, &date_lang_id, &has_user_format);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
 
   if (false == is_char_string (src_str))
     {
@@ -13783,8 +13831,11 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
       return error_status;
     }
 
-  assert (DB_VALUE_TYPE (date_lang) == DB_TYPE_INTEGER);
-  date_lang_id = lang_get_lang_id_from_flag (db_get_int (date_lang), &has_user_format, &dummy);
+  error_status = check_date_lang_on_prepared (date_lang, &date_lang_id, &has_user_format);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
 
   /* now return null */
   if (false == is_char_string (src_str))
@@ -14354,8 +14405,11 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
       return error_status;
     }
 
-  assert (DB_VALUE_TYPE (date_lang) == DB_TYPE_INTEGER);
-  date_lang_id = lang_get_lang_id_from_flag (db_get_int (date_lang), &has_user_format, &dummy);
+  error_status = check_date_lang_on_prepared (date_lang, &date_lang_id, &has_user_format);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
 
   if (false == is_char_string (src_str))
     {
@@ -15265,8 +15319,11 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
       return error_status;
     }
 
-  assert (DB_VALUE_TYPE (date_lang) == DB_TYPE_INTEGER);
-  date_lang_id = lang_get_lang_id_from_flag (db_get_int (date_lang), &has_user_format, &dummy);
+  error_status = check_date_lang_on_prepared (date_lang, &date_lang_id, &has_user_format);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
 
   if (false == is_char_string (src_str))
     {
@@ -16719,8 +16776,11 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
       return error_status;
     }
 
-  assert (DB_VALUE_TYPE (date_lang) == DB_TYPE_INTEGER);
-  date_lang_id = lang_get_lang_id_from_flag (db_get_int (date_lang), &has_user_format, &dummy);
+  error_status = check_date_lang_on_prepared (date_lang, &date_lang_id, &has_user_format);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
 
   no_user_format = (format_str == NULL) || (!has_user_format);
 
@@ -17529,7 +17589,12 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
       return error_status;
     }
 
-  number_lang_id = lang_get_lang_id_from_flag (db_get_int (number_lang), &has_user_format, &dummy);
+  error_status = check_date_lang_on_prepared (number_lang, &number_lang_id, &has_user_format);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
+
   fraction_symbol = lang_digit_fractional_symbol (number_lang_id);
   digit_grouping_symbol = lang_digit_grouping_symbol (number_lang_id);
   currency = lang_locale_currency (lang_get_lang_name_from_id (number_lang_id));
@@ -19985,7 +20050,6 @@ db_format (const DB_VALUE * value, const DB_VALUE * decimals, const DB_VALUE * n
     }
 
   db_make_string (&format_val, format);
-
   error = number_to_char (num_dbval_p, &format_val, number_lang, &formatted_val, domain);
   if (error == NO_ERROR)
     {
@@ -26595,6 +26659,7 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
   const char *str = NULL;
   char *hexval = NULL;
   int str_size = 0, hexval_len = 0, i = 0, error_code = NO_ERROR;
+  DB_VALUE tval, *ptval = NULL;
 
   /* check parameters for NULL values */
   if (param == NULL || result == NULL)
@@ -26612,6 +26677,7 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
   /* compute hex representation */
   param_type = DB_VALUE_DOMAIN_TYPE (param);
 
+coerce_pos:
   if (TP_IS_CHAR_TYPE (param_type) || TP_IS_BIT_TYPE (param_type))
     {
       if (TP_IS_CHAR_TYPE (param_type))
@@ -26712,14 +26778,34 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
     }
   else
     {
-      error_code = ER_QSTR_INVALID_DATA_TYPE;
-      goto error;
+      db_make_null (&tval);
+      ptval = &tval;
+      if (tp_value_cast (param, &tval, &tp_Char_domain, false) != DOMAIN_COMPATIBLE)
+	{
+	  error_code = ER_QSTR_INVALID_DATA_TYPE;
+	  goto error;
+	}
+
+      param = &tval;
+      param_type = DB_VALUE_DOMAIN_TYPE (param);
+      assert (TP_IS_CHAR_TYPE (param_type));
+      goto coerce_pos;
+    }
+
+  if (ptval)
+    {
+      db_value_clear (ptval);
     }
 
   /* all ok */
   return NO_ERROR;
 
 error:
+  if (ptval)
+    {
+      db_value_clear (ptval);
+    }
+
   if (result)
     {
       db_make_null (result);
@@ -26889,6 +26975,31 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
 	{
 	  db_make_short (result, 0);
 	}
+    }
+  else if (TP_IS_NUMERIC_TYPE (param_type) || TP_IS_DATE_OR_TIME_TYPE (param_type))
+    {
+      DB_VALUE new_value;
+      const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_CHAR);
+      db_make_null (&new_value);
+      TP_DOMAIN_STATUS status = tp_value_auto_cast (param, &new_value, new_domain);
+      if (status != DOMAIN_COMPATIBLE)
+	{
+	  error_code = ER_QSTR_INVALID_DATA_TYPE;
+	  goto error;
+	}
+
+      str_size = db_get_string_size (&new_value);
+      if (str_size > 0)
+	{
+	  str = db_get_string (&new_value);
+	  db_make_short (result, (unsigned char) str[0]);
+	}
+      else
+	{
+	  db_make_short (result, 0);
+	}
+
+      db_value_clear (&new_value);
     }
   else
     {

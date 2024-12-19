@@ -157,7 +157,7 @@ Available service's utilities:\n\
     gateway\n\
     manager\n\
     heartbeat\n\
-    javasp\n\
+    pl\n\
 \n\
 Available administrator's utilities:\n\
     addvoldb\n\
@@ -262,11 +262,9 @@ Available command:\n\
 42 Invalid argument.\n
 43 File(%1$s) open error.\n
 44 cubrid utility, version %1$s\n\
-usage: %2$s javasp <command> [args]\n\
+usage: %2$s pl <command> [args]\n\
 \n\
 Available command:\n\
-    start       [database-name]\n\
-    stop        [database-name]\n\
     restart     [database-name]\n\
     status      [database-name]\n
 45 cubrid utility, version %1$s\n\
@@ -547,7 +545,6 @@ valid options:\n\
   -i, --input-class-file=FILE input FILE of table names; default: dump all classes\n\
       --include-reference     include referenced tables; with -i option; default: disabled\n\
       --input-class-only      include specified class only; with -i option; default: disabled\n\
-      --lo-count=COUNT        lo file COUNT per a directory; default: 0\n\
       --estimated-size=NUMBER estimated NUMBER of instances; default: auto computed\n\
       --cached-pages=NUMBER   NUMBER of cached pages; default: 100\n\
   -O, --output-path=PATH      PATH of output directory; default: working directory\n\
@@ -557,6 +554,8 @@ valid options:\n\
       --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
       --latest-image          when dumping objects, it dumps the latest image of objects in data volumes, not referring to log volumes (ignoring MVCC)\n\
                               It could include uncommitted data and deleted data which is not vacuummed; default: disabled\n\
+  -t, --thread-count=COUNT    Number of threads; default: 1 maximum: 127\n\
+      --enhanced-estimates    Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose               enable verbose status messages; default: disabled\n\
       --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
   -S, --SA-mode               stand-alone mode execution\n\
@@ -647,7 +646,7 @@ valid options:\n\
   -N, --node-list                  list nodes managed by CUBRID heartbeat\n\
   -L, --process-list               list local process managed by CUBRID heartbeat\n\
   -p, --ping-host                  list ping hosts used for CUBRID heartbeat\n\
-  -D, --dereg-process=PID          exit the target process and remove it from managed process entries\n\
+  -D, --dereg-process=PID          exit the target process managed by CUBRID heartbeat and remove it from managed process entries\n\
   -F, --reconfig-node-list         apply CUBRID heartbeat configuration recently changed\n\
   -V, --verbose                    enable verbose status messages; default: disabled\n
 28 Sorry, unknown command: %1$s\n

@@ -42,13 +42,12 @@ public class TypeSpecPercent extends TypeSpec {
 
     public final String table;
     public final String column;
-    public final boolean forParameterOrReturn;
+    public final int typeVisitMode;
 
-    public TypeSpecPercent(
-            ParserRuleContext ctx, String table, String column, boolean forParameterOrReturn) {
+    public TypeSpecPercent(ParserRuleContext ctx, String table, String column, int typeVisitMode) {
         super(ctx, null); // null: unknown yet
         this.table = table;
         this.column = column;
-        this.forParameterOrReturn = forParameterOrReturn;
+        this.typeVisitMode = typeVisitMode;
     }
 }

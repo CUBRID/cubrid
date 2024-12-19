@@ -31,9 +31,15 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 
 public class BooleanValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_BOOLEAN;
+    }
+
     private byte value = 0;
 
     public BooleanValue(boolean b) {
@@ -41,39 +47,35 @@ public class BooleanValue extends Value {
         if (b) {
             value = 1;
         }
+        this.dbType = DBType.DB_INT;
     }
 
-    public BooleanValue(boolean b, int mode) {
-        super(mode);
-        if (b) {
-            value = 1;
-        }
-    }
-
-    public Object toDefault() throws TypeMismatchException {
-        return new Integer(value);
-    }
-
+    @Override
     public Short toShortObject() throws TypeMismatchException {
         return new Short(value);
     }
 
+    @Override
     public Integer toIntegerObject() throws TypeMismatchException {
         return new Integer(value);
     }
 
+    @Override
     public Float toFloatObject() throws TypeMismatchException {
         return new Float(value);
     }
 
+    @Override
     public Double toDoubleObject() throws TypeMismatchException {
         return new Double(value);
     }
 
+    @Override
     public Object toObject() {
-        return Boolean.valueOf(value == 1 ? true : false);
+        return Boolean.valueOf(value == 1);
     }
 
+    @Override
     public String toString() {
         return "" + value;
     }

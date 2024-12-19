@@ -807,7 +807,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   if (att_name)
     {
       db_make_string (&value, att_name);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATTR_NAME, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
 	{
@@ -948,7 +948,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
 
   /* att name */
   db_make_string (&value, att_name);
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
     {
@@ -3528,9 +3528,9 @@ do_clear_subquery_cache_flag (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg
 }
 
 static PT_NODE *
-do_check_cte_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+do_check_cte_or_system_class_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
-  bool *has_cte_spec = (bool *) arg;
+  PT_NODE *q = (PT_NODE *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3541,9 +3541,37 @@ do_check_cte_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *cont
 
   if (stmt->info.spec.cte_pointer)
     {
-      *has_cte_spec = true;
-      *continue_walk = PT_STOP_WALK;
+      if (q->info.query.is_subquery == PT_IS_SUBQUERY || q->info.query.is_subquery == PT_IS_UNION_QUERY
+	  || q->info.query.is_subquery == PT_IS_UNION_SUBQUERY)
+	{
+	  goto stop_walk;
+	}
     }
+
+  if (stmt->info.spec.entity_name)
+    {
+      const char *class_name = stmt->info.spec.entity_name->info.name.original;
+
+      if (class_name)
+	{
+	  if (sm_check_system_class_by_name (class_name))
+	    {
+	      goto stop_walk;
+	    }
+	}
+    }
+  else if (stmt->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+    {
+      goto stop_walk;
+    }
+
+  return stmt;
+
+stop_walk:
+
+  q->info.query.flag.do_cache = 0;
+  q->info.query.flag.do_not_cache = 1;
+  *continue_walk = PT_STOP_WALK;
 
   return stmt;
 }
@@ -3552,6 +3580,7 @@ static PT_NODE *
 do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
 {
   int *err = (int *) arg;
+  PT_NODE *saved;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3574,6 +3603,28 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
       return stmt;
 
     case PT_SELECT:
+      /* 
+       * SYSDATE, SERIAL related functions and other queries that should not be cached
+       * The parser sets the do_not_cache flag for these queries.
+       */
+      if (stmt->info.query.flag.do_not_cache)
+	{
+	  return stmt;
+	}
+
+      if (stmt->info.query.hint & PT_HINT_QUERY_CACHE)
+	{
+	  /* exclude cache from CTE, system class, or dblink referencing */
+	  saved = stmt->next;
+	  stmt->next = NULL;
+	  parser_walk_tree (parser, stmt, do_check_cte_or_system_class_spec, stmt, NULL, NULL);
+	  stmt->next = saved;
+
+	  if (stmt->info.query.flag.do_not_cache)
+	    {
+	      return stmt;
+	    }
+	}
       break;
 
     default:
@@ -3585,16 +3636,6 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
-      bool has_cte_spec = false;
-
-      /* exclude cache from CTE referencing */
-      parser_walk_tree (parser, stmt, do_check_cte_spec, &has_cte_spec, NULL, NULL);
-
-      if (has_cte_spec)
-	{
-	  goto stop_walk;
-	}
-
       *err = do_prepare_subquery (parser, stmt);
 
       if (*err != NO_ERROR)
@@ -14971,6 +15012,11 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= TRAN_AUTO_COMMIT;
     }
 
+  if (statement->info.execute.do_cache)
+    {
+      query_flag |= RESULT_CACHE_REQUIRED;
+    }
+
   if (query_trace == true)
     {
       do_set_trace_to_query_flag (&query_flag);
@@ -20184,6 +20230,98 @@ do_find_synonym_by_query (const char *name, char *buf, int buf_size)
     {
       /* unique_name must not be null. */
       assert (false);
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because unique_name is not unique. */
+      buf[0] = '\0';
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+#undef QUERY_BUF_SIZE
+}
+
+int
+do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
+{
+#define QUERY_BUF_SIZE 2048
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  const char *query = NULL;
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
+  const char *current_schema_name = NULL;
+  const char *sp_name = NULL;
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  assert (buf != NULL);
+
+  current_schema_name = sc_current_schema_name ();
+
+  sp_name = sm_remove_qualifier_name (name);
+  query = "SELECT [unique_name] FROM [%s] WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, current_schema_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, current_schema_name);
+  assert (query_buf[0] != '\0');
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      if (error == DB_CURSOR_END)
+	{
+	  ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (!DB_IS_NULL (&value))
+    {
+      assert (strlen (db_get_string (&value)) < buf_size);
+      strcpy (buf, db_get_string (&value));
+    }
+  else
+    {
+      /* unique_name must not be null. */
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
 
   error = db_query_next_tuple (query_result);

@@ -696,7 +696,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    }
 	}
 
-      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) && is_in_block == false)
+      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) && (csql_Is_interactive || (is_in_block == false)))
 	{
 	  int ret;
 	  ret = csql_do_session_cmd (line_read, csql_arg);
@@ -786,7 +786,6 @@ fatal_error:
 	}
     }
 
-  db_end_session ();
   db_shutdown ();
   csql_Database_connected = false;
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
@@ -1034,7 +1033,6 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       if (csql_Database_connected)
 	{
 	  csql_Database_connected = false;
-	  db_end_session ();
 	  db_shutdown ();
 	}
       er_init ("./csql.err", ER_NEVER_EXIT);
@@ -1541,11 +1539,11 @@ csql_set_server_output (CSQL_ARGUMENT * csql_arg, bool server_output)
   csql_arg->pl_server_output = server_output;
   if (server_output)
     {
-      csql_execute_query ("CALL enable (50000);");
+      csql_execute_query ("CALL dbms_output.enable (50000);");
     }
   else
     {
-      csql_execute_query ("CALL disable ();");
+      csql_execute_query ("CALL dbms_output.disable ();");
     }
 }
 
@@ -1846,7 +1844,7 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
   bool print_header = true;
   do
     {
-      errors = csql_execute_query ("CALL get_line (:pl_output_str, :pl_output_status);");
+      errors = csql_execute_query ("CALL dbms_output.get_line (:pl_output_str, :pl_output_status);");
       if (errors != 0)
 	{
 	  break;
@@ -2310,6 +2308,10 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
 error:
   display_error (session, stmt_start_line_no);
+  if (csql_arg->pl_server_output)
+    {
+      csql_print_server_output (csql_arg);
+    }
   logddl_set_err_code (db_error_code ());
   if (do_abort_transaction)
     {
@@ -2727,7 +2729,6 @@ csql_exit_session (int error)
 	  histo_stop ();
 	}
     }
-  db_end_session ();
 
   if (db_shutdown () < 0)
     {
@@ -2810,7 +2811,6 @@ csql_exit_cleanup ()
 	}
 
       csql_Database_connected = false;
-      db_end_session ();
       db_shutdown ();
     }
 
@@ -2923,6 +2923,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       csql_Is_interactive = true;
     }
+
 
   /* initialize error log file */
   if (er_init ("./csql.err", ER_NEVER_EXIT) != NO_ERROR)
@@ -3513,7 +3514,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   if (argument == NULL)
     {
       err_msg = (*csql_get_message) (CSQL_MSG_TOO_FEW_ARGS);
-      fprintf (stderr, err_msg);
+      fprintf (csql_Output_fp, "%s\n", err_msg);
       return DO_CMD_SUCCESS;
     }
 
@@ -3553,7 +3554,6 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   if (csql_Database_connected)
     {
       csql_Database_connected = false;
-      db_end_session ();
       db_shutdown ();
 
     }
