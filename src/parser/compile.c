@@ -83,6 +83,8 @@ static PT_NODE *pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NO
 static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags);
 
 static void remove_appended_trigger_info (char *msg, int with_evaluate);
+static int change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, char **new_trigger_stmt,
+					int with_evaluate);
 
 static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_set_trigger_obj_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -1044,6 +1046,68 @@ remove_appended_trigger_info (char *msg, int with_evaluate)
 }
 
 /*
+ * change_trigger_action_query () - remove appended trigger info
+ *   parser(in):
+ *   action_stmt(in):
+ *   with_evaluate(in):
+ */
+static int
+change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, char **new_trigger_stmt, int with_evaluate)
+{
+  int error = NO_ERROR;
+  char *new_trigger_stmt_str = NULL;
+  unsigned int save_custom;
+
+  assert (parser != NULL || statement != NULL);
+
+  if (!*new_trigger_stmt)
+    return NULL;
+
+  save_custom = parser->custom_print;
+
+  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+  parser->flag.is_parsing_trigger = 1;
+
+  new_trigger_stmt_str = parser_print_tree_with_quotes (parser, statement);
+
+  parser->flag.is_parsing_trigger = 0;
+  parser->custom_print = save_custom;
+
+  if (new_trigger_stmt_str == NULL)
+    {
+      return NULL;
+    }
+
+  /* remove appended trigger info */
+  if (with_evaluate)
+    {
+      char *p = NULL;
+      const char *eval_prefix = "evaluate (";
+      size_t eval_suffix_len;
+
+      p = strstr (new_trigger_stmt_str, eval_prefix);
+      if (p != NULL)
+	{
+	  p = (char *) memmove (p, p + strlen (eval_prefix), strlen (p) - strlen (eval_prefix) + 1);
+	}
+
+      eval_suffix_len = strlen (p);
+      if (eval_suffix_len > 0 && p[eval_suffix_len - 1] == ')')
+	{
+	  p[eval_suffix_len - 1] = '\0';
+	}
+    }
+
+  if (new_trigger_stmt_str != NULL && *new_trigger_stmt)
+    {
+      free_and_init (*new_trigger_stmt);
+      *new_trigger_stmt = strdup (new_trigger_stmt_str);
+    }
+
+  return error;
+}
+
+/*
  * pt_compile_trigger_stmt () - Compiles the trigger_stmt so that it can be
  * 	executed by pt_exec_trigger_stmt
  *   return:
@@ -1057,7 +1121,7 @@ remove_appended_trigger_info (char *msg, int with_evaluate)
 
 PT_NODE *
 pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_OBJECT * class_op, const char *name1,
-			 const char *name2)
+			 const char *name2, char **new_trigger_stmt)
 {
   char *stmt_str = NULL;
   const char *class_name;
@@ -1177,6 +1241,18 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
   /* We need to do view translation here on the expression to be executed. */
   if (statement)
     {
+      int error = NO_ERROR;
+
+      with_evaluate = strstr (trigger_stmt, "EVALUATE ( ") != NULL ? true : false;
+
+      error =
+	change_trigger_action_query (parser, statement->info.scope.stmt->info.trigger_action.expression,
+				     new_trigger_stmt, with_evaluate);
+      if (error != NO_ERROR)
+	{
+	  return NULL;
+	}
+
       statement->info.scope.stmt->info.trigger_action.expression =
 	mq_translate (parser, statement->info.scope.stmt->info.trigger_action.expression);
       /*

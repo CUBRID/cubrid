@@ -245,6 +245,9 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *trigger_name = NULL;
   const char *class_name = NULL;
+  PARSER_CONTEXT *parser;
+  PT_NODE **action_node, **condition_node;
+  char *query_action_result, *query_condition_result;
 
   AU_DISABLE (save);
 
@@ -303,7 +306,30 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 
       if (trigger->condition != NULL)
 	{
-	  output_ctx ("IF %s\n", trigger->condition->source);
+	  parser = parser_create_parser ();
+	  if (parser == NULL)
+	    {
+	      output_ctx ("/* ERROR : IF %s */\n", trigger->condition->source);
+	    }
+
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	    }
+
+	  // 여기서 에러가 발생함 ~!!
+	  // evaluate () 을 추가해야 함.
+	  condition_node = parser_parse_string (parser, trigger->condition->source);
+	  if (condition_node != NULL)
+	    {
+	      query_condition_result = parser_print_tree_with_quotes (parser, *action_node);
+	      output_ctx ("IF %s\n", query_condition_result);
+	    }
+	  else
+	    {
+	      output_ctx ("/* ERROR : IF %s */\n", trigger->condition->source);
+	    }
+	  parser_free_parser (parser);
 	}
 
       if (trigger->action != NULL)
@@ -316,7 +342,28 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	  switch (trigger->action->type)
 	    {
 	    case TR_ACT_EXPRESSION:
-	      output_ctx ("%s", trigger->action->source);
+	      parser = parser_create_parser ();
+	      if (parser == NULL)
+		{
+		  output_ctx ("/* ERROR : EXECUTE %s */\n", trigger->action->source);
+		}
+
+	      if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+		{
+		  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+		}
+
+	      action_node = parser_parse_string (parser, trigger->action->source);
+	      if (action_node != NULL)
+		{
+		  query_action_result = parser_print_tree_with_quotes (parser, *action_node);
+		  output_ctx ("%s", query_action_result);
+		}
+	      else
+		{
+		  output_ctx ("/* ERROR : EXECUTE %s */\n", trigger->action->source);
+		}
+	      parser_free_parser (parser);
 	      break;
 	    case TR_ACT_REJECT:
 	      output_ctx ("REJECT");
