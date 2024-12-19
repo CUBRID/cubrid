@@ -17137,7 +17137,7 @@ PR_TYPE tp_Vector = {
   NULL,
   NULL,
   NULL,
-  NULL,
+  NULL
 };
 
 PR_TYPE *tp_Type_vector = &tp_Vector;
