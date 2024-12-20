@@ -86,8 +86,11 @@ namespace cubpl
     int error_code = NO_ERROR;
     SESSION_ID sid = get_session ()->get_id ();
 
+    // get changed session parameters
+    const std::vector<sys_param> &session_params = get_session ()->obtain_session_parameters (true);
+
     m_stack->set_command (SP_CODE_COMPILE);
-    error_code = m_stack->send_data_to_java (req);
+    error_code = m_stack->send_data_to_java (session_params, req);
     if (error_code != NO_ERROR)
       {
 	return error_code;

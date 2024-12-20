@@ -31,7 +31,7 @@
 
 package com.cubrid.jsp.value;
 
-import com.cubrid.jsp.Server;
+import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.impl.SUConnection;
 import cubrid.sql.CUBRIDOID;
@@ -53,7 +53,7 @@ public abstract class Value {
 
     public Value() {
         this.mode = IN;
-        this.codeset = Server.getConfig().getServerCodesetId();
+        this.codeset = Context.getCodesetId();
     }
 
     public void setMode(int mode) {

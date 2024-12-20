@@ -37,8 +37,8 @@ public class PrepareArgs {
     public void readArgs(CUBRIDUnpacker unpacker) throws TypeMismatchException {
         groupId = unpacker.unpackBigint();
         tranId = unpacker.unpackInt();
-        int argCount = unpacker.unpackInt();
 
+        int argCount = unpacker.unpackInt();
         if (argCount > 0) {
             arguments = new Value[argCount];
             for (int i = 0; i < arguments.length; i++) {

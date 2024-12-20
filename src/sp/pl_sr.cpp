@@ -53,6 +53,7 @@
 #include "error_manager.h"
 #include "method_struct_invoke.hpp"
 #include "method_struct_value.hpp"
+#include "pl_session.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -63,6 +64,7 @@ namespace cubpl
 //////////////////////////////////////////////////////////////////////////
 
   class server_monitor_task;
+  struct bootstrap_request;
 
   /*********************************************************************
    * server_manager - declaration
@@ -97,6 +99,11 @@ namespace cubpl
       */
       connection_pool *get_connection_pool ();
 
+      /*
+      * get_pl_ctx_params() - get the PL context parameters
+      */
+      SYSPRM_ASSIGN_VALUE *get_pl_ctx_params () const;
+
     private:
 
       server_monitor_task *m_server_monitor_task;
@@ -105,6 +112,8 @@ namespace cubpl
 #if defined (SERVER_MODE)
       cubthread::daemon *m_monitor_helper_daemon = nullptr;
 #endif
+
+      SYSPRM_ASSIGN_VALUE *m_pl_ctx_params;
   };
 
   /*********************************************************************
@@ -170,23 +179,18 @@ namespace cubpl
       const char *m_argv[3];
 
       connection_pool *m_sys_conn_pool;
+      bootstrap_request *m_bootstrap_request;
 
       std::mutex m_monitor_mutex;
       std::condition_variable m_monitor_cv;
   };
 
-  struct pl_ctx_params
-  {
-    int param_id;
-    DB_VALUE param_value;
-  };
-
   struct bootstrap_request : public cubpacking::packable_object
   {
-    std::vector <pl_ctx_params> static_params;
+    std::vector <sys_param> server_params;
 
     bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values);
-    ~bootstrap_request ();
+    ~bootstrap_request () = default;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -207,6 +211,9 @@ namespace cubpl
     m_monitor_helper_daemon = nullptr;
 #endif
     m_connection_pool = new connection_pool (server_manager::CONNECTION_POOL_SIZE, db_name);
+
+    m_pl_ctx_params = xsysprm_get_pl_context_parameters (PRM_ALL_FLAGS);
+    assert (m_pl_ctx_params != nullptr);
   }
 
   server_manager::~server_manager ()
@@ -223,6 +230,11 @@ namespace cubpl
 	m_connection_pool = nullptr;
       }
 #endif
+
+    if (m_pl_ctx_params)
+      {
+	sysprm_free_assign_values (&m_pl_ctx_params);
+      }
   }
 
   void
@@ -248,6 +260,12 @@ namespace cubpl
     return m_connection_pool;
   }
 
+  SYSPRM_ASSIGN_VALUE *
+  server_manager::get_pl_ctx_params () const
+  {
+    return m_pl_ctx_params;
+  }
+
   /*********************************************************************
    * server_monitor_task - definition
    *********************************************************************/
@@ -259,6 +277,7 @@ namespace cubpl
     , m_binary_name ("cub_pl")
     , m_argv {m_binary_name.c_str (), m_db_name.c_str (), 0}
     , m_sys_conn_pool {nullptr}
+    , m_bootstrap_request {nullptr}
     , m_monitor_mutex {}
     , m_monitor_cv {}
   {
@@ -269,7 +288,10 @@ namespace cubpl
 
   server_monitor_task::~server_monitor_task ()
   {
-    // do nothing
+    if (m_bootstrap_request != nullptr)
+      {
+	delete m_bootstrap_request;
+      }
   }
 
 #if defined (SERVER_MODE)
@@ -438,15 +460,17 @@ exit:
   int
   server_monitor_task::do_bootstrap_request ()
   {
+    int error = ER_FAILED;
+    if (m_bootstrap_request == nullptr)
+      {
+	m_bootstrap_request = new bootstrap_request (m_manager->get_pl_ctx_params ());
+      }
+
     cubmem::block bootstrap_response;
     cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0);
     connection_view cv = m_sys_conn_pool->claim ();
 
-    int error = NO_ERROR;
-
-    SYSPRM_ASSIGN_VALUE *pl_ctx_params_assignments = xsysprm_get_pl_context_parameters ();
-    bootstrap_request bootstrap_request (pl_ctx_params_assignments);
-    error = cv->send_buffer_args (header, bootstrap_request);
+    error = cv->send_buffer_args (header, *m_bootstrap_request);
     if (error == NO_ERROR)
       {
 	error = cv->receive_buffer (bootstrap_response);
@@ -458,8 +482,6 @@ exit:
 	deserializator.unpack_int (error);
       }
 
-    sysprm_free_assign_values (&pl_ctx_params_assignments);
-
     return error;
   }
 
@@ -467,76 +489,19 @@ exit:
    * bootstrap_request - definition
    *********************************************************************/
   bootstrap_request::bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values)
-    : static_params ()
+    : server_params ()
   {
-    int idx = 0;
     while (pl_ctx_values != nullptr)
       {
-	PARAM_ID param_id = pl_ctx_values->prm_id;
-
-	pl_ctx_params param_obj;
-	param_obj.param_id = (int) param_id;
-
-	if (PRM_IS_BOOLEAN (GET_PRM (param_id)))
-	  {
-	    int val = prm_get_bool_value (param_id) ? 1 : 0;
-	    db_make_int (&param_obj.param_value, val);
-	  }
-	else if (PRM_IS_STRING (GET_PRM (param_id)))
-	  {
-	    const char *val = prm_get_string_value (param_id);
-	    if (val == NULL)
-	      {
-		switch (param_id)
-		  {
-		  case PRM_ID_INTL_COLLATION:
-		    val = lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET));
-		    break;
-		  case PRM_ID_INTL_DATE_LANG:
-		  case PRM_ID_INTL_NUMBER_LANG:
-		    val = lang_get_Lang_name ();
-		    break;
-		  case PRM_ID_TIMEZONE:
-		    val = prm_get_string_value (PRM_ID_SERVER_TIMEZONE);
-		    break;
-		  default:
-		    /* do nothing */
-		    break;
-		  }
-	      }
-	    db_make_string (&param_obj.param_value, val);
-	  }
-	else
-	  {
-	    // not implemented yet
-	    assert (false);
-	  }
-	static_params.push_back (param_obj);
-
-	idx++;
+	server_params.emplace_back (pl_ctx_values);
 	pl_ctx_values = pl_ctx_values->next;
-      }
-  }
-
-  bootstrap_request::~bootstrap_request ()
-  {
-    for (pl_ctx_params &param : static_params)
-      {
-	db_value_clear (&param.param_value);
       }
   }
 
   void
   bootstrap_request::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_int (static_params.size ());
-    cubmethod::dbvalue_java sp_val;
-    for (const pl_ctx_params &param : static_params)
-      {
-	serializator.pack_int (param.param_id);
-	sp_val.value = (DB_VALUE *) &param.param_value;
-	sp_val.pack (serializator);
-      }
+    serializator.pack_all (server_params);
   }
 
   void
@@ -548,19 +513,8 @@ exit:
   size_t
   bootstrap_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset); // static_params.size ()
-
-    cubmethod::dbvalue_java sp_val;
-    for (const pl_ctx_params &param : static_params)
-      {
-	size += serializator.get_packed_int_size (size); // param.param_id
-	sp_val.value = (DB_VALUE *) &param.param_value;
-	size += sp_val.get_packed_size (serializator, size);
-      }
-
-    return size;
+    return serializator.get_all_packed_size_starting_offset (start_offset, server_params);
   }
-
 } // namespace cubpl
 
 //////////////////////////////////////////////////////////////////////////

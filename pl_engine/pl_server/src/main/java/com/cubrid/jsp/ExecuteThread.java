@@ -65,6 +65,7 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.Base64;
 import java.util.List;
@@ -308,8 +309,21 @@ public class ExecuteThread extends Thread {
         return unpacker;
     }
 
+    private void readSessionParameter(CUBRIDUnpacker unpacker) {
+        int paramCnt = (int) unpacker.unpackBigint();
+        if (paramCnt > 0) {
+            for (int i = 0; i < paramCnt; i++) {
+                SysParam sysParam = new SysParam(unpacker);
+                ctx.getSystemParameters().put(sysParam.getParamId(), sysParam);
+            }
+        }
+    }
+
     private void processStoredProcedure() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
+
+        // session parameters
+        readSessionParameter(unpacker);
 
         // prepare
         if (prepareArgs == null) {
@@ -385,6 +399,9 @@ public class ExecuteThread extends Thread {
     private void processCompile() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
 
+        // session parameters
+        readSessionParameter(unpacker);
+
         CompileRequest request = new CompileRequest(unpacker);
 
         // TODO: Pass CompileRequest directly to compilePLCSQL ()
@@ -401,6 +418,18 @@ public class ExecuteThread extends Thread {
             if (info.errCode == 0) {
                 MemoryJavaCompiler compiler = new MemoryJavaCompiler();
                 SourceCode sCode = new SourceCode(info.className, info.translated);
+
+                // dump translated code into $CUBRID_TMP
+                if (Context.getSystemParameterBool(SysParam.STORED_PROCEDURE_DUMP_ICODE)) {
+                    Path path =
+                            Paths.get(
+                                    Server.getConfig().getTmpPath()
+                                            + "/"
+                                            + info.className
+                                            + ".java");
+                    Files.write(path, info.translated.getBytes(Context.getSessionCharset()));
+                }
+
                 CompiledCodeSet codeSet = compiler.compile(sCode);
 
                 int mode = 1; // 0: temp file mode, 1: memory stream mode
