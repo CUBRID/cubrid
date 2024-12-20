@@ -8609,20 +8609,20 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
       if (parser->flag.is_parsing_unload_schema)
 	{
 	  q = pt_append_nulstring (parser, q, "national character");
+	  break;
 	}
-      break;
     case PT_TYPE_VARNCHAR:
       if (parser->flag.is_parsing_unload_schema)
 	{
 	  q = pt_append_nulstring (parser, q, "national character varying");
+	  break;
 	}
-      break;
     case PT_TYPE_CHAR:
       if (parser->flag.is_parsing_unload_schema)
 	{
 	  q = pt_append_nulstring (parser, q, "character");
+	  break;
 	}
-      break;
     case PT_TYPE_VARCHAR:
       if (!parser->flag.is_parsing_unload_schema)
 	{
@@ -8632,8 +8632,8 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
       else
 	{
 	  q = pt_append_nulstring (parser, q, "character varying");
+	  break;
 	}
-      break;
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
