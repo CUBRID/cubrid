@@ -255,6 +255,8 @@ TP_DOMAIN tp_Multiset_domain = { NULL, NULL, &tp_Multiset, DOMAIN_INIT3 };
 
 TP_DOMAIN tp_Sequence_domain = { NULL, NULL, &tp_Sequence, DOMAIN_INIT3 };
 
+TP_DOMAIN tp_Vector_domain = { NULL, NULL, &tp_Vector, DOMAIN_INIT3 };
+
 TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
