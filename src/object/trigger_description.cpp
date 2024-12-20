@@ -246,7 +246,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
   const char *trigger_name = NULL;
   const char *class_name = NULL;
   PARSER_CONTEXT *parser;
-  PT_NODE **action_node, **condition_node;
+  PT_NODE **action_node = nullptr, **condition_node = nullptr;
   char *query_action_result, *query_condition_result;
 
   AU_DISABLE (save);
@@ -317,6 +317,28 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 
       if (trigger->condition != NULL)
 	{
+	  char *text;
+	  int length;
+	  const char *eval_prefix = "EVALUATE ( ";
+	  const char *eval_suffix = " ) ";
+	  char *p = NULL;
+	  const char *remove_eval_prefix = "evaluate (";
+	  size_t remove_eval_suffix_len;
+
+	  length = strlen (eval_prefix) + strlen (trigger->condition->source) + strlen (eval_suffix) + 1;
+	  text = (char *) malloc (length);
+	  if (text == NULL)
+	    {
+	      output_ctx ("/* ERROR : IF %s */\n", trigger->condition->source);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) length);
+	      free_and_init (text);
+	      return error;
+	    }
+	  strcpy (text, eval_prefix);
+	  strcat (text, trigger->condition->source);
+	  strcat (text, eval_suffix);
+
 	  parser = parser_create_parser ();
 	  if (parser == NULL)
 	    {
@@ -328,19 +350,32 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
 	    }
 
-	  // 여기서 에러가 발생함 ~!!
-	  // evaluate () 을 추가해야 함.
-	  condition_node = parser_parse_string (parser, trigger->condition->source);
+	  condition_node = parser_parse_string (parser, text);
 	  if (condition_node != NULL)
 	    {
-	      query_condition_result = parser_print_tree_with_quotes (parser, *action_node);
-	      output_ctx ("IF %s\n", query_condition_result);
+	      query_condition_result = parser_print_tree_with_quotes (parser, *condition_node);
+
+	      /* remove appended trigger evaluate info */
+	      p = strstr (query_condition_result, remove_eval_prefix);
+	      if (p != NULL)
+		{
+		  p = (char *) memmove (p, p + strlen (remove_eval_prefix), strlen (p) - strlen (remove_eval_prefix) + 1);
+		}
+
+	      remove_eval_suffix_len = strlen (p);
+	      if (remove_eval_suffix_len > 0 && p[remove_eval_suffix_len - 1] == ')')
+		{
+		  p[remove_eval_suffix_len - 1] = '\0';
+		}
+
+	      output_ctx ("  IF %s\n", query_condition_result);
 	    }
 	  else
 	    {
 	      output_ctx ("/* ERROR : IF %s */\n", trigger->condition->source);
 	    }
 	  parser_free_parser (parser);
+	  free_and_init (text);
 	}
 
       if (trigger->action != NULL)

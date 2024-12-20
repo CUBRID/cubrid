@@ -1061,7 +1061,7 @@ change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, char 
   assert (parser != NULL || statement != NULL);
 
   if (!*new_trigger_stmt)
-    return NULL;
+    return ER_FAILED;
 
   save_custom = parser->custom_print;
 
@@ -1075,26 +1075,26 @@ change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, char 
 
   if (new_trigger_stmt_str == NULL)
     {
-      return NULL;
+      return ER_FAILED;
     }
 
-  /* remove appended trigger info */
+  /* remove appended trigger evaluate info */
   if (with_evaluate)
     {
       char *p = NULL;
-      const char *eval_prefix = "evaluate (";
-      size_t eval_suffix_len;
+      const char *remove_eval_prefix = "evaluate (";
+      size_t remove_eval_suffix_len;
 
-      p = strstr (new_trigger_stmt_str, eval_prefix);
+      p = strstr (new_trigger_stmt_str, remove_eval_prefix);
       if (p != NULL)
 	{
-	  p = (char *) memmove (p, p + strlen (eval_prefix), strlen (p) - strlen (eval_prefix) + 1);
+	  p = (char *) memmove (p, p + strlen (remove_eval_prefix), strlen (p) - strlen (remove_eval_prefix) + 1);
 	}
 
-      eval_suffix_len = strlen (p);
-      if (eval_suffix_len > 0 && p[eval_suffix_len - 1] == ')')
+      remove_eval_suffix_len = strlen (p);
+      if (remove_eval_suffix_len > 0 && p[remove_eval_suffix_len - 1] == ')')
 	{
-	  p[eval_suffix_len - 1] = '\0';
+	  p[remove_eval_suffix_len - 1] = '\0';
 	}
     }
 
