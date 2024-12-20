@@ -11664,6 +11664,11 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       else
 	{
 	  r2 = pt_print_bytes (parser, p->info.expr.cast_type);
+	  if (r2 == NULL)
+	    {
+	      q = pt_append_varchar (parser, q, r1);
+	      break;
+	    }
 	  q = pt_append_nulstring (parser, q, " cast(");
 	  q = pt_append_varchar (parser, q, r1);
 	  q = pt_append_nulstring (parser, q, " as ");
@@ -13020,10 +13025,15 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
   // TODO: [PL/CSQL] need refactoring
   unsigned int save_custom = parser->custom_print;
-  if (parser->flag.is_parsing_static_sql == 1 || parser->flag.is_parsing_trigger == 1)
+  if (parser->flag.is_parsing_static_sql == 1)
     {
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       parser->custom_print & ~PT_PRINT_ALIAS;
+    }
+
+  if (parser->flag.is_parsing_trigger == 1)
+    {
+      parser->custom_print |= PT_SUPPRESS_RESOLVED;
     }
 
   r1 = pt_print_bytes (parser, p->info.insert.spec);

@@ -391,7 +391,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	      parser = parser_create_parser ();
 	      if (parser == NULL)
 		{
-		  output_ctx ("/* ERROR : EXECUTE %s */\n", trigger->action->source);
+		  output_ctx ("\n/* ERROR : EXECUTE %s */\n", trigger->action->source);
 		}
 
 	      if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
@@ -407,7 +407,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 		}
 	      else
 		{
-		  output_ctx ("/* ERROR : EXECUTE %s */\n", trigger->action->source);
+		  output_ctx ("\n/* ERROR : EXECUTE %s */\n", trigger->action->source);
 		}
 	      parser_free_parser (parser);
 	      break;
