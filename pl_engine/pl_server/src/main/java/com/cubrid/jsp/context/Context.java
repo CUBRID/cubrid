@@ -33,6 +33,8 @@ package com.cubrid.jsp.context;
 
 import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.ServerConfig;
+import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.TargetMethodCache;
 import com.cubrid.jsp.classloader.ClassLoaderManager;
 import com.cubrid.jsp.classloader.ContextClassLoader;
@@ -44,6 +46,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.Properties;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -85,6 +88,9 @@ public class Context {
     // message buffer for DBMS_OUTPUT
     private MessageBuffer messageBuffer;
 
+    // context system parameters
+    private HashMap<Integer, SysParam> systemParameters = null;
+
     public Context(long id) {
         sessionId = id;
     }
@@ -125,11 +131,11 @@ public class Context {
         return inBound;
     }
 
-    public Charset getSessionCharset() {
-        if (sessionCharset == null) {
-            sessionCharset = Server.getConfig().getServerCharset();
+    public HashMap<Integer, SysParam> getSystemParameters() {
+        if (systemParameters == null) {
+            systemParameters = new HashMap<Integer, SysParam>();
         }
-        return sessionCharset;
+        return systemParameters;
     }
 
     public void checkHeader(Header header) {
@@ -224,6 +230,60 @@ public class Context {
         }
 
         return false;
+    }
+
+    public static int getCodesetId() {
+        return SysParam.getCodesetId(getSessionCharset());
+    }
+
+    public static Charset getSessionCharset() {
+        Context ctx = ContextManager.getContextofCurrentThread();
+        SysParam sysParam = ctx.getSystemParameters().get(SysParam.INTL_COLLATION);
+        if (sysParam == null) {
+            return Server.getConfig().getServerCharset();
+        }
+
+        String collation = sysParam.getParamValue();
+        String codeset = ServerConfig.parseCollationString(collation);
+
+        Charset charset;
+        try {
+            charset = Charset.forName(codeset);
+        } catch (Exception e) {
+            // java.nio.charset.IllegalCharsetNameException
+            // invalid charset is specified
+            charset = Server.getConfig().getServerCharset();
+        }
+
+        return charset;
+    }
+
+    public static SysParam getSystemParam(int id) {
+        Context ctx = ContextManager.getContextofCurrentThread();
+        SysParam param = ctx.getSystemParameters().get(id);
+        if (param == null) {
+            // get server's parameter
+            param = Server.getConfig().getSystemParameters().get(id);
+        }
+        return param;
+    }
+
+    public static String getSystemParameterString(int id) {
+        SysParam param = getSystemParam(id);
+        if (param != null) {
+            return param.getParamValue();
+        }
+
+        return null;
+    }
+
+    public static Boolean getSystemParameterBool(int id) {
+        SysParam param = getSystemParam(id);
+        if (param != null) {
+            return Boolean.parseBoolean(param.getParamValue());
+        }
+
+        return null;
     }
 
     // TODO: move this function to proper place

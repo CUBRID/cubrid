@@ -468,4 +468,126 @@ namespace cubpl
     m_param_info = param_info;
   }
 
+  const std::vector <sys_param>
+  session::obtain_session_parameters (bool reset)
+  {
+    std::vector<sys_param> changed_sys_params;
+    SYSPRM_ASSIGN_VALUE *session_params = xsysprm_get_pl_context_parameters (PRM_USER_CHANGE | PRM_FOR_SESSION);
+    while (session_params != NULL)
+      {
+	if (m_session_param_changed_ids.find (session_params->prm_id) == m_session_param_changed_ids.end ())
+	  {
+	    session_params = session_params->next;
+	    continue;
+	  }
+
+	{
+	  changed_sys_params.emplace_back (session_params);
+	}
+
+	session_params = session_params->next;
+      }
+
+    if (session_params)
+      {
+	sysprm_free_assign_values (&session_params);
+      }
+
+    if (reset)
+      {
+	m_session_param_changed_ids.clear ();
+      }
+
+    return changed_sys_params;
+  }
+
+  void
+  session::mark_session_param_changed (PARAM_ID prm_id)
+  {
+    m_session_param_changed_ids.insert (prm_id);
+  }
+
+#define SYS_PARAM_PACKER_ARGS() \
+  prm_id, prm_type, prm_value
+
+  sys_param::sys_param (SYSPRM_ASSIGN_VALUE *db_param)
+  {
+    prm_id = (int) db_param->prm_id;
+    prm_type = GET_PRM_DATATYPE (db_param->prm_id);
+
+    const SYSPRM_PARAM *prm = GET_PRM (db_param->prm_id);
+    set_prm_value (prm);
+  }
+
+  void
+  sys_param::set_prm_value (const SYSPRM_PARAM *prm)
+  {
+    if (PRM_IS_BOOLEAN (prm))
+      {
+	bool val = prm_get_bool_value (prm->id);
+	prm_value = val ? "true" : "false";
+      }
+    else if (PRM_IS_STRING (prm))
+      {
+	const char *val = prm_get_string_value (prm->id);
+	if (val == NULL)
+	  {
+	    switch (prm->id)
+	      {
+	      case PRM_ID_INTL_COLLATION:
+		val = lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET));
+		break;
+	      case PRM_ID_INTL_DATE_LANG:
+	      case PRM_ID_INTL_NUMBER_LANG:
+		val = lang_get_Lang_name ();
+		break;
+	      case PRM_ID_TIMEZONE:
+		val = prm_get_string_value (PRM_ID_SERVER_TIMEZONE);
+		break;
+	      default:
+		/* do nothing */
+		break;
+	      }
+	  }
+	prm_value = val;
+      }
+    else if (PRM_IS_INTEGER (prm))
+      {
+	int val = prm_get_integer_value (prm->id);
+	prm_value = std::to_string (val);
+      }
+    else if (PRM_IS_BIGINT (prm))
+      {
+	UINT64 val = prm_get_bigint_value (prm->id);
+	prm_value = std::to_string (val);
+      }
+    else if (PRM_IS_FLOAT (prm))
+      {
+	float val = prm_get_float_value (prm->id);
+	prm_value = std::to_string (val);
+      }
+    else
+      {
+	assert (false);
+	prm_value = "*unknown*";
+      }
+  }
+
+  void
+  sys_param::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (SYS_PARAM_PACKER_ARGS());
+  }
+
+  size_t
+  sys_param::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset, SYS_PARAM_PACKER_ARGS ());
+  }
+
+  void
+  sys_param::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (SYS_PARAM_PACKER_ARGS ());
+  }
 } // cubmethod

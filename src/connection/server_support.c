@@ -776,6 +776,7 @@ css_process_get_eof_request (SOCKET master_fd)
 {
 #if !defined(WINDOWS)
   LOG_LSA *eof_lsa;
+  static LOG_LSA prev_eof_lsa = LSA_INITIALIZER;
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply;
   THREAD_ENTRY *thread_p;
@@ -791,6 +792,16 @@ css_process_get_eof_request (SOCKET master_fd)
   (void) or_pack_log_lsa (reply, eof_lsa);
 
   LOG_CS_EXIT (thread_p);
+
+  if (LSA_EQ (&prev_eof_lsa, eof_lsa))
+    {
+      er_log_debug (ARG_FILE_LINE, "Disk failure has been occurred: prev_eof_lsa(%lld, %d), eof_lsa(%lld, %d)\n",
+		    LSA_AS_ARGS (&prev_eof_lsa), LSA_AS_ARGS (eof_lsa));
+    }
+  else
+    {
+      LSA_COPY (&prev_eof_lsa, eof_lsa);
+    }
 
   css_send_heartbeat_request (css_Master_conn, SERVER_GET_EOF);
   css_send_heartbeat_data (css_Master_conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));

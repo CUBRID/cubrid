@@ -31,8 +31,8 @@
 
 package com.cubrid.jsp.data;
 
-import com.cubrid.jsp.Server;
 import com.cubrid.jsp.SysParam;
+import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import com.cubrid.jsp.protocol.PackableObject;
@@ -108,7 +108,7 @@ public class CUBRIDPacker {
     }
 
     public void packString(String value) {
-        Charset charset = Server.getConfig().getServerCharset();
+        Charset charset = Context.getSessionCharset();
         packCString(value.getBytes(charset));
     }
 

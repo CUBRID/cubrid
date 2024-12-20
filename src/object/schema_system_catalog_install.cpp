@@ -968,7 +968,7 @@ namespace cubschema
 	}
       },
       {"class_name", "string"},
-      {"att_name", "string"},
+      {"attr_name", "string"},
       {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method"},
       {
 	"cached_num", "integer", [] (DB_VALUE* val)

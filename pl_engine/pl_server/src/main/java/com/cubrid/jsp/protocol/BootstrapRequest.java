@@ -13,15 +13,10 @@ public class BootstrapRequest implements UnPackableObject {
 
     @Override
     public void unpack(CUBRIDUnpacker unpacker) {
-        int size = unpacker.unpackInt();
+        int size = (int) unpacker.unpackBigint();
         sysParam = new SysParam[size];
-
-        try {
-            for (int i = 0; i < size; i++) {
-                sysParam[i] = new SysParam(unpacker);
-            }
-        } catch (Exception e) {
-            // do nothing
+        for (int i = 0; i < size; i++) {
+            sysParam[i] = new SysParam(unpacker);
         }
     }
 

@@ -692,6 +692,9 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   size_t uppercase_user_size = 0;
   size_t query_size = 0;
   char *query = NULL;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *serial_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   /*
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
@@ -700,12 +703,12 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   const char *query_all =
     "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
-    "from [db_serial] where [class_name] is null and [att_name] is null";
+    "from [db_serial] where [class_name] is null and [attr_name] is null";
 
   const char *query_user =
     "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
-    "from [db_serial] where [class_name] is null and [att_name] is null and owner.name='%s'";
+    "from [db_serial] where [class_name] is null and [attr_name] is null and owner.name='%s'";
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -827,23 +830,28 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 		}
 	    }
 
-	  output_ctx ("\ncreate serial %s%s%s\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
-	  output_ctx ("\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
-	  output_ctx ("\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
-	  output_ctx ("\t minvalue %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL], str_buf));
-	  output_ctx ("\t maxvalue %s\n", numeric_db_value_print (&values[SERIAL_MAX_VAL], str_buf));
-	  output_ctx ("\t %scycle\n", (db_get_int (&values[SERIAL_CYCLIC]) == 0 ? "no" : ""));
+	  SPLIT_USER_SPECIFIED_NAME (db_get_string (&values[SERIAL_UNIQUE_NAME]), owner_name, serial_name);
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  output_ctx ("\nCREATE SERIAL %s%s%s%s\n", output_owner,
+		      PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+	  output_ctx ("\t START WITH %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
+	  output_ctx ("\t INCREMENT BY %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
+	  output_ctx ("\t MINVALUE %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL], str_buf));
+	  output_ctx ("\t MAXVALUE %s\n", numeric_db_value_print (&values[SERIAL_MAX_VAL], str_buf));
+	  output_ctx ("\t %sCYCLE\n", (db_get_int (&values[SERIAL_CYCLIC]) == 0 ? "no" : ""));
 	  if (db_get_int (&values[SERIAL_CACHED_NUM]) <= 1)
 	    {
-	      output_ctx ("\t nocache\n");
+	      output_ctx ("\t NOCACHE\n");
 	    }
 	  else
 	    {
-	      output_ctx ("\t cache %d\n", db_get_int (&values[SERIAL_CACHED_NUM]));
+	      output_ctx ("\t CACHE %d\n", db_get_int (&values[SERIAL_CACHED_NUM]));
 	    }
 	  if (DB_IS_NULL (&values[SERIAL_COMMENT]) == false)
 	    {
-	      output_ctx ("\t comment ");
+	      output_ctx ("\t COMMENT ");
 	      desc_value_print (output_ctx, &values[SERIAL_COMMENT]);
 	    }
 	  output_ctx (";\n");
@@ -851,12 +859,6 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 	  if (db_get_int (&values[SERIAL_STARTED]) == 1)
 	    {
 	      output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
-	    }
-
-	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-	    {
-	      output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n",
-			  db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
 	    }
 
 	  db_value_clear (&diff_value);
@@ -907,12 +909,12 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   const char *query_all =
     "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
-    "from [db_serial] where [class_name] is not null and [att_name] is not null";
+    "from [db_serial] where [class_name] is not null and [attr_name] is not null";
 
   const char *query_user =
     "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
-    "from [db_serial] where [class_name] is not null and [att_name] is not null and owner.name='%s'";
+    "from [db_serial] where [class_name] is not null and [attr_name] is not null and owner.name='%s'";
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -1156,17 +1158,17 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
                              "[owner], "
 			     "[is_public], "
 			     "[target_name], "
-			     "LOWER([target_owner].[name]), "
+			     "DECODE((SELECT 1 from [_db_class] WHERE [class_name] = [target_name] and [is_system_class] = 1), NULL, LOWER([target_owner].[name]), '') target_owner, "
 			     "[comment] "
-			"FROM [_db_synonym]";
+			  "FROM [_db_synonym]";
 
   const char *query_user = "SELECT [unique_name], "
-                               "[owner], "
-                               "[is_public], "
-                               "[target_name], "
-			       "LOWER([target_owner].[name]), "
-                               "[comment] "
-                           "FROM [_db_synonym]"
+                             "[owner], "
+			     "[is_public], "
+			     "[target_name], "
+			     "DECODE((SELECT 1 from [_db_class] WHERE [class_name] = [target_name] and [is_system_class] = 1), NULL, LOWER([target_owner].[name]), '') target_owner, "
+			     "[comment] "
+			   "FROM [_db_synonym]";
                            "WHERE [owner].[name] = '%s'";
   // *INDENT-ON*
 
@@ -1323,9 +1325,16 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	  PRINT_OWNER_NAME (synonym_owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), synonym_output_owner,
 			    sizeof (synonym_owner_name));
 
-	  output_ctx (" SYNONYM %s%s%s%s FOR %s%s%s.%s%s%s", synonym_output_owner,
-		      PRINT_IDENTIFIER (synonym_name), PRINT_IDENTIFIER (target_owner_name),
-		      PRINT_IDENTIFIER (target_name));
+	  output_ctx (" SYNONYM %s%s%s%s FOR ", synonym_output_owner, PRINT_IDENTIFIER (synonym_name));
+
+	  if (target_owner_name[0] == 0x00)
+	    {
+	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (target_name));
+	    }
+	  else
+	    {
+	      output_ctx ("%s%s%s.%s%s%s", PRINT_IDENTIFIER (target_owner_name), PRINT_IDENTIFIER (target_name));
+	    }
 
 	  if (DB_IS_NULL (&values[SYNONYM_COMMENT]) == false)
 	    {
@@ -6046,7 +6055,7 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
       sp_list = db_get_all_objects (db_find_class (SP_CLASS_NAME));
       for (cls = sp_list; cls; cls = cls->next)
 	{
-	  if (!au_is_dba_group_member (Au_user))
+	  if (!(ctxt.is_dba_user || ctxt.is_dba_group_member))
 	    {
 	      sp_owner = jsp_get_owner (cls->op);
 	      if (!ws_is_same_object (sp_owner, Au_user))

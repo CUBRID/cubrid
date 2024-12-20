@@ -27622,6 +27622,23 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 		}
 	    }
 	  break;
+	case TYPE_SP:
+	  regu_var_list_p = regu_src->value.sp_ptr->args;
+	  while (regu_var_list_p)
+	    {
+	      regu_src = &regu_var_list_p->value;
+	      ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src, SQ_TYPE_REGU_VAR);
+	      if (ret == ER_FAILED)
+		{
+		  return ER_FAILED;
+		}
+	      else
+		{
+		  cnt += ret;
+		}
+	      regu_var_list_p = regu_var_list_p->next;
+	    }
+	  break;
 	case TYPE_POSITION:
 	case TYPE_LIST_ID:
 	  /* Currently not supported, implement later */
@@ -27644,8 +27661,6 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	case TYPE_CLASSOID:
 	case TYPE_REGUVAL_LIST:
 	case TYPE_REGU_VAR_LIST:
-
-	case TYPE_SP:
 	  /* Result Cache not supported */
 	  return ER_FAILED;
 	  break;

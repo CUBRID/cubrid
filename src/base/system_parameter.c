@@ -763,6 +763,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ENABLE_MEMORY_MONITORING "enable_memory_monitoring"
 
+#define PRM_NAME_STORED_PROCEDURE_DUMP_ICODE "stored_procedure_dump_icode"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2338,6 +2340,10 @@ static unsigned int prm_stored_procedure_debug_flag = 0;
 bool PRM_STORED_PROCEDURE_UDS = true;
 static bool prm_stored_procedure_uds_default = true;
 static unsigned int prm_stored_procedure_uds_flag = 0;
+
+bool PRM_STORED_PROCEDURE_DUMP_ICODE = false;
+static bool prm_stored_procedure_dump_icode_default = false;
+static unsigned int prm_stored_procedure_dump_icode_flag = 0;
 
 bool PRM_ALLOW_TRUNCATED_STRING = false;
 static bool prm_allow_truncated_string_default = false;
@@ -6514,6 +6520,17 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_DUMP_ICODE,
+   PRM_NAME_STORED_PROCEDURE_DUMP_ICODE,
+   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_PL_CONTEXT),
+   PRM_BOOLEAN,
+   &prm_stored_procedure_dump_icode_flag,
+   (void *) &prm_stored_procedure_dump_icode_default,
+   (void *) &PRM_STORED_PROCEDURE_DUMP_ICODE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
 
@@ -9279,7 +9296,7 @@ xsysprm_dump_server_parameters (FILE * outfp)
  *
  */
 SYSPRM_ASSIGN_VALUE *
-xsysprm_get_pl_context_parameters (void)
+xsysprm_get_pl_context_parameters (int flag)
 {
   SYSPRM_ASSIGN_VALUE *pl_ctx_values = NULL, *last_assign = NULL;
   SYSPRM_PARAM *prm = NULL;
@@ -9288,7 +9305,7 @@ xsysprm_get_pl_context_parameters (void)
   for (i = 0; i < NUM_PRM; i++)
     {
       prm = GET_PRM (i);
-      if (PRM_IS_FOR_PL_CONTEXT (prm->static_flag))
+      if (PRM_IS_FOR_PL_CONTEXT (prm->static_flag) && (prm->static_flag & flag))
 	{
 	  SYSPRM_ASSIGN_VALUE *change_val = (SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
 	  if (change_val == NULL)
@@ -10383,7 +10400,15 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
 	    }
 	}
 
-      return sysprm_set_session_parameter_value (param, id, value);
+      SYSPRM_ERR err = sysprm_set_session_parameter_value (param, id, value);
+
+      // err always returns PRM_ERR_NO_ERROR
+      if (PRM_IS_FOR_PL_CONTEXT (GET_PRM_STATIC_FLAG (id)))
+	{
+	  (void) session_set_pl_session_parameter (thread_p, id);
+	}
+
+      return err;
     }
 
   /* if prm is not for session or if session_parameters have not been initialized just set the system parameter stored

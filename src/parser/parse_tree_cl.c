@@ -943,6 +943,13 @@ pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg)
 	   * calling pt_apply. */
 	  node_type = node->node_type;
 
+	  assert (node_type >= PT_NODE_NONE);
+	  if (node_type == PT_NODE_NONE)
+	    {
+	      assert (pt_has_error (parser));
+	      return NULL;
+	    }
+
 	  if (node_type >= PT_LAST_NODE_NUMBER || !(apply = pt_apply_f[node_type]))
 	    {
 	      return NULL;

@@ -1856,8 +1856,16 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
       goto error;
     }
 
-  db_make_string (&value, code_info.name.data ());
+  db_make_string (&value, sp_info.target_class.data ());
   err = dbt_put_internal (obt_p, SP_ATTR_TARGET_CLASS, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_string (&value, sp_info.target_method.data ());
+  err = dbt_put_internal (obt_p, SP_ATTR_TARGET_METHOD, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {

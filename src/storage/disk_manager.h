@@ -108,7 +108,7 @@ extern DISK_ISVALID disk_check_sectors_are_reserved (THREAD_ENTRY * thread_p, VS
 extern INT16 xdisk_get_purpose_and_sys_lastpage (THREAD_ENTRY * thread_p, INT16 volid, DISK_VOLPURPOSE * vol_purpose,
 						 INT32 * sys_lastpage);
 extern int disk_get_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, LOG_LSA * vol_lsa);
-extern int disk_get_creation_time (THREAD_ENTRY * thread_p, INT16 volid, INT64 * db_creation);
+extern int disk_get_db_creation (THREAD_ENTRY * thread_p, INT16 volid, INT64 * db_creation);
 extern INT32 disk_get_total_numsectors (THREAD_ENTRY * thread_p, INT16 volid);
 extern HFID *disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, HFID * hfid);
 extern char *disk_get_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 * next_volid, char *next_volext_fullname);
