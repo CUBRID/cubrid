@@ -11663,6 +11663,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
+	  if (parser->flag.is_parsing_trigger == 1 && p->info.expr.flag != 0)
+	    {
+	      q = pt_append_varchar (parser, q, r1);
+	      break;
+	    }
+
 	  r2 = pt_print_bytes (parser, p->info.expr.cast_type);
 	  q = pt_append_nulstring (parser, q, " cast(");
 	  q = pt_append_varchar (parser, q, r1);
@@ -13020,7 +13026,8 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
   // TODO: [PL/CSQL] need refactoring
   unsigned int save_custom = parser->custom_print;
-  if (parser->flag.is_parsing_static_sql == 1 || parser->flag.is_parsing_trigger == 1)
+  //if (parser->flag.is_parsing_static_sql == 1 || parser->flag.is_parsing_trigger == 1)
+  if (parser->flag.is_parsing_static_sql == 1)
     {
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       parser->custom_print & ~PT_PRINT_ALIAS;
@@ -13028,6 +13035,11 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.insert.spec);
   r2 = pt_print_bytes_l (parser, p->info.insert.attr_list);
+
+  if (parser->flag.is_parsing_trigger == 1)
+    {
+      r2 = NULL;
+    }
 
   parser->custom_print = save_custom;
 
@@ -13579,17 +13591,14 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
   //char *dot = NULL;
 
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
-
-  /*
-     if (parser->flag.is_parsing_trigger == 1 && p->info.name.resolved != NULL)
-     {
-     if (strcasecmp (p->info.name.resolved, "obj") == 0 || strcasecmp (p->info.name.resolved, "new") == 0
-     || strcasecmp (p->info.name.resolved, "old") == 0)
-     {
-     parser->custom_print &= ~PT_SUPPRESS_RESOLVED;
-     }
-     }
-   */
+  //if (parser->flag.is_parsing_trigger != 1 && (*parser->statements)->node_type != PT_SCOPE)
+  if (parser->flag.is_parsing_trigger == 1 && p->info.name.resolved != NULL)
+    {
+      //if (strcasecmp (p->info.name.resolved, "obj") == 0 || strcasecmp (p->info.name.resolved, "new") == 0 || strcasecmp (p->info.name.resolved, "old") == 0)
+      //{
+      parser->custom_print &= ~PT_SUPPRESS_RESOLVED;
+      //}
+    }
 
   if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS) && (p->info.name.meta_class == PT_META_CLASS))
     {

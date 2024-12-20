@@ -1066,6 +1066,7 @@ change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, char 
   save_custom = parser->custom_print;
 
   parser->flag.is_parsing_trigger = 1;
+  parser->custom_print |= PT_SUPPRESS_RESOLVED;
 
   new_trigger_stmt_str = parser_print_tree_with_quotes (parser, statement);
 
@@ -1223,7 +1224,12 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
       upd->info.update.spec = entity;
     }
 
+  /* prevents forced cast() within the code. (parser->flag.is_parsing_trigger == 1 && p->info.expr.flag != 0) */
+  parser->flag.is_parsing_trigger = 1;
+
   statement = pt_compile (parser, statement);
+
+  parser->flag.is_parsing_trigger = 0;
 
   /* Remove those info we append, which users can't understand them */
   if (pt_has_error (parser))
