@@ -2863,11 +2863,6 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   for (n = p; n; n = n->next)
     {				/* print in the original order ... */
-      if (parser->flag.is_parsing_trigger == 1)
-	{
-	  parser->custom_print &= ~PT_SUPPRESS_RESOLVED;
-	}
-
       r1 = pt_print_bytes (parser, n);
       if (n->node_type == PT_EXPR && !n->info.expr.paren_type && n->or_next)
 	{
@@ -13025,7 +13020,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
   // TODO: [PL/CSQL] need refactoring
   unsigned int save_custom = parser->custom_print;
-  if (parser->flag.is_parsing_static_sql == 1)
+  if (parser->flag.is_parsing_static_sql == 1 || parser->flag.is_parsing_trigger == 1)
     {
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       parser->custom_print & ~PT_PRINT_ALIAS;
