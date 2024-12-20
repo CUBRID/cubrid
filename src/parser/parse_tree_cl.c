@@ -2863,6 +2863,11 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   for (n = p; n; n = n->next)
     {				/* print in the original order ... */
+      if (parser->flag.is_parsing_trigger == 1)
+	{
+	  parser->custom_print &= ~PT_SUPPRESS_RESOLVED;
+	}
+
       r1 = pt_print_bytes (parser, n);
       if (n->node_type == PT_EXPR && !n->info.expr.paren_type && n->or_next)
 	{
@@ -8632,8 +8637,8 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
       else
 	{
 	  q = pt_append_nulstring (parser, q, "character varying");
-	  break;
 	}
+      break;
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
@@ -13576,18 +13581,20 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
   unsigned int save_custom = parser->custom_print;
 
-  char *dot = NULL;
+  //char *dot = NULL;
 
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
 
-  if (parser->flag.is_parsing_trigger == 1 && p->info.name.resolved != NULL)
-    {
-      if (strcasecmp (p->info.name.resolved, "obj") == 0 || strcasecmp (p->info.name.resolved, "new") == 0
-	  || strcasecmp (p->info.name.resolved, "old") == 0)
-	{
-	  parser->custom_print &= ~PT_SUPPRESS_RESOLVED;
-	}
-    }
+  /*
+     if (parser->flag.is_parsing_trigger == 1 && p->info.name.resolved != NULL)
+     {
+     if (strcasecmp (p->info.name.resolved, "obj") == 0 || strcasecmp (p->info.name.resolved, "new") == 0
+     || strcasecmp (p->info.name.resolved, "old") == 0)
+     {
+     parser->custom_print &= ~PT_SUPPRESS_RESOLVED;
+     }
+     }
+   */
 
   if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS) && (p->info.name.meta_class == PT_META_CLASS))
     {
