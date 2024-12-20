@@ -82,7 +82,7 @@ static int css_master_init (int cport, SOCKET * clientfd);
 static void css_reject_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason);
 static void css_reject_server_request (CSS_CONN_ENTRY * conn, int reason);
 static void css_accept_server_request (CSS_CONN_ENTRY * conn, int reason);
-static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer);
+static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer, int buffer_length);
 static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry,
 				    char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
@@ -324,17 +324,15 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
  *
  */
 static void
-css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
+css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer, int buffer_length)
 {
   char *datagram;
   char *server_name;
   int datagram_length;
   SOCKET server_fd = INVALID_SOCKET;
   int length;
-  int server_name_length;
   CSS_CONN_ENTRY *datagram_conn;
   SOCKET_QUEUE_ENTRY *entry;
-  CSS_SERVER_PROC_REGISTER *proc_register = (CSS_SERVER_PROC_REGISTER *) buffer;
 
   datagram = NULL;
   datagram_length = 0;
@@ -350,23 +348,24 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (datagram_conn, false, proc_register->server_name, server_fd, READ_WRITE, 0,
+	  server_name = buffer;
+	  length = (int) strlen (server_name) + 1;
+	  css_add_request_to_socket_queue (datagram_conn, false, server_name, server_fd, READ_WRITE, 0,
 					   &css_Master_socket_anchor);
 
 	  //  Note : server_name is usually packed(appended) information of server_name, version_string, env_var, pid,
 	  //  packed from css_pack_server_name(). Since there are some cases that returns server_name and server_name_length
 	  //  as NULL, we need to check if server_name is packed information or not.
-	  length = (int) strlen (proc_register->server_name) + 1;
-	  server_name_length = proc_register->server_name_length;
 
 	  assert (length <= DB_MAX_IDENTIFIER_LENGTH);
 
-	  if (length < server_name_length)
+	  if (length < buffer_length)
 	    {
-	      entry = css_return_entry_of_server (proc_register->server_name, css_Master_socket_anchor);
+
+	      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
 	      if (entry != NULL)
 		{
-		  server_name = proc_register->server_name + length;
+		  server_name += length;
 		  entry->version_string = (char *) malloc (strlen (server_name) + 1);
 		  if (entry->version_string != NULL)
 		    {
@@ -395,6 +394,13 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer)
 #if !defined(WINDOWS)
 	      if (auto_Restart_server)
 		{
+		  // TODO : Currently, server and client has different format of data payload to connect process to master.
+		  // Since both process is handled by this function, it could make confusion when requesting connection from process.
+		  // Two solution could be considered.
+		  // 1. Separte the request for server and client. (SERVER_REQUEST_FROM_CLIENT, SERVER_REQUEST_FROM_SERVER)
+		  // 2. Modify the data payload so that master can distinguish the request from server and client. (e.g. add flag character at the beginning of data)
+
+		  CSS_SERVER_PROC_REGISTER *proc_register = (CSS_SERVER_PROC_REGISTER *) buffer;
 		  /* *INDENT-OFF* */
 		  master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER, proc_register->pid,
 						      proc_register->exec_path, proc_register->args, proc_register->server_name);
@@ -506,7 +512,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 
 #else /* ! WINDOWS */
 	  /* accept a request from a new server */
-	  css_accept_new_request (conn, rid, data);
+	  css_accept_new_request (conn, rid, data, data_length);
 #endif /* ! WINDOWS */
 	}
     }
