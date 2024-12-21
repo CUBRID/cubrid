@@ -92,8 +92,11 @@ namespace cubpl
     int type; // PL_TYPE
     char *name;
     char *auth;
-    bool is_deterministic; // DETERMINISTIC
     int result_type; // DB_TYPE
+
+#if defined (CS_MODE)
+    bool is_deterministic; // DETERMINISTIC
+#endif
 
     pl_arg arg;
     pl_ext ext;
