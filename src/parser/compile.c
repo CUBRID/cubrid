@@ -1066,7 +1066,6 @@ change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, char 
   save_custom = parser->custom_print;
 
   parser->flag.is_parsing_trigger = 1;
-  parser->custom_print |= PT_SUPPRESS_RESOLVED;
 
   new_trigger_stmt_str = parser_print_tree_with_quotes (parser, statement);
 
