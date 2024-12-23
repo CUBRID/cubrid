@@ -1259,7 +1259,6 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
 	change_trigger_action_query (parser, statement->info.scope.stmt->info.trigger_action.expression, with_evaluate);
       if (new_trigger_stmt_str == NULL)
 	{
-	  free_and_init (new_trigger_stmt_str);
 	  return NULL;
 	}
 
