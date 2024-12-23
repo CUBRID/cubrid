@@ -36,7 +36,7 @@
 #include "system_parameter.h"
 #include "authenticate.h"
 #include "object_accessor.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 
 #define API_PROGRAM_NAME "CUBRID C API"
 
@@ -2708,7 +2708,7 @@ conn_restart_client (CI_CONN_STRUCTURE * pconn, const char *program, int print_v
 
 #if !defined(WINDOWS)
 #if defined(SA_MODE) && defined(LINUX)
-      if (!jsp_jvm_is_loaded ())
+      if (!pl_jvm_is_loaded ())
 	{
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 	}

@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.math.BigDecimal;
@@ -47,6 +48,7 @@ public class NumericValue extends Value {
     public NumericValue(String value) {
         super();
         this.value = SpLib.convStringToNumeric(value);
+        this.dbType = DBType.DB_NUMERIC;
     }
 
     public NumericValue(BigDecimal value) throws TypeMismatchException {
@@ -55,12 +57,7 @@ public class NumericValue extends Value {
             throw new TypeMismatchException("precision exceeds 38: " + value);
         }
         this.value = value;
-    }
-
-    public NumericValue(String value, int mode, int dbType) {
-        super(mode);
-        this.value = SpLib.convStringToNumeric(value);
-        this.dbType = dbType;
+        this.dbType = DBType.DB_NUMERIC;
     }
 
     @Override

@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.impl.SUConnection;
 import cubrid.sql.CUBRIDOID;
@@ -48,13 +49,11 @@ public abstract class Value {
     protected int mode;
     protected Object resolved;
     protected int dbType;
+    protected int codeset;
 
     public Value() {
         this.mode = IN;
-    }
-
-    public Value(int mode) {
-        this.mode = mode;
+        this.codeset = Context.getCodesetId();
     }
 
     public void setMode(int mode) {
@@ -327,6 +326,10 @@ public abstract class Value {
 
     public void setDbType(int type) {
         dbType = type;
+    }
+
+    public int getCodeSet() {
+        return codeset;
     }
 
     // -----------------------------------------------------

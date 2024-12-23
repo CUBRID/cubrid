@@ -117,6 +117,7 @@ namespace cubmethod
       case DB_TYPE_STRING:
 	// TODO: support unicode decomposed string
       {
+	serializator.pack_int (db_get_string_codeset (&v));
 	serializator.pack_c_string (db_get_string (&v), db_get_string_size (&v));
       }
       break;
@@ -330,6 +331,7 @@ namespace cubmethod
       case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
       {
+	size += serializator.get_packed_int_size (size); /* codeset */
 	size += serializator.get_packed_int_size (size); /* dummy size */
 	size += serializator.get_packed_c_string_size (db_get_string (value), db_get_string_size (value), size);
       }
@@ -519,11 +521,12 @@ namespace cubmethod
       case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
       {
+	int codeset;
 	cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+	deserializator.unpack_int (codeset);
 	deserializator.unpack_string_to_memblock (blk);
 
 	// TODO: unicode compose hanlding
-
 #if 0
 	char *invalid_pos = NULL;
 	int len = strlen (blk.get_ptr ());
@@ -559,17 +562,7 @@ namespace cubmethod
 	  }
 #endif
 	db_make_string (v, blk.release_ptr ());
-
-	INTL_CODESET codeset;
-	int collation;
-#if !defined (SERVER_MODE)
-	codeset = lang_get_client_charset ();
-	collation = lang_get_client_collation ();
-#else
-	codeset = LANG_SYS_CODESET;
-	collation = LANG_SYS_COLLATION;
-#endif
-	db_string_put_cs_and_collation (v, codeset, collation);
+	db_string_put_cs_and_collation (v, codeset, LANG_GET_BINARY_COLLATION (codeset));
 	v->need_clear = true;
       }
       break;

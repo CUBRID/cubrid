@@ -256,9 +256,27 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
     }
   else if (trigger->status != TR_STATUS_INVALID)
     {
+      if (trigger->class_mop != NULL)
+	{
+	  name = db_get_class_name (trigger->class_mop);
+	  if (sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+	  class_name = sm_remove_qualifier_name (name);
+	}
+
       /* automatically filter out invalid triggers */
       output_ctx ("CREATE TRIGGER ");
-      output_ctx ("[%s]\n", sm_remove_qualifier_name (trigger->name));
+      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+	{
+	  output_ctx ("[%s].[%s]\n", owner_name, sm_remove_qualifier_name (trigger->name));
+	}
+      else
+	{
+	  output_ctx ("[%s]\n", sm_remove_qualifier_name (trigger->name));
+	}
       output_ctx ("  STATUS %s\n", tr_status_as_string (trigger->status));
       output_ctx ("  PRIORITY %f\n", trigger->priority);
 
@@ -277,13 +295,6 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 
       if (trigger->class_mop != NULL)
 	{
-	  name = db_get_class_name (trigger->class_mop);
-	  if (sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH) == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      return error;
-	    }
-	  class_name = sm_remove_qualifier_name (name);
 	  output_ctx (" ON ");
 	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
 	    {
@@ -339,7 +350,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	  help_print_describe_comment (output_ctx, trigger->comment);
 	}
 
-      output_ctx (";\n");
+      output_ctx (";\n\n");
     }
 
   AU_ENABLE (save);
@@ -423,8 +434,6 @@ tr_dump_selective_triggers (extract_context &ctxt, print_output &output_ctx, DB_
 		      if (trigger->status != TR_STATUS_INVALID)
 			{
 			  tr_dump_trigger (ctxt, output_ctx, trigger_object);
-			  output_ctx ("call [change_trigger_owner]('%s'," " '%s') on class [db_root];\n\n",
-				      sm_remove_qualifier_name (trigger->name), get_user_name (trigger->owner));
 			}
 		    }
 		  else if (is_system_class < 0)
