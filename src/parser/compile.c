@@ -1135,7 +1135,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
   PT_NODE *err_node;
   int with_evaluate;
 
-  assert (parser != NULL);
+  assert (parser != NULL || !*new_trigger_stmt);
 
   if (!trigger_stmt)
     return NULL;
@@ -1257,16 +1257,15 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
 
       new_trigger_stmt_str =
 	change_trigger_action_query (parser, statement->info.scope.stmt->info.trigger_action.expression, with_evaluate);
-      if (new_trigger_stmt_str != NULL && *new_trigger_stmt)
+      if (new_trigger_stmt_str == NULL)
 	{
-	  free_and_init (*new_trigger_stmt);
-	  *new_trigger_stmt = strdup (new_trigger_stmt_str);
 	  free_and_init (new_trigger_stmt_str);
-	}
-      else
-	{
 	  return NULL;
 	}
+
+      free_and_init (*new_trigger_stmt);
+      *new_trigger_stmt = strdup (new_trigger_stmt_str);
+      free_and_init (new_trigger_stmt_str);
 
       statement->info.scope.stmt->info.trigger_action.expression =
 	mq_translate (parser, statement->info.scope.stmt->info.trigger_action.expression);
