@@ -733,6 +733,7 @@ extern "C"
     DB_TYPE_DATETIMETZ = 38,
     DB_TYPE_DATETIMELTZ = 39,
     DB_TYPE_JSON = 40,
+    DB_TYPE_VECTOR = 41,
 
     /* aliases */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
@@ -740,7 +741,7 @@ extern "C"
     DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
     DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP */
 
-    DB_TYPE_LAST = DB_TYPE_JSON
+    DB_TYPE_LAST = DB_TYPE_VECTOR
   } DB_TYPE;
 
   /* Domain information stored in DB_VALUE structures. */

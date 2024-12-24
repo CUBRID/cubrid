@@ -1602,6 +1602,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_OBJECT:
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
+    case DB_TYPE_VECTOR:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_ENUMERATION:
@@ -2378,6 +2379,10 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
 
     case PT_TYPE_JSON:
       db_type = DB_TYPE_JSON;
+      break;
+
+    case PT_TYPE_VECTOR:
+      db_type = DB_TYPE_VECTOR;
       break;
 
     case PT_TYPE_OBJECT:
