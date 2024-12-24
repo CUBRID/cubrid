@@ -1640,6 +1640,31 @@ PR_TYPE tp_Sequence = {
 
 PR_TYPE *tp_Type_sequence = &tp_Sequence;
 
+PR_TYPE tp_Vector = {
+  "vector", DB_TYPE_VECTOR, 1, sizeof (SETOBJ *), 0, 4,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL
+};
+
+PR_TYPE *tp_Type_vector = &tp_Vector;
+
 PR_TYPE tp_Midxkey = {
   "midxkey", DB_TYPE_MIDXKEY, 1, 0, 0, 1,
   NULL,				/* initmem */
@@ -17116,29 +17141,4 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   pr_clear_value (&scalar_value2);
   return cmp_result;
 }
-
-PR_TYPE tp_Vector = {
-  "vector", DB_TYPE_VECTOR, 1, sizeof (SETOBJ *), 0, 4,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL
-};
-
-PR_TYPE *tp_Type_vector = &tp_Vector;
 
