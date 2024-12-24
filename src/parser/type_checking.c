@@ -19440,7 +19440,7 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
       implicit_coercion = true;
     }
 
-  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, true, implicit_coercion);
+  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, false, implicit_coercion);
 }
 
 /*
