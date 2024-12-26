@@ -873,8 +873,9 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
       return ER_SES_SESSION_EXPIRED;
     }
 
-  /* update session active time */
+  /* update session active time & is_keep_session */
   session_p->active_time = time (NULL);
+  session_p->is_keep_session = false;
 
 #if defined (SERVER_MODE)
 #if !defined (NDEBUG)
