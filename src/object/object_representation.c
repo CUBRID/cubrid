@@ -2877,7 +2877,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
    * two hierarchical domains are going to have potentially different "next"
    * pointers in the sub-domains.
    */
-  if (domain->built_in_index)
+  if (domain->built_in_index && !domain->is_sp_result)
     {
       carrier = ((DB_TYPE_NULL & OR_DOMAIN_TYPE_MASK) | OR_DOMAIN_BUILTIN_FLAG
 		 | (domain->built_in_index << OR_DOMAIN_PRECISION_SHIFT));

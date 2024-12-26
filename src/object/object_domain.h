@@ -108,6 +108,8 @@ typedef struct tp_domain
   /* run-time flag used during domain comparison */
   unsigned is_visited:1;
 
+  unsigned is_sp_result:1;
+
   JSON_VALIDATOR *json_validator;	/* schema validator if type is json */
 } TP_DOMAIN;
 

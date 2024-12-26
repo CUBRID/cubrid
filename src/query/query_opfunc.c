@@ -558,6 +558,14 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
 	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
 	    qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
 
+	  if (reg_var_p->value.type == TYPE_SP && reg_var_p->value.domain->type->id == DB_TYPE_NUMERIC)
+	    {
+	      valptr_list_p->valptrp->value.domain->precision =
+		tuple_desc_p->f_valp[tuple_desc_p->f_cnt]->domain.numeric_info.precision;
+	      valptr_list_p->valptrp->value.domain->scale =
+		tuple_desc_p->f_valp[tuple_desc_p->f_cnt]->domain.numeric_info.scale;
+	    }
+
 	  if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
 	    {
 	      status = QPROC_TPLDESCR_FAILURE;
@@ -6514,7 +6522,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 	      assert ((dom_type == DB_TYPE_OID) || (dom_type == DB_TYPE_VOBJ));
 	    }
 	  else if (val_type != dom_type
-		   || (val_type == DB_TYPE_NUMERIC
+		   || (val_type == DB_TYPE_NUMERIC && regu_var_p->type != TYPE_SP
 		       && (peek_value_p->domain.numeric_info.precision != regu_var_p->domain->precision
 			   || peek_value_p->domain.numeric_info.scale != regu_var_p->domain->scale)))
 	    {

@@ -977,6 +977,8 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   size_t size;
   int i;
 
+  REGU_VARIABLE_LIST reg_var_p;
+
   status = QPROC_TPLDESCR_FAILURE;	/* init */
 
   /* make f_valp array */
@@ -998,9 +1000,13 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  goto exit_on_error;
 	}
+
+      reg_var_p = outptr_list->valptrp;
       for (i = 0; i < list_id->type_list.type_cnt; i++)
 	{
 	  list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
+	  list_id->type_list.domp[i]->is_sp_result = (reg_var_p->value.type == TYPE_SP) ? 1 : 0;
+	  reg_var_p = reg_var_p->next;
 	}
     }
 
