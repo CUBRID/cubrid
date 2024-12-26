@@ -143,7 +143,8 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
-                                                null, "size", TypeSpec.getBogus(null, Type.INT), null)));
+                                                null, "size", TypeSpec.getBogus(null, Type.INT),
+                                                    new ExprUint(null, "20000", Type.INT))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
 
         // get_line
