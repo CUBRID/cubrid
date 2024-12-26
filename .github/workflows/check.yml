@@ -268,7 +268,7 @@ jobs:
             fi
 
             filename=$(basename $f)
-            check_server_file=$(grep $filename cubrid/CMakeLists.txt)
+            check_server_file=$(grep -F $filename cubrid/CMakeLists.txt)
             if [ "$check_server_file" == "" ]; then
               result_for_f="PASS"
             fi
