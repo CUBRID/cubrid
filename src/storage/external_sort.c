@@ -4171,21 +4171,18 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 
   if (parallel_type == PX_THREAD_IN_PARALLEL)
     {
-      for (int i = 0; i < sort_param->px_max_index; i++)
+      if (sort_param->get_arg != NULL)
 	{
-	  if (sort_param->get_arg != NULL)
+	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	  if (sort_info_p->s_id != NULL)
 	    {
-	      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
-	      if (sort_info_p->s_id != NULL)
-		{
-		  db_private_free_and_init (thread_p, sort_info_p->s_id);
-		}
-	      if (sort_info_p->input_file != NULL)
-		{
-		  db_private_free_and_init (thread_p, sort_info_p->input_file);
-		}
-	      db_private_free_and_init (thread_p, sort_param->get_arg);
+	      db_private_free_and_init (thread_p, sort_info_p->s_id);
 	    }
+	  if (sort_info_p->input_file != NULL)
+	    {
+	      db_private_free_and_init (thread_p, sort_info_p->input_file);
+	    }
+	  db_private_free_and_init (thread_p, sort_param->get_arg);
 	}
     }
 
