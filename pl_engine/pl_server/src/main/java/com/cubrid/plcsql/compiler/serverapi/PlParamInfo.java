@@ -49,7 +49,14 @@ public class PlParamInfo {
 
     public Value value;
 
-    public PlParamInfo(String name, byte mode, int type, int prec, short scale, byte charset, boolean hasDefault) {
+    public PlParamInfo(
+            String name,
+            byte mode,
+            int type,
+            int prec,
+            short scale,
+            byte charset,
+            boolean hasDefault) {
         this.name = name;
         this.mode = mode;
         this.type = type;

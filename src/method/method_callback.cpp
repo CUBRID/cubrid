@@ -660,7 +660,7 @@ namespace cubmethod
 
 		  if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &has_default) == NO_ERROR)
 		    {
-		      param_info.has_default = DB_IS_NULL(&has_default) ? 0 : 1;
+		      param_info.has_default = DB_IS_NULL (&has_default) ? 0 : 1;
 		    }
 
 		  pr_clear_value (&mode);

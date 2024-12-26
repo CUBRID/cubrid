@@ -259,11 +259,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 if (paramDefaultFound) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(pc), // s095
-                            "parameter " + i + " must have a default value because its predecessor has one");
+                            "parameter "
+                                    + i
+                                    + " must have a default value because its predecessor has one");
                 }
             }
 
-            if (ofTopLevel && (dp.typeSpec.type == Type.BOOLEAN || dp.typeSpec.type == Type.SYS_REFCURSOR)) {
+            if (ofTopLevel
+                    && (dp.typeSpec.type == Type.BOOLEAN
+                            || dp.typeSpec.type == Type.SYS_REFCURSOR)) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(pc), // s064
                         "type "
@@ -2845,7 +2849,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return new StaticSql(ctx, sws.kind, rewritten, hostExprs, selectList, intoTargetList);
     }
 
-    private static final Expr SP_PARAM_DEFAULT_VAL_DUMMY = new ExprNull(null);  // any compatible value is OK
+    private static final Expr SP_PARAM_DEFAULT_VAL_DUMMY =
+            new ExprNull(null); // any compatible value is OK
 
     private String makeParamList(NodeList<DeclParam> paramList, String name, PlParamInfo[] params) {
         if (params == null) {

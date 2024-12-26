@@ -2458,7 +2458,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return ret.setDelimiter(",");
     }
 
-    private CodeTemplateList visitArguments(NodeList<Expr> args, NodeList<DeclParam> paramList, boolean local) {
+    private CodeTemplateList visitArguments(
+            NodeList<Expr> args, NodeList<DeclParam> paramList, boolean local) {
 
         assert args != null;
         assert paramList != null;
