@@ -8993,7 +8993,7 @@ ssession_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   char *ptr = NULL;
 
   ptr = or_unpack_int (request, (int *) &id);
-  ptr = or_unpack_int (ptr, (int *) &is_keep_session);
+  ptr = or_unpack_int (ptr, &is_keep_session);
 
   err = xsession_end_session (thread_p, id, (bool) is_keep_session);
 
