@@ -928,18 +928,34 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
     }
   else
     {
-      DB_VALUE *value = pt_value_to_db (parser, node->info.data_default.default_value);
+      // OT_DATA_TYPE representing _db_stored_procedure_args.default_value
+      PT_NODE *dt = parser_new_node (parser, PT_DATA_TYPE);
+      if (dt == NULL)
+	{
+	  return ER_GENERIC_ERROR;
+	}
+      dt->type_enum = PT_TYPE_VARCHAR;
+      dt->info.data_type.precision = 255;
+      dt->info.data_type.units = (int) LANG_SYS_CODESET;
+      dt->info.data_type.collation_id = LANG_SYS_COLLATION;
+
+      // coerce the value before saving it in _db_stored_procedure_args.default_value
+      PT_NODE *default_value = node->info.data_default.default_value;
+      error = pt_coerce_value_explicit (parser, default_value, default_value, PT_TYPE_VARCHAR, dt);
+      if (error != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PARAM_DEFAULT_STR_TOO_BIG, 0);
+	  return er_errid ();
+	}
+
+      DB_VALUE *value = pt_value_to_db (parser, default_value);
       if (!DB_IS_NULL (value))
 	{
-	  string_buffer sb;
-	  sb.clear ();
-	  db_sprint_value (value, sb);
-
-	  out.append (sb.get_buffer ());
+	  out.append (db_get_string (value));
 	}
       else
 	{
-	  // empty out consider as NULL
+	  // empty out is considered NULL
 	}
     }
 
