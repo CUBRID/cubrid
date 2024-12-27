@@ -68,7 +68,7 @@ sm_define_view_class_spec (void)
 	"SELECT "
 	  "[c].[class_name] AS [class_name], "
 	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
-	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END AS [class_type], "
+	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOWN' END AS [class_type], "
 	  "CASE WHEN MOD ([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
 	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
 	  "CASE "
@@ -105,9 +105,9 @@ sm_define_view_class_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[c]} SUBSETEQ ("
+	      "OR {[c].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -170,9 +170,9 @@ sm_define_view_super_class_spec (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") "
-	  "OR {[c]} SUBSETEQ ("
+	  "OR {[c].[class_of]} SUBSETEQ ("
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "
@@ -236,9 +236,9 @@ sm_define_view_vclass_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[q].[class_of]} SUBSETEQ ("
+	      "OR {[q].[class_of].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -334,9 +334,9 @@ sm_define_view_attribute_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[c]} SUBSETEQ ("
+	      "OR {[c].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -418,9 +418,9 @@ sm_define_view_attribute_set_domain_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[c]} SUBSETEQ ("
+	      "OR {[c].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -492,9 +492,9 @@ sm_define_view_method_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[m].[class_of]} SUBSETEQ ("
+	      "OR {[m].[class_of].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -573,9 +573,9 @@ sm_define_view_method_argument_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[s].[meth_of].[class_of]} SUBSETEQ ("
+	      "OR {[s].[meth_of].[class_of].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -656,9 +656,9 @@ sm_define_view_method_argument_set_domain_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[s].[meth_of].[class_of]} SUBSETEQ ("
+	      "OR {[s].[meth_of].[class_of].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -723,9 +723,9 @@ sm_define_view_method_file_spec (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") "
-	  "OR {[f].[class_of]} SUBSETEQ ("
+	  "OR {[f].[class_of].[class_of]} SUBSETEQ ("
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "
@@ -837,9 +837,9 @@ sm_define_view_index_spec (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") "
-	  "OR {[i].[class_of]} SUBSETEQ ("
+	  "OR {[i].[class_of].[class_of]} SUBSETEQ ("
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "
@@ -914,9 +914,9 @@ sm_define_view_index_key_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[k].[index_of].[class_of]} SUBSETEQ ("
+	      "OR {[k].[index_of].[class_of].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -946,21 +946,25 @@ sm_define_view_index_key_spec (void)
 const char *
 sm_define_view_authorization_spec (void)
 {
-  static char stmt [2048];
+  static char stmt [4096];
 
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
 	  "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
 	  "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
-	  "[a].[class_of].[class_name] AS [class_name], "
-	  "CAST ([a].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+          "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOWN' END AS [object_type], "
+	  "[c].[class_name] AS [object_name], "
+	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[a].[auth_type] AS [auth_type], "
 	  "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable] "
 	"FROM "
-	  /* CT_CLASSAUTH_NAME */
-	  "[%s] AS [a] "
+	  /* CT_CLASSAUTH_NAME, CT_CLASS_NAME */
+	  "[%s] AS [a], [%s] AS [c] "
 	"WHERE "
+          "[a].[object_of] = [c].[class_of] "
+          "AND [a].[object_type] = 0 "
+          "AND ( "
 	  "{'DBA'} SUBSETEQ ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -970,7 +974,7 @@ sm_define_view_authorization_spec (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") "
-	  "OR {[a].[class_of].[owner].[name]} SUBSETEQ ("
+	  "OR {[c].[owner].[name]} SUBSETEQ ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
@@ -979,9 +983,9 @@ sm_define_view_authorization_spec (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") "
-	  "OR {[a].[class_of]} SUBSETEQ ("
+	  "OR {[c].[class_of]} SUBSETEQ ("
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "
@@ -996,12 +1000,73 @@ sm_define_view_authorization_spec (void)
 		      "[u].[name] = CURRENT_USER"
 		  ") "
 		"AND [au].[auth_type] = 'SELECT'"
-	    ")",
+	    ") ) "
+   "UNION ALL "
+        "SELECT "
+	  "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
+	  "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
+          "CASE [s].[sp_type] WHEN 1 THEN 'PROCEDURE' ELSE 'FUNCTION' END AS [object_type], "
+          "[s].[sp_name] AS [object_name], "
+          "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [owner_name], "
+          "[a].[auth_type] AS [auth_type], "
+          "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable] "
+        "FROM "
+          /* CT_CLASSAUTH_NAME, CT_STORED_PROC_NAME */
+	  "[%s] AS [a], [%s] AS [s] "
+	"WHERE "
+          "[a].[object_of] = [s] "
+          "AND [a].[object_type] = 5 "
+          "AND ( "
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
+	  "OR {[s].[owner].[name]} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
+	  "OR {[s]} SUBSETEQ ("
+	      "SELECT "
+		"SUM (SET {[au].[object_of]}) "
+	      "FROM "
+		/* CT_CLASSAUTH_NAME */
+		"[%s] AS [au] "
+	      "WHERE "
+		"{[au].[grantee].[name]} SUBSETEQ ("
+		    "SELECT "
+		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		    "FROM "
+		      /* AU_USER_CLASS_NAME */
+		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		    "WHERE "
+		      "[u].[name] = CURRENT_USER"
+		  ") "
+		"AND [au].[auth_type] = 'EXECUTE'"
+	    ") ) ",
 	CT_CLASSAUTH_NAME,
+        CT_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	AU_USER_CLASS_NAME,
+
+        CT_CLASSAUTH_NAME,
+        CT_STORED_PROC_NAME,
+	AU_USER_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
+	AU_USER_CLASS_NAME
+        );
   // *INDENT-ON*
 
   return stmt;
@@ -1048,9 +1113,9 @@ sm_define_view_trigger_spec (void)
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
 	    ") "
-	  "OR {[c]} SUBSETEQ (" /* Why [c] and not [t].[target_class]? */
+	  "OR {[c].[class_of]} SUBSETEQ (" /* Why [c] and not [t].[target_class]? */
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "
@@ -1122,9 +1187,9 @@ sm_define_view_partition_spec (void)
 		  "WHERE "
 		    "[u].[name] = CURRENT_USER"
 		") "
-	      "OR {[p].[class_of]} SUBSETEQ ("
+	      "OR {[p].[class_of].[class_of]} SUBSETEQ ("
 		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
+		    "SUM (SET {[au].[object_of]}) "
 		  "FROM "
 		    /* CT_CLASSAUTH_NAME */
 		    "[%s] AS [au] "
@@ -1162,6 +1227,7 @@ sm_define_view_stored_procedure_spec (void)
   sprintf (stmt,
 	"SELECT "
 	  "[sp].[sp_name] AS [sp_name], "
+          "[sp].[pkg_name] AS [pkg_name], "
 	  "CASE [sp].[sp_type] WHEN 1 THEN 'PROCEDURE' ELSE 'FUNCTION' END AS [sp_type], "
 	  "CASE [sp].[return_type] "
 	    "WHEN 0 THEN 'void' "
@@ -1170,15 +1236,22 @@ sm_define_view_stored_procedure_spec (void)
 	    "ELSE (SELECT [t].[type_name] FROM [%s] AS [t] WHERE [sp].[return_type] = [t].[type_id]) "
 	    "END AS [return_type], "
 	  "[sp].[arg_count] AS [arg_count], "
-	  "CASE [sp].[lang] WHEN 1 THEN 'JAVA' ELSE '' END AS [lang], "
-	  "[sp].[target] AS [target], "
+	  "CASE [sp].[lang] WHEN 0 THEN 'PLCSQL' WHEN 1 THEN 'JAVA' ELSE 'UNKNOWN' END AS [lang], "
+          "CASE [sp].[directive] & 1 WHEN 0 THEN 'DEFINER' ELSE 'CURRENT_USER' END AS [authid], "
+	  "CONCAT ([sp].[target_class], '.', [sp].[target_method]) AS [target], "
 	  "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
+          "[sp_code].[scode] AS [code], "
 	  "[sp].[comment] AS [comment] "
 	"FROM "
 	  /* CT_STORED_PROC_NAME */
-	  "[%s] AS [sp]",
+	  "[%s] AS [sp] "
+	  /* CT_STORED_PROC_CODE_NAME */
+          "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp].[target_class] = [sp_code].[name] "
+        "WHERE "
+          "[sp].[is_system_generated] = 0",
 	CT_DATATYPE_NAME,
-	CT_STORED_PROC_NAME);
+	CT_STORED_PROC_NAME,
+        CT_STORED_PROC_CODE_NAME);
   // *INDENT-ON*
 
   return stmt;
@@ -1192,7 +1265,9 @@ sm_define_view_stored_procedure_arguments_spec (void)
   // *INDENT-OFF*
   sprintf (stmt,
 	"SELECT "
-	  "[sp].[sp_name] AS [sp_name], "
+	  "[sp].[sp_of].[sp_name] AS [sp_name], "
+	  "CAST ([sp].[sp_of].[owner].[name] AS VARCHAR(255)) AS [sp_owner_name], " /* string -> varchar(255) */
+          "[sp].[pkg_name] AS [pkg_name], "
 	  "[sp].[index_of] AS [index_of], "
 	  "[sp].[arg_name] AS [arg_name], "
 	  "CASE [sp].[data_type] "
@@ -1205,8 +1280,9 @@ sm_define_view_stored_procedure_arguments_spec (void)
 	"FROM "
 	  /* CT_STORED_PROC_ARGS_NAME */
 	  "[%s] AS [sp] "
+        "WHERE [sp].[is_system_generated] = 0 "
 	"ORDER BY " /* Is it possible to remove ORDER BY? */
-	  "[sp].[sp_name], "
+	  "[sp].[sp_of].[sp_name], "
 	  "[sp].[index_of]",
 	CT_DATATYPE_NAME,
 	CT_STORED_PROC_ARGS_NAME);
@@ -1368,7 +1444,7 @@ sm_define_view_db_server_spec (void)
 	    ") "
 	  "OR {[ds]} SUBSETEQ ("
 	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
+		"SUM (SET {[au].[object_of]}) "
 	      "FROM "
 		/* CT_CLASSAUTH_NAME */
 		"[%s] AS [au] "

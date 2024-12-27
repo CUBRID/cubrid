@@ -250,6 +250,16 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	      goto error;
 	    }
 
+#if defined (WINDOWS)
+	  if (token[0] == '\\' || token[0] == '/')
+	    {
+	      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+			"%s: error while loading access control file (%s)"
+			" - when using an absolute path name, the driver name must be specified (%s). ",
+			shm_appl->broker_name, filename, token);
+	      goto error;
+	    }
+#endif
 	  if (make_abs_path (path_buf, "conf", token, BROKER_PATH_MAX) < 0)
 	    {
 	      goto error;

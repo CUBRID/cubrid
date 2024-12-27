@@ -33,7 +33,7 @@
 #include "system_parameter.h"
 #include "thread_compat.hpp"
 #include "tz_support.h"
-#include "method_runtime_context.hpp"
+#include "pl_session.hpp"
 
 // forward definitions
 struct xasl_cache_ent;
@@ -75,6 +75,7 @@ extern bool session_is_queryid_idle (THREAD_ENTRY * thread_p, const QUERY_ID que
 extern int session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE * result);
 extern SESSION_PARAM *session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id);
 #if defined (SERVER_MODE)
+extern int session_set_pl_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id);
 extern int session_state_increase_ref_count (THREAD_ENTRY * thread_p, struct session_state *state_p);
 extern int session_state_decrease_ref_count (THREAD_ENTRY * thread_p, struct session_state *state_p);
 #endif
@@ -89,7 +90,6 @@ extern int session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_comm
 extern int session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p);
 extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr));
 
-extern int session_get_method_runtime_context (THREAD_ENTRY * thread_p,
-					       REFPTR (method_runtime_context, method_runtime_context_ref_ptr));
+extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr));
 extern void session_stop_attached_threads (void *session);
 #endif /* _SESSION_H_ */

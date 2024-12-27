@@ -263,8 +263,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, exec_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   sysprm_set_force (prm_get_name (PRM_ID_PRINT_INDEX_DETAIL),
 		    utility_get_option_bool_value (arg_map, UNLOAD_SKIP_INDEX_DETAIL_S) ? "no" : "yes");

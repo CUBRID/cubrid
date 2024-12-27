@@ -5099,7 +5099,7 @@ execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * cur
     {
       if (AU_SET_USER (save_user))
 	{
-	  /* what can this mean ? */
+	  // what can this mean ?
 	  rstatus = TR_RETURN_ERROR;
 	}
     }

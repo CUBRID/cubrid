@@ -38,6 +38,8 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include <stack>
+
 #include "porting.h"
 #include "misc_string.h"
 #include "memory_alloc.h"

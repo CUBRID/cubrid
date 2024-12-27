@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.visitor;
 
+import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.CoercionScheme;
@@ -641,6 +642,10 @@ public class TypeChecker extends AstVisitor<Type> {
 
             return ret;
         } else {
+            Server.log(
+                    String.format(
+                            "semantic check API returned an error (%d, %s) for '%s'",
+                            ss.errCode, ss.errMsg, sql));
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s235
                     "function "

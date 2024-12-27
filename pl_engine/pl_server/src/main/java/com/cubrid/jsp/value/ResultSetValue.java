@@ -31,24 +31,32 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.impl.SUConnection;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideOutResultSet;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideResultSet;
 import java.sql.ResultSet;
 
 public class ResultSetValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_RESULTSET;
+    }
+
     private long queryId;
     private ResultSet rset = null;
 
     public ResultSetValue(long queryId) {
         super();
         this.queryId = queryId;
+        this.dbType = DBType.DB_RESULTSET;
     }
 
     public ResultSetValue(ResultSet rset) {
         super();
         this.rset = rset;
         this.queryId = ((CUBRIDServerSideResultSet) rset).getQueryId();
+        this.dbType = DBType.DB_RESULTSET;
     }
 
     @Override

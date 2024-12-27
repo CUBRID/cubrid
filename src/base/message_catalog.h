@@ -52,6 +52,7 @@
 #define MSGCAT_SET_LOCK                 14
 #define MSGCAT_SET_IO                   15
 #define MSGCAT_SET_LOG                  16
+#define MSGCAT_SET_GLOSSARY             17
 
 /* Message id in the set MSGCAT_SET_GENERAL */
 #define MSGCAT_GENERAL_DATABASE_INIT    1

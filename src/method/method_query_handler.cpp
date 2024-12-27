@@ -36,6 +36,7 @@ namespace cubmethod
 {
   query_handler::query_handler (error_context &ctx, int id)
     : m_id (id)
+    , m_tid (NULL_TRANID)
     , m_error_ctx (ctx)
     , m_sql_stmt ()
     , m_stmt_type (CUBRID_STMT_NONE)
@@ -67,6 +68,7 @@ namespace cubmethod
   {
     end_qresult ();
     m_is_occupied = false;
+
   }
 
   query_result::query_result ()
@@ -130,6 +132,18 @@ namespace cubmethod
   void query_handler::set_is_occupied (bool flag)
   {
     m_is_occupied = flag;
+  }
+
+  TRANID
+  query_handler::get_tran_id ()
+  {
+    return m_tid;
+  }
+
+  void
+  query_handler::set_tran_id (TRANID tid)
+  {
+    m_tid = tid;
   }
 
   prepare_info &
@@ -817,6 +831,7 @@ namespace cubmethod
       }
 
     db_get_cacheinfo (m_session, stmt_id, &m_use_plan_cache, NULL);
+    db_session_set_holdable (m_session, true);
 
     /* prepare result set */
     m_num_markers = get_num_markers ();

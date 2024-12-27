@@ -46,7 +46,7 @@ class au_auth_accessor
 {
   private:
     // TODO: thread safe?
-    static MOP au_class_mop;
+    MOP m_au_class_mop;
 
     MOP m_au_obj;
 
@@ -54,26 +54,27 @@ class au_auth_accessor
     {
       INDEX_FOR_GRANTEE_NAME = 0,
       INDEX_FOR_GRANTOR_NAME = 1,
-      INDEX_FOR_CLASS_NAME = 2,
+      INDEX_FOR_OBJECT_NAME = 2,
       INDEX_FOR_AUTH_TYPE = 3,
       /* Total count for the above */
       COUNT_FOR_VARIABLES
     };
 
     int create_new_auth ();
-    int set_new_auth (MOP au_object, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, bool grant_option);
-    int get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type);
+    int set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_object, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type,
+		      bool grant_option);
+    int get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type);
 
   public:
     explicit au_auth_accessor ();
 
-    int insert_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option);
-    int update_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option);
-    int delete_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type);
+    int insert_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type, int grant_option);
+    int update_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type, int grant_option);
+    int delete_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type);
 
-    static MOP get_auth_class_mop ()
+    MOP get_auth_class_mop ()
     {
-      return au_class_mop;
+      return m_au_class_mop;
     }
 
     MOP get_auth_object ()
@@ -93,6 +94,16 @@ extern int au_delete_auth_of_dropping_user (MOP user);
 extern int au_delete_authorizartion_of_dropping_user (MOP user);
 
 // delete _db_auth records refers to the given table
-extern int au_delete_auth_of_dropping_table (const char *class_name);
+extern int au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char *name);
+
+/*
+* drop a class, virtual class and procedure, or when changing the owner, all privileges are revoked.
+*/
+extern int au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const char *unique_name);
+
+/*
+* when a user is deleted, all of their privileges are revoked.
+*/
+extern int au_user_revoke_all_privileges (MOP user_mop);
 
 #endif // _authenticate_access_auth_HPP_
