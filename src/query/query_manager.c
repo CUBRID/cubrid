@@ -45,6 +45,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
+#include "thread_manager.hpp"
 #include "xasl_cache.h"
 #include "xasl_unpack_info.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -131,10 +132,21 @@ struct qmgr_query_table
 
   /* temp file free list info */
   QMGR_TEMP_FILE_LIST temp_file_list[QMGR_NUM_TEMP_FILE_LISTS];
+
+  LF_ENTRY_DESCRIPTOR qmgr_temp_buffer_entry_descriptor;
+  LF_FREELIST qmgr_temp_buffer_entry_freelist;
 };
 
-QMGR_QUERY_TABLE qmgr_Query_table = { NULL, 0, NULL,
-  {{PTHREAD_MUTEX_INITIALIZER, NULL, 0}, {PTHREAD_MUTEX_INITIALIZER, NULL, 0}}
+QMGR_QUERY_TABLE qmgr_Query_table = {
+  NULL,
+  0,
+  NULL,
+  {
+   {PTHREAD_MUTEX_INITIALIZER, NULL, 0},
+   {PTHREAD_MUTEX_INITIALIZER, NULL, 0}
+   },
+  LF_ENTRY_DESCRIPTOR_INITIALIZER,
+  LF_FREELIST_INITIALIZER
 };
 
 #if !defined(SERVER_MODE)
@@ -182,6 +194,13 @@ static void qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p);
 
 static int copy_bind_value_to_tdes (THREAD_ENTRY * thread_p, int num_bind_vals, DB_VALUE * bind_vals);
 
+static int qmgr_initialize_temp_buffer ();
+static void qmgr_finalize_temp_buffer ();
+static void *qmgr_temp_buffer_entry_alloc (void);
+static int qmgr_temp_buffer_entry_free (void *temp_buffer_entry);
+static TEMP_BUFFER_ENTRY *qmgr_get_temp_buffer_entry (THREAD_ENTRY * thread_p, int count);
+static void qmgr_put_temp_buffer_entry (THREAD_ENTRY * thread_p, TEMP_BUFFER_ENTRY * temp_buffer_entry_p);
+
 /*
  * qmgr_get_page_type () -
  *
@@ -194,21 +213,29 @@ static QMGR_PAGE_TYPE
 qmgr_get_page_type (PAGE_PTR page_p, QMGR_TEMP_FILE * temp_file_p)
 {
   PAGE_PTR begin_page = NULL, end_page = NULL;
+  TEMP_BUFFER_ENTRY *temp_buffer_entry_p;
 
-  if (temp_file_p != NULL && temp_file_p->membuf_last >= 0 && temp_file_p->membuf && page_p >= temp_file_p->membuf[0]
-      && page_p <= temp_file_p->membuf[temp_file_p->membuf_last])
+  if (temp_file_p == NULL)
     {
-      return QMGR_MEMBUF_PAGE;
-    }
-
-  begin_page = (PAGE_PTR) ((PAGE_PTR) temp_file_p->membuf
-			   + DB_ALIGN (sizeof (PAGE_PTR) * temp_file_p->membuf_npages, MAX_ALIGNMENT));
-  end_page = begin_page + temp_file_p->membuf_npages * DB_PAGESIZE;
-  if (begin_page <= page_p && page_p <= end_page)
-    {
-      /* defense code */
       assert (false);
       return QMGR_UNKNOWN_PAGE;
+    }
+
+  temp_buffer_entry_p = temp_file_p->temp_buffer[0];
+
+  while (temp_buffer_entry_p != NULL)
+    {
+      if (page_p == temp_buffer_entry_p->page_p)
+	{
+	  break;
+	}
+
+      temp_buffer_entry_p = temp_buffer_entry_p->next;
+    }
+
+  if (temp_buffer_entry_p != NULL)
+    {
+      return QMGR_MEMBUF_PAGE;
     }
 
   return QMGR_TEMP_FILE_PAGE;
@@ -838,6 +865,47 @@ qmgr_dump (void)
 }
 #endif
 
+int
+qmgr_initialize_temp_buffer ()
+{
+  LF_ENTRY_DESCRIPTOR *entry_descriptor_p = NULL;
+
+  entry_descriptor_p = &qmgr_Query_table.qmgr_temp_buffer_entry_descriptor;
+
+  entry_descriptor_p->of_local_next = offsetof (SORT_LIST, local_next);
+  entry_descriptor_p->of_next = offsetof (SORT_LIST, next);
+  entry_descriptor_p->of_del_tran_id = offsetof (SORT_LIST, del_id);
+  assert (entry_descriptor_p->of_key == 0);
+  assert (entry_descriptor_p->of_mutex == 0);
+  entry_descriptor_p->using_mutex = LF_EM_NOT_USING_MUTEX;
+  entry_descriptor_p->max_alloc_cnt = LF_ENTRY_DESCRIPTOR_MAX_ALLOC;
+  entry_descriptor_p->f_alloc = qmgr_temp_buffer_entry_alloc;
+  entry_descriptor_p->f_free = qmgr_temp_buffer_entry_free;
+  assert (entry_descriptor_p->f_init == NULL);
+  assert (entry_descriptor_p->f_uninit == NULL);
+  assert (entry_descriptor_p->f_key_copy == NULL);
+  assert (entry_descriptor_p->f_key_cmp == NULL);
+  assert (entry_descriptor_p->f_hash == NULL);
+  assert (entry_descriptor_p->f_duplicate == NULL);
+
+  if (lf_freelist_init
+      (&qmgr_Query_table.qmgr_temp_buffer_entry_freelist, 100, 100, entry_descriptor_p,
+       &free_temp_buffer_Ts) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+void
+qmgr_finalize_temp_buffer ()
+{
+  lf_freelist_destroy (&qmgr_Query_table.qmgr_temp_buffer_entry_freelist);
+}
+
+
+
 /*
  * qmgr_initialize () -
  *   return: int (NO_ERROR or ER_FAILED)
@@ -866,6 +934,11 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 	  return ER_FAILED;
 	}
+    }
+
+  if (qmgr_initialize_temp_buffer () != NO_ERROR)
+    {
+      return ER_FAILED;
     }
 
   if (qmgr_Query_table.temp_file_list[TEMP_FILE_MEMBUF_NORMAL].list != NULL)
@@ -927,6 +1000,8 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
     {
       qmgr_finalize_temp_file_list (&qmgr_Query_table.temp_file_list[i]);
     }
+
+  qmgr_finalize_temp_buffer ();
 
   csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 }
@@ -2430,7 +2505,7 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
 
       if (vpid_p->pageid >= 0 && vpid_p->pageid <= tfile_vfid_p->membuf_last)
 	{
-	  page_p = tfile_vfid_p->membuf[vpid_p->pageid];
+	  page_p = tfile_vfid_p->temp_buffer[vpid_p->pageid]->page_p;
 
 	  /* interrupt check */
 #if defined (SERVER_MODE)
@@ -2563,11 +2638,19 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
     }
 
   /* first page, return memory buffer instead real temp file page */
-  if (tfile_vfid_p->membuf != NULL && tfile_vfid_p->membuf_last < tfile_vfid_p->membuf_npages - 1)
+  if (tfile_vfid_p->temp_buffer != NULL && tfile_vfid_p->membuf_last < tfile_vfid_p->membuf_npages - 1)
     {
       vpid_p->volid = NULL_VOLID;
       vpid_p->pageid = ++(tfile_vfid_p->membuf_last);
-      page_p = tfile_vfid_p->membuf[tfile_vfid_p->membuf_last];
+
+      if (tfile_vfid_p->temp_buffer[tfile_vfid_p->membuf_last] == NULL)
+	{
+	  tfile_vfid_p->temp_buffer[tfile_vfid_p->membuf_last] = qmgr_get_temp_buffer_entry (NULL, 1);
+	  tfile_vfid_p->temp_buffer[tfile_vfid_p->membuf_last - 1]->next =
+	    tfile_vfid_p->temp_buffer[tfile_vfid_p->membuf_last];
+	}
+
+      page_p = tfile_vfid_p->temp_buffer[tfile_vfid_p->membuf_last]->page_p;
       qfile_init_page_header (page_p);
       return page_p;
     }
@@ -2659,42 +2742,33 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
 static QMGR_TEMP_FILE *
 qmgr_allocate_tempfile_with_buffer (int num_buffer_pages)
 {
-  size_t size;
-  QMGR_TEMP_FILE *tempfile_p;
-  PAGE_PTR page_p;
-  int i;
-
-  size = DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT);
-  size += DB_ALIGN (sizeof (PAGE_PTR) * num_buffer_pages, MAX_ALIGNMENT);
-  size += DB_PAGESIZE * num_buffer_pages;
-
-  tempfile_p = (QMGR_TEMP_FILE *) malloc (size);
-  if (tempfile_p == NULL)
+  QMGR_TEMP_FILE *temp_file_p = (QMGR_TEMP_FILE *) malloc (sizeof (QMGR_TEMP_FILE));
+  if (temp_file_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QMGR_TEMP_FILE));
       return NULL;
     }
+  memset (temp_file_p, 0, sizeof (QMGR_TEMP_FILE));
 
-  memset (tempfile_p, 0x00, sizeof (QMGR_TEMP_FILE));
-
-  tempfile_p->membuf = (PAGE_PTR *) ((PAGE_PTR) tempfile_p + DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT));
-  page_p = (PAGE_PTR) ((PAGE_PTR) tempfile_p->membuf + DB_ALIGN (sizeof (PAGE_PTR) * num_buffer_pages, MAX_ALIGNMENT));
-
-  for (i = 0; i < num_buffer_pages; i++)
+  temp_file_p->temp_buffer = (TEMP_BUFFER_ENTRY **) malloc (sizeof (TEMP_BUFFER_ENTRY *) * num_buffer_pages);
+  if (temp_file_p->temp_buffer == NULL)
     {
-      tempfile_p->membuf[i] = page_p;
-      page_p += DB_PAGESIZE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (TEMP_BUFFER_ENTRY *) * num_buffer_pages);
+      return NULL;
     }
+  memset (temp_file_p->temp_buffer, 0, sizeof (TEMP_BUFFER_ENTRY *) * num_buffer_pages);
 
-  /* initialize tempfile_p */
-  VFID_SET_NULL (&tempfile_p->temp_vfid);
-  tempfile_p->temp_file_type = FILE_TEMP;
-  tempfile_p->membuf_npages = num_buffer_pages;
-  tempfile_p->preserved = false;
-  tempfile_p->tde_encrypted = false;
-  tempfile_p->membuf_last = -1;
+  temp_file_p->temp_buffer[0] = qmgr_get_temp_buffer_entry (NULL, 1);
 
-  return tempfile_p;
+  VFID_SET_NULL (&temp_file_p->temp_vfid);
+  temp_file_p->temp_file_type = FILE_TEMP;
+  temp_file_p->membuf_npages = num_buffer_pages;
+  temp_file_p->preserved = false;
+  temp_file_p->tde_encrypted = false;
+  temp_file_p->membuf_last = 0;
+
+  return temp_file_p;
 }
 
 /*
@@ -2739,7 +2813,7 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
 
       assert (tfile_vfid_p->temp_file_type == FILE_TEMP);
       VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
-      tfile_vfid_p->membuf_last = -1;
+      tfile_vfid_p->membuf_last = 0;
       assert (tfile_vfid_p->membuf_npages == num_buffer_pages);
       assert (tfile_vfid_p->membuf_type == membuf_type);
 
@@ -2834,7 +2908,6 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tfile_vfid_p->temp_file_type = FILE_QUERY_AREA;
 
   tfile_vfid_p->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
-  tfile_vfid_p->membuf = NULL;
   tfile_vfid_p->membuf_npages = 0;
   tfile_vfid_p->membuf_type = TEMP_FILE_MEMBUF_NONE;
   tfile_vfid_p->preserved = false;
@@ -3334,6 +3407,13 @@ qmgr_finalize_temp_file_list (QMGR_TEMP_FILE_LIST * temp_file_list_p)
     {
       temp_file_p = temp_file_list_p->list;
       temp_file_list_p->list = temp_file_p->next;
+
+      if (temp_file_p->temp_buffer != NULL)
+	{
+	  qmgr_put_temp_buffer_entry (NULL, temp_file_p->temp_buffer[0]);
+	  temp_file_p->temp_buffer = NULL;
+	}
+
       free_and_init (temp_file_p);
     }
   temp_file_list_p->count = 0;
@@ -3382,6 +3462,7 @@ void
 qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p)
 {
   QMGR_TEMP_FILE_LIST *temp_file_list_p;
+  TEMP_BUFFER_ENTRY *temp_buffer_entry_p;
   int rv;
 
   assert (temp_file_p != NULL);
@@ -3390,7 +3471,17 @@ qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p)
       return;
     }
 
-  temp_file_p->membuf_last = -1;
+  temp_file_p->membuf_last = 0;
+  temp_buffer_entry_p = temp_file_p->temp_buffer[0]->next;
+  if (temp_buffer_entry_p != NULL)
+    {
+      temp_file_p->temp_buffer[0]->next = NULL;
+      for (int i = 1; i <= temp_file_p->membuf_npages; i++)
+        {
+	  temp_file_p->temp_buffer[i] = NULL;
+	}
+      qmgr_put_temp_buffer_entry (NULL, temp_buffer_entry_p);
+    }
 
   if (QMGR_IS_VALID_MEMBUF_TYPE (temp_file_p->membuf_type))
     {
@@ -3601,4 +3692,92 @@ qmgr_get_query_sql_user_text (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tr
     }
 
   return query_str;
+}
+
+static void *
+qmgr_temp_buffer_entry_alloc (void)
+{
+  TEMP_BUFFER_ENTRY *temp_buffer_entry_p = (TEMP_BUFFER_ENTRY *) malloc (sizeof (TEMP_BUFFER_ENTRY));
+  if (temp_buffer_entry_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TEMP_BUFFER_ENTRY));
+      return NULL;
+    }
+
+  temp_buffer_entry_p->page_p = (PAGE_PTR) malloc (DB_PAGESIZE);
+  if (temp_buffer_entry_p->page_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_PAGESIZE);
+      free (temp_buffer_entry_p);
+      return NULL;
+    }
+
+  return temp_buffer_entry_p;
+}
+
+static int
+qmgr_temp_buffer_entry_free (void *entry_p)
+{
+  TEMP_BUFFER_ENTRY *temp_buffer_entry_p = (TEMP_BUFFER_ENTRY *) entry_p;
+  if (temp_buffer_entry_p == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  free (temp_buffer_entry_p->page_p);
+  free (temp_buffer_entry_p);
+
+  return NO_ERROR;
+}
+
+static TEMP_BUFFER_ENTRY *
+qmgr_get_temp_buffer_entry (THREAD_ENTRY * thread_p, int count)
+{
+  LF_TRAN_ENTRY *tran_entry_p = thread_get_tran_entry (thread_p, THREAD_TS_FREE_TEMP_BUFFER);
+  assert (tran_entry_p != NULL);
+
+  LF_FREELIST *freelist_p = &qmgr_Query_table.qmgr_temp_buffer_entry_freelist;
+  TEMP_BUFFER_ENTRY *head = NULL;
+
+  for (int i = 0; i < count; i++)
+    {
+      TEMP_BUFFER_ENTRY *current = (TEMP_BUFFER_ENTRY *) lf_freelist_claim (tran_entry_p, freelist_p);
+      if (current == NULL)
+	{
+	  assert (false);
+	  return NULL;
+	}
+
+      assert (current->next == NULL);
+
+      current->next = head;
+      head = current;
+    }
+
+  return head;
+}
+
+static void
+qmgr_put_temp_buffer_entry (THREAD_ENTRY * thread_p, TEMP_BUFFER_ENTRY * temp_buffer_entry_p)
+{
+  LF_TRAN_ENTRY *tran_entry_p = thread_get_tran_entry (thread_p, THREAD_TS_FREE_TEMP_BUFFER);
+  assert (tran_entry_p != NULL);
+
+  LF_FREELIST *freelist_p = &qmgr_Query_table.qmgr_temp_buffer_entry_freelist;
+  TEMP_BUFFER_ENTRY *head = temp_buffer_entry_p;
+
+  while (head != NULL)
+    {
+      TEMP_BUFFER_ENTRY *current = head;
+
+      head = current->next;
+      current->next = NULL;
+
+      if (lf_freelist_retire (tran_entry_p, freelist_p, current) != NO_ERROR)
+	{
+	  assert (false);
+	  return;
+	}
+    }
 }
