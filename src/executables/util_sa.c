@@ -1761,6 +1761,59 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	      goto error_exit;
 	    }
 	}
+      else if (fname != NULL)
+	{
+	  FILE *fp = fopen (fname, "r");
+	  int len = 0, file_getc = 0;
+	  char fget_name[SM_MAX_IDENTIFIER_LENGTH];
+	  char name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+	  if (fp == NULL)
+	    {
+	      perror (fname);
+	      goto error_exit;
+	    }
+
+	  while (file_getc != EOF)
+	    {
+	      file_getc = fgetc (fp);
+
+	      if (char_isspace2 (file_getc) || file_getc == ',')
+		{
+		  if (len > 0)
+		    {
+		      fget_name[len] = '\0';
+		      strncpy (name, fget_name, len);
+		      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, name);
+		      if (error_code != NO_ERROR)
+			{
+			  if (error_code == ER_LC_UNKNOWN_CLASSNAME)
+			    {
+			      PRINT_AND_LOG_ERR_MSG (msgcat_message
+						     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB,
+						      DIAGDB_MSG_UNKNOWN_CLASS), name);
+			    }
+			}
+		    }
+
+		  memset (name, '\0', sizeof (name));
+		  len = 0;
+		  continue;
+		}
+
+	      fget_name[len++] = file_getc;
+
+	      if (len == SM_MAX_IDENTIFIER_LENGTH)
+		{
+		  /* too long table name */
+		  if (utility_check_class_name (fget_name) != NO_ERROR)
+		    {
+		      fclose (fp);
+		      /* The util_log_write_errid function is called inside the utility_check_class_name function. */
+		      return ER_GENERIC_ERROR;
+		    }
+		}
+	    }
+	}
     }
 
   db_shutdown ();
