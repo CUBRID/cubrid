@@ -3477,7 +3477,7 @@ qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p)
     {
       temp_file_p->temp_buffer[0]->next = NULL;
       for (int i = 1; i <= temp_file_p->membuf_npages; i++)
-        {
+	{
 	  temp_file_p->temp_buffer[i] = NULL;
 	}
       qmgr_put_temp_buffer_entry (NULL, temp_buffer_entry_p);
