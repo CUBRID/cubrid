@@ -1005,8 +1005,6 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       for (i = 0; i < list_id->type_list.type_cnt; i++)
 	{
 	  list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
-	  list_id->type_list.domp[i]->is_sp_result = (reg_var_p->value.type == TYPE_SP) ? 1 : 0;
-	  reg_var_p = reg_var_p->next;
 	}
     }
 
