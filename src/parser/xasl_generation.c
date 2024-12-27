@@ -6684,11 +6684,14 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   regu->type = TYPE_SP;
-  regu->domain = pt_node_to_db_domain (parser, node, NULL);
 
-  /* for any precsion and scale */
-  if (regu->domain->type->id == DB_TYPE_NUMERIC)
+  if (node->type_enum != PT_TYPE_NUMERIC)
     {
+      regu->domain = pt_xasl_node_to_domain (parser, node);
+    }
+  else
+    {
+      regu->domain = pt_node_to_db_domain (parser, node, NULL);
       regu->domain->precision = 0;
       regu->domain->scale = 0;
     }
