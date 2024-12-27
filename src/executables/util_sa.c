@@ -1533,6 +1533,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   DIAGDUMP_TYPE diag;
   THREAD_ENTRY *thread_p;
   int error_code = NO_ERROR;
+  char *fname;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (db_name == NULL)
@@ -1564,6 +1565,9 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     }
 
   class_name = utility_get_option_string_value (arg_map, DIAG_CLASS_NAME_S, 0);
+
+  fname = utility_get_option_string_value (arg_map, DIAG_INPUT_FILE_S, 0);
+
   diag = (DIAGDUMP_TYPE) utility_get_option_int_value (arg_map, DIAG_DUMP_TYPE_S);
 
   if (diag != DIAGDUMP_LOG && utility_get_option_string_table_size (arg_map) != 1)
