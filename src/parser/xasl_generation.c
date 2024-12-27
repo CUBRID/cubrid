@@ -6687,8 +6687,11 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
   regu->domain = pt_node_to_db_domain (parser, node, NULL);
 
   /* for any precsion and scale */
-  regu->domain->precision = 0;
-  regu->domain->scale = 0;
+  if (regu->domain->type->id == DB_TYPE_NUMERIC)
+    {
+      regu->domain->precision = 0;
+      regu->domain->scale = 0;
+    }
 
   return regu;
 }
