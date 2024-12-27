@@ -13632,7 +13632,6 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
   const char *timestamptz_frmt = "YYYY-MM-DD HH24:MI:SS TZH:TZM";
   const char *timestampltz_frmt = "YYYY-MM-DD HH24:MI:SS TZR";
 
-  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
   lang_set_flag_from_lang (lang_str, has_user_format, has_user_lang, &flag);
   db_make_int (&lang_val, flag);
 
