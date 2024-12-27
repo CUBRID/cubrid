@@ -1731,12 +1731,16 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       bool dump_records;
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
 
-      if (class_name == NULL)
+      if (class_name == NULL && fname == NULL)
 	{
 	  fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
 	  (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
 	}
-      else
+      else if (class_name && fname)
+	{
+	  goto print_diag_usage;
+	}
+      else if (class_name != NULL)
 	{
 	  if (!sm_check_system_class_by_name (class_name))
 	    {
