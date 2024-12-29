@@ -17141,3 +17141,4 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   pr_clear_value (&scalar_value2);
   return cmp_result;
 }
+
