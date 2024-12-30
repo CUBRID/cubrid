@@ -928,7 +928,7 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
     }
   else
     {
-      // OT_DATA_TYPE representing _db_stored_procedure_args.default_value
+      // PT_DATA_TYPE representing _db_stored_procedure_args.default_value
       PT_NODE *dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
 	{
@@ -944,8 +944,10 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
       error = pt_coerce_value_explicit (parser, default_value, default_value, PT_TYPE_VARCHAR, dt);
       if (error != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PARAM_DEFAULT_STR_TOO_BIG, 0);
-	  return er_errid ();
+	  pt_reset_error (parser);
+	  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_SP_PARAM_DEFAULT_STR_TOO_BIG);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  return error;
 	}
 
       DB_VALUE *value = pt_value_to_db (parser, default_value);
