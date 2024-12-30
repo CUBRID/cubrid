@@ -119,7 +119,7 @@ static int sp_builtin_init ()
   a.comment  = "";
 
   v.args.push_back (a);
-  pr_clear_value(&a.default_value);
+  pr_clear_value (&a.default_value);
 
   //
   sp_builtin_definition.push_back (v);
