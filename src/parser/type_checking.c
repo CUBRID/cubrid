@@ -251,8 +251,6 @@ static bool pt_is_explicit_coerce_allowed_for_default_value (PARSER_CONTEXT * pa
 static int pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 				     PT_TYPE_ENUM desired_type, PT_NODE * data_type, bool check_string_precision,
 				     bool implicit_coercion);
-static int pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-				     PT_NODE * data_type);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int generic_func_casecmp (const void *a, const void *b);
 static void init_generic_funcs (void);
