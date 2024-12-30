@@ -274,7 +274,11 @@ namespace cubpl
     , m_pid (-1)
     , m_state (SERVER_MONITOR_STATE_INIT)
     , m_db_name (db_name)
+#if defined(WINDOWS)
+    , m_binary_name ("cub_pl.exe")
+#else
     , m_binary_name ("cub_pl")
+#endif
     , m_argv {m_binary_name.c_str (), m_db_name.c_str (), 0}
     , m_sys_conn_pool {nullptr}
     , m_bootstrap_request {nullptr}
@@ -359,6 +363,11 @@ namespace cubpl
 	if (error != NO_ERROR)
 	  {
 	    fail_count++;
+
+	    /* The contents of the pl file may have changed, so set it to read again. */
+	    assert (m_sys_conn_pool);
+	    m_sys_conn_pool->set_port_disabled();
+
 	    (void) sleep (1);
 	  }
 	else
