@@ -246,22 +246,36 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         boolean ofTopLevel = symbolStack.getCurrentScope().level == (SymbolStack.LEVEL_MAIN + 1);
         NodeList<DeclParam> ret = new NodeList<>();
-        if (ofTopLevel) {
-            for (ParameterContext pc : ctx.parameter()) {
-                DeclParam dp = (DeclParam) visit(pc);
-                if (dp.typeSpec.type == Type.BOOLEAN || dp.typeSpec.type == Type.SYS_REFCURSOR) {
+
+        boolean paramDefaultFound = false;
+        int i = 0;
+        for (ParameterContext pc : ctx.parameter()) {
+            DeclParam dp = (DeclParam) visit(pc);
+            i++;
+
+            if (dp.hasDefault()) {
+                paramDefaultFound = true;
+            } else {
+                if (paramDefaultFound) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(pc), // s064
-                            "type "
-                                    + dp.typeSpec.type.plcName
-                                    + " cannot be used as a paramter type of stored procedures");
+                            Misc.getLineColumnOf(pc), // s095
+                            "parameter "
+                                    + i
+                                    + " must have a default value because its predecessor has one");
                 }
-                ret.addNode(dp);
             }
-        } else {
-            for (ParameterContext pc : ctx.parameter()) {
-                ret.addNode((DeclParam) visit(pc));
+
+            if (ofTopLevel
+                    && (dp.typeSpec.type == Type.BOOLEAN
+                            || dp.typeSpec.type == Type.SYS_REFCURSOR)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(pc), // s064
+                        "type "
+                                + dp.typeSpec.type.plcName
+                                + " cannot be used as a paramter type of stored procedures");
             }
+
+            ret.addNode(dp);
         }
 
         return ret;
@@ -293,7 +307,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             typeVisitMode = TYPE_VISIT_NORMAL;
         }
 
-        DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec);
+        DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec, null);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -310,7 +324,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             typeVisitMode = TYPE_VISIT_NORMAL;
         }
 
-        DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec);
+        Expr defaultVal = visitExpression(ctx.default_value_part());
+
+        DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec, defaultVal);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -2833,6 +2849,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return new StaticSql(ctx, sws.kind, rewritten, hostExprs, selectList, intoTargetList);
     }
 
+    private static final Expr SP_PARAM_DEFAULT_VAL_DUMMY =
+            new ExprNull(null); // any compatible value is OK
+
     private String makeParamList(NodeList<DeclParam> paramList, String name, PlParamInfo[] params) {
         if (params == null) {
             return null;
@@ -2853,7 +2872,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 boolean alsoIn = (params[i].mode & ServerConstants.PARAM_MODE_IN) != 0;
                 paramList.nodes.add(new DeclParamOut(null, "p" + i, tySpec, alsoIn));
             } else {
-                paramList.nodes.add(new DeclParamIn(null, "p" + i, tySpec));
+                Expr defaultVal = params[i].hasDefault ? SP_PARAM_DEFAULT_VAL_DUMMY : null;
+                paramList.nodes.add(new DeclParamIn(null, "p" + i, tySpec, defaultVal));
             }
         }
 
@@ -2861,7 +2881,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private int checkArguments(NodeList<Expr> args, NodeList<DeclParam> params) {
-        if (params.nodes.size() != args.nodes.size()) {
+
+        int paramCnt = params.nodes.size();
+        if (paramCnt < args.nodes.size()) {
             return -1;
         }
 
@@ -2879,6 +2901,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
             }
 
+            i++;
+        }
+        while (i < paramCnt) {
+            DeclParam dp = params.nodes.get(i);
+            if (!dp.hasDefault()) {
+                return -1;
+            }
             i++;
         }
 

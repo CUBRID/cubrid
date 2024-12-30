@@ -2441,8 +2441,6 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	  else
 	    {
 	      default_next_node = pt_make_string_value (parser, sig.arg.arg_default_value[i]);
-	      default_next_node = pt_wrap_with_cast_op (parser, default_next_node, pt_db_to_type_enum ((DB_TYPE) sig.arg.arg_type[i]),
-				  TP_FLOATING_PRECISION_VALUE, 0, NULL);
 	    }
 	}
 
