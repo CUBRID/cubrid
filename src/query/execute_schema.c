@@ -977,7 +977,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  break;
 		}
 	      error = pt_coerce_value_for_default_value (parser, def_val, def_val, pt_desired_type, data_type,
-							 d->info.data_default.default_expr_type);
+							 d->info.data_default.default_expr_type, true);
 	      if (error != NO_ERROR)
 		{
 		  if (pt_has_error (parser))
@@ -1054,7 +1054,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 
 	      error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, pt_desired_type, data_type,
-							 d->info.data_default.default_expr_type);
+							 d->info.data_default.default_expr_type, true);
 	      db_value_clear (&src_val);
 	      temp_val->info.value.db_value_is_in_workspace = 0;
 	      parser_free_node (parser, temp_val);
@@ -13131,7 +13131,7 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
     }
 
   error = pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
-					     on_update_expr_type);
+					     on_update_expr_type, true);
 
   if (pt_has_error (parser))
     {
@@ -13299,7 +13299,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       if (def_expr_type == DB_DEFAULT_NONE)
 	{
 	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, attribute->data_type,
-						     def_expr_type);
+						     def_expr_type, true);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_coerce_error;
@@ -13338,7 +13338,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	    }
 
 	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type,
-						     def_expr_type);
+						     def_expr_type, true);
 	  db_value_clear (&src);
 	  temp_val->info.value.db_value_is_in_workspace = 0;
 	  parser_free_node (parser, temp_val);
