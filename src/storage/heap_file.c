@@ -3508,13 +3508,16 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   int error_code = NO_ERROR;
   PERF_UTIME_TRACKER time_find_best_page = PERF_UTIME_TRACKER_INITIALIZER;
 
+  assert (!heap_is_big_length (needed_space));
+  assert (scan_cache == NULL || scan_cache->cache_last_fix_page == false || scan_cache->page_watcher.pgptr == NULL);
+
   PERF_UTIME_TRACKER_START (thread_p, &time_find_best_page);
+
   /*
    * Try to use the space cache for as much information as possible to avoid
    * fetching and updating the header page a lot.
    */
 
-  assert (scan_cache == NULL || scan_cache->cache_last_fix_page == false || scan_cache->page_watcher.pgptr == NULL);
   PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
 
   /*
@@ -3553,8 +3556,6 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
     }
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
-
-  assert (!heap_is_big_length (needed_space));
 
   if (isnew_rec == true)
     {
