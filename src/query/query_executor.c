@@ -998,7 +998,6 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  goto exit_on_error;
 	}
-
       for (i = 0; i < list_id->type_list.type_cnt; i++)
 	{
 	  list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
