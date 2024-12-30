@@ -558,6 +558,11 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
 	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
 	    qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
 
+	  /*
+	   * When returning from SP as a Numeric type,
+	   * we must set the precision and scale of the actual returned value.
+	   * Otherwise, the decimal points will be truncated.
+	   */
 	  if (reg_var_p->value.type == TYPE_SP && reg_var_p->value.domain->type->id == DB_TYPE_NUMERIC)
 	    {
 	      valptr_list_p->valptrp->value.domain->precision =

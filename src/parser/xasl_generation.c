@@ -6691,6 +6691,10 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else
     {
+      /*
+       * To avoid being set to default Numeric, set numeric(any, any) to precision = 0, scale = 0.
+       * TO DO: We need to define a separate type for numeric(any, any) in the future.
+       */
       regu->domain = pt_node_to_db_domain (parser, node, NULL);
       regu->domain->precision = 0;
       regu->domain->scale = 0;
