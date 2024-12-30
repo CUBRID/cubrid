@@ -639,7 +639,7 @@ namespace cubmethod
       if (err == NO_ERROR)
 	{
 	  DB_SET *param_set = db_get_set (&args);
-	  DB_VALUE mode, arg_type;
+	  DB_VALUE mode, arg_type, has_default;
 	  int i;
 	  for (i = 0; i < num_args; i++)
 	    {
@@ -658,8 +658,14 @@ namespace cubmethod
 		      param_info.type = db_get_int (&arg_type);
 		    }
 
+		  if (db_get (arg_mop_p, SP_ATTR_DEFAULT_VALUE, &has_default) == NO_ERROR)
+		    {
+		      param_info.has_default = DB_IS_NULL (&has_default) ? 0 : 1;
+		    }
+
 		  pr_clear_value (&mode);
 		  pr_clear_value (&arg_type);
+		  pr_clear_value (&has_default);
 		  pr_clear_value (&temp);
 		}
 	      else

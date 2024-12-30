@@ -35,6 +35,10 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclParamOut extends DeclParam {
 
+    public boolean hasDefault() {
+        return false; // OUT and INOUT parameter may not have a default value
+    }
+
     public final boolean alsoIn;
 
     @Override
