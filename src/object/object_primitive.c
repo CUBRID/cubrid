@@ -1663,7 +1663,7 @@ PR_TYPE tp_Vector = {
   NULL,
   mr_freemem_set,
   NULL,
-  NULL,
+  NULL
 };
 
 PR_TYPE *tp_Type_vector = &tp_Vector;
