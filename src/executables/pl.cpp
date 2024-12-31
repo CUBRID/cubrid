@@ -245,33 +245,33 @@ main (int argc, char *argv[])
     /* javasp command main routine */
     if (command.compare ("start") == 0)
       {
-	status = pl_start_server (pl_info, db_name, pathname);
+	(void) pl_start_server (pl_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
 	    command = "running";
-	    pl_read_info (db_name.c_str(), running_info);
-	    do
-	      {
-#if defined (WINDOWS)
-		DWORD parent_ppid = GetCurrentProcessId();
-		HANDLE hParent = OpenProcess (SYNCHRONIZE, FALSE, parent_ppid);
-		DWORD result = WaitForSingleObject (hParent, INFINITE);
-		CloseHandle (hParent);
-		if (result == WAIT_OBJECT_0)
-		  {
-		    ExitProcess (0);
-		  }
-#else
-		if (getppid () == 1)
-		  {
-		    // parent process is terminated
-		    break;
-		  }
-#endif
-		sleep (1);
-	      }
-	    while (true);
 	  }
+	pl_read_info (db_name.c_str(), running_info);
+	do
+	  {
+#if defined (WINDOWS)
+	    DWORD parent_ppid = GetCurrentProcessId();
+	    HANDLE hParent = OpenProcess (SYNCHRONIZE, FALSE, parent_ppid);
+	    DWORD result = WaitForSingleObject (hParent, INFINITE);
+	    CloseHandle (hParent);
+	    if (result == WAIT_OBJECT_0)
+	      {
+		ExitProcess (0);
+	      }
+#else
+	    if (getppid () == 1)
+	      {
+		// parent process is terminated
+		break;
+	      }
+#endif
+	    sleep (1);
+	  }
+	while (true);
       }
     else if (command.compare ("stop") == 0)
       {
@@ -414,24 +414,23 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 #endif
       er_clear (); // clear error before string JVM
       status = pl_start_jvm_server (db_name.c_str (), path.c_str (), pl_get_port_param ());
-      if (status == NO_ERROR)
-	{
-	  PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };
 
-	  pl_unlink_info (db_name.c_str ());
-	  if ((pl_open_info_dir () && pl_write_info (db_name.c_str (), pl_new_info)))
-	    {
-	      /* succeed */
-	    }
-	  else
-	    {
-	      /* failed to write info file */
-	      char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
-	      pl_get_info_file (info_path, PATH_MAX, db_name.c_str ());
-	      snprintf (err_msg, sizeof (err_msg), "Error while writing to file: (%s)", info_path);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
-	      status = ER_SP_CANNOT_START_JVM;
-	    }
+      int port = (status == NO_ERROR) ? pl_server_port () : PL_PORT_DISABLED;
+      PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };
+
+      pl_unlink_info (db_name.c_str ());
+      if ((pl_open_info_dir () && pl_write_info (db_name.c_str (), pl_new_info)))
+	{
+	  /* succeed */
+	}
+      else
+	{
+	  /* failed to write info file */
+	  char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
+	  pl_get_info_file (info_path, PATH_MAX, db_name.c_str ());
+	  snprintf (err_msg, sizeof (err_msg), "Error while writing to file: (%s)", info_path);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
+	  status = ER_SP_CANNOT_START_JVM;
 	}
     }
 
@@ -508,6 +507,10 @@ pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
 
 	  pl_dump_status (stdout, status_info);
 	}
+    }
+  else
+    {
+      fprintf (stdout, "Java Stored Procedure Server (%s, pid %d) - Abnormal State \n", db_name.c_str (), pl_info.pid);
     }
 
 exit:
