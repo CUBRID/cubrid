@@ -379,6 +379,11 @@ namespace cubpl
       }
 
     // re-initialize connection pool
+    if (m_manager->get_connection_pool ()->get_db_port () != PL_PORT_UDS_MODE)
+      {
+	// set the port number possibly randomly assigned in TCP mode
+	m_manager->get_connection_pool ()->set_db_port (pl_server_port_from_info ());
+      }
     m_manager->get_connection_pool ()->increment_epoch ();
 
     m_monitor_cv.notify_all();
