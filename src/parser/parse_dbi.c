@@ -2677,6 +2677,9 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_SEQUENCE:
       pt_type = PT_TYPE_SEQUENCE;
       break;
+    case DB_TYPE_VECTOR:
+      pt_type = PT_TYPE_VECTOR;
+      break;
 
     case DB_TYPE_CHAR:
       pt_type = PT_TYPE_CHAR;
