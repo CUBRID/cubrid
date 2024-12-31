@@ -564,19 +564,6 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
 	      goto exit_with_status;
 	    }
 
-	  /*
-	   * When returning from SP as a Numeric type,
-	   * we must set the precision and scale of the actual returned value.
-	   * Otherwise, the decimal points will be truncated.
-	   */
-	  if (reg_var_p->value.type == TYPE_SP && reg_var_p->value.domain->type->id == DB_TYPE_NUMERIC)
-	    {
-	      valptr_list_p->valptrp->value.domain->precision =
-		tuple_desc_p->f_valp[tuple_desc_p->f_cnt]->domain.numeric_info.precision;
-	      valptr_list_p->valptrp->value.domain->scale =
-		tuple_desc_p->f_valp[tuple_desc_p->f_cnt]->domain.numeric_info.scale;
-	    }
-
 	  /* Set clear_f_val_at_clone_decache to avoid memory issues */
 	  assert (tuple_desc_p->clear_f_val_at_clone_decache != NULL);
 	  if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
@@ -6538,6 +6525,11 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		}
 	      else if (regu_var_p->type == TYPE_SP && val_type == DB_TYPE_NUMERIC)
 		{
+		  /*
+		   * When returning from SP as a Numeric type,
+		   * we must set the precision and scale of the actual returned value.
+		   * Otherwise, the decimal points will be truncated.
+		   */
 		  regu_var_p->domain->precision = peek_value_p->domain.numeric_info.precision;
 		  regu_var_p->domain->scale = peek_value_p->domain.numeric_info.scale;
 		}
