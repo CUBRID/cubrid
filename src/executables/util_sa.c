@@ -1576,6 +1576,11 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       goto print_diag_usage;
     }
 
+  if (diag != DIAGDUMP_HEAP && fname != NULL)
+    {
+      goto print_diag_usage;
+    }
+
   if (check_database_name (db_name))
     {
       goto error_exit;
