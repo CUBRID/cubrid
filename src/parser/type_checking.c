@@ -251,8 +251,6 @@ static bool pt_is_explicit_coerce_allowed_for_default_value (PARSER_CONTEXT * pa
 static int pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 				     PT_TYPE_ENUM desired_type, PT_NODE * data_type, bool check_string_precision,
 				     bool implicit_coercion);
-static int pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-				     PT_NODE * data_type);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int generic_func_casecmp (const void *a, const void *b);
 static void init_generic_funcs (void);
@@ -19421,10 +19419,12 @@ pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
  *   desired_type(in): the desired type of the coerced result
  *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
  *   default_expr_type(in): default expression identifier
+ *   check_string_precision(in): true, if needs to consider string precision
  */
 int
 pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-				   PT_NODE * data_type, DB_DEFAULT_EXPR_TYPE default_expr_type)
+				   PT_NODE * data_type, DB_DEFAULT_EXPR_TYPE default_expr_type,
+				   bool check_string_precision)
 {
   bool implicit_coercion;
 
@@ -19440,7 +19440,8 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
       implicit_coercion = true;
     }
 
-  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, true, implicit_coercion);
+  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, check_string_precision,
+				   implicit_coercion);
 }
 
 /*

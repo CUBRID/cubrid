@@ -234,9 +234,11 @@ extern "C"
 
   extern int pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
 			      PT_NODE * elem_type_list);
+  extern int pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
+				       PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list);
   extern int pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 						PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list,
-						DB_DEFAULT_EXPR_TYPE default_expr_type);
+						DB_DEFAULT_EXPR_TYPE default_expr_type, bool check_string_precision);
   extern PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_type, int p, int s,
 					PT_NODE * desired_dt);
   extern PT_NODE *pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM set_type,

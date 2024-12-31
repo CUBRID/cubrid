@@ -45,16 +45,25 @@ public class PlParamInfo {
     public int prec;
     public short scale;
     public byte charset;
+    public boolean hasDefault;
 
     public Value value;
 
-    public PlParamInfo(String name, byte mode, int type, int prec, short scale, byte charset) {
+    public PlParamInfo(
+            String name,
+            byte mode,
+            int type,
+            int prec,
+            short scale,
+            byte charset,
+            boolean hasDefault) {
         this.name = name;
         this.mode = mode;
         this.type = type;
         this.prec = prec;
         this.scale = scale;
         this.charset = charset;
+        this.hasDefault = hasDefault;
         this.value = new NullValue();
     }
 
@@ -66,6 +75,7 @@ public class PlParamInfo {
         this.prec = unpacker.unpackInt();
         this.scale = (short) unpacker.unpackInt();
         this.charset = (byte) unpacker.unpackInt();
+        this.hasDefault = (unpacker.unpackInt() != 0);
 
         int has_value = unpacker.unpackInt();
         if (has_value == 1) {
