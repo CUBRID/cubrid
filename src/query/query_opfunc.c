@@ -558,6 +558,12 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
 	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
 	    qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
 
+	  if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
+	    {
+	      status = QPROC_TPLDESCR_FAILURE;
+	      goto exit_with_status;
+	    }
+
 	  /*
 	   * When returning from SP as a Numeric type,
 	   * we must set the precision and scale of the actual returned value.
@@ -569,12 +575,6 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
 		tuple_desc_p->f_valp[tuple_desc_p->f_cnt]->domain.numeric_info.precision;
 	      valptr_list_p->valptrp->value.domain->scale =
 		tuple_desc_p->f_valp[tuple_desc_p->f_cnt]->domain.numeric_info.scale;
-	    }
-
-	  if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
-	    {
-	      status = QPROC_TPLDESCR_FAILURE;
-	      goto exit_with_status;
 	    }
 
 	  /* Set clear_f_val_at_clone_decache to avoid memory issues */
@@ -6527,7 +6527,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 	      assert ((dom_type == DB_TYPE_OID) || (dom_type == DB_TYPE_VOBJ));
 	    }
 	  else if (val_type != dom_type
-		   || (val_type == DB_TYPE_NUMERIC && regu_var_p->type != TYPE_SP
+		   || (val_type == DB_TYPE_NUMERIC
 		       && (peek_value_p->domain.numeric_info.precision != regu_var_p->domain->precision
 			   || peek_value_p->domain.numeric_info.scale != regu_var_p->domain->scale)))
 	    {
@@ -6535,6 +6535,11 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		{
 		  /* do not cast at here, is handled at analytic function evaluation later */
 		  ;
+		}
+	      else if (regu_var_p->type == TYPE_SP && val_type == DB_TYPE_NUMERIC)
+		{
+		  regu_var_p->domain->precision = peek_value_p->domain.numeric_info.precision;
+		  regu_var_p->domain->scale = peek_value_p->domain.numeric_info.scale;
 		}
 	      else
 		{
