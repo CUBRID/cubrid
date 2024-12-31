@@ -7589,25 +7589,23 @@ remove_appended_trigger_evaluate (char *trigger_stmt_str, int with_evaluate)
       return NULL;
     }
 
-  remove_eval_suffix_len = strlen (trigger_stmt_str) - strlen (remove_eval_prefix);
-  if (remove_eval_suffix_len > (size_t) strlen (trigger_stmt_str))
-    {
-      assert (remove_eval_suffix_len < (size_t) strlen (trigger_stmt_str));
-      return NULL;
-    }
-
   if (with_evaluate)
     {
       p = strstr (trigger_stmt_str, remove_eval_prefix);
-      if (p != NULL)
-	{
-	  p = (char *) memmove (p, p + strlen (remove_eval_prefix), remove_eval_suffix_len + 1);
-	}
-      else
+      if (p == NULL)
 	{
 	  assert (p != NULL);
 	  return NULL;
 	}
+
+      remove_eval_suffix_len = strlen (p) - strlen (remove_eval_prefix);
+      if (remove_eval_suffix_len > (size_t) strlen (p))
+	{
+	  assert (0);
+	  return NULL;
+	}
+
+      p = (char *) memmove (p, p + strlen (remove_eval_prefix), remove_eval_suffix_len + 1);
 
       if (p[remove_eval_suffix_len - 1] == ')')
 	{
