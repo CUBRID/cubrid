@@ -517,7 +517,8 @@ namespace cubmethod
 	    DB_MARKER *marker = db_get_input_markers (db_session, 1);
 	    if (marker)
 	      {
-		/* The following markers_cnt is unreliable: it does not match the actual number of markers sometimes (CBRD-25606)
+		/* The following way of getting markers_cnt is unreliable:
+		 *      it does not match the actual number of markers sometimes (CBRD-25606)
 		 * TODO: figure out why.
 
 		int markers_cnt = parser->host_var_count + parser->auto_param_count;
@@ -543,7 +544,7 @@ namespace cubmethod
 		      {
 			error = ER_FAILED;
 			semantics.sql_type = error;
-			semantics.rewritten_query = "internal error: a host variable marker index is out of range";
+			semantics.rewritten_query = "internal error: a host variable marker index is out of valid range";
 			break;
 		      }
 
