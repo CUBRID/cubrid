@@ -3224,6 +3224,19 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
   return NO_ERROR;
 }
 
+void
+session_notify_pl_task_completion (const void *session_arg)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *session = (SESSION_STATE *) session_arg;
+
+  if (session && session->pl_session_p)
+    {
+      session->pl_session_p->notify_waiting_stacks ();
+    }
+#endif
+}
+
 /* 
  * session_stop_attached_threads - stops extra attached threads (not connection worker thread)
  *                                 associated with the session
