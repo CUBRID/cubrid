@@ -9542,15 +9542,6 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
       return error;
     }
 
-  if (default_value_node->info.data_default.default_expr_type != DB_DEFAULT_NONE)
-    {
-      PT_ERRORmf (parser,
-		  default_value_node->info.data_default.default_value,
-		  MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
-		  pt_short_print (parser, default_value_node->info.data_default.default_value));
-    }
-  else
     {
       PT_NODE *dummy = parser_new_node (parser, PT_VALUE);
       error =
