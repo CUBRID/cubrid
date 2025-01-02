@@ -1746,9 +1746,7 @@
 
 #define ER_AU_OWNER_ONLY_GRANT_PRIVILEGE            -1365
 
-#define ER_SP_PARAM_DEFAULT_STR_TOO_BIG             -1366
-
-#define ER_LAST_ERROR                               -1367
+#define ER_LAST_ERROR                               -1366
 
 
 
