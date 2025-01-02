@@ -334,7 +334,7 @@ namespace cubpl
   void
   server_monitor_task::wait_for_ready ()
   {
-    auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING; };
+    auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING || m_state == SERVER_MONITOR_STATE_FAILED_TO_CONNECT; };
 
     std::unique_lock<std::mutex> ulock (m_monitor_mutex);
     m_monitor_cv.wait (ulock, pred);
