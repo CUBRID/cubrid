@@ -2839,11 +2839,11 @@ is_pl_running (const char *server_name)
     }
 }
 
+#define WAIT_TIMEOUT_CUB_PL  (10)
 static int
 process_pl_restart (const char *db_name, bool suppress_message)
 {
   int status = NO_ERROR;
-  static const int wait_timeout = 10;
   int waited_secs = 0;
 
   if (!suppress_message)
@@ -2903,7 +2903,7 @@ process_pl_restart (const char *db_name, bool suppress_message)
 
 	  waited_secs++;
 	}
-      while (status != NO_ERROR && waited_secs < wait_timeout);
+      while (status != NO_ERROR && waited_secs < WAIT_TIMEOUT_CUB_PL);
     }
 
   if (!suppress_message)
@@ -2918,8 +2918,6 @@ static int
 process_pl_status (const char *db_name)
 {
   int status = NO_ERROR;
-
-  static const int wait_timeout = 10;
   int waited_secs = 0;
   UTIL_PL_SERVER_STATUS_E pl_status;
 
@@ -2952,7 +2950,7 @@ process_pl_status (const char *db_name)
       sleep (1);
       waited_secs++;
     }
-  while (status != NO_ERROR && waited_secs < wait_timeout);
+  while (status != NO_ERROR && waited_secs < WAIT_TIMEOUT_CUB_PL);
 
   if (status != NO_ERROR)
     {

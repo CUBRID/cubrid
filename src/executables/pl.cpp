@@ -132,7 +132,6 @@ get_ppid (DWORD &ppid)
   pe32.dwSize = sizeof (PROCESSENTRY32);
   if (Process32First (h_proc_snap, &pe32))
     {
-      DWORD Code = 0;
       DWORD pid = GetCurrentProcessId();
       do
 	{
