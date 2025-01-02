@@ -412,6 +412,10 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
       /* create a new session */
       setsid ();
 #endif
+
+      /* reload environment variables */
+
+
       er_clear (); // clear error before string JVM
       status = pl_start_jvm_server (db_name.c_str (), path.c_str (), pl_get_port_param ());
 
@@ -469,51 +473,63 @@ pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
   int status = NO_ERROR;
   cubmem::block buffer;
 
-  cubpl::connection_pool connection_pool (1, db_name, pl_info.port, true);
-  cubpl::connection_view cv = connection_pool.claim ();
-  if (cv->is_valid())
+  if (pl_info.pid == -1 || is_terminated_process (pl_info.pid))
     {
-      cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_STATUS, 0);
-      status = cv->send_buffer_args (header);
-      if (status != NO_ERROR)
-	{
-	  goto exit;
-	}
-
-      status = cv->receive_buffer (buffer);
-      if (status != NO_ERROR)
-	{
-	  goto exit;
-	}
-
-      if (status == NO_ERROR)
-	{
-	  int num_args = 0;
-	  PL_STATUS_INFO status_info;
-
-	  status_info.pid = pl_info.pid;
-
-	  packing_unpacker unpacker (buffer.ptr, buffer.dim);
-
-	  unpacker.unpack_int (status_info.port);
-	  unpacker.unpack_string (status_info.db_name);
-	  unpacker.unpack_int (num_args);
-	  std::string arg;
-	  for (int i = 0; i < num_args; i++)
-	    {
-	      unpacker.unpack_string (arg);
-	      status_info.vm_args.push_back (arg);
-	    }
-
-	  pl_dump_status (stdout, status_info);
-	}
+      goto exit;
     }
-  else
+
+  {
+    cubpl::connection_pool connection_pool (1, db_name, pl_info.port, true);
+    cubpl::connection_view cv = connection_pool.claim ();
+    if (cv->is_valid())
+      {
+	cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_STATUS, 0);
+	status = cv->send_buffer_args (header);
+	if (status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	status = cv->receive_buffer (buffer);
+	if (status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	if (status == NO_ERROR)
+	  {
+	    int num_args = 0;
+	    PL_STATUS_INFO status_info;
+
+	    status_info.pid = pl_info.pid;
+
+	    packing_unpacker unpacker (buffer.ptr, buffer.dim);
+
+	    unpacker.unpack_int (status_info.port);
+	    unpacker.unpack_string (status_info.db_name);
+	    unpacker.unpack_int (num_args);
+	    std::string arg;
+	    for (int i = 0; i < num_args; i++)
+	      {
+		unpacker.unpack_string (arg);
+		status_info.vm_args.push_back (arg);
+	      }
+
+	    pl_dump_status (stdout, status_info);
+	  }
+      }
+    else
+      {
+	status = ER_GENERIC_ERROR;
+      }
+  }
+
+exit:
+  if (status != NO_ERROR)
     {
       fprintf (stdout, "Java Stored Procedure Server (%s, pid %d) - Abnormal State \n", db_name.c_str (), pl_info.pid);
     }
 
-exit:
   if (buffer.ptr)
     {
       free_and_init (buffer.ptr);
