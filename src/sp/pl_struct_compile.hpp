@@ -128,6 +128,7 @@ namespace cubpl
     int precision;
     int scale;
     int charset;
+    int has_default;
 
     DB_VALUE value; // only for auto parameterized
   };
