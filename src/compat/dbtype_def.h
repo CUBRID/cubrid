@@ -581,6 +581,10 @@ extern "C"
 /* This constant indicates that the system defined default for scale is to be used for a DB_VALUE. */
 #define DB_DEFAULT_SCALE -1
 
+/* This constant indecates that NUMERIC(*,*) means NUMERIC(any,any) */
+#define DB_NUMERIC_PRECISION_ANY 0
+#define DB_NUMERIC_SCALE_ANY 0
+
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_PRECISION 15
 
