@@ -246,10 +246,9 @@ main (int argc, char *argv[])
     if (command.compare ("start") == 0)
       {
 	(void) pl_start_server (pl_info, db_name, pathname);
-	if (status == NO_ERROR)
-	  {
-	    command = "running";
-	  }
+
+	command = "running";
+        
 	pl_read_info (db_name.c_str(), running_info);
 	do
 	  {
