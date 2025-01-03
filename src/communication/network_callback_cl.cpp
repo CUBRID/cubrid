@@ -45,13 +45,14 @@ xs_get_conn_info (int idx)
 int
 xs_queue_send ()
 {
+  int error = NO_ERROR;
   int depth = tran_get_libcas_depth () - 1;
   int rc = xs_get_conn_info (depth);
 
   if (!xs_get_data_queue().empty())
     {
       cubmem::extensible_block &blk = xs_get_data_queue().front ();
-      int error = net_client_send_data (net_client_get_server_host(), rc, blk.get_ptr (), blk.get_size());
+      error = net_client_send_data (net_client_get_server_host(), rc, blk.get_ptr (), blk.get_size());
       xs_get_data_queue().pop ();
     }
 
