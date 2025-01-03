@@ -76,6 +76,24 @@ namespace cubpl
     m_stack_handler_id.erase (handler_id);
   }
 
+  void
+  execution_stack::reset_query_handlers ()
+  {
+    if (m_stack_handler_id.empty ())
+      {
+	// do nothing
+	return;
+      }
+
+    set_cs_command (METHOD_REQUEST_END);
+    std::vector<int> handler_vec (m_stack_handler_id.begin (), m_stack_handler_id.end ());
+    send_data_to_client (handler_vec);
+    m_stack_handler_id.clear ();
+
+    // restore to callback mode
+    set_cs_command (METHOD_REQUEST_CALLBACK);
+  }
+
   int
   execution_stack::add_cursor (QUERY_ID query_id, bool oid_included)
   {

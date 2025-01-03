@@ -107,6 +107,7 @@ namespace cubpl
       /* query handler */
       void add_query_handler (int handler_id);
       void remove_query_handler (int handler_id);
+      void reset_query_handlers ();
 
       const std::unordered_set <int> *get_stack_query_handler () const;
       const std::unordered_set <std::uint64_t> *get_stack_cursor () const;
@@ -163,7 +164,13 @@ namespace cubpl
       }
 
       void
-      set_command (int command)
+      set_cs_command (int command)
+      {
+	m_client_header.command = command;
+      }
+
+      void
+      set_java_command (int command)
       {
 	m_java_header.command = command;
       }

@@ -290,6 +290,8 @@ namespace cubpl
       }
 
 exit:
+    m_stack->reset_query_handlers ();
+
     // restore execution rights
     change_exec_rights (NULL);
 
@@ -324,7 +326,7 @@ exit:
     SESSION_ID sid = get_session ()->get_id ();
     TRANID tid = m_stack->get_tran_id ();
 
-    m_stack->set_command (SP_CODE_INVOKE);
+    m_stack->set_java_command (SP_CODE_INVOKE);
 
     // get changed session parameters
     const std::vector<sys_param> &session_params = get_session ()->obtain_session_parameters (true);
