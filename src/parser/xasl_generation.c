@@ -67,6 +67,7 @@
 #include "jsp_cl.h"
 #include "subquery_cache.h"
 #include "pl_signature.hpp"
+#include "sp_catalog.hpp"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -27637,7 +27638,21 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	    }
 	  break;
 	case TYPE_SP:
+	  /* The value of regu_src->value.sp_ptr->sig->is_deterministic is interpreted as follows
+	   * 0: PT_AUTHID_OWNER + PT_NOT_DETERMINISTIC
+	   * 1: PT_AUTHID_CALLER + PT_NOT_DETERMINISTIC
+	   * 2: PT_AUTHID_OWNER + PT_DETERMINISTIC
+	   * 3: PT_AUTHID_CALLER + PT_DETERMINISTIC
+	   */
+#if defined (CS_MODE)
+	  if (regu_src->value.sp_ptr->sig->is_deterministic == false)
+	    {
+	      return ER_FAILED;
+	    }
+#endif
+
 	  regu_var_list_p = regu_src->value.sp_ptr->args;
+
 	  while (regu_var_list_p)
 	    {
 	      regu_src = &regu_var_list_p->value;
