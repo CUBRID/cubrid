@@ -2551,12 +2551,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = pl_server_init (db_name);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
   /*
    * Initialize system locale using values from db_root system table
    */
@@ -2719,6 +2713,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   error_code = serial_initialize_cache_pool (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  error_code = pl_server_init (db_name);
   if (error_code != NO_ERROR)
     {
       goto error;
