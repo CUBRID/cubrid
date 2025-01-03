@@ -91,5 +91,9 @@ extern int session_set_load_session (THREAD_ENTRY * thread_p, load_session * loa
 extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr));
 
 extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr));
+#if defined (SERVER_MODE)
+extern void session_notify_pl_task_completion (const struct session_state *session_arg);
+#endif
+
 extern void session_stop_attached_threads (void *session);
 #endif /* _SESSION_H_ */

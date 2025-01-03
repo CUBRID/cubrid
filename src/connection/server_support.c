@@ -2781,6 +2781,8 @@ css_server_task::execute (context_type &thread_ref)
   pthread_mutex_lock (&thread_ref.tran_index_lock);
   (void) css_internal_request_handler (thread_ref, m_conn);
 
+  (void) session_notify_pl_task_completion (session_p);
+
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }

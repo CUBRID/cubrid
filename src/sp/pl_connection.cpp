@@ -146,6 +146,12 @@ namespace cubpl
     return m_db_port;
   }
 
+  void
+  connection_pool::set_db_port (int port)
+  {
+    m_db_port = port;
+  }
+
   bool
   connection_pool::is_system_pool () const
   {
@@ -398,8 +404,18 @@ namespace cubpl
   connection::do_handle_network_error (int nbytes)
   {
     (void) invalidate ();
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-    return er_errid ();
+
+    if (m_pool->is_system_pool ())
+      {
+	// Do not set error message for system pool
+	// To avoid noise in the error log
+	return ER_SP_NETWORK_ERROR;
+      }
+    else
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	return er_errid ();
+      }
   }
 
 } // namespace cubpl
