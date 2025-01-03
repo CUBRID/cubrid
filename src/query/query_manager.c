@@ -70,14 +70,6 @@ extern int method_Num_method_jsp_calls;
 /* We have two valid types of membuf used by temporary file. */
 #define QMGR_IS_VALID_MEMBUF_TYPE(m)    ((m) == TEMP_FILE_MEMBUF_NORMAL || (m) == TEMP_FILE_MEMBUF_KEY_BUFFER)
 
-enum qmgr_page_type
-{
-  QMGR_UNKNOWN_PAGE,
-  QMGR_MEMBUF_PAGE,
-  QMGR_TEMP_FILE_PAGE
-};
-typedef enum qmgr_page_type QMGR_PAGE_TYPE;
-
 /*
  *       		     ALLOCATION STRUCTURES
  *
@@ -141,7 +133,6 @@ QMGR_QUERY_TABLE qmgr_Query_table = { NULL, 0, NULL,
 static struct drand48_data qmgr_rand_buf;
 #endif
 
-static QMGR_PAGE_TYPE qmgr_get_page_type (PAGE_PTR page_p, QMGR_TEMP_FILE * temp_file_p);
 static bool qmgr_is_allowed_result_cache (QUERY_FLAG flag);
 static bool qmgr_can_get_from_cache (QUERY_FLAG flag);
 static bool qmgr_can_get_result_from_cache (QUERY_FLAG flag);
@@ -181,38 +172,6 @@ static QMGR_TEMP_FILE *qmgr_get_temp_file_from_list (QMGR_TEMP_FILE_LIST * temp_
 static void qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p);
 
 static int copy_bind_value_to_tdes (THREAD_ENTRY * thread_p, int num_bind_vals, DB_VALUE * bind_vals);
-
-/*
- * qmgr_get_page_type () -
- *
- *   return: QMGR_PAGE_TYPE
- *
- *   page_p(in):
- *   temp_file_p(in):
- */
-static QMGR_PAGE_TYPE
-qmgr_get_page_type (PAGE_PTR page_p, QMGR_TEMP_FILE * temp_file_p)
-{
-  PAGE_PTR begin_page = NULL, end_page = NULL;
-
-  if (temp_file_p != NULL && temp_file_p->membuf_last >= 0 && temp_file_p->membuf && page_p >= temp_file_p->membuf[0]
-      && page_p <= temp_file_p->membuf[temp_file_p->membuf_last])
-    {
-      return QMGR_MEMBUF_PAGE;
-    }
-
-  begin_page = (PAGE_PTR) ((PAGE_PTR) temp_file_p->membuf
-			   + DB_ALIGN (sizeof (PAGE_PTR) * temp_file_p->membuf_npages, MAX_ALIGNMENT));
-  end_page = begin_page + temp_file_p->membuf_npages * DB_PAGESIZE;
-  if (begin_page <= page_p && page_p <= end_page)
-    {
-      /* defense code */
-      assert (false);
-      return QMGR_UNKNOWN_PAGE;
-    }
-
-  return QMGR_TEMP_FILE_PAGE;
-}
 
 bool
 qmgr_is_allowed_result_cache (QUERY_FLAG flag)
@@ -2467,77 +2426,52 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
 /*
  * qmgr_free_old_page () -
  *   return:
- *   page_ptr(in)       :
- *   tfile_vfidp(in)    :
+ *   page_ptr(in):
  */
 void
-qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, QMGR_TEMP_FILE * tfile_vfid_p)
+qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 {
-  QMGR_PAGE_TYPE page_type;
+  FILEIO_PAGE *io_page_p;
 
   if (page_p == NULL)
-    {
-      assert (0);
-      return;
-    }
-  if (tfile_vfid_p == NULL)
-    {
-      pgbuf_unfix (thread_p, page_p);
-      return;
-    }
-
-  page_type = qmgr_get_page_type (page_p, tfile_vfid_p);
-  if (page_type == QMGR_UNKNOWN_PAGE)
     {
       assert (false);
       return;
     }
 
-  if (page_type == QMGR_TEMP_FILE_PAGE)
+  CAST_PGPTR_TO_IOPGPTR (io_page_p, page_p);
+
+  if (io_page_p->prv.ptype != PAGE_MEMORY)
     {
-      /* The list files came from list file cache have no tfile_vfid_p. */
       pgbuf_unfix (thread_p, page_p);
     }
-#if defined (SERVER_MODE)
-  else
-    {
-      assert (page_type == QMGR_MEMBUF_PAGE);
-    }
-#endif
 }
 
 /*
  * qmgr_set_dirty_page () -
  *   return:
- *   page_ptr(in)       :
- *   free_page(in)      :
- *   addrp(in)  :
- *   tfile_vfidp(in)    :
+ *   page_ptr(in):
+ *   free_page(in):
  */
 void
-qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page, LOG_DATA_ADDR * addr_p,
-		     QMGR_TEMP_FILE * tfile_vfid_p)
+qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page)
 {
-  QMGR_PAGE_TYPE page_type;
+  FILEIO_PAGE *io_page_p;
 
-  page_type = qmgr_get_page_type (page_p, tfile_vfid_p);
-  if (page_type == QMGR_UNKNOWN_PAGE)
+  if (page_p == NULL)
     {
       assert (false);
       return;
     }
 
-  if (page_type == QMGR_TEMP_FILE_PAGE)
+  CAST_PGPTR_TO_IOPGPTR (io_page_p, page_p);
+
+  if (io_page_p->prv.ptype != PAGE_MEMORY)
     {
-      log_skip_logging (thread_p, addr_p);
+      LOG_DATA_ADDR addr = { NULL, page_p, -1 };
+      log_skip_logging (thread_p, &addr);
       pgbuf_set_dirty (thread_p, page_p, free_page);
     }
-#if defined (SERVER_MODE)
-  else if (free_page == (int) FREE)
-    {
-      assert (page_type == QMGR_MEMBUF_PAGE);
-    }
-#endif
 }
 
 /*
@@ -2565,10 +2499,19 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
   /* first page, return memory buffer instead real temp file page */
   if (tfile_vfid_p->membuf != NULL && tfile_vfid_p->membuf_last < tfile_vfid_p->membuf_npages - 1)
     {
-      vpid_p->volid = NULL_VOLID;
-      vpid_p->pageid = ++(tfile_vfid_p->membuf_last);
+      FILEIO_PAGE *io_page_p;
+
+      tfile_vfid_p->membuf_last++;
+
       page_p = tfile_vfid_p->membuf[tfile_vfid_p->membuf_last];
       qfile_init_page_header (page_p);
+
+      CAST_PGPTR_TO_IOPGPTR (io_page_p, page_p);
+      fileio_initialize_res (thread_p, io_page_p, IO_PAGESIZE);
+      io_page_p->prv.ptype = PAGE_MEMORY;
+      io_page_p->prv.volid = vpid_p->volid = NULL_VOLID;
+      io_page_p->prv.pageid = vpid_p->pageid = tfile_vfid_p->membuf_last;
+
       return page_p;
     }
 
@@ -2661,12 +2604,13 @@ qmgr_allocate_tempfile_with_buffer (int num_buffer_pages)
 {
   size_t size;
   QMGR_TEMP_FILE *tempfile_p;
+  FILEIO_PAGE *io_page_p;
   PAGE_PTR page_p;
   int i;
 
   size = DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT);
   size += DB_ALIGN (sizeof (PAGE_PTR) * num_buffer_pages, MAX_ALIGNMENT);
-  size += DB_PAGESIZE * num_buffer_pages;
+  size += IO_PAGESIZE * num_buffer_pages;
 
   tempfile_p = (QMGR_TEMP_FILE *) malloc (size);
   if (tempfile_p == NULL)
@@ -2675,15 +2619,16 @@ qmgr_allocate_tempfile_with_buffer (int num_buffer_pages)
       return NULL;
     }
 
-  memset (tempfile_p, 0x00, sizeof (QMGR_TEMP_FILE));
+  memset (tempfile_p, 0, sizeof (QMGR_TEMP_FILE));
 
-  tempfile_p->membuf = (PAGE_PTR *) ((PAGE_PTR) tempfile_p + DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT));
-  page_p = (PAGE_PTR) ((PAGE_PTR) tempfile_p->membuf + DB_ALIGN (sizeof (PAGE_PTR) * num_buffer_pages, MAX_ALIGNMENT));
+  tempfile_p->membuf = (PAGE_PTR *) ((char *) tempfile_p + DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT));
+  io_page_p =
+    (FILEIO_PAGE *) ((char *) tempfile_p->membuf + DB_ALIGN (sizeof (PAGE_PTR) * num_buffer_pages, MAX_ALIGNMENT));
 
   for (i = 0; i < num_buffer_pages; i++)
     {
-      tempfile_p->membuf[i] = page_p;
-      page_p += DB_PAGESIZE;
+      tempfile_p->membuf[i] = io_page_p->page;
+      io_page_p = (FILEIO_PAGE *) ((char *) io_page_p + IO_PAGESIZE);
     }
 
   /* initialize tempfile_p */

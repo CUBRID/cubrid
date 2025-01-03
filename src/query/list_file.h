@@ -119,9 +119,6 @@ extern int qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_
 					    QFILE_TUPLE_POSITION * tuple_pos);
 extern int qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, PAGE_PTR ovfl_tpl_pg,
 					     QFILE_LIST_ID * input_list_id);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int qfile_get_first_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
-#endif /* ENABLE_UNUSED_FUNCTION */
 STATIC_INLINE void qfile_init_page_header (PAGE_PTR page_p) __attribute__ ((ALWAYS_INLINE));
 
 /* Copy routines */
