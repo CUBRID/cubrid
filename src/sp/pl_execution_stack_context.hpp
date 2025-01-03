@@ -119,7 +119,13 @@ namespace cubpl
       bool m_transaction_control;
 
       template <typename ... Args>
-      int send_data_to_client (const xs_callback_func &func, Args &&... args)
+      int send_data_to_client (Args &&... args)
+      {
+	return xs_callback_send_no_receive (m_thread_p, m_client_header, std::forward<Args> (args)...);
+      }
+
+      template <typename ... Args>
+      int send_data_to_client_recv (const xs_callback_func &func, Args &&... args)
       {
 	return xs_callback_send_and_receive (m_thread_p, func, m_client_header, std::forward<Args> (args)...);
       }
