@@ -65,7 +65,7 @@ int xs_callback_send_args (cubthread::entry *thread_p, Args &&... args)
 }
 
 template <typename ... Args>
-int xs_callback_send_and_no_receive (cubthread::entry *thread_p, Args &&... args)
+int xs_callback_send_no_receive (cubthread::entry *thread_p, Args &&... args)
 {
   return xs_callback_send_args (thread_p, std::forward<Args> (args)...);
 }
