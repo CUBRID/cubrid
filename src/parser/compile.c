@@ -1061,7 +1061,6 @@ change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, int w
   assert (parser != NULL || statement != NULL);
 
   save_custom = parser->custom_print;
-
   parser->flag.is_parsing_trigger = 1;
 
   result = parser_print_tree_with_quotes (parser, statement);
@@ -1069,29 +1068,11 @@ change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, int w
   parser->flag.is_parsing_trigger = 0;
   parser->custom_print = save_custom;
 
+  /* remove appended trigger evaluate info */
+  result = remove_appended_trigger_evaluate (result, with_evaluate);
   if (result == NULL)
     {
       return NULL;
-    }
-
-  /* remove appended trigger evaluate info */
-  if (with_evaluate)
-    {
-      char *p = NULL;
-      const char *remove_eval_prefix = "evaluate (";
-      size_t remove_eval_suffix_len;
-
-      p = strstr (result, remove_eval_prefix);
-      if (p != NULL)
-	{
-	  p = (char *) memmove (p, p + strlen (remove_eval_prefix), strlen (p) - strlen (remove_eval_prefix) + 1);
-	}
-
-      remove_eval_suffix_len = strlen (p);
-      if (remove_eval_suffix_len > 0 && p[remove_eval_suffix_len - 1] == ')')
-	{
-	  p[remove_eval_suffix_len - 1] = '\0';
-	}
     }
 
   result_len = strlen (result) + 1;
@@ -1121,19 +1102,20 @@ change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, int w
  *   class_op(in): class name to resolve name1 and name2 to
  *   name1(in): name to resolve
  *   name2(in): name to resolve
+ *   new_trigger_stmt(in):
+ *   with_evaluate(in):
  *
  */
 
 PT_NODE *
 pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_OBJECT * class_op, const char *name1,
-			 const char *name2, char **new_trigger_stmt)
+			 const char *name2, char **new_trigger_stmt, int with_evaluate)
 {
   char *stmt_str = NULL;
   const char *class_name;
   PT_NODE **statement_p, *statement;
   int is_update_object;
   PT_NODE *err_node;
-  int with_evaluate;
 
   assert (parser != NULL || !*new_trigger_stmt);
 
@@ -1240,7 +1222,6 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
   if (pt_has_error (parser))
     {
       err_node = pt_get_errors (parser);
-      with_evaluate = strstr (trigger_stmt, "EVALUATE ( ") != NULL ? true : false;
       while (err_node)
 	{
 	  remove_appended_trigger_info (err_node->info.error_msg.error_message, with_evaluate);
@@ -1253,18 +1234,15 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
     {
       char *new_trigger_stmt_str = NULL;
 
-      with_evaluate = strstr (trigger_stmt, "EVALUATE ( ") != NULL ? true : false;
-
       new_trigger_stmt_str =
 	change_trigger_action_query (parser, statement->info.scope.stmt->info.trigger_action.expression, with_evaluate);
       if (new_trigger_stmt_str == NULL)
 	{
+	  assert (new_trigger_stmt_str != NULL);
 	  return NULL;
 	}
 
-      free_and_init (*new_trigger_stmt);
-      *new_trigger_stmt = strdup (new_trigger_stmt_str);
-      free_and_init (new_trigger_stmt_str);
+      *new_trigger_stmt = new_trigger_stmt_str;
 
       statement->info.scope.stmt->info.trigger_action.expression =
 	mq_translate (parser, statement->info.scope.stmt->info.trigger_action.expression);

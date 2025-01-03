@@ -1669,7 +1669,7 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 
       activity->statement =
 	pt_compile_trigger_stmt ((PARSER_CONTEXT *) activity->parser, text, class_mop, curname, tempname,
-				 &activity->source);
+				 &activity->source, with_evaluate);
       if (activity->statement == NULL || pt_has_error ((PARSER_CONTEXT *) activity->parser))
 	{
 	  error = er_errid ();
