@@ -315,6 +315,9 @@ IDL       [a-zA-Z0-9_]
 [dD][eE][sS][cC]							{ begin_token(yytext);   return DESC; }
 [dD][eE][sS][cC][rR][iI][bB][eE]					{ begin_token(yytext);   return DESCRIBE; }
 [dD][eE][sS][cC][rR][iI][pP][tT][oO][rR]				{ begin_token(yytext);   return DESCRIPTOR; }
+[dD][eE][tT][eE][rR][mM][iI][nN][iI][sS][tT][iI][cC]			{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return DETERMINISTIC; }
 [dD][iI][aA][gG][nN][oO][sS][tT][iI][cC][sS]				{ begin_token(yytext);   return DIAGNOSTICS; }
 [dD][iI][fF][fF][eE][rR][eE][nN][cC][eE]				{ begin_token(yytext);   return DIFFERENCE_; }
 [dD][iI][sS][cC][oO][nN][nN][eE][cC][tT]				{ begin_token(yytext);   return DISCONNECT; }
@@ -722,8 +725,8 @@ IDL       [a-zA-Z0-9_]
 [oO][vV][eE][rR]							{ begin_token(yytext);	 return OVER; }
 [oO][vV][eE][rR][lL][aA][pP][sS]					{ begin_token(yytext);   return OVERLAPS; }
 [oO][wW][nN][eE][rR]							{ begin_token(yytext);
-																		csql_yylval.cptr = pt_makename(yytext);
-																		return OWNER; }
+										csql_yylval.cptr = pt_makename(yytext);
+										return OWNER; }
 [pP][aA][gG][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PAGE; }

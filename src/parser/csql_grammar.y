@@ -662,6 +662,7 @@ static int g_plcsql_text_pos;
 %type <number> deduplicate_key_mod_level
 %type <number> opt_index_with_clause_no_online
 %type <number> opt_authid
+%type <number> opt_deterministic
 /*}}}*/
 
 /* define rule type (node) */
@@ -1101,7 +1102,7 @@ static int g_plcsql_text_pos;
 %type <c2> class_name_with_server_name
 %type <c2> opt_index_with_clause
 %type <c2> index_with_item_list
-
+%type <c2> opt_authid_and_deterministic
 
 /*}}}*/
 
@@ -1553,6 +1554,7 @@ static int g_plcsql_text_pos;
 %token <cptr> DECREMENT
 %token <cptr> DEFINER
 %token <cptr> DENSE_RANK
+%token <cptr> DETERMINISTIC
 %token <cptr> DONT_REUSE_OID
 %token <cptr> ELT
 %token <cptr> EMPTY
@@ -3073,12 +3075,17 @@ create_stmt
 		}
 	  procedure_or_function_name_without_dot        /* 5 */
 	  opt_sp_param_list	                        /* 6 */
-          opt_authid                                    /* 7 */
+          opt_authid_and_deterministic                  /* 7 */
 	  is_or_as pl_language_spec		        /* 8, 9 */
 	  opt_comment_spec				/* 10 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace PROCEDURE~);
-			PT_NODE *node = parser_pop_hint_node ();
+			if (TO_NUMBER (CONTAINER_AT_1 ($7)) != NULL)
+                          {
+                            push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE);
+                          }
+
+                        PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
                             PT_NODE* body = $9;
@@ -3104,7 +3111,11 @@ create_stmt
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_PROCEDURE;
-                            node->info.sp.auth_id = $7;
+			    node->info.sp.auth_id = (int) TO_NUMBER(CONTAINER_AT_0($7));
+                            if (node->info.sp.auth_id == NULL)
+                              {
+                                node->info.sp.auth_id = PT_AUTHID_OWNER;
+                              }
 			    node->info.sp.param_list = $6;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
 			    node->info.sp.ret_data_type = NULL;
@@ -3128,7 +3139,7 @@ create_stmt
 	  procedure_or_function_name_without_dot        /* 5 */
 	  opt_sp_param_list	                        /* 6 */
 	  RETURN sp_return_type		                /* 7, 8 */
-          opt_authid                                    /* 9 */
+          opt_authid_and_deterministic                  /* 9 */
 	  is_or_as pl_language_spec		        /* 10, 11 */
 	  opt_comment_spec				/* 12 */
 		{ pop_msg(); }
@@ -3159,7 +3170,16 @@ create_stmt
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_FUNCTION;
-                            node->info.sp.auth_id = $9;
+                            node->info.sp.auth_id = (int) TO_NUMBER(CONTAINER_AT_0($9));
+                            if (node->info.sp.auth_id == NULL)
+                              {
+                                node->info.sp.auth_id = PT_AUTHID_OWNER;
+                              }
+                            node->info.sp.dtrm_type = (int) TO_NUMBER(CONTAINER_AT_1($9));
+                            if (node->info.sp.dtrm_type == NULL)
+                              {
+                                node->info.sp.dtrm_type = PT_NOT_DETERMINISTIC;
+                              }
 			    node->info.sp.param_list = $6;
 			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
 			    node->info.sp.ret_data_type = CONTAINER_AT_1($8);
@@ -12832,26 +12852,80 @@ sp_return_type
         ;
 
 opt_authid
-        : /* empty */
-          {{ $$ = PT_AUTHID_OWNER; }}
-        | AUTHID DEFINER
-          {{ $$ = PT_AUTHID_OWNER; }}
+        : AUTHID DEFINER
+                {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID DEFINER);
+                        $$ = PT_AUTHID_OWNER; 
+                DBG_PRINT}}
         | AUTHID OWNER
-          {{ $$ = PT_AUTHID_OWNER; }}
+                {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID OWNER);
+                        $$ = PT_AUTHID_OWNER; 
+                DBG_PRINT}}
         | AUTHID CALLER
-          {{ $$ = PT_AUTHID_CALLER; }}
+                {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID CALLER);
+                        $$ = PT_AUTHID_CALLER; 
+                DBG_PRINT}}
         | AUTHID CURRENT_USER
-          {{ $$ = PT_AUTHID_CALLER; }}
+                {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID CURRENT_USER);
+                        $$ = PT_AUTHID_CALLER; 
+                DBG_PRINT}}
+        ;
+
+opt_deterministic
+        : NOT DETERMINISTIC
+                {{ DBG_TRACE_GRAMMAR(opt_deterministic, : NOT DETERMINISTIC);
+                        $$ = PT_NOT_DETERMINISTIC; 
+                DBG_PRINT}}
+        | DETERMINISTIC
+                {{ DBG_TRACE_GRAMMAR(opt_deterministic, : DETERMINISTIC);
+                        $$ = PT_DETERMINISTIC; 
+                DBG_PRINT}}
+        ;
+
+opt_authid_and_deterministic
+        : /* empty */
+		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : abcde);
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, NULL);
+			$$ = ctn;
+		DBG_PRINT}}
+        | opt_authid opt_deterministic
+		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_authid opt_deterministic);
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), FROM_NUMBER($2));
+			$$ = ctn;
+		DBG_PRINT}}
+        | opt_deterministic opt_authid
+		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_deterministic opt_authid);
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER($2), FROM_NUMBER($1));
+			$$ = ctn;
+		DBG_PRINT}}
+        | opt_authid
+		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_authid);
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), NULL);
+			$$ = ctn;
+		DBG_PRINT}}
+        | opt_deterministic
+		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_deterministic);
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER($1));
+			$$ = ctn;
+		DBG_PRINT}}
         ;
 
 is_or_as
-	: IS
-	| AS
+	: IS          
+                { DBG_TRACE_GRAMMAR(is_or_as, : IS); DBG_PRINT}
+	| AS          
+                { DBG_TRACE_GRAMMAR(is_or_as, : AS); DBG_PRINT}
 	;
 
 opt_lang_plcsql
-        : /* empty */
+        : /* empty */          
+                { DBG_TRACE_GRAMMAR(opt_lang_plcsql, : ); DBG_PRINT}
         | LANGUAGE PLCSQL
+                { DBG_TRACE_GRAMMAR(opt_lang_plcsql, : LANGUAGE PLCSQL); DBG_PRINT}
         ;
 
 pl_language_spec
@@ -23217,6 +23291,7 @@ identifier
 	| DEFINER                {{ DBG_TRACE_GRAMMAR(identifier, | DEFINER            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
        	| DEDUPLICATE_           {{ DBG_TRACE_GRAMMAR(identifier, | DEDUPLICATE_       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 	
         | DENSE_RANK             {{ DBG_TRACE_GRAMMAR(identifier, | DENSE_RANK         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | DETERMINISTIC          {{ DBG_TRACE_GRAMMAR(identifier, | DETERMINISTIC      ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DISK_SIZE              {{ DBG_TRACE_GRAMMAR(identifier, | DISK_SIZE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DONT_REUSE_OID         {{ DBG_TRACE_GRAMMAR(identifier, | DONT_REUSE_OID     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ELT                    {{ DBG_TRACE_GRAMMAR(identifier, | ELT                ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}

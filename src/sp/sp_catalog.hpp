@@ -130,6 +130,7 @@ enum sp_directive : int
 {
   SP_DIRECTIVE_RIGHTS_OWNER = 0x00,
   SP_DIRECTIVE_RIGHTS_CALLER = (0x01 << 0),
+  SP_DIRECTIVE_DETERMINISTIC = (0x01 << 1),
 };
 typedef sp_directive SP_DIRECTIVE_ENUM;
 

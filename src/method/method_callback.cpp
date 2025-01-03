@@ -499,17 +499,64 @@ namespace cubmethod
 		semantics.columns.emplace_back (c_info);
 	      }
 
-	    int markers_cnt = parser->host_var_count + parser->auto_param_count;
-	    DB_MARKER *marker = db_get_input_markers (db_session, 1);
-
-	    if (markers_cnt > 0)
+	    // into variable
+	    char **external_into_label = db_session->parser->external_into_label;
+	    if (external_into_label)
 	      {
+		for (int i = 0; i < db_session->parser->external_into_label_cnt; i++)
+		  {
+		    semantics.into_vars.push_back (external_into_label[i]);
+		    free (external_into_label[i]);
+		  }
+		free (external_into_label);
+	      }
+	    db_session->parser->external_into_label = NULL;
+	    db_session->parser->external_into_label_cnt = 0;
+
+	    // host/automatic variables
+	    DB_MARKER *marker = db_get_input_markers (db_session, 1);
+	    if (marker)
+	      {
+		/* The following way of getting markers_cnt is unreliable:
+		 *      it does not match the actual number of markers sometimes (CBRD-25606)
+		 * TODO: figure out why.
+
+		int markers_cnt = parser->host_var_count + parser->auto_param_count;
+
+		 * Instead, we count the actual number of markers as follows.
+		*/
+		int markers_cnt = 0;
+		DB_MARKER *marker_save = marker;
+		do
+		  {
+		    markers_cnt++;
+		    marker = db_marker_next (marker);
+		  }
+		while (marker);
+		marker = marker_save;
+
 		semantics.hvs.resize (markers_cnt);
 
-		while (marker)
+		do
 		  {
 		    int idx = marker->info.host_var.index;
+		    if (idx >= markers_cnt)
+		      {
+			error = ER_FAILED;
+			semantics.sql_type = error;
+			semantics.rewritten_query = "internal error: a host variable marker index is out of valid range";
+			break;
+		      }
+
+		    if (semantics.hvs[idx].mode != 0)
+		      {
+			error = ER_FAILED;
+			semantics.sql_type = error;
+			semantics.rewritten_query = "internal error: two different host variable markers have the same index";
+			break;
+		      }
 		    semantics.hvs[idx].mode = 1;
+
 		    if (marker->info.host_var.label)
 		      {
 			semantics.hvs[idx].name.assign ((char *) marker->info.host_var.label);
@@ -548,27 +595,11 @@ namespace cubmethod
 
 		    marker = db_marker_next (marker);
 		  }
+		while (marker);
 	      }
-
-	    // into variable
-	    char **external_into_label = db_session->parser->external_into_label;
-	    if (external_into_label)
-	      {
-		for (int i = 0; i < db_session->parser->external_into_label_cnt; i++)
-		  {
-		    semantics.into_vars.push_back (external_into_label[i]);
-		    free (external_into_label[i]);
-		  }
-		free (external_into_label);
-	      }
-	    db_session->parser->external_into_label = NULL;
-	    db_session->parser->external_into_label_cnt = 0;
 	  }
 	else
 	  {
-	    // clear previous infos
-	    semantics_vec.clear ();
-
 	    error = ER_FAILED;
 	    semantics.sql_type = m_error_ctx.get_error ();
 	    semantics.rewritten_query = m_error_ctx.get_error_msg ();
