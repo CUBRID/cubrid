@@ -860,6 +860,9 @@ col_new (long size, int settype)
 	    case DB_TYPE_SEQUENCE:
 	      col->domain = &tp_Sequence_domain;
 	      break;
+	    case DB_TYPE_VECTOR:
+	      col->domain = &tp_Vector_domain;
+	      break;
 	    case DB_TYPE_VOBJ:
 	      col->domain = &tp_Vobj_domain;
 	      break;
@@ -2434,6 +2437,12 @@ DB_COLLECTION *
 set_create_sequence (int size)
 {
   return set_create (DB_TYPE_SEQUENCE, size);
+}
+
+DB_COLLECTION *
+set_create_vector (int size)
+{
+  return set_create (DB_TYPE_VECTOR, size);
 }
 
 DB_COLLECTION *
