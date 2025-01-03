@@ -845,20 +845,26 @@ exit:
       packing_unpacker unpacker (b.ptr, (size_t) b.dim);
 
       int res_code;
-      make_outresult_info info;
-      unpacker.unpack_all (res_code, info);
+      unpacker.unpack_int (res_code);
 
-      const query_result_info &current_result_info = info.qresult_info;
-      query_cursor *cursor = m_stack->get_cursor (current_result_info.query_id);
-      if (cursor)
+      if (res_code == METHOD_RESPONSE_SUCCESS)
 	{
-	  cursor->change_owner (&thread_ref);
-	  return m_stack->send_data_to_java (b);
-	}
-      else
-	{
-	  assert (false);
-	  return ER_FAILED;
+	  make_outresult_info info;
+	  info.unpack (unpacker);
+
+	  const query_result_info &current_result_info = info.qresult_info;
+	  query_cursor *cursor = m_stack->get_cursor (current_result_info.query_id);
+	  if (cursor)
+	    {
+	      cursor->change_owner (&thread_ref);
+	      return m_stack->send_data_to_java (b);
+	    }
+	  else
+	    {
+	      assert (false);
+	      return ER_FAILED;
+	    }
+
 	}
     };
 
