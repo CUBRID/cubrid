@@ -944,7 +944,6 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
 
       if (!DB_IS_NULL (value))
 	{
-	  int precision = db_value_precision (value);
 	  if (TP_IS_CHAR_TYPE (db_value_domain_type (value)))
 	    {
 	      if (db_get_string_size (value) > 255)
