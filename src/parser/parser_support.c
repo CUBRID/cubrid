@@ -10432,12 +10432,13 @@ pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str,
 
   if (default_expr->default_expr_op == T_TO_CHAR)
     {
-      // find next ',' 
-      const char *formatted_string = strchr (&str[curr_idx], ',') + 1;
+      // find next '\''
+      const char *formatted_string = strchr (&str[curr_idx], '\'') + 1;
 
-      // get remaining length before the last ')'
-      int remaining_len = str_size - (formatted_string - &str[curr_idx]);
-      default_expr->default_expr_format = strndup (formatted_string, remaining_len - 1);
+      // get remaining length before the last '\''
+      int remaining_len = strchr (formatted_string, '\'') - formatted_string;
+
+      default_expr->default_expr_format = strndup (formatted_string, remaining_len);
     }
 }
 
