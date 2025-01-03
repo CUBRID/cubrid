@@ -52,6 +52,7 @@
 #include <windows.h>
 #include <process.h>
 #include <io.h>
+#include <tlhelp32.h>
 #endif /* not WINDOWS */
 
 #include "process_util.h"
@@ -113,6 +114,43 @@ static char executable_path[PATH_MAX];
 static std::string command;
 static std::string db_name;
 static PL_SERVER_INFO running_info = PL_SERVER_INFO_INITIALIZER;
+
+#if defined(WINDOWS)
+static bool
+get_ppid (DWORD &ppid)
+{
+  HANDLE h_proc_snap;
+  PROCESSENTRY32 pe32;
+
+  /* Take a snapshot of all processes in the system. */
+  h_proc_snap = CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS, 0);
+  if (h_proc_snap == INVALID_HANDLE_VALUE)
+    {
+      return false;
+    }
+
+  pe32.dwSize = sizeof (PROCESSENTRY32);
+  if (Process32First (h_proc_snap, &pe32))
+    {
+      DWORD pid = GetCurrentProcessId();
+      do
+	{
+	  if (pe32.th32ProcessID != pid)
+	    {
+	      continue;
+	    }
+	  CloseHandle (h_proc_snap);
+
+	  ppid = pe32.th32ParentProcessID;
+	  return true;
+	}
+      while (Process32Next (h_proc_snap, &pe32));
+    }
+
+  CloseHandle (h_proc_snap);
+  return false;
+}
+#endif
 
 /*
  * main() - javasp main function
@@ -253,13 +291,21 @@ main (int argc, char *argv[])
 	    do
 	      {
 #if defined (WINDOWS)
-		DWORD parent_ppid = GetCurrentProcessId();
-		HANDLE hParent = OpenProcess (SYNCHRONIZE, FALSE, parent_ppid);
-		DWORD result = WaitForSingleObject (hParent, INFINITE);
+		DWORD parent_ppid = 0;
+		HANDLE hParent;
+		DWORD result;
+
+		if (get_ppid (parent_ppid) == false)
+		  {
+		    break;// parent process is terminated
+		  }
+
+		hParent = OpenProcess (SYNCHRONIZE, FALSE, parent_ppid);
+		result = WaitForSingleObject (hParent, INFINITE);
 		CloseHandle (hParent);
 		if (result == WAIT_OBJECT_0)
 		  {
-		    ExitProcess (0);
+		    break;// parent process is terminated
 		  }
 #else
 		if (getppid () == 1)
@@ -419,7 +465,7 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 	  PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };
 
 	  pl_unlink_info (db_name.c_str ());
-	  if ((pl_open_info_dir () && pl_write_info (db_name.c_str (), pl_new_info)))
+	  if ((pl_open_info_dir () && pl_write_info (db_name.c_str (), &pl_new_info)))
 	    {
 	      /* succeed */
 	    }
