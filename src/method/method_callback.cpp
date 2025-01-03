@@ -455,6 +455,68 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Compile
 //////////////////////////////////////////////////////////////////////////
+
+  static bool
+  is_supported_dbtype (const DB_TYPE type)
+  {
+    bool res = false;
+    switch (type)
+      {
+      case DB_TYPE_INTEGER:
+      case DB_TYPE_SHORT:
+      case DB_TYPE_BIGINT:
+      case DB_TYPE_FLOAT:
+      case DB_TYPE_DOUBLE:
+      case DB_TYPE_MONETARY:
+      case DB_TYPE_NUMERIC:
+      case DB_TYPE_CHAR:
+      case DB_TYPE_NCHAR:
+      case DB_TYPE_VARNCHAR:
+      case DB_TYPE_STRING:
+      case DB_TYPE_DATE:
+      case DB_TYPE_TIME:
+      case DB_TYPE_TIMESTAMP:
+      case DB_TYPE_DATETIME:
+      case DB_TYPE_SET:
+      case DB_TYPE_MULTISET:
+      case DB_TYPE_SEQUENCE:
+      case DB_TYPE_OID:
+      case DB_TYPE_OBJECT:
+      case DB_TYPE_RESULTSET:
+      case DB_TYPE_NULL:
+	res = true;
+	break;
+      // unsupported types
+      case DB_TYPE_BIT:
+      case DB_TYPE_VARBIT:
+      case DB_TYPE_TABLE:
+      case DB_TYPE_BLOB:
+      case DB_TYPE_CLOB:
+      case DB_TYPE_TIMESTAMPTZ:
+      case DB_TYPE_TIMESTAMPLTZ:
+      case DB_TYPE_DATETIMETZ:
+      case DB_TYPE_DATETIMELTZ:
+      case DB_TYPE_JSON:
+      case DB_TYPE_ENUMERATION:
+	res = false;
+	break;
+
+      // obsolete, internal, unused type
+      case DB_TYPE_ELO:
+      case DB_TYPE_VARIABLE:
+      case DB_TYPE_SUB:
+      case DB_TYPE_POINTER:
+      case DB_TYPE_ERROR:
+      case DB_TYPE_VOBJ:
+      case DB_TYPE_DB_VALUE:
+      case DB_TYPE_MIDXKEY:
+      default:
+	assert (false);
+	break;
+      }
+    return res;
+  }
+
   int
   callback_handler::get_sql_semantics (packing_unpacker &unpacker)
   {
@@ -611,6 +673,27 @@ namespace cubmethod
 	if (error != NO_ERROR)
 	  {
 	    break;
+	  }
+      }
+
+    for (sql_semantics &s : semantics_vec)
+      {
+	for (const cubpl::pl_parameter_info &hv : s.hvs)
+	  {
+	    if (is_supported_dbtype ((DB_TYPE) hv.type) == false)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1, pr_type_name ((DB_TYPE) hv.type));
+	      }
+	  }
+
+	if (er_errid () != NO_ERROR)
+	  {
+	    s.columns.clear ();
+	    s.hvs.clear ();
+	    s.into_vars.clear ();
+
+	    error = s.sql_type = er_errid ();
+	    s.rewritten_query = er_msg ();
 	  }
       }
 

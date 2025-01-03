@@ -228,7 +228,7 @@ public class ExecuteThread extends Thread {
                         if (throwable instanceof SQLException) {
                             String msg = throwable.getMessage();
                             if (msg == null) {
-                                msg = "";
+                                msg = "Unexpected sql error";
                             }
                             sendError(msg);
                         } else if (throwable instanceof PlcsqlRuntimeError) {
@@ -249,7 +249,7 @@ public class ExecuteThread extends Thread {
                         } else {
                             String msg = throwable.getMessage();
                             if (msg == null) {
-                                msg = "";
+                                msg = "Unexpected internal error";
                             }
                             sendError(msg);
                         }
