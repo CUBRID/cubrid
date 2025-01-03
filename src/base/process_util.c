@@ -374,7 +374,7 @@ is_terminated_process (const int pid)
 #if defined(WINDOWS)
   HANDLE h_process;
 
-  h_process = OpenProcess (PROCESS_QUERY_INFORMATION, FALSE, pid);
+  h_process = OpenProcess (PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
   if (h_process == NULL)
     {
       return true;

@@ -161,7 +161,10 @@ public class Context {
                                                     ClassLoaderManager.getDynamicPath()))
                             != 0) {
                 oldClassLoader = new ContextClassLoader();
-                methodCache.clear();
+
+                if (methodCache != null) {
+                    methodCache.clear();
+                }
             }
             clear();
             tranactionId = tid;
