@@ -1960,6 +1960,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 328 오직 후행 기본 인수만 허용합니다: '%1$s' 에서 유효하지 않음.
 329 %1$s에 대해 GRANT 옵션을 부여할 수 없습니다.
 
+330 저장 프로시저/함수 인자 디폴트 값의 문자열 표현은 255자를 넘을 수 없습니다.
+
+
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

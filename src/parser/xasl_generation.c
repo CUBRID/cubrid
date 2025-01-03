@@ -67,6 +67,7 @@
 #include "jsp_cl.h"
 #include "subquery_cache.h"
 #include "pl_signature.hpp"
+#include "sp_catalog.hpp"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -6684,7 +6685,21 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   regu->type = TYPE_SP;
-  regu->domain = pt_xasl_node_to_domain (parser, node);
+
+  if (node->type_enum != PT_TYPE_NUMERIC)
+    {
+      regu->domain = pt_xasl_node_to_domain (parser, node);
+    }
+  else
+    {
+      /*
+       * To avoid being set to default Numeric, set numeric(any,any) to precision = 0, scale = 0.
+       * TO DO: We need to define a separate type for numeric(any,any) in the future.
+       */
+      regu->domain = pt_node_to_db_domain (parser, node, NULL);
+      regu->domain->precision = DB_NUMERIC_PRECISION_ANY;
+      regu->domain->scale = DB_NUMERIC_SCALE_ANY;
+    }
 
   return regu;
 }
@@ -27623,7 +27638,21 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	    }
 	  break;
 	case TYPE_SP:
+	  /* The value of regu_src->value.sp_ptr->sig->is_deterministic is interpreted as follows
+	   * 0: PT_AUTHID_OWNER + PT_NOT_DETERMINISTIC
+	   * 1: PT_AUTHID_CALLER + PT_NOT_DETERMINISTIC
+	   * 2: PT_AUTHID_OWNER + PT_DETERMINISTIC
+	   * 3: PT_AUTHID_CALLER + PT_DETERMINISTIC
+	   */
+#if defined (CS_MODE)
+	  if (regu_src->value.sp_ptr->sig->is_deterministic == false)
+	    {
+	      return ER_FAILED;
+	    }
+#endif
+
 	  regu_var_list_p = regu_src->value.sp_ptr->args;
+
 	  while (regu_var_list_p)
 	    {
 	      regu_src = &regu_var_list_p->value;
