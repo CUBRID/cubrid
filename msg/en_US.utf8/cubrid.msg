@@ -1961,6 +1961,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 328 Only trailing default parameter is allowed: invalid at '%1$s'.
 329 Grant option is not allowed for %1$s.
 
+330 String representation of a default value of a Stored procedure/function parameter may not exceed 255 characters.
+
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

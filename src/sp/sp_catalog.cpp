@@ -115,9 +115,11 @@ static int sp_builtin_init ()
   a.arg_name = "s";
   a.data_type = DB_TYPE_INTEGER;
   a.mode = SP_MODE_IN;
+  db_make_int (&a.default_value, 20000); // Oracle compatibility
   a.comment  = "";
 
   v.args.push_back (a);
+  pr_clear_value (&a.default_value);
 
   //
   sp_builtin_definition.push_back (v);

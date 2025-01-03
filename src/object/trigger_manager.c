@@ -125,8 +125,8 @@ static const char *OLD_REFERENCE_NAME = "old";
  * Currently, the evaluate grammar must have parens surrounding the expression.
  */
 
-static const char *EVAL_PREFIX = "EVALUATE ( ";
-static const char *EVAL_SUFFIX = " ) ";
+const char *EVAL_PREFIX = "EVALUATE ( ";
+const char *EVAL_SUFFIX = " ) ";
 
 const char *TR_CLASS_NAME = "db_trigger";
 const char *TR_ATT_UNIQUE_NAME = "unique_name";
@@ -7569,3 +7569,53 @@ tr_downcase_all_trigger_info (void)
   return ((mop == NULL) ? NO_ERROR : ER_FAILED);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * remove_appended_trigger_evaluate () - remove appended trigger evaluate
+ *   trigger_stmt_str(in/out):
+ *   with_evaluate(in):
+ */
+char *
+remove_appended_trigger_evaluate (char *trigger_stmt_str, int with_evaluate)
+{
+  size_t remove_eval_suffix_len;
+  /* while performing the query rewrite, the characters “EVALUATE” are changed to lowercase. */
+  const char *remove_eval_prefix = "evaluate (";
+  char *p = NULL;
+
+  if (trigger_stmt_str == NULL)
+    {
+      assert (trigger_stmt_str != NULL);
+      return NULL;
+    }
+
+  if (with_evaluate)
+    {
+      p = strstr (trigger_stmt_str, remove_eval_prefix);
+      if (p == NULL)
+	{
+	  assert (p != NULL);
+	  return NULL;
+	}
+
+      remove_eval_suffix_len = strlen (p) - strlen (remove_eval_prefix);
+      if (remove_eval_suffix_len > (size_t) strlen (p))
+	{
+	  assert (0);
+	  return NULL;
+	}
+
+      p = (char *) memmove (p, p + strlen (remove_eval_prefix), remove_eval_suffix_len + 1);
+
+      if (p[remove_eval_suffix_len - 1] == ')')
+	{
+	  p[remove_eval_suffix_len - 1] = '\0';
+	}
+      else
+	{
+	  return NULL;
+	}
+    }
+
+  return trigger_stmt_str;
+}
