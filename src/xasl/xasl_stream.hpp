@@ -94,7 +94,7 @@ template <typename T>
 static void stx_alloc_array (THREAD_ENTRY *thread_p, T *&ptr, std::size_t count);
 
 template <typename T>
-void stx_restore (THREAD_ENTRY *thread_p, char *&ptr, T *&target);
+static void stx_restore (THREAD_ENTRY *thread_p, char *&ptr, T *&target);
 
 //////////////////////////////////////////////////////////////////////////
 // Template and inline implementation
