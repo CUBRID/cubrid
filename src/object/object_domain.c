@@ -5000,62 +5000,144 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
  *    return: NO_ERROR or error code.
  *    src(in): string DB_VALUE
  *    result(out): vector DB_VALUE
+ * Note:
+ *    Accepts strings that are not null terminated. Don't call this unless
+ *    src is a string db_value.
  */
 static int
 tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
 {
   const char *p = db_get_string (src);
+  const char *end = p + db_get_string_size (src);
   int count = 0;
   char number_buffer[64];
   int buffer_idx;
   float float_array[2000];
-  DB_SET *vec;
+  DB_SET *vec = NULL;
   DB_VALUE e_val;
-  int status = NO_ERROR;
+  INTL_CODESET codeset = db_get_string_codeset (src);
 
-  // Skip opening bracket
-  while (*p && (*p == '[' || isspace (*p)))
+  if (p == NULL)
     {
+      return ER_FAILED;
+    }
+
+  // Skip leading spaces and opening bracket
+  p = (char *) intl_skip_spaces (p, end, codeset);
+  if (p >= end || *p != '[')
+    {
+      return ER_FAILED;
+    }
+  p++;
+
+  while (p < end && count < 2000)
+    {
+      // Skip spaces before number
+      p = (char *) intl_skip_spaces (p, end, codeset);
+      if (p >= end)
+        {
+          return ER_FAILED;
+        }
+
+      // Check for closing bracket
+      if (*p == ']')
+        {
+          break;
+        }
+
+      // Get number into buffer
+      buffer_idx = 0;
+      while (p < end && *p != ',' && *p != ']' && buffer_idx < 63)
+        {
+          if (!isspace (*p))
+            {
+              number_buffer[buffer_idx++] = *p;
+            }
+          p++;
+        }
+
+      if (buffer_idx == 0 || buffer_idx >= 63)
+        {
+          return ER_FAILED;
+        }
+
+      number_buffer[buffer_idx] = '\0';
+
+      // Convert to float
+      char *end_ptr = NULL;
+      errno = 0;
+      float_array[count] = strtof (number_buffer, &end_ptr);
+      
+      if (errno == ERANGE)
+        {
+          return ER_FAILED;
+        }
+
+      if (*end_ptr != '\0')
+        {
+          return ER_FAILED;
+        }
+
+      count++;
+
+      // Skip spaces after number
+      p = (char *) intl_skip_spaces (p, end, codeset);
+      if (p >= end)
+        {
+          return ER_FAILED;
+        }
+
+      // Must be comma or closing bracket
+      if (*p == ']')
+        {
+          break;
+        }
+      else if (*p != ',')
+        {
+          return ER_FAILED;
+        }
       p++;
     }
 
-  while (*p)
+  // Check for closing bracket
+  if (p >= end || *p != ']')
     {
-      // Get number into buffer
-      buffer_idx = 0;
-      while (*p && *p != ',' && *p != ']')
-	{
-	  if (!isspace (*p))
-	    {
-	      number_buffer[buffer_idx++] = *p;
-	    }
-	  p++;
-	}
-      number_buffer[buffer_idx] = '\0';
+      return ER_FAILED;
+    }
+  p++;
 
-      // Convert to float and store
-      float_array[count++] = atof (number_buffer);
-
-      // Skip comma and spaces
-      while (*p && (*p == ',' || isspace (*p)))
-	{
-	  p++;
-	}
-
-      if (*p == ']')
-	break;
+  // Skip trailing spaces
+  p = (char *) intl_skip_spaces (p, end, codeset);
+  if (p != end)
+    {
+      return ER_FAILED;
     }
 
-  // create empty vector
+  if (count == 0)
+    {
+      return ER_FAILED;
+    }
+
+  // Create vector and populate it
   vec = db_vec_create (NULL, NULL, 0);
+  if (vec == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
   db_make_vector (result, vec);
 
   for (int i = 0; i < count; ++i)
     {
       db_make_float (&e_val, float_array[i]);
-      db_seq_put (db_get_set (result), i, &e_val);
+      if (db_seq_put (db_get_set (result), i, &e_val) != NO_ERROR)
+        {
+          return ER_FAILED;
+        }
     }
-  return status;
+
+  return NO_ERROR;
 }
 
 /*
@@ -9197,15 +9279,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  {
-	    // step 1. convert string to float array
-	    // float temp_float_array[] = {111.456f, 222.456f, 333.456f};
-	    // float *float_arr = temp_float_array;
-	    // int float_arr_size = 3;
 
-
-	    int float_arr_size = tp_str_to_vector (src, target);
-
-	    // step 2. iterate over float and put float elements
+	    err = tp_str_to_vector (src, target);
 	    break;
 
 	  }
