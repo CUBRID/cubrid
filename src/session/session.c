@@ -873,9 +873,8 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
       return ER_SES_SESSION_EXPIRED;
     }
 
-  /* update session active time & is_keep_session */
+  /* update session active time */
   session_p->active_time = time (NULL);
-  session_p->is_keep_session = false;
 
 #if defined (SERVER_MODE)
 #if !defined (NDEBUG)
@@ -1631,6 +1630,27 @@ session_set_row_count (THREAD_ENTRY * thread_p, const int row_count)
 #endif
 
   state_p->row_count = row_count;
+
+  return NO_ERROR;
+}
+
+/*
+ * session_set_is_keep_session () - set the is_keep_session flag for a session
+ * return : NO_ERROR or error code
+ * thread_p (in) : thread that identifies the session
+ * is_keep_session (in) : whether to keep the session
+ */
+int
+session_set_is_keep_session (THREAD_ENTRY * thread_p, bool is_keep_session)
+{
+  SESSION_STATE *state_p = NULL;
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  state_p->is_keep_session = is_keep_session;
 
   return NO_ERROR;
 }

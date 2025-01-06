@@ -70,6 +70,12 @@ xsession_end_session (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_keep
   return session_state_destroy (thread_p, id, is_keep_session);
 }
 
+int
+xsession_set_is_keep_session (THREAD_ENTRY * thread_p, bool is_keep_session)
+{
+  return session_set_is_keep_session (thread_p, is_keep_session);
+}
+
 /*
  *  xsession_set_row_count () - set the count of affected rows for the
  *				    session associated to thread_p

@@ -51,6 +51,7 @@ extern int session_begin_insert_values (THREAD_ENTRY * thread_p);
 extern int session_set_trigger_state (THREAD_ENTRY * thread_p, bool is_trigger);
 extern int session_get_row_count (THREAD_ENTRY * thread_p, int *row_count);
 extern int session_set_row_count (THREAD_ENTRY * thread_p, const int row_count);
+extern int session_set_is_keep_session (THREAD_ENTRY * thread_p, bool is_keep_session);
 extern int session_get_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARAM ** session_parameters);
 extern int session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARAM * session_parameters);
 extern int session_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1,

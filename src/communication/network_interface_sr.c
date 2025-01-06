@@ -8880,7 +8880,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
 
   if (id == DB_EMPTY_SESSION
       || memcmp (server_session_key, xboot_get_server_session_key (), SERVER_SESSION_KEY_SIZE) != 0
-      || xsession_check_session (thread_p, id) != NO_ERROR)
+      || (error = xsession_check_session (thread_p, id)) != NO_ERROR)
     {
       /* not an error yet */
       er_clear ();
@@ -8890,6 +8890,10 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
 	{
 	  (void) return_error_to_client (thread_p, rid);
 	}
+    }
+  else if (error == NO_ERROR)
+    {
+      xsession_set_is_keep_session (thread_p, false);
     }
 
   /* get row count */
