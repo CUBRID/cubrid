@@ -5,12 +5,14 @@ import java.util.List;
 
 public class ExecuteInfo {
 
+    public int handleId;
     public int numAffected;
     public QueryResultInfo qresultInfo = null;
     public List<ColumnInfo> columnInfos = null;
     public CallInfo callInfo = null;
 
     public ExecuteInfo(CUBRIDUnpacker unpacker) {
+        handleId = unpacker.unpackInt();
         numAffected = unpacker.unpackInt();
 
         qresultInfo = new QueryResultInfo(unpacker);
