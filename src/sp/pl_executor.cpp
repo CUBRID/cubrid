@@ -338,6 +338,17 @@ exit:
     return error;
   }
 
+  void
+  executor::handle_type_resultset (DB_VALUE &returnval)
+  {
+    if (db_value_type (&returnval) == DB_TYPE_RESULTSET)
+      {
+	std::uint64_t query_id = db_get_resultset (&returnval);
+	// qfile_update_qlist_count (thread_p, m_list_id, -1);
+	m_stack->promote_to_session_cursor (query_id);
+      }
+  }
+
   int
   executor::response_invoke_command (DB_VALUE &value)
   {
@@ -419,15 +430,7 @@ exit:
 	value_unpacker.value = &returnval;
 	value_unpacker.unpack (unpacker);
 
-	if (db_value_type (&returnval) == DB_TYPE_RESULTSET)
-	  {
-	    std::uint64_t query_id = db_get_resultset (&returnval);
-	    if (query_id != NULL_QUERY_ID)
-	      {
-		// qfile_update_qlist_count (thread_p, m_list_id, -1);
-		m_stack->promote_to_session_cursor (query_id);
-	      }
-	  }
+	handle_type_resultset (returnval);
 
 	for (int i = 0; i < m_sig.arg.arg_size; i++)
 	  {
@@ -438,6 +441,8 @@ exit:
 		value_unpacker.value = &out_val;
 		value_unpacker.unpack (unpacker);
 		m_out_args.emplace_back (out_val);
+
+		handle_type_resultset (out_val);
 	      }
 	  }
 	return NO_ERROR;
@@ -653,9 +658,10 @@ exit:
 	  int stmt_type = current_result_info.stmt_type;
 	  if (stmt_type == CUBRID_STMT_SELECT)
 	    {
+	      int hid = info.handle_id;
 	      std::uint64_t qid = current_result_info.query_id;
 	      bool is_oid_included = current_result_info.include_oid;
-	      (void) m_stack->add_cursor (qid, is_oid_included);
+	      (void) m_stack->add_cursor (hid, qid, is_oid_included);
 	    }
 	}
 
@@ -864,7 +870,10 @@ exit:
 	      assert (false);
 	      return ER_FAILED;
 	    }
-
+	}
+      else
+	{
+	  return ER_FAILED;
 	}
     };
 

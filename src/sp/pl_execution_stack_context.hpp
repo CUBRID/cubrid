@@ -28,6 +28,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include <unordered_set>
+#include <map>
 
 #include "dbtype_def.h"
 #include "error_manager.h"
@@ -65,6 +66,8 @@ namespace cubpl
       /* resources */
       std::unordered_set <int> m_stack_handler_id;
       std::unordered_set <std::uint64_t> m_stack_cursor_id;
+      std::map <std::uint64_t, int> m_stack_cursor_map;
+
       connection_view m_connection;
 
       /* error */
@@ -98,7 +101,7 @@ namespace cubpl
       std::queue<cubmem::block> &get_data_queue ();
 
       /* resource management */
-      int add_cursor (QUERY_ID query_id, bool oid_included);
+      int add_cursor (int handler_id, QUERY_ID query_id, bool oid_included);
       void remove_cursor (QUERY_ID query_id);
       query_cursor *get_cursor (QUERY_ID query_id);
       void promote_to_session_cursor (QUERY_ID query_id);

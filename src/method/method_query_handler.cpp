@@ -68,7 +68,6 @@ namespace cubmethod
   {
     end_qresult ();
     m_is_occupied = false;
-
   }
 
   query_result::query_result ()
