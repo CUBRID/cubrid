@@ -4098,12 +4098,16 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	error = executor.fetch_args_peek (regu_var->value.sp_ptr->args, vd, obj_oid, tpl);
 	if (error != NO_ERROR)
 	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1,
+		    executor.get_stack ()->get_error_message ().c_str ());
 	    goto exit_on_error;
 	  }
 
 	error = executor.execute (*regu_var->value.sp_ptr->value);
 	if (error != NO_ERROR)
 	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1,
+		    executor.get_stack ()->get_error_message ().c_str ());
 	    goto exit_on_error;
 	  }
 
