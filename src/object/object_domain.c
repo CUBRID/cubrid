@@ -5010,9 +5010,11 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
   const char *p = db_get_string (src);
   const char *end = p + db_get_string_size (src);
   int count = 0;
-  char number_buffer[64];
+  const int number_buffer_size = 64;
+  char number_buffer[number_buffer_size];
   int buffer_idx;
-  float float_array[2000];
+  const int max_vector_size = 2000;
+  float float_array[max_vector_size];
   DB_SET *vec = NULL;
   DB_VALUE e_val;
   INTL_CODESET codeset = db_get_string_codeset (src);
@@ -5030,7 +5032,7 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
     }
   p++;
 
-  while (p < end && count < 2000)
+  while (p < end && count < max_vector_size)
     {
       // Skip spaces before number
       p = (char *) intl_skip_spaces (p, end, codeset);
@@ -5047,7 +5049,7 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
 
       // Get number into buffer
       buffer_idx = 0;
-      while (p < end && *p != ',' && *p != ']' && buffer_idx < 63)
+      while (p < end && *p != ',' && *p != ']' && buffer_idx < number_buffer_size)
 	{
 	  if (!isspace (*p))
 	    {
@@ -5056,7 +5058,7 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
 	  p++;
 	}
 
-      if (buffer_idx == 0 || buffer_idx >= 63)
+      if (buffer_idx == 0 || buffer_idx >= number_buffer_size)
 	{
 
 	  return ER_FAILED;
