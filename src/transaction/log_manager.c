@@ -13606,10 +13606,7 @@ cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * old_v
 static int
 cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 {
-  bool has_user_format = false;
-  bool has_user_lang = false;
   const char *src, *end;
-  char *lang_str = NULL;
   double d;
   char line[1025] = "\0";
   int line_length = 0;
@@ -13619,7 +13616,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 
   /*DATE, TIME */
   DB_VALUE format;
-  DB_VALUE lang_val;
+  DB_VALUE lang_str;
   DB_VALUE result;
   INTL_CODESET format_codeset = LANG_SYS_CODESET;
   const char *date_format = "YYYY-MM-DD";
@@ -13632,8 +13629,9 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
   const char *timestamptz_frmt = "YYYY-MM-DD HH24:MI:SS TZH:TZM";
   const char *timestampltz_frmt = "YYYY-MM-DD HH24:MI:SS TZR";
 
-  lang_set_flag_from_lang (lang_str, has_user_format, has_user_lang, &flag);
-  db_make_int (&lang_val, flag);
+  lang_set_flag_from_lang (NULL, false, false, &flag);
+  db_make_int (&lang_str, flag);
+  db_make_null (&result);
 
   char *ptr = *data_ptr;
 
@@ -13785,7 +13783,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (time_format), time_format,
 		    strlen (time_format), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
-      error_status = db_to_char (new_value, &format, &lang_val, &result, &tp_Char_domain);
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
       if (error_status != NO_ERROR)
 	{
 	  return error_status;
@@ -13805,7 +13803,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (timestamp_frmt), timestamp_frmt,
 		    strlen (timestamp_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
-      error_status = db_to_char (new_value, &format, &lang_val, &result, &tp_Char_domain);
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
       if (error_status != NO_ERROR)
 	{
 	  return error_status;
@@ -13825,7 +13823,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (datetime_frmt), datetime_frmt,
 		    strlen (datetime_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
-      error_status = db_to_char (new_value, &format, &lang_val, &result, &tp_Char_domain);
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
       if (error_status != NO_ERROR)
 	{
 	  return error_status;
@@ -13845,7 +13843,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (timestamptz_frmt), timestamptz_frmt,
 		    strlen (timestamptz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
-      error_status = db_to_char (new_value, &format, &lang_val, &result, &tp_Char_domain);
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
       if (error_status != NO_ERROR)
 	{
 	  return error_status;
@@ -13865,7 +13863,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (datetimetz_frmt), datetimetz_frmt,
 		    strlen (datetimetz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
-      error_status = db_to_char (new_value, &format, &lang_val, &result, &tp_Char_domain);
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
       if (error_status != NO_ERROR)
 	{
 	  return error_status;
@@ -13886,7 +13884,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (timestampltz_frmt), timestampltz_frmt,
 		    strlen (timestampltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
-      error_status = db_to_char (new_value, &format, &lang_val, &result, &tp_Char_domain);
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
       if (error_status != NO_ERROR)
 	{
 	  return error_status;
@@ -13906,7 +13904,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (datetimeltz_frmt), datetimeltz_frmt,
 		    strlen (datetimeltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
-      error_status = db_to_char (new_value, &format, &lang_val, &result, &tp_Char_domain);
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
       if (error_status != NO_ERROR)
 	{
 	  return error_status;
@@ -13926,7 +13924,7 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (date_format), date_format,
 		    strlen (date_format), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
-      error_status = db_to_char (new_value, &format, &lang_val, &result, &tp_Char_domain);
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
       if (error_status != NO_ERROR)
 	{
 	  return error_status;
