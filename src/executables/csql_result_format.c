@@ -1665,9 +1665,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	}
       break;
     case DB_TYPE_VECTOR:
-      result =
-	set_to_string (value, '[', ']',
-		       default_set_profile.max_entries, csql_arg);
+      result = set_to_string (value, '[', ']', default_set_profile.max_entries, csql_arg);
       if (result)
 	{
 	  len = strlen (result);
