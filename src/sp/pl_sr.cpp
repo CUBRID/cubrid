@@ -37,6 +37,7 @@
 #include "thread_entry.hpp"
 #include "thread_looper.hpp"
 #include "thread_daemon.hpp"
+#include "boot_sr.h"
 #else
 #include "dbi.h"
 #include "boot.h"
@@ -352,7 +353,13 @@ namespace cubpl
   void
   server_monitor_task::wait_for_ready ()
   {
-    auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING || m_state == SERVER_MONITOR_STATE_FAILED_TO_CONNECT; };
+#if defined (SERVER_MODE)
+    auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING ||
+					   (!BO_IS_SERVER_RESTARTED () && m_state == SERVER_MONITOR_STATE_FAILED_TO_CONNECT);
+				  };
+#else
+    auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING; };
+#endif
 
     std::unique_lock<std::mutex> ulock (m_monitor_mutex);
     m_monitor_cv.wait (ulock, pred);
