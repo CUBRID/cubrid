@@ -5035,31 +5035,32 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
       // Skip spaces before number
       p = (char *) intl_skip_spaces (p, end, codeset);
       if (p >= end)
-        {
-          return ER_FAILED;
-        }
+	{
+	  return ER_FAILED;
+	}
 
       // Check for closing bracket
       if (*p == ']')
-        {
-          break;
-        }
+	{
+	  break;
+	}
 
       // Get number into buffer
       buffer_idx = 0;
       while (p < end && *p != ',' && *p != ']' && buffer_idx < 63)
-        {
-          if (!isspace (*p))
-            {
-              number_buffer[buffer_idx++] = *p;
-            }
-          p++;
-        }
+	{
+	  if (!isspace (*p))
+	    {
+	      number_buffer[buffer_idx++] = *p;
+	    }
+	  p++;
+	}
 
       if (buffer_idx == 0 || buffer_idx >= 63)
-        {
-          return ER_FAILED;
-        }
+	{
+
+	  return ER_FAILED;
+	}
 
       number_buffer[buffer_idx] = '\0';
 
@@ -5067,35 +5068,35 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
       char *end_ptr = NULL;
       errno = 0;
       float_array[count] = strtof (number_buffer, &end_ptr);
-      
+
       if (errno == ERANGE)
-        {
-          return ER_FAILED;
-        }
+	{
+	  return ER_FAILED;
+	}
 
       if (*end_ptr != '\0')
-        {
-          return ER_FAILED;
-        }
+	{
+	  return ER_FAILED;
+	}
 
       count++;
 
       // Skip spaces after number
       p = (char *) intl_skip_spaces (p, end, codeset);
       if (p >= end)
-        {
-          return ER_FAILED;
-        }
+	{
+	  return ER_FAILED;
+	}
 
       // Must be comma or closing bracket
       if (*p == ']')
-        {
-          break;
-        }
+	{
+	  break;
+	}
       else if (*p != ',')
-        {
-          return ER_FAILED;
-        }
+	{
+	  return ER_FAILED;
+	}
       p++;
     }
 
@@ -5132,9 +5133,9 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
     {
       db_make_float (&e_val, float_array[i]);
       if (db_seq_put (db_get_set (result), i, &e_val) != NO_ERROR)
-        {
-          return ER_FAILED;
-        }
+	{
+	  return ER_FAILED;
+	}
     }
 
   return NO_ERROR;
