@@ -1000,8 +1000,8 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
     }
 
   std::string tmp = s.substr (0, pos1);
-  tmp.erase (tmp.find_last_not_of(" ") + 1); // rtrim
-  tmp.erase (0, tmp.find_first_not_of(" ")); // ltrim
+  tmp.erase (tmp.find_last_not_of (" ") + 1); // rtrim
+  tmp.erase (0, tmp.find_first_not_of (" ")); // ltrim
 
   auto pos2 = tmp.find_last_of ('.');
   if (pos2 == std::string::npos)
