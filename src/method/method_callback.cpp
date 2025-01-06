@@ -1029,14 +1029,9 @@ exit:
 	au_perform_pop_user ();
       }
 
-    if (error == NO_ERROR)
-      {
-	return xs_pack_and_queue (METHOD_RESPONSE_SUCCESS, 1);
-      }
-    else
-      {
-	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, 0);
-      }
+    // no response
+
+    return error;
   }
 
 //////////////////////////////////////////////////////////////////////////

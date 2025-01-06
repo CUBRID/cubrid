@@ -77,7 +77,10 @@ namespace cubpl
   {
     if (!is_system_pool ())
       {
-	pl_server_wait_for_ready ();
+	if (pl_server_wait_for_ready () != NO_ERROR)
+	  {
+	    return nullptr;
+	  }
       }
     if (m_db_port == PL_PORT_DISABLED)
       {
@@ -170,7 +173,12 @@ namespace cubpl
   void
   connection_pool::initialize_pool()
   {
-    for (int i = 0; i < m_min_conn_size && i < m_pool.size (); ++i)
+    for (int i = 0; i < (int) m_pool.size (); ++i)
+      {
+	m_pool[i] = nullptr;
+      }
+
+    for (int i = 0; i < m_min_conn_size && i < (int) m_pool.size (); ++i)
       {
 	m_queue.push (i); // Pre-fill the queue with indices
       }
@@ -181,12 +189,12 @@ namespace cubpl
   {
     std::lock_guard<std::mutex> lock (m_mutex);
 
-    for (connection *&conn : m_pool)
+    for (int i = 0; i < (int) m_pool.size (); ++i)
       {
-	if (conn)
+	if (m_pool[i])
 	  {
-	    delete conn;
-	    conn = nullptr;
+	    delete m_pool[i];
+	    m_pool[i] = nullptr;
 	  }
       }
 

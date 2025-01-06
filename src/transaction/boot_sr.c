@@ -2718,6 +2718,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  error_code = pl_server_init (db_name);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   session_states_init (thread_p);
 
 #if defined (SERVER_MODE)
@@ -2776,8 +2782,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if !defined(SA_MODE)
   json_set_alloc_funcs (malloc, free);
 #endif
-
-  pl_server_init (db_name);
 
   return NO_ERROR;
 
