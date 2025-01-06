@@ -452,7 +452,6 @@ exit:
 	std::string error_msg;
 	unpacker.unpack_string (error_msg);
 	m_stack->set_error_message (error_msg);
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, error_msg.c_str ());
 	return ER_SP_EXECUTE_ERROR;
       }
     else
