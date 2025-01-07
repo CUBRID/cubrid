@@ -2067,7 +2067,7 @@ pt_to_method_arglist (PARSER_CONTEXT *parser, PT_NODE *target, PT_NODE *node_lis
 int
 jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_as_attr_list, cubpl::pl_signature &sig)
 {
-  int save;
+  int save = 0;
   int error = NO_ERROR;
   char user_name_buffer [DB_MAX_USER_LENGTH + 1];
 
