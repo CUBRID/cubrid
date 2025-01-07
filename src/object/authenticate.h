@@ -111,6 +111,7 @@ class print_output;
 #define AU_ENABLE(save) \
   do \
     { \
+      assert (save == 0 || save == 1); \
       Au_disable = save; \
     } \
   while (0)
@@ -131,6 +132,7 @@ class print_output;
 #define AU_RESTORE(save) \
   do \
     { \
+      assert (save == 0 || save == 1); \
       Au_disable = save; \
     } \
   while (0)
