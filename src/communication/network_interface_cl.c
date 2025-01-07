@@ -4736,13 +4736,13 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
  * session_id (in) : the id of the session to end
  */
 int
-csession_end_session (SESSION_ID session_id)
+csession_end_session (SESSION_ID session_id, bool is_keep_session)
 {
 #if defined (CS_MODE)
   int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
   char *request;
   char *ptr;
 
@@ -4750,6 +4750,7 @@ csession_end_session (SESSION_ID session_id)
   request = OR_ALIGNED_BUF_START (a_request);
 
   ptr = or_pack_int (request, session_id);
+  ptr = or_pack_int (ptr, is_keep_session);
 
   req_error =
     net_client_request (NET_SERVER_SES_END_SESSION, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
@@ -4765,7 +4766,7 @@ csession_end_session (SESSION_ID session_id)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  result = xsession_end_session (thread_p, session_id);
+  result = xsession_end_session (thread_p, session_id, is_keep_session);
 
   exit_server (*thread_p);
 

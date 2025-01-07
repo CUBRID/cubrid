@@ -273,7 +273,7 @@ namespace cubpl
   int
   connection::send_buffer (const cubmem::block &blk)
   {
-    if (!is_valid ())
+    if (!is_valid () || m_pool->is_system_pool ())
       {
 	do_reconnect ();
       }
