@@ -2073,8 +2073,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
   char *mk_path;
-  int pl_port;
-  bool pl;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2313,6 +2311,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
   /* *INDENT-ON* */
+
+  error_code = pl_server_init (db_name);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
@@ -2718,7 +2722,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = pl_server_init (db_name);
+  error_code = pl_server_wait_for_ready ();
   if (error_code != NO_ERROR)
     {
       goto error;

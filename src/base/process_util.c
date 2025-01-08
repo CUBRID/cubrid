@@ -39,6 +39,17 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+/*
+ * create_child_process() - create a child process
+ *   return: process id of the child process, or 1 if failed
+ *   path(in): path to the executable
+ *   argv(in): arguments for the executable
+ *   wait_flag(in): flag to wait for the child process
+ *   stdin_file(in): file name for standard input
+ *   stdout_file(in): file name for standard output
+ *   stderr_file(in): file name for standard error
+ *   exit_status(out): exit status of the child process
+ */
 int
 create_child_process (const char *path, const char *const argv[], int wait_flag, const char *stdin_file,
 		      char *stdout_file, char *stderr_file, int *exit_status)
