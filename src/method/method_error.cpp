@@ -41,9 +41,13 @@ namespace cubmethod
       case ER_SP_CANNOT_CONNECT_JVM:
       case ER_SP_NETWORK_ERROR:
       case ER_OUT_OF_VIRTUAL_MEMORY:
-      case ER_SP_EXECUTE_ERROR:
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_id, 1, err_msg.c_str ());
 	break;
+
+      case ER_SP_EXECUTE_ERROR:
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
+	break;
+
       default:
 	/* do nothing */
 	break;
