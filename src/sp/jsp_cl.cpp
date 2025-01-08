@@ -2067,9 +2067,10 @@ pt_to_method_arglist (PARSER_CONTEXT *parser, PT_NODE *target, PT_NODE *node_lis
 int
 jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_as_attr_list, cubpl::pl_signature &sig)
 {
-  int save = 0;
+  int save;
   int error = NO_ERROR;
   char user_name_buffer [DB_MAX_USER_LENGTH + 1];
+  DB_OBJECT *mop_p = NULL;
 
   assert (node);
 
@@ -2087,7 +2088,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
       }
     else
       {
-	DB_OBJECT *mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
+	mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
 	if (mop_p == NULL)
 	  {
 	    error = er_errid ();
@@ -2188,7 +2189,10 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
   }
 
 exit:
-  AU_ENABLE (save);
+  if (mop_p != NULL)
+    {
+      AU_ENABLE (save);
+    }
   return error;
 }
 
