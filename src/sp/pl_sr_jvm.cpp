@@ -731,7 +731,6 @@ pl_server_port (void)
 int
 pl_server_port_from_info (void)
 {
-#if defined (SERVER_MODE)
   // check $CUBRID/var/pl_<db_name>.info
   if (sp_port != PL_PORT_DISABLED)
     {
@@ -739,7 +738,7 @@ pl_server_port_from_info (void)
       pl_read_info (boot_db_name (), pl_info);
       sp_port = pl_info.port;
     }
-#endif
+
   return sp_port;
 }
 

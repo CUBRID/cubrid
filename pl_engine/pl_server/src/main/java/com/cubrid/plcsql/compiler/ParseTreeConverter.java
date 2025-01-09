@@ -492,7 +492,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
-        int length = 1; // default
+        int length = TypeChar.DEFAULT_LEN; // default
 
         try {
             if (ctx.length != null) {
@@ -524,7 +524,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
-        int length = TypeVarchar.MAX_LEN; // default
+        int length = TypeVarchar.DEFAULT_LEN; // default
 
         try {
             if (ctx.length != null) {
@@ -2777,7 +2777,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     }
 
                 } else if (DBTypeAdapter.isSupported(ci.type)) {
-                    ty = DBTypeAdapter.getValueType(iStore, ci.type);
+                    ty = DBTypeAdapter.getDeclType(iStore, ci.type, ci.prec, ci.scale);
                 } else {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s426

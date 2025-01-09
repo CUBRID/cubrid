@@ -990,8 +990,8 @@ void sp_normalize_name (std::string &s)
 void
 sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth)
 {
-  auto pos = s.find_last_of ('(');
-  if (pos == std::string::npos)
+  auto pos1 = s.find_last_of ('(');
+  if (pos1 == std::string::npos)
     {
       // handle the case where '(' is not found, if necessary
       target_cls.clear();
@@ -999,8 +999,12 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
       return;
     }
 
-  pos = s.substr (0, pos).find_last_of ('.');
-  if (pos == std::string::npos)
+  std::string tmp = s.substr (0, pos1);
+  tmp.erase (tmp.find_last_not_of (" ") + 1); // rtrim
+  tmp.erase (0, tmp.find_first_not_of (" ")); // ltrim
+
+  auto pos2 = tmp.find_last_of ('.');
+  if (pos2 == std::string::npos)
     {
       // handle the case where '.' is not found, if necessary
       target_cls.clear();
@@ -1008,8 +1012,8 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
       return;
     }
 
-  target_cls = s.substr (0, pos);
-  target_mth = s.substr (pos + 1); // +1 to skip the '.'
+  target_cls = tmp.substr (0, pos2);
+  target_mth = tmp.substr (pos2 + 1) + s.substr (pos1); // remove spaces between method and (
 }
 
 std::string

@@ -932,32 +932,40 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
     }
   else
     {
-      // PT_DATA_TYPE representing _db_stored_procedure_args.default_value
-      PT_NODE *dt = parser_new_node (parser, PT_DATA_TYPE);
-      if (dt == NULL)
-	{
-	  return ER_GENERIC_ERROR;
-	}
-      dt->type_enum = PT_TYPE_VARCHAR;
-      dt->info.data_type.precision = 255;
-      dt->info.data_type.units = (int) LANG_SYS_CODESET;
-      dt->info.data_type.collation_id = LANG_SYS_COLLATION;
-
-      // coerce the value before saving it in _db_stored_procedure_args.default_value
       PT_NODE *default_value = node->info.data_default.default_value;
-      error = pt_coerce_value_explicit (parser, default_value, default_value, PT_TYPE_VARCHAR, dt);
-      if (error != NO_ERROR)
+      DB_VALUE *value = NULL;
+      // do not use initialized db value
+      if (default_value->info.value.db_value_is_initialized)
 	{
-	  pt_reset_error (parser);
-	  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_SP_PARAM_DEFAULT_STR_TOO_BIG);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PARAM_DEFAULT_STR_TOO_BIG, 0);
-	  return error;
+	  default_value->info.value.db_value_is_initialized = false;
 	}
 
-      DB_VALUE *value = pt_value_to_db (parser, default_value);
+      value = pt_value_to_db (parser, default_value);
+
       if (!DB_IS_NULL (value))
 	{
-	  out.append (db_get_string (value));
+	  if (TP_IS_CHAR_TYPE (db_value_domain_type (value)))
+	    {
+	      if (db_get_string_size (value) > 255)
+		{
+		  pt_reset_error (parser);
+		  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_SP_PARAM_DEFAULT_STR_TOO_BIG);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PARAM_DEFAULT_STR_TOO_BIG, 0);
+		  return error;
+		}
+
+	      out.append (db_get_string (value));
+	    }
+	  else
+	    {
+	      DB_VALUE tmp_val;
+	      error = db_value_coerce (value, &tmp_val, db_type_to_db_domain (DB_TYPE_VARCHAR));
+	      if (error == NO_ERROR)
+		{
+		  out.append (db_get_string (&tmp_val));
+		  db_value_clear (&tmp_val);
+		}
+	    }
 	}
       else
 	{
