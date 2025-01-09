@@ -1539,11 +1539,11 @@ csql_set_server_output (CSQL_ARGUMENT * csql_arg, bool server_output)
   csql_arg->pl_server_output = server_output;
   if (server_output)
     {
-      csql_execute_query ("CALL enable (50000);");
+      csql_execute_query ("CALL dbms_output.enable (50000);");
     }
   else
     {
-      csql_execute_query ("CALL disable ();");
+      csql_execute_query ("CALL dbms_output.disable ();");
     }
 }
 
@@ -1844,7 +1844,7 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
   bool print_header = true;
   do
     {
-      errors = csql_execute_query ("CALL get_line (:pl_output_str, :pl_output_status);");
+      errors = csql_execute_query ("CALL dbms_output.get_line (:pl_output_str, :pl_output_status);");
       if (errors != 0)
 	{
 	  break;

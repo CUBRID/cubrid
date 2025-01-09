@@ -634,7 +634,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
   sysprm_set_force (prm_get_name (PRM_ID_XASL_CACHE_MAX_ENTRIES), "-1");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
   sysprm_set_force (prm_get_name (PRM_ID_SUPPLEMENTAL_LOG), "0");
 
   AU_DISABLE_PASSWORDS ();
@@ -708,26 +707,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
 
   db_commit_transaction ();
-
-  {
-    /* FIXME!! Register Built-in Packages, The following lines should be moved */
-    char built_in_package_spec[7][1024] = {
-      "CREATE OR REPLACE PROCEDURE enable (s INT) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.enable(int)';",
-      "CREATE OR REPLACE PROCEDURE disable () AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.disable()';",
-      "CREATE OR REPLACE PROCEDURE put (str String) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.put(java.lang.String)';",
-      "CREATE OR REPLACE PROCEDURE put_line (str STRING) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.putLine(java.lang.String)';",
-      "CREATE OR REPLACE PROCEDURE new_line () AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.newLine()';",
-      "CREATE OR REPLACE PROCEDURE get_line (line OUT STRING, status OUT INT) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.getLine(java.lang.String[], int[])';",
-      "CREATE OR REPLACE PROCEDURE get_lines (lines OUT STRING, cnt OUT INT) AS LANGUAGE JAVA NAME 'com.cubrid.plcsql.builtin.DBMS_OUTPUT.getLines(java.lang.String[], int[])';"
-    };
-
-    for (int i = 0; i < 7; i++)
-      {
-	execute_query (built_in_package_spec[i]);
-      }
-
-    db_commit_transaction ();
-  }
 
   if (user_define_file != NULL)
     {
@@ -836,7 +815,6 @@ deletedb (UTIL_FUNCTION_ARG * arg)
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1065,8 +1043,6 @@ restoredb (UTIL_FUNCTION_ARG * arg)
       return EXIT_SUCCESS;
     }
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
@@ -1151,7 +1127,6 @@ renamedb (UTIL_FUNCTION_ARG * arg)
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1264,8 +1239,6 @@ installdb (UTIL_FUNCTION_ARG * arg)
 
   cfg_added = true;
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
@@ -1375,7 +1348,6 @@ copydb (UTIL_FUNCTION_ARG * arg)
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1457,8 +1429,6 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
-
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1607,8 +1577,6 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
-
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -2767,8 +2735,6 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
-
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -4750,8 +4716,6 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 
       return EXIT_SUCCESS;
     }
-
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);

@@ -106,7 +106,10 @@ public class SymbolStack {
 
                             DeclParamIn p =
                                     new DeclParamIn(
-                                            null, "p" + i, TypeSpec.getBogus(null, paramType));
+                                            null,
+                                            "p" + i,
+                                            TypeSpec.getBogus(null, paramType),
+                                            null);
                             params.addNode(p);
                             i++;
                         }
@@ -143,7 +146,10 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
-                                                null, "size", TypeSpec.getBogus(null, Type.INT))));
+                                                null,
+                                                "size",
+                                                TypeSpec.getBogus(null, Type.INT),
+                                                new ExprUint(null, "20000", Type.INT))));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
 
         // get_line
@@ -180,7 +186,8 @@ public class SymbolStack {
                                         new DeclParamIn(
                                                 null,
                                                 "s",
-                                                TypeSpec.getBogus(null, Type.STRING_ANY))));
+                                                TypeSpec.getBogus(null, Type.STRING_ANY),
+                                                null)));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
 
         // put
@@ -193,7 +200,8 @@ public class SymbolStack {
                                         new DeclParamIn(
                                                 null,
                                                 "s",
-                                                TypeSpec.getBogus(null, Type.STRING_ANY))));
+                                                TypeSpec.getBogus(null, Type.STRING_ANY),
+                                                null)));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
     }
 

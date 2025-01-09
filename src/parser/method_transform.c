@@ -184,7 +184,7 @@ meth_have_methods (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
   int *have_method = (int *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type == PT_METHOD_CALL)
+  if (PT_IS_METHOD (node))
     {
       *have_method = 1;
       *continue_walk = PT_STOP_WALK;
@@ -465,14 +465,14 @@ meth_create_method_list (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg
       *continue_walk = PT_LIST_WALK;
     }
 
-  if (node->node_type == PT_DOT_ && (arg1 = node->info.dot.arg1) && arg1->node_type == PT_METHOD_CALL
+  if (node->node_type == PT_DOT_ && (arg1 = node->info.dot.arg1) && PT_IS_METHOD (arg1)
       && arg1->info.method_call.call_or_expr == PT_PARAMETER && node->info.dot.arg2)
     {
       /* this is a path expression rooted in a constant method call. We need to tag it as such for xasl generation */
       node->info.dot.arg2->info.name.meta_class = PT_PARAMETER;
     }
 
-  if ((node->node_type != PT_METHOD_CALL) || (node->info.method_call.method_name->info.name.spec_id == 0))
+  if (!PT_IS_METHOD (node) || (node->info.method_call.method_name->info.name.spec_id == 0))
     {
       return node;
     }
@@ -1083,7 +1083,7 @@ meth_get_method_params (PARSER_CONTEXT * parser, UINTPTR spec_id, PT_NODE * meth
 
   for (method = method_list; method != NULL; method = method->next)
     {
-      if (method->node_type != PT_METHOD_CALL)
+      if (!PT_IS_METHOD (method))
 	{
 	  PT_INTERNAL_ERROR (parser, "translate");
 	  return NULL;
@@ -1199,7 +1199,7 @@ meth_replace_method_params (PARSER_CONTEXT * parser, UINTPTR spec_id, PT_NODE * 
   attr_list = as_attr_list;
   for (method = method_list; method != NULL; method = method->next)
     {
-      if (method->node_type != PT_METHOD_CALL)
+      if (!PT_IS_METHOD (method))
 	{
 	  PT_INTERNAL_ERROR (parser, "translate");
 	  return;
@@ -1285,7 +1285,7 @@ meth_replace_method_calls (PARSER_CONTEXT * parser, PT_NODE * root, PT_NODE * me
   attr_list = as_attr_list;
   for (method = method_list; method != NULL; method = method->next)
     {
-      if (method->node_type != PT_METHOD_CALL)
+      if (!PT_IS_METHOD (method))
 	{
 	  PT_INTERNAL_ERROR (parser, "translate");
 	  return;
@@ -1314,7 +1314,7 @@ meth_replace_call (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int 
   PT_NODE *new_node;
   METH_INFO1 info;
 
-  if (node->node_type != PT_METHOD_CALL)
+  if (!PT_IS_METHOD (node))
     {
       return node;
     }
@@ -1421,8 +1421,7 @@ meth_find_last_entity (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, 
     }
 
   /* don't walk into the method you're checking with */
-  if (node->node_type == PT_METHOD_CALL
-      && (node->info.method_call.method_id == info->method->info.method_call.method_id))
+  if (PT_IS_METHOD (node) && (node->info.method_call.method_id == info->method->info.method_call.method_id))
     {
       *continue_walk = PT_LIST_WALK;
     }
@@ -1501,7 +1500,7 @@ meth_match_entity (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int 
 
 
   /* check to see if we want to dive into nested method calls. don't dive into data type nodes */
-  if ((!info7->check_method_calls && (node->node_type == PT_METHOD_CALL)) || (node->node_type == PT_DATA_TYPE))
+  if (!info7->check_method_calls && (PT_IS_METHOD (node) || (node->node_type == PT_DATA_TYPE)))
     {
       *continue_walk = PT_LIST_WALK;
       return node;
@@ -1817,7 +1816,7 @@ meth_is_method (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (node->node_type == PT_METHOD_CALL && node->info.method_call.call_or_expr != PT_PARAMETER)
+  if (PT_IS_METHOD (node) && node->info.method_call.call_or_expr != PT_PARAMETER)
     {
       *is_a_method = 1;
     }
@@ -1931,7 +1930,7 @@ meth_find_method (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (node->node_type == PT_METHOD_CALL && (info->id == 0 || node->info.method_call.method_id == info->id))
+  if (PT_IS_METHOD (node) && (info->id == 0 || node->info.method_call.method_id == info->id))
     {
       info->found = 1;
     }
@@ -2279,7 +2278,7 @@ meth_replace_id_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, void *
 {
   METH_INFO6 *info6 = (METH_INFO6 *) void_arg;
 
-  if (node->node_type == PT_METHOD_CALL && (node->info.method_call.method_name->info.name.spec_id == info6->old_id))
+  if (PT_IS_METHOD (node) && (node->info.method_call.method_name->info.name.spec_id == info6->old_id))
     {
       node->info.method_call.method_name->info.name.spec_id = info6->new_id;
     }
@@ -2362,7 +2361,7 @@ meth_find_hierarchical_in_method_list (PARSER_CONTEXT * parser, PT_NODE * method
 
   for (node = method_list; node != NULL && !(*has_hierarchical_expr); node = node->next)
     {
-      if (node->node_type == PT_METHOD_CALL)
+      if (PT_IS_METHOD (node))
 	{
 	  for (arg = node->info.method_call.arg_list; arg != NULL && !(*has_hierarchical_expr); arg = arg->next)
 	    {

@@ -31,20 +31,22 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import java.math.BigDecimal;
 
 public class ByteValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_BYTE;
+    }
+
     private byte value;
 
     public ByteValue(byte value) {
         super();
         this.value = value;
-    }
-
-    public ByteValue(byte value, int mode) {
-        super(mode);
-        this.value = value;
+        this.dbType = DBType.DB_CHAR;
     }
 
     @Override

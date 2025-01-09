@@ -280,6 +280,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   else if (restart_is_needed () || as_info->reset_flag == TRUE)
     {
       cas_log_debug (ARG_FILE_LINE, "fn_end_tran: restart_is_needed() || reset_flag");
+      db_set_keep_session (true);
       return FN_KEEP_SESS;
     }
   return FN_KEEP_CONN;
@@ -2147,6 +2148,7 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
     {
       ERROR_INFO_SET (err_code, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
+      db_set_keep_session (true);
       return FN_KEEP_SESS;
     }
   else

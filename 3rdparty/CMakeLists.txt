@@ -15,15 +15,45 @@
 #   limitations under the License.
 # 
 
-set(WITH_FLEX_URL "https://github.com/westes/flex/files/981163/flex-2.6.4.tar.gz")                            # flex
-set(WITH_BISON_URL "https://ftp.gnu.org/gnu/bison/bison-3.4.1.tar.gz")                                        # bison
-set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_2_2_5/expat-2.2.5.tar.bz2")   # expat library sources URL
-set(WITH_LIBJANSSON_URL "https://github.com/akheron/jansson/releases/download/v2.10/jansson-2.10.tar.gz")                          # jansson library sources URL
+set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
+set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
+set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.2.5.tar.bz2")             # expat library sources URL
+set(WITH_LIBJANSSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/jansson/jansson-2.10.tar.gz")         # jansson library sources URL
 set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.1.tar.gz")                  # editline library sources URL
-set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")                          # rapidjson library sources URL
-set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f.tar.gz")                     # openssl library sources URL
-set(WITH_LIBUNIXODBC_URL "https://ftp.osuosl.org/pub/blfs/conglomeration/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
-set(WITH_LIBTBB_URL "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.11.0.tar.gz")               # intel oneTBB library sources URL
+set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0.tar.gz")              # rapidjson library sources URL
+set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-1.1.1f.tar.gz")       # openssl library sources URL
+set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
+set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11.0.tar.gz")                   # intel oneTBB library sources URL
+set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
+set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.2.tar.gz")                          # LZ4
+set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
+
+# URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
+# It is optional but highly recommended to set this value. If not set, the file will be downloaded
+# every time Ninja reconfigures the project, which can be inefficient.
+#
+# Specifying the URL_HASH ensures:
+# 1. The file's integrity is verified against its hash.
+# 2. Ninja avoids unnecessary downloads if the file already exists and matches the hash.
+#
+# How to generate the URL_HASH:
+# - Use the `sha256sum` command to compute the hash of the downloaded tarball.
+#   Example:
+#   $ sha256sum openssl-1.1.1f.tar.gz
+#   Then set the resulting SHA256 hash in the format: "SHA256=<hash_value>"
+#
+# Below are the URL_HASH values for different libraries used in this project:
+set(WITH_LIBEXPAT_URL_HASH "SHA256=d9dc32efba7e74f788fcc4f212a43216fc37cf5f23f4c2339664d473353aedf6")
+set(WITH_LIBJANSSON_URL_HASH "SHA256=78215ad1e277b42681404c1d66870097a50eb084be9d771b1d15576575cf6447")                          # jansson library sources URL
+set(WITH_LIBEDIT_URL_HASH "SHA256=972c7d46844b7b56adde028bb2269546938272dd8d7a58978b7a18a6f6e44141")                  # editline library sources URL
+set(WITH_RAPIDJSON_URL_HASH "SHA256=bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e")                          # rapidjson library sources URL
+set(WITH_LIBOPENSSL_URL_HASH "SHA256=186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35")                     # openssl library sources URL
+set(WITH_LIBUNIXODBC_URL_HASH "SHA256=52833eac3d681c8b0c9a5a65f2ebd745b3a964f208fc748f977e44015a31b207")     # unixODBC library sources URL
+set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")               # intel oneTBB library sources URL
+set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")               # intel oneTBB library sources URL
+set(WITH_RE2_URL_HASH "SHA256=f89c61410a072e5cbcf8c27e3a778da7d6fd2f2b5b1445cd4f4508bee946ab0f")
+set(WITH_LZ4_URL_HASH "SHA256=658ba6191fa44c92280d4aa2c271b0f4fbc0e34d249578dd05e50e76d0e5efcc")
+
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
@@ -42,6 +72,7 @@ set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editlin
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODBC library (default: EXTERNAL)")
 set(WITH_RE2          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with re2 library (default: EXTERNAL)")
+set(WITH_LZ4          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lz4 library (default: EXTERNAL)")
 set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB library (default: EXTERNAL)")
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
@@ -51,6 +82,7 @@ message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 message(STATUS "Build with RE2 library: ${WITH_RE2}")
+message(STATUS "Build with LZ4 library: ${WITH_LZ4}")
 message(STATUS "Build with TBB library: ${WITH_LIBTBB}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
@@ -90,10 +122,8 @@ endif(WIN32)
 if(WITH_LIBFLEXBISON STREQUAL "EXTERNAL")
   if(WIN32)
     # bison and flex for Windows
-    set(WIN_FLEX_BISON_VERSION "2.5.22")
-    set(WIN_FLEX_BISON_URL "https://github.com/lexxmark/winflexbison/releases/download/v${WIN_FLEX_BISON_VERSION}/win_flex_bison-${WIN_FLEX_BISON_VERSION}.zip")
     set(WIN_FLEX_BISON_FILENAME "${WINDOWS_EXTERNAL_DIR}/Download/win_flex_bison.zip")
-    file(DOWNLOAD ${WIN_FLEX_BISON_URL} ${WIN_FLEX_BISON_FILENAME})
+    file(DOWNLOAD ${WIN_FLEX_BISON_URL} ${WIN_FLEX_BISON_FILENAME} INACTIVITY_TIMEOUT 600)
 
     set(WIN_FLEX_BISON_INSTALL_DIR "${WINDOWS_EXTERNAL_DIR}/Install/win_flex_bison")
     file(MAKE_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
@@ -158,6 +188,7 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBEXPAT" ${LIBEXPAT_LIBS})
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
+      URL_HASH             ${WITH_LIBEXPAT_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -209,6 +240,7 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBJANSSON" ${LIBJANSSON_LIBS})
     externalproject_add(${LIBJANSSON_TARGET}
       URL                  ${WITH_LIBJANSSON_URL}
+      URL_HASH             ${WITH_LIBJANSSON_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -258,6 +290,7 @@ if(UNIX)
     ADD_BY_PRODUCTS_VARIABLE ("LIBEDIT" ${LIBEDIT_LIBS})
     externalproject_add(${LIBEDIT_TARGET}
       URL                  ${WITH_LIBEDIT_URL}
+      URL_HASH             ${WITH_LIBEDIT_URL_HASH}
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
       TIMEOUT              600
@@ -299,11 +332,14 @@ else()
   set(LZ4_LIBS ${3RDPARTY_LIBS_DIR}/Source/lz4/lib/liblz4.a)
   ADD_BY_PRODUCTS_VARIABLE ("LZ4" ${LZ4_LIBS})
   externalproject_add(${LZ4_TARGET}
-    GIT_REPOSITORY        https://github.com/lz4/lz4
-    GIT_TAG fdf2ef5                           # https://github.com/lz4/lz4/releases/tag/v1.9.2
+    URL                  ${WITH_LZ4_URL}
+    URL_HASH             ${WITH_LZ4_URL_HASH}
+    TIMEOUT              600
+    LOG_BUILD            TRUE
+    DOWNLOAD_NO_PROGRESS 1
     CONFIGURE_COMMAND     ""                  # no configure
     BUILD_IN_SOURCE       true                # lz4 Makefile is designed to run locally
-    BUILD_COMMAND         make CFLAGS="-fPIC" # to allow static linking in shared library
+    BUILD_COMMAND         make CFLAGS=-fPIC   # to allow static linking in shared library
     INSTALL_COMMAND       ""                  # suppress install
     "${LZ4_BYPRODUCTS}"
   )
@@ -333,6 +369,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
+      URL_HASH             ${WITH_LIBOPENSSL_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -375,6 +412,7 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBUNIXODBC" ${LIBUNIXODBC_LIBS})
     externalproject_add(${LIBUNIXODBC_TARGET}
       URL                  ${WITH_LIBUNIXODBC_URL}
+      URL_HASH             ${WITH_LIBUNIXODBC_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -401,6 +439,7 @@ ADD_BY_PRODUCTS_VARIABLE ("RAPIDJSON" ${RAPIDJSON_INCLUDES})
 externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL                  ${WITH_RAPIDJSON_URL}
+  URL_HASH             ${WITH_RAPIDJSON_URL_HASH}
   LOG_CONFIGURE        TRUE
   LOG_BUILD            TRUE
   LOG_INSTALL          TRUE
@@ -427,11 +466,14 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
     set(RE2_LIBS ${3RDPARTY_LIBS_DIR}/Source/re2/obj/libre2.a)
     ADD_BY_PRODUCTS_VARIABLE ("RE2" ${RE2_LIBS})
     externalproject_add(${RE2_TARGET}
-      GIT_REPOSITORY https://github.com/google/re2
-      GIT_TAG 5723bb8             # https://github.com/google/re2/releases/tag/2022-06-01
+      URL                  ${WITH_RE2_URL}
+      URL_HASH             ${WITH_RE2_URL_HASH}
+      TIMEOUT              600
+      LOG_BUILD            TRUE
+      DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND ""        # no configure
       BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
-      BUILD_COMMAND make CFLAGS="-fPIC" CXXFLAGS="-fPIC" # to allow static linking in shared library
+      BUILD_COMMAND make CFLAGS=-fPIC CXXFLAGS=-fPIC # to allow static linking in shared library
       INSTALL_COMMAND ""
       "${RE2_BYPRODUCTS}"
     )
@@ -464,6 +506,7 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBTBB" ${LIBTBB_LIBS})
     externalproject_add(${LIBTBB_TARGET}
       URL                  ${WITH_LIBTBB_URL}
+      URL_HASH             ${WITH_LIBTBB_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -475,9 +518,10 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
       INSTALL_COMMAND      make -j install
       "${LIBTBB_BYPRODUCTS}"
     )
-    list(APPEND EP_TARGETS ${LIBTBB_TARGET})
-    list(APPEND EP_INCLUDES ${LIBTBB_INCLUDES})
-    list(APPEND EP_LIBS ${LIBTBB_LIBS})
+
+    list(APPEND TBB_TARGETS ${LIBTBB_TARGET})
+    list(APPEND TBB_INCLUDES ${LIBTBB_INCLUDES})
+    list(APPEND TBB_LIBS ${LIBTBB_LIBS})
   endif(UNIX)
 endif()
 
@@ -485,6 +529,15 @@ endif()
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
 set (EP_INCLUDES ${EP_INCLUDES} PARENT_SCOPE)
+
+# TODO: EP_TARGETS, EP_LIBS, and EP_INCLUDES are currently linked across all targets.
+# However, TBB is only required on the server side and should only be linked to libcubrid.so.
+# To achieve this, TBB has been separated into a distinct list to ensure exclusive linking with libcubrid.so.
+# Going forward, directories and libraries strictly used on the server side should be categorized
+# under the EP_SERVER_XXX section.
+set (TBB_TARGETS ${TBB_TARGETS} PARENT_SCOPE)
+set (TBB_INCLUDES ${TBB_INCLUDES} PARENT_SCOPE)
+set (TBB_LIBS ${TBB_LIBS} PARENT_SCOPE)
 
 # Expose targets for sa - FIXME better solutions
 include (3rdparty_util)

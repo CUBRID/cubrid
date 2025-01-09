@@ -293,6 +293,7 @@ authenticate_context::install (void)
 {
   MOP root_cls = NULL, user_cls = NULL, pass_cls = NULL, auth_cls = NULL, old_cls = NULL;
   SM_TEMPLATE *def;
+  AU_USER_CACHE *user_cache;
   int exists, save, index;
 
   AU_DISABLE (save);
@@ -490,10 +491,17 @@ authenticate_context::install (void)
     }
 
   /* establish the DBA as the current user */
-  if (caches.find_user_cache_index (dba_user, &index, 0) != NO_ERROR)
+  user_cache = caches.find_user_cache_by_mop (dba_user);
+  if (user_cache == NULL)
+    {
+      user_cache = caches.make_user_cache (AU_DBA_USER_NAME, dba_user, false);
+    }
+
+  if (caches.get_user_cache_index (user_cache, &index) != NO_ERROR)
     {
       goto exit_on_error;
     }
+
   current_user = dba_user;
   Au_cache.set_cache_index (index);
 
@@ -516,11 +524,11 @@ authenticate_context::install (void)
    * grant browser access to the authorization objects
    * note that the password class cannot be read by anyone except the DBA
    */
-  au_grant (public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (public_user, old_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (public_user, user_cls, AU_SELECT, false);
-  au_grant (public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (public_user, auth_cls, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, public_user, old_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, public_user, user_cls, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS, public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, public_user, auth_cls, AU_SELECT, false);
 
   au_add_method_check_authorization ();
 
@@ -711,26 +719,41 @@ authenticate_context::set_user (MOP newuser)
 {
   int error = NO_ERROR;
   int index;
+  AU_USER_CACHE *user_cache;
 
   if (newuser != NULL && !ws_is_same_object (newuser, current_user))
     {
-      if (! (error = caches.find_user_cache_index (newuser, &index, 1)))
+      user_cache = caches.find_user_cache_by_mop (newuser);
+      if (!user_cache)
 	{
+	  const char *user_name = au_get_user_name (newuser);
+	  user_cache = caches.make_user_cache (user_name, newuser, false);
+	}
 
-	  current_user = newuser;
-	  caches.set_cache_index (index);
+      if (user_cache)
+	{
+	  if (caches.get_user_cache_index (user_cache, &index) == NO_ERROR)
+	    {
+	      current_user = newuser;
+	      caches.set_cache_index (index);
 
-	  /*
-	   * it is important that we don't call sm_bump_local_schema_version() here
-	   * because this function is called during the compilation of vclasses
-	   */
+	      /*
+	       * it is important that we don't call sm_bump_local_schema_version() here
+	       * because this function is called during the compilation of vclasses
+	       */
 
-	  /*
-	   * Entry-level SQL specifies that the schema name is the same as
-	   * the current user authorization name.  In any case, this is
-	   * the place to set the current schema since the user just changed.
-	   */
-	  error = sc_set_current_schema (current_user);
+	      /*
+	       * Entry-level SQL specifies that the schema name is the same as
+	       * the current user authorization name.  In any case, this is
+	       * the place to set the current schema since the user just changed.
+	       */
+	      error = sc_set_current_schema (current_user);
+	    }
+	}
+      else
+	{
+	  // you can guarantee that user cache is already created in au_find_user ()
+	  assert (false);
 	}
     }
   return (error);
@@ -914,6 +937,40 @@ authenticate_context::get_user_class_name (void)
   return AU_USER_CLASS_NAME;
 }
 
+int
+authenticate_context::push_user (MOP user)
+{
+  MOP save_user = Au_user;
+  if (AU_SET_USER (user) == NO_ERROR)
+    {
+      user_stack.push (save_user);
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+}
+
+int
+authenticate_context::pop_user (void)
+{
+  if (user_stack.size () == 0)
+    {
+      return ER_FAILED;
+    }
+
+  if (AU_SET_USER (user_stack.top ()) == NO_ERROR)
+    {
+      user_stack.pop ();
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+}
+
 //
 // STATIC FUNCTIONS
 //
@@ -949,7 +1006,7 @@ au_add_method_check_authorization (void)
   smt_assign_argument_domain (def, "check_authorization", true, NULL, 2, "integer", (DB_DOMAIN *) 0);
   sm_update_class (def, NULL);
 
-  au_grant (Au_public_user, auth, AU_EXECUTE, false);
+  au_grant (DB_OBJECT_CLASS, Au_public_user, auth, AU_EXECUTE, false);
 
   AU_ENABLE (save);
   return NO_ERROR;

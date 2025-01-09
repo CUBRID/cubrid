@@ -1561,7 +1561,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
  *   fp(in):
  */
 void
-broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, int br_shm_id)
+broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, int br_shm_id, char *admin_log_file)
 {
   int i;
   const char *tmp_str;
@@ -1594,7 +1594,11 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 
   fprintf (fp, "[broker]\n");
 #endif
-  fprintf (fp, "MASTER_SHM_ID\t=%x\n\n", br_shm_id);
+  fprintf (fp, "MASTER_SHM_ID\t=%x\n", br_shm_id);
+  if (admin_log_file)
+    {
+      fprintf (fp, "ADMIN_LOG_FILE\t=%s\n\n", admin_log_file);
+    }
 
   for (i = 0; i < num_broker; i++)
     {

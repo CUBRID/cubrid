@@ -31,6 +31,8 @@
 package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.SysParam;
+import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
@@ -48,7 +50,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -529,17 +531,24 @@ public class SpLib {
     // builtin exceptions
     // ---------------------------------------------------------------------------------------
 
+    private static int checkAppErrCode(int code) {
+        if (code <= CODE_APP_ERROR) {
+            throw new VALUE_ERROR(
+                    "exception codes below " + (CODE_APP_ERROR + 1) + " are reserved");
+        }
+
+        return code;
+    }
+
     // user defined exception
     public static class $APP_ERROR extends PlcsqlRuntimeError {
         public $APP_ERROR(int code, String msg) {
-            super(code, isEmptyStr(msg) ? MSG_APP_ERROR : msg);
-        }
-
-        public $APP_ERROR(String msg) {
-            super(CODE_APP_ERROR, isEmptyStr(msg) ? MSG_APP_ERROR : msg);
+            // called for raise_application_error(...)
+            super(checkAppErrCode(code), isEmptyStr(msg) ? MSG_APP_ERROR : msg);
         }
 
         public $APP_ERROR() {
+            // called for user defined exceptions
             super(CODE_APP_ERROR, MSG_APP_ERROR);
         }
     }
@@ -694,7 +703,7 @@ public class SpLib {
     // is null
     @Operator(coercionScheme = CoercionScheme.ObjectOp)
     public static Boolean opIsNull(Object l) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -771,7 +780,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opNeg(Object l) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -846,7 +855,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opBitCompli(Object l) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -933,7 +942,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -946,7 +955,7 @@ public class SpLib {
     }
 
     public static Boolean opEqChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1029,7 +1038,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1054,7 +1063,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1067,7 +1076,7 @@ public class SpLib {
     }
 
     public static Boolean opNullSafeEqChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1162,7 +1171,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1190,7 +1199,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1277,7 +1286,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1303,7 +1312,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1316,7 +1325,7 @@ public class SpLib {
     }
 
     public static Boolean opLeChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1399,7 +1408,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1423,7 +1432,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1436,7 +1445,7 @@ public class SpLib {
     }
 
     public static Boolean opGeChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1519,7 +1528,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1543,7 +1552,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1556,7 +1565,7 @@ public class SpLib {
     }
 
     public static Boolean opLtChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1639,7 +1648,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1664,7 +1673,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1677,7 +1686,7 @@ public class SpLib {
     }
 
     public static Boolean opGtChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1760,7 +1769,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1788,7 +1797,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(String o, String lower, String upper) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -1807,7 +1816,7 @@ public class SpLib {
     }
 
     public static Boolean opBetweenChar(String o, String lower, String upper) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -1922,7 +1931,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Object o, Object lower, Object upper) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -1960,7 +1969,7 @@ public class SpLib {
     public static Boolean opInChar(String o, String... arr) {
         assert arr != null;
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -1973,7 +1982,7 @@ public class SpLib {
 
         boolean nullFound = false;
         for (String p : arr) {
-            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
                 if (EMPTY_STRING.equals(p)) {
                     p = null;
                 }
@@ -2078,7 +2087,7 @@ public class SpLib {
     public static Boolean opIn(Object o, Object... arr) {
         assert arr != null;
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -2089,7 +2098,7 @@ public class SpLib {
         }
         boolean nullFound = false;
         for (Object p : arr) {
-            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
                 if (EMPTY_STRING.equals(p)) {
                     p = null;
                 }
@@ -2189,7 +2198,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opMult(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2215,7 +2224,7 @@ public class SpLib {
         if (r.equals((short) 0)) {
             throw new ZERO_DIVIDE();
         }
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             return opDiv(BigDecimal.valueOf(l.longValue()), BigDecimal.valueOf(r.longValue()));
         } else {
             return (short) (l / r);
@@ -2230,7 +2239,7 @@ public class SpLib {
         if (r.equals(0)) {
             throw new ZERO_DIVIDE();
         }
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             return opDiv(BigDecimal.valueOf(l.longValue()), BigDecimal.valueOf(r.longValue()));
         } else {
             return l / r;
@@ -2246,7 +2255,7 @@ public class SpLib {
             throw new ZERO_DIVIDE();
         }
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             return opDiv(BigDecimal.valueOf(l), BigDecimal.valueOf(r));
         } else {
             return l / r;
@@ -2268,7 +2277,7 @@ public class SpLib {
         int s2 = r.scale();
 
         int scale;
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_COMPAT_NUMERIC_DIVISION_SCALE)) {
+        if (Context.getSystemParameterBool(SysParam.COMPAT_NUMERIC_DIVISION_SCALE)) {
             scale = Math.max(s1, s2);
         } else {
             scale = Math.max(9, Math.max(s1, s2));
@@ -2317,7 +2326,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opDiv(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2370,7 +2379,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opDivInt(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2423,7 +2432,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opMod(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2443,7 +2452,7 @@ public class SpLib {
     // +
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static String opAdd(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (l == null) {
                 l = EMPTY_STRING;
             }
@@ -2637,7 +2646,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opAdd(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2871,7 +2880,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opSubtract(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2891,7 +2900,7 @@ public class SpLib {
     // ||
     @Operator(coercionScheme = CoercionScheme.StringOp)
     public static String opConcat(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (l == null) {
                 l = EMPTY_STRING;
             }
@@ -3142,7 +3151,7 @@ public class SpLib {
         }
 
         Instant instant = Instant.ofEpochMilli(e.getTime());
-        ZoneOffset timezone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+        ZoneId timezone = Server.getConfig().getTimeZone();
         ZonedDateTime zdt = ZonedDateTime.ofInstant(instant, timezone);
         return zdt.format(TIMESTAMP_FORMAT);
     }
@@ -3195,7 +3204,7 @@ public class SpLib {
             return null;
         }
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             BigDecimal bd = new BigDecimal(e.doubleValue(), doubleToStringContext);
             return detachTrailingZeros(bd.toPlainString());
         } else {
@@ -3279,7 +3288,7 @@ public class SpLib {
             return null;
         }
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             BigDecimal bd = new BigDecimal(e.doubleValue(), floatToStringContext);
             return detachTrailingZeros(bd.toPlainString());
         } else {
@@ -3354,7 +3363,7 @@ public class SpLib {
             return null;
         }
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             return detachTrailingZeros(e.toPlainString());
         } else {
             return e.toString();
@@ -4125,7 +4134,7 @@ public class SpLib {
     private static final int CODE_TOO_MANY_ROWS = 7;
     private static final int CODE_VALUE_ERROR = 8;
     private static final int CODE_ZERO_DIVIDE = 9;
-    private static final int CODE_APP_ERROR = 99;
+    private static final int CODE_APP_ERROR = 1000;
 
     private static final String MSG_CASE_NOT_FOUND = "case not found";
     private static final String MSG_CURSOR_ALREADY_OPEN = "cursor already open";
@@ -4268,7 +4277,7 @@ public class SpLib {
     private static Boolean commonOpIn(Object o, Object... arr) {
         assert arr != null;
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -4279,7 +4288,7 @@ public class SpLib {
         }
         boolean nullFound = false;
         for (Object p : arr) {
-            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
                 if (EMPTY_STRING.equals(p)) {
                     p = null;
                 }

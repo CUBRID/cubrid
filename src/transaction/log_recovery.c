@@ -2534,7 +2534,9 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
   /* TODO - Do we need to handle NULL fwd_log_lsa? */
   if (!LSA_ISNULL (&fwd_log_lsa))
     {
-      if (LSA_GE (log_lsa, &fwd_log_lsa) || LSA_GT (&fwd_log_lsa, &log_Gl.hdr.eof_lsa))
+      /* log_Gl.hdr.eof_lsa can have a NULL_LSA value if recovery is started without an active log volume. Its value will be recovered during the log_recovery_analysis process. */
+      if (LSA_GE (log_lsa, &fwd_log_lsa)
+	  || (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && LSA_GT (&fwd_log_lsa, &log_Gl.hdr.eof_lsa)))
 	{
 	  // check fwd_log_lsa value if it is corrupted or not
 	  is_log_page_broken = true;
@@ -5177,7 +5179,7 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
       vdes = fileio_mount (thread_p, log_Db_fullname, vol_fullname, volid, false, false);
       if (vdes != NULL_VOLDES)
 	{
-	  ret = disk_get_creation_time (thread_p, volid, &vol_dbcreation);
+	  ret = disk_get_db_creation (thread_p, volid, &vol_dbcreation);
 	  fileio_dismount (thread_p, vdes);
 	  if (difftime ((time_t) vol_dbcreation, (time_t) log_Gl.hdr.db_creation) != 0)
 	    {
@@ -5296,7 +5298,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
       if (log_Gl.append.vdes == NULL_VOLDES)
 	{
 	  /* Create the log active since we do not have one */
-	  ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &log_Gl.hdr.db_creation);
+	  ret = disk_get_db_creation (thread_p, LOG_DBFIRST_VOLID, &log_Gl.hdr.db_creation);
 	  if (ret != NO_ERROR)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
