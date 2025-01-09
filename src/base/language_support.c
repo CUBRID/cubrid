@@ -2014,7 +2014,8 @@ lang_final (void)
 bool
 lang_is_all_initialized (void)
 {
-  return (lang_Initialized && lang_Builtin_initialized && lang_Charset_initialized && lang_Language_initialized && lang_Msg_env_initialized);
+  return (lang_Initialized && lang_Builtin_initialized && lang_Charset_initialized && lang_Language_initialized
+	  && lang_Msg_env_initialized);
 }
 
 /*
