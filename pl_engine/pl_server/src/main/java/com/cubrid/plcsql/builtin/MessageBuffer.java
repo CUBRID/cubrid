@@ -98,6 +98,7 @@ public class MessageBuffer {
             if (lines.size() == 0) {
                 if (builder != null && builder.length() > 0) {
                     res = builder.toString();
+                    builder.setLength(0);
                     status = STATUS_SUCCESS;
                 } else {
                     status = STATUS_FAILURE;
