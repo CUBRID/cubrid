@@ -1473,6 +1473,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list;
   PT_NODE *attributes, *attr, *as_attr_list;
   PT_NODE *col, *new_select_list, *spec, *pred, *subquery;
+  bool is_unset_hidden_col;
 
   assert (PT_IS_SELECT (statement));
   if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
@@ -1583,6 +1584,27 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
       if (tmp_query == NULL)
 	{
 	  goto exit_on_error;
+	}
+    }
+
+  /* check whether to unset hidden col. If no hidden column in original, remove hidden settings */
+  is_unset_hidden_col = true;
+  for (col = subquery->info.query.q.select.list; col; col = col->next)
+    {
+      if (col->flag.is_hidden_column)
+	{
+	  is_unset_hidden_col = false;
+	  break;
+	}
+    }
+  if (is_unset_hidden_col)
+    {
+      for (col = tmp_query->info.query.q.select.list; col; col = col->next)
+	{
+	  if (col->flag.is_hidden_column)
+	    {
+	      col->flag.is_hidden_column = 0;
+	    }
 	}
     }
 
