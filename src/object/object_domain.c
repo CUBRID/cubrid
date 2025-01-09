@@ -5049,7 +5049,7 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
 
       // Get number into buffer
       buffer_idx = 0;
-      while (p < end && *p != ',' && *p != ']' && buffer_idx < number_buffer_size)
+      while (p < end && *p != ',' && *p != ']' && buffer_idx < number_buffer_size - 1)
 	{
 	  if (!isspace (*p))
 	    {
@@ -5058,7 +5058,7 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
 	  p++;
 	}
 
-      if (buffer_idx == 0 || buffer_idx >= number_buffer_size)
+      if (buffer_idx == 0 || buffer_idx >= number_buffer_size - 1)
 	{
 
 	  return ER_FAILED;
