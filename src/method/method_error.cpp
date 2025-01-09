@@ -44,7 +44,6 @@ namespace cubmethod
       case ER_SP_EXECUTE_ERROR:
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_id, 1, err_msg.c_str ());
 	break;
-
       default:
 	/* do nothing */
 	break;
