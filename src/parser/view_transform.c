@@ -1603,7 +1603,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 	{
 	  if (col->flag.is_hidden_column)
 	    {
-	      col->flag.is_hidden_column = false;
+	      col->flag.is_hidden_column = 0;
 	    }
 	}
     }
