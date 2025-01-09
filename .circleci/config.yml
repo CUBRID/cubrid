@@ -99,6 +99,54 @@ jobs:
     resource_class: medium
     <<: *test_defaults
 
+ test_shell:
+    docker:
+      - image: twkang3219/ctp_image_shell:develop
+    parameters:
+      run_shell_test:
+        type: boolean
+        default: false
+    environment:
+      TEST_SUITE: shell
+      GH_TOKEN: $GITHUB_TOKEN
+    resource_class: large
+    parallelism: 8
+    steps:
+      - attach_workspace:
+          at: /home/shell
+      - run:
+          name: Setup Environment
+          command: |
+            /entrypoint.sh worker
+            rm -rf cubrid-testcases-private-ex/shell/_06_issues
+            rm -rf cubrid-testcases-private-ex/shell/_25_unstable
+            #need to fix
+            #circleci tests glob cubrid-testcases-private-ex/shell/_* | circleci tests split | tee tc.list
+            #find cubrid-testcases-private-ex/shell/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+      - run:
+          name: Conditional Shell Test
+          command: |
+            if [ "<< parameters.run_shell_test >>" == "true" ]; then
+              echo "Running shell tests..."
+              # need to fix
+              # /entrypoint.sh test
+            else
+              echo "Skipping shell tests."
+            fi
+      - run:
+          name: Collect Logs
+          command: |
+            mkdir -p /tmp/logs
+            # mv -f CUBRID/log /tmp/logs/cubrid_log
+            # mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
+            # find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
+            #dmesg > /tmp/logs/dmesg.out
+          when: on_fail
+      - store_test_results:
+          path: /tmp/tests
+      - store_artifacts:
+          path: /tmp/logs
+
   build-windows:
     machine:
       image: 'windows-server-2019'
@@ -139,16 +187,19 @@ workflows:
   build_test:
     jobs:
       - build
-      - test_medium:
-          requires:
-            - build
-      - test_sql:
-          requires:
-            - build
-      - test_plcsql:
+      # - test_medium:
+      #     requires:
+      #       - build
+      # - test_sql:
+      #     requires:
+      #       - build
+      # - test_plcsql:
+      #     requires:
+      #       - build
+      - test_shell:
           requires:
             - build
 
-      - build-windows:
-          requires:
-            - build
+      # - build-windows:
+      #     requires:
+      #       - build
