@@ -950,8 +950,7 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
 	{
 	  pt_reset_error (parser);
 	  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_SP_PARAM_DEFAULT_STR_TOO_BIG);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PARAM_DEFAULT_STR_TOO_BIG, 0);
-	  return error;
+	  return ER_SP_PARAM_DEFAULT_STR_TOO_BIG;
 	}
 
       DB_VALUE *value = pt_value_to_db (parser, default_value);
@@ -1075,7 +1074,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	    }
 	  else
 	    {
-	      ASSERT_ERROR ();
+	      // MSGCAT_SEMANTIC_PREC_TOO_BIG
 	      goto error_exit;
 	    }
 	}
