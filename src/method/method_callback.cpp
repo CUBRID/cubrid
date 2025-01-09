@@ -181,7 +181,8 @@ namespace cubmethod
     /* find in m_sql_handler_map */
     query_handler *handler = get_query_handler_by_sql (sql, [&] (query_handler *h)
     {
-      return h->get_is_occupied() == false && (h->get_tran_id () == NULL_TRANID || h->get_tran_id() == tid);
+      return h->get_is_occupied() == false && (h->get_tran_id () == NULL_TRANID || h->get_tran_id() == tid)
+	     && h->get_user_name ().compare (au_get_current_user_name ()) == 0;
     });
 
     if (handler == nullptr)
