@@ -1,0 +1,38 @@
+name: Comment trigger
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+jobs:
+  run_shell:
+    name: Run shell test on CircleCI
+    if: |
+      github.event.issue.pull_request != null &&
+      github.event.comment.body == '/run shell'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Branch Name from GitHub API
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH_NAME=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "${{ github.event.issue.pull_request.url }}" | jq -r .head.ref)
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+          echo "Branch Name: $BRANCH_NAME"  # 디버깅용 출력
+
+      - name: Trigger CircleCI Shell Test
+        env:
+          CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
+          BRANCH_NAME: ${{ env.BRANCH_NAME }}
+        run: |
+          curl --request POST \
+            --url https://circleci.com/api/v2/project/gh/tw-kang/cubrid/pipeline \
+            --header "Circle-Token: $CIRCLECI_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data '{
+              "branch": "'"$BRANCH_NAME"'",
+              "parameters": {
+                "run_shell_test": true
+              }
+            }'
