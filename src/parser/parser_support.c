@@ -7816,7 +7816,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                 "GROUP_CONCAT([auth_type] ORDER BY 1 SEPARATOR ', '), "
                 "' ON ',"
                 "IF ([object_type]=5, 'PROCEDURE ', ''), "
-                "[owner_name] || '.' || [object_name], "
+                "[unique_name], "
                 "' TO ',"
                 "[grantee_name],"
                 "IF ([is_grantable]=1, ' WITH GRANT OPTION', '')"
@@ -7826,8 +7826,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
                         "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
                         "[a].[object_type] AS [object_type], "
-                        "[c].[class_name] AS [object_name], "
-                        "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+                        "[c].[unique_name] AS [unique_name], "
                         "[a].[auth_type] AS [auth_type], "
                         "[a].[is_grantable] AS [is_grantable] "
                 "FROM "
@@ -7854,8 +7853,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
                         "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
                         "[a].[object_type] AS [object_type], "
-                        "[s].[sp_name] AS [object_name], "
-                        "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+                        "[s].[unique_name] AS [unique_name], "
                         "[a].[auth_type] AS [auth_type], "
                         "[a].[is_grantable] AS [is_grantable] "
                 "FROM "
@@ -7879,7 +7877,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         ") "
         ") "
         "GROUP BY "
-                "[grantee_name], [owner_name], [object_name], [is_grantable] ASC "
+                "[grantee_name], [unique_name], [is_grantable] ASC "
         "ORDER BY 1;";
   // *INDENT-ON*
 
