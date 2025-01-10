@@ -94,6 +94,7 @@ public class MessageBuffer {
 
     public String getLine() {
         String res = null;
+        status = STATUS_FAILURE;
         if (isEnabled) {
             // If there is a line remaining in the builder, put it in the lines
             if (builder != null && builder.length() > 0) {
@@ -101,9 +102,7 @@ public class MessageBuffer {
                 clearBuilder();
             }
 
-            if (lines.size() == 0) {
-                status = STATUS_FAILURE;
-            } else {
+            if (lines.size() != 0) {
                 res = lines.pollFirst();
                 status = STATUS_SUCCESS;
             }
