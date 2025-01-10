@@ -719,7 +719,7 @@ exit:
       {
 	s_code = cursor->next_row ();
 	int tuple_index = cursor->get_current_index ();
-	if (s_code == S_END || tuple_index - start_index >= fetch_count)
+	if (s_code == S_END)
 	  {
 	    break;
 	  }
@@ -736,6 +736,11 @@ exit:
 	else
 	  {
 	    info.tuples.emplace_back (tuple_index, tuple_values);
+	  }
+
+	if (tuple_index - start_index >= fetch_count - 1)
+	  {
+	    break;
 	  }
       }
 
