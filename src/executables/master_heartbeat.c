@@ -4846,13 +4846,13 @@ hb_thread_check_disk_failure (void *arg)
 			    HA_FAILBACK_DIAG_STRING);
 		  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
 
-		  /* be silent to avoid blocking write operation on disk */
-		  hb_disable_er_log (HB_NOLOG_DEMOTE_ON_DISK_FAIL, NULL);
-		  hb_Resource->state = HB_NSTATE_SLAVE;
-
 		  snprintf (hb_info_str, HB_INFO_STR_MAX, "%s Current node has been successfully demoted to slave",
 			    HA_FAILBACK_SUCCESS_STRING);
 		  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+
+		  /* be silent to avoid blocking write operation on disk */
+		  hb_disable_er_log (HB_NOLOG_DEMOTE_ON_DISK_FAIL, NULL);
+		  hb_Resource->state = HB_NSTATE_SLAVE;
 
 		  pthread_mutex_unlock (&hb_Resource->lock);
 		  pthread_mutex_unlock (&hb_Cluster->lock);
