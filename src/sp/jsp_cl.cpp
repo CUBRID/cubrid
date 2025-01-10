@@ -949,6 +949,7 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
 	      if (db_get_string_size (value) > 255)
 		{
 		  pt_reset_error (parser);
+		  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_SP_PARAM_DEFAULT_STR_TOO_BIG);
 		  return ER_SP_PARAM_DEFAULT_STR_TOO_BIG;
 		}
 
