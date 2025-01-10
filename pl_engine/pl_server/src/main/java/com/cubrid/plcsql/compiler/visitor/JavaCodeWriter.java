@@ -713,7 +713,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
                         code.updateOutArgs,
                         "%'+ARGUMENTS'%",
-                        visitArguments(node.args, node.decl.paramList));
+                        visitArguments(node.args, node.decl.paramList, false));
 
         return applyCoercion(node.coercion, tmpl, node.ctx);
     }
@@ -850,10 +850,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         assert node.decl != null;
 
-        int argSize = node.args.nodes.size();
-        String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
+        int paramSize = node.decl.paramList.nodes.size();
+        String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
         LocalCallCodeSnippets code =
-                getLocalCallCodeSnippets(argSize, node.args, node.decl.paramList);
+                getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
 
         CodeTemplate tmpl =
@@ -876,7 +876,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+UPDATE-OUT-ARGS'%",
                         code.updateOutArgs,
                         "%'+ARGUMENTS'%",
-                        visitArguments(node.args, node.decl.paramList));
+                        visitArguments(node.args, node.decl.paramList, true));
 
         return applyCoercion(node.coercion, tmpl, node.ctx);
     }
@@ -1934,7 +1934,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+UPDATE-GLOBAL-PROC-OUT-ARGS'%",
                 code.updateOutArgs,
                 "%'+ARGUMENTS'%",
-                visitArguments(node.args, node.decl.paramList));
+                visitArguments(node.args, node.decl.paramList, false));
     }
 
     // -------------------------------------------------------------------------
@@ -1996,13 +1996,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         assert node.decl != null;
 
-        int argSize = node.args.nodes.size();
-        String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
+        int paramSize = node.decl.paramList.nodes.size();
+        String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
         LocalCallCodeSnippets code =
-                getLocalCallCodeSnippets(argSize, node.args, node.decl.paramList);
+                getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
 
-        return Misc.isEmpty(node.args)
+        return Misc.isEmpty(node.decl.paramList)
                 ? new CodeTemplate(
                         "StmtLocalProcCall", Misc.UNKNOWN_LINE_COLUMN, block + node.name + "();")
                 : new CodeTemplate(
@@ -2022,7 +2022,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+UPDATE-OUT-ARGS'%",
                         code.updateOutArgs,
                         "%'+ARGUMENTS'%",
-                        visitArguments(node.args, node.decl.paramList));
+                        visitArguments(node.args, node.decl.paramList, true));
     }
 
     @Override
@@ -2458,11 +2458,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return ret.setDelimiter(",");
     }
 
-    private CodeTemplateList visitArguments(NodeList<Expr> args, NodeList<DeclParam> paramList) {
+    private CodeTemplateList visitArguments(
+            NodeList<Expr> args, NodeList<DeclParam> paramList, boolean local) {
 
         assert args != null;
         assert paramList != null;
-        assert args.nodes.size() == paramList.nodes.size();
+
+        int paramCnt = paramList.nodes.size();
+        int argsCnt = args.nodes.size();
+        assert argsCnt <= paramCnt;
 
         CodeTemplateList ret = new CodeTemplateList();
 
@@ -2484,6 +2488,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             ret.addElement(tmpl);
             i++;
+        }
+        if ((argsCnt < paramCnt) && local) {
+            while (i < paramCnt) {
+
+                DeclParam dp = paramList.nodes.get(i);
+                assert dp.hasDefault();
+                DeclParamIn dpi = (DeclParamIn) dp;
+                ret.addElement((CodeTemplate) visit(dpi.defaultVal));
+
+                i++;
+            }
         }
 
         return ret.setDelimiter(",");

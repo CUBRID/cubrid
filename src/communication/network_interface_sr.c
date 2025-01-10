@@ -8880,7 +8880,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
 
   if (id == DB_EMPTY_SESSION
       || memcmp (server_session_key, xboot_get_server_session_key (), SERVER_SESSION_KEY_SIZE) != 0
-      || xsession_check_session (thread_p, id) != NO_ERROR)
+      || (error = xsession_check_session (thread_p, id)) != NO_ERROR)
     {
       /* not an error yet */
       er_clear ();
@@ -8890,6 +8890,10 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
 	{
 	  (void) return_error_to_client (thread_p, rid);
 	}
+    }
+  else if (error == NO_ERROR)
+    {
+      xsession_set_is_keep_session (thread_p, false);
     }
 
   /* get row count */
@@ -8986,14 +8990,16 @@ void
 ssession_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int err = NO_ERROR;
+  int is_keep_session;
   SESSION_ID id;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL;
 
-  (void) or_unpack_int (request, (int *) &id);
+  ptr = or_unpack_int (request, (int *) &id);
+  ptr = or_unpack_int (ptr, &is_keep_session);
 
-  err = xsession_end_session (thread_p, id);
+  err = xsession_end_session (thread_p, id, (bool) is_keep_session);
 
   ptr = or_pack_int (reply, err);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));

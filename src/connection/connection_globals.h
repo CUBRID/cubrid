@@ -67,7 +67,7 @@ typedef struct css_conn_rule_info
 typedef struct css_server_proc_register CSS_SERVER_PROC_REGISTER;
 struct css_server_proc_register
 {
-  static constexpr int CSS_SERVER_MAX_SZ_SERVER_NAME = 256;
+  static constexpr int CSS_SERVER_MAX_SZ_SERVER_NAME = 255;
   static constexpr int CSS_SERVER_MAX_SZ_PROC_EXEC_PATH = 128;
   static constexpr int CSS_SERVER_MAX_SZ_PROC_ARGS = 1024;
 

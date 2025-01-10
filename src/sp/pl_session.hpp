@@ -33,6 +33,7 @@
 #include <deque>
 #include <condition_variable>
 #include <string>
+#include <map>
 
 #include "system_parameter.h"
 #include "packable_object.hpp"
@@ -105,6 +106,7 @@ namespace cubpl
       execution_stack *create_and_push_stack (cubthread::entry *thread_p);
       void pop_and_destroy_stack (const PL_STACK_ID sid);
       execution_stack *top_stack ();
+      void notify_waiting_stacks ();
 
       /* thread */
       bool is_thread_involved (thread_id_t id);
@@ -143,6 +145,7 @@ namespace cubpl
       std::condition_variable m_cond_var;
 
       std::unordered_set <QUERY_ID> m_session_cursors;
+      std::map <QUERY_ID, int> m_session_handler_map;
 
       exec_stack_map_type m_stack_map; // method executor storage
       exec_stack_id_type m_exec_stack; // runtime stack (implemented using vector)

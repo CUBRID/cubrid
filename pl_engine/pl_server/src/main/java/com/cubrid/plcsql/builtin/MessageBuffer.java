@@ -95,13 +95,14 @@ public class MessageBuffer {
     public String getLine() {
         String res = null;
         if (isEnabled) {
+            // If there is a line remaining in the builder, put it in the lines
+            if (builder != null && builder.length() > 0) {
+                putLine(builder.toString());
+                clearBuilder();
+            }
+
             if (lines.size() == 0) {
-                if (builder != null && builder.length() > 0) {
-                    res = builder.toString();
-                    status = STATUS_SUCCESS;
-                } else {
-                    status = STATUS_FAILURE;
-                }
+                status = STATUS_FAILURE;
             } else {
                 res = lines.pollFirst();
                 status = STATUS_SUCCESS;
@@ -113,6 +114,12 @@ public class MessageBuffer {
     public String[] getLines(int num) {
         String[] outputs = null;
         if (isEnabled) {
+            // If there is a line remaining in the builder, put it in the lines
+            if (builder != null && builder.length() > 0) {
+                putLine(builder.toString());
+                clearBuilder();
+            }
+
             if (lines.size() < num) {
                 num = lines.size();
             }

@@ -77,7 +77,10 @@ namespace cubpl
   {
     if (!is_system_pool ())
       {
-	pl_server_wait_for_ready ();
+	if (pl_server_wait_for_ready () != NO_ERROR)
+	  {
+	    return nullptr;
+	  }
       }
     if (m_db_port == PL_PORT_DISABLED)
       {
@@ -146,6 +149,12 @@ namespace cubpl
     return m_db_port;
   }
 
+  void
+  connection_pool::set_db_port (int port)
+  {
+    m_db_port = port;
+  }
+
   bool
   connection_pool::is_system_pool () const
   {
@@ -164,7 +173,12 @@ namespace cubpl
   void
   connection_pool::initialize_pool()
   {
-    for (int i = 0; i < m_min_conn_size && i < m_pool.size (); ++i)
+    for (int i = 0; i < (int) m_pool.size (); ++i)
+      {
+	m_pool[i] = nullptr;
+      }
+
+    for (int i = 0; i < m_min_conn_size && i < (int) m_pool.size (); ++i)
       {
 	m_queue.push (i); // Pre-fill the queue with indices
       }
@@ -175,12 +189,12 @@ namespace cubpl
   {
     std::lock_guard<std::mutex> lock (m_mutex);
 
-    for (connection *&conn : m_pool)
+    for (int i = 0; i < (int) m_pool.size (); ++i)
       {
-	if (conn)
+	if (m_pool[i])
 	  {
-	    delete conn;
-	    conn = nullptr;
+	    delete m_pool[i];
+	    m_pool[i] = nullptr;
 	  }
       }
 
@@ -259,7 +273,7 @@ namespace cubpl
   int
   connection::send_buffer (const cubmem::block &blk)
   {
-    if (!is_valid ())
+    if (!is_valid () || m_pool->is_system_pool ())
       {
 	do_reconnect ();
       }
@@ -398,8 +412,18 @@ namespace cubpl
   connection::do_handle_network_error (int nbytes)
   {
     (void) invalidate ();
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-    return er_errid ();
+
+    if (m_pool->is_system_pool ())
+      {
+	// Do not set error message for system pool
+	// To avoid noise in the error log
+	return ER_SP_NETWORK_ERROR;
+      }
+    else
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	return er_errid ();
+      }
   }
 
 } // namespace cubpl

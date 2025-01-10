@@ -1350,7 +1350,9 @@ typedef enum
   PT_SYNONYM,
 
   PT_AUTHID_OWNER,
-  PT_AUTHID_CALLER
+  PT_AUTHID_CALLER,
+  PT_NOT_DETERMINISTIC,
+  PT_DETERMINISTIC
     // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
@@ -3402,6 +3404,7 @@ struct pt_stored_proc_info
   PT_NODE *comment;
   PT_NODE *owner;		/* for ALTER PROCEDURE/FUNCTION name OWNER TO new_owner */
   PT_MISC_TYPE auth_id;		/* PT_AUTHID_OWNER, PT_AUTHID_CALLER */
+  PT_MISC_TYPE dtrm_type;	/* PT_NOT_DETERMINISTIC, PT_DETERMINISTIC */
   PT_MISC_TYPE type;
   unsigned or_replace:1;	/* OR REPLACE clause */
   PT_TYPE_ENUM ret_type;

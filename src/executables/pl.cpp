@@ -52,6 +52,7 @@
 #include <windows.h>
 #include <process.h>
 #include <io.h>
+#include <tlhelp32.h>
 #endif /* not WINDOWS */
 
 #include "process_util.h"
@@ -113,6 +114,43 @@ static char executable_path[PATH_MAX];
 static std::string command;
 static std::string db_name;
 static PL_SERVER_INFO running_info = PL_SERVER_INFO_INITIALIZER;
+
+#if defined(WINDOWS)
+static bool
+get_ppid (DWORD &ppid)
+{
+  HANDLE h_proc_snap;
+  PROCESSENTRY32 pe32;
+
+  /* Take a snapshot of all processes in the system. */
+  h_proc_snap = CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS, 0);
+  if (h_proc_snap == INVALID_HANDLE_VALUE)
+    {
+      return false;
+    }
+
+  pe32.dwSize = sizeof (PROCESSENTRY32);
+  if (Process32First (h_proc_snap, &pe32))
+    {
+      DWORD pid = GetCurrentProcessId();
+      do
+	{
+	  if (pe32.th32ProcessID != pid)
+	    {
+	      continue;
+	    }
+	  CloseHandle (h_proc_snap);
+
+	  ppid = pe32.th32ParentProcessID;
+	  return true;
+	}
+      while (Process32Next (h_proc_snap, &pe32));
+    }
+
+  CloseHandle (h_proc_snap);
+  return false;
+}
+#endif
 
 /*
  * main() - javasp main function
@@ -245,33 +283,40 @@ main (int argc, char *argv[])
     /* javasp command main routine */
     if (command.compare ("start") == 0)
       {
-	status = pl_start_server (pl_info, db_name, pathname);
-	if (status == NO_ERROR)
+	(void) pl_start_server (pl_info, db_name, pathname);
+
+	command = "running";
+
+	pl_read_info (db_name.c_str(), running_info);
+	do
 	  {
-	    command = "running";
-	    pl_read_info (db_name.c_str(), running_info);
-	    do
-	      {
 #if defined (WINDOWS)
-		DWORD parent_ppid = GetCurrentProcessId();
-		HANDLE hParent = OpenProcess (SYNCHRONIZE, FALSE, parent_ppid);
-		DWORD result = WaitForSingleObject (hParent, INFINITE);
-		CloseHandle (hParent);
-		if (result == WAIT_OBJECT_0)
-		  {
-		    ExitProcess (0);
-		  }
-#else
-		if (getppid () == 1)
-		  {
-		    // parent process is terminated
-		    break;
-		  }
-#endif
-		sleep (1);
+	    DWORD parent_ppid = 0;
+	    HANDLE hParent;
+	    DWORD result;
+
+	    if (get_ppid (parent_ppid) == false)
+	      {
+		break;// parent process is terminated
 	      }
-	    while (true);
+
+	    hParent = OpenProcess (SYNCHRONIZE, FALSE, parent_ppid);
+	    result = WaitForSingleObject (hParent, INFINITE);
+	    CloseHandle (hParent);
+	    if (result == WAIT_OBJECT_0)
+	      {
+		break;// parent process is terminated
+	      }
+#else
+	    if (getppid () == 1)
+	      {
+		// parent process is terminated
+		break;
+	      }
+#endif
+	    sleep (1);
 	  }
+	while (true);
       }
     else if (command.compare ("stop") == 0)
       {
@@ -412,26 +457,26 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
       /* create a new session */
       setsid ();
 #endif
+
       er_clear (); // clear error before string JVM
       status = pl_start_jvm_server (db_name.c_str (), path.c_str (), pl_get_port_param ());
-      if (status == NO_ERROR)
-	{
-	  PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };
 
-	  pl_unlink_info (db_name.c_str ());
-	  if ((pl_open_info_dir () && pl_write_info (db_name.c_str (), pl_new_info)))
-	    {
-	      /* succeed */
-	    }
-	  else
-	    {
-	      /* failed to write info file */
-	      char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
-	      pl_get_info_file (info_path, PATH_MAX, db_name.c_str ());
-	      snprintf (err_msg, sizeof (err_msg), "Error while writing to file: (%s)", info_path);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
-	      status = ER_SP_CANNOT_START_JVM;
-	    }
+      int port = (status == NO_ERROR) ? pl_server_port () : PL_PORT_DISABLED;
+      PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };
+
+      pl_unlink_info (db_name.c_str ());
+      if ((pl_open_info_dir () && pl_write_info (db_name.c_str (), &pl_new_info)))
+	{
+	  /* succeed */
+	}
+      else
+	{
+	  /* failed to write info file */
+	  char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
+	  pl_get_info_file (info_path, PATH_MAX, db_name.c_str ());
+	  snprintf (err_msg, sizeof (err_msg), "Error while writing to file: (%s)", info_path);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
+	  status = ER_SP_CANNOT_START_JVM;
 	}
     }
 
@@ -470,47 +515,63 @@ pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
   int status = NO_ERROR;
   cubmem::block buffer;
 
-  cubpl::connection_pool connection_pool (1, db_name, pl_info.port, true);
-  cubpl::connection_view cv = connection_pool.claim ();
-  if (cv->is_valid())
+  if (pl_info.pid == -1 || is_terminated_process (pl_info.pid))
     {
-      cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_STATUS, 0);
-      status = cv->send_buffer_args (header);
-      if (status != NO_ERROR)
-	{
-	  goto exit;
-	}
-
-      status = cv->receive_buffer (buffer);
-      if (status != NO_ERROR)
-	{
-	  goto exit;
-	}
-
-      if (status == NO_ERROR)
-	{
-	  int num_args = 0;
-	  PL_STATUS_INFO status_info;
-
-	  status_info.pid = pl_info.pid;
-
-	  packing_unpacker unpacker (buffer.ptr, buffer.dim);
-
-	  unpacker.unpack_int (status_info.port);
-	  unpacker.unpack_string (status_info.db_name);
-	  unpacker.unpack_int (num_args);
-	  std::string arg;
-	  for (int i = 0; i < num_args; i++)
-	    {
-	      unpacker.unpack_string (arg);
-	      status_info.vm_args.push_back (arg);
-	    }
-
-	  pl_dump_status (stdout, status_info);
-	}
+      goto exit;
     }
 
+  {
+    cubpl::connection_pool connection_pool (1, db_name, pl_info.port, true);
+    cubpl::connection_view cv = connection_pool.claim ();
+    if (cv->is_valid())
+      {
+	cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_STATUS, 0);
+	status = cv->send_buffer_args (header);
+	if (status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	status = cv->receive_buffer (buffer);
+	if (status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	if (status == NO_ERROR)
+	  {
+	    int num_args = 0;
+	    PL_STATUS_INFO status_info;
+
+	    status_info.pid = pl_info.pid;
+
+	    packing_unpacker unpacker (buffer.ptr, buffer.dim);
+
+	    unpacker.unpack_int (status_info.port);
+	    unpacker.unpack_string (status_info.db_name);
+	    unpacker.unpack_int (num_args);
+	    std::string arg;
+	    for (int i = 0; i < num_args; i++)
+	      {
+		unpacker.unpack_string (arg);
+		status_info.vm_args.push_back (arg);
+	      }
+
+	    pl_dump_status (stdout, status_info);
+	  }
+      }
+    else
+      {
+	status = ER_GENERIC_ERROR;
+      }
+  }
+
 exit:
+  if (status != NO_ERROR)
+    {
+      fprintf (stdout, "Java Stored Procedure Server (%s, pid %d) - Abnormal State \n", db_name.c_str (), pl_info.pid);
+    }
+
   if (buffer.ptr)
     {
       free_and_init (buffer.ptr);
