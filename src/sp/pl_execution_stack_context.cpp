@@ -45,23 +45,19 @@ namespace cubpl
     if (m_session)
       {
 	m_client_header.id = m_session->get_id ();
+	m_java_header.id = m_session->get_id ();
       }
   }
 
   execution_stack::~execution_stack ()
   {
-    if (m_session)
-      {
-	// retire connection
-	if (m_connection)
-	  {
-	    m_connection.reset ();
-	  }
-      }
-
     destory_all_cursors ();
 
-    m_session->pop_and_destroy_stack (get_id ());
+    if (m_session)
+      {
+	m_session->release_connection (m_connection); // release connection to session
+	m_session->pop_and_destroy_stack (get_id ());
+      }
   }
 
   void
@@ -174,13 +170,8 @@ namespace cubpl
   {
     if (m_connection == nullptr)
       {
-	connection_pool *pool = get_connection_pool ();
-	if (pool)
-	  {
-	    m_connection = pool->claim ();
-	  }
+	m_connection = m_session->claim_connection ();
       }
-
     return m_connection;
   }
 
