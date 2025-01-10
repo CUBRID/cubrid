@@ -83,13 +83,13 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitTypeSpec(TypeSpec node) {
-        return null; // nothing to do
+        return node.type;
     }
 
     @Override
     public Type visitTypeSpecPercent(TypeSpecPercent node) {
         assert node.type != null;
-        return null;
+        return node.type;
     }
 
     @Override
@@ -134,7 +134,19 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitDeclParamIn(DeclParamIn node) {
-        visitDeclParam(node);
+        Type paramTy = visitDeclParam(node);
+        if (node.hasDefault()) {
+            Type defaultValTy = visit(node.defaultVal);
+            Coercion c = Coercion.getCoercion(iStore, defaultValTy, paramTy);
+            if (c == null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(node.defaultVal.ctx), // s239
+                        "type of the default value is not compatible with the parameter type");
+            } else {
+                node.defaultVal.setCoercion(c);
+            }
+        }
+
         return null;
     }
 
@@ -1232,8 +1244,8 @@ public class TypeChecker extends AstVisitor<Type> {
         }
     }
 
-    private void visitDeclParam(DeclParam node) {
-        visit(node.typeSpec);
+    private Type visitDeclParam(DeclParam node) {
+        return visit(node.typeSpec);
     }
 
     private Type visitDeclRoutine(DeclRoutine node) {

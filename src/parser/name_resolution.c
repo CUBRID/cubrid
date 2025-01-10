@@ -3619,6 +3619,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			      pt_short_print (parser, node));
 		}
 	    }
+
+	  if (pt_has_error (parser))
+	    {
+	      node = NULL;
+	      *continue_walk = PT_STOP_WALK;
+	    }
 	}
       break;
 

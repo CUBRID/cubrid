@@ -157,9 +157,6 @@ namespace cubpl
 	m_interrupt_id = NO_ERROR;
 	m_interrupt_msg.clear ();
       }
-
-    ulock.unlock ();
-    m_cond_var.notify_all ();
   }
 
   execution_stack *
@@ -168,6 +165,12 @@ namespace cubpl
     std::unique_lock<std::mutex> ulock (m_mutex);
 
     return top_stack_internal ();
+  }
+
+  void
+  session::notify_waiting_stacks ()
+  {
+    m_cond_var.notify_all ();
   }
 
   execution_stack *

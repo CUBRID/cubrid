@@ -89,7 +89,7 @@ namespace cubpl
     // get changed session parameters
     const std::vector<sys_param> &session_params = get_session ()->obtain_session_parameters (true);
 
-    m_stack->set_command (SP_CODE_COMPILE);
+    m_stack->set_java_command (SP_CODE_COMPILE);
     error_code = m_stack->send_data_to_java (session_params, req);
     if (error_code != NO_ERROR)
       {
@@ -127,7 +127,7 @@ namespace cubpl
 	    sql_semantics_request request;
 	    respone_unpacker.unpack_all (request);
 
-	    error_code = m_stack->send_data_to_client (bypass_block, request);
+	    error_code = m_stack->send_data_to_client_recv (bypass_block, request);
 	  }
 	else if (code == METHOD_REQUEST_GLOBAL_SEMANTICS)
 	  {
@@ -135,7 +135,7 @@ namespace cubpl
 	    global_semantics_request request;
 	    respone_unpacker.unpack_all (request);
 
-	    error_code = m_stack->send_data_to_client (bypass_block, request);
+	    error_code = m_stack->send_data_to_client_recv (bypass_block, request);
 	  }
 	else
 	  {
