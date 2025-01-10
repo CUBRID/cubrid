@@ -401,7 +401,7 @@ namespace cubpl
 	pl_disconnect_server (m_socket);
       }
 
-    m_socket = pl_connect_server (m_pool->get_db_name (), m_pool->get_db_port ());
+    int error = pl_connect_server (m_pool->get_db_name (), m_pool->get_db_port (), m_socket);
     if (m_socket != INVALID_SOCKET)
       {
 	m_epoch = m_pool->get_epoch ();
