@@ -615,6 +615,10 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->info.value.data_value.set = pt_set_elements_to_value (parser, val);
       pt_add_type_to_set (parser, result->info.value.data_value.set, &result->data_type);
       break;
+    case DB_TYPE_VECTOR:
+      result->info.value.data_value.set = pt_set_elements_to_value (parser, val);
+      pt_add_type_to_set (parser, result->info.value.data_value.set, &result->data_type);
+      break;
 
     case DB_TYPE_INTEGER:
       result->info.value.data_value.i = db_get_int (val);
@@ -1923,6 +1927,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
+    case DB_TYPE_VECTOR:
     case DB_TYPE_MIDXKEY:
       return pt_node_to_db_domain (parser, dt, class_name);
 
@@ -2261,6 +2266,7 @@ pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node, const char *class
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
+	case DB_TYPE_VECTOR:
 	case DB_TYPE_MIDXKEY:
 	  /* Recursively build the setdomain */
 	  dt = node->data_type;
