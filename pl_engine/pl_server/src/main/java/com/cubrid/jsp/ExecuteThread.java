@@ -421,12 +421,13 @@ public class ExecuteThread extends Thread {
 
                 // dump translated code into $CUBRID_TMP
                 if (Context.getSystemParameterBool(SysParam.STORED_PROCEDURE_DUMP_ICODE)) {
-                    Path path =
-                            Paths.get(
-                                    Server.getConfig().getTmpPath()
-                                            + "/"
-                                            + info.className
-                                            + ".java");
+
+                    Path dirPath = Paths.get(Server.getConfig().getTmpPath() + "/icode");
+                    if (Files.notExists(dirPath)) {
+                        Files.createDirectories(dirPath);
+                    }
+
+                    Path path = dirPath.resolve(info.className + ".java");
                     Files.write(path, info.translated.getBytes(Context.getSessionCharset()));
                 }
 
