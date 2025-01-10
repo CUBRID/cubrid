@@ -6373,12 +6373,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
       goto exit;
     }
 
-  if (pl_server_init (args->volume.c_str ()) != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  if (pl_server_wait_for_ready () != NO_ERROR)
+  if (pl_server_init (args->volume.c_str ()) != NO_ERROR || pl_server_wait_for_ready () != NO_ERROR)
     {
       goto exit;
     }

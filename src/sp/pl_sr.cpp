@@ -632,11 +632,7 @@ pl_server_init (const char *db_name)
   pl_server_manager = new cubpl::server_manager (db_name);
   pl_server_manager->start ();
 
-#if defined (SA_MODE)
-  return pl_server_manager->wait_for_server_ready (); // wait until PL server ready at first
-#else
   return NO_ERROR;
-#endif
 }
 
 void
