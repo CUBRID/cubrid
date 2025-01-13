@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class StmtForSqlLoop extends Stmt {
+public abstract class StmtForSqlLoop extends StmtLoop {
 
     public final boolean dynamic;
     public final String label;
@@ -44,13 +44,14 @@ public abstract class StmtForSqlLoop extends Stmt {
 
     public StmtForSqlLoop(
             ParserRuleContext ctx,
+            StmtLoop.StmtInLoop stmtInLoop,
             boolean dynamic,
             String label,
             DeclId record,
             Expr sql,
             List<? extends Expr> usedExprList,
             NodeList<Stmt> stmts) {
-        super(ctx);
+        super(ctx, stmtInLoop);
 
         this.dynamic = dynamic;
         this.label = label;

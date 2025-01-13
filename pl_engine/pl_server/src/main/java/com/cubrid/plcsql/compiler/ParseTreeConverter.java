@@ -44,6 +44,7 @@ import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.error.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
+import java.sql.PreparedStatement;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
@@ -60,6 +61,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.HashSet;
+import java.util.Stack;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 import org.apache.commons.text.StringEscapeUtils;
@@ -73,6 +76,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         this.iStore = iStore;
         this.spOwner = Misc.getNormalizedText(spOwner);
         this.spRevision = spRevision;
+        this.serverStmtNo = 1;
     }
 
     public void askServerSemanticQuestions() {
@@ -1340,27 +1344,41 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Body visitBody(BodyContext ctx) {
 
-        boolean allFlowsBlocked;
+        StmtLoop.StmtInLoop stmtInLoopSaved = null;
+        try {
+            if (stmtInLoop != null) {
+                // save the current one
+                stmtInLoopSaved = stmtInLoop;
+                stmtInLoop = null;
+            }
 
-        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
-        allFlowsBlocked = controlFlowBlocked;
+            boolean allFlowsBlocked;
 
-        NodeList<ExHandler> exHandlers = new NodeList<>();
-        for (Exception_handlerContext ehc : ctx.exception_handler()) {
-            exHandlers.addNode(visitException_handler(ehc));
-            allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
+            NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+            allFlowsBlocked = controlFlowBlocked;
+
+            NodeList<ExHandler> exHandlers = new NodeList<>();
+            for (Exception_handlerContext ehc : ctx.exception_handler()) {
+                exHandlers.addNode(visitException_handler(ehc));
+                allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
+            }
+
+            controlFlowBlocked = allFlowsBlocked; // s017-1
+
+            String label;
+            if (ctx.label_name() == null) {
+                label = null;
+            } else {
+                label = Misc.getNormalizedText(ctx.label_name());
+            }
+
+            return new Body(ctx, stmts, exHandlers, label);
+        } finally {
+            if (stmtInLoopSaved != null) {
+                // restore
+                stmtInLoop = stmtInLoopSaved;
+            }
         }
-
-        controlFlowBlocked = allFlowsBlocked; // s017-1
-
-        String label;
-        if (ctx.label_name() == null) {
-            label = null;
-        } else {
-            label = Misc.getNormalizedText(ctx.label_name());
-        }
-
-        return new Body(ctx, stmts, exHandlers, label);
     }
 
     @Override
@@ -1655,6 +1673,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtBasicLoop visitStmt_basic_loop(Stmt_basic_loopContext ctx) {
 
+        boolean outermostLoop = (stmtInLoop == null);
+        if (outermostLoop) {
+            stmtInLoop = new StmtLoop.StmtInLoop();
+        }
+
         symbolStack.pushSymbolTable("loop", null);
 
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
@@ -1668,7 +1691,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtBasicLoop(ctx, declLabel, stmts);
+        StmtBasicLoop ret = new StmtBasicLoop(ctx, stmtInLoop, declLabel, stmts);
+        if (outermostLoop) {
+            stmtInLoop = null;
+        }
+        return ret;
     }
 
     @Override
@@ -1686,6 +1713,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtWhileLoop visitStmt_while_loop(Stmt_while_loopContext ctx) {
 
+        boolean outermostLoop = (stmtInLoop == null);
+        if (outermostLoop) {
+            stmtInLoop = new StmtLoop.StmtInLoop();
+        }
+
         symbolStack.pushSymbolTable("while", null);
 
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
@@ -1700,11 +1732,20 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtWhileLoop(ctx, declLabel, cond, stmts);
+        StmtWhileLoop ret = new StmtWhileLoop(ctx, stmtInLoop, declLabel, cond, stmts);
+        if (outermostLoop) {
+            stmtInLoop = null;
+        }
+        return ret;
     }
 
     @Override
     public StmtForIterLoop visitStmt_for_iter_loop(Stmt_for_iter_loopContext ctx) {
+
+        boolean outermostLoop = (stmtInLoop == null);
+        if (outermostLoop) {
+            stmtInLoop = new StmtLoop.StmtInLoop();
+        }
 
         symbolStack.pushSymbolTable("for_iter", null);
 
@@ -1731,8 +1772,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtForIterLoop(
-                ctx, declLabel, iterDecl, reverse, lowerBound, upperBound, step, stmts);
+        StmtForIterLoop ret = new StmtForIterLoop(ctx, stmtInLoop, declLabel, iterDecl, reverse, lowerBound, upperBound, step, stmts);
+        if (outermostLoop) {
+            stmtInLoop = null;
+        }
+        return ret;
     }
 
     @Override
@@ -1755,7 +1799,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public AstNode visitStmt_for_cursor_loop(Stmt_for_cursor_loopContext ctx) {
+    public StmtForCursorLoop visitStmt_for_cursor_loop(Stmt_for_cursor_loopContext ctx) {
+
+        boolean outermostLoop = (stmtInLoop == null);
+        if (outermostLoop) {
+            stmtInLoop = new StmtLoop.StmtInLoop();
+        }
 
         connectionRequired = true;
 
@@ -1809,11 +1858,20 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtForCursorLoop(ctx, cursor, args, label, record, recTy, stmts);
+        StmtForCursorLoop ret = new StmtForCursorLoop(ctx, stmtInLoop, cursor, args, label, record, recTy, stmts);
+        if (outermostLoop) {
+            stmtInLoop = null;
+        }
+        return ret;
     }
 
     @Override
     public StmtForSqlLoop visitStmt_for_static_sql_loop(Stmt_for_static_sql_loopContext ctx) {
+
+        boolean outermostLoop = (stmtInLoop == null);
+        if (outermostLoop) {
+            stmtInLoop = new StmtLoop.StmtInLoop();
+        }
 
         connectionRequired = true;
 
@@ -1858,7 +1916,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtForStaticSqlLoop(ctx, label, declForRecord, staticSql, stmts);
+        StmtForStaticSqlLoop ret = new StmtForStaticSqlLoop(ctx, stmtInLoop, label, declForRecord, staticSql, stmts);
+        if (outermostLoop) {
+            stmtInLoop = null;
+        }
+        return ret;
     }
 
     @Override
@@ -2453,6 +2515,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private final String spOwner;
     private final String spRevision;
 
+    private StmtLoop.StmtInLoop stmtInLoop = null;
+
     private String spName;
     private boolean isSpFunc;
 
@@ -2462,6 +2526,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private boolean connectionRequired = false;
 
     private boolean controlFlowBlocked;
+
+    private int serverStmtNo;
+    private int getSererStmtNo() {
+        return serverStmtNo++;
+    }
 
     private void checkRedefinitionOfUsedName(String name, ParserRuleContext declCtx) {
 

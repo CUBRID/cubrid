@@ -30,26 +30,22 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.Set;
+import java.util.HashSet;
+import java.sql.PreparedStatement;
 
-public class StmtWhileLoop extends StmtLoop {
+public abstract class StmtLoop extends Stmt {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtWhileLoop(this);
+    public final StmtInLoop stmtInLoop;
+
+    public StmtLoop(ParserRuleContext ctx, StmtInLoop stmtInLoop) {
+        super(ctx);
+        this.stmtInLoop = stmtInLoop;
     }
 
-    public final DeclLabel declLabel;
-    public final Expr cond;
-    public final NodeList<Stmt> stmts;
-
-    public StmtWhileLoop(
-            ParserRuleContext ctx, StmtLoop.StmtInLoop stmtInLoop, DeclLabel declLabel, Expr cond, NodeList<Stmt> stmts) {
-        super(ctx, stmtInLoop);
-
-        this.declLabel = declLabel;
-        this.cond = cond;
-        this.stmts = stmts;
+    public static class StmtInLoop {
+        private Set<PreparedStatement> preparedStmt = new HashSet<>();
     }
+
 }
