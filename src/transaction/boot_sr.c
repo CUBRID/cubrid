@@ -2312,6 +2312,23 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   /* *INDENT-ON* */
 
+  /*
+   * Call pl_server_init() before log_initialize() to avoid potential issues
+   * with large memory allocations impacting fork() system calls.
+   *
+   * Context:
+   * 1. During log_initialize(), large data buffer allocations might cause fork()
+   *    system call failures. To prevent this, pl_server_init() is invoked earlier.
+   *
+   * 2. In cases with large-scale databases such as those used for YCSB testing, 
+   *    the time taken by log_initialize() is nearly identical to the time taken 
+   *    to reach it via boot_start_server(). This suggests that other modules 
+   *    during server startup consume significant system resources, although the 
+   *    specifics are yet to be analyzed.
+   *
+   * 3. To enhance PL server initialization reliability, pl_server_init() is called 
+   *    before other modules’ initialization.
+   */
   error_code = pl_server_init (db_name);
   if (error_code != NO_ERROR)
     {
