@@ -203,7 +203,6 @@ public class Context {
 
         if (messageBuffer != null) {
             messageBuffer.clear();
-            messageBuffer = null;
         }
     }
 
