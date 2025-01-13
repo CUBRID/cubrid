@@ -74,7 +74,7 @@ struct pl_status_info
 extern "C"
 {
 #endif
-  EXPORT_IMPORT SOCKET pl_connect_server (const char *db_name, int server_port);
+  EXPORT_IMPORT int pl_connect_server (const char *db_name, int server_port, SOCKET & out);
   EXPORT_IMPORT void pl_disconnect_server (SOCKET & sockfd);
   EXPORT_IMPORT int pl_writen (SOCKET fd, const void *vptr, int n);
   EXPORT_IMPORT int pl_readn (SOCKET fd, void *vptr, int n);
