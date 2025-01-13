@@ -581,6 +581,7 @@ static int tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp);
 static int tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp);
 static int tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat);
 static int tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
+static int tp_atovector (DB_VALUE const *src, DB_VALUE * result);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *tp_itoa (int value, char *string, int radix);
 #endif
@@ -611,7 +612,6 @@ static DB_BIGINT tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool trun
 					 DB_DATA_STATUS * data_stat);
 
 static UINT64 tp_ubi_times_ten (UINT64 ubi, bool * truncated);
-static int tp_str_to_vector (DB_VALUE const *src, DB_VALUE * result);
 
 /*
  * tp_init - Global initialization for this module.
@@ -5005,7 +5005,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
  *    src is a string db_value.
  */
 static int
-tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
+tp_atovector (const DB_VALUE * src, DB_VALUE * result)
 {
   const char *p = db_get_string (src);
   const char *end = p + db_get_string_size (src);
@@ -9293,7 +9293,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARNCHAR:
 	  {
 
-	    err = tp_str_to_vector (src, target);
+	    err = tp_atovector (src, target);
 	    break;
 
 	  }
