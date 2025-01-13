@@ -63,10 +63,7 @@ public class MessageBuffer {
 
     public void disable() {
         isEnabled = false;
-        clearBuilder();
-        lines.clear();
-        size = 0;
-        status = STATUS_FAILURE;
+        clear();
     }
 
     public void putLine(String str) {
@@ -135,6 +132,13 @@ public class MessageBuffer {
 
     public int getStatus() {
         return status;
+    }
+
+    public void clear() {
+        clearBuilder();
+        lines.clear();
+        size = 0;
+        status = STATUS_FAILURE;
     }
 
     private void clearBuilder() {

@@ -202,7 +202,7 @@ public class Context {
         }
 
         if (messageBuffer != null) {
-            messageBuffer.disable();
+            messageBuffer.clear();
             messageBuffer = null;
         }
     }
