@@ -1826,69 +1826,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     }
 
     // -------------------------------------------------------------------------
-    // StmtForDynamicSqlLoop
-    //
-
-    private static String[] tmplStmtForDynamicSqlLoop =
-            new String[] {
-                "{ // for loop with dynamic SQL",
-                "  PreparedStatement stmt_%'LEVEL'% = null;",
-                "  try {",
-                "    String sql_%'LEVEL'% = checkNotNull(",
-                "      %'+SQL'%, \"SQL part was evaluated to NULL\");",
-                "    stmt_%'LEVEL'% = conn.prepareStatement(sql_%'LEVEL'%);",
-                "    ResultSetMetaData rsmd_%'LEVEL'% = stmt_%'LEVEL'%.getMetaData();",
-                "    if (rsmd_%'LEVEL'% == null || rsmd_%'LEVEL'%.getColumnCount() < 1) {",
-                "      throw new SQL_ERROR(\"not a SELECT statement\");",
-                "    }",
-                "    %'+SET-USED-EXPR'%",
-                "    if (!stmt_%'LEVEL'%.execute()) {",
-                "      throw new SQL_ERROR(\"use a SELECT statement\");", // double check
-                "    }",
-                "    ResultSet %'RECORD'%_r%'LEVEL'% = stmt_%'LEVEL'%.getResultSet();",
-                "    if (%'RECORD'%_r%'LEVEL'% == null) {",
-                // EXECUTE IMMDIATE 'CALL ...' leads to this line
-                "      throw new SQL_ERROR(\"no result set\");",
-                "    }",
-                "    %'LABEL'%",
-                "    while (%'RECORD'%_r%'LEVEL'%.next()) {",
-                "      %'+STATEMENTS'%",
-                "    }",
-                "  } catch (SQLException e) {",
-                "    Server.log(e);",
-                "    throw new SQL_ERROR(e.getMessage());",
-                "  } finally {",
-                "    if (stmt_%'LEVEL'% != null) {",
-                "      stmt_%'LEVEL'%.close();",
-                "    }",
-                "  }",
-                "}"
-            };
-
-    @Override
-    public CodeToResolve visitStmtForDynamicSqlLoop(StmtForDynamicSqlLoop node) {
-
-        Object setUsedExpr = getSetUsedExpr(node.usedExprList);
-
-        return new CodeTemplate(
-                "StmtForSqlLoop",
-                Misc.getLineColumnOf(node.ctx),
-                tmplStmtForDynamicSqlLoop,
-                "%'+SQL'%",
-                visit(node.sql),
-                "%'+SET-USED-EXPR'%",
-                setUsedExpr,
-                "%'RECORD'%",
-                node.record.name(),
-                "%'LABEL'%",
-                node.label == null ? "" : node.label + "_%'LEVEL'%:",
-                "%'LEVEL'%",
-                Integer.toString(node.record.scope.level),
-                "%'+STATEMENTS'%",
-                visitNodeList(node.stmts));
-    }
-
-    // -------------------------------------------------------------------------
     // StmtGlobalProcCall
     //
 
