@@ -5017,7 +5017,6 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
   float float_array[max_vector_size];
   DB_SET *vec = NULL;
   DB_VALUE e_val;
-  INTL_CODESET codeset = db_get_string_codeset (src);
 
   if (p == NULL)
     {
@@ -5025,7 +5024,11 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
     }
 
   // Skip leading spaces and opening bracket
-  p = (char *) intl_skip_spaces (p, end, codeset);
+  while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
+    {
+      p++;
+    }
+
   if (p >= end || *p != '[')
     {
       return ER_FAILED;
@@ -5035,7 +5038,11 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
   while (p < end && count < max_vector_size)
     {
       // Skip spaces before number
-      p = (char *) intl_skip_spaces (p, end, codeset);
+      while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
+	{
+	  p++;
+	}
+
       if (p >= end)
 	{
 	  return ER_FAILED;
@@ -5060,7 +5067,6 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
 
       if (buffer_idx == 0 || buffer_idx >= number_buffer_size - 1)
 	{
-
 	  return ER_FAILED;
 	}
 
@@ -5070,21 +5076,22 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
       char *end_ptr = NULL;
       errno = 0;
       float_array[count] = strtof (number_buffer, &end_ptr);
-
       if (errno == ERANGE)
 	{
 	  return ER_FAILED;
 	}
-
       if (*end_ptr != '\0')
 	{
 	  return ER_FAILED;
 	}
-
       count++;
 
       // Skip spaces after number
-      p = (char *) intl_skip_spaces (p, end, codeset);
+      while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
+	{
+	  p++;
+	}
+
       if (p >= end)
 	{
 	  return ER_FAILED;
@@ -5110,7 +5117,11 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
   p++;
 
   // Skip trailing spaces
-  p = (char *) intl_skip_spaces (p, end, codeset);
+  while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
+    {
+      p++;
+    }
+
   if (p != end)
     {
       return ER_FAILED;
@@ -5130,7 +5141,6 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
     }
 
   db_make_vector (result, vec);
-
   for (int i = 0; i < count; ++i)
     {
       db_make_float (&e_val, float_array[i]);
