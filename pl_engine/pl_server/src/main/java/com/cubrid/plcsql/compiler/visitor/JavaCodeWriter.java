@@ -1383,9 +1383,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     node.cursor.javaCode());
         } else {
 
-            Object dupCursorArgs = getDupCursorArgs(node, decl.paramRefCounts);
+            Object dupCursorArgs = getDupCursorArgs(node.args, decl.paramRefCounts);
             CodeTemplateList hostExprs =
-                    getHostExprs(node, decl.paramNumOfHostExpr, decl.paramRefCounts);
+                    getHostExprs(
+                            node.cursor, node.args, decl.paramNumOfHostExpr, decl.paramRefCounts);
 
             return new CodeTemplate(
                     "StmtCursorOpen",
@@ -1662,9 +1663,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     visitNodeList(node.stmts));
         } else {
 
-            Object dupCursorArgs = getDupCursorArgs(node, decl.paramRefCounts);
+            Object dupCursorArgs = getDupCursorArgs(node.cursorArgs, decl.paramRefCounts);
             CodeTemplateList hostExprs =
-                    getHostExprs(node, decl.paramNumOfHostExpr, decl.paramRefCounts);
+                    getHostExprs(
+                            node.cursor,
+                            node.cursorArgs,
+                            decl.paramNumOfHostExpr,
+                            decl.paramRefCounts);
 
             return new CodeTemplate(
                     "StmtForCursorLoop",
@@ -2392,7 +2397,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplDupCursorArg =
             new String[] {"Object a%'INDEX'%_%'LEVEL'% =", "  %'+ARG'%;"};
 
-    private Object getDupCursorArgs(StmtCursorOpen node, int[] paramRefCounts) {
+    private Object getDupCursorArgs(NodeList<Expr> args, int[] paramRefCounts) {
 
         CodeTemplateList ret = new CodeTemplateList();
 
@@ -2401,7 +2406,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             if (paramRefCounts[i] > 1) {
 
-                Expr arg = node.args.nodes.get(i);
+                Expr arg = args.nodes.get(i);
                 ret.addElement(
                         new CodeTemplate(
                                 "duplicate cursor argument",
@@ -2418,12 +2423,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     }
 
     public CodeTemplateList getHostExprs(
-            StmtCursorOpen node, int[] paramNumOfHostExpr, int[] paramRefCounts) {
+            ExprId cursor, NodeList<Expr> args, int[] paramNumOfHostExpr, int[] paramRefCounts) {
 
         int size = paramNumOfHostExpr.length;
         assert size > 0;
 
-        DeclCursor decl = (DeclCursor) node.cursor.decl;
+        DeclCursor decl = (DeclCursor) cursor.decl;
         ArrayList<Expr> hostExprs = new ArrayList<>(decl.staticSql.hostExprs.keySet());
         assert size == hostExprs.size();
 
@@ -2442,7 +2447,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                     "a" + k + "_%'LEVEL'%"));
                 } else {
                     assert paramRefCounts[k] == 1;
-                    ret.addElement((CodeTemplate) visit(node.args.nodes.get(k)));
+                    ret.addElement((CodeTemplate) visit(args.nodes.get(k)));
                 }
             } else {
                 Expr e = hostExprs.get(i);
