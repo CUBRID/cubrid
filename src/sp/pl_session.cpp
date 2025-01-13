@@ -193,9 +193,14 @@ namespace cubpl
 	  }
       }
 
-    auto conn = std::move (m_session_connections.front());
-    m_session_connections.pop_front();
-    return conn;
+    if (!m_session_connections.empty ())
+      {
+	auto conn = std::move (m_session_connections.front());
+	m_session_connections.pop_front();
+	return conn;
+      }
+
+    return nullptr;
   }
 
   void
@@ -213,11 +218,14 @@ namespace cubpl
     cubmethod::header header (m_id, SP_CODE_DESTROY, get_and_increment_request_id ());
 
     connection_view cv = claim_connection ();
-    if (cv->is_valid ())
+    if (cv)
       {
-	cv->send_buffer_args (header);
+	if (cv->is_valid ())
+	  {
+	    cv->send_buffer_args (header);
+	  }
+	release_connection (cv);
       }
-    release_connection (cv);
   }
 
   execution_stack *
