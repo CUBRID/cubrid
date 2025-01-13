@@ -226,7 +226,7 @@ namespace cubpl
 #endif
     m_connection_pool = new connection_pool (server_manager::CONNECTION_POOL_SIZE, db_name);
 
-    assert (m_pl_ctx_params != nullptr);
+    m_pl_ctx_params = nullptr;
   }
 
   server_manager::~server_manager ()
@@ -278,7 +278,7 @@ namespace cubpl
   SYSPRM_ASSIGN_VALUE *
   server_manager::get_pl_ctx_params ()
   {
-    if (m_pl_ctx_params)
+    if (m_pl_ctx_params == nullptr)
       {
 	/* late initialization */
 	m_pl_ctx_params = xsysprm_get_pl_context_parameters (PRM_ALL_FLAGS);
