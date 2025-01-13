@@ -192,6 +192,10 @@ namespace cubpl
 
       std::string get_error_message ()
       {
+	if (m_error_message.empty () && er_msg ())
+	  {
+	    m_error_message = er_msg ();
+	  }
 	return m_error_message;
       }
 

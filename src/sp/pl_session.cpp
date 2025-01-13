@@ -18,7 +18,9 @@
 
 #include "pl_session.hpp"
 
+#include "pl_comm.h"
 #include "pl_query_cursor.hpp"
+#include "pl_sr.h"
 #include "query_manager.h"
 #include "session.h"
 #include "xserver_interface.h"
@@ -48,8 +50,9 @@ namespace cubpl
 // Runtime Context
 //////////////////////////////////////////////////////////////////////////
 
-  session::session ()
-    : m_mutex ()
+  session::session (SESSION_ID id)
+    : m_id (id)
+    , m_mutex ()
     , m_exec_stack {}
     , m_stack_idx {-1}
     , m_session_cursors {}
@@ -66,7 +69,12 @@ namespace cubpl
 
   session::~session ()
   {
+    destroy_pl_context_jvm ();
 
+    if (!m_session_connections.empty ())
+      {
+	m_session_connections.clear ();
+      }
   }
 
   execution_stack *
@@ -173,6 +181,53 @@ namespace cubpl
     m_cond_var.notify_all ();
   }
 
+  connection_view
+  session::claim_connection ()
+  {
+    if (m_session_connections.empty ())
+      {
+	connection_pool *pool = get_connection_pool ();
+	if (pool)
+	  {
+	    m_session_connections.emplace_back (std::move (pool->claim ()));
+	  }
+      }
+
+    if (!m_session_connections.empty ())
+      {
+	auto conn = std::move (m_session_connections.front());
+	m_session_connections.pop_front();
+	return conn;
+      }
+
+    return nullptr;
+  }
+
+  void
+  session::release_connection (connection_view &conn)
+  {
+    if (conn != nullptr)
+      {
+	m_session_connections.emplace_back (std::move (conn));
+      }
+  }
+
+  void
+  session::destroy_pl_context_jvm ()
+  {
+    cubmethod::header header (m_id, SP_CODE_DESTROY, get_and_increment_request_id ());
+
+    connection_view cv = claim_connection ();
+    if (cv)
+      {
+	if (cv->is_valid ())
+	  {
+	    cv->send_buffer_args (header);
+	  }
+	release_connection (cv);
+      }
+  }
+
   execution_stack *
   session::top_stack_internal ()
   {
@@ -238,6 +293,8 @@ namespace cubpl
 	/* do nothing */
 	break;
       }
+
+    destroy_pl_context_jvm ();
   }
 
   void

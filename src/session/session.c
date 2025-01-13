@@ -3256,7 +3256,7 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
 
   if (state_p->pl_session_p == NULL)
     {
-      state_p->pl_session_p = new PL_SESSION ();
+      state_p->pl_session_p = new PL_SESSION (state_p->id);
     }
 
   pl_session_ref_ptr = state_p->pl_session_p;
