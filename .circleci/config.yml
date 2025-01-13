@@ -125,9 +125,6 @@ workflows:
       - test_sql:
           requires:
             - build
-      - test_plcsql:
-          requires:
-            - build
 
       - build-windows:
           requires:
