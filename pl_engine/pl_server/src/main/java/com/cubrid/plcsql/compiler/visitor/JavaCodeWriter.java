@@ -1385,7 +1385,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             Object dupCursorArgs = getDupCursorArgs(node.args, decl.paramRefCounts);
             CodeTemplateList hostExprs =
-                    getHostExprs(node.cursor, node.args, decl.paramNumOfHostExpr, decl.paramRefCounts);
+                    getHostExprs(
+                            node.cursor, node.args, decl.paramNumOfHostExpr, decl.paramRefCounts);
 
             return new CodeTemplate(
                     "StmtCursorOpen",
@@ -1664,7 +1665,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             Object dupCursorArgs = getDupCursorArgs(node.cursorArgs, decl.paramRefCounts);
             CodeTemplateList hostExprs =
-                    getHostExprs(node.cursor, node.cursorArgs, decl.paramNumOfHostExpr, decl.paramRefCounts);
+                    getHostExprs(
+                            node.cursor,
+                            node.cursorArgs,
+                            decl.paramNumOfHostExpr,
+                            decl.paramRefCounts);
 
             return new CodeTemplate(
                     "StmtForCursorLoop",

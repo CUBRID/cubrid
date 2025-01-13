@@ -920,8 +920,7 @@ public class TypeChecker extends AstVisitor<Type> {
             if (c == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(arg.ctx), // s219
-                        String.format(
-                                "argument %d to the cursor has an incompatible type", i + 1));
+                        String.format("argument %d to the cursor has an incompatible type", i + 1));
             } else {
                 arg.setCoercion(c);
             }
@@ -932,7 +931,7 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitStmtCursorOpen(StmtCursorOpen node) {
         Type idType = visit(node.cursor);
         if (idType == Type.CURSOR) {
-            checkCursorArgs(node.cursor, node.args);    // s219
+            checkCursorArgs(node.cursor, node.args); // s219
         } else {
             assert false : "unreachable"; // by earlier check
             throw new RuntimeException("unreachable");
@@ -1039,7 +1038,7 @@ public class TypeChecker extends AstVisitor<Type> {
 
         Type idType = visit(node.cursor);
         if (idType == Type.CURSOR) {
-            checkCursorArgs(node.cursor, node.cursorArgs);    // s240
+            checkCursorArgs(node.cursor, node.cursorArgs); // s240
         } else {
             assert false : "unreachable"; // by earlier check
             throw new RuntimeException("unreachable");
