@@ -2429,7 +2429,11 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
   PT_NODE *default_next_node = NULL;
   for (int i = 0; i < sig.arg.arg_size; i++)
     {
-      if (sig.arg.arg_default_value_size[i] == 0)
+      if (sig.arg.arg_default_value_size[i] == PL_ARG_DEFAULT_NULL)
+	{
+	  default_next_node = pt_make_string_value (parser, NULL);
+	}
+      else if (sig.arg.arg_default_value_size[i] == 0)
 	{
 	  default_next_node = pt_make_string_value (parser, "");
 	}
