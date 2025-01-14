@@ -43,8 +43,8 @@ public class StmtBasicLoop extends StmtLoop {
     public final DeclLabel declLabel;
     public final NodeList<Stmt> stmts;
 
-    public StmtBasicLoop(ParserRuleContext ctx, StmtLoop.StmtInLoop stmtInLoop, DeclLabel declLabel, NodeList<Stmt> stmts) {
-        super(ctx, stmtInLoop);
+    public StmtBasicLoop(ParserRuleContext ctx, StmtLoop.LoopOptimizable loopOptimizable, DeclLabel declLabel, NodeList<Stmt> stmts) {
+        super(ctx, loopOptimizable);
 
         this.declLabel = declLabel;
         this.stmts = stmts;

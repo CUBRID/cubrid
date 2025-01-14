@@ -50,7 +50,7 @@ public class StmtForCursorLoop extends StmtLoop {
 
     public StmtForCursorLoop(
             ParserRuleContext ctx,
-            StmtLoop.StmtInLoop stmtInLoop,
+            StmtLoop.LoopOptimizable loopOptimizable,
             ExprId cursor,
             NodeList<Expr> cursorArgs,
             String label,
@@ -58,7 +58,7 @@ public class StmtForCursorLoop extends StmtLoop {
             TypeRecord recordType,
             NodeList<Stmt> stmts) {
 
-        super(ctx, stmtInLoop);
+        super(ctx, loopOptimizable);
 
         assert cursor.decl instanceof DeclCursor;
         assert cursorArgs != null;

@@ -44,14 +44,14 @@ public abstract class StmtForSqlLoop extends StmtLoop {
 
     public StmtForSqlLoop(
             ParserRuleContext ctx,
-            StmtLoop.StmtInLoop stmtInLoop,
+            StmtLoop.LoopOptimizable loopOptimizable,
             boolean dynamic,
             String label,
             DeclId record,
             Expr sql,
             List<? extends Expr> usedExprList,
             NodeList<Stmt> stmts) {
-        super(ctx, stmtInLoop);
+        super(ctx, loopOptimizable);
 
         this.dynamic = dynamic;
         this.label = label;

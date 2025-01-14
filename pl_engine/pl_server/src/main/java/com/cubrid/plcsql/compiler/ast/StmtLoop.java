@@ -37,15 +37,20 @@ import java.sql.PreparedStatement;
 
 public abstract class StmtLoop extends Stmt {
 
-    public final StmtInLoop stmtInLoop;
+    public final LoopOptimizable loopOptimizable;
 
-    public StmtLoop(ParserRuleContext ctx, StmtInLoop stmtInLoop) {
+    public StmtLoop(ParserRuleContext ctx, LoopOptimizable loopOptimizable) {
         super(ctx);
-        this.stmtInLoop = stmtInLoop;
+        this.loopOptimizable = loopOptimizable;
+        if (loopOptimizable != null) {
+            for (StmtSql s: loopOptimizable.sql) {
+                s.outermostLoop = this;
+            }
+        }
     }
 
-    public static class StmtInLoop {
-        private Set<PreparedStatement> preparedStmt = new HashSet<>();
+    public static class LoopOptimizable {
+        public Set<StmtSql> sql = new HashSet<>();
     }
 
 }

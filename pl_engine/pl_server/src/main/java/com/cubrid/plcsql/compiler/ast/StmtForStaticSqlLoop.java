@@ -46,14 +46,14 @@ public class StmtForStaticSqlLoop extends StmtForSqlLoop {
 
     public StmtForStaticSqlLoop(
             ParserRuleContext ctx,
-            StmtLoop.StmtInLoop stmtInLoop,
+            StmtLoop.LoopOptimizable loopOptimizable,
             String label,
             DeclVar record,
             StaticSql staticSql,
             NodeList<Stmt> stmts) {
         super(
                 ctx,
-                stmtInLoop,
+                loopOptimizable,
                 false,
                 label,
                 record,

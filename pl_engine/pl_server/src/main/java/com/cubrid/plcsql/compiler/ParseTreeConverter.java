@@ -1344,12 +1344,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Body visitBody(BodyContext ctx) {
 
-        StmtLoop.StmtInLoop stmtInLoopSaved = null;
+        StmtLoop.LoopOptimizable loopOptimizableSaved = null;
         try {
-            if (stmtInLoop != null) {
+            if (loopOptimizable != null) {
                 // save the current one
-                stmtInLoopSaved = stmtInLoop;
-                stmtInLoop = null;
+                loopOptimizableSaved = loopOptimizable;
+                loopOptimizable = null;
             }
 
             boolean allFlowsBlocked;
@@ -1374,9 +1374,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             return new Body(ctx, stmts, exHandlers, label);
         } finally {
-            if (stmtInLoopSaved != null) {
+            if (loopOptimizableSaved != null) {
                 // restore
-                stmtInLoop = stmtInLoopSaved;
+                loopOptimizable = loopOptimizableSaved;
             }
         }
     }
@@ -1673,9 +1673,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtBasicLoop visitStmt_basic_loop(Stmt_basic_loopContext ctx) {
 
-        boolean outermostLoop = (stmtInLoop == null);
+        boolean outermostLoop = (loopOptimizable == null);
         if (outermostLoop) {
-            stmtInLoop = new StmtLoop.StmtInLoop();
+            loopOptimizable = new StmtLoop.LoopOptimizable();
         }
 
         symbolStack.pushSymbolTable("loop", null);
@@ -1691,9 +1691,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        StmtBasicLoop ret = new StmtBasicLoop(ctx, stmtInLoop, declLabel, stmts);
+        StmtBasicLoop ret = new StmtBasicLoop(ctx, outermostLoop ? loopOptimizable : null, declLabel, stmts);
         if (outermostLoop) {
-            stmtInLoop = null;
+            loopOptimizable = null;
         }
         return ret;
     }
@@ -1713,9 +1713,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtWhileLoop visitStmt_while_loop(Stmt_while_loopContext ctx) {
 
-        boolean outermostLoop = (stmtInLoop == null);
+        boolean outermostLoop = (loopOptimizable == null);
         if (outermostLoop) {
-            stmtInLoop = new StmtLoop.StmtInLoop();
+            loopOptimizable = new StmtLoop.LoopOptimizable();
         }
 
         symbolStack.pushSymbolTable("while", null);
@@ -1732,9 +1732,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        StmtWhileLoop ret = new StmtWhileLoop(ctx, stmtInLoop, declLabel, cond, stmts);
+        StmtWhileLoop ret = new StmtWhileLoop(ctx, outermostLoop ? loopOptimizable : null, declLabel, cond, stmts);
         if (outermostLoop) {
-            stmtInLoop = null;
+            loopOptimizable = null;
         }
         return ret;
     }
@@ -1742,9 +1742,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtForIterLoop visitStmt_for_iter_loop(Stmt_for_iter_loopContext ctx) {
 
-        boolean outermostLoop = (stmtInLoop == null);
+        boolean outermostLoop = (loopOptimizable == null);
         if (outermostLoop) {
-            stmtInLoop = new StmtLoop.StmtInLoop();
+            loopOptimizable = new StmtLoop.LoopOptimizable();
         }
 
         symbolStack.pushSymbolTable("for_iter", null);
@@ -1772,9 +1772,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        StmtForIterLoop ret = new StmtForIterLoop(ctx, stmtInLoop, declLabel, iterDecl, reverse, lowerBound, upperBound, step, stmts);
+        StmtForIterLoop ret = new StmtForIterLoop(ctx, outermostLoop ? loopOptimizable : null, declLabel, iterDecl, reverse, lowerBound, upperBound, step, stmts);
         if (outermostLoop) {
-            stmtInLoop = null;
+            loopOptimizable = null;
         }
         return ret;
     }
@@ -1801,9 +1801,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtForCursorLoop visitStmt_for_cursor_loop(Stmt_for_cursor_loopContext ctx) {
 
-        boolean outermostLoop = (stmtInLoop == null);
+        boolean outermostLoop = (loopOptimizable == null);
         if (outermostLoop) {
-            stmtInLoop = new StmtLoop.StmtInLoop();
+            loopOptimizable = new StmtLoop.LoopOptimizable();
         }
 
         connectionRequired = true;
@@ -1858,9 +1858,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        StmtForCursorLoop ret = new StmtForCursorLoop(ctx, stmtInLoop, cursor, args, label, record, recTy, stmts);
+        StmtForCursorLoop ret = new StmtForCursorLoop(ctx, outermostLoop ? loopOptimizable : null, cursor, args, label, record, recTy, stmts);
         if (outermostLoop) {
-            stmtInLoop = null;
+            loopOptimizable = null;
         }
         return ret;
     }
@@ -1868,9 +1868,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtForSqlLoop visitStmt_for_static_sql_loop(Stmt_for_static_sql_loopContext ctx) {
 
-        boolean outermostLoop = (stmtInLoop == null);
+        boolean outermostLoop = (loopOptimizable == null);
         if (outermostLoop) {
-            stmtInLoop = new StmtLoop.StmtInLoop();
+            loopOptimizable = new StmtLoop.LoopOptimizable();
         }
 
         connectionRequired = true;
@@ -1916,9 +1916,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        StmtForStaticSqlLoop ret = new StmtForStaticSqlLoop(ctx, stmtInLoop, label, declForRecord, staticSql, stmts);
+        StmtForStaticSqlLoop ret = new StmtForStaticSqlLoop(ctx, outermostLoop ? loopOptimizable : null, label, declForRecord, staticSql, stmts);
         if (outermostLoop) {
-            stmtInLoop = null;
+            loopOptimizable = null;
         }
         return ret;
     }
@@ -2081,7 +2081,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
-        return new StmtStaticSql(ctx, level, staticSql);
+        StmtStaticSql ret = new StmtStaticSql(ctx, level, staticSql);
+        if (loopOptimizable != null) {
+            loopOptimizable.sql.add(ret);
+        }
+        return ret;
     }
 
     @Override
@@ -2300,7 +2304,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public StmtSql visitExecute_immediate(Execute_immediateContext ctx) {
+    public StmtExecImme visitExecute_immediate(Execute_immediateContext ctx) {
 
         connectionRequired = true;
 
@@ -2323,7 +2327,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
-        return new StmtExecImme(ctx, level, dynSql, intoTargetList, usedExprList);
+        StmtExecImme ret = new StmtExecImme(ctx, level, dynSql, intoTargetList, usedExprList);
+        if (loopOptimizable != null) {
+            loopOptimizable.sql.add(ret);
+        }
+        return ret;
     }
 
     @Override
@@ -2515,7 +2523,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private final String spOwner;
     private final String spRevision;
 
-    private StmtLoop.StmtInLoop stmtInLoop = null;
+    private StmtLoop.LoopOptimizable loopOptimizable = null;
 
     private String spName;
     private boolean isSpFunc;
