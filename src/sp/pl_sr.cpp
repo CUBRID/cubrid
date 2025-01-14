@@ -374,6 +374,9 @@ namespace cubpl
   {
     if (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE)
       {
+#if defined (SA_MODE)
+        assert (lang_is_all_initialized ());
+#endif
 	do_initialize ();
       }
 
