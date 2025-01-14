@@ -41,6 +41,7 @@ public abstract class StmtForSqlLoop extends StmtLoop {
     public final Expr sql;
     public final List<? extends Expr> usedExprList;
     public final NodeList<Stmt> stmts;
+    public final int sqlSerialNo;
 
     public StmtForSqlLoop(
             ParserRuleContext ctx,
@@ -50,7 +51,8 @@ public abstract class StmtForSqlLoop extends StmtLoop {
             DeclId record,
             Expr sql,
             List<? extends Expr> usedExprList,
-            NodeList<Stmt> stmts) {
+            NodeList<Stmt> stmts,
+            int sqlSerialNo) {
         super(ctx, loopOptimizable);
 
         this.dynamic = dynamic;
@@ -59,5 +61,6 @@ public abstract class StmtForSqlLoop extends StmtLoop {
         this.sql = sql;
         this.usedExprList = usedExprList;
         this.stmts = stmts;
+        this.sqlSerialNo = sqlSerialNo;
     }
 }

@@ -1916,7 +1916,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        StmtForStaticSqlLoop ret = new StmtForStaticSqlLoop(ctx, outermostLoop ? loopOptimizable : null, label, declForRecord, staticSql, stmts);
+        StmtForStaticSqlLoop ret = new StmtForStaticSqlLoop(ctx, outermostLoop ? loopOptimizable : null,
+            label, declForRecord, staticSql, stmts, getSqlSerialNo());
         if (outermostLoop) {
             loopOptimizable = null;
         }
@@ -2329,7 +2330,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         int level = symbolStack.getCurrentScope().level + 1;
         StmtExecImme ret = new StmtExecImme(ctx, level, dynSql, intoTargetList, usedExprList, getSqlSerialNo());
         if (loopOptimizable != null) {
-            loopOptimizable.sql.add(ret);
+            if (dynSql instanceof ExprStr) {
+                // only when it is a fixed string.
+                loopOptimizable.sql.add(ret);
+            }
         }
         return ret;
     }

@@ -50,7 +50,8 @@ public class StmtForStaticSqlLoop extends StmtForSqlLoop {
             String label,
             DeclVar record,
             StaticSql staticSql,
-            NodeList<Stmt> stmts) {
+            NodeList<Stmt> stmts,
+            int sqlSerialNo) {
         super(
                 ctx,
                 loopOptimizable,
@@ -59,7 +60,8 @@ public class StmtForStaticSqlLoop extends StmtForSqlLoop {
                 record,
                 new ExprStr(staticSql.ctx, staticSql.rewritten),
                 new ArrayList(staticSql.hostExprs.keySet()),
-                stmts);
+                stmts,
+                sqlSerialNo);
 
         this.staticSql = staticSql;
     }

@@ -51,6 +51,10 @@ public abstract class StmtLoop extends Stmt {
 
     public static class LoopOptimizable {
         public Set<StmtSql> sql = new HashSet<>();
+
+        public boolean isEmpty() {
+            return sql.isEmpty();
+        }
     }
 
 }
