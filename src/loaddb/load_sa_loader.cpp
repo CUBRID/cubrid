@@ -6373,11 +6373,6 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
       goto exit;
     }
 
-  if (pl_server_init (args->volume.c_str ()) != NO_ERROR || pl_server_wait_for_ready () != NO_ERROR)
-    {
-      goto exit;
-    }
-
   /* set the flag to indicate what type of interrupts to raise If logging has been disabled set commit flag. If
    * logging is enabled set abort flag. */
 

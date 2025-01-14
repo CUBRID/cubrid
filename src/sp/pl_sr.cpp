@@ -363,7 +363,7 @@ namespace cubpl
 	  }
       }
 
-    if (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE && lang_is_all_initialized ())
+    if (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE)
       {
 	do_initialize ();
       }
@@ -372,6 +372,14 @@ namespace cubpl
   void
   server_monitor_task::wait_for_ready ()
   {
+    if (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE)
+      {
+#if defined (SA_MODE)
+	assert (lang_is_all_initialized ());
+#endif
+	do_initialize ();
+      }
+
 #if defined (SERVER_MODE)
     auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING ||
 					   (!BO_IS_SERVER_RESTARTED () && m_state == SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE);
@@ -394,7 +402,15 @@ namespace cubpl
   server_monitor_task::do_initialize ()
   {
     int error = ER_FAILED;
+
+    assert (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE);
+    if (!lang_is_all_initialized ())
+      {
+	return error;
+      }
+
     std::lock_guard<std::mutex> lock (m_monitor_mutex);
+
     // wait PL server is ready to accept connection (polling)
 
     // TODO: parameterize this
@@ -498,6 +514,10 @@ namespace cubpl
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
 			"Failed to initialize the PL server. Verify that the server environment and configurations are properly set up");
 		m_monitor_cv.notify_all ();
+	      }
+	    else
+	      {
+		m_state = SERVER_MONITOR_STATE_READY_TO_INITIALIZE; // retry initialization
 	      }
 	  }
 	break;
