@@ -76,7 +76,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         this.iStore = iStore;
         this.spOwner = Misc.getNormalizedText(spOwner);
         this.spRevision = spRevision;
-        this.serverStmtNo = 1;
+        this.sqlSerialNo = 1;
     }
 
     public void askServerSemanticQuestions() {
@@ -2081,7 +2081,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
-        StmtStaticSql ret = new StmtStaticSql(ctx, level, staticSql);
+        StmtStaticSql ret = new StmtStaticSql(ctx, level, staticSql, getSqlSerialNo());
         if (loopOptimizable != null) {
             loopOptimizable.sql.add(ret);
         }
@@ -2327,7 +2327,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
-        StmtExecImme ret = new StmtExecImme(ctx, level, dynSql, intoTargetList, usedExprList);
+        StmtExecImme ret = new StmtExecImme(ctx, level, dynSql, intoTargetList, usedExprList, getSqlSerialNo());
         if (loopOptimizable != null) {
             loopOptimizable.sql.add(ret);
         }
@@ -2535,9 +2535,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private boolean controlFlowBlocked;
 
-    private int serverStmtNo;
-    private int getSererStmtNo() {
-        return serverStmtNo++;
+    private int sqlSerialNo;
+    private int getSqlSerialNo() {
+        return sqlSerialNo++;
     }
 
     private void checkRedefinitionOfUsedName(String name, ParserRuleContext declCtx) {
