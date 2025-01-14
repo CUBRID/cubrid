@@ -31,8 +31,8 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import org.antlr.v4.runtime.ParserRuleContext;
-import java.util.Set;
-import java.util.HashSet;
+import java.util.List;
+import java.util.LinkedList;
 import java.sql.PreparedStatement;
 
 public abstract class StmtLoop extends Stmt {
@@ -50,7 +50,7 @@ public abstract class StmtLoop extends Stmt {
     }
 
     public static class LoopOptimizable {
-        public Set<StmtSql> sql = new HashSet<>();
+        public List<StmtSql> sql = new LinkedList<>();
 
         public boolean isEmpty() {
             return sql.isEmpty();
