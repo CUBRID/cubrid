@@ -44,7 +44,6 @@ import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.error.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
-import java.sql.PreparedStatement;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
@@ -61,8 +60,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.HashSet;
-import java.util.Stack;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 import org.apache.commons.text.StringEscapeUtils;
@@ -1691,7 +1688,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        StmtBasicLoop ret = new StmtBasicLoop(ctx, outermostLoop ? loopOptimizable : null, declLabel, stmts);
+        StmtBasicLoop ret =
+                new StmtBasicLoop(ctx, outermostLoop ? loopOptimizable : null, declLabel, stmts);
         if (outermostLoop) {
             loopOptimizable = null;
         }
@@ -1732,7 +1730,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        StmtWhileLoop ret = new StmtWhileLoop(ctx, outermostLoop ? loopOptimizable : null, declLabel, cond, stmts);
+        StmtWhileLoop ret =
+                new StmtWhileLoop(
+                        ctx, outermostLoop ? loopOptimizable : null, declLabel, cond, stmts);
         if (outermostLoop) {
             loopOptimizable = null;
         }
@@ -1772,7 +1772,17 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        StmtForIterLoop ret = new StmtForIterLoop(ctx, outermostLoop ? loopOptimizable : null, declLabel, iterDecl, reverse, lowerBound, upperBound, step, stmts);
+        StmtForIterLoop ret =
+                new StmtForIterLoop(
+                        ctx,
+                        outermostLoop ? loopOptimizable : null,
+                        declLabel,
+                        iterDecl,
+                        reverse,
+                        lowerBound,
+                        upperBound,
+                        step,
+                        stmts);
         if (outermostLoop) {
             loopOptimizable = null;
         }
@@ -1858,7 +1868,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        StmtForCursorLoop ret = new StmtForCursorLoop(ctx, outermostLoop ? loopOptimizable : null, cursor, args, label, record, recTy, stmts);
+        StmtForCursorLoop ret =
+                new StmtForCursorLoop(
+                        ctx,
+                        outermostLoop ? loopOptimizable : null,
+                        cursor,
+                        args,
+                        label,
+                        record,
+                        recTy,
+                        stmts);
         if (outermostLoop) {
             loopOptimizable = null;
         }
@@ -1916,8 +1935,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        StmtForStaticSqlLoop ret = new StmtForStaticSqlLoop(ctx, outermostLoop ? loopOptimizable : null,
-            label, declForRecord, staticSql, stmts, getSqlSerialNo());
+        StmtForStaticSqlLoop ret =
+                new StmtForStaticSqlLoop(
+                        ctx,
+                        outermostLoop ? loopOptimizable : null,
+                        label,
+                        declForRecord,
+                        staticSql,
+                        stmts,
+                        getSqlSerialNo());
         if (outermostLoop) {
             loopOptimizable = null;
         }
@@ -2328,7 +2354,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
-        StmtExecImme ret = new StmtExecImme(ctx, level, dynSql, intoTargetList, usedExprList, getSqlSerialNo());
+        StmtExecImme ret =
+                new StmtExecImme(
+                        ctx, level, dynSql, intoTargetList, usedExprList, getSqlSerialNo());
         if (loopOptimizable != null) {
             if (dynSql instanceof ExprStr) {
                 // only when it is a fixed string.
@@ -2540,6 +2568,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private boolean controlFlowBlocked;
 
     private int sqlSerialNo;
+
     private int getSqlSerialNo() {
         return sqlSerialNo++;
     }
