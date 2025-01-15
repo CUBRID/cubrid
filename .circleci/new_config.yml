@@ -1,0 +1,225 @@
+# .circleci/config.yml
+version: 2.1
+
+# --------------------------------------------------
+# 1. Reusable commands
+# --------------------------------------------------
+commands:
+  attach-and-run-tests:
+    description: "Attach workspace and run test scripts"
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Test
+          shell: /bin/bash
+          environment:
+            _JAVA_OPTIONS: -Xmx1g
+          command: |
+            # Limit core files
+            ulimit -c 1
+
+            # Check out code (uses custom entrypoint script)
+            /entrypoint.sh checkout
+
+            # Handle specific cases for TEST_SUITE
+            if [ "$TEST_SUITE" = "plcsql" ]; then
+              # Hack way to run plcsql test without modifying docker
+              TEST_SUITE="sql"
+              glob_path="cubrid-testcases/sql/{_05_plcsql,_35_fig_cake/plcsql}"
+            elif [ "$TEST_SUITE" = "sql" ]; then
+              rm -rf cubrid-testcases/sql/_05_plcsql
+              rm -rf cubrid-testcases/sql/_35_fig_cake/plcsql
+              glob_path="cubrid-testcases/$TEST_SUITE/_*"
+            elif [ "$TEST_SUITE" = "shell" ]; then
+              rm -rf cubrid-testcases-private-ex/shell/_06_issues
+              rm -rf cubrid-testcases-private-ex/shell/_25_unstable
+              glob_path="cubrid-testcases-private-ex/shell/_*"
+            else
+              glob_path="cubrid-testcases/$TEST_SUITE/_*"
+            fi
+
+            # CircleCI test splitting
+            circleci tests glob "$glob_path" | circleci tests split | tee tc.list
+            find "$glob_path" -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+
+            # Run actual test
+            /entrypoint.sh test
+
+      - run:
+          name: Collect Logs
+          command: |
+            mkdir -p /tmp/logs
+            mv -f CUBRID/log /tmp/logs/cubrid_log || true
+            mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
+            find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
+          when: on_fail
+
+      - store_test_results:
+          path: /tmp/tests
+
+      - store_artifacts:
+          path: /tmp/logs
+
+  collect-build-logs:
+    description: "Collect build logs and store them"
+    steps:
+      - run:
+          name: Store Build Logs
+          command: |
+            mkdir -p /tmp/build_logs
+            mv -f build.log /tmp/build_logs || true
+      - run:
+          name: Store Commits
+          command: |
+            mkdir -p /tmp/build_logs
+            git log | head -n 1000 > commits.log || true
+            mv -f commits.log /tmp/build_logs
+      - store_artifacts:
+          path: /tmp/build_logs
+
+# --------------------------------------------------
+# 2. Reusable executors
+# --------------------------------------------------
+executors:
+  cubrid-default:
+    docker:
+      - image: cubridci/cubridci:develop
+    working_directory: /home
+
+  # 새롭게 추가된 executor (ctp_shell)
+  ctp_shell:
+    docker:
+      - image: cubridci/ctp_shell:develop
+    working_directory: /home
+
+# --------------------------------------------------
+# 3. Jobs
+# --------------------------------------------------
+jobs:
+  # 기존 build job
+  build:
+    executor: cubrid-default
+    resource_class: xlarge
+    environment:
+      MAKEFLAGS: -j 8
+    steps:
+      - checkout
+      - run:
+          name: Submodules
+          command: |
+            git submodule sync
+            git submodule update --init
+      - run:
+          name: Build
+          command: |
+            scl enable devtoolset-8 -- /entrypoint.sh build
+      - collect-build-logs
+      - persist_to_workspace:
+          root: .
+          paths:
+            - CUBRID
+
+  test_job:
+    parameters:
+      my_executor:
+        type: executor
+        default: cubrid-default
+      test_suite:
+        type: string
+      run_shell_test:
+        type: boolean
+        default: false
+    executor: << parameters.my_executor >>
+    resource_class: medium
+    environment:
+      TEST_SUITE: << parameters.test_suite >>
+      GH_TOKEN: $GITHUB_TOKEN
+    steps:
+      - run:
+          name: Set TEST_SUITE environment
+          command: |
+            if [ "<< parameters.run_shell_test >>" == "true" ]; then
+              /entrypoint.sh worker
+            fi
+            echo "export TEST_SUITE=<< parameters.test_suite >>" >> $BASH_ENV
+      - attach-and-run-tests
+
+  # Windows build (기존)
+  build-windows:
+    machine:
+      image: "windows-server-2019"
+      resource_class: windows.large
+      shell: powershell.exe -ExecutionPolicy Bypass
+    environment:
+      CMAKE_GENERATOR: "Visual Studio 15 2017"
+      CMAKE_BUILD_PARALLEL_LEVEL: 10
+      WITH_CCI: true
+    steps:
+      - checkout
+      - run:
+          name: Submodules
+          command: |
+            git submodule update --init --recursive
+            git rm -f cubridmanager
+      - run:
+          name: Install dependencies
+          command: |
+            choco upgrade chocolatey -y
+            choco install openjdk8redhatbuild --no-progress -y
+            choco install cmake --version=3.26.3 --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
+            choco install winflexbison wixtoolset --no-progress -y
+            choco install ant --ignore-dependencies --no-progress -y
+            choco install visualstudio2017buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.ATLMFC --includeRecommended" --no-progress -y
+      - run:
+          name: CMake Configure
+          command: |
+            cmake -E make_directory build
+            cmake -E chdir build cmake -G $env:CMAKE_GENERATOR -A x64 -DWITH_CCI=$env:WITH_CCI -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+      - run:
+          name: CMake Build
+          command: |
+            cmake --build build --config RelWithDebInfo --parallel $env:CMAKE_BUILD_PARALLEL_LEVEL
+
+# --------------------------------------------------
+# 4. Workflows
+# --------------------------------------------------
+workflows:
+  build_test:
+    jobs:
+      - build
+
+      - test_job:
+          name: test_medium
+          requires:
+            - build
+          parameters:
+            test_suite: "medium"
+
+      - test_job:
+          name: test_sql
+          requires:
+            - build
+          parameters:
+            test_suite: "sql"
+          parallelism: 8
+
+      - test_job:
+          name: test_plcsql
+          requires:
+            - build
+          parameters:
+            test_suite: "plcsql"
+
+      - test_job:
+          name: test_shell
+          requires:
+            - build
+          parameters:
+            my_executor: ctp_shell 
+            test_suite: "shell"
+          parallelism: 8
+
+      - build-windows:
+          requires:
+            - build
