@@ -23,7 +23,10 @@ commands:
             /entrypoint.sh checkout
 
             # Handle specific cases for TEST_SUITE
-            if [ "$TEST_SUITE" = "plcsql" ]; then
+            if [ "$TEST_SUITE" = "none" ]; then
+              echo "TEST_SUITE is none"
+              exit 1
+            elif [ "$TEST_SUITE" = "plcsql" ]; then
               # Hack way to run plcsql test without modifying docker
               TEST_SUITE="sql"
               glob_path="cubrid-testcases/sql/{_05_plcsql,_35_fig_cake/plcsql}"
@@ -32,6 +35,8 @@ commands:
               rm -rf cubrid-testcases/sql/_35_fig_cake/plcsql
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             elif [ "$TEST_SUITE" = "shell" ]; then
+            #need to handle shell test case location.
+            #it is in /home/shell/cubrid-testcases-private-ex/shell/_*
               rm -rf cubrid-testcases-private-ex/shell/_06_issues
               rm -rf cubrid-testcases-private-ex/shell/_25_unstable
               glob_path="cubrid-testcases-private-ex/shell/_*"
@@ -127,6 +132,7 @@ jobs:
         default: cubrid-default
       test_suite:
         type: string
+        default: "none"
       run_shell_test:
         type: boolean
         default: false
